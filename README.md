@@ -22,7 +22,7 @@ Two main views:
 
 ## Status
 
-Design phase. See [`SPEC.md`](SPEC.md) for the full specification.
+**Phase 1 complete** — data layer implemented and tested. See [`SPEC.md`](SPEC.md) for the full specification.
 
 ## Implementation Phases
 

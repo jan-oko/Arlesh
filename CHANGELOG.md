@@ -8,6 +8,16 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Phase 1 data layer: SQLite schema, sqlx migrations, domain-first Rust module structure
+- `domains` module: CRUD for Aspects (seeded, immutable), Projects, Domains, Tags with parent/subtype validation
+- `tasks` module: CRUD for Tasks and Goals, dependency tracking with cycle detection, virtual blocker resolution
+- `scopes` module: lazy get-or-create for Season/Month/Week/Day scopes with denormalized containment columns
+- `kb` module: CRUD for People, Events, Threads (stub; no Obsidian integration yet)
+- `commands` module: thin Tauri IPC wrappers for all domain operations
+- `src-tauri/.cargo/config.toml` setting build target to `/tmp/arlesh-target` (Rust debug artifacts are large)
+- 22 integration tests covering all modules: DB migrations, domain validation, task dependency/blocking, scope containment, KB entities
+
 ## [0.1.0] — 2026-06-20
 
 ### Added

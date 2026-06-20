@@ -1,2 +1,10 @@
 # Personal Claude settings — not for version control
 .claude/settings.local.json
+
+# Build artifacts
+node_modules/
+dist/
+src-tauri/target/
+
+# Environment
+.env
