@@ -9,6 +9,8 @@ Update `README.md` if the change affects the project overview, stack, or phase s
 
 Update `SPEC.md` if the change reflects a design decision.
 
+**Commit all changes at the end of every request.** Stage and commit everything modified during the request in a single commit with a clear message. Do not leave the working tree dirty.
+
 ## On version bumps
 
 Do NOT update `VERSION.txt` automatically. Instead, ask the user:
