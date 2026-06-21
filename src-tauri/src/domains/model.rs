@@ -21,6 +21,7 @@ impl From<DomainId> for i64 {
 /// The four subtypes stored in the `domains` table.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
 #[sqlx(rename_all = "lowercase")]
+#[serde(rename_all = "lowercase")]
 pub enum DomainSubtype {
     /// Fixed, color-coded top-level container. Not user-managed.
     Aspect,
@@ -35,6 +36,7 @@ pub enum DomainSubtype {
 /// Project lifecycle status.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
 #[sqlx(rename_all = "lowercase")]
+#[serde(rename_all = "lowercase")]
 pub enum ProjectStatus {
     /// Actively being worked on.
     Active,

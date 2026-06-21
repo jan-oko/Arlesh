@@ -136,7 +136,7 @@ export default function MindmapView() {
             kind: tabNode?.kind,
             hasDbId: selectedNodeId?.includes("-"),
           });
-          if (tabNode !== undefined && tabNode.kind !== "aspect" && tabNode.id.includes("-")) {
+          if (tabNode !== undefined && tabNode.id.includes("-")) {
             (async () => {
               try {
                 const newNode = await createChild(selectedNodeId!, tabNode.kind, "");

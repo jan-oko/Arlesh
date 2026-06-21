@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { listDomains } from "@/api/domains";
+import { listDomains, createDomain } from "@/api/domains";
 import { listTasks, createTask, updateTask, deleteTask } from "@/api/tasks";
 import { listGoals, createGoal, updateGoal, deleteGoal } from "@/api/goals";
 import type { Domain } from "@/api/domains";
@@ -164,6 +164,26 @@ export function useMindmapData(): MindmapData {
     async (parentId: string, parentKind: NodeKind, title: string): Promise<MindmapNode> => {
       const dbParentId = dbIdFromNodeId(parentId);
       const parentType = kindToParentType(parentKind);
+
+      if (parentKind === "aspect") {
+        const domain = await createDomain({
+          title,
+          description: null,
+          subtype: "domain",
+          parent_id: dbParentId,
+          status: null,
+          knowledge_base_directory: null,
+        });
+        const newNode: MindmapNode = {
+          id: `domain-${domain.id}`,
+          kind: "domain",
+          title: domain.title,
+          tagIds: [],
+          children: [],
+        };
+        await load();
+        return newNode;
+      }
 
       // Domains and projects produce a goal; goals/tasks produce a task (subtask).
       const makeGoal = parentKind === "domain" || parentKind === "project";
