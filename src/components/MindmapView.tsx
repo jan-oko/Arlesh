@@ -130,12 +130,17 @@ export default function MindmapView() {
           break;
         case "Tab":
           event.preventDefault();
+          console.log("[arlesh] Tab captured, selectedNodeId:", selectedNodeId);
           if (selectedNodeId !== null) {
             const node = findNodeById(selectedNodeId);
             if (node !== undefined && node.kind !== "aspect") {
-              void (async () => {
-                const newNode = await createChild(selectedNodeId, node.kind, "");
-                setEditingNodeId(newNode.id);
+              (async () => {
+                try {
+                  const newNode = await createChild(selectedNodeId, node.kind, "");
+                  setEditingNodeId(newNode.id);
+                } catch (err) {
+                  console.error("[arlesh] Tab createChild failed:", err);
+                }
               })();
             }
           }

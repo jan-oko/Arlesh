@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { MindmapNode as MindmapNodeData, Position } from "@/utils/tree-layout";
 import { NODE_ICON, getNodeSize } from "@/utils/node-meta";
 import NodeContextMenu, { type ContextMenuAction } from "./NodeContextMenu";
@@ -42,10 +43,13 @@ export default function MindmapNode({
   const { width, height, fontSize, iconWidth, maxChars } = getNodeSize(position.depth);
 
   useEffect(() => {
-    if (isEditing) {
+    if (!isEditing) return;
+    // Defer one tick so WebKit finishes painting the foreignObject before we focus.
+    const id = setTimeout(() => {
       inputRef.current?.focus();
       inputRef.current?.select();
-    }
+    }, 0);
+    return () => clearTimeout(id);
   }, [isEditing]);
 
   const handleClick = useCallback(
@@ -190,18 +194,17 @@ export default function MindmapNode({
         />
       )}
 
-      {contextMenu !== null && (
-        <foreignObject x={-9999} y={-9999} width={1} height={1} overflow="visible">
-          <NodeContextMenu
-            x={contextMenu.x}
-            y={contextMenu.y}
-            nodeKind={node.kind}
-            isCollapsed={isCollapsed}
-            hasClipboard={hasClipboard}
-            onAction={(action) => onContextAction(node.id, action)}
-            onClose={() => setContextMenu(null)}
-          />
-        </foreignObject>
+      {contextMenu !== null && createPortal(
+        <NodeContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          nodeKind={node.kind}
+          isCollapsed={isCollapsed}
+          hasClipboard={hasClipboard}
+          onAction={(action) => onContextAction(node.id, action)}
+          onClose={() => setContextMenu(null)}
+        />,
+        document.body,
       )}
     </g>
   );
