@@ -57,29 +57,67 @@ export default function MindmapView() {
     [tree],
   );
 
-  const navigateParent = useCallback(() => {
-    if (selectedNodeId === null) return;
-    const parent = findParent(displayRoot, selectedNodeId);
-    if (parent !== null) selectNode(parent.id);
-  }, [selectedNodeId, displayRoot, selectNode]);
-
-  const navigateFirstChild = useCallback(() => {
-    if (selectedNodeId === null) return;
-    const node = findNode(displayRoot, selectedNodeId);
-    const first = node?.children[0];
-    if (first !== undefined) selectNode(first.id);
-  }, [selectedNodeId, displayRoot, selectNode]);
-
-  const navigateSibling = useCallback(
-    (direction: 1 | -1) => {
+  const navigateArrow = useCallback(
+    (key: "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown") => {
       if (selectedNodeId === null) return;
-      const parent = findParent(displayRoot, selectedNodeId);
-      if (parent === null) return;
-      const index = parent.children.findIndex((c) => c.id === selectedNodeId);
-      const next = parent.children[index + direction];
-      if (next !== undefined) selectNode(next.id);
+
+      // Up/Down: navigate siblings sorted by visual Y (matches rendered order)
+      if (key === "ArrowUp" || key === "ArrowDown") {
+        const parent = findParent(displayRoot, selectedNodeId);
+        if (parent === null) return;
+        const sorted = [...parent.children].sort(
+          (a, b) => (positions.get(a.id)?.y ?? 0) - (positions.get(b.id)?.y ?? 0),
+        );
+        const index = sorted.findIndex((c) => c.id === selectedNodeId);
+        const next = sorted[index + (key === "ArrowUp" ? -1 : 1)];
+        if (next !== undefined) selectNode(next.id);
+        return;
+      }
+
+      // Left/Right: "away from center" = deeper, "toward center" = parent.
+      // For root (x=0): Right → nearest right child, Left → nearest left child.
+      const pos = positions.get(selectedNodeId);
+      const nodeX = pos?.x ?? 0;
+      const currentY = pos?.y ?? 0;
+      const movingRight = key === "ArrowRight";
+
+      if (nodeX === 0) {
+        // Root: step to the child on the matching side closest in Y
+        const node = findNode(displayRoot, selectedNodeId);
+        if (node === undefined) return;
+        const sideChildren = node.children.filter((c) => {
+          const cx = positions.get(c.id)?.x ?? 0;
+          return movingRight ? cx > 0 : cx < 0;
+        });
+        const closest = sideChildren.reduce<MindmapNode | undefined>((best, child) => {
+          if (best === undefined) return child;
+          return Math.abs((positions.get(child.id)?.y ?? 0) - currentY) <
+            Math.abs((positions.get(best.id)?.y ?? 0) - currentY)
+            ? child
+            : best;
+        }, undefined);
+        if (closest !== undefined) selectNode(closest.id);
+        return;
+      }
+
+      const goingDeeper = movingRight === (nodeX > 0);
+
+      if (goingDeeper) {
+        const node = findNode(displayRoot, selectedNodeId);
+        if (node === undefined || node.children.length === 0) return;
+        const closest = node.children.reduce((best, child) =>
+          Math.abs((positions.get(child.id)?.y ?? 0) - currentY) <
+          Math.abs((positions.get(best.id)?.y ?? 0) - currentY)
+            ? child
+            : best,
+        );
+        selectNode(closest.id);
+      } else {
+        const parent = findParent(displayRoot, selectedNodeId);
+        if (parent !== null) selectNode(parent.id);
+      }
     },
-    [selectedNodeId, displayRoot, selectNode],
+    [selectedNodeId, positions, displayRoot, selectNode],
   );
 
   // Must be defined before handleKeyDown which references it
@@ -122,27 +160,27 @@ export default function MindmapView() {
       switch (event.key) {
         case "ArrowLeft":
           event.preventDefault();
-          navigateParent();
-          break;
-        case "ArrowRight":
-          event.preventDefault();
-          navigateFirstChild();
-          break;
-        case "ArrowUp":
-          event.preventDefault();
           if (event.ctrlKey && selectedNodeId !== null) {
             cycleType(selectedNodeId, -1);
           } else {
-            navigateSibling(-1);
+            navigateArrow("ArrowLeft");
           }
           break;
-        case "ArrowDown":
+        case "ArrowRight":
           event.preventDefault();
           if (event.ctrlKey && selectedNodeId !== null) {
             cycleType(selectedNodeId, 1);
           } else {
-            navigateSibling(1);
+            navigateArrow("ArrowRight");
           }
+          break;
+        case "ArrowUp":
+          event.preventDefault();
+          navigateArrow("ArrowUp");
+          break;
+        case "ArrowDown":
+          event.preventDefault();
+          navigateArrow("ArrowDown");
           break;
         case "Tab":
           event.preventDefault();
@@ -201,9 +239,7 @@ export default function MindmapView() {
       editingNodeId,
       editorModal,
       selectedNodeId,
-      navigateParent,
-      navigateFirstChild,
-      navigateSibling,
+      navigateArrow,
       cycleType,
       findNodeById,
       createChild,
