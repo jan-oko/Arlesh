@@ -29,7 +29,9 @@ const VIRTUAL_ROOT: MindmapNode = {
 
 function dbIdFromNodeId(nodeId: string): number {
   const parts = nodeId.split("-");
-  return parseInt(parts[parts.length - 1] ?? "0", 10);
+  const id = parseInt(parts[parts.length - 1] ?? "", 10);
+  if (Number.isNaN(id)) throw new Error(`Node "${nodeId}" is not backed by a database row`);
+  return id;
 }
 
 function kindToParentType(kind: NodeKind): string {

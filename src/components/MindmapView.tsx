@@ -132,7 +132,7 @@ export default function MindmapView() {
           event.preventDefault();
           if (selectedNodeId !== null) {
             const node = findNodeById(selectedNodeId);
-            if (node !== undefined && node.kind !== "aspect") {
+            if (node !== undefined && node.kind !== "aspect" && node.id.includes("-")) {
               (async () => {
                 try {
                   const newNode = await createChild(selectedNodeId, node.kind, "");
