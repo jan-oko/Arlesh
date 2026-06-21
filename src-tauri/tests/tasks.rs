@@ -34,6 +34,26 @@ async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
         .id
 }
 
+async fn make_tag(pool: &sqlx::SqlitePool) -> i64 {
+    let aspect_id: i64 =
+        sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Green' AND subtype = 'aspect'")
+            .fetch_one(pool)
+            .await
+            .unwrap();
+    DomainRepository::new(pool)
+        .create(CreateDomainRequest {
+            title: "test-tag".into(),
+            description: None,
+            subtype: DomainSubtype::Tag,
+            parent_id: Some(aspect_id),
+            status: None,
+            knowledge_base_directory: None,
+        })
+        .await
+        .unwrap()
+        .id
+}
+
 #[tokio::test]
 async fn create_task_and_goal() {
     let pool = helpers::test_pool().await;
@@ -52,6 +72,7 @@ async fn create_task_and_goal() {
 
     assert_eq!(task.title, "Write tests");
     assert_eq!(task.status, "todo");
+    assert!(task.tag_ids.is_empty());
 
     let goal = GoalRepository::new(&pool)
         .create(CreateGoalRequest {
@@ -65,6 +86,7 @@ async fn create_task_and_goal() {
         .unwrap();
 
     assert_eq!(goal.status, "active");
+    assert!(goal.tag_ids.is_empty());
 }
 
 #[tokio::test]
@@ -142,11 +164,8 @@ async fn done_dependency_unblocks_task() {
         .update(
             dependency.id.into(),
             UpdateTaskRequest {
-                title: None,
                 status: Some(arlesh_lib::tasks::model::TaskStatus::Done),
-                blocked_reason: None,
-                delegate_to: None,
-                scope_id: None,
+                ..Default::default()
             },
         )
         .await
@@ -242,10 +261,8 @@ async fn goal_dependency_blocks_task_until_achieved() {
         .update(
             goal.id.into(),
             UpdateGoalRequest {
-                title: None,
                 status: Some(GoalStatus::Achieved),
-                blocked_reason: None,
-                scope_id: None,
+                ..Default::default()
             },
         )
         .await
@@ -253,4 +270,109 @@ async fn goal_dependency_blocks_task_until_achieved() {
 
     let unblocked = task_repo.get_with_blockers(task.id.into()).await.unwrap();
     assert!(unblocked.block_reasons.is_empty());
+}
+
+#[tokio::test]
+async fn reparent_task_to_different_project() {
+    let pool = helpers::test_pool().await;
+    let project_a_id = make_project(&pool).await;
+    let aspect_id: i64 =
+        sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Green' AND subtype = 'aspect'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let project_b_id = DomainRepository::new(&pool)
+        .create(CreateDomainRequest {
+            title: "Project B".into(),
+            description: None,
+            subtype: DomainSubtype::Project,
+            parent_id: Some(aspect_id),
+            status: Some(ProjectStatus::Active),
+            knowledge_base_directory: None,
+        })
+        .await
+        .unwrap()
+        .id;
+    let task_repo = TaskRepository::new(&pool);
+
+    let task = task_repo
+        .create(CreateTaskRequest {
+            title: "Movable Task".into(),
+            parent_type: "project".into(),
+            parent_id: project_a_id,
+            status: None,
+            scope_id: None,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(task.parent_id, project_a_id);
+
+    let moved = task_repo
+        .update(
+            task.id.into(),
+            UpdateTaskRequest {
+                parent_type: Some("project".into()),
+                parent_id: Some(project_b_id),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(moved.parent_id, project_b_id);
+}
+
+#[tokio::test]
+async fn add_and_remove_tag_on_task() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let tag_id = make_tag(&pool).await;
+    let task_repo = TaskRepository::new(&pool);
+
+    let task = task_repo
+        .create(CreateTaskRequest {
+            title: "Tagged Task".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            status: None,
+            scope_id: None,
+        })
+        .await
+        .unwrap();
+
+    assert!(task.tag_ids.is_empty());
+
+    task_repo.add_tag(task.id.into(), tag_id).await.unwrap();
+    let tagged = task_repo.get(task.id.into()).await.unwrap();
+    assert_eq!(tagged.tag_ids, vec![tag_id]);
+
+    task_repo.remove_tag(task.id.into(), tag_id).await.unwrap();
+    let untagged = task_repo.get(task.id.into()).await.unwrap();
+    assert!(untagged.tag_ids.is_empty());
+}
+
+#[tokio::test]
+async fn list_tasks_includes_tag_ids() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let tag_id = make_tag(&pool).await;
+    let task_repo = TaskRepository::new(&pool);
+
+    let task = task_repo
+        .create(CreateTaskRequest {
+            title: "Task With Tag".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            status: None,
+            scope_id: None,
+        })
+        .await
+        .unwrap();
+
+    task_repo.add_tag(task.id.into(), tag_id).await.unwrap();
+
+    let all_tasks = task_repo.list().await.unwrap();
+    let found = all_tasks.iter().find(|t| t.id == task.id).unwrap();
+    assert_eq!(found.tag_ids, vec![tag_id]);
 }

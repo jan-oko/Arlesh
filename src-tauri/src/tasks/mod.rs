@@ -12,6 +12,87 @@ use model::{
     TaskStatus, TaskWithBlockers, UpdateGoalRequest, UpdateTaskRequest,
 };
 
+// Internal row types that map directly to database columns via sqlx::FromRow.
+// Public API types (Task, Goal) include derived fields like tag_ids.
+
+#[derive(sqlx::FromRow)]
+struct TaskRow {
+    id: i64,
+    title: String,
+    parent_type: String,
+    parent_id: i64,
+    status: String,
+    blocked_reason: Option<String>,
+    delegate_to: Option<i64>,
+    scope_id: Option<i64>,
+}
+
+impl From<TaskRow> for Task {
+    fn from(row: TaskRow) -> Self {
+        Self {
+            id: row.id,
+            title: row.title,
+            parent_type: row.parent_type,
+            parent_id: row.parent_id,
+            status: row.status,
+            blocked_reason: row.blocked_reason,
+            delegate_to: row.delegate_to,
+            scope_id: row.scope_id,
+            tag_ids: vec![],
+        }
+    }
+}
+
+#[derive(sqlx::FromRow)]
+struct GoalRow {
+    id: i64,
+    title: String,
+    parent_type: String,
+    parent_id: i64,
+    status: String,
+    blocked_reason: Option<String>,
+    scope_id: Option<i64>,
+}
+
+impl From<GoalRow> for Goal {
+    fn from(row: GoalRow) -> Self {
+        Self {
+            id: row.id,
+            title: row.title,
+            parent_type: row.parent_type,
+            parent_id: row.parent_id,
+            status: row.status,
+            blocked_reason: row.blocked_reason,
+            scope_id: row.scope_id,
+            tag_ids: vec![],
+        }
+    }
+}
+
+async fn fetch_task_tag_ids(
+    pool: &DatabasePool,
+    task_id: i64,
+) -> Result<Vec<i64>, sqlx::Error> {
+    sqlx::query_scalar::<_, i64>(
+        "SELECT tag_id FROM tags_on_tasks WHERE task_id = ? ORDER BY tag_id",
+    )
+    .bind(task_id)
+    .fetch_all(pool)
+    .await
+}
+
+async fn fetch_goal_tag_ids(
+    pool: &DatabasePool,
+    goal_id: i64,
+) -> Result<Vec<i64>, sqlx::Error> {
+    sqlx::query_scalar::<_, i64>(
+        "SELECT tag_id FROM tags_on_goals WHERE goal_id = ? ORDER BY tag_id",
+    )
+    .bind(goal_id)
+    .fetch_all(pool)
+    .await
+}
+
 /// Repository for Goal CRUD operations.
 pub struct GoalRepository<'a> {
     pool: &'a DatabasePool,
@@ -43,19 +124,26 @@ impl<'a> GoalRepository<'a> {
 
     /// Fetches a goal by id.
     pub async fn get(&self, id: GoalId) -> Result<Goal, TaskError> {
-        sqlx::query_as::<_, Goal>("SELECT * FROM goals WHERE id = ?")
+        let row = sqlx::query_as::<_, GoalRow>("SELECT * FROM goals WHERE id = ?")
             .bind(id.0)
             .fetch_optional(self.pool)
             .await?
-            .ok_or(TaskError::GoalNotFound(id.0))
+            .ok_or(TaskError::GoalNotFound(id.0))?;
+        let tag_ids = fetch_goal_tag_ids(self.pool, id.0).await?;
+        Ok(Goal { tag_ids, ..row.into() })
     }
 
     /// Lists all goals.
     pub async fn list(&self) -> Result<Vec<Goal>, TaskError> {
-        sqlx::query_as::<_, Goal>("SELECT * FROM goals ORDER BY id")
+        let rows = sqlx::query_as::<_, GoalRow>("SELECT * FROM goals ORDER BY id")
             .fetch_all(self.pool)
-            .await
-            .map_err(Into::into)
+            .await?;
+        let mut goals = Vec::with_capacity(rows.len());
+        for row in rows {
+            let tag_ids = fetch_goal_tag_ids(self.pool, row.id).await?;
+            goals.push(Goal { tag_ids, ..row.into() });
+        }
+        Ok(goals)
     }
 
     /// Updates a goal.
@@ -73,8 +161,23 @@ impl<'a> GoalRepository<'a> {
             Some(reason) => Some(reason),
             None => goal.blocked_reason,
         };
-        let scope_id =
-            request.scope_id.unwrap_or(goal.scope_id.map(|_| None).unwrap_or(goal.scope_id));
+        let scope_id = match request.scope_id {
+            Some(new_scope_id) => new_scope_id,
+            None => goal.scope_id,
+        };
+
+        if let (Some(new_parent_type), Some(new_parent_id)) =
+            (request.parent_type.as_deref(), request.parent_id)
+        {
+            sqlx::query(
+                "UPDATE goals SET parent_type = ?, parent_id = ? WHERE id = ?",
+            )
+            .bind(new_parent_type)
+            .bind(new_parent_id)
+            .bind(id.0)
+            .execute(self.pool)
+            .await?;
+        }
 
         sqlx::query(
             "UPDATE goals SET title=?, status=?, blocked_reason=?, scope_id=? WHERE id=?",
@@ -103,6 +206,28 @@ impl<'a> GoalRepository<'a> {
     pub async fn is_achieved(&self, id: GoalId) -> Result<bool, TaskError> {
         let goal = self.get(id).await?;
         Ok(goal.status == GoalStatus::Achieved.as_str())
+    }
+
+    /// Attaches a tag to a goal.
+    pub async fn add_tag(&self, goal_id: GoalId, tag_id: i64) -> Result<(), TaskError> {
+        sqlx::query(
+            "INSERT OR IGNORE INTO tags_on_goals (goal_id, tag_id) VALUES (?, ?)",
+        )
+        .bind(goal_id.0)
+        .bind(tag_id)
+        .execute(self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Removes a tag from a goal.
+    pub async fn remove_tag(&self, goal_id: GoalId, tag_id: i64) -> Result<(), TaskError> {
+        sqlx::query("DELETE FROM tags_on_goals WHERE goal_id = ? AND tag_id = ?")
+            .bind(goal_id.0)
+            .bind(tag_id)
+            .execute(self.pool)
+            .await?;
+        Ok(())
     }
 }
 
@@ -137,11 +262,13 @@ impl<'a> TaskRepository<'a> {
 
     /// Fetches a task by id.
     pub async fn get(&self, id: TaskId) -> Result<Task, TaskError> {
-        sqlx::query_as::<_, Task>("SELECT * FROM tasks WHERE id = ?")
+        let row = sqlx::query_as::<_, TaskRow>("SELECT * FROM tasks WHERE id = ?")
             .bind(id.0)
             .fetch_optional(self.pool)
             .await?
-            .ok_or(TaskError::TaskNotFound(id.0))
+            .ok_or(TaskError::TaskNotFound(id.0))?;
+        let tag_ids = fetch_task_tag_ids(self.pool, id.0).await?;
+        Ok(Task { tag_ids, ..row.into() })
     }
 
     /// Fetches a task with its computed block reasons.
@@ -165,16 +292,16 @@ impl<'a> TaskRepository<'a> {
                     }
                 }
                 Dependency::Goal { id: dependency_id } => {
-                    let dependency_goal =
-                        sqlx::query_as::<_, Goal>("SELECT * FROM goals WHERE id = ?")
+                    let (goal_status, goal_title): (String, String) =
+                        sqlx::query_as("SELECT status, title FROM goals WHERE id = ?")
                             .bind(dependency_id)
                             .fetch_optional(self.pool)
                             .await?
                             .ok_or(TaskError::GoalNotFound(dependency_id))?;
-                    if dependency_goal.status != GoalStatus::Achieved.as_str() {
+                    if goal_status != GoalStatus::Achieved.as_str() {
                         reasons.push(format!(
                             "Blocked by goal {} ({})",
-                            dependency_id, dependency_goal.title
+                            dependency_id, goal_title
                         ));
                     }
                 }
@@ -186,10 +313,15 @@ impl<'a> TaskRepository<'a> {
 
     /// Lists all tasks.
     pub async fn list(&self) -> Result<Vec<Task>, TaskError> {
-        sqlx::query_as::<_, Task>("SELECT * FROM tasks ORDER BY id")
+        let rows = sqlx::query_as::<_, TaskRow>("SELECT * FROM tasks ORDER BY id")
             .fetch_all(self.pool)
-            .await
-            .map_err(Into::into)
+            .await?;
+        let mut tasks = Vec::with_capacity(rows.len());
+        for row in rows {
+            let tag_ids = fetch_task_tag_ids(self.pool, row.id).await?;
+            tasks.push(Task { tag_ids, ..row.into() });
+        }
+        Ok(tasks)
     }
 
     /// Updates a task.
@@ -207,9 +339,27 @@ impl<'a> TaskRepository<'a> {
             Some(reason) => Some(reason),
             None => task.blocked_reason,
         };
-        let delegate_to =
-            request.delegate_to.unwrap_or(task.delegate_to.map(Some).unwrap_or(None));
-        let scope_id = request.scope_id.unwrap_or(task.scope_id.map(Some).unwrap_or(None));
+        let delegate_to = match request.delegate_to {
+            Some(new_delegate) => new_delegate,
+            None => task.delegate_to,
+        };
+        let scope_id = match request.scope_id {
+            Some(new_scope_id) => new_scope_id,
+            None => task.scope_id,
+        };
+
+        if let (Some(new_parent_type), Some(new_parent_id)) =
+            (request.parent_type.as_deref(), request.parent_id)
+        {
+            sqlx::query(
+                "UPDATE tasks SET parent_type = ?, parent_id = ? WHERE id = ?",
+            )
+            .bind(new_parent_type)
+            .bind(new_parent_id)
+            .bind(id.0)
+            .execute(self.pool)
+            .await?;
+        }
 
         sqlx::query(
             "UPDATE tasks SET title=?, status=?, blocked_reason=?, delegate_to=?, scope_id=? WHERE id=?",
@@ -298,6 +448,28 @@ impl<'a> TaskRepository<'a> {
             })
             .collect();
         Ok(dependencies)
+    }
+
+    /// Attaches a tag to a task.
+    pub async fn add_tag(&self, task_id: TaskId, tag_id: i64) -> Result<(), TaskError> {
+        sqlx::query(
+            "INSERT OR IGNORE INTO tags_on_tasks (task_id, tag_id) VALUES (?, ?)",
+        )
+        .bind(task_id.0)
+        .bind(tag_id)
+        .execute(self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Removes a tag from a task.
+    pub async fn remove_tag(&self, task_id: TaskId, tag_id: i64) -> Result<(), TaskError> {
+        sqlx::query("DELETE FROM tags_on_tasks WHERE task_id = ? AND tag_id = ?")
+            .bind(task_id.0)
+            .bind(tag_id)
+            .execute(self.pool)
+            .await?;
+        Ok(())
     }
 
     /// Returns true if making `task_id` depend on `candidate_id` would create a cycle.

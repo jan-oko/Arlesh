@@ -92,7 +92,7 @@ impl GoalStatus {
 }
 
 /// A task row as returned from the database.
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Task {
     /// Primary key.
     pub id: i64,
@@ -110,6 +110,8 @@ pub struct Task {
     pub delegate_to: Option<i64>,
     /// Scope this task is planned to (if any).
     pub scope_id: Option<i64>,
+    /// Tag domain ids attached to this task.
+    pub tag_ids: Vec<i64>,
 }
 
 /// A task row enriched with virtual block information.
@@ -122,7 +124,7 @@ pub struct TaskWithBlockers {
 }
 
 /// A goal row as returned from the database.
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Goal {
     /// Primary key.
     pub id: i64,
@@ -138,6 +140,8 @@ pub struct Goal {
     pub blocked_reason: Option<String>,
     /// Scope this goal is planned to (if any).
     pub scope_id: Option<i64>,
+    /// Tag domain ids attached to this goal.
+    pub tag_ids: Vec<i64>,
 }
 
 /// Dependency reference: either a task or a goal.
@@ -172,7 +176,7 @@ pub struct CreateTaskRequest {
 }
 
 /// Request body for updating a task.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 pub struct UpdateTaskRequest {
     /// New title (if provided).
     pub title: Option<String>,
@@ -184,6 +188,10 @@ pub struct UpdateTaskRequest {
     pub delegate_to: Option<Option<i64>>,
     /// Scope to plan to (None leaves unchanged, Some(None) clears it).
     pub scope_id: Option<Option<i64>>,
+    /// New parent entity type for re-parenting (must be set together with parent_id).
+    pub parent_type: Option<String>,
+    /// New parent entity id for re-parenting (must be set together with parent_type).
+    pub parent_id: Option<i64>,
 }
 
 /// Request body for creating a goal.
@@ -202,7 +210,7 @@ pub struct CreateGoalRequest {
 }
 
 /// Request body for updating a goal.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 pub struct UpdateGoalRequest {
     /// New title (if provided).
     pub title: Option<String>,
@@ -212,4 +220,8 @@ pub struct UpdateGoalRequest {
     pub blocked_reason: Option<String>,
     /// Scope to plan to (None leaves unchanged, Some(None) clears it).
     pub scope_id: Option<Option<i64>>,
+    /// New parent entity type for re-parenting (must be set together with parent_id).
+    pub parent_type: Option<String>,
+    /// New parent entity id for re-parenting (must be set together with parent_type).
+    pub parent_id: Option<i64>,
 }

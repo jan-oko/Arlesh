@@ -1,0 +1,19 @@
+.toast {
+  position: absolute;
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  border: 1px solid var(--node-border);
+  border-radius: var(--node-radius);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-sm);
+  font-family: var(--font-sans);
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 10;
+  opacity: 1;
+  animation: fadeout 0.4s ease 2.6s forwards;
+}
+
+@keyframes fadeout {
+  to { opacity: 0; }
+}

@@ -115,11 +115,8 @@ async fn person_linked_to_task_via_delegation() {
         .update(
             task.id.into(),
             arlesh_lib::tasks::model::UpdateTaskRequest {
-                title: None,
-                status: None,
-                blocked_reason: None,
                 delegate_to: Some(Some(person.id)),
-                scope_id: None,
+                ..Default::default()
             },
         )
         .await

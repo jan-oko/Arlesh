@@ -9,6 +9,18 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Mindmap view: SVG mind map editor with a left-right balanced tree layout
+  - All Domains, Projects, Goals, and Tasks displayed as a unified tree rooted at the six Aspects
+  - Pan (middle-click drag) and zoom (scroll/pinch) with spring animation
+  - Structural keyboard navigation (← parent, → first child, ↑↓ siblings)
+  - Tab to create a child node with inline title entry; Enter to confirm, Esc to cancel
+  - Context menu on right-click: enter subtree, rename, cycle type, cut/copy/paste, collapse/expand, delete
+  - Ctrl+X/C/V keyboard shortcuts for cut/copy/paste as child
+  - Double-click opens an editor modal for title and tag assignment
+  - Drag-and-drop to re-parent nodes
+  - Ctrl+Up / Ctrl+Down to cycle node type (Domain → Project → Goal → Task); crossing Goal↔Task shows a status-mapping toast
+  - Enter subtree mode via context menu; subtree navigation pill in top-left; Esc to go up, Shift+Esc to return to root
+  - Ctrl+/ to collapse/expand a subtree; Delete key to delete a node
 - Phase 1 data layer: SQLite schema, sqlx migrations, domain-first Rust module structure
 - `domains` module: CRUD for Aspects (seeded, immutable), Projects, Domains, Tags with parent/subtype validation
 - `tasks` module: CRUD for Tasks and Goals, dependency tracking with cycle detection, virtual blocker resolution

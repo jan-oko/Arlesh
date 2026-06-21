@@ -145,3 +145,55 @@ pub async fn delete_goal(pool: State<'_, DatabasePool>, id: i64) -> Result<(), S
         .await
         .map_err(|error| error.to_string())
 }
+
+/// Adds a tag to a task.
+#[tauri::command]
+pub async fn add_tag_to_task(
+    pool: State<'_, DatabasePool>,
+    task_id: i64,
+    tag_id: i64,
+) -> Result<(), String> {
+    TaskRepository::new(&pool)
+        .add_tag(TaskId(task_id), tag_id)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+/// Removes a tag from a task.
+#[tauri::command]
+pub async fn remove_tag_from_task(
+    pool: State<'_, DatabasePool>,
+    task_id: i64,
+    tag_id: i64,
+) -> Result<(), String> {
+    TaskRepository::new(&pool)
+        .remove_tag(TaskId(task_id), tag_id)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+/// Adds a tag to a goal.
+#[tauri::command]
+pub async fn add_tag_to_goal(
+    pool: State<'_, DatabasePool>,
+    goal_id: i64,
+    tag_id: i64,
+) -> Result<(), String> {
+    GoalRepository::new(&pool)
+        .add_tag(GoalId(goal_id), tag_id)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+/// Removes a tag from a goal.
+#[tauri::command]
+pub async fn remove_tag_from_goal(
+    pool: State<'_, DatabasePool>,
+    goal_id: i64,
+    tag_id: i64,
+) -> Result<(), String> {
+    GoalRepository::new(&pool)
+        .remove_tag(GoalId(goal_id), tag_id)
+        .await
+        .map_err(|error| error.to_string())
+}
