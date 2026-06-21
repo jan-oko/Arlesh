@@ -84,6 +84,13 @@ impl<'a> DomainRepository<'a> {
             return Err(DomainError::FixedAspect);
         }
 
+        let subtype = match request.subtype {
+            Some(DomainSubtype::Aspect) => return Err(DomainError::FixedAspect),
+            Some(DomainSubtype::Project) => "project".to_string(),
+            Some(DomainSubtype::Domain) => "domain".to_string(),
+            Some(DomainSubtype::Tag) => "tag".to_string(),
+            None => domain.subtype.clone(),
+        };
         let title = request.title.unwrap_or(domain.title);
         let description = request.description.or(domain.description);
         let parent_id = request.parent_id.or(domain.parent_id);
@@ -97,10 +104,11 @@ impl<'a> DomainRepository<'a> {
             .or(domain.knowledge_base_directory);
 
         sqlx::query(
-            "UPDATE domains SET title=?, description=?, parent_id=?, status=?, knowledge_base_directory=? WHERE id=?",
+            "UPDATE domains SET title=?, description=?, subtype=?, parent_id=?, status=?, knowledge_base_directory=? WHERE id=?",
         )
         .bind(&title)
         .bind(&description)
+        .bind(&subtype)
         .bind(parent_id)
         .bind(&status)
         .bind(&knowledge_base_directory)

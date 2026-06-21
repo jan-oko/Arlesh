@@ -131,16 +131,10 @@ export default function MindmapView() {
         case "Tab": {
           event.preventDefault();
           const tabNode = selectedNodeId !== null ? findNodeById(selectedNodeId) : undefined;
-          console.log("[arlesh] Tab:", {
-            selectedNodeId,
-            kind: tabNode?.kind,
-            hasDbId: selectedNodeId?.includes("-"),
-          });
           if (tabNode !== undefined && tabNode.id.includes("-")) {
             (async () => {
               try {
                 const newNode = await createChild(selectedNodeId!, tabNode.kind, "");
-                console.log("[arlesh] Tab created:", newNode.id);
                 setEditingNodeId(newNode.id);
               } catch (err) {
                 console.error("[arlesh] Tab createChild failed:", err);

@@ -163,20 +163,21 @@ export function useMindmapData(): MindmapData {
   const createChild = useCallback(
     async (parentId: string, parentKind: NodeKind, title: string): Promise<MindmapNode> => {
       const dbParentId = dbIdFromNodeId(parentId);
-      const parentType = kindToParentType(parentKind);
 
-      if (parentKind === "aspect") {
+      // Domain-table nodes: aspect creates a domain child; domain/project creates same-type child.
+      if (parentKind === "aspect" || parentKind === "domain" || parentKind === "project") {
+        const subtype = parentKind === "project" ? "project" : "domain";
         const domain = await createDomain({
           title,
           description: null,
-          subtype: "domain",
+          subtype,
           parent_id: dbParentId,
           status: null,
           knowledge_base_directory: null,
         });
         const newNode: MindmapNode = {
           id: `domain-${domain.id}`,
-          kind: "domain",
+          kind: parentKind === "project" ? "project" : "domain",
           title: domain.title,
           tagIds: [],
           children: [],
@@ -185,11 +186,8 @@ export function useMindmapData(): MindmapData {
         return newNode;
       }
 
-      // Domains and projects produce a goal; goals/tasks produce a task (subtask).
-      const makeGoal = parentKind === "domain" || parentKind === "project";
-
-      if (makeGoal) {
-        const goal = await createGoal({ title, parent_type: parentType, parent_id: dbParentId });
+      if (parentKind === "goal") {
+        const goal = await createGoal({ title, parent_type: "goal", parent_id: dbParentId });
         const newNode: MindmapNode = {
           id: `goal-${goal.id}`,
           kind: "goal",
@@ -202,8 +200,8 @@ export function useMindmapData(): MindmapData {
         return newNode;
       }
 
-      // parentKind === "task"
-      const task = await createTask({ title, parent_type: parentType, parent_id: dbParentId });
+      // task → task subtask
+      const task = await createTask({ title, parent_type: "task", parent_id: dbParentId });
       const newNode: MindmapNode = {
         id: `task-${task.id}`,
         kind: "task",
@@ -235,13 +233,29 @@ export function useMindmapData(): MindmapData {
 
   const retypeNode = useCallback(
     async (id: string, fromKind: NodeKind, toKind: NodeKind): Promise<void> => {
-      // Retyping requires deleting the old entity and creating a new one of the target type.
-      // For Phase 2, limited to goal↔task conversion which are in the same parent structure.
-      void id;
-      void fromKind;
-      void toKind;
-      // TODO: implement full retype when needed — requires backend support
-      await load();
+      const dbId = dbIdFromNodeId(id);
+
+      if (
+        (fromKind === "domain" || fromKind === "project") &&
+        (toKind === "domain" || toKind === "project")
+      ) {
+        await import("@/api/domains").then(({ updateDomain }) =>
+          updateDomain(dbId, { subtype: toKind }),
+        );
+        await load();
+        return;
+      }
+
+      // goal↔task requires cross-table migration (create + re-parent children + delete).
+      // Not implemented in Phase 2 — the type cycling UI is wired but the persisted type
+      // won't change until this is completed.
+      if (
+        (fromKind === "goal" && toKind === "task") ||
+        (fromKind === "task" && toKind === "goal")
+      ) {
+        console.warn("[arlesh] retypeNode: goal↔task conversion not yet implemented");
+        return;
+      }
     },
     [load],
   );

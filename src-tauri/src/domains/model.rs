@@ -95,6 +95,8 @@ pub struct UpdateDomainRequest {
     pub description: Option<String>,
     /// New parent id (if provided).
     pub parent_id: Option<i64>,
+    /// New subtype — used for domain↔project conversion. Must not be `Aspect`.
+    pub subtype: Option<DomainSubtype>,
     /// New project status (if provided).
     pub status: Option<ProjectStatus>,
     /// New Obsidian directory link (if provided).

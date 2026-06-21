@@ -24,6 +24,7 @@ export interface UpdateDomainRequest {
   title?: string;
   description?: string;
   parent_id?: number;
+  subtype?: string;
   status?: string;
   knowledge_base_directory?: string;
 }
