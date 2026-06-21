@@ -128,22 +128,27 @@ export default function MindmapView() {
             navigateArrow("ArrowDown");
           }
           break;
-        case "Tab":
+        case "Tab": {
           event.preventDefault();
-          if (selectedNodeId !== null) {
-            const node = findNodeById(selectedNodeId);
-            if (node !== undefined && node.kind !== "aspect" && node.id.includes("-")) {
-              (async () => {
-                try {
-                  const newNode = await createChild(selectedNodeId, node.kind, "");
-                  setEditingNodeId(newNode.id);
-                } catch (err) {
-                  console.error("[arlesh] Tab createChild failed:", err);
-                }
-              })();
-            }
+          const tabNode = selectedNodeId !== null ? findNodeById(selectedNodeId) : undefined;
+          console.log("[arlesh] Tab:", {
+            selectedNodeId,
+            kind: tabNode?.kind,
+            hasDbId: selectedNodeId?.includes("-"),
+          });
+          if (tabNode !== undefined && tabNode.kind !== "aspect" && tabNode.id.includes("-")) {
+            (async () => {
+              try {
+                const newNode = await createChild(selectedNodeId!, tabNode.kind, "");
+                console.log("[arlesh] Tab created:", newNode.id);
+                setEditingNodeId(newNode.id);
+              } catch (err) {
+                console.error("[arlesh] Tab createChild failed:", err);
+              }
+            })();
           }
           break;
+        }
         case "Delete":
           if (selectedNodeId !== null) {
             event.preventDefault();
