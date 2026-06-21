@@ -3,41 +3,41 @@
 pub mod error;
 pub mod model;
 
-use crate::db::DbPool;
+use crate::database::DatabasePool;
 use error::DomainError;
 use model::{CreateDomainRequest, Domain, DomainId, DomainSubtype, UpdateDomainRequest};
 
 /// Repository for all domain CRUD operations.
 pub struct DomainRepository<'a> {
-    pool: &'a DbPool,
+    pool: &'a DatabasePool,
 }
 
 impl<'a> DomainRepository<'a> {
     /// Creates a new repository backed by `pool`.
-    pub fn new(pool: &'a DbPool) -> Self {
+    pub fn new(pool: &'a DatabasePool) -> Self {
         Self { pool }
     }
 
     /// Creates a new domain. Aspects cannot be created via this method.
-    pub async fn create(&self, req: CreateDomainRequest) -> Result<Domain, DomainError> {
-        if req.subtype == DomainSubtype::Aspect {
+    pub async fn create(&self, request: CreateDomainRequest) -> Result<Domain, DomainError> {
+        if request.subtype == DomainSubtype::Aspect {
             return Err(DomainError::FixedAspect);
         }
-        self.validate_parent(&req.subtype, req.parent_id).await?;
+        self.validate_parent(&request.subtype, request.parent_id).await?;
 
-        let subtype_str = subtype_to_str(&req.subtype);
-        let status_str = req.status.as_ref().map(|s| status_to_str(s));
+        let subtype_str = subtype_to_str(&request.subtype);
+        let status_str = request.status.as_ref().map(|s| status_to_str(s));
 
         let id = sqlx::query(
-            "INSERT INTO domains (title, description, subtype, parent_id, status, kb_dir)
+            "INSERT INTO domains (title, description, subtype, parent_id, status, knowledge_base_directory)
              VALUES (?, ?, ?, ?, ?, ?)",
         )
-        .bind(&req.title)
-        .bind(&req.description)
+        .bind(&request.title)
+        .bind(&request.description)
         .bind(subtype_str)
-        .bind(req.parent_id)
+        .bind(request.parent_id)
         .bind(status_str)
-        .bind(&req.kb_dir)
+        .bind(&request.knowledge_base_directory)
         .execute(self.pool)
         .await?
         .last_insert_rowid();
@@ -57,11 +57,11 @@ impl<'a> DomainRepository<'a> {
     /// Lists all domains, optionally filtered to a specific subtype.
     pub async fn list(&self, subtype: Option<DomainSubtype>) -> Result<Vec<Domain>, DomainError> {
         match subtype {
-            Some(st) => {
+            Some(subtype_value) => {
                 sqlx::query_as::<_, Domain>(
                     "SELECT * FROM domains WHERE subtype = ? ORDER BY title",
                 )
-                .bind(subtype_to_str(&st))
+                .bind(subtype_to_str(&subtype_value))
                 .fetch_all(self.pool)
                 .await
                 .map_err(Into::into)
@@ -77,27 +77,33 @@ impl<'a> DomainRepository<'a> {
     pub async fn update(
         &self,
         id: DomainId,
-        req: UpdateDomainRequest,
+        request: UpdateDomainRequest,
     ) -> Result<Domain, DomainError> {
         let domain = self.get(id).await?;
         if domain.subtype == "aspect" {
             return Err(DomainError::FixedAspect);
         }
 
-        let title = req.title.unwrap_or(domain.title);
-        let description = req.description.or(domain.description);
-        let parent_id = req.parent_id.or(domain.parent_id);
-        let status = req.status.as_ref().map(|s| status_to_str(s).to_string()).or(domain.status);
-        let kb_dir = req.kb_dir.or(domain.kb_dir);
+        let title = request.title.unwrap_or(domain.title);
+        let description = request.description.or(domain.description);
+        let parent_id = request.parent_id.or(domain.parent_id);
+        let status = request
+            .status
+            .as_ref()
+            .map(|s| status_to_str(s).to_string())
+            .or(domain.status);
+        let knowledge_base_directory = request
+            .knowledge_base_directory
+            .or(domain.knowledge_base_directory);
 
         sqlx::query(
-            "UPDATE domains SET title=?, description=?, parent_id=?, status=?, kb_dir=? WHERE id=?",
+            "UPDATE domains SET title=?, description=?, parent_id=?, status=?, knowledge_base_directory=? WHERE id=?",
         )
         .bind(&title)
         .bind(&description)
         .bind(parent_id)
         .bind(&status)
-        .bind(&kb_dir)
+        .bind(&knowledge_base_directory)
         .bind(id.0)
         .execute(self.pool)
         .await?;
@@ -125,10 +131,10 @@ impl<'a> DomainRepository<'a> {
     ) -> Result<(), DomainError> {
         match subtype {
             DomainSubtype::Project => {
-                let pid = parent_id.ok_or_else(|| {
+                let parent_id = parent_id.ok_or_else(|| {
                     DomainError::InvalidParent("Projects require a parent".into())
                 })?;
-                let parent = self.get(DomainId(pid)).await?;
+                let parent = self.get(DomainId(parent_id)).await?;
                 if parent.subtype != "aspect" && parent.subtype != "project" {
                     return Err(DomainError::InvalidParent(
                         "Project parent must be an Aspect or Project".into(),
@@ -136,8 +142,8 @@ impl<'a> DomainRepository<'a> {
                 }
             }
             DomainSubtype::Tag => {
-                if let Some(pid) = parent_id {
-                    let parent = self.get(DomainId(pid)).await?;
+                if let Some(parent_id) = parent_id {
+                    let parent = self.get(DomainId(parent_id)).await?;
                     if parent.subtype == "tag" {
                         return Err(DomainError::TagCannotHaveChildren);
                     }
@@ -149,8 +155,8 @@ impl<'a> DomainRepository<'a> {
     }
 }
 
-fn subtype_to_str(s: &DomainSubtype) -> &'static str {
-    match s {
+fn subtype_to_str(subtype: &DomainSubtype) -> &'static str {
+    match subtype {
         DomainSubtype::Aspect => "aspect",
         DomainSubtype::Project => "project",
         DomainSubtype::Domain => "domain",
@@ -158,8 +164,8 @@ fn subtype_to_str(s: &DomainSubtype) -> &'static str {
     }
 }
 
-fn status_to_str(s: &model::ProjectStatus) -> &'static str {
-    match s {
+fn status_to_str(status: &model::ProjectStatus) -> &'static str {
+    match status {
         model::ProjectStatus::Active => "active",
         model::ProjectStatus::Achieved => "achieved",
         model::ProjectStatus::Frozen => "frozen",

@@ -25,7 +25,7 @@ async fn create_project_under_aspect() {
             subtype: DomainSubtype::Project,
             parent_id: Some(aspect_id),
             status: Some(ProjectStatus::Active),
-            kb_dir: None,
+            knowledge_base_directory: None,
         })
         .await
         .unwrap();
@@ -50,7 +50,7 @@ async fn cannot_create_aspect() {
             subtype: DomainSubtype::Aspect,
             parent_id: None,
             status: None,
-            kb_dir: None,
+            knowledge_base_directory: None,
         })
         .await
         .unwrap_err();
@@ -89,7 +89,7 @@ async fn tag_cannot_be_parent_of_another_tag() {
             subtype: DomainSubtype::Tag,
             parent_id: Some(aspect_id),
             status: None,
-            kb_dir: None,
+            knowledge_base_directory: None,
         })
         .await
         .unwrap();
@@ -101,7 +101,7 @@ async fn tag_cannot_be_parent_of_another_tag() {
             subtype: DomainSubtype::Tag,
             parent_id: Some(tag.id),
             status: None,
-            kb_dir: None,
+            knowledge_base_directory: None,
         })
         .await
         .unwrap_err();
@@ -126,7 +126,7 @@ async fn project_requires_aspect_or_project_parent() {
             subtype: DomainSubtype::Domain,
             parent_id: Some(aspect_id),
             status: None,
-            kb_dir: None,
+            knowledge_base_directory: None,
         })
         .await
         .unwrap();
@@ -138,7 +138,7 @@ async fn project_requires_aspect_or_project_parent() {
             subtype: DomainSubtype::Project,
             parent_id: Some(domain.id),
             status: None,
-            kb_dir: None,
+            knowledge_base_directory: None,
         })
         .await
         .unwrap_err();
@@ -163,7 +163,7 @@ async fn update_domain() {
             subtype: DomainSubtype::Project,
             parent_id: Some(aspect_id),
             status: Some(ProjectStatus::Active),
-            kb_dir: None,
+            knowledge_base_directory: None,
         })
         .await
         .unwrap();
@@ -176,7 +176,7 @@ async fn update_domain() {
                 description: None,
                 parent_id: None,
                 status: Some(ProjectStatus::Frozen),
-                kb_dir: None,
+                knowledge_base_directory: None,
             },
         )
         .await

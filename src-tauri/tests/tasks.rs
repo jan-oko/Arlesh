@@ -6,7 +6,10 @@ use arlesh_lib::{
         DomainRepository,
     },
     tasks::{
-        model::{CreateGoalRequest, CreateTaskRequest, Dependency, GoalStatus, UpdateGoalRequest, UpdateTaskRequest},
+        model::{
+            CreateGoalRequest, CreateTaskRequest, Dependency, GoalStatus, UpdateGoalRequest,
+            UpdateTaskRequest,
+        },
         GoalRepository, TaskRepository,
     },
 };
@@ -24,7 +27,7 @@ async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
             subtype: DomainSubtype::Project,
             parent_id: Some(aspect_id),
             status: Some(ProjectStatus::Active),
-            kb_dir: None,
+            knowledge_base_directory: None,
         })
         .await
         .unwrap()
@@ -70,7 +73,7 @@ async fn undone_dependency_blocks_task() {
     let project_id = make_project(&pool).await;
     let task_repo = TaskRepository::new(&pool);
 
-    let dep = task_repo
+    let dependency = task_repo
         .create(CreateTaskRequest {
             title: "Dependency".into(),
             parent_type: "project".into(),
@@ -93,7 +96,7 @@ async fn undone_dependency_blocks_task() {
         .unwrap();
 
     task_repo
-        .add_dependency(task.id.into(), Dependency::Task { id: dep.id })
+        .add_dependency(task.id.into(), Dependency::Task { id: dependency.id })
         .await
         .unwrap();
 
@@ -108,7 +111,7 @@ async fn done_dependency_unblocks_task() {
     let project_id = make_project(&pool).await;
     let task_repo = TaskRepository::new(&pool);
 
-    let dep = task_repo
+    let dependency = task_repo
         .create(CreateTaskRequest {
             title: "Dep".into(),
             parent_type: "project".into(),
@@ -131,13 +134,13 @@ async fn done_dependency_unblocks_task() {
         .unwrap();
 
     task_repo
-        .add_dependency(task.id.into(), Dependency::Task { id: dep.id })
+        .add_dependency(task.id.into(), Dependency::Task { id: dependency.id })
         .await
         .unwrap();
 
     task_repo
         .update(
-            dep.id.into(),
+            dependency.id.into(),
             UpdateTaskRequest {
                 title: None,
                 status: Some(arlesh_lib::tasks::model::TaskStatus::Done),
@@ -159,7 +162,7 @@ async fn circular_dependency_rejected() {
     let project_id = make_project(&pool).await;
     let task_repo = TaskRepository::new(&pool);
 
-    let a = task_repo
+    let task_a = task_repo
         .create(CreateTaskRequest {
             title: "A".into(),
             parent_type: "project".into(),
@@ -170,7 +173,7 @@ async fn circular_dependency_rejected() {
         .await
         .unwrap();
 
-    let b = task_repo
+    let task_b = task_repo
         .create(CreateTaskRequest {
             title: "B".into(),
             parent_type: "project".into(),
@@ -182,12 +185,12 @@ async fn circular_dependency_rejected() {
         .unwrap();
 
     task_repo
-        .add_dependency(a.id.into(), Dependency::Task { id: b.id })
+        .add_dependency(task_a.id.into(), Dependency::Task { id: task_b.id })
         .await
         .unwrap();
 
     let err = task_repo
-        .add_dependency(b.id.into(), Dependency::Task { id: a.id })
+        .add_dependency(task_b.id.into(), Dependency::Task { id: task_a.id })
         .await
         .unwrap_err();
 

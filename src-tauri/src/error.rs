@@ -1,6 +1,11 @@
 //! Top-level application error type.
 
-use crate::{domains::error::DomainError, kb::error::KbError, scopes::error::ScopeError, tasks::error::TaskError};
+use crate::{
+    domains::error::DomainError,
+    knowledge_base::error::KnowledgeBaseError,
+    scopes::error::ScopeError,
+    tasks::error::TaskError,
+};
 
 /// Application-level error wrapping all domain errors.
 #[derive(Debug, thiserror::Error)]
@@ -16,5 +21,5 @@ pub enum AppError {
     Scope(#[from] ScopeError),
     /// Knowledge-base entity operation error.
     #[error(transparent)]
-    Kb(#[from] KbError),
+    KnowledgeBase(#[from] KnowledgeBaseError),
 }

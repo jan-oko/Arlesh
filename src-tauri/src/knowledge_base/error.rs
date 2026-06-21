@@ -2,7 +2,7 @@
 
 /// Errors that can occur during knowledge-base entity operations.
 #[derive(Debug, thiserror::Error)]
-pub enum KbError {
+pub enum KnowledgeBaseError {
     /// The requested person does not exist.
     #[error("person {0} not found")]
     PersonNotFound(i64),
@@ -14,5 +14,5 @@ pub enum KbError {
     ThreadNotFound(i64),
     /// A database error occurred.
     #[error("database error: {0}")]
-    Db(#[from] sqlx::Error),
+    Database(#[from] sqlx::Error),
 }

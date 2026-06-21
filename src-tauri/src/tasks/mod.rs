@@ -5,7 +5,7 @@ pub mod model;
 
 use std::collections::{HashSet, VecDeque};
 
-use crate::db::DbPool;
+use crate::database::DatabasePool;
 use error::TaskError;
 use model::{
     CreateGoalRequest, CreateTaskRequest, Dependency, Goal, GoalId, GoalStatus, Task, TaskId,
@@ -14,27 +14,27 @@ use model::{
 
 /// Repository for Goal CRUD operations.
 pub struct GoalRepository<'a> {
-    pool: &'a DbPool,
+    pool: &'a DatabasePool,
 }
 
 impl<'a> GoalRepository<'a> {
     /// Creates a new repository backed by `pool`.
-    pub fn new(pool: &'a DbPool) -> Self {
+    pub fn new(pool: &'a DatabasePool) -> Self {
         Self { pool }
     }
 
     /// Creates a new goal.
-    pub async fn create(&self, req: CreateGoalRequest) -> Result<Goal, TaskError> {
-        let status = req.status.as_ref().map(|s| s.as_str()).unwrap_or("active");
+    pub async fn create(&self, request: CreateGoalRequest) -> Result<Goal, TaskError> {
+        let status = request.status.as_ref().map(|s| s.as_str()).unwrap_or("active");
         let id = sqlx::query(
             "INSERT INTO goals (title, parent_type, parent_id, status, scope_id)
              VALUES (?, ?, ?, ?, ?)",
         )
-        .bind(&req.title)
-        .bind(&req.parent_type)
-        .bind(req.parent_id)
+        .bind(&request.title)
+        .bind(&request.parent_type)
+        .bind(request.parent_id)
         .bind(status)
-        .bind(req.scope_id)
+        .bind(request.scope_id)
         .execute(self.pool)
         .await?
         .last_insert_rowid();
@@ -59,16 +59,22 @@ impl<'a> GoalRepository<'a> {
     }
 
     /// Updates a goal.
-    pub async fn update(&self, id: GoalId, req: UpdateGoalRequest) -> Result<Goal, TaskError> {
+    pub async fn update(&self, id: GoalId, request: UpdateGoalRequest) -> Result<Goal, TaskError> {
         let goal = self.get(id).await?;
-        let title = req.title.unwrap_or(goal.title);
-        let status = req.status.as_ref().map(|s| s.as_str()).unwrap_or(&goal.status).to_string();
-        let blocked_reason = match req.blocked_reason {
-            Some(r) if r.is_empty() => None,
-            Some(r) => Some(r),
+        let title = request.title.unwrap_or(goal.title);
+        let status = request
+            .status
+            .as_ref()
+            .map(|s| s.as_str())
+            .unwrap_or(&goal.status)
+            .to_string();
+        let blocked_reason = match request.blocked_reason {
+            Some(reason) if reason.is_empty() => None,
+            Some(reason) => Some(reason),
             None => goal.blocked_reason,
         };
-        let scope_id = req.scope_id.unwrap_or(goal.scope_id.map(|_| None).unwrap_or(goal.scope_id));
+        let scope_id =
+            request.scope_id.unwrap_or(goal.scope_id.map(|_| None).unwrap_or(goal.scope_id));
 
         sqlx::query(
             "UPDATE goals SET title=?, status=?, blocked_reason=?, scope_id=? WHERE id=?",
@@ -102,27 +108,27 @@ impl<'a> GoalRepository<'a> {
 
 /// Repository for Task CRUD and dependency operations.
 pub struct TaskRepository<'a> {
-    pool: &'a DbPool,
+    pool: &'a DatabasePool,
 }
 
 impl<'a> TaskRepository<'a> {
     /// Creates a new repository backed by `pool`.
-    pub fn new(pool: &'a DbPool) -> Self {
+    pub fn new(pool: &'a DatabasePool) -> Self {
         Self { pool }
     }
 
     /// Creates a new task.
-    pub async fn create(&self, req: CreateTaskRequest) -> Result<Task, TaskError> {
-        let status = req.status.as_ref().map(|s| s.as_str()).unwrap_or("todo");
+    pub async fn create(&self, request: CreateTaskRequest) -> Result<Task, TaskError> {
+        let status = request.status.as_ref().map(|s| s.as_str()).unwrap_or("todo");
         let id = sqlx::query(
             "INSERT INTO tasks (title, parent_type, parent_id, status, scope_id)
              VALUES (?, ?, ?, ?, ?)",
         )
-        .bind(&req.title)
-        .bind(&req.parent_type)
-        .bind(req.parent_id)
+        .bind(&request.title)
+        .bind(&request.parent_type)
+        .bind(request.parent_id)
         .bind(status)
-        .bind(req.scope_id)
+        .bind(request.scope_id)
         .execute(self.pool)
         .await?
         .last_insert_rowid();
@@ -142,32 +148,33 @@ impl<'a> TaskRepository<'a> {
     pub async fn get_with_blockers(&self, id: TaskId) -> Result<TaskWithBlockers, TaskError> {
         let task = self.get(id).await?;
         let mut reasons = Vec::new();
-        if let Some(ref r) = task.blocked_reason {
-            reasons.push(r.clone());
+        if let Some(ref reason) = task.blocked_reason {
+            reasons.push(reason.clone());
         }
 
-        let deps = self.list_dependencies(id).await?;
-        for dep in deps {
-            match dep {
-                Dependency::Task { id: dep_id } => {
-                    let dep_task = self.get(TaskId(dep_id)).await?;
-                    if dep_task.status != TaskStatus::Done.as_str() {
+        let dependencies = self.list_dependencies(id).await?;
+        for dependency in dependencies {
+            match dependency {
+                Dependency::Task { id: dependency_id } => {
+                    let dependency_task = self.get(TaskId(dependency_id)).await?;
+                    if dependency_task.status != TaskStatus::Done.as_str() {
                         reasons.push(format!(
                             "Blocked by task {} ({})",
-                            dep_id, dep_task.title
+                            dependency_id, dependency_task.title
                         ));
                     }
                 }
-                Dependency::Goal { id: dep_id } => {
-                    let dep_goal = sqlx::query_as::<_, Goal>("SELECT * FROM goals WHERE id = ?")
-                        .bind(dep_id)
-                        .fetch_optional(self.pool)
-                        .await?
-                        .ok_or(TaskError::GoalNotFound(dep_id))?;
-                    if dep_goal.status != GoalStatus::Achieved.as_str() {
+                Dependency::Goal { id: dependency_id } => {
+                    let dependency_goal =
+                        sqlx::query_as::<_, Goal>("SELECT * FROM goals WHERE id = ?")
+                            .bind(dependency_id)
+                            .fetch_optional(self.pool)
+                            .await?
+                            .ok_or(TaskError::GoalNotFound(dependency_id))?;
+                    if dependency_goal.status != GoalStatus::Achieved.as_str() {
                         reasons.push(format!(
                             "Blocked by goal {} ({})",
-                            dep_id, dep_goal.title
+                            dependency_id, dependency_goal.title
                         ));
                     }
                 }
@@ -186,17 +193,23 @@ impl<'a> TaskRepository<'a> {
     }
 
     /// Updates a task.
-    pub async fn update(&self, id: TaskId, req: UpdateTaskRequest) -> Result<Task, TaskError> {
+    pub async fn update(&self, id: TaskId, request: UpdateTaskRequest) -> Result<Task, TaskError> {
         let task = self.get(id).await?;
-        let title = req.title.unwrap_or(task.title);
-        let status = req.status.as_ref().map(|s| s.as_str()).unwrap_or(&task.status).to_string();
-        let blocked_reason = match req.blocked_reason {
-            Some(r) if r.is_empty() => None,
-            Some(r) => Some(r),
+        let title = request.title.unwrap_or(task.title);
+        let status = request
+            .status
+            .as_ref()
+            .map(|s| s.as_str())
+            .unwrap_or(&task.status)
+            .to_string();
+        let blocked_reason = match request.blocked_reason {
+            Some(reason) if reason.is_empty() => None,
+            Some(reason) => Some(reason),
             None => task.blocked_reason,
         };
-        let delegate_to = req.delegate_to.unwrap_or(task.delegate_to.map(Some).unwrap_or(None));
-        let scope_id = req.scope_id.unwrap_or(task.scope_id.map(Some).unwrap_or(None));
+        let delegate_to =
+            request.delegate_to.unwrap_or(task.delegate_to.map(Some).unwrap_or(None));
+        let scope_id = request.scope_id.unwrap_or(task.scope_id.map(Some).unwrap_or(None));
 
         sqlx::query(
             "UPDATE tasks SET title=?, status=?, blocked_reason=?, delegate_to=?, scope_id=? WHERE id=?",
@@ -223,19 +236,23 @@ impl<'a> TaskRepository<'a> {
     }
 
     /// Adds a dependency to a task, rejecting circular chains.
-    pub async fn add_dependency(&self, task_id: TaskId, dep: Dependency) -> Result<(), TaskError> {
-        if let Dependency::Task { id: dep_id } = dep {
-            if self.would_create_cycle(task_id, TaskId(dep_id)).await? {
+    pub async fn add_dependency(
+        &self,
+        task_id: TaskId,
+        dependency: Dependency,
+    ) -> Result<(), TaskError> {
+        if let Dependency::Task { id: dependency_id } = dependency {
+            if self.would_create_cycle(task_id, TaskId(dependency_id)).await? {
                 return Err(TaskError::CircularDependency);
             }
         }
-        let (dep_type, dep_id) = dep_parts(&dep);
+        let (dependency_type, dependency_id) = dependency_parts(&dependency);
         sqlx::query(
-            "INSERT OR IGNORE INTO task_dependencies (task_id, dep_type, dep_id) VALUES (?, ?, ?)",
+            "INSERT OR IGNORE INTO task_dependencies (task_id, dependency_type, dependency_id) VALUES (?, ?, ?)",
         )
         .bind(task_id.0)
-        .bind(dep_type)
-        .bind(dep_id)
+        .bind(dependency_type)
+        .bind(dependency_id)
         .execute(self.pool)
         .await?;
         Ok(())
@@ -245,15 +262,15 @@ impl<'a> TaskRepository<'a> {
     pub async fn remove_dependency(
         &self,
         task_id: TaskId,
-        dep: Dependency,
+        dependency: Dependency,
     ) -> Result<(), TaskError> {
-        let (dep_type, dep_id) = dep_parts(&dep);
+        let (dependency_type, dependency_id) = dependency_parts(&dependency);
         sqlx::query(
-            "DELETE FROM task_dependencies WHERE task_id=? AND dep_type=? AND dep_id=?",
+            "DELETE FROM task_dependencies WHERE task_id=? AND dependency_type=? AND dependency_id=?",
         )
         .bind(task_id.0)
-        .bind(dep_type)
-        .bind(dep_id)
+        .bind(dependency_type)
+        .bind(dependency_id)
         .execute(self.pool)
         .await?;
         Ok(())
@@ -262,37 +279,37 @@ impl<'a> TaskRepository<'a> {
     /// Lists all dependencies for a task.
     pub async fn list_dependencies(&self, task_id: TaskId) -> Result<Vec<Dependency>, TaskError> {
         #[derive(sqlx::FromRow)]
-        struct DepRow {
-            dep_type: String,
-            dep_id: i64,
+        struct DependencyRow {
+            dependency_type: String,
+            dependency_id: i64,
         }
-        let rows = sqlx::query_as::<_, DepRow>(
-            "SELECT dep_type, dep_id FROM task_dependencies WHERE task_id = ?",
+        let rows = sqlx::query_as::<_, DependencyRow>(
+            "SELECT dependency_type, dependency_id FROM task_dependencies WHERE task_id = ?",
         )
         .bind(task_id.0)
         .fetch_all(self.pool)
         .await?;
 
-        let deps = rows
+        let dependencies = rows
             .into_iter()
-            .map(|r| match r.dep_type.as_str() {
-                "task" => Dependency::Task { id: r.dep_id },
-                _ => Dependency::Goal { id: r.dep_id },
+            .map(|row| match row.dependency_type.as_str() {
+                "task" => Dependency::Task { id: row.dependency_id },
+                _ => Dependency::Goal { id: row.dependency_id },
             })
             .collect();
-        Ok(deps)
+        Ok(dependencies)
     }
 
-    /// Returns true if making `task_id` depend on `dep_id` would create a cycle.
+    /// Returns true if making `task_id` depend on `candidate_id` would create a cycle.
     async fn would_create_cycle(
         &self,
         task_id: TaskId,
-        dep_id: TaskId,
+        candidate_id: TaskId,
     ) -> Result<bool, TaskError> {
-        // BFS from dep_id: if we can reach task_id through its dependencies, it's a cycle.
+        // BFS from candidate_id: if we can reach task_id through its dependencies, it's a cycle.
         let mut visited: HashSet<i64> = HashSet::new();
         let mut queue: VecDeque<i64> = VecDeque::new();
-        queue.push_back(dep_id.0);
+        queue.push_back(candidate_id.0);
 
         while let Some(current) = queue.pop_front() {
             if current == task_id.0 {
@@ -302,26 +319,26 @@ impl<'a> TaskRepository<'a> {
                 continue;
             }
             #[derive(sqlx::FromRow)]
-            struct DepRow {
-                dep_id: i64,
+            struct DependencyRow {
+                dependency_id: i64,
             }
-            let children = sqlx::query_as::<_, DepRow>(
-                "SELECT dep_id FROM task_dependencies WHERE task_id = ? AND dep_type = 'task'",
+            let children = sqlx::query_as::<_, DependencyRow>(
+                "SELECT dependency_id FROM task_dependencies WHERE task_id = ? AND dependency_type = 'task'",
             )
             .bind(current)
             .fetch_all(self.pool)
             .await?;
 
             for child in children {
-                queue.push_back(child.dep_id);
+                queue.push_back(child.dependency_id);
             }
         }
         Ok(false)
     }
 }
 
-fn dep_parts(dep: &Dependency) -> (&'static str, i64) {
-    match dep {
+fn dependency_parts(dependency: &Dependency) -> (&'static str, i64) {
+    match dependency {
         Dependency::Task { id } => ("task", *id),
         Dependency::Goal { id } => ("goal", *id),
     }

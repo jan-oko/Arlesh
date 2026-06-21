@@ -1,14 +1,14 @@
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE domains (
-    id          INTEGER PRIMARY KEY,
-    title       TEXT NOT NULL,
-    description TEXT,
-    subtype     TEXT NOT NULL CHECK (subtype IN ('aspect', 'project', 'domain', 'tag')),
-    parent_id   INTEGER REFERENCES domains(id),
-    color       TEXT,
-    status      TEXT CHECK (status IN ('active', 'achieved', 'frozen', 'archived')),
-    kb_dir      TEXT
+    id                       INTEGER PRIMARY KEY,
+    title                    TEXT NOT NULL,
+    description              TEXT,
+    subtype                  TEXT NOT NULL CHECK (subtype IN ('aspect', 'project', 'domain', 'tag')),
+    parent_id                INTEGER REFERENCES domains(id),
+    color                    TEXT,
+    status                   TEXT CHECK (status IN ('active', 'achieved', 'frozen', 'archived')),
+    knowledge_base_directory TEXT
 );
 
 INSERT INTO domains (title, subtype, color) VALUES
@@ -62,10 +62,10 @@ CREATE TABLE tasks (
 );
 
 CREATE TABLE task_dependencies (
-    task_id  INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-    dep_type TEXT NOT NULL CHECK (dep_type IN ('task', 'goal')),
-    dep_id   INTEGER NOT NULL,
-    PRIMARY KEY (task_id, dep_type, dep_id)
+    task_id         INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    dependency_type TEXT NOT NULL CHECK (dependency_type IN ('task', 'goal')),
+    dependency_id   INTEGER NOT NULL,
+    PRIMARY KEY (task_id, dependency_type, dependency_id)
 );
 
 CREATE TABLE tags_on_goals (
@@ -94,14 +94,14 @@ CREATE TABLE threads (
     linked_note TEXT
 );
 
-CREATE TABLE goal_kb_links (
+CREATE TABLE goal_knowledge_base_links (
     goal_id     INTEGER NOT NULL REFERENCES goals(id) ON DELETE CASCADE,
     entity_type TEXT NOT NULL CHECK (entity_type IN ('person', 'event', 'thread', 'scope')),
     entity_id   INTEGER NOT NULL,
     PRIMARY KEY (goal_id, entity_type, entity_id)
 );
 
-CREATE TABLE task_kb_links (
+CREATE TABLE task_knowledge_base_links (
     task_id     INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
     entity_type TEXT NOT NULL CHECK (entity_type IN ('person', 'event', 'thread', 'scope')),
     entity_id   INTEGER NOT NULL,

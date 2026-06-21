@@ -8,5 +8,5 @@ pub enum ScopeError {
     NotFound(i64),
     /// A database error occurred.
     #[error("database error: {0}")]
-    Db(#[from] sqlx::Error),
+    Database(#[from] sqlx::Error),
 }

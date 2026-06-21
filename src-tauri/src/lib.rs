@@ -3,10 +3,10 @@
 //! Arlesh — task management and knowledge-base desktop app.
 
 pub mod commands;
-pub mod db;
+pub mod database;
 pub mod domains;
 pub mod error;
-pub mod kb;
+pub mod knowledge_base;
 pub mod scopes;
 pub mod tasks;
 
@@ -29,16 +29,16 @@ pub fn run() {
                 .expect("could not resolve app data dir");
             std::fs::create_dir_all(&app_dir).expect("could not create app data dir");
 
-            let db_url = format!("sqlite://{}/arlesh.db?mode=rwc", app_dir.display());
+            let database_url = format!("sqlite://{}/arlesh.db?mode=rwc", app_dir.display());
 
             let pool = tauri::async_runtime::block_on(async {
-                let pool = db::connect(&db_url).await.map_err(|e| {
-                    tracing::error!(error = %e, "bootstrap failed: db connect");
-                    e
+                let pool = database::connect(&database_url).await.map_err(|error| {
+                    tracing::error!(error = %error, "bootstrap failed: database connect");
+                    error
                 })?;
-                db::run_migrations(&pool).await.map_err(|e| {
-                    tracing::error!(error = %e, "bootstrap failed: migrations");
-                    e
+                database::run_migrations(&pool).await.map_err(|error| {
+                    tracing::error!(error = %error, "bootstrap failed: migrations");
+                    error
                 })?;
                 tracing::info!("database ready");
                 Ok::<_, anyhow::Error>(pool)
@@ -68,15 +68,15 @@ pub fn run() {
             commands::tasks::delete_goal,
             commands::scopes::get_or_create_scope,
             commands::scopes::get_scope,
-            commands::kb::create_person,
-            commands::kb::get_person,
-            commands::kb::list_people,
-            commands::kb::update_person,
-            commands::kb::delete_person,
-            commands::kb::create_event,
-            commands::kb::list_events,
-            commands::kb::create_thread,
-            commands::kb::list_threads,
+            commands::knowledge_base::create_person,
+            commands::knowledge_base::get_person,
+            commands::knowledge_base::list_people,
+            commands::knowledge_base::update_person,
+            commands::knowledge_base::delete_person,
+            commands::knowledge_base::create_event,
+            commands::knowledge_base::list_events,
+            commands::knowledge_base::create_thread,
+            commands::knowledge_base::list_threads,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -17,5 +17,5 @@ pub enum DomainError {
     InvalidParent(String),
     /// A database error occurred.
     #[error("database error: {0}")]
-    Db(#[from] sqlx::Error),
+    Database(#[from] sqlx::Error),
 }

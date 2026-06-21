@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 pub struct ScopeId(pub i64);
 
 impl From<i64> for ScopeId {
-    fn from(v: i64) -> Self {
-        Self(v)
+    fn from(value: i64) -> Self {
+        Self(value)
     }
 }
 impl From<ScopeId> for i64 {

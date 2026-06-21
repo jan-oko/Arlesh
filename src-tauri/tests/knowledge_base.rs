@@ -1,12 +1,12 @@
 mod helpers;
 
 use arlesh_lib::{
-    kb::{
+    knowledge_base::{
         model::{CreatePersonRequest, UpdatePersonRequest},
         PersonRepository,
     },
     tasks::{
-        model::{CreateTaskRequest, Dependency},
+        model::CreateTaskRequest,
         TaskRepository,
     },
 };
@@ -23,12 +23,12 @@ async fn make_project_id(pool: &sqlx::SqlitePool) -> i64 {
             .unwrap();
     DomainRepository::new(pool)
         .create(CreateDomainRequest {
-            title: "KB Test Project".into(),
+            title: "Knowledge Base Test Project".into(),
             description: None,
             subtype: DomainSubtype::Project,
             parent_id: Some(aspect_id),
             status: Some(ProjectStatus::Active),
-            kb_dir: None,
+            knowledge_base_directory: None,
         })
         .await
         .unwrap()

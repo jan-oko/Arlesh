@@ -5,18 +5,18 @@ pub mod model;
 
 use chrono::{Datelike, Duration, NaiveDate};
 
-use crate::db::DbPool;
+use crate::database::DatabasePool;
 use error::ScopeError;
 use model::{Scope, ScopeId, ScopeKind};
 
 /// Repository for scope get-or-create and lookup operations.
 pub struct ScopeRepository<'a> {
-    pool: &'a DbPool,
+    pool: &'a DatabasePool,
 }
 
 impl<'a> ScopeRepository<'a> {
     /// Creates a new repository backed by `pool`.
-    pub fn new(pool: &'a DbPool) -> Self {
+    pub fn new(pool: &'a DatabasePool) -> Self {
         Self { pool }
     }
 
@@ -35,42 +35,43 @@ impl<'a> ScopeRepository<'a> {
         &self,
         kind: ScopeKind,
         date: NaiveDate,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Scope, ScopeError>> + Send + '_>> {
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Scope, ScopeError>> + Send + '_>>
+    {
         Box::pin(async move {
-        let (start, end) = scope_bounds(kind.clone(), date);
-        let start_str = start.to_string();
-        let end_str = end.to_string();
-        let label = scope_label(kind.clone(), date);
+            let (start, end) = scope_bounds(kind.clone(), date);
+            let start_str = start.to_string();
+            let end_str = end.to_string();
+            let label = scope_label(kind.clone(), date);
 
-        if let Some(scope) = sqlx::query_as::<_, Scope>(
-            "SELECT * FROM scopes WHERE kind = ? AND start_date = ?",
-        )
-        .bind(kind.as_str())
-        .bind(&start_str)
-        .fetch_optional(self.pool)
-        .await?
-        {
-            return Ok(scope);
-        }
+            if let Some(scope) = sqlx::query_as::<_, Scope>(
+                "SELECT * FROM scopes WHERE kind = ? AND start_date = ?",
+            )
+            .bind(kind.as_str())
+            .bind(&start_str)
+            .fetch_optional(self.pool)
+            .await?
+            {
+                return Ok(scope);
+            }
 
-        let (week_id, month_id, season_id) = self.containment_ids(kind.clone(), date).await?;
+            let (week_id, month_id, season_id) = self.containment_ids(kind.clone(), date).await?;
 
-        let id = sqlx::query(
-            "INSERT INTO scopes (kind, label, start_date, end_date, week_id, month_id, season_id)
-             VALUES (?, ?, ?, ?, ?, ?, ?)",
-        )
-        .bind(kind.as_str())
-        .bind(&label)
-        .bind(&start_str)
-        .bind(&end_str)
-        .bind(week_id)
-        .bind(month_id)
-        .bind(season_id)
-        .execute(self.pool)
-        .await?
-        .last_insert_rowid();
+            let id = sqlx::query(
+                "INSERT INTO scopes (kind, label, start_date, end_date, week_id, month_id, season_id)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)",
+            )
+            .bind(kind.as_str())
+            .bind(&label)
+            .bind(&start_str)
+            .bind(&end_str)
+            .bind(week_id)
+            .bind(month_id)
+            .bind(season_id)
+            .execute(self.pool)
+            .await?
+            .last_insert_rowid();
 
-        self.get(ScopeId(id)).await
+            self.get(ScopeId(id)).await
         })
     }
 
@@ -121,8 +122,7 @@ fn scope_bounds(kind: ScopeKind, date: NaiveDate) -> (NaiveDate, NaiveDate) {
             let start = NaiveDate::from_ymd_opt(year, season_month, 1).unwrap();
             let end_month = ((season_month - 1 + 2) % 12) + 1;
             let end_year = if season_month + 2 > 12 { year + 1 } else { year };
-            let end_month_start =
-                NaiveDate::from_ymd_opt(end_year, end_month, 1).unwrap();
+            let end_month_start = NaiveDate::from_ymd_opt(end_year, end_month, 1).unwrap();
             let after_end = if end_month == 12 {
                 NaiveDate::from_ymd_opt(end_year + 1, 1, 1).unwrap()
             } else {
@@ -143,9 +143,7 @@ fn scope_label(kind: ScopeKind, date: NaiveDate) -> String {
             let week_num = week_number(date);
             format!("Week {} {}", week_num, date.year())
         }
-        ScopeKind::Month => {
-            date.format("%B %Y").to_string()
-        }
+        ScopeKind::Month => date.format("%B %Y").to_string(),
         ScopeKind::Season => {
             let (name, year) = season_name_and_year(date);
             format!("{} {}", name, year)
@@ -163,8 +161,8 @@ fn week_number(date: NaiveDate) -> u32 {
 
 /// Returns (season_name, display_year) for the season containing `date`.
 fn season_name_and_year(date: NaiveDate) -> (&'static str, i32) {
-    let m = date.month();
-    match m {
+    let month = date.month();
+    match month {
         9..=11 => ("Autumn", date.year()),
         12 => ("Winter", date.year()),
         1..=2 => ("Winter", date.year() - 1),
@@ -176,8 +174,8 @@ fn season_name_and_year(date: NaiveDate) -> (&'static str, i32) {
 
 /// Returns (start_month, year) for the first month of the season containing `date`.
 fn season_start_month_and_year(date: NaiveDate) -> (u32, i32) {
-    let m = date.month();
-    match m {
+    let month = date.month();
+    match month {
         9..=11 => (9, date.year()),
         12 => (12, date.year()),
         1..=2 => (12, date.year() - 1),
