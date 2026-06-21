@@ -101,9 +101,12 @@ export default function MindmapNode({
     [node.id, onDrop],
   );
 
-  const fillColor = node.kind === "aspect" && node.color !== undefined
-    ? node.color
-    : "var(--node-bg)";
+  const fillColor = node.color ?? "var(--node-bg)";
+  // Fade inherited aspect color at increasing depths so children don't overpower the aspect itself.
+  const fillOpacity =
+    node.kind !== "aspect" && node.color !== undefined
+      ? Math.max(0.15, 0.5 - position.depth * 0.06)
+      : 1;
 
   const strokeColor = isSelected
     ? "var(--node-border-selected)"
@@ -137,6 +140,7 @@ export default function MindmapNode({
         height={height}
         rx={6}
         fill={fillColor}
+        fillOpacity={fillOpacity}
         stroke={strokeColor}
         strokeWidth={isSelected ? 2 : 1}
       />

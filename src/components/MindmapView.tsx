@@ -2,9 +2,9 @@ import { useCallback, useEffect, useState } from "react";
 import { useMindmapData } from "@/hooks/use-mindmap-data";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { computeLayout } from "@/utils/tree-layout";
-import { nextType, prevType, crossesGoalTaskBoundary } from "@/utils/node-meta";
+import { validTypesForCycling, crossesGoalTaskBoundary } from "@/utils/node-meta";
 import { goalStatusToTaskStatus, taskStatusToGoalStatus } from "@/utils/status-mapping";
-import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
+import type { MindmapNode } from "@/utils/tree-layout";
 import type { ContextMenuAction } from "./NodeContextMenu";
 import { addTagToTask, removeTagFromTask } from "@/api/tasks";
 import { addTagToGoal, removeTagFromGoal } from "@/api/goals";
@@ -71,7 +71,17 @@ export default function MindmapView() {
     (nodeId: string, direction: 1 | -1) => {
       const node = findNodeById(nodeId);
       if (node === undefined || node.kind === "aspect") return;
-      const newKind: NodeKind = direction === 1 ? nextType(node.kind) : prevType(node.kind);
+
+      const parent = findParent(tree, nodeId);
+      const validTypes = validTypesForCycling(node.kind, parent?.kind ?? null);
+      if (validTypes.length <= 1) return;
+
+      const currentIdx = validTypes.indexOf(node.kind);
+      if (currentIdx === -1) return;
+
+      const newKind = validTypes[(currentIdx + direction + validTypes.length) % validTypes.length];
+      if (newKind === undefined || newKind === node.kind) return;
+
       if (crossesGoalTaskBoundary(node.kind, newKind)) {
         const newStatus =
           node.kind === "goal"
@@ -79,9 +89,10 @@ export default function MindmapView() {
             : taskStatusToGoalStatus(node.status ?? "todo");
         showToast({ nodeId, message: `Status: ${node.status ?? "—"} → ${newStatus}` });
       }
+
       void retypeNode(nodeId, node.kind, newKind);
     },
-    [findNodeById, showToast, retypeNode],
+    [findNodeById, tree, showToast, retypeNode],
   );
 
   // Must be defined before handleKeyDown which references it
@@ -128,10 +139,20 @@ export default function MindmapView() {
             navigateArrow("ArrowDown");
           }
           break;
+        case "F2":
+          event.preventDefault();
+          if (selectedNodeId !== null) {
+            const f2Node = findNodeById(selectedNodeId);
+            if (f2Node !== undefined && f2Node.kind !== "aspect") {
+              setEditingNodeId(selectedNodeId);
+            }
+          }
+          break;
         case "Tab": {
           event.preventDefault();
           const tabNode = selectedNodeId !== null ? findNodeById(selectedNodeId) : undefined;
-          if (tabNode !== undefined && tabNode.id.includes("-")) {
+          // Tags are leaf nodes; aspects and virtual root are excluded.
+          if (tabNode !== undefined && tabNode.id.includes("-") && tabNode.kind !== "tag") {
             (async () => {
               try {
                 const newNode = await createChild(selectedNodeId!, tabNode.kind, "");
@@ -325,7 +346,7 @@ export default function MindmapView() {
       const source = findNodeById(dragSourceId);
       const target = findNodeById(targetId);
       if (source === undefined || target === undefined) return;
-      if (target.kind === "aspect" || target.kind === "task") return;
+      if (target.kind === "aspect" || target.kind === "task" || target.kind === "tag") return;
       void moveNode(dragSourceId, source.kind, targetId, target.kind);
       setDragSourceId(null);
       setDragTargetId(null);

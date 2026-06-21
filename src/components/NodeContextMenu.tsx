@@ -37,7 +37,7 @@ export default function NodeContextMenu({ x, y, nodeKind, isCollapsed, hasClipbo
     return () => document.removeEventListener("mousedown", handler);
   }, [onClose]);
 
-  const canEnter = nodeKind !== "task" && nodeKind !== "goal";
+  const canEnter = nodeKind !== "task" && nodeKind !== "goal" && nodeKind !== "tag";
   const canChangeType = nodeKind !== "aspect";
 
   function item(label: string, action: ContextMenuAction, disabled = false) {

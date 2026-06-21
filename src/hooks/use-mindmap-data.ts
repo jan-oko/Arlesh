@@ -40,20 +40,32 @@ function kindToParentType(kind: NodeKind): string {
   return "project";
 }
 
+function subtypeToKind(subtype: string): NodeKind {
+  switch (subtype) {
+    case "aspect": return "aspect";
+    case "project": return "project";
+    case "tag": return "tag";
+    default: return "domain";
+  }
+}
+
+function propagateAspectColor(node: MindmapNode, inheritedColor: string | undefined): void {
+  const colorToPropagate = node.kind === "aspect" ? node.color : inheritedColor;
+  if (node.kind !== "aspect" && colorToPropagate !== undefined && node.color === undefined) {
+    node.color = colorToPropagate;
+  }
+  for (const child of node.children) {
+    propagateAspectColor(child, colorToPropagate);
+  }
+}
+
 function buildTree(domains: Domain[], goals: Goal[], tasks: Task[]): MindmapNode {
   const nodeMap = new Map<string, MindmapNode>();
 
   for (const domain of domains) {
-    if (domain.subtype === "tag") continue;
-    const kind: NodeKind =
-      domain.subtype === "aspect"
-        ? "aspect"
-        : domain.subtype === "project"
-          ? "project"
-          : "domain";
     nodeMap.set(`domain-${domain.id}`, {
       id: `domain-${domain.id}`,
-      kind,
+      kind: subtypeToKind(domain.subtype),
       title: domain.title,
       ...(domain.color !== null ? { color: domain.color } : {}),
       ...(domain.status !== null ? { status: domain.status } : {}),
@@ -84,9 +96,8 @@ function buildTree(domains: Domain[], goals: Goal[], tasks: Task[]): MindmapNode
     });
   }
 
-  // Wire domain tree
+  // Wire domain tree (all subtypes including tags)
   for (const domain of domains) {
-    if (domain.subtype === "tag") continue;
     if (domain.parent_id === null) continue;
     const parentNode = nodeMap.get(`domain-${domain.parent_id}`);
     const selfNode = nodeMap.get(`domain-${domain.id}`);
@@ -130,7 +141,9 @@ function buildTree(domains: Domain[], goals: Goal[], tasks: Task[]): MindmapNode
     .map((d) => nodeMap.get(`domain-${d.id}`)!)
     .filter((n) => n !== undefined);
 
-  return { ...VIRTUAL_ROOT, children: aspectNodes };
+  const root = { ...VIRTUAL_ROOT, children: aspectNodes };
+  propagateAspectColor(root, undefined);
+  return root;
 }
 
 export function useMindmapData(): MindmapData {
@@ -235,10 +248,9 @@ export function useMindmapData(): MindmapData {
     async (id: string, fromKind: NodeKind, toKind: NodeKind): Promise<void> => {
       const dbId = dbIdFromNodeId(id);
 
-      if (
-        (fromKind === "domain" || fromKind === "project") &&
-        (toKind === "domain" || toKind === "project")
-      ) {
+      // domain / project / tag all live in the domains table — update subtype only.
+      const domainTableKinds = new Set<NodeKind>(["domain", "project", "tag"]);
+      if (domainTableKinds.has(fromKind) && domainTableKinds.has(toKind)) {
         await import("@/api/domains").then(({ updateDomain }) =>
           updateDomain(dbId, { subtype: toKind }),
         );

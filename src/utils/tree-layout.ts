@@ -1,6 +1,6 @@
 import { hierarchy, tree } from "d3-hierarchy";
 
-export type NodeKind = "aspect" | "project" | "domain" | "goal" | "task";
+export type NodeKind = "aspect" | "project" | "domain" | "goal" | "task" | "tag";
 
 export interface MindmapNode {
   id: string;

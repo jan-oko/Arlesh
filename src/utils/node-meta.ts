@@ -27,6 +27,7 @@ export const NODE_ICON: Record<NodeKind, string> = {
   domain: "◻",
   goal: "◇",
   task: "✓",
+  tag: "🏷",
 };
 
 export const NODE_LABEL: Record<NodeKind, string> = {
@@ -35,21 +36,26 @@ export const NODE_LABEL: Record<NodeKind, string> = {
   domain: "Domain",
   goal: "Goal",
   task: "Task",
+  tag: "Tag",
 };
 
-/** The cycle order for Ctrl+Up / Ctrl+Down type switching. Aspects are excluded. */
-export const TYPE_CYCLE: NodeKind[] = ["domain", "project", "goal", "task"];
-
-export function nextType(kind: NodeKind): NodeKind {
-  const index = TYPE_CYCLE.indexOf(kind);
-  if (index === -1) return kind;
-  return TYPE_CYCLE[(index + 1) % TYPE_CYCLE.length] as NodeKind;
-}
-
-export function prevType(kind: NodeKind): NodeKind {
-  const index = TYPE_CYCLE.indexOf(kind);
-  if (index === -1) return kind;
-  return TYPE_CYCLE[(index - 1 + TYPE_CYCLE.length) % TYPE_CYCLE.length] as NodeKind;
+/**
+ * Returns which types Ctrl+Up/Down may cycle through for a given node.
+ * Domain-table nodes (domain, project, tag) cycle among themselves.
+ * Goal/task cycle between each other, except a task under a task cannot
+ * become a goal ("goal child of task" is an invalid parent relationship).
+ */
+export function validTypesForCycling(kind: NodeKind, parentKind: NodeKind | null): NodeKind[] {
+  if (kind === "domain" || kind === "project" || kind === "tag") {
+    return ["domain", "project", "tag"];
+  }
+  if (kind === "task" && parentKind === "task") {
+    return ["task"];
+  }
+  if (kind === "goal" || kind === "task") {
+    return ["goal", "task"];
+  }
+  return [];
 }
 
 /** Returns true if the type transition crosses the Goal↔Task boundary. */

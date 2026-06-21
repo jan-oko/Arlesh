@@ -18,7 +18,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
   - Ctrl+X/C/V keyboard shortcuts for cut/copy/paste as child
   - Double-click opens an editor modal for title and tag assignment
   - Drag-and-drop to re-parent nodes
-  - Ctrl+Up / Ctrl+Down to cycle node type (Domain → Project → Goal → Task); crossing Goal↔Task shows a status-mapping toast
+  - Ctrl+Up / Ctrl+Down to cycle node type contextually: domain/project/tag cycle among themselves; goal/task cycle between each other (blocked if parent is a task); crossing Goal↔Task shows a status-mapping toast
+  - Tag nodes now visible in the tree as leaf nodes (previously hidden); type cycling and Tab creation respect leaf-node constraint
+  - Aspect color inherited by all descendant nodes with depth-faded opacity (vivid at depth 1, 15 % floor at depth 4+)
+  - F2 to activate inline editing on the selected node
   - Enter subtree mode via context menu; subtree navigation pill in top-left; Esc to go up, Shift+Esc to return to root
   - Ctrl+/ to collapse/expand a subtree; Delete key to delete a node
   - Depth-based node scaling (root largest, stabilises at depth 4)
