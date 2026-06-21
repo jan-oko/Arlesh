@@ -106,27 +106,27 @@ export default function MindmapView() {
       switch (event.key) {
         case "ArrowLeft":
           event.preventDefault();
+          navigateArrow("ArrowLeft");
+          break;
+        case "ArrowRight":
+          event.preventDefault();
+          navigateArrow("ArrowRight");
+          break;
+        case "ArrowUp":
+          event.preventDefault();
           if (event.ctrlKey && selectedNodeId !== null) {
             cycleType(selectedNodeId, -1);
           } else {
-            navigateArrow("ArrowLeft");
+            navigateArrow("ArrowUp");
           }
           break;
-        case "ArrowRight":
+        case "ArrowDown":
           event.preventDefault();
           if (event.ctrlKey && selectedNodeId !== null) {
             cycleType(selectedNodeId, 1);
           } else {
-            navigateArrow("ArrowRight");
+            navigateArrow("ArrowDown");
           }
-          break;
-        case "ArrowUp":
-          event.preventDefault();
-          navigateArrow("ArrowUp");
-          break;
-        case "ArrowDown":
-          event.preventDefault();
-          navigateArrow("ArrowDown");
           break;
         case "Tab":
           event.preventDefault();
@@ -201,16 +201,18 @@ export default function MindmapView() {
   );
 
   useEffect(() => {
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    // capture:true intercepts Tab before WebKit's focus-management runs,
+    // which means event.preventDefault() actually cancels the Tab shift.
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
+    return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
   }, [handleKeyDown]);
 
   useEffect(() => {
     function handleShiftEscape(event: KeyboardEvent) {
       if (event.key === "Escape" && event.shiftKey) exitToRoot();
     }
-    window.addEventListener("keydown", handleShiftEscape);
-    return () => window.removeEventListener("keydown", handleShiftEscape);
+    window.addEventListener("keydown", handleShiftEscape, { capture: true });
+    return () => window.removeEventListener("keydown", handleShiftEscape, { capture: true });
   }, [exitToRoot]);
 
   const handleContextAction = useCallback(
