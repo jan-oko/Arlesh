@@ -18,16 +18,6 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - `src-tauri/.cargo/config.toml` setting build target to `/tmp/arlesh-target` (Rust debug artifacts are large)
 - 22 integration tests covering all modules: DB migrations, domain validation, task dependency/blocking, scope containment, KB entities
 
-### Changed
-- Expanded all abbreviated identifiers per no-abbreviation naming convention:
-  - Module `kb` → `knowledge_base`, `db` → `database`
-  - Type `DbPool` → `DatabasePool`, `KbError` → `KnowledgeBaseError`
-  - Error variant `Db` → `Database` across all domain error enums
-  - SQL column `kb_dir` → `knowledge_base_directory` in `domains` table
-  - SQL columns `dep_type`/`dep_id` → `dependency_type`/`dependency_id` in `task_dependencies` table
-  - SQL tables `goal_kb_links`/`task_kb_links` → `goal_knowledge_base_links`/`task_knowledge_base_links`
-  - All local variables and parameters expanded (e.g. `req` → `request`, `m` → `month`, `v` → `value`, `dep` → `dependency`)
-- Fixed Stop hook false-positive TypeScript errors: gate check on `node_modules/.bin/tsc` instead of `npx tsc`
 
 ## [0.1.0] — 2026-06-20
 
