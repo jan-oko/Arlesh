@@ -163,7 +163,10 @@ export function useMindmapData(): MindmapData {
       const dbParentId = dbIdFromNodeId(parentId);
       const parentType = kindToParentType(parentKind);
 
-      if (parentKind === "goal") {
+      // Domains and projects produce a goal; goals/tasks produce a task (subtask).
+      const makeGoal = parentKind === "domain" || parentKind === "project";
+
+      if (makeGoal) {
         const goal = await createGoal({ title, parent_type: parentType, parent_id: dbParentId });
         const newNode: MindmapNode = {
           id: `goal-${goal.id}`,
@@ -177,6 +180,7 @@ export function useMindmapData(): MindmapData {
         return newNode;
       }
 
+      // parentKind === "task"
       const task = await createTask({ title, parent_type: parentType, parent_id: dbParentId });
       const newNode: MindmapNode = {
         id: `task-${task.id}`,

@@ -130,7 +130,6 @@ export default function MindmapView() {
           break;
         case "Tab":
           event.preventDefault();
-          console.log("[arlesh] Tab captured, selectedNodeId:", selectedNodeId);
           if (selectedNodeId !== null) {
             const node = findNodeById(selectedNodeId);
             if (node !== undefined && node.kind !== "aspect") {
