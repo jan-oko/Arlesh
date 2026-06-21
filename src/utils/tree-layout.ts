@@ -15,23 +15,24 @@ export interface MindmapNode {
 export interface Position {
   x: number;
   y: number;
+  depth: number;
 }
 
-const HORIZONTAL_GAP = 180;
-const VERTICAL_GAP = 48;
+const HORIZONTAL_GAP = 220;
+const VERTICAL_GAP = 60;
 
 /**
  * Computes pixel positions for every visible node in a left-right balanced mind map.
  *
- * The root sits at (0, 0). The first ⌈n/2⌉ children of root go right (positive x);
- * the remainder go left (negative x). Deeper descendants follow their side.
+ * Root sits at (0, 0). The first ⌈n/2⌉ children go right (positive x);
+ * the remainder go left (negative x). depth reflects distance from the display root.
  */
 export function computeLayout(
   root: MindmapNode,
   collapsedIds: ReadonlySet<string>,
 ): Map<string, Position> {
   const positions = new Map<string, Position>();
-  positions.set(root.id, { x: 0, y: 0 });
+  positions.set(root.id, { x: 0, y: 0, depth: 0 });
 
   const visibleChildren = root.children.filter((child) => child !== undefined);
   if (visibleChildren.length === 0) return positions;
@@ -69,10 +70,11 @@ function layoutSubtree(
 
   pointRoot.each((node) => {
     if (node.data.id === "__virtual__") return;
-    // d3.tree uses x for breadth and y for depth; we rotate to horizontal
+    // d3.tree: x = breadth, y = depth; rotate to horizontal layout
     positions.set(node.data.id, {
       x: direction * node.y,
       y: node.x,
+      depth: node.depth,
     });
   });
 }

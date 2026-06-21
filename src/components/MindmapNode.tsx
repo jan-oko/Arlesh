@@ -1,12 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MindmapNode as MindmapNodeData, Position } from "@/utils/tree-layout";
-import { NODE_ICON } from "@/utils/node-meta";
+import { NODE_ICON, getNodeSize } from "@/utils/node-meta";
 import NodeContextMenu, { type ContextMenuAction } from "./NodeContextMenu";
-
-const NODE_WIDTH = 160;
-const NODE_HEIGHT = 36;
-const FONT_SIZE = 13;
-const ICON_WIDTH = 20;
 
 interface Props {
   node: MindmapNodeData;
@@ -44,6 +39,8 @@ export default function MindmapNode({
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const { width, height, fontSize, iconWidth, maxChars } = getNodeSize(position.depth);
+
   useEffect(() => {
     if (isEditing) {
       inputRef.current?.focus();
@@ -51,9 +48,26 @@ export default function MindmapNode({
     }
   }, [isEditing]);
 
+  const handleClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      onSelect(node.id);
+    },
+    [node.id, onSelect],
+  );
+
+  const handleDoubleClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      onDoubleClick(node.id);
+    },
+    [node.id, onDoubleClick],
+  );
+
   const handleContextMenu = useCallback(
     (event: React.MouseEvent) => {
       event.preventDefault();
+      event.stopPropagation();
       setContextMenu({ x: event.clientX, y: event.clientY });
     },
     [],
@@ -93,13 +107,20 @@ export default function MindmapNode({
       ? "var(--accent)"
       : "var(--node-border)";
 
+  const label = node.title.length > maxChars
+    ? node.title.slice(0, maxChars - 1) + "…"
+    : node.title;
+
+  const textFill = node.kind === "aspect" ? "rgba(255,255,255,0.9)" : "var(--node-text)";
+  const iconFill = node.kind === "aspect" ? "rgba(255,255,255,0.9)" : "var(--text-secondary)";
+
   return (
     <g
-      transform={`translate(${position.x}, ${position.y})`}
+      transform={`translate(${position.x - width / 2}, ${position.y - height / 2})`}
       role="treeitem"
       aria-selected={isSelected}
-      onClick={() => onSelect(node.id)}
-      onDoubleClick={() => onDoubleClick(node.id)}
+      onClick={handleClick}
+      onDoubleClick={handleDoubleClick}
       onContextMenu={handleContextMenu}
       onDragStart={() => onDragStart(node.id)}
       onDragOver={handleDragOver}
@@ -108,8 +129,8 @@ export default function MindmapNode({
       style={{ cursor: "pointer" }}
     >
       <rect
-        width={NODE_WIDTH}
-        height={NODE_HEIGHT}
+        width={width}
+        height={height}
         rx={6}
         fill={fillColor}
         stroke={strokeColor}
@@ -117,18 +138,18 @@ export default function MindmapNode({
       />
 
       <text
-        x={ICON_WIDTH / 2}
-        y={NODE_HEIGHT / 2}
+        x={iconWidth / 2}
+        y={height / 2}
         dominantBaseline="central"
         textAnchor="middle"
-        fontSize={FONT_SIZE}
-        fill={node.kind === "aspect" ? "rgba(255,255,255,0.9)" : "var(--text-secondary)"}
+        fontSize={fontSize}
+        fill={iconFill}
       >
         {NODE_ICON[node.kind]}
       </text>
 
       {isEditing ? (
-        <foreignObject x={ICON_WIDTH} y={2} width={NODE_WIDTH - ICON_WIDTH - 4} height={NODE_HEIGHT - 4}>
+        <foreignObject x={iconWidth} y={2} width={width - iconWidth - 4} height={height - 4}>
           <input
             ref={inputRef}
             defaultValue={node.title}
@@ -142,28 +163,28 @@ export default function MindmapNode({
               outline: "none",
               color: "var(--text-primary)",
               fontFamily: "var(--font-sans)",
-              fontSize: FONT_SIZE,
+              fontSize,
               padding: "0 2px",
             }}
           />
         </foreignObject>
       ) : (
         <text
-          x={ICON_WIDTH + 4}
-          y={NODE_HEIGHT / 2}
+          x={iconWidth + 4}
+          y={height / 2}
           dominantBaseline="central"
-          fontSize={FONT_SIZE}
-          fill={node.kind === "aspect" ? "rgba(255,255,255,0.9)" : "var(--node-text)"}
+          fontSize={fontSize}
+          fill={textFill}
           style={{ userSelect: "none", pointerEvents: "none" }}
         >
-          {node.title.length > 16 ? node.title.slice(0, 15) + "…" : node.title}
+          {label}
         </text>
       )}
 
       {isCollapsed && node.children.length > 0 && (
         <circle
-          cx={NODE_WIDTH - 6}
-          cy={NODE_HEIGHT / 2}
+          cx={width - 6}
+          cy={height / 2}
           r={4}
           fill="var(--text-secondary)"
         />

@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { animated, to } from "@react-spring/web";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { usePanZoom } from "@/hooks/use-pan-zoom";
@@ -11,7 +12,7 @@ interface Props {
   editingNodeId: string | null;
   dragTargetId: string | null;
   hasClipboard: boolean;
-  onSelect: (id: string) => void;
+  onSelect: (id: string | null) => void;
   onDoubleClick: (id: string) => void;
   onCommitEdit: (id: string, title: string) => void;
   onCancelEdit: () => void;
@@ -37,7 +38,8 @@ export default function MindmapCanvas({
   onDrop,
   onCanvasClick,
 }: Props) {
-  const { springProps, bind } = usePanZoom();
+  const svgRef = useRef<SVGSVGElement>(null);
+  const { springProps, onMouseDown } = usePanZoom(svgRef);
 
   const transform = to(
     [springProps.x, springProps.y, springProps.scale],
@@ -46,34 +48,29 @@ export default function MindmapCanvas({
 
   return (
     <animated.svg
-      {...bind()}
+      ref={svgRef}
       width="100%"
       height="100%"
-      style={{
-        background: "var(--canvas-bg)",
-        display: "block",
-        touchAction: "none",
-      }}
+      style={{ background: "var(--canvas-bg)", display: "block", userSelect: "none" }}
+      onMouseDown={onMouseDown}
       onClick={onCanvasClick}
     >
-      <animated.g style={{ transform, transformOrigin: "50% 50%" }}>
-        <g transform="translate(50%, 50%)">
-          <MindmapTree
-            root={root}
-            collapsedNodeIds={collapsedNodeIds}
-            selectedNodeId={selectedNodeId}
-            editingNodeId={editingNodeId}
-            dragTargetId={dragTargetId}
-            hasClipboard={hasClipboard}
-            onSelect={onSelect}
-            onDoubleClick={onDoubleClick}
-            onCommitEdit={onCommitEdit}
-            onCancelEdit={onCancelEdit}
-            onContextAction={onContextAction}
-            onDragStart={onDragStart}
-            onDrop={onDrop}
-          />
-        </g>
+      <animated.g style={{ transform }}>
+        <MindmapTree
+          root={root}
+          collapsedNodeIds={collapsedNodeIds}
+          selectedNodeId={selectedNodeId}
+          editingNodeId={editingNodeId}
+          dragTargetId={dragTargetId}
+          hasClipboard={hasClipboard}
+          onSelect={onSelect}
+          onDoubleClick={onDoubleClick}
+          onCommitEdit={onCommitEdit}
+          onCancelEdit={onCancelEdit}
+          onContextAction={onContextAction}
+          onDragStart={onDragStart}
+          onDrop={onDrop}
+        />
       </animated.g>
     </animated.svg>
   );

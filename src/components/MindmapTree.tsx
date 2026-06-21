@@ -11,7 +11,7 @@ interface Props {
   editingNodeId: string | null;
   dragTargetId: string | null;
   hasClipboard: boolean;
-  onSelect: (id: string) => void;
+  onSelect: (id: string | null) => void;
   onDoubleClick: (id: string) => void;
   onCommitEdit: (id: string, title: string) => void;
   onCancelEdit: () => void;

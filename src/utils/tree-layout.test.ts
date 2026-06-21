@@ -10,7 +10,7 @@ describe("computeLayout", () => {
   it("places root at origin", () => {
     const root = node("root");
     const positions = computeLayout(root, new Set());
-    expect(positions.get("root")).toEqual({ x: 0, y: 0 });
+    expect(positions.get("root")).toEqual({ x: 0, y: 0, depth: 0 });
   });
 
   it("places a single child to the right of root", () => {

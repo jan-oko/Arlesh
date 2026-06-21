@@ -1,21 +1,21 @@
 import type { Position } from "@/utils/tree-layout";
+import { getNodeSize } from "@/utils/node-meta";
 
 interface Props {
   from: Position;
   to: Position;
 }
 
-const NODE_WIDTH = 160;
-const NODE_HEIGHT = 36;
-
 export default function MindmapEdge({ from, to }: Props) {
-  const fromX = from.x + (to.x > from.x ? NODE_WIDTH : 0);
-  const fromY = from.y + NODE_HEIGHT / 2;
-  const toX = to.x + (to.x > from.x ? 0 : NODE_WIDTH);
-  const toY = to.y + NODE_HEIGHT / 2;
+  const fromSize = getNodeSize(from.depth);
+  const toSize = getNodeSize(to.depth);
+
+  const goingRight = to.x >= from.x;
+  const fromX = from.x + (goingRight ? fromSize.width / 2 : -fromSize.width / 2);
+  const toX = to.x + (goingRight ? -toSize.width / 2 : toSize.width / 2);
   const midX = (fromX + toX) / 2;
 
-  const path = `M ${fromX} ${fromY} C ${midX} ${fromY}, ${midX} ${toY}, ${toX} ${toY}`;
+  const path = `M ${fromX} ${from.y} C ${midX} ${from.y}, ${midX} ${to.y}, ${toX} ${to.y}`;
 
   return (
     <path

@@ -1,5 +1,26 @@
 import type { NodeKind } from "./tree-layout";
 
+export interface NodeSize {
+  width: number;
+  height: number;
+  fontSize: number;
+  iconWidth: number;
+  maxChars: number;
+}
+
+const NODE_SIZES: readonly NodeSize[] = [
+  { width: 200, height: 52, fontSize: 18, iconWidth: 32, maxChars: 20 },
+  { width: 180, height: 44, fontSize: 15, iconWidth: 28, maxChars: 18 },
+  { width: 160, height: 36, fontSize: 13, iconWidth: 22, maxChars: 16 },
+  { width: 148, height: 32, fontSize: 12, iconWidth: 20, maxChars: 15 },
+  { width: 140, height: 30, fontSize: 11, iconWidth: 18, maxChars: 14 },
+];
+
+export function getNodeSize(depth: number): NodeSize {
+  const index = Math.min(depth, NODE_SIZES.length - 1);
+  return NODE_SIZES[index] ?? NODE_SIZES[NODE_SIZES.length - 1]!;
+}
+
 export const NODE_ICON: Record<NodeKind, string> = {
   aspect: "◆",
   project: "📁",
