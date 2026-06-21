@@ -60,64 +60,10 @@ export default function MindmapView() {
   const navigateArrow = useCallback(
     (key: "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown") => {
       if (selectedNodeId === null) return;
-
-      // Up/Down: navigate siblings sorted by visual Y (matches rendered order)
-      if (key === "ArrowUp" || key === "ArrowDown") {
-        const parent = findParent(displayRoot, selectedNodeId);
-        if (parent === null) return;
-        const sorted = [...parent.children].sort(
-          (a, b) => (positions.get(a.id)?.y ?? 0) - (positions.get(b.id)?.y ?? 0),
-        );
-        const index = sorted.findIndex((c) => c.id === selectedNodeId);
-        const next = sorted[index + (key === "ArrowUp" ? -1 : 1)];
-        if (next !== undefined) selectNode(next.id);
-        return;
-      }
-
-      // Left/Right: "away from center" = deeper, "toward center" = parent.
-      // For root (x=0): Right → nearest right child, Left → nearest left child.
-      const pos = positions.get(selectedNodeId);
-      const nodeX = pos?.x ?? 0;
-      const currentY = pos?.y ?? 0;
-      const movingRight = key === "ArrowRight";
-
-      if (nodeX === 0) {
-        // Root: step to the child on the matching side closest in Y
-        const node = findNode(displayRoot, selectedNodeId);
-        if (node === undefined) return;
-        const sideChildren = node.children.filter((c) => {
-          const cx = positions.get(c.id)?.x ?? 0;
-          return movingRight ? cx > 0 : cx < 0;
-        });
-        const closest = sideChildren.reduce<MindmapNode | undefined>((best, child) => {
-          if (best === undefined) return child;
-          return Math.abs((positions.get(child.id)?.y ?? 0) - currentY) <
-            Math.abs((positions.get(best.id)?.y ?? 0) - currentY)
-            ? child
-            : best;
-        }, undefined);
-        if (closest !== undefined) selectNode(closest.id);
-        return;
-      }
-
-      const goingDeeper = movingRight === (nodeX > 0);
-
-      if (goingDeeper) {
-        const node = findNode(displayRoot, selectedNodeId);
-        if (node === undefined || node.children.length === 0) return;
-        const closest = node.children.reduce((best, child) =>
-          Math.abs((positions.get(child.id)?.y ?? 0) - currentY) <
-          Math.abs((positions.get(best.id)?.y ?? 0) - currentY)
-            ? child
-            : best,
-        );
-        selectNode(closest.id);
-      } else {
-        const parent = findParent(displayRoot, selectedNodeId);
-        if (parent !== null) selectNode(parent.id);
-      }
+      const target = nearestInDirection(selectedNodeId, positions, key);
+      if (target !== undefined) selectNode(target);
     },
-    [selectedNodeId, positions, displayRoot, selectNode],
+    [selectedNodeId, positions, selectNode],
   );
 
   // Must be defined before handleKeyDown which references it
@@ -457,4 +403,48 @@ function findParent(root: MindmapNode, id: string): MindmapNode | null {
     if (found !== null) return found;
   }
   return null;
+}
+
+/**
+ * Finds the nearest visible node in a screen direction from `fromId`.
+ *
+ * Candidates must lie strictly in the requested direction on the primary axis.
+ * Score = primaryDistance + 2 * secondaryDeviation so that well-aligned
+ * neighbours beat distant ones even if they're slightly off-axis.
+ */
+function nearestInDirection(
+  fromId: string,
+  positions: Map<string, import("@/utils/tree-layout").Position>,
+  direction: "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown",
+): string | undefined {
+  const from = positions.get(fromId);
+  if (from === undefined) return undefined;
+
+  let bestId: string | undefined;
+  let bestScore = Infinity;
+
+  for (const [id, pos] of positions) {
+    if (id === fromId) continue;
+
+    const dx = pos.x - from.x;
+    const dy = pos.y - from.y;
+
+    let primary: number;
+    let secondary: number;
+
+    switch (direction) {
+      case "ArrowRight": if (dx <= 0) continue; primary = dx;  secondary = Math.abs(dy); break;
+      case "ArrowLeft":  if (dx >= 0) continue; primary = -dx; secondary = Math.abs(dy); break;
+      case "ArrowDown":  if (dy <= 0) continue; primary = dy;  secondary = Math.abs(dx); break;
+      case "ArrowUp":    if (dy >= 0) continue; primary = -dy; secondary = Math.abs(dx); break;
+    }
+
+    const score = primary + 2 * secondary;
+    if (score < bestScore) {
+      bestScore = score;
+      bestId = id;
+    }
+  }
+
+  return bestId;
 }
