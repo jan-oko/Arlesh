@@ -25,6 +25,7 @@ struct TaskRow {
     blocked_reason: Option<String>,
     delegate_to: Option<i64>,
     scope_id: Option<i64>,
+    position: i64,
 }
 
 impl From<TaskRow> for Task {
@@ -39,6 +40,7 @@ impl From<TaskRow> for Task {
             delegate_to: row.delegate_to,
             scope_id: row.scope_id,
             tag_ids: vec![],
+            position: row.position,
         }
     }
 }
@@ -52,6 +54,7 @@ struct GoalRow {
     status: String,
     blocked_reason: Option<String>,
     scope_id: Option<i64>,
+    position: i64,
 }
 
 impl From<GoalRow> for Goal {
@@ -65,6 +68,7 @@ impl From<GoalRow> for Goal {
             blocked_reason: row.blocked_reason,
             scope_id: row.scope_id,
             tag_ids: vec![],
+            position: row.position,
         }
     }
 }
@@ -119,6 +123,11 @@ impl<'a> GoalRepository<'a> {
         .execute(self.pool)
         .await?
         .last_insert_rowid();
+        sqlx::query("UPDATE goals SET position = ? WHERE id = ?")
+            .bind(id)
+            .bind(id)
+            .execute(self.pool)
+            .await?;
         self.get(GoalId(id)).await
     }
 
@@ -135,7 +144,7 @@ impl<'a> GoalRepository<'a> {
 
     /// Lists all goals.
     pub async fn list(&self) -> Result<Vec<Goal>, TaskError> {
-        let rows = sqlx::query_as::<_, GoalRow>("SELECT * FROM goals ORDER BY id")
+        let rows = sqlx::query_as::<_, GoalRow>("SELECT * FROM goals ORDER BY position ASC")
             .fetch_all(self.pool)
             .await?;
         let mut goals = Vec::with_capacity(rows.len());
@@ -179,13 +188,15 @@ impl<'a> GoalRepository<'a> {
             .await?;
         }
 
+        let position = request.position.unwrap_or(goal.position);
         sqlx::query(
-            "UPDATE goals SET title=?, status=?, blocked_reason=?, scope_id=? WHERE id=?",
+            "UPDATE goals SET title=?, status=?, blocked_reason=?, scope_id=?, position=? WHERE id=?",
         )
         .bind(&title)
         .bind(&status)
         .bind(&blocked_reason)
         .bind(scope_id)
+        .bind(position)
         .bind(id.0)
         .execute(self.pool)
         .await?;
@@ -257,6 +268,11 @@ impl<'a> TaskRepository<'a> {
         .execute(self.pool)
         .await?
         .last_insert_rowid();
+        sqlx::query("UPDATE tasks SET position = ? WHERE id = ?")
+            .bind(id)
+            .bind(id)
+            .execute(self.pool)
+            .await?;
         self.get(TaskId(id)).await
     }
 
@@ -313,7 +329,7 @@ impl<'a> TaskRepository<'a> {
 
     /// Lists all tasks.
     pub async fn list(&self) -> Result<Vec<Task>, TaskError> {
-        let rows = sqlx::query_as::<_, TaskRow>("SELECT * FROM tasks ORDER BY id")
+        let rows = sqlx::query_as::<_, TaskRow>("SELECT * FROM tasks ORDER BY position ASC")
             .fetch_all(self.pool)
             .await?;
         let mut tasks = Vec::with_capacity(rows.len());
@@ -361,14 +377,16 @@ impl<'a> TaskRepository<'a> {
             .await?;
         }
 
+        let position = request.position.unwrap_or(task.position);
         sqlx::query(
-            "UPDATE tasks SET title=?, status=?, blocked_reason=?, delegate_to=?, scope_id=? WHERE id=?",
+            "UPDATE tasks SET title=?, status=?, blocked_reason=?, delegate_to=?, scope_id=?, position=? WHERE id=?",
         )
         .bind(&title)
         .bind(&status)
         .bind(&blocked_reason)
         .bind(delegate_to)
         .bind(scope_id)
+        .bind(position)
         .bind(id.0)
         .execute(self.pool)
         .await?;

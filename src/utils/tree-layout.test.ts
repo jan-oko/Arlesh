@@ -3,7 +3,7 @@ import { computeLayout } from "./tree-layout";
 import type { MindmapNode } from "./tree-layout";
 
 function node(id: string, children: MindmapNode[] = []): MindmapNode {
-  return { id, kind: "domain", title: id, tagIds: [], children };
+  return { id, kind: "domain", title: id, position: 0, tagIds: [], children };
 }
 
 describe("computeLayout", () => {

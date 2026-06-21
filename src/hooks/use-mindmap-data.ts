@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { listDomains, createDomain } from "@/api/domains";
+import { listDomains, createDomain, updateDomain, deleteDomain } from "@/api/domains";
 import { listTasks, createTask, updateTask, deleteTask } from "@/api/tasks";
 import { listGoals, createGoal, updateGoal, deleteGoal } from "@/api/goals";
 import type { Domain } from "@/api/domains";
@@ -14,6 +14,7 @@ interface MindmapData {
   createChild: (parentId: string, parentKind: NodeKind, title: string) => Promise<MindmapNode>;
   renameNode: (id: string, kind: NodeKind, title: string) => Promise<void>;
   retypeNode: (id: string, fromKind: NodeKind, toKind: NodeKind) => Promise<void>;
+  reorderNode: (id: string, direction: 1 | -1) => Promise<void>;
   moveNode: (id: string, kind: NodeKind, newParentId: string, newParentKind: NodeKind) => Promise<void>;
   removeNode: (id: string, kind: NodeKind) => Promise<void>;
   reload: () => Promise<void>;
@@ -23,6 +24,7 @@ const VIRTUAL_ROOT: MindmapNode = {
   id: "root",
   kind: "domain",
   title: "Arlesh",
+  position: 0,
   tagIds: [],
   children: [],
 };
@@ -38,6 +40,24 @@ function kindToParentType(kind: NodeKind): string {
   if (kind === "goal") return "goal";
   if (kind === "task") return "task";
   return "project";
+}
+
+function findNodeInTree(root: MindmapNode, id: string): MindmapNode | undefined {
+  if (root.id === id) return root;
+  for (const child of root.children) {
+    const found = findNodeInTree(child, id);
+    if (found !== undefined) return found;
+  }
+  return undefined;
+}
+
+function findParentInTree(root: MindmapNode, id: string): MindmapNode | undefined {
+  for (const child of root.children) {
+    if (child.id === id) return root;
+    const found = findParentInTree(child, id);
+    if (found !== undefined) return found;
+  }
+  return undefined;
 }
 
 function subtypeToKind(subtype: string): NodeKind {
@@ -67,6 +87,7 @@ function buildTree(domains: Domain[], goals: Goal[], tasks: Task[]): MindmapNode
       id: `domain-${domain.id}`,
       kind: subtypeToKind(domain.subtype),
       title: domain.title,
+      position: domain.position,
       ...(domain.color !== null ? { color: domain.color } : {}),
       ...(domain.status !== null ? { status: domain.status } : {}),
       tagIds: [],
@@ -80,6 +101,7 @@ function buildTree(domains: Domain[], goals: Goal[], tasks: Task[]): MindmapNode
       kind: "goal",
       title: goal.title,
       status: goal.status,
+      position: goal.position,
       tagIds: goal.tag_ids,
       children: [],
     });
@@ -91,6 +113,7 @@ function buildTree(domains: Domain[], goals: Goal[], tasks: Task[]): MindmapNode
       kind: "task",
       title: task.title,
       status: task.status,
+      position: task.position,
       tagIds: task.tag_ids,
       children: [],
     });
@@ -192,6 +215,7 @@ export function useMindmapData(): MindmapData {
           id: `domain-${domain.id}`,
           kind: parentKind === "project" ? "project" : "domain",
           title: domain.title,
+          position: domain.position,
           tagIds: [],
           children: [],
         };
@@ -206,6 +230,7 @@ export function useMindmapData(): MindmapData {
           kind: "goal",
           title: goal.title,
           status: goal.status,
+          position: goal.position,
           tagIds: [],
           children: [],
         };
@@ -220,6 +245,7 @@ export function useMindmapData(): MindmapData {
         kind: "task",
         title: task.title,
         status: task.status,
+        position: task.position,
         tagIds: [],
         children: [],
       };
@@ -247,29 +273,116 @@ export function useMindmapData(): MindmapData {
   const retypeNode = useCallback(
     async (id: string, fromKind: NodeKind, toKind: NodeKind): Promise<void> => {
       const dbId = dbIdFromNodeId(id);
-
-      // domain / project / tag all live in the domains table — update subtype only.
       const domainTableKinds = new Set<NodeKind>(["domain", "project", "tag"]);
+
+      // Same-table conversion: just update the subtype column.
       if (domainTableKinds.has(fromKind) && domainTableKinds.has(toKind)) {
-        await import("@/api/domains").then(({ updateDomain }) =>
-          updateDomain(dbId, { subtype: toKind }),
-        );
+        await updateDomain(dbId, { subtype: toKind });
         await load();
         return;
       }
 
-      // goal↔task requires cross-table migration (create + re-parent children + delete).
-      // Not implemented in Phase 2 — the type cycling UI is wired but the persisted type
-      // won't change until this is completed.
-      if (
-        (fromKind === "goal" && toKind === "task") ||
-        (fromKind === "task" && toKind === "goal")
-      ) {
-        console.warn("[arlesh] retypeNode: goal↔task conversion not yet implemented");
+      // Cross-table conversions: create new entity, re-parent compatible children, delete old.
+      const node = findNodeInTree(tree, id);
+      const parent = findParentInTree(tree, id);
+      const title = node?.title ?? "";
+      const children = node?.children ?? [];
+      const parentDbId = parent !== undefined && parent.id !== "root"
+        ? dbIdFromNodeId(parent.id)
+        : null;
+
+      if (domainTableKinds.has(fromKind) && (toKind === "goal" || toKind === "task")) {
+        if (parentDbId === null) return; // aspects can't convert to goal/task
+        const parentType = kindToParentType(parent!.kind);
+
+        if (toKind === "goal") {
+          const newGoal = await createGoal({ title, parent_type: parentType, parent_id: parentDbId });
+          for (const child of children) {
+            const childDbId = dbIdFromNodeId(child.id);
+            if (child.kind === "goal") {
+              await updateGoal(childDbId, { parent_type: "goal", parent_id: newGoal.id });
+            } else if (child.kind === "task") {
+              await updateTask(childDbId, { parent_type: "goal", parent_id: newGoal.id });
+            } else {
+              console.warn(`[arlesh] retypeNode: ${child.kind} child "${child.title}" orphaned`);
+            }
+          }
+        } else {
+          const newTask = await createTask({ title, parent_type: parentType, parent_id: parentDbId });
+          for (const child of children) {
+            const childDbId = dbIdFromNodeId(child.id);
+            if (child.kind === "task") {
+              await updateTask(childDbId, { parent_type: "task", parent_id: newTask.id });
+            } else {
+              console.warn(`[arlesh] retypeNode: ${child.kind} child "${child.title}" orphaned`);
+            }
+          }
+        }
+        await deleteDomain(dbId);
+        await load();
         return;
       }
+
+      if ((fromKind === "goal" || fromKind === "task") && domainTableKinds.has(toKind)) {
+        if (parentDbId === null) return;
+        const newDomain = await createDomain({
+          title, subtype: toKind, parent_id: parentDbId,
+          description: null, status: null, knowledge_base_directory: null,
+        });
+        for (const child of children) {
+          const childDbId = dbIdFromNodeId(child.id);
+          if (child.kind === "goal") {
+            await updateGoal(childDbId, { parent_type: "project", parent_id: newDomain.id });
+          } else if (child.kind === "task") {
+            await updateTask(childDbId, { parent_type: "project", parent_id: newDomain.id });
+          }
+        }
+        if (fromKind === "goal") await deleteGoal(dbId);
+        else await deleteTask(dbId);
+        await load();
+        return;
+      }
+
+      // goal↔task: requires cross-table migration with status mapping.
+      // Not yet implemented in Phase 2.
+      console.warn("[arlesh] retypeNode: goal↔task conversion not yet implemented");
     },
-    [load],
+    [load, tree],
+  );
+
+  const reorderNode = useCallback(
+    async (id: string, direction: 1 | -1): Promise<void> => {
+      const parent = findParentInTree(tree, id);
+      if (parent === undefined) return;
+
+      const siblings = parent.children;
+      const idx = siblings.findIndex((s) => s.id === id);
+      if (idx === -1) return;
+
+      const neighborIdx = idx + direction;
+      if (neighborIdx < 0 || neighborIdx >= siblings.length) return;
+
+      const node = siblings[idx]!;
+      const neighbor = siblings[neighborIdx]!;
+      const nodeDbId = dbIdFromNodeId(id);
+      const neighborDbId = dbIdFromNodeId(neighbor.id);
+      const nodePos = node.position;
+      const neighborPos = neighbor.position;
+
+      // Swap positions, dispatching to the correct table for each node.
+      const setPos = async (nId: number, kind: NodeKind, pos: number): Promise<void> => {
+        if (kind === "goal") await updateGoal(nId, { position: pos });
+        else if (kind === "task") await updateTask(nId, { position: pos });
+        else await updateDomain(nId, { position: pos });
+      };
+
+      await Promise.all([
+        setPos(nodeDbId, node.kind, neighborPos),
+        setPos(neighborDbId, neighbor.kind, nodePos),
+      ]);
+      await load();
+    },
+    [load, tree],
   );
 
   const moveNode = useCallback(
@@ -313,6 +426,7 @@ export function useMindmapData(): MindmapData {
     createChild,
     renameNode,
     retypeNode,
+    reorderNode,
     moveNode,
     removeNode,
     reload: load,

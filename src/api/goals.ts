@@ -9,6 +9,7 @@ export interface Goal {
   blocked_reason: string | null;
   scope_id: number | null;
   tag_ids: number[];
+  position: number;
 }
 
 export interface CreateGoalRequest {
@@ -26,6 +27,7 @@ export interface UpdateGoalRequest {
   scope_id?: number | null;
   parent_type?: string;
   parent_id?: number;
+  position?: number;
 }
 
 export async function listGoals(): Promise<Goal[]> {

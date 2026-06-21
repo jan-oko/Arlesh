@@ -17,7 +17,7 @@ import NodeEditorModal from "./NodeEditorModal";
 import styles from "./MindmapView.module.css";
 
 export default function MindmapView() {
-  const { tree, isLoading, error, createChild, renameNode, retypeNode, moveNode, removeNode, reload } =
+  const { tree, isLoading, error, createChild, renameNode, retypeNode, reorderNode, moveNode, removeNode, reload } =
     useMindmapData();
 
   const {
@@ -127,6 +127,8 @@ export default function MindmapView() {
           event.preventDefault();
           if (event.ctrlKey && selectedNodeId !== null) {
             cycleType(selectedNodeId, -1);
+          } else if (event.altKey && selectedNodeId !== null) {
+            void reorderNode(selectedNodeId, -1);
           } else {
             navigateArrow("ArrowUp");
           }
@@ -135,6 +137,8 @@ export default function MindmapView() {
           event.preventDefault();
           if (event.ctrlKey && selectedNodeId !== null) {
             cycleType(selectedNodeId, 1);
+          } else if (event.altKey && selectedNodeId !== null) {
+            void reorderNode(selectedNodeId, 1);
           } else {
             navigateArrow("ArrowDown");
           }
@@ -211,6 +215,7 @@ export default function MindmapView() {
       selectedNodeId,
       navigateArrow,
       cycleType,
+      reorderNode,
       findNodeById,
       createChild,
       removeNode,

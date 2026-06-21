@@ -8,6 +8,7 @@ export interface MindmapNode {
   title: string;
   status?: string;
   color?: string;
+  position: number;
   tagIds: number[];
   children: MindmapNode[];
 }
@@ -59,6 +60,7 @@ function layoutSubtree(
     id: "__virtual__",
     kind: "domain",
     title: "",
+    position: 0,
     tagIds: [],
     children,
   };

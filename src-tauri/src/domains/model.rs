@@ -67,6 +67,8 @@ pub struct Domain {
     pub status: Option<String>,
     /// Linked Obsidian directory (Projects only).
     pub knowledge_base_directory: Option<String>,
+    /// Sort position among siblings; defaults to id (insertion order).
+    pub position: i64,
 }
 
 /// Request body for creating a new domain.
@@ -101,4 +103,6 @@ pub struct UpdateDomainRequest {
     pub status: Option<ProjectStatus>,
     /// New Obsidian directory link (if provided).
     pub knowledge_base_directory: Option<String>,
+    /// New sort position among siblings (for sibling reordering).
+    pub position: Option<i64>,
 }

@@ -9,6 +9,7 @@ export interface Domain {
   color: string | null;
   status: string | null;
   knowledge_base_directory: string | null;
+  position: number;
 }
 
 export interface CreateDomainRequest {
@@ -27,6 +28,7 @@ export interface UpdateDomainRequest {
   subtype?: string;
   status?: string;
   knowledge_base_directory?: string;
+  position?: number;
 }
 
 export async function listDomains(subtype?: string): Promise<Domain[]> {

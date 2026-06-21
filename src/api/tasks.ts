@@ -10,6 +10,7 @@ export interface Task {
   delegate_to: number | null;
   scope_id: number | null;
   tag_ids: number[];
+  position: number;
 }
 
 export interface CreateTaskRequest {
@@ -28,6 +29,7 @@ export interface UpdateTaskRequest {
   scope_id?: number | null;
   parent_type?: string;
   parent_id?: number;
+  position?: number;
 }
 
 export async function listTasks(): Promise<Task[]> {

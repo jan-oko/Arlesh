@@ -112,6 +112,8 @@ pub struct Task {
     pub scope_id: Option<i64>,
     /// Tag domain ids attached to this task.
     pub tag_ids: Vec<i64>,
+    /// Sort position among siblings; defaults to id (insertion order).
+    pub position: i64,
 }
 
 /// A task row enriched with virtual block information.
@@ -142,6 +144,8 @@ pub struct Goal {
     pub scope_id: Option<i64>,
     /// Tag domain ids attached to this goal.
     pub tag_ids: Vec<i64>,
+    /// Sort position among siblings; defaults to id (insertion order).
+    pub position: i64,
 }
 
 /// Dependency reference: either a task or a goal.
@@ -192,6 +196,8 @@ pub struct UpdateTaskRequest {
     pub parent_type: Option<String>,
     /// New parent entity id for re-parenting (must be set together with parent_type).
     pub parent_id: Option<i64>,
+    /// New sort position among siblings (for sibling reordering).
+    pub position: Option<i64>,
 }
 
 /// Request body for creating a goal.
@@ -224,4 +230,6 @@ pub struct UpdateGoalRequest {
     pub parent_type: Option<String>,
     /// New parent entity id for re-parenting (must be set together with parent_type).
     pub parent_id: Option<i64>,
+    /// New sort position among siblings (for sibling reordering).
+    pub position: Option<i64>,
 }

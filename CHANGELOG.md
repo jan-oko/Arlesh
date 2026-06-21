@@ -18,7 +18,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
   - Ctrl+X/C/V keyboard shortcuts for cut/copy/paste as child
   - Double-click opens an editor modal for title and tag assignment
   - Drag-and-drop to re-parent nodes
-  - Ctrl+Up / Ctrl+Down to cycle node type contextually: domain/project/tag cycle among themselves; goal/task cycle between each other (blocked if parent is a task); crossing Goal↔Task shows a status-mapping toast
+  - Ctrl+Up / Ctrl+Down cycles node type; cycle is context-aware: under a domain/project/aspect parent the full set (domain → project → tag → goal → task) is available; under a goal only goal↔task; task under task cannot become a goal
+  - Cross-table type conversion (e.g. domain→goal, goal→domain): creates the new entity, re-parents compatible children, and deletes the old record
+  - Alt+Up / Alt+Down moves a node up or down among its siblings (swaps position values)
+  - Nodes now retain insertion order instead of being sorted alphabetically (`position` column added to domains, goals, and tasks; ORDER BY position)
   - Tag nodes now visible in the tree as leaf nodes (previously hidden); type cycling and Tab creation respect leaf-node constraint
   - Aspect color inherited by all descendant nodes with depth-faded opacity (vivid at depth 1, 15 % floor at depth 4+)
   - F2 to activate inline editing on the selected node

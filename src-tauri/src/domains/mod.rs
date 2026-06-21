@@ -42,6 +42,13 @@ impl<'a> DomainRepository<'a> {
         .await?
         .last_insert_rowid();
 
+        // Set position = id so new nodes sort after all existing siblings by default.
+        sqlx::query("UPDATE domains SET position = ? WHERE id = ?")
+            .bind(id)
+            .bind(id)
+            .execute(self.pool)
+            .await?;
+
         self.get(DomainId(id)).await
     }
 
@@ -59,14 +66,14 @@ impl<'a> DomainRepository<'a> {
         match subtype {
             Some(subtype_value) => {
                 sqlx::query_as::<_, Domain>(
-                    "SELECT * FROM domains WHERE subtype = ? ORDER BY title",
+                    "SELECT * FROM domains WHERE subtype = ? ORDER BY position ASC",
                 )
                 .bind(subtype_to_str(&subtype_value))
                 .fetch_all(self.pool)
                 .await
                 .map_err(Into::into)
             }
-            None => sqlx::query_as::<_, Domain>("SELECT * FROM domains ORDER BY title")
+            None => sqlx::query_as::<_, Domain>("SELECT * FROM domains ORDER BY position ASC")
                 .fetch_all(self.pool)
                 .await
                 .map_err(Into::into),
@@ -102,9 +109,10 @@ impl<'a> DomainRepository<'a> {
         let knowledge_base_directory = request
             .knowledge_base_directory
             .or(domain.knowledge_base_directory);
+        let position = request.position.unwrap_or(domain.position);
 
         sqlx::query(
-            "UPDATE domains SET title=?, description=?, subtype=?, parent_id=?, status=?, knowledge_base_directory=? WHERE id=?",
+            "UPDATE domains SET title=?, description=?, subtype=?, parent_id=?, status=?, knowledge_base_directory=?, position=? WHERE id=?",
         )
         .bind(&title)
         .bind(&description)
@@ -112,6 +120,7 @@ impl<'a> DomainRepository<'a> {
         .bind(parent_id)
         .bind(&status)
         .bind(&knowledge_base_directory)
+        .bind(position)
         .bind(id.0)
         .execute(self.pool)
         .await?;

@@ -39,23 +39,36 @@ export const NODE_LABEL: Record<NodeKind, string> = {
   tag: "Tag",
 };
 
+// All node types reachable from a domain-table parent (aspect/domain/project/tag).
+const DOMAIN_PARENT_CYCLE: NodeKind[] = ["domain", "project", "tag", "goal", "task"];
+
 /**
  * Returns which types Ctrl+Up/Down may cycle through for a given node.
- * Domain-table nodes (domain, project, tag) cycle among themselves.
- * Goal/task cycle between each other, except a task under a task cannot
- * become a goal ("goal child of task" is an invalid parent relationship).
+ *
+ * Under a domain/project/aspect/tag parent the full cycle is available since
+ * tasks and goals are valid children of those nodes.
+ * Under a goal parent only goal↔task is valid.
+ * A task under another task cannot become a goal (goals cannot be children of tasks).
  */
 export function validTypesForCycling(kind: NodeKind, parentKind: NodeKind | null): NodeKind[] {
-  if (kind === "domain" || kind === "project" || kind === "tag") {
-    return ["domain", "project", "tag"];
+  if (kind === "aspect") return [];
+
+  const hasDomainParent =
+    parentKind === "aspect" ||
+    parentKind === "domain" ||
+    parentKind === "project" ||
+    parentKind === "tag" ||
+    parentKind === null; // virtual root (shouldn't cycle, but safe)
+
+  if (hasDomainParent) {
+    return DOMAIN_PARENT_CYCLE;
   }
-  if (kind === "task" && parentKind === "task") {
-    return ["task"];
-  }
-  if (kind === "goal" || kind === "task") {
-    return ["goal", "task"];
-  }
-  return [];
+
+  // Under a task: goal child is invalid, so no cycling possible.
+  if (parentKind === "task") return ["task"];
+
+  // Under a goal: goal and task are both valid children.
+  return ["goal", "task"];
 }
 
 /** Returns true if the type transition crosses the Goal↔Task boundary. */
