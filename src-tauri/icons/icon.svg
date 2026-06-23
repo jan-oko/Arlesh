@@ -1,0 +1,20 @@
+<svg viewBox="170 76 340 340" xmlns="http://www.w3.org/2000/svg">
+  <!-- Row 7 bottom widest: Steel -->
+  <polygon points="340,256 492,274 492,292 340,274 188,292 188,274" fill="#95a5a6"/>
+  <!-- Row 6: Gray -->
+  <polygon points="340,232 470,250 470,268 340,250 210,268 210,250" fill="#7f8c8d"/>
+  <!-- Row 5: Red -->
+  <polygon points="340,208 448,226 448,244 340,226 232,244 232,226" fill="#c0392b"/>
+  <!-- Row 4: Purple -->
+  <polygon points="340,184 426,202 426,220 340,202 254,220 254,202" fill="#8e44ad"/>
+  <!-- Row 3: Green -->
+  <polygon points="340,160 404,178 404,196 340,178 276,196 276,178" fill="#27ae60"/>
+  <!-- Row 2: Blue -->
+  <polygon points="340,136 382,154 382,172 340,154 298,172 298,154" fill="#2980b9"/>
+  <!-- Row 1 top: Amber -->
+  <polygon points="340,112 360,130 360,148 340,130 320,148 320,130" fill="#d4a017"/>
+  <!-- Wordmark -->
+  <text x="340" y="346" text-anchor="middle"
+    font-family="sans-serif" font-size="48" font-weight="500" letter-spacing="12"
+    fill="#8a6400">ARLESH</text>
+</svg>

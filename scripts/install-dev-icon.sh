@@ -11,7 +11,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-ICON_PATH="$PROJECT_DIR/src-tauri/icons/128x128.png"
+ICON_PATH="$PROJECT_DIR/src-tauri/icons/icon.svg"
 DESKTOP_DIR="$HOME/.local/share/applications"
 DESKTOP_FILE="$DESKTOP_DIR/com.atai.arlesh.desktop"
 
