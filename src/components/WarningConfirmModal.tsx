@@ -22,7 +22,7 @@ export default function WarningConfirmModal({ heading, consequences, actions, on
           {consequences.map((c, i) => <li key={i}>{c}</li>)}
         </ul>
         <div className={styles.actions}>
-          <button className={styles.cancelBtn} onClick={onCancel}>Cancel</button>
+          <button autoFocus className={styles.cancelBtn} onClick={onCancel}>Cancel</button>
           {actions.map((action, i) => (
             <button
               key={i}

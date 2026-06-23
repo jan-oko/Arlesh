@@ -321,6 +321,7 @@ export function useMindmapData(): MindmapData {
       const parent = findParentInTree(tree, id);
       const title = node?.title ?? "";
       const children = node?.children ?? [];
+      const oldPosition = node?.position;
       const parentDbId = parent !== undefined && parent.id !== "root"
         ? dbIdFromNodeId(parent.id)
         : null;
@@ -331,6 +332,7 @@ export function useMindmapData(): MindmapData {
 
         if (toKind === "goal") {
           const newGoal = await createGoal({ title, parent_type: parentType, parent_id: parentDbId });
+          if (oldPosition !== undefined) await updateGoal(newGoal.id, { position: oldPosition });
           for (const child of children) {
             const childDbId = dbIdFromNodeId(child.id);
             if (child.kind === "goal") {
@@ -346,6 +348,7 @@ export function useMindmapData(): MindmapData {
           return `goal-${newGoal.id}`;
         } else {
           const newTask = await createTask({ title, parent_type: parentType, parent_id: parentDbId });
+          if (oldPosition !== undefined) await updateTask(newTask.id, { position: oldPosition });
           for (const child of children) {
             const childDbId = dbIdFromNodeId(child.id);
             if (child.kind === "task") {
@@ -366,6 +369,7 @@ export function useMindmapData(): MindmapData {
           title, subtype: toKind, parent_id: parentDbId,
           description: null, status: null, knowledge_base_directory: null,
         });
+        if (oldPosition !== undefined) await updateDomain(newDomain.id, { position: oldPosition });
         for (const child of children) {
           const childDbId = dbIdFromNodeId(child.id);
           if (child.kind === "goal") {
@@ -387,9 +391,10 @@ export function useMindmapData(): MindmapData {
         const mappedStatus = goalStatusToTaskStatus(node?.status ?? "active");
         const newTask = await createTask({ title, parent_type: parentType, parent_id: parentDbId, status: mappedStatus });
         const blockedReason = node?.blockedReason;
-        if (blockedReason != null && blockedReason !== "") {
-          await updateTask(newTask.id, { blocked_reason: blockedReason });
-        }
+        await updateTask(newTask.id, {
+          ...(oldPosition !== undefined ? { position: oldPosition } : {}),
+          ...(blockedReason != null && blockedReason !== "" ? { blocked_reason: blockedReason } : {}),
+        });
         for (const child of children) {
           const childDbId = dbIdFromNodeId(child.id);
           if (child.kind === "task") {
@@ -413,9 +418,10 @@ export function useMindmapData(): MindmapData {
         const mappedStatus = taskStatusToGoalStatus(node?.status ?? "todo");
         const newGoal = await createGoal({ title, parent_type: parentType, parent_id: parentDbId, status: mappedStatus });
         const blockedReason = node?.blockedReason;
-        if (blockedReason != null && blockedReason !== "") {
-          await updateGoal(newGoal.id, { blocked_reason: blockedReason });
-        }
+        await updateGoal(newGoal.id, {
+          ...(oldPosition !== undefined ? { position: oldPosition } : {}),
+          ...(blockedReason != null && blockedReason !== "" ? { blocked_reason: blockedReason } : {}),
+        });
         for (const child of children) {
           const childDbId = dbIdFromNodeId(child.id);
           if (child.kind === "task") {

@@ -200,6 +200,14 @@ export default function MindmapView() {
     (event: KeyboardEvent) => {
       if (editingNodeId !== null) return;
       if (editorModal !== null) return;
+      if (warningModal !== null) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          setWarningModal(null);
+        }
+        return;
+      }
 
       switch (event.key) {
         case "ArrowLeft":
@@ -299,6 +307,8 @@ export default function MindmapView() {
     [
       editingNodeId,
       editorModal,
+      warningModal,
+      setWarningModal,
       selectedNodeId,
       navigateArrow,
       cycleType,
