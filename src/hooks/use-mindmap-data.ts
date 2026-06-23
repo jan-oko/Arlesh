@@ -22,7 +22,7 @@ interface MindmapData {
   renameNode: (id: string, kind: NodeKind, title: string) => Promise<void>;
   retypeNode: (id: string, fromKind: NodeKind, toKind: NodeKind, options?: RetypeOptions) => Promise<string | null>;
   reorderNode: (id: string, direction: 1 | -1) => Promise<void>;
-  moveNode: (id: string, kind: NodeKind, newParentId: string, newParentKind: NodeKind) => Promise<void>;
+  moveNode: (id: string, kind: NodeKind, newParentId: string, newParentKind: NodeKind, position: number) => Promise<void>;
   removeNode: (id: string, kind: NodeKind) => Promise<void>;
   reload: () => Promise<void>;
 }
@@ -476,17 +476,17 @@ export function useMindmapData(): MindmapData {
   );
 
   const moveNode = useCallback(
-    async (id: string, kind: NodeKind, newParentId: string, newParentKind: NodeKind): Promise<void> => {
+    async (id: string, kind: NodeKind, newParentId: string, newParentKind: NodeKind, position: number): Promise<void> => {
       const dbId = dbIdFromNodeId(id);
       const dbParentId = dbIdFromNodeId(newParentId);
       const newParentType = kindToParentType(newParentKind);
       if (kind === "goal") {
-        await updateGoal(dbId, { parent_type: newParentType, parent_id: dbParentId });
+        await updateGoal(dbId, { parent_type: newParentType, parent_id: dbParentId, position });
       } else if (kind === "task") {
-        await updateTask(dbId, { parent_type: newParentType, parent_id: dbParentId });
+        await updateTask(dbId, { parent_type: newParentType, parent_id: dbParentId, position });
       } else {
         await import("@/api/domains").then(({ updateDomain }) =>
-          updateDomain(dbId, { parent_id: dbParentId }),
+          updateDomain(dbId, { parent_id: dbParentId, position }),
         );
       }
       await silentLoad();

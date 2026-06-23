@@ -155,7 +155,11 @@ export default function MindmapView() {
       const sourceSubtree = findNode(tree, gesture.nodeId);
       if (sourceSubtree !== undefined && findNode(sourceSubtree, targetId) !== undefined) return;
       if (!isValidDropTarget(source.kind, target.kind)) return;
-      void moveNode(gesture.nodeId, source.kind, targetId, target.kind);
+      const siblingPositions = target.children
+        .filter((c) => c.id !== gesture.nodeId)
+        .map((c) => c.position);
+      const lastPosition = siblingPositions.length > 0 ? Math.max(...siblingPositions) + 1 : 0;
+      void moveNode(gesture.nodeId, source.kind, targetId, target.kind, lastPosition);
     }
 
     window.addEventListener("mousemove", handleMouseMove);
@@ -216,7 +220,15 @@ export default function MindmapView() {
       .map((c) => positions.get(c.id)?.y)
       .filter((v): v is number => v !== undefined);
     const bottomY = yValues.length > 0 ? Math.max(...yValues) : targetPos.y;
-    return { x: childX, y: bottomY + VERTICAL_GAP, depth: childDepth };
+    // Shift the placeholder down enough that the topmost child of the dragged
+    // subtree clears the current bottom sibling by at least VERTICAL_GAP.
+    let topSpread = 0;
+    if (subtreeLayout !== null) {
+      for (const p of subtreeLayout.values()) {
+        if (p.y < 0) topSpread = Math.max(topSpread, -p.y);
+      }
+    }
+    return { x: childX, y: bottomY + VERTICAL_GAP + topSpread, depth: childDepth };
   })();
 
   const findNodeById = useCallback(
@@ -299,7 +311,11 @@ export default function MindmapView() {
       const sourceNode = findNodeById(clipboard.nodeId);
       const targetNode = findNodeById(targetId);
       if (sourceNode === undefined || targetNode === undefined) return;
-      void moveNode(clipboard.nodeId, sourceNode.kind, targetId, targetNode.kind).then(() => {
+      const pasteSiblingPositions = targetNode.children
+        .filter((c) => c.id !== clipboard.nodeId)
+        .map((c) => c.position);
+      const pastePosition = pasteSiblingPositions.length > 0 ? Math.max(...pasteSiblingPositions) + 1 : 0;
+      void moveNode(clipboard.nodeId, sourceNode.kind, targetId, targetNode.kind, pastePosition).then(() => {
         if (clipboard.operation === "cut") setClipboard(null);
       });
     },
