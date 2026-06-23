@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMindmapData } from "@/hooks/use-mindmap-data";
 import type { RetypeOptions } from "@/hooks/use-mindmap-data";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
-import { computeLayout, HORIZONTAL_GAP, VERTICAL_GAP } from "@/utils/tree-layout";
+import { computeLayout, computeSubtreeLayout, HORIZONTAL_GAP, VERTICAL_GAP } from "@/utils/tree-layout";
 import { validTypesForCycling, crossesGoalTaskBoundary, isValidDropTarget, getNodeSize } from "@/utils/node-meta";
 import { goalStatusToTaskStatus, taskStatusToGoalStatus } from "@/utils/status-mapping";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
@@ -171,10 +171,32 @@ export default function MindmapView() {
     [subtreeRootId, tree],
   );
 
-  const positions = useMemo(
-    () => computeLayout(displayRoot, collapsedNodeIds),
-    [displayRoot, collapsedNodeIds],
+  // During drag, treat the source node as collapsed so its children vanish from the live tree.
+  const effectiveCollapsedIds = useMemo<ReadonlySet<string>>(
+    () => {
+      if (dragSourceId === null) return collapsedNodeIds;
+      const s = new Set(collapsedNodeIds);
+      s.add(dragSourceId);
+      return s;
+    },
+    [collapsedNodeIds, dragSourceId],
   );
+
+  const positions = useMemo(
+    () => computeLayout(displayRoot, effectiveCollapsedIds),
+    [displayRoot, effectiveCollapsedIds],
+  );
+
+  // Layout the dragged subtree (all children) relative to its root at (0,0),
+  // all children forced to the same side as the drop target.
+  const subtreeLayout = useMemo(() => {
+    if (dragSourceId === null || dragTargetId === null) return null;
+    const sourceNode = findNode(tree, dragSourceId);
+    if (sourceNode === undefined || sourceNode.children.length === 0) return null;
+    const targetPos = positions.get(dragTargetId);
+    const direction: 1 | -1 = (targetPos?.x ?? 0) >= 0 ? 1 : -1;
+    return computeSubtreeLayout(sourceNode, collapsedNodeIds, direction);
+  }, [dragSourceId, dragTargetId, tree, collapsedNodeIds, positions]);
 
   // Compute where the dragged node would land as the last child of the drop target.
   const placeholderPos = (() => {
@@ -608,7 +630,7 @@ export default function MindmapView() {
     <div className={styles.container}>
       <MindmapCanvas
         root={displayRoot}
-        collapsedNodeIds={collapsedNodeIds}
+        collapsedNodeIds={effectiveCollapsedIds}
         selectedNodeId={selectedNodeId}
         editingNodeId={editingNodeId}
         dragTargetId={dragTargetId}
@@ -625,30 +647,60 @@ export default function MindmapView() {
             const midX = (fromX + toX) / 2;
             return `M ${fromX} ${fromPos.y} C ${midX} ${fromPos.y}, ${midX} ${placeholderPos.y}, ${toX} ${placeholderPos.y}`;
           })() : null;
+
+          // Collect child/grandchild nodes and internal edges for the subtree preview.
+          const subtreeNodes: Array<{ id: string; x: number; y: number; depthAbs: number }> = [];
+          const subtreeEdges: Array<{ key: string; fx: number; fy: number; fdepth: number; tx: number; ty: number; tdepth: number }> = [];
+          if (subtreeLayout !== null && dragSourceId !== null) {
+            const sourceNode = findNode(tree, dragSourceId);
+            if (sourceNode !== undefined) {
+              gatherSubtreeItems(
+                sourceNode, subtreeLayout, collapsedNodeIds,
+                placeholderPos.x, placeholderPos.y, placeholderPos.depth,
+                true, subtreeNodes, subtreeEdges,
+              );
+            }
+          }
+
           return (
             <g style={{ pointerEvents: "none" }}>
+              {/* Connector from drop-target to placeholder root */}
               {edgePath !== null && (
-                <path
-                  d={edgePath}
-                  stroke="var(--accent)"
-                  strokeWidth={1.5}
-                  strokeDasharray="5 3"
-                  fill="none"
-                  opacity={0.7}
-                />
+                <path d={edgePath} stroke="var(--accent)" strokeWidth={1.5} strokeDasharray="5 3" fill="none" opacity={0.7} />
               )}
+              {/* Placeholder rect for the dragged node itself */}
               <g transform={`translate(${placeholderPos.x - width / 2}, ${placeholderPos.y - height / 2})`}>
-                <rect
-                  width={width}
-                  height={height}
-                  rx={6}
-                  fill="var(--accent)"
-                  fillOpacity={0.1}
-                  stroke="var(--accent)"
-                  strokeWidth={2}
-                  strokeDasharray="6 3"
-                />
+                <rect width={width} height={height} rx={6} fill="var(--accent)" fillOpacity={0.1} stroke="var(--accent)" strokeWidth={2} strokeDasharray="6 3" />
               </g>
+              {/* Internal edges of the subtree */}
+              {subtreeEdges.map((edge) => {
+                const fromSize = getNodeSize(edge.fdepth);
+                const toSize = getNodeSize(edge.tdepth);
+                const goingRight = edge.tx >= edge.fx;
+                const ex = edge.fx + (goingRight ? fromSize.width / 2 : -fromSize.width / 2);
+                const ex2 = edge.tx + (goingRight ? -toSize.width / 2 : toSize.width / 2);
+                const emx = (ex + ex2) / 2;
+                return (
+                  <path
+                    key={edge.key}
+                    d={`M ${ex} ${edge.fy} C ${emx} ${edge.fy}, ${emx} ${edge.ty}, ${ex2} ${edge.ty}`}
+                    stroke="var(--accent)"
+                    strokeWidth={1}
+                    strokeDasharray="4 2"
+                    fill="none"
+                    opacity={0.55}
+                  />
+                );
+              })}
+              {/* Placeholder rects for each child/grandchild */}
+              {subtreeNodes.map((n) => {
+                const sz = getNodeSize(n.depthAbs);
+                return (
+                  <g key={n.id} transform={`translate(${n.x - sz.width / 2}, ${n.y - sz.height / 2})`}>
+                    <rect width={sz.width} height={sz.height} rx={6} fill="var(--accent)" fillOpacity={0.07} stroke="var(--accent)" strokeWidth={1.5} strokeDasharray="4 2" />
+                  </g>
+                );
+              })}
             </g>
           );
         })() : undefined}
@@ -764,6 +816,38 @@ function findNode(root: MindmapNode, id: string): MindmapNode | undefined {
     if (found !== undefined) return found;
   }
   return undefined;
+}
+
+/** Collects absolute positions + edge geometry for the drag placeholder subtree preview. */
+function gatherSubtreeItems(
+  node: MindmapNode,
+  layout: Map<string, import("@/utils/tree-layout").Position>,
+  collapsedIds: ReadonlySet<string>,
+  ox: number,
+  oy: number,
+  depthOffset: number,
+  isRoot: boolean,
+  nodes: Array<{ id: string; x: number; y: number; depthAbs: number }>,
+  edges: Array<{ key: string; fx: number; fy: number; fdepth: number; tx: number; ty: number; tdepth: number }>,
+): void {
+  const relPos = layout.get(node.id);
+  if (relPos === undefined) return;
+  const absX = ox + relPos.x;
+  const absY = oy + relPos.y;
+  const depthAbs = depthOffset + relPos.depth;
+  if (!isRoot) {
+    nodes.push({ id: node.id, x: absX, y: absY, depthAbs });
+  }
+  if (collapsedIds.has(node.id)) return;
+  for (const child of node.children) {
+    const childRel = layout.get(child.id);
+    if (childRel === undefined) continue;
+    const cx = ox + childRel.x;
+    const cy = oy + childRel.y;
+    const cd = depthOffset + childRel.depth;
+    edges.push({ key: `${node.id}-${child.id}`, fx: absX, fy: absY, fdepth: depthAbs, tx: cx, ty: cy, tdepth: cd });
+    gatherSubtreeItems(child, layout, collapsedIds, ox, oy, depthOffset, false, nodes, edges);
+  }
 }
 
 function findParent(root: MindmapNode, id: string): MindmapNode | null {

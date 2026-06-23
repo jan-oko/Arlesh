@@ -83,6 +83,23 @@ function layoutSubtree(
   });
 }
 
+/**
+ * Computes positions for a subtree rooted at `root`, placing it at (0, 0) and
+ * all descendants on the given side. Used to render the drag placeholder subtree.
+ */
+export function computeSubtreeLayout(
+  root: MindmapNode,
+  collapsedIds: ReadonlySet<string>,
+  direction: 1 | -1,
+): Map<string, Position> {
+  const positions = new Map<string, Position>();
+  positions.set(root.id, { x: 0, y: 0, depth: 0 });
+  if (!collapsedIds.has(root.id) && root.children.length > 0) {
+    layoutSubtree(root.children, collapsedIds, positions, direction);
+  }
+  return positions;
+}
+
 function pruneCollapsed(node: MindmapNode, collapsedIds: ReadonlySet<string>): MindmapNode {
   if (collapsedIds.has(node.id)) {
     return { ...node, children: [] };
