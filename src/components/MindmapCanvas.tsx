@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, type ReactNode } from "react";
 import { animated, to } from "@react-spring/web";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { usePanZoom } from "@/hooks/use-pan-zoom";
@@ -11,6 +11,8 @@ interface Props {
   selectedNodeId: string | null;
   editingNodeId: string | null;
   dragTargetId: string | null;
+  dragSourceId: string | null;
+  canvasOverlay?: ReactNode;
   hasClipboard: boolean;
   onSelect: (id: string | null) => void;
   onDoubleClick: (id: string) => void;
@@ -28,6 +30,8 @@ export default function MindmapCanvas({
   selectedNodeId,
   editingNodeId,
   dragTargetId,
+  dragSourceId,
+  canvasOverlay,
   hasClipboard,
   onSelect,
   onDoubleClick,
@@ -62,6 +66,7 @@ export default function MindmapCanvas({
           selectedNodeId={selectedNodeId}
           editingNodeId={editingNodeId}
           dragTargetId={dragTargetId}
+          dragSourceId={dragSourceId}
           hasClipboard={hasClipboard}
           onSelect={onSelect}
           onDoubleClick={onDoubleClick}
@@ -71,6 +76,7 @@ export default function MindmapCanvas({
           onDragStart={onDragStart}
           onStatusClick={onStatusClick}
         />
+        {canvasOverlay}
       </animated.g>
     </animated.svg>
   );

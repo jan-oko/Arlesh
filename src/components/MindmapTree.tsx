@@ -10,6 +10,7 @@ interface Props {
   selectedNodeId: string | null;
   editingNodeId: string | null;
   dragTargetId: string | null;
+  dragSourceId: string | null;
   hasClipboard: boolean;
   onSelect: (id: string | null) => void;
   onDoubleClick: (id: string) => void;
@@ -26,6 +27,7 @@ export default function MindmapTree({
   selectedNodeId,
   editingNodeId,
   dragTargetId,
+  dragSourceId,
   hasClipboard,
   onSelect,
   onDoubleClick,
@@ -72,6 +74,7 @@ export default function MindmapTree({
             isSelected={selectedNodeId === node.id}
             isCollapsed={collapsedNodeIds.has(node.id)}
             isDragTarget={dragTargetId === node.id}
+            isDragSource={dragSourceId === node.id}
             hasClipboard={hasClipboard}
             onSelect={onSelect}
             onDoubleClick={onDoubleClick}

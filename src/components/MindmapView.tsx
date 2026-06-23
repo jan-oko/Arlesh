@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMindmapData } from "@/hooks/use-mindmap-data";
 import type { RetypeOptions } from "@/hooks/use-mindmap-data";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
-import { computeLayout } from "@/utils/tree-layout";
-import { validTypesForCycling, crossesGoalTaskBoundary, isValidDropTarget } from "@/utils/node-meta";
+import { computeLayout, HORIZONTAL_GAP, VERTICAL_GAP } from "@/utils/tree-layout";
+import { validTypesForCycling, crossesGoalTaskBoundary, isValidDropTarget, getNodeSize } from "@/utils/node-meta";
 import { goalStatusToTaskStatus, taskStatusToGoalStatus } from "@/utils/status-mapping";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import type { ContextMenuAction } from "./NodeContextMenu";
@@ -18,6 +18,7 @@ import { addTagToGoal, removeTagFromGoal, updateGoal } from "@/api/goals";
 import { listDomains, updateDomain } from "@/api/domains";
 import type { Domain } from "@/api/domains";
 import MindmapCanvas from "./MindmapCanvas";
+import DragGhost from "./DragGhost";
 import SubtreeNavPill from "./SubtreeNavPill";
 import StatusToast from "./StatusToast";
 import TaskEditorModal from "./TaskEditorModal";
@@ -64,7 +65,9 @@ export default function MindmapView() {
   } = useMindmapStore();
 
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
+  const [dragSourceId, setDragSourceId] = useState<string | null>(null);
   const [dragTargetId, setDragTargetId] = useState<string | null>(null);
+  const [ghostPos, setGhostPos] = useState<{ x: number; y: number } | null>(null);
 
   const dragGestureRef = useRef<{
     nodeId: string;
@@ -110,8 +113,11 @@ export default function MindmapView() {
       if (!gesture.committed) {
         if (Math.hypot(e.clientX - gesture.startX, e.clientY - gesture.startY) < DRAG_THRESHOLD) return;
         gesture.committed = true;
+        setDragSourceId(gesture.nodeId);
         document.body.style.cursor = "grabbing";
       }
+
+      setGhostPos({ x: e.clientX, y: e.clientY });
 
       const targetId = nodeIdAtPoint(e.clientX, e.clientY);
       if (targetId === null || targetId === gesture.nodeId) {
@@ -134,11 +140,13 @@ export default function MindmapView() {
       if (gesture === null) return;
       dragGestureRef.current = null;
       document.body.style.cursor = "";
+      setDragSourceId(null);
+      setGhostPos(null);
+      setDragTargetId(null);
 
       if (!gesture.committed) return;
 
       const targetId = nodeIdAtPoint(e.clientX, e.clientY);
-      setDragTargetId(null);
 
       if (targetId === null || targetId === gesture.nodeId) return;
       const source = findNode(tree, gesture.nodeId);
@@ -158,11 +166,36 @@ export default function MindmapView() {
     };
   }, [tree, moveNode]);
 
-  const displayRoot: MindmapNode = subtreeRootId !== null
-    ? (findNode(tree, subtreeRootId) ?? tree)
-    : tree;
+  const displayRoot = useMemo<MindmapNode>(
+    () => (subtreeRootId !== null ? (findNode(tree, subtreeRootId) ?? tree) : tree),
+    [subtreeRootId, tree],
+  );
 
-  const positions = computeLayout(displayRoot, collapsedNodeIds);
+  const positions = useMemo(
+    () => computeLayout(displayRoot, collapsedNodeIds),
+    [displayRoot, collapsedNodeIds],
+  );
+
+  // Compute where the dragged node would land as the last child of the drop target.
+  const placeholderPos = (() => {
+    if (dragTargetId === null || dragSourceId === null) return null;
+    const targetPos = positions.get(dragTargetId);
+    if (targetPos === undefined) return null;
+    const direction: 1 | -1 = targetPos.x >= 0 ? 1 : -1;
+    const childX = targetPos.x + direction * HORIZONTAL_GAP;
+    const childDepth = targetPos.depth + 1;
+    const targetNode = findNode(tree, dragTargetId);
+    if (targetNode === undefined) return { x: childX, y: targetPos.y, depth: childDepth };
+    const visibleChildren = targetNode.children.filter(
+      (c) => !collapsedNodeIds.has(c.id) && c.id !== dragSourceId,
+    );
+    if (visibleChildren.length === 0) return { x: childX, y: targetPos.y, depth: childDepth };
+    const yValues = visibleChildren
+      .map((c) => positions.get(c.id)?.y)
+      .filter((v): v is number => v !== undefined);
+    const bottomY = yValues.length > 0 ? Math.max(...yValues) : targetPos.y;
+    return { x: childX, y: bottomY + VERTICAL_GAP, depth: childDepth };
+  })();
 
   const findNodeById = useCallback(
     (id: string): MindmapNode | undefined => findNode(tree, id),
@@ -579,7 +612,28 @@ export default function MindmapView() {
         selectedNodeId={selectedNodeId}
         editingNodeId={editingNodeId}
         dragTargetId={dragTargetId}
+        dragSourceId={dragSourceId}
         hasClipboard={clipboard !== null}
+        canvasOverlay={placeholderPos !== null ? (() => {
+          const { width, height } = getNodeSize(placeholderPos.depth);
+          return (
+            <g
+              style={{ pointerEvents: "none" }}
+              transform={`translate(${placeholderPos.x - width / 2}, ${placeholderPos.y - height / 2})`}
+            >
+              <rect
+                width={width}
+                height={height}
+                rx={6}
+                fill="var(--accent)"
+                fillOpacity={0.1}
+                stroke="var(--accent)"
+                strokeWidth={2}
+                strokeDasharray="6 3"
+              />
+            </g>
+          );
+        })() : undefined}
         onSelect={selectNode}
         onDoubleClick={handleDoubleClick}
         onCommitEdit={handleCommitEdit}
@@ -658,6 +712,13 @@ export default function MindmapView() {
           onCancel={() => setWarningModal(null)}
         />
       )}
+
+      {dragSourceId !== null && ghostPos !== null && (() => {
+        const sourceNode = findNode(tree, dragSourceId);
+        if (sourceNode === undefined) return null;
+        const depth = positions.get(dragSourceId)?.depth ?? 0;
+        return <DragGhost node={sourceNode} depth={depth} x={ghostPos.x} y={ghostPos.y} />;
+      })()}
     </div>
   );
 }

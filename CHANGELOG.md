@@ -10,6 +10,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 - Drag-and-drop to re-parent nodes: drag any non-aspect node onto a valid parent and release to move it; valid drop targets highlight in the accent colour; invalid targets (e.g. dropping a goal onto a task, or a node onto one of its own descendants) are silently rejected
+- Drag ghost: while dragging, the source node is hidden and a semi-transparent copy follows the cursor; a dashed outline placeholder appears at the predicted landing position under the hovered parent
 
 ### Fixed
 - Drag-and-drop now works in Tauri/WebKit: replaced the HTML5 drag API (unreliable on SVG elements in WebKitGTK) with mouse-event drag-and-drop using `onMouseDown` + global `mousemove`/`mouseup` and `document.elementsFromPoint` for hit-testing

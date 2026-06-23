@@ -11,6 +11,7 @@ interface Props {
   isSelected: boolean;
   isCollapsed: boolean;
   isDragTarget: boolean;
+  isDragSource?: boolean;
   hasClipboard: boolean;
   onSelect: (id: string) => void;
   onDoubleClick: (id: string) => void;
@@ -28,6 +29,7 @@ export default function MindmapNode({
   isSelected,
   isCollapsed,
   isDragTarget,
+  isDragSource,
   hasClipboard,
   onSelect,
   onDoubleClick,
@@ -144,7 +146,11 @@ export default function MindmapNode({
       onDoubleClick={handleDoubleClick}
       onContextMenu={handleContextMenu}
       onMouseDown={handleMouseDown}
-      style={{ cursor: "pointer" }}
+      style={{
+        cursor: "pointer",
+        opacity: isDragSource === true ? 0 : undefined,
+        pointerEvents: isDragSource === true ? "none" : undefined,
+      }}
     >
       <rect
         width={width}

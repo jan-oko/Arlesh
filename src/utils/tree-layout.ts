@@ -21,8 +21,8 @@ export interface Position {
   depth: number;
 }
 
-const HORIZONTAL_GAP = 220;
-const VERTICAL_GAP = 60;
+export const HORIZONTAL_GAP = 220;
+export const VERTICAL_GAP = 60;
 
 /**
  * Computes pixel positions for every visible node in a left-right balanced mind map.
