@@ -50,13 +50,20 @@ pub fn run() {
             app.manage(pool);
 
             if let Some(window) = app.get_webview_window("main") {
-                let icon = app.default_window_icon().cloned().unwrap_or_else(|| {
-                    tauri::image::Image::new_owned(
-                        EMBEDDED_ICON.to_vec(),
-                        128,
-                        128,
-                    )
-                });
+                let icon = match app.default_window_icon().cloned() {
+                    Some(icon) => icon,
+                    None => {
+                        let mut decoder = png::Decoder::new(EMBEDDED_ICON);
+                        decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::ALPHA);
+                        let mut reader = decoder.read_info()
+                            .map_err(|e| anyhow::anyhow!("icon decode error: {e}"))?;
+                        let mut buf = vec![0u8; reader.output_buffer_size()];
+                        let info = reader.next_frame(&mut buf)
+                            .map_err(|e| anyhow::anyhow!("icon frame error: {e}"))?;
+                        let rgba = buf[..info.buffer_size()].to_vec();
+                        tauri::image::Image::new_owned(rgba, info.width, info.height)
+                    }
+                };
                 window.set_icon(icon)?;
             }
 
