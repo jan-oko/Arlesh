@@ -169,10 +169,18 @@ function buildTree(domains: Domain[], goals: Goal[], tasks: Task[]): MindmapNode
     }
   }
 
+  // Sort each parent's children by position so mixed-type siblings
+  // (e.g. goals and tasks under the same project) respect insertion order
+  // rather than being grouped by entity type.
+  for (const node of nodeMap.values()) {
+    node.children.sort((a, b) => a.position - b.position);
+  }
+
   const aspectNodes = domains
     .filter((d) => d.subtype === "aspect")
     .map((d) => nodeMap.get(`domain-${d.id}`)!)
-    .filter((n) => n !== undefined);
+    .filter((n) => n !== undefined)
+    .sort((a, b) => a.position - b.position);
 
   const root = { ...VIRTUAL_ROOT, children: aspectNodes };
   propagateAspectColor(root, undefined);

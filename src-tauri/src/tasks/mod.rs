@@ -4,6 +4,7 @@ pub mod error;
 pub mod model;
 
 use std::collections::{HashSet, VecDeque};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::database::DatabasePool;
 use error::TaskError;
@@ -123,8 +124,12 @@ impl<'a> GoalRepository<'a> {
         .execute(self.pool)
         .await?
         .last_insert_rowid();
+        let position = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
         sqlx::query("UPDATE goals SET position = ? WHERE id = ?")
-            .bind(id)
+            .bind(position)
             .bind(id)
             .execute(self.pool)
             .await?;
@@ -268,8 +273,12 @@ impl<'a> TaskRepository<'a> {
         .execute(self.pool)
         .await?
         .last_insert_rowid();
+        let position = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
         sqlx::query("UPDATE tasks SET position = ? WHERE id = ?")
-            .bind(id)
+            .bind(position)
             .bind(id)
             .execute(self.pool)
             .await?;

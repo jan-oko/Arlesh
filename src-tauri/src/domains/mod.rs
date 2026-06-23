@@ -3,6 +3,8 @@
 pub mod error;
 pub mod model;
 
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use crate::database::DatabasePool;
 use error::DomainError;
 use model::{CreateDomainRequest, Domain, DomainId, DomainSubtype, UpdateDomainRequest};
@@ -42,9 +44,12 @@ impl<'a> DomainRepository<'a> {
         .await?
         .last_insert_rowid();
 
-        // Set position = id so new nodes sort after all existing siblings by default.
+        let position = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
         sqlx::query("UPDATE domains SET position = ? WHERE id = ?")
-            .bind(id)
+            .bind(position)
             .bind(id)
             .execute(self.pool)
             .await?;
