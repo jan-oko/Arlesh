@@ -46,6 +46,13 @@ pub fn run() {
             .expect("database setup failed");
 
             app.manage(pool);
+
+            if let Some(icon) = app.default_window_icon().cloned() {
+                if let Some(window) = app.get_webview_window("main") {
+                    window.set_icon(icon)?;
+                }
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
