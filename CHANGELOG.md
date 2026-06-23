@@ -8,6 +8,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- Alt+Up / Alt+Down no longer causes a white flash and pan/zoom reset: mutations now refresh the tree silently without triggering the loading spinner, so the canvas stays mounted
+
 ### Added
 - Mindmap view: SVG mind map editor with a left-right balanced tree layout
   - All Domains, Projects, Goals, and Tasks displayed as a unified tree rooted at the six Aspects

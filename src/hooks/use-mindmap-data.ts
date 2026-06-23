@@ -209,6 +209,22 @@ export function useMindmapData(): MindmapData {
     }
   }, []);
 
+  // Refreshes the tree in-place without the loading spinner — used for mutations
+  // so the canvas stays mounted and pan/zoom state is preserved.
+  const silentLoad = useCallback(async () => {
+    setError(null);
+    try {
+      const [domains, goals, tasks] = await Promise.all([
+        listDomains(),
+        listGoals(),
+        listTasks(),
+      ]);
+      setTree(buildTree(domains, goals, tasks));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }, []);
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
@@ -237,7 +253,7 @@ export function useMindmapData(): MindmapData {
           tagIds: [],
           children: [],
         };
-        await load();
+        await silentLoad();
         return newNode;
       }
 
@@ -252,7 +268,7 @@ export function useMindmapData(): MindmapData {
           tagIds: [],
           children: [],
         };
-        await load();
+        await silentLoad();
         return newNode;
       }
 
@@ -267,10 +283,10 @@ export function useMindmapData(): MindmapData {
         tagIds: [],
         children: [],
       };
-      await load();
+      await silentLoad();
       return newNode;
     },
-    [load],
+    [silentLoad],
   );
 
   const renameNode = useCallback(
@@ -283,9 +299,9 @@ export function useMindmapData(): MindmapData {
       } else {
         await import("@/api/domains").then(({ updateDomain }) => updateDomain(dbId, { title }));
       }
-      await load();
+      await silentLoad();
     },
-    [load],
+    [silentLoad],
   );
 
   const retypeNode = useCallback(
@@ -296,7 +312,7 @@ export function useMindmapData(): MindmapData {
       // Same-table conversion: node ID is unchanged.
       if (domainTableKinds.has(fromKind) && domainTableKinds.has(toKind)) {
         await updateDomain(dbId, { subtype: toKind });
-        await load();
+        await silentLoad();
         return null;
       }
 
@@ -326,7 +342,7 @@ export function useMindmapData(): MindmapData {
             }
           }
           await deleteDomain(dbId);
-          await load();
+          await silentLoad();
           return `goal-${newGoal.id}`;
         } else {
           const newTask = await createTask({ title, parent_type: parentType, parent_id: parentDbId });
@@ -339,7 +355,7 @@ export function useMindmapData(): MindmapData {
             }
           }
           await deleteDomain(dbId);
-          await load();
+          await silentLoad();
           return `task-${newTask.id}`;
         }
       }
@@ -360,7 +376,7 @@ export function useMindmapData(): MindmapData {
         }
         if (fromKind === "goal") await deleteGoal(dbId);
         else await deleteTask(dbId);
-        await load();
+        await silentLoad();
         return `domain-${newDomain.id}`;
       }
 
@@ -387,7 +403,7 @@ export function useMindmapData(): MindmapData {
           }
         }
         await deleteGoal(dbId);
-        await load();
+        await silentLoad();
         return `task-${newTask.id}`;
       }
 
@@ -409,13 +425,13 @@ export function useMindmapData(): MindmapData {
           }
         }
         await deleteTask(dbId);
-        await load();
+        await silentLoad();
         return `goal-${newGoal.id}`;
       }
 
       return null;
     },
-    [load, tree],
+    [silentLoad, tree],
   );
 
   const reorderNode = useCallback(
@@ -448,9 +464,9 @@ export function useMindmapData(): MindmapData {
         setPos(nodeDbId, node.kind, neighborPos),
         setPos(neighborDbId, neighbor.kind, nodePos),
       ]);
-      await load();
+      await silentLoad();
     },
-    [load, tree],
+    [silentLoad, tree],
   );
 
   const moveNode = useCallback(
@@ -467,9 +483,9 @@ export function useMindmapData(): MindmapData {
           updateDomain(dbId, { parent_id: dbParentId }),
         );
       }
-      await load();
+      await silentLoad();
     },
-    [load],
+    [silentLoad],
   );
 
   const removeNode = useCallback(
@@ -482,9 +498,9 @@ export function useMindmapData(): MindmapData {
       } else {
         await import("@/api/domains").then(({ deleteDomain }) => deleteDomain(dbId));
       }
-      await load();
+      await silentLoad();
     },
-    [load],
+    [silentLoad],
   );
 
   return {
@@ -497,6 +513,6 @@ export function useMindmapData(): MindmapData {
     reorderNode,
     moveNode,
     removeNode,
-    reload: load,
+    reload: silentLoad,
   };
 }
