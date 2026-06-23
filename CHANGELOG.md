@@ -12,6 +12,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Alt+Up / Alt+Down no longer causes a white flash and pan/zoom reset: mutations now refresh the tree silently without triggering the loading spinner, so the canvas stays mounted
 - Changing node type (Ctrl+Arrow) no longer moves the node to the bottom of its siblings: the new entity now inherits the old entity's position value instead of receiving a fresh epoch-ms timestamp
 - Warning confirmation modal now receives keyboard focus when opened (cancel button auto-focused); Escape dismisses it and all other mindmap shortcuts are blocked while it is visible
+- goal↔task type conversion no longer shows a warning for task children: task nodes are valid under both goals and tasks, so only goal children (which cannot live under a task) and a present block reason trigger the confirmation modal
 
 ### Added
 - Mindmap view: SVG mind map editor with a left-right balanced tree layout

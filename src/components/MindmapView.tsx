@@ -142,10 +142,9 @@ export default function MindmapView() {
         showToast({ nodeId, message: `Status: ${node.status ?? "—"} → ${newStatus}` });
 
         const hasGoalChildren = node.kind === "goal" && node.children.some((c) => c.kind === "goal");
-        const hasAnyChildren = node.children.length > 0;
         const hasBlockedReason = node.blockedReason != null && node.blockedReason !== "";
 
-        if (hasGoalChildren || hasAnyChildren || hasBlockedReason) {
+        if (hasGoalChildren || hasBlockedReason) {
           const consequences: string[] = [];
           if (hasBlockedReason) {
             const reason = node.blockedReason ?? "";
@@ -155,9 +154,6 @@ export default function MindmapView() {
           if (hasGoalChildren) {
             const count = node.children.filter((c) => c.kind === "goal").length;
             consequences.push(`${count} sub-goal${count > 1 ? "s" : ""} cannot live under a task — choose what happens to them`);
-          } else if (hasAnyChildren) {
-            const count = node.children.length;
-            consequences.push(`${count} child${count > 1 ? "ren" : ""} will re-parent to the new ${newKind}`);
           }
           setWarningModal({ nodeId, fromKind: node.kind, toKind: newKind, heading: `Convert to ${newKind}?`, consequences, hasGoalChildren });
           return;
