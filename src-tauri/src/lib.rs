@@ -2,6 +2,8 @@
 #![deny(missing_docs)]
 //! Arlesh — task management and knowledge-base desktop app.
 
+const EMBEDDED_ICON: &[u8] = include_bytes!("../icons/128x128.png");
+
 pub mod commands;
 pub mod database;
 pub mod domains;
@@ -47,10 +49,15 @@ pub fn run() {
 
             app.manage(pool);
 
-            if let Some(icon) = app.default_window_icon().cloned() {
-                if let Some(window) = app.get_webview_window("main") {
-                    window.set_icon(icon)?;
-                }
+            if let Some(window) = app.get_webview_window("main") {
+                let icon = app.default_window_icon().cloned().unwrap_or_else(|| {
+                    tauri::image::Image::new_owned(
+                        EMBEDDED_ICON.to_vec(),
+                        128,
+                        128,
+                    )
+                });
+                window.set_icon(icon)?;
             }
 
             Ok(())
