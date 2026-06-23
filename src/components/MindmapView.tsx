@@ -3,7 +3,7 @@ import { useMindmapData } from "@/hooks/use-mindmap-data";
 import type { RetypeOptions } from "@/hooks/use-mindmap-data";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { computeLayout } from "@/utils/tree-layout";
-import { validTypesForCycling, crossesGoalTaskBoundary } from "@/utils/node-meta";
+import { validTypesForCycling, crossesGoalTaskBoundary, isValidDropTarget } from "@/utils/node-meta";
 import { goalStatusToTaskStatus, taskStatusToGoalStatus } from "@/utils/status-mapping";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import type { ContextMenuAction } from "./NodeContextMenu";
@@ -490,13 +490,50 @@ export default function MindmapView() {
       const source = findNodeById(dragSourceId);
       const target = findNodeById(targetId);
       if (source === undefined || target === undefined) return;
-      if (target.kind === "aspect" || target.kind === "task" || target.kind === "tag") return;
+      const sourceSubtree = findNode(tree, dragSourceId);
+      if (sourceSubtree !== undefined && findNode(sourceSubtree, targetId) !== undefined) return;
+      if (!isValidDropTarget(source.kind, target.kind)) return;
       void moveNode(dragSourceId, source.kind, targetId, target.kind);
       setDragSourceId(null);
       setDragTargetId(null);
     },
-    [dragSourceId, findNodeById, moveNode],
+    [dragSourceId, findNodeById, tree, moveNode],
   );
+
+  const handleDragEnter = useCallback(
+    (targetId: string) => {
+      if (dragSourceId === null || dragSourceId === targetId) {
+        setDragTargetId(null);
+        return;
+      }
+      const source = findNodeById(dragSourceId);
+      const target = findNodeById(targetId);
+      if (source === undefined || target === undefined) {
+        setDragTargetId(null);
+        return;
+      }
+      const sourceSubtree = findNode(tree, dragSourceId);
+      const targetIsDescendant = sourceSubtree !== undefined && findNode(sourceSubtree, targetId) !== undefined;
+      if (targetIsDescendant || !isValidDropTarget(source.kind, target.kind)) {
+        setDragTargetId(null);
+        return;
+      }
+      setDragTargetId(targetId);
+    },
+    [dragSourceId, findNodeById, tree],
+  );
+
+  const handleDragLeave = useCallback(
+    (targetId: string) => {
+      setDragTargetId((current) => (current === targetId ? null : current));
+    },
+    [],
+  );
+
+  const handleDragEnd = useCallback(() => {
+    setDragSourceId(null);
+    setDragTargetId(null);
+  }, []);
 
   const subtreeParent = subtreeRootId !== null ? findParent(tree, subtreeRootId) : null;
   const toastPosition = pendingToast !== null ? positions.get(pendingToast.nodeId) : undefined;
@@ -532,6 +569,9 @@ export default function MindmapView() {
           setDragSourceId(id);
           setDragTargetId(null);
         }}
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragEnd={handleDragEnd}
         onDrop={handleDrop}
         onCanvasClick={() => selectNode(null)}
         onStatusClick={handleStatusClick}

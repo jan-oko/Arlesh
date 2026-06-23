@@ -18,6 +18,9 @@ interface Props {
   onCancelEdit: () => void;
   onContextAction: (nodeId: string, action: ContextMenuAction) => void;
   onDragStart: (id: string) => void;
+  onDragEnter: (id: string) => void;
+  onDragLeave: (id: string) => void;
+  onDragEnd: () => void;
   onDrop: (targetId: string) => void;
   onCanvasClick: () => void;
   onStatusClick: (id: string) => void;
@@ -36,6 +39,9 @@ export default function MindmapCanvas({
   onCancelEdit,
   onContextAction,
   onDragStart,
+  onDragEnter,
+  onDragLeave,
+  onDragEnd,
   onDrop,
   onCanvasClick,
   onStatusClick,
@@ -71,6 +77,9 @@ export default function MindmapCanvas({
           onCancelEdit={onCancelEdit}
           onContextAction={onContextAction}
           onDragStart={onDragStart}
+          onDragEnter={onDragEnter}
+          onDragLeave={onDragLeave}
+          onDragEnd={onDragEnd}
           onDrop={onDrop}
           onStatusClick={onStatusClick}
         />

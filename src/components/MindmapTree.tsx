@@ -17,6 +17,9 @@ interface Props {
   onCancelEdit: () => void;
   onContextAction: (nodeId: string, action: ContextMenuAction) => void;
   onDragStart: (id: string) => void;
+  onDragEnter: (id: string) => void;
+  onDragLeave: (id: string) => void;
+  onDragEnd: () => void;
   onDrop: (targetId: string) => void;
   onStatusClick: (id: string) => void;
 }
@@ -34,6 +37,9 @@ export default function MindmapTree({
   onCancelEdit,
   onContextAction,
   onDragStart,
+  onDragEnter,
+  onDragLeave,
+  onDragEnd,
   onDrop,
   onStatusClick,
 }: Props) {
@@ -82,6 +88,9 @@ export default function MindmapTree({
             isEditing={editingNodeId === node.id}
             onContextAction={onContextAction}
             onDragStart={onDragStart}
+            onDragEnter={onDragEnter}
+            onDragLeave={onDragLeave}
+            onDragEnd={onDragEnd}
             onDrop={onDrop}
             onStatusClick={onStatusClick}
           />

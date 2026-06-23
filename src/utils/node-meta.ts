@@ -76,3 +76,24 @@ export function crossesGoalTaskBoundary(from: NodeKind, to: NodeKind): boolean {
   const goalTask = new Set<NodeKind>(["goal", "task"]);
   return goalTask.has(from) && goalTask.has(to);
 }
+
+/**
+ * Returns true if `sourceKind` is a valid child of `targetKind`.
+ *
+ * Parent rules:
+ *   aspect / domain / project  → domain, project, tag, goal, task children
+ *   goal                       → goal, task children
+ *   task                       → task children only
+ *   tag                        → no children (leaf)
+ *   aspect                     → cannot be moved (immutable)
+ */
+export function isValidDropTarget(sourceKind: NodeKind, targetKind: NodeKind): boolean {
+  if (sourceKind === "aspect") return false;
+  if (targetKind === "tag") return false;
+  if (sourceKind === "project") return targetKind === "aspect" || targetKind === "project";
+  if (sourceKind === "domain") return targetKind === "aspect" || targetKind === "domain" || targetKind === "project";
+  if (sourceKind === "tag") return targetKind === "aspect" || targetKind === "domain" || targetKind === "project";
+  if (sourceKind === "goal") return targetKind !== "task";
+  // task: valid under aspect, domain, project, goal, or task
+  return true;
+}
