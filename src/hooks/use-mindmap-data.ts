@@ -6,6 +6,13 @@ import type { Domain } from "@/api/domains";
 import type { Task } from "@/api/tasks";
 import type { Goal } from "@/api/goals";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
+import { goalStatusToTaskStatus, taskStatusToGoalStatus } from "@/utils/status-mapping";
+
+export type GoalChildrenAction = "remove" | "reparent";
+
+export interface RetypeOptions {
+  goalChildrenAction?: GoalChildrenAction;
+}
 
 interface MindmapData {
   tree: MindmapNode;
@@ -13,7 +20,7 @@ interface MindmapData {
   error: string | null;
   createChild: (parentId: string, parentKind: NodeKind, title: string) => Promise<MindmapNode>;
   renameNode: (id: string, kind: NodeKind, title: string) => Promise<void>;
-  retypeNode: (id: string, fromKind: NodeKind, toKind: NodeKind) => Promise<void>;
+  retypeNode: (id: string, fromKind: NodeKind, toKind: NodeKind, options?: RetypeOptions) => Promise<void>;
   reorderNode: (id: string, direction: 1 | -1) => Promise<void>;
   moveNode: (id: string, kind: NodeKind, newParentId: string, newParentKind: NodeKind) => Promise<void>;
   removeNode: (id: string, kind: NodeKind) => Promise<void>;
@@ -274,7 +281,7 @@ export function useMindmapData(): MindmapData {
   );
 
   const retypeNode = useCallback(
-    async (id: string, fromKind: NodeKind, toKind: NodeKind): Promise<void> => {
+    async (id: string, fromKind: NodeKind, toKind: NodeKind, options?: RetypeOptions): Promise<void> => {
       const dbId = dbIdFromNodeId(id);
       const domainTableKinds = new Set<NodeKind>(["domain", "project", "tag"]);
 
@@ -346,9 +353,54 @@ export function useMindmapData(): MindmapData {
         return;
       }
 
-      // goal↔task: requires cross-table migration with status mapping.
-      // Not yet implemented in Phase 2.
-      console.warn("[arlesh] retypeNode: goal↔task conversion not yet implemented");
+      // goal↔task cross-table conversion with status mapping.
+      if (fromKind === "goal" && toKind === "task") {
+        if (parentDbId === null) return;
+        const parentType = kindToParentType(parent!.kind);
+        const mappedStatus = goalStatusToTaskStatus(node?.status ?? "active");
+        const newTask = await createTask({ title, parent_type: parentType, parent_id: parentDbId, status: mappedStatus });
+        const blockedReason = node?.blockedReason;
+        if (blockedReason != null && blockedReason !== "") {
+          await updateTask(newTask.id, { blocked_reason: blockedReason });
+        }
+        for (const child of children) {
+          const childDbId = dbIdFromNodeId(child.id);
+          if (child.kind === "task") {
+            await updateTask(childDbId, { parent_type: "task", parent_id: newTask.id });
+          } else if (child.kind === "goal") {
+            if (options?.goalChildrenAction === "reparent") {
+              await updateGoal(childDbId, { parent_type: parentType, parent_id: parentDbId });
+            } else {
+              await deleteGoal(childDbId);
+            }
+          }
+        }
+        await deleteGoal(dbId);
+        await load();
+        return;
+      }
+
+      if (fromKind === "task" && toKind === "goal") {
+        if (parentDbId === null) return;
+        const parentType = kindToParentType(parent!.kind);
+        const mappedStatus = taskStatusToGoalStatus(node?.status ?? "todo");
+        const newGoal = await createGoal({ title, parent_type: parentType, parent_id: parentDbId, status: mappedStatus });
+        const blockedReason = node?.blockedReason;
+        if (blockedReason != null && blockedReason !== "") {
+          await updateGoal(newGoal.id, { blocked_reason: blockedReason });
+        }
+        for (const child of children) {
+          const childDbId = dbIdFromNodeId(child.id);
+          if (child.kind === "task") {
+            await updateTask(childDbId, { parent_type: "goal", parent_id: newGoal.id });
+          } else if (child.kind === "goal") {
+            await updateGoal(childDbId, { parent_type: parentType, parent_id: parentDbId });
+          }
+        }
+        await deleteTask(dbId);
+        await load();
+        return;
+      }
     },
     [load, tree],
   );

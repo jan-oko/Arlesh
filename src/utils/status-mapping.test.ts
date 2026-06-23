@@ -31,4 +31,8 @@ describe("taskStatusToGoalStatus", () => {
   it("maps done to achieved", () => {
     expect(taskStatusToGoalStatus("done")).toBe("achieved");
   });
+
+  it("maps blocked to frozen", () => {
+    expect(taskStatusToGoalStatus("blocked")).toBe("frozen");
+  });
 });

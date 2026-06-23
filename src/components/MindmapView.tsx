@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMindmapData } from "@/hooks/use-mindmap-data";
+import type { RetypeOptions } from "@/hooks/use-mindmap-data";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { computeLayout } from "@/utils/tree-layout";
 import { validTypesForCycling, crossesGoalTaskBoundary } from "@/utils/node-meta";
 import { goalStatusToTaskStatus, taskStatusToGoalStatus } from "@/utils/status-mapping";
-import type { MindmapNode } from "@/utils/tree-layout";
+import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import type { ContextMenuAction } from "./NodeContextMenu";
 import {
   addTagToTask,
@@ -27,6 +28,8 @@ import DomainEditorModal from "./DomainEditorModal";
 import ProjectEditorModal from "./ProjectEditorModal";
 import type { ProjectSaveData } from "./ProjectEditorModal";
 import TagEditorModal from "./TagEditorModal";
+import WarningConfirmModal from "./WarningConfirmModal";
+import type { WarningAction } from "./WarningConfirmModal";
 import styles from "./MindmapView.module.css";
 
 function nextTaskStatus(current: string): "todo" | "in_progress" | "done" {
@@ -65,6 +68,14 @@ export default function MindmapView() {
   const [dragTargetId, setDragTargetId] = useState<string | null>(null);
   const [editorModal, setEditorModal] = useState<{ nodeId: string; node: MindmapNode } | null>(null);
   const [allTags, setAllTags] = useState<Domain[]>([]);
+  const [warningModal, setWarningModal] = useState<{
+    nodeId: string;
+    fromKind: NodeKind;
+    toKind: NodeKind;
+    heading: string;
+    consequences: string[];
+    hasGoalChildren: boolean;
+  } | null>(null);
 
   useEffect(() => {
     void listDomains("tag").then(setAllTags);
@@ -96,6 +107,15 @@ export default function MindmapView() {
     [selectedNodeId, positions, selectNode],
   );
 
+  const confirmRetype = useCallback(
+    (options?: RetypeOptions) => {
+      if (warningModal === null) return;
+      void retypeNode(warningModal.nodeId, warningModal.fromKind, warningModal.toKind, options);
+      setWarningModal(null);
+    },
+    [warningModal, retypeNode],
+  );
+
   const cycleType = useCallback(
     (nodeId: string, direction: 1 | -1) => {
       const node = findNodeById(nodeId);
@@ -117,6 +137,28 @@ export default function MindmapView() {
             ? goalStatusToTaskStatus(node.status ?? "active")
             : taskStatusToGoalStatus(node.status ?? "todo");
         showToast({ nodeId, message: `Status: ${node.status ?? "—"} → ${newStatus}` });
+
+        const hasGoalChildren = node.kind === "goal" && node.children.some((c) => c.kind === "goal");
+        const hasAnyChildren = node.children.length > 0;
+        const hasBlockedReason = node.blockedReason != null && node.blockedReason !== "";
+
+        if (hasGoalChildren || hasAnyChildren || hasBlockedReason) {
+          const consequences: string[] = [];
+          if (hasBlockedReason) {
+            const reason = node.blockedReason ?? "";
+            const preview = reason.length > 40 ? `${reason.slice(0, 40)}…` : reason;
+            consequences.push(`Block reason will carry over: "${preview}"`);
+          }
+          if (hasGoalChildren) {
+            const count = node.children.filter((c) => c.kind === "goal").length;
+            consequences.push(`${count} sub-goal${count > 1 ? "s" : ""} cannot live under a task — choose what happens to them`);
+          } else if (hasAnyChildren) {
+            const count = node.children.length;
+            consequences.push(`${count} child${count > 1 ? "ren" : ""} will re-parent to the new ${newKind}`);
+          }
+          setWarningModal({ nodeId, fromKind: node.kind, toKind: newKind, heading: `Convert to ${newKind}?`, consequences, hasGoalChildren });
+          return;
+        }
       }
 
       void retypeNode(nodeId, node.kind, newKind);
@@ -540,8 +582,33 @@ export default function MindmapView() {
           onClose={() => setEditorModal(null)}
         />
       )}
+
+      {warningModal !== null && (
+        <WarningConfirmModal
+          heading={warningModal.heading}
+          consequences={warningModal.consequences}
+          actions={buildRetypeActions(warningModal.hasGoalChildren, warningModal.toKind, confirmRetype)}
+          onCancel={() => setWarningModal(null)}
+        />
+      )}
     </div>
   );
+}
+
+function buildRetypeActions(
+  hasGoalChildren: boolean,
+  toKind: NodeKind,
+  confirm: (options?: RetypeOptions) => void,
+): WarningAction[] {
+  if (hasGoalChildren) {
+    return [
+      { label: "Re-parent sub-goals", variant: "primary", onClick: () => { confirm({ goalChildrenAction: "reparent" }); } },
+      { label: "Delete sub-goals", variant: "danger", onClick: () => { confirm({ goalChildrenAction: "remove" }); } },
+    ];
+  }
+  return [
+    { label: `Convert to ${toKind}`, variant: "primary", onClick: () => { confirm(); } },
+  ];
 }
 
 function findNode(root: MindmapNode, id: string): MindmapNode | undefined {
