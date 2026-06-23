@@ -110,10 +110,13 @@ export default function MindmapView() {
   const confirmRetype = useCallback(
     (options?: RetypeOptions) => {
       if (warningModal === null) return;
-      void retypeNode(warningModal.nodeId, warningModal.fromKind, warningModal.toKind, options);
+      const { nodeId, fromKind, toKind } = warningModal;
       setWarningModal(null);
+      void retypeNode(nodeId, fromKind, toKind, options).then((newId) => {
+        selectNode(newId ?? nodeId);
+      });
     },
-    [warningModal, retypeNode],
+    [warningModal, retypeNode, selectNode],
   );
 
   const cycleType = useCallback(
@@ -161,9 +164,11 @@ export default function MindmapView() {
         }
       }
 
-      void retypeNode(nodeId, node.kind, newKind);
+      void retypeNode(nodeId, node.kind, newKind).then((newId) => {
+        selectNode(newId ?? nodeId);
+      });
     },
-    [findNodeById, tree, showToast, retypeNode],
+    [findNodeById, tree, showToast, retypeNode, selectNode],
   );
 
   const pasteClipboard = useCallback(
@@ -241,6 +246,7 @@ export default function MindmapView() {
             (async () => {
               try {
                 const newNode = await createChild(selectedNodeId!, tabNode.kind, "");
+                selectNode(newNode.id);
                 setEditingNodeId(newNode.id);
               } catch (err) {
                 console.error("[arlesh] Tab createChild failed:", err);

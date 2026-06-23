@@ -20,7 +20,7 @@ interface MindmapData {
   error: string | null;
   createChild: (parentId: string, parentKind: NodeKind, title: string) => Promise<MindmapNode>;
   renameNode: (id: string, kind: NodeKind, title: string) => Promise<void>;
-  retypeNode: (id: string, fromKind: NodeKind, toKind: NodeKind, options?: RetypeOptions) => Promise<void>;
+  retypeNode: (id: string, fromKind: NodeKind, toKind: NodeKind, options?: RetypeOptions) => Promise<string | null>;
   reorderNode: (id: string, direction: 1 | -1) => Promise<void>;
   moveNode: (id: string, kind: NodeKind, newParentId: string, newParentKind: NodeKind) => Promise<void>;
   removeNode: (id: string, kind: NodeKind) => Promise<void>;
@@ -281,15 +281,15 @@ export function useMindmapData(): MindmapData {
   );
 
   const retypeNode = useCallback(
-    async (id: string, fromKind: NodeKind, toKind: NodeKind, options?: RetypeOptions): Promise<void> => {
+    async (id: string, fromKind: NodeKind, toKind: NodeKind, options?: RetypeOptions): Promise<string | null> => {
       const dbId = dbIdFromNodeId(id);
       const domainTableKinds = new Set<NodeKind>(["domain", "project", "tag"]);
 
-      // Same-table conversion: just update the subtype column.
+      // Same-table conversion: node ID is unchanged.
       if (domainTableKinds.has(fromKind) && domainTableKinds.has(toKind)) {
         await updateDomain(dbId, { subtype: toKind });
         await load();
-        return;
+        return null;
       }
 
       // Cross-table conversions: create new entity, re-parent compatible children, delete old.
@@ -302,7 +302,7 @@ export function useMindmapData(): MindmapData {
         : null;
 
       if (domainTableKinds.has(fromKind) && (toKind === "goal" || toKind === "task")) {
-        if (parentDbId === null) return; // aspects can't convert to goal/task
+        if (parentDbId === null) return null; // aspects can't convert to goal/task
         const parentType = kindToParentType(parent!.kind);
 
         if (toKind === "goal") {
@@ -317,6 +317,9 @@ export function useMindmapData(): MindmapData {
               console.warn(`[arlesh] retypeNode: ${child.kind} child "${child.title}" orphaned`);
             }
           }
+          await deleteDomain(dbId);
+          await load();
+          return `goal-${newGoal.id}`;
         } else {
           const newTask = await createTask({ title, parent_type: parentType, parent_id: parentDbId });
           for (const child of children) {
@@ -327,14 +330,14 @@ export function useMindmapData(): MindmapData {
               console.warn(`[arlesh] retypeNode: ${child.kind} child "${child.title}" orphaned`);
             }
           }
+          await deleteDomain(dbId);
+          await load();
+          return `task-${newTask.id}`;
         }
-        await deleteDomain(dbId);
-        await load();
-        return;
       }
 
       if ((fromKind === "goal" || fromKind === "task") && domainTableKinds.has(toKind)) {
-        if (parentDbId === null) return;
+        if (parentDbId === null) return null;
         const newDomain = await createDomain({
           title, subtype: toKind, parent_id: parentDbId,
           description: null, status: null, knowledge_base_directory: null,
@@ -350,12 +353,12 @@ export function useMindmapData(): MindmapData {
         if (fromKind === "goal") await deleteGoal(dbId);
         else await deleteTask(dbId);
         await load();
-        return;
+        return `domain-${newDomain.id}`;
       }
 
       // goal↔task cross-table conversion with status mapping.
       if (fromKind === "goal" && toKind === "task") {
-        if (parentDbId === null) return;
+        if (parentDbId === null) return null;
         const parentType = kindToParentType(parent!.kind);
         const mappedStatus = goalStatusToTaskStatus(node?.status ?? "active");
         const newTask = await createTask({ title, parent_type: parentType, parent_id: parentDbId, status: mappedStatus });
@@ -377,11 +380,11 @@ export function useMindmapData(): MindmapData {
         }
         await deleteGoal(dbId);
         await load();
-        return;
+        return `task-${newTask.id}`;
       }
 
       if (fromKind === "task" && toKind === "goal") {
-        if (parentDbId === null) return;
+        if (parentDbId === null) return null;
         const parentType = kindToParentType(parent!.kind);
         const mappedStatus = taskStatusToGoalStatus(node?.status ?? "todo");
         const newGoal = await createGoal({ title, parent_type: parentType, parent_id: parentDbId, status: mappedStatus });
@@ -399,8 +402,10 @@ export function useMindmapData(): MindmapData {
         }
         await deleteTask(dbId);
         await load();
-        return;
+        return `goal-${newGoal.id}`;
       }
+
+      return null;
     },
     [load, tree],
   );
