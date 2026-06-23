@@ -18,11 +18,7 @@ interface Props {
   onCancelEdit: () => void;
   isEditing: boolean;
   onContextAction: (nodeId: string, action: ContextMenuAction) => void;
-  onDragStart: (id: string) => void;
-  onDragEnter: (id: string) => void;
-  onDragLeave: (id: string) => void;
-  onDragEnd: () => void;
-  onDrop: (targetId: string) => void;
+  onDragStart: (id: string, startX: number, startY: number) => void;
   onStatusClick?: (id: string) => void;
 }
 
@@ -40,15 +36,10 @@ export default function MindmapNode({
   isEditing,
   onContextAction,
   onDragStart,
-  onDragEnter,
-  onDragLeave,
-  onDragEnd,
-  onDrop,
   onStatusClick,
 }: Props) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const groupRef = useRef<SVGGElement>(null);
 
   const { width, height, fontSize, iconWidth, maxChars } = getNodeSize(position.depth);
   const iconR = (iconWidth - 8) / 2;
@@ -107,35 +98,12 @@ export default function MindmapNode({
     [node.id, onCommitEdit, onCancelEdit],
   );
 
-  const handleDragOver = useCallback((event: React.DragEvent) => {
-    event.preventDefault();
-  }, []);
-
-  const handleDragEnter = useCallback(
-    (event: React.DragEvent) => {
-      event.preventDefault();
-      onDragEnter(node.id);
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      if (e.button !== 0 || node.kind === "aspect") return;
+      onDragStart(node.id, e.clientX, e.clientY);
     },
-    [node.id, onDragEnter],
-  );
-
-  const handleDragLeave = useCallback(
-    (event: React.DragEvent) => {
-      // Only fire when the pointer genuinely leaves this group, not when it
-      // enters a child element (rect, text, etc.) within the same group.
-      if (groupRef.current !== null && !groupRef.current.contains(event.relatedTarget as Node)) {
-        onDragLeave(node.id);
-      }
-    },
-    [node.id, onDragLeave],
-  );
-
-  const handleDrop = useCallback(
-    (event: React.DragEvent) => {
-      event.preventDefault();
-      onDrop(node.id);
-    },
-    [node.id, onDrop],
+    [node.id, node.kind, onDragStart],
   );
 
   const handleStatusIconClick = useCallback(
@@ -168,20 +136,14 @@ export default function MindmapNode({
 
   return (
     <g
-      ref={groupRef}
+      data-node-id={node.id}
       transform={`translate(${position.x - width / 2}, ${position.y - height / 2})`}
       role="treeitem"
       aria-selected={isSelected}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       onContextMenu={handleContextMenu}
-      onDragStart={() => onDragStart(node.id)}
-      onDragEnter={handleDragEnter}
-      onDragLeave={handleDragLeave}
-      onDragOver={handleDragOver}
-      onDragEnd={onDragEnd}
-      onDrop={handleDrop}
-      draggable={node.kind !== "aspect"}
+      onMouseDown={handleMouseDown}
       style={{ cursor: "pointer" }}
     >
       <rect

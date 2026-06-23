@@ -12,6 +12,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Drag-and-drop to re-parent nodes: drag any non-aspect node onto a valid parent and release to move it; valid drop targets highlight in the accent colour; invalid targets (e.g. dropping a goal onto a task, or a node onto one of its own descendants) are silently rejected
 
 ### Fixed
+- Drag-and-drop now works in Tauri/WebKit: replaced the HTML5 drag API (unreliable on SVG elements in WebKitGTK) with mouse-event drag-and-drop using `onMouseDown` + global `mousemove`/`mouseup` and `document.elementsFromPoint` for hit-testing
+
+### Fixed
 - Alt+Up / Alt+Down no longer causes a white flash and pan/zoom reset: mutations now refresh the tree silently without triggering the loading spinner, so the canvas stays mounted
 - Changing node type (Ctrl+Arrow) no longer moves the node to the bottom of its siblings: the new entity now inherits the old entity's position value instead of receiving a fresh epoch-ms timestamp
 - Warning confirmation modal now receives keyboard focus when opened (cancel button auto-focused); Escape dismisses it and all other mindmap shortcuts are blocked while it is visible
