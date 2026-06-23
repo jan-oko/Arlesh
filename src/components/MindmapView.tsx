@@ -72,10 +72,6 @@ export default function MindmapView() {
     startY: number;
     committed: boolean;
   } | null>(null);
-
-  // Stable ref so the drag effect never re-registers on tree changes.
-  const treeRef = useRef(tree);
-  treeRef.current = tree;
   const [editorModal, setEditorModal] = useState<{ nodeId: string; node: MindmapNode } | null>(null);
   const [allTags, setAllTags] = useState<Domain[]>([]);
   const [warningModal, setWarningModal] = useState<{
@@ -123,14 +119,13 @@ export default function MindmapView() {
         setDragTargetId(null);
         return;
       }
-      const currentTree = treeRef.current;
-      const source = findNode(currentTree, gesture.nodeId);
-      const target = findNode(currentTree, targetId);
+      const source = findNode(tree, gesture.nodeId);
+      const target = findNode(tree, targetId);
       if (source === undefined || target === undefined) {
         setDragTargetId(null);
         return;
       }
-      const sourceSubtree = findNode(currentTree, gesture.nodeId);
+      const sourceSubtree = findNode(tree, gesture.nodeId);
       const isDescendant = sourceSubtree !== undefined && findNode(sourceSubtree, targetId) !== undefined;
       setDragTargetId(!isDescendant && isValidDropTarget(source.kind, target.kind) ? targetId : null);
     }
@@ -147,11 +142,10 @@ export default function MindmapView() {
       setDragTargetId(null);
 
       if (targetId === null || targetId === gesture.nodeId) return;
-      const currentTree = treeRef.current;
-      const source = findNode(currentTree, gesture.nodeId);
-      const target = findNode(currentTree, targetId);
+      const source = findNode(tree, gesture.nodeId);
+      const target = findNode(tree, targetId);
       if (source === undefined || target === undefined) return;
-      const sourceSubtree = findNode(currentTree, gesture.nodeId);
+      const sourceSubtree = findNode(tree, gesture.nodeId);
       if (sourceSubtree !== undefined && findNode(sourceSubtree, targetId) !== undefined) return;
       if (!isValidDropTarget(source.kind, target.kind)) return;
       void moveNode(gesture.nodeId, source.kind, targetId, target.kind);
@@ -163,7 +157,7 @@ export default function MindmapView() {
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [moveNode]);
+  }, [tree, moveNode]);
 
   const displayRoot: MindmapNode = subtreeRootId !== null
     ? (findNode(tree, subtreeRootId) ?? tree)
