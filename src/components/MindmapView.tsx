@@ -614,23 +614,41 @@ export default function MindmapView() {
         dragTargetId={dragTargetId}
         dragSourceId={dragSourceId}
         hasClipboard={clipboard !== null}
-        canvasOverlay={placeholderPos !== null ? (() => {
+        canvasOverlay={placeholderPos !== null && dragTargetId !== null ? (() => {
+          const fromPos = positions.get(dragTargetId);
           const { width, height } = getNodeSize(placeholderPos.depth);
+          const edgePath = fromPos !== undefined ? (() => {
+            const fromSize = getNodeSize(fromPos.depth);
+            const goingRight = placeholderPos.x >= fromPos.x;
+            const fromX = fromPos.x + (goingRight ? fromSize.width / 2 : -fromSize.width / 2);
+            const toX = placeholderPos.x + (goingRight ? -width / 2 : width / 2);
+            const midX = (fromX + toX) / 2;
+            return `M ${fromX} ${fromPos.y} C ${midX} ${fromPos.y}, ${midX} ${placeholderPos.y}, ${toX} ${placeholderPos.y}`;
+          })() : null;
           return (
-            <g
-              style={{ pointerEvents: "none" }}
-              transform={`translate(${placeholderPos.x - width / 2}, ${placeholderPos.y - height / 2})`}
-            >
-              <rect
-                width={width}
-                height={height}
-                rx={6}
-                fill="var(--accent)"
-                fillOpacity={0.1}
-                stroke="var(--accent)"
-                strokeWidth={2}
-                strokeDasharray="6 3"
-              />
+            <g style={{ pointerEvents: "none" }}>
+              {edgePath !== null && (
+                <path
+                  d={edgePath}
+                  stroke="var(--accent)"
+                  strokeWidth={1.5}
+                  strokeDasharray="5 3"
+                  fill="none"
+                  opacity={0.7}
+                />
+              )}
+              <g transform={`translate(${placeholderPos.x - width / 2}, ${placeholderPos.y - height / 2})`}>
+                <rect
+                  width={width}
+                  height={height}
+                  rx={6}
+                  fill="var(--accent)"
+                  fillOpacity={0.1}
+                  stroke="var(--accent)"
+                  strokeWidth={2}
+                  strokeDasharray="6 3"
+                />
+              </g>
             </g>
           );
         })() : undefined}
