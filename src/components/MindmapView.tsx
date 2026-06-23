@@ -97,11 +97,10 @@ export default function MindmapView() {
     const DRAG_THRESHOLD = 4;
 
     function nodeIdAtPoint(x: number, y: number): string | null {
-      for (const el of document.elementsFromPoint(x, y)) {
-        const id = el.getAttribute("data-node-id");
-        if (id !== null) return id;
-      }
-      return null;
+      // elementFromPoint returns the topmost visual leaf (e.g. <rect>, <text>).
+      // closest() then walks up the DOM to find the <g data-node-id="..."> ancestor.
+      const el = document.elementFromPoint(x, y);
+      return el?.closest("[data-node-id]")?.getAttribute("data-node-id") ?? null;
     }
 
     function handleMouseMove(e: MouseEvent) {
