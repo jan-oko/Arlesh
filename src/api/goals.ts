@@ -30,6 +30,10 @@ export interface UpdateGoalRequest {
   position?: number;
 }
 
+export async function getGoal(id: number): Promise<Goal> {
+  return invoke<Goal>("get_goal", { id });
+}
+
 export async function listGoals(): Promise<Goal[]> {
   return invoke<Goal[]>("list_goals");
 }

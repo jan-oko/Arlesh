@@ -28,6 +28,16 @@ Versions follow [Semantic Versioning](https://semver.org/).
   - Enter subtree mode via context menu; subtree navigation pill in top-left; Esc to go up, Shift+Esc to return to root
   - Ctrl+/ to collapse/expand a subtree; Delete key to delete a node
   - Depth-based node scaling (root largest, stabilises at depth 4)
+- Per-type editor modals (Task, Goal, Domain, Project, Tag) — each with entity-specific fields
+  - Task modal: title, status pills (todo / in progress / done), block reason textarea, tag checkboxes, dependency search/add/remove
+  - Goal modal: title, status pills (active / achieved / frozen / archived), block reason textarea, tag checkboxes
+  - Domain and Tag modals: title only
+  - Project modal: title, status pills, knowledge base directory path
+  - Error messages surface inside the modal instead of being silently swallowed
+- SVG node icons replacing emoji: diamond (domain), flag (project), bullseye (goal), price-tag (tag), status-based circles (task: empty/filled/checkmark for todo/in_progress/done, red octagon for blocked)
+- Clicking the icon area of a task node cycles its status (todo → in_progress → done → todo); blocked tasks show a stop sign that is not clickable
+- App icon generated from the Arlesh logo SVG (32 × 32, 128 × 128, 128 × 128@2x, .icns, .ico)
+- `list_task_dependencies` Tauri command (was missing despite the repository method existing)
 - ESLint configured (flat config v9+) with typescript-eslint, react-hooks, and react-refresh plugins
 - Phase 1 data layer: SQLite schema, sqlx migrations, domain-first Rust module structure
 - `domains` module: CRUD for Aspects (seeded, immutable), Projects, Domains, Tags with parent/subtype validation

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMindmapData } from "@/hooks/use-mindmap-data";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { computeLayout } from "@/utils/tree-layout";
@@ -6,15 +6,39 @@ import { validTypesForCycling, crossesGoalTaskBoundary } from "@/utils/node-meta
 import { goalStatusToTaskStatus, taskStatusToGoalStatus } from "@/utils/status-mapping";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { ContextMenuAction } from "./NodeContextMenu";
-import { addTagToTask, removeTagFromTask } from "@/api/tasks";
-import { addTagToGoal, removeTagFromGoal } from "@/api/goals";
-import { listDomains } from "@/api/domains";
+import {
+  addTagToTask,
+  removeTagFromTask,
+  updateTask,
+  addTaskDependency,
+  removeTaskDependency,
+} from "@/api/tasks";
+import { addTagToGoal, removeTagFromGoal, updateGoal } from "@/api/goals";
+import { listDomains, updateDomain } from "@/api/domains";
 import type { Domain } from "@/api/domains";
 import MindmapCanvas from "./MindmapCanvas";
 import SubtreeNavPill from "./SubtreeNavPill";
 import StatusToast from "./StatusToast";
-import NodeEditorModal from "./NodeEditorModal";
+import TaskEditorModal from "./TaskEditorModal";
+import type { TaskSaveData } from "./TaskEditorModal";
+import GoalEditorModal from "./GoalEditorModal";
+import type { GoalSaveData } from "./GoalEditorModal";
+import DomainEditorModal from "./DomainEditorModal";
+import ProjectEditorModal from "./ProjectEditorModal";
+import type { ProjectSaveData } from "./ProjectEditorModal";
+import TagEditorModal from "./TagEditorModal";
 import styles from "./MindmapView.module.css";
+
+function nextTaskStatus(current: string): "todo" | "in_progress" | "done" {
+  if (current === "in_progress") return "done";
+  if (current === "done") return "todo";
+  return "in_progress";
+}
+
+function collectTasksAndGoals(node: MindmapNode, acc: MindmapNode[]): void {
+  if (node.kind === "task" || node.kind === "goal") acc.push(node);
+  for (const child of node.children) collectTasksAndGoals(child, acc);
+}
 
 export default function MindmapView() {
   const { tree, isLoading, error, createChild, renameNode, retypeNode, reorderNode, moveNode, removeNode, reload } =
@@ -46,6 +70,12 @@ export default function MindmapView() {
     void listDomains("tag").then(setAllTags);
   }, []);
 
+  const allTasksAndGoals = useMemo(() => {
+    const acc: MindmapNode[] = [];
+    collectTasksAndGoals(tree, acc);
+    return acc;
+  }, [tree]);
+
   const displayRoot: MindmapNode = subtreeRootId !== null
     ? (findNode(tree, subtreeRootId) ?? tree)
     : tree;
@@ -66,7 +96,6 @@ export default function MindmapView() {
     [selectedNodeId, positions, selectNode],
   );
 
-  // Must be defined before handleKeyDown which references it
   const cycleType = useCallback(
     (nodeId: string, direction: 1 | -1) => {
       const node = findNodeById(nodeId);
@@ -95,7 +124,6 @@ export default function MindmapView() {
     [findNodeById, tree, showToast, retypeNode],
   );
 
-  // Must be defined before handleKeyDown which references it
   const pasteClipboard = useCallback(
     (targetId: string) => {
       if (clipboard === null) return;
@@ -107,6 +135,18 @@ export default function MindmapView() {
       });
     },
     [clipboard, findNodeById, moveNode, setClipboard],
+  );
+
+  const handleStatusClick = useCallback(
+    (nodeId: string) => {
+      const node = findNodeById(nodeId);
+      if (node === undefined || node.kind !== "task") return;
+      const dbId = parseInt(nodeId.split("-").pop() ?? "0", 10);
+      void updateTask(dbId, { status: nextTaskStatus(node.status ?? "todo") })
+        .then(() => reload())
+        .catch((err: unknown) => console.error("[arlesh] status cycle failed:", err));
+    },
+    [findNodeById, reload],
   );
 
   const handleKeyDown = useCallback(
@@ -155,7 +195,6 @@ export default function MindmapView() {
         case "Tab": {
           event.preventDefault();
           const tabNode = selectedNodeId !== null ? findNodeById(selectedNodeId) : undefined;
-          // Tags are leaf nodes; aspects and virtual root are excluded.
           if (tabNode !== undefined && tabNode.id.includes("-") && tabNode.kind !== "tag") {
             (async () => {
               try {
@@ -230,8 +269,6 @@ export default function MindmapView() {
   );
 
   useEffect(() => {
-    // capture:true intercepts Tab before WebKit's focus-management runs,
-    // which means event.preventDefault() actually cancels the Tab shift.
     window.addEventListener("keydown", handleKeyDown, { capture: true });
     return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
   }, [handleKeyDown]);
@@ -304,31 +341,79 @@ export default function MindmapView() {
     [findNodeById],
   );
 
-  const handleEditorSave = useCallback(
-    async (title: string, newTagIds: number[]) => {
+  const handleTaskSave = useCallback(
+    async (data: TaskSaveData) => {
       if (editorModal === null) return;
       const { nodeId, node } = editorModal;
       const dbId = parseInt(nodeId.split("-").pop() ?? "0", 10);
-      const isTask = node.kind === "task";
-      const isGoal = node.kind === "goal";
 
-      await renameNode(nodeId, node.kind, title);
+      await updateTask(dbId, {
+        title: data.title,
+        status: data.status,
+        blocked_reason: data.blockedReason,
+      });
 
-      const added = newTagIds.filter((id) => !node.tagIds.includes(id));
-      const removed = node.tagIds.filter((id) => !newTagIds.includes(id));
-      for (const tagId of added) {
-        if (isTask) await addTagToTask(dbId, tagId);
-        else if (isGoal) await addTagToGoal(dbId, tagId);
-      }
-      for (const tagId of removed) {
-        if (isTask) await removeTagFromTask(dbId, tagId);
-        else if (isGoal) await removeTagFromGoal(dbId, tagId);
-      }
+      const tagsAdded = data.tagIds.filter((id) => !node.tagIds.includes(id));
+      const tagsRemoved = node.tagIds.filter((id) => !data.tagIds.includes(id));
+      for (const tagId of tagsAdded) await addTagToTask(dbId, tagId);
+      for (const tagId of tagsRemoved) await removeTagFromTask(dbId, tagId);
+
+      for (const dep of data.addedDeps) await addTaskDependency(dbId, dep);
+      for (const dep of data.removedDeps) await removeTaskDependency(dbId, dep);
 
       await reload();
       setEditorModal(null);
     },
-    [editorModal, renameNode, reload],
+    [editorModal, reload],
+  );
+
+  const handleGoalSave = useCallback(
+    async (data: GoalSaveData) => {
+      if (editorModal === null) return;
+      const { nodeId, node } = editorModal;
+      const dbId = parseInt(nodeId.split("-").pop() ?? "0", 10);
+
+      await updateGoal(dbId, {
+        title: data.title,
+        status: data.status,
+        blocked_reason: data.blockedReason,
+      });
+
+      const tagsAdded = data.tagIds.filter((id) => !node.tagIds.includes(id));
+      const tagsRemoved = node.tagIds.filter((id) => !data.tagIds.includes(id));
+      for (const tagId of tagsAdded) await addTagToGoal(dbId, tagId);
+      for (const tagId of tagsRemoved) await removeTagFromGoal(dbId, tagId);
+
+      await reload();
+      setEditorModal(null);
+    },
+    [editorModal, reload],
+  );
+
+  const handleSimpleSave = useCallback(
+    async (title: string) => {
+      if (editorModal === null) return;
+      const { nodeId, node } = editorModal;
+      await renameNode(nodeId, node.kind, title);
+      setEditorModal(null);
+    },
+    [editorModal, renameNode],
+  );
+
+  const handleProjectSave = useCallback(
+    async (data: ProjectSaveData) => {
+      if (editorModal === null) return;
+      const { nodeId } = editorModal;
+      const dbId = parseInt(nodeId.split("-").pop() ?? "0", 10);
+      await updateDomain(dbId, {
+        title: data.title,
+        ...(data.status !== "" ? { status: data.status } : {}),
+        ...(data.knowledgeBaseDirectory !== "" ? { knowledge_base_directory: data.knowledgeBaseDirectory } : {}),
+      });
+      await reload();
+      setEditorModal(null);
+    },
+    [editorModal, reload],
   );
 
   const handleCommitEdit = useCallback(
@@ -370,6 +455,11 @@ export default function MindmapView() {
     return <div className={styles.centered}>Error: {error}</div>;
   }
 
+  const availableForDep =
+    editorModal !== null
+      ? allTasksAndGoals.filter((n) => n.id !== editorModal.nodeId)
+      : [];
+
   return (
     <div className={styles.container}>
       <MindmapCanvas
@@ -384,9 +474,13 @@ export default function MindmapView() {
         onCommitEdit={handleCommitEdit}
         onCancelEdit={() => setEditingNodeId(null)}
         onContextAction={handleContextAction}
-        onDragStart={(id) => { setDragSourceId(id); setDragTargetId(null); }}
+        onDragStart={(id) => {
+          setDragSourceId(id);
+          setDragTargetId(null);
+        }}
         onDrop={handleDrop}
         onCanvasClick={() => selectNode(null)}
+        onStatusClick={handleStatusClick}
       />
 
       {subtreeRootId !== null && (
@@ -404,13 +498,45 @@ export default function MindmapView() {
         />
       )}
 
-      {editorModal !== null && (
-        <NodeEditorModal
-          nodeId={editorModal.nodeId}
-          title={editorModal.node.title}
-          tagIds={editorModal.node.tagIds}
+      {editorModal !== null && editorModal.node.kind === "task" && (
+        <TaskEditorModal
+          node={editorModal.node}
           allTags={allTags}
-          onSave={(title, tagIds) => { void handleEditorSave(title, tagIds); }}
+          availableForDep={availableForDep}
+          onSave={handleTaskSave}
+          onClose={() => setEditorModal(null)}
+        />
+      )}
+
+      {editorModal !== null && editorModal.node.kind === "goal" && (
+        <GoalEditorModal
+          node={editorModal.node}
+          allTags={allTags}
+          onSave={handleGoalSave}
+          onClose={() => setEditorModal(null)}
+        />
+      )}
+
+      {editorModal !== null && editorModal.node.kind === "domain" && (
+        <DomainEditorModal
+          title={editorModal.node.title}
+          onSave={handleSimpleSave}
+          onClose={() => setEditorModal(null)}
+        />
+      )}
+
+      {editorModal !== null && editorModal.node.kind === "project" && (
+        <ProjectEditorModal
+          node={editorModal.node}
+          onSave={handleProjectSave}
+          onClose={() => setEditorModal(null)}
+        />
+      )}
+
+      {editorModal !== null && editorModal.node.kind === "tag" && (
+        <TagEditorModal
+          title={editorModal.node.title}
+          onSave={handleSimpleSave}
           onClose={() => setEditorModal(null)}
         />
       )}
@@ -439,7 +565,6 @@ function findParent(root: MindmapNode, id: string): MindmapNode | null {
 /**
  * Finds the nearest visible node in a screen direction from `fromId`.
  *
- * Candidates must lie strictly in the requested direction on the primary axis.
  * Score = primaryDistance + 2 * secondaryDeviation so that well-aligned
  * neighbours beat distant ones even if they're slightly off-axis.
  */

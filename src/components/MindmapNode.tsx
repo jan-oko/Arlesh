@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { MindmapNode as MindmapNodeData, Position } from "@/utils/tree-layout";
-import { NODE_ICON, getNodeSize } from "@/utils/node-meta";
+import { getNodeSize } from "@/utils/node-meta";
 import NodeContextMenu, { type ContextMenuAction } from "./NodeContextMenu";
+import NodeIcon from "./NodeIcon";
 
 interface Props {
   node: MindmapNodeData;
@@ -19,6 +20,7 @@ interface Props {
   onContextAction: (nodeId: string, action: ContextMenuAction) => void;
   onDragStart: (id: string) => void;
   onDrop: (targetId: string) => void;
+  onStatusClick?: (id: string) => void;
 }
 
 export default function MindmapNode({
@@ -36,15 +38,31 @@ export default function MindmapNode({
   onContextAction,
   onDragStart,
   onDrop,
+  onStatusClick,
 }: Props) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const { width, height, fontSize, iconWidth, maxChars } = getNodeSize(position.depth);
+  const iconR = (iconWidth - 8) / 2;
+  const iconCx = iconWidth / 2;
+  const iconCy = height / 2;
+
+  const isBlocked =
+    node.kind === "task" &&
+    node.blockedReason !== undefined &&
+    node.blockedReason !== null &&
+    node.blockedReason !== "";
+
+  const iconColor =
+    node.kind === "aspect"
+      ? "rgba(255,255,255,0.9)"
+      : (node.color ?? "var(--text-secondary)");
+
+  const iconOpacity = node.kind !== "aspect" && node.color !== undefined ? 0.8 : 1;
 
   useEffect(() => {
     if (!isEditing) return;
-    // Defer one tick so WebKit finishes painting the foreignObject before we focus.
     const id = setTimeout(() => {
       inputRef.current?.focus();
       inputRef.current?.select();
@@ -68,23 +86,16 @@ export default function MindmapNode({
     [node.id, onDoubleClick],
   );
 
-  const handleContextMenu = useCallback(
-    (event: React.MouseEvent) => {
-      event.preventDefault();
-      event.stopPropagation();
-      setContextMenu({ x: event.clientX, y: event.clientY });
-    },
-    [],
-  );
+  const handleContextMenu = useCallback((event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setContextMenu({ x: event.clientX, y: event.clientY });
+  }, []);
 
   const handleInputKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLInputElement>) => {
-      if (event.key === "Enter") {
-        onCommitEdit(node.id, event.currentTarget.value);
-      }
-      if (event.key === "Escape") {
-        onCancelEdit();
-      }
+      if (event.key === "Enter") onCommitEdit(node.id, event.currentTarget.value);
+      if (event.key === "Escape") onCancelEdit();
     },
     [node.id, onCommitEdit, onCancelEdit],
   );
@@ -101,8 +112,16 @@ export default function MindmapNode({
     [node.id, onDrop],
   );
 
+  const handleStatusIconClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      onSelect(node.id);
+      onStatusClick?.(node.id);
+    },
+    [node.id, onSelect, onStatusClick],
+  );
+
   const fillColor = node.color ?? "var(--node-bg)";
-  // Fade inherited aspect color at increasing depths so children don't overpower the aspect itself.
   const fillOpacity =
     node.kind !== "aspect" && node.color !== undefined
       ? Math.max(0.15, 0.5 - position.depth * 0.06)
@@ -114,12 +133,12 @@ export default function MindmapNode({
       ? "var(--accent)"
       : "var(--node-border)";
 
-  const label = node.title.length > maxChars
-    ? node.title.slice(0, maxChars - 1) + "…"
-    : node.title;
+  const label =
+    node.title.length > maxChars ? node.title.slice(0, maxChars - 1) + "…" : node.title;
 
   const textFill = node.kind === "aspect" ? "rgba(255,255,255,0.9)" : "var(--node-text)";
-  const iconFill = node.kind === "aspect" ? "rgba(255,255,255,0.9)" : "var(--text-secondary)";
+
+  const canClickStatus = node.kind === "task" && !isBlocked && onStatusClick !== undefined;
 
   return (
     <g
@@ -145,16 +164,28 @@ export default function MindmapNode({
         strokeWidth={isSelected ? 2 : 1}
       />
 
-      <text
-        x={iconWidth / 2}
-        y={height / 2}
-        dominantBaseline="central"
-        textAnchor="middle"
-        fontSize={fontSize}
-        fill={iconFill}
-      >
-        {NODE_ICON[node.kind]}
-      </text>
+      <NodeIcon
+        kind={node.kind}
+        status={node.status}
+        isBlocked={isBlocked}
+        cx={iconCx}
+        cy={iconCy}
+        r={iconR}
+        color={iconColor}
+        opacity={iconOpacity}
+      />
+
+      {canClickStatus && (
+        <rect
+          x={0}
+          y={0}
+          width={iconWidth}
+          height={height}
+          fill="transparent"
+          style={{ cursor: "pointer" }}
+          onClick={handleStatusIconClick}
+        />
+      )}
 
       {isEditing ? (
         <foreignObject x={iconWidth} y={2} width={width - iconWidth - 4} height={height - 4}>
@@ -190,26 +221,22 @@ export default function MindmapNode({
       )}
 
       {isCollapsed && node.children.length > 0 && (
-        <circle
-          cx={width - 6}
-          cy={height / 2}
-          r={4}
-          fill="var(--text-secondary)"
-        />
+        <circle cx={width - 6} cy={height / 2} r={4} fill="var(--text-secondary)" />
       )}
 
-      {contextMenu !== null && createPortal(
-        <NodeContextMenu
-          x={contextMenu.x}
-          y={contextMenu.y}
-          nodeKind={node.kind}
-          isCollapsed={isCollapsed}
-          hasClipboard={hasClipboard}
-          onAction={(action) => onContextAction(node.id, action)}
-          onClose={() => setContextMenu(null)}
-        />,
-        document.body,
-      )}
+      {contextMenu !== null &&
+        createPortal(
+          <NodeContextMenu
+            x={contextMenu.x}
+            y={contextMenu.y}
+            nodeKind={node.kind}
+            isCollapsed={isCollapsed}
+            hasClipboard={hasClipboard}
+            onAction={(action) => onContextAction(node.id, action)}
+            onClose={() => setContextMenu(null)}
+          />,
+          document.body,
+        )}
     </g>
   );
 }

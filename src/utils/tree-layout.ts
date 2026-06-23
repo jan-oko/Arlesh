@@ -7,6 +7,8 @@ export interface MindmapNode {
   kind: NodeKind;
   title: string;
   status?: string;
+  blockedReason?: string | null;
+  knowledgeBaseDirectory?: string | null;
   color?: string;
   position: number;
   tagIds: number[];

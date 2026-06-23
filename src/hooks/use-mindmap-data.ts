@@ -90,6 +90,7 @@ function buildTree(domains: Domain[], goals: Goal[], tasks: Task[]): MindmapNode
       position: domain.position,
       ...(domain.color !== null ? { color: domain.color } : {}),
       ...(domain.status !== null ? { status: domain.status } : {}),
+      ...(domain.knowledge_base_directory !== null ? { knowledgeBaseDirectory: domain.knowledge_base_directory } : {}),
       tagIds: [],
       children: [],
     });
@@ -101,6 +102,7 @@ function buildTree(domains: Domain[], goals: Goal[], tasks: Task[]): MindmapNode
       kind: "goal",
       title: goal.title,
       status: goal.status,
+      blockedReason: goal.blocked_reason,
       position: goal.position,
       tagIds: goal.tag_ids,
       children: [],
@@ -113,6 +115,7 @@ function buildTree(domains: Domain[], goals: Goal[], tasks: Task[]): MindmapNode
       kind: "task",
       title: task.title,
       status: task.status,
+      blockedReason: task.blocked_reason,
       position: task.position,
       tagIds: task.tag_ids,
       children: [],

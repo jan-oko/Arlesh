@@ -18,6 +18,7 @@ interface Props {
   onContextAction: (nodeId: string, action: ContextMenuAction) => void;
   onDragStart: (id: string) => void;
   onDrop: (targetId: string) => void;
+  onStatusClick: (id: string) => void;
 }
 
 export default function MindmapTree({
@@ -34,6 +35,7 @@ export default function MindmapTree({
   onContextAction,
   onDragStart,
   onDrop,
+  onStatusClick,
 }: Props) {
   const positions = computeLayout(root, collapsedNodeIds);
 
@@ -81,6 +83,7 @@ export default function MindmapTree({
             onContextAction={onContextAction}
             onDragStart={onDragStart}
             onDrop={onDrop}
+            onStatusClick={onStatusClick}
           />
         );
       })}

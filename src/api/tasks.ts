@@ -48,6 +48,31 @@ export async function deleteTask(id: number): Promise<void> {
   return invoke<void>("delete_task", { id });
 }
 
+export type Dependency =
+  | { type: "task"; id: number }
+  | { type: "goal"; id: number };
+
+export interface TaskWithBlockers {
+  task: Task;
+  block_reasons: string[];
+}
+
+export async function getTask(id: number): Promise<TaskWithBlockers> {
+  return invoke<TaskWithBlockers>("get_task", { id });
+}
+
+export async function listTaskDependencies(taskId: number): Promise<Dependency[]> {
+  return invoke<Dependency[]>("list_task_dependencies", { taskId });
+}
+
+export async function addTaskDependency(taskId: number, dependency: Dependency): Promise<void> {
+  return invoke<void>("add_task_dependency", { taskId, dependency });
+}
+
+export async function removeTaskDependency(taskId: number, dependency: Dependency): Promise<void> {
+  return invoke<void>("remove_task_dependency", { taskId, dependency });
+}
+
 export async function addTagToTask(taskId: number, tagId: number): Promise<void> {
   return invoke<void>("add_tag_to_task", { taskId, tagId });
 }

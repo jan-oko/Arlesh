@@ -20,6 +20,7 @@ interface Props {
   onDragStart: (id: string) => void;
   onDrop: (targetId: string) => void;
   onCanvasClick: () => void;
+  onStatusClick: (id: string) => void;
 }
 
 export default function MindmapCanvas({
@@ -37,6 +38,7 @@ export default function MindmapCanvas({
   onDragStart,
   onDrop,
   onCanvasClick,
+  onStatusClick,
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const { springProps, onMouseDown } = usePanZoom(svgRef);
@@ -70,6 +72,7 @@ export default function MindmapCanvas({
           onContextAction={onContextAction}
           onDragStart={onDragStart}
           onDrop={onDrop}
+          onStatusClick={onStatusClick}
         />
       </animated.g>
     </animated.svg>

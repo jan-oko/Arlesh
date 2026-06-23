@@ -94,6 +94,18 @@ pub async fn remove_task_dependency(
         .map_err(|error| error.to_string())
 }
 
+/// Lists all dependencies for a task.
+#[tauri::command]
+pub async fn list_task_dependencies(
+    pool: State<'_, DatabasePool>,
+    task_id: i64,
+) -> Result<Vec<Dependency>, String> {
+    TaskRepository::new(&pool)
+        .list_dependencies(TaskId(task_id))
+        .await
+        .map_err(|error| error.to_string())
+}
+
 /// Creates a new goal.
 #[tauri::command]
 pub async fn create_goal(

@@ -61,6 +61,7 @@ pub fn run() {
             commands::tasks::delete_task,
             commands::tasks::add_task_dependency,
             commands::tasks::remove_task_dependency,
+            commands::tasks::list_task_dependencies,
             commands::tasks::create_goal,
             commands::tasks::get_goal,
             commands::tasks::list_goals,
