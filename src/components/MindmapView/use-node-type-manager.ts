@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
-import type { RetypeOptions } from "@/hooks/use-mindmap-data";
-import { GOAL_CHILDREN_ACTION } from "@/hooks/use-mindmap-data";
+import type { RetypeOptions } from "./use-mindmap-data";
+import { GOAL_CHILDREN_ACTION } from "./use-mindmap-data";
 import type { WarningAction } from "@/components/WarningConfirmModal/WarningConfirmModal";
 import { WARNING_VARIANT } from "@/components/WarningConfirmModal/WarningConfirmModal";
 import { validTypesForCycling, crossesGoalTaskBoundary } from "@/utils/node-meta";

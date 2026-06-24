@@ -24,9 +24,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Extracted node mutation callbacks (`onStatusClick`, `onCommitEdit`, `onCreateChild`, `onDelete`, `onPaste`) into `src/hooks/use-node-actions.ts`
 - Moved `buildRetypeActions` into `use-node-type-manager`; hook now returns `retypeActions` directly
 - All editor modals now use a shared `EditorModal` shell for consistent layout
-- `MindmapView` reduced from 919 to 194 lines; all remaining code is wiring and JSX
-- Replaced all magic strings with named constants co-located with their domain: `TASK_STATUS`/`GOAL_STATUS` in `status-mapping.ts`, `CLIPBOARD_OP` in `use-mindmap-store.ts`, `GOAL_CHILDREN_ACTION` in `use-mindmap-data.ts`, `WARNING_VARIANT` in `WarningConfirmModal.tsx`, `DOMAIN_SUBTYPE` in `api/domains.ts`
+- `MindmapView` reduced from 919 to 161 lines; all remaining code is wiring and JSX
+- Replaced all magic strings with named constants co-located with their domain: `TASK_STATUS`/`GOAL_STATUS` in `status-mapping.ts`, `CLIPBOARD_OP` in `use-mindmap-store.ts`, `GOAL_CHILDREN_ACTION` in `use-mindmap-data.ts`, `WARNING_VARIANT` in `WarningConfirmModal.tsx`, `DOMAIN_SUBTYPE` in `api/domains.ts`, `CONTEXT_ACTION` in `NodeContextMenu.tsx`
 - `useKeyboardMindmap` option `warningModal` replaced with `isWarningActive: boolean`, eliminating the banned `as` type assertion at the call site
+- `useDrag` absorbs drop execution (`{ tree, moveNode }` options); `handleDrop` removed from `MindmapView`
+- Context-menu dispatch extracted into `use-context-action.ts`; arrow-key navigation into `use-navigate-arrow.ts`
+- All hooks specific to one component relocated into that component's directory; `src/hooks/` removed
 
 ### Added
 - Drag-and-drop to re-parent nodes: drag any non-aspect node onto a valid parent and release to move it; valid drop targets highlight in the accent colour; invalid targets (e.g. dropping a goal onto a task, or a node onto one of its own descendants) are silently rejected

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { MindmapNode } from "@/utils/tree-layout";
+import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { isValidDropTarget } from "@/utils/node-meta";
 import { findNode } from "@/utils/mindmap-tree";
 
@@ -18,9 +18,13 @@ export interface DragState {
   ghostPos: { x: number; y: number } | null;
 }
 
+interface Options {
+  tree: MindmapNode;
+  moveNode: (id: string, kind: NodeKind, parentId: string, parentKind: NodeKind, position: number) => Promise<void>;
+}
+
 export function useDrag(
-  tree: MindmapNode,
-  onDrop: (nodeId: string, targetId: string) => void,
+  { tree, moveNode }: Options,
 ): DragState & { onDragStart: (id: string, startX: number, startY: number) => void } {
   const [dragSourceId, setDragSourceId] = useState<string | null>(null);
   const [dragTargetId, setDragTargetId] = useState<string | null>(null);
@@ -43,22 +47,28 @@ export function useDrag(
       const source = findNode(tree, gesture.nodeId);
       const target = findNode(tree, targetId);
       if (source === undefined || target === undefined) return null;
-      const isDescendant = findNode(source, targetId) !== undefined;
-      if (isDescendant) return null;
+      if (findNode(source, targetId) !== undefined) return null;
       return isValidDropTarget(source.kind, target.kind) ? targetId : null;
+    }
+
+    function executeDrop(gesture: DragGesture, targetId: string) {
+      const source = findNode(tree, gesture.nodeId);
+      const target = findNode(tree, targetId);
+      if (source === undefined || target === undefined) return;
+      const positions = target.children.filter((c) => c.id !== gesture.nodeId).map((c) => c.position);
+      const lastPos = positions.length > 0 ? Math.max(...positions) + 1 : 0;
+      void moveNode(gesture.nodeId, source.kind, targetId, target.kind, lastPos);
     }
 
     function handleMouseMove(e: MouseEvent) {
       const gesture = gestureRef.current;
       if (gesture === null) return;
-
       if (!gesture.committed) {
         if (Math.hypot(e.clientX - gesture.startX, e.clientY - gesture.startY) < DRAG_THRESHOLD) return;
         gesture.committed = true;
         setDragSourceId(gesture.nodeId);
         document.body.style.cursor = "grabbing";
       }
-
       setGhostPos({ x: e.clientX, y: e.clientY });
       setDragTargetId(resolveTarget(gesture, e.clientX, e.clientY));
     }
@@ -71,10 +81,9 @@ export function useDrag(
       setDragSourceId(null);
       setGhostPos(null);
       setDragTargetId(null);
-
       if (!gesture.committed) return;
       const targetId = resolveTarget(gesture, e.clientX, e.clientY);
-      if (targetId !== null) onDrop(gesture.nodeId, targetId);
+      if (targetId !== null) executeDrop(gesture, targetId);
     }
 
     window.addEventListener("mousemove", handleMouseMove);
@@ -83,7 +92,7 @@ export function useDrag(
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [tree, onDrop]);
+  }, [tree, moveNode]);
 
   return { dragSourceId, dragTargetId, ghostPos, onDragStart };
 }
