@@ -18,19 +18,22 @@ interface Props {
   iconOpacity: number;
   isBlocked: boolean;
   canClickStatus: boolean;
+  isRtl: boolean;
   onStatusIconClick: (e: React.MouseEvent) => void;
 }
 
-export default function NodeRect({ node, width, height, iconWidth, iconCx, iconCy, iconR, fillColor, fillOpacity, strokeColor, isSelected, isCollapsed, iconColor, iconOpacity, isBlocked, canClickStatus, onStatusIconClick }: Props) {
+export default function NodeRect({ node, width, height, iconWidth, iconCx, iconCy, iconR, fillColor, fillOpacity, strokeColor, isSelected, isCollapsed, iconColor, iconOpacity, isBlocked, canClickStatus, isRtl, onStatusIconClick }: Props) {
+  const statusRectX = isRtl ? width - iconWidth : 0;
+  const collapsedDotCx = isRtl ? 6 : width - 6;
   return (
     <>
       <rect width={width} height={height} rx={6} fill={fillColor} fillOpacity={fillOpacity} stroke={strokeColor} strokeWidth={isSelected ? 2 : 1} />
       <NodeIcon kind={node.kind} status={node.status} isBlocked={isBlocked} cx={iconCx} cy={iconCy} r={iconR} color={iconColor} opacity={iconOpacity} />
       {canClickStatus && (
-        <rect x={0} y={0} width={iconWidth} height={height} fill="transparent" style={{ cursor: "pointer" }} onClick={onStatusIconClick} />
+        <rect x={statusRectX} y={0} width={iconWidth} height={height} fill="transparent" style={{ cursor: "pointer" }} onClick={onStatusIconClick} />
       )}
       {isCollapsed && node.children.length > 0 && (
-        <circle cx={width - 6} cy={height / 2} r={4} fill="var(--text-secondary)" />
+        <circle cx={collapsedDotCx} cy={height / 2} r={4} fill="var(--text-secondary)" />
       )}
     </>
   );

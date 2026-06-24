@@ -1,4 +1,5 @@
 import { createPortal } from "react-dom";
+import { useTranslation } from "react-i18next";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { getNodeSize } from "@/utils/node-meta";
 import { computeNodeAppearance } from "@/utils/node-visuals";
@@ -12,8 +13,14 @@ interface Props {
 }
 
 export default function DragGhost({ node, depth, x, y }: Props) {
+  const { i18n } = useTranslation();
+  const isRtl = i18n.dir() === "rtl";
   const { width, height, fontSize, iconWidth, maxChars } = getNodeSize(depth);
   const { isBlocked, iconColor, iconOpacity, fillColor, fillOpacity, label, textFill } = computeNodeAppearance(node, depth, maxChars);
+
+  const iconCx = isRtl ? width - iconWidth / 2 : iconWidth / 2;
+  const textX = isRtl ? width - iconWidth - 4 : iconWidth + 4;
+  const textAnchor = isRtl ? "end" : "start";
 
   return createPortal(
     <svg
@@ -22,8 +29,8 @@ export default function DragGhost({ node, depth, x, y }: Props) {
       style={{ position: "fixed", left: x - width / 2, top: y - height / 2, opacity: 0.65, pointerEvents: "none", overflow: "visible", zIndex: 9999, filter: "drop-shadow(0 4px 8px rgba(0,0,0,0.35))" }}
     >
       <rect width={width} height={height} rx={6} fill={fillColor} fillOpacity={fillOpacity} stroke="var(--accent)" strokeWidth={2} />
-      <NodeIcon kind={node.kind} status={node.status} isBlocked={isBlocked} cx={iconWidth / 2} cy={height / 2} r={(iconWidth - 8) / 2} color={iconColor} opacity={iconOpacity} />
-      <text x={iconWidth + 4} y={height / 2} dominantBaseline="central" fontSize={fontSize} fill={textFill} style={{ userSelect: "none" }}>
+      <NodeIcon kind={node.kind} status={node.status} isBlocked={isBlocked} cx={iconCx} cy={height / 2} r={(iconWidth - 8) / 2} color={iconColor} opacity={iconOpacity} />
+      <text x={textX} y={height / 2} dominantBaseline="central" fontSize={fontSize} fill={textFill} textAnchor={textAnchor} style={{ userSelect: "none" }}>
         {label}
       </text>
     </svg>,

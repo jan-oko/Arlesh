@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import { createPortal } from "react-dom";
+import { useTranslation } from "react-i18next";
 import type { MindmapNode as MindmapNodeData, Position } from "@/utils/tree-layout";
 import { getNodeSize } from "@/utils/node-meta";
 import { computeNodeAppearance } from "@/utils/node-visuals";
@@ -26,9 +27,12 @@ interface Props {
 }
 
 export default function MindmapNode({ node, position, isSelected, isCollapsed, isDragTarget, isDragSource, hasClipboard, isEditing, onSelect, onDoubleClick, onCommitEdit, onCancelEdit, onContextAction, onDragStart, onStatusClick }: Props) {
+  const { i18n } = useTranslation();
+  const isRtl = i18n.dir() === "rtl";
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const { width, height, fontSize, iconWidth, maxChars } = getNodeSize(position.depth);
   const iconR = (iconWidth - 8) / 2;
+  const iconCx = isRtl ? width - iconWidth / 2 : iconWidth / 2;
   const { isBlocked, iconColor, iconOpacity, fillColor, fillOpacity, label, textFill } = computeNodeAppearance(node, position.depth, maxChars);
   const strokeColor = isSelected ? "var(--node-border-selected)" : isDragTarget ? "var(--accent)" : "var(--node-border)";
   const canClickStatus = node.kind === "task" && !isBlocked && onStatusClick !== undefined;
@@ -51,8 +55,8 @@ export default function MindmapNode({ node, position, isSelected, isCollapsed, i
       onMouseDown={handleMouseDown}
       style={{ cursor: "pointer", opacity: isDragSource === true ? 0 : undefined, pointerEvents: isDragSource === true ? "none" : undefined }}
     >
-      <NodeRect node={node} width={width} height={height} iconWidth={iconWidth} iconCx={iconWidth / 2} iconCy={height / 2} iconR={iconR} fillColor={fillColor} fillOpacity={fillOpacity} strokeColor={strokeColor} isSelected={isSelected} isCollapsed={isCollapsed} iconColor={iconColor} iconOpacity={iconOpacity} isBlocked={isBlocked} canClickStatus={canClickStatus} onStatusIconClick={handleStatusIconClick} />
-      <NodeLabel node={node} isEditing={isEditing} iconWidth={iconWidth} width={width} height={height} fontSize={fontSize} label={label} textFill={textFill} onCommitEdit={onCommitEdit} onCancelEdit={onCancelEdit} />
+      <NodeRect node={node} width={width} height={height} iconWidth={iconWidth} iconCx={iconCx} iconCy={height / 2} iconR={iconR} fillColor={fillColor} fillOpacity={fillOpacity} strokeColor={strokeColor} isSelected={isSelected} isCollapsed={isCollapsed} iconColor={iconColor} iconOpacity={iconOpacity} isBlocked={isBlocked} canClickStatus={canClickStatus} isRtl={isRtl} onStatusIconClick={handleStatusIconClick} />
+      <NodeLabel node={node} isEditing={isEditing} iconWidth={iconWidth} width={width} height={height} fontSize={fontSize} label={label} textFill={textFill} isRtl={isRtl} onCommitEdit={onCommitEdit} onCancelEdit={onCancelEdit} />
       {contextMenu !== null && createPortal(
         <NodeContextMenu x={contextMenu.x} y={contextMenu.y} nodeKind={node.kind} isCollapsed={isCollapsed} hasClipboard={hasClipboard} onAction={(action) => onContextAction(node.id, action)} onClose={() => setContextMenu(null)} />,
         document.body,
