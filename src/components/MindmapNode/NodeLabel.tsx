@@ -38,7 +38,8 @@ export default function NodeLabel({ node, isEditing, iconWidth, width, height, f
             if (e.key === "Escape") onCancelEdit();
           }}
           onBlur={(e) => onCommitEdit(node.id, e.currentTarget.value)}
-          style={{ width: "100%", height: "100%", background: "transparent", border: "none", outline: "none", color: "var(--text-primary)", fontFamily: "var(--font-sans)", fontSize, padding: "0 2px", direction: isRtl ? "rtl" : "ltr" }}
+          style={{ width: "100%", height: "100%", background: "transparent", border: "none", outline: "none", color: "var(--text-primary)", fontFamily: "var(--font-sans)", fontSize, padding: "0 2px" }}
+          dir="auto"
         />
       </foreignObject>
     );

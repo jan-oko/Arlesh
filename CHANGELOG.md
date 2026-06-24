@@ -9,7 +9,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
-- Hebrew mode: SVG node icon moves to the right side and text anchors from the right (`textAnchor="end"`) so Hebrew text no longer overflows or overlaps the icon; inline edit input respects RTL direction; collapsed dot and status-click hit-area also flip sides; `DragGhost` applies the same layout
+- SVG node layout now mirrors per-node based on the node's text content (first strong directional character), not the global app language — Latin-titled nodes always render LTR and Hebrew-titled nodes always render RTL, regardless of the language toggle; inline edit uses `dir="auto"` so the browser follows what the user types; `DragGhost` applies the same content-based detection
 
 ### Added
 - Hebrew (עברית) i18n support with full RTL layout: all user-facing strings extracted to namespaced JSON translation files (`src/i18n/locales/{en,he}/{namespace}.json`); language toggle in new top bar persists to `localStorage`; `dir` attribute on root element drives RTL cascade throughout the app including CSS modules updated to use logical properties (`inset-inline-start`, `margin-inline-start`, `padding-inline-start`, `text-align: start`)

@@ -1,8 +1,8 @@
 import { createPortal } from "react-dom";
-import { useTranslation } from "react-i18next";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { getNodeSize } from "@/utils/node-meta";
 import { computeNodeAppearance } from "@/utils/node-visuals";
+import { isRtlText } from "@/utils/text-direction";
 import NodeIcon from "@/components/NodeIcon/NodeIcon";
 
 interface Props {
@@ -13,10 +13,9 @@ interface Props {
 }
 
 export default function DragGhost({ node, depth, x, y }: Props) {
-  const { i18n } = useTranslation();
-  const isRtl = i18n.dir() === "rtl";
   const { width, height, fontSize, iconWidth, maxChars } = getNodeSize(depth);
   const { isBlocked, iconColor, iconOpacity, fillColor, fillOpacity, label, textFill } = computeNodeAppearance(node, depth, maxChars);
+  const isRtl = isRtlText(node.title);
 
   const iconCx = isRtl ? width - iconWidth / 2 : iconWidth / 2;
   const textX = isRtl ? width - iconWidth - 4 : iconWidth + 4;

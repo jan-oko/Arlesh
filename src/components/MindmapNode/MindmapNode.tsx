@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { createPortal } from "react-dom";
-import { useTranslation } from "react-i18next";
 import type { MindmapNode as MindmapNodeData, Position } from "@/utils/tree-layout";
+import { isRtlText } from "@/utils/text-direction";
 import { getNodeSize } from "@/utils/node-meta";
 import { computeNodeAppearance } from "@/utils/node-visuals";
 import NodeContextMenu, { type ContextMenuAction } from "@/components/NodeContextMenu/NodeContextMenu";
@@ -27,13 +27,12 @@ interface Props {
 }
 
 export default function MindmapNode({ node, position, isSelected, isCollapsed, isDragTarget, isDragSource, hasClipboard, isEditing, onSelect, onDoubleClick, onCommitEdit, onCancelEdit, onContextAction, onDragStart, onStatusClick }: Props) {
-  const { i18n } = useTranslation();
-  const isRtl = i18n.dir() === "rtl";
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const { width, height, fontSize, iconWidth, maxChars } = getNodeSize(position.depth);
   const iconR = (iconWidth - 8) / 2;
-  const iconCx = isRtl ? width - iconWidth / 2 : iconWidth / 2;
   const { isBlocked, iconColor, iconOpacity, fillColor, fillOpacity, label, textFill } = computeNodeAppearance(node, position.depth, maxChars);
+  const isRtl = isRtlText(node.title);
+  const iconCx = isRtl ? width - iconWidth / 2 : iconWidth / 2;
   const strokeColor = isSelected ? "var(--node-border-selected)" : isDragTarget ? "var(--accent)" : "var(--node-border)";
   const canClickStatus = node.kind === "task" && !isBlocked && onStatusClick !== undefined;
 
