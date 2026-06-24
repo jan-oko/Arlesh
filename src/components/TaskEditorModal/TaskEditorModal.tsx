@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { Domain } from "@/api/domains";
 import type { Dependency } from "@/api/tasks";
@@ -30,6 +31,7 @@ interface Props {
 }
 
 export default function TaskEditorModal({ node, allTags, availableForDep, onSave, onClose }: Props) {
+  const { t } = useTranslation(["editor", "status", "nodeKinds"]);
   const [title, setTitle] = useState(node.title);
   const [status, setStatus] = useState(node.status ?? TASK_STATUS.TODO);
   const [blockedReason, setBlockedReason] = useState(node.blockedReason ?? "");
@@ -84,7 +86,7 @@ export default function TaskEditorModal({ node, allTags, availableForDep, onSave
     if (event.key === "Escape") onClose();
   }
 
-  const validTags = allTags.filter((t) => t.title.trim() !== "");
+  const validTags = allTags.filter((tag) => tag.title.trim() !== "");
   const depSearchLower = depSearch.toLowerCase();
   const searchResults = depSearch.trim() === "" ? [] : availableForDep
     .filter((n) => n.kind === "task" || n.kind === "goal")
@@ -101,28 +103,28 @@ export default function TaskEditorModal({ node, allTags, availableForDep, onSave
   }
 
   return (
-    <EditorModal heading="Edit Task" onClose={onClose} onKeyDown={handleKeyDown} isSaving={isSaving} onSave={() => void handleSave()} saveError={saveError}>
+    <EditorModal heading={t("editTask")} onClose={onClose} onKeyDown={handleKeyDown} isSaving={isSaving} onSave={() => void handleSave()} saveError={saveError}>
       <label className={styles.label}>
-        Title
+        {t("fieldTitle")}
         <input ref={titleRef} className={styles.input} value={title} onChange={(e) => setTitle(e.target.value)} type="text" />
       </label>
       <div className={styles.label}>
-        Status
+        {t("fieldStatus")}
         <div className={styles.statusPills}>
           {TASK_STATUSES.map((s) => (
             <button key={s} type="button" className={`${styles.statusPill}${status === s ? ` ${styles.statusPillActive}` : ""}`} onClick={() => setStatus(s)}>
-              {s.replace("_", " ")}
+              {t(`status:task.${s}`)}
             </button>
           ))}
         </div>
       </div>
       <label className={styles.label}>
-        Block reason
-        <textarea className={styles.textarea} value={blockedReason} onChange={(e) => setBlockedReason(e.target.value)} placeholder="Leave empty to clear" />
+        {t("fieldBlockReason")}
+        <textarea className={styles.textarea} value={blockedReason} onChange={(e) => setBlockedReason(e.target.value)} placeholder={t("placeholderBlockReason")} />
       </label>
       {validTags.length > 0 && (
         <fieldset className={styles.tagSection}>
-          <legend className={styles.label}>Tags</legend>
+          <legend className={styles.label}>{t("fieldTags")}</legend>
           <div className={styles.tagList}>
             {validTags.map((tag) => (
               <label key={tag.id} className={styles.tagOption}>
@@ -134,25 +136,25 @@ export default function TaskEditorModal({ node, allTags, availableForDep, onSave
         </fieldset>
       )}
       <div className={styles.depSection}>
-        <span className={styles.label}>Dependencies</span>
+        <span className={styles.label}>{t("fieldDependencies")}</span>
         {currentDeps.length > 0 && (
           <div className={styles.depList}>
             {currentDeps.map((dep) => (
               <div key={depKey(dep)} className={styles.depItem}>
-                <span>{depTitle(dep)}<span className={styles.depKind}>{dep.type}</span></span>
+                <span>{depTitle(dep)}<span className={styles.depKind}>{t(`nodeKinds:${dep.type}`)}</span></span>
                 <button type="button" className={styles.depRemoveBtn} onClick={() => removeDep(dep)}>×</button>
               </div>
             ))}
           </div>
         )}
         <div className={styles.depSearchWrap}>
-          <input type="text" className={styles.depSearch} placeholder="Search tasks or goals to add dependency…" value={depSearch} onChange={(e) => setDepSearch(e.target.value)} />
+          <input type="text" className={styles.depSearch} placeholder={t("placeholderDepSearch")} value={depSearch} onChange={(e) => setDepSearch(e.target.value)} />
           {searchResults.length > 0 && (
             <div className={styles.depResults}>
               {searchResults.map((n) => (
                 <div key={n.id} className={styles.depResult} onMouseDown={(e) => { e.preventDefault(); addDep(n); }}>
                   <span>{n.title}</span>
-                  <span className={styles.depKind}>{n.kind}</span>
+                  <span className={styles.depKind}>{t(`nodeKinds:${n.kind}`)}</span>
                 </div>
               ))}
             </div>

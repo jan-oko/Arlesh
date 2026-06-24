@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import type { NodeKind } from "@/utils/tree-layout";
 import styles from "./NodeContextMenu.module.css";
 
@@ -28,6 +29,7 @@ interface Props {
 }
 
 export default function NodeContextMenu({ x, y, nodeKind, isCollapsed, hasClipboard, onAction, onClose }: Props) {
+  const { t } = useTranslation("contextMenu");
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -51,18 +53,18 @@ export default function NodeContextMenu({ x, y, nodeKind, isCollapsed, hasClipbo
 
   return (
     <div ref={ref} className={styles.menu} style={{ left: x, top: y }}>
-      {canEnter && item("Enter subtree", "enter")}
-      {item("Rename", "rename")}
-      {canChangeType && item("Type →", "type-up")}
-      {canChangeType && item("Type ←", "type-down")}
+      {canEnter && item(t("enterSubtree"), "enter")}
+      {item(t("rename"), "rename")}
+      {canChangeType && item(t("typeNext"), "type-up")}
+      {canChangeType && item(t("typePrev"), "type-down")}
       <div className={styles.separator} />
-      {item("Cut", "cut")}
-      {item("Copy", "copy")}
-      {item("Paste as child", "paste", !hasClipboard)}
+      {item(t("cut"), "cut")}
+      {item(t("copy"), "copy")}
+      {item(t("pasteAsChild"), "paste", !hasClipboard)}
       <div className={styles.separator} />
-      {item(isCollapsed ? "Expand" : "Collapse", isCollapsed ? "expand" : "collapse")}
+      {item(isCollapsed ? t("expand") : t("collapse"), isCollapsed ? "expand" : "collapse")}
       <div className={styles.separator} />
-      {item("Delete", "delete")}
+      {item(t("delete"), "delete")}
     </div>
   );
 }

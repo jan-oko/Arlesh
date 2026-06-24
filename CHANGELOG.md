@@ -8,6 +8,13 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Hebrew (עברית) i18n support with full RTL layout: all user-facing strings extracted to namespaced JSON translation files (`src/i18n/locales/{en,he}/{namespace}.json`); language toggle in new top bar persists to `localStorage`; `dir` attribute on root element drives RTL cascade throughout the app including CSS modules updated to use logical properties (`inset-inline-start`, `margin-inline-start`, `padding-inline-start`, `text-align: start`)
+- `TopBar` component: slim header with app name and language toggle (עברית / English)
+- `CONTEXT.md`: domain glossary with canonical term definitions and Hebrew translations
+- `docs/TRANSLATIONS.md`: full terminology translation table and guide for adding languages
+- ESLint `i18next/no-literal-string` rule enforcing that all JSX text and key attributes are wrapped in `t()`; Stop hook in `.claude/settings.json` runs lint automatically after each session
+
 ### Changed
 - Refactored `src/components/` from flat files to per-component subdirectories; each component's TSX and CSS module are co-located in their own folder
 - Extracted drag state and mouse event handlers into `src/hooks/use-drag.ts`

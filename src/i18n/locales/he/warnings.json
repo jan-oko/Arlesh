@@ -1,0 +1,9 @@
+{
+  "convertHeading": "המר ל-{{kind}}?",
+  "reparentSubgoals": "סדר מחדש תת-מטרות",
+  "deleteSubgoals": "מחק תת-מטרות",
+  "blockReasonCarryOver": "סיבת חסימה תעבור: \"{{preview}}\"",
+  "subgoalsUnderTask_one": "{{count}} תת-מטרה לא יכולה לחיות תחת משימה — בחר מה יקרה איתה",
+  "subgoalsUnderTask_other": "{{count}} תת-מטרות לא יכולות לחיות תחת משימה — בחר מה יקרה איתן",
+  "statusToast": "סטאטוס: {{from}} → {{to}}"
+}

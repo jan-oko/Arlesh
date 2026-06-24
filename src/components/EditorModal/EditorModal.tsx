@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import styles from "./EditorModal.module.css";
 
 interface Props {
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export default function EditorModal({ heading, onClose, onKeyDown, isSaving, onSave, saveError, children }: Props) {
+  const { t } = useTranslation("common");
   return (
     <div className={styles.overlay} onMouseDown={onClose}>
       <div
@@ -24,7 +26,7 @@ export default function EditorModal({ heading, onClose, onKeyDown, isSaving, onS
         {saveError !== null && <p className={styles.errorMsg}>{saveError}</p>}
         <div className={styles.actions}>
           <button className={styles.cancelBtn} type="button" onClick={onClose} disabled={isSaving}>
-            Cancel
+            {t("cancel")}
           </button>
           <button
             className={styles.saveBtn}
@@ -32,7 +34,7 @@ export default function EditorModal({ heading, onClose, onKeyDown, isSaving, onS
             onClick={onSave}
             disabled={isSaving}
           >
-            {isSaving ? "Saving…" : "Save"}
+            {isSaving ? t("saving") : t("save")}
           </button>
         </div>
       </div>

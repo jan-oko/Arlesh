@@ -1,0 +1,16 @@
+{
+  "editTask": "ערוך משימה",
+  "editGoal": "ערוך מטרה",
+  "editDomain": "ערוך גזרה",
+  "editTag": "ערוך תג",
+  "editProject": "ערוך פרויקט",
+  "fieldTitle": "שם",
+  "fieldStatus": "סטאטוס",
+  "fieldBlockReason": "סיבת חסימה",
+  "fieldTags": "תגיות",
+  "fieldDependencies": "תלויות",
+  "fieldKbDir": "ספריית בסיס ידע",
+  "placeholderBlockReason": "השאר ריק לניקוי",
+  "placeholderKbDir": "/path/to/vault",
+  "placeholderDepSearch": "חפש משימות או מטרות להוספת תלות…"
+}

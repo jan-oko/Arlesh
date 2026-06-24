@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd /home/atai/Green/CODE/Arlesh && npm run lint 2>&1 | tail -10"
+          }
+        ]
+      }
+    ]
+  }
+}

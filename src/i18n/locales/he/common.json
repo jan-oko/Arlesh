@@ -1,0 +1,7 @@
+{
+  "save": "שמור",
+  "saving": "שומר…",
+  "cancel": "בטל",
+  "loading": "טוען…",
+  "error": "שגיאה: {{message}}"
+}

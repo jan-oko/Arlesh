@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useMindmapData } from "./use-mindmap-data";
 import { useDrag } from "./use-drag";
 import { useCanvasLayout } from "./use-canvas-layout";
@@ -24,6 +25,7 @@ import WarningConfirmModal from "@/components/WarningConfirmModal/WarningConfirm
 import styles from "./MindmapView.module.css";
 
 export default function MindmapView() {
+  const { t } = useTranslation(["common", "editor"]);
   const { tree, isLoading, error, createChild, renameNode, retypeNode, reorderNode, moveNode, removeNode, reload } =
     useMindmapData();
   const { selectedNodeId, subtreeRootId, clipboard, collapsedNodeIds, pendingToast, selectNode, enterSubtree, exitSubtree, exitToRoot, setClipboard, toggleCollapsed, showToast, clearToast } =
@@ -93,8 +95,8 @@ export default function MindmapView() {
   const toastPosition = pendingToast !== null ? positions.get(pendingToast.nodeId) : undefined;
   const targetPos = dragTargetId !== null ? positions.get(dragTargetId) : undefined;
 
-  if (isLoading) return <div className={styles.centered}>Loading…</div>;
-  if (error !== null) return <div className={styles.centered}>Error: {error}</div>;
+  if (isLoading) return <div className={styles.centered}>{t("common:loading")}</div>;
+  if (error !== null) return <div className={styles.centered}>{t("common:error", { message: error })}</div>;
 
   return (
     <div className={styles.container}>
@@ -132,13 +134,13 @@ export default function MindmapView() {
         <GoalEditorModal node={editorModal.node} allTags={allTags} onSave={onGoalSave} onClose={() => setEditorModal(null)} />
       )}
       {editorModal !== null && editorModal.node.kind === "domain" && (
-        <TitleEditorModal heading="Edit Domain" title={editorModal.node.title} onSave={onSimpleSave} onClose={() => setEditorModal(null)} />
+        <TitleEditorModal heading={t("editor:editDomain")} title={editorModal.node.title} onSave={onSimpleSave} onClose={() => setEditorModal(null)} />
       )}
       {editorModal !== null && editorModal.node.kind === "project" && (
         <ProjectEditorModal node={editorModal.node} onSave={onProjectSave} onClose={() => setEditorModal(null)} />
       )}
       {editorModal !== null && editorModal.node.kind === "tag" && (
-        <TitleEditorModal heading="Edit Tag" title={editorModal.node.title} onSave={onSimpleSave} onClose={() => setEditorModal(null)} />
+        <TitleEditorModal heading={t("editor:editTag")} title={editorModal.node.title} onSave={onSimpleSave} onClose={() => setEditorModal(null)} />
       )}
 
       {warningModal !== null && retypeActions !== null && (

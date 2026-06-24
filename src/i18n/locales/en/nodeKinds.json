@@ -1,0 +1,9 @@
+{
+  "aspect": "Aspect",
+  "project": "Project",
+  "domain": "Domain",
+  "goal": "Goal",
+  "task": "Task",
+  "tag": "Tag",
+  "tags": "Tags"
+}

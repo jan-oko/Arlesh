@@ -1,4 +1,6 @@
 import { useCallback, useState } from "react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import type { RetypeOptions } from "./use-mindmap-data";
 import { GOAL_CHILDREN_ACTION } from "./use-mindmap-data";
@@ -7,6 +9,23 @@ import { WARNING_VARIANT } from "@/components/WarningConfirmModal/WarningConfirm
 import { validTypesForCycling, crossesGoalTaskBoundary } from "@/utils/node-meta";
 import { goalStatusToTaskStatus, taskStatusToGoalStatus, GOAL_STATUS, TASK_STATUS } from "@/utils/status-mapping";
 import { findNode, findParent } from "@/utils/mindmap-tree";
+
+type Tf = TFunction<["warnings", "nodeKinds", "status"]>;
+
+function labelGoalStatus(status: string, t: Tf): string {
+  if (status === GOAL_STATUS.ACTIVE) return t("status:goal.active");
+  if (status === GOAL_STATUS.ACHIEVED) return t("status:goal.achieved");
+  if (status === GOAL_STATUS.FROZEN) return t("status:goal.frozen");
+  if (status === GOAL_STATUS.ARCHIVED) return t("status:goal.archived");
+  return status;
+}
+
+function labelTaskStatus(status: string, t: Tf): string {
+  if (status === TASK_STATUS.TODO) return t("status:task.todo");
+  if (status === TASK_STATUS.IN_PROGRESS) return t("status:task.in_progress");
+  if (status === TASK_STATUS.DONE) return t("status:task.done");
+  return status;
+}
 
 export interface WarningModalState {
   nodeId: string;
@@ -34,19 +53,22 @@ interface Result {
 
 function buildRetypeActions(
   hasGoalChildren: boolean,
-  toKind: NodeKind,
+  reparentLabel: string,
+  deleteLabel: string,
+  convertLabel: string,
   confirm: (options?: RetypeOptions) => void,
 ): WarningAction[] {
   if (hasGoalChildren) {
     return [
-      { label: "Re-parent sub-goals", variant: WARNING_VARIANT.PRIMARY, onClick: () => { confirm({ goalChildrenAction: GOAL_CHILDREN_ACTION.REPARENT }); } },
-      { label: "Delete sub-goals", variant: WARNING_VARIANT.DANGER, onClick: () => { confirm({ goalChildrenAction: GOAL_CHILDREN_ACTION.REMOVE }); } },
+      { label: reparentLabel, variant: WARNING_VARIANT.PRIMARY, onClick: () => { confirm({ goalChildrenAction: GOAL_CHILDREN_ACTION.REPARENT }); } },
+      { label: deleteLabel, variant: WARNING_VARIANT.DANGER, onClick: () => { confirm({ goalChildrenAction: GOAL_CHILDREN_ACTION.REMOVE }); } },
     ];
   }
-  return [{ label: `Convert to ${toKind}`, variant: WARNING_VARIANT.PRIMARY, onClick: () => { confirm(); } }];
+  return [{ label: convertLabel, variant: WARNING_VARIANT.PRIMARY, onClick: () => { confirm(); } }];
 }
 
 export function useNodeTypeManager({ tree, retypeNode, selectNode, showToast }: Options): Result {
+  const { t } = useTranslation(["warnings", "nodeKinds", "status"]);
   const [warningModal, setWarningModal] = useState<WarningModalState | null>(null);
 
   const confirmRetype = useCallback(
@@ -74,11 +96,18 @@ export function useNodeTypeManager({ tree, retypeNode, selectNode, showToast }: 
       if (newKind === undefined || newKind === node.kind) return;
 
       if (crossesGoalTaskBoundary(node.kind, newKind)) {
-        const newStatus =
-          node.kind === "goal"
-            ? goalStatusToTaskStatus(node.status ?? GOAL_STATUS.ACTIVE)
-            : taskStatusToGoalStatus(node.status ?? TASK_STATUS.TODO);
-        showToast({ nodeId, message: `Status: ${node.status ?? "—"} → ${newStatus}` });
+        const rawOldStatus = node.status ?? (node.kind === "goal" ? GOAL_STATUS.ACTIVE : TASK_STATUS.TODO);
+        const rawNewStatus = node.kind === "goal"
+          ? goalStatusToTaskStatus(rawOldStatus)
+          : taskStatusToGoalStatus(rawOldStatus);
+        const fromStatusLabel = node.kind === "goal"
+          ? labelGoalStatus(rawOldStatus, t)
+          : labelTaskStatus(rawOldStatus, t);
+        const toStatusLabel = node.kind === "goal"
+          ? labelTaskStatus(rawNewStatus, t)
+          : labelGoalStatus(rawNewStatus, t);
+        showToast({ nodeId, message: t("warnings:statusToast", { from: fromStatusLabel, to: toStatusLabel }) });
+
         const hasGoalChildren = node.kind === "goal" && node.children.some((c) => c.kind === "goal");
         const hasBlockedReason = node.blockedReason != null && node.blockedReason !== "";
         if (hasGoalChildren || hasBlockedReason) {
@@ -86,17 +115,16 @@ export function useNodeTypeManager({ tree, retypeNode, selectNode, showToast }: 
           if (hasBlockedReason) {
             const reason = node.blockedReason ?? "";
             const preview = reason.length > 40 ? `${reason.slice(0, 40)}…` : reason;
-            consequences.push(`Block reason will carry over: "${preview}"`);
+            consequences.push(t("warnings:blockReasonCarryOver", { preview }));
           }
           if (hasGoalChildren) {
             const count = node.children.filter((c) => c.kind === "goal").length;
-            consequences.push(
-              `${count} sub-goal${count > 1 ? "s" : ""} cannot live under a task — choose what happens to them`,
-            );
+            consequences.push(t("warnings:subgoalsUnderTask", { count }));
           }
           setWarningModal({
             nodeId, fromKind: node.kind, toKind: newKind,
-            heading: `Convert to ${newKind}?`, consequences, hasGoalChildren,
+            heading: t("warnings:convertHeading", { kind: t(`nodeKinds:${newKind}`) }),
+            consequences, hasGoalChildren,
           });
           return;
         }
@@ -106,11 +134,17 @@ export function useNodeTypeManager({ tree, retypeNode, selectNode, showToast }: 
         selectNode(newId ?? nodeId);
       });
     },
-    [tree, showToast, retypeNode, selectNode],
+    [tree, showToast, retypeNode, selectNode, t],
   );
 
   const retypeActions = warningModal !== null
-    ? buildRetypeActions(warningModal.hasGoalChildren, warningModal.toKind, confirmRetype)
+    ? buildRetypeActions(
+        warningModal.hasGoalChildren,
+        t("warnings:reparentSubgoals"),
+        t("warnings:deleteSubgoals"),
+        t("warnings:convertHeading", { kind: t(`nodeKinds:${warningModal.toKind}`) }),
+        confirmRetype,
+      )
     : null;
 
   return { warningModal, setWarningModal, confirmRetype, cycleType, retypeActions };

@@ -1,0 +1,12 @@
+{
+  "enterSubtree": "פתח עץ מכאן",
+  "rename": "שנה שם",
+  "typeNext": "סוג →",
+  "typePrev": "סוג ←",
+  "cut": "גזור",
+  "copy": "העתק",
+  "pasteAsChild": "הדבק כילד",
+  "expand": "פתח",
+  "collapse": "קפל",
+  "delete": "מחק"
+}

@@ -1,0 +1,19 @@
+{
+  "task": {
+    "todo": "פתוח",
+    "in_progress": "בתהליך",
+    "done": "בוצע"
+  },
+  "goal": {
+    "active": "פעיל",
+    "achieved": "הושלם",
+    "frozen": "מוקפא",
+    "archived": "בוידעם"
+  },
+  "project": {
+    "active": "פעיל",
+    "paused": "מושהה",
+    "completed": "הושלם",
+    "archived": "בוידעם"
+  }
+}

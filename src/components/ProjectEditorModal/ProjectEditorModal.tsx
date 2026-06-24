@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { MindmapNode } from "@/utils/tree-layout";
 import EditorModal from "@/components/EditorModal/EditorModal";
 import styles from "@/components/EditorModal/EditorModal.module.css";
@@ -25,6 +26,7 @@ interface Props {
 }
 
 export default function ProjectEditorModal({ node, onSave, onClose }: Props) {
+  const { t } = useTranslation(["editor", "status"]);
   const [title, setTitle] = useState(node.title);
   const [status, setStatus] = useState(node.status ?? PROJECT_STATUS.ACTIVE);
   const [kbDir, setKbDir] = useState(node.knowledgeBaseDirectory ?? "");
@@ -52,24 +54,24 @@ export default function ProjectEditorModal({ node, onSave, onClose }: Props) {
   }
 
   return (
-    <EditorModal heading="Edit Project" onClose={onClose} onKeyDown={handleKeyDown} isSaving={isSaving} onSave={() => void handleSave()} saveError={saveError}>
+    <EditorModal heading={t("editProject")} onClose={onClose} onKeyDown={handleKeyDown} isSaving={isSaving} onSave={() => void handleSave()} saveError={saveError}>
       <label className={styles.label}>
-        Title
+        {t("fieldTitle")}
         <input ref={titleRef} className={styles.input} value={title} onChange={(e) => setTitle(e.target.value)} type="text" />
       </label>
       <div className={styles.label}>
-        Status
+        {t("fieldStatus")}
         <div className={styles.statusPills}>
           {PROJECT_STATUSES.map((s) => (
             <button key={s} type="button" className={`${styles.statusPill}${status === s ? ` ${styles.statusPillActive}` : ""}`} onClick={() => setStatus(s)}>
-              {s}
+              {t(`status:project.${s}`)}
             </button>
           ))}
         </div>
       </div>
       <label className={styles.label}>
-        Knowledge base directory
-        <input className={styles.input} value={kbDir} onChange={(e) => setKbDir(e.target.value)} type="text" placeholder="/path/to/vault" />
+        {t("fieldKbDir")}
+        <input className={styles.input} value={kbDir} onChange={(e) => setKbDir(e.target.value)} type="text" placeholder={t("placeholderKbDir")} />
       </label>
     </EditorModal>
   );

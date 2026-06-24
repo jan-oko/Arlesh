@@ -1,7 +1,7 @@
 .pill {
   position: fixed;
   top: var(--space-4);
-  left: var(--space-4);
+  inset-inline-start: var(--space-4);
   z-index: 20;
   background: var(--surface-raised);
   color: var(--text-primary);

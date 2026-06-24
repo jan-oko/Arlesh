@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { Domain } from "@/api/domains";
 import EditorModal from "@/components/EditorModal/EditorModal";
@@ -22,6 +23,7 @@ interface Props {
 }
 
 export default function GoalEditorModal({ node, allTags, onSave, onClose }: Props) {
+  const { t } = useTranslation(["editor", "status"]);
   const [title, setTitle] = useState(node.title);
   const [status, setStatus] = useState(node.status ?? GOAL_STATUS.ACTIVE);
   const [blockedReason, setBlockedReason] = useState(node.blockedReason ?? "");
@@ -53,31 +55,31 @@ export default function GoalEditorModal({ node, allTags, onSave, onClose }: Prop
     if (event.key === "Escape") onClose();
   }
 
-  const validTags = allTags.filter((t) => t.title.trim() !== "");
+  const validTags = allTags.filter((tag) => tag.title.trim() !== "");
 
   return (
-    <EditorModal heading="Edit Goal" onClose={onClose} onKeyDown={handleKeyDown} isSaving={isSaving} onSave={() => void handleSave()} saveError={saveError}>
+    <EditorModal heading={t("editGoal")} onClose={onClose} onKeyDown={handleKeyDown} isSaving={isSaving} onSave={() => void handleSave()} saveError={saveError}>
       <label className={styles.label}>
-        Title
+        {t("fieldTitle")}
         <input ref={titleRef} className={styles.input} value={title} onChange={(e) => setTitle(e.target.value)} type="text" />
       </label>
       <div className={styles.label}>
-        Status
+        {t("fieldStatus")}
         <div className={styles.statusPills}>
           {GOAL_STATUSES.map((s) => (
             <button key={s} type="button" className={`${styles.statusPill}${status === s ? ` ${styles.statusPillActive}` : ""}`} onClick={() => setStatus(s)}>
-              {s}
+              {t(`status:goal.${s}`)}
             </button>
           ))}
         </div>
       </div>
       <label className={styles.label}>
-        Block reason
-        <textarea className={styles.textarea} value={blockedReason} onChange={(e) => setBlockedReason(e.target.value)} placeholder="Leave empty to clear" />
+        {t("fieldBlockReason")}
+        <textarea className={styles.textarea} value={blockedReason} onChange={(e) => setBlockedReason(e.target.value)} placeholder={t("placeholderBlockReason")} />
       </label>
       {validTags.length > 0 && (
         <fieldset className={styles.tagSection}>
-          <legend className={styles.label}>Tags</legend>
+          <legend className={styles.label}>{t("fieldTags")}</legend>
           <div className={styles.tagList}>
             {validTags.map((tag) => (
               <label key={tag.id} className={styles.tagOption}>

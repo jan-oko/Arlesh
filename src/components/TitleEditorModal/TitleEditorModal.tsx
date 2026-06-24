@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import EditorModal from "@/components/EditorModal/EditorModal";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export default function TitleEditorModal({ heading, title: initialTitle, onSave, onClose }: Props) {
+  const { t } = useTranslation("editor");
   const [title, setTitle] = useState(initialTitle);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -47,7 +49,7 @@ export default function TitleEditorModal({ heading, title: initialTitle, onSave,
       saveError={saveError}
     >
       <label className={styles.label}>
-        Title
+        {t("fieldTitle")}
         <input
           ref={titleRef}
           className={styles.input}

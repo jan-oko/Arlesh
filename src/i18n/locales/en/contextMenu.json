@@ -1,0 +1,12 @@
+{
+  "enterSubtree": "Enter subtree",
+  "rename": "Rename",
+  "typeNext": "Type →",
+  "typePrev": "Type ←",
+  "cut": "Cut",
+  "copy": "Copy",
+  "pasteAsChild": "Paste as child",
+  "expand": "Expand",
+  "collapse": "Collapse",
+  "delete": "Delete"
+}

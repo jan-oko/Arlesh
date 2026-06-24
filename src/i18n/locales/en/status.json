@@ -1,0 +1,19 @@
+{
+  "task": {
+    "todo": "To Do",
+    "in_progress": "In Progress",
+    "done": "Done"
+  },
+  "goal": {
+    "active": "Active",
+    "achieved": "Achieved",
+    "frozen": "Frozen",
+    "archived": "Archived"
+  },
+  "project": {
+    "active": "Active",
+    "paused": "Paused",
+    "completed": "Completed",
+    "archived": "Archived"
+  }
+}

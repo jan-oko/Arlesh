@@ -1,0 +1,16 @@
+{
+  "editTask": "Edit Task",
+  "editGoal": "Edit Goal",
+  "editDomain": "Edit Domain",
+  "editTag": "Edit Tag",
+  "editProject": "Edit Project",
+  "fieldTitle": "Title",
+  "fieldStatus": "Status",
+  "fieldBlockReason": "Block reason",
+  "fieldTags": "Tags",
+  "fieldDependencies": "Dependencies",
+  "fieldKbDir": "Knowledge base directory",
+  "placeholderBlockReason": "Leave empty to clear",
+  "placeholderKbDir": "/path/to/vault",
+  "placeholderDepSearch": "Search tasks or goals to add dependency…"
+}
