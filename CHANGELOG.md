@@ -8,7 +8,13 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Delete confirmation modal: replaces the browser `confirm()` dialog with a native in-app modal that shows the node title and total descendant count (e.g. "This will also permanently delete 3 descendant nodes"); Cancel is auto-focused so accidental Enter presses don't delete
+
 ### Fixed
+- Cascade-delete subtrees: `removeNode` now receives a post-ordered list of all descendants (children before parent) and deletes them sequentially, preventing the SQLite FOREIGN KEY constraint failure (code 787) that occurred when deleting a domain/project with children
+- Delete errors are now surfaced inside the confirmation modal instead of being swallowed silently (`void removeNode().then()` without `.catch()`)
+- Keyboard shortcuts are blocked while the delete modal is open (Delete key no longer double-fires)
 - White border around the app window: added `margin: 0; padding: 0` reset for `html`, `body`, and `#root` in `tokens.css`; deleted unused Tauri scaffold `App.css` (which also set a light background on `:root`)
 - SVG canvas and drag ghost now set `direction: ltr` explicitly, preventing CSS `direction: rtl` (inherited from the document root in Hebrew mode) from flipping `textAnchor` semantics and causing LTR node text to overlap the icon
 - SVG node layout now mirrors per-node based on the node's text content (first strong directional character), not the global app language — Latin-titled nodes always render LTR and Hebrew-titled nodes always render RTL, regardless of the language toggle; inline edit uses `dir="auto"` so the browser follows what the user types; `DragGhost` applies the same content-based detection

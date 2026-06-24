@@ -1,4 +1,4 @@
-import type { MindmapNode, Position } from "@/utils/tree-layout";
+import type { MindmapNode, NodeKind, Position } from "@/utils/tree-layout";
 
 export function findNode(root: MindmapNode, id: string): MindmapNode | undefined {
   if (root.id === id) return root;
@@ -79,4 +79,14 @@ export function gatherSubtreeItems(
 export function collectTasksAndGoals(node: MindmapNode, acc: MindmapNode[]): void {
   if (node.kind === "task" || node.kind === "goal") acc.push(node);
   for (const child of node.children) collectTasksAndGoals(child, acc);
+}
+
+export function collectSubtreePostOrder(node: MindmapNode): Array<{ id: string; kind: NodeKind }> {
+  const result: Array<{ id: string; kind: NodeKind }> = [];
+  function visit(n: MindmapNode): void {
+    for (const child of n.children) visit(child);
+    result.push({ id: n.id, kind: n.kind });
+  }
+  visit(node);
+  return result;
 }

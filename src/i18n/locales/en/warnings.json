@@ -2,8 +2,13 @@
   "convertHeading": "Convert to {{kind}}?",
   "reparentSubgoals": "Re-parent sub-goals",
   "deleteSubgoals": "Delete sub-goals",
-  "blockReasonCarryOver": "Block reason will carry over: “{{preview}}”",
+  "blockReasonCarryOver": "Block reason will carry over: "{{preview}}"",
   "subgoalsUnderTask_one": "{{count}} sub-goal cannot live under a task — choose what happens to them",
   "subgoalsUnderTask_other": "{{count}} sub-goals cannot live under a task — choose what happens to them",
-  "statusToast": "Status: {{from}} → {{to}}"
+  "statusToast": "Status: {{from}} → {{to}}",
+  "deleteHeading": "Delete \"{{title}}\"?",
+  "deleteWithChildren_one": "This will also permanently delete {{count}} descendant node.",
+  "deleteWithChildren_other": "This will also permanently delete {{count}} descendant nodes.",
+  "deleteConfirm": "Delete",
+  "deleteFailed": "Delete failed: {{message}}"
 }

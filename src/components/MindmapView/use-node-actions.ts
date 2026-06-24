@@ -27,7 +27,7 @@ interface Options {
   tree: MindmapNode;
   clipboard: ClipboardEntry | null;
   moveNode: (id: string, kind: NodeKind, parentId: string, parentKind: NodeKind, position: number) => Promise<void>;
-  removeNode: (id: string, kind: NodeKind) => Promise<void>;
+  onRequestDelete: (nodeId: string) => void;
   reload: () => Promise<void>;
   renameNode: (id: string, kind: NodeKind, title: string) => Promise<void>;
   createChild: (parentId: string, parentKind: NodeKind, title: string) => Promise<MindmapNode>;
@@ -45,7 +45,7 @@ interface Result {
 }
 
 export function useNodeActions({
-  tree, clipboard, moveNode, removeNode, reload, renameNode,
+  tree, clipboard, moveNode, onRequestDelete, reload, renameNode,
   createChild, selectNode, setClipboard, setEditingNodeId,
 }: Options): Result {
   const onStatusClick = useCallback(
@@ -91,11 +91,11 @@ export function useNodeActions({
   const onDelete = useCallback(
     (nodeId: string) => {
       const node = findNode(tree, nodeId);
-      if (node !== undefined && node.kind !== "aspect" && confirm(`Delete "${node.title}"?`)) {
-        void removeNode(nodeId, node.kind).then(() => selectNode(null));
+      if (node !== undefined && node.kind !== "aspect") {
+        onRequestDelete(nodeId);
       }
     },
-    [tree, removeNode, selectNode],
+    [tree, onRequestDelete],
   );
 
   const onPaste = useCallback(

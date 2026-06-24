@@ -11,7 +11,7 @@ import { useNavigateArrow } from "./use-navigate-arrow";
 import { useKeyboardMindmap } from "./use-keyboard-mindmap";
 import { useMindmapStore, CLIPBOARD_OP } from "@/stores/use-mindmap-store";
 import type { MindmapNode } from "@/utils/tree-layout";
-import { findNode, findParent, collectTasksAndGoals } from "@/utils/mindmap-tree";
+import { findNode, findParent, collectTasksAndGoals, collectSubtreePostOrder } from "@/utils/mindmap-tree";
 import MindmapCanvas from "@/components/MindmapCanvas/MindmapCanvas";
 import DragGhost from "@/components/DragGhost/DragGhost";
 import DragPlaceholder from "@/components/DragPlaceholder/DragPlaceholder";
@@ -22,6 +22,7 @@ import GoalEditorModal from "@/components/GoalEditorModal/GoalEditorModal";
 import TitleEditorModal from "@/components/TitleEditorModal/TitleEditorModal";
 import ProjectEditorModal from "@/components/ProjectEditorModal/ProjectEditorModal";
 import WarningConfirmModal from "@/components/WarningConfirmModal/WarningConfirmModal";
+import DeleteConfirmModal from "@/components/DeleteConfirmModal/DeleteConfirmModal";
 import styles from "./MindmapView.module.css";
 
 export default function MindmapView() {
@@ -32,6 +33,9 @@ export default function MindmapView() {
     useMindmapStore();
 
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const findNodeById = useCallback((id: string): MindmapNode | undefined => findNode(tree, id), [tree]);
   const allTasksAndGoals = useMemo(() => {
@@ -57,8 +61,21 @@ export default function MindmapView() {
   const { editorModal, setEditorModal, allTags, availableForDep, onDoubleClick, onTaskSave, onGoalSave, onSimpleSave, onProjectSave } =
     useNodeEditor({ tree, allTasksAndGoals, renameNode, reload });
 
+  const handleConfirmDelete = useCallback(() => {
+    if (deleteTarget === null) return;
+    const node = findNode(tree, deleteTarget);
+    if (node === undefined) { setDeleteTarget(null); return; }
+    const nodesToDelete = collectSubtreePostOrder(node);
+    setIsDeleting(true);
+    setDeleteError(null);
+    void removeNode(nodesToDelete)
+      .then(() => { setDeleteTarget(null); selectNode(null); })
+      .catch((err: unknown) => { setDeleteError(err instanceof Error ? err.message : String(err)); })
+      .finally(() => setIsDeleting(false));
+  }, [deleteTarget, tree, removeNode, selectNode]);
+
   const { onStatusClick, onCommitEdit, onCreateChild, onDelete, onPaste } = useNodeActions({
-    tree, clipboard, moveNode, removeNode, reload, renameNode,
+    tree, clipboard, moveNode, onRequestDelete: setDeleteTarget, reload, renameNode,
     createChild, selectNode, setClipboard, setEditingNodeId,
   });
 
@@ -70,7 +87,7 @@ export default function MindmapView() {
   });
 
   useKeyboardMindmap({
-    isInputActive: editingNodeId !== null || editorModal !== null,
+    isInputActive: editingNodeId !== null || editorModal !== null || deleteTarget !== null,
     isWarningActive: warningModal !== null,
     onDismissWarning: () => setWarningModal(null),
     selectedNodeId,
@@ -151,6 +168,22 @@ export default function MindmapView() {
           onCancel={() => setWarningModal(null)}
         />
       )}
+
+      {deleteTarget !== null && (() => {
+        const node = findNode(tree, deleteTarget);
+        if (node === undefined) return null;
+        const descendantCount = collectSubtreePostOrder(node).length - 1;
+        return (
+          <DeleteConfirmModal
+            nodeTitle={node.title}
+            descendantCount={descendantCount}
+            isDeleting={isDeleting}
+            error={deleteError}
+            onConfirm={handleConfirmDelete}
+            onCancel={() => { setDeleteTarget(null); setDeleteError(null); }}
+          />
+        );
+      })()}
 
       {dragSourceId !== null && ghostPos !== null && (() => {
         const sourceNode = findNode(tree, dragSourceId);

@@ -28,7 +28,7 @@ interface MindmapData {
   retypeNode: (id: string, fromKind: NodeKind, toKind: NodeKind, options?: RetypeOptions) => Promise<string | null>;
   reorderNode: (id: string, direction: 1 | -1) => Promise<void>;
   moveNode: (id: string, kind: NodeKind, newParentId: string, newParentKind: NodeKind, position: number) => Promise<void>;
-  removeNode: (id: string, kind: NodeKind) => Promise<void>;
+  removeNode: (nodesToDelete: Array<{ id: string; kind: NodeKind }>) => Promise<void>;
   reload: () => Promise<void>;
 }
 
@@ -500,14 +500,12 @@ export function useMindmapData(): MindmapData {
   );
 
   const removeNode = useCallback(
-    async (id: string, kind: NodeKind): Promise<void> => {
-      const dbId = dbIdFromNodeId(id);
-      if (kind === "goal") {
-        await deleteGoal(dbId);
-      } else if (kind === "task") {
-        await deleteTask(dbId);
-      } else {
-        await import("@/api/domains").then(({ deleteDomain }) => deleteDomain(dbId));
+    async (nodesToDelete: Array<{ id: string; kind: NodeKind }>): Promise<void> => {
+      for (const { id, kind } of nodesToDelete) {
+        const dbId = dbIdFromNodeId(id);
+        if (kind === "goal") await deleteGoal(dbId);
+        else if (kind === "task") await deleteTask(dbId);
+        else if (kind !== "aspect") await deleteDomain(dbId);
       }
       await silentLoad();
     },

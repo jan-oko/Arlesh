@@ -5,5 +5,10 @@
   "blockReasonCarryOver": "סיבת חסימה תעבור: \"{{preview}}\"",
   "subgoalsUnderTask_one": "{{count}} תת-מטרה לא יכולה לחיות תחת משימה — בחר מה יקרה איתה",
   "subgoalsUnderTask_other": "{{count}} תת-מטרות לא יכולות לחיות תחת משימה — בחר מה יקרה איתן",
-  "statusToast": "סטאטוס: {{from}} → {{to}}"
+  "statusToast": "סטאטוס: {{from}} → {{to}}",
+  "deleteHeading": "מחק \"{{title}}\"?",
+  "deleteWithChildren_one": "גם {{count}} צומת צאצא יימחק לצמיתות.",
+  "deleteWithChildren_other": "גם {{count}} צמתי צאצא יימחקו לצמיתות.",
+  "deleteConfirm": "מחק",
+  "deleteFailed": "המחיקה נכשלה: {{message}}"
 }
