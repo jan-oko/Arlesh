@@ -5,6 +5,7 @@ import type { Dependency } from "@/api/tasks";
 import { listTaskDependencies } from "@/api/tasks";
 import EditorModal from "@/components/EditorModal/EditorModal";
 import styles from "@/components/EditorModal/EditorModal.module.css";
+import { TASK_STATUS } from "@/utils/status-mapping";
 
 export interface TaskSaveData {
   title: string;
@@ -15,7 +16,7 @@ export interface TaskSaveData {
   removedDeps: Dependency[];
 }
 
-const TASK_STATUSES = ["todo", "in_progress", "done"] as const;
+const TASK_STATUSES = Object.values(TASK_STATUS);
 
 function depKey(dep: Dependency): string { return `${dep.type}-${dep.id}`; }
 function depEquals(a: Dependency, b: Dependency): boolean { return a.type === b.type && a.id === b.id; }
@@ -30,7 +31,7 @@ interface Props {
 
 export default function TaskEditorModal({ node, allTags, availableForDep, onSave, onClose }: Props) {
   const [title, setTitle] = useState(node.title);
-  const [status, setStatus] = useState(node.status ?? "todo");
+  const [status, setStatus] = useState(node.status ?? TASK_STATUS.TODO);
   const [blockedReason, setBlockedReason] = useState(node.blockedReason ?? "");
   const [tagIds, setTagIds] = useState<number[]>(node.tagIds);
   const [initialDeps, setInitialDeps] = useState<Dependency[]>([]);

@@ -8,13 +8,9 @@ interface ClipboardEntry {
   nodeId: string;
 }
 
-interface WarningModalState {
-  nodeId: string;
-}
-
 interface Options {
   isInputActive: boolean;
-  warningModal: WarningModalState | null;
+  isWarningActive: boolean;
   onDismissWarning: () => void;
   selectedNodeId: string | null;
   subtreeRootId: string | null;
@@ -36,7 +32,7 @@ interface Options {
 
 export function useKeyboardMindmap(options: Options): void {
   const {
-    isInputActive, warningModal, onDismissWarning,
+    isInputActive, isWarningActive, onDismissWarning,
     selectedNodeId, subtreeRootId, clipboard,
     onNavigate, onCycleType, onReorder, onStartRename,
     onCreateChild, onDelete, onToggleCollapsed,
@@ -48,7 +44,7 @@ export function useKeyboardMindmap(options: Options): void {
     function handleKeyDown(event: KeyboardEvent) {
       if (isInputActive) return;
 
-      if (warningModal !== null) {
+      if (isWarningActive) {
         if (event.key === "Escape") {
           event.preventDefault();
           event.stopImmediatePropagation();
@@ -145,7 +141,7 @@ export function useKeyboardMindmap(options: Options): void {
       window.removeEventListener("keydown", handleShiftEscape, { capture: true });
     };
   }, [
-    isInputActive, warningModal, onDismissWarning,
+    isInputActive, isWarningActive, onDismissWarning,
     selectedNodeId, subtreeRootId, clipboard,
     onNavigate, onCycleType, onReorder, onStartRename,
     onCreateChild, onDelete, onToggleCollapsed,

@@ -8,6 +8,7 @@ import { listDomains, updateDomain } from "@/api/domains";
 import { addTagToTask, removeTagFromTask, updateTask, addTaskDependency, removeTaskDependency } from "@/api/tasks";
 import { addTagToGoal, removeTagFromGoal, updateGoal } from "@/api/goals";
 import { findNode } from "@/utils/mindmap-tree";
+import { DOMAIN_SUBTYPE } from "@/api/domains";
 
 export interface EditorModalState {
   nodeId: string;
@@ -37,7 +38,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, renameNode, reload }: Op
   const [editorModal, setEditorModal] = useState<EditorModalState | null>(null);
   const [allTags, setAllTags] = useState<Domain[]>([]);
 
-  useEffect(() => { void listDomains("tag").then(setAllTags); }, []);
+  useEffect(() => { void listDomains(DOMAIN_SUBTYPE.TAG).then(setAllTags); }, []);
 
   const availableForDep =
     editorModal !== null ? allTasksAndGoals.filter((n) => n.id !== editorModal.nodeId) : [];

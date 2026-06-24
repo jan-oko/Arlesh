@@ -1,5 +1,10 @@
 import { create } from "zustand";
 
+export const CLIPBOARD_OP = {
+  CUT: "cut",
+  COPY: "copy",
+} as const;
+
 export type ClipboardOperation = "cut" | "copy";
 
 export interface Clipboard {

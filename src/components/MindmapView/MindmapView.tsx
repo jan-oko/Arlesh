@@ -1,19 +1,16 @@
 import { useCallback, useMemo, useState } from "react";
 import { useMindmapData } from "@/hooks/use-mindmap-data";
-import { useMindmapStore } from "@/stores/use-mindmap-store";
+import { useMindmapStore, CLIPBOARD_OP } from "@/stores/use-mindmap-store";
 import { useDrag } from "@/hooks/use-drag";
 import { useCanvasLayout } from "@/hooks/use-canvas-layout";
 import { useNodeTypeManager } from "@/hooks/use-node-type-manager";
-import type { WarningModalState } from "@/hooks/use-node-type-manager";
 import { useNodeEditor } from "@/hooks/use-node-editor";
+import { useNodeActions } from "@/hooks/use-node-actions";
 import { useKeyboardMindmap } from "@/hooks/use-keyboard-mindmap";
-import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
+import type { MindmapNode } from "@/utils/tree-layout";
 import { findNode, findParent, nearestInDirection, collectTasksAndGoals } from "@/utils/mindmap-tree";
 import { isValidDropTarget } from "@/utils/node-meta";
-import { updateTask } from "@/api/tasks";
 import type { ContextMenuAction } from "@/components/NodeContextMenu/NodeContextMenu";
-import type { WarningAction } from "@/components/WarningConfirmModal/WarningConfirmModal";
-import type { RetypeOptions } from "@/hooks/use-mindmap-data";
 import MindmapCanvas from "@/components/MindmapCanvas/MindmapCanvas";
 import DragGhost from "@/components/DragGhost/DragGhost";
 import DragPlaceholder from "@/components/DragPlaceholder/DragPlaceholder";
@@ -25,26 +22,6 @@ import TitleEditorModal from "@/components/TitleEditorModal/TitleEditorModal";
 import ProjectEditorModal from "@/components/ProjectEditorModal/ProjectEditorModal";
 import WarningConfirmModal from "@/components/WarningConfirmModal/WarningConfirmModal";
 import styles from "./MindmapView.module.css";
-
-function nextTaskStatus(current: string): "todo" | "in_progress" | "done" {
-  if (current === "in_progress") return "done";
-  if (current === "done") return "todo";
-  return "in_progress";
-}
-
-function buildRetypeActions(
-  hasGoalChildren: boolean,
-  toKind: NodeKind,
-  confirm: (options?: RetypeOptions) => void,
-): WarningAction[] {
-  if (hasGoalChildren) {
-    return [
-      { label: "Re-parent sub-goals", variant: "primary", onClick: () => { confirm({ goalChildrenAction: "reparent" }); } },
-      { label: "Delete sub-goals", variant: "danger", onClick: () => { confirm({ goalChildrenAction: "remove" }); } },
-    ];
-  }
-  return [{ label: `Convert to ${toKind}`, variant: "primary", onClick: () => { confirm(); } }];
-}
 
 export default function MindmapView() {
   const { tree, isLoading, error, createChild, renameNode, retypeNode, reorderNode, moveNode, removeNode, reload } =
@@ -70,11 +47,10 @@ export default function MindmapView() {
     (nodeId: string, targetId: string) => {
       const source = findNode(tree, nodeId);
       const target = findNode(tree, targetId);
-      if (source === undefined || target === undefined) return;
-      if (!isValidDropTarget(source.kind, target.kind)) return;
+      if (source === undefined || target === undefined || !isValidDropTarget(source.kind, target.kind)) return;
       const siblingPositions = target.children.filter((c) => c.id !== nodeId).map((c) => c.position);
-      const lastPosition = siblingPositions.length > 0 ? Math.max(...siblingPositions) + 1 : 0;
-      void moveNode(nodeId, source.kind, targetId, target.kind, lastPosition);
+      const lastPos = siblingPositions.length > 0 ? Math.max(...siblingPositions) + 1 : 0;
+      void moveNode(nodeId, source.kind, targetId, target.kind, lastPos);
     },
     [tree, moveNode],
   );
@@ -85,12 +61,17 @@ export default function MindmapView() {
     displayRoot, tree, collapsedNodeIds, dragSourceId, dragTargetId,
   });
 
-  const { warningModal, setWarningModal, confirmRetype, cycleType } = useNodeTypeManager({
+  const { warningModal, setWarningModal, cycleType, retypeActions } = useNodeTypeManager({
     tree, retypeNode, selectNode, showToast,
   });
 
   const { editorModal, setEditorModal, allTags, availableForDep, onDoubleClick, onTaskSave, onGoalSave, onSimpleSave, onProjectSave } =
     useNodeEditor({ tree, allTasksAndGoals, renameNode, reload });
+
+  const { onStatusClick, onCommitEdit, onCreateChild, onDelete, onPaste } = useNodeActions({
+    tree, clipboard, moveNode, removeNode, reload, renameNode,
+    createChild, selectNode, setClipboard, setEditingNodeId,
+  });
 
   const navigateArrow = useCallback(
     (key: "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown") => {
@@ -101,70 +82,27 @@ export default function MindmapView() {
     [selectedNodeId, positions, selectNode],
   );
 
-  const pasteClipboard = useCallback(
-    (targetId: string) => {
-      if (clipboard === null) return;
-      const sourceNode = findNodeById(clipboard.nodeId);
-      const targetNode = findNodeById(targetId);
-      if (sourceNode === undefined || targetNode === undefined) return;
-      const siblingPositions = targetNode.children
-        .filter((c) => c.id !== clipboard.nodeId)
-        .map((c) => c.position);
-      const pastePosition = siblingPositions.length > 0 ? Math.max(...siblingPositions) + 1 : 0;
-      void moveNode(clipboard.nodeId, sourceNode.kind, targetId, targetNode.kind, pastePosition).then(() => {
-        if (clipboard.operation === "cut") setClipboard(null);
-      });
-    },
-    [clipboard, findNodeById, moveNode, setClipboard],
-  );
-
-  const handleStatusClick = useCallback(
-    (nodeId: string) => {
-      const node = findNodeById(nodeId);
-      if (node === undefined || node.kind !== "task") return;
-      const dbId = parseInt(nodeId.split("-").pop() ?? "0", 10);
-      void updateTask(dbId, { status: nextTaskStatus(node.status ?? "todo") })
-        .then(() => reload())
-        .catch((err: unknown) => console.error("[arlesh] status cycle failed:", err));
-    },
-    [findNodeById, reload],
-  );
-
-  const handleCommitEdit = useCallback(
-    (nodeId: string, title: string) => {
-      if (title.trim() === "") { setEditingNodeId(null); return; }
-      const node = findNodeById(nodeId);
-      if (node !== undefined) void renameNode(nodeId, node.kind, title.trim()).then(() => setEditingNodeId(null));
-    },
-    [findNodeById, renameNode],
-  );
-
   const handleContextAction = useCallback(
     (nodeId: string, action: ContextMenuAction) => {
-      const node = findNodeById(nodeId);
-      if (node === undefined) return;
+      if (findNodeById(nodeId) === undefined) return;
       switch (action) {
         case "enter": enterSubtree(nodeId); break;
         case "rename": setEditingNodeId(nodeId); break;
         case "type-up": cycleType(nodeId, 1); break;
         case "type-down": cycleType(nodeId, -1); break;
-        case "cut": setClipboard({ operation: "cut", nodeId }); break;
-        case "copy": setClipboard({ operation: "copy", nodeId }); break;
-        case "paste": if (clipboard !== null) pasteClipboard(nodeId); break;
+        case "cut": setClipboard({ operation: CLIPBOARD_OP.CUT, nodeId }); break;
+        case "copy": setClipboard({ operation: CLIPBOARD_OP.COPY, nodeId }); break;
+        case "paste": if (clipboard !== null) onPaste(nodeId); break;
         case "collapse": case "expand": toggleCollapsed(nodeId); break;
-        case "delete":
-          if (node.kind !== "aspect" && confirm(`Delete "${node.title}"?`)) {
-            void removeNode(nodeId, node.kind).then(() => selectNode(null));
-          }
-          break;
+        case "delete": onDelete(nodeId); break;
       }
     },
-    [findNodeById, enterSubtree, cycleType, setClipboard, clipboard, pasteClipboard, toggleCollapsed, removeNode, selectNode],
+    [findNodeById, enterSubtree, cycleType, setClipboard, clipboard, onPaste, toggleCollapsed, onDelete],
   );
 
   useKeyboardMindmap({
     isInputActive: editingNodeId !== null || editorModal !== null,
-    warningModal: warningModal as WarningModalState | null,
+    isWarningActive: warningModal !== null,
     onDismissWarning: () => setWarningModal(null),
     selectedNodeId,
     subtreeRootId,
@@ -172,32 +110,15 @@ export default function MindmapView() {
     onNavigate: navigateArrow,
     onCycleType: cycleType,
     onReorder: (id, dir) => { void reorderNode(id, dir); },
-    onStartRename: (id) => setEditingNodeId(id),
-    onCreateChild: (id) => {
-      const node = findNodeById(id);
-      if (node === undefined || !id.includes("-") || node.kind === "tag") return;
-      void (async () => {
-        try {
-          const newNode = await createChild(id, node.kind, "");
-          selectNode(newNode.id);
-          setEditingNodeId(newNode.id);
-        } catch (err) {
-          console.error("[arlesh] createChild failed:", err);
-        }
-      })();
-    },
-    onDelete: (id) => {
-      const node = findNodeById(id);
-      if (node !== undefined && node.kind !== "aspect" && confirm(`Delete "${node.title}"?`)) {
-        void removeNode(id, node.kind).then(() => selectNode(null));
-      }
-    },
+    onStartRename: setEditingNodeId,
+    onCreateChild,
+    onDelete,
     onToggleCollapsed: toggleCollapsed,
     onExitSubtree: exitSubtree,
     onExitToRoot: exitToRoot,
-    onCut: (id) => setClipboard({ operation: "cut", nodeId: id }),
-    onCopy: (id) => setClipboard({ operation: "copy", nodeId: id }),
-    onPaste: pasteClipboard,
+    onCut: (id) => setClipboard({ operation: CLIPBOARD_OP.CUT, nodeId: id }),
+    onCopy: (id) => setClipboard({ operation: CLIPBOARD_OP.COPY, nodeId: id }),
+    onPaste,
     findNodeById,
   });
 
@@ -223,12 +144,12 @@ export default function MindmapView() {
         ) : undefined}
         onSelect={selectNode}
         onDoubleClick={onDoubleClick}
-        onCommitEdit={handleCommitEdit}
+        onCommitEdit={onCommitEdit}
         onCancelEdit={() => setEditingNodeId(null)}
         onContextAction={handleContextAction}
         onDragStart={onDragStart}
         onCanvasClick={() => selectNode(null)}
-        onStatusClick={handleStatusClick}
+        onStatusClick={onStatusClick}
       />
 
       {subtreeRootId !== null && <SubtreeNavPill parentTitle={subtreeParent?.title ?? "Arlesh"} onBack={exitSubtree} />}
@@ -253,11 +174,11 @@ export default function MindmapView() {
         <TitleEditorModal heading="Edit Tag" title={editorModal.node.title} onSave={onSimpleSave} onClose={() => setEditorModal(null)} />
       )}
 
-      {warningModal !== null && (
+      {warningModal !== null && retypeActions !== null && (
         <WarningConfirmModal
           heading={warningModal.heading}
           consequences={warningModal.consequences}
-          actions={buildRetypeActions(warningModal.hasGoalChildren, warningModal.toKind, confirmRetype)}
+          actions={retypeActions}
           onCancel={() => setWarningModal(null)}
         />
       )}

@@ -1,5 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 
+export const DOMAIN_SUBTYPE = {
+  TAG: "tag",
+  ASPECT: "aspect",
+} as const;
+
 export interface Domain {
   id: number;
   title: string;

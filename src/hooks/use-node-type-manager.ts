@@ -1,8 +1,11 @@
 import { useCallback, useState } from "react";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import type { RetypeOptions } from "@/hooks/use-mindmap-data";
+import { GOAL_CHILDREN_ACTION } from "@/hooks/use-mindmap-data";
+import type { WarningAction } from "@/components/WarningConfirmModal/WarningConfirmModal";
+import { WARNING_VARIANT } from "@/components/WarningConfirmModal/WarningConfirmModal";
 import { validTypesForCycling, crossesGoalTaskBoundary } from "@/utils/node-meta";
-import { goalStatusToTaskStatus, taskStatusToGoalStatus } from "@/utils/status-mapping";
+import { goalStatusToTaskStatus, taskStatusToGoalStatus, GOAL_STATUS, TASK_STATUS } from "@/utils/status-mapping";
 import { findNode, findParent } from "@/utils/mindmap-tree";
 
 export interface WarningModalState {
@@ -26,6 +29,21 @@ interface Result {
   setWarningModal: (m: WarningModalState | null) => void;
   confirmRetype: (options?: RetypeOptions) => void;
   cycleType: (nodeId: string, direction: 1 | -1) => void;
+  retypeActions: WarningAction[] | null;
+}
+
+function buildRetypeActions(
+  hasGoalChildren: boolean,
+  toKind: NodeKind,
+  confirm: (options?: RetypeOptions) => void,
+): WarningAction[] {
+  if (hasGoalChildren) {
+    return [
+      { label: "Re-parent sub-goals", variant: WARNING_VARIANT.PRIMARY, onClick: () => { confirm({ goalChildrenAction: GOAL_CHILDREN_ACTION.REPARENT }); } },
+      { label: "Delete sub-goals", variant: WARNING_VARIANT.DANGER, onClick: () => { confirm({ goalChildrenAction: GOAL_CHILDREN_ACTION.REMOVE }); } },
+    ];
+  }
+  return [{ label: `Convert to ${toKind}`, variant: WARNING_VARIANT.PRIMARY, onClick: () => { confirm(); } }];
 }
 
 export function useNodeTypeManager({ tree, retypeNode, selectNode, showToast }: Options): Result {
@@ -58,8 +76,8 @@ export function useNodeTypeManager({ tree, retypeNode, selectNode, showToast }: 
       if (crossesGoalTaskBoundary(node.kind, newKind)) {
         const newStatus =
           node.kind === "goal"
-            ? goalStatusToTaskStatus(node.status ?? "active")
-            : taskStatusToGoalStatus(node.status ?? "todo");
+            ? goalStatusToTaskStatus(node.status ?? GOAL_STATUS.ACTIVE)
+            : taskStatusToGoalStatus(node.status ?? TASK_STATUS.TODO);
         showToast({ nodeId, message: `Status: ${node.status ?? "—"} → ${newStatus}` });
         const hasGoalChildren = node.kind === "goal" && node.children.some((c) => c.kind === "goal");
         const hasBlockedReason = node.blockedReason != null && node.blockedReason !== "";
@@ -91,5 +109,9 @@ export function useNodeTypeManager({ tree, retypeNode, selectNode, showToast }: 
     [tree, showToast, retypeNode, selectNode],
   );
 
-  return { warningModal, setWarningModal, confirmRetype, cycleType };
+  const retypeActions = warningModal !== null
+    ? buildRetypeActions(warningModal.hasGoalChildren, warningModal.toKind, confirmRetype)
+    : null;
+
+  return { warningModal, setWarningModal, confirmRetype, cycleType, retypeActions };
 }

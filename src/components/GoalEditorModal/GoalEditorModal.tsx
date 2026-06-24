@@ -3,6 +3,7 @@ import type { MindmapNode } from "@/utils/tree-layout";
 import type { Domain } from "@/api/domains";
 import EditorModal from "@/components/EditorModal/EditorModal";
 import styles from "@/components/EditorModal/EditorModal.module.css";
+import { GOAL_STATUS } from "@/utils/status-mapping";
 
 export interface GoalSaveData {
   title: string;
@@ -11,7 +12,7 @@ export interface GoalSaveData {
   tagIds: number[];
 }
 
-const GOAL_STATUSES = ["active", "achieved", "frozen", "archived"] as const;
+const GOAL_STATUSES = Object.values(GOAL_STATUS);
 
 interface Props {
   node: MindmapNode;
@@ -22,7 +23,7 @@ interface Props {
 
 export default function GoalEditorModal({ node, allTags, onSave, onClose }: Props) {
   const [title, setTitle] = useState(node.title);
-  const [status, setStatus] = useState(node.status ?? "active");
+  const [status, setStatus] = useState(node.status ?? GOAL_STATUS.ACTIVE);
   const [blockedReason, setBlockedReason] = useState(node.blockedReason ?? "");
   const [tagIds, setTagIds] = useState<number[]>(node.tagIds);
   const [isSaving, setIsSaving] = useState(false);

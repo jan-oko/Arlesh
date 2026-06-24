@@ -8,6 +8,11 @@ import type { Goal } from "@/api/goals";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { goalStatusToTaskStatus, taskStatusToGoalStatus } from "@/utils/status-mapping";
 
+export const GOAL_CHILDREN_ACTION = {
+  REMOVE: "remove",
+  REPARENT: "reparent",
+} as const;
+
 export type GoalChildrenAction = "remove" | "reparent";
 
 export interface RetypeOptions {

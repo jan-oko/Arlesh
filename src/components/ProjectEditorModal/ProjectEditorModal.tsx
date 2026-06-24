@@ -9,7 +9,14 @@ export interface ProjectSaveData {
   knowledgeBaseDirectory: string;
 }
 
-const PROJECT_STATUSES = ["active", "paused", "completed", "archived"] as const;
+const PROJECT_STATUS = {
+  ACTIVE: "active",
+  PAUSED: "paused",
+  COMPLETED: "completed",
+  ARCHIVED: "archived",
+} as const;
+
+const PROJECT_STATUSES = Object.values(PROJECT_STATUS);
 
 interface Props {
   node: MindmapNode;
@@ -19,7 +26,7 @@ interface Props {
 
 export default function ProjectEditorModal({ node, onSave, onClose }: Props) {
   const [title, setTitle] = useState(node.title);
-  const [status, setStatus] = useState(node.status ?? "active");
+  const [status, setStatus] = useState(node.status ?? PROJECT_STATUS.ACTIVE);
   const [kbDir, setKbDir] = useState(node.knowledgeBaseDirectory ?? "");
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);

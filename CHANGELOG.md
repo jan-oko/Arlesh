@@ -20,9 +20,13 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Replaced `DomainEditorModal` and `TagEditorModal` (identical except heading) with unified `TitleEditorModal`
 - Extracted canvas layout computation (effectiveCollapsedIds, positions, subtreeLayout, placeholderPos) into `src/hooks/use-canvas-layout.ts`
 - Extracted node type cycling and retype-warning state into `src/hooks/use-node-type-manager.ts`
-- Extracted editor modal state and all node save handlers into `src/hooks/use-node-editor.ts`; `MindmapView` reduced from 919 to 273 lines
+- Extracted editor modal state and all node save handlers into `src/hooks/use-node-editor.ts`
+- Extracted node mutation callbacks (`onStatusClick`, `onCommitEdit`, `onCreateChild`, `onDelete`, `onPaste`) into `src/hooks/use-node-actions.ts`
+- Moved `buildRetypeActions` into `use-node-type-manager`; hook now returns `retypeActions` directly
 - All editor modals now use a shared `EditorModal` shell for consistent layout
-- `MindmapView` reduced from ~920 lines to ~230 lines by delegating to extracted hooks and components
+- `MindmapView` reduced from 919 to 194 lines; all remaining code is wiring and JSX
+- Replaced all magic strings with named constants co-located with their domain: `TASK_STATUS`/`GOAL_STATUS` in `status-mapping.ts`, `CLIPBOARD_OP` in `use-mindmap-store.ts`, `GOAL_CHILDREN_ACTION` in `use-mindmap-data.ts`, `WARNING_VARIANT` in `WarningConfirmModal.tsx`, `DOMAIN_SUBTYPE` in `api/domains.ts`
+- `useKeyboardMindmap` option `warningModal` replaced with `isWarningActive: boolean`, eliminating the banned `as` type assertion at the call site
 
 ### Added
 - Drag-and-drop to re-parent nodes: drag any non-aspect node onto a valid parent and release to move it; valid drop targets highlight in the accent colour; invalid targets (e.g. dropping a goal onto a task, or a node onto one of its own descendants) are silently rejected
