@@ -18,6 +18,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Split `MindmapNode` into `NodeRect` and `NodeLabel` subcomponents
 - Extracted drag placeholder overlay into `DragPlaceholder` component
 - Replaced `DomainEditorModal` and `TagEditorModal` (identical except heading) with unified `TitleEditorModal`
+- Extracted canvas layout computation (effectiveCollapsedIds, positions, subtreeLayout, placeholderPos) into `src/hooks/use-canvas-layout.ts`
+- Extracted node type cycling and retype-warning state into `src/hooks/use-node-type-manager.ts`
+- Extracted editor modal state and all node save handlers into `src/hooks/use-node-editor.ts`; `MindmapView` reduced from 919 to 273 lines
 - All editor modals now use a shared `EditorModal` shell for consistent layout
 - `MindmapView` reduced from ~920 lines to ~230 lines by delegating to extracted hooks and components
 
