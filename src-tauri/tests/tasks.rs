@@ -16,7 +16,7 @@ use arlesh_lib::{
 
 async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
     let aspect_id: i64 =
-        sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Green' AND subtype = 'aspect'")
+        sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Growth' AND subtype = 'aspect'")
             .fetch_one(pool)
             .await
             .unwrap();
@@ -36,7 +36,7 @@ async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
 
 async fn make_tag(pool: &sqlx::SqlitePool) -> i64 {
     let aspect_id: i64 =
-        sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Green' AND subtype = 'aspect'")
+        sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Growth' AND subtype = 'aspect'")
             .fetch_one(pool)
             .await
             .unwrap();
@@ -277,7 +277,7 @@ async fn reparent_task_to_different_project() {
     let pool = helpers::test_pool().await;
     let project_a_id = make_project(&pool).await;
     let aspect_id: i64 =
-        sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Green' AND subtype = 'aspect'")
+        sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Growth' AND subtype = 'aspect'")
             .fetch_one(&pool)
             .await
             .unwrap();

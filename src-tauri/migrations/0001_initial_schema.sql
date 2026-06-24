@@ -12,12 +12,12 @@ CREATE TABLE domains (
 );
 
 INSERT INTO domains (title, subtype, color) VALUES
-    ('Red',    'aspect', '#e74c3c'),
-    ('Purple', 'aspect', '#9b59b6'),
-    ('Green',  'aspect', '#27ae60'),
-    ('Blue',   'aspect', '#2980b9'),
-    ('Gray',   'aspect', '#95a5a6'),
-    ('Steel',  'aspect', '#bdc3c7');
+    ('Body',        'aspect', '#e74c3c'),
+    ('Connections', 'aspect', '#9b59b6'),
+    ('Growth',      'aspect', '#27ae60'),
+    ('Duty',        'aspect', '#2980b9'),
+    ('Flow',        'aspect', '#95a5a6'),
+    ('Self',        'aspect', '#bdc3c7');
 
 CREATE TABLE scopes (
     id         INTEGER PRIMARY KEY,

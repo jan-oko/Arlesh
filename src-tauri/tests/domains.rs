@@ -6,7 +6,7 @@ use arlesh_lib::domains::{
 };
 
 async fn green_aspect_id(pool: &sqlx::SqlitePool) -> i64 {
-    sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Green' AND subtype = 'aspect'")
+    sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Growth' AND subtype = 'aspect'")
         .fetch_one(pool)
         .await
         .unwrap()

@@ -17,7 +17,7 @@ async fn make_project_id(pool: &sqlx::SqlitePool) -> i64 {
         DomainRepository,
     };
     let aspect_id: i64 =
-        sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Green' AND subtype = 'aspect'")
+        sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Growth' AND subtype = 'aspect'")
             .fetch_one(pool)
             .await
             .unwrap();

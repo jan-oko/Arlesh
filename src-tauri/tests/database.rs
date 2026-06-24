@@ -25,6 +25,6 @@ async fn aspects_have_expected_titles() {
 
     assert_eq!(
         titles,
-        vec!["Blue", "Gray", "Green", "Purple", "Red", "Steel"]
+        vec!["Body", "Connections", "Duty", "Flow", "Growth", "Self"]
     );
 }

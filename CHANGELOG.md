@@ -9,6 +9,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Changed
+- Aspects renamed from color labels to meaningful names: Red → Body, Purple → Connections, Green → Growth, Blue → Duty, Gray → Flow, Steel → Self
 - Arrow key navigation now moves only to connected nodes (parent, children, siblings) while still picking the visually nearest one in the pressed direction — prevents jumping across unrelated branches; the Arlesh root node is included so navigation can pass from one side of the tree to the other through the centre
 - After deleting a node, focus moves to its parent (or clears if the parent is the virtual root)
 
