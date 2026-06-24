@@ -1,5 +1,5 @@
 import "@/styles/tokens.css";
-import MindmapView from "@/components/MindmapView";
+import MindmapView from "@/components/MindmapView/MindmapView";
 
 export default function App() {
   return (

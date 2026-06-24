@@ -18,10 +18,7 @@ export default function StatusToast({ message, position, onDismiss }: Props) {
   }, [onDismiss]);
 
   return (
-    <div
-      className={styles.toast}
-      style={{ left: position.x, top: position.y + NODE_HEIGHT + 4 }}
-    >
+    <div className={styles.toast} style={{ left: position.x, top: position.y + NODE_HEIGHT + 4 }}>
       {message}
     </div>
   );

@@ -17,12 +17,5 @@ export default function MindmapEdge({ from, to }: Props) {
 
   const path = `M ${fromX} ${from.y} C ${midX} ${from.y}, ${midX} ${to.y}, ${toX} ${to.y}`;
 
-  return (
-    <path
-      d={path}
-      stroke="var(--edge-color)"
-      strokeWidth={1.5}
-      fill="none"
-    />
-  );
+  return <path d={path} stroke="var(--edge-color)" strokeWidth={1.5} fill="none" />;
 }

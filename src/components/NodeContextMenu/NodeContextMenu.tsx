@@ -29,9 +29,7 @@ export default function NodeContextMenu({ x, y, nodeKind, isCollapsed, hasClipbo
 
   useEffect(() => {
     const handler = (event: MouseEvent) => {
-      if (ref.current !== null && !ref.current.contains(event.target as Node)) {
-        onClose();
-      }
+      if (ref.current !== null && !ref.current.contains(event.target as Node)) onClose();
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -42,13 +40,7 @@ export default function NodeContextMenu({ x, y, nodeKind, isCollapsed, hasClipbo
 
   function item(label: string, action: ContextMenuAction, disabled = false) {
     return (
-      <button
-        key={action}
-        className={styles.item}
-        disabled={disabled}
-        onClick={() => { onAction(action); onClose(); }}
-        type="button"
-      >
+      <button key={action} className={styles.item} disabled={disabled} onClick={() => { onAction(action); onClose(); }} type="button">
         {label}
       </button>
     );

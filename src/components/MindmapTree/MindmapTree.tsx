@@ -1,8 +1,8 @@
 import type { MindmapNode, Position } from "@/utils/tree-layout";
 import { computeLayout } from "@/utils/tree-layout";
-import MindmapEdge from "./MindmapEdge";
-import MindmapNodeComponent from "./MindmapNode";
-import type { ContextMenuAction } from "./NodeContextMenu";
+import MindmapEdge from "@/components/MindmapEdge/MindmapEdge";
+import MindmapNodeComponent from "@/components/MindmapNode/MindmapNode";
+import type { ContextMenuAction } from "@/components/NodeContextMenu/NodeContextMenu";
 
 interface Props {
   root: MindmapNode;
@@ -21,22 +21,7 @@ interface Props {
   onStatusClick: (id: string) => void;
 }
 
-export default function MindmapTree({
-  root,
-  collapsedNodeIds,
-  selectedNodeId,
-  editingNodeId,
-  dragTargetId,
-  dragSourceId,
-  hasClipboard,
-  onSelect,
-  onDoubleClick,
-  onCommitEdit,
-  onCancelEdit,
-  onContextAction,
-  onDragStart,
-  onStatusClick,
-}: Props) {
+export default function MindmapTree({ root, collapsedNodeIds, selectedNodeId, editingNodeId, dragTargetId, dragSourceId, hasClipboard, onSelect, onDoubleClick, onCommitEdit, onCancelEdit, onContextAction, onDragStart, onStatusClick }: Props) {
   const positions = computeLayout(root, collapsedNodeIds);
 
   const edges: Array<{ from: Position; to: Position; key: string }> = [];
@@ -51,40 +36,19 @@ export default function MindmapTree({
       if (childPos !== undefined) {
         edges.push({ from: nodePos, to: childPos, key: `${node.id}-${child.id}` });
       }
-      if (!collapsedNodeIds.has(node.id)) {
-        collect(child);
-      }
+      if (!collapsedNodeIds.has(node.id)) collect(child);
     }
   }
   collect(root);
 
   return (
     <>
-      {edges.map((edge) => (
-        <MindmapEdge key={edge.key} from={edge.from} to={edge.to} />
-      ))}
+      {edges.map((edge) => <MindmapEdge key={edge.key} from={edge.from} to={edge.to} />)}
       {nodes.map((node) => {
         const pos = positions.get(node.id);
         if (pos === undefined) return null;
         return (
-          <MindmapNodeComponent
-            key={node.id}
-            node={node}
-            position={pos}
-            isSelected={selectedNodeId === node.id}
-            isCollapsed={collapsedNodeIds.has(node.id)}
-            isDragTarget={dragTargetId === node.id}
-            isDragSource={dragSourceId === node.id}
-            hasClipboard={hasClipboard}
-            onSelect={onSelect}
-            onDoubleClick={onDoubleClick}
-            onCommitEdit={onCommitEdit}
-            onCancelEdit={onCancelEdit}
-            isEditing={editingNodeId === node.id}
-            onContextAction={onContextAction}
-            onDragStart={onDragStart}
-            onStatusClick={onStatusClick}
-          />
+          <MindmapNodeComponent key={node.id} node={node} position={pos} isSelected={selectedNodeId === node.id} isCollapsed={collapsedNodeIds.has(node.id)} isDragTarget={dragTargetId === node.id} isDragSource={dragSourceId === node.id} hasClipboard={hasClipboard} onSelect={onSelect} onDoubleClick={onDoubleClick} onCommitEdit={onCommitEdit} onCancelEdit={onCancelEdit} isEditing={editingNodeId === node.id} onContextAction={onContextAction} onDragStart={onDragStart} onStatusClick={onStatusClick} />
         );
       })}
     </>

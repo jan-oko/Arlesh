@@ -1,0 +1,41 @@
+import type { ReactNode } from "react";
+import styles from "./EditorModal.module.css";
+
+interface Props {
+  heading: string;
+  onClose: () => void;
+  onKeyDown: (e: React.KeyboardEvent) => void;
+  isSaving: boolean;
+  onSave: () => void;
+  saveError: string | null;
+  children: ReactNode;
+}
+
+export default function EditorModal({ heading, onClose, onKeyDown, isSaving, onSave, saveError, children }: Props) {
+  return (
+    <div className={styles.overlay} onMouseDown={onClose}>
+      <div
+        className={styles.modal}
+        onMouseDown={(e) => e.stopPropagation()}
+        onKeyDown={onKeyDown}
+      >
+        <h2 className={styles.heading}>{heading}</h2>
+        {children}
+        {saveError !== null && <p className={styles.errorMsg}>{saveError}</p>}
+        <div className={styles.actions}>
+          <button className={styles.cancelBtn} type="button" onClick={onClose} disabled={isSaving}>
+            Cancel
+          </button>
+          <button
+            className={styles.saveBtn}
+            type="button"
+            onClick={onSave}
+            disabled={isSaving}
+          >
+            {isSaving ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

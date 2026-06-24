@@ -8,6 +8,19 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- Refactored `src/components/` from flat files to per-component subdirectories; each component's TSX and CSS module are co-located in their own folder
+- Extracted drag state and mouse event handlers into `src/hooks/use-drag.ts`
+- Extracted keyboard navigation handlers into `src/hooks/use-keyboard-mindmap.ts`
+- Extracted tree utility functions (`findNode`, `findParent`, `nearestInDirection`, `gatherSubtreeItems`, `collectTasksAndGoals`) into `src/utils/mindmap-tree.ts`
+- Extracted shared node visual computation (`computeNodeAppearance`) into `src/utils/node-visuals.ts` to eliminate duplication between `MindmapNode` and `DragGhost`
+- Split `NodeIcon` into per-kind subcomponents (`DomainIcon`, `ProjectIcon`, `GoalIcon`, `TagIcon`, `TaskIcon`) with a router `NodeIcon` component
+- Split `MindmapNode` into `NodeRect` and `NodeLabel` subcomponents
+- Extracted drag placeholder overlay into `DragPlaceholder` component
+- Replaced `DomainEditorModal` and `TagEditorModal` (identical except heading) with unified `TitleEditorModal`
+- All editor modals now use a shared `EditorModal` shell for consistent layout
+- `MindmapView` reduced from ~920 lines to ~230 lines by delegating to extracted hooks and components
+
 ### Added
 - Drag-and-drop to re-parent nodes: drag any non-aspect node onto a valid parent and release to move it; valid drop targets highlight in the accent colour; invalid targets (e.g. dropping a goal onto a task, or a node onto one of its own descendants) are silently rejected
 - Drag ghost: while dragging, the source node is hidden and a semi-transparent copy follows the cursor; a dashed outline placeholder appears at the predicted landing position under the hovered parent; the dragged node's children are hidden from the live tree and rendered as smaller dashed outlines (with internal edges) inside the placeholder, so the full subtree structure is visible at the drop position
