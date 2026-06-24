@@ -25,7 +25,7 @@ export default function DragGhost({ node, depth, x, y }: Props) {
     <svg
       width={width}
       height={height}
-      style={{ position: "fixed", left: x - width / 2, top: y - height / 2, opacity: 0.65, pointerEvents: "none", overflow: "visible", zIndex: 9999, filter: "drop-shadow(0 4px 8px rgba(0,0,0,0.35))" }}
+      style={{ position: "fixed", left: x - width / 2, top: y - height / 2, opacity: 0.65, pointerEvents: "none", overflow: "visible", zIndex: 9999, filter: "drop-shadow(0 4px 8px rgba(0,0,0,0.35))", direction: "ltr" }}
     >
       <rect width={width} height={height} rx={6} fill={fillColor} fillOpacity={fillOpacity} stroke="var(--accent)" strokeWidth={2} />
       <NodeIcon kind={node.kind} status={node.status} isBlocked={isBlocked} cx={iconCx} cy={height / 2} r={(iconWidth - 8) / 2} color={iconColor} opacity={iconOpacity} />

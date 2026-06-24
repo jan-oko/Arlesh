@@ -34,7 +34,7 @@ export default function MindmapCanvas({ root, collapsedNodeIds, selectedNodeId, 
   );
 
   return (
-    <animated.svg ref={svgRef} width="100%" height="100%" style={{ background: "var(--canvas-bg)", display: "block", userSelect: "none" }} onMouseDown={onMouseDown} onClick={onCanvasClick}>
+    <animated.svg ref={svgRef} width="100%" height="100%" style={{ background: "var(--canvas-bg)", display: "block", userSelect: "none", direction: "ltr" }} onMouseDown={onMouseDown} onClick={onCanvasClick}>
       <animated.g style={{ transform }}>
         <MindmapTree root={root} collapsedNodeIds={collapsedNodeIds} selectedNodeId={selectedNodeId} editingNodeId={editingNodeId} dragTargetId={dragTargetId} dragSourceId={dragSourceId} hasClipboard={hasClipboard} onSelect={onSelect} onDoubleClick={onDoubleClick} onCommitEdit={onCommitEdit} onCancelEdit={onCancelEdit} onContextAction={onContextAction} onDragStart={onDragStart} onStatusClick={onStatusClick} />
         {canvasOverlay}

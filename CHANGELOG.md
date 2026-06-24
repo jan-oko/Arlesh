@@ -9,6 +9,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- SVG canvas and drag ghost now set `direction: ltr` explicitly, preventing CSS `direction: rtl` (inherited from the document root in Hebrew mode) from flipping `textAnchor` semantics and causing LTR node text to overlap the icon
 - SVG node layout now mirrors per-node based on the node's text content (first strong directional character), not the global app language — Latin-titled nodes always render LTR and Hebrew-titled nodes always render RTL, regardless of the language toggle; inline edit uses `dir="auto"` so the browser follows what the user types; `DragGhost` applies the same content-based detection
 
 ### Added
