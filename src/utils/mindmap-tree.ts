@@ -58,7 +58,7 @@ export function connectedNodeIds(root: MindmapNode, id: string): Set<string> {
   }
 
   const parent = findParent(root, id);
-  if (parent !== null && parent.id !== "root") connected.add(parent.id);
+  if (parent !== null) connected.add(parent.id);
   if (parent !== null) {
     for (const sibling of parent.children) {
       if (sibling.id !== id) connected.add(sibling.id);

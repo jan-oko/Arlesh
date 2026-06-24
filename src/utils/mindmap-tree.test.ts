@@ -36,9 +36,9 @@ describe("connectedNodeIds", () => {
     expect(connected.has("aspect-a")).toBe(false);
   });
 
-  it("does not include the virtual root", () => {
+  it("includes the tree root as parent so navigation can pass through it", () => {
     const connected = connectedNodeIds(TREE, "aspect-a");
-    expect(connected.has("root")).toBe(false);
+    expect(connected.has("root")).toBe(true);
   });
 
   it("returns parent and sibling for a leaf node", () => {
