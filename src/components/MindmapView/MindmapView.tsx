@@ -66,10 +66,12 @@ export default function MindmapView() {
     const node = findNode(tree, deleteTarget);
     if (node === undefined) { setDeleteTarget(null); return; }
     const nodesToDelete = collectSubtreePostOrder(node);
+    const parentNode = findParent(tree, deleteTarget);
+    const parentId = parentNode !== null && parentNode.id !== "root" ? parentNode.id : null;
     setIsDeleting(true);
     setDeleteError(null);
     void removeNode(nodesToDelete)
-      .then(() => { setDeleteTarget(null); selectNode(null); })
+      .then(() => { setDeleteTarget(null); selectNode(parentId); })
       .catch((err: unknown) => { setDeleteError(err instanceof Error ? err.message : String(err)); })
       .finally(() => setIsDeleting(false));
   }, [deleteTarget, tree, removeNode, selectNode]);
@@ -79,7 +81,7 @@ export default function MindmapView() {
     createChild, selectNode, setClipboard, setEditingNodeId,
   });
 
-  const { navigateArrow } = useNavigateArrow({ selectedNodeId, positions, selectNode });
+  const { navigateArrow } = useNavigateArrow({ selectedNodeId, positions, tree, selectNode });
 
   const { onContextAction } = useContextAction({
     findNodeById, enterSubtree, setEditingNodeId, cycleType,

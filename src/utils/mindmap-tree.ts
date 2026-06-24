@@ -22,6 +22,7 @@ export function nearestInDirection(
   fromId: string,
   positions: Map<string, Position>,
   direction: "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown",
+  candidateIds?: ReadonlySet<string>,
 ): string | undefined {
   const from = positions.get(fromId);
   if (from === undefined) return undefined;
@@ -31,6 +32,7 @@ export function nearestInDirection(
 
   for (const [id, pos] of positions) {
     if (id === fromId) continue;
+    if (candidateIds !== undefined && !candidateIds.has(id)) continue;
     const dx = pos.x - from.x;
     const dy = pos.y - from.y;
     let primary: number;
@@ -45,6 +47,25 @@ export function nearestInDirection(
     if (score < bestScore) { bestScore = score; bestId = id; }
   }
   return bestId;
+}
+
+export function connectedNodeIds(root: MindmapNode, id: string): Set<string> {
+  const node = findNode(root, id);
+  const connected = new Set<string>();
+
+  if (node !== undefined) {
+    for (const child of node.children) connected.add(child.id);
+  }
+
+  const parent = findParent(root, id);
+  if (parent !== null && parent.id !== "root") connected.add(parent.id);
+  if (parent !== null) {
+    for (const sibling of parent.children) {
+      if (sibling.id !== id) connected.add(sibling.id);
+    }
+  }
+
+  return connected;
 }
 
 export function gatherSubtreeItems(

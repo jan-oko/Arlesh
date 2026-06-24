@@ -8,6 +8,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- Arrow key navigation now moves only to connected nodes (parent, children, siblings) while still picking the visually nearest one in the pressed direction — prevents jumping across unrelated branches
+- After deleting a node, focus moves to its parent (or clears if the parent is the virtual root)
+
 ### Added
 - Delete confirmation modal: replaces the browser `confirm()` dialog with a native in-app modal that shows the node title and total descendant count (e.g. "This will also permanently delete 3 descendant nodes"); Cancel is auto-focused so accidental Enter presses don't delete
 
