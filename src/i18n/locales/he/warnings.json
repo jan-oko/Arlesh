@@ -10,5 +10,6 @@
   "deleteWithChildren_one": "גם {{count}} צומת צאצא יימחק לצמיתות.",
   "deleteWithChildren_other": "גם {{count}} צמתי צאצא יימחקו לצמיתות.",
   "deleteConfirm": "מחק",
-  "deleteFailed": "המחיקה נכשלה: {{message}}"
+  "deleteFailed": "המחיקה נכשלה: {{message}}",
+  "deleteMultipleHeading": "למחוק {{count}} צמתים?"
 }

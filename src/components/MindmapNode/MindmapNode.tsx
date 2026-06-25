@@ -19,6 +19,8 @@ interface Props {
   hasClipboard: boolean;
   isEditing: boolean;
   onSelect: (id: string) => void;
+  onCtrlClick?: (id: string) => void;
+  onShiftClick?: (id: string) => void;
   onDoubleClick: (id: string) => void;
   onCommitEdit: (id: string, title: string) => void;
   onCancelEdit: () => void;
@@ -27,7 +29,7 @@ interface Props {
   onStatusClick?: (id: string) => void;
 }
 
-export default function MindmapNode({ node, position, isSelected, isCollapsed, isDragTarget, isDragSource, hasClipboard, isEditing, onSelect, onDoubleClick, onCommitEdit, onCancelEdit, onContextAction, onDragStart, onStatusClick }: Props) {
+export default function MindmapNode({ node, position, isSelected, isCollapsed, isDragTarget, isDragSource, hasClipboard, isEditing, onSelect, onCtrlClick, onShiftClick, onDoubleClick, onCommitEdit, onCancelEdit, onContextAction, onDragStart, onStatusClick }: Props) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
   const { width, height, fontSize, iconWidth, lineHeight, lineCount: displayLineCount } = computeNodeDimensions(position.depth, node.title);
@@ -50,7 +52,16 @@ export default function MindmapNode({ node, position, isSelected, isCollapsed, i
   const strokeColor = isSelected ? "var(--node-border-selected)" : isDragTarget ? "var(--accent)" : "var(--node-border)";
   const canClickStatus = node.kind === "task" && !isBlocked && onStatusClick !== undefined;
 
-  const handleClick = useCallback((e: React.MouseEvent) => { e.stopPropagation(); onSelect(node.id); }, [node.id, onSelect]);
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (e.ctrlKey || e.metaKey) {
+      onCtrlClick?.(node.id);
+    } else if (e.shiftKey) {
+      onShiftClick?.(node.id);
+    } else {
+      onSelect(node.id);
+    }
+  }, [node.id, onSelect, onCtrlClick, onShiftClick]);
   const handleDoubleClick = useCallback((e: React.MouseEvent) => { e.stopPropagation(); onDoubleClick(node.id); }, [node.id, onDoubleClick]);
   const handleContextMenu = useCallback((e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); setContextMenu({ x: e.clientX, y: e.clientY }); }, []);
   const handleMouseDown = useCallback((e: React.MouseEvent) => { if (e.button !== 0 || node.kind === "aspect") return; onDragStart(node.id, e.clientX, e.clientY); }, [node.id, node.kind, onDragStart]);

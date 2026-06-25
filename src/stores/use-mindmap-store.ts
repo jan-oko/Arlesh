@@ -9,7 +9,7 @@ export type ClipboardOperation = "cut" | "copy";
 
 export interface Clipboard {
   operation: ClipboardOperation;
-  nodeId: string;
+  nodeIds: string[];
 }
 
 export interface PendingToast {
@@ -19,12 +19,15 @@ export interface PendingToast {
 
 interface MindmapState {
   selectedNodeId: string | null;
+  selectedNodeIds: ReadonlySet<string>;
   subtreeRootId: string | null;
   clipboard: Clipboard | null;
   collapsedNodeIds: ReadonlySet<string>;
   pendingToast: PendingToast | null;
 
   selectNode: (id: string | null) => void;
+  addToSelection: (id: string) => void;
+  setSelection: (ids: ReadonlySet<string>, anchorId: string) => void;
   enterSubtree: (id: string) => void;
   exitSubtree: (parentSubtreeId: string | null) => void;
   exitToRoot: () => void;
@@ -36,22 +39,45 @@ interface MindmapState {
 
 export const useMindmapStore = create<MindmapState>((set) => ({
   selectedNodeId: null,
+  selectedNodeIds: new Set(),
   subtreeRootId: null,
   clipboard: null,
   collapsedNodeIds: new Set(),
   pendingToast: null,
 
-  selectNode: (id) => set({ selectedNodeId: id }),
+  selectNode: (id) =>
+    set({
+      selectedNodeId: id,
+      selectedNodeIds: id !== null ? new Set([id]) : new Set(),
+    }),
 
-  enterSubtree: (id) => set({ subtreeRootId: id, selectedNodeId: id }),
+  addToSelection: (id) =>
+    set((state) => {
+      const next = new Set(state.selectedNodeIds);
+      if (next.has(id)) {
+        next.delete(id);
+        const newAnchor = next.size > 0 ? (next.values().next().value ?? null) : null;
+        return { selectedNodeIds: next, selectedNodeId: newAnchor };
+      }
+      next.add(id);
+      return { selectedNodeIds: next };
+    }),
+
+  setSelection: (ids, anchorId) =>
+    set({ selectedNodeIds: ids, selectedNodeId: anchorId }),
+
+  enterSubtree: (id) =>
+    set({ subtreeRootId: id, selectedNodeId: id, selectedNodeIds: new Set([id]) }),
 
   exitSubtree: (parentSubtreeId) =>
     set((state) => ({
       subtreeRootId: parentSubtreeId,
       selectedNodeId: state.subtreeRootId,
+      selectedNodeIds: state.subtreeRootId !== null ? new Set([state.subtreeRootId]) : new Set(),
     })),
 
-  exitToRoot: () => set({ subtreeRootId: null, selectedNodeId: null }),
+  exitToRoot: () =>
+    set({ subtreeRootId: null, selectedNodeId: null, selectedNodeIds: new Set() }),
 
   setClipboard: (clipboard) => set({ clipboard }),
 

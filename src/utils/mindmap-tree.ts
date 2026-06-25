@@ -111,3 +111,56 @@ export function collectSubtreePostOrder(node: MindmapNode): Array<{ id: string; 
   visit(node);
   return result;
 }
+
+/** Returns all node IDs in the tree in depth-first pre-order. */
+export function collectAllNodeIds(root: MindmapNode): string[] {
+  const result: string[] = [];
+  function visit(n: MindmapNode): void {
+    result.push(n.id);
+    for (const child of n.children) visit(child);
+  }
+  visit(root);
+  return result;
+}
+
+/**
+ * Returns the set of node IDs to select when shift-clicking `targetId` from `anchorId`.
+ *
+ * - Same node: [anchorId]
+ * - Sibling of anchor: all siblings between anchor and target (inclusive, in sibling order)
+ * - Ancestor of anchor: [anchorId, ...ancestors up to target] (path toward root)
+ * - Otherwise: null (do nothing)
+ */
+export function computeShiftSelectRange(
+  tree: MindmapNode,
+  anchorId: string,
+  targetId: string,
+): string[] | null {
+  if (anchorId === targetId) return [anchorId];
+
+  const anchorParent = findParent(tree, anchorId);
+  if (anchorParent === null) return null;
+
+  // Check sibling case: target is a sibling of anchor (same parent)
+  const siblings = anchorParent.children;
+  const anchorIdx = siblings.findIndex((s) => s.id === anchorId);
+  const targetIdx = siblings.findIndex((s) => s.id === targetId);
+  if (anchorIdx !== -1 && targetIdx !== -1) {
+    const lo = Math.min(anchorIdx, targetIdx);
+    const hi = Math.max(anchorIdx, targetIdx);
+    return siblings.slice(lo, hi + 1).map((s) => s.id);
+  }
+
+  // Check ancestor case: target is on the path from anchor to root
+  const ancestorPath: string[] = [];
+  let cursor: MindmapNode | null = anchorParent;
+  while (cursor !== null) {
+    ancestorPath.push(cursor.id);
+    if (cursor.id === targetId) {
+      return [anchorId, ...ancestorPath];
+    }
+    cursor = findParent(tree, cursor.id);
+  }
+
+  return null;
+}

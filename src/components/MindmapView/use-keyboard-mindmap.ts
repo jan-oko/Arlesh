@@ -5,7 +5,7 @@ type ArrowKey = "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown";
 
 interface ClipboardEntry {
   operation: "cut" | "copy";
-  nodeId: string;
+  nodeIds: string[];
 }
 
 interface Options {
@@ -13,6 +13,7 @@ interface Options {
   isWarningActive: boolean;
   onDismissWarning: () => void;
   selectedNodeId: string | null;
+  selectedNodeIds: ReadonlySet<string>;
   subtreeRootId: string | null;
   clipboard: ClipboardEntry | null;
   onNavigate: (key: ArrowKey) => void;
@@ -22,14 +23,14 @@ interface Options {
   onCreateChild: (id: string) => void;
   onCreateSibling: (id: string) => void;
   onInsertParent: (id: string) => void;
-  onDelete: (id: string) => void;
+  onDelete: (ids: string[]) => void;
   onToggleCollapsed: (id: string) => void;
   onCycleStatus: (id: string) => void;
   onDeselect: () => void;
   onExitSubtree: () => void;
   onExitToRoot: () => void;
-  onCut: (id: string) => void;
-  onCopy: (id: string) => void;
+  onCut: (ids: string[]) => void;
+  onCopy: (ids: string[]) => void;
   onPaste: (id: string) => void;
   findNodeById: (id: string) => MindmapNode | undefined;
 }
@@ -37,7 +38,7 @@ interface Options {
 export function useKeyboardMindmap(options: Options): void {
   const {
     isInputActive, isWarningActive, onDismissWarning,
-    selectedNodeId, subtreeRootId, clipboard,
+    selectedNodeId, selectedNodeIds, subtreeRootId, clipboard,
     onNavigate, onCycleType, onReorder, onStartRename,
     onCreateChild, onCreateSibling, onInsertParent, onDelete, onToggleCollapsed, onCycleStatus,
     onDeselect, onExitSubtree, onExitToRoot, onCut, onCopy, onPaste,
@@ -118,7 +119,7 @@ export function useKeyboardMindmap(options: Options): void {
         case "Delete":
           if (selectedNodeId !== null) {
             event.preventDefault();
-            onDelete(selectedNodeId);
+            onDelete([...selectedNodeIds]);
           }
           break;
         case "/":
@@ -142,13 +143,13 @@ export function useKeyboardMindmap(options: Options): void {
         case "x":
           if (event.ctrlKey && selectedNodeId !== null) {
             event.preventDefault();
-            onCut(selectedNodeId);
+            onCut([...selectedNodeIds]);
           }
           break;
         case "c":
           if (event.ctrlKey && selectedNodeId !== null) {
             event.preventDefault();
-            onCopy(selectedNodeId);
+            onCopy([...selectedNodeIds]);
           }
           break;
         case "v":
@@ -166,7 +167,7 @@ export function useKeyboardMindmap(options: Options): void {
     };
   }, [
     isInputActive, isWarningActive, onDismissWarning,
-    selectedNodeId, subtreeRootId, clipboard,
+    selectedNodeId, selectedNodeIds, subtreeRootId, clipboard,
     onNavigate, onCycleType, onReorder, onStartRename,
     onCreateChild, onCreateSibling, onInsertParent, onDelete, onToggleCollapsed, onCycleStatus,
     onDeselect, onExitSubtree, onExitToRoot, onCut, onCopy, onPaste,

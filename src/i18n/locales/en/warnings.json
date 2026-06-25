@@ -10,5 +10,6 @@
   "deleteWithChildren_one": "This will also permanently delete {{count}} descendant node.",
   "deleteWithChildren_other": "This will also permanently delete {{count}} descendant nodes.",
   "deleteConfirm": "Delete",
-  "deleteFailed": "Delete failed: {{message}}"
+  "deleteFailed": "Delete failed: {{message}}",
+  "deleteMultipleHeading": "Delete {{count}} nodes?"
 }

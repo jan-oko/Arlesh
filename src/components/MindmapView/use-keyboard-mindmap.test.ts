@@ -21,6 +21,7 @@ function baseOptions(overrides: Partial<Parameters<typeof useKeyboardMindmap>[0]
     isWarningActive: false,
     onDismissWarning: vi.fn(),
     selectedNodeId: "task-1" as string | null,
+    selectedNodeIds: new Set(["task-1"]) as ReadonlySet<string>,
     subtreeRootId: null as string | null,
     clipboard: null,
     onNavigate: vi.fn(),
@@ -30,14 +31,14 @@ function baseOptions(overrides: Partial<Parameters<typeof useKeyboardMindmap>[0]
     onCreateChild: vi.fn(),
     onCreateSibling: vi.fn(),
     onInsertParent: vi.fn(),
-    onDelete: vi.fn(),
+    onDelete: vi.fn() as (ids: string[]) => void,
     onToggleCollapsed: vi.fn(),
     onCycleStatus: vi.fn(),
     onDeselect: vi.fn(),
     onExitSubtree: vi.fn(),
     onExitToRoot: vi.fn(),
-    onCut: vi.fn(),
-    onCopy: vi.fn(),
+    onCut: vi.fn() as (ids: string[]) => void,
+    onCopy: vi.fn() as (ids: string[]) => void,
     onPaste: vi.fn(),
     findNodeById: (id: string): MindmapNode | undefined =>
       id === "task-1" ? makeTask("task-1") : undefined,
@@ -149,5 +150,41 @@ describe("useKeyboardMindmap — plain Enter cycles task status", () => {
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("Enter");
     expect(opts.onCycleStatus).not.toHaveBeenCalled();
+  });
+});
+
+describe("useKeyboardMindmap — multi-select Ctrl+X/C/Delete", () => {
+  it("Ctrl+X passes all selectedNodeIds to onCut", () => {
+    const selectedNodeIds = new Set(["task-1", "task-2"]);
+    const opts = baseOptions({ selectedNodeIds });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("x", { ctrlKey: true });
+    expect(opts.onCut).toHaveBeenCalledWith(expect.arrayContaining(["task-1", "task-2"]));
+    expect((opts.onCut as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]).toHaveLength(2);
+  });
+
+  it("Ctrl+C passes all selectedNodeIds to onCopy", () => {
+    const selectedNodeIds = new Set(["task-1", "task-2"]);
+    const opts = baseOptions({ selectedNodeIds });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("c", { ctrlKey: true });
+    expect(opts.onCopy).toHaveBeenCalledWith(expect.arrayContaining(["task-1", "task-2"]));
+    expect((opts.onCopy as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]).toHaveLength(2);
+  });
+
+  it("Delete passes all selectedNodeIds to onDelete", () => {
+    const selectedNodeIds = new Set(["task-1", "task-2"]);
+    const opts = baseOptions({ selectedNodeIds });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("Delete");
+    expect(opts.onDelete).toHaveBeenCalledWith(expect.arrayContaining(["task-1", "task-2"]));
+    expect((opts.onDelete as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]).toHaveLength(2);
+  });
+
+  it("Ctrl+X with single selected node passes [selectedNodeId] to onCut", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("x", { ctrlKey: true });
+    expect(opts.onCut).toHaveBeenCalledWith(["task-1"]);
   });
 });

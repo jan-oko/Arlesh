@@ -11,7 +11,7 @@ import { useNavigateArrow } from "./use-navigate-arrow";
 import { useKeyboardMindmap } from "./use-keyboard-mindmap";
 import { useMindmapStore, CLIPBOARD_OP } from "@/stores/use-mindmap-store";
 import type { MindmapNode } from "@/utils/tree-layout";
-import { findNode, findParent, collectTasksAndGoals, collectSubtreePostOrder } from "@/utils/mindmap-tree";
+import { findNode, findParent, collectTasksAndGoals, collectSubtreePostOrder, computeShiftSelectRange } from "@/utils/mindmap-tree";
 import MindmapCanvas from "@/components/MindmapCanvas/MindmapCanvas";
 import DragGhost from "@/components/DragGhost/DragGhost";
 import DragPlaceholder from "@/components/DragPlaceholder/DragPlaceholder";
@@ -29,11 +29,14 @@ export default function MindmapView() {
   const { t } = useTranslation(["common", "editor"]);
   const { tree, isLoading, error, createNode, createChild, renameNode, retypeNode, reorderNode, moveNode, removeNode, reload } =
     useMindmapData();
-  const { selectedNodeId, subtreeRootId, clipboard, collapsedNodeIds, pendingToast, selectNode, enterSubtree, exitSubtree, exitToRoot, setClipboard, toggleCollapsed, showToast, clearToast } =
-    useMindmapStore();
+  const {
+    selectedNodeId, selectedNodeIds, subtreeRootId, clipboard, collapsedNodeIds, pendingToast,
+    selectNode, addToSelection, setSelection, enterSubtree, exitSubtree, exitToRoot,
+    setClipboard, toggleCollapsed, showToast, clearToast,
+  } = useMindmapStore();
 
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [deleteTargets, setDeleteTargets] = useState<string[] | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -62,26 +65,37 @@ export default function MindmapView() {
     useNodeEditor({ tree, allTasksAndGoals, renameNode, reload });
 
   const handleConfirmDelete = useCallback(() => {
-    if (deleteTarget === null) return;
-    const node = findNode(tree, deleteTarget);
-    if (node === undefined) { setDeleteTarget(null); return; }
-    const nodesToDelete = collectSubtreePostOrder(node);
-    const parentNode = findParent(tree, deleteTarget);
-    const parentId = parentNode !== null && parentNode.id !== "root" ? parentNode.id : null;
+    if (deleteTargets === null) return;
+
+    // Collect post-order subtrees for all targets, deduplicating via Set
+    const seen = new Set<string>();
+    const nodesToDelete: Array<{ id: string; kind: import("@/utils/tree-layout").NodeKind }> = [];
+    for (const targetId of deleteTargets) {
+      const node = findNode(tree, targetId);
+      if (node === undefined) continue;
+      for (const entry of collectSubtreePostOrder(node)) {
+        if (!seen.has(entry.id)) {
+          seen.add(entry.id);
+          nodesToDelete.push(entry);
+        }
+      }
+    }
+    if (nodesToDelete.length === 0) { setDeleteTargets(null); return; }
+
     setIsDeleting(true);
     setDeleteError(null);
     void removeNode(nodesToDelete)
-      .then(() => { setDeleteTarget(null); selectNode(parentId); })
+      .then(() => { setDeleteTargets(null); selectNode(null); })
       .catch((err: unknown) => { setDeleteError(err instanceof Error ? err.message : String(err)); })
       .finally(() => setIsDeleting(false));
-  }, [deleteTarget, tree, removeNode, selectNode]);
+  }, [deleteTargets, tree, removeNode, selectNode]);
 
   const subtreeParent = subtreeRootId !== null ? findParent(tree, subtreeRootId) : null;
   const subtreeParentId = subtreeParent !== null && subtreeParent.id !== "root" ? subtreeParent.id : null;
   const handleExitSubtree = useCallback(() => exitSubtree(subtreeParentId), [exitSubtree, subtreeParentId]);
 
   const { onStatusClick, onCommitEdit, onCreateChild, onCreateSibling, onInsertParent, onDelete, onPaste } = useNodeActions({
-    tree, clipboard, moveNode, onRequestDelete: setDeleteTarget, reload, renameNode,
+    tree, clipboard, moveNode, onRequestDelete: setDeleteTargets, reload, renameNode,
     createNode, createChild, selectNode, setClipboard, setEditingNodeId,
   });
 
@@ -92,11 +106,22 @@ export default function MindmapView() {
     setClipboard, clipboard, onPaste, toggleCollapsed, onDelete,
   });
 
+  const handleCtrlClick = useCallback((id: string) => { addToSelection(id); }, [addToSelection]);
+
+  const handleShiftClick = useCallback((id: string) => {
+    if (selectedNodeId === null) { selectNode(id); return; }
+    const range = computeShiftSelectRange(tree, selectedNodeId, id);
+    if (range !== null) {
+      setSelection(new Set(range), selectedNodeId);
+    }
+  }, [selectedNodeId, tree, selectNode, setSelection]);
+
   useKeyboardMindmap({
-    isInputActive: editingNodeId !== null || editorModal !== null || deleteTarget !== null,
+    isInputActive: editingNodeId !== null || editorModal !== null || deleteTargets !== null,
     isWarningActive: warningModal !== null,
     onDismissWarning: () => setWarningModal(null),
     selectedNodeId,
+    selectedNodeIds,
     subtreeRootId,
     clipboard,
     onNavigate: navigateArrow,
@@ -112,8 +137,8 @@ export default function MindmapView() {
     onDeselect: () => { selectNode(null); },
     onExitSubtree: handleExitSubtree,
     onExitToRoot: exitToRoot,
-    onCut: (id) => setClipboard({ operation: CLIPBOARD_OP.CUT, nodeId: id }),
-    onCopy: (id) => setClipboard({ operation: CLIPBOARD_OP.COPY, nodeId: id }),
+    onCut: (ids) => setClipboard({ operation: CLIPBOARD_OP.CUT, nodeIds: ids }),
+    onCopy: (ids) => setClipboard({ operation: CLIPBOARD_OP.COPY, nodeIds: ids }),
     onPaste,
     findNodeById,
   });
@@ -128,7 +153,7 @@ export default function MindmapView() {
       <MindmapCanvas
         root={displayRoot}
         collapsedNodeIds={effectiveCollapsedIds}
-        selectedNodeId={selectedNodeId}
+        selectedNodeIds={selectedNodeIds}
         editingNodeId={editingNodeId}
         dragTargetId={dragTargetId}
         dragSourceId={dragSourceId}
@@ -137,6 +162,8 @@ export default function MindmapView() {
           <DragPlaceholder placeholderPos={placeholderPos} targetPos={targetPos} subtreeLayout={subtreeLayout} collapsedNodeIds={collapsedNodeIds} dragSourceId={dragSourceId} tree={tree} />
         ) : undefined}
         onSelect={selectNode}
+        onCtrlClick={handleCtrlClick}
+        onShiftClick={handleShiftClick}
         onDoubleClick={onDoubleClick}
         onCommitEdit={onCommitEdit}
         onCancelEdit={() => setEditingNodeId(null)}
@@ -184,18 +211,29 @@ export default function MindmapView() {
         />
       )}
 
-      {deleteTarget !== null && (() => {
-        const node = findNode(tree, deleteTarget);
-        if (node === undefined) return null;
-        const descendantCount = collectSubtreePostOrder(node).length - 1;
+      {deleteTargets !== null && (() => {
+        const firstId = deleteTargets[0];
+        const firstNode = firstId !== undefined ? findNode(tree, firstId) : undefined;
+        if (firstNode === undefined) return null;
+        // Count total descendants across all targets (deduplicated)
+        const seen = new Set<string>(deleteTargets);
+        let descendantCount = 0;
+        for (const id of deleteTargets) {
+          const n = findNode(tree, id);
+          if (n === undefined) continue;
+          for (const entry of collectSubtreePostOrder(n)) {
+            if (!seen.has(entry.id)) { seen.add(entry.id); descendantCount++; }
+          }
+        }
         return (
           <DeleteConfirmModal
-            nodeTitle={node.title}
+            nodeTitle={firstNode.title}
+            nodeCount={deleteTargets.length}
             descendantCount={descendantCount}
             isDeleting={isDeleting}
             error={deleteError}
             onConfirm={handleConfirmDelete}
-            onCancel={() => { setDeleteTarget(null); setDeleteError(null); }}
+            onCancel={() => { setDeleteTargets(null); setDeleteError(null); }}
           />
         );
       })()}

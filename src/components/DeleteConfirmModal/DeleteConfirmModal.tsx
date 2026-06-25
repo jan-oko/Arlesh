@@ -3,6 +3,7 @@ import styles from "./DeleteConfirmModal.module.css";
 
 interface Props {
   nodeTitle: string;
+  nodeCount: number;
   descendantCount: number;
   isDeleting: boolean;
   error: string | null;
@@ -10,12 +11,15 @@ interface Props {
   onCancel: () => void;
 }
 
-export default function DeleteConfirmModal({ nodeTitle, descendantCount, isDeleting, error, onConfirm, onCancel }: Props) {
+export default function DeleteConfirmModal({ nodeTitle, nodeCount, descendantCount, isDeleting, error, onConfirm, onCancel }: Props) {
   const { t } = useTranslation(["warnings", "common"]);
+  const heading = nodeCount > 1
+    ? t("warnings:deleteMultipleHeading", { count: nodeCount })
+    : t("warnings:deleteHeading", { title: nodeTitle });
   return (
     <div className={styles.overlay} onClick={onCancel}>
       <div className={styles.modal} onClick={(e) => { e.stopPropagation(); }}>
-        <h2 className={styles.heading}>{t("warnings:deleteHeading", { title: nodeTitle })}</h2>
+        <h2 className={styles.heading}>{heading}</h2>
         {descendantCount > 0 && (
           <p className={styles.body}>{t("warnings:deleteWithChildren", { count: descendantCount })}</p>
         )}

@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
-import { findNode, findParent } from "@/utils/mindmap-tree";
+import { findNode, findParent, collectAllNodeIds } from "@/utils/mindmap-tree";
 import { updateTask } from "@/api/tasks";
 import { TASK_STATUS } from "@/utils/status-mapping";
 import { CLIPBOARD_OP } from "@/stores/use-mindmap-store";
@@ -13,21 +13,16 @@ function nextTaskStatus(current: string): string {
   return TASK_STATUS.IN_PROGRESS;
 }
 
-function lastChildPosition(children: Array<{ id: string; position: number }>, excludeId: string): number {
-  const positions = children.filter((c) => c.id !== excludeId).map((c) => c.position);
-  return positions.length > 0 ? Math.max(...positions) + 1 : 0;
-}
-
 interface ClipboardEntry {
   operation: "cut" | "copy";
-  nodeId: string;
+  nodeIds: string[];
 }
 
 interface Options {
   tree: MindmapNode;
   clipboard: ClipboardEntry | null;
   moveNode: (id: string, kind: NodeKind, parentId: string, parentKind: NodeKind, position: number) => Promise<void>;
-  onRequestDelete: (nodeId: string) => void;
+  onRequestDelete: (nodeIds: string[]) => void;
   reload: () => Promise<void>;
   renameNode: (id: string, kind: NodeKind, title: string) => Promise<void>;
   createNode: (parentId: string, parentKind: NodeKind, childKind: NodeKind, title: string) => Promise<MindmapNode>;
@@ -43,7 +38,7 @@ interface Result {
   onCreateChild: (nodeId: string) => void;
   onCreateSibling: (nodeId: string) => void;
   onInsertParent: (nodeId: string) => void;
-  onDelete: (nodeId: string) => void;
+  onDelete: (nodeIds: string[]) => void;
   onPaste: (targetId: string) => void;
 }
 
@@ -92,11 +87,12 @@ export function useNodeActions({
   );
 
   const onDelete = useCallback(
-    (nodeId: string) => {
-      const node = findNode(tree, nodeId);
-      if (node !== undefined && node.kind !== "aspect") {
-        onRequestDelete(nodeId);
-      }
+    (nodeIds: string[]) => {
+      const valid = nodeIds.filter((id) => {
+        const node = findNode(tree, id);
+        return node !== undefined && node.kind !== "aspect";
+      });
+      if (valid.length > 0) onRequestDelete(valid);
     },
     [tree, onRequestDelete],
   );
@@ -104,13 +100,40 @@ export function useNodeActions({
   const onPaste = useCallback(
     (targetId: string) => {
       if (clipboard === null) return;
-      const sourceNode = findNode(tree, clipboard.nodeId);
       const targetNode = findNode(tree, targetId);
-      if (sourceNode === undefined || targetNode === undefined) return;
-      const position = lastChildPosition(targetNode.children, clipboard.nodeId);
-      void moveNode(clipboard.nodeId, sourceNode.kind, targetId, targetNode.kind, position).then(() => {
-        if (clipboard.operation === CLIPBOARD_OP.CUT) setClipboard(null);
+      if (targetNode === undefined) return;
+
+      const nodeIds = clipboard.nodeIds;
+      const selectedSet = new Set(nodeIds);
+
+      // Keep only top-level nodes (no ancestor in the selected set)
+      const topLevel = nodeIds.filter((id) => {
+        let parent = findParent(tree, id);
+        while (parent !== null) {
+          if (selectedSet.has(parent.id)) return false;
+          parent = findParent(tree, parent.id);
+        }
+        return true;
       });
+
+      // Sort by tree pre-order so relative order is preserved
+      const treeOrder = collectAllNodeIds(tree);
+      topLevel.sort((a, b) => treeOrder.indexOf(a) - treeOrder.indexOf(b));
+
+      const basePosition =
+        targetNode.children.length > 0
+          ? Math.max(...targetNode.children.map((c) => c.position)) + 1
+          : 0;
+
+      void (async () => {
+        for (let i = 0; i < topLevel.length; i++) {
+          const nodeId = topLevel[i]!;
+          const sourceNode = findNode(tree, nodeId);
+          if (sourceNode === undefined) continue;
+          await moveNode(nodeId, sourceNode.kind, targetId, targetNode.kind, basePosition + i);
+        }
+        if (clipboard.operation === CLIPBOARD_OP.CUT) setClipboard(null);
+      })();
     },
     [clipboard, tree, moveNode, setClipboard],
   );

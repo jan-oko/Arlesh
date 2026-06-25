@@ -6,7 +6,7 @@ import { CLIPBOARD_OP } from "@/stores/use-mindmap-store";
 
 interface ClipboardEntry {
   operation: "cut" | "copy";
-  nodeId: string;
+  nodeIds: string[];
 }
 
 interface Options {
@@ -18,7 +18,7 @@ interface Options {
   clipboard: ClipboardEntry | null;
   onPaste: (targetId: string) => void;
   toggleCollapsed: (id: string) => void;
-  onDelete: (id: string) => void;
+  onDelete: (ids: string[]) => void;
 }
 
 interface Result {
@@ -37,11 +37,11 @@ export function useContextAction({
         case CONTEXT_ACTION.RENAME: setEditingNodeId(nodeId); break;
         case CONTEXT_ACTION.TYPE_UP: cycleType(nodeId, 1); break;
         case CONTEXT_ACTION.TYPE_DOWN: cycleType(nodeId, -1); break;
-        case CONTEXT_ACTION.CUT: setClipboard({ operation: CLIPBOARD_OP.CUT, nodeId }); break;
-        case CONTEXT_ACTION.COPY: setClipboard({ operation: CLIPBOARD_OP.COPY, nodeId }); break;
+        case CONTEXT_ACTION.CUT: setClipboard({ operation: CLIPBOARD_OP.CUT, nodeIds: [nodeId] }); break;
+        case CONTEXT_ACTION.COPY: setClipboard({ operation: CLIPBOARD_OP.COPY, nodeIds: [nodeId] }); break;
         case CONTEXT_ACTION.PASTE: if (clipboard !== null) onPaste(nodeId); break;
         case CONTEXT_ACTION.COLLAPSE: case CONTEXT_ACTION.EXPAND: toggleCollapsed(nodeId); break;
-        case CONTEXT_ACTION.DELETE: onDelete(nodeId); break;
+        case CONTEXT_ACTION.DELETE: onDelete([nodeId]); break;
       }
     },
     [findNodeById, enterSubtree, setEditingNodeId, cycleType, setClipboard, clipboard, onPaste, toggleCollapsed, onDelete],

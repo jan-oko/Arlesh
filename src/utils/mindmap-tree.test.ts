@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { connectedNodeIds, nearestInDirection } from "./mindmap-tree";
+import { connectedNodeIds, nearestInDirection, collectAllNodeIds, computeShiftSelectRange } from "./mindmap-tree";
 import type { MindmapNode } from "./tree-layout";
 import type { Position } from "./tree-layout";
 
@@ -62,6 +62,81 @@ describe("connectedNodeIds", () => {
   it("returns empty set for an unknown node id", () => {
     const connected = connectedNodeIds(TREE, "does-not-exist");
     expect(connected.size).toBe(0);
+  });
+});
+
+// Deeper tree for multi-select tests:
+//   root
+//   ├── A
+//   │   ├── A1
+//   │   ├── A2
+//   │   └── A3
+//   └── B
+//       ├── B1
+//       └── B2
+const A1 = node("A1");
+const A2 = node("A2");
+const A3 = node("A3");
+const B1 = node("B1");
+const B2 = node("B2");
+const A = node("A", [A1, A2, A3]);
+const B = node("B", [B1, B2]);
+const DEEP_TREE = node("root", [A, B]);
+
+describe("collectAllNodeIds", () => {
+  it("returns all node ids in depth-first pre-order", () => {
+    const ids = collectAllNodeIds(DEEP_TREE);
+    expect(ids).toEqual(["root", "A", "A1", "A2", "A3", "B", "B1", "B2"]);
+  });
+
+  it("returns just the root id for a leaf node", () => {
+    expect(collectAllNodeIds(A1)).toEqual(["A1"]);
+  });
+});
+
+describe("computeShiftSelectRange", () => {
+  it("returns [anchorId] when anchor and target are the same node", () => {
+    expect(computeShiftSelectRange(DEEP_TREE, "A1", "A1")).toEqual(["A1"]);
+  });
+
+  it("selects siblings between anchor and target in forward order", () => {
+    const range = computeShiftSelectRange(DEEP_TREE, "A1", "A3");
+    expect(range).toEqual(["A1", "A2", "A3"]);
+  });
+
+  it("selects siblings between anchor and target in reverse order (always sibling order)", () => {
+    const range = computeShiftSelectRange(DEEP_TREE, "A3", "A1");
+    expect(range).toEqual(["A1", "A2", "A3"]);
+  });
+
+  it("selects exactly two adjacent siblings", () => {
+    expect(computeShiftSelectRange(DEEP_TREE, "A1", "A2")).toEqual(["A1", "A2"]);
+  });
+
+  it("selects anchor and its direct parent when target is parent", () => {
+    const range = computeShiftSelectRange(DEEP_TREE, "A1", "A");
+    expect(range).toEqual(["A1", "A"]);
+  });
+
+  it("selects anchor and ancestor chain up to target grandparent", () => {
+    const range = computeShiftSelectRange(DEEP_TREE, "A1", "root");
+    expect(range).toEqual(["A1", "A", "root"]);
+  });
+
+  it("returns null when target is a sibling of the anchor's parent (unrelated branch)", () => {
+    expect(computeShiftSelectRange(DEEP_TREE, "A1", "B")).toBeNull();
+  });
+
+  it("returns null when target is in an entirely different subtree", () => {
+    expect(computeShiftSelectRange(DEEP_TREE, "A1", "B2")).toBeNull();
+  });
+
+  it("returns null when anchor does not exist in tree", () => {
+    expect(computeShiftSelectRange(DEEP_TREE, "nonexistent", "A1")).toBeNull();
+  });
+
+  it("returns null when target does not exist in tree", () => {
+    expect(computeShiftSelectRange(DEEP_TREE, "A1", "nonexistent")).toBeNull();
   });
 });
 

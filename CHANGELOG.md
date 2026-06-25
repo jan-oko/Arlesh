@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Multi-node selection: Ctrl+click toggles a node in/out of the selection; Shift+click on a sibling range-selects all siblings between anchor and target; Shift+click on an ancestor selects the anchor and all nodes up to that ancestor; Shift+click on an unrelated node does nothing
+- Ctrl+X / Ctrl+C now operate on all selected nodes; Delete key deletes all selected nodes
+- Paste of a multi-node clipboard moves top-level selected nodes (ancestors take their descendants with them) as children of the paste target in original tree order
+- Delete confirmation for multiple nodes shows "Delete N nodes?" instead of a single title
 - Shift+Enter on a focused node creates a new sibling of the same type and enters inline edit mode
 - Ctrl+Enter on a focused node inserts an intermediate parent between the node and its current parent, then enters inline edit mode on the new parent
 - Enter key cycles status on focused task nodes (todo → in_progress → done → todo); blocked tasks are skipped
