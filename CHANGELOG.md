@@ -10,6 +10,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Changed
 - Aspects renamed from color labels to meaningful names: Red → Body, Purple → Connections, Green → Growth, Blue → Duty, Gray → Flow, Steel → Self
+- Node height now expands dynamically to fit the full title without truncation; text wraps within the fixed node width using the browser's word-wrap
+- Inline node edit uses a `<textarea>` instead of `<input>`; Shift+Enter inserts a line break, Enter commits
+- Vertical sibling spacing increased from 60 px to 90 px to accommodate multi-line nodes
 - Arrow key navigation now moves only to connected nodes (parent, children, siblings) while still picking the visually nearest one in the pressed direction — prevents jumping across unrelated branches; the Arlesh root node is included so navigation can pass from one side of the tree to the other through the centre
 - After deleting a node, focus moves to its parent (or clears if the parent is the virtual root)
 

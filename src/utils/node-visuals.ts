@@ -10,7 +10,7 @@ export interface NodeAppearance {
   textFill: string;
 }
 
-export function computeNodeAppearance(node: MindmapNode, depth: number, maxChars: number): NodeAppearance {
+export function computeNodeAppearance(node: MindmapNode, depth: number): NodeAppearance {
   const isBlocked =
     node.kind === "task" &&
     node.blockedReason !== undefined &&
@@ -28,8 +28,7 @@ export function computeNodeAppearance(node: MindmapNode, depth: number, maxChars
       ? Math.max(0.15, 0.5 - depth * 0.06)
       : 1;
 
-  const label =
-    node.title.length > maxChars ? node.title.slice(0, maxChars - 1) + "…" : node.title;
+  const label = node.title;
 
   const textFill = node.kind === "aspect" ? "rgba(255,255,255,0.9)" : "var(--node-text)";
 

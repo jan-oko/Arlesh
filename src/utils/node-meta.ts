@@ -5,20 +5,55 @@ export interface NodeSize {
   height: number;
   fontSize: number;
   iconWidth: number;
-  maxChars: number;
 }
 
-const NODE_SIZES: readonly NodeSize[] = [
-  { width: 200, height: 52, fontSize: 18, iconWidth: 32, maxChars: 20 },
-  { width: 180, height: 44, fontSize: 15, iconWidth: 28, maxChars: 18 },
-  { width: 160, height: 36, fontSize: 13, iconWidth: 22, maxChars: 16 },
-  { width: 148, height: 32, fontSize: 12, iconWidth: 20, maxChars: 15 },
-  { width: 140, height: 30, fontSize: 11, iconWidth: 18, maxChars: 14 },
+interface BaseNodeSpec {
+  width: number;
+  minHeight: number;
+  fontSize: number;
+  iconWidth: number;
+  lineHeight: number;
+}
+
+const NODE_SPECS: readonly BaseNodeSpec[] = [
+  { width: 200, minHeight: 52, fontSize: 18, iconWidth: 32, lineHeight: 22 },
+  { width: 180, minHeight: 44, fontSize: 15, iconWidth: 28, lineHeight: 19 },
+  { width: 160, minHeight: 36, fontSize: 13, iconWidth: 22, lineHeight: 17 },
+  { width: 148, minHeight: 32, fontSize: 12, iconWidth: 20, lineHeight: 16 },
+  { width: 140, minHeight: 30, fontSize: 11, iconWidth: 18, lineHeight: 15 },
 ];
 
+const CHAR_WIDTH_RATIO = 0.52;
+const VERTICAL_PADDING = 8;
+
+function specForDepth(depth: number): BaseNodeSpec {
+  const index = Math.min(depth, NODE_SPECS.length - 1);
+  return NODE_SPECS[index] ?? NODE_SPECS[NODE_SPECS.length - 1]!;
+}
+
+function countWrappedLines(title: string, charsPerLine: number): number {
+  const segments = title.split("\n");
+  let total = 0;
+  for (const seg of segments) {
+    total += Math.max(1, Math.ceil(seg.length / charsPerLine));
+  }
+  return Math.max(1, total);
+}
+
+/** Returns base (minimum) node dimensions for a depth — does not account for title length. */
 export function getNodeSize(depth: number): NodeSize {
-  const index = Math.min(depth, NODE_SIZES.length - 1);
-  return NODE_SIZES[index] ?? NODE_SIZES[NODE_SIZES.length - 1]!;
+  const spec = specForDepth(depth);
+  return { width: spec.width, height: spec.minHeight, fontSize: spec.fontSize, iconWidth: spec.iconWidth };
+}
+
+/** Returns node dimensions with height expanded to fit `title` across wrapped lines. */
+export function computeNodeDimensions(depth: number, title: string): NodeSize {
+  const spec = specForDepth(depth);
+  const textAreaWidth = spec.width - spec.iconWidth - 4;
+  const charsPerLine = Math.max(1, Math.floor(textAreaWidth / (spec.fontSize * CHAR_WIDTH_RATIO)));
+  const lineCount = countWrappedLines(title, charsPerLine);
+  const height = Math.max(spec.minHeight, VERTICAL_PADDING + lineCount * spec.lineHeight);
+  return { width: spec.width, height, fontSize: spec.fontSize, iconWidth: spec.iconWidth };
 }
 
 export const NODE_ICON: Record<NodeKind, string> = {
