@@ -55,7 +55,7 @@ export default function MindmapNode({ node, position, isSelected, isCollapsed, i
       style={{ cursor: "pointer", opacity: isDragSource === true ? 0 : undefined, pointerEvents: isDragSource === true ? "none" : undefined }}
     >
       <NodeRect node={node} width={width} height={height} iconWidth={iconWidth} iconCx={iconCx} iconCy={height / 2} iconR={iconR} fillColor={fillColor} fillOpacity={fillOpacity} strokeColor={strokeColor} isSelected={isSelected} isCollapsed={isCollapsed} iconColor={iconColor} iconOpacity={iconOpacity} isBlocked={isBlocked} canClickStatus={canClickStatus} isRtl={isRtl} onStatusIconClick={handleStatusIconClick} />
-      <NodeLabel node={node} isEditing={isEditing} iconWidth={iconWidth} width={width} height={height} fontSize={fontSize} label={label} textFill={textFill} isRtl={isRtl} onCommitEdit={onCommitEdit} onCancelEdit={onCancelEdit} />
+      <NodeLabel key={isEditing ? `${node.id}-edit` : node.id} node={node} isEditing={isEditing} iconWidth={iconWidth} width={width} height={height} fontSize={fontSize} label={label} textFill={textFill} isRtl={isRtl} onCommitEdit={onCommitEdit} onCancelEdit={onCancelEdit} />
       {contextMenu !== null && createPortal(
         <NodeContextMenu x={contextMenu.x} y={contextMenu.y} nodeKind={node.kind} isCollapsed={isCollapsed} hasClipboard={hasClipboard} onAction={(action) => onContextAction(node.id, action)} onClose={() => setContextMenu(null)} />,
         document.body,

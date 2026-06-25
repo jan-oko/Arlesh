@@ -17,11 +17,9 @@ interface Props {
 
 export default function NodeLabel({ node, isEditing, iconWidth, width, height, fontSize, label, textFill, isRtl, onCommitEdit, onCancelEdit }: Props) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const [editValue, setEditValue] = useState(node.title);
-
-  useEffect(() => {
-    if (isEditing) setEditValue(node.title);
-  }, [isEditing, node.title]);
+  // Lazy initialiser — correct on first mount; parent re-keys this component
+  // when editing starts so this always reflects the committed title.
+  const [editLineCount, setEditLineCount] = useState(() => node.title.split("\n").length);
 
   useEffect(() => {
     if (!isEditing) return;
@@ -40,16 +38,15 @@ export default function NodeLabel({ node, isEditing, iconWidth, width, height, f
     // Grow the foreignObject to fit current content so the textarea never scrolls.
     // WebKit mis-positions foreignObject content relative to the document root when
     // the element scrolls inside a CSS-transformed SVG group (animated.g).
-    const lineCount = editValue.split("\n").length;
     const lineHeightPx = Math.round(fontSize * 1.4);
-    const editFoHeight = Math.max(height - 4, lineCount * lineHeightPx + 8);
+    const editFoHeight = Math.max(height - 4, editLineCount * lineHeightPx + 8);
 
     return (
       <foreignObject x={textX} y={2} width={textAreaWidth} height={editFoHeight}>
         <textarea
           ref={inputRef}
           defaultValue={node.title}
-          onChange={(e) => setEditValue(e.currentTarget.value)}
+          onChange={(e) => setEditLineCount(e.currentTarget.value.split("\n").length)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
