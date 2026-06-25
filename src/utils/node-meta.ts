@@ -6,6 +6,7 @@ export interface NodeSize {
   fontSize: number;
   iconWidth: number;
   lineHeight: number;
+  lineCount: number;
 }
 
 interface BaseNodeSpec {
@@ -48,7 +49,7 @@ function countWrappedLines(title: string, charsPerLine: number): number {
 /** Returns base (minimum) node dimensions for a depth — does not account for title length. */
 export function getNodeSize(depth: number): NodeSize {
   const spec = specForDepth(depth);
-  return { width: spec.width, height: spec.minHeight, fontSize: spec.fontSize, iconWidth: spec.iconWidth, lineHeight: spec.lineHeight };
+  return { width: spec.width, height: spec.minHeight, fontSize: spec.fontSize, iconWidth: spec.iconWidth, lineHeight: spec.lineHeight, lineCount: 1 };
 }
 
 /** Returns node dimensions with height expanded to fit `title` across wrapped lines. */
@@ -57,7 +58,7 @@ export function computeNodeDimensions(depth: number, title: string): NodeSize {
   const textAreaWidth = spec.width - spec.iconWidth - 4;
   const charsPerLine = Math.max(1, Math.floor(textAreaWidth / (spec.fontSize * CHAR_WIDTH_RATIO)));
   const lineCount = countWrappedLines(title, charsPerLine);
-  return { width: spec.width, height: nodeHeight(spec, lineCount), fontSize: spec.fontSize, iconWidth: spec.iconWidth, lineHeight: spec.lineHeight };
+  return { width: spec.width, height: nodeHeight(spec, lineCount), fontSize: spec.fontSize, iconWidth: spec.iconWidth, lineHeight: spec.lineHeight, lineCount };
 }
 
 /** Returns the live node height for an explicit line count — used while editing. */

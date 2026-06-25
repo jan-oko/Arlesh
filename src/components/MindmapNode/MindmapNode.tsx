@@ -40,7 +40,7 @@ export default function MindmapNode({ node, position, isSelected, isCollapsed, i
     if (isEditing) setEditLineCount(node.title.split("\n").length);
   }
 
-  const { width, height, fontSize, iconWidth, lineHeight } = computeNodeDimensions(position.depth, node.title);
+  const { width, height, fontSize, iconWidth, lineHeight, lineCount: displayLineCount } = computeNodeDimensions(position.depth, node.title);
   const activeHeight = isEditing ? computeEditHeight(position.depth, editLineCount) : height;
 
   const iconR = (iconWidth - 8) / 2;
@@ -69,7 +69,7 @@ export default function MindmapNode({ node, position, isSelected, isCollapsed, i
       style={{ cursor: "pointer", opacity: isDragSource === true ? 0 : undefined, pointerEvents: isDragSource === true ? "none" : undefined }}
     >
       <NodeRect node={node} width={width} height={activeHeight} iconWidth={iconWidth} iconCx={iconCx} iconCy={activeHeight / 2} iconR={iconR} fillColor={fillColor} fillOpacity={fillOpacity} strokeColor={strokeColor} isSelected={isSelected} isCollapsed={isCollapsed} iconColor={iconColor} iconOpacity={iconOpacity} isBlocked={isBlocked} canClickStatus={canClickStatus} isRtl={isRtl} onStatusIconClick={handleStatusIconClick} />
-      <NodeLabel node={node} isEditing={isEditing} iconWidth={iconWidth} width={width} height={activeHeight} fontSize={fontSize} lineHeight={lineHeight} editLineCount={editLineCount} onEditLineCountChange={setEditLineCount} label={label} textFill={textFill} isRtl={isRtl} onCommitEdit={onCommitEdit} onCancelEdit={onCancelEdit} />
+      <NodeLabel node={node} isEditing={isEditing} iconWidth={iconWidth} width={width} height={activeHeight} fontSize={fontSize} lineHeight={lineHeight} displayLineCount={displayLineCount} editLineCount={editLineCount} onEditLineCountChange={setEditLineCount} label={label} textFill={textFill} isRtl={isRtl} onCommitEdit={onCommitEdit} onCancelEdit={onCancelEdit} />
       {contextMenu !== null && createPortal(
         <NodeContextMenu x={contextMenu.x} y={contextMenu.y} nodeKind={node.kind} isCollapsed={isCollapsed} hasClipboard={hasClipboard} onAction={(action) => onContextAction(node.id, action)} onClose={() => setContextMenu(null)} />,
         document.body,

@@ -41,4 +41,21 @@ describe("computeNodeDimensions", () => {
     expect(d4.width).toBe(d99.width);
     expect(d4.height).toBe(d99.height);
   });
+
+  it("returns lineCount 1 for a short title that fits on one line", () => {
+    const { lineCount } = computeNodeDimensions(0, "short");
+    expect(lineCount).toBe(1);
+  });
+
+  it("returns lineCount matching the number of estimated wrapped lines for a long title", () => {
+    // depth 0: charsPerLine ≈ floor(164 / 9.36) = 17
+    // 40 chars → ceil(40/17) = 3 lines
+    const { lineCount } = computeNodeDimensions(0, "A".repeat(40));
+    expect(lineCount).toBe(3);
+  });
+
+  it("returns lineCount equal to explicit newline segments for multi-line title", () => {
+    const { lineCount } = computeNodeDimensions(0, "A\nB\nC");
+    expect(lineCount).toBe(3);
+  });
 });

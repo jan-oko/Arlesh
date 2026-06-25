@@ -12,6 +12,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Enter key cycles status on focused task nodes (todo → in_progress → done → todo); blocked tasks are skipped
 
 ### Fixed
+- Node text overflowed its bounding box when the title wrapped across multiple lines: `NodeLabel` was centering using only the explicit-newline count instead of the estimated wrapped-line count, producing excess `paddingTop` that pushed wrapped text outside the `foreignObject`; `computeNodeDimensions` now returns `lineCount` and `NodeLabel` uses it directly
+
+### Fixed
 - SubtreeNavPill no longer overlaps the top bar: pill container now uses `top: calc(var(--topbar-height) + var(--space-2))` via a new `--topbar-height` token (36 px)
 - Plain Esc no longer exits the subtree when a node is selected; it now only deselects the focused node
 - Shift+Esc was incorrectly wired to exit-to-root; it now correctly exits one level to the parent subtree

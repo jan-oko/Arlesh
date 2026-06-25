@@ -9,6 +9,7 @@ interface Props {
   height: number;
   fontSize: number;
   lineHeight: number;
+  displayLineCount: number;
   editLineCount: number;
   onEditLineCountChange: (count: number) => void;
   label: string;
@@ -18,7 +19,7 @@ interface Props {
   onCancelEdit: () => void;
 }
 
-export default function NodeLabel({ node, isEditing, iconWidth, width, height, fontSize, lineHeight, editLineCount, onEditLineCountChange, label, textFill, isRtl, onCommitEdit, onCancelEdit }: Props) {
+export default function NodeLabel({ node, isEditing, iconWidth, width, height, fontSize, lineHeight, displayLineCount, editLineCount, onEditLineCountChange, label, textFill, isRtl, onCommitEdit, onCancelEdit }: Props) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -36,7 +37,7 @@ export default function NodeLabel({ node, isEditing, iconWidth, width, height, f
   const foHeight = height - 8;
   // Vertical padding that centres the text block within foHeight.
   // Matches between display and edit so the text never jumps on mode change.
-  const lineCount = isEditing ? editLineCount : label.split("\n").length;
+  const lineCount = isEditing ? editLineCount : displayLineCount;
   const paddingTop = Math.max(0, (foHeight - lineCount * lineHeight) / 2);
   const lineHeightRatio = lineHeight / fontSize;
 
