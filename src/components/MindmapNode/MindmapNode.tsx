@@ -30,17 +30,17 @@ interface Props {
 export default function MindmapNode({ node, position, isSelected, isCollapsed, isDragTarget, isDragSource, hasClipboard, isEditing, onSelect, onDoubleClick, onCommitEdit, onCancelEdit, onContextAction, onDragStart, onStatusClick }: Props) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
-  // Tracks explicit newline count during editing so the node rect expands in real time.
+  const { width, height, fontSize, iconWidth, lineHeight, lineCount: displayLineCount } = computeNodeDimensions(position.depth, node.title);
+
+  // Tracks visual line count during editing so the node rect expands in real time.
   // React's getDerivedStateFromProps pattern: setting state during render is safe when
   // guarded by a changed-value check (no infinite loop, React re-renders once).
-  const [editLineCount, setEditLineCount] = useState(node.title.split("\n").length);
+  const [editLineCount, setEditLineCount] = useState(displayLineCount);
   const [wasEditing, setWasEditing] = useState(isEditing);
   if (isEditing !== wasEditing) {
     setWasEditing(isEditing);
-    if (isEditing) setEditLineCount(node.title.split("\n").length);
+    if (isEditing) setEditLineCount(displayLineCount);
   }
-
-  const { width, height, fontSize, iconWidth, lineHeight, lineCount: displayLineCount } = computeNodeDimensions(position.depth, node.title);
   const activeHeight = isEditing ? computeEditHeight(position.depth, editLineCount) : height;
 
   const iconR = (iconWidth - 8) / 2;

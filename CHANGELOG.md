@@ -12,6 +12,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Enter key cycles status on focused task nodes (todo → in_progress → done → todo); blocked tasks are skipped
 
 ### Fixed
+- Node also resizes during inline editing when typed text wraps to a new line (previously only explicit Shift+Enter triggered a resize); uses the same character-width heuristic as display mode via a new `estimateWrappedLineCount` helper
 - Node text overflowed its bounding box when the title wrapped across multiple lines: `NodeLabel` was centering using only the explicit-newline count instead of the estimated wrapped-line count, producing excess `paddingTop` that pushed wrapped text outside the `foreignObject`; `computeNodeDimensions` now returns `lineCount` and `NodeLabel` uses it directly
 
 ### Fixed

@@ -66,6 +66,16 @@ export function computeEditHeight(depth: number, lineCount: number): number {
   return nodeHeight(specForDepth(depth), lineCount);
 }
 
+/**
+ * Estimates the visual line count for arbitrary text within a given text area,
+ * using the same character-width heuristic as `computeNodeDimensions`.
+ * Use this in the textarea `onChange` handler to keep edit-mode height in sync.
+ */
+export function estimateWrappedLineCount(text: string, textAreaWidth: number, fontSize: number): number {
+  const charsPerLine = Math.max(1, Math.floor(textAreaWidth / (fontSize * CHAR_WIDTH_RATIO)));
+  return countWrappedLines(text, charsPerLine);
+}
+
 export const NODE_ICON: Record<NodeKind, string> = {
   aspect: "◆",
   project: "📁",

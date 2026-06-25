@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeNodeDimensions, getNodeSize } from "./node-meta";
+import { computeNodeDimensions, estimateWrappedLineCount, getNodeSize } from "./node-meta";
 
 describe("computeNodeDimensions", () => {
   it("matches getNodeSize height for a short single-word title", () => {
@@ -57,5 +57,22 @@ describe("computeNodeDimensions", () => {
   it("returns lineCount equal to explicit newline segments for multi-line title", () => {
     const { lineCount } = computeNodeDimensions(0, "A\nB\nC");
     expect(lineCount).toBe(3);
+  });
+});
+
+describe("estimateWrappedLineCount", () => {
+  it("returns 1 for a short text that fits on one line", () => {
+    // depth 0 textAreaWidth=164, fontSize=18 → charsPerLine≈17
+    expect(estimateWrappedLineCount("hello", 164, 18)).toBe(1);
+  });
+
+  it("matches computeNodeDimensions lineCount for the same text and dimensions", () => {
+    // depth 0: iconWidth=32, textAreaWidth=164, fontSize=18
+    const { lineCount } = computeNodeDimensions(0, "A".repeat(40));
+    expect(estimateWrappedLineCount("A".repeat(40), 164, 18)).toBe(lineCount);
+  });
+
+  it("counts explicit newlines as forced breaks", () => {
+    expect(estimateWrappedLineCount("A\nB\nC", 164, 18)).toBe(3);
   });
 });

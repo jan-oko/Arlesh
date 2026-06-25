@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { MindmapNode } from "@/utils/tree-layout";
+import { estimateWrappedLineCount } from "@/utils/node-meta";
 
 interface Props {
   node: MindmapNode;
@@ -47,7 +48,7 @@ export default function NodeLabel({ node, isEditing, iconWidth, width, height, f
         <textarea
           ref={inputRef}
           defaultValue={node.title}
-          onChange={(e) => onEditLineCountChange(e.currentTarget.value.split("\n").length)}
+          onChange={(e) => onEditLineCountChange(estimateWrappedLineCount(e.currentTarget.value, textAreaWidth, fontSize))}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
