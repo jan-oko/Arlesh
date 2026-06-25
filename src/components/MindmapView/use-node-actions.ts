@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
-import { findNode } from "@/utils/mindmap-tree";
+import { findNode, findParent } from "@/utils/mindmap-tree";
 import { updateTask } from "@/api/tasks";
 import { TASK_STATUS } from "@/utils/status-mapping";
 import { CLIPBOARD_OP } from "@/stores/use-mindmap-store";
@@ -30,6 +30,7 @@ interface Options {
   onRequestDelete: (nodeId: string) => void;
   reload: () => Promise<void>;
   renameNode: (id: string, kind: NodeKind, title: string) => Promise<void>;
+  createNode: (parentId: string, parentKind: NodeKind, childKind: NodeKind, title: string) => Promise<MindmapNode>;
   createChild: (parentId: string, parentKind: NodeKind, title: string) => Promise<MindmapNode>;
   selectNode: (id: string | null) => void;
   setClipboard: (entry: ClipboardEntry | null) => void;
@@ -40,13 +41,15 @@ interface Result {
   onStatusClick: (nodeId: string) => void;
   onCommitEdit: (nodeId: string, title: string) => void;
   onCreateChild: (nodeId: string) => void;
+  onCreateSibling: (nodeId: string) => void;
+  onInsertParent: (nodeId: string) => void;
   onDelete: (nodeId: string) => void;
   onPaste: (targetId: string) => void;
 }
 
 export function useNodeActions({
   tree, clipboard, moveNode, onRequestDelete, reload, renameNode,
-  createChild, selectNode, setClipboard, setEditingNodeId,
+  createNode, createChild, selectNode, setClipboard, setEditingNodeId,
 }: Options): Result {
   const onStatusClick = useCallback(
     (nodeId: string) => {
@@ -112,5 +115,44 @@ export function useNodeActions({
     [clipboard, tree, moveNode, setClipboard],
   );
 
-  return { onStatusClick, onCommitEdit, onCreateChild, onDelete, onPaste };
+  const onCreateSibling = useCallback(
+    (nodeId: string) => {
+      const node = findNode(tree, nodeId);
+      if (node === undefined || node.kind === "aspect") return;
+      const parent = findParent(tree, nodeId);
+      if (parent === null || parent.id === "root") return;
+      void (async () => {
+        try {
+          const newNode = await createNode(parent.id, parent.kind, node.kind, "");
+          selectNode(newNode.id);
+          setEditingNodeId(newNode.id);
+        } catch (err) {
+          console.error(`${LOG_PREFIX} createSibling failed:`, err);
+        }
+      })();
+    },
+    [tree, createNode, selectNode, setEditingNodeId],
+  );
+
+  const onInsertParent = useCallback(
+    (nodeId: string) => {
+      const node = findNode(tree, nodeId);
+      if (node === undefined || node.kind === "aspect") return;
+      const parent = findParent(tree, nodeId);
+      if (parent === null || parent.id === "root") return;
+      void (async () => {
+        try {
+          const newNode = await createChild(parent.id, parent.kind, "");
+          await moveNode(nodeId, node.kind, newNode.id, newNode.kind, 0);
+          selectNode(newNode.id);
+          setEditingNodeId(newNode.id);
+        } catch (err) {
+          console.error(`${LOG_PREFIX} insertParent failed:`, err);
+        }
+      })();
+    },
+    [tree, createChild, moveNode, selectNode, setEditingNodeId],
+  );
+
+  return { onStatusClick, onCommitEdit, onCreateChild, onCreateSibling, onInsertParent, onDelete, onPaste };
 }

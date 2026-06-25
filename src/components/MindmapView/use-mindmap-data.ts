@@ -23,6 +23,7 @@ interface MindmapData {
   tree: MindmapNode;
   isLoading: boolean;
   error: string | null;
+  createNode: (parentId: string, parentKind: NodeKind, childKind: NodeKind, title: string) => Promise<MindmapNode>;
   createChild: (parentId: string, parentKind: NodeKind, title: string) => Promise<MindmapNode>;
   renameNode: (id: string, kind: NodeKind, title: string) => Promise<void>;
   retypeNode: (id: string, fromKind: NodeKind, toKind: NodeKind, options?: RetypeOptions) => Promise<string | null>;
@@ -235,63 +236,58 @@ export function useMindmapData(): MindmapData {
     void load();
   }, [load]);
 
-  const createChild = useCallback(
-    async (parentId: string, parentKind: NodeKind, title: string): Promise<MindmapNode> => {
+  const createNode = useCallback(
+    async (parentId: string, parentKind: NodeKind, childKind: NodeKind, title: string): Promise<MindmapNode> => {
       const dbParentId = dbIdFromNodeId(parentId);
 
-      // Domain-table nodes: aspect creates a domain child; domain/project creates same-type child.
-      if (parentKind === "aspect" || parentKind === "domain" || parentKind === "project") {
-        const subtype = parentKind === "project" ? "project" : "domain";
+      if (childKind === "domain" || childKind === "project" || childKind === "tag") {
         const domain = await createDomain({
-          title,
-          description: null,
-          subtype,
-          parent_id: dbParentId,
-          status: null,
-          knowledge_base_directory: null,
+          title, description: null, subtype: childKind,
+          parent_id: dbParentId, status: null, knowledge_base_directory: null,
         });
         const newNode: MindmapNode = {
-          id: `domain-${domain.id}`,
-          kind: parentKind === "project" ? "project" : "domain",
-          title: domain.title,
-          position: domain.position,
-          tagIds: [],
-          children: [],
+          id: `domain-${domain.id}`, kind: childKind, title: domain.title,
+          position: domain.position, tagIds: [], children: [],
         };
         await silentLoad();
         return newNode;
       }
 
-      if (parentKind === "goal") {
-        const goal = await createGoal({ title, parent_type: "goal", parent_id: dbParentId });
+      if (childKind === "goal") {
+        const goal = await createGoal({ title, parent_type: kindToParentType(parentKind), parent_id: dbParentId });
         const newNode: MindmapNode = {
-          id: `goal-${goal.id}`,
-          kind: "goal",
-          title: goal.title,
-          status: goal.status,
-          position: goal.position,
-          tagIds: [],
-          children: [],
+          id: `goal-${goal.id}`, kind: "goal", title: goal.title,
+          status: goal.status, position: goal.position, tagIds: [], children: [],
         };
         await silentLoad();
         return newNode;
       }
 
-      // task → task subtask
-      const task = await createTask({ title, parent_type: "task", parent_id: dbParentId });
-      const newNode: MindmapNode = {
-        id: `task-${task.id}`,
-        kind: "task",
-        title: task.title,
-        status: task.status,
-        position: task.position,
-        tagIds: [],
-        children: [],
-      };
-      await silentLoad();
-      return newNode;
+      if (childKind === "task") {
+        const task = await createTask({ title, parent_type: kindToParentType(parentKind), parent_id: dbParentId });
+        const newNode: MindmapNode = {
+          id: `task-${task.id}`, kind: "task", title: task.title,
+          status: task.status, position: task.position, tagIds: [], children: [],
+        };
+        await silentLoad();
+        return newNode;
+      }
+
+      throw new Error(`Cannot create a node of kind "${childKind}"`);
     },
     [silentLoad],
+  );
+
+  const createChild = useCallback(
+    async (parentId: string, parentKind: NodeKind, title: string): Promise<MindmapNode> => {
+      const childKind: NodeKind =
+        parentKind === "project" ? "project"
+        : parentKind === "goal" ? "goal"
+        : parentKind === "task" ? "task"
+        : "domain"; // aspect, domain → domain
+      return createNode(parentId, parentKind, childKind, title);
+    },
+    [createNode],
   );
 
   const renameNode = useCallback(
@@ -516,6 +512,7 @@ export function useMindmapData(): MindmapData {
     tree,
     isLoading,
     error,
+    createNode,
     createChild,
     renameNode,
     retypeNode,

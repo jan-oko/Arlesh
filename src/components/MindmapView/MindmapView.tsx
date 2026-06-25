@@ -27,7 +27,7 @@ import styles from "./MindmapView.module.css";
 
 export default function MindmapView() {
   const { t } = useTranslation(["common", "editor"]);
-  const { tree, isLoading, error, createChild, renameNode, retypeNode, reorderNode, moveNode, removeNode, reload } =
+  const { tree, isLoading, error, createNode, createChild, renameNode, retypeNode, reorderNode, moveNode, removeNode, reload } =
     useMindmapData();
   const { selectedNodeId, subtreeRootId, clipboard, collapsedNodeIds, pendingToast, selectNode, enterSubtree, exitSubtree, exitToRoot, setClipboard, toggleCollapsed, showToast, clearToast } =
     useMindmapStore();
@@ -80,9 +80,9 @@ export default function MindmapView() {
   const subtreeParentId = subtreeParent !== null && subtreeParent.id !== "root" ? subtreeParent.id : null;
   const handleExitSubtree = useCallback(() => exitSubtree(subtreeParentId), [exitSubtree, subtreeParentId]);
 
-  const { onStatusClick, onCommitEdit, onCreateChild, onDelete, onPaste } = useNodeActions({
+  const { onStatusClick, onCommitEdit, onCreateChild, onCreateSibling, onInsertParent, onDelete, onPaste } = useNodeActions({
     tree, clipboard, moveNode, onRequestDelete: setDeleteTarget, reload, renameNode,
-    createChild, selectNode, setClipboard, setEditingNodeId,
+    createNode, createChild, selectNode, setClipboard, setEditingNodeId,
   });
 
   const { navigateArrow } = useNavigateArrow({ selectedNodeId, positions, tree, selectNode });
@@ -104,6 +104,8 @@ export default function MindmapView() {
     onReorder: (id, dir) => { void reorderNode(id, dir); },
     onStartRename: setEditingNodeId,
     onCreateChild,
+    onCreateSibling,
+    onInsertParent,
     onDelete,
     onToggleCollapsed: toggleCollapsed,
     onCycleStatus: onStatusClick,

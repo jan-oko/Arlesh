@@ -20,6 +20,8 @@ interface Options {
   onReorder: (id: string, dir: 1 | -1) => void;
   onStartRename: (id: string) => void;
   onCreateChild: (id: string) => void;
+  onCreateSibling: (id: string) => void;
+  onInsertParent: (id: string) => void;
   onDelete: (id: string) => void;
   onToggleCollapsed: (id: string) => void;
   onCycleStatus: (id: string) => void;
@@ -37,7 +39,7 @@ export function useKeyboardMindmap(options: Options): void {
     isInputActive, isWarningActive, onDismissWarning,
     selectedNodeId, subtreeRootId, clipboard,
     onNavigate, onCycleType, onReorder, onStartRename,
-    onCreateChild, onDelete, onToggleCollapsed, onCycleStatus,
+    onCreateChild, onCreateSibling, onInsertParent, onDelete, onToggleCollapsed, onCycleStatus,
     onDeselect, onExitSubtree, onExitToRoot, onCut, onCopy, onPaste,
     findNodeById,
   } = options;
@@ -95,12 +97,20 @@ export function useKeyboardMindmap(options: Options): void {
         }
         case "Enter": {
           if (selectedNodeId !== null) {
-            const node = findNodeById(selectedNodeId);
-            const isBlocked = node !== undefined && node.kind === "task" &&
-              node.blockedReason !== undefined && node.blockedReason !== null && node.blockedReason !== "";
-            if (node !== undefined && node.kind === "task" && !isBlocked) {
+            if (event.shiftKey) {
               event.preventDefault();
-              onCycleStatus(selectedNodeId);
+              onCreateSibling(selectedNodeId);
+            } else if (event.ctrlKey) {
+              event.preventDefault();
+              onInsertParent(selectedNodeId);
+            } else {
+              const node = findNodeById(selectedNodeId);
+              const isBlocked = node !== undefined && node.kind === "task" &&
+                node.blockedReason !== undefined && node.blockedReason !== null && node.blockedReason !== "";
+              if (node !== undefined && node.kind === "task" && !isBlocked) {
+                event.preventDefault();
+                onCycleStatus(selectedNodeId);
+              }
             }
           }
           break;
@@ -158,7 +168,7 @@ export function useKeyboardMindmap(options: Options): void {
     isInputActive, isWarningActive, onDismissWarning,
     selectedNodeId, subtreeRootId, clipboard,
     onNavigate, onCycleType, onReorder, onStartRename,
-    onCreateChild, onDelete, onToggleCollapsed, onCycleStatus,
+    onCreateChild, onCreateSibling, onInsertParent, onDelete, onToggleCollapsed, onCycleStatus,
     onDeselect, onExitSubtree, onExitToRoot, onCut, onCopy, onPaste,
     findNodeById,
   ]);

@@ -9,6 +9,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Shift+Enter on a focused node creates a new sibling of the same type and enters inline edit mode
+- Ctrl+Enter on a focused node inserts an intermediate parent between the node and its current parent, then enters inline edit mode on the new parent
 - Enter key cycles status on focused task nodes (todo → in_progress → done → todo); blocked tasks are skipped
 
 ### Fixed
