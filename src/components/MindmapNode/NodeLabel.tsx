@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { MindmapNode } from "@/utils/tree-layout";
 
 interface Props {
@@ -17,6 +17,11 @@ interface Props {
 
 export default function NodeLabel({ node, isEditing, iconWidth, width, height, fontSize, label, textFill, isRtl, onCommitEdit, onCancelEdit }: Props) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const [editValue, setEditValue] = useState(node.title);
+
+  useEffect(() => {
+    if (isEditing) setEditValue(node.title);
+  }, [isEditing, node.title]);
 
   useEffect(() => {
     if (!isEditing) return;
@@ -32,11 +37,19 @@ export default function NodeLabel({ node, isEditing, iconWidth, width, height, f
   const textX = isRtl ? 4 : iconWidth;
 
   if (isEditing) {
+    // Grow the foreignObject to fit current content so the textarea never scrolls.
+    // WebKit mis-positions foreignObject content relative to the document root when
+    // the element scrolls inside a CSS-transformed SVG group (animated.g).
+    const lineCount = editValue.split("\n").length;
+    const lineHeightPx = Math.round(fontSize * 1.4);
+    const editFoHeight = Math.max(height - 4, lineCount * lineHeightPx + 8);
+
     return (
-      <foreignObject x={textX} y={2} width={textAreaWidth} height={height - 4}>
+      <foreignObject x={textX} y={2} width={textAreaWidth} height={editFoHeight}>
         <textarea
           ref={inputRef}
           defaultValue={node.title}
+          onChange={(e) => setEditValue(e.currentTarget.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
@@ -48,7 +61,7 @@ export default function NodeLabel({ node, isEditing, iconWidth, width, height, f
             }
           }}
           onBlur={(e) => onCommitEdit(node.id, e.currentTarget.value)}
-          style={{ width: "100%", height: "100%", background: "transparent", border: "none", outline: "none", color: "var(--text-primary)", fontFamily: "var(--font-sans)", fontSize, padding: "0 2px", resize: "none", lineHeight: 1.3 }}
+          style={{ width: "100%", height: "100%", background: "transparent", border: "none", outline: "none", color: "var(--text-primary)", fontFamily: "var(--font-sans)", fontSize, padding: "0 2px", resize: "none", lineHeight: 1.3, overflow: "hidden" }}
           dir="auto"
         />
       </foreignObject>
