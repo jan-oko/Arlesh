@@ -22,6 +22,7 @@ interface Options {
   onCreateChild: (id: string) => void;
   onDelete: (id: string) => void;
   onToggleCollapsed: (id: string) => void;
+  onCycleStatus: (id: string) => void;
   onDeselect: () => void;
   onExitSubtree: () => void;
   onExitToRoot: () => void;
@@ -36,7 +37,7 @@ export function useKeyboardMindmap(options: Options): void {
     isInputActive, isWarningActive, onDismissWarning,
     selectedNodeId, subtreeRootId, clipboard,
     onNavigate, onCycleType, onReorder, onStartRename,
-    onCreateChild, onDelete, onToggleCollapsed,
+    onCreateChild, onDelete, onToggleCollapsed, onCycleStatus,
     onDeselect, onExitSubtree, onExitToRoot, onCut, onCopy, onPaste,
     findNodeById,
   } = options;
@@ -88,6 +89,18 @@ export function useKeyboardMindmap(options: Options): void {
             const node = findNodeById(selectedNodeId);
             if (node !== undefined && node.id.includes("-") && node.kind !== "tag") {
               onCreateChild(selectedNodeId);
+            }
+          }
+          break;
+        }
+        case "Enter": {
+          if (selectedNodeId !== null) {
+            const node = findNodeById(selectedNodeId);
+            const isBlocked = node !== undefined && node.kind === "task" &&
+              node.blockedReason !== undefined && node.blockedReason !== null && node.blockedReason !== "";
+            if (node !== undefined && node.kind === "task" && !isBlocked) {
+              event.preventDefault();
+              onCycleStatus(selectedNodeId);
             }
           }
           break;
@@ -145,7 +158,7 @@ export function useKeyboardMindmap(options: Options): void {
     isInputActive, isWarningActive, onDismissWarning,
     selectedNodeId, subtreeRootId, clipboard,
     onNavigate, onCycleType, onReorder, onStartRename,
-    onCreateChild, onDelete, onToggleCollapsed,
+    onCreateChild, onDelete, onToggleCollapsed, onCycleStatus,
     onDeselect, onExitSubtree, onExitToRoot, onCut, onCopy, onPaste,
     findNodeById,
   ]);

@@ -106,6 +106,7 @@ export default function MindmapView() {
     onCreateChild,
     onDelete,
     onToggleCollapsed: toggleCollapsed,
+    onCycleStatus: onStatusClick,
     onDeselect: () => { selectNode(null); },
     onExitSubtree: handleExitSubtree,
     onExitToRoot: exitToRoot,

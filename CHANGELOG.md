@@ -8,6 +8,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Enter key cycles status on focused task nodes (todo → in_progress → done → todo); blocked tasks are skipped
+
 ### Fixed
 - SubtreeNavPill no longer overlaps the top bar: pill container now uses `top: calc(var(--topbar-height) + var(--space-2))` via a new `--topbar-height` token (36 px)
 - Plain Esc no longer exits the subtree when a node is selected; it now only deselects the focused node
