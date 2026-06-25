@@ -8,6 +8,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- Node rect and textarea now expand in real time as the user presses Shift+Enter during inline edit, preventing content overflow; text position is identical between display and edit modes (consistent `paddingTop` centering instead of flexbox in display vs top-align in textarea)
+- Moved `CONTEXT_ACTION`/`ContextMenuAction` to `context-action.ts` and `WARNING_VARIANT`/`WarningAction` to `warning-confirm.ts` so their component files export only the default component (fixes `react-refresh/only-export-components` ESLint warnings)
+
 ### Changed
 - Aspects renamed from color labels to meaningful names: Red → Body, Purple → Connections, Green → Growth, Blue → Duty, Gray → Flow, Steel → Self
 - Node height now expands dynamically to fit the full title without truncation; text wraps within the fixed node width using the browser's word-wrap

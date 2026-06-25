@@ -1,16 +1,6 @@
 import { useTranslation } from "react-i18next";
+import type { WarningAction } from "./warning-confirm";
 import styles from "./WarningConfirmModal.module.css";
-
-export const WARNING_VARIANT = {
-  PRIMARY: "primary",
-  DANGER: "danger",
-} as const;
-
-export interface WarningAction {
-  label: string;
-  variant: "primary" | "danger";
-  onClick: () => void;
-}
 
 interface Props {
   heading: string;

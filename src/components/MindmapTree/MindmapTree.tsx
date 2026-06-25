@@ -2,7 +2,7 @@ import type { MindmapNode, Position } from "@/utils/tree-layout";
 import { computeLayout } from "@/utils/tree-layout";
 import MindmapEdge from "@/components/MindmapEdge/MindmapEdge";
 import MindmapNodeComponent from "@/components/MindmapNode/MindmapNode";
-import type { ContextMenuAction } from "@/components/NodeContextMenu/NodeContextMenu";
+import type { ContextMenuAction } from "@/components/NodeContextMenu/context-action";
 
 interface Props {
   root: MindmapNode;

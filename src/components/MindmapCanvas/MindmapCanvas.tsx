@@ -3,7 +3,7 @@ import { animated, to } from "@react-spring/web";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { usePanZoom } from "@/hooks/use-pan-zoom";
 import MindmapTree from "@/components/MindmapTree/MindmapTree";
-import type { ContextMenuAction } from "@/components/NodeContextMenu/NodeContextMenu";
+import type { ContextMenuAction } from "@/components/NodeContextMenu/context-action";
 
 interface Props {
   root: MindmapNode;

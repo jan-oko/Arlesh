@@ -2,9 +2,10 @@ import { useCallback, useState } from "react";
 import { createPortal } from "react-dom";
 import type { MindmapNode as MindmapNodeData, Position } from "@/utils/tree-layout";
 import { isRtlText } from "@/utils/text-direction";
-import { computeNodeDimensions } from "@/utils/node-meta";
+import { computeNodeDimensions, computeEditHeight } from "@/utils/node-meta";
 import { computeNodeAppearance } from "@/utils/node-visuals";
-import NodeContextMenu, { type ContextMenuAction } from "@/components/NodeContextMenu/NodeContextMenu";
+import NodeContextMenu from "@/components/NodeContextMenu/NodeContextMenu";
+import type { ContextMenuAction } from "@/components/NodeContextMenu/context-action";
 import NodeRect from "./NodeRect";
 import NodeLabel from "./NodeLabel";
 
@@ -28,7 +29,20 @@ interface Props {
 
 export default function MindmapNode({ node, position, isSelected, isCollapsed, isDragTarget, isDragSource, hasClipboard, isEditing, onSelect, onDoubleClick, onCommitEdit, onCancelEdit, onContextAction, onDragStart, onStatusClick }: Props) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
-  const { width, height, fontSize, iconWidth } = computeNodeDimensions(position.depth, node.title);
+
+  // Tracks explicit newline count during editing so the node rect expands in real time.
+  // React's getDerivedStateFromProps pattern: setting state during render is safe when
+  // guarded by a changed-value check (no infinite loop, React re-renders once).
+  const [editLineCount, setEditLineCount] = useState(node.title.split("\n").length);
+  const [wasEditing, setWasEditing] = useState(isEditing);
+  if (isEditing !== wasEditing) {
+    setWasEditing(isEditing);
+    if (isEditing) setEditLineCount(node.title.split("\n").length);
+  }
+
+  const { width, height, fontSize, iconWidth, lineHeight } = computeNodeDimensions(position.depth, node.title);
+  const activeHeight = isEditing ? computeEditHeight(position.depth, editLineCount) : height;
+
   const iconR = (iconWidth - 8) / 2;
   const { isBlocked, iconColor, iconOpacity, fillColor, fillOpacity, label, textFill } = computeNodeAppearance(node, position.depth);
   const isRtl = isRtlText(node.title);
@@ -45,7 +59,7 @@ export default function MindmapNode({ node, position, isSelected, isCollapsed, i
   return (
     <g
       data-node-id={node.id}
-      transform={`translate(${position.x - width / 2}, ${position.y - height / 2})`}
+      transform={`translate(${position.x - width / 2}, ${position.y - activeHeight / 2})`}
       role="treeitem"
       aria-selected={isSelected}
       onClick={handleClick}
@@ -54,8 +68,8 @@ export default function MindmapNode({ node, position, isSelected, isCollapsed, i
       onMouseDown={handleMouseDown}
       style={{ cursor: "pointer", opacity: isDragSource === true ? 0 : undefined, pointerEvents: isDragSource === true ? "none" : undefined }}
     >
-      <NodeRect node={node} width={width} height={height} iconWidth={iconWidth} iconCx={iconCx} iconCy={height / 2} iconR={iconR} fillColor={fillColor} fillOpacity={fillOpacity} strokeColor={strokeColor} isSelected={isSelected} isCollapsed={isCollapsed} iconColor={iconColor} iconOpacity={iconOpacity} isBlocked={isBlocked} canClickStatus={canClickStatus} isRtl={isRtl} onStatusIconClick={handleStatusIconClick} />
-      <NodeLabel key={isEditing ? `${node.id}-edit` : node.id} node={node} isEditing={isEditing} iconWidth={iconWidth} width={width} height={height} fontSize={fontSize} label={label} textFill={textFill} isRtl={isRtl} onCommitEdit={onCommitEdit} onCancelEdit={onCancelEdit} />
+      <NodeRect node={node} width={width} height={activeHeight} iconWidth={iconWidth} iconCx={iconCx} iconCy={activeHeight / 2} iconR={iconR} fillColor={fillColor} fillOpacity={fillOpacity} strokeColor={strokeColor} isSelected={isSelected} isCollapsed={isCollapsed} iconColor={iconColor} iconOpacity={iconOpacity} isBlocked={isBlocked} canClickStatus={canClickStatus} isRtl={isRtl} onStatusIconClick={handleStatusIconClick} />
+      <NodeLabel node={node} isEditing={isEditing} iconWidth={iconWidth} width={width} height={activeHeight} fontSize={fontSize} lineHeight={lineHeight} editLineCount={editLineCount} onEditLineCountChange={setEditLineCount} label={label} textFill={textFill} isRtl={isRtl} onCommitEdit={onCommitEdit} onCancelEdit={onCancelEdit} />
       {contextMenu !== null && createPortal(
         <NodeContextMenu x={contextMenu.x} y={contextMenu.y} nodeKind={node.kind} isCollapsed={isCollapsed} hasClipboard={hasClipboard} onAction={(action) => onContextAction(node.id, action)} onClose={() => setContextMenu(null)} />,
         document.body,

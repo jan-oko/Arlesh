@@ -1,22 +1,8 @@
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import type { NodeKind } from "@/utils/tree-layout";
+import type { ContextMenuAction } from "./context-action";
 import styles from "./NodeContextMenu.module.css";
-
-export const CONTEXT_ACTION = {
-  ENTER: "enter",
-  RENAME: "rename",
-  TYPE_UP: "type-up",
-  TYPE_DOWN: "type-down",
-  CUT: "cut",
-  COPY: "copy",
-  PASTE: "paste",
-  COLLAPSE: "collapse",
-  EXPAND: "expand",
-  DELETE: "delete",
-} as const;
-
-export type ContextMenuAction = typeof CONTEXT_ACTION[keyof typeof CONTEXT_ACTION];
 
 interface Props {
   x: number;

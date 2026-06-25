@@ -5,6 +5,7 @@ export interface NodeSize {
   height: number;
   fontSize: number;
   iconWidth: number;
+  lineHeight: number;
 }
 
 interface BaseNodeSpec {
@@ -31,6 +32,10 @@ function specForDepth(depth: number): BaseNodeSpec {
   return NODE_SPECS[index] ?? NODE_SPECS[NODE_SPECS.length - 1]!;
 }
 
+function nodeHeight(spec: BaseNodeSpec, lineCount: number): number {
+  return Math.max(spec.minHeight, VERTICAL_PADDING + lineCount * spec.lineHeight);
+}
+
 function countWrappedLines(title: string, charsPerLine: number): number {
   const segments = title.split("\n");
   let total = 0;
@@ -43,7 +48,7 @@ function countWrappedLines(title: string, charsPerLine: number): number {
 /** Returns base (minimum) node dimensions for a depth — does not account for title length. */
 export function getNodeSize(depth: number): NodeSize {
   const spec = specForDepth(depth);
-  return { width: spec.width, height: spec.minHeight, fontSize: spec.fontSize, iconWidth: spec.iconWidth };
+  return { width: spec.width, height: spec.minHeight, fontSize: spec.fontSize, iconWidth: spec.iconWidth, lineHeight: spec.lineHeight };
 }
 
 /** Returns node dimensions with height expanded to fit `title` across wrapped lines. */
@@ -52,8 +57,12 @@ export function computeNodeDimensions(depth: number, title: string): NodeSize {
   const textAreaWidth = spec.width - spec.iconWidth - 4;
   const charsPerLine = Math.max(1, Math.floor(textAreaWidth / (spec.fontSize * CHAR_WIDTH_RATIO)));
   const lineCount = countWrappedLines(title, charsPerLine);
-  const height = Math.max(spec.minHeight, VERTICAL_PADDING + lineCount * spec.lineHeight);
-  return { width: spec.width, height, fontSize: spec.fontSize, iconWidth: spec.iconWidth };
+  return { width: spec.width, height: nodeHeight(spec, lineCount), fontSize: spec.fontSize, iconWidth: spec.iconWidth, lineHeight: spec.lineHeight };
+}
+
+/** Returns the live node height for an explicit line count — used while editing. */
+export function computeEditHeight(depth: number, lineCount: number): number {
+  return nodeHeight(specForDepth(depth), lineCount);
 }
 
 export const NODE_ICON: Record<NodeKind, string> = {

@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import type { MindmapNode } from "@/utils/tree-layout";
-import type { ContextMenuAction } from "@/components/NodeContextMenu/NodeContextMenu";
-import { CONTEXT_ACTION } from "@/components/NodeContextMenu/NodeContextMenu";
+import type { ContextMenuAction } from "@/components/NodeContextMenu/context-action";
+import { CONTEXT_ACTION } from "@/components/NodeContextMenu/context-action";
 import { CLIPBOARD_OP } from "@/stores/use-mindmap-store";
 
 interface ClipboardEntry {
