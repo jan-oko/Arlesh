@@ -148,7 +148,7 @@ export default function MindmapView() {
           rootTitle={tree.title}
           parentTitle={subtreeParent?.title ?? tree.title}
           onBack={handleExitSubtree}
-          onBackToRoot={exitToRoot}
+          {...(subtreeParentId !== null ? { onBackToRoot: exitToRoot } : {})}
         />
       )}
 

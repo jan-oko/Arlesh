@@ -5,7 +5,7 @@ interface Props {
   parentTitle: string;
   rootTitle: string;
   onBack: () => void;
-  onBackToRoot: () => void;
+  onBackToRoot?: () => void;
 }
 
 export default function SubtreeNavPill({ parentTitle, rootTitle, onBack, onBackToRoot }: Props) {
@@ -13,9 +13,11 @@ export default function SubtreeNavPill({ parentTitle, rootTitle, onBack, onBackT
   const arrow = i18n.dir() === "rtl" ? "→" : "←";
   return (
     <div className={styles.container}>
-      <button className={styles.pill} onClick={onBackToRoot} type="button">
-        ↑ {rootTitle}
-      </button>
+      {onBackToRoot !== undefined && (
+        <button className={styles.pill} onClick={onBackToRoot} type="button">
+          ↑ {rootTitle}
+        </button>
+      )}
       <button className={styles.pill} onClick={onBack} type="button">
         {arrow} {parentTitle}
       </button>
