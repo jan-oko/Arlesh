@@ -26,7 +26,7 @@ interface MindmapState {
 
   selectNode: (id: string | null) => void;
   enterSubtree: (id: string) => void;
-  exitSubtree: () => void;
+  exitSubtree: (parentSubtreeId: string | null) => void;
   exitToRoot: () => void;
   setClipboard: (clipboard: Clipboard | null) => void;
   toggleCollapsed: (id: string) => void;
@@ -45,9 +45,9 @@ export const useMindmapStore = create<MindmapState>((set) => ({
 
   enterSubtree: (id) => set({ subtreeRootId: id, selectedNodeId: id }),
 
-  exitSubtree: () =>
+  exitSubtree: (parentSubtreeId) =>
     set((state) => ({
-      subtreeRootId: state.subtreeRootId === null ? null : null,
+      subtreeRootId: parentSubtreeId,
       selectedNodeId: state.subtreeRootId,
     })),
 

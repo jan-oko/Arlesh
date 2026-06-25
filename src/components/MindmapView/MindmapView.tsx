@@ -76,6 +76,10 @@ export default function MindmapView() {
       .finally(() => setIsDeleting(false));
   }, [deleteTarget, tree, removeNode, selectNode]);
 
+  const subtreeParent = subtreeRootId !== null ? findParent(tree, subtreeRootId) : null;
+  const subtreeParentId = subtreeParent !== null && subtreeParent.id !== "root" ? subtreeParent.id : null;
+  const handleExitSubtree = useCallback(() => exitSubtree(subtreeParentId), [exitSubtree, subtreeParentId]);
+
   const { onStatusClick, onCommitEdit, onCreateChild, onDelete, onPaste } = useNodeActions({
     tree, clipboard, moveNode, onRequestDelete: setDeleteTarget, reload, renameNode,
     createChild, selectNode, setClipboard, setEditingNodeId,
@@ -103,15 +107,13 @@ export default function MindmapView() {
     onDelete,
     onToggleCollapsed: toggleCollapsed,
     onDeselect: () => { selectNode(null); },
-    onExitSubtree: exitSubtree,
+    onExitSubtree: handleExitSubtree,
     onExitToRoot: exitToRoot,
     onCut: (id) => setClipboard({ operation: CLIPBOARD_OP.CUT, nodeId: id }),
     onCopy: (id) => setClipboard({ operation: CLIPBOARD_OP.COPY, nodeId: id }),
     onPaste,
     findNodeById,
   });
-
-  const subtreeParent = subtreeRootId !== null ? findParent(tree, subtreeRootId) : null;
   const toastPosition = pendingToast !== null ? positions.get(pendingToast.nodeId) : undefined;
   const targetPos = dragTargetId !== null ? positions.get(dragTargetId) : undefined;
 
@@ -145,7 +147,7 @@ export default function MindmapView() {
         <SubtreeNavPill
           rootTitle={tree.title}
           parentTitle={subtreeParent?.title ?? tree.title}
-          onBack={exitSubtree}
+          onBack={handleExitSubtree}
           onBackToRoot={exitToRoot}
         />
       )}

@@ -14,7 +14,7 @@ export default function SubtreeNavPill({ parentTitle, rootTitle, onBack, onBackT
   return (
     <div className={styles.container}>
       <button className={styles.pill} onClick={onBackToRoot} type="button">
-        {arrow} {rootTitle}
+        ↑ {rootTitle}
       </button>
       <button className={styles.pill} onClick={onBack} type="button">
         {arrow} {parentTitle}
