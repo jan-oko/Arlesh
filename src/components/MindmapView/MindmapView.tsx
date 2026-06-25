@@ -102,6 +102,7 @@ export default function MindmapView() {
     onCreateChild,
     onDelete,
     onToggleCollapsed: toggleCollapsed,
+    onDeselect: () => { selectNode(null); },
     onExitSubtree: exitSubtree,
     onExitToRoot: exitToRoot,
     onCut: (id) => setClipboard({ operation: CLIPBOARD_OP.CUT, nodeId: id }),
@@ -140,7 +141,14 @@ export default function MindmapView() {
         onStatusClick={onStatusClick}
       />
 
-      {subtreeRootId !== null && <SubtreeNavPill parentTitle={subtreeParent?.title ?? "Arlesh"} onBack={exitSubtree} />}
+      {subtreeRootId !== null && (
+        <SubtreeNavPill
+          rootTitle={tree.title}
+          parentTitle={subtreeParent?.title ?? tree.title}
+          onBack={exitSubtree}
+          onBackToRoot={exitToRoot}
+        />
+      )}
 
       {pendingToast !== null && toastPosition !== undefined && (
         <StatusToast message={pendingToast.message} position={toastPosition} onDismiss={clearToast} />

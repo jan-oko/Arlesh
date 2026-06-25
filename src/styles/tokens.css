@@ -30,6 +30,9 @@ html, body, #root {
   --canvas-bg: #13131f;
   --edge-color: #3a3a5a;
 
+  /* Layout */
+  --topbar-height: 36px;
+
   /* UI chrome */
   --surface: #1a1a2e;
   --surface-raised: #22223a;

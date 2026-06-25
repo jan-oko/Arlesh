@@ -9,6 +9,17 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- SubtreeNavPill no longer overlaps the top bar: pill container now uses `top: calc(var(--topbar-height) + var(--space-2))` via a new `--topbar-height` token (36 px)
+- Plain Esc no longer exits the subtree when a node is selected; it now only deselects the focused node
+- Shift+Esc was incorrectly wired to exit-to-root; it now correctly exits one level to the parent subtree
+
+### Added
+- SubtreeNavPill shows two buttons: "← Arlesh" (exit to root) and "← {parent name}" (exit to parent)
+- Ctrl+Esc exits to the Arlesh root from anywhere in subtree mode (works even with a node selected)
+- Shift+Esc exits one level to the parent subtree (works even with a node selected)
+- Plain Esc deselects the focused node; has no subtree-exit effect
+
+### Fixed
 - Node rect and textarea now expand in real time as the user presses Shift+Enter during inline edit, preventing content overflow; text position is identical between display and edit modes (consistent `paddingTop` centering instead of flexbox in display vs top-align in textarea)
 - Moved `CONTEXT_ACTION`/`ContextMenuAction` to `context-action.ts` and `WARNING_VARIANT`/`WarningAction` to `warning-confirm.ts` so their component files export only the default component (fixes `react-refresh/only-export-components` ESLint warnings)
 

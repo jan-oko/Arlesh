@@ -22,6 +22,7 @@ interface Options {
   onCreateChild: (id: string) => void;
   onDelete: (id: string) => void;
   onToggleCollapsed: (id: string) => void;
+  onDeselect: () => void;
   onExitSubtree: () => void;
   onExitToRoot: () => void;
   onCut: (id: string) => void;
@@ -36,7 +37,7 @@ export function useKeyboardMindmap(options: Options): void {
     selectedNodeId, subtreeRootId, clipboard,
     onNavigate, onCycleType, onReorder, onStartRename,
     onCreateChild, onDelete, onToggleCollapsed,
-    onExitSubtree, onExitToRoot, onCut, onCopy, onPaste,
+    onDeselect, onExitSubtree, onExitToRoot, onCut, onCopy, onPaste,
     findNodeById,
   } = options;
 
@@ -104,9 +105,15 @@ export function useKeyboardMindmap(options: Options): void {
           }
           break;
         case "Escape":
-          if (subtreeRootId !== null) {
+          if (event.ctrlKey && subtreeRootId !== null) {
+            event.preventDefault();
+            onExitToRoot();
+          } else if (event.shiftKey && subtreeRootId !== null) {
             event.preventDefault();
             onExitSubtree();
+          } else if (selectedNodeId !== null) {
+            event.preventDefault();
+            onDeselect();
           }
           break;
         case "x":
@@ -130,22 +137,16 @@ export function useKeyboardMindmap(options: Options): void {
       }
     }
 
-    function handleShiftEscape(event: KeyboardEvent) {
-      if (event.key === "Escape" && event.shiftKey) onExitToRoot();
-    }
-
     window.addEventListener("keydown", handleKeyDown, { capture: true });
-    window.addEventListener("keydown", handleShiftEscape, { capture: true });
     return () => {
       window.removeEventListener("keydown", handleKeyDown, { capture: true });
-      window.removeEventListener("keydown", handleShiftEscape, { capture: true });
     };
   }, [
     isInputActive, isWarningActive, onDismissWarning,
     selectedNodeId, subtreeRootId, clipboard,
     onNavigate, onCycleType, onReorder, onStartRename,
     onCreateChild, onDelete, onToggleCollapsed,
-    onExitSubtree, onExitToRoot, onCut, onCopy, onPaste,
+    onDeselect, onExitSubtree, onExitToRoot, onCut, onCopy, onPaste,
     findNodeById,
   ]);
 }
