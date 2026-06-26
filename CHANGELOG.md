@@ -8,6 +8,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- Info nodes rendered with a task icon (cycle appeared to do nothing); added a dedicated InfoIcon (circle with an "i") and wired it into NodeIcon
+
 ### Added
 - Double-tap Enter on a focused node enters it as a subtree (same as context menu → Enter; only applies to nodes that can be subtree roots: not tasks, goals, or tags)
 - Canvas recenters on the new root node when entering a subtree
