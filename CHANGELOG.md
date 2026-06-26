@@ -8,6 +8,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- After deleting a node, focus now moves to the nearest non-deleted ancestor instead of clearing to nothing; for multi-delete, focus targets the parent of the first deleted node
+- Left/Right arrow keys now navigate to parent or children only (whichever lies in that screen direction), never jumping across to unrelated siblings; Up/Down navigate among siblings only
+
 ### Added
 - Multi-node selection: Ctrl+click toggles a node in/out of the selection; Shift+click on a sibling range-selects all siblings between anchor and target; Shift+click on an ancestor selects the anchor and all nodes up to that ancestor; Shift+click on an unrelated node does nothing
 - Ctrl+X / Ctrl+C now operate on all selected nodes; Delete key deletes all selected nodes

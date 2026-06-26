@@ -68,6 +68,7 @@ export default function MindmapView() {
     if (deleteTargets === null) return;
 
     // Collect post-order subtrees for all targets, deduplicating via Set
+    const deletedIds = new Set(deleteTargets);
     const seen = new Set<string>();
     const nodesToDelete: Array<{ id: string; kind: import("@/utils/tree-layout").NodeKind }> = [];
     for (const targetId of deleteTargets) {
@@ -82,10 +83,24 @@ export default function MindmapView() {
     }
     if (nodesToDelete.length === 0) { setDeleteTargets(null); return; }
 
+    // Compute focus target: nearest ancestor of the first target that won't be deleted.
+    let focusId: string | null = null;
+    const firstId = deleteTargets[0];
+    if (firstId !== undefined) {
+      let ancestor = findParent(tree, firstId);
+      while (ancestor !== null) {
+        if (!deletedIds.has(ancestor.id) && ancestor.id !== "root") {
+          focusId = ancestor.id;
+          break;
+        }
+        ancestor = findParent(tree, ancestor.id);
+      }
+    }
+
     setIsDeleting(true);
     setDeleteError(null);
     void removeNode(nodesToDelete)
-      .then(() => { setDeleteTargets(null); selectNode(null); })
+      .then(() => { setDeleteTargets(null); selectNode(focusId); })
       .catch((err: unknown) => { setDeleteError(err instanceof Error ? err.message : String(err)); })
       .finally(() => setIsDeleting(false));
   }, [deleteTargets, tree, removeNode, selectNode]);

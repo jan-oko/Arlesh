@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { connectedNodeIds, nearestInDirection, collectAllNodeIds, computeShiftSelectRange } from "./mindmap-tree";
+import { connectedNodeIds, nearestInDirection, collectAllNodeIds, computeShiftSelectRange, parentAndChildrenIds, siblingIds } from "./mindmap-tree";
 import type { MindmapNode } from "./tree-layout";
 import type { Position } from "./tree-layout";
 
@@ -137,6 +137,73 @@ describe("computeShiftSelectRange", () => {
 
   it("returns null when target does not exist in tree", () => {
     expect(computeShiftSelectRange(DEEP_TREE, "A1", "nonexistent")).toBeNull();
+  });
+});
+
+describe("parentAndChildrenIds", () => {
+  it("returns parent and all children for a mid-tree node", () => {
+    const ids = parentAndChildrenIds(DEEP_TREE, "A");
+    expect(ids.has("root")).toBe(true);
+    expect(ids.has("A1")).toBe(true);
+    expect(ids.has("A2")).toBe(true);
+    expect(ids.has("A3")).toBe(true);
+    expect(ids.size).toBe(4);
+  });
+
+  it("does not include siblings", () => {
+    const ids = parentAndChildrenIds(DEEP_TREE, "A");
+    expect(ids.has("B")).toBe(false);
+  });
+
+  it("returns only children for the root (no parent)", () => {
+    const ids = parentAndChildrenIds(DEEP_TREE, "root");
+    expect(ids.has("A")).toBe(true);
+    expect(ids.has("B")).toBe(true);
+    expect(ids.size).toBe(2);
+  });
+
+  it("returns only the parent for a leaf node with no children", () => {
+    const ids = parentAndChildrenIds(DEEP_TREE, "A1");
+    expect(ids.has("A")).toBe(true);
+    expect(ids.size).toBe(1);
+  });
+
+  it("returns empty set for an unknown node", () => {
+    expect(parentAndChildrenIds(DEEP_TREE, "unknown").size).toBe(0);
+  });
+});
+
+describe("siblingIds", () => {
+  it("returns all siblings (excluding self) for a mid-tree node", () => {
+    const ids = siblingIds(DEEP_TREE, "A1");
+    expect(ids.has("A2")).toBe(true);
+    expect(ids.has("A3")).toBe(true);
+    expect(ids.size).toBe(2);
+  });
+
+  it("does not include the node itself", () => {
+    expect(siblingIds(DEEP_TREE, "A1").has("A1")).toBe(false);
+  });
+
+  it("does not include parent or children", () => {
+    const ids = siblingIds(DEEP_TREE, "A");
+    expect(ids.has("root")).toBe(false);
+    expect(ids.has("A1")).toBe(false);
+  });
+
+  it("returns empty set for an only child", () => {
+    const onlyChild = node("only");
+    const parentNode = node("parent", [onlyChild]);
+    const tree = node("root", [parentNode]);
+    expect(siblingIds(tree, "only").size).toBe(0);
+  });
+
+  it("returns empty set for the root (no parent)", () => {
+    expect(siblingIds(DEEP_TREE, "root").size).toBe(0);
+  });
+
+  it("returns empty set for an unknown node", () => {
+    expect(siblingIds(DEEP_TREE, "unknown").size).toBe(0);
   });
 });
 

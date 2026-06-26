@@ -123,6 +123,28 @@ export function collectAllNodeIds(root: MindmapNode): string[] {
   return result;
 }
 
+/** Returns a set containing the parent and all direct children of `id` (no siblings). */
+export function parentAndChildrenIds(root: MindmapNode, id: string): ReadonlySet<string> {
+  const result = new Set<string>();
+  const node = findNode(root, id);
+  if (node === undefined) return result;
+  for (const child of node.children) result.add(child.id);
+  const parent = findParent(root, id);
+  if (parent !== null) result.add(parent.id);
+  return result;
+}
+
+/** Returns a set of all sibling IDs for `id` (same parent, excluding self). */
+export function siblingIds(root: MindmapNode, id: string): ReadonlySet<string> {
+  const result = new Set<string>();
+  const parent = findParent(root, id);
+  if (parent === null) return result;
+  for (const child of parent.children) {
+    if (child.id !== id) result.add(child.id);
+  }
+  return result;
+}
+
 /**
  * Returns the set of node IDs to select when shift-clicking `targetId` from `anchorId`.
  *
