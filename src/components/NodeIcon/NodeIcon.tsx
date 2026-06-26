@@ -24,5 +24,7 @@ export default function NodeIcon({ kind, status, isBlocked, cx, cy, r, color, op
   if (kind === "goal") return <GoalIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} />;
   if (kind === "tag") return <TagIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} />;
   if (kind === "info") return <InfoIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} />;
-  return <TaskIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} status={status} isBlocked={isBlocked} />;
+  if (kind === "task") return <TaskIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} status={status} isBlocked={isBlocked} />;
+  const _exhaustive: never = kind;
+  throw new Error(`NodeIcon: unhandled kind "${String(_exhaustive)}"`);
 }
