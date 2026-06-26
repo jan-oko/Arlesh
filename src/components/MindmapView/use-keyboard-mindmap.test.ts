@@ -31,6 +31,7 @@ function baseOptions(overrides: Partial<Parameters<typeof useKeyboardMindmap>[0]
     onCreateChild: vi.fn(),
     onCreateSibling: vi.fn(),
     onInsertParent: vi.fn(),
+    onOpenEditor: vi.fn(),
     onDelete: vi.fn() as (ids: string[]) => void,
     onToggleCollapsed: vi.fn(),
     onCycleStatus: vi.fn(),
@@ -150,6 +151,72 @@ describe("useKeyboardMindmap — plain Enter cycles task status", () => {
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("Enter");
     expect(opts.onCycleStatus).not.toHaveBeenCalled();
+  });
+});
+
+describe("useKeyboardMindmap — e opens editor modal", () => {
+  it("calls onOpenEditor with the selected node id for a task", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("e");
+    expect(opts.onOpenEditor).toHaveBeenCalledWith("task-1");
+  });
+
+  it("does nothing when no node is selected", () => {
+    const opts = baseOptions({ selectedNodeId: null });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("e");
+    expect(opts.onOpenEditor).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when input is active", () => {
+    const opts = baseOptions({ isInputActive: true });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("e");
+    expect(opts.onOpenEditor).not.toHaveBeenCalled();
+  });
+
+  it("does nothing for an aspect node", () => {
+    const opts = baseOptions({
+      selectedNodeId: "domain-1",
+      findNodeById: (id: string) => (id === "domain-1" ? makeAspect("domain-1") : undefined),
+    });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("e");
+    expect(opts.onOpenEditor).not.toHaveBeenCalled();
+  });
+});
+
+describe("useKeyboardMindmap — r renames node title", () => {
+  it("calls onStartRename with the selected node id for a task", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("r");
+    expect(opts.onStartRename).toHaveBeenCalledWith("task-1");
+  });
+
+  it("does nothing when no node is selected", () => {
+    const opts = baseOptions({ selectedNodeId: null });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("r");
+    expect(opts.onStartRename).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when input is active", () => {
+    const opts = baseOptions({ isInputActive: true });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("r");
+    expect(opts.onStartRename).not.toHaveBeenCalled();
+  });
+
+  it("does nothing for an aspect node", () => {
+    const opts = baseOptions({
+      selectedNodeId: "domain-1",
+      findNodeById: (id: string) => (id === "domain-1" ? makeAspect("domain-1") : undefined),
+    });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("r");
+    expect(opts.onStartRename).not.toHaveBeenCalled();
   });
 });
 
