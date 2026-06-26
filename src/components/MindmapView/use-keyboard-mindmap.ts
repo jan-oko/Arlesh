@@ -23,6 +23,7 @@ interface Options {
   onCreateChild: (id: string) => void;
   onCreateSibling: (id: string) => void;
   onInsertParent: (id: string) => void;
+  onOpenEditor: (id: string) => void;
   onDelete: (ids: string[]) => void;
   onToggleCollapsed: (id: string) => void;
   onCycleStatus: (id: string) => void;
@@ -40,7 +41,7 @@ export function useKeyboardMindmap(options: Options): void {
     isInputActive, isWarningActive, onDismissWarning,
     selectedNodeId, selectedNodeIds, subtreeRootId, clipboard,
     onNavigate, onCycleType, onReorder, onStartRename,
-    onCreateChild, onCreateSibling, onInsertParent, onDelete, onToggleCollapsed, onCycleStatus,
+    onCreateChild, onCreateSibling, onInsertParent, onOpenEditor, onDelete, onToggleCollapsed, onCycleStatus,
     onDeselect, onExitSubtree, onExitToRoot, onCut, onCopy, onPaste,
     findNodeById,
   } = options;
@@ -158,6 +159,24 @@ export function useKeyboardMindmap(options: Options): void {
             onPaste(selectedNodeId);
           }
           break;
+        case "e":
+          if (selectedNodeId !== null) {
+            const node = findNodeById(selectedNodeId);
+            if (node !== undefined && node.kind !== "aspect") {
+              event.preventDefault();
+              onOpenEditor(selectedNodeId);
+            }
+          }
+          break;
+        case "r":
+          if (selectedNodeId !== null) {
+            const node = findNodeById(selectedNodeId);
+            if (node !== undefined && node.kind !== "aspect") {
+              event.preventDefault();
+              onStartRename(selectedNodeId);
+            }
+          }
+          break;
       }
     }
 
@@ -169,7 +188,7 @@ export function useKeyboardMindmap(options: Options): void {
     isInputActive, isWarningActive, onDismissWarning,
     selectedNodeId, selectedNodeIds, subtreeRootId, clipboard,
     onNavigate, onCycleType, onReorder, onStartRename,
-    onCreateChild, onCreateSibling, onInsertParent, onDelete, onToggleCollapsed, onCycleStatus,
+    onCreateChild, onCreateSibling, onInsertParent, onOpenEditor, onDelete, onToggleCollapsed, onCycleStatus,
     onDeselect, onExitSubtree, onExitToRoot, onCut, onCopy, onPaste,
     findNodeById,
   ]);

@@ -18,6 +18,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Paste of a multi-node clipboard moves top-level selected nodes (ancestors take their descendants with them) as children of the paste target in original tree order
 - Delete confirmation for multiple nodes shows "Delete N nodes?" instead of a single title
 - Shift+Enter on a focused node creates a new sibling of the same type and enters inline edit mode
+- `e` key on a focused node opens the editor modal (same as double-click)
+- `r` key on a focused node starts inline title editing (same as F2)
 - Ctrl+Enter on a focused node inserts an intermediate parent between the node and its current parent, then enters inline edit mode on the new parent
 - Enter key cycles status on focused task nodes (todo → in_progress → done → todo); blocked tasks are skipped
 

@@ -146,6 +146,7 @@ export default function MindmapView() {
     onCreateChild,
     onCreateSibling,
     onInsertParent,
+    onOpenEditor: onDoubleClick,
     onDelete,
     onToggleCollapsed: toggleCollapsed,
     onCycleStatus: onStatusClick,
