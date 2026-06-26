@@ -175,8 +175,10 @@ async fn update_domain() {
                 title: Some("New Title".into()),
                 description: None,
                 parent_id: None,
+                subtype: None,
                 status: Some(ProjectStatus::Frozen),
                 knowledge_base_directory: None,
+                position: None,
             },
         )
         .await
