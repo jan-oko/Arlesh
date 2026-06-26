@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import type { MindmapNode } from "@/utils/tree-layout";
 
 type ArrowKey = "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown";
@@ -33,6 +33,7 @@ interface Options {
   onCut: (ids: string[]) => void;
   onCopy: (ids: string[]) => void;
   onPaste: (id: string) => void;
+  onEnterSubtree: (id: string) => void;
   findNodeById: (id: string) => MindmapNode | undefined;
 }
 
@@ -42,9 +43,12 @@ export function useKeyboardMindmap(options: Options): void {
     selectedNodeId, selectedNodeIds, subtreeRootId, clipboard,
     onNavigate, onCycleType, onReorder, onStartRename,
     onCreateChild, onCreateSibling, onInsertParent, onOpenEditor, onDelete, onToggleCollapsed, onCycleStatus,
-    onDeselect, onExitSubtree, onExitToRoot, onCut, onCopy, onPaste,
+    onDeselect, onExitSubtree, onExitToRoot, onCut, onCopy, onPaste, onEnterSubtree,
     findNodeById,
   } = options;
+
+  const lastEnterMs = useRef(-Infinity);
+  const DOUBLE_TAP_MS = 300;
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -107,11 +111,23 @@ export function useKeyboardMindmap(options: Options): void {
               onInsertParent(selectedNodeId);
             } else {
               const node = findNodeById(selectedNodeId);
-              const isBlocked = node !== undefined && node.kind === "task" &&
-                node.blockedReason !== undefined && node.blockedReason !== null && node.blockedReason !== "";
-              if (node !== undefined && node.kind === "task" && !isBlocked) {
+              const now = Date.now();
+              const isDoubleTap = now - lastEnterMs.current < DOUBLE_TAP_MS;
+              const canEnter = node !== undefined &&
+                node.kind !== "task" && node.kind !== "goal" && node.kind !== "tag";
+
+              if (isDoubleTap && canEnter) {
+                lastEnterMs.current = -Infinity;
                 event.preventDefault();
-                onCycleStatus(selectedNodeId);
+                onEnterSubtree(selectedNodeId);
+              } else {
+                lastEnterMs.current = now;
+                const isBlocked = node !== undefined && node.kind === "task" &&
+                  node.blockedReason !== undefined && node.blockedReason !== null && node.blockedReason !== "";
+                if (node !== undefined && node.kind === "task" && !isBlocked) {
+                  event.preventDefault();
+                  onCycleStatus(selectedNodeId);
+                }
               }
             }
           }
@@ -189,7 +205,7 @@ export function useKeyboardMindmap(options: Options): void {
     selectedNodeId, selectedNodeIds, subtreeRootId, clipboard,
     onNavigate, onCycleType, onReorder, onStartRename,
     onCreateChild, onCreateSibling, onInsertParent, onOpenEditor, onDelete, onToggleCollapsed, onCycleStatus,
-    onDeselect, onExitSubtree, onExitToRoot, onCut, onCopy, onPaste,
+    onDeselect, onExitSubtree, onExitToRoot, onCut, onCopy, onPaste, onEnterSubtree,
     findNodeById,
   ]);
 }

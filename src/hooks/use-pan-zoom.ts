@@ -10,6 +10,7 @@ interface Transform {
 export interface PanZoomResult {
   springProps: SpringValues<Transform>;
   onMouseDown: (e: React.MouseEvent<SVGSVGElement>) => void;
+  centerOnRoot: () => void;
 }
 
 const MIN_SCALE = 0.2;
@@ -95,5 +96,13 @@ export function usePanZoom(svgRef: React.RefObject<SVGSVGElement | null>): PanZo
     return () => el.removeEventListener("wheel", handleWheel);
   }, [svgRef, applyTransform]);
 
-  return { springProps, onMouseDown };
+  const centerOnRoot = useCallback(() => {
+    applyTransform({
+      x: window.innerWidth / 2,
+      y: window.innerHeight / 2,
+      scale: transform.current.scale,
+    });
+  }, [applyTransform]);
+
+  return { springProps, onMouseDown, centerOnRoot };
 }

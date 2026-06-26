@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { renderHook } from "@testing-library/react";
 import { useKeyboardMindmap } from "./use-keyboard-mindmap";
 import type { MindmapNode } from "@/utils/tree-layout";
@@ -9,6 +9,10 @@ function makeTask(id: string): MindmapNode {
 
 function makeAspect(id: string): MindmapNode {
   return { id, kind: "aspect", title: "Aspect", position: 0, tagIds: [], children: [] };
+}
+
+function makeDomain(id: string): MindmapNode {
+  return { id, kind: "domain", title: "Domain", position: 0, tagIds: [], children: [] };
 }
 
 function fireKey(key: string, modifiers: { shiftKey?: boolean; ctrlKey?: boolean } = {}) {
@@ -41,6 +45,7 @@ function baseOptions(overrides: Partial<Parameters<typeof useKeyboardMindmap>[0]
     onCut: vi.fn() as (ids: string[]) => void,
     onCopy: vi.fn() as (ids: string[]) => void,
     onPaste: vi.fn(),
+    onEnterSubtree: vi.fn(),
     findNodeById: (id: string): MindmapNode | undefined =>
       id === "task-1" ? makeTask("task-1") : undefined,
     ...overrides,
@@ -253,5 +258,68 @@ describe("useKeyboardMindmap — multi-select Ctrl+X/C/Delete", () => {
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("x", { ctrlKey: true });
     expect(opts.onCut).toHaveBeenCalledWith(["task-1"]);
+  });
+});
+
+describe("useKeyboardMindmap — double-tap Enter enters subtree", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("calls onEnterSubtree on second Enter within 300ms for a domain node", () => {
+    vi.useFakeTimers();
+    const opts = baseOptions({
+      selectedNodeId: "domain-1",
+      findNodeById: (id) => (id === "domain-1" ? makeDomain("domain-1") : undefined),
+    });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("Enter");
+    vi.advanceTimersByTime(100);
+    fireKey("Enter");
+    expect(opts.onEnterSubtree).toHaveBeenCalledWith("domain-1");
+  });
+
+  it("does not call onEnterSubtree when two Enters are more than 300ms apart", () => {
+    vi.useFakeTimers();
+    const opts = baseOptions({
+      selectedNodeId: "domain-1",
+      findNodeById: (id) => (id === "domain-1" ? makeDomain("domain-1") : undefined),
+    });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("Enter");
+    vi.advanceTimersByTime(400);
+    fireKey("Enter");
+    expect(opts.onEnterSubtree).not.toHaveBeenCalled();
+  });
+
+  it("does not call onEnterSubtree for a task node on double-tap", () => {
+    vi.useFakeTimers();
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("Enter");
+    vi.advanceTimersByTime(100);
+    fireKey("Enter");
+    expect(opts.onEnterSubtree).not.toHaveBeenCalled();
+  });
+
+  it("does not call onEnterSubtree when no node is selected", () => {
+    vi.useFakeTimers();
+    const opts = baseOptions({ selectedNodeId: null });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("Enter");
+    vi.advanceTimersByTime(100);
+    fireKey("Enter");
+    expect(opts.onEnterSubtree).not.toHaveBeenCalled();
+  });
+
+  it("does not call onEnterSubtree on the first Enter alone", () => {
+    vi.useFakeTimers();
+    const opts = baseOptions({
+      selectedNodeId: "domain-1",
+      findNodeById: (id) => (id === "domain-1" ? makeDomain("domain-1") : undefined),
+    });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("Enter");
+    expect(opts.onEnterSubtree).not.toHaveBeenCalled();
   });
 });

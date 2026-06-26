@@ -1,9 +1,13 @@
-import { useRef, type ReactNode } from "react";
+import { forwardRef, useImperativeHandle, useRef, type ReactNode } from "react";
 import { animated, to } from "@react-spring/web";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { usePanZoom } from "@/hooks/use-pan-zoom";
 import MindmapTree from "@/components/MindmapTree/MindmapTree";
 import type { ContextMenuAction } from "@/components/NodeContextMenu/context-action";
+
+export interface MindmapCanvasHandle {
+  centerOnRoot: () => void;
+}
 
 interface Props {
   root: MindmapNode;
@@ -26,9 +30,10 @@ interface Props {
   onStatusClick: (id: string) => void;
 }
 
-export default function MindmapCanvas({ root, collapsedNodeIds, selectedNodeIds, editingNodeId, dragTargetId, dragSourceId, canvasOverlay, hasClipboard, onSelect, onCtrlClick, onShiftClick, onDoubleClick, onCommitEdit, onCancelEdit, onContextAction, onDragStart, onCanvasClick, onStatusClick }: Props) {
+const MindmapCanvas = forwardRef<MindmapCanvasHandle, Props>(function MindmapCanvas({ root, collapsedNodeIds, selectedNodeIds, editingNodeId, dragTargetId, dragSourceId, canvasOverlay, hasClipboard, onSelect, onCtrlClick, onShiftClick, onDoubleClick, onCommitEdit, onCancelEdit, onContextAction, onDragStart, onCanvasClick, onStatusClick }: Props, ref) {
   const svgRef = useRef<SVGSVGElement>(null);
-  const { springProps, onMouseDown } = usePanZoom(svgRef);
+  const { springProps, onMouseDown, centerOnRoot } = usePanZoom(svgRef);
+  useImperativeHandle(ref, () => ({ centerOnRoot }), [centerOnRoot]);
 
   const transform = to(
     [springProps.x, springProps.y, springProps.scale],
@@ -43,4 +48,6 @@ export default function MindmapCanvas({ root, collapsedNodeIds, selectedNodeIds,
       </animated.g>
     </animated.svg>
   );
-}
+});
+
+export default MindmapCanvas;

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMindmapData } from "./use-mindmap-data";
 import { useDrag } from "./use-drag";
@@ -12,7 +12,7 @@ import { useKeyboardMindmap } from "./use-keyboard-mindmap";
 import { useMindmapStore, CLIPBOARD_OP } from "@/stores/use-mindmap-store";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { findNode, findParent, collectTasksAndGoals, collectSubtreePostOrder, computeShiftSelectRange } from "@/utils/mindmap-tree";
-import MindmapCanvas from "@/components/MindmapCanvas/MindmapCanvas";
+import MindmapCanvas, { type MindmapCanvasHandle } from "@/components/MindmapCanvas/MindmapCanvas";
 import DragGhost from "@/components/DragGhost/DragGhost";
 import DragPlaceholder from "@/components/DragPlaceholder/DragPlaceholder";
 import SubtreeNavPill from "@/components/SubtreeNavPill/SubtreeNavPill";
@@ -50,6 +50,12 @@ export default function MindmapView() {
     () => (subtreeRootId !== null ? (findNode(tree, subtreeRootId) ?? tree) : tree),
     [subtreeRootId, tree],
   );
+
+  const canvasRef = useRef<MindmapCanvasHandle>(null);
+
+  useEffect(() => {
+    if (subtreeRootId !== null) canvasRef.current?.centerOnRoot();
+  }, [subtreeRootId]);
 
   const { dragSourceId, dragTargetId, ghostPos, onDragStart } = useDrag({ tree, moveNode });
 
@@ -156,6 +162,7 @@ export default function MindmapView() {
     onCut: (ids) => setClipboard({ operation: CLIPBOARD_OP.CUT, nodeIds: ids }),
     onCopy: (ids) => setClipboard({ operation: CLIPBOARD_OP.COPY, nodeIds: ids }),
     onPaste,
+    onEnterSubtree: enterSubtree,
     findNodeById,
   });
   const toastPosition = pendingToast !== null ? positions.get(pendingToast.nodeId) : undefined;
@@ -167,6 +174,7 @@ export default function MindmapView() {
   return (
     <div className={styles.container}>
       <MindmapCanvas
+        ref={canvasRef}
         root={displayRoot}
         collapsedNodeIds={effectiveCollapsedIds}
         selectedNodeIds={selectedNodeIds}

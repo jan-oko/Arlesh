@@ -8,6 +8,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Double-tap Enter on a focused node enters it as a subtree (same as context menu → Enter; only applies to nodes that can be subtree roots: not tasks, goals, or tags)
+- Canvas recenters on the new root node when entering a subtree
+
 ### Fixed
 - After deleting a node, focus now moves to the nearest non-deleted ancestor instead of clearing to nothing; for multi-delete, focus targets the parent of the first deleted node
 - Left/Right arrow keys now navigate to parent or children only (whichever lies in that screen direction), never jumping across to unrelated siblings; Up/Down navigate among siblings only
