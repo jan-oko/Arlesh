@@ -11,5 +11,9 @@
   "deleteWithChildren_other": "גם {{count}} צמתי צאצא יימחקו לצמיתות.",
   "deleteConfirm": "מחק",
   "deleteFailed": "המחיקה נכשלה: {{message}}",
-  "deleteMultipleHeading": "למחוק {{count}} צמתים?"
+  "deleteMultipleHeading": "למחוק {{count}} צמתים?",
+  "nonInfoChildrenUnderInfo_one": "{{count}} צומת צאצא לא יכול לחיות תחת צומת מידע — בחר מה יקרה איתו",
+  "nonInfoChildrenUnderInfo_other": "{{count}} צמתי צאצא לא יכולים לחיות תחת צומת מידע — בחר מה יקרה איתם",
+  "reparentNonInfoChildren": "סדר מחדש ילדים",
+  "deleteNonInfoChildren": "מחק ילדים"
 }

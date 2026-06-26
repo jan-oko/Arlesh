@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import type { RetypeOptions } from "./use-mindmap-data";
-import { GOAL_CHILDREN_ACTION } from "./use-mindmap-data";
+import { GOAL_CHILDREN_ACTION, INFO_CHILDREN_ACTION } from "./use-mindmap-data";
 import type { WarningAction } from "@/components/WarningConfirmModal/warning-confirm";
 import { WARNING_VARIANT } from "@/components/WarningConfirmModal/warning-confirm";
 import { validTypesForCycling, crossesGoalTaskBoundary } from "@/utils/node-meta";
@@ -34,6 +34,7 @@ export interface WarningModalState {
   heading: string;
   consequences: string[];
   hasGoalChildren: boolean;
+  hasNonInfoChildren: boolean;
 }
 
 interface Options {
@@ -53,6 +54,7 @@ interface Result {
 
 function buildRetypeActions(
   hasGoalChildren: boolean,
+  hasNonInfoChildren: boolean,
   reparentLabel: string,
   deleteLabel: string,
   convertLabel: string,
@@ -62,6 +64,12 @@ function buildRetypeActions(
     return [
       { label: reparentLabel, variant: WARNING_VARIANT.PRIMARY, onClick: () => { confirm({ goalChildrenAction: GOAL_CHILDREN_ACTION.REPARENT }); } },
       { label: deleteLabel, variant: WARNING_VARIANT.DANGER, onClick: () => { confirm({ goalChildrenAction: GOAL_CHILDREN_ACTION.REMOVE }); } },
+    ];
+  }
+  if (hasNonInfoChildren) {
+    return [
+      { label: reparentLabel, variant: WARNING_VARIANT.PRIMARY, onClick: () => { confirm({ infoChildrenAction: INFO_CHILDREN_ACTION.REPARENT }); } },
+      { label: deleteLabel, variant: WARNING_VARIANT.DANGER, onClick: () => { confirm({ infoChildrenAction: INFO_CHILDREN_ACTION.REMOVE }); } },
     ];
   }
   return [{ label: convertLabel, variant: WARNING_VARIANT.PRIMARY, onClick: () => { confirm(); } }];
@@ -95,6 +103,20 @@ export function useNodeTypeManager({ tree, retypeNode, selectNode, showToast }: 
       const newKind = validTypes[(currentIdx + direction + validTypes.length) % validTypes.length];
       if (newKind === undefined || newKind === node.kind) return;
 
+      if (newKind === "info") {
+        const nonInfoChildren = node.children.filter((c) => c.kind !== "info");
+        if (nonInfoChildren.length > 0) {
+          setWarningModal({
+            nodeId, fromKind: node.kind, toKind: newKind,
+            heading: t("warnings:convertHeading", { kind: t(`nodeKinds:${newKind}`) }),
+            consequences: [t("warnings:nonInfoChildrenUnderInfo", { count: nonInfoChildren.length })],
+            hasGoalChildren: false,
+            hasNonInfoChildren: true,
+          });
+          return;
+        }
+      }
+
       if (crossesGoalTaskBoundary(node.kind, newKind)) {
         const rawOldStatus = node.status ?? (node.kind === "goal" ? GOAL_STATUS.ACTIVE : TASK_STATUS.TODO);
         const rawNewStatus = node.kind === "goal"
@@ -124,7 +146,7 @@ export function useNodeTypeManager({ tree, retypeNode, selectNode, showToast }: 
           setWarningModal({
             nodeId, fromKind: node.kind, toKind: newKind,
             heading: t("warnings:convertHeading", { kind: t(`nodeKinds:${newKind}`) }),
-            consequences, hasGoalChildren,
+            consequences, hasGoalChildren, hasNonInfoChildren: false,
           });
           return;
         }
@@ -140,8 +162,13 @@ export function useNodeTypeManager({ tree, retypeNode, selectNode, showToast }: 
   const retypeActions = warningModal !== null
     ? buildRetypeActions(
         warningModal.hasGoalChildren,
-        t("warnings:reparentSubgoals"),
-        t("warnings:deleteSubgoals"),
+        warningModal.hasNonInfoChildren,
+        warningModal.hasNonInfoChildren
+          ? t("warnings:reparentNonInfoChildren")
+          : t("warnings:reparentSubgoals"),
+        warningModal.hasNonInfoChildren
+          ? t("warnings:deleteNonInfoChildren")
+          : t("warnings:deleteSubgoals"),
         t("warnings:convertHeading", { kind: t(`nodeKinds:${warningModal.toKind}`) }),
         confirmRetype,
       )

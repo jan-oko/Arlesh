@@ -83,6 +83,7 @@ export const NODE_ICON: Record<NodeKind, string> = {
   goal: "◇",
   task: "✓",
   tag: "🏷",
+  info: "ℹ",
 };
 
 export const NODE_LABEL: Record<NodeKind, string> = {
@@ -92,21 +93,25 @@ export const NODE_LABEL: Record<NodeKind, string> = {
   goal: "Goal",
   task: "Task",
   tag: "Tag",
+  info: "Info",
 };
 
 // All node types reachable from a domain-table parent (aspect/domain/project/tag).
-const DOMAIN_PARENT_CYCLE: NodeKind[] = ["domain", "project", "tag", "goal", "task"];
+const DOMAIN_PARENT_CYCLE: NodeKind[] = ["domain", "project", "tag", "goal", "task", "info"];
 
 /**
  * Returns which types Ctrl+Up/Down may cycle through for a given node.
  *
- * Under a domain/project/aspect/tag parent the full cycle is available since
- * tasks and goals are valid children of those nodes.
- * Under a goal parent only goal↔task is valid.
- * A task under another task cannot become a goal (goals cannot be children of tasks).
+ * Under a domain/project/aspect/tag parent the full cycle is available.
+ * Under a goal parent only goal, task, and info are valid.
+ * Under a task parent only task and info are valid.
+ * Under an info parent only info is valid (info nodes can only have info children).
  */
 export function validTypesForCycling(kind: NodeKind, parentKind: NodeKind | null): NodeKind[] {
   if (kind === "aspect") return [];
+
+  // Info nodes can only have info children — no cycling out.
+  if (parentKind === "info") return ["info"];
 
   const hasDomainParent =
     parentKind === "aspect" ||
@@ -119,11 +124,11 @@ export function validTypesForCycling(kind: NodeKind, parentKind: NodeKind | null
     return DOMAIN_PARENT_CYCLE;
   }
 
-  // Under a task: goal child is invalid, so no cycling possible.
-  if (parentKind === "task") return ["task"];
+  // Under a task: goal child is invalid, but info is valid.
+  if (parentKind === "task") return ["task", "info"];
 
-  // Under a goal: goal and task are both valid children.
-  return ["goal", "task"];
+  // Under a goal: goal, task, and info are all valid children.
+  return ["goal", "task", "info"];
 }
 
 /** Returns true if the type transition crosses the Goal↔Task boundary. */
@@ -136,15 +141,18 @@ export function crossesGoalTaskBoundary(from: NodeKind, to: NodeKind): boolean {
  * Returns true if `sourceKind` is a valid child of `targetKind`.
  *
  * Parent rules:
- *   aspect / domain / project  → domain, project, tag, goal, task children
- *   goal                       → goal, task children
- *   task                       → task children only
+ *   aspect / domain / project  → domain, project, tag, goal, task, info children
+ *   goal                       → goal, task, info children
+ *   task                       → task, info children
+ *   info                       → info children only
  *   tag                        → no children (leaf)
  *   aspect                     → cannot be moved (immutable)
  */
 export function isValidDropTarget(sourceKind: NodeKind, targetKind: NodeKind): boolean {
   if (sourceKind === "aspect") return false;
   if (targetKind === "tag") return false;
+  if (targetKind === "info") return sourceKind === "info";
+  if (sourceKind === "info") return true;
   if (sourceKind === "project") return targetKind === "aspect" || targetKind === "project";
   if (sourceKind === "domain") return targetKind === "aspect" || targetKind === "domain" || targetKind === "project";
   if (sourceKind === "tag") return targetKind === "aspect" || targetKind === "domain" || targetKind === "project";

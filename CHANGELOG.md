@@ -13,6 +13,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Left/Right arrow keys now navigate to parent or children only (whichever lies in that screen direction), never jumping across to unrelated siblings; Up/Down navigate among siblings only
 
 ### Added
+- Info node kind: free-text bullet-point nodes (ℹ icon) that can be children of any existing node type and can only have info children; stored in a new `infos` DB table
+- Info nodes participate in the type cycle (Ctrl+Up/Down); cycling to info when a node has non-info children shows a warning modal with reparent/delete options
 - Multi-node selection: Ctrl+click toggles a node in/out of the selection; Shift+click on a sibling range-selects all siblings between anchor and target; Shift+click on an ancestor selects the anchor and all nodes up to that ancestor; Shift+click on an unrelated node does nothing
 - Ctrl+X / Ctrl+C now operate on all selected nodes; Delete key deletes all selected nodes
 - Paste of a multi-node clipboard moves top-level selected nodes (ancestors take their descendants with them) as children of the paste target in original tree order

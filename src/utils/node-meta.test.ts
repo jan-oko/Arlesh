@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeNodeDimensions, estimateWrappedLineCount, getNodeSize } from "./node-meta";
+import { computeNodeDimensions, estimateWrappedLineCount, getNodeSize, validTypesForCycling, isValidDropTarget } from "./node-meta";
 
 describe("computeNodeDimensions", () => {
   it("matches getNodeSize height for a short single-word title", () => {
@@ -74,5 +74,67 @@ describe("estimateWrappedLineCount", () => {
 
   it("counts explicit newlines as forced breaks", () => {
     expect(estimateWrappedLineCount("A\nB\nC", 164, 18)).toBe(3);
+  });
+});
+
+describe("validTypesForCycling — info", () => {
+  it("includes info in the cycle under a domain parent", () => {
+    expect(validTypesForCycling("task", "domain")).toContain("info");
+  });
+
+  it("includes info in the cycle under an aspect parent", () => {
+    expect(validTypesForCycling("domain", "aspect")).toContain("info");
+  });
+
+  it("includes info in the cycle under a goal parent", () => {
+    expect(validTypesForCycling("task", "goal")).toContain("info");
+  });
+
+  it("includes info in the cycle under a task parent", () => {
+    expect(validTypesForCycling("task", "task")).toContain("info");
+  });
+
+  it("returns only [info] when parent is info (no cycling out)", () => {
+    expect(validTypesForCycling("info", "info")).toEqual(["info"]);
+  });
+
+  it("can cycle from info itself when parent is domain", () => {
+    const cycle = validTypesForCycling("info", "domain");
+    expect(cycle).toContain("info");
+    expect(cycle.length).toBeGreaterThan(1);
+  });
+});
+
+describe("isValidDropTarget — info", () => {
+  it("info can be dropped onto a domain", () => {
+    expect(isValidDropTarget("info", "domain")).toBe(true);
+  });
+
+  it("info can be dropped onto a goal", () => {
+    expect(isValidDropTarget("info", "goal")).toBe(true);
+  });
+
+  it("info can be dropped onto a task", () => {
+    expect(isValidDropTarget("info", "task")).toBe(true);
+  });
+
+  it("info can be dropped onto another info node", () => {
+    expect(isValidDropTarget("info", "info")).toBe(true);
+  });
+
+  it("info cannot be dropped onto a tag", () => {
+    expect(isValidDropTarget("info", "tag")).toBe(false);
+  });
+
+  it("task cannot be dropped onto an info node (info only accepts info children)", () => {
+    expect(isValidDropTarget("task", "info")).toBe(false);
+  });
+
+  it("goal cannot be dropped onto an info node", () => {
+    expect(isValidDropTarget("goal", "info")).toBe(false);
+  });
+
+  it("domain cannot be dropped onto an info node", () => {
+    expect(isValidDropTarget("domain", "info")).toBe(false);
   });
 });

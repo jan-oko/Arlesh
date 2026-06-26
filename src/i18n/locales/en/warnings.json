@@ -11,5 +11,9 @@
   "deleteWithChildren_other": "This will also permanently delete {{count}} descendant nodes.",
   "deleteConfirm": "Delete",
   "deleteFailed": "Delete failed: {{message}}",
-  "deleteMultipleHeading": "Delete {{count}} nodes?"
+  "deleteMultipleHeading": "Delete {{count}} nodes?",
+  "nonInfoChildrenUnderInfo_one": "{{count}} child cannot live under an info node — choose what happens to it",
+  "nonInfoChildrenUnderInfo_other": "{{count}} children cannot live under an info node — choose what happens to them",
+  "reparentNonInfoChildren": "Re-parent children",
+  "deleteNonInfoChildren": "Delete children"
 }

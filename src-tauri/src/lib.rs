@@ -8,6 +8,7 @@ pub mod commands;
 pub mod database;
 pub mod domains;
 pub mod error;
+pub mod infos;
 pub mod knowledge_base;
 pub mod scopes;
 pub mod tasks;
@@ -70,6 +71,10 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::infos::create_info,
+            commands::infos::list_infos,
+            commands::infos::update_info,
+            commands::infos::delete_info,
             commands::domains::create_domain,
             commands::domains::get_domain,
             commands::domains::list_domains,

@@ -2,9 +2,11 @@ import { useCallback, useEffect, useState } from "react";
 import { listDomains, createDomain, updateDomain, deleteDomain } from "@/api/domains";
 import { listTasks, createTask, updateTask, deleteTask } from "@/api/tasks";
 import { listGoals, createGoal, updateGoal, deleteGoal } from "@/api/goals";
+import { listInfos, createInfo, updateInfo, deleteInfo } from "@/api/infos";
 import type { Domain } from "@/api/domains";
 import type { Task } from "@/api/tasks";
 import type { Goal } from "@/api/goals";
+import type { Info } from "@/api/infos";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { goalStatusToTaskStatus, taskStatusToGoalStatus } from "@/utils/status-mapping";
 
@@ -13,10 +15,17 @@ export const GOAL_CHILDREN_ACTION = {
   REPARENT: "reparent",
 } as const;
 
+export const INFO_CHILDREN_ACTION = {
+  REMOVE: "remove",
+  REPARENT: "reparent",
+} as const;
+
 export type GoalChildrenAction = "remove" | "reparent";
+export type InfoChildrenAction = "remove" | "reparent";
 
 export interface RetypeOptions {
   goalChildrenAction?: GoalChildrenAction;
+  infoChildrenAction?: InfoChildrenAction;
 }
 
 interface MindmapData {
@@ -53,6 +62,18 @@ function kindToParentType(kind: NodeKind): string {
   if (kind === "goal") return "goal";
   if (kind === "task") return "task";
   return "project";
+}
+
+function kindToInfoParentType(kind: NodeKind): string {
+  switch (kind) {
+    case "goal": return "goal";
+    case "task": return "task";
+    case "info": return "info";
+    case "aspect": return "aspect";
+    case "project": return "project";
+    case "domain": return "domain";
+    case "tag": return "tag";
+  }
 }
 
 function findNodeInTree(root: MindmapNode, id: string): MindmapNode | undefined {
@@ -92,7 +113,14 @@ function propagateAspectColor(node: MindmapNode, inheritedColor: string | undefi
   }
 }
 
-function buildTree(domains: Domain[], goals: Goal[], tasks: Task[]): MindmapNode {
+function infoParentKey(info: Info): string {
+  if (info.parent_type === "goal") return `goal-${info.parent_id}`;
+  if (info.parent_type === "task") return `task-${info.parent_id}`;
+  if (info.parent_type === "info") return `info-${info.parent_id}`;
+  return `domain-${info.parent_id}`;
+}
+
+function buildTree(domains: Domain[], goals: Goal[], tasks: Task[], infos: Info[]): MindmapNode {
   const nodeMap = new Map<string, MindmapNode>();
 
   for (const domain of domains) {
@@ -131,6 +159,17 @@ function buildTree(domains: Domain[], goals: Goal[], tasks: Task[]): MindmapNode
       blockedReason: task.blocked_reason,
       position: task.position,
       tagIds: task.tag_ids,
+      children: [],
+    });
+  }
+
+  for (const info of infos) {
+    nodeMap.set(`info-${info.id}`, {
+      id: `info-${info.id}`,
+      kind: "info",
+      title: info.body,
+      position: info.position,
+      tagIds: [],
       children: [],
     });
   }
@@ -175,6 +214,16 @@ function buildTree(domains: Domain[], goals: Goal[], tasks: Task[]): MindmapNode
     }
   }
 
+  // Wire info nodes to their parents
+  for (const info of infos) {
+    const infoNode = nodeMap.get(`info-${info.id}`);
+    if (infoNode === undefined) continue;
+    const parentNode = nodeMap.get(infoParentKey(info));
+    if (parentNode !== undefined) {
+      parentNode.children.push(infoNode);
+    }
+  }
+
   // Sort each parent's children by position so mixed-type siblings
   // (e.g. goals and tasks under the same project) respect insertion order
   // rather than being grouped by entity type.
@@ -202,12 +251,13 @@ export function useMindmapData(): MindmapData {
     setIsLoading(true);
     setError(null);
     try {
-      const [domains, goals, tasks] = await Promise.all([
+      const [domains, goals, tasks, infos] = await Promise.all([
         listDomains(),
         listGoals(),
         listTasks(),
+        listInfos(),
       ]);
-      setTree(buildTree(domains, goals, tasks));
+      setTree(buildTree(domains, goals, tasks, infos));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -220,12 +270,13 @@ export function useMindmapData(): MindmapData {
   const silentLoad = useCallback(async () => {
     setError(null);
     try {
-      const [domains, goals, tasks] = await Promise.all([
+      const [domains, goals, tasks, infos] = await Promise.all([
         listDomains(),
         listGoals(),
         listTasks(),
+        listInfos(),
       ]);
-      setTree(buildTree(domains, goals, tasks));
+      setTree(buildTree(domains, goals, tasks, infos));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -273,15 +324,31 @@ export function useMindmapData(): MindmapData {
         return newNode;
       }
 
+      if (childKind === "info") {
+        const siblings = findNodeInTree(tree, parentId)?.children ?? [];
+        const maxPos = siblings.reduce((m, c) => Math.max(m, c.position), -1);
+        const info = await createInfo({
+          body: title, parent_type: kindToInfoParentType(parentKind),
+          parent_id: dbParentId, position: maxPos + 1,
+        });
+        const newNode: MindmapNode = {
+          id: `info-${info.id}`, kind: "info", title: info.body,
+          position: info.position, tagIds: [], children: [],
+        };
+        await silentLoad();
+        return newNode;
+      }
+
       throw new Error(`Cannot create a node of kind "${childKind}"`);
     },
-    [silentLoad],
+    [silentLoad, tree],
   );
 
   const createChild = useCallback(
     async (parentId: string, parentKind: NodeKind, title: string): Promise<MindmapNode> => {
       const childKind: NodeKind =
-        parentKind === "project" ? "project"
+        parentKind === "info" ? "info"
+        : parentKind === "project" ? "project"
         : parentKind === "goal" ? "goal"
         : parentKind === "task" ? "task"
         : "domain"; // aspect, domain → domain
@@ -297,6 +364,8 @@ export function useMindmapData(): MindmapData {
         await updateGoal(dbId, { title });
       } else if (kind === "task") {
         await updateTask(dbId, { title });
+      } else if (kind === "info") {
+        await updateInfo(dbId, { body: title });
       } else {
         await import("@/api/domains").then(({ updateDomain }) => updateDomain(dbId, { title }));
       }
@@ -340,6 +409,8 @@ export function useMindmapData(): MindmapData {
               await updateGoal(childDbId, { parent_type: "goal", parent_id: newGoal.id });
             } else if (child.kind === "task") {
               await updateTask(childDbId, { parent_type: "goal", parent_id: newGoal.id });
+            } else if (child.kind === "info") {
+              await updateInfo(childDbId, { parent_type: "goal", parent_id: newGoal.id });
             } else {
               console.warn(`[arlesh] retypeNode: ${child.kind} child "${child.title}" orphaned`);
             }
@@ -354,6 +425,8 @@ export function useMindmapData(): MindmapData {
             const childDbId = dbIdFromNodeId(child.id);
             if (child.kind === "task") {
               await updateTask(childDbId, { parent_type: "task", parent_id: newTask.id });
+            } else if (child.kind === "info") {
+              await updateInfo(childDbId, { parent_type: "task", parent_id: newTask.id });
             } else {
               console.warn(`[arlesh] retypeNode: ${child.kind} child "${child.title}" orphaned`);
             }
@@ -377,6 +450,8 @@ export function useMindmapData(): MindmapData {
             await updateGoal(childDbId, { parent_type: "project", parent_id: newDomain.id });
           } else if (child.kind === "task") {
             await updateTask(childDbId, { parent_type: "project", parent_id: newDomain.id });
+          } else if (child.kind === "info") {
+            await updateInfo(childDbId, { parent_type: toKind, parent_id: newDomain.id });
           }
         }
         if (fromKind === "goal") await deleteGoal(dbId);
@@ -429,11 +504,94 @@ export function useMindmapData(): MindmapData {
             await updateTask(childDbId, { parent_type: "goal", parent_id: newGoal.id });
           } else if (child.kind === "goal") {
             await updateGoal(childDbId, { parent_type: parentType, parent_id: parentDbId });
+          } else if (child.kind === "info") {
+            await updateInfo(childDbId, { parent_type: "goal", parent_id: newGoal.id });
           }
         }
         await deleteTask(dbId);
         await silentLoad();
         return `goal-${newGoal.id}`;
+      }
+
+      // To info: create info entry, re-parent info children, handle non-info children.
+      if (toKind === "info") {
+        if (parentDbId === null) return null;
+        const parentInfoType = kindToInfoParentType(parent!.kind);
+        const newInfo = await createInfo({
+          body: title, parent_type: parentInfoType, parent_id: parentDbId,
+          position: oldPosition ?? 0,
+        });
+        for (const child of children) {
+          const childDbId = dbIdFromNodeId(child.id);
+          if (child.kind === "info") {
+            await updateInfo(childDbId, { parent_type: "info", parent_id: newInfo.id });
+          } else {
+            if (options?.infoChildrenAction === "reparent") {
+              if (child.kind === "goal") {
+                await updateGoal(childDbId, { parent_type: kindToParentType(parent!.kind), parent_id: parentDbId });
+              } else if (child.kind === "task") {
+                await updateTask(childDbId, { parent_type: kindToParentType(parent!.kind), parent_id: parentDbId });
+              } else {
+                await updateDomain(childDbId, { parent_id: parentDbId });
+              }
+            } else {
+              if (child.kind === "goal") await deleteGoal(childDbId);
+              else if (child.kind === "task") await deleteTask(childDbId);
+              else if (child.kind !== "aspect") await deleteDomain(childDbId);
+            }
+          }
+        }
+        if (fromKind === "goal") await deleteGoal(dbId);
+        else if (fromKind === "task") await deleteTask(dbId);
+        else if (fromKind !== "aspect") await deleteDomain(dbId);
+        await silentLoad();
+        return `info-${newInfo.id}`;
+      }
+
+      // From info: create new entity, re-parent info children, delete info entry.
+      if (fromKind === "info") {
+        if (parentDbId === null) return null;
+        if (toKind === "goal" || toKind === "task") {
+          const parentType = kindToParentType(parent!.kind);
+          if (toKind === "goal") {
+            const newGoal = await createGoal({ title, parent_type: parentType, parent_id: parentDbId });
+            if (oldPosition !== undefined) await updateGoal(newGoal.id, { position: oldPosition });
+            for (const child of children) {
+              if (child.kind === "info") {
+                await updateInfo(dbIdFromNodeId(child.id), { parent_type: "goal", parent_id: newGoal.id });
+              }
+            }
+            await deleteInfo(dbId);
+            await silentLoad();
+            return `goal-${newGoal.id}`;
+          } else {
+            const newTask = await createTask({ title, parent_type: parentType, parent_id: parentDbId });
+            if (oldPosition !== undefined) await updateTask(newTask.id, { position: oldPosition });
+            for (const child of children) {
+              if (child.kind === "info") {
+                await updateInfo(dbIdFromNodeId(child.id), { parent_type: "task", parent_id: newTask.id });
+              }
+            }
+            await deleteInfo(dbId);
+            await silentLoad();
+            return `task-${newTask.id}`;
+          }
+        }
+        if (domainTableKinds.has(toKind)) {
+          const newDomain = await createDomain({
+            title, subtype: toKind, parent_id: parentDbId,
+            description: null, status: null, knowledge_base_directory: null,
+          });
+          if (oldPosition !== undefined) await updateDomain(newDomain.id, { position: oldPosition });
+          for (const child of children) {
+            if (child.kind === "info") {
+              await updateInfo(dbIdFromNodeId(child.id), { parent_type: toKind, parent_id: newDomain.id });
+            }
+          }
+          await deleteInfo(dbId);
+          await silentLoad();
+          return `domain-${newDomain.id}`;
+        }
       }
 
       return null;
@@ -464,6 +622,7 @@ export function useMindmapData(): MindmapData {
       const setPos = async (nId: number, kind: NodeKind, pos: number): Promise<void> => {
         if (kind === "goal") await updateGoal(nId, { position: pos });
         else if (kind === "task") await updateTask(nId, { position: pos });
+        else if (kind === "info") await updateInfo(nId, { position: pos });
         else await updateDomain(nId, { position: pos });
       };
 
@@ -480,11 +639,12 @@ export function useMindmapData(): MindmapData {
     async (id: string, kind: NodeKind, newParentId: string, newParentKind: NodeKind, position: number): Promise<void> => {
       const dbId = dbIdFromNodeId(id);
       const dbParentId = dbIdFromNodeId(newParentId);
-      const newParentType = kindToParentType(newParentKind);
       if (kind === "goal") {
-        await updateGoal(dbId, { parent_type: newParentType, parent_id: dbParentId, position });
+        await updateGoal(dbId, { parent_type: kindToParentType(newParentKind), parent_id: dbParentId, position });
       } else if (kind === "task") {
-        await updateTask(dbId, { parent_type: newParentType, parent_id: dbParentId, position });
+        await updateTask(dbId, { parent_type: kindToParentType(newParentKind), parent_id: dbParentId, position });
+      } else if (kind === "info") {
+        await updateInfo(dbId, { parent_type: kindToInfoParentType(newParentKind), parent_id: dbParentId, position });
       } else {
         await import("@/api/domains").then(({ updateDomain }) =>
           updateDomain(dbId, { parent_id: dbParentId, position }),
@@ -501,6 +661,7 @@ export function useMindmapData(): MindmapData {
         const dbId = dbIdFromNodeId(id);
         if (kind === "goal") await deleteGoal(dbId);
         else if (kind === "task") await deleteTask(dbId);
+        else if (kind === "info") await deleteInfo(dbId);
         else if (kind !== "aspect") await deleteDomain(dbId);
       }
       await silentLoad();
