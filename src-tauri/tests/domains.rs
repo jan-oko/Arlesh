@@ -187,3 +187,129 @@ async fn update_domain() {
     assert_eq!(updated.title, "New Title");
     assert_eq!(updated.status.as_deref(), Some("frozen"));
 }
+
+#[tokio::test]
+async fn list_all_domains_includes_aspects_and_created() {
+    let pool = helpers::test_pool().await;
+    let repo = DomainRepository::new(&pool);
+    let aspect_id = green_aspect_id(&pool).await;
+
+    let project = repo
+        .create(CreateDomainRequest {
+            title: "Listed Project".into(),
+            description: None,
+            subtype: DomainSubtype::Project,
+            parent_id: Some(aspect_id),
+            status: Some(ProjectStatus::Active),
+            knowledge_base_directory: None,
+        })
+        .await
+        .unwrap();
+
+    let all = repo.list(None).await.unwrap();
+    // 6 seeded aspects + 1 created project
+    assert!(all.len() >= 7);
+    assert!(all.iter().any(|d| d.subtype == "aspect"));
+    assert!(all.iter().any(|d| d.id == project.id));
+}
+
+#[tokio::test]
+async fn list_domains_by_subtype() {
+    let pool = helpers::test_pool().await;
+    let repo = DomainRepository::new(&pool);
+    let aspect_id = green_aspect_id(&pool).await;
+
+    let project = repo
+        .create(CreateDomainRequest {
+            title: "Only Project".into(),
+            description: None,
+            subtype: DomainSubtype::Project,
+            parent_id: Some(aspect_id),
+            status: Some(ProjectStatus::Active),
+            knowledge_base_directory: None,
+        })
+        .await
+        .unwrap();
+
+    repo.create(CreateDomainRequest {
+        title: "A Domain".into(),
+        description: None,
+        subtype: DomainSubtype::Domain,
+        parent_id: Some(aspect_id),
+        status: None,
+        knowledge_base_directory: None,
+    })
+    .await
+    .unwrap();
+
+    let projects = repo.list(Some(DomainSubtype::Project)).await.unwrap();
+    assert!(projects.iter().all(|d| d.subtype == "project"));
+    assert!(projects.iter().any(|d| d.id == project.id));
+}
+
+#[tokio::test]
+async fn convert_project_subtype_to_domain() {
+    let pool = helpers::test_pool().await;
+    let repo = DomainRepository::new(&pool);
+    let aspect_id = green_aspect_id(&pool).await;
+
+    let project = repo
+        .create(CreateDomainRequest {
+            title: "Becoming Domain".into(),
+            description: None,
+            subtype: DomainSubtype::Project,
+            parent_id: Some(aspect_id),
+            status: Some(ProjectStatus::Active),
+            knowledge_base_directory: None,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(project.subtype, "project");
+
+    let converted = repo
+        .update(
+            project.id.into(),
+            UpdateDomainRequest {
+                title: None,
+                description: None,
+                parent_id: None,
+                subtype: Some(DomainSubtype::Domain),
+                status: None,
+                knowledge_base_directory: None,
+                position: None,
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(converted.subtype, "domain");
+}
+
+#[tokio::test]
+async fn delete_domain() {
+    let pool = helpers::test_pool().await;
+    let repo = DomainRepository::new(&pool);
+    let aspect_id = green_aspect_id(&pool).await;
+
+    let domain = repo
+        .create(CreateDomainRequest {
+            title: "Doomed Domain".into(),
+            description: None,
+            subtype: DomainSubtype::Domain,
+            parent_id: Some(aspect_id),
+            status: None,
+            knowledge_base_directory: None,
+        })
+        .await
+        .unwrap();
+
+    repo.delete(domain.id.into()).await.unwrap();
+
+    let err = repo.get(domain.id.into()).await.unwrap_err();
+    assert!(
+        matches!(err, arlesh_lib::domains::error::DomainError::NotFound(_)),
+        "expected NotFound, got {:?}",
+        err
+    );
+}
