@@ -120,16 +120,11 @@ fn scope_bounds(kind: ScopeKind, date: NaiveDate) -> (NaiveDate, NaiveDate) {
         ScopeKind::Season => {
             let (season_month, year) = season_start_month_and_year(date);
             let start = NaiveDate::from_ymd_opt(year, season_month, 1).unwrap();
+            // end_month is always 2, 5, 8, or 11 — never 12 — so end_month + 1 is always safe
             let end_month = ((season_month - 1 + 2) % 12) + 1;
             let end_year = if season_month + 2 > 12 { year + 1 } else { year };
-            let end_month_start = NaiveDate::from_ymd_opt(end_year, end_month, 1).unwrap();
-            let after_end = if end_month == 12 {
-                NaiveDate::from_ymd_opt(end_year + 1, 1, 1).unwrap()
-            } else {
-                NaiveDate::from_ymd_opt(end_year, end_month + 1, 1).unwrap()
-            };
+            let after_end = NaiveDate::from_ymd_opt(end_year, end_month + 1, 1).unwrap();
             let end = after_end - Duration::days(1);
-            let _ = end_month_start;
             (start, end)
         }
     }

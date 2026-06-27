@@ -5,10 +5,11 @@ use arlesh_lib::{
         model::{CreateDomainRequest, DomainSubtype, ProjectStatus},
         DomainRepository,
     },
+    scopes::{model::ScopeKind, ScopeRepository},
     tasks::{
         model::{
-            CreateGoalRequest, CreateTaskRequest, Dependency, GoalStatus, UpdateGoalRequest,
-            UpdateTaskRequest,
+            CreateGoalRequest, CreateTaskRequest, Dependency, GoalStatus, TaskStatus,
+            UpdateGoalRequest, UpdateTaskRequest,
         },
         GoalRepository, TaskRepository,
     },
@@ -631,4 +632,282 @@ async fn reparent_goal_to_different_project() {
         .unwrap();
 
     assert_eq!(moved.parent_id, project_b_id);
+}
+
+#[tokio::test]
+async fn update_task_status_to_in_progress() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let task_repo = TaskRepository::new(&pool);
+
+    let task = task_repo
+        .create(CreateTaskRequest {
+            title: "In Progress Task".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            status: None,
+            scope_id: None,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(task.status, "todo");
+
+    let updated = task_repo
+        .update(
+            task.id.into(),
+            UpdateTaskRequest { status: Some(TaskStatus::InProgress), ..Default::default() },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(updated.status, "in_progress");
+}
+
+#[tokio::test]
+async fn update_task_blocked_reason() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let task_repo = TaskRepository::new(&pool);
+
+    let task = task_repo
+        .create(CreateTaskRequest {
+            title: "Blockable Task".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            status: None,
+            scope_id: None,
+        })
+        .await
+        .unwrap();
+
+    let blocked = task_repo
+        .update(
+            task.id.into(),
+            UpdateTaskRequest {
+                blocked_reason: Some("Waiting on design".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(blocked.blocked_reason.as_deref(), Some("Waiting on design"));
+
+    let cleared = task_repo
+        .update(
+            task.id.into(),
+            UpdateTaskRequest { blocked_reason: Some(String::new()), ..Default::default() },
+        )
+        .await
+        .unwrap();
+
+    assert!(cleared.blocked_reason.is_none());
+}
+
+#[tokio::test]
+async fn explicit_block_reason_surfaces_in_get_with_blockers() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let task_repo = TaskRepository::new(&pool);
+
+    let task = task_repo
+        .create(CreateTaskRequest {
+            title: "Blocked Task".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            status: None,
+            scope_id: None,
+        })
+        .await
+        .unwrap();
+
+    task_repo
+        .update(
+            task.id.into(),
+            UpdateTaskRequest {
+                blocked_reason: Some("Explicit reason".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+    let with_blockers = task_repo.get_with_blockers(task.id.into()).await.unwrap();
+    assert!(with_blockers.block_reasons.iter().any(|r| r.contains("Explicit reason")));
+}
+
+#[tokio::test]
+async fn update_task_scope() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let task_repo = TaskRepository::new(&pool);
+
+    let scope = ScopeRepository::new(&pool)
+        .get_or_create(ScopeKind::Day, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap())
+        .await
+        .unwrap();
+
+    let task = task_repo
+        .create(CreateTaskRequest {
+            title: "Scoped Task".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            status: None,
+            scope_id: None,
+        })
+        .await
+        .unwrap();
+
+    assert!(task.scope_id.is_none());
+
+    let updated = task_repo
+        .update(
+            task.id.into(),
+            UpdateTaskRequest { scope_id: Some(Some(scope.id)), ..Default::default() },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(updated.scope_id, Some(scope.id));
+}
+
+#[tokio::test]
+async fn update_goal_blocked_reason() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let goal_repo = GoalRepository::new(&pool);
+
+    let goal = goal_repo
+        .create(CreateGoalRequest {
+            title: "Blockable Goal".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            status: None,
+            scope_id: None,
+        })
+        .await
+        .unwrap();
+
+    let blocked = goal_repo
+        .update(
+            goal.id.into(),
+            UpdateGoalRequest {
+                blocked_reason: Some("Waiting on funding".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(blocked.blocked_reason.as_deref(), Some("Waiting on funding"));
+
+    let cleared = goal_repo
+        .update(
+            goal.id.into(),
+            UpdateGoalRequest { blocked_reason: Some(String::new()), ..Default::default() },
+        )
+        .await
+        .unwrap();
+
+    assert!(cleared.blocked_reason.is_none());
+}
+
+#[tokio::test]
+async fn update_goal_scope() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let goal_repo = GoalRepository::new(&pool);
+
+    let scope = ScopeRepository::new(&pool)
+        .get_or_create(ScopeKind::Month, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap())
+        .await
+        .unwrap();
+
+    let goal = goal_repo
+        .create(CreateGoalRequest {
+            title: "Scoped Goal".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            status: None,
+            scope_id: None,
+        })
+        .await
+        .unwrap();
+
+    let updated = goal_repo
+        .update(
+            goal.id.into(),
+            UpdateGoalRequest { scope_id: Some(Some(scope.id)), ..Default::default() },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(updated.scope_id, Some(scope.id));
+}
+
+#[tokio::test]
+async fn goal_frozen_and_archived_statuses() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let goal_repo = GoalRepository::new(&pool);
+
+    let goal = goal_repo
+        .create(CreateGoalRequest {
+            title: "Status Goal".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            status: None,
+            scope_id: None,
+        })
+        .await
+        .unwrap();
+
+    let frozen = goal_repo
+        .update(
+            goal.id.into(),
+            UpdateGoalRequest { status: Some(GoalStatus::Frozen), ..Default::default() },
+        )
+        .await
+        .unwrap();
+    assert_eq!(frozen.status, "frozen");
+
+    let archived = goal_repo
+        .update(
+            goal.id.into(),
+            UpdateGoalRequest { status: Some(GoalStatus::Archived), ..Default::default() },
+        )
+        .await
+        .unwrap();
+    assert_eq!(archived.status, "archived");
+}
+
+#[tokio::test]
+async fn goal_is_achieved() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let goal_repo = GoalRepository::new(&pool);
+
+    let goal = goal_repo
+        .create(CreateGoalRequest {
+            title: "Achievement Goal".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            status: None,
+            scope_id: None,
+        })
+        .await
+        .unwrap();
+
+    assert!(!goal_repo.is_achieved(goal.id.into()).await.unwrap());
+
+    goal_repo
+        .update(
+            goal.id.into(),
+            UpdateGoalRequest { status: Some(GoalStatus::Achieved), ..Default::default() },
+        )
+        .await
+        .unwrap();
+
+    assert!(goal_repo.is_achieved(goal.id.into()).await.unwrap());
 }

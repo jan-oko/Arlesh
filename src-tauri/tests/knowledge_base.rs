@@ -288,3 +288,30 @@ async fn delete_thread_not_found() {
         err
     );
 }
+
+#[tokio::test]
+async fn update_person_linked_note() {
+    let pool = helpers::test_pool().await;
+    let repo = PersonRepository::new(&pool);
+
+    let person = repo
+        .create(CreatePersonRequest { name: "Dana".into(), aliases: None, linked_note: None })
+        .await
+        .unwrap();
+
+    assert!(person.linked_note.is_none());
+
+    let updated = repo
+        .update(
+            person.id.into(),
+            UpdatePersonRequest {
+                name: None,
+                aliases: None,
+                linked_note: Some("notes/Dana.md".into()),
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(updated.linked_note.as_deref(), Some("notes/Dana.md"));
+}

@@ -54,15 +54,6 @@ impl TaskStatus {
         }
     }
 
-    /// Parses from the database string representation.
-    pub fn parse_db(s: &str) -> Option<Self> {
-        match s {
-            "todo" => Some(Self::Todo),
-            "in_progress" => Some(Self::InProgress),
-            "done" => Some(Self::Done),
-            _ => None,
-        }
-    }
 }
 
 /// Goal lifecycle status.

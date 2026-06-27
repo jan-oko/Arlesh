@@ -9,7 +9,11 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
-- Rust integration tests expanded from 22 to 55: `infos.rs` (9 new tests covering full InfoRepository CRUD — create under goal/task/domain/nested-info, list, update body/position/parent, delete); `domains.rs` additions (list all, list by subtype, subtype conversion, delete); `tasks.rs` additions (update title, delete task, remove dependency, update goal title, delete goal, add/remove tag on goal, list goals with tag_ids, reparent goal); `knowledge_base.rs` additions (list people, delete person, person-not-found, create/list/delete events with EventNotFound, create/list/delete threads with ThreadNotFound)
+- Rust integration tests expanded from 22 to 72: covers all repository branches including blocked_reason set/clear on tasks and goals, `TaskStatus::InProgress`, `GoalStatus::Frozen`/`Archived`, `GoalRepository::is_achieved`, scope assignment on tasks and goals, cannot-update/cannot-retype-to-aspect, project-without-parent, linked_note update on persons, December month scope; `scopes.rs` gains 1 test; `infos.rs` (9 tests); `domains.rs` (4 new); `tasks.rs` (11 new); `knowledge_base.rs` (10 new)
+
+### Removed
+- `TaskStatus::parse_db()` — dead code, never called anywhere in production or tests
+- Dead `end_month == 12` branch in `scope_bounds` for Season — `end_month` is always 2, 5, 8, or 11 by construction; also removed the unused `end_month_start` intermediate variable
 
 ### Fixed
 - Info nodes rendered with a task icon (cycle appeared to do nothing); added a dedicated InfoIcon (circle with an "i") and wired it into NodeIcon

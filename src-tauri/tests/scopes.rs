@@ -83,3 +83,16 @@ async fn winter_season_spans_dec_to_feb() {
     assert_eq!(season.start_date, "2026-12-01");
     assert_eq!(season.end_date, "2027-02-28");
 }
+
+#[tokio::test]
+async fn december_month_scope_spans_into_next_year() {
+    let pool = helpers::test_pool().await;
+    let repo = ScopeRepository::new(&pool);
+    let date = NaiveDate::from_ymd_opt(2026, 12, 15).unwrap();
+
+    let month = repo.get_or_create(ScopeKind::Month, date).await.unwrap();
+
+    assert_eq!(month.start_date, "2026-12-01");
+    assert_eq!(month.end_date, "2026-12-31");
+    assert_eq!(month.label, "December 2026");
+}

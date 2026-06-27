@@ -313,3 +313,97 @@ async fn delete_domain() {
         err
     );
 }
+
+#[tokio::test]
+async fn cannot_update_aspect() {
+    let pool = helpers::test_pool().await;
+    let repo = DomainRepository::new(&pool);
+    let aspect_id = green_aspect_id(&pool).await;
+
+    let err = repo
+        .update(
+            aspect_id.into(),
+            UpdateDomainRequest {
+                title: Some("Hacked Aspect".into()),
+                description: None,
+                parent_id: None,
+                subtype: None,
+                status: None,
+                knowledge_base_directory: None,
+                position: None,
+            },
+        )
+        .await
+        .unwrap_err();
+
+    assert!(
+        matches!(err, arlesh_lib::domains::error::DomainError::FixedAspect),
+        "expected FixedAspect, got {:?}",
+        err
+    );
+}
+
+#[tokio::test]
+async fn cannot_change_subtype_to_aspect() {
+    let pool = helpers::test_pool().await;
+    let repo = DomainRepository::new(&pool);
+    let aspect_id = green_aspect_id(&pool).await;
+
+    let domain = repo
+        .create(CreateDomainRequest {
+            title: "Aspiring Domain".into(),
+            description: None,
+            subtype: DomainSubtype::Domain,
+            parent_id: Some(aspect_id),
+            status: None,
+            knowledge_base_directory: None,
+        })
+        .await
+        .unwrap();
+
+    let err = repo
+        .update(
+            domain.id.into(),
+            UpdateDomainRequest {
+                subtype: Some(DomainSubtype::Aspect),
+                title: None,
+                description: None,
+                parent_id: None,
+                status: None,
+                knowledge_base_directory: None,
+                position: None,
+            },
+        )
+        .await
+        .unwrap_err();
+
+    assert!(
+        matches!(err, arlesh_lib::domains::error::DomainError::FixedAspect),
+        "expected FixedAspect, got {:?}",
+        err
+    );
+}
+
+#[tokio::test]
+async fn project_without_parent_is_rejected() {
+    let pool = helpers::test_pool().await;
+    let repo = DomainRepository::new(&pool);
+
+    let err = repo
+        .create(CreateDomainRequest {
+            title: "Parentless Project".into(),
+            description: None,
+            subtype: DomainSubtype::Project,
+            parent_id: None,
+            status: None,
+            knowledge_base_directory: None,
+        })
+        .await
+        .unwrap_err();
+
+    assert!(
+        matches!(err, arlesh_lib::domains::error::DomainError::InvalidParent(_)),
+        "expected InvalidParent, got {:?}",
+        err
+    );
+}
