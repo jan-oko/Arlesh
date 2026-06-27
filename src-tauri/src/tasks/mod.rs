@@ -542,3 +542,23 @@ fn dependency_parts(dependency: &Dependency) -> (&'static str, i64) {
         Dependency::Goal { id } => ("goal", *id),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tasks::model::Dependency;
+
+    #[test]
+    fn dependency_parts_task_variant() {
+        let (ty, id) = dependency_parts(&Dependency::Task { id: 42 });
+        assert_eq!(ty, "task");
+        assert_eq!(id, 42);
+    }
+
+    #[test]
+    fn dependency_parts_goal_variant() {
+        let (ty, id) = dependency_parts(&Dependency::Goal { id: 99 });
+        assert_eq!(ty, "goal");
+        assert_eq!(id, 99);
+    }
+}

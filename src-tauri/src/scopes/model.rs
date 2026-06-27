@@ -43,6 +43,25 @@ impl ScopeKind {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scope_kind_as_str_covers_all_variants() {
+        assert_eq!(ScopeKind::Season.as_str(), "season");
+        assert_eq!(ScopeKind::Month.as_str(), "month");
+        assert_eq!(ScopeKind::Week.as_str(), "week");
+        assert_eq!(ScopeKind::Day.as_str(), "day");
+    }
+
+    #[test]
+    fn scope_id_roundtrip() {
+        let id = ScopeId::from(42_i64);
+        assert_eq!(i64::from(id), 42);
+    }
+}
+
 /// A scope row as returned from the database.
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Scope {

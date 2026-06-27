@@ -11,7 +11,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Added
 - Direct integration tests for `database::connect()` and `database::run_migrations()` — verifies the `after_connect` PRAGMA hook and migration seed; `database/mod.rs` is now 14/14 (100%)
 - Rust integration tests expanded from 22 to 74: covers all repository branches including blocked_reason set/clear on tasks and goals, `TaskStatus::InProgress`, `GoalStatus::Frozen`/`Archived`, `GoalRepository::is_achieved`, scope assignment on tasks and goals, cannot-update/cannot-retype-to-aspect, project-without-parent, linked_note update on persons, December month scope, Aspect subtype listing, Project/Tag subtype conversion, `ProjectStatus::Achieved`/`Archived`; `domains/mod.rs` is now 109/109 (100%)
-- Stop hook now runs `cargo tarpaulin --engine llvm --exclude-files src/commands/*` and blocks the session if coverage drops below 85%
+- Stop hook now runs `cargo tarpaulin --engine ptrace --skip-clean` (cache at `~/.cache/arlesh/tarpaulin`) and blocks the session if coverage drops below 85%; tarpaulin uses a separate target dir to avoid invalidating `cargo test` artifacts
+- 34 Rust inline unit tests (`#[cfg(test)]`) covering pure functions with no DB dependency: `scope_bounds` (all 4 kinds including leap-year Feb and Dec month), `scope_label`, `week_number`, `season_name_and_year`, `season_start_month_and_year` (scopes/mod.rs); `ScopeKind::as_str`, `ScopeId` roundtrip (scopes/model.rs); `TaskStatus::as_str`, `GoalStatus::as_str`, `TaskId`/`GoalId` roundtrips (tasks/model.rs); `dependency_parts` task/goal branches (tasks/mod.rs)
+- 28 frontend unit tests: Zustand store (use-mindmap-store.test.ts — selectNode, addToSelection, setSelection, enterSubtree, exitSubtree, exitToRoot, toggleCollapsed, clipboard, toast); context-action dispatch (use-context-action.test.ts — all 10 CONTEXT_ACTION variants including null-clipboard PASTE guard and unknown-node guard)
 
 ### Removed
 - `TaskStatus::parse_db()` — dead code, never called anywhere in production or tests

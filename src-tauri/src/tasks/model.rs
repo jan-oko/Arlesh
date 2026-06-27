@@ -206,6 +206,38 @@ pub struct CreateGoalRequest {
     pub scope_id: Option<i64>,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn task_status_as_str_covers_all_variants() {
+        assert_eq!(TaskStatus::Todo.as_str(), "todo");
+        assert_eq!(TaskStatus::InProgress.as_str(), "in_progress");
+        assert_eq!(TaskStatus::Done.as_str(), "done");
+    }
+
+    #[test]
+    fn goal_status_as_str_covers_all_variants() {
+        assert_eq!(GoalStatus::Active.as_str(), "active");
+        assert_eq!(GoalStatus::Achieved.as_str(), "achieved");
+        assert_eq!(GoalStatus::Frozen.as_str(), "frozen");
+        assert_eq!(GoalStatus::Archived.as_str(), "archived");
+    }
+
+    #[test]
+    fn task_id_roundtrip() {
+        let id = TaskId::from(7_i64);
+        assert_eq!(i64::from(id), 7);
+    }
+
+    #[test]
+    fn goal_id_roundtrip() {
+        let id = GoalId::from(13_i64);
+        assert_eq!(i64::from(id), 13);
+    }
+}
+
 /// Request body for updating a goal.
 #[derive(Debug, Default, Deserialize)]
 pub struct UpdateGoalRequest {
