@@ -10,7 +10,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 - Direct integration tests for `database::connect()` and `database::run_migrations()` — verifies the `after_connect` PRAGMA hook and migration seed; `database/mod.rs` is now 14/14 (100%)
-- Rust integration tests expanded from 22 to 72: covers all repository branches including blocked_reason set/clear on tasks and goals, `TaskStatus::InProgress`, `GoalStatus::Frozen`/`Archived`, `GoalRepository::is_achieved`, scope assignment on tasks and goals, cannot-update/cannot-retype-to-aspect, project-without-parent, linked_note update on persons, December month scope; `scopes.rs` gains 1 test; `infos.rs` (9 tests); `domains.rs` (4 new); `tasks.rs` (11 new); `knowledge_base.rs` (10 new)
+- Rust integration tests expanded from 22 to 74: covers all repository branches including blocked_reason set/clear on tasks and goals, `TaskStatus::InProgress`, `GoalStatus::Frozen`/`Archived`, `GoalRepository::is_achieved`, scope assignment on tasks and goals, cannot-update/cannot-retype-to-aspect, project-without-parent, linked_note update on persons, December month scope, Aspect subtype listing, Project/Tag subtype conversion, `ProjectStatus::Achieved`/`Archived`; `domains/mod.rs` is now 109/109 (100%)
+- Stop hook now runs `cargo tarpaulin --engine llvm --exclude-files src/commands/*` and blocks the session if coverage drops below 85%
 
 ### Removed
 - `TaskStatus::parse_db()` — dead code, never called anywhere in production or tests

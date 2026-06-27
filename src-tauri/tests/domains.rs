@@ -407,3 +407,128 @@ async fn project_without_parent_is_rejected() {
         err
     );
 }
+
+#[tokio::test]
+async fn convert_domain_subtype_to_project() {
+    let pool = helpers::test_pool().await;
+    let repo = DomainRepository::new(&pool);
+    let aspect_id = green_aspect_id(&pool).await;
+
+    let domain = repo
+        .create(CreateDomainRequest {
+            title: "Will Become Project".into(),
+            description: None,
+            subtype: DomainSubtype::Domain,
+            parent_id: Some(aspect_id),
+            status: None,
+            knowledge_base_directory: None,
+        })
+        .await
+        .unwrap();
+
+    let converted = repo
+        .update(
+            domain.id.into(),
+            UpdateDomainRequest {
+                subtype: Some(DomainSubtype::Project),
+                parent_id: Some(aspect_id),
+                title: None,
+                description: None,
+                status: None,
+                knowledge_base_directory: None,
+                position: None,
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(converted.subtype, "project");
+}
+
+#[tokio::test]
+async fn convert_domain_subtype_to_tag() {
+    let pool = helpers::test_pool().await;
+    let repo = DomainRepository::new(&pool);
+    let aspect_id = green_aspect_id(&pool).await;
+
+    let domain = repo
+        .create(CreateDomainRequest {
+            title: "Will Become Tag".into(),
+            description: None,
+            subtype: DomainSubtype::Domain,
+            parent_id: Some(aspect_id),
+            status: None,
+            knowledge_base_directory: None,
+        })
+        .await
+        .unwrap();
+
+    let converted = repo
+        .update(
+            domain.id.into(),
+            UpdateDomainRequest {
+                subtype: Some(DomainSubtype::Tag),
+                title: None,
+                description: None,
+                parent_id: None,
+                status: None,
+                knowledge_base_directory: None,
+                position: None,
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(converted.subtype, "tag");
+}
+
+#[tokio::test]
+async fn list_by_aspect_subtype() {
+    let pool = helpers::test_pool().await;
+    let aspects = DomainRepository::new(&pool)
+        .list(Some(DomainSubtype::Aspect))
+        .await
+        .unwrap();
+
+    assert_eq!(aspects.len(), 6);
+    assert!(aspects.iter().all(|d| d.subtype == "aspect"));
+}
+
+#[tokio::test]
+async fn project_status_achieved_and_archived() {
+    let pool = helpers::test_pool().await;
+    let repo = DomainRepository::new(&pool);
+    let aspect_id = green_aspect_id(&pool).await;
+
+    let project = repo
+        .create(CreateDomainRequest {
+            title: "Status Project".into(),
+            description: None,
+            subtype: DomainSubtype::Project,
+            parent_id: Some(aspect_id),
+            status: Some(ProjectStatus::Achieved),
+            knowledge_base_directory: None,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(project.status.as_deref(), Some("achieved"));
+
+    let archived = repo
+        .update(
+            project.id.into(),
+            UpdateDomainRequest {
+                status: Some(ProjectStatus::Archived),
+                title: None,
+                description: None,
+                parent_id: None,
+                subtype: None,
+                knowledge_base_directory: None,
+                position: None,
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(archived.status.as_deref(), Some("archived"));
+}
