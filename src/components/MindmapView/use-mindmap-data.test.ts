@@ -273,7 +273,7 @@ describe("useMindmapData — mutations", () => {
 
   function setupInvoke(extras: Record<string, unknown> = {}) {
     vi.mocked(invoke).mockImplementation((cmd: string) => {
-      if (Object.hasOwn(extras, cmd)) return Promise.resolve(extras[cmd]);
+      if (Object.prototype.hasOwnProperty.call(extras, cmd)) return Promise.resolve(extras[cmd]);
       if (cmd === "list_domains") return Promise.resolve([ASPECT]);
       if (cmd === "list_goals") return Promise.resolve([GOAL]);
       if (cmd === "list_tasks") return Promise.resolve([TASK, TASK2]);
