@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook } from "@testing-library/react";
 import { useKeyboardMindmap } from "./use-keyboard-mindmap";
 import type { MindmapNode } from "@/utils/tree-layout";
@@ -15,7 +15,7 @@ function makeDomain(id: string): MindmapNode {
   return { id, kind: "domain", title: "Domain", position: 0, tagIds: [], children: [] };
 }
 
-function fireKey(key: string, modifiers: { shiftKey?: boolean; ctrlKey?: boolean } = {}) {
+function fireKey(key: string, modifiers: { shiftKey?: boolean; ctrlKey?: boolean; altKey?: boolean } = {}) {
   window.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...modifiers }));
 }
 
@@ -51,6 +51,164 @@ function baseOptions(overrides: Partial<Parameters<typeof useKeyboardMindmap>[0]
     ...overrides,
   };
 }
+
+beforeEach(() => { vi.clearAllMocks(); });
+
+describe("useKeyboardMindmap — blocked when input/warning active", () => {
+  it("ignores all keys when isInputActive is true", () => {
+    const opts = baseOptions({ isInputActive: true });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("ArrowLeft");
+    expect(opts.onNavigate).not.toHaveBeenCalled();
+  });
+
+  it("Escape calls onDismissWarning when isWarningActive", () => {
+    const opts = baseOptions({ isWarningActive: true });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("Escape");
+    expect(opts.onDismissWarning).toHaveBeenCalledTimes(1);
+  });
+
+  it("other keys are ignored when isWarningActive", () => {
+    const opts = baseOptions({ isWarningActive: true });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("ArrowLeft");
+    expect(opts.onNavigate).not.toHaveBeenCalled();
+  });
+});
+
+describe("useKeyboardMindmap — arrow navigation", () => {
+  it("ArrowLeft calls onNavigate with 'ArrowLeft'", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("ArrowLeft");
+    expect(opts.onNavigate).toHaveBeenCalledWith("ArrowLeft");
+  });
+
+  it("ArrowRight calls onNavigate with 'ArrowRight'", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("ArrowRight");
+    expect(opts.onNavigate).toHaveBeenCalledWith("ArrowRight");
+  });
+
+  it("ArrowUp calls onNavigate when no modifier", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("ArrowUp");
+    expect(opts.onNavigate).toHaveBeenCalledWith("ArrowUp");
+  });
+
+  it("ArrowDown calls onNavigate when no modifier", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("ArrowDown");
+    expect(opts.onNavigate).toHaveBeenCalledWith("ArrowDown");
+  });
+
+  it("Ctrl+ArrowUp calls onCycleType with -1", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("ArrowUp", { ctrlKey: true });
+    expect(opts.onCycleType).toHaveBeenCalledWith("task-1", -1);
+  });
+
+  it("Ctrl+ArrowDown calls onCycleType with 1", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("ArrowDown", { ctrlKey: true });
+    expect(opts.onCycleType).toHaveBeenCalledWith("task-1", 1);
+  });
+
+  it("Alt+ArrowUp calls onReorder with -1", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("ArrowUp", { altKey: true });
+    expect(opts.onReorder).toHaveBeenCalledWith("task-1", -1);
+  });
+
+  it("Alt+ArrowDown calls onReorder with 1", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("ArrowDown", { altKey: true });
+    expect(opts.onReorder).toHaveBeenCalledWith("task-1", 1);
+  });
+});
+
+describe("useKeyboardMindmap — Tab (create child)", () => {
+  it("Tab on a node with hyphen (not tag) calls onCreateChild", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("Tab");
+    expect(opts.onCreateChild).toHaveBeenCalledWith("task-1");
+  });
+
+  it("Tab does not call onCreateChild for a tag-kind node", () => {
+    const tagNode: MindmapNode = { id: "domain-9", kind: "tag", title: "tag", position: 0, tagIds: [], children: [] };
+    const opts = baseOptions({
+      selectedNodeId: "domain-9",
+      findNodeById: (id) => (id === "domain-9" ? tagNode : undefined),
+    });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("Tab");
+    expect(opts.onCreateChild).not.toHaveBeenCalled();
+  });
+
+  it("Tab does nothing when no node is selected", () => {
+    const opts = baseOptions({ selectedNodeId: null });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("Tab");
+    expect(opts.onCreateChild).not.toHaveBeenCalled();
+  });
+});
+
+describe("useKeyboardMindmap — Escape variants", () => {
+  it("Ctrl+Escape calls onExitToRoot when subtreeRootId is set", () => {
+    const opts = baseOptions({ subtreeRootId: "domain-1" });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("Escape", { ctrlKey: true });
+    expect(opts.onExitToRoot).toHaveBeenCalledTimes(1);
+  });
+
+  it("Shift+Escape calls onExitSubtree when subtreeRootId is set", () => {
+    const opts = baseOptions({ subtreeRootId: "domain-1" });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("Escape", { shiftKey: true });
+    expect(opts.onExitSubtree).toHaveBeenCalledTimes(1);
+  });
+
+  it("plain Escape calls onDeselect when a node is selected", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("Escape");
+    expect(opts.onDeselect).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("useKeyboardMindmap — Ctrl+V (paste)", () => {
+  it("Ctrl+V calls onPaste when clipboard is set", () => {
+    const opts = baseOptions({ clipboard: { operation: "cut", nodeIds: ["task-1"] } });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("v", { ctrlKey: true });
+    expect(opts.onPaste).toHaveBeenCalledWith("task-1");
+  });
+
+  it("Ctrl+V does nothing when clipboard is null", () => {
+    const opts = baseOptions({ clipboard: null });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("v", { ctrlKey: true });
+    expect(opts.onPaste).not.toHaveBeenCalled();
+  });
+});
+
+describe("useKeyboardMindmap — Ctrl+/ (toggle collapsed)", () => {
+  it("Ctrl+/ calls onToggleCollapsed with the selected node id", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("/", { ctrlKey: true });
+    expect(opts.onToggleCollapsed).toHaveBeenCalledWith("task-1");
+  });
+});
 
 describe("useKeyboardMindmap — Shift+Enter creates sibling", () => {
   it("calls onCreateSibling with the selected node id", () => {

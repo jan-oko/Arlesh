@@ -49,6 +49,15 @@ describe("addToSelection", () => {
     expect(useMindmapStore.getState().selectedNodeId).toBeNull();
     expect(useMindmapStore.getState().selectedNodeIds.size).toBe(0);
   });
+
+  it("updates selectedNodeId anchor to first remaining node when one is removed from multi-select", () => {
+    useMindmapStore.getState().addToSelection("a");
+    useMindmapStore.getState().addToSelection("b");
+    useMindmapStore.getState().addToSelection("a");
+    // "a" removed; "b" remains → selectedNodeId should update to "b"
+    expect(useMindmapStore.getState().selectedNodeId).toBe("b");
+    expect(useMindmapStore.getState().selectedNodeIds).toEqual(new Set(["b"]));
+  });
 });
 
 describe("setSelection", () => {

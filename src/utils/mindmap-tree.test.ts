@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { connectedNodeIds, nearestInDirection, collectAllNodeIds, computeShiftSelectRange, parentAndChildrenIds, siblingIds } from "./mindmap-tree";
+import { connectedNodeIds, nearestInDirection, collectAllNodeIds, computeShiftSelectRange, parentAndChildrenIds, siblingIds, gatherSubtreeItems, collectSubtreePostOrder } from "./mindmap-tree";
 import type { MindmapNode } from "./tree-layout";
 import type { Position } from "./tree-layout";
 
@@ -231,5 +231,92 @@ describe("nearestInDirection with candidateIds", () => {
   it("behaves identically to unconstrained search when candidateIds is omitted", () => {
     const unconstrained = nearestInDirection("center", positions, "ArrowRight");
     expect(unconstrained).toBe("right");
+  });
+});
+
+// Layout for gatherSubtreeItems tests:
+//   subtree-root (0, 0, depth 0)
+//   └── subtree-child (220, 0, depth 1)
+const subtreeLayout = new Map([
+  ["subtree-root", { x: 0, y: 0, depth: 0 }],
+  ["subtree-child", { x: 220, y: 0, depth: 1 }],
+]);
+const SUBTREE_CHILD = node("subtree-child");
+const SUBTREE_ROOT = node("subtree-root", [SUBTREE_CHILD]);
+
+describe("gatherSubtreeItems", () => {
+  it("does not push the root node itself (isRoot=true)", () => {
+    const nodes: Parameters<typeof gatherSubtreeItems>[7] = [];
+    const edges: Parameters<typeof gatherSubtreeItems>[8] = [];
+    gatherSubtreeItems(SUBTREE_ROOT, subtreeLayout, new Set(), 0, 0, 0, true, nodes, edges);
+    const rootEntry = nodes.find((n) => n.id === "subtree-root");
+    expect(rootEntry).toBeUndefined();
+  });
+
+  it("pushes non-root descendant nodes with absolute positions", () => {
+    const nodes: Parameters<typeof gatherSubtreeItems>[7] = [];
+    const edges: Parameters<typeof gatherSubtreeItems>[8] = [];
+    gatherSubtreeItems(SUBTREE_ROOT, subtreeLayout, new Set(), 0, 0, 0, true, nodes, edges);
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0]).toMatchObject({ id: "subtree-child", x: 220, y: 0 });
+  });
+
+  it("pushes an edge from root to child", () => {
+    const nodes: Parameters<typeof gatherSubtreeItems>[7] = [];
+    const edges: Parameters<typeof gatherSubtreeItems>[8] = [];
+    gatherSubtreeItems(SUBTREE_ROOT, subtreeLayout, new Set(), 0, 0, 0, true, nodes, edges);
+    expect(edges).toHaveLength(1);
+    expect(edges[0]).toMatchObject({ key: "subtree-root-subtree-child", fx: 0, tx: 220 });
+  });
+
+  it("stops recursing into collapsed nodes", () => {
+    const grandchild = node("grandchild");
+    const child = node("child", [grandchild]);
+    const root = node("subtree-r", [child]);
+    const layout = new Map([
+      ["subtree-r", { x: 0, y: 0, depth: 0 }],
+      ["child", { x: 220, y: 0, depth: 1 }],
+      ["grandchild", { x: 440, y: 0, depth: 2 }],
+    ]);
+    const nodes: Parameters<typeof gatherSubtreeItems>[7] = [];
+    const edges: Parameters<typeof gatherSubtreeItems>[8] = [];
+    gatherSubtreeItems(root, layout, new Set(["child"]), 0, 0, 0, true, nodes, edges);
+    expect(nodes.find((n) => n.id === "grandchild")).toBeUndefined();
+  });
+
+  it("skips children whose position is absent from the layout", () => {
+    const orphan = node("orphan");
+    const root = node("subtree-r2", [orphan]);
+    const layout = new Map([["subtree-r2", { x: 0, y: 0, depth: 0 }]]);
+    const nodes: Parameters<typeof gatherSubtreeItems>[7] = [];
+    const edges: Parameters<typeof gatherSubtreeItems>[8] = [];
+    gatherSubtreeItems(root, layout, new Set(), 0, 0, 0, true, nodes, edges);
+    expect(edges).toHaveLength(0);
+  });
+});
+
+describe("collectSubtreePostOrder", () => {
+  it("returns leaf nodes before their parents (post-order)", () => {
+    const result = collectSubtreePostOrder(A);
+    const aIdx = result.findIndex((n) => n.id === "A");
+    const a1Idx = result.findIndex((n) => n.id === "A1");
+    expect(a1Idx).toBeLessThan(aIdx);
+  });
+
+  it("includes all nodes in the subtree", () => {
+    const result = collectSubtreePostOrder(A);
+    expect(result.map((n) => n.id)).toEqual(expect.arrayContaining(["A1", "A2", "A3", "A"]));
+    expect(result).toHaveLength(4);
+  });
+
+  it("returns a single-item array for a leaf node", () => {
+    const result = collectSubtreePostOrder(A1);
+    expect(result).toEqual([{ id: "A1", kind: "domain" }]);
+  });
+
+  it("preserves kind in each result entry", () => {
+    const taskLeaf = { id: "task-9", kind: "task" as const, title: "t", position: 0, tagIds: [], children: [] };
+    const result = collectSubtreePostOrder(taskLeaf);
+    expect(result[0]?.kind).toBe("task");
   });
 });

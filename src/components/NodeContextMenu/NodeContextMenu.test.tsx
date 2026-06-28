@@ -1,0 +1,127 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
+import NodeContextMenu from "./NodeContextMenu";
+
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({
+    t: (key: string) => key,
+    i18n: { dir: () => "ltr" },
+  }),
+}));
+
+const defaultProps = {
+  x: 100,
+  y: 200,
+  nodeKind: "domain" as const,
+  isCollapsed: false,
+  hasClipboard: true,
+  onAction: vi.fn(),
+  onClose: vi.fn(),
+};
+
+beforeEach(() => { vi.clearAllMocks(); });
+
+describe("NodeContextMenu — always-visible items", () => {
+  it("renders rename button for all node kinds", () => {
+    render(<NodeContextMenu {...defaultProps} />);
+    expect(screen.getByRole("button", { name: "rename" })).toBeInTheDocument();
+  });
+
+  it("renders cut, copy, and delete buttons", () => {
+    render(<NodeContextMenu {...defaultProps} />);
+    expect(screen.getByRole("button", { name: "cut" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "copy" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "delete" })).toBeInTheDocument();
+  });
+
+  it("calls onAction and onClose when rename is clicked", () => {
+    render(<NodeContextMenu {...defaultProps} />);
+    fireEvent.click(screen.getByRole("button", { name: "rename" }));
+    expect(defaultProps.onAction).toHaveBeenCalledWith("rename");
+    expect(defaultProps.onClose).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("NodeContextMenu — canEnter", () => {
+  it("shows enterSubtree for domain nodes", () => {
+    render(<NodeContextMenu {...defaultProps} nodeKind="domain" />);
+    expect(screen.getByRole("button", { name: "enterSubtree" })).toBeInTheDocument();
+  });
+
+  it("shows enterSubtree for aspect nodes", () => {
+    render(<NodeContextMenu {...defaultProps} nodeKind="aspect" />);
+    expect(screen.getByRole("button", { name: "enterSubtree" })).toBeInTheDocument();
+  });
+
+  it("hides enterSubtree for task nodes", () => {
+    render(<NodeContextMenu {...defaultProps} nodeKind="task" />);
+    expect(screen.queryByRole("button", { name: "enterSubtree" })).not.toBeInTheDocument();
+  });
+
+  it("hides enterSubtree for goal nodes", () => {
+    render(<NodeContextMenu {...defaultProps} nodeKind="goal" />);
+    expect(screen.queryByRole("button", { name: "enterSubtree" })).not.toBeInTheDocument();
+  });
+
+  it("hides enterSubtree for tag nodes", () => {
+    render(<NodeContextMenu {...defaultProps} nodeKind="tag" />);
+    expect(screen.queryByRole("button", { name: "enterSubtree" })).not.toBeInTheDocument();
+  });
+});
+
+describe("NodeContextMenu — canChangeType", () => {
+  it("shows type-up and type-down for domain nodes", () => {
+    render(<NodeContextMenu {...defaultProps} nodeKind="domain" />);
+    expect(screen.getByRole("button", { name: "typeNext" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "typePrev" })).toBeInTheDocument();
+  });
+
+  it("hides type buttons for aspect nodes", () => {
+    render(<NodeContextMenu {...defaultProps} nodeKind="aspect" />);
+    expect(screen.queryByRole("button", { name: "typeNext" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "typePrev" })).not.toBeInTheDocument();
+  });
+});
+
+describe("NodeContextMenu — paste", () => {
+  it("paste button is enabled when hasClipboard is true", () => {
+    render(<NodeContextMenu {...defaultProps} hasClipboard={true} />);
+    expect(screen.getByRole("button", { name: "pasteAsChild" })).not.toBeDisabled();
+  });
+
+  it("paste button is disabled when hasClipboard is false", () => {
+    render(<NodeContextMenu {...defaultProps} hasClipboard={false} />);
+    expect(screen.getByRole("button", { name: "pasteAsChild" })).toBeDisabled();
+  });
+});
+
+describe("NodeContextMenu — collapse toggle", () => {
+  it("shows collapse label when not collapsed", () => {
+    render(<NodeContextMenu {...defaultProps} isCollapsed={false} />);
+    expect(screen.getByRole("button", { name: "collapse" })).toBeInTheDocument();
+  });
+
+  it("shows expand label when collapsed", () => {
+    render(<NodeContextMenu {...defaultProps} isCollapsed={true} />);
+    expect(screen.getByRole("button", { name: "expand" })).toBeInTheDocument();
+  });
+});
+
+describe("NodeContextMenu — outside click", () => {
+  it("calls onClose on mousedown outside the menu", () => {
+    render(
+      <div>
+        <NodeContextMenu {...defaultProps} />
+        <div data-testid="outside" />
+      </div>,
+    );
+    fireEvent.mouseDown(screen.getByTestId("outside"));
+    expect(defaultProps.onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not call onClose on mousedown inside the menu", () => {
+    render(<NodeContextMenu {...defaultProps} />);
+    fireEvent.mouseDown(screen.getByRole("button", { name: "rename" }));
+    expect(defaultProps.onClose).not.toHaveBeenCalled();
+  });
+});

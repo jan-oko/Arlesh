@@ -594,6 +594,101 @@ describe("useMindmapData — mutations", () => {
 
       expect(newId).toBeNull();
     });
+
+    it("domain→task: creates task, deletes domain, returns task-id", async () => {
+      const PROJECT = mkDomain({ id: 2, subtype: "project", parent_id: 1, title: "Ops" });
+      const newTask = mkTask({ id: 99, title: "Ops", parent_type: "project", parent_id: 1 });
+      setupInvoke({ list_domains: [ASPECT, PROJECT], create_task: newTask, delete_domain: undefined, update_task: newTask });
+      const { result } = await loadedHook();
+
+      let newId: string | null | undefined;
+      await act(async () => { newId = await result.current.retypeNode("domain-2", "project", "task"); });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("create_task", {
+        request: { title: "Ops", parent_type: "project", parent_id: 1 },
+      });
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("delete_domain", { id: 2 });
+      expect(newId).toBe("task-99");
+    });
+
+    it("goal→domain: creates domain, deletes goal, returns domain-id", async () => {
+      const newDomain = mkDomain({ id: 99, subtype: "domain", parent_id: 1, title: "Ship MVP" });
+      setupInvoke({ create_domain: newDomain, delete_goal: undefined, update_domain: newDomain });
+      const { result } = await loadedHook();
+
+      let newId: string | null | undefined;
+      await act(async () => { newId = await result.current.retypeNode("goal-1", "goal", "domain"); });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("create_domain", {
+        request: expect.objectContaining({ title: "Ship MVP", subtype: "domain", parent_id: 1 }),
+      });
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("delete_goal", { id: 1 });
+      expect(newId).toBe("domain-99");
+    });
+
+    it("task→domain: creates domain, deletes task, returns domain-id", async () => {
+      const newDomain = mkDomain({ id: 99, subtype: "domain", parent_id: 1, title: "Write code" });
+      setupInvoke({ create_domain: newDomain, delete_task: undefined, update_domain: newDomain });
+      const { result } = await loadedHook();
+
+      let newId: string | null | undefined;
+      await act(async () => { newId = await result.current.retypeNode("task-1", "task", "domain"); });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("create_domain", {
+        request: expect.objectContaining({ title: "Write code", subtype: "domain" }),
+      });
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("delete_task", { id: 1 });
+      expect(newId).toBe("domain-99");
+    });
+
+    it("domain→info: creates info, deletes domain, returns info-id", async () => {
+      const PROJECT = mkDomain({ id: 2, subtype: "project", parent_id: 1, title: "Ops" });
+      const newInfo = mkInfo({ id: 10, body: "Ops", parent_type: "aspect", parent_id: 1, position: 0 });
+      setupInvoke({ list_domains: [ASPECT, PROJECT], create_info: newInfo, delete_domain: undefined });
+      const { result } = await loadedHook();
+
+      let newId: string | null | undefined;
+      await act(async () => { newId = await result.current.retypeNode("domain-2", "project", "info"); });
+
+      // Parent of domain-2 is ASPECT (kind="aspect"), so parent_type is "aspect"
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("create_info", {
+        request: expect.objectContaining({ body: "Ops", parent_type: "aspect", parent_id: 1 }),
+      });
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("delete_domain", { id: 2 });
+      expect(newId).toBe("info-10");
+    });
+
+    it("info→goal: creates goal, deletes info, returns goal-id", async () => {
+      const INFO = mkInfo({ id: 5, body: "My note", parent_type: "task", parent_id: 1 });
+      const newGoal = mkGoal({ id: 99, title: "My note", parent_type: "goal", parent_id: 1 });
+      setupInvoke({ list_infos: [INFO], create_goal: newGoal, delete_info: undefined, update_goal: newGoal });
+      const { result } = await loadedHook();
+
+      let newId: string | null | undefined;
+      await act(async () => { newId = await result.current.retypeNode("info-5", "info", "goal"); });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("create_goal", {
+        request: expect.objectContaining({ title: "My note" }),
+      });
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("delete_info", { id: 5 });
+      expect(newId).toBe("goal-99");
+    });
+
+    it("info→domain: creates domain, deletes info, returns domain-id", async () => {
+      const INFO = mkInfo({ id: 5, body: "My note", parent_type: "task", parent_id: 1 });
+      const newDomain = mkDomain({ id: 99, subtype: "domain", parent_id: 1, title: "My note" });
+      setupInvoke({ list_infos: [INFO], create_domain: newDomain, delete_info: undefined, update_domain: newDomain });
+      const { result } = await loadedHook();
+
+      let newId: string | null | undefined;
+      await act(async () => { newId = await result.current.retypeNode("info-5", "info", "domain"); });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("create_domain", {
+        request: expect.objectContaining({ title: "My note", subtype: "domain" }),
+      });
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("delete_info", { id: 5 });
+      expect(newId).toBe("domain-99");
+    });
   });
 
   describe("moveNode — domain variant", () => {

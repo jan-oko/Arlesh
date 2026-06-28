@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeNodeDimensions, estimateWrappedLineCount, getNodeSize, validTypesForCycling, isValidDropTarget } from "./node-meta";
+import { computeNodeDimensions, estimateWrappedLineCount, getNodeSize, validTypesForCycling, isValidDropTarget, computeEditHeight } from "./node-meta";
 
 describe("computeNodeDimensions", () => {
   it("matches getNodeSize height for a short single-word title", () => {
@@ -74,6 +74,68 @@ describe("estimateWrappedLineCount", () => {
 
   it("counts explicit newlines as forced breaks", () => {
     expect(estimateWrappedLineCount("A\nB\nC", 164, 18)).toBe(3);
+  });
+});
+
+describe("computeEditHeight", () => {
+  it("returns minimum height when lineCount is 1", () => {
+    const base = getNodeSize(0);
+    expect(computeEditHeight(0, 1)).toBe(base.height);
+  });
+
+  it("returns a larger height for more lines", () => {
+    const oneLineHeight = computeEditHeight(0, 1);
+    const threeLineHeight = computeEditHeight(0, 3);
+    expect(threeLineHeight).toBeGreaterThan(oneLineHeight);
+  });
+
+  it("matches nodeHeight formula: max(minHeight, VERTICAL_PADDING + lineCount * lineHeight)", () => {
+    // depth 0: minHeight=52, lineHeight=22, VERTICAL_PADDING=8
+    // lineCount=3 → 8 + 3*22 = 74 > 52 → should be 74
+    expect(computeEditHeight(0, 3)).toBe(74);
+  });
+});
+
+describe("isValidDropTarget — goal and task sources", () => {
+  it("goal can be dropped onto a domain (not task)", () => {
+    expect(isValidDropTarget("goal", "domain")).toBe(true);
+  });
+
+  it("goal can be dropped onto a goal", () => {
+    expect(isValidDropTarget("goal", "goal")).toBe(true);
+  });
+
+  it("goal cannot be dropped onto a task", () => {
+    expect(isValidDropTarget("goal", "task")).toBe(false);
+  });
+
+  it("task can be dropped onto a task", () => {
+    expect(isValidDropTarget("task", "task")).toBe(true);
+  });
+
+  it("task can be dropped onto a goal", () => {
+    expect(isValidDropTarget("task", "goal")).toBe(true);
+  });
+
+  it("task can be dropped onto a domain", () => {
+    expect(isValidDropTarget("task", "domain")).toBe(true);
+  });
+
+  it("project can be dropped onto an aspect", () => {
+    expect(isValidDropTarget("project", "aspect")).toBe(true);
+  });
+
+  it("project cannot be dropped onto a domain", () => {
+    expect(isValidDropTarget("project", "domain")).toBe(false);
+  });
+
+  it("domain can be dropped onto a domain", () => {
+    expect(isValidDropTarget("domain", "domain")).toBe(true);
+  });
+
+  it("aspect cannot be dropped anywhere (immutable)", () => {
+    expect(isValidDropTarget("aspect", "domain")).toBe(false);
+    expect(isValidDropTarget("aspect", "project")).toBe(false);
   });
 });
 

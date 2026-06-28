@@ -56,4 +56,14 @@ describe("useCanvasLayout", () => {
     const { result } = renderHook(() => useCanvasLayout(baseOptions({ dragSourceId: "leaf" })));
     expect(result.current.placeholderPos).toBeNull();
   });
+
+  it("placeholderPos has positive x when target is on the right side of root", () => {
+    // When both source and target are set, placeholderPos should be non-null.
+    const { result } = renderHook(() => useCanvasLayout(baseOptions({
+      dragSourceId: "leaf",
+      dragTargetId: "aspect",
+    })));
+    expect(result.current.placeholderPos).not.toBeNull();
+    expect(result.current.placeholderPos!.x).toBeGreaterThan(0);
+  });
 });

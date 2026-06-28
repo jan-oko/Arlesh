@@ -158,6 +158,35 @@ describe("useNodeActions — onPaste", () => {
   });
 });
 
+describe("useNodeActions — onInsertParent", () => {
+  it("does nothing for an aspect node", () => {
+    const opts = makeOpts();
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onInsertParent("aspect-1"); });
+    expect(opts.createChild).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when the node's parent is root", () => {
+    const opts = makeOpts({ tree: mkNode("root", "domain", [TASK_NODE]) });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onInsertParent("task-5"); });
+    expect(opts.createChild).not.toHaveBeenCalled();
+  });
+
+  it("creates a child of the parent, then moves the node under it", async () => {
+    const intermediary = mkNode("domain-99", "project");
+    const opts = makeOpts({
+      createChild: vi.fn().mockResolvedValue(intermediary),
+    });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onInsertParent("task-5"); });
+    await vi.waitFor(() => expect(opts.setEditingNodeId).toHaveBeenCalledWith("domain-99"));
+    expect(opts.createChild).toHaveBeenCalledWith("domain-3", "project", "");
+    expect(opts.moveNode).toHaveBeenCalledWith("task-5", "task", "domain-99", "project", 0);
+    expect(opts.selectNode).toHaveBeenCalledWith("domain-99");
+  });
+});
+
 describe("useNodeActions — onCreateSibling", () => {
   it("does nothing for an aspect node", () => {
     const opts = makeOpts();
