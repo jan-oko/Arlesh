@@ -120,7 +120,7 @@ function infoParentKey(info: Info): string {
   return `domain-${info.parent_id}`;
 }
 
-function buildTree(domains: Domain[], goals: Goal[], tasks: Task[], infos: Info[]): MindmapNode {
+export function buildTree(domains: Domain[], goals: Goal[], tasks: Task[], infos: Info[]): MindmapNode {
   const nodeMap = new Map<string, MindmapNode>();
 
   for (const domain of domains) {
