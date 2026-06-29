@@ -18,6 +18,28 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 **Task** — An action item. Parented under a Project, Domain, Goal, or another Task. Hebrew: _משימה_.
 
+**Flow** — A template for a Goal/Task subtree, materialized on demand. A new node kind. Has a title, an **Instance Type** (goal or task), a **Target Node**, and a Duration-form flow scope. May be parented under an Aspect, Domain, Project, or Goal. Hebrew: TBD.
+
+**Instance Type** — Whether a Flow materializes its root (and constrains its children) as a Goal or a Task. Hebrew: TBD.
+
+**Target Node** — The default node under which a Flow's instances are created. Overridable when starting the Flow. Hebrew: TBD.
+
+**Flow instance** — The result of starting a plain (non-habit) Flow: a real, persistent, independent Goal/Task subtree copied under the target. Retains a stored link to its originating Flow used only as a UI indicator (no cascading edits). Habit instances differ — they are virtual (see Habit). Dependencies declared between flow items are **remapped per instance/iteration** (Implement waits on this instance's Specify, not the template's); cross-iteration dependencies are not auto-created. Hebrew: TBD.
+
+**Flow item** — A child of a Flow (a flow task or flow goal). Like a normal Task/Goal but additionally carries one or more **Cycle Scope** / **Cycle Plan** pairs (see those terms). Hebrew: TBD.
+
+**Cycle Scope** — A flow item's *relative* relevance window, expressed as the Nth subscope of the flow scope (a scope kind lower than the flow's), e.g. "3rd day of the 2-week flow scope." Null means the whole flow scope. Resolved to a concrete Time Scope when the flow is started. Hebrew: TBD.
+
+**Cycle Plan** — A flow item's *relative* Plan within its Cycle Scope (e.g. the morning of that day). Resolved to a concrete Plan on flow start. A flow item may hold multiple (Cycle Scope, Cycle Plan) pairs; each pair materializes a separate item per start/iteration. Hebrew: TBD.
+
+**Habit** — A Flow with a Recurrence pattern. Its instances are generated automatically per iteration and are **virtual**: each is identified by (flow item, iteration scope), rendered from the template, with only divergences (status, edits, dependencies, deletion/archival tombstones) persisted in an overlay table. A Habit can be **Archived** (stops recurring; existing occurrences survive). Hebrew: TBD.
+
+**Recurrence** — A Habit's pattern, composed of **Repetition** (a Start anchor, an optional Gap of N of a scope kind ≥ the habit scope, and an optional end) and **Consumption** (see below). Hebrew: TBD.
+
+**Consumption** — A Habit's per-habit configuration for how unfinished instances are treated as iterations pass. A configurable tree: (1) **Destructive vs Accumulating** — are unfinished instances archived when their iteration passes, or do they survive? (2) if Accumulating, **Overlapping vs Blocking** — are new iterations generated while unresolved instances exist, or withheld? (3) if Blocking, **Catch-up policy** when the open iteration is completed — generate *all pending* missed iterations in order, only the *next* iteration (advance by one), or jump to the *latest* (current) iteration while recording the skipped intermediate iterations as missed tombstones (for streak/history). Hebrew: TBD.
+
+**Iteration** — One concrete occurrence window of a Habit, anchored from the Repetition Start plus accumulated flow-scope-and-gap steps. Hebrew: TBD.
+
 **Blocker** — A condition that prevents a Task from being acted on. Either an explicit string reason or a virtual block from an unmet dependency. Hebrew: _חסם_.
 
 **Dependency** — A prerequisite relationship from a Task to another Task or Goal. Circular dependencies are rejected at write time. Hebrew: _תלות_ (singular), _תלויות_ (plural).
@@ -38,9 +60,21 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 **Knowledge Base** — The external Obsidian vault integrated with Arlesh. Hebrew: _בסיס ידע_.
 
-**Scope** — A time-range entity (Season / Month / Week / Day) lazily instantiated on first reference. Hebrew: _מסגרת_.
+**Scope** — A time-range entity (Part of Day / Day / Week / Month / Season) lazily instantiated on first reference. Hebrew: _מסגרת_.
 
 **Season** — A three-month period. Hebrew: _עונה_.
+
+**Part of Day** — A sub-day scope: one of Morning, Noon, Afternoon, Evening, Night, Premorning. The smallest *canonical* (calendar-aligned) scope granularity. Hebrew: TBD.
+
+**Exact scope** — A scope defined directly by two arbitrary datetimes at minute precision, outside the canonical season/month/week/day/part hierarchy. Always already in datetime-boundary form. Hebrew: TBD.
+
+**Time Scope** — An item's *relevance window*: when a Task or Goal is meaningful. Expressed in one of two forms — **Boundaries** (an explicit start and end Scope of the same kind, forming an inclusive range) or **Duration** (a start Scope anchor, defaulting to the current scope, plus a length of N of that kind). Both forms resolve to a concrete inclusive `[start, end]` window. On a standalone item the Duration form is **snapshotted** to a fixed window at save time, while persisting its duration parameters (anchor, N, kind) so views and edits stay duration-shaped; inside a Flow template the Duration/cycle scope stays **relative** and is resolved per-instance against the flow scope. A null Time Scope means **inherit the nearest scoped ancestor's window**; an item is truly **Unscoped** (always relevant) only when no ancestor is scoped. Distinct from a Plan. Hebrew: TBD.
+
+**Plan** — The specific Scope a Task is *scheduled into*. Tasks only (Goals have no Plan). Must fall within the task's Time Scope (the same scope or a subscope of it). Replaces the former single `scope_id` semantics of "planning". Hebrew: TBD.
+
+**Active** — A Scope is active when it contains the current datetime. A Task/Goal is active when its Time Scope is active; Unscoped items are always active. Hebrew: TBD.
+
+**Archived (by scope)** — A Task/Goal whose Time Scope has fully passed. Hebrew: TBD.
 
 **Person** — A knowledge-base entity representing a person. Hebrew: _אדם_ (singular), _אנשים_ (plural).
 
@@ -57,3 +91,8 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 - A Goal cannot be the parent of a Task that already has another Goal parent elsewhere in the tree.
 - Circular Task/Goal dependencies are always rejected.
 - Type cycling (Ctrl+Up/Down) follows the valid-type sequence for the node's parent context.
+- Scope containment is evaluated on **resolved datetime boundaries** (interval containment), so it holds uniformly across canonical, exact, and multi-scope-kind windows. Scope X is "within" scope F iff X's window ⊆ F's window.
+- A child item's explicit Time Scope must be **wholly contained** within its parent's Time Scope.
+- A Task's Plan must be wholly contained within that task's Time Scope, and within its parent's Plan.
+- Filtering by a scope returns every item whose scope is wholly contained within it.
+- Flow/Habit instances (real copies and virtual instances) must satisfy containment against their **Target Node's** Time Scope. The target picker only offers scope-valid targets; editing the scope of an item that has flow children prompts the user to reconcile one side or the other.
