@@ -7,6 +7,9 @@ use std::collections::{HashSet, VecDeque};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::database::DatabasePool;
+use crate::scopes::model::ScopeId;
+use crate::scopes::resolve::{self, Bounds};
+use crate::scopes::ScopeRepository;
 use error::TaskError;
 use model::{
     CreateGoalRequest, CreateTaskRequest, Dependency, DurationSpec, Goal, GoalId, GoalStatus, Task,
@@ -324,8 +327,45 @@ impl<'a> TaskRepository<'a> {
         Self { pool }
     }
 
+    /// Resolves a single scope id to its half-open datetime window.
+    async fn scope_window(&self, scope_id: i64) -> Result<Bounds, TaskError> {
+        let scope = ScopeRepository::new(self.pool).get(ScopeId(scope_id)).await?;
+        Ok(resolve::scope_bounds(&scope)?)
+    }
+
+    /// Resolves a Time Scope's boundaries to its combined window: the start of the start
+    /// boundary through the end of the end boundary.
+    async fn time_scope_window(&self, time_scope: &TimeScope) -> Result<Bounds, TaskError> {
+        let start = self.scope_window(time_scope.start_id).await?.0;
+        let end = self.scope_window(time_scope.end_id).await?.1;
+        Ok((start, end))
+    }
+
+    /// Rejects a write whose Plan is not wholly contained within its Time Scope. A task with no
+    /// Plan, or no Time Scope, is unconstrained here (a null Time Scope inherits an ancestor's).
+    async fn validate_plan_within_time_scope(
+        &self,
+        time_scope: &Option<TimeScope>,
+        plan_scope_id: Option<i64>,
+    ) -> Result<(), TaskError> {
+        let (Some(time_scope), Some(plan)) = (time_scope, plan_scope_id) else {
+            return Ok(());
+        };
+        let time_window = self.time_scope_window(time_scope).await?;
+        let plan_window = self.scope_window(plan).await?;
+        if resolve::interval_contains(time_window, plan_window) {
+            Ok(())
+        } else {
+            Err(TaskError::ScopeContainment(format!(
+                "plan scope {plan} is not within the task's time scope"
+            )))
+        }
+    }
+
     /// Creates a new task.
     pub async fn create(&self, request: CreateTaskRequest) -> Result<Task, TaskError> {
+        self.validate_plan_within_time_scope(&request.time_scope, request.plan_scope_id)
+            .await?;
         let status = request.status.as_ref().map(|s| s.as_str()).unwrap_or("todo");
         let (ts_start, ts_end, ts_n, ts_kind) = time_scope_columns(&request.time_scope);
         let id = sqlx::query(
@@ -451,6 +491,8 @@ impl<'a> TaskRepository<'a> {
             Some(new_plan) => new_plan,
             None => task.plan_scope_id,
         };
+        self.validate_plan_within_time_scope(&time_scope, plan_scope_id)
+            .await?;
 
         if let (Some(new_parent_type), Some(new_parent_id)) =
             (request.parent_type.as_deref(), request.parent_id)

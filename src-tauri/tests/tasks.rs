@@ -855,6 +855,105 @@ async fn task_plan_is_independent_of_time_scope() {
 }
 
 #[tokio::test]
+async fn plan_within_time_scope_is_accepted() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let scope_repo = ScopeRepository::new(&pool);
+    // 2026-07-01 (Wed) sits inside its own Sun–Sat week.
+    let week = scope_repo
+        .get_or_create(ScopeKind::Week, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap())
+        .await
+        .unwrap();
+    let day = scope_repo
+        .get_or_create(ScopeKind::Day, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap())
+        .await
+        .unwrap();
+
+    let task = TaskRepository::new(&pool)
+        .create(CreateTaskRequest {
+            title: "Planned".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            time_scope: Some(TimeScope { start_id: week.id, end_id: week.id, duration: None }),
+            plan_scope_id: Some(day.id),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(task.plan_scope_id, Some(day.id));
+}
+
+#[tokio::test]
+async fn plan_outside_time_scope_is_rejected() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let scope_repo = ScopeRepository::new(&pool);
+    let week = scope_repo
+        .get_or_create(ScopeKind::Week, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap())
+        .await
+        .unwrap();
+    // A day three weeks later is not contained in the time-scope week.
+    let far_day = scope_repo
+        .get_or_create(ScopeKind::Day, chrono::NaiveDate::from_ymd_opt(2026, 7, 20).unwrap())
+        .await
+        .unwrap();
+
+    let result = TaskRepository::new(&pool)
+        .create(CreateTaskRequest {
+            title: "Bad plan".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            time_scope: Some(TimeScope { start_id: week.id, end_id: week.id, duration: None }),
+            plan_scope_id: Some(far_day.id),
+            ..Default::default()
+        })
+        .await;
+
+    assert!(
+        matches!(result, Err(arlesh_lib::tasks::error::TaskError::ScopeContainment(_))),
+        "plan outside the time scope should be rejected, got {result:?}",
+    );
+}
+
+#[tokio::test]
+async fn update_rejects_plan_outside_time_scope() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let scope_repo = ScopeRepository::new(&pool);
+    let week = scope_repo
+        .get_or_create(ScopeKind::Week, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap())
+        .await
+        .unwrap();
+    let far_day = scope_repo
+        .get_or_create(ScopeKind::Day, chrono::NaiveDate::from_ymd_opt(2026, 7, 20).unwrap())
+        .await
+        .unwrap();
+    let task_repo = TaskRepository::new(&pool);
+
+    let task = task_repo
+        .create(CreateTaskRequest {
+            title: "Scoped".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            time_scope: Some(TimeScope { start_id: week.id, end_id: week.id, duration: None }),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    let result = task_repo
+        .update(
+            task.id.into(),
+            UpdateTaskRequest { plan_scope_id: Some(Some(far_day.id)), ..Default::default() },
+        )
+        .await;
+    assert!(matches!(
+        result,
+        Err(arlesh_lib::tasks::error::TaskError::ScopeContainment(_))
+    ));
+}
+
+#[tokio::test]
 async fn update_goal_blocked_reason() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
