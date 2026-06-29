@@ -107,7 +107,7 @@ async fn person_linked_to_task_via_delegation() {
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
-            scope_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();

@@ -8,8 +8,8 @@ use arlesh_lib::{
     scopes::{model::ScopeKind, ScopeRepository},
     tasks::{
         model::{
-            CreateGoalRequest, CreateTaskRequest, Dependency, GoalStatus, TaskStatus,
-            UpdateGoalRequest, UpdateTaskRequest,
+            CreateGoalRequest, CreateTaskRequest, Dependency, DurationSpec, GoalStatus, TaskStatus,
+            TimeScope, UpdateGoalRequest, UpdateTaskRequest,
         },
         GoalRepository, TaskRepository,
     },
@@ -66,7 +66,7 @@ async fn create_task_and_goal() {
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
-            scope_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -81,7 +81,7 @@ async fn create_task_and_goal() {
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
-            scope_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -102,7 +102,7 @@ async fn undone_dependency_blocks_task() {
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
-            scope_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -113,7 +113,7 @@ async fn undone_dependency_blocks_task() {
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
-            scope_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -140,7 +140,7 @@ async fn done_dependency_unblocks_task() {
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
-            scope_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -151,7 +151,7 @@ async fn done_dependency_unblocks_task() {
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
-            scope_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -188,7 +188,7 @@ async fn circular_dependency_rejected() {
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
-            scope_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -199,7 +199,7 @@ async fn circular_dependency_rejected() {
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
-            scope_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -234,7 +234,7 @@ async fn goal_dependency_blocks_task_until_achieved() {
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
-            scope_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -245,7 +245,7 @@ async fn goal_dependency_blocks_task_until_achieved() {
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
-            scope_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -302,7 +302,7 @@ async fn reparent_task_to_different_project() {
             parent_type: "project".into(),
             parent_id: project_a_id,
             status: None,
-            scope_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -337,7 +337,7 @@ async fn add_and_remove_tag_on_task() {
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
-            scope_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -366,7 +366,7 @@ async fn list_tasks_includes_tag_ids() {
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
-            scope_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -390,7 +390,7 @@ async fn update_task_title() {
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
-            scope_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -418,7 +418,7 @@ async fn delete_task() {
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
-            scope_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -445,7 +445,7 @@ async fn remove_dependency() {
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
-            scope_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -456,7 +456,7 @@ async fn remove_dependency() {
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
-            scope_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -486,7 +486,7 @@ async fn update_goal_title() {
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
-            scope_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -514,7 +514,7 @@ async fn delete_goal() {
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
-            scope_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -542,7 +542,7 @@ async fn add_and_remove_tag_on_goal() {
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
-            scope_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -571,7 +571,7 @@ async fn list_goals_includes_tag_ids() {
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
-            scope_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -612,7 +612,7 @@ async fn reparent_goal_to_different_project() {
             parent_type: "project".into(),
             parent_id: project_a_id,
             status: None,
-            scope_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -646,7 +646,7 @@ async fn update_task_status_to_in_progress() {
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
-            scope_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -676,7 +676,7 @@ async fn update_task_blocked_reason() {
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
-            scope_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -717,7 +717,7 @@ async fn explicit_block_reason_surfaces_in_get_with_blockers() {
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
-            scope_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -754,22 +754,104 @@ async fn update_task_scope() {
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
-            scope_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
 
-    assert!(task.scope_id.is_none());
+    assert!(task.time_scope.is_none());
 
     let updated = task_repo
         .update(
             task.id.into(),
-            UpdateTaskRequest { scope_id: Some(Some(scope.id)), ..Default::default() },
+            UpdateTaskRequest {
+                time_scope: Some(Some(TimeScope {
+                    start_id: scope.id,
+                    end_id: scope.id,
+                    duration: None,
+                })),
+                ..Default::default()
+            },
         )
         .await
         .unwrap();
 
-    assert_eq!(updated.scope_id, Some(scope.id));
+    let time_scope = updated.time_scope.expect("time scope set");
+    assert_eq!(time_scope.start_id, scope.id);
+    assert_eq!(time_scope.end_id, scope.id);
+}
+
+#[tokio::test]
+async fn task_time_scope_duration_params_round_trip() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let task_repo = TaskRepository::new(&pool);
+    let scope = ScopeRepository::new(&pool)
+        .get_or_create(ScopeKind::Week, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap())
+        .await
+        .unwrap();
+
+    let task = task_repo
+        .create(CreateTaskRequest {
+            title: "Duration Task".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            time_scope: Some(TimeScope {
+                start_id: scope.id,
+                end_id: scope.id,
+                duration: Some(DurationSpec { n: 3, kind: "week".into() }),
+            }),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    // The snapshotted window persists alongside the remembered duration parameters.
+    let duration = task.time_scope.and_then(|ts| ts.duration).expect("duration kept");
+    assert_eq!(duration.n, 3);
+    assert_eq!(duration.kind, "week");
+}
+
+#[tokio::test]
+async fn task_plan_is_independent_of_time_scope() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let task_repo = TaskRepository::new(&pool);
+    let scope_repo = ScopeRepository::new(&pool);
+    let week = scope_repo
+        .get_or_create(ScopeKind::Week, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap())
+        .await
+        .unwrap();
+    let day = scope_repo
+        .get_or_create(ScopeKind::Day, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap())
+        .await
+        .unwrap();
+
+    let task = task_repo
+        .create(CreateTaskRequest {
+            title: "Planned Task".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            time_scope: Some(TimeScope { start_id: week.id, end_id: week.id, duration: None }),
+            plan_scope_id: Some(day.id),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(task.time_scope.expect("time scope").start_id, week.id);
+    assert_eq!(task.plan_scope_id, Some(day.id));
+
+    // Clearing the Plan leaves the Time Scope intact.
+    let cleared = task_repo
+        .update(
+            task.id.into(),
+            UpdateTaskRequest { plan_scope_id: Some(None), ..Default::default() },
+        )
+        .await
+        .unwrap();
+    assert!(cleared.plan_scope_id.is_none());
+    assert!(cleared.time_scope.is_some(), "clearing Plan must not clear Time Scope");
 }
 
 #[tokio::test]
@@ -784,7 +866,7 @@ async fn update_goal_blocked_reason() {
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
-            scope_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -830,7 +912,7 @@ async fn update_goal_scope() {
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
-            scope_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -838,12 +920,21 @@ async fn update_goal_scope() {
     let updated = goal_repo
         .update(
             goal.id.into(),
-            UpdateGoalRequest { scope_id: Some(Some(scope.id)), ..Default::default() },
+            UpdateGoalRequest {
+                time_scope: Some(Some(TimeScope {
+                    start_id: scope.id,
+                    end_id: scope.id,
+                    duration: None,
+                })),
+                ..Default::default()
+            },
         )
         .await
         .unwrap();
 
-    assert_eq!(updated.scope_id, Some(scope.id));
+    let time_scope = updated.time_scope.expect("time scope set");
+    assert_eq!(time_scope.start_id, scope.id);
+    assert_eq!(time_scope.end_id, scope.id);
 }
 
 #[tokio::test]
@@ -858,7 +949,7 @@ async fn goal_frozen_and_archived_statuses() {
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
-            scope_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -894,7 +985,7 @@ async fn goal_is_achieved() {
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
-            scope_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();

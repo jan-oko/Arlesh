@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { TimeScope } from "@/api/time-scope";
 
 export interface Task {
   id: number;
@@ -8,7 +9,8 @@ export interface Task {
   status: string;
   blocked_reason: string | null;
   delegate_to: number | null;
-  scope_id: number | null;
+  time_scope: TimeScope | null;
+  plan_scope_id: number | null;
   tag_ids: number[];
   position: number;
 }
@@ -18,7 +20,8 @@ export interface CreateTaskRequest {
   parent_type: string;
   parent_id: number;
   status?: string;
-  scope_id?: number;
+  time_scope?: TimeScope;
+  plan_scope_id?: number;
 }
 
 export interface UpdateTaskRequest {
@@ -26,7 +29,9 @@ export interface UpdateTaskRequest {
   status?: string;
   blocked_reason?: string;
   delegate_to?: number | null;
-  scope_id?: number | null;
+  // Absent = leave unchanged, null = clear, value = set.
+  time_scope?: TimeScope | null;
+  plan_scope_id?: number | null;
   parent_type?: string;
   parent_id?: number;
   position?: number;

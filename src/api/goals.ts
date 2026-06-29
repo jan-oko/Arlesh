@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { TimeScope } from "@/api/time-scope";
 
 export interface Goal {
   id: number;
@@ -7,7 +8,7 @@ export interface Goal {
   parent_id: number;
   status: string;
   blocked_reason: string | null;
-  scope_id: number | null;
+  time_scope: TimeScope | null;
   tag_ids: number[];
   position: number;
 }
@@ -17,14 +18,15 @@ export interface CreateGoalRequest {
   parent_type: string;
   parent_id: number;
   status?: string;
-  scope_id?: number;
+  time_scope?: TimeScope;
 }
 
 export interface UpdateGoalRequest {
   title?: string;
   status?: string;
   blocked_reason?: string;
-  scope_id?: number | null;
+  // Absent = leave unchanged, null = clear, value = set.
+  time_scope?: TimeScope | null;
   parent_type?: string;
   parent_id?: number;
   position?: number;

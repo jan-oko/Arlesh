@@ -8,6 +8,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- Split a task/goal's single `scope_id` into a **Time Scope** (relevance window, on tasks and goals) and a task-only **Plan** (scope scheduled into). Time Scope is a boundaries window (start/end scope ids) that also remembers its Duration parameters when set that way; migration `0006` migrates the old `scope_id` to the Time Scope and adds `plan_scope_id`. API types gain a shared `TimeScope` value object
+
 ### Added
 - Part-of-Day and Exact scope kinds (Phase 6, Time Scopes): six sub-day bands (Night crosses midnight, parented to its starting day) and arbitrary minute-precision datetime ranges. Scopes resolve to half-open `[start, end)` datetime intervals with `active` and interval-containment checks; `ScopeRepository::get_or_create_part` / `get_or_create_exact` constructors; migration `0005` rebuilds the scopes table with `part`/`day_id`/`start_datetime`/`end_datetime` columns and per-family partial unique indexes
 - Direct integration tests for `database::connect()` and `database::run_migrations()` — verifies the `after_connect` PRAGMA hook and migration seed; `database/mod.rs` is now 14/14 (100%)

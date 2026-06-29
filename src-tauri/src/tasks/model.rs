@@ -82,6 +82,29 @@ impl GoalStatus {
     }
 }
 
+/// The Duration parameters of a Time Scope, retained after snapshotting so the UI can keep
+/// presenting and editing the scope in duration form.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DurationSpec {
+    /// Number of scope-kind units (e.g. 3 in "3 weeks").
+    pub n: i64,
+    /// The scope kind the duration is expressed in (e.g. "week").
+    pub kind: String,
+}
+
+/// An item's relevance window: a resolved boundaries `[start, end]` scope range (equal ids
+/// denote a single scope), optionally tagged with the Duration parameters it came from.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TimeScope {
+    /// Start boundary scope id.
+    pub start_id: i64,
+    /// End boundary scope id.
+    pub end_id: i64,
+    /// Duration parameters, when the scope was set in duration form.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration: Option<DurationSpec>,
+}
+
 /// A task row as returned from the database.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Task {
@@ -99,8 +122,10 @@ pub struct Task {
     pub blocked_reason: Option<String>,
     /// Person id this task is delegated to (if any).
     pub delegate_to: Option<i64>,
-    /// Scope this task is planned to (if any).
-    pub scope_id: Option<i64>,
+    /// Relevance window (if set). A null value inherits the nearest scoped ancestor.
+    pub time_scope: Option<TimeScope>,
+    /// Scope this task is scheduled into (if any). Must be contained in `time_scope`.
+    pub plan_scope_id: Option<i64>,
     /// Tag domain ids attached to this task.
     pub tag_ids: Vec<i64>,
     /// Sort position among siblings; defaults to id (insertion order).
@@ -131,8 +156,8 @@ pub struct Goal {
     pub status: String,
     /// Explicit block reason (if set).
     pub blocked_reason: Option<String>,
-    /// Scope this goal is planned to (if any).
-    pub scope_id: Option<i64>,
+    /// Relevance window (if set). A null value inherits the nearest scoped ancestor.
+    pub time_scope: Option<TimeScope>,
     /// Tag domain ids attached to this goal.
     pub tag_ids: Vec<i64>,
     /// Sort position among siblings; defaults to id (insertion order).
@@ -156,7 +181,7 @@ pub enum Dependency {
 }
 
 /// Request body for creating a task.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 pub struct CreateTaskRequest {
     /// Display title.
     pub title: String,
@@ -166,8 +191,12 @@ pub struct CreateTaskRequest {
     pub parent_id: i64,
     /// Initial status (defaults to Todo).
     pub status: Option<TaskStatus>,
-    /// Initial scope assignment.
-    pub scope_id: Option<i64>,
+    /// Initial relevance window.
+    #[serde(default)]
+    pub time_scope: Option<TimeScope>,
+    /// Initial Plan (scope scheduled into).
+    #[serde(default)]
+    pub plan_scope_id: Option<i64>,
 }
 
 /// Request body for updating a task.
@@ -181,8 +210,10 @@ pub struct UpdateTaskRequest {
     pub blocked_reason: Option<String>,
     /// Person to delegate to (None leaves unchanged, Some(None) clears it).
     pub delegate_to: Option<Option<i64>>,
-    /// Scope to plan to (None leaves unchanged, Some(None) clears it).
-    pub scope_id: Option<Option<i64>>,
+    /// Relevance window to set (None leaves unchanged, Some(None) clears it).
+    pub time_scope: Option<Option<TimeScope>>,
+    /// Plan to set (None leaves unchanged, Some(None) clears it).
+    pub plan_scope_id: Option<Option<i64>>,
     /// New parent entity type for re-parenting (must be set together with parent_id).
     pub parent_type: Option<String>,
     /// New parent entity id for re-parenting (must be set together with parent_type).
@@ -192,7 +223,7 @@ pub struct UpdateTaskRequest {
 }
 
 /// Request body for creating a goal.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 pub struct CreateGoalRequest {
     /// Display title.
     pub title: String,
@@ -202,8 +233,9 @@ pub struct CreateGoalRequest {
     pub parent_id: i64,
     /// Initial status (defaults to Active).
     pub status: Option<GoalStatus>,
-    /// Initial scope assignment.
-    pub scope_id: Option<i64>,
+    /// Initial relevance window.
+    #[serde(default)]
+    pub time_scope: Option<TimeScope>,
 }
 
 #[cfg(test)]
@@ -247,8 +279,8 @@ pub struct UpdateGoalRequest {
     pub status: Option<GoalStatus>,
     /// Explicit block reason to set or clear.
     pub blocked_reason: Option<String>,
-    /// Scope to plan to (None leaves unchanged, Some(None) clears it).
-    pub scope_id: Option<Option<i64>>,
+    /// Relevance window to set (None leaves unchanged, Some(None) clears it).
+    pub time_scope: Option<Option<TimeScope>>,
     /// New parent entity type for re-parenting (must be set together with parent_id).
     pub parent_type: Option<String>,
     /// New parent entity id for re-parenting (must be set together with parent_type).

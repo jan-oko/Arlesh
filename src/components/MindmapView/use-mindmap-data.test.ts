@@ -22,7 +22,7 @@ function mkDomain(overrides: Partial<Domain> = {}): Domain {
 function mkGoal(overrides: Partial<Goal> = {}): Goal {
   return {
     id: 1, title: "Goal", parent_type: "domain", parent_id: 1,
-    status: "active", blocked_reason: null, scope_id: null, tag_ids: [], position: 0,
+    status: "active", blocked_reason: null, time_scope: null, tag_ids: [], position: 0,
     ...overrides,
   };
 }
@@ -30,7 +30,7 @@ function mkGoal(overrides: Partial<Goal> = {}): Goal {
 function mkTask(overrides: Partial<Task> = {}): Task {
   return {
     id: 1, title: "Task", parent_type: "goal", parent_id: 1,
-    status: "todo", blocked_reason: null, delegate_to: null, scope_id: null, tag_ids: [], position: 0,
+    status: "todo", blocked_reason: null, delegate_to: null, time_scope: null, plan_scope_id: null, tag_ids: [], position: 0,
     ...overrides,
   };
 }

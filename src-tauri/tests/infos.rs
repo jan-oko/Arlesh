@@ -46,7 +46,7 @@ async fn create_info_under_goal() {
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
-            scope_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -77,7 +77,7 @@ async fn create_info_under_task() {
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
-            scope_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -249,7 +249,7 @@ async fn update_info_parent() {
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
-            scope_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();

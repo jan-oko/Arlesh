@@ -9,12 +9,48 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::database::DatabasePool;
 use error::TaskError;
 use model::{
-    CreateGoalRequest, CreateTaskRequest, Dependency, Goal, GoalId, GoalStatus, Task, TaskId,
-    TaskStatus, TaskWithBlockers, UpdateGoalRequest, UpdateTaskRequest,
+    CreateGoalRequest, CreateTaskRequest, Dependency, DurationSpec, Goal, GoalId, GoalStatus, Task,
+    TaskId, TaskStatus, TaskWithBlockers, TimeScope, UpdateGoalRequest, UpdateTaskRequest,
 };
 
 // Internal row types that map directly to database columns via sqlx::FromRow.
 // Public API types (Task, Goal) include derived fields like tag_ids.
+
+/// Decomposes a Time Scope into its four flat column values for persistence.
+fn time_scope_columns(
+    time_scope: &Option<TimeScope>,
+) -> (Option<i64>, Option<i64>, Option<i64>, Option<String>) {
+    match time_scope {
+        Some(ts) => {
+            let (n, kind) = match &ts.duration {
+                Some(d) => (Some(d.n), Some(d.kind.clone())),
+                None => (None, None),
+            };
+            (Some(ts.start_id), Some(ts.end_id), n, kind)
+        }
+        None => (None, None, None, None),
+    }
+}
+
+/// Reassembles a Time Scope value object from its flat row columns. A scope exists only when
+/// both boundary ids are present; the duration parameters are optional metadata on top.
+fn time_scope_from_row(
+    start_id: Option<i64>,
+    end_id: Option<i64>,
+    duration_n: Option<i64>,
+    duration_kind: Option<String>,
+) -> Option<TimeScope> {
+    let (start_id, end_id) = (start_id?, end_id?);
+    let duration = match (duration_n, duration_kind) {
+        (Some(n), Some(kind)) => Some(DurationSpec { n, kind }),
+        _ => None,
+    };
+    Some(TimeScope {
+        start_id,
+        end_id,
+        duration,
+    })
+}
 
 #[derive(sqlx::FromRow)]
 struct TaskRow {
@@ -25,7 +61,11 @@ struct TaskRow {
     status: String,
     blocked_reason: Option<String>,
     delegate_to: Option<i64>,
-    scope_id: Option<i64>,
+    time_scope_start_id: Option<i64>,
+    time_scope_end_id: Option<i64>,
+    time_scope_duration_n: Option<i64>,
+    time_scope_duration_kind: Option<String>,
+    plan_scope_id: Option<i64>,
     position: i64,
 }
 
@@ -39,7 +79,13 @@ impl From<TaskRow> for Task {
             status: row.status,
             blocked_reason: row.blocked_reason,
             delegate_to: row.delegate_to,
-            scope_id: row.scope_id,
+            time_scope: time_scope_from_row(
+                row.time_scope_start_id,
+                row.time_scope_end_id,
+                row.time_scope_duration_n,
+                row.time_scope_duration_kind,
+            ),
+            plan_scope_id: row.plan_scope_id,
             tag_ids: vec![],
             position: row.position,
         }
@@ -54,7 +100,10 @@ struct GoalRow {
     parent_id: i64,
     status: String,
     blocked_reason: Option<String>,
-    scope_id: Option<i64>,
+    time_scope_start_id: Option<i64>,
+    time_scope_end_id: Option<i64>,
+    time_scope_duration_n: Option<i64>,
+    time_scope_duration_kind: Option<String>,
     position: i64,
 }
 
@@ -67,7 +116,12 @@ impl From<GoalRow> for Goal {
             parent_id: row.parent_id,
             status: row.status,
             blocked_reason: row.blocked_reason,
-            scope_id: row.scope_id,
+            time_scope: time_scope_from_row(
+                row.time_scope_start_id,
+                row.time_scope_end_id,
+                row.time_scope_duration_n,
+                row.time_scope_duration_kind,
+            ),
             tag_ids: vec![],
             position: row.position,
         }
@@ -112,15 +166,21 @@ impl<'a> GoalRepository<'a> {
     /// Creates a new goal.
     pub async fn create(&self, request: CreateGoalRequest) -> Result<Goal, TaskError> {
         let status = request.status.as_ref().map(|s| s.as_str()).unwrap_or("active");
+        let (ts_start, ts_end, ts_n, ts_kind) = time_scope_columns(&request.time_scope);
         let id = sqlx::query(
-            "INSERT INTO goals (title, parent_type, parent_id, status, scope_id)
-             VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO goals
+                (title, parent_type, parent_id, status,
+                 time_scope_start_id, time_scope_end_id, time_scope_duration_n, time_scope_duration_kind)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&request.title)
         .bind(&request.parent_type)
         .bind(request.parent_id)
         .bind(status)
-        .bind(request.scope_id)
+        .bind(ts_start)
+        .bind(ts_end)
+        .bind(ts_n)
+        .bind(&ts_kind)
         .execute(self.pool)
         .await?
         .last_insert_rowid();
@@ -175,10 +235,11 @@ impl<'a> GoalRepository<'a> {
             Some(reason) => Some(reason),
             None => goal.blocked_reason,
         };
-        let scope_id = match request.scope_id {
-            Some(new_scope_id) => new_scope_id,
-            None => goal.scope_id,
+        let time_scope = match request.time_scope {
+            Some(new_time_scope) => new_time_scope,
+            None => goal.time_scope,
         };
+        let (ts_start, ts_end, ts_n, ts_kind) = time_scope_columns(&time_scope);
 
         if let (Some(new_parent_type), Some(new_parent_id)) =
             (request.parent_type.as_deref(), request.parent_id)
@@ -195,12 +256,17 @@ impl<'a> GoalRepository<'a> {
 
         let position = request.position.unwrap_or(goal.position);
         sqlx::query(
-            "UPDATE goals SET title=?, status=?, blocked_reason=?, scope_id=?, position=? WHERE id=?",
+            "UPDATE goals SET title=?, status=?, blocked_reason=?,
+                time_scope_start_id=?, time_scope_end_id=?,
+                time_scope_duration_n=?, time_scope_duration_kind=?, position=? WHERE id=?",
         )
         .bind(&title)
         .bind(&status)
         .bind(&blocked_reason)
-        .bind(scope_id)
+        .bind(ts_start)
+        .bind(ts_end)
+        .bind(ts_n)
+        .bind(&ts_kind)
         .bind(position)
         .bind(id.0)
         .execute(self.pool)
@@ -261,15 +327,23 @@ impl<'a> TaskRepository<'a> {
     /// Creates a new task.
     pub async fn create(&self, request: CreateTaskRequest) -> Result<Task, TaskError> {
         let status = request.status.as_ref().map(|s| s.as_str()).unwrap_or("todo");
+        let (ts_start, ts_end, ts_n, ts_kind) = time_scope_columns(&request.time_scope);
         let id = sqlx::query(
-            "INSERT INTO tasks (title, parent_type, parent_id, status, scope_id)
-             VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO tasks
+                (title, parent_type, parent_id, status,
+                 time_scope_start_id, time_scope_end_id, time_scope_duration_n,
+                 time_scope_duration_kind, plan_scope_id)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&request.title)
         .bind(&request.parent_type)
         .bind(request.parent_id)
         .bind(status)
-        .bind(request.scope_id)
+        .bind(ts_start)
+        .bind(ts_end)
+        .bind(ts_n)
+        .bind(&ts_kind)
+        .bind(request.plan_scope_id)
         .execute(self.pool)
         .await?
         .last_insert_rowid();
@@ -368,9 +442,14 @@ impl<'a> TaskRepository<'a> {
             Some(new_delegate) => new_delegate,
             None => task.delegate_to,
         };
-        let scope_id = match request.scope_id {
-            Some(new_scope_id) => new_scope_id,
-            None => task.scope_id,
+        let time_scope = match request.time_scope {
+            Some(new_time_scope) => new_time_scope,
+            None => task.time_scope,
+        };
+        let (ts_start, ts_end, ts_n, ts_kind) = time_scope_columns(&time_scope);
+        let plan_scope_id = match request.plan_scope_id {
+            Some(new_plan) => new_plan,
+            None => task.plan_scope_id,
         };
 
         if let (Some(new_parent_type), Some(new_parent_id)) =
@@ -388,13 +467,19 @@ impl<'a> TaskRepository<'a> {
 
         let position = request.position.unwrap_or(task.position);
         sqlx::query(
-            "UPDATE tasks SET title=?, status=?, blocked_reason=?, delegate_to=?, scope_id=?, position=? WHERE id=?",
+            "UPDATE tasks SET title=?, status=?, blocked_reason=?, delegate_to=?,
+                time_scope_start_id=?, time_scope_end_id=?, time_scope_duration_n=?,
+                time_scope_duration_kind=?, plan_scope_id=?, position=? WHERE id=?",
         )
         .bind(&title)
         .bind(&status)
         .bind(&blocked_reason)
         .bind(delegate_to)
-        .bind(scope_id)
+        .bind(ts_start)
+        .bind(ts_end)
+        .bind(ts_n)
+        .bind(&ts_kind)
+        .bind(plan_scope_id)
         .bind(position)
         .bind(id.0)
         .execute(self.pool)
