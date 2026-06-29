@@ -2,12 +2,53 @@
 
 pub mod error;
 pub mod model;
+pub mod resolve;
 
-use chrono::{Datelike, Duration, NaiveDate};
+use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime};
 
 use crate::database::DatabasePool;
 use error::ScopeError;
-use model::{Scope, ScopeId, ScopeKind};
+use model::{PartOfDay, Scope, ScopeId, ScopeKind};
+use resolve::EXACT_DATETIME_FORMAT;
+
+/// The four calendar-aligned scope kinds that form the containment hierarchy and are
+/// created from a single anchoring date. Excludes Part-of-Day and Exact, which have
+/// dedicated constructors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CanonicalKind {
+    Season,
+    Month,
+    Week,
+    Day,
+}
+
+impl CanonicalKind {
+    /// Narrows a `ScopeKind` to a `CanonicalKind`, or `None` for Part-of-Day / Exact.
+    fn from_scope_kind(kind: ScopeKind) -> Option<Self> {
+        match kind {
+            ScopeKind::Season => Some(Self::Season),
+            ScopeKind::Month => Some(Self::Month),
+            ScopeKind::Week => Some(Self::Week),
+            ScopeKind::Day => Some(Self::Day),
+            ScopeKind::PartOfDay | ScopeKind::Exact => None,
+        }
+    }
+
+    /// Widens back to the public `ScopeKind`.
+    fn as_scope_kind(self) -> ScopeKind {
+        match self {
+            Self::Season => ScopeKind::Season,
+            Self::Month => ScopeKind::Month,
+            Self::Week => ScopeKind::Week,
+            Self::Day => ScopeKind::Day,
+        }
+    }
+
+    /// The database string representation.
+    fn as_str(self) -> &'static str {
+        self.as_scope_kind().as_str()
+    }
+}
 
 /// Repository for scope get-or-create and lookup operations.
 pub struct ScopeRepository<'a> {
@@ -38,15 +79,17 @@ impl<'a> ScopeRepository<'a> {
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Scope, ScopeError>> + Send + '_>>
     {
         Box::pin(async move {
-            let (start, end) = scope_bounds(kind.clone(), date);
+            let canonical = CanonicalKind::from_scope_kind(kind)
+                .ok_or(ScopeError::UnsupportedKind(kind.as_str()))?;
+            let (start, end) = scope_bounds(canonical, date);
             let start_str = start.to_string();
             let end_str = end.to_string();
-            let label = scope_label(kind.clone(), date);
+            let label = scope_label(canonical, date);
 
             if let Some(scope) = sqlx::query_as::<_, Scope>(
                 "SELECT * FROM scopes WHERE kind = ? AND start_date = ?",
             )
-            .bind(kind.as_str())
+            .bind(canonical.as_str())
             .bind(&start_str)
             .fetch_optional(self.pool)
             .await?
@@ -54,13 +97,13 @@ impl<'a> ScopeRepository<'a> {
                 return Ok(scope);
             }
 
-            let (week_id, month_id, season_id) = self.containment_ids(kind.clone(), date).await?;
+            let (week_id, month_id, season_id) = self.containment_ids(canonical, date).await?;
 
             let id = sqlx::query(
                 "INSERT INTO scopes (kind, label, start_date, end_date, week_id, month_id, season_id)
                  VALUES (?, ?, ?, ?, ?, ?, ?)",
             )
-            .bind(kind.as_str())
+            .bind(canonical.as_str())
             .bind(&label)
             .bind(&start_str)
             .bind(&end_str)
@@ -78,36 +121,121 @@ impl<'a> ScopeRepository<'a> {
     /// Computes the (week_id, month_id, season_id) for a scope, creating parents as needed.
     async fn containment_ids(
         &self,
-        kind: ScopeKind,
+        kind: CanonicalKind,
         date: NaiveDate,
     ) -> Result<(Option<i64>, Option<i64>, Option<i64>), ScopeError> {
         match kind {
-            ScopeKind::Day => {
+            CanonicalKind::Day => {
                 let week = self.get_or_create(ScopeKind::Week, date).await?;
                 let month = self.get_or_create(ScopeKind::Month, date).await?;
                 let season = self.get_or_create(ScopeKind::Season, date).await?;
                 Ok((Some(week.id), Some(month.id), Some(season.id)))
             }
-            ScopeKind::Month => {
+            CanonicalKind::Month => {
                 let season = self.get_or_create(ScopeKind::Season, date).await?;
                 Ok((None, None, Some(season.id)))
             }
-            ScopeKind::Week | ScopeKind::Season => Ok((None, None, None)),
+            CanonicalKind::Week | CanonicalKind::Season => Ok((None, None, None)),
         }
+    }
+
+    /// Returns the Part-of-Day scope for `date` + `part`, creating it (and its Day, Week,
+    /// Month, Season parents) if absent. The scope inherits its Day's containment ids.
+    pub async fn get_or_create_part(
+        &self,
+        date: NaiveDate,
+        part: PartOfDay,
+    ) -> Result<Scope, ScopeError> {
+        let start_str = date.to_string();
+        if let Some(scope) = sqlx::query_as::<_, Scope>(
+            "SELECT * FROM scopes WHERE kind = 'part_of_day' AND start_date = ? AND part = ?",
+        )
+        .bind(&start_str)
+        .bind(part.as_str())
+        .fetch_optional(self.pool)
+        .await?
+        {
+            return Ok(scope);
+        }
+
+        let day = self.get_or_create(ScopeKind::Day, date).await?;
+        let (start_hour, end_hour) = part.band();
+        let end_date = if start_hour < end_hour {
+            date
+        } else {
+            date + Duration::days(1)
+        };
+        let label = format!("{} {}", day.label, part.as_str());
+
+        let id = sqlx::query(
+            "INSERT INTO scopes
+                (kind, label, start_date, end_date, week_id, month_id, season_id, day_id, part)
+             VALUES ('part_of_day', ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(&label)
+        .bind(&start_str)
+        .bind(end_date.to_string())
+        .bind(day.week_id)
+        .bind(day.month_id)
+        .bind(day.season_id)
+        .bind(day.id)
+        .bind(part.as_str())
+        .execute(self.pool)
+        .await?
+        .last_insert_rowid();
+
+        self.get(ScopeId(id)).await
+    }
+
+    /// Returns the Exact scope for the half-open `[start, end)` datetime window, creating it
+    /// if absent. Exact scopes lie outside the canonical hierarchy and carry no containment ids.
+    pub async fn get_or_create_exact(
+        &self,
+        start: NaiveDateTime,
+        end: NaiveDateTime,
+    ) -> Result<Scope, ScopeError> {
+        let start_dt = start.format(EXACT_DATETIME_FORMAT).to_string();
+        let end_dt = end.format(EXACT_DATETIME_FORMAT).to_string();
+        if let Some(scope) = sqlx::query_as::<_, Scope>(
+            "SELECT * FROM scopes WHERE kind = 'exact' AND start_datetime = ? AND end_datetime = ?",
+        )
+        .bind(&start_dt)
+        .bind(&end_dt)
+        .fetch_optional(self.pool)
+        .await?
+        {
+            return Ok(scope);
+        }
+
+        let label = format!("{start_dt} – {end_dt}");
+        let id = sqlx::query(
+            "INSERT INTO scopes (kind, label, start_date, end_date, start_datetime, end_datetime)
+             VALUES ('exact', ?, ?, ?, ?, ?)",
+        )
+        .bind(&label)
+        .bind(start.date().to_string())
+        .bind(end.date().to_string())
+        .bind(&start_dt)
+        .bind(&end_dt)
+        .execute(self.pool)
+        .await?
+        .last_insert_rowid();
+
+        self.get(ScopeId(id)).await
     }
 }
 
-/// Computes the inclusive [start, end] date range for a scope.
-fn scope_bounds(kind: ScopeKind, date: NaiveDate) -> (NaiveDate, NaiveDate) {
+/// Computes the inclusive [start, end] date range for a canonical scope.
+fn scope_bounds(kind: CanonicalKind, date: NaiveDate) -> (NaiveDate, NaiveDate) {
     match kind {
-        ScopeKind::Day => (date, date),
-        ScopeKind::Week => {
+        CanonicalKind::Day => (date, date),
+        CanonicalKind::Week => {
             let days_since_sunday = date.weekday().num_days_from_sunday();
             let sunday = date - Duration::days(days_since_sunday as i64);
             let saturday = sunday + Duration::days(6);
             (sunday, saturday)
         }
-        ScopeKind::Month => {
+        CanonicalKind::Month => {
             let start = NaiveDate::from_ymd_opt(date.year(), date.month(), 1).unwrap();
             let next_month = if date.month() == 12 {
                 NaiveDate::from_ymd_opt(date.year() + 1, 1, 1).unwrap()
@@ -117,7 +245,7 @@ fn scope_bounds(kind: ScopeKind, date: NaiveDate) -> (NaiveDate, NaiveDate) {
             let end = next_month - Duration::days(1);
             (start, end)
         }
-        ScopeKind::Season => {
+        CanonicalKind::Season => {
             let (season_month, year) = season_start_month_and_year(date);
             let start = NaiveDate::from_ymd_opt(year, season_month, 1).unwrap();
             // end_month is always 2, 5, 8, or 11 — never 12 — so end_month + 1 is always safe
@@ -130,16 +258,16 @@ fn scope_bounds(kind: ScopeKind, date: NaiveDate) -> (NaiveDate, NaiveDate) {
     }
 }
 
-/// Returns the human-readable label for a scope.
-fn scope_label(kind: ScopeKind, date: NaiveDate) -> String {
+/// Returns the human-readable label for a canonical scope.
+fn scope_label(kind: CanonicalKind, date: NaiveDate) -> String {
     match kind {
-        ScopeKind::Day => date.format("%Y-%m-%d").to_string(),
-        ScopeKind::Week => {
+        CanonicalKind::Day => date.format("%Y-%m-%d").to_string(),
+        CanonicalKind::Week => {
             let week_num = week_number(date);
             format!("Week {} {}", week_num, date.year())
         }
-        ScopeKind::Month => date.format("%B %Y").to_string(),
-        ScopeKind::Season => {
+        CanonicalKind::Month => date.format("%B %Y").to_string(),
+        CanonicalKind::Season => {
             let (name, year) = season_name_and_year(date);
             format!("{} {}", name, year)
         }
@@ -194,7 +322,7 @@ mod tests {
     #[test]
     fn bounds_day_is_single_date() {
         let date = d(2026, 6, 20);
-        assert_eq!(scope_bounds(ScopeKind::Day, date), (date, date));
+        assert_eq!(scope_bounds(CanonicalKind::Day, date), (date, date));
     }
 
     // --- scope_bounds: Week ---
@@ -202,7 +330,7 @@ mod tests {
     #[test]
     fn bounds_week_saturday_starts_on_sunday() {
         // 2026-06-20 is Saturday
-        let (start, end) = scope_bounds(ScopeKind::Week, d(2026, 6, 20));
+        let (start, end) = scope_bounds(CanonicalKind::Week, d(2026, 6, 20));
         assert_eq!(start, d(2026, 6, 14));
         assert_eq!(end, d(2026, 6, 20));
     }
@@ -210,14 +338,14 @@ mod tests {
     #[test]
     fn bounds_week_wednesday_same_sunday_anchor() {
         // 2026-06-17 is Wednesday → same week as the Saturday above
-        let (start, end) = scope_bounds(ScopeKind::Week, d(2026, 6, 17));
+        let (start, end) = scope_bounds(CanonicalKind::Week, d(2026, 6, 17));
         assert_eq!(start, d(2026, 6, 14));
         assert_eq!(end, d(2026, 6, 20));
     }
 
     #[test]
     fn bounds_week_sunday_is_its_own_start() {
-        let (start, _end) = scope_bounds(ScopeKind::Week, d(2026, 6, 14));
+        let (start, _end) = scope_bounds(CanonicalKind::Week, d(2026, 6, 14));
         assert_eq!(start, d(2026, 6, 14));
     }
 
@@ -225,28 +353,28 @@ mod tests {
 
     #[test]
     fn bounds_month_june_ends_on_30() {
-        let (start, end) = scope_bounds(ScopeKind::Month, d(2026, 6, 15));
+        let (start, end) = scope_bounds(CanonicalKind::Month, d(2026, 6, 15));
         assert_eq!(start, d(2026, 6, 1));
         assert_eq!(end, d(2026, 6, 30));
     }
 
     #[test]
     fn bounds_month_december_stays_within_year() {
-        let (start, end) = scope_bounds(ScopeKind::Month, d(2026, 12, 15));
+        let (start, end) = scope_bounds(CanonicalKind::Month, d(2026, 12, 15));
         assert_eq!(start, d(2026, 12, 1));
         assert_eq!(end, d(2026, 12, 31));
     }
 
     #[test]
     fn bounds_month_february_non_leap_ends_on_28() {
-        let (start, end) = scope_bounds(ScopeKind::Month, d(2026, 2, 10));
+        let (start, end) = scope_bounds(CanonicalKind::Month, d(2026, 2, 10));
         assert_eq!(start, d(2026, 2, 1));
         assert_eq!(end, d(2026, 2, 28));
     }
 
     #[test]
     fn bounds_month_february_leap_ends_on_29() {
-        let (start, end) = scope_bounds(ScopeKind::Month, d(2024, 2, 15));
+        let (start, end) = scope_bounds(CanonicalKind::Month, d(2024, 2, 15));
         assert_eq!(start, d(2024, 2, 1));
         assert_eq!(end, d(2024, 2, 29));
     }
@@ -255,35 +383,35 @@ mod tests {
 
     #[test]
     fn bounds_season_summer_june_to_august() {
-        let (start, end) = scope_bounds(ScopeKind::Season, d(2026, 6, 20));
+        let (start, end) = scope_bounds(CanonicalKind::Season, d(2026, 6, 20));
         assert_eq!(start, d(2026, 6, 1));
         assert_eq!(end, d(2026, 8, 31));
     }
 
     #[test]
     fn bounds_season_autumn_september_to_november() {
-        let (start, end) = scope_bounds(ScopeKind::Season, d(2026, 10, 1));
+        let (start, end) = scope_bounds(CanonicalKind::Season, d(2026, 10, 1));
         assert_eq!(start, d(2026, 9, 1));
         assert_eq!(end, d(2026, 11, 30));
     }
 
     #[test]
     fn bounds_season_spring_march_to_may() {
-        let (start, end) = scope_bounds(ScopeKind::Season, d(2026, 4, 15));
+        let (start, end) = scope_bounds(CanonicalKind::Season, d(2026, 4, 15));
         assert_eq!(start, d(2026, 3, 1));
         assert_eq!(end, d(2026, 5, 31));
     }
 
     #[test]
     fn bounds_season_winter_december_crosses_year() {
-        let (start, end) = scope_bounds(ScopeKind::Season, d(2026, 12, 1));
+        let (start, end) = scope_bounds(CanonicalKind::Season, d(2026, 12, 1));
         assert_eq!(start, d(2026, 12, 1));
         assert_eq!(end, d(2027, 2, 28));
     }
 
     #[test]
     fn bounds_season_winter_january_traces_to_december() {
-        let (start, end) = scope_bounds(ScopeKind::Season, d(2027, 1, 15));
+        let (start, end) = scope_bounds(CanonicalKind::Season, d(2027, 1, 15));
         assert_eq!(start, d(2026, 12, 1));
         assert_eq!(end, d(2027, 2, 28));
     }
@@ -292,32 +420,32 @@ mod tests {
 
     #[test]
     fn label_day_formats_as_iso() {
-        assert_eq!(scope_label(ScopeKind::Day, d(2026, 6, 20)), "2026-06-20");
+        assert_eq!(scope_label(CanonicalKind::Day, d(2026, 6, 20)), "2026-06-20");
     }
 
     #[test]
     fn label_month_is_full_name_and_year() {
-        assert_eq!(scope_label(ScopeKind::Month, d(2026, 6, 15)), "June 2026");
+        assert_eq!(scope_label(CanonicalKind::Month, d(2026, 6, 15)), "June 2026");
     }
 
     #[test]
     fn label_season_summer() {
-        assert_eq!(scope_label(ScopeKind::Season, d(2026, 7, 1)), "Summer 2026");
+        assert_eq!(scope_label(CanonicalKind::Season, d(2026, 7, 1)), "Summer 2026");
     }
 
     #[test]
     fn label_season_winter_december_uses_start_year() {
-        assert_eq!(scope_label(ScopeKind::Season, d(2026, 12, 1)), "Winter 2026");
+        assert_eq!(scope_label(CanonicalKind::Season, d(2026, 12, 1)), "Winter 2026");
     }
 
     #[test]
     fn label_season_winter_january_uses_previous_year() {
-        assert_eq!(scope_label(ScopeKind::Season, d(2027, 1, 15)), "Winter 2026");
+        assert_eq!(scope_label(CanonicalKind::Season, d(2027, 1, 15)), "Winter 2026");
     }
 
     #[test]
     fn label_week_contains_number_and_year() {
-        let label = scope_label(ScopeKind::Week, d(2026, 6, 20));
+        let label = scope_label(CanonicalKind::Week, d(2026, 6, 20));
         assert!(
             label.starts_with("Week ") && label.ends_with(" 2026"),
             "unexpected label: {label}"
@@ -334,7 +462,7 @@ mod tests {
     #[test]
     fn week_number_mid_year_in_expected_range() {
         let w = week_number(d(2026, 6, 20));
-        assert!(w >= 24 && w <= 26, "week {w} out of expected range 24–26");
+        assert!((24..=26).contains(&w), "week {w} out of expected range 24–26");
     }
 
     // --- season_name_and_year ---
