@@ -84,6 +84,7 @@ pub fn run() {
             commands::tasks::get_task,
             commands::tasks::list_tasks,
             commands::tasks::update_task,
+            commands::tasks::scope_containment_conflicts,
             commands::tasks::delete_task,
             commands::tasks::add_task_dependency,
             commands::tasks::remove_task_dependency,

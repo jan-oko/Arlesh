@@ -7,9 +7,9 @@ use crate::{
     tasks::{
         model::{
             CreateGoalRequest, CreateTaskRequest, Dependency, Goal, GoalId, Task, TaskId,
-            TaskWithBlockers, UpdateGoalRequest, UpdateTaskRequest,
+            TaskWithBlockers, TimeScope, UpdateGoalRequest, UpdateTaskRequest,
         },
-        GoalRepository, TaskRepository,
+        GoalRepository, TaskRepository, ViolatingDescendant,
     },
 };
 
@@ -55,6 +55,21 @@ pub async fn update_task(
 ) -> Result<Task, String> {
     TaskRepository::new(&pool)
         .update(TaskId(id), request)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+/// Returns the task/goal descendants of a node that a candidate Time Scope would orphan, for the
+/// frontend's clamp-or-cancel prompt before narrowing a scope or reparenting.
+#[tauri::command]
+pub async fn scope_containment_conflicts(
+    pool: State<'_, DatabasePool>,
+    node_type: String,
+    node_id: i64,
+    time_scope: TimeScope,
+) -> Result<Vec<ViolatingDescendant>, String> {
+    TaskRepository::new(&pool)
+        .scope_containment_conflicts(&node_type, node_id, &time_scope)
         .await
         .map_err(|error| error.to_string())
 }

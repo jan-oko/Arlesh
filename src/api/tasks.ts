@@ -53,6 +53,27 @@ export async function deleteTask(id: number): Promise<void> {
   return invoke<void>("delete_task", { id });
 }
 
+export interface ViolatingDescendant {
+  node_type: string;
+  node_id: number;
+}
+
+/**
+ * Descendants a candidate Time Scope would orphan (their explicit window would fall outside it).
+ * Call before narrowing a node's scope or reparenting to drive a clamp-or-cancel prompt.
+ */
+export async function scopeContainmentConflicts(
+  nodeType: string,
+  nodeId: number,
+  timeScope: TimeScope,
+): Promise<ViolatingDescendant[]> {
+  return invoke<ViolatingDescendant[]>("scope_containment_conflicts", {
+    nodeType,
+    nodeId,
+    timeScope,
+  });
+}
+
 export type Dependency =
   | { type: "task"; id: number }
   | { type: "goal"; id: number };

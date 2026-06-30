@@ -915,6 +915,188 @@ async fn plan_outside_time_scope_is_rejected() {
     );
 }
 
+// --- Cross-tree containment (child within ancestor, cascade detection, reparent) ---
+
+fn single(scope_id: i64) -> TimeScope {
+    TimeScope { start_id: scope_id, end_id: scope_id, duration: None }
+}
+
+async fn july_scopes(
+    pool: &sqlx::SqlitePool,
+) -> (i64, i64, i64) {
+    let repo = ScopeRepository::new(pool);
+    let july = repo
+        .get_or_create(ScopeKind::Month, chrono::NaiveDate::from_ymd_opt(2026, 7, 15).unwrap())
+        .await
+        .unwrap();
+    let week_in_july = repo
+        .get_or_create(ScopeKind::Week, chrono::NaiveDate::from_ymd_opt(2026, 7, 15).unwrap())
+        .await
+        .unwrap();
+    let week_in_august = repo
+        .get_or_create(ScopeKind::Week, chrono::NaiveDate::from_ymd_opt(2026, 8, 15).unwrap())
+        .await
+        .unwrap();
+    (july.id, week_in_july.id, week_in_august.id)
+}
+
+#[tokio::test]
+async fn child_time_scope_within_ancestor_is_accepted() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let (july, week_in_july, _) = july_scopes(&pool).await;
+
+    let goal = GoalRepository::new(&pool)
+        .create(CreateGoalRequest {
+            title: "July Goal".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            time_scope: Some(single(july)),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    let task = TaskRepository::new(&pool)
+        .create(CreateTaskRequest {
+            title: "Week Task".into(),
+            parent_type: "goal".into(),
+            parent_id: goal.id,
+            time_scope: Some(single(week_in_july)),
+            ..Default::default()
+        })
+        .await;
+    assert!(task.is_ok(), "a week inside the goal's month should be accepted: {task:?}");
+}
+
+#[tokio::test]
+async fn child_time_scope_outside_ancestor_is_rejected() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let (july, _, week_in_august) = july_scopes(&pool).await;
+
+    let goal = GoalRepository::new(&pool)
+        .create(CreateGoalRequest {
+            title: "July Goal".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            time_scope: Some(single(july)),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    let result = TaskRepository::new(&pool)
+        .create(CreateTaskRequest {
+            title: "August Task".into(),
+            parent_type: "goal".into(),
+            parent_id: goal.id,
+            time_scope: Some(single(week_in_august)),
+            ..Default::default()
+        })
+        .await;
+    assert!(matches!(
+        result,
+        Err(arlesh_lib::tasks::error::TaskError::ScopeContainment(_))
+    ));
+}
+
+#[tokio::test]
+async fn narrowing_a_scope_reports_violating_descendants() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let (july, week_in_july, _) = july_scopes(&pool).await;
+    let goal_repo = GoalRepository::new(&pool);
+    let task_repo = TaskRepository::new(&pool);
+
+    // Goal scoped to July, with a task child also scoped to all of July.
+    let goal = goal_repo
+        .create(CreateGoalRequest {
+            title: "July Goal".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            time_scope: Some(single(july)),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let task = task_repo
+        .create(CreateTaskRequest {
+            title: "Whole July Task".into(),
+            parent_type: "goal".into(),
+            parent_id: goal.id,
+            time_scope: Some(single(july)),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    // Narrowing the goal to a single week would orphan the month-scoped task.
+    let conflicts = task_repo
+        .scope_containment_conflicts("goal", goal.id, &single(week_in_july))
+        .await
+        .unwrap();
+    assert_eq!(conflicts.len(), 1);
+    assert_eq!(conflicts[0].node_type, "task");
+    assert_eq!(conflicts[0].node_id, task.id);
+}
+
+#[tokio::test]
+async fn reparenting_under_a_tighter_ancestor_is_rejected() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let (july, week_in_july, week_in_august) = july_scopes(&pool).await;
+    let goal_repo = GoalRepository::new(&pool);
+    let task_repo = TaskRepository::new(&pool);
+
+    let july_goal = goal_repo
+        .create(CreateGoalRequest {
+            title: "July Goal".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            time_scope: Some(single(july)),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let august_goal = goal_repo
+        .create(CreateGoalRequest {
+            title: "August Goal".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            time_scope: Some(single(week_in_august)),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let task = task_repo
+        .create(CreateTaskRequest {
+            title: "Week Task".into(),
+            parent_type: "goal".into(),
+            parent_id: july_goal.id,
+            time_scope: Some(single(week_in_july)),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    // Moving the July-week task under the August goal must be rejected.
+    let result = task_repo
+        .update(
+            task.id.into(),
+            UpdateTaskRequest {
+                parent_type: Some("goal".into()),
+                parent_id: Some(august_goal.id),
+                ..Default::default()
+            },
+        )
+        .await;
+    assert!(matches!(
+        result,
+        Err(arlesh_lib::tasks::error::TaskError::ScopeContainment(_))
+    ));
+}
+
 #[tokio::test]
 async fn update_rejects_plan_outside_time_scope() {
     let pool = helpers::test_pool().await;

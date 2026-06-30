@@ -3,9 +3,10 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   listTasks, createTask, updateTask, deleteTask,
   getTask, listTaskDependencies, addTaskDependency, removeTaskDependency,
-  addTagToTask, removeTagFromTask,
+  addTagToTask, removeTagFromTask, scopeContainmentConflicts,
 } from "./tasks";
-import type { Task, CreateTaskRequest, Dependency, TaskWithBlockers } from "./tasks";
+import type { Task, CreateTaskRequest, Dependency, TaskWithBlockers, ViolatingDescendant } from "./tasks";
+import type { TimeScope } from "./time-scope";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
@@ -107,5 +108,20 @@ describe("removeTagFromTask", () => {
     vi.mocked(invoke).mockResolvedValueOnce(undefined);
     await removeTagFromTask(1, 99);
     expect(invoke).toHaveBeenCalledWith("remove_tag_from_task", { taskId: 1, tagId: 99 });
+  });
+});
+
+describe("scopeContainmentConflicts", () => {
+  it("calls invoke with scope_containment_conflicts and the node + candidate scope", async () => {
+    const conflicts: ViolatingDescendant[] = [{ node_type: "task", node_id: 7 }];
+    vi.mocked(invoke).mockResolvedValueOnce(conflicts);
+    const timeScope: TimeScope = { start_id: 3, end_id: 3 };
+    const result = await scopeContainmentConflicts("goal", 5, timeScope);
+    expect(invoke).toHaveBeenCalledWith("scope_containment_conflicts", {
+      nodeType: "goal",
+      nodeId: 5,
+      timeScope,
+    });
+    expect(result).toEqual(conflicts);
   });
 });

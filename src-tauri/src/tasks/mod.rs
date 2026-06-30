@@ -2,15 +2,14 @@
 
 pub mod error;
 pub mod model;
+mod scope_rules;
 
 use std::collections::{HashSet, VecDeque};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::database::DatabasePool;
-use crate::scopes::model::ScopeId;
-use crate::scopes::resolve::{self, Bounds};
-use crate::scopes::ScopeRepository;
 use error::TaskError;
+pub use scope_rules::ViolatingDescendant;
 use model::{
     CreateGoalRequest, CreateTaskRequest, Dependency, DurationSpec, Goal, GoalId, GoalStatus, Task,
     TaskId, TaskStatus, TaskWithBlockers, TimeScope, UpdateGoalRequest, UpdateTaskRequest,
@@ -168,6 +167,13 @@ impl<'a> GoalRepository<'a> {
 
     /// Creates a new goal.
     pub async fn create(&self, request: CreateGoalRequest) -> Result<Goal, TaskError> {
+        scope_rules::validate_goal_containment(
+            self.pool,
+            &request.parent_type,
+            request.parent_id,
+            &request.time_scope,
+        )
+        .await?;
         let status = request.status.as_ref().map(|s| s.as_str()).unwrap_or("active");
         let (ts_start, ts_end, ts_n, ts_kind) = time_scope_columns(&request.time_scope);
         let id = sqlx::query(
@@ -243,6 +249,18 @@ impl<'a> GoalRepository<'a> {
             None => goal.time_scope,
         };
         let (ts_start, ts_end, ts_n, ts_kind) = time_scope_columns(&time_scope);
+        let (effective_parent_type, effective_parent_id) =
+            match (request.parent_type.as_deref(), request.parent_id) {
+                (Some(parent_type), Some(parent_id)) => (parent_type.to_string(), parent_id),
+                _ => (goal.parent_type.clone(), goal.parent_id),
+            };
+        scope_rules::validate_goal_containment(
+            self.pool,
+            &effective_parent_type,
+            effective_parent_id,
+            &time_scope,
+        )
+        .await?;
 
         if let (Some(new_parent_type), Some(new_parent_id)) =
             (request.parent_type.as_deref(), request.parent_id)
@@ -327,45 +345,28 @@ impl<'a> TaskRepository<'a> {
         Self { pool }
     }
 
-    /// Resolves a single scope id to its half-open datetime window.
-    async fn scope_window(&self, scope_id: i64) -> Result<Bounds, TaskError> {
-        let scope = ScopeRepository::new(self.pool).get(ScopeId(scope_id)).await?;
-        Ok(resolve::scope_bounds(&scope)?)
-    }
-
-    /// Resolves a Time Scope's boundaries to its combined window: the start of the start
-    /// boundary through the end of the end boundary.
-    async fn time_scope_window(&self, time_scope: &TimeScope) -> Result<Bounds, TaskError> {
-        let start = self.scope_window(time_scope.start_id).await?.0;
-        let end = self.scope_window(time_scope.end_id).await?.1;
-        Ok((start, end))
-    }
-
-    /// Rejects a write whose Plan is not wholly contained within its Time Scope. A task with no
-    /// Plan, or no Time Scope, is unconstrained here (a null Time Scope inherits an ancestor's).
-    async fn validate_plan_within_time_scope(
+    /// Returns the task/goal descendants of a node whose explicit Time Scope would fall outside
+    /// `time_scope` — the items that narrowing this node's scope (or reparenting under a tighter
+    /// window) would orphan. Drives the frontend's clamp-or-cancel prompt.
+    pub async fn scope_containment_conflicts(
         &self,
-        time_scope: &Option<TimeScope>,
-        plan_scope_id: Option<i64>,
-    ) -> Result<(), TaskError> {
-        let (Some(time_scope), Some(plan)) = (time_scope, plan_scope_id) else {
-            return Ok(());
-        };
-        let time_window = self.time_scope_window(time_scope).await?;
-        let plan_window = self.scope_window(plan).await?;
-        if resolve::interval_contains(time_window, plan_window) {
-            Ok(())
-        } else {
-            Err(TaskError::ScopeContainment(format!(
-                "plan scope {plan} is not within the task's time scope"
-            )))
-        }
+        node_type: &str,
+        node_id: i64,
+        time_scope: &TimeScope,
+    ) -> Result<Vec<ViolatingDescendant>, TaskError> {
+        scope_rules::conflicts_for_new_time_scope(self.pool, node_type, node_id, time_scope).await
     }
 
     /// Creates a new task.
     pub async fn create(&self, request: CreateTaskRequest) -> Result<Task, TaskError> {
-        self.validate_plan_within_time_scope(&request.time_scope, request.plan_scope_id)
-            .await?;
+        scope_rules::validate_task_containment(
+            self.pool,
+            &request.parent_type,
+            request.parent_id,
+            &request.time_scope,
+            request.plan_scope_id,
+        )
+        .await?;
         let status = request.status.as_ref().map(|s| s.as_str()).unwrap_or("todo");
         let (ts_start, ts_end, ts_n, ts_kind) = time_scope_columns(&request.time_scope);
         let id = sqlx::query(
@@ -491,8 +492,20 @@ impl<'a> TaskRepository<'a> {
             Some(new_plan) => new_plan,
             None => task.plan_scope_id,
         };
-        self.validate_plan_within_time_scope(&time_scope, plan_scope_id)
-            .await?;
+        // Validate against the effective parent — the new one when reparenting.
+        let (effective_parent_type, effective_parent_id) =
+            match (request.parent_type.as_deref(), request.parent_id) {
+                (Some(parent_type), Some(parent_id)) => (parent_type.to_string(), parent_id),
+                _ => (task.parent_type.clone(), task.parent_id),
+            };
+        scope_rules::validate_task_containment(
+            self.pool,
+            &effective_parent_type,
+            effective_parent_id,
+            &time_scope,
+            plan_scope_id,
+        )
+        .await?;
 
         if let (Some(new_parent_type), Some(new_parent_id)) =
             (request.parent_type.as_deref(), request.parent_id)
