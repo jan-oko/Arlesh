@@ -9,7 +9,7 @@ use crate::{
             CreateGoalRequest, CreateTaskRequest, Dependency, Goal, GoalId, Task, TaskId,
             TaskWithBlockers, TimeScope, UpdateGoalRequest, UpdateTaskRequest,
         },
-        GoalRepository, TaskRepository, ViolatingDescendant,
+        GoalRepository, ReparentConflicts, TaskRepository, ViolatingDescendant,
     },
 };
 
@@ -70,6 +70,22 @@ pub async fn scope_containment_conflicts(
 ) -> Result<Vec<ViolatingDescendant>, String> {
     TaskRepository::new(&pool)
         .scope_containment_conflicts(&node_type, node_id, &time_scope)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+/// Returns the items a reparent of `node` under `new_parent` would orphan, plus the ancestor Time
+/// Scope to clamp them to — for a clamp-or-cancel prompt before the move.
+#[tauri::command]
+pub async fn reparent_scope_conflicts(
+    pool: State<'_, DatabasePool>,
+    node_type: String,
+    node_id: i64,
+    new_parent_type: String,
+    new_parent_id: i64,
+) -> Result<ReparentConflicts, String> {
+    TaskRepository::new(&pool)
+        .reparent_scope_conflicts(&node_type, node_id, &new_parent_type, new_parent_id)
         .await
         .map_err(|error| error.to_string())
 }

@@ -83,6 +83,38 @@ pub(super) async fn nearest_scoped_ancestor_window(
     }
 }
 
+/// Like [`nearest_scoped_ancestor_window`] but returns the ancestor's Time Scope itself (the clamp
+/// target for a reparent), rather than its resolved datetime window.
+pub(super) async fn nearest_scoped_ancestor_time_scope(
+    pool: &DatabasePool,
+    parent_type: &str,
+    parent_id: i64,
+) -> Result<Option<TimeScope>, TaskError> {
+    let mut node_type = parent_type.to_string();
+    let mut node_id = parent_id;
+    loop {
+        match node_type.as_str() {
+            "task" => {
+                let task = TaskRepository::new(pool).get(TaskId(node_id)).await?;
+                if let Some(ts) = task.time_scope {
+                    return Ok(Some(ts));
+                }
+                node_type = task.parent_type;
+                node_id = task.parent_id;
+            }
+            "goal" => {
+                let goal = GoalRepository::new(pool).get(GoalId(node_id)).await?;
+                if let Some(ts) = goal.time_scope {
+                    return Ok(Some(ts));
+                }
+                node_type = goal.parent_type;
+                node_id = goal.parent_id;
+            }
+            _ => return Ok(None),
+        }
+    }
+}
+
 /// Walks up the contiguous task ancestor chain, returning the window of the nearest task ancestor
 /// that has a Plan, or `None`.
 pub(super) async fn nearest_planned_ancestor_window(
@@ -230,6 +262,42 @@ pub(super) async fn descendants_violating_window(
         stack.extend(child_items(pool, &child_type, child_id).await?);
     }
     Ok(violators)
+}
+
+/// The outcome of checking a reparent: the binding ancestor Time Scope (the clamp target) and the
+/// items — the node itself and/or its descendants — that would fall outside it.
+#[derive(Debug, Clone, Serialize)]
+pub struct ReparentConflicts {
+    /// The nearest scoped ancestor's Time Scope under the new parent, or null if unconstrained.
+    pub ancestor_time_scope: Option<TimeScope>,
+    /// The items that would be orphaned (empty if the move is already valid).
+    pub conflicts: Vec<ViolatingDescendant>,
+}
+
+/// Detects the items a reparent of `(node_type, node_id)` under `(new_parent_type, new_parent_id)`
+/// would orphan: the node itself if its Time Scope no longer fits the new nearest-scoped-ancestor
+/// window, plus any descendants that don't fit. `ancestor_time_scope` is the clamp target.
+pub(super) async fn reparent_conflicts(
+    pool: &DatabasePool,
+    node_type: &str,
+    node_id: i64,
+    new_parent_type: &str,
+    new_parent_id: i64,
+) -> Result<ReparentConflicts, TaskError> {
+    let Some(ancestor) =
+        nearest_scoped_ancestor_time_scope(pool, new_parent_type, new_parent_id).await?
+    else {
+        return Ok(ReparentConflicts { ancestor_time_scope: None, conflicts: Vec::new() });
+    };
+    let window = time_scope_window(pool, &ancestor).await?;
+    let mut conflicts = Vec::new();
+    if let Some(node_ts) = item_time_scope(pool, node_type, node_id).await? {
+        if !resolve::interval_contains(window, time_scope_window(pool, &node_ts).await?) {
+            conflicts.push(ViolatingDescendant { node_type: node_type.to_string(), node_id });
+        }
+    }
+    conflicts.extend(descendants_violating_window(pool, node_type, node_id, window).await?);
+    Ok(ReparentConflicts { ancestor_time_scope: Some(ancestor), conflicts })
 }
 
 /// Resolves a candidate Time Scope for a node and returns the descendants it would orphan.

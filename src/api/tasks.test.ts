@@ -3,9 +3,9 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   listTasks, createTask, updateTask, deleteTask,
   getTask, listTaskDependencies, addTaskDependency, removeTaskDependency,
-  addTagToTask, removeTagFromTask, scopeContainmentConflicts,
+  addTagToTask, removeTagFromTask, scopeContainmentConflicts, reparentScopeConflicts,
 } from "./tasks";
-import type { Task, CreateTaskRequest, Dependency, TaskWithBlockers, ViolatingDescendant } from "./tasks";
+import type { Task, CreateTaskRequest, Dependency, TaskWithBlockers, ViolatingDescendant, ReparentConflicts } from "./tasks";
 import type { TimeScope } from "./time-scope";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -108,6 +108,24 @@ describe("removeTagFromTask", () => {
     vi.mocked(invoke).mockResolvedValueOnce(undefined);
     await removeTagFromTask(1, 99);
     expect(invoke).toHaveBeenCalledWith("remove_tag_from_task", { taskId: 1, tagId: 99 });
+  });
+});
+
+describe("reparentScopeConflicts", () => {
+  it("calls invoke with reparent_scope_conflicts and the node + new parent", async () => {
+    const result: ReparentConflicts = {
+      ancestor_time_scope: { start_id: 3, end_id: 3 },
+      conflicts: [{ node_type: "task", node_id: 8 }],
+    };
+    vi.mocked(invoke).mockResolvedValueOnce(result);
+    const out = await reparentScopeConflicts("task", 8, "goal", 4);
+    expect(invoke).toHaveBeenCalledWith("reparent_scope_conflicts", {
+      nodeType: "task",
+      nodeId: 8,
+      newParentType: "goal",
+      newParentId: 4,
+    });
+    expect(out).toEqual(result);
   });
 });
 

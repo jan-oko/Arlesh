@@ -10,7 +10,9 @@ import { useContextAction } from "./use-context-action";
 import { useNavigateArrow } from "./use-navigate-arrow";
 import { useKeyboardMindmap } from "./use-keyboard-mindmap";
 import { useMindmapStore, CLIPBOARD_OP } from "@/stores/use-mindmap-store";
-import type { MindmapNode } from "@/utils/tree-layout";
+import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
+import { updateTask, reparentScopeConflicts } from "@/api/tasks";
+import { updateGoal } from "@/api/goals";
 import { findNode, findParent, collectTasksAndGoals, collectSubtreePostOrder, computeShiftSelectRange } from "@/utils/mindmap-tree";
 import MindmapCanvas, { type MindmapCanvasHandle } from "@/components/MindmapCanvas/MindmapCanvas";
 import DragGhost from "@/components/DragGhost/DragGhost";
@@ -57,7 +59,36 @@ export default function MindmapView() {
     if (subtreeRootId !== null) canvasRef.current?.centerOnRoot();
   }, [subtreeRootId]);
 
-  const { dragSourceId, dragTargetId, ghostPos, onDragStart } = useDrag({ tree, moveNode });
+  const {
+    editorModal, setEditorModal, allTags, availableForDep, onDoubleClick,
+    onTaskSave, onGoalSave, onSimpleSave, onProjectSave,
+    checkScopeClamp, confirmScopeClamp, scopeClampRequest, resolveScopeClamp,
+  } = useNodeEditor({ tree, allTasksAndGoals, renameNode, reload });
+
+  // Wraps moveNode so a drag reparent that would orphan scoped items prompts to clamp them first.
+  const guardedMoveNode = useCallback(
+    async (id: string, kind: NodeKind, parentId: string, parentKind: NodeKind, position: number) => {
+      if (kind === "task" || kind === "goal") {
+        const nodeDbId = parseInt(id.split("-").pop() ?? "0", 10);
+        const parentDbId = parseInt(parentId.split("-").pop() ?? "0", 10);
+        const { ancestor_time_scope, conflicts } = await reparentScopeConflicts(kind, nodeDbId, parentKind, parentDbId);
+        if (ancestor_time_scope !== null && conflicts.length > 0) {
+          if (!(await confirmScopeClamp(conflicts))) return;
+          for (const conflict of conflicts) {
+            if (conflict.node_type === "goal") {
+              await updateGoal(conflict.node_id, { time_scope: ancestor_time_scope });
+            } else {
+              await updateTask(conflict.node_id, { time_scope: ancestor_time_scope });
+            }
+          }
+        }
+      }
+      await moveNode(id, kind, parentId, parentKind, position);
+    },
+    [confirmScopeClamp, moveNode],
+  );
+
+  const { dragSourceId, dragTargetId, ghostPos, onDragStart } = useDrag({ tree, moveNode: guardedMoveNode });
 
   const { effectiveCollapsedIds, positions, subtreeLayout, placeholderPos } = useCanvasLayout({
     displayRoot, tree, collapsedNodeIds, dragSourceId, dragTargetId,
@@ -66,12 +97,6 @@ export default function MindmapView() {
   const { warningModal, setWarningModal, cycleType, retypeActions } = useNodeTypeManager({
     tree, retypeNode, selectNode, showToast,
   });
-
-  const {
-    editorModal, setEditorModal, allTags, availableForDep, onDoubleClick,
-    onTaskSave, onGoalSave, onSimpleSave, onProjectSave,
-    checkScopeClamp, scopeClampRequest, resolveScopeClamp,
-  } = useNodeEditor({ tree, allTasksAndGoals, renameNode, reload });
 
   const handleConfirmDelete = useCallback(() => {
     if (deleteTargets === null) return;

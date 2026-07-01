@@ -58,6 +58,29 @@ export interface ViolatingDescendant {
   node_id: number;
 }
 
+export interface ReparentConflicts {
+  ancestor_time_scope: TimeScope | null;
+  conflicts: ViolatingDescendant[];
+}
+
+/**
+ * Items a reparent of `node` under `newParent` would orphan, plus the ancestor Time Scope to
+ * clamp them to. Call before a drag reparent to drive a clamp-or-cancel prompt.
+ */
+export async function reparentScopeConflicts(
+  nodeType: string,
+  nodeId: number,
+  newParentType: string,
+  newParentId: number,
+): Promise<ReparentConflicts> {
+  return invoke<ReparentConflicts>("reparent_scope_conflicts", {
+    nodeType,
+    nodeId,
+    newParentType,
+    newParentId,
+  });
+}
+
 /**
  * Descendants a candidate Time Scope would orphan (their explicit window would fall outside it).
  * Call before narrowing a node's scope or reparenting to drive a clamp-or-cancel prompt.

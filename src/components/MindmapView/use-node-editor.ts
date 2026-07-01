@@ -63,6 +63,8 @@ interface Result {
   onProjectSave: (data: ProjectSaveData) => Promise<void>;
   /** Prompts to clamp orphaned descendants; resolves true to proceed, false to abort. */
   checkScopeClamp: (nodeType: "task" | "goal", dbId: number, timeScope: TimeScope) => Promise<boolean>;
+  /** Opens the clamp prompt for an already-computed conflict set (e.g. from a drag reparent). */
+  confirmScopeClamp: (conflicts: ViolatingDescendant[]) => Promise<boolean>;
   scopeClampRequest: ScopeClampRequest | null;
   resolveScopeClamp: (proceed: boolean) => void;
 }
@@ -81,14 +83,21 @@ export function useNodeEditor({ tree, allTasksAndGoals, renameNode, reload }: Op
     });
   }, []);
 
+  // Opens the clamp-or-cancel prompt for the given conflicts; resolves the user's choice.
+  const confirmScopeClamp = useCallback(
+    (conflicts: ViolatingDescendant[]): Promise<boolean> =>
+      new Promise<boolean>((resolve) => setScopeClampRequest({ conflicts, resolve })),
+    [],
+  );
+
   // Returns true if the save may proceed: no orphaned descendants, or the user chose to clamp them.
   const checkScopeClamp = useCallback(
     async (nodeType: "task" | "goal", dbId: number, timeScope: TimeScope): Promise<boolean> => {
       const conflicts = await scopeContainmentConflicts(nodeType, dbId, timeScope);
       if (conflicts.length === 0) return true;
-      return new Promise<boolean>((resolve) => setScopeClampRequest({ conflicts, resolve }));
+      return confirmScopeClamp(conflicts);
     },
-    [],
+    [confirmScopeClamp],
   );
 
   const availableForDep =
@@ -185,6 +194,6 @@ export function useNodeEditor({ tree, allTasksAndGoals, renameNode, reload }: Op
   return {
     editorModal, setEditorModal, allTags, availableForDep, onDoubleClick,
     onTaskSave, onGoalSave, onSimpleSave, onProjectSave,
-    checkScopeClamp, scopeClampRequest, resolveScopeClamp,
+    checkScopeClamp, confirmScopeClamp, scopeClampRequest, resolveScopeClamp,
   };
 }

@@ -1098,6 +1098,109 @@ async fn reparenting_under_a_tighter_ancestor_is_rejected() {
 }
 
 #[tokio::test]
+async fn reparent_conflicts_flags_a_node_that_would_leave_its_new_ancestor() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let (july, _week_in_july, week_in_august) = july_scopes(&pool).await;
+    let goal_repo = GoalRepository::new(&pool);
+    let task_repo = TaskRepository::new(&pool);
+
+    let july_goal = goal_repo
+        .create(CreateGoalRequest {
+            title: "July".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            time_scope: Some(single(july)),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    // A task scoped to August, currently under the (unscoped) project.
+    let task = task_repo
+        .create(CreateTaskRequest {
+            title: "August task".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            time_scope: Some(single(week_in_august)),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    let result = task_repo
+        .reparent_scope_conflicts("task", task.id, "goal", july_goal.id)
+        .await
+        .unwrap();
+
+    assert!(result.ancestor_time_scope.is_some());
+    assert_eq!(result.conflicts.len(), 1);
+    assert_eq!(result.conflicts[0].node_type, "task");
+    assert_eq!(result.conflicts[0].node_id, task.id);
+}
+
+#[tokio::test]
+async fn reparent_conflicts_empty_when_node_fits_the_new_ancestor() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let (july, week_in_july, _) = july_scopes(&pool).await;
+    let goal_repo = GoalRepository::new(&pool);
+    let task_repo = TaskRepository::new(&pool);
+
+    let july_goal = goal_repo
+        .create(CreateGoalRequest {
+            title: "July".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            time_scope: Some(single(july)),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let task = task_repo
+        .create(CreateTaskRequest {
+            title: "Fits".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            time_scope: Some(single(week_in_july)),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    let result = task_repo
+        .reparent_scope_conflicts("task", task.id, "goal", july_goal.id)
+        .await
+        .unwrap();
+    assert!(result.conflicts.is_empty());
+}
+
+#[tokio::test]
+async fn reparent_conflicts_none_under_an_unscoped_parent() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let (_, _, week_in_august) = july_scopes(&pool).await;
+    let task_repo = TaskRepository::new(&pool);
+
+    let task = task_repo
+        .create(CreateTaskRequest {
+            title: "Scoped".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            time_scope: Some(single(week_in_august)),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    let result = task_repo
+        .reparent_scope_conflicts("task", task.id, "project", project_id)
+        .await
+        .unwrap();
+    assert!(result.ancestor_time_scope.is_none());
+    assert!(result.conflicts.is_empty());
+}
+
+#[tokio::test]
 async fn update_rejects_plan_outside_time_scope() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;

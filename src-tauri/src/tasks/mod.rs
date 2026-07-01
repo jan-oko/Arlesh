@@ -9,7 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::database::DatabasePool;
 use error::TaskError;
-pub use scope_rules::ViolatingDescendant;
+pub use scope_rules::{ReparentConflicts, ViolatingDescendant};
 use model::{
     CreateGoalRequest, CreateTaskRequest, Dependency, DurationSpec, Goal, GoalId, GoalStatus, Task,
     TaskId, TaskStatus, TaskWithBlockers, TimeScope, UpdateGoalRequest, UpdateTaskRequest,
@@ -355,6 +355,19 @@ impl<'a> TaskRepository<'a> {
         time_scope: &TimeScope,
     ) -> Result<Vec<ViolatingDescendant>, TaskError> {
         scope_rules::conflicts_for_new_time_scope(self.pool, node_type, node_id, time_scope).await
+    }
+
+    /// Detects the items a reparent would orphan (the node and/or descendants that would fall
+    /// outside the new parent's binding scope), plus the ancestor Time Scope to clamp them to.
+    pub async fn reparent_scope_conflicts(
+        &self,
+        node_type: &str,
+        node_id: i64,
+        new_parent_type: &str,
+        new_parent_id: i64,
+    ) -> Result<ReparentConflicts, TaskError> {
+        scope_rules::reparent_conflicts(self.pool, node_type, node_id, new_parent_type, new_parent_id)
+            .await
     }
 
     /// Creates a new task.
