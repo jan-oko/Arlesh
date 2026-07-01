@@ -70,11 +70,11 @@ export default function TimeScopeField({ value, onChange }: Props) {
     <div className={styles.field}>
       <div className={styles.summaryRow}>
         <span className={styles.summary}>{summarize(value)}</span>
-        <button type="button" onClick={() => setOpen((current) => !current)}>
+        <button type="button" className={styles.button} onClick={() => setOpen((current) => !current)}>
           {open ? "close" : "edit scope"}
         </button>
         {value !== null && (
-          <button type="button" onClick={() => onChange(null)}>
+          <button type="button" className={styles.button} onClick={() => onChange(null)}>
             {t("scopeClear")}
           </button>
         )}
@@ -84,6 +84,7 @@ export default function TimeScopeField({ value, onChange }: Props) {
           <div className={styles.formToggle}>
             <button
               type="button"
+              className={styles.toggle}
               aria-pressed={form === "boundaries"}
               onClick={() => setForm("boundaries")}
             >
@@ -91,6 +92,7 @@ export default function TimeScopeField({ value, onChange }: Props) {
             </button>
             <button
               type="button"
+              className={styles.toggle}
               aria-pressed={form === "duration"}
               onClick={() => setForm("duration")}
             >
@@ -100,7 +102,7 @@ export default function TimeScopeField({ value, onChange }: Props) {
           {form === "boundaries" ? (
             <>
               <ScopePicker picker={rangePicker} initialKind="month" />
-              <button type="button" onClick={() => void applyBoundaries()}>
+              <button type="button" className={`${styles.button} ${styles.primary}`} onClick={() => void applyBoundaries()}>
                 {t("scopeApply")}
               </button>
             </>
@@ -111,12 +113,14 @@ export default function TimeScopeField({ value, onChange }: Props) {
                 <input
                   type="number"
                   min={1}
+                  className={`${styles.control} ${styles.numberInput}`}
                   value={durationN}
                   onChange={(event) => setDurationN(Math.max(1, Number(event.target.value)))}
                 />
               </label>
               <select
                 aria-label="duration kind"
+                className={styles.control}
                 value={durationKind}
                 onChange={(event) => setDurationKind(toCanonicalKind(event.target.value))}
               >
@@ -127,7 +131,7 @@ export default function TimeScopeField({ value, onChange }: Props) {
                 ))}
               </select>
               <ScopePicker picker={anchorPicker} initialKind={durationKind} />
-              <button type="button" onClick={() => void applyDuration()}>
+              <button type="button" className={`${styles.button} ${styles.primary}`} onClick={() => void applyDuration()}>
                 {t("scopeApply")}
               </button>
             </>

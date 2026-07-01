@@ -63,11 +63,11 @@ export default function PlanField({ value, timeScope, onChange }: Props) {
     <div className={styles.field}>
       <div className={styles.summaryRow}>
         <span className={styles.summary}>{value === null ? "Unplanned" : "Planned"}</span>
-        <button type="button" onClick={toggleOpen}>
+        <button type="button" className={styles.button} onClick={toggleOpen}>
           {open ? "close" : "edit plan"}
         </button>
         {value !== null && (
-          <button type="button" onClick={() => onChange(null)}>
+          <button type="button" className={styles.button} onClick={() => onChange(null)}>
             {t("scopeClear")}
           </button>
         )}
@@ -79,7 +79,7 @@ export default function PlanField({ value, timeScope, onChange }: Props) {
             initialKind="day"
             {...(constraint ? { constraint } : {})}
           />
-          <button type="button" onClick={() => void apply()}>
+          <button type="button" className={`${styles.button} ${styles.primary}`} onClick={() => void apply()}>
             {t("scopeApply")}
           </button>
         </div>
