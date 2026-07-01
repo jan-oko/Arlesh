@@ -5,6 +5,7 @@ import { getOrCreateScope, getScope } from "@/api/scopes";
 import type { TimeScope } from "@/api/time-scope";
 import { useScopePicker } from "@/hooks/use-scope-picker";
 import { addScopePeriods } from "@/utils/scope-calendar";
+import { formatScopeRange } from "@/utils/scope-format";
 import type { CanonicalKind } from "@/utils/scope-ref";
 import ScopePicker from "./ScopePicker";
 import styles from "./ScopeField.module.css";
@@ -44,9 +45,7 @@ export default function TimeScopeField({ value, onChange }: Props) {
     let active = true;
     void Promise.all([getScope(value.start_id), getScope(value.end_id)]).then(([start, end]) => {
       if (active && start != null && end != null) {
-        setRangeLabel(
-          value.start_id === value.end_id ? start.label : `${start.label} – ${end.label}`,
-        );
+        setRangeLabel(formatScopeRange(start, end));
       }
     });
     return () => {
@@ -58,7 +57,7 @@ export default function TimeScopeField({ value, onChange }: Props) {
     value === null
       ? "Unscoped"
       : value.duration
-        ? `${value.duration.n} ${value.duration.kind}`
+        ? `${value.duration.n} ${value.duration.kind}${value.duration.n === 1 ? "" : "s"}`
         : (rangeLabel ?? "…");
 
   async function applyBoundaries() {

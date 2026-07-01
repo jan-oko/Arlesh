@@ -30,7 +30,10 @@ beforeEach(() => {
   vi.clearAllMocks();
   counter = 0;
   vi.mocked(getOrCreateScope).mockImplementation(() => Promise.resolve(mkScope(++counter)));
-  vi.mocked(getScope).mockImplementation((id) => Promise.resolve({ ...mkScope(id), label: `L${id}` }));
+  const dates: Record<number, string> = { 1: "2026-06-01", 2: "2026-08-01", 5: "2026-06-01" };
+  vi.mocked(getScope).mockImplementation((id) =>
+    Promise.resolve({ ...mkScope(id), kind: "month", start_date: dates[id] ?? "2026-06-01" }),
+  );
 });
 
 describe("TimeScopeField — summary", () => {
@@ -39,22 +42,24 @@ describe("TimeScopeField — summary", () => {
     expect(screen.getByText("Unscoped")).toBeInTheDocument();
   });
 
-  it("shows the duration summary when set as a duration", () => {
-    const value: TimeScope = { start_id: 1, end_id: 2, duration: { n: 3, kind: "week" } };
-    render(<TimeScopeField value={value} onChange={vi.fn()} />);
-    expect(screen.getByText("3 week")).toBeInTheDocument();
+  it("pluralizes the duration summary", () => {
+    render(<TimeScopeField value={{ start_id: 1, end_id: 2, duration: { n: 3, kind: "week" } }} onChange={vi.fn()} />);
+    expect(screen.getByText("3 weeks")).toBeInTheDocument();
   });
 
-  it("shows a single scope's label", async () => {
-    const value: TimeScope = { start_id: 5, end_id: 5 };
-    render(<TimeScopeField value={value} onChange={vi.fn()} />);
-    await waitFor(() => expect(screen.getByText("L5")).toBeInTheDocument());
+  it("does not pluralize a duration of 1", () => {
+    render(<TimeScopeField value={{ start_id: 1, end_id: 1, duration: { n: 1, kind: "week" } }} onChange={vi.fn()} />);
+    expect(screen.getByText("1 week")).toBeInTheDocument();
   });
 
-  it("shows a range as start – end", async () => {
-    const value: TimeScope = { start_id: 1, end_id: 2 };
-    render(<TimeScopeField value={value} onChange={vi.fn()} />);
-    await waitFor(() => expect(screen.getByText("L1 – L2")).toBeInTheDocument());
+  it("shows a single scope's formatted label", async () => {
+    render(<TimeScopeField value={{ start_id: 5, end_id: 5 }} onChange={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("June 2026")).toBeInTheDocument());
+  });
+
+  it("shows a range with a factored-out year", async () => {
+    render(<TimeScopeField value={{ start_id: 1, end_id: 2 }} onChange={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("June-August 2026")).toBeInTheDocument());
   });
 });
 
