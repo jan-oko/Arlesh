@@ -50,6 +50,22 @@
   padding: var(--space-2);
   font-size: var(--text-sm);
   cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.cell:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.cell:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* Cells between the range endpoints — a tint; the endpoints themselves fill solid below. */
+.inRange {
+  background: color-mix(in srgb, var(--accent) 22%, var(--node-bg));
+  border-color: var(--accent);
 }
 
 .cell[aria-current="date"] {

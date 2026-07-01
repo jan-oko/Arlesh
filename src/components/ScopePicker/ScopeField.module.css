@@ -103,6 +103,12 @@
   border-color: var(--accent);
 }
 
+/* Native dropdown options render white by default — theme them to the dark surface. */
+.control option {
+  background: var(--surface-raised);
+  color: var(--text-primary);
+}
+
 .numberInput {
   width: 4rem;
 }

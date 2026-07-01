@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 import type { UseScopePicker } from "@/hooks/use-scope-picker";
-import { sameScopeRef, type ScopeRef } from "@/utils/scope-ref";
+import { refSortKey, sameScopeRef, type ScopeRef } from "@/utils/scope-ref";
 import {
   ascendKind,
   browseAnchor,
@@ -26,6 +26,15 @@ function isSelected(picker: UseScopePicker, ref: ScopeRef): boolean {
   return (
     (start !== null && sameScopeRef(start, ref)) || (end !== null && sameScopeRef(end, ref))
   );
+}
+
+/** Whether a cell falls between the range endpoints (same kind), for highlighting the span. */
+function isInRange(picker: UseScopePicker, ref: ScopeRef): boolean {
+  if (picker.mode !== "range") return false;
+  const { start, end } = picker.range;
+  if (start === null || end === null || ref.kind !== start.kind) return false;
+  const key = refSortKey(ref);
+  return refSortKey(start) <= key && key <= refSortKey(end);
 }
 
 /** An inclusive date range that constrains which cells may be selected (e.g. a Plan's Time Scope). */
@@ -108,13 +117,14 @@ export default function ScopePicker({
       <div className={styles.grid}>
         {cells.map((cell) => {
           const selected = isSelected(picker, cell.ref);
+          const inRange = isInRange(picker, cell.ref);
           const isToday = cellContainsDate(cell, now);
           const allowed = withinConstraint(cell, constraint);
           return (
             <button
               key={cell.label + cell.startDate}
               type="button"
-              className={styles.cell}
+              className={`${styles.cell}${inRange ? ` ${styles.inRange}` : ""}`}
               aria-pressed={selected}
               aria-current={isToday ? "date" : undefined}
               disabled={!allowed}
