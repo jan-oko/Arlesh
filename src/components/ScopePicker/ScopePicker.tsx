@@ -28,6 +28,17 @@ function isSelected(picker: UseScopePicker, ref: ScopeRef): boolean {
   );
 }
 
+/** An inclusive date range that constrains which cells may be selected (e.g. a Plan's Time Scope). */
+export interface ScopeConstraint {
+  startDate: string;
+  endDate: string;
+}
+
+function withinConstraint(cell: ScopeCell, constraint: ScopeConstraint | undefined): boolean {
+  if (constraint === undefined) return true;
+  return cell.startDate >= constraint.startDate && cell.endDate <= constraint.endDate;
+}
+
 interface ScopePickerProps {
   /** The selection state machine (from `useScopePicker`). */
   picker: UseScopePicker;
@@ -35,6 +46,8 @@ interface ScopePickerProps {
   initialKind?: ViewKind;
   /** Current date (ISO), injectable for tests. Defaults to today. */
   today?: string;
+  /** Restricts selection to cells wholly within this inclusive date range. */
+  constraint?: ScopeConstraint;
 }
 
 /**
@@ -42,7 +55,12 @@ interface ScopePickerProps {
  * part-of-day (double-click a cell to descend, ↑ to ascend, ‹/› to browse). Clicking a cell
  * applies the active selection mode via `picker`.
  */
-export default function ScopePicker({ picker, initialKind = "season", today }: ScopePickerProps) {
+export default function ScopePicker({
+  picker,
+  initialKind = "season",
+  today,
+  constraint,
+}: ScopePickerProps) {
   const [viewKind, setViewKind] = useState<ViewKind>(initialKind);
   const [anchor, setAnchor] = useState<string>(today ?? todayIso());
   const now = today ?? todayIso();
@@ -91,6 +109,7 @@ export default function ScopePicker({ picker, initialKind = "season", today }: S
         {cells.map((cell) => {
           const selected = isSelected(picker, cell.ref);
           const isToday = cellContainsDate(cell, now);
+          const allowed = withinConstraint(cell, constraint);
           return (
             <button
               key={cell.label + cell.startDate}
@@ -98,6 +117,7 @@ export default function ScopePicker({ picker, initialKind = "season", today }: S
               className={styles.cell}
               aria-pressed={selected}
               aria-current={isToday ? "date" : undefined}
+              disabled={!allowed}
               onClick={() => picker.handleClick(cell.ref)}
               onDoubleClick={() => onCellDoubleClick(cell)}
             >

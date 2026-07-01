@@ -66,6 +66,7 @@ describe("GoalEditorModal — save", () => {
         status: "active",
         blockedReason: "",
         tagIds: [2],
+        timeScope: null,
       }),
     );
   });

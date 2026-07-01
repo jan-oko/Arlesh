@@ -73,3 +73,18 @@ describe("ScopePicker — navigation", () => {
     expect(screen.getByRole("button", { name: "up" })).toBeDisabled();
   });
 });
+
+describe("ScopePicker — constraint", () => {
+  it("disables cells outside the inclusive date range", () => {
+    render(
+      <ScopePicker
+        picker={stubPicker()}
+        initialKind="month"
+        today={TODAY}
+        constraint={{ startDate: "2026-06-01", endDate: "2026-06-30" }}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "June 2026" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "July 2026" })).toBeDisabled();
+  });
+});

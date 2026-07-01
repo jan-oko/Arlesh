@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { Domain } from "@/api/domains";
+import type { TimeScope } from "@/api/time-scope";
 import EditorModal from "@/components/EditorModal/EditorModal";
+import TimeScopeField from "@/components/ScopePicker/TimeScopeField";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 import { GOAL_STATUS } from "@/utils/status-mapping";
 
@@ -11,6 +13,7 @@ export interface GoalSaveData {
   status: string;
   blockedReason: string;
   tagIds: number[];
+  timeScope: TimeScope | null;
 }
 
 const GOAL_STATUSES = Object.values(GOAL_STATUS);
@@ -28,6 +31,7 @@ export default function GoalEditorModal({ node, allTags, onSave, onClose }: Prop
   const [status, setStatus] = useState(node.status ?? GOAL_STATUS.ACTIVE);
   const [blockedReason, setBlockedReason] = useState(node.blockedReason ?? "");
   const [tagIds, setTagIds] = useState<number[]>(node.tagIds);
+  const [timeScope, setTimeScope] = useState<TimeScope | null>(node.timeScope ?? null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
@@ -43,7 +47,7 @@ export default function GoalEditorModal({ node, allTags, onSave, onClose }: Prop
     setIsSaving(true);
     setSaveError(null);
     try {
-      await onSave({ title: title.trim(), status, blockedReason, tagIds });
+      await onSave({ title: title.trim(), status, blockedReason, tagIds, timeScope });
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err));
       setIsSaving(false);
@@ -72,6 +76,10 @@ export default function GoalEditorModal({ node, allTags, onSave, onClose }: Prop
             </button>
           ))}
         </div>
+      </div>
+      <div className={styles.label}>
+        Time scope
+        <TimeScopeField value={timeScope} onChange={setTimeScope} />
       </div>
       <label className={styles.label}>
         {t("fieldBlockReason")}

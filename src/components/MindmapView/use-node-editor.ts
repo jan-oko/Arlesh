@@ -57,7 +57,13 @@ export function useNodeEditor({ tree, allTasksAndGoals, renameNode, reload }: Op
       if (editorModal === null) return;
       const { nodeId, node } = editorModal;
       const dbId = parseInt(nodeId.split("-").pop() ?? "0", 10);
-      await updateTask(dbId, { title: data.title, status: data.status, blocked_reason: data.blockedReason });
+      await updateTask(dbId, {
+        title: data.title,
+        status: data.status,
+        blocked_reason: data.blockedReason,
+        time_scope: data.timeScope,
+        plan_scope_id: data.planScopeId,
+      });
       const tagsAdded = data.tagIds.filter((id) => !node.tagIds.includes(id));
       const tagsRemoved = node.tagIds.filter((id) => !data.tagIds.includes(id));
       for (const tagId of tagsAdded) await addTagToTask(dbId, tagId);
@@ -75,7 +81,12 @@ export function useNodeEditor({ tree, allTasksAndGoals, renameNode, reload }: Op
       if (editorModal === null) return;
       const { nodeId, node } = editorModal;
       const dbId = parseInt(nodeId.split("-").pop() ?? "0", 10);
-      await updateGoal(dbId, { title: data.title, status: data.status, blocked_reason: data.blockedReason });
+      await updateGoal(dbId, {
+        title: data.title,
+        status: data.status,
+        blocked_reason: data.blockedReason,
+        time_scope: data.timeScope,
+      });
       const tagsAdded = data.tagIds.filter((id) => !node.tagIds.includes(id));
       const tagsRemoved = node.tagIds.filter((id) => !data.tagIds.includes(id));
       for (const tagId of tagsAdded) await addTagToGoal(dbId, tagId);

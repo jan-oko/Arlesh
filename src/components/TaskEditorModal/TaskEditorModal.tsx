@@ -3,8 +3,11 @@ import { useTranslation } from "react-i18next";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { Domain } from "@/api/domains";
 import type { Dependency } from "@/api/tasks";
+import type { TimeScope } from "@/api/time-scope";
 import { listTaskDependencies } from "@/api/tasks";
 import EditorModal from "@/components/EditorModal/EditorModal";
+import TimeScopeField from "@/components/ScopePicker/TimeScopeField";
+import PlanField from "@/components/ScopePicker/PlanField";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 import { TASK_STATUS } from "@/utils/status-mapping";
 
@@ -15,6 +18,8 @@ export interface TaskSaveData {
   tagIds: number[];
   addedDeps: Dependency[];
   removedDeps: Dependency[];
+  timeScope: TimeScope | null;
+  planScopeId: number | null;
 }
 
 const TASK_STATUSES = Object.values(TASK_STATUS);
@@ -36,6 +41,8 @@ export default function TaskEditorModal({ node, allTags, availableForDep, onSave
   const [status, setStatus] = useState(node.status ?? TASK_STATUS.TODO);
   const [blockedReason, setBlockedReason] = useState(node.blockedReason ?? "");
   const [tagIds, setTagIds] = useState<number[]>(node.tagIds);
+  const [timeScope, setTimeScope] = useState<TimeScope | null>(node.timeScope ?? null);
+  const [planScopeId, setPlanScopeId] = useState<number | null>(node.planScopeId ?? null);
   const [initialDeps, setInitialDeps] = useState<Dependency[]>([]);
   const [currentDeps, setCurrentDeps] = useState<Dependency[]>([]);
   const [depSearch, setDepSearch] = useState("");
@@ -74,7 +81,7 @@ export default function TaskEditorModal({ node, allTags, availableForDep, onSave
     try {
       const addedDeps = currentDeps.filter((d) => !initialDeps.some((id) => depEquals(id, d)));
       const removedDeps = initialDeps.filter((d) => !currentDeps.some((cd) => depEquals(cd, d)));
-      await onSave({ title: title.trim(), status, blockedReason, tagIds, addedDeps, removedDeps });
+      await onSave({ title: title.trim(), status, blockedReason, tagIds, addedDeps, removedDeps, timeScope, planScopeId });
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err));
       setIsSaving(false);
@@ -117,6 +124,14 @@ export default function TaskEditorModal({ node, allTags, availableForDep, onSave
             </button>
           ))}
         </div>
+      </div>
+      <div className={styles.label}>
+        Time scope
+        <TimeScopeField value={timeScope} onChange={setTimeScope} />
+      </div>
+      <div className={styles.label}>
+        Plan
+        <PlanField value={planScopeId} timeScope={timeScope} onChange={setPlanScopeId} />
       </div>
       <label className={styles.label}>
         {t("fieldBlockReason")}

@@ -14,6 +14,7 @@ import {
   cellsForView,
   browseAnchor,
   viewHeader,
+  addScopePeriods,
 } from "./scope-calendar";
 
 describe("view navigation", () => {
@@ -123,6 +124,20 @@ describe("browseAnchor", () => {
     expect(browseAnchor("week", "2026-06-20", -1)).toBe("2026-05-20");
     expect(browseAnchor("day", "2026-06-20", 1)).toBe("2026-06-27");
     expect(browseAnchor("part_of_day", "2026-06-20", -1)).toBe("2026-06-19");
+  });
+});
+
+describe("addScopePeriods", () => {
+  it("advances by whole scopes of the kind (Duration snapshot)", () => {
+    expect(addScopePeriods("month", "2026-06-01", 2)).toBe("2026-08-01");
+    expect(addScopePeriods("week", "2026-06-14", 2)).toBe("2026-06-28");
+    expect(addScopePeriods("season", "2026-03-01", 1)).toBe("2026-06-01");
+    expect(addScopePeriods("day", "2026-06-20", 3)).toBe("2026-06-23");
+  });
+
+  it("a 3-week duration ends two weeks after the anchor", () => {
+    // end boundary of "3 weeks" from W = anchor + (3 - 1) weeks
+    expect(addScopePeriods("week", "2026-06-14", 3 - 1)).toBe("2026-06-28");
   });
 });
 

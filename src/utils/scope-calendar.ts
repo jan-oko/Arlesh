@@ -223,6 +223,30 @@ export function browseAnchor(kind: ViewKind, anchor: string, dir: 1 | -1): strin
   return isoDate(d);
 }
 
+/**
+ * Advances an anchor date by `count` whole scopes of `kind` (a Duration step). Used to snapshot
+ * a Duration Time Scope: the end boundary of "N {kind}" from an anchor is `addScopePeriods(kind,
+ * anchor, N - 1)`.
+ */
+export function addScopePeriods(kind: CanonicalKind, iso: string, count: number): string {
+  const d = parse(iso);
+  switch (kind) {
+    case "season":
+      d.setUTCMonth(d.getUTCMonth() + 3 * count);
+      break;
+    case "month":
+      d.setUTCMonth(d.getUTCMonth() + count);
+      break;
+    case "week":
+      d.setUTCDate(d.getUTCDate() + 7 * count);
+      break;
+    case "day":
+      d.setUTCDate(d.getUTCDate() + count);
+      break;
+  }
+  return isoDate(d);
+}
+
 /** A human label for the currently-browsed period. */
 export function viewHeader(kind: ViewKind, anchor: string): string {
   const d = parse(anchor);

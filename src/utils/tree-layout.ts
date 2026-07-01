@@ -1,4 +1,5 @@
 import { hierarchy, tree } from "d3-hierarchy";
+import type { TimeScope } from "@/api/time-scope";
 
 export type NodeKind = "aspect" | "project" | "domain" | "goal" | "task" | "tag" | "info";
 
@@ -10,6 +11,8 @@ export interface MindmapNode {
   blockedReason?: string | null;
   knowledgeBaseDirectory?: string | null;
   color?: string;
+  timeScope?: TimeScope | null;
+  planScopeId?: number | null;
   position: number;
   tagIds: number[];
   children: MindmapNode[];
