@@ -1,0 +1,62 @@
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--surface-raised);
+  border: 1px solid var(--node-border);
+  border-radius: var(--node-radius);
+  min-width: 240px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.headerLabel {
+  flex: 1;
+  text-align: center;
+  color: var(--text-primary);
+  font-size: var(--text-base);
+}
+
+.navButton {
+  background: var(--node-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--node-border);
+  border-radius: var(--node-radius);
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+}
+
+.navButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-1);
+}
+
+.cell {
+  background: var(--node-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--node-border);
+  border-radius: var(--node-radius);
+  padding: var(--space-2);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.cell[aria-current="date"] {
+  border-color: var(--accent);
+}
+
+.cell[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--text-primary);
+}
