@@ -4,6 +4,7 @@ import type { MindmapNode } from "@/utils/tree-layout";
 import { usePanZoom } from "@/hooks/use-pan-zoom";
 import MindmapTree from "@/components/MindmapTree/MindmapTree";
 import type { ContextMenuAction } from "@/components/NodeContextMenu/context-action";
+import styles from "./MindmapCanvas.module.css";
 
 export interface MindmapCanvasHandle {
   centerOnRoot: () => void;
@@ -41,7 +42,7 @@ const MindmapCanvas = forwardRef<MindmapCanvasHandle, Props>(function MindmapCan
   );
 
   return (
-    <animated.svg ref={svgRef} width="100%" height="100%" style={{ background: "var(--canvas-bg)", display: "block", userSelect: "none", direction: "ltr" }} onMouseDown={onMouseDown} onClick={onCanvasClick}>
+    <animated.svg ref={svgRef} className={styles.canvas} width="100%" height="100%" onMouseDown={onMouseDown} onClick={onCanvasClick}>
       <animated.g style={{ transform }}>
         <MindmapTree root={root} collapsedNodeIds={collapsedNodeIds} selectedNodeIds={selectedNodeIds} editingNodeId={editingNodeId} dragTargetId={dragTargetId} dragSourceId={dragSourceId} hasClipboard={hasClipboard} onSelect={onSelect} {...(onCtrlClick !== undefined ? { onCtrlClick } : {})} {...(onShiftClick !== undefined ? { onShiftClick } : {})} onDoubleClick={onDoubleClick} onCommitEdit={onCommitEdit} onCancelEdit={onCancelEdit} onContextAction={onContextAction} onDragStart={onDragStart} onStatusClick={onStatusClick} />
         {canvasOverlay}

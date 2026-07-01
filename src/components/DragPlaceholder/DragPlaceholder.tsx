@@ -42,7 +42,7 @@ export default function DragPlaceholder({
   }
 
   return (
-    <g style={{ pointerEvents: "none" }}>
+    <g pointerEvents="none">
       <path d={edgePath} stroke="var(--accent)" strokeWidth={1.5} strokeDasharray="5 3" fill="none" opacity={0.7} />
       <g transform={`translate(${placeholderPos.x - width / 2}, ${placeholderPos.y - height / 2})`}>
         <rect width={width} height={height} rx={6} fill="var(--accent)" fillOpacity={0.1} stroke="var(--accent)" strokeWidth={2} strokeDasharray="6 3" />

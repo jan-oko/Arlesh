@@ -30,7 +30,7 @@ export default function NodeRect({ node, width, height, iconWidth, iconCx, iconC
       <rect width={width} height={height} rx={6} fill={fillColor} fillOpacity={fillOpacity} stroke={strokeColor} strokeWidth={isSelected ? 2 : 1} />
       <NodeIcon kind={node.kind} status={node.status} isBlocked={isBlocked} cx={iconCx} cy={iconCy} r={iconR} color={iconColor} opacity={iconOpacity} />
       {canClickStatus && (
-        <rect x={statusRectX} y={0} width={iconWidth} height={height} fill="transparent" style={{ cursor: "pointer" }} onClick={onStatusIconClick} />
+        <rect x={statusRectX} y={0} width={iconWidth} height={height} fill="transparent" cursor="pointer" onClick={onStatusIconClick} />
       )}
       {isCollapsed && node.children.length > 0 && (
         <circle cx={collapsedDotCx} cy={height / 2} r={4} fill="var(--text-secondary)" />

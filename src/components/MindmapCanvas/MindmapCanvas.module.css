@@ -1,0 +1,6 @@
+.canvas {
+  background: var(--canvas-bg);
+  display: block;
+  user-select: none;
+  direction: ltr;
+}
