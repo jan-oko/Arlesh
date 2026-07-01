@@ -43,7 +43,7 @@ export default function TimeScopeField({ value, onChange }: Props) {
     if (value === null || value.duration) return;
     let active = true;
     void Promise.all([getScope(value.start_id), getScope(value.end_id)]).then(([start, end]) => {
-      if (active) {
+      if (active && start != null && end != null) {
         setRangeLabel(
           value.start_id === value.end_id ? start.label : `${start.label} – ${end.label}`,
         );
