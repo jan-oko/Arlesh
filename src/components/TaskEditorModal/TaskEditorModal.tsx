@@ -32,10 +32,11 @@ interface Props {
   allTags: Domain[];
   availableForDep: MindmapNode[];
   onSave: (data: TaskSaveData) => Promise<void>;
+  onCheckScopeClamp?: (nodeType: "task" | "goal", dbId: number, timeScope: TimeScope) => Promise<boolean>;
   onClose: () => void;
 }
 
-export default function TaskEditorModal({ node, allTags, availableForDep, onSave, onClose }: Props) {
+export default function TaskEditorModal({ node, allTags, availableForDep, onSave, onCheckScopeClamp, onClose }: Props) {
   const { t } = useTranslation(["editor", "status", "nodeKinds"]);
   const [title, setTitle] = useState(node.title);
   const [status, setStatus] = useState(node.status ?? TASK_STATUS.TODO);
@@ -81,6 +82,10 @@ export default function TaskEditorModal({ node, allTags, availableForDep, onSave
     try {
       const addedDeps = currentDeps.filter((d) => !initialDeps.some((id) => depEquals(id, d)));
       const removedDeps = initialDeps.filter((d) => !currentDeps.some((cd) => depEquals(cd, d)));
+      if (timeScope !== null && onCheckScopeClamp && !(await onCheckScopeClamp("task", dbId, timeScope))) {
+        setIsSaving(false);
+        return;
+      }
       await onSave({ title: title.trim(), status, blockedReason, tagIds, addedDeps, removedDeps, timeScope, planScopeId });
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err));

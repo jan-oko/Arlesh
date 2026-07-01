@@ -15,5 +15,9 @@
   "nonInfoChildrenUnderInfo_one": "{{count}} child cannot live under an info node — choose what happens to it",
   "nonInfoChildrenUnderInfo_other": "{{count}} children cannot live under an info node — choose what happens to them",
   "reparentNonInfoChildren": "Re-parent children",
-  "deleteNonInfoChildren": "Delete children"
+  "deleteNonInfoChildren": "Delete children",
+  "scopeClampHeading_one": "Narrowing this scope moves {{count}} nested item out of range — choose what happens",
+  "scopeClampHeading_other": "Narrowing this scope moves {{count}} nested items out of range — choose what happens",
+  "scopeClampItem": "{{type}} #{{id}} would fall outside the new scope",
+  "scopeClampAction": "Clamp them to the new scope"
 }

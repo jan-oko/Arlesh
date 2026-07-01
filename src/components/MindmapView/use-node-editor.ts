@@ -5,14 +5,43 @@ import type { GoalSaveData } from "@/components/GoalEditorModal/GoalEditorModal"
 import type { ProjectSaveData } from "@/components/ProjectEditorModal/ProjectEditorModal";
 import type { Domain } from "@/api/domains";
 import { listDomains, updateDomain } from "@/api/domains";
-import { addTagToTask, removeTagFromTask, updateTask, addTaskDependency, removeTaskDependency } from "@/api/tasks";
+import {
+  addTagToTask,
+  removeTagFromTask,
+  updateTask,
+  addTaskDependency,
+  removeTaskDependency,
+  scopeContainmentConflicts,
+} from "@/api/tasks";
+import type { ViolatingDescendant } from "@/api/tasks";
 import { addTagToGoal, removeTagFromGoal, updateGoal } from "@/api/goals";
+import type { TimeScope } from "@/api/time-scope";
 import { findNode } from "@/utils/mindmap-tree";
 import { DOMAIN_SUBTYPE } from "@/api/domains";
 
 export interface EditorModalState {
   nodeId: string;
   node: MindmapNode;
+}
+
+/** A pending clamp-or-cancel prompt: the descendants a narrowed scope would orphan. */
+export interface ScopeClampRequest {
+  conflicts: ViolatingDescendant[];
+  resolve: (proceed: boolean) => void;
+}
+
+/** Clamps every conflicting descendant's Time Scope to `window` before the parent narrows. */
+async function clampDescendants(
+  conflicts: ViolatingDescendant[],
+  window: TimeScope,
+): Promise<void> {
+  for (const conflict of conflicts) {
+    if (conflict.node_type === "goal") {
+      await updateGoal(conflict.node_id, { time_scope: window });
+    } else {
+      await updateTask(conflict.node_id, { time_scope: window });
+    }
+  }
 }
 
 interface Options {
@@ -32,13 +61,35 @@ interface Result {
   onGoalSave: (data: GoalSaveData) => Promise<void>;
   onSimpleSave: (title: string) => Promise<void>;
   onProjectSave: (data: ProjectSaveData) => Promise<void>;
+  /** Prompts to clamp orphaned descendants; resolves true to proceed, false to abort. */
+  checkScopeClamp: (nodeType: "task" | "goal", dbId: number, timeScope: TimeScope) => Promise<boolean>;
+  scopeClampRequest: ScopeClampRequest | null;
+  resolveScopeClamp: (proceed: boolean) => void;
 }
 
 export function useNodeEditor({ tree, allTasksAndGoals, renameNode, reload }: Options): Result {
   const [editorModal, setEditorModal] = useState<EditorModalState | null>(null);
   const [allTags, setAllTags] = useState<Domain[]>([]);
+  const [scopeClampRequest, setScopeClampRequest] = useState<ScopeClampRequest | null>(null);
 
   useEffect(() => { void listDomains(DOMAIN_SUBTYPE.TAG).then(setAllTags); }, []);
+
+  const resolveScopeClamp = useCallback((proceed: boolean) => {
+    setScopeClampRequest((request) => {
+      request?.resolve(proceed);
+      return null;
+    });
+  }, []);
+
+  // Returns true if the save may proceed: no orphaned descendants, or the user chose to clamp them.
+  const checkScopeClamp = useCallback(
+    async (nodeType: "task" | "goal", dbId: number, timeScope: TimeScope): Promise<boolean> => {
+      const conflicts = await scopeContainmentConflicts(nodeType, dbId, timeScope);
+      if (conflicts.length === 0) return true;
+      return new Promise<boolean>((resolve) => setScopeClampRequest({ conflicts, resolve }));
+    },
+    [],
+  );
 
   const availableForDep =
     editorModal !== null ? allTasksAndGoals.filter((n) => n.id !== editorModal.nodeId) : [];
@@ -57,6 +108,10 @@ export function useNodeEditor({ tree, allTasksAndGoals, renameNode, reload }: Op
       if (editorModal === null) return;
       const { nodeId, node } = editorModal;
       const dbId = parseInt(nodeId.split("-").pop() ?? "0", 10);
+      if (data.timeScope !== null) {
+        const conflicts = await scopeContainmentConflicts("task", dbId, data.timeScope);
+        await clampDescendants(conflicts, data.timeScope);
+      }
       await updateTask(dbId, {
         title: data.title,
         status: data.status,
@@ -81,6 +136,10 @@ export function useNodeEditor({ tree, allTasksAndGoals, renameNode, reload }: Op
       if (editorModal === null) return;
       const { nodeId, node } = editorModal;
       const dbId = parseInt(nodeId.split("-").pop() ?? "0", 10);
+      if (data.timeScope !== null) {
+        const conflicts = await scopeContainmentConflicts("goal", dbId, data.timeScope);
+        await clampDescendants(conflicts, data.timeScope);
+      }
       await updateGoal(dbId, {
         title: data.title,
         status: data.status,
@@ -123,5 +182,9 @@ export function useNodeEditor({ tree, allTasksAndGoals, renameNode, reload }: Op
     [editorModal, reload],
   );
 
-  return { editorModal, setEditorModal, allTags, availableForDep, onDoubleClick, onTaskSave, onGoalSave, onSimpleSave, onProjectSave };
+  return {
+    editorModal, setEditorModal, allTags, availableForDep, onDoubleClick,
+    onTaskSave, onGoalSave, onSimpleSave, onProjectSave,
+    checkScopeClamp, scopeClampRequest, resolveScopeClamp,
+  };
 }

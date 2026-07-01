@@ -128,6 +128,41 @@ describe("TaskEditorModal — keyboard shortcuts", () => {
   });
 });
 
+describe("TaskEditorModal — scope clamp guard", () => {
+  it("aborts the save when the clamp prompt is cancelled", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const onCheckScopeClamp = vi.fn().mockResolvedValue(false);
+    render(
+      <TaskEditorModal
+        {...defaultProps}
+        node={mkNode({ timeScope: { start_id: 1, end_id: 1 } })}
+        onSave={onSave}
+        onCheckScopeClamp={onCheckScopeClamp}
+      />,
+    );
+    await waitFor(() => expect(screen.getByRole("button", { name: "save" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(onCheckScopeClamp).toHaveBeenCalledWith("task", 5, { start_id: 1, end_id: 1 }));
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("proceeds with the save when the clamp is confirmed", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const onCheckScopeClamp = vi.fn().mockResolvedValue(true);
+    render(
+      <TaskEditorModal
+        {...defaultProps}
+        node={mkNode({ timeScope: { start_id: 1, end_id: 1 } })}
+        onSave={onSave}
+        onCheckScopeClamp={onCheckScopeClamp}
+      />,
+    );
+    await waitFor(() => expect(screen.getByRole("button", { name: "save" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+  });
+});
+
 describe("TaskEditorModal — save error", () => {
   it("displays error message when onSave rejects", async () => {
     const error = new Error("Network error");

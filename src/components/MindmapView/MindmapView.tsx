@@ -26,7 +26,7 @@ import DeleteConfirmModal from "@/components/DeleteConfirmModal/DeleteConfirmMod
 import styles from "./MindmapView.module.css";
 
 export default function MindmapView() {
-  const { t } = useTranslation(["common", "editor"]);
+  const { t } = useTranslation(["common", "editor", "warnings", "nodeKinds"]);
   const { tree, isLoading, error, createNode, createChild, renameNode, retypeNode, reorderNode, moveNode, removeNode, reload } =
     useMindmapData();
   const {
@@ -67,8 +67,11 @@ export default function MindmapView() {
     tree, retypeNode, selectNode, showToast,
   });
 
-  const { editorModal, setEditorModal, allTags, availableForDep, onDoubleClick, onTaskSave, onGoalSave, onSimpleSave, onProjectSave } =
-    useNodeEditor({ tree, allTasksAndGoals, renameNode, reload });
+  const {
+    editorModal, setEditorModal, allTags, availableForDep, onDoubleClick,
+    onTaskSave, onGoalSave, onSimpleSave, onProjectSave,
+    checkScopeClamp, scopeClampRequest, resolveScopeClamp,
+  } = useNodeEditor({ tree, allTasksAndGoals, renameNode, reload });
 
   const handleConfirmDelete = useCallback(() => {
     if (deleteTargets === null) return;
@@ -211,10 +214,10 @@ export default function MindmapView() {
       )}
 
       {editorModal !== null && editorModal.node.kind === "task" && (
-        <TaskEditorModal node={editorModal.node} allTags={allTags} availableForDep={availableForDep} onSave={onTaskSave} onClose={() => setEditorModal(null)} />
+        <TaskEditorModal node={editorModal.node} allTags={allTags} availableForDep={availableForDep} onSave={onTaskSave} onCheckScopeClamp={checkScopeClamp} onClose={() => setEditorModal(null)} />
       )}
       {editorModal !== null && editorModal.node.kind === "goal" && (
-        <GoalEditorModal node={editorModal.node} allTags={allTags} onSave={onGoalSave} onClose={() => setEditorModal(null)} />
+        <GoalEditorModal node={editorModal.node} allTags={allTags} onSave={onGoalSave} onCheckScopeClamp={checkScopeClamp} onClose={() => setEditorModal(null)} />
       )}
       {editorModal !== null && editorModal.node.kind === "domain" && (
         <TitleEditorModal heading={t("editor:editDomain")} title={editorModal.node.title} onSave={onSimpleSave} onClose={() => setEditorModal(null)} />
@@ -232,6 +235,20 @@ export default function MindmapView() {
           consequences={warningModal.consequences}
           actions={retypeActions}
           onCancel={() => setWarningModal(null)}
+        />
+      )}
+
+      {scopeClampRequest !== null && (
+        <WarningConfirmModal
+          heading={t("warnings:scopeClampHeading", { count: scopeClampRequest.conflicts.length })}
+          consequences={scopeClampRequest.conflicts.map((c) =>
+            t("warnings:scopeClampItem", {
+              type: c.node_type === "goal" ? t("nodeKinds:goal") : t("nodeKinds:task"),
+              id: c.node_id,
+            }),
+          )}
+          actions={[{ label: t("warnings:scopeClampAction"), variant: "primary", onClick: () => resolveScopeClamp(true) }]}
+          onCancel={() => resolveScopeClamp(false)}
         />
       )}
 

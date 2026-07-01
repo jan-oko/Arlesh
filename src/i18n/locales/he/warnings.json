@@ -15,5 +15,9 @@
   "nonInfoChildrenUnderInfo_one": "{{count}} צומת צאצא לא יכול לחיות תחת צומת מידע — בחר מה יקרה איתו",
   "nonInfoChildrenUnderInfo_other": "{{count}} צמתי צאצא לא יכולים לחיות תחת צומת מידע — בחר מה יקרה איתם",
   "reparentNonInfoChildren": "סדר מחדש ילדים",
-  "deleteNonInfoChildren": "מחק ילדים"
+  "deleteNonInfoChildren": "מחק ילדים",
+  "scopeClampHeading_one": "צמצום המסגרת יוציא {{count}} פריט מקונן מהטווח — בחר מה יקרה",
+  "scopeClampHeading_other": "צמצום המסגרת יוציא {{count}} פריטים מקוננים מהטווח — בחר מה יקרה",
+  "scopeClampItem": "{{type}} #{{id}} ייצא מגבולות המסגרת החדשה",
+  "scopeClampAction": "כווץ אותם למסגרת החדשה"
 }

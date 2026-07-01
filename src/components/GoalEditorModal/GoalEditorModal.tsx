@@ -22,10 +22,11 @@ interface Props {
   node: MindmapNode;
   allTags: Domain[];
   onSave: (data: GoalSaveData) => Promise<void>;
+  onCheckScopeClamp?: (nodeType: "task" | "goal", dbId: number, timeScope: TimeScope) => Promise<boolean>;
   onClose: () => void;
 }
 
-export default function GoalEditorModal({ node, allTags, onSave, onClose }: Props) {
+export default function GoalEditorModal({ node, allTags, onSave, onCheckScopeClamp, onClose }: Props) {
   const { t } = useTranslation(["editor", "status"]);
   const [title, setTitle] = useState(node.title);
   const [status, setStatus] = useState(node.status ?? GOAL_STATUS.ACTIVE);
@@ -47,6 +48,11 @@ export default function GoalEditorModal({ node, allTags, onSave, onClose }: Prop
     setIsSaving(true);
     setSaveError(null);
     try {
+      const dbId = parseInt(node.id.split("-").pop() ?? "0", 10);
+      if (timeScope !== null && onCheckScopeClamp && !(await onCheckScopeClamp("goal", dbId, timeScope))) {
+        setIsSaving(false);
+        return;
+      }
       await onSave({ title: title.trim(), status, blockedReason, tagIds, timeScope });
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err));
