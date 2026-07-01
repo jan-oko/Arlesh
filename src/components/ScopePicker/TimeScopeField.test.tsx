@@ -5,6 +5,10 @@ import { getOrCreateScope } from "@/api/scopes";
 import type { Scope } from "@/api/scopes";
 import type { TimeScope } from "@/api/time-scope";
 
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({ t: (key: string) => key, i18n: { dir: () => "ltr" } }),
+}));
+
 vi.mock("@/api/scopes", () => ({
   getOrCreateScope: vi.fn(),
   getOrCreatePartScope: vi.fn(),
@@ -51,7 +55,7 @@ describe("TimeScopeField — editing", () => {
     const onChange = vi.fn();
     const value: TimeScope = { start_id: 1, end_id: 1 };
     render(<TimeScopeField value={value} onChange={onChange} />);
-    fireEvent.click(screen.getByRole("button", { name: "clear" }));
+    fireEvent.click(screen.getByRole("button", { name: "scopeClear" }));
     expect(onChange).toHaveBeenCalledWith(null);
   });
 
@@ -59,10 +63,10 @@ describe("TimeScopeField — editing", () => {
     const onChange = vi.fn();
     render(<TimeScopeField value={null} onChange={onChange} />);
     fireEvent.click(screen.getByRole("button", { name: "edit scope" }));
-    fireEvent.click(screen.getByRole("button", { name: "duration" }));
+    fireEvent.click(screen.getByRole("button", { name: "scopeDuration" }));
     // Pick an anchor week, then apply.
     fireEvent.click(screen.getAllByText(/^Week \d+$/)[0]!);
-    fireEvent.click(screen.getByRole("button", { name: "apply" }));
+    fireEvent.click(screen.getByRole("button", { name: "scopeApply" }));
     await waitFor(() =>
       expect(onChange).toHaveBeenCalledWith(
         expect.objectContaining({ duration: { n: 1, kind: "week" } }),

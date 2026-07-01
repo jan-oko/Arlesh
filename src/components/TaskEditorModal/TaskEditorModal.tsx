@@ -126,11 +126,11 @@ export default function TaskEditorModal({ node, allTags, availableForDep, onSave
         </div>
       </div>
       <div className={styles.label}>
-        Time scope
+        {t("fieldTimeScope")}
         <TimeScopeField value={timeScope} onChange={setTimeScope} />
       </div>
       <div className={styles.label}>
-        Plan
+        {t("fieldPlan")}
         <PlanField value={planScopeId} timeScope={timeScope} onChange={setPlanScopeId} />
       </div>
       <label className={styles.label}>

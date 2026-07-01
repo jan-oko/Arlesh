@@ -78,7 +78,7 @@ export default function GoalEditorModal({ node, allTags, onSave, onClose }: Prop
         </div>
       </div>
       <div className={styles.label}>
-        Time scope
+        {t("fieldTimeScope")}
         <TimeScopeField value={timeScope} onChange={setTimeScope} />
       </div>
       <label className={styles.label}>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { getOrCreateScope } from "@/api/scopes";
 import type { TimeScope } from "@/api/time-scope";
@@ -33,6 +34,7 @@ interface Props {
  * (anchor + N of a kind), snapshotted to a fixed window while persisting the duration parameters.
  */
 export default function TimeScopeField({ value, onChange }: Props) {
+  const { t } = useTranslation("editor");
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<ScopeForm>(value?.duration ? "duration" : "boundaries");
   const rangePicker = useScopePicker("range");
@@ -73,7 +75,7 @@ export default function TimeScopeField({ value, onChange }: Props) {
         </button>
         {value !== null && (
           <button type="button" onClick={() => onChange(null)}>
-            clear
+            {t("scopeClear")}
           </button>
         )}
       </div>
@@ -85,27 +87,27 @@ export default function TimeScopeField({ value, onChange }: Props) {
               aria-pressed={form === "boundaries"}
               onClick={() => setForm("boundaries")}
             >
-              boundaries
+              {t("scopeBoundaries")}
             </button>
             <button
               type="button"
               aria-pressed={form === "duration"}
               onClick={() => setForm("duration")}
             >
-              duration
+              {t("scopeDuration")}
             </button>
           </div>
           {form === "boundaries" ? (
             <>
               <ScopePicker picker={rangePicker} initialKind="month" />
               <button type="button" onClick={() => void applyBoundaries()}>
-                apply
+                {t("scopeApply")}
               </button>
             </>
           ) : (
             <>
               <label className={styles.durationRow}>
-                length
+                {t("scopeLength")}
                 <input
                   type="number"
                   min={1}
@@ -126,7 +128,7 @@ export default function TimeScopeField({ value, onChange }: Props) {
               </select>
               <ScopePicker picker={anchorPicker} initialKind={durationKind} />
               <button type="button" onClick={() => void applyDuration()}>
-                apply
+                {t("scopeApply")}
               </button>
             </>
           )}

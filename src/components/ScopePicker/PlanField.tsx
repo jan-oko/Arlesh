@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { resolveScope } from "@/api/scopes";
 import type { TimeScope } from "@/api/time-scope";
@@ -24,15 +25,14 @@ interface Props {
  * Plan must fall within it). With no Time Scope, the picker is unconstrained.
  */
 export default function PlanField({ value, timeScope, onChange }: Props) {
+  const { t } = useTranslation("editor");
   const [open, setOpen] = useState(false);
   const [constraint, setConstraint] = useState<ScopeConstraint | undefined>(undefined);
   const picker = useScopePicker("single");
 
+  // Resolve the Time Scope window to a date constraint whenever the picker is open with a scope.
   useEffect(() => {
-    if (!open || timeScope === null) {
-      setConstraint(undefined);
-      return;
-    }
+    if (!open || timeScope === null) return;
     let active = true;
     void Promise.all([
       resolveScope(timeScope.start_id),
@@ -47,6 +47,12 @@ export default function PlanField({ value, timeScope, onChange }: Props) {
     };
   }, [open, timeScope]);
 
+  function toggleOpen() {
+    // Clear any stale constraint before (re)opening; the effect refetches when a scope is set.
+    setConstraint(undefined);
+    setOpen((current) => !current);
+  }
+
   async function apply() {
     const resolved = await picker.resolve();
     onChange(resolved === null ? null : resolved.start_id);
@@ -57,12 +63,12 @@ export default function PlanField({ value, timeScope, onChange }: Props) {
     <div className={styles.field}>
       <div className={styles.summaryRow}>
         <span className={styles.summary}>{value === null ? "Unplanned" : "Planned"}</span>
-        <button type="button" onClick={() => setOpen((current) => !current)}>
+        <button type="button" onClick={toggleOpen}>
           {open ? "close" : "edit plan"}
         </button>
         {value !== null && (
           <button type="button" onClick={() => onChange(null)}>
-            clear
+            {t("scopeClear")}
           </button>
         )}
       </div>
@@ -74,7 +80,7 @@ export default function PlanField({ value, timeScope, onChange }: Props) {
             {...(constraint ? { constraint } : {})}
           />
           <button type="button" onClick={() => void apply()}>
-            apply
+            {t("scopeApply")}
           </button>
         </div>
       )}

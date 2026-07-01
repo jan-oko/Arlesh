@@ -5,6 +5,10 @@ import { getOrCreateScope, resolveScope } from "@/api/scopes";
 import type { Scope } from "@/api/scopes";
 import type { TimeScope } from "@/api/time-scope";
 
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({ t: (key: string) => key, i18n: { dir: () => "ltr" } }),
+}));
+
 vi.mock("@/api/scopes", () => ({
   getOrCreateScope: vi.fn(),
   getOrCreatePartScope: vi.fn(),
@@ -36,7 +40,7 @@ describe("PlanField", () => {
   it("clear emits null", () => {
     const onChange = vi.fn();
     render(<PlanField value={7} timeScope={null} onChange={onChange} />);
-    fireEvent.click(screen.getByRole("button", { name: "clear" }));
+    fireEvent.click(screen.getByRole("button", { name: "scopeClear" }));
     expect(onChange).toHaveBeenCalledWith(null);
   });
 
@@ -47,7 +51,7 @@ describe("PlanField", () => {
     // Day view renders numbered day cells; click the first.
     const dayCells = screen.getAllByRole("button").filter((b) => /^\d+$/.test(b.textContent ?? ""));
     fireEvent.click(dayCells[0]!);
-    fireEvent.click(screen.getByRole("button", { name: "apply" }));
+    fireEvent.click(screen.getByRole("button", { name: "scopeApply" }));
     await waitFor(() => expect(onChange).toHaveBeenCalledWith(42));
   });
 
