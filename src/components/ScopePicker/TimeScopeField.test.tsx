@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import TimeScopeField from "./TimeScopeField";
-import { getOrCreateScope } from "@/api/scopes";
+import { getOrCreateScope, getScope } from "@/api/scopes";
 import type { Scope } from "@/api/scopes";
 import type { TimeScope } from "@/api/time-scope";
 
@@ -13,6 +13,7 @@ vi.mock("@/api/scopes", () => ({
   getOrCreateScope: vi.fn(),
   getOrCreatePartScope: vi.fn(),
   getOrCreateExactScope: vi.fn(),
+  getScope: vi.fn(),
   resolveScope: vi.fn(),
 }));
 
@@ -29,6 +30,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   counter = 0;
   vi.mocked(getOrCreateScope).mockImplementation(() => Promise.resolve(mkScope(++counter)));
+  vi.mocked(getScope).mockImplementation((id) => Promise.resolve({ ...mkScope(id), label: `L${id}` }));
 });
 
 describe("TimeScopeField — summary", () => {
@@ -41,6 +43,18 @@ describe("TimeScopeField — summary", () => {
     const value: TimeScope = { start_id: 1, end_id: 2, duration: { n: 3, kind: "week" } };
     render(<TimeScopeField value={value} onChange={vi.fn()} />);
     expect(screen.getByText("3 week")).toBeInTheDocument();
+  });
+
+  it("shows a single scope's label", async () => {
+    const value: TimeScope = { start_id: 5, end_id: 5 };
+    render(<TimeScopeField value={value} onChange={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("L5")).toBeInTheDocument());
+  });
+
+  it("shows a range as start – end", async () => {
+    const value: TimeScope = { start_id: 1, end_id: 2 };
+    render(<TimeScopeField value={value} onChange={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("L1 – L2")).toBeInTheDocument());
   });
 });
 

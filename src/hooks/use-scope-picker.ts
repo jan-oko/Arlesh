@@ -76,10 +76,11 @@ export function useScopePicker(mode: ScopePickerMode): UseScopePicker {
       const id = await materializeRef(single);
       return { start_id: id, end_id: id };
     }
-    if (range.start === null || range.end === null) return null;
+    // One endpoint = a single scope (start === end); two = a range.
+    if (range.start === null) return null;
     const [startId, endId] = await Promise.all([
       materializeRef(range.start),
-      materializeRef(range.end),
+      materializeRef(range.end ?? range.start),
     ]);
     return { start_id: startId, end_id: endId };
   }, [mode, single, range]);

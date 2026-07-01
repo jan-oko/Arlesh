@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { getOrCreateScope } from "@/api/scopes";
+import { getOrCreateScope, getScope } from "@/api/scopes";
 import type { TimeScope } from "@/api/time-scope";
 import { useScopePicker } from "@/hooks/use-scope-picker";
 import { addScopePeriods } from "@/utils/scope-calendar";
@@ -16,12 +16,6 @@ type ScopeForm = "boundaries" | "duration";
 
 function toCanonicalKind(value: string): CanonicalKind {
   return DURATION_KINDS.find((kind) => kind === value) ?? "week";
-}
-
-function summarize(value: TimeScope | null): string {
-  if (value === null) return "Unscoped";
-  if (value.duration) return `${value.duration.n} ${value.duration.kind}`;
-  return "Custom range";
 }
 
 interface Props {
@@ -43,6 +37,29 @@ export default function TimeScopeField({ value, onChange }: Props) {
   const [durationKind, setDurationKind] = useState<CanonicalKind>(
     DURATION_KINDS.find((kind) => kind === value?.duration?.kind) ?? "week",
   );
+  // The label(s) of a Boundaries/single value are fetched; "Unscoped" and duration are derived.
+  const [rangeLabel, setRangeLabel] = useState<string | null>(null);
+  useEffect(() => {
+    if (value === null || value.duration) return;
+    let active = true;
+    void Promise.all([getScope(value.start_id), getScope(value.end_id)]).then(([start, end]) => {
+      if (active) {
+        setRangeLabel(
+          value.start_id === value.end_id ? start.label : `${start.label} – ${end.label}`,
+        );
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [value]);
+
+  const summary =
+    value === null
+      ? "Unscoped"
+      : value.duration
+        ? `${value.duration.n} ${value.duration.kind}`
+        : (rangeLabel ?? "…");
 
   async function applyBoundaries() {
     const timeScope = await rangePicker.resolve();
@@ -69,7 +86,7 @@ export default function TimeScopeField({ value, onChange }: Props) {
   return (
     <div className={styles.field}>
       <div className={styles.summaryRow}>
-        <span className={styles.summary}>{summarize(value)}</span>
+        <span className={styles.summary}>{summary}</span>
         <button type="button" className={styles.button} onClick={() => setOpen((current) => !current)}>
           {open ? "close" : "edit scope"}
         </button>
@@ -120,7 +137,7 @@ export default function TimeScopeField({ value, onChange }: Props) {
               </label>
               <select
                 aria-label="duration kind"
-                className={styles.control}
+                className={`${styles.control} ${styles.select}`}
                 value={durationKind}
                 onChange={(event) => setDurationKind(toCanonicalKind(event.target.value))}
               >

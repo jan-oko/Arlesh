@@ -34,8 +34,12 @@ let counter = 0;
 beforeEach(() => {
   vi.clearAllMocks();
   counter = 0;
-  // Each materialization yields the next id, in call order.
-  vi.mocked(getOrCreateScope).mockImplementation(() => Promise.resolve(mkScope(++counter)));
+  // Idempotent by date, like the real get-or-create: the same cell yields the same id.
+  const idByDate: Record<string, number> = {};
+  vi.mocked(getOrCreateScope).mockImplementation((_kind, date) => {
+    idByDate[date] ??= ++counter;
+    return Promise.resolve(mkScope(idByDate[date]));
+  });
 });
 
 describe("useScopePicker — single mode", () => {
@@ -64,9 +68,15 @@ describe("useScopePicker — range mode", () => {
     expect(ts).toEqual({ start_id: 1, end_id: 2 });
   });
 
-  it("resolves to null while the range is incomplete", async () => {
+  it("resolves a single click to a single scope (start === end)", async () => {
     const { result } = renderHook(() => useScopePicker("range"));
     act(() => result.current.handleClick(week("2026-06-14")));
+    const ts = await result.current.resolve();
+    expect(ts).toEqual({ start_id: 1, end_id: 1 });
+  });
+
+  it("resolves to null when nothing is selected", async () => {
+    const { result } = renderHook(() => useScopePicker("range"));
     const ts = await result.current.resolve();
     expect(ts).toBeNull();
   });
