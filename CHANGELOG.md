@@ -9,6 +9,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Changed
+- A task's **Plan** is now a boundaries window (start + end scope), like its Time Scope, so a task can be planned across a span (e.g. W45–W49), not just a single scope; migration `0007` moves `plan_scope_id` to `plan_start_id`/`plan_end_id`. The Plan field is now a range picker rendered like the Time Scope
 - Split a task/goal's single `scope_id` into a **Time Scope** (relevance window, on tasks and goals) and a task-only **Plan** (scope scheduled into). Time Scope is a boundaries window (start/end scope ids) that also remembers its Duration parameters when set that way; migration `0006` migrates the old `scope_id` to the Time Scope and adds `plan_scope_id`. API types gain a shared `TimeScope` value object
 
 ### Added

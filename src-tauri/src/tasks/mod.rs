@@ -67,7 +67,8 @@ struct TaskRow {
     time_scope_end_id: Option<i64>,
     time_scope_duration_n: Option<i64>,
     time_scope_duration_kind: Option<String>,
-    plan_scope_id: Option<i64>,
+    plan_start_id: Option<i64>,
+    plan_end_id: Option<i64>,
     position: i64,
 }
 
@@ -87,7 +88,7 @@ impl From<TaskRow> for Task {
                 row.time_scope_duration_n,
                 row.time_scope_duration_kind,
             ),
-            plan_scope_id: row.plan_scope_id,
+            plan: time_scope_from_row(row.plan_start_id, row.plan_end_id, None, None),
             tag_ids: vec![],
             position: row.position,
         }
@@ -377,17 +378,18 @@ impl<'a> TaskRepository<'a> {
             &request.parent_type,
             request.parent_id,
             &request.time_scope,
-            request.plan_scope_id,
+            &request.plan,
         )
         .await?;
         let status = request.status.as_ref().map(|s| s.as_str()).unwrap_or("todo");
         let (ts_start, ts_end, ts_n, ts_kind) = time_scope_columns(&request.time_scope);
+        let (plan_start, plan_end, _, _) = time_scope_columns(&request.plan);
         let id = sqlx::query(
             "INSERT INTO tasks
                 (title, parent_type, parent_id, status,
                  time_scope_start_id, time_scope_end_id, time_scope_duration_n,
-                 time_scope_duration_kind, plan_scope_id)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                 time_scope_duration_kind, plan_start_id, plan_end_id)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&request.title)
         .bind(&request.parent_type)
@@ -397,7 +399,8 @@ impl<'a> TaskRepository<'a> {
         .bind(ts_end)
         .bind(ts_n)
         .bind(&ts_kind)
-        .bind(request.plan_scope_id)
+        .bind(plan_start)
+        .bind(plan_end)
         .execute(self.pool)
         .await?
         .last_insert_rowid();
@@ -501,10 +504,11 @@ impl<'a> TaskRepository<'a> {
             None => task.time_scope,
         };
         let (ts_start, ts_end, ts_n, ts_kind) = time_scope_columns(&time_scope);
-        let plan_scope_id = match request.plan_scope_id {
+        let plan = match request.plan {
             Some(new_plan) => new_plan,
-            None => task.plan_scope_id,
+            None => task.plan,
         };
+        let (plan_start, plan_end, _, _) = time_scope_columns(&plan);
         // Validate against the effective parent — the new one when reparenting.
         let (effective_parent_type, effective_parent_id) =
             match (request.parent_type.as_deref(), request.parent_id) {
@@ -516,7 +520,7 @@ impl<'a> TaskRepository<'a> {
             &effective_parent_type,
             effective_parent_id,
             &time_scope,
-            plan_scope_id,
+            &plan,
         )
         .await?;
 
@@ -537,7 +541,7 @@ impl<'a> TaskRepository<'a> {
         sqlx::query(
             "UPDATE tasks SET title=?, status=?, blocked_reason=?, delegate_to=?,
                 time_scope_start_id=?, time_scope_end_id=?, time_scope_duration_n=?,
-                time_scope_duration_kind=?, plan_scope_id=?, position=? WHERE id=?",
+                time_scope_duration_kind=?, plan_start_id=?, plan_end_id=?, position=? WHERE id=?",
         )
         .bind(&title)
         .bind(&status)
@@ -547,7 +551,8 @@ impl<'a> TaskRepository<'a> {
         .bind(ts_end)
         .bind(ts_n)
         .bind(&ts_kind)
-        .bind(plan_scope_id)
+        .bind(plan_start)
+        .bind(plan_end)
         .bind(position)
         .bind(id.0)
         .execute(self.pool)

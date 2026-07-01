@@ -12,7 +12,7 @@ export interface MindmapNode {
   knowledgeBaseDirectory?: string | null;
   color?: string;
   timeScope?: TimeScope | null;
-  planScopeId?: number | null;
+  plan?: TimeScope | null;
   position: number;
   tagIds: number[];
   children: MindmapNode[];

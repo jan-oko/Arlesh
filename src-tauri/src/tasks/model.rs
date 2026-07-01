@@ -124,8 +124,8 @@ pub struct Task {
     pub delegate_to: Option<i64>,
     /// Relevance window (if set). A null value inherits the nearest scoped ancestor.
     pub time_scope: Option<TimeScope>,
-    /// Scope this task is scheduled into (if any). Must be contained in `time_scope`.
-    pub plan_scope_id: Option<i64>,
+    /// Scheduling window this task is planned into (if any). Must be contained in `time_scope`.
+    pub plan: Option<TimeScope>,
     /// Tag domain ids attached to this task.
     pub tag_ids: Vec<i64>,
     /// Sort position among siblings; defaults to id (insertion order).
@@ -194,9 +194,9 @@ pub struct CreateTaskRequest {
     /// Initial relevance window.
     #[serde(default)]
     pub time_scope: Option<TimeScope>,
-    /// Initial Plan (scope scheduled into).
+    /// Initial Plan (scheduling window).
     #[serde(default)]
-    pub plan_scope_id: Option<i64>,
+    pub plan: Option<TimeScope>,
 }
 
 /// Request body for updating a task.
@@ -212,8 +212,8 @@ pub struct UpdateTaskRequest {
     pub delegate_to: Option<Option<i64>>,
     /// Relevance window to set (None leaves unchanged, Some(None) clears it).
     pub time_scope: Option<Option<TimeScope>>,
-    /// Plan to set (None leaves unchanged, Some(None) clears it).
-    pub plan_scope_id: Option<Option<i64>>,
+    /// Plan window to set (None leaves unchanged, Some(None) clears it).
+    pub plan: Option<Option<TimeScope>>,
     /// New parent entity type for re-parenting (must be set together with parent_id).
     pub parent_type: Option<String>,
     /// New parent entity id for re-parenting (must be set together with parent_type).

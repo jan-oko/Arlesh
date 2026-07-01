@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { resolveScope } from "@/api/scopes";
+import { getScope, resolveScope } from "@/api/scopes";
 import type { TimeScope } from "@/api/time-scope";
 import { useScopePicker } from "@/hooks/use-scope-picker";
+import { formatScopeRange } from "@/utils/scope-format";
 import ScopePicker, { type ScopeConstraint } from "./ScopePicker";
 import styles from "./ScopeField.module.css";
 
@@ -15,22 +16,22 @@ function inclusiveEndDate(exclusiveEndIso: string): string {
 }
 
 interface Props {
-  value: number | null;
+  value: TimeScope | null;
   timeScope: TimeScope | null;
-  onChange: (planScopeId: number | null) => void;
+  onChange: (plan: TimeScope | null) => void;
 }
 
 /**
- * Edits a Task Plan: a single scope, its picker constrained to the task's Time Scope window (a
- * Plan must fall within it). With no Time Scope, the picker is unconstrained.
+ * Edits a Task Plan: a scheduling window (one click = a single scope, two = a range), its picker
+ * constrained to the task's Time Scope (a Plan must fall within it). Renders like the Time Scope.
  */
 export default function PlanField({ value, timeScope, onChange }: Props) {
   const { t } = useTranslation("editor");
   const [open, setOpen] = useState(false);
   const [constraint, setConstraint] = useState<ScopeConstraint | undefined>(undefined);
-  const picker = useScopePicker("single");
+  const [rangeLabel, setRangeLabel] = useState<string | null>(null);
+  const picker = useScopePicker("range");
 
-  // Resolve the Time Scope window to a date constraint whenever the picker is open with a scope.
   useEffect(() => {
     if (!open || timeScope === null) return;
     let active = true;
@@ -38,7 +39,7 @@ export default function PlanField({ value, timeScope, onChange }: Props) {
       resolveScope(timeScope.start_id),
       resolveScope(timeScope.end_id),
     ]).then(([start, end]) => {
-      if (active) {
+      if (active && start != null && end != null) {
         setConstraint({ startDate: start.start.slice(0, 10), endDate: inclusiveEndDate(end.end) });
       }
     });
@@ -47,22 +48,35 @@ export default function PlanField({ value, timeScope, onChange }: Props) {
     };
   }, [open, timeScope]);
 
+  useEffect(() => {
+    if (value === null) return;
+    let active = true;
+    void Promise.all([getScope(value.start_id), getScope(value.end_id)]).then(([start, end]) => {
+      if (active && start != null && end != null) {
+        setRangeLabel(formatScopeRange(start, end));
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [value]);
+
   function toggleOpen() {
-    // Clear any stale constraint before (re)opening; the effect refetches when a scope is set.
     setConstraint(undefined);
     setOpen((current) => !current);
   }
 
   async function apply() {
-    const resolved = await picker.resolve();
-    onChange(resolved === null ? null : resolved.start_id);
+    onChange(await picker.resolve());
     setOpen(false);
   }
+
+  const summary = value === null ? "Unplanned" : (rangeLabel ?? "…");
 
   return (
     <div className={styles.field}>
       <div className={styles.summaryRow}>
-        <span className={styles.summary}>{value === null ? "Unplanned" : "Planned"}</span>
+        <span className={styles.summary}>{summary}</span>
         <button type="button" className={styles.button} onClick={toggleOpen}>
           {open ? "close" : "edit plan"}
         </button>
@@ -74,11 +88,7 @@ export default function PlanField({ value, timeScope, onChange }: Props) {
       </div>
       {open && (
         <div className={styles.popover} role="group" aria-label="plan picker">
-          <ScopePicker
-            picker={picker}
-            initialKind="day"
-            {...(constraint ? { constraint } : {})}
-          />
+          <ScopePicker picker={picker} initialKind="day" {...(constraint ? { constraint } : {})} />
           <button type="button" className={`${styles.button} ${styles.primary}`} onClick={() => void apply()}>
             {t("scopeApply")}
           </button>

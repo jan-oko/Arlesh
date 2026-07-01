@@ -833,24 +833,24 @@ async fn task_plan_is_independent_of_time_scope() {
             parent_type: "project".into(),
             parent_id: project_id,
             time_scope: Some(TimeScope { start_id: week.id, end_id: week.id, duration: None }),
-            plan_scope_id: Some(day.id),
+            plan: Some(single(day.id)),
             ..Default::default()
         })
         .await
         .unwrap();
 
     assert_eq!(task.time_scope.expect("time scope").start_id, week.id);
-    assert_eq!(task.plan_scope_id, Some(day.id));
+    assert_eq!(task.plan.map(|p| (p.start_id, p.end_id)), Some((day.id, day.id)));
 
     // Clearing the Plan leaves the Time Scope intact.
     let cleared = task_repo
         .update(
             task.id.into(),
-            UpdateTaskRequest { plan_scope_id: Some(None), ..Default::default() },
+            UpdateTaskRequest { plan: Some(None), ..Default::default() },
         )
         .await
         .unwrap();
-    assert!(cleared.plan_scope_id.is_none());
+    assert!(cleared.plan.is_none());
     assert!(cleared.time_scope.is_some(), "clearing Plan must not clear Time Scope");
 }
 
@@ -875,12 +875,12 @@ async fn plan_within_time_scope_is_accepted() {
             parent_type: "project".into(),
             parent_id: project_id,
             time_scope: Some(TimeScope { start_id: week.id, end_id: week.id, duration: None }),
-            plan_scope_id: Some(day.id),
+            plan: Some(single(day.id)),
             ..Default::default()
         })
         .await
         .unwrap();
-    assert_eq!(task.plan_scope_id, Some(day.id));
+    assert_eq!(task.plan.map(|p| (p.start_id, p.end_id)), Some((day.id, day.id)));
 }
 
 #[tokio::test]
@@ -904,7 +904,7 @@ async fn plan_outside_time_scope_is_rejected() {
             parent_type: "project".into(),
             parent_id: project_id,
             time_scope: Some(TimeScope { start_id: week.id, end_id: week.id, duration: None }),
-            plan_scope_id: Some(far_day.id),
+            plan: Some(single(far_day.id)),
             ..Default::default()
         })
         .await;
@@ -1229,7 +1229,7 @@ async fn update_rejects_plan_outside_time_scope() {
     let result = task_repo
         .update(
             task.id.into(),
-            UpdateTaskRequest { plan_scope_id: Some(Some(far_day.id)), ..Default::default() },
+            UpdateTaskRequest { plan: Some(Some(single(far_day.id))), ..Default::default() },
         )
         .await;
     assert!(matches!(

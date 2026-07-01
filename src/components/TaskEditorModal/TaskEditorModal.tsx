@@ -19,7 +19,7 @@ export interface TaskSaveData {
   addedDeps: Dependency[];
   removedDeps: Dependency[];
   timeScope: TimeScope | null;
-  planScopeId: number | null;
+  plan: TimeScope | null;
 }
 
 const TASK_STATUSES = Object.values(TASK_STATUS);
@@ -43,7 +43,7 @@ export default function TaskEditorModal({ node, allTags, availableForDep, onSave
   const [blockedReason, setBlockedReason] = useState(node.blockedReason ?? "");
   const [tagIds, setTagIds] = useState<number[]>(node.tagIds);
   const [timeScope, setTimeScope] = useState<TimeScope | null>(node.timeScope ?? null);
-  const [planScopeId, setPlanScopeId] = useState<number | null>(node.planScopeId ?? null);
+  const [plan, setPlan] = useState<TimeScope | null>(node.plan ?? null);
   const [initialDeps, setInitialDeps] = useState<Dependency[]>([]);
   const [currentDeps, setCurrentDeps] = useState<Dependency[]>([]);
   const [depSearch, setDepSearch] = useState("");
@@ -86,7 +86,7 @@ export default function TaskEditorModal({ node, allTags, availableForDep, onSave
         setIsSaving(false);
         return;
       }
-      await onSave({ title: title.trim(), status, blockedReason, tagIds, addedDeps, removedDeps, timeScope, planScopeId });
+      await onSave({ title: title.trim(), status, blockedReason, tagIds, addedDeps, removedDeps, timeScope, plan });
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err));
       setIsSaving(false);
@@ -136,7 +136,7 @@ export default function TaskEditorModal({ node, allTags, availableForDep, onSave
       </div>
       <div className={styles.label}>
         {t("fieldPlan")}
-        <PlanField value={planScopeId} timeScope={timeScope} onChange={setPlanScopeId} />
+        <PlanField value={plan} timeScope={timeScope} onChange={setPlan} />
       </div>
       <label className={styles.label}>
         {t("fieldBlockReason")}

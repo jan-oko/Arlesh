@@ -128,8 +128,8 @@ pub(super) async fn nearest_planned_ancestor_window(
         match node_type.as_str() {
             "task" => {
                 let task = TaskRepository::new(pool).get(TaskId(node_id)).await?;
-                if let Some(plan) = task.plan_scope_id {
-                    return Ok(Some(scope_window(pool, plan).await?));
+                if let Some(plan) = &task.plan {
+                    return Ok(Some(time_scope_window(pool, plan).await?));
                 }
                 node_type = task.parent_type;
                 node_id = task.parent_id;
@@ -147,11 +147,11 @@ pub(super) async fn validate_task_containment(
     parent_type: &str,
     parent_id: i64,
     time_scope: &Option<TimeScope>,
-    plan_scope_id: Option<i64>,
+    plan: &Option<TimeScope>,
 ) -> Result<(), TaskError> {
-    if let (Some(ts), Some(plan)) = (time_scope, plan_scope_id) {
+    if let (Some(ts), Some(plan_ts)) = (time_scope, plan) {
         let time_window = time_scope_window(pool, ts).await?;
-        let plan_window = scope_window(pool, plan).await?;
+        let plan_window = time_scope_window(pool, plan_ts).await?;
         reject_unless_contained(
             time_window,
             plan_window,
@@ -168,10 +168,10 @@ pub(super) async fn validate_task_containment(
             )?;
         }
     }
-    if let Some(plan) = plan_scope_id {
+    if let Some(plan_ts) = plan {
         if let Some(ancestor) = nearest_planned_ancestor_window(pool, parent_type, parent_id).await?
         {
-            let plan_window = scope_window(pool, plan).await?;
+            let plan_window = time_scope_window(pool, plan_ts).await?;
             reject_unless_contained(
                 ancestor,
                 plan_window,

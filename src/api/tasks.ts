@@ -10,7 +10,7 @@ export interface Task {
   blocked_reason: string | null;
   delegate_to: number | null;
   time_scope: TimeScope | null;
-  plan_scope_id: number | null;
+  plan: TimeScope | null;
   tag_ids: number[];
   position: number;
 }
@@ -21,7 +21,7 @@ export interface CreateTaskRequest {
   parent_id: number;
   status?: string;
   time_scope?: TimeScope;
-  plan_scope_id?: number;
+  plan?: TimeScope;
 }
 
 export interface UpdateTaskRequest {
@@ -31,7 +31,7 @@ export interface UpdateTaskRequest {
   delegate_to?: number | null;
   // Absent = leave unchanged, null = clear, value = set.
   time_scope?: TimeScope | null;
-  plan_scope_id?: number | null;
+  plan?: TimeScope | null;
   parent_type?: string;
   parent_id?: number;
   position?: number;

@@ -159,7 +159,7 @@ export function buildTree(domains: Domain[], goals: Goal[], tasks: Task[], infos
       status: task.status,
       blockedReason: task.blocked_reason,
       timeScope: task.time_scope,
-      planScopeId: task.plan_scope_id,
+      plan: task.plan,
       position: task.position,
       tagIds: task.tag_ids,
       children: [],
