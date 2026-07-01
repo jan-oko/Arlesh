@@ -15,7 +15,7 @@ Every user-facing string in the frontend goes through **i18next**. A string ship
 
 1. **ESLint — `i18next/no-literal-string`**: no literal user-facing text in JSX. It flags direct children/attributes; strings hidden in expressions or ternaries (`{open ? "close" : "edit"}`) may slip past it — i18n those too. Wrapping in `t()` is the fix, **not** `// eslint-disable`.
 2. **tsc — keys are typed from the English JSON** (`src/i18n/types.d.ts` augments i18next `resources` from `en/*.json`). `t("unknownKey")` is a **compile error**. So adding `t("newKey")` without adding `newKey` to `en/<ns>.json` fails tsc — you cannot appease ESLint by inventing a key. Add the English entry first, then reference it. Never cast the key to dodge this.
-3. **Hebrew — human only**: tsc checks **English only**; a key missing from `he/<ns>.json` is **not** caught and falls back to English silently (looks fine in English, broken in Hebrew). Keeping Hebrew complete is your responsibility. **When a term is a domain term with no established Hebrew, you cannot invent it — use AskUserQuestion to get it from the user.** Check `docs/TRANSLATIONS.md`'s domain glossary first; many terms are already fixed there.
+3. **Hebrew — existence gated, correctness human**: tsc checks **English only** and would let a missing Hebrew key fall back silently, so the stop hook runs `scripts/check-translations.mjs` — it **fails if any locale lacks an English key**. That catches a *forgotten* entry, but only checks the key *exists*, not that the translation is *right*. So the human gate still governs correctness: **when a term is a domain term with no established Hebrew, you cannot invent it — use AskUserQuestion to get it from the user.** Check `docs/TRANSLATIONS.md`'s domain glossary first; many terms are already fixed there.
 
 ## Mechanism
 
@@ -37,5 +37,5 @@ Every user-facing string in the frontend goes through **i18next**. A string ship
 - Wrapping a literal in `t("madeUpKey")` without adding a real entry.
 - `// eslint-disable-next-line i18next/no-literal-string`, or casting the `t()` key.
 - Inventing a Hebrew translation for a domain term instead of asking.
-- Leaving `he/<ns>.json` missing the key (falls back silently).
+- Leaving `he/<ns>.json` missing the key (the stop hook blocks it; and it falls back silently in the app).
 - "I'll translate later" / English-only placeholder.
