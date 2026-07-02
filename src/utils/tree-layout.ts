@@ -1,8 +1,10 @@
 import { hierarchy, tree } from "d3-hierarchy";
 import type { TimeScope } from "@/api/time-scope";
-import type { InstanceType } from "@/api/flows";
+import type { InstanceType, FlowItemType } from "@/api/flows";
 
-export type NodeKind = "aspect" | "project" | "domain" | "goal" | "task" | "tag" | "info" | "flow";
+export type NodeKind =
+  | "aspect" | "project" | "domain" | "goal" | "task" | "tag" | "info"
+  | "flow" | "flow_goal" | "flow_task";
 
 /** Flow-template data carried by a `flow`-kind node. */
 export interface FlowData {
@@ -11,6 +13,31 @@ export interface FlowData {
   targetId: number | null;
   durationN: number | null;
   durationKind: string | null;
+}
+
+/** A relative (Cycle Scope, Cycle Plan) pair on a flow item. */
+export interface FlowCyclePair {
+  scopeKind: string | null;
+  scopeIndex: number | null;
+  planKind: string | null;
+  planStart: number | null;
+  planEnd: number | null;
+}
+
+/** A resolved intra-flow dependency edge (this item waits on `{type,id}`). */
+export interface FlowItemDep {
+  type: FlowItemType;
+  id: number;
+}
+
+/** Template data carried by a `flow_goal`/`flow_task` node. */
+export interface FlowItemData {
+  itemType: FlowItemType;
+  flowId: number;
+  flowScopeN: number | null;
+  flowScopeKind: string | null;
+  cycles: FlowCyclePair[];
+  dependsOn: FlowItemDep[];
 }
 
 export interface MindmapNode {
@@ -24,6 +51,7 @@ export interface MindmapNode {
   timeScope?: TimeScope | null;
   plan?: TimeScope | null;
   flow?: FlowData;
+  flowItem?: FlowItemData;
   position: number;
   tagIds: number[];
   children: MindmapNode[];

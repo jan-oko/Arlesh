@@ -26,11 +26,11 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 **Flow instance** — The result of starting a plain (non-habit) Flow: a real, persistent, independent Goal/Task subtree copied under the target. Retains a stored link to its originating Flow used only as a UI indicator (no cascading edits). Habit instances differ — they are virtual (see Habit). Dependencies declared between flow items are **remapped per instance/iteration** (Implement waits on this instance's Specify, not the template's); cross-iteration dependencies are not auto-created. Hebrew: TBD.
 
-**Flow item** — A child of a Flow (a flow task or flow goal). Like a normal Task/Goal but additionally carries one or more **Cycle Scope** / **Cycle Plan** pairs (see those terms). Hebrew: TBD.
+**Flow item** — A child of a Flow (a flow task or flow goal). Like a normal Task/Goal but additionally carries one or more **Cycle Scope** / **Cycle Plan** pairs (see those terms). Hebrew: פריט סדר.
 
-**Cycle Scope** — A flow item's *relative* relevance window, expressed as the Nth subscope of the flow scope (a scope kind lower than the flow's), e.g. "3rd day of the 2-week flow scope." Null means the whole flow scope. Resolved to a concrete Time Scope when the flow is started. Hebrew: TBD.
+**Cycle Scope** — A flow item's *relative* relevance window, expressed as the Nth subscope of the flow scope (a scope kind lower than the flow's), e.g. "3rd day of the 2-week flow scope." Null means the whole flow scope. Resolved to a concrete Time Scope when the flow is started. Hebrew: מסגרת מחזור (provisional — "cycle" = מחזור, pending confirmation).
 
-**Cycle Plan** — A flow item's *relative* Plan within its Cycle Scope (e.g. the morning of that day). Resolved to a concrete Plan on flow start. A flow item may hold multiple (Cycle Scope, Cycle Plan) pairs; each pair materializes a separate item per start/iteration. Hebrew: TBD.
+**Cycle Plan** — A flow item's *relative* Plan within its Cycle Scope (e.g. the morning of that day). Resolved to a concrete Plan on flow start. A flow item may hold multiple (Cycle Scope, Cycle Plan) pairs; each pair materializes a separate item per start/iteration. Hebrew: תכנון מחזור (provisional).
 
 **Habit** — A Flow with a Recurrence pattern. Its instances are generated automatically per iteration and are **virtual**: each is identified by (flow item, iteration scope), rendered from the template, with only divergences (status, edits, dependencies, deletion/archival tombstones) persisted in an overlay table. A Habit can be **Archived** (stops recurring; existing occurrences survive). Hebrew: TBD.
 

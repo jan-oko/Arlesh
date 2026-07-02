@@ -4,7 +4,11 @@ import type { TaskSaveData } from "@/components/TaskEditorModal/TaskEditorModal"
 import type { GoalSaveData } from "@/components/GoalEditorModal/GoalEditorModal";
 import type { ProjectSaveData } from "@/components/ProjectEditorModal/ProjectEditorModal";
 import type { FlowSaveData } from "@/components/FlowEditorModal/FlowEditorModal";
-import { updateFlow } from "@/api/flows";
+import type { FlowItemSaveData } from "@/components/FlowItemEditorModal/FlowItemEditorModal";
+import {
+  updateFlow, updateFlowGoal, updateFlowTask, setFlowItemCycles,
+  addFlowDependency, removeFlowDependency,
+} from "@/api/flows";
 import type { Domain } from "@/api/domains";
 import { listDomains, updateDomain } from "@/api/domains";
 import {
@@ -64,6 +68,7 @@ interface Result {
   onSimpleSave: (title: string) => Promise<void>;
   onProjectSave: (data: ProjectSaveData) => Promise<void>;
   onFlowSave: (data: FlowSaveData) => Promise<void>;
+  onFlowItemSave: (data: FlowItemSaveData) => Promise<void>;
   /** Prompts to clamp orphaned descendants; resolves true to proceed, false to abort. */
   checkScopeClamp: (nodeType: "task" | "goal", dbId: number, timeScope: TimeScope) => Promise<boolean>;
   /** Opens the clamp prompt for an already-computed conflict set (e.g. from a drag reparent). */
@@ -187,6 +192,44 @@ export function useNodeEditor({ tree, allTasksAndGoals, renameNode, reload }: Op
     [editorModal, reload],
   );
 
+  const onFlowItemSave = useCallback(
+    async (data: FlowItemSaveData) => {
+      if (editorModal === null) return;
+      const { node } = editorModal;
+      const flowItem = node.flowItem;
+      if (flowItem === undefined) return;
+      const dbId = parseInt(node.id.split("-").pop() ?? "0", 10);
+      const patch = {
+        title: data.title,
+        status: data.status,
+        blocked_reason: data.blockedReason === "" ? null : data.blockedReason,
+      };
+      if (flowItem.itemType === "flow_goal") {
+        await updateFlowGoal(dbId, patch);
+      } else {
+        await updateFlowTask(dbId, patch);
+      }
+      await setFlowItemCycles(
+        flowItem.flowId,
+        flowItem.itemType,
+        dbId,
+        data.cycles.map((c) => ({
+          scope_kind: c.scopeKind, scope_index: c.scopeIndex,
+          plan_kind: c.planKind, plan_start: c.planStart, plan_end: c.planEnd,
+        })),
+      );
+      for (const dep of data.addedDeps) {
+        await addFlowDependency(flowItem.flowId, flowItem.itemType, dbId, dep.type, dep.id);
+      }
+      for (const dep of data.removedDeps) {
+        await removeFlowDependency(flowItem.itemType, dbId, dep.type, dep.id);
+      }
+      await reload();
+      setEditorModal(null);
+    },
+    [editorModal, reload],
+  );
+
   const onSimpleSave = useCallback(
     async (title: string) => {
       if (editorModal === null) return;
@@ -215,7 +258,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, renameNode, reload }: Op
 
   return {
     editorModal, setEditorModal, allTags, availableForDep, onDoubleClick,
-    onTaskSave, onGoalSave, onSimpleSave, onProjectSave, onFlowSave,
+    onTaskSave, onGoalSave, onSimpleSave, onProjectSave, onFlowSave, onFlowItemSave,
     checkScopeClamp, confirmScopeClamp, scopeClampRequest, resolveScopeClamp,
   };
 }

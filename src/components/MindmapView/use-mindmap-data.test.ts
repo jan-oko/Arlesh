@@ -217,6 +217,30 @@ describe("buildTree", () => {
     const tagNode = root.children[0]?.children[0];
     expect(tagNode?.kind).toBe("tag");
   });
+
+  it("wires flow items under their flow with cycles, deps, and the flow's scope", () => {
+    const aspect = mkDomain({ id: 1, subtype: "aspect" });
+    const flow = { id: 5, title: "Feature", instance_type: "task" as const, parent_type: "aspect", parent_id: 1, target_type: null, target_id: null, flow_duration_n: 2, flow_duration_kind: "week", position: 0 };
+    const specify = { id: 1, flow_id: 5, title: "Specify", parent_type: "flow", parent_id: 5, status: "todo", blocked_reason: null, position: 0 };
+    const implement = { id: 2, flow_id: 5, title: "Implement", parent_type: "flow", parent_id: 5, status: "todo", blocked_reason: null, position: 1 };
+    const cycle = { id: 1, flow_id: 5, item_type: "flow_task" as const, item_id: 1, scope_kind: "day", scope_index: 3, plan_kind: null, plan_start: null, plan_end: null, position: 0 };
+    const dep = { id: 1, flow_id: 5, dependent_type: "flow_task" as const, dependent_id: 2, depends_on_type: "flow_task" as const, depends_on_id: 1 };
+
+    const root = buildTree([aspect], [], [], [], [flow], [], [specify, implement], [cycle], [dep]);
+    const flowNode = root.children[0]?.children[0];
+    expect(flowNode?.kind).toBe("flow");
+    const items = flowNode?.children ?? [];
+    expect(items.map((n) => n.id)).toEqual(["flowtask-1", "flowtask-2"]);
+
+    const specifyNode = items.find((n) => n.id === "flowtask-1");
+    expect(specifyNode?.flowItem?.flowScopeKind).toBe("week");
+    expect(specifyNode?.flowItem?.cycles).toEqual([
+      { scopeKind: "day", scopeIndex: 3, planKind: null, planStart: null, planEnd: null },
+    ]);
+
+    const implementNode = items.find((n) => n.id === "flowtask-2");
+    expect(implementNode?.flowItem?.dependsOn).toEqual([{ type: "flow_task", id: 1 }]);
+  });
 });
 
 // --- useMindmapData hook integration ---
@@ -230,6 +254,10 @@ describe("useMindmapData", () => {
       if (cmd === "list_tasks") return Promise.resolve([]);
       if (cmd === "list_infos") return Promise.resolve([]);
       if (cmd === "list_flows") return Promise.resolve([]);
+      if (cmd === "list_all_flow_goals") return Promise.resolve([]);
+      if (cmd === "list_all_flow_tasks") return Promise.resolve([]);
+      if (cmd === "list_all_flow_cycles") return Promise.resolve([]);
+      if (cmd === "list_all_flow_dependencies") return Promise.resolve([]);
       return Promise.resolve(null);
     });
   });
@@ -250,6 +278,10 @@ describe("useMindmapData", () => {
       if (cmd === "list_tasks") return Promise.resolve([]);
       if (cmd === "list_infos") return Promise.resolve([]);
       if (cmd === "list_flows") return Promise.resolve([]);
+      if (cmd === "list_all_flow_goals") return Promise.resolve([]);
+      if (cmd === "list_all_flow_tasks") return Promise.resolve([]);
+      if (cmd === "list_all_flow_cycles") return Promise.resolve([]);
+      if (cmd === "list_all_flow_dependencies") return Promise.resolve([]);
       return Promise.resolve(null);
     });
     const { result } = renderHook(() => useMindmapData());
@@ -281,6 +313,10 @@ describe("useMindmapData — mutations", () => {
       if (cmd === "list_tasks") return Promise.resolve([TASK, TASK2]);
       if (cmd === "list_infos") return Promise.resolve([]);
       if (cmd === "list_flows") return Promise.resolve([]);
+      if (cmd === "list_all_flow_goals") return Promise.resolve([]);
+      if (cmd === "list_all_flow_tasks") return Promise.resolve([]);
+      if (cmd === "list_all_flow_cycles") return Promise.resolve([]);
+      if (cmd === "list_all_flow_dependencies") return Promise.resolve([]);
       return Promise.resolve(null);
     });
   }

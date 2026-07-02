@@ -165,6 +165,105 @@ pub struct CreateFlowItemRequest {
     pub parent_id: i64,
 }
 
+/// Which flow-item table a row lives in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FlowItemType {
+    /// A `flow_goals` row.
+    FlowGoal,
+    /// A `flow_tasks` row.
+    FlowTask,
+}
+
+impl FlowItemType {
+    /// The database string representation (`flow_goal` / `flow_task`).
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::FlowGoal => "flow_goal",
+            Self::FlowTask => "flow_task",
+        }
+    }
+}
+
+/// Request body for updating a flow item (fields left `None` are unchanged; `Some(None)` clears).
+#[derive(Debug, Default, Deserialize)]
+pub struct UpdateFlowItemRequest {
+    /// New title.
+    pub title: Option<String>,
+    /// New default status of materialized instances.
+    pub status: Option<String>,
+    /// Block reason template (Some(None) clears).
+    pub blocked_reason: Option<Option<String>>,
+    /// New in-flow parent type (with parent_id).
+    pub parent_type: Option<String>,
+    /// New in-flow parent id (with parent_type).
+    pub parent_id: Option<i64>,
+    /// New sort position.
+    pub position: Option<i64>,
+}
+
+/// A relative (Cycle Scope, Cycle Plan) pair carried by a flow item.
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct FlowItemCycle {
+    /// Primary key.
+    pub id: i64,
+    /// Owning flow.
+    pub flow_id: i64,
+    /// Which flow-item table the owner lives in (`flow_goal` / `flow_task`).
+    pub item_type: String,
+    /// Owning flow-item id.
+    pub item_id: i64,
+    /// Cycle-scope subkind (NULL = the whole flow scope).
+    pub scope_kind: Option<String>,
+    /// 1-based index of the cycle scope within the flow window.
+    pub scope_index: Option<i64>,
+    /// Cycle-plan subkind within the cycle scope (NULL = no plan).
+    pub plan_kind: Option<String>,
+    /// 1-based inclusive start of the cycle-plan range within the cycle scope.
+    pub plan_start: Option<i64>,
+    /// 1-based inclusive end of the cycle-plan range within the cycle scope.
+    pub plan_end: Option<i64>,
+    /// Sort position among the item's pairs.
+    pub position: i64,
+}
+
+/// One (Cycle Scope, Cycle Plan) pair to persist for a flow item.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct FlowCycleInput {
+    /// Cycle-scope subkind (None = the whole flow scope).
+    #[serde(default)]
+    pub scope_kind: Option<String>,
+    /// 1-based index of the cycle scope within the flow window.
+    #[serde(default)]
+    pub scope_index: Option<i64>,
+    /// Cycle-plan subkind (None = no plan).
+    #[serde(default)]
+    pub plan_kind: Option<String>,
+    /// 1-based inclusive start of the cycle-plan range.
+    #[serde(default)]
+    pub plan_start: Option<i64>,
+    /// 1-based inclusive end of the cycle-plan range.
+    #[serde(default)]
+    pub plan_end: Option<i64>,
+}
+
+/// An intra-flow dependency: `dependent` waits on `depends_on`.
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct FlowDependency {
+    /// Primary key.
+    pub id: i64,
+    /// Owning flow.
+    pub flow_id: i64,
+    /// The waiting item's type (`flow_goal` / `flow_task`).
+    pub dependent_type: String,
+    /// The waiting item's id.
+    pub dependent_id: i64,
+    /// The blocking item's type.
+    pub depends_on_type: String,
+    /// The blocking item's id.
+    pub depends_on_id: i64,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

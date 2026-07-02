@@ -3,13 +3,20 @@ import { listDomains, createDomain, updateDomain, deleteDomain } from "@/api/dom
 import { listTasks, createTask, updateTask, deleteTask } from "@/api/tasks";
 import { listGoals, createGoal, updateGoal, deleteGoal } from "@/api/goals";
 import { listInfos, createInfo, updateInfo, deleteInfo } from "@/api/infos";
-import { listFlows, createFlow, updateFlow, deleteFlow } from "@/api/flows";
+import {
+  listFlows, createFlow, updateFlow, deleteFlow,
+  listAllFlowGoals, listAllFlowTasks, listAllFlowCycles, listAllFlowDependencies,
+  createFlowGoal, createFlowTask, updateFlowGoal, updateFlowTask, deleteFlowItem,
+} from "@/api/flows";
 import type { Domain } from "@/api/domains";
 import type { Task } from "@/api/tasks";
 import type { Goal } from "@/api/goals";
 import type { Info } from "@/api/infos";
-import type { Flow, CreateFlowRequest, UpdateFlowRequest } from "@/api/flows";
-import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
+import type {
+  Flow, CreateFlowRequest, UpdateFlowRequest,
+  FlowGoal, FlowTask, FlowItemCycle, FlowDependency, FlowItemType,
+} from "@/api/flows";
+import type { MindmapNode, NodeKind, FlowCyclePair, FlowItemDep } from "@/utils/tree-layout";
 import { goalStatusToTaskStatus, taskStatusToGoalStatus } from "@/utils/status-mapping";
 
 export const GOAL_CHILDREN_ACTION = {
@@ -78,6 +85,7 @@ function kindToInfoParentType(kind: NodeKind): string {
     case "domain": return "domain";
     case "tag": return "tag";
     case "flow": throw new Error("Flow nodes cannot parent info nodes");
+    case "flow_goal": case "flow_task": throw new Error("Flow items cannot parent info nodes");
   }
 }
 
@@ -125,12 +133,35 @@ function infoParentKey(info: Info): string {
   return `domain-${info.parent_id}`;
 }
 
+/** Node id for a flow item — `flowgoal-<id>` / `flowtask-<id>` (distinct from real goals/tasks). */
+function flowItemNodeId(itemType: FlowItemType, id: number): string {
+  return itemType === "flow_goal" ? `flowgoal-${id}` : `flowtask-${id}`;
+}
+
+/** Node id of a flow item's in-flow parent (the flow itself, or another item). */
+function flowItemParentKey(flowId: number, parentType: string, parentId: number): string {
+  if (parentType === "flow_goal") return `flowgoal-${parentId}`;
+  if (parentType === "flow_task") return `flowtask-${parentId}`;
+  return `flow-${flowId}`;
+}
+
+function toCyclePair(cycle: FlowItemCycle): FlowCyclePair {
+  return {
+    scopeKind: cycle.scope_kind, scopeIndex: cycle.scope_index,
+    planKind: cycle.plan_kind, planStart: cycle.plan_start, planEnd: cycle.plan_end,
+  };
+}
+
 export function buildTree(
   domains: Domain[],
   goals: Goal[],
   tasks: Task[],
   infos: Info[],
   flows: Flow[] = [],
+  flowGoals: FlowGoal[] = [],
+  flowTasks: FlowTask[] = [],
+  flowCycles: FlowItemCycle[] = [],
+  flowDeps: FlowDependency[] = [],
 ): MindmapNode {
   const nodeMap = new Map<string, MindmapNode>();
 
@@ -206,7 +237,49 @@ export function buildTree(
     });
   }
 
-  // Wire flows to their parents (flow items are wired in 7.3)
+  // Flow items carry their owning flow's scope (to drive the relative cycle grid), plus the
+  // relative cycle pairs and outgoing dependency edges attached to them.
+  const flowById = new Map(flows.map((flow) => [flow.id, flow]));
+  const cyclesByItem = new Map<string, FlowCyclePair[]>();
+  for (const cycle of flowCycles) {
+    const key = flowItemNodeId(cycle.item_type, cycle.item_id);
+    (cyclesByItem.get(key) ?? cyclesByItem.set(key, []).get(key)!).push(toCyclePair(cycle));
+  }
+  const depsByItem = new Map<string, FlowItemDep[]>();
+  for (const dep of flowDeps) {
+    const key = flowItemNodeId(dep.dependent_type, dep.dependent_id);
+    (depsByItem.get(key) ?? depsByItem.set(key, []).get(key)!).push({ type: dep.depends_on_type, id: dep.depends_on_id });
+  }
+
+  const buildFlowItem = (
+    itemType: FlowItemType,
+    item: FlowGoal | FlowTask,
+  ): void => {
+    const id = flowItemNodeId(itemType, item.id);
+    const owningFlow = flowById.get(item.flow_id);
+    nodeMap.set(id, {
+      id,
+      kind: itemType,
+      title: item.title,
+      status: item.status,
+      blockedReason: item.blocked_reason,
+      position: item.position,
+      flowItem: {
+        itemType,
+        flowId: item.flow_id,
+        flowScopeN: owningFlow?.flow_duration_n ?? null,
+        flowScopeKind: owningFlow?.flow_duration_kind ?? null,
+        cycles: cyclesByItem.get(id) ?? [],
+        dependsOn: depsByItem.get(id) ?? [],
+      },
+      tagIds: [],
+      children: [],
+    });
+  };
+  for (const goal of flowGoals) buildFlowItem("flow_goal", goal);
+  for (const task of flowTasks) buildFlowItem("flow_task", task);
+
+  // Wire flows to their parents.
   for (const flow of flows) {
     const flowNode = nodeMap.get(`flow-${flow.id}`);
     if (flowNode === undefined) continue;
@@ -216,6 +289,18 @@ export function buildTree(
     if (parentNode !== undefined) {
       parentNode.children.push(flowNode);
     }
+  }
+
+  // Wire flow items under their flow or parent item.
+  for (const goal of flowGoals) {
+    const node = nodeMap.get(flowItemNodeId("flow_goal", goal.id));
+    const parent = nodeMap.get(flowItemParentKey(goal.flow_id, goal.parent_type, goal.parent_id));
+    if (node !== undefined && parent !== undefined) parent.children.push(node);
+  }
+  for (const task of flowTasks) {
+    const node = nodeMap.get(flowItemNodeId("flow_task", task.id));
+    const parent = nodeMap.get(flowItemParentKey(task.flow_id, task.parent_type, task.parent_id));
+    if (node !== undefined && parent !== undefined) parent.children.push(node);
   }
 
   // Wire domain tree (all subtypes including tags)
@@ -295,14 +380,18 @@ export function useMindmapData(): MindmapData {
     setIsLoading(true);
     setError(null);
     try {
-      const [domains, goals, tasks, infos, flows] = await Promise.all([
+      const [domains, goals, tasks, infos, flows, flowGoals, flowTasks, flowCycles, flowDeps] = await Promise.all([
         listDomains(),
         listGoals(),
         listTasks(),
         listInfos(),
         listFlows(),
+        listAllFlowGoals(),
+        listAllFlowTasks(),
+        listAllFlowCycles(),
+        listAllFlowDependencies(),
       ]);
-      setTree(buildTree(domains, goals, tasks, infos, flows));
+      setTree(buildTree(domains, goals, tasks, infos, flows, flowGoals, flowTasks, flowCycles, flowDeps));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -315,14 +404,18 @@ export function useMindmapData(): MindmapData {
   const silentLoad = useCallback(async () => {
     setError(null);
     try {
-      const [domains, goals, tasks, infos, flows] = await Promise.all([
+      const [domains, goals, tasks, infos, flows, flowGoals, flowTasks, flowCycles, flowDeps] = await Promise.all([
         listDomains(),
         listGoals(),
         listTasks(),
         listInfos(),
         listFlows(),
+        listAllFlowGoals(),
+        listAllFlowTasks(),
+        listAllFlowCycles(),
+        listAllFlowDependencies(),
       ]);
-      setTree(buildTree(domains, goals, tasks, infos, flows));
+      setTree(buildTree(domains, goals, tasks, infos, flows, flowGoals, flowTasks, flowCycles, flowDeps));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -385,6 +478,23 @@ export function useMindmapData(): MindmapData {
         return newNode;
       }
 
+      if (childKind === "flow_goal" || childKind === "flow_task") {
+        // A flow item's owning flow is the parent flow node, or the parent item's flow.
+        const parent = findNodeInTree(tree, parentId);
+        const flowId = parent?.kind === "flow" ? dbParentId : parent?.flowItem?.flowId;
+        if (flowId === undefined) throw new Error(`Cannot create a flow item under "${parentId}"`);
+        const parentType = parentKind === "flow" ? "flow" : parentKind;
+        const request = { flow_id: flowId, title, parent_type: parentType, parent_id: dbParentId };
+        const item = childKind === "flow_goal" ? await createFlowGoal(request) : await createFlowTask(request);
+        const newNode: MindmapNode = {
+          id: childKind === "flow_goal" ? `flowgoal-${item.id}` : `flowtask-${item.id}`,
+          kind: childKind, title: item.title, status: item.status,
+          position: item.position, tagIds: [], children: [],
+        };
+        await silentLoad();
+        return newNode;
+      }
+
       throw new Error(`Cannot create a node of kind "${childKind}"`);
     },
     [silentLoad, tree],
@@ -392,15 +502,21 @@ export function useMindmapData(): MindmapData {
 
   const createChild = useCallback(
     async (parentId: string, parentKind: NodeKind, title: string): Promise<MindmapNode> => {
+      // A flow root spawns items of its Instance Type; a flow item spawns items of its own kind.
+      const flowRootChildKind = (): NodeKind =>
+        findNodeInTree(tree, parentId)?.flow?.instanceType === "goal" ? "flow_goal" : "flow_task";
       const childKind: NodeKind =
         parentKind === "info" ? "info"
         : parentKind === "project" ? "project"
         : parentKind === "goal" ? "goal"
         : parentKind === "task" ? "task"
+        : parentKind === "flow" ? flowRootChildKind()
+        : parentKind === "flow_goal" ? "flow_goal"
+        : parentKind === "flow_task" ? "flow_task"
         : "domain"; // aspect, domain → domain
       return createNode(parentId, parentKind, childKind, title);
     },
-    [createNode],
+    [createNode, tree],
   );
 
   const renameNode = useCallback(
@@ -412,6 +528,12 @@ export function useMindmapData(): MindmapData {
         await updateTask(dbId, { title });
       } else if (kind === "info") {
         await updateInfo(dbId, { body: title });
+      } else if (kind === "flow_goal") {
+        await updateFlowGoal(dbId, { title });
+      } else if (kind === "flow_task") {
+        await updateFlowTask(dbId, { title });
+      } else if (kind === "flow") {
+        await updateFlow(dbId, { title });
       } else {
         await import("@/api/domains").then(({ updateDomain }) => updateDomain(dbId, { title }));
       }
@@ -423,6 +545,8 @@ export function useMindmapData(): MindmapData {
   const retypeNode = useCallback(
     async (id: string, fromKind: NodeKind, toKind: NodeKind, options?: RetypeOptions): Promise<string | null> => {
       const dbId = dbIdFromNodeId(id);
+      // Flow templates and their items are not part of the retype cycle (Phase 7.2 decision).
+      if (fromKind === "flow" || fromKind === "flow_goal" || fromKind === "flow_task") return null;
       const domainTableKinds = new Set<NodeKind>(["domain", "project", "tag"]);
 
       // Same-table conversion: node ID is unchanged.
@@ -669,6 +793,9 @@ export function useMindmapData(): MindmapData {
         if (kind === "goal") await updateGoal(nId, { position: pos });
         else if (kind === "task") await updateTask(nId, { position: pos });
         else if (kind === "info") await updateInfo(nId, { position: pos });
+        else if (kind === "flow_goal") await updateFlowGoal(nId, { position: pos });
+        else if (kind === "flow_task") await updateFlowTask(nId, { position: pos });
+        else if (kind === "flow") await updateFlow(nId, { position: pos });
         else await updateDomain(nId, { position: pos });
       };
 
@@ -691,6 +818,11 @@ export function useMindmapData(): MindmapData {
         await updateTask(dbId, { parent_type: kindToParentType(newParentKind), parent_id: dbParentId, position });
       } else if (kind === "info") {
         await updateInfo(dbId, { parent_type: kindToInfoParentType(newParentKind), parent_id: dbParentId, position });
+      } else if (kind === "flow_goal" || kind === "flow_task") {
+        // Flow items move only within their flow subtree; parent is the flow or another item.
+        const parentType = newParentKind === "flow" ? "flow" : newParentKind;
+        const update = kind === "flow_goal" ? updateFlowGoal : updateFlowTask;
+        await update(dbId, { parent_type: parentType, parent_id: dbParentId, position });
       } else {
         await import("@/api/domains").then(({ updateDomain }) =>
           updateDomain(dbId, { parent_id: dbParentId, position }),
@@ -709,6 +841,8 @@ export function useMindmapData(): MindmapData {
         else if (kind === "task") await deleteTask(dbId);
         else if (kind === "info") await deleteInfo(dbId);
         else if (kind === "flow") await deleteFlow(dbId);
+        else if (kind === "flow_goal") await deleteFlowItem("flow_goal", dbId);
+        else if (kind === "flow_task") await deleteFlowItem("flow_task", dbId);
         else if (kind !== "aspect") await deleteDomain(dbId);
       }
       await silentLoad();

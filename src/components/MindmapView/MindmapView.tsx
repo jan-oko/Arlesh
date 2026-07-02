@@ -24,6 +24,7 @@ import GoalEditorModal from "@/components/GoalEditorModal/GoalEditorModal";
 import TitleEditorModal from "@/components/TitleEditorModal/TitleEditorModal";
 import ProjectEditorModal from "@/components/ProjectEditorModal/ProjectEditorModal";
 import FlowEditorModal, { type FlowSaveData } from "@/components/FlowEditorModal/FlowEditorModal";
+import FlowItemEditorModal from "@/components/FlowItemEditorModal/FlowItemEditorModal";
 import WarningConfirmModal from "@/components/WarningConfirmModal/WarningConfirmModal";
 import DeleteConfirmModal from "@/components/DeleteConfirmModal/DeleteConfirmModal";
 import styles from "./MindmapView.module.css";
@@ -70,9 +71,20 @@ export default function MindmapView() {
 
   const {
     editorModal, setEditorModal, allTags, availableForDep, onDoubleClick,
-    onTaskSave, onGoalSave, onSimpleSave, onProjectSave, onFlowSave,
+    onTaskSave, onGoalSave, onSimpleSave, onProjectSave, onFlowSave, onFlowItemSave,
     checkScopeClamp, confirmScopeClamp, scopeClampRequest, resolveScopeClamp,
   } = useNodeEditor({ tree, allTasksAndGoals, renameNode, reload });
+
+  // Every flow item, used to offer intra-flow dependency targets within the same flow.
+  const allFlowItems = useMemo(() => {
+    const acc: MindmapNode[] = [];
+    const walk = (node: MindmapNode) => {
+      if (node.kind === "flow_goal" || node.kind === "flow_task") acc.push(node);
+      node.children.forEach(walk);
+    };
+    walk(tree);
+    return acc;
+  }, [tree]);
 
   // Nodes a Flow may target — those that can hold a Goal/Task instance. Phase 7.5 further
   // narrows this to targets whose Time Scope satisfies containment.
@@ -310,6 +322,14 @@ export default function MindmapView() {
       )}
       {flowCreateParent !== null && (
         <FlowEditorModal node={BLANK_FLOW_NODE} availableTargets={flowTargets} heading={t("editor:newFlowTitle")} onSave={onCreateFlow} onClose={() => setFlowCreateParent(null)} />
+      )}
+      {editorModal !== null && (editorModal.node.kind === "flow_goal" || editorModal.node.kind === "flow_task") && (
+        <FlowItemEditorModal
+          node={editorModal.node}
+          availableDeps={allFlowItems.filter((n) => n.flowItem?.flowId === editorModal.node.flowItem?.flowId && n.id !== editorModal.node.id)}
+          onSave={onFlowItemSave}
+          onClose={() => setEditorModal(null)}
+        />
       )}
 
       {warningModal !== null && retypeActions !== null && (

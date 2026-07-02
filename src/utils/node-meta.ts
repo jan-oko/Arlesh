@@ -85,6 +85,8 @@ export const NODE_ICON: Record<NodeKind, string> = {
   tag: "🏷",
   info: "ℹ",
   flow: "▶",
+  flow_goal: "◇",
+  flow_task: "✓",
 };
 
 export const NODE_LABEL: Record<NodeKind, string> = {
@@ -96,6 +98,8 @@ export const NODE_LABEL: Record<NodeKind, string> = {
   tag: "Tag",
   info: "Info",
   flow: "Flow",
+  flow_goal: "Goal",
+  flow_task: "Task",
 };
 
 // All node types reachable from a domain-table parent (aspect/domain/project/tag).
@@ -111,6 +115,9 @@ const DOMAIN_PARENT_CYCLE: NodeKind[] = ["domain", "project", "tag", "goal", "ta
  */
 export function validTypesForCycling(kind: NodeKind, parentKind: NodeKind | null): NodeKind[] {
   if (kind === "aspect") return [];
+
+  // Flows and their items are not part of the type cycle.
+  if (kind === "flow" || kind === "flow_goal" || kind === "flow_task") return [];
 
   // Info nodes can only have info children — no cycling out.
   if (parentKind === "info") return ["info"];
@@ -152,6 +159,16 @@ export function crossesGoalTaskBoundary(from: NodeKind, to: NodeKind): boolean {
  */
 export function isValidDropTarget(sourceKind: NodeKind, targetKind: NodeKind): boolean {
   if (sourceKind === "aspect") return false;
+
+  // Flows and flow items live in their own world — they never mix with real nodes.
+  const isFlowKind = (k: NodeKind): boolean => k === "flow" || k === "flow_goal" || k === "flow_task";
+  if (isFlowKind(sourceKind) || isFlowKind(targetKind)) {
+    if (sourceKind === "flow") return targetKind === "aspect" || targetKind === "domain" || targetKind === "project" || targetKind === "goal";
+    if (sourceKind === "flow_goal") return targetKind === "flow" || targetKind === "flow_goal";
+    if (sourceKind === "flow_task") return targetKind === "flow" || targetKind === "flow_goal" || targetKind === "flow_task";
+    return false; // a real node can never drop onto a flow or flow item
+  }
+
   if (targetKind === "tag") return false;
   if (targetKind === "info") return sourceKind === "info";
   if (sourceKind === "info") return true;

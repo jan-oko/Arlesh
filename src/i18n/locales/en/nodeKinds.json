@@ -7,5 +7,7 @@
   "tag": "Tag",
   "tags": "Tags",
   "info": "Info",
-  "flow": "Flow"
+  "flow": "Flow",
+  "flow_goal": "Goal",
+  "flow_task": "Task"
 }

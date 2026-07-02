@@ -123,6 +123,16 @@ pub fn run() {
             commands::flows::create_flow_task,
             commands::flows::list_flow_goals,
             commands::flows::list_flow_tasks,
+            commands::flows::list_all_flow_goals,
+            commands::flows::list_all_flow_tasks,
+            commands::flows::update_flow_goal,
+            commands::flows::update_flow_task,
+            commands::flows::delete_flow_item,
+            commands::flows::set_flow_item_cycles,
+            commands::flows::list_all_flow_cycles,
+            commands::flows::add_flow_dependency,
+            commands::flows::remove_flow_dependency,
+            commands::flows::list_all_flow_dependencies,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

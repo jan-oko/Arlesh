@@ -132,7 +132,9 @@ A **Flow** is a template for a Goal/Task subtree, materialized on demand (e.g. a
 
 A Flow has a title, an **Instance Type** (goal or task — what its root and children materialize as), a **Target Node** (default location for instances), and a Duration-form **flow scope**.
 
-**Flow items** — a Flow's children are flow tasks/goals: ordinary Tasks/Goals plus one or more **(Cycle Scope, Cycle Plan)** pairs. A Cycle Scope is relative — the Nth subscope of the flow scope (null = the whole flow scope); a Cycle Plan is a relative Plan within it. Flow items may declare dependencies on sibling flow items.
+**Flow items** — a Flow's children are flow tasks/goals: ordinary Tasks/Goals plus one or more **(Cycle Scope, Cycle Plan)** pairs. A Cycle Scope is relative — the Nth subscope of the flow scope (null = the whole flow scope); a Cycle Plan is a relative Plan within it. Flow items may declare dependencies on **any other item in the same flow**.
+
+A flow item is created under a flow (or another item) like any child — a flow root spawns items of its Instance Type, a flow item spawns items of its own kind — and edited in a dedicated modal: title, default status, block reason, cycle pairs, and dependencies. Cycle pairs are stored **relatively**: the Cycle Scope as a `(subkind, index)` (the index-th subkind unit within the flow window; null = whole scope) and the Cycle Plan as a `(subkind, start..end)` range within the cycle scope (null = no plan). These indices are resolved to concrete Time Scopes / Plans only when the flow is started. The cycle editor is a **relative grid** modelled on the Scope Picker but labelled in relative terms ("Day 3 of the flow window") using nominal subdivision counts (season→month 3, month→week 4, week→day 7, day→part 6). An Unscoped flow's items have no cycles.
 
 **Starting a flow** (`s` on a focused flow node, or context menu) opens a modal: title, target node (free-text search combobox; parent path shown in parentheses for duplicates; defaults to the flow's Target Node), and an anchor for the flow window (default now). On start:
 

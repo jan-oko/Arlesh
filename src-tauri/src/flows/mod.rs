@@ -8,7 +8,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::database::DatabasePool;
 use error::FlowError;
 use model::{
-    CreateFlowItemRequest, CreateFlowRequest, Flow, FlowGoal, FlowId, FlowTask, UpdateFlowRequest,
+    CreateFlowItemRequest, CreateFlowRequest, Flow, FlowCycleInput, FlowDependency, FlowGoal,
+    FlowId, FlowItemCycle, FlowItemType, FlowTask, UpdateFlowItemRequest, UpdateFlowRequest,
 };
 
 /// Millisecond timestamp used to seed sort position (matches the tasks/goals convention).
@@ -175,5 +176,223 @@ impl<'a> FlowRepository<'a> {
                 .fetch_all(self.pool)
                 .await?,
         )
+    }
+
+    /// Lists every flow's goal items (for the mindmap load).
+    pub async fn list_all_goals(&self) -> Result<Vec<FlowGoal>, FlowError> {
+        Ok(sqlx::query_as::<_, FlowGoal>("SELECT * FROM flow_goals ORDER BY position ASC")
+            .fetch_all(self.pool)
+            .await?)
+    }
+
+    /// Lists every flow's task items (for the mindmap load).
+    pub async fn list_all_tasks(&self) -> Result<Vec<FlowTask>, FlowError> {
+        Ok(sqlx::query_as::<_, FlowTask>("SELECT * FROM flow_tasks ORDER BY position ASC")
+            .fetch_all(self.pool)
+            .await?)
+    }
+
+    /// Updates a flow-goal item.
+    pub async fn update_goal(
+        &self,
+        id: i64,
+        request: UpdateFlowItemRequest,
+    ) -> Result<FlowGoal, FlowError> {
+        let goal = sqlx::query_as::<_, FlowGoal>("SELECT * FROM flow_goals WHERE id = ?")
+            .bind(id)
+            .fetch_optional(self.pool)
+            .await?
+            .ok_or(FlowError::NotFound(id))?;
+        let title = request.title.unwrap_or(goal.title);
+        let status = request.status.unwrap_or(goal.status);
+        let blocked_reason = request.blocked_reason.unwrap_or(goal.blocked_reason);
+        let parent_type = request.parent_type.unwrap_or(goal.parent_type);
+        let parent_id = request.parent_id.unwrap_or(goal.parent_id);
+        let position = request.position.unwrap_or(goal.position);
+        sqlx::query(
+            "UPDATE flow_goals SET title=?, status=?, blocked_reason=?, parent_type=?, parent_id=?, position=?
+             WHERE id=?",
+        )
+        .bind(&title)
+        .bind(&status)
+        .bind(&blocked_reason)
+        .bind(&parent_type)
+        .bind(parent_id)
+        .bind(position)
+        .bind(id)
+        .execute(self.pool)
+        .await?;
+        sqlx::query_as::<_, FlowGoal>("SELECT * FROM flow_goals WHERE id = ?")
+            .bind(id)
+            .fetch_one(self.pool)
+            .await
+            .map_err(FlowError::from)
+    }
+
+    /// Updates a flow-task item.
+    pub async fn update_task(
+        &self,
+        id: i64,
+        request: UpdateFlowItemRequest,
+    ) -> Result<FlowTask, FlowError> {
+        let task = sqlx::query_as::<_, FlowTask>("SELECT * FROM flow_tasks WHERE id = ?")
+            .bind(id)
+            .fetch_optional(self.pool)
+            .await?
+            .ok_or(FlowError::NotFound(id))?;
+        let title = request.title.unwrap_or(task.title);
+        let status = request.status.unwrap_or(task.status);
+        let blocked_reason = request.blocked_reason.unwrap_or(task.blocked_reason);
+        let parent_type = request.parent_type.unwrap_or(task.parent_type);
+        let parent_id = request.parent_id.unwrap_or(task.parent_id);
+        let position = request.position.unwrap_or(task.position);
+        sqlx::query(
+            "UPDATE flow_tasks SET title=?, status=?, blocked_reason=?, parent_type=?, parent_id=?, position=?
+             WHERE id=?",
+        )
+        .bind(&title)
+        .bind(&status)
+        .bind(&blocked_reason)
+        .bind(&parent_type)
+        .bind(parent_id)
+        .bind(position)
+        .bind(id)
+        .execute(self.pool)
+        .await?;
+        sqlx::query_as::<_, FlowTask>("SELECT * FROM flow_tasks WHERE id = ?")
+            .bind(id)
+            .fetch_one(self.pool)
+            .await
+            .map_err(FlowError::from)
+    }
+
+    /// Deletes a flow item and its cycles and dependency links.
+    pub async fn delete_item(&self, item_type: FlowItemType, id: i64) -> Result<(), FlowError> {
+        let table = match item_type {
+            FlowItemType::FlowGoal => "flow_goals",
+            FlowItemType::FlowTask => "flow_tasks",
+        };
+        self.clear_item_links(item_type, id).await?;
+        sqlx::query(&format!("DELETE FROM {table} WHERE id = ?"))
+            .bind(id)
+            .execute(self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// Removes an item's cycle pairs and any dependency it participates in.
+    async fn clear_item_links(&self, item_type: FlowItemType, id: i64) -> Result<(), FlowError> {
+        sqlx::query("DELETE FROM flow_item_cycles WHERE item_type = ? AND item_id = ?")
+            .bind(item_type.as_str())
+            .bind(id)
+            .execute(self.pool)
+            .await?;
+        sqlx::query(
+            "DELETE FROM flow_dependencies
+             WHERE (dependent_type = ?1 AND dependent_id = ?2)
+                OR (depends_on_type = ?1 AND depends_on_id = ?2)",
+        )
+        .bind(item_type.as_str())
+        .bind(id)
+        .execute(self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Replaces a flow item's (Cycle Scope, Cycle Plan) pairs with `cycles`.
+    pub async fn set_cycles(
+        &self,
+        flow_id: i64,
+        item_type: FlowItemType,
+        item_id: i64,
+        cycles: &[FlowCycleInput],
+    ) -> Result<(), FlowError> {
+        sqlx::query("DELETE FROM flow_item_cycles WHERE item_type = ? AND item_id = ?")
+            .bind(item_type.as_str())
+            .bind(item_id)
+            .execute(self.pool)
+            .await?;
+        for (position, cycle) in cycles.iter().enumerate() {
+            sqlx::query(
+                "INSERT INTO flow_item_cycles
+                    (flow_id, item_type, item_id, scope_kind, scope_index,
+                     plan_kind, plan_start, plan_end, position)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            )
+            .bind(flow_id)
+            .bind(item_type.as_str())
+            .bind(item_id)
+            .bind(&cycle.scope_kind)
+            .bind(cycle.scope_index)
+            .bind(&cycle.plan_kind)
+            .bind(cycle.plan_start)
+            .bind(cycle.plan_end)
+            .bind(position as i64)
+            .execute(self.pool)
+            .await?;
+        }
+        Ok(())
+    }
+
+    /// Lists every flow's cycle pairs (for the mindmap load).
+    pub async fn list_all_cycles(&self) -> Result<Vec<FlowItemCycle>, FlowError> {
+        Ok(sqlx::query_as::<_, FlowItemCycle>(
+            "SELECT * FROM flow_item_cycles ORDER BY item_type, item_id, position ASC",
+        )
+        .fetch_all(self.pool)
+        .await?)
+    }
+
+    /// Adds an intra-flow dependency (`dependent` waits on `depends_on`); a no-op if it exists.
+    pub async fn add_dependency(
+        &self,
+        flow_id: i64,
+        dependent_type: FlowItemType,
+        dependent_id: i64,
+        depends_on_type: FlowItemType,
+        depends_on_id: i64,
+    ) -> Result<(), FlowError> {
+        sqlx::query(
+            "INSERT OR IGNORE INTO flow_dependencies
+                (flow_id, dependent_type, dependent_id, depends_on_type, depends_on_id)
+             VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(flow_id)
+        .bind(dependent_type.as_str())
+        .bind(dependent_id)
+        .bind(depends_on_type.as_str())
+        .bind(depends_on_id)
+        .execute(self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Removes an intra-flow dependency.
+    pub async fn remove_dependency(
+        &self,
+        dependent_type: FlowItemType,
+        dependent_id: i64,
+        depends_on_type: FlowItemType,
+        depends_on_id: i64,
+    ) -> Result<(), FlowError> {
+        sqlx::query(
+            "DELETE FROM flow_dependencies
+             WHERE dependent_type = ? AND dependent_id = ?
+               AND depends_on_type = ? AND depends_on_id = ?",
+        )
+        .bind(dependent_type.as_str())
+        .bind(dependent_id)
+        .bind(depends_on_type.as_str())
+        .bind(depends_on_id)
+        .execute(self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Lists every flow's dependencies (for the mindmap load).
+    pub async fn list_all_dependencies(&self) -> Result<Vec<FlowDependency>, FlowError> {
+        Ok(sqlx::query_as::<_, FlowDependency>("SELECT * FROM flow_dependencies")
+            .fetch_all(self.pool)
+            .await?)
     }
 }
