@@ -199,10 +199,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, renameNode, reload }: Op
       const flowItem = node.flowItem;
       if (flowItem === undefined) return;
       const dbId = parseInt(node.id.split("-").pop() ?? "0", 10);
-      const patch = {
-        title: data.title,
-        blocked_reason: data.blockedReason === "" ? null : data.blockedReason,
-      };
+      const patch = { title: data.title };
       if (flowItem.itemType === "flow_goal") {
         await updateFlowGoal(dbId, patch);
       } else {

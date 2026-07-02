@@ -92,7 +92,6 @@ export interface FlowGoal {
   title: string;
   parent_type: string;
   parent_id: number;
-  blocked_reason: string | null;
   position: number;
 }
 
@@ -103,7 +102,6 @@ export interface FlowTask {
   title: string;
   parent_type: string;
   parent_id: number;
-  blocked_reason: string | null;
   position: number;
 }
 
@@ -149,7 +147,6 @@ export interface CreateFlowItemRequest {
 
 export interface UpdateFlowItemRequest {
   title?: string;
-  blocked_reason?: string | null;
   parent_type?: string;
   parent_id?: number;
   position?: number;

@@ -96,27 +96,29 @@ export default function StartFlowModal({ flowTitle, flowScoped, defaultTargetTyp
       </label>
       <div className={styles.label}>
         {t("fieldTarget")}
-        {target !== null && (
+        {/* Exactly one target: once chosen, show it as a chip and hide the search until removed. */}
+        {target !== null ? (
           <div className={styles.depList}>
             <div className={styles.depItem}>
               <span>{target.title}<span className={styles.depKind}>{t(`nodeKinds:${target.kind}`)}</span></span>
               <button type="button" className={styles.depRemoveBtn} onClick={() => setTarget(null)}>×</button>
             </div>
           </div>
+        ) : (
+          <div className={styles.depSearchWrap}>
+            <input type="text" className={styles.depSearch} placeholder={t("placeholderTargetSearch")} value={targetSearch} onChange={(e) => setTargetSearch(e.target.value)} />
+            {searchResults.length > 0 && (
+              <div className={styles.depResults}>
+                {searchResults.map((n) => (
+                  <div key={n.id} className={styles.depResult} onMouseDown={(e) => { e.preventDefault(); selectTarget(n); }}>
+                    <span>{n.title}</span>
+                    <span className={styles.depKind}>{t(`nodeKinds:${n.kind}`)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         )}
-        <div className={styles.depSearchWrap}>
-          <input type="text" className={styles.depSearch} placeholder={t("placeholderTargetSearch")} value={targetSearch} onChange={(e) => setTargetSearch(e.target.value)} />
-          {searchResults.length > 0 && (
-            <div className={styles.depResults}>
-              {searchResults.map((n) => (
-                <div key={n.id} className={styles.depResult} onMouseDown={(e) => { e.preventDefault(); selectTarget(n); }}>
-                  <span>{n.title}</span>
-                  <span className={styles.depKind}>{t(`nodeKinds:${n.kind}`)}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
       </div>
       {flowScoped && (
         <label className={styles.label}>

@@ -129,14 +129,12 @@ async fn update_flow_item_changes_fields() {
             task.id,
             UpdateFlowItemRequest {
                 title: Some("Implement".into()),
-                blocked_reason: Some(Some("waiting".into())),
                 ..Default::default()
             },
         )
         .await
         .unwrap();
     assert_eq!(updated.title, "Implement");
-    assert_eq!(updated.blocked_reason.as_deref(), Some("waiting"));
 }
 
 #[tokio::test]

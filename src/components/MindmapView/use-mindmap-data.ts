@@ -261,7 +261,6 @@ export function buildTree(
       id,
       kind: itemType,
       title: item.title,
-      blockedReason: item.blocked_reason,
       position: item.position,
       flowItem: {
         itemType,

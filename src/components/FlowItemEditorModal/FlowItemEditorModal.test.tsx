@@ -15,7 +15,6 @@ function mkItem(overrides: Partial<MindmapNode> = {}): MindmapNode {
     id: "flowtask-2",
     kind: "flow_task",
     title: "Implement",
-    blockedReason: "",
     position: 1,
     tagIds: [],
     children: [],

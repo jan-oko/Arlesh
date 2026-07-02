@@ -9,7 +9,6 @@ import styles from "@/components/EditorModal/EditorModal.module.css";
 
 export interface FlowItemSaveData {
   title: string;
-  blockedReason: string;
   cycles: FlowCyclePair[];
   addedDeps: FlowItemDep[];
   removedDeps: FlowItemDep[];
@@ -39,7 +38,6 @@ export default function FlowItemEditorModal({ node, availableDeps, onSave, onClo
   const itemType: FlowItemType = node.flowItem?.itemType ?? "flow_task";
 
   const [title, setTitle] = useState(node.title);
-  const [blockedReason, setBlockedReason] = useState(node.blockedReason ?? "");
   const [cycles, setCycles] = useState<FlowCyclePair[]>(node.flowItem?.cycles ?? []);
   const [currentDeps, setCurrentDeps] = useState<FlowItemDep[]>(node.flowItem?.dependsOn ?? []);
   const [depSearch, setDepSearch] = useState("");
@@ -68,7 +66,7 @@ export default function FlowItemEditorModal({ node, availableDeps, onSave, onClo
     try {
       const addedDeps = currentDeps.filter((d) => !initialDeps.some((id) => depEquals(id, d)));
       const removedDeps = initialDeps.filter((d) => !currentDeps.some((cd) => depEquals(cd, d)));
-      await onSave({ title: title.trim(), blockedReason, cycles, addedDeps, removedDeps });
+      await onSave({ title: title.trim(), cycles, addedDeps, removedDeps });
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err));
       setIsSaving(false);
@@ -113,10 +111,6 @@ export default function FlowItemEditorModal({ node, availableDeps, onSave, onClo
           />
         </div>
       )}
-      <label className={styles.label}>
-        {t("fieldBlockReason")}
-        <textarea className={styles.textarea} value={blockedReason} onChange={(e) => setBlockedReason(e.target.value)} placeholder={t("placeholderBlockReason")} />
-      </label>
       <div className={styles.depSection}>
         <span className={styles.label}>{t("fieldDependencies")}</span>
         {currentDeps.length > 0 && (

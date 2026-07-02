@@ -75,8 +75,6 @@ pub struct FlowGoal {
     pub parent_type: String,
     /// In-flow parent id (the flow, or a flow item).
     pub parent_id: i64,
-    /// Explicit block reason template (if any).
-    pub blocked_reason: Option<String>,
     /// Sort position among siblings.
     pub position: i64,
 }
@@ -94,8 +92,6 @@ pub struct FlowTask {
     pub parent_type: String,
     /// In-flow parent id (the flow, or a flow item).
     pub parent_id: i64,
-    /// Explicit block reason template (if any).
-    pub blocked_reason: Option<String>,
     /// Sort position among siblings.
     pub position: i64,
 }
@@ -186,8 +182,6 @@ impl FlowItemType {
 pub struct UpdateFlowItemRequest {
     /// New title.
     pub title: Option<String>,
-    /// Block reason template (Some(None) clears).
-    pub blocked_reason: Option<Option<String>>,
     /// New in-flow parent type (with parent_id).
     pub parent_type: Option<String>,
     /// New in-flow parent id (with parent_type).

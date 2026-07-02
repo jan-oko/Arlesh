@@ -246,16 +246,14 @@ impl<'a> FlowRepository<'a> {
             .await?
             .ok_or(FlowError::NotFound(id))?;
         let title = request.title.unwrap_or(goal.title);
-        let blocked_reason = request.blocked_reason.unwrap_or(goal.blocked_reason);
         let parent_type = request.parent_type.unwrap_or(goal.parent_type);
         let parent_id = request.parent_id.unwrap_or(goal.parent_id);
         let position = request.position.unwrap_or(goal.position);
         sqlx::query(
-            "UPDATE flow_goals SET title=?, blocked_reason=?, parent_type=?, parent_id=?, position=?
+            "UPDATE flow_goals SET title=?, parent_type=?, parent_id=?, position=?
              WHERE id=?",
         )
         .bind(&title)
-        .bind(&blocked_reason)
         .bind(&parent_type)
         .bind(parent_id)
         .bind(position)
@@ -281,16 +279,14 @@ impl<'a> FlowRepository<'a> {
             .await?
             .ok_or(FlowError::NotFound(id))?;
         let title = request.title.unwrap_or(task.title);
-        let blocked_reason = request.blocked_reason.unwrap_or(task.blocked_reason);
         let parent_type = request.parent_type.unwrap_or(task.parent_type);
         let parent_id = request.parent_id.unwrap_or(task.parent_id);
         let position = request.position.unwrap_or(task.position);
         sqlx::query(
-            "UPDATE flow_tasks SET title=?, blocked_reason=?, parent_type=?, parent_id=?, position=?
+            "UPDATE flow_tasks SET title=?, parent_type=?, parent_id=?, position=?
              WHERE id=?",
         )
         .bind(&title)
-        .bind(&blocked_reason)
         .bind(&parent_type)
         .bind(parent_id)
         .bind(position)
@@ -353,14 +349,14 @@ impl<'a> FlowRepository<'a> {
             return Ok(id);
         }
         // Common fields carry over regardless of which table the item lives in.
-        let (flow_id, title, parent_type, parent_id, blocked_reason, position) = match from {
+        let (flow_id, title, parent_type, parent_id, position) = match from {
             FlowItemType::FlowGoal => {
                 let g = sqlx::query_as::<_, FlowGoal>("SELECT * FROM flow_goals WHERE id = ?")
                     .bind(id)
                     .fetch_optional(self.pool)
                     .await?
                     .ok_or(FlowError::NotFound(id))?;
-                (g.flow_id, g.title, g.parent_type, g.parent_id, g.blocked_reason, g.position)
+                (g.flow_id, g.title, g.parent_type, g.parent_id, g.position)
             }
             FlowItemType::FlowTask => {
                 let t = sqlx::query_as::<_, FlowTask>("SELECT * FROM flow_tasks WHERE id = ?")
@@ -368,7 +364,7 @@ impl<'a> FlowRepository<'a> {
                     .fetch_optional(self.pool)
                     .await?
                     .ok_or(FlowError::NotFound(id))?;
-                (t.flow_id, t.title, t.parent_type, t.parent_id, t.blocked_reason, t.position)
+                (t.flow_id, t.title, t.parent_type, t.parent_id, t.position)
             }
         };
 
@@ -377,14 +373,13 @@ impl<'a> FlowRepository<'a> {
             FlowItemType::FlowTask => "flow_tasks",
         };
         let new_id = sqlx::query(&format!(
-            "INSERT INTO {new_table} (flow_id, title, parent_type, parent_id, blocked_reason, position)
-             VALUES (?, ?, ?, ?, ?, ?)"
+            "INSERT INTO {new_table} (flow_id, title, parent_type, parent_id, position)
+             VALUES (?, ?, ?, ?, ?)"
         ))
         .bind(flow_id)
         .bind(&title)
         .bind(&parent_type)
         .bind(parent_id)
-        .bind(&blocked_reason)
         .bind(position)
         .execute(self.pool)
         .await?

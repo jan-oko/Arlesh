@@ -49,6 +49,15 @@ describe("StartFlowModal", () => {
     );
   });
 
+  it("allows exactly one target — hides the search once chosen, restores it on removal", () => {
+    render(<StartFlowModal {...defaultProps} />);
+    // A default target is set → the search box is hidden.
+    expect(screen.queryByPlaceholderText("placeholderTargetSearch")).not.toBeInTheDocument();
+    // Removing it brings the search back.
+    fireEvent.click(screen.getByRole("button", { name: "×" }));
+    expect(screen.getByPlaceholderText("placeholderTargetSearch")).toBeInTheDocument();
+  });
+
   it("does not start without a target", () => {
     render(<StartFlowModal {...defaultProps} defaultTargetType={null} defaultTargetId={null} />);
     fireEvent.click(screen.getByRole("button", { name: "save" }));
