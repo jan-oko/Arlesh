@@ -205,6 +205,61 @@ async fn dependencies_add_dedupe_and_remove() {
 }
 
 #[tokio::test]
+async fn converting_an_item_preserves_cycles_deps_and_children() {
+    let pool = helpers::test_pool().await;
+    let repo = FlowRepository::new(&pool);
+    let flow = repo.create(create_req("Feature")).await.unwrap();
+
+    // A goal item with a cycle, a dependency (as blocker), and a task child.
+    let goal = repo
+        .create_goal(CreateFlowItemRequest { flow_id: flow.id, title: "Milestone".into(), parent_type: "flow".into(), parent_id: flow.id })
+        .await
+        .unwrap();
+    let dependent = repo
+        .create_task(CreateFlowItemRequest { flow_id: flow.id, title: "After".into(), parent_type: "flow".into(), parent_id: flow.id })
+        .await
+        .unwrap();
+    let child = repo
+        .create_task(CreateFlowItemRequest { flow_id: flow.id, title: "Sub".into(), parent_type: "flow_goal".into(), parent_id: goal.id })
+        .await
+        .unwrap();
+    repo.set_cycles(flow.id, FlowItemType::FlowGoal, goal.id, &[FlowCycleInput { scope_kind: Some("day".into()), scope_index: Some(2), ..Default::default() }])
+        .await
+        .unwrap();
+    repo.add_dependency(flow.id, FlowItemType::FlowTask, dependent.id, FlowItemType::FlowGoal, goal.id)
+        .await
+        .unwrap();
+
+    let new_id = repo
+        .convert_item(FlowItemType::FlowGoal, goal.id, FlowItemType::FlowTask, "todo")
+        .await
+        .unwrap();
+
+    // The goal is gone; a task took its place.
+    assert!(repo.list_all_goals().await.unwrap().iter().all(|g| g.id != goal.id));
+    let new_task = repo.list_all_tasks().await.unwrap().into_iter().find(|t| t.id == new_id).unwrap();
+    assert_eq!(new_task.title, "Milestone");
+    assert_eq!(new_task.status, "todo");
+
+    // The cycle followed the item to the tasks table.
+    let cycles = repo.list_all_cycles().await.unwrap();
+    assert_eq!(cycles.len(), 1);
+    assert_eq!(cycles[0].item_type, "flow_task");
+    assert_eq!(cycles[0].item_id, new_id);
+
+    // The dependency now points at the new task.
+    let deps = repo.list_all_dependencies().await.unwrap();
+    assert_eq!(deps.len(), 1);
+    assert_eq!(deps[0].depends_on_type, "flow_task");
+    assert_eq!(deps[0].depends_on_id, new_id);
+
+    // The task child was reparented onto the new task.
+    let reparented = repo.list_all_tasks().await.unwrap().into_iter().find(|t| t.id == child.id).unwrap();
+    assert_eq!(reparented.parent_type, "flow_task");
+    assert_eq!(reparented.parent_id, new_id);
+}
+
+#[tokio::test]
 async fn deleting_an_item_clears_its_cycles_and_dependencies() {
     let pool = helpers::test_pool().await;
     let repo = FlowRepository::new(&pool);

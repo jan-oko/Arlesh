@@ -6,7 +6,7 @@ import { listInfos, createInfo, updateInfo, deleteInfo } from "@/api/infos";
 import {
   listFlows, createFlow, updateFlow, deleteFlow,
   listAllFlowGoals, listAllFlowTasks, listAllFlowCycles, listAllFlowDependencies,
-  createFlowGoal, createFlowTask, updateFlowGoal, updateFlowTask, deleteFlowItem,
+  createFlowGoal, createFlowTask, updateFlowGoal, updateFlowTask, deleteFlowItem, convertFlowItem,
 } from "@/api/flows";
 import type { Domain } from "@/api/domains";
 import type { Task } from "@/api/tasks";
@@ -545,8 +545,38 @@ export function useMindmapData(): MindmapData {
   const retypeNode = useCallback(
     async (id: string, fromKind: NodeKind, toKind: NodeKind, options?: RetypeOptions): Promise<string | null> => {
       const dbId = dbIdFromNodeId(id);
-      // Flow templates and their items are not part of the retype cycle (Phase 7.2 decision).
-      if (fromKind === "flow" || fromKind === "flow_goal" || fromKind === "flow_task") return null;
+      // The flow node itself is not part of the retype cycle (Phase 7.2 decision).
+      if (fromKind === "flow") return null;
+
+      // Flow items convert goal↔task in their own tables, preserving cycles and dependencies.
+      if (fromKind === "flow_goal" || fromKind === "flow_task") {
+        if ((toKind !== "flow_goal" && toKind !== "flow_task") || fromKind === toKind) return null;
+        const node = findNodeInTree(tree, id);
+        const parent = findParentInTree(tree, id);
+        if (node === undefined || parent === undefined) return null;
+
+        // A flow-goal child can't live under a flow-task; move it up or delete it per the prompt.
+        if (fromKind === "flow_goal" && toKind === "flow_task") {
+          const parentType = parent.kind === "flow" ? "flow" : parent.kind;
+          const parentDbId = dbIdFromNodeId(parent.id);
+          for (const child of node.children.filter((c) => c.kind === "flow_goal")) {
+            const childDbId = dbIdFromNodeId(child.id);
+            if (options?.goalChildrenAction === "reparent") {
+              await updateFlowGoal(childDbId, { parent_type: parentType, parent_id: parentDbId });
+            } else {
+              await deleteFlowItem("flow_goal", childDbId);
+            }
+          }
+        }
+
+        const newStatus = fromKind === "flow_goal"
+          ? goalStatusToTaskStatus(node.status ?? "active")
+          : taskStatusToGoalStatus(node.status ?? "todo");
+        const newId = await convertFlowItem(fromKind, dbId, toKind, newStatus);
+        await silentLoad();
+        return toKind === "flow_goal" ? `flowgoal-${newId}` : `flowtask-${newId}`;
+      }
+
       const domainTableKinds = new Set<NodeKind>(["domain", "project", "tag"]);
 
       // Same-table conversion: node ID is unchanged.

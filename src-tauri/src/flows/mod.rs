@@ -299,6 +299,95 @@ impl<'a> FlowRepository<'a> {
         Ok(())
     }
 
+    /// Converts a flow item to the other kind (goal↔task), moving it to the other table.
+    ///
+    /// The item's cycle pairs and dependency edges (both directions) are re-pointed to the new
+    /// row, and children still parented on it are reparented onto it where the nesting rules allow
+    /// (a flow-goal child cannot sit under a flow-task, so the caller must move or delete those
+    /// first). `status` must be valid for the target table. Returns the new item id.
+    pub async fn convert_item(
+        &self,
+        from: FlowItemType,
+        id: i64,
+        to: FlowItemType,
+        status: &str,
+    ) -> Result<i64, FlowError> {
+        if from == to {
+            return Ok(id);
+        }
+        // Common fields carry over regardless of which table the item lives in.
+        let (flow_id, title, parent_type, parent_id, blocked_reason, position) = match from {
+            FlowItemType::FlowGoal => {
+                let g = sqlx::query_as::<_, FlowGoal>("SELECT * FROM flow_goals WHERE id = ?")
+                    .bind(id)
+                    .fetch_optional(self.pool)
+                    .await?
+                    .ok_or(FlowError::NotFound(id))?;
+                (g.flow_id, g.title, g.parent_type, g.parent_id, g.blocked_reason, g.position)
+            }
+            FlowItemType::FlowTask => {
+                let t = sqlx::query_as::<_, FlowTask>("SELECT * FROM flow_tasks WHERE id = ?")
+                    .bind(id)
+                    .fetch_optional(self.pool)
+                    .await?
+                    .ok_or(FlowError::NotFound(id))?;
+                (t.flow_id, t.title, t.parent_type, t.parent_id, t.blocked_reason, t.position)
+            }
+        };
+
+        let new_table = match to {
+            FlowItemType::FlowGoal => "flow_goals",
+            FlowItemType::FlowTask => "flow_tasks",
+        };
+        let new_id = sqlx::query(&format!(
+            "INSERT INTO {new_table} (flow_id, title, parent_type, parent_id, status, blocked_reason, position)
+             VALUES (?, ?, ?, ?, ?, ?, ?)"
+        ))
+        .bind(flow_id)
+        .bind(&title)
+        .bind(&parent_type)
+        .bind(parent_id)
+        .bind(status)
+        .bind(&blocked_reason)
+        .bind(position)
+        .execute(self.pool)
+        .await?
+        .last_insert_rowid();
+
+        // Re-point this item's cycles and dependency edges (both directions) to the new row.
+        sqlx::query("UPDATE flow_item_cycles SET item_type = ?, item_id = ? WHERE item_type = ? AND item_id = ?")
+            .bind(to.as_str()).bind(new_id).bind(from.as_str()).bind(id)
+            .execute(self.pool).await?;
+        sqlx::query("UPDATE flow_dependencies SET dependent_type = ?, dependent_id = ? WHERE dependent_type = ? AND dependent_id = ?")
+            .bind(to.as_str()).bind(new_id).bind(from.as_str()).bind(id)
+            .execute(self.pool).await?;
+        sqlx::query("UPDATE flow_dependencies SET depends_on_type = ?, depends_on_id = ? WHERE depends_on_type = ? AND depends_on_id = ?")
+            .bind(to.as_str()).bind(new_id).bind(from.as_str()).bind(id)
+            .execute(self.pool).await?;
+
+        // Reparent children onto the new row where nesting allows. Task children are valid under
+        // both kinds; goal children only under a goal.
+        sqlx::query("UPDATE flow_tasks SET parent_type = ?, parent_id = ? WHERE parent_type = ? AND parent_id = ?")
+            .bind(to.as_str()).bind(new_id).bind(from.as_str()).bind(id)
+            .execute(self.pool).await?;
+        if to == FlowItemType::FlowGoal {
+            sqlx::query("UPDATE flow_goals SET parent_type = ?, parent_id = ? WHERE parent_type = ? AND parent_id = ?")
+                .bind(to.as_str()).bind(new_id).bind(from.as_str()).bind(id)
+                .execute(self.pool).await?;
+        }
+
+        // The old row's links were re-pointed, so a plain delete orphans nothing.
+        let old_table = match from {
+            FlowItemType::FlowGoal => "flow_goals",
+            FlowItemType::FlowTask => "flow_tasks",
+        };
+        sqlx::query(&format!("DELETE FROM {old_table} WHERE id = ?"))
+            .bind(id)
+            .execute(self.pool)
+            .await?;
+        Ok(new_id)
+    }
+
     /// Replaces a flow item's (Cycle Scope, Cycle Plan) pairs with `cycles`.
     pub async fn set_cycles(
         &self,

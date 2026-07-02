@@ -728,6 +728,21 @@ describe("useMindmapData — mutations", () => {
       expect(vi.mocked(invoke)).toHaveBeenCalledWith("delete_info", { id: 5 });
       expect(newId).toBe("domain-99");
     });
+
+    it("flow_goal→flow_task: converts via convert_flow_item with mapped status", async () => {
+      const FLOW = { id: 5, title: "Feature", instance_type: "task", parent_type: "aspect", parent_id: 1, target_type: null, target_id: null, flow_duration_n: null, flow_duration_kind: null, position: 0 };
+      const FLOW_GOAL = { id: 1, flow_id: 5, title: "Milestone", parent_type: "flow", parent_id: 5, status: "active", blocked_reason: null, position: 0 };
+      setupInvoke({ list_flows: [FLOW], list_all_flow_goals: [FLOW_GOAL], convert_flow_item: 42 });
+      const { result } = await loadedHook();
+
+      let newId: string | null | undefined;
+      await act(async () => { newId = await result.current.retypeNode("flowgoal-1", "flow_goal", "flow_task"); });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("convert_flow_item", {
+        fromType: "flow_goal", id: 1, toType: "flow_task", status: "todo",
+      });
+      expect(newId).toBe("flowtask-42");
+    });
   });
 
   describe("moveNode — domain variant", () => {

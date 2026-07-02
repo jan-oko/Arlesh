@@ -128,6 +128,7 @@ pub fn run() {
             commands::flows::update_flow_goal,
             commands::flows::update_flow_task,
             commands::flows::delete_flow_item,
+            commands::flows::convert_flow_item,
             commands::flows::set_flow_item_cycles,
             commands::flows::list_all_flow_cycles,
             commands::flows::add_flow_dependency,

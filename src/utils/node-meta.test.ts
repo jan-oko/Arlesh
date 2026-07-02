@@ -167,6 +167,25 @@ describe("validTypesForCycling — info", () => {
   });
 });
 
+describe("validTypesForCycling — flow items", () => {
+  it("cycles a flow item between goal and task under a flow root", () => {
+    expect(validTypesForCycling("flow_goal", "flow")).toEqual(["flow_goal", "flow_task"]);
+    expect(validTypesForCycling("flow_task", "flow")).toEqual(["flow_goal", "flow_task"]);
+  });
+
+  it("cycles a flow item between goal and task under a flow-goal parent", () => {
+    expect(validTypesForCycling("flow_task", "flow_goal")).toEqual(["flow_goal", "flow_task"]);
+  });
+
+  it("allows only task under a flow-task parent (a goal can't sit under a task)", () => {
+    expect(validTypesForCycling("flow_task", "flow_task")).toEqual(["flow_task"]);
+  });
+
+  it("never cycles the flow node itself", () => {
+    expect(validTypesForCycling("flow", "domain")).toEqual([]);
+  });
+});
+
 describe("isValidDropTarget — info", () => {
   it("info can be dropped onto a domain", () => {
     expect(isValidDropTarget("info", "domain")).toBe(true);

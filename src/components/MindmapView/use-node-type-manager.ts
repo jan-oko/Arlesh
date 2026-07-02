@@ -103,6 +103,25 @@ export function useNodeTypeManager({ tree, retypeNode, selectNode, showToast }: 
       const newKind = validTypes[(currentIdx + direction + validTypes.length) % validTypes.length];
       if (newKind === undefined || newKind === node.kind) return;
 
+      // Flow items convert goal↔task; converting a flow-goal with flow-goal children into a
+      // flow-task orphans those goals, so prompt to reparent or delete them first.
+      if (node.kind === "flow_goal" || node.kind === "flow_task") {
+        const hasGoalChildren =
+          node.kind === "flow_goal" && newKind === "flow_task" && node.children.some((c) => c.kind === "flow_goal");
+        if (hasGoalChildren) {
+          const count = node.children.filter((c) => c.kind === "flow_goal").length;
+          setWarningModal({
+            nodeId, fromKind: node.kind, toKind: newKind,
+            heading: t("warnings:convertHeading", { kind: t(`nodeKinds:${newKind}`) }),
+            consequences: [t("warnings:subgoalsUnderTask", { count })],
+            hasGoalChildren: true, hasNonInfoChildren: false,
+          });
+          return;
+        }
+        void retypeNode(nodeId, node.kind, newKind).then((newId) => selectNode(newId ?? nodeId));
+        return;
+      }
+
       if (newKind === "info") {
         const nonInfoChildren = node.children.filter((c) => c.kind !== "info");
         if (nonInfoChildren.length > 0) {

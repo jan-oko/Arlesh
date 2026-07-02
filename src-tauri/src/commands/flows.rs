@@ -158,6 +158,21 @@ pub async fn update_flow_task(
         .map_err(|error| error.to_string())
 }
 
+/// Converts a flow item to the other kind (goal↔task), preserving its cycles and dependencies.
+#[tauri::command]
+pub async fn convert_flow_item(
+    pool: State<'_, DatabasePool>,
+    from_type: FlowItemType,
+    id: i64,
+    to_type: FlowItemType,
+    status: String,
+) -> Result<i64, String> {
+    FlowRepository::new(&pool)
+        .convert_item(from_type, id, to_type, &status)
+        .await
+        .map_err(|error| error.to_string())
+}
+
 /// Deletes a flow item (goal or task) and its cycles and dependency links.
 #[tauri::command]
 pub async fn delete_flow_item(

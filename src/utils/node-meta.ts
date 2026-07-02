@@ -116,8 +116,14 @@ const DOMAIN_PARENT_CYCLE: NodeKind[] = ["domain", "project", "tag", "goal", "ta
 export function validTypesForCycling(kind: NodeKind, parentKind: NodeKind | null): NodeKind[] {
   if (kind === "aspect") return [];
 
-  // Flows and their items are not part of the type cycle.
-  if (kind === "flow" || kind === "flow_goal" || kind === "flow_task") return [];
+  // The flow node itself is not part of the type cycle.
+  if (kind === "flow") return [];
+
+  // Flow items retype between goal and task, mirroring real nodes: a goal child is invalid
+  // under a flow-task parent, so only flow-tasks may sit there.
+  if (kind === "flow_goal" || kind === "flow_task") {
+    return parentKind === "flow_task" ? ["flow_task"] : ["flow_goal", "flow_task"];
+  }
 
   // Info nodes can only have info children — no cycling out.
   if (parentKind === "info") return ["info"];
