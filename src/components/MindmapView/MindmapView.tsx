@@ -23,10 +23,17 @@ import TaskEditorModal from "@/components/TaskEditorModal/TaskEditorModal";
 import GoalEditorModal from "@/components/GoalEditorModal/GoalEditorModal";
 import TitleEditorModal from "@/components/TitleEditorModal/TitleEditorModal";
 import ProjectEditorModal from "@/components/ProjectEditorModal/ProjectEditorModal";
-import FlowEditorModal from "@/components/FlowEditorModal/FlowEditorModal";
+import FlowEditorModal, { type FlowSaveData } from "@/components/FlowEditorModal/FlowEditorModal";
 import WarningConfirmModal from "@/components/WarningConfirmModal/WarningConfirmModal";
 import DeleteConfirmModal from "@/components/DeleteConfirmModal/DeleteConfirmModal";
 import styles from "./MindmapView.module.css";
+
+// A pristine flow used to seed the create editor before the flow is persisted.
+const BLANK_FLOW_NODE: MindmapNode = {
+  id: "flow-new", kind: "flow", title: "", position: 0,
+  flow: { instanceType: "task", targetType: null, targetId: null, durationN: 1, durationKind: "week" },
+  tagIds: [], children: [],
+};
 
 export default function MindmapView() {
   const { t } = useTranslation(["common", "editor", "warnings", "nodeKinds"]);
@@ -39,6 +46,7 @@ export default function MindmapView() {
   } = useMindmapStore();
 
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
+  const [flowCreateParent, setFlowCreateParent] = useState<{ id: string; kind: NodeKind } | null>(null);
   const [deleteTargets, setDeleteTargets] = useState<string[] | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -79,27 +87,34 @@ export default function MindmapView() {
     return acc;
   }, [tree]);
 
-  // Creates a bare Flow under the given parent, then opens its editor to fill in the details.
+  // Opens a blank flow editor scoped to the chosen parent; the flow is persisted only on save.
   const onNewFlow = useCallback(
     (parentId: string) => {
       const parent = findNode(tree, parentId);
       if (parent === undefined) return;
-      const parentDbId = parseInt(parentId.split("-").pop() ?? "0", 10);
-      void createFlow({ title: t("editor:newFlowTitle"), parent_type: parent.kind, parent_id: parentDbId }).then((flow) => {
-        setEditorModal({
-          nodeId: `flow-${flow.id}`,
-          node: {
-            id: `flow-${flow.id}`, kind: "flow", title: flow.title, position: flow.position,
-            flow: {
-              instanceType: flow.instance_type, targetType: flow.target_type, targetId: flow.target_id,
-              durationN: flow.flow_duration_n, durationKind: flow.flow_duration_kind,
-            },
-            tagIds: [], children: [],
-          },
-        });
-      });
+      setFlowCreateParent({ id: parentId, kind: parent.kind });
     },
-    [tree, createFlow, setEditorModal, t],
+    [tree],
+  );
+
+  // Persists a brand-new flow under the pending parent, then closes the create editor.
+  const onCreateFlow = useCallback(
+    async (data: FlowSaveData) => {
+      if (flowCreateParent === null) return;
+      const parentDbId = parseInt(flowCreateParent.id.split("-").pop() ?? "0", 10);
+      await createFlow({
+        title: data.title,
+        instance_type: data.instanceType,
+        parent_type: flowCreateParent.kind,
+        parent_id: parentDbId,
+        target_type: data.targetType,
+        target_id: data.targetId,
+        flow_duration_n: data.durationN,
+        flow_duration_kind: data.durationKind,
+      });
+      setFlowCreateParent(null);
+    },
+    [flowCreateParent, createFlow],
   );
 
   // Wraps moveNode so a drag reparent that would orphan scoped items prompts to clamp them first.
@@ -203,7 +218,7 @@ export default function MindmapView() {
   }, [selectedNodeId, tree, selectNode, setSelection]);
 
   useKeyboardMindmap({
-    isInputActive: editingNodeId !== null || editorModal !== null || deleteTargets !== null,
+    isInputActive: editingNodeId !== null || editorModal !== null || flowCreateParent !== null || deleteTargets !== null,
     isWarningActive: warningModal !== null,
     onDismissWarning: () => setWarningModal(null),
     selectedNodeId,
@@ -292,6 +307,9 @@ export default function MindmapView() {
       )}
       {editorModal !== null && editorModal.node.kind === "flow" && (
         <FlowEditorModal node={editorModal.node} availableTargets={flowTargets} onSave={onFlowSave} onClose={() => setEditorModal(null)} />
+      )}
+      {flowCreateParent !== null && (
+        <FlowEditorModal node={BLANK_FLOW_NODE} availableTargets={flowTargets} heading={t("editor:newFlowTitle")} onSave={onCreateFlow} onClose={() => setFlowCreateParent(null)} />
       )}
 
       {warningModal !== null && retypeActions !== null && (

@@ -49,6 +49,7 @@ function targetFromNode(node: MindmapNode, candidates: MindmapNode[]): TargetSel
 interface Props {
   node: MindmapNode;
   availableTargets: MindmapNode[];
+  heading?: string;
   onSave: (data: FlowSaveData) => Promise<void>;
   onClose: () => void;
 }
@@ -57,10 +58,12 @@ interface Props {
  * Edits a Flow template: its title, Instance Type (goal|task), Duration-form flow scope,
  * and default Target Node. Flow items and their cycle scopes are edited separately (Phase 7.3).
  */
-export default function FlowEditorModal({ node, availableTargets, onSave, onClose }: Props) {
-  const { t } = useTranslation(["editor", "nodeKinds"]);
+export default function FlowEditorModal({ node, availableTargets, heading, onSave, onClose }: Props) {
+  const { t } = useTranslation(["editor", "nodeKinds", "scopes"]);
   const [title, setTitle] = useState(node.title);
   const [instanceType, setInstanceType] = useState<InstanceType>(node.flow?.instanceType ?? "task");
+  // A null flow scope means the flow's instances are Unscoped.
+  const [scoped, setScoped] = useState<boolean>(node.flow?.durationN != null && node.flow.durationKind != null);
   const [durationN, setDurationN] = useState<number>(node.flow?.durationN ?? 1);
   const [durationKind, setDurationKind] = useState<FlowScopeKind>(toFlowScopeKind(node.flow?.durationKind ?? "week"));
   const [target, setTarget] = useState<TargetSelection | null>(targetFromNode(node, availableTargets));
@@ -87,8 +90,8 @@ export default function FlowEditorModal({ node, availableTargets, onSave, onClos
         instanceType,
         targetType: target?.kind ?? null,
         targetId: target?.id ?? null,
-        durationN,
-        durationKind,
+        durationN: scoped ? durationN : null,
+        durationKind: scoped ? durationKind : null,
       });
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err));
@@ -109,7 +112,7 @@ export default function FlowEditorModal({ node, availableTargets, onSave, onClos
     .slice(0, 8);
 
   return (
-    <EditorModal heading={t("editFlow")} onClose={onClose} onKeyDown={handleKeyDown} isSaving={isSaving} onSave={() => void handleSave()} saveError={saveError}>
+    <EditorModal heading={heading ?? t("editFlow")} onClose={onClose} onKeyDown={handleKeyDown} isSaving={isSaving} onSave={() => void handleSave()} saveError={saveError}>
       <label className={styles.label}>
         {t("fieldTitle")}
         <input ref={titleRef} className={styles.input} value={title} onChange={(e) => setTitle(e.target.value)} type="text" />
@@ -126,26 +129,34 @@ export default function FlowEditorModal({ node, availableTargets, onSave, onClos
       </div>
       <div className={styles.label}>
         {t("fieldFlowScope")}
-        <div className={styles.durationRow}>
-          <input
-            type="number"
-            min={1}
-            aria-label={t("fieldFlowScope")}
-            className={`${styles.control} ${styles.numberInput}`}
-            value={durationN}
-            onChange={(e) => setDurationN(Math.max(1, Number(e.target.value)))}
-          />
-          <select
-            aria-label={t("scopeDuration")}
-            className={`${styles.control} ${styles.select}`}
-            value={durationKind}
-            onChange={(e) => setDurationKind(toFlowScopeKind(e.target.value))}
-          >
-            {FLOW_SCOPE_KINDS.map((kind) => (
-              <option key={kind} value={kind}>{kind}</option>
-            ))}
-          </select>
-        </div>
+        <label className={styles.tagOption}>
+          <input type="checkbox" checked={scoped} onChange={(e) => setScoped(e.target.checked)} />
+          {t("flowScoped")}
+        </label>
+        {scoped ? (
+          <div className={styles.durationRow}>
+            <input
+              type="number"
+              min={1}
+              aria-label={t("fieldFlowScope")}
+              className={`${styles.control} ${styles.numberInput}`}
+              value={durationN}
+              onChange={(e) => setDurationN(Math.max(1, Number(e.target.value)))}
+            />
+            <select
+              aria-label={t("scopeDuration")}
+              className={`${styles.control} ${styles.select}`}
+              value={durationKind}
+              onChange={(e) => setDurationKind(toFlowScopeKind(e.target.value))}
+            >
+              {FLOW_SCOPE_KINDS.map((kind) => (
+                <option key={kind} value={kind}>{kind}</option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <span className={styles.depKind}>{t("scopes:unscoped")}</span>
+        )}
       </div>
       <div className={styles.label}>
         {t("fieldTarget")}

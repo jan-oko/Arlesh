@@ -9,6 +9,7 @@
   "fieldInstanceType": "סוג מופע",
   "fieldTarget": "צומת יעד",
   "fieldFlowScope": "מסגרת הסדר",
+  "flowScoped": "מופעים עם מסגרת",
   "placeholderTargetSearch": "חפש צומת יעד…",
   "fieldTitle": "שם",
   "fieldStatus": "סטאטוס",

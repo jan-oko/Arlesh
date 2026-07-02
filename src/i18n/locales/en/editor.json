@@ -9,6 +9,7 @@
   "fieldInstanceType": "Instance type",
   "fieldTarget": "Target node",
   "fieldFlowScope": "Flow scope",
+  "flowScoped": "Scoped instances",
   "placeholderTargetSearch": "Search for a target node…",
   "fieldTitle": "Title",
   "fieldStatus": "Status",

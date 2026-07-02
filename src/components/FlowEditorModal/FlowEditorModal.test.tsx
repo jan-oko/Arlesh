@@ -88,6 +88,21 @@ describe("FlowEditorModal — save", () => {
     );
   });
 
+  it("saves a null flow scope when instances are made unscoped", async () => {
+    render(<FlowEditorModal {...defaultProps} />);
+    // Unticking the "scoped instances" checkbox clears the flow scope.
+    fireEvent.click(screen.getByRole("checkbox", { name: "flowScoped" }));
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() =>
+      expect(defaultProps.onSave).toHaveBeenCalledWith(expect.objectContaining({ durationN: null, durationKind: null })),
+    );
+  });
+
+  it("treats a flow with no stored scope as unscoped", () => {
+    render(<FlowEditorModal {...defaultProps} node={mkFlow({ flow: { instanceType: "task", targetType: null, targetId: null, durationN: null, durationKind: null } })} />);
+    expect(screen.getByRole("checkbox", { name: "flowScoped" })).not.toBeChecked();
+  });
+
   it("does not save when the title is blank", () => {
     render(<FlowEditorModal {...defaultProps} node={mkFlow({ title: "   " })} />);
     fireEvent.click(screen.getByRole("button", { name: "save" }));
