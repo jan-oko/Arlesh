@@ -9,6 +9,7 @@ export const CONTEXT_ACTION = {
   COLLAPSE: "collapse",
   EXPAND: "expand",
   NEW_FLOW: "new-flow",
+  START_FLOW: "start-flow",
   DELETE: "delete",
 } as const;
 

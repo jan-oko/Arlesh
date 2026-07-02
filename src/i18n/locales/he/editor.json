@@ -6,6 +6,8 @@
   "editProject": "ערוך פרויקט",
   "editFlow": "ערוך סדר",
   "newFlowTitle": "סדר חדש",
+  "startFlowHeading": "התחל סדר",
+  "fieldAnchor": "תאריך התחלה",
   "fieldInstanceType": "סוג מופע",
   "fieldTarget": "צומת יעד",
   "fieldFlowScope": "מסגרת הסדר",

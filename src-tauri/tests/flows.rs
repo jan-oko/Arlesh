@@ -3,10 +3,14 @@ mod helpers;
 use arlesh_lib::flows::{
     model::{
         CreateFlowItemRequest, CreateFlowRequest, FlowCycleInput, FlowId, FlowItemType,
-        InstanceType, UpdateFlowItemRequest, UpdateFlowRequest,
+        InstanceType, StartFlowRequest, UpdateFlowItemRequest, UpdateFlowRequest,
     },
     FlowRepository,
 };
+
+fn day_cycle(index: i64) -> FlowCycleInput {
+    FlowCycleInput { scope_kind: Some("day".into()), scope_index: Some(index), ..Default::default() }
+}
 
 // Flows are parented under a seeded aspect (ids 1-6 exist from the initial migration).
 fn create_req(title: &str) -> CreateFlowRequest {
@@ -275,6 +279,69 @@ async fn deleting_an_item_clears_its_cycles_and_dependencies() {
     assert!(repo.list_all_cycles().await.unwrap().is_empty());
     assert!(repo.list_all_dependencies().await.unwrap().is_empty());
     assert_eq!(repo.list_all_tasks().await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn starting_a_flow_materialises_a_subtree_with_fan_in_deps() {
+    let pool = helpers::test_pool().await;
+    let repo = FlowRepository::new(&pool);
+    let flow = repo.create(create_req("Feature")).await.unwrap(); // task instance, 2-week scope
+    let specify = repo
+        .create_task(CreateFlowItemRequest { flow_id: flow.id, title: "Specify".into(), parent_type: "flow".into(), parent_id: flow.id })
+        .await
+        .unwrap();
+    let implement = repo
+        .create_task(CreateFlowItemRequest { flow_id: flow.id, title: "Implement".into(), parent_type: "flow".into(), parent_id: flow.id })
+        .await
+        .unwrap();
+    // Specify runs once (day 1); Implement twice (day 3 and day 10) → two instances.
+    repo.set_cycles(flow.id, FlowItemType::FlowTask, specify.id, &[day_cycle(1)]).await.unwrap();
+    repo.set_cycles(flow.id, FlowItemType::FlowTask, implement.id, &[day_cycle(3), day_cycle(10)]).await.unwrap();
+    repo.add_dependency(flow.id, FlowItemType::FlowTask, implement.id, FlowItemType::FlowTask, specify.id).await.unwrap();
+
+    let anchor = chrono::NaiveDate::from_ymd_opt(2026, 1, 5).unwrap();
+    let result = repo
+        .start(FlowId(flow.id), StartFlowRequest { title: "Feature Run".into(), target_type: "aspect".into(), target_id: 1, anchor_date: anchor })
+        .await
+        .unwrap();
+    assert_eq!(result.root_type, "task");
+
+    // Root + Specify(1) + Implement(2) = 4 real tasks.
+    let tasks: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tasks").fetch_one(&pool).await.unwrap();
+    assert_eq!(tasks, 4);
+    // Fan-in: both Implement instances wait on the single Specify instance → 2 edges.
+    let deps: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM task_dependencies").fetch_one(&pool).await.unwrap();
+    assert_eq!(deps, 2);
+    // One run recorded, tracking all four nodes.
+    let instances: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM flow_instances").fetch_one(&pool).await.unwrap();
+    assert_eq!(instances, 1);
+    let nodes: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM flow_instance_nodes").fetch_one(&pool).await.unwrap();
+    assert_eq!(nodes, 4);
+    // The root carries the resolved 2-week window.
+    let scoped_root: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tasks WHERE id = ? AND time_scope_start_id IS NOT NULL")
+        .bind(result.root_id).fetch_one(&pool).await.unwrap();
+    assert_eq!(scoped_root, 1);
+}
+
+#[tokio::test]
+async fn starting_an_unscoped_flow_materialises_one_item_each() {
+    let pool = helpers::test_pool().await;
+    let repo = FlowRepository::new(&pool);
+    let flow = repo
+        .create(CreateFlowRequest { title: "Chores".into(), instance_type: Some(InstanceType::Task), parent_type: "aspect".into(), parent_id: 1, ..Default::default() })
+        .await
+        .unwrap(); // no flow scope
+    repo.create_task(CreateFlowItemRequest { flow_id: flow.id, title: "A".into(), parent_type: "flow".into(), parent_id: flow.id }).await.unwrap();
+    repo.create_task(CreateFlowItemRequest { flow_id: flow.id, title: "B".into(), parent_type: "flow".into(), parent_id: flow.id }).await.unwrap();
+
+    let anchor = chrono::NaiveDate::from_ymd_opt(2026, 1, 5).unwrap();
+    repo.start(FlowId(flow.id), StartFlowRequest { title: "Chores Run".into(), target_type: "aspect".into(), target_id: 1, anchor_date: anchor }).await.unwrap();
+
+    // Root + A + B = 3 tasks, none scoped (unscoped flow).
+    let tasks: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tasks").fetch_one(&pool).await.unwrap();
+    assert_eq!(tasks, 3);
+    let scoped: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tasks WHERE time_scope_start_id IS NOT NULL").fetch_one(&pool).await.unwrap();
+    assert_eq!(scoped, 0);
 }
 
 #[tokio::test]

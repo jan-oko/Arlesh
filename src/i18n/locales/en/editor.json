@@ -6,6 +6,8 @@
   "editProject": "Edit Project",
   "editFlow": "Edit Flow",
   "newFlowTitle": "New Flow",
+  "startFlowHeading": "Start Flow",
+  "fieldAnchor": "Start on",
   "fieldInstanceType": "Instance type",
   "fieldTarget": "Target node",
   "fieldFlowScope": "Flow scope",

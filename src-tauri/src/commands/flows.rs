@@ -7,8 +7,8 @@ use crate::{
     flows::{
         model::{
             CreateFlowItemRequest, CreateFlowRequest, Flow, FlowCycleInput, FlowDependency,
-            FlowGoal, FlowId, FlowItemCycle, FlowItemType, FlowTask, UpdateFlowItemRequest,
-            UpdateFlowRequest,
+            FlowGoal, FlowId, FlowItemCycle, FlowItemType, FlowTask, MaterializedFlow,
+            StartFlowRequest, UpdateFlowItemRequest, UpdateFlowRequest,
         },
         FlowRepository,
     },
@@ -154,6 +154,19 @@ pub async fn update_flow_task(
 ) -> Result<FlowTask, String> {
     FlowRepository::new(&pool)
         .update_task(id, request)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+/// Starts a flow, materialising it into a real subtree under the target.
+#[tauri::command]
+pub async fn start_flow(
+    pool: State<'_, DatabasePool>,
+    flow_id: i64,
+    request: StartFlowRequest,
+) -> Result<MaterializedFlow, String> {
+    FlowRepository::new(&pool)
+        .start(FlowId(flow_id), request)
         .await
         .map_err(|error| error.to_string())
 }

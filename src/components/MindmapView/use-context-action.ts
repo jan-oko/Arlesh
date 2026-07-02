@@ -20,6 +20,7 @@ interface Options {
   toggleCollapsed: (id: string) => void;
   onDelete: (ids: string[]) => void;
   onNewFlow: (parentId: string) => void;
+  onStartFlow: (flowId: string) => void;
 }
 
 interface Result {
@@ -28,7 +29,7 @@ interface Result {
 
 export function useContextAction({
   findNodeById, enterSubtree, setEditingNodeId, cycleType,
-  setClipboard, clipboard, onPaste, toggleCollapsed, onDelete, onNewFlow,
+  setClipboard, clipboard, onPaste, toggleCollapsed, onDelete, onNewFlow, onStartFlow,
 }: Options): Result {
   const onContextAction = useCallback(
     (nodeId: string, action: ContextMenuAction) => {
@@ -43,10 +44,11 @@ export function useContextAction({
         case CONTEXT_ACTION.PASTE: if (clipboard !== null) onPaste(nodeId); break;
         case CONTEXT_ACTION.COLLAPSE: case CONTEXT_ACTION.EXPAND: toggleCollapsed(nodeId); break;
         case CONTEXT_ACTION.NEW_FLOW: onNewFlow(nodeId); break;
+        case CONTEXT_ACTION.START_FLOW: onStartFlow(nodeId); break;
         case CONTEXT_ACTION.DELETE: onDelete([nodeId]); break;
       }
     },
-    [findNodeById, enterSubtree, setEditingNodeId, cycleType, setClipboard, clipboard, onPaste, toggleCollapsed, onDelete, onNewFlow],
+    [findNodeById, enterSubtree, setEditingNodeId, cycleType, setClipboard, clipboard, onPaste, toggleCollapsed, onDelete, onNewFlow, onStartFlow],
   );
 
   return { onContextAction };

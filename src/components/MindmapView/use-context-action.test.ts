@@ -25,6 +25,7 @@ function makeOpts(overrides: Partial<Parameters<typeof useContextAction>[0]> = {
     toggleCollapsed: vi.fn(),
     onDelete: vi.fn(),
     onNewFlow: vi.fn(),
+    onStartFlow: vi.fn(),
     ...overrides,
   };
 }
@@ -119,5 +120,12 @@ describe("useContextAction", () => {
     const { result } = renderHook(() => useContextAction(opts));
     result.current.onContextAction("domain-1", CONTEXT_ACTION.NEW_FLOW);
     expect(opts.onNewFlow).toHaveBeenCalledWith("domain-1");
+  });
+
+  it("START_FLOW calls onStartFlow with the node id", () => {
+    const opts = makeOpts();
+    const { result } = renderHook(() => useContextAction(opts));
+    result.current.onContextAction("flow-1", CONTEXT_ACTION.START_FLOW);
+    expect(opts.onStartFlow).toHaveBeenCalledWith("flow-1");
   });
 });

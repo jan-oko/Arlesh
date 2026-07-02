@@ -247,6 +247,28 @@ pub struct FlowCycleInput {
     pub plan_end: Option<i64>,
 }
 
+/// Request body for starting a flow (materialising it under a target).
+#[derive(Debug, Deserialize)]
+pub struct StartFlowRequest {
+    /// Title of the materialised root node.
+    pub title: String,
+    /// Target parent type the root is created under (`aspect`/`project`/`domain`/`goal`/`task`).
+    pub target_type: String,
+    /// Target parent id.
+    pub target_id: i64,
+    /// A date within the anchor scope of the flow's kind (the window's first period).
+    pub anchor_date: chrono::NaiveDate,
+}
+
+/// The outcome of starting a flow: the materialised root node.
+#[derive(Debug, Clone, Serialize)]
+pub struct MaterializedFlow {
+    /// Root node kind (`goal` or `task`).
+    pub root_type: String,
+    /// Root node id.
+    pub root_id: i64,
+}
+
 /// An intra-flow dependency: `dependent` waits on `depends_on`.
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct FlowDependency {

@@ -15,6 +15,10 @@ function makeDomain(id: string): MindmapNode {
   return { id, kind: "domain", title: "Domain", position: 0, tagIds: [], children: [] };
 }
 
+function makeFlow(id: string): MindmapNode {
+  return { id, kind: "flow", title: "Flow", position: 0, tagIds: [], children: [] };
+}
+
 function fireKey(key: string, modifiers: { shiftKey?: boolean; ctrlKey?: boolean; altKey?: boolean } = {}) {
   window.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...modifiers }));
 }
@@ -36,6 +40,7 @@ function baseOptions(overrides: Partial<Parameters<typeof useKeyboardMindmap>[0]
     onCreateSibling: vi.fn(),
     onInsertParent: vi.fn(),
     onOpenEditor: vi.fn(),
+    onStartFlow: vi.fn(),
     onDelete: vi.fn() as (ids: string[]) => void,
     onToggleCollapsed: vi.fn(),
     onCycleStatus: vi.fn(),
@@ -53,6 +58,29 @@ function baseOptions(overrides: Partial<Parameters<typeof useKeyboardMindmap>[0]
 }
 
 beforeEach(() => { vi.clearAllMocks(); });
+
+describe("useKeyboardMindmap — start flow (s)", () => {
+  it("starts the flow when 's' is pressed on a focused flow node", () => {
+    const opts = baseOptions({ selectedNodeId: "flow-1", findNodeById: (id: string) => (id === "flow-1" ? makeFlow("flow-1") : undefined) });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("s");
+    expect(opts.onStartFlow).toHaveBeenCalledWith("flow-1");
+  });
+
+  it("does nothing when 's' is pressed on a non-flow node", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("s");
+    expect(opts.onStartFlow).not.toHaveBeenCalled();
+  });
+
+  it("ignores Ctrl+s (reserved) on a flow node", () => {
+    const opts = baseOptions({ selectedNodeId: "flow-1", findNodeById: (id: string) => (id === "flow-1" ? makeFlow("flow-1") : undefined) });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("s", { ctrlKey: true });
+    expect(opts.onStartFlow).not.toHaveBeenCalled();
+  });
+});
 
 describe("useKeyboardMindmap — blocked when input/warning active", () => {
   it("ignores all keys when isInputActive is true", () => {

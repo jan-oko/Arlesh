@@ -101,6 +101,24 @@ describe("NodeContextMenu — newFlow", () => {
   });
 });
 
+describe("NodeContextMenu — startFlow", () => {
+  it("shows Start flow only for flow nodes", () => {
+    render(<NodeContextMenu {...defaultProps} nodeKind="flow" />);
+    expect(screen.getByRole("button", { name: "startFlow" })).toBeInTheDocument();
+  });
+
+  it("hides Start flow for non-flow nodes", () => {
+    render(<NodeContextMenu {...defaultProps} nodeKind="goal" />);
+    expect(screen.queryByRole("button", { name: "startFlow" })).not.toBeInTheDocument();
+  });
+
+  it("emits the start-flow action when clicked", () => {
+    render(<NodeContextMenu {...defaultProps} nodeKind="flow" />);
+    fireEvent.click(screen.getByRole("button", { name: "startFlow" }));
+    expect(defaultProps.onAction).toHaveBeenCalledWith("start-flow");
+  });
+});
+
 describe("NodeContextMenu — paste", () => {
   it("paste button is enabled when hasClipboard is true", () => {
     render(<NodeContextMenu {...defaultProps} hasClipboard={true} />);

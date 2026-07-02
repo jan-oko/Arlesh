@@ -30,6 +30,7 @@ export default function NodeContextMenu({ x, y, nodeKind, isCollapsed, hasClipbo
   const canChangeType = nodeKind !== "aspect";
   // A Flow templates a Goal/Task subtree, so it may be created under any node that can hold one.
   const canCreateFlow = nodeKind === "aspect" || nodeKind === "domain" || nodeKind === "project" || nodeKind === "goal";
+  const isFlow = nodeKind === "flow";
 
   function item(label: string, action: ContextMenuAction, disabled = false) {
     return (
@@ -51,8 +52,9 @@ export default function NodeContextMenu({ x, y, nodeKind, isCollapsed, hasClipbo
       {item(t("pasteAsChild"), "paste", !hasClipboard)}
       <div className={styles.separator} />
       {item(isCollapsed ? t("expand") : t("collapse"), isCollapsed ? "expand" : "collapse")}
-      {canCreateFlow && <div className={styles.separator} />}
+      {(canCreateFlow || isFlow) && <div className={styles.separator} />}
       {canCreateFlow && item(t("newFlow"), "new-flow")}
+      {isFlow && item(t("startFlow"), "start-flow")}
       <div className={styles.separator} />
       {item(t("delete"), "delete")}
     </div>

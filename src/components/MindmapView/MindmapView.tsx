@@ -25,6 +25,8 @@ import TitleEditorModal from "@/components/TitleEditorModal/TitleEditorModal";
 import ProjectEditorModal from "@/components/ProjectEditorModal/ProjectEditorModal";
 import FlowEditorModal, { type FlowSaveData } from "@/components/FlowEditorModal/FlowEditorModal";
 import FlowItemEditorModal from "@/components/FlowItemEditorModal/FlowItemEditorModal";
+import StartFlowModal, { type StartFlowData } from "@/components/StartFlowModal/StartFlowModal";
+import { startFlow } from "@/api/flows";
 import WarningConfirmModal from "@/components/WarningConfirmModal/WarningConfirmModal";
 import DeleteConfirmModal from "@/components/DeleteConfirmModal/DeleteConfirmModal";
 import styles from "./MindmapView.module.css";
@@ -48,6 +50,7 @@ export default function MindmapView() {
 
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const [flowCreateParent, setFlowCreateParent] = useState<{ id: string; kind: NodeKind } | null>(null);
+  const [startFlowNode, setStartFlowNode] = useState<MindmapNode | null>(null);
   const [deleteTargets, setDeleteTargets] = useState<string[] | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -214,9 +217,34 @@ export default function MindmapView() {
 
   const { navigateArrow } = useNavigateArrow({ selectedNodeId, positions, tree, selectNode });
 
+  // Opens the start-flow modal for a focused flow node.
+  const onStartFlow = useCallback(
+    (flowId: string) => {
+      const node = findNode(tree, flowId);
+      if (node === undefined || node.kind !== "flow") return;
+      setStartFlowNode(node);
+    },
+    [tree],
+  );
+
+  // Materializes the flow under the chosen target, then selects the new root.
+  const onConfirmStartFlow = useCallback(
+    async (data: StartFlowData) => {
+      if (startFlowNode === null) return;
+      const flowDbId = parseInt(startFlowNode.id.split("-").pop() ?? "0", 10);
+      const result = await startFlow(flowDbId, {
+        title: data.title, target_type: data.targetType, target_id: data.targetId, anchor_date: data.anchorDate,
+      });
+      setStartFlowNode(null);
+      await reload();
+      selectNode(`${result.root_type}-${result.root_id}`);
+    },
+    [startFlowNode, reload, selectNode],
+  );
+
   const { onContextAction } = useContextAction({
     findNodeById, enterSubtree, setEditingNodeId, cycleType,
-    setClipboard, clipboard, onPaste, toggleCollapsed, onDelete, onNewFlow,
+    setClipboard, clipboard, onPaste, toggleCollapsed, onDelete, onNewFlow, onStartFlow,
   });
 
   const handleCtrlClick = useCallback((id: string) => { addToSelection(id); }, [addToSelection]);
@@ -230,7 +258,7 @@ export default function MindmapView() {
   }, [selectedNodeId, tree, selectNode, setSelection]);
 
   useKeyboardMindmap({
-    isInputActive: editingNodeId !== null || editorModal !== null || flowCreateParent !== null || deleteTargets !== null,
+    isInputActive: editingNodeId !== null || editorModal !== null || flowCreateParent !== null || startFlowNode !== null || deleteTargets !== null,
     isWarningActive: warningModal !== null,
     onDismissWarning: () => setWarningModal(null),
     selectedNodeId,
@@ -245,6 +273,7 @@ export default function MindmapView() {
     onCreateSibling,
     onInsertParent,
     onOpenEditor: onDoubleClick,
+    onStartFlow,
     onDelete,
     onToggleCollapsed: toggleCollapsed,
     onCycleStatus: onStatusClick,
@@ -322,6 +351,17 @@ export default function MindmapView() {
       )}
       {flowCreateParent !== null && (
         <FlowEditorModal node={BLANK_FLOW_NODE} availableTargets={flowTargets} heading={t("editor:newFlowTitle")} onSave={onCreateFlow} onClose={() => setFlowCreateParent(null)} />
+      )}
+      {startFlowNode !== null && (
+        <StartFlowModal
+          flowTitle={startFlowNode.title}
+          flowScoped={startFlowNode.flow?.durationKind != null}
+          defaultTargetType={startFlowNode.flow?.targetType ?? null}
+          defaultTargetId={startFlowNode.flow?.targetId ?? null}
+          availableTargets={flowTargets}
+          onStart={onConfirmStartFlow}
+          onClose={() => setStartFlowNode(null)}
+        />
       )}
       {editorModal !== null && (editorModal.node.kind === "flow_goal" || editorModal.node.kind === "flow_task") && (
         <FlowItemEditorModal

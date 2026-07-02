@@ -24,6 +24,7 @@ interface Options {
   onCreateSibling: (id: string) => void;
   onInsertParent: (id: string) => void;
   onOpenEditor: (id: string) => void;
+  onStartFlow: (id: string) => void;
   onDelete: (ids: string[]) => void;
   onToggleCollapsed: (id: string) => void;
   onCycleStatus: (id: string) => void;
@@ -42,7 +43,7 @@ export function useKeyboardMindmap(options: Options): void {
     isInputActive, isWarningActive, onDismissWarning,
     selectedNodeId, selectedNodeIds, subtreeRootId, clipboard,
     onNavigate, onCycleType, onReorder, onStartRename,
-    onCreateChild, onCreateSibling, onInsertParent, onOpenEditor, onDelete, onToggleCollapsed, onCycleStatus,
+    onCreateChild, onCreateSibling, onInsertParent, onOpenEditor, onStartFlow, onDelete, onToggleCollapsed, onCycleStatus,
     onDeselect, onExitSubtree, onExitToRoot, onCut, onCopy, onPaste, onEnterSubtree,
     findNodeById,
   } = options;
@@ -145,6 +146,16 @@ export function useKeyboardMindmap(options: Options): void {
             onToggleCollapsed(selectedNodeId);
           }
           break;
+        case "s":
+        case "S":
+          if (!event.ctrlKey && !event.metaKey && selectedNodeId !== null) {
+            const node = findNodeById(selectedNodeId);
+            if (node !== undefined && node.kind === "flow") {
+              event.preventDefault();
+              onStartFlow(selectedNodeId);
+            }
+          }
+          break;
         case "Escape":
           if (event.ctrlKey && subtreeRootId !== null) {
             event.preventDefault();
@@ -204,7 +215,7 @@ export function useKeyboardMindmap(options: Options): void {
     isInputActive, isWarningActive, onDismissWarning,
     selectedNodeId, selectedNodeIds, subtreeRootId, clipboard,
     onNavigate, onCycleType, onReorder, onStartRename,
-    onCreateChild, onCreateSibling, onInsertParent, onOpenEditor, onDelete, onToggleCollapsed, onCycleStatus,
+    onCreateChild, onCreateSibling, onInsertParent, onOpenEditor, onStartFlow, onDelete, onToggleCollapsed, onCycleStatus,
     onDeselect, onExitSubtree, onExitToRoot, onCut, onCopy, onPaste, onEnterSubtree,
     findNodeById,
   ]);

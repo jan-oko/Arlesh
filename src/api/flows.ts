@@ -60,6 +60,26 @@ export async function deleteFlow(id: number): Promise<void> {
   return invoke<void>("delete_flow", { id });
 }
 
+// --- Starting a flow (Phase 7.4) ---
+
+export interface StartFlowRequest {
+  title: string;
+  target_type: string;
+  target_id: number;
+  /** A date within the anchor scope of the flow's kind (ISO "YYYY-MM-DD"). */
+  anchor_date: string;
+}
+
+/** The materialized root of a started flow. */
+export interface MaterializedFlow {
+  root_type: "goal" | "task";
+  root_id: number;
+}
+
+export async function startFlow(flowId: number, request: StartFlowRequest): Promise<MaterializedFlow> {
+  return invoke<MaterializedFlow>("start_flow", { flowId, request });
+}
+
 // --- Flow items (Phase 7.3) ---
 
 /** Which flow-item table a row lives in. */
