@@ -178,10 +178,9 @@ pub async fn convert_flow_item(
     from_type: FlowItemType,
     id: i64,
     to_type: FlowItemType,
-    status: String,
 ) -> Result<i64, String> {
     FlowRepository::new(&pool)
-        .convert_item(from_type, id, to_type, &status)
+        .convert_item(from_type, id, to_type)
         .await
         .map_err(|error| error.to_string())
 }

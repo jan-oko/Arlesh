@@ -246,17 +246,15 @@ impl<'a> FlowRepository<'a> {
             .await?
             .ok_or(FlowError::NotFound(id))?;
         let title = request.title.unwrap_or(goal.title);
-        let status = request.status.unwrap_or(goal.status);
         let blocked_reason = request.blocked_reason.unwrap_or(goal.blocked_reason);
         let parent_type = request.parent_type.unwrap_or(goal.parent_type);
         let parent_id = request.parent_id.unwrap_or(goal.parent_id);
         let position = request.position.unwrap_or(goal.position);
         sqlx::query(
-            "UPDATE flow_goals SET title=?, status=?, blocked_reason=?, parent_type=?, parent_id=?, position=?
+            "UPDATE flow_goals SET title=?, blocked_reason=?, parent_type=?, parent_id=?, position=?
              WHERE id=?",
         )
         .bind(&title)
-        .bind(&status)
         .bind(&blocked_reason)
         .bind(&parent_type)
         .bind(parent_id)
@@ -283,17 +281,15 @@ impl<'a> FlowRepository<'a> {
             .await?
             .ok_or(FlowError::NotFound(id))?;
         let title = request.title.unwrap_or(task.title);
-        let status = request.status.unwrap_or(task.status);
         let blocked_reason = request.blocked_reason.unwrap_or(task.blocked_reason);
         let parent_type = request.parent_type.unwrap_or(task.parent_type);
         let parent_id = request.parent_id.unwrap_or(task.parent_id);
         let position = request.position.unwrap_or(task.position);
         sqlx::query(
-            "UPDATE flow_tasks SET title=?, status=?, blocked_reason=?, parent_type=?, parent_id=?, position=?
+            "UPDATE flow_tasks SET title=?, blocked_reason=?, parent_type=?, parent_id=?, position=?
              WHERE id=?",
         )
         .bind(&title)
-        .bind(&status)
         .bind(&blocked_reason)
         .bind(&parent_type)
         .bind(parent_id)
@@ -346,13 +342,12 @@ impl<'a> FlowRepository<'a> {
     /// The item's cycle pairs and dependency edges (both directions) are re-pointed to the new
     /// row, and children still parented on it are reparented onto it where the nesting rules allow
     /// (a flow-goal child cannot sit under a flow-task, so the caller must move or delete those
-    /// first). `status` must be valid for the target table. Returns the new item id.
+    /// first). Returns the new item id.
     pub async fn convert_item(
         &self,
         from: FlowItemType,
         id: i64,
         to: FlowItemType,
-        status: &str,
     ) -> Result<i64, FlowError> {
         if from == to {
             return Ok(id);
@@ -382,14 +377,13 @@ impl<'a> FlowRepository<'a> {
             FlowItemType::FlowTask => "flow_tasks",
         };
         let new_id = sqlx::query(&format!(
-            "INSERT INTO {new_table} (flow_id, title, parent_type, parent_id, status, blocked_reason, position)
-             VALUES (?, ?, ?, ?, ?, ?, ?)"
+            "INSERT INTO {new_table} (flow_id, title, parent_type, parent_id, blocked_reason, position)
+             VALUES (?, ?, ?, ?, ?, ?)"
         ))
         .bind(flow_id)
         .bind(&title)
         .bind(&parent_type)
         .bind(parent_id)
-        .bind(status)
         .bind(&blocked_reason)
         .bind(position)
         .execute(self.pool)

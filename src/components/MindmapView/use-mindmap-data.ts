@@ -261,7 +261,6 @@ export function buildTree(
       id,
       kind: itemType,
       title: item.title,
-      status: item.status,
       blockedReason: item.blocked_reason,
       position: item.position,
       flowItem: {
@@ -488,7 +487,7 @@ export function useMindmapData(): MindmapData {
         const item = childKind === "flow_goal" ? await createFlowGoal(request) : await createFlowTask(request);
         const newNode: MindmapNode = {
           id: childKind === "flow_goal" ? `flowgoal-${item.id}` : `flowtask-${item.id}`,
-          kind: childKind, title: item.title, status: item.status,
+          kind: childKind, title: item.title,
           position: item.position, tagIds: [], children: [],
         };
         await silentLoad();
@@ -569,10 +568,7 @@ export function useMindmapData(): MindmapData {
           }
         }
 
-        const newStatus = fromKind === "flow_goal"
-          ? goalStatusToTaskStatus(node.status ?? "active")
-          : taskStatusToGoalStatus(node.status ?? "todo");
-        const newId = await convertFlowItem(fromKind, dbId, toKind, newStatus);
+        const newId = await convertFlowItem(fromKind, dbId, toKind);
         await silentLoad();
         return toKind === "flow_goal" ? `flowgoal-${newId}` : `flowtask-${newId}`;
       }

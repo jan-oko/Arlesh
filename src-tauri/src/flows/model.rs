@@ -75,8 +75,6 @@ pub struct FlowGoal {
     pub parent_type: String,
     /// In-flow parent id (the flow, or a flow item).
     pub parent_id: i64,
-    /// Default status of materialized instances.
-    pub status: String,
     /// Explicit block reason template (if any).
     pub blocked_reason: Option<String>,
     /// Sort position among siblings.
@@ -96,8 +94,6 @@ pub struct FlowTask {
     pub parent_type: String,
     /// In-flow parent id (the flow, or a flow item).
     pub parent_id: i64,
-    /// Default status of materialized instances.
-    pub status: String,
     /// Explicit block reason template (if any).
     pub blocked_reason: Option<String>,
     /// Sort position among siblings.
@@ -190,8 +186,6 @@ impl FlowItemType {
 pub struct UpdateFlowItemRequest {
     /// New title.
     pub title: Option<String>,
-    /// New default status of materialized instances.
-    pub status: Option<String>,
     /// Block reason template (Some(None) clears).
     pub blocked_reason: Option<Option<String>>,
     /// New in-flow parent type (with parent_id).

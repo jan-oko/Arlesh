@@ -92,7 +92,6 @@ export interface FlowGoal {
   title: string;
   parent_type: string;
   parent_id: number;
-  status: string;
   blocked_reason: string | null;
   position: number;
 }
@@ -104,7 +103,6 @@ export interface FlowTask {
   title: string;
   parent_type: string;
   parent_id: number;
-  status: string;
   blocked_reason: string | null;
   position: number;
 }
@@ -151,7 +149,6 @@ export interface CreateFlowItemRequest {
 
 export interface UpdateFlowItemRequest {
   title?: string;
-  status?: string;
   blocked_reason?: string | null;
   parent_type?: string;
   parent_id?: number;
@@ -195,8 +192,8 @@ export async function deleteFlowItem(itemType: FlowItemType, id: number): Promis
 }
 
 /** Converts a flow item to the other kind (goal↔task); returns the new item id. */
-export async function convertFlowItem(fromType: FlowItemType, id: number, toType: FlowItemType, status: string): Promise<number> {
-  return invoke<number>("convert_flow_item", { fromType, id, toType, status });
+export async function convertFlowItem(fromType: FlowItemType, id: number, toType: FlowItemType): Promise<number> {
+  return invoke<number>("convert_flow_item", { fromType, id, toType });
 }
 
 export async function setFlowItemCycles(flowId: number, itemType: FlowItemType, itemId: number, cycles: FlowCycleInput[]): Promise<void> {

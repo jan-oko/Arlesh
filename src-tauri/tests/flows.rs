@@ -93,7 +93,6 @@ async fn flow_items_are_created_and_listed() {
         .await
         .unwrap();
     assert_eq!(specify.flow_id, flow.id);
-    assert_eq!(specify.status, "todo");
 
     repo.create_goal(CreateFlowItemRequest {
         flow_id: flow.id,
@@ -108,7 +107,6 @@ async fn flow_items_are_created_and_listed() {
     let goals = repo.list_goals(FlowId(flow.id)).await.unwrap();
     assert_eq!(tasks.len(), 1);
     assert_eq!(goals.len(), 1);
-    assert_eq!(goals[0].status, "active");
 }
 
 #[tokio::test]
@@ -131,7 +129,6 @@ async fn update_flow_item_changes_fields() {
             task.id,
             UpdateFlowItemRequest {
                 title: Some("Implement".into()),
-                status: Some("in_progress".into()),
                 blocked_reason: Some(Some("waiting".into())),
                 ..Default::default()
             },
@@ -139,7 +136,6 @@ async fn update_flow_item_changes_fields() {
         .await
         .unwrap();
     assert_eq!(updated.title, "Implement");
-    assert_eq!(updated.status, "in_progress");
     assert_eq!(updated.blocked_reason.as_deref(), Some("waiting"));
 }
 
@@ -235,7 +231,7 @@ async fn converting_an_item_preserves_cycles_deps_and_children() {
         .unwrap();
 
     let new_id = repo
-        .convert_item(FlowItemType::FlowGoal, goal.id, FlowItemType::FlowTask, "todo")
+        .convert_item(FlowItemType::FlowGoal, goal.id, FlowItemType::FlowTask)
         .await
         .unwrap();
 
@@ -243,7 +239,6 @@ async fn converting_an_item_preserves_cycles_deps_and_children() {
     assert!(repo.list_all_goals().await.unwrap().iter().all(|g| g.id != goal.id));
     let new_task = repo.list_all_tasks().await.unwrap().into_iter().find(|t| t.id == new_id).unwrap();
     assert_eq!(new_task.title, "Milestone");
-    assert_eq!(new_task.status, "todo");
 
     // The cycle followed the item to the tasks table.
     let cycles = repo.list_all_cycles().await.unwrap();

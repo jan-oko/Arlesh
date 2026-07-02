@@ -201,7 +201,6 @@ export function useNodeEditor({ tree, allTasksAndGoals, renameNode, reload }: Op
       const dbId = parseInt(node.id.split("-").pop() ?? "0", 10);
       const patch = {
         title: data.title,
-        status: data.status,
         blocked_reason: data.blockedReason === "" ? null : data.blockedReason,
       };
       if (flowItem.itemType === "flow_goal") {

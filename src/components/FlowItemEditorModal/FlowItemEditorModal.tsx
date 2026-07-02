@@ -6,11 +6,9 @@ import type { FlowItemType } from "@/api/flows";
 import EditorModal from "@/components/EditorModal/EditorModal";
 import FlowCycleField from "./FlowCycleField";
 import styles from "@/components/EditorModal/EditorModal.module.css";
-import { GOAL_STATUS, TASK_STATUS } from "@/utils/status-mapping";
 
 export interface FlowItemSaveData {
   title: string;
-  status: string;
   blockedReason: string;
   cycles: FlowCyclePair[];
   addedDeps: FlowItemDep[];
@@ -33,15 +31,14 @@ interface Props {
 }
 
 /**
- * Edits a flow item (flow-goal / flow-task): its title, default status, block reason, relative
+ * Edits a flow item (flow-goal / flow-task): its title, block reason, relative
  * cycle pairs, and intra-flow dependencies on other items in the same flow.
  */
 export default function FlowItemEditorModal({ node, availableDeps, onSave, onClose }: Props) {
-  const { t } = useTranslation(["editor", "status", "nodeKinds"]);
+  const { t } = useTranslation(["editor", "nodeKinds"]);
   const itemType: FlowItemType = node.flowItem?.itemType ?? "flow_task";
 
   const [title, setTitle] = useState(node.title);
-  const [status, setStatus] = useState(node.status ?? (itemType === "flow_goal" ? GOAL_STATUS.ACTIVE : TASK_STATUS.TODO));
   const [blockedReason, setBlockedReason] = useState(node.blockedReason ?? "");
   const [cycles, setCycles] = useState<FlowCyclePair[]>(node.flowItem?.cycles ?? []);
   const [currentDeps, setCurrentDeps] = useState<FlowItemDep[]>(node.flowItem?.dependsOn ?? []);
@@ -71,7 +68,7 @@ export default function FlowItemEditorModal({ node, availableDeps, onSave, onClo
     try {
       const addedDeps = currentDeps.filter((d) => !initialDeps.some((id) => depEquals(id, d)));
       const removedDeps = initialDeps.filter((d) => !currentDeps.some((cd) => depEquals(cd, d)));
-      await onSave({ title: title.trim(), status, blockedReason, cycles, addedDeps, removedDeps });
+      await onSave({ title: title.trim(), blockedReason, cycles, addedDeps, removedDeps });
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err));
       setIsSaving(false);
@@ -105,22 +102,6 @@ export default function FlowItemEditorModal({ node, availableDeps, onSave, onClo
         {t("fieldTitle")}
         <input ref={titleRef} className={styles.input} value={title} onChange={(e) => setTitle(e.target.value)} type="text" />
       </label>
-      <div className={styles.label}>
-        {t("fieldStatus")}
-        <div className={styles.statusPills}>
-          {itemType === "flow_goal"
-            ? Object.values(GOAL_STATUS).map((s) => (
-                <button key={s} type="button" className={`${styles.statusPill}${status === s ? ` ${styles.statusPillActive}` : ""}`} onClick={() => setStatus(s)}>
-                  {t(`status:goal.${s}`)}
-                </button>
-              ))
-            : Object.values(TASK_STATUS).map((s) => (
-                <button key={s} type="button" className={`${styles.statusPill}${status === s ? ` ${styles.statusPillActive}` : ""}`} onClick={() => setStatus(s)}>
-                  {t(`status:task.${s}`)}
-                </button>
-              ))}
-        </div>
-      </div>
       {node.flowItem?.flowScopeKind != null && (
         <div className={styles.label}>
           {t("fieldCycles")}

@@ -221,8 +221,8 @@ describe("buildTree", () => {
   it("wires flow items under their flow with cycles, deps, and the flow's scope", () => {
     const aspect = mkDomain({ id: 1, subtype: "aspect" });
     const flow = { id: 5, title: "Feature", instance_type: "task" as const, parent_type: "aspect", parent_id: 1, target_type: null, target_id: null, flow_duration_n: 2, flow_duration_kind: "week", position: 0 };
-    const specify = { id: 1, flow_id: 5, title: "Specify", parent_type: "flow", parent_id: 5, status: "todo", blocked_reason: null, position: 0 };
-    const implement = { id: 2, flow_id: 5, title: "Implement", parent_type: "flow", parent_id: 5, status: "todo", blocked_reason: null, position: 1 };
+    const specify = { id: 1, flow_id: 5, title: "Specify", parent_type: "flow", parent_id: 5, blocked_reason: null, position: 0 };
+    const implement = { id: 2, flow_id: 5, title: "Implement", parent_type: "flow", parent_id: 5, blocked_reason: null, position: 1 };
     const cycle = { id: 1, flow_id: 5, item_type: "flow_task" as const, item_id: 1, scope_kind: "day", scope_index: 3, plan_kind: null, plan_start: null, plan_end: null, position: 0 };
     const dep = { id: 1, flow_id: 5, dependent_type: "flow_task" as const, dependent_id: 2, depends_on_type: "flow_task" as const, depends_on_id: 1 };
 
@@ -729,9 +729,9 @@ describe("useMindmapData — mutations", () => {
       expect(newId).toBe("domain-99");
     });
 
-    it("flow_goal→flow_task: converts via convert_flow_item with mapped status", async () => {
+    it("flow_goal→flow_task: converts via convert_flow_item", async () => {
       const FLOW = { id: 5, title: "Feature", instance_type: "task", parent_type: "aspect", parent_id: 1, target_type: null, target_id: null, flow_duration_n: null, flow_duration_kind: null, position: 0 };
-      const FLOW_GOAL = { id: 1, flow_id: 5, title: "Milestone", parent_type: "flow", parent_id: 5, status: "active", blocked_reason: null, position: 0 };
+      const FLOW_GOAL = { id: 1, flow_id: 5, title: "Milestone", parent_type: "flow", parent_id: 5, blocked_reason: null, position: 0 };
       setupInvoke({ list_flows: [FLOW], list_all_flow_goals: [FLOW_GOAL], convert_flow_item: 42 });
       const { result } = await loadedHook();
 
@@ -739,7 +739,7 @@ describe("useMindmapData — mutations", () => {
       await act(async () => { newId = await result.current.retypeNode("flowgoal-1", "flow_goal", "flow_task"); });
 
       expect(vi.mocked(invoke)).toHaveBeenCalledWith("convert_flow_item", {
-        fromType: "flow_goal", id: 1, toType: "flow_task", status: "todo",
+        fromType: "flow_goal", id: 1, toType: "flow_task",
       });
       expect(newId).toBe("flowtask-42");
     });

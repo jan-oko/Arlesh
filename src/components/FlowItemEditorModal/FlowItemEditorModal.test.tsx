@@ -15,7 +15,6 @@ function mkItem(overrides: Partial<MindmapNode> = {}): MindmapNode {
     id: "flowtask-2",
     kind: "flow_task",
     title: "Implement",
-    status: "todo",
     blockedReason: "",
     position: 1,
     tagIds: [],
@@ -26,7 +25,7 @@ function mkItem(overrides: Partial<MindmapNode> = {}): MindmapNode {
 }
 
 const SPECIFY: MindmapNode = {
-  id: "flowtask-1", kind: "flow_task", title: "Specify", status: "todo", position: 0, tagIds: [], children: [],
+  id: "flowtask-1", kind: "flow_task", title: "Specify", position: 0, tagIds: [], children: [],
   flowItem: { itemType: "flow_task", flowId: 5, flowScopeN: 2, flowScopeKind: "week", cycles: [], dependsOn: [] },
 };
 
@@ -45,14 +44,11 @@ describe("FlowItemEditorModal", () => {
     expect(screen.getByDisplayValue("Implement")).toBeInTheDocument();
   });
 
-  it("saves title and status", async () => {
+  it("saves the trimmed title", async () => {
     render(<FlowItemEditorModal {...defaultProps} />);
-    fireEvent.click(screen.getByRole("button", { name: "status:task.in_progress" }));
     fireEvent.click(screen.getByRole("button", { name: "save" }));
     await waitFor(() =>
-      expect(defaultProps.onSave).toHaveBeenCalledWith(
-        expect.objectContaining({ title: "Implement", status: "in_progress" }),
-      ),
+      expect(defaultProps.onSave).toHaveBeenCalledWith(expect.objectContaining({ title: "Implement" })),
     );
   });
 
