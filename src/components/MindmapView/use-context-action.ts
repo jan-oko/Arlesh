@@ -19,6 +19,7 @@ interface Options {
   onPaste: (targetId: string) => void;
   toggleCollapsed: (id: string) => void;
   onDelete: (ids: string[]) => void;
+  onNewFlow: (parentId: string) => void;
 }
 
 interface Result {
@@ -27,7 +28,7 @@ interface Result {
 
 export function useContextAction({
   findNodeById, enterSubtree, setEditingNodeId, cycleType,
-  setClipboard, clipboard, onPaste, toggleCollapsed, onDelete,
+  setClipboard, clipboard, onPaste, toggleCollapsed, onDelete, onNewFlow,
 }: Options): Result {
   const onContextAction = useCallback(
     (nodeId: string, action: ContextMenuAction) => {
@@ -41,10 +42,11 @@ export function useContextAction({
         case CONTEXT_ACTION.COPY: setClipboard({ operation: CLIPBOARD_OP.COPY, nodeIds: [nodeId] }); break;
         case CONTEXT_ACTION.PASTE: if (clipboard !== null) onPaste(nodeId); break;
         case CONTEXT_ACTION.COLLAPSE: case CONTEXT_ACTION.EXPAND: toggleCollapsed(nodeId); break;
+        case CONTEXT_ACTION.NEW_FLOW: onNewFlow(nodeId); break;
         case CONTEXT_ACTION.DELETE: onDelete([nodeId]); break;
       }
     },
-    [findNodeById, enterSubtree, setEditingNodeId, cycleType, setClipboard, clipboard, onPaste, toggleCollapsed, onDelete],
+    [findNodeById, enterSubtree, setEditingNodeId, cycleType, setClipboard, clipboard, onPaste, toggleCollapsed, onDelete, onNewFlow],
   );
 
   return { onContextAction };

@@ -229,6 +229,7 @@ describe("useMindmapData", () => {
       if (cmd === "list_goals") return Promise.resolve([]);
       if (cmd === "list_tasks") return Promise.resolve([]);
       if (cmd === "list_infos") return Promise.resolve([]);
+      if (cmd === "list_flows") return Promise.resolve([]);
       return Promise.resolve(null);
     });
   });
@@ -248,6 +249,7 @@ describe("useMindmapData", () => {
       if (cmd === "list_goals") return Promise.resolve([]);
       if (cmd === "list_tasks") return Promise.resolve([]);
       if (cmd === "list_infos") return Promise.resolve([]);
+      if (cmd === "list_flows") return Promise.resolve([]);
       return Promise.resolve(null);
     });
     const { result } = renderHook(() => useMindmapData());
@@ -278,6 +280,7 @@ describe("useMindmapData — mutations", () => {
       if (cmd === "list_goals") return Promise.resolve([GOAL]);
       if (cmd === "list_tasks") return Promise.resolve([TASK, TASK2]);
       if (cmd === "list_infos") return Promise.resolve([]);
+      if (cmd === "list_flows") return Promise.resolve([]);
       return Promise.resolve(null);
     });
   }

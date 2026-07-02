@@ -5,6 +5,7 @@ import GoalIcon from "./GoalIcon";
 import TagIcon from "./TagIcon";
 import TaskIcon from "./TaskIcon";
 import InfoIcon from "./InfoIcon";
+import FlowIcon from "./FlowIcon";
 
 interface Props {
   kind: NodeKind;
@@ -25,6 +26,7 @@ export default function NodeIcon({ kind, status, isBlocked, cx, cy, r, color, op
   if (kind === "tag") return <TagIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} />;
   if (kind === "info") return <InfoIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} />;
   if (kind === "task") return <TaskIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} status={status} isBlocked={isBlocked} />;
+  if (kind === "flow") return <FlowIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} />;
   const _exhaustive: never = kind;
   throw new Error(`NodeIcon: unhandled kind "${String(_exhaustive)}"`);
 }

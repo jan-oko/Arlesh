@@ -3,6 +3,8 @@ import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import type { TaskSaveData } from "@/components/TaskEditorModal/TaskEditorModal";
 import type { GoalSaveData } from "@/components/GoalEditorModal/GoalEditorModal";
 import type { ProjectSaveData } from "@/components/ProjectEditorModal/ProjectEditorModal";
+import type { FlowSaveData } from "@/components/FlowEditorModal/FlowEditorModal";
+import { updateFlow } from "@/api/flows";
 import type { Domain } from "@/api/domains";
 import { listDomains, updateDomain } from "@/api/domains";
 import {
@@ -61,6 +63,7 @@ interface Result {
   onGoalSave: (data: GoalSaveData) => Promise<void>;
   onSimpleSave: (title: string) => Promise<void>;
   onProjectSave: (data: ProjectSaveData) => Promise<void>;
+  onFlowSave: (data: FlowSaveData) => Promise<void>;
   /** Prompts to clamp orphaned descendants; resolves true to proceed, false to abort. */
   checkScopeClamp: (nodeType: "task" | "goal", dbId: number, timeScope: TimeScope) => Promise<boolean>;
   /** Opens the clamp prompt for an already-computed conflict set (e.g. from a drag reparent). */
@@ -165,6 +168,25 @@ export function useNodeEditor({ tree, allTasksAndGoals, renameNode, reload }: Op
     [editorModal, reload],
   );
 
+  const onFlowSave = useCallback(
+    async (data: FlowSaveData) => {
+      if (editorModal === null) return;
+      const { nodeId } = editorModal;
+      const dbId = parseInt(nodeId.split("-").pop() ?? "0", 10);
+      await updateFlow(dbId, {
+        title: data.title,
+        instance_type: data.instanceType,
+        target_type: data.targetType,
+        target_id: data.targetId,
+        flow_duration_n: data.durationN,
+        flow_duration_kind: data.durationKind,
+      });
+      await reload();
+      setEditorModal(null);
+    },
+    [editorModal, reload],
+  );
+
   const onSimpleSave = useCallback(
     async (title: string) => {
       if (editorModal === null) return;
@@ -193,7 +215,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, renameNode, reload }: Op
 
   return {
     editorModal, setEditorModal, allTags, availableForDep, onDoubleClick,
-    onTaskSave, onGoalSave, onSimpleSave, onProjectSave,
+    onTaskSave, onGoalSave, onSimpleSave, onProjectSave, onFlowSave,
     checkScopeClamp, confirmScopeClamp, scopeClampRequest, resolveScopeClamp,
   };
 }

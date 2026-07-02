@@ -1,7 +1,17 @@
 import { hierarchy, tree } from "d3-hierarchy";
 import type { TimeScope } from "@/api/time-scope";
+import type { InstanceType } from "@/api/flows";
 
-export type NodeKind = "aspect" | "project" | "domain" | "goal" | "task" | "tag" | "info";
+export type NodeKind = "aspect" | "project" | "domain" | "goal" | "task" | "tag" | "info" | "flow";
+
+/** Flow-template data carried by a `flow`-kind node. */
+export interface FlowData {
+  instanceType: InstanceType;
+  targetType: string | null;
+  targetId: number | null;
+  durationN: number | null;
+  durationKind: string | null;
+}
 
 export interface MindmapNode {
   id: string;
@@ -13,6 +23,7 @@ export interface MindmapNode {
   color?: string;
   timeScope?: TimeScope | null;
   plan?: TimeScope | null;
+  flow?: FlowData;
   position: number;
   tagIds: number[];
   children: MindmapNode[];

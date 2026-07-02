@@ -18,11 +18,11 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 **Task** — An action item. Parented under a Project, Domain, Goal, or another Task. Hebrew: _משימה_.
 
-**Flow** — A template for a Goal/Task subtree, materialized on demand. A new node kind. Has a title, an **Instance Type** (goal or task), a **Target Node**, and a Duration-form flow scope. May be parented under an Aspect, Domain, Project, or Goal. Hebrew: TBD.
+**Flow** — A template for a Goal/Task subtree, materialized on demand. A new node kind. Has a title, an **Instance Type** (goal or task), a **Target Node**, and a Duration-form flow scope. May be parented under an Aspect, Domain, Project, or Goal. Hebrew: סדר.
 
-**Instance Type** — Whether a Flow materializes its root (and constrains its children) as a Goal or a Task. Hebrew: TBD.
+**Instance Type** — Whether a Flow materializes its root (and constrains its children) as a Goal or a Task. Hebrew: סוג מופע.
 
-**Target Node** — The default node under which a Flow's instances are created. Overridable when starting the Flow. Hebrew: TBD.
+**Target Node** — The default node under which a Flow's instances are created. Overridable when starting the Flow. Hebrew: צומת יעד.
 
 **Flow instance** — The result of starting a plain (non-habit) Flow: a real, persistent, independent Goal/Task subtree copied under the target. Retains a stored link to its originating Flow used only as a UI indicator (no cascading edits). Habit instances differ — they are virtual (see Habit). Dependencies declared between flow items are **remapped per instance/iteration** (Implement waits on this instance's Specify, not the template's); cross-iteration dependencies are not auto-created. Hebrew: TBD.
 

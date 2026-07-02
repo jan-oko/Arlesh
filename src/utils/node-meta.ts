@@ -84,6 +84,7 @@ export const NODE_ICON: Record<NodeKind, string> = {
   task: "✓",
   tag: "🏷",
   info: "ℹ",
+  flow: "▶",
 };
 
 export const NODE_LABEL: Record<NodeKind, string> = {
@@ -94,6 +95,7 @@ export const NODE_LABEL: Record<NodeKind, string> = {
   task: "Task",
   tag: "Tag",
   info: "Info",
+  flow: "Flow",
 };
 
 // All node types reachable from a domain-table parent (aspect/domain/project/tag).

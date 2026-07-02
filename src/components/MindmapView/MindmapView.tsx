@@ -23,13 +23,14 @@ import TaskEditorModal from "@/components/TaskEditorModal/TaskEditorModal";
 import GoalEditorModal from "@/components/GoalEditorModal/GoalEditorModal";
 import TitleEditorModal from "@/components/TitleEditorModal/TitleEditorModal";
 import ProjectEditorModal from "@/components/ProjectEditorModal/ProjectEditorModal";
+import FlowEditorModal from "@/components/FlowEditorModal/FlowEditorModal";
 import WarningConfirmModal from "@/components/WarningConfirmModal/WarningConfirmModal";
 import DeleteConfirmModal from "@/components/DeleteConfirmModal/DeleteConfirmModal";
 import styles from "./MindmapView.module.css";
 
 export default function MindmapView() {
   const { t } = useTranslation(["common", "editor", "warnings", "nodeKinds"]);
-  const { tree, isLoading, error, createNode, createChild, renameNode, retypeNode, reorderNode, moveNode, removeNode, reload } =
+  const { tree, isLoading, error, createNode, createChild, renameNode, retypeNode, reorderNode, moveNode, removeNode, createFlow, reload } =
     useMindmapData();
   const {
     selectedNodeId, selectedNodeIds, subtreeRootId, clipboard, collapsedNodeIds, pendingToast,
@@ -61,9 +62,45 @@ export default function MindmapView() {
 
   const {
     editorModal, setEditorModal, allTags, availableForDep, onDoubleClick,
-    onTaskSave, onGoalSave, onSimpleSave, onProjectSave,
+    onTaskSave, onGoalSave, onSimpleSave, onProjectSave, onFlowSave,
     checkScopeClamp, confirmScopeClamp, scopeClampRequest, resolveScopeClamp,
   } = useNodeEditor({ tree, allTasksAndGoals, renameNode, reload });
+
+  // Nodes a Flow may target — those that can hold a Goal/Task instance. Phase 7.5 further
+  // narrows this to targets whose Time Scope satisfies containment.
+  const flowTargets = useMemo(() => {
+    const canHoldInstance = new Set<NodeKind>(["aspect", "domain", "project", "goal", "task"]);
+    const acc: MindmapNode[] = [];
+    const walk = (node: MindmapNode) => {
+      if (node.id !== "root" && canHoldInstance.has(node.kind)) acc.push(node);
+      node.children.forEach(walk);
+    };
+    walk(tree);
+    return acc;
+  }, [tree]);
+
+  // Creates a bare Flow under the given parent, then opens its editor to fill in the details.
+  const onNewFlow = useCallback(
+    (parentId: string) => {
+      const parent = findNode(tree, parentId);
+      if (parent === undefined) return;
+      const parentDbId = parseInt(parentId.split("-").pop() ?? "0", 10);
+      void createFlow({ title: t("editor:newFlowTitle"), parent_type: parent.kind, parent_id: parentDbId }).then((flow) => {
+        setEditorModal({
+          nodeId: `flow-${flow.id}`,
+          node: {
+            id: `flow-${flow.id}`, kind: "flow", title: flow.title, position: flow.position,
+            flow: {
+              instanceType: flow.instance_type, targetType: flow.target_type, targetId: flow.target_id,
+              durationN: flow.flow_duration_n, durationKind: flow.flow_duration_kind,
+            },
+            tagIds: [], children: [],
+          },
+        });
+      });
+    },
+    [tree, createFlow, setEditorModal, t],
+  );
 
   // Wraps moveNode so a drag reparent that would orphan scoped items prompts to clamp them first.
   const guardedMoveNode = useCallback(
@@ -152,7 +189,7 @@ export default function MindmapView() {
 
   const { onContextAction } = useContextAction({
     findNodeById, enterSubtree, setEditingNodeId, cycleType,
-    setClipboard, clipboard, onPaste, toggleCollapsed, onDelete,
+    setClipboard, clipboard, onPaste, toggleCollapsed, onDelete, onNewFlow,
   });
 
   const handleCtrlClick = useCallback((id: string) => { addToSelection(id); }, [addToSelection]);
@@ -252,6 +289,9 @@ export default function MindmapView() {
       )}
       {editorModal !== null && editorModal.node.kind === "tag" && (
         <TitleEditorModal heading={t("editor:editTag")} title={editorModal.node.title} onSave={onSimpleSave} onClose={() => setEditorModal(null)} />
+      )}
+      {editorModal !== null && editorModal.node.kind === "flow" && (
+        <FlowEditorModal node={editorModal.node} availableTargets={flowTargets} onSave={onFlowSave} onClose={() => setEditorModal(null)} />
       )}
 
       {warningModal !== null && retypeActions !== null && (

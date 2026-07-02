@@ -3,10 +3,12 @@ import { listDomains, createDomain, updateDomain, deleteDomain } from "@/api/dom
 import { listTasks, createTask, updateTask, deleteTask } from "@/api/tasks";
 import { listGoals, createGoal, updateGoal, deleteGoal } from "@/api/goals";
 import { listInfos, createInfo, updateInfo, deleteInfo } from "@/api/infos";
+import { listFlows, createFlow, updateFlow, deleteFlow } from "@/api/flows";
 import type { Domain } from "@/api/domains";
 import type { Task } from "@/api/tasks";
 import type { Goal } from "@/api/goals";
 import type { Info } from "@/api/infos";
+import type { Flow, CreateFlowRequest, UpdateFlowRequest } from "@/api/flows";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { goalStatusToTaskStatus, taskStatusToGoalStatus } from "@/utils/status-mapping";
 
@@ -39,6 +41,8 @@ interface MindmapData {
   reorderNode: (id: string, direction: 1 | -1) => Promise<void>;
   moveNode: (id: string, kind: NodeKind, newParentId: string, newParentKind: NodeKind, position: number) => Promise<void>;
   removeNode: (nodesToDelete: Array<{ id: string; kind: NodeKind }>) => Promise<void>;
+  createFlow: (request: CreateFlowRequest) => Promise<Flow>;
+  updateFlow: (id: number, request: UpdateFlowRequest) => Promise<void>;
   reload: () => Promise<void>;
 }
 
@@ -73,6 +77,7 @@ function kindToInfoParentType(kind: NodeKind): string {
     case "project": return "project";
     case "domain": return "domain";
     case "tag": return "tag";
+    case "flow": throw new Error("Flow nodes cannot parent info nodes");
   }
 }
 
@@ -120,7 +125,13 @@ function infoParentKey(info: Info): string {
   return `domain-${info.parent_id}`;
 }
 
-export function buildTree(domains: Domain[], goals: Goal[], tasks: Task[], infos: Info[]): MindmapNode {
+export function buildTree(
+  domains: Domain[],
+  goals: Goal[],
+  tasks: Task[],
+  infos: Info[],
+  flows: Flow[] = [],
+): MindmapNode {
   const nodeMap = new Map<string, MindmapNode>();
 
   for (const domain of domains) {
@@ -175,6 +186,36 @@ export function buildTree(domains: Domain[], goals: Goal[], tasks: Task[], infos
       tagIds: [],
       children: [],
     });
+  }
+
+  for (const flow of flows) {
+    nodeMap.set(`flow-${flow.id}`, {
+      id: `flow-${flow.id}`,
+      kind: "flow",
+      title: flow.title,
+      position: flow.position,
+      flow: {
+        instanceType: flow.instance_type,
+        targetType: flow.target_type,
+        targetId: flow.target_id,
+        durationN: flow.flow_duration_n,
+        durationKind: flow.flow_duration_kind,
+      },
+      tagIds: [],
+      children: [],
+    });
+  }
+
+  // Wire flows to their parents (flow items are wired in 7.3)
+  for (const flow of flows) {
+    const flowNode = nodeMap.get(`flow-${flow.id}`);
+    if (flowNode === undefined) continue;
+    const parentKey =
+      flow.parent_type === "goal" ? `goal-${flow.parent_id}` : `domain-${flow.parent_id}`;
+    const parentNode = nodeMap.get(parentKey);
+    if (parentNode !== undefined) {
+      parentNode.children.push(flowNode);
+    }
   }
 
   // Wire domain tree (all subtypes including tags)
@@ -254,13 +295,14 @@ export function useMindmapData(): MindmapData {
     setIsLoading(true);
     setError(null);
     try {
-      const [domains, goals, tasks, infos] = await Promise.all([
+      const [domains, goals, tasks, infos, flows] = await Promise.all([
         listDomains(),
         listGoals(),
         listTasks(),
         listInfos(),
+        listFlows(),
       ]);
-      setTree(buildTree(domains, goals, tasks, infos));
+      setTree(buildTree(domains, goals, tasks, infos, flows));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -273,13 +315,14 @@ export function useMindmapData(): MindmapData {
   const silentLoad = useCallback(async () => {
     setError(null);
     try {
-      const [domains, goals, tasks, infos] = await Promise.all([
+      const [domains, goals, tasks, infos, flows] = await Promise.all([
         listDomains(),
         listGoals(),
         listTasks(),
         listInfos(),
+        listFlows(),
       ]);
-      setTree(buildTree(domains, goals, tasks, infos));
+      setTree(buildTree(domains, goals, tasks, infos, flows));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -665,8 +708,26 @@ export function useMindmapData(): MindmapData {
         if (kind === "goal") await deleteGoal(dbId);
         else if (kind === "task") await deleteTask(dbId);
         else if (kind === "info") await deleteInfo(dbId);
+        else if (kind === "flow") await deleteFlow(dbId);
         else if (kind !== "aspect") await deleteDomain(dbId);
       }
+      await silentLoad();
+    },
+    [silentLoad],
+  );
+
+  const createFlowNode = useCallback(
+    async (request: CreateFlowRequest): Promise<Flow> => {
+      const flow = await createFlow(request);
+      await silentLoad();
+      return flow;
+    },
+    [silentLoad],
+  );
+
+  const updateFlowNode = useCallback(
+    async (id: number, request: UpdateFlowRequest): Promise<void> => {
+      await updateFlow(id, request);
       await silentLoad();
     },
     [silentLoad],
@@ -683,6 +744,8 @@ export function useMindmapData(): MindmapData {
     reorderNode,
     moveNode,
     removeNode,
+    createFlow: createFlowNode,
+    updateFlow: updateFlowNode,
     reload: silentLoad,
   };
 }

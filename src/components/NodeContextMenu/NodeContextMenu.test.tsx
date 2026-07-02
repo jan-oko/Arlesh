@@ -83,6 +83,24 @@ describe("NodeContextMenu — canChangeType", () => {
   });
 });
 
+describe("NodeContextMenu — newFlow", () => {
+  it.each(["aspect", "domain", "project", "goal"] as const)("shows New Flow for %s nodes", (nodeKind) => {
+    render(<NodeContextMenu {...defaultProps} nodeKind={nodeKind} />);
+    expect(screen.getByRole("button", { name: "newFlow" })).toBeInTheDocument();
+  });
+
+  it.each(["task", "tag"] as const)("hides New Flow for %s nodes", (nodeKind) => {
+    render(<NodeContextMenu {...defaultProps} nodeKind={nodeKind} />);
+    expect(screen.queryByRole("button", { name: "newFlow" })).not.toBeInTheDocument();
+  });
+
+  it("emits the new-flow action when clicked", () => {
+    render(<NodeContextMenu {...defaultProps} nodeKind="goal" />);
+    fireEvent.click(screen.getByRole("button", { name: "newFlow" }));
+    expect(defaultProps.onAction).toHaveBeenCalledWith("new-flow");
+  });
+});
+
 describe("NodeContextMenu — paste", () => {
   it("paste button is enabled when hasClipboard is true", () => {
     render(<NodeContextMenu {...defaultProps} hasClipboard={true} />);

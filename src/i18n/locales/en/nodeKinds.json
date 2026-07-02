@@ -6,5 +6,6 @@
   "task": "Task",
   "tag": "Tag",
   "tags": "Tags",
-  "info": "Info"
+  "info": "Info",
+  "flow": "Flow"
 }
