@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { getScope, resolveScope } from "@/api/scopes";
 import type { TimeScope } from "@/api/time-scope";
 import { useScopePicker } from "@/hooks/use-scope-picker";
+import { useScopeLabels } from "@/hooks/use-scope-labels";
 import { formatScopeRange } from "@/utils/scope-format";
 import ScopePicker, { type ScopeConstraint } from "./ScopePicker";
 import styles from "./ScopeField.module.css";
@@ -30,6 +31,7 @@ export default function PlanField({ value, timeScope, onChange }: Props) {
   const [open, setOpen] = useState(false);
   const [constraint, setConstraint] = useState<ScopeConstraint | undefined>(undefined);
   const [rangeLabel, setRangeLabel] = useState<string | null>(null);
+  const labels = useScopeLabels();
   const picker = useScopePicker("range");
 
   useEffect(() => {
@@ -53,13 +55,13 @@ export default function PlanField({ value, timeScope, onChange }: Props) {
     let active = true;
     void Promise.all([getScope(value.start_id), getScope(value.end_id)]).then(([start, end]) => {
       if (active && start != null && end != null) {
-        setRangeLabel(formatScopeRange(start, end));
+        setRangeLabel(formatScopeRange(start, end, labels));
       }
     });
     return () => {
       active = false;
     };
-  }, [value]);
+  }, [value, labels]);
 
   function toggleOpen() {
     setConstraint(undefined);
@@ -71,7 +73,7 @@ export default function PlanField({ value, timeScope, onChange }: Props) {
     setOpen(false);
   }
 
-  const summary = value === null ? "Unplanned" : (rangeLabel ?? "…");
+  const summary = value === null ? labels.unplanned : (rangeLabel ?? "…");
 
   return (
     <div className={styles.field}>

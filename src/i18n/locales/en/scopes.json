@@ -1,0 +1,33 @@
+{
+  "unscoped": "Unscoped",
+  "unplanned": "Unplanned",
+  "week": "W{{n}}",
+  "month": {
+    "1": "January",
+    "2": "February",
+    "3": "March",
+    "4": "April",
+    "5": "May",
+    "6": "June",
+    "7": "July",
+    "8": "August",
+    "9": "September",
+    "10": "October",
+    "11": "November",
+    "12": "December"
+  },
+  "season": {
+    "spring": "Spring",
+    "summer": "Summer",
+    "autumn": "Autumn",
+    "winter": "Winter"
+  },
+  "duration_day_one": "{{count}} day",
+  "duration_day_other": "{{count}} days",
+  "duration_week_one": "{{count}} week",
+  "duration_week_other": "{{count}} weeks",
+  "duration_month_one": "{{count}} month",
+  "duration_month_other": "{{count}} months",
+  "duration_season_one": "{{count}} season",
+  "duration_season_other": "{{count}} seasons"
+}

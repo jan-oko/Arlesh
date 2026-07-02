@@ -1,16 +1,15 @@
 // Human display formatting for scopes and scope ranges. Rules:
 //  - days render dd/mm/yy;
-//  - months/seasons by name, weeks as "W{n}", each with a 4-digit year;
+//  - months/seasons/weeks by localized label, each with a 4-digit year;
 //  - a range of the same kind whose endpoints share a year factors the year out as a suffix
 //    (e.g. "June-July 2026", "28/06-01/07 2026", "W45-W49 2026").
+//
+// Localized words come from `ScopeLabelFns` (see use-scope-labels.ts); this stays pure so it can
+// be unit-tested with plain label stubs.
 
 import type { Scope } from "@/api/scopes";
+import type { ScopeLabelFns } from "@/hooks/use-scope-labels";
 import { seasonOf, weekNumber } from "@/utils/scope-calendar";
-
-const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
 
 function parseDate(iso: string): { day: number; month: number; year: number } {
   const [year, month, day] = iso.split("-").map(Number);
@@ -27,22 +26,21 @@ function ddmm(iso: string): string {
 }
 
 function ddmmyy(iso: string): string {
-  const { year } = parseDate(iso);
-  return `${ddmm(iso)}/${pad2(year % 100)}`;
+  return `${ddmm(iso)}/${pad2(parseDate(iso).year % 100)}`;
 }
 
 /** The year-less core and the (4-digit) year of a canonical scope, for the same-year suffix rule. */
-function scopeCore(scope: Scope): { core: string; year: number } {
+function scopeCore(scope: Scope, labels: ScopeLabelFns): { core: string; year: number } {
   switch (scope.kind) {
     case "day":
       return { core: ddmm(scope.start_date), year: parseDate(scope.start_date).year };
     case "week":
-      return { core: `W${weekNumber(scope.start_date)}`, year: parseDate(scope.start_date).year };
+      return { core: labels.week(weekNumber(scope.start_date)), year: parseDate(scope.start_date).year };
     case "month":
-      return { core: MONTHS[parseDate(scope.start_date).month - 1] ?? "", year: parseDate(scope.start_date).year };
+      return { core: labels.month(parseDate(scope.start_date).month), year: parseDate(scope.start_date).year };
     case "season": {
       const season = seasonOf(scope.start_date);
-      return { core: season.name, year: season.year };
+      return { core: labels.season(season.name), year: season.year };
     }
     default:
       return { core: scope.label, year: 0 };
@@ -50,22 +48,21 @@ function scopeCore(scope: Scope): { core: string; year: number } {
 }
 
 /** Formats a single scope. */
-export function formatScope(scope: Scope): string {
-  if (scope.kind === "exact") return scope.label;
-  if (scope.kind === "part_of_day") return scope.label;
+export function formatScope(scope: Scope, labels: ScopeLabelFns): string {
+  if (scope.kind === "exact" || scope.kind === "part_of_day") return scope.label;
   if (scope.kind === "day") return ddmmyy(scope.start_date);
-  const { core, year } = scopeCore(scope);
+  const { core, year } = scopeCore(scope, labels);
   return `${core} ${year}`;
 }
 
 /** Formats a boundaries range (same-kind endpoints), factoring out a shared year as a suffix. */
-export function formatScopeRange(start: Scope, end: Scope): string {
-  if (start.id === end.id) return formatScope(start);
+export function formatScopeRange(start: Scope, end: Scope, labels: ScopeLabelFns): string {
+  if (start.id === end.id) return formatScope(start, labels);
   if (start.kind !== end.kind || start.kind === "exact" || start.kind === "part_of_day") {
-    return `${formatScope(start)}-${formatScope(end)}`;
+    return `${formatScope(start, labels)}-${formatScope(end, labels)}`;
   }
-  const a = scopeCore(start);
-  const b = scopeCore(end);
+  const a = scopeCore(start, labels);
+  const b = scopeCore(end, labels);
   if (a.year === b.year) return `${a.core}-${b.core} ${a.year}`;
   if (start.kind === "day") return `${ddmmyy(start.start_date)}-${ddmmyy(end.start_date)}`;
   return `${a.core} ${a.year}-${b.core} ${b.year}`;

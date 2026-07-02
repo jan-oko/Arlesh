@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { getOrCreateScope, getScope } from "@/api/scopes";
 import type { TimeScope } from "@/api/time-scope";
 import { useScopePicker } from "@/hooks/use-scope-picker";
+import { useScopeLabels } from "@/hooks/use-scope-labels";
 import { addScopePeriods } from "@/utils/scope-calendar";
 import { formatScopeRange } from "@/utils/scope-format";
 import type { CanonicalKind } from "@/utils/scope-ref";
@@ -38,26 +39,27 @@ export default function TimeScopeField({ value, onChange }: Props) {
   const [durationKind, setDurationKind] = useState<CanonicalKind>(
     DURATION_KINDS.find((kind) => kind === value?.duration?.kind) ?? "week",
   );
-  // The label(s) of a Boundaries/single value are fetched; "Unscoped" and duration are derived.
+  const labels = useScopeLabels();
+  // The label(s) of a Boundaries/single value are fetched; Unscoped and duration are derived.
   const [rangeLabel, setRangeLabel] = useState<string | null>(null);
   useEffect(() => {
     if (value === null || value.duration) return;
     let active = true;
     void Promise.all([getScope(value.start_id), getScope(value.end_id)]).then(([start, end]) => {
       if (active && start != null && end != null) {
-        setRangeLabel(formatScopeRange(start, end));
+        setRangeLabel(formatScopeRange(start, end, labels));
       }
     });
     return () => {
       active = false;
     };
-  }, [value]);
+  }, [value, labels]);
 
   const summary =
     value === null
-      ? "Unscoped"
+      ? labels.unscoped
       : value.duration
-        ? `${value.duration.n} ${value.duration.kind}${value.duration.n === 1 ? "" : "s"}`
+        ? labels.duration(value.duration.n, value.duration.kind)
         : (rangeLabel ?? "…");
 
   async function applyBoundaries() {

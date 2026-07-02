@@ -9,6 +9,23 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { dir: () => "ltr" } }),
 }));
 
+vi.mock("@/hooks/use-scope-labels", () => ({
+  useScopeLabels: () => {
+    const months = [
+      "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December",
+    ];
+    return {
+      unscoped: "Unscoped",
+      unplanned: "Unplanned",
+      week: (n: number) => `W${n}`,
+      month: (m: number) => months[m - 1] ?? "",
+      season: (name: string) => name,
+      duration: (count: number, kind: string) => `${count} ${kind}${count === 1 ? "" : "s"}`,
+    };
+  },
+}));
+
 vi.mock("@/api/scopes", () => ({
   getOrCreateScope: vi.fn(),
   getOrCreatePartScope: vi.fn(),

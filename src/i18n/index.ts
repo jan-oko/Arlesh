@@ -9,6 +9,7 @@ import en_nodeKinds from "./locales/en/nodeKinds.json";
 import en_status from "./locales/en/status.json";
 import en_warnings from "./locales/en/warnings.json";
 import en_navigation from "./locales/en/navigation.json";
+import en_scopes from "./locales/en/scopes.json";
 
 import he_common from "./locales/he/common.json";
 import he_contextMenu from "./locales/he/contextMenu.json";
@@ -17,6 +18,7 @@ import he_nodeKinds from "./locales/he/nodeKinds.json";
 import he_status from "./locales/he/status.json";
 import he_warnings from "./locales/he/warnings.json";
 import he_navigation from "./locales/he/navigation.json";
+import he_scopes from "./locales/he/scopes.json";
 
 void i18n
   .use(LanguageDetector)
@@ -31,6 +33,7 @@ void i18n
         status: en_status,
         warnings: en_warnings,
         navigation: en_navigation,
+        scopes: en_scopes,
       },
       he: {
         common: he_common,
@@ -40,6 +43,7 @@ void i18n
         status: he_status,
         warnings: he_warnings,
         navigation: he_navigation,
+        scopes: he_scopes,
       },
     },
     fallbackLng: "en",
