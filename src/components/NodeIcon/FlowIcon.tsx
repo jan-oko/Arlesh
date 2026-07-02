@@ -1,19 +1,14 @@
 interface Props { cx: number; cy: number; r: number; color: string; opacity: number; }
 
-// A flow is a stream of instances — a wave reads as "flow".
+// A flow is a stream of instances — a double sine reads as "flow".
 export default function FlowIcon({ cx, cy, r, color, opacity }: Props) {
-  const half = r * 0.7; // horizontal reach of each half-wave
-  const amp = r * 0.3; // vertical swing
+  const hump = r * 0.45; // horizontal reach of each half-period
+  const amp = r * 0.4; // vertical swing
+  // Start with an up-hump, then reflect three times: down, up, down → two full periods.
+  const d = `M ${cx - hump * 2} ${cy} q ${hump / 2} ${-amp}, ${hump} 0 t ${hump} 0 t ${hump} 0 t ${hump} 0`;
   return (
     <g opacity={opacity}>
-      <circle cx={cx} cy={cy} r={r} fill={color} />
-      <path
-        d={`M ${cx - half} ${cy} q ${half / 2} ${-amp}, ${half} 0 t ${half} 0`}
-        fill="none"
-        stroke="var(--canvas-bg)"
-        strokeWidth={r * 0.16}
-        strokeLinecap="round"
-      />
+      <path d={d} fill="none" stroke={color} strokeWidth={r * 0.22} strokeLinecap="round" />
     </g>
   );
 }
