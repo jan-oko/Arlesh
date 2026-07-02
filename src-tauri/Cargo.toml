@@ -28,3 +28,15 @@ png = "0.17"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt", "macros"] }
+
+# Debug builds statically link the whole dependency tree into every binary (the app plus one
+# binary per integration-test file), and full DWARF debug info dominates the on-disk size. Keep
+# just line tables — enough for readable panic/test backtraces — and strip the rest. This shrinks
+# `target/debug` several-fold with no effect on behavior; step-debugging locals is the only cost.
+[profile.dev]
+debug = "line-tables-only"
+strip = "debuginfo"
+
+[profile.test]
+debug = "line-tables-only"
+strip = "debuginfo"
