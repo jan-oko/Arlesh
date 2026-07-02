@@ -8,6 +8,7 @@ pub mod commands;
 pub mod database;
 pub mod domains;
 pub mod error;
+pub mod flows;
 pub mod infos;
 pub mod knowledge_base;
 pub mod scopes;
@@ -113,6 +114,15 @@ pub fn run() {
             commands::knowledge_base::list_events,
             commands::knowledge_base::create_thread,
             commands::knowledge_base::list_threads,
+            commands::flows::create_flow,
+            commands::flows::get_flow,
+            commands::flows::list_flows,
+            commands::flows::update_flow,
+            commands::flows::delete_flow,
+            commands::flows::create_flow_goal,
+            commands::flows::create_flow_task,
+            commands::flows::list_flow_goals,
+            commands::flows::list_flow_tasks,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
