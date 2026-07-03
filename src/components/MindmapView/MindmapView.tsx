@@ -26,7 +26,8 @@ import ProjectEditorModal from "@/components/ProjectEditorModal/ProjectEditorMod
 import FlowEditorModal, { type FlowSaveData } from "@/components/FlowEditorModal/FlowEditorModal";
 import FlowItemEditorModal from "@/components/FlowItemEditorModal/FlowItemEditorModal";
 import StartFlowModal, { type StartFlowData } from "@/components/StartFlowModal/StartFlowModal";
-import { startFlow } from "@/api/flows";
+import { startFlow, convertToFlow } from "@/api/flows";
+import ConvertToFlowModal from "@/components/ConvertToFlowModal/ConvertToFlowModal";
 import WarningConfirmModal from "@/components/WarningConfirmModal/WarningConfirmModal";
 import DeleteConfirmModal from "@/components/DeleteConfirmModal/DeleteConfirmModal";
 import styles from "./MindmapView.module.css";
@@ -51,6 +52,7 @@ export default function MindmapView() {
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const [flowCreateParent, setFlowCreateParent] = useState<{ id: string; kind: NodeKind } | null>(null);
   const [startFlowNode, setStartFlowNode] = useState<MindmapNode | null>(null);
+  const [convertNode, setConvertNode] = useState<MindmapNode | null>(null);
   const [deleteTargets, setDeleteTargets] = useState<string[] | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -110,6 +112,28 @@ export default function MindmapView() {
       setFlowCreateParent({ id: parentId, kind: parent.kind });
     },
     [tree],
+  );
+
+  // Opens the confirm prompt for converting a Task/Goal subtree into a Flow.
+  const onConvertToFlow = useCallback(
+    (nodeId: string) => {
+      const node = findNode(tree, nodeId);
+      if (node !== undefined) setConvertNode(node);
+    },
+    [tree],
+  );
+
+  // Runs the conversion, then reloads and selects the new flow. Errors propagate to the modal.
+  const handleConvertToFlow = useCallback(
+    async (keepDependencies: boolean, mapScopes: boolean) => {
+      if (convertNode === null) return;
+      const dbId = parseInt(convertNode.id.split("-").pop() ?? "0", 10);
+      const flow = await convertToFlow(convertNode.kind, dbId, keepDependencies, mapScopes);
+      await reload();
+      setConvertNode(null);
+      selectNode(`flow-${flow.id}`);
+    },
+    [convertNode, reload, selectNode],
   );
 
   // Persists a brand-new flow under the pending parent, then closes the create editor.
@@ -247,7 +271,7 @@ export default function MindmapView() {
 
   const { onContextAction } = useContextAction({
     findNodeById, enterSubtree, setEditingNodeId, cycleType,
-    setClipboard, clipboard, onPaste, toggleCollapsed, onDelete, onNewFlow, onStartFlow,
+    setClipboard, clipboard, onPaste, toggleCollapsed, onDelete, onNewFlow, onConvertToFlow, onStartFlow,
   });
 
   const handleCtrlClick = useCallback((id: string) => { addToSelection(id); }, [addToSelection]);
@@ -261,7 +285,7 @@ export default function MindmapView() {
   }, [selectedNodeId, tree, selectNode, setSelection]);
 
   useKeyboardMindmap({
-    isInputActive: editingNodeId !== null || editorModal !== null || flowCreateParent !== null || startFlowNode !== null || deleteTargets !== null,
+    isInputActive: editingNodeId !== null || editorModal !== null || flowCreateParent !== null || startFlowNode !== null || convertNode !== null || deleteTargets !== null,
     isWarningActive: warningModal !== null,
     onDismissWarning: () => setWarningModal(null),
     selectedNodeId,
@@ -366,6 +390,13 @@ export default function MindmapView() {
           availableTargets={flowTargets}
           onStart={onConfirmStartFlow}
           onClose={() => setStartFlowNode(null)}
+        />
+      )}
+      {convertNode !== null && (
+        <ConvertToFlowModal
+          title={convertNode.title}
+          onConvert={handleConvertToFlow}
+          onClose={() => setConvertNode(null)}
         />
       )}
       {editorModal !== null && (editorModal.node.kind === "flow_goal" || editorModal.node.kind === "flow_task") && (

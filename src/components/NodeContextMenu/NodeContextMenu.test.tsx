@@ -161,3 +161,26 @@ describe("NodeContextMenu — outside click", () => {
     expect(defaultProps.onClose).not.toHaveBeenCalled();
   });
 });
+
+describe("NodeContextMenu — convert to flow", () => {
+  it("offers convert-to-flow for a goal/task under a valid flow parent", () => {
+    render(<NodeContextMenu {...defaultProps} nodeKind="task" parentKind="goal" />);
+    expect(screen.getByRole("button", { name: "convertToFlow" })).toBeInTheDocument();
+  });
+
+  it("hides convert-to-flow for a task under a task (no valid flow placement)", () => {
+    render(<NodeContextMenu {...defaultProps} nodeKind="task" parentKind="task" />);
+    expect(screen.queryByRole("button", { name: "convertToFlow" })).not.toBeInTheDocument();
+  });
+
+  it("hides convert-to-flow for non-goal/task kinds", () => {
+    render(<NodeContextMenu {...defaultProps} nodeKind="domain" parentKind="aspect" />);
+    expect(screen.queryByRole("button", { name: "convertToFlow" })).not.toBeInTheDocument();
+  });
+
+  it("dispatches convert-to-flow on click", () => {
+    render(<NodeContextMenu {...defaultProps} nodeKind="goal" parentKind="project" />);
+    fireEvent.click(screen.getByRole("button", { name: "convertToFlow" }));
+    expect(defaultProps.onAction).toHaveBeenCalledWith("convert-to-flow");
+  });
+});

@@ -1,4 +1,4 @@
-import type { MindmapNode, Position } from "@/utils/tree-layout";
+import type { MindmapNode, NodeKind, Position } from "@/utils/tree-layout";
 import { computeLayout } from "@/utils/tree-layout";
 import MindmapEdge from "@/components/MindmapEdge/MindmapEdge";
 import MindmapNodeComponent from "@/components/MindmapNode/MindmapNode";
@@ -28,9 +28,11 @@ export default function MindmapTree({ root, collapsedNodeIds, selectedNodeIds, e
 
   const edges: Array<{ from: Position; to: Position; key: string }> = [];
   const nodes: MindmapNode[] = [];
+  const parentKindById = new Map<string, NodeKind | null>();
 
-  function collect(node: MindmapNode) {
+  function collect(node: MindmapNode, parentKind: NodeKind | null) {
     nodes.push(node);
+    parentKindById.set(node.id, parentKind);
     const nodePos = positions.get(node.id);
     if (nodePos === undefined) return;
     for (const child of node.children) {
@@ -38,10 +40,10 @@ export default function MindmapTree({ root, collapsedNodeIds, selectedNodeIds, e
       if (childPos !== undefined) {
         edges.push({ from: nodePos, to: childPos, key: `${node.id}-${child.id}` });
       }
-      if (!collapsedNodeIds.has(node.id)) collect(child);
+      if (!collapsedNodeIds.has(node.id)) collect(child, node.kind);
     }
   }
-  collect(root);
+  collect(root, null);
 
   return (
     <>
@@ -53,6 +55,7 @@ export default function MindmapTree({ root, collapsedNodeIds, selectedNodeIds, e
           <MindmapNodeComponent
             key={node.id}
             node={node}
+            parentKind={parentKindById.get(node.id) ?? null}
             position={pos}
             isSelected={selectedNodeIds.has(node.id)}
             isCollapsed={collapsedNodeIds.has(node.id)}

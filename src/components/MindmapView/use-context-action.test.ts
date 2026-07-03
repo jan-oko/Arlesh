@@ -25,6 +25,7 @@ function makeOpts(overrides: Partial<Parameters<typeof useContextAction>[0]> = {
     toggleCollapsed: vi.fn(),
     onDelete: vi.fn(),
     onNewFlow: vi.fn(),
+    onConvertToFlow: vi.fn(),
     onStartFlow: vi.fn(),
     ...overrides,
   };
@@ -127,5 +128,14 @@ describe("useContextAction", () => {
     const { result } = renderHook(() => useContextAction(opts));
     result.current.onContextAction("flow-1", CONTEXT_ACTION.START_FLOW);
     expect(opts.onStartFlow).toHaveBeenCalledWith("flow-1");
+  });
+});
+
+describe("useContextAction — convert to flow", () => {
+  it("dispatches onConvertToFlow for the convert-to-flow action", () => {
+    const opts = makeOpts();
+    const { result } = renderHook(() => useContextAction(opts));
+    result.current.onContextAction("task-5", "convert-to-flow");
+    expect(opts.onConvertToFlow).toHaveBeenCalledWith("task-5");
   });
 });
