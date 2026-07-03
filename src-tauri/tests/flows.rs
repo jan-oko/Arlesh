@@ -1120,3 +1120,27 @@ async fn convert_to_flow_rejects_a_task_under_a_task() {
     // A flow can't be parented under a task, so converting the child is rejected.
     assert!(FlowRepository::new(&pool).convert_to_flow("task", child.id, true, true).await.is_err());
 }
+
+#[tokio::test]
+async fn convert_a_task_subtree_without_deps_or_scope_mapping() {
+    let pool = helpers::test_pool().await;
+    let tasks = TaskRepository::new(&pool);
+    // A task under a domain (valid flow parent) with a task child.
+    let root = tasks
+        .create(CreateTaskRequest { title: "Build".into(), parent_type: "domain".into(), parent_id: 1, ..Default::default() })
+        .await
+        .unwrap();
+    tasks
+        .create(CreateTaskRequest { title: "Sub".into(), parent_type: "task".into(), parent_id: root.id, ..Default::default() })
+        .await
+        .unwrap();
+
+    let repo = FlowRepository::new(&pool);
+    let flow = repo.convert_to_flow("task", root.id, false, false).await.unwrap();
+    assert_eq!(flow.instance_type, "task");
+    assert!(flow.flow_duration_kind.is_none()); // no scope to map → unscoped window
+    assert_eq!(repo.list_tasks(FlowId(flow.id)).await.unwrap().len(), 1); // the one child
+    assert_eq!(repo.list_goals(FlowId(flow.id)).await.unwrap().len(), 0);
+    assert!(repo.list_all_cycles().await.unwrap().iter().all(|c| c.flow_id != flow.id)); // no cycles mapped
+    assert!(tasks.get(TaskId(root.id)).await.is_err());
+}
