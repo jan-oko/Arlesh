@@ -1617,3 +1617,36 @@ async fn derives_goal_overdue_lapsed_and_exempts_resolved() {
     assert_eq!(goal_state(&states, archive.id), ScopeLifecycle::Lapsed);
     assert_eq!(goal_state(&states, achieved.id), ScopeLifecycle::Active); // Achieved → exempt
 }
+
+#[tokio::test]
+async fn derivation_tolerates_an_orphaned_item_whose_parent_was_deleted() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let goals = GoalRepository::new(&pool);
+    let parent = goals
+        .create(CreateGoalRequest {
+            title: "Parent".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let child = TaskRepository::new(&pool)
+        .create(CreateTaskRequest {
+            title: "Child".into(),
+            parent_type: "goal".into(),
+            parent_id: parent.id,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    // Deleting the parent goal does not cascade — the child is left with a dangling parent ref.
+    goals.delete(parent.id.into()).await.unwrap();
+
+    // Deriving every item's lifecycle must NOT crash on the dangling ancestor (the render bug);
+    // the orphan is simply unconstrained → Active.
+    let now = NaiveDate::from_ymd_opt(2026, 2, 1).unwrap().and_hms_opt(12, 0, 0).unwrap();
+    let states = derive_all_scope_lifecycles(&pool, now).await.unwrap();
+    assert_eq!(task_state(&states, child.id), ScopeLifecycle::Active);
+}

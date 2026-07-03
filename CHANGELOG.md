@@ -43,6 +43,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Dead `end_month == 12` branch in `scope_bounds` for Season — `end_month` is always 2, 5, 8, or 11 by construction; also removed the unused `end_month_start` intermediate variable
 
 ### Fixed
+- The mindmap failed to render (`goal N not found`) whenever an orphaned Task/Goal existed — one whose parent points to a since-deleted item. The per-load scope-lifecycle derivation walks each item's ancestor chain, and a dangling link made the whole `derive_scope_lifecycles` command error, rejecting the load. The ancestor walk now treats a missing ancestor as a broken chain (the item is Unscoped above it) instead of propagating a not-found error
 - Info nodes rendered with a task icon (cycle appeared to do nothing); added a dedicated InfoIcon (circle with an "i") and wired it into NodeIcon
 
 ### Added

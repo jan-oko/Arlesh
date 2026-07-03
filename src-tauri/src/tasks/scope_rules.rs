@@ -60,7 +60,13 @@ pub(super) async fn scope_governance(
     loop {
         match node_type.as_str() {
             "task" => {
-                let task = TaskRepository::new(pool).get(TaskId(node_id)).await?;
+                // A dangling parent (the referenced item was deleted) breaks the chain: there is no
+                // scoped ancestor above it, so the item is unconstrained rather than an error.
+                let task = match TaskRepository::new(pool).get(TaskId(node_id)).await {
+                    Ok(task) => task,
+                    Err(TaskError::TaskNotFound(_)) => return Ok(None),
+                    Err(error) => return Err(error),
+                };
                 if let Some(ts) = &task.time_scope {
                     let window = time_scope_window(pool, ts).await?;
                     return Ok(Some((window, task.on_scope_exit.unwrap_or(OnScopeExit::Keep))));
@@ -69,7 +75,11 @@ pub(super) async fn scope_governance(
                 node_id = task.parent_id;
             }
             "goal" => {
-                let goal = GoalRepository::new(pool).get(GoalId(node_id)).await?;
+                let goal = match GoalRepository::new(pool).get(GoalId(node_id)).await {
+                    Ok(goal) => goal,
+                    Err(TaskError::GoalNotFound(_)) => return Ok(None),
+                    Err(error) => return Err(error),
+                };
                 if let Some(ts) = &goal.time_scope {
                     let window = time_scope_window(pool, ts).await?;
                     return Ok(Some((window, goal.on_scope_exit.unwrap_or(OnScopeExit::Keep))));
