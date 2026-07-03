@@ -8,7 +8,7 @@ import type { FlowItemSaveData } from "@/components/FlowItemEditorModal/FlowItem
 import {
   updateFlow, updateFlowGoal, updateFlowTask, setFlowItemCycles,
   addFlowDependency, removeFlowDependency, flowOrigins,
-  setFlowRecurrence, deleteFlowRecurrence,
+  setFlowRecurrence, deleteFlowRecurrence, forkFlow, clearHabitModifications,
 } from "@/api/flows";
 import { getOrCreateScope } from "@/api/scopes";
 import type { ScopeKind } from "@/api/scopes";
@@ -196,7 +196,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, renameNode, reload }: Op
       if (editorModal === null) return;
       const { nodeId } = editorModal;
       const dbId = parseInt(nodeId.split("-").pop() ?? "0", 10);
-      await updateFlow(dbId, {
+      const flowFields = {
         title: data.title,
         instance_type: data.instanceType,
         target_type: data.targetType,
@@ -206,31 +206,42 @@ export function useNodeEditor({ tree, allTasksAndGoals, renameNode, reload }: Op
         flow_window_part: data.windowPart,
         flow_window_time_start: data.windowTimeStart,
         flow_window_time_end: data.windowTimeEnd,
-      });
-      // Persist the Recurrence after the flow row, so gap validation sees the new scope kind.
-      if (data.recurrence !== undefined) {
+      };
+      // Persist the Recurrence for `targetId` after its flow row, so gap validation sees the new kind.
+      const persistRecurrence = async (targetId: number) => {
+        if (data.recurrence === undefined) return;
         if (data.recurrence === null) {
-          await deleteFlowRecurrence(dbId);
-        } else {
-          const r = data.recurrence;
-          // A sub-day (Phase) or unscoped kind pins its start on a Day scope.
-          const startKind: ScopeKind =
-            data.durationKind === "week" ? "week"
-              : data.durationKind === "month" ? "month"
-                : data.durationKind === "season" ? "season"
-                  : "day";
-          const startScope = await getOrCreateScope(startKind, r.startDate);
-          const endScope = r.endDate !== null ? await getOrCreateScope(startKind, r.endDate) : null;
-          await setFlowRecurrence(dbId, {
-            start_scope_id: startScope.id,
-            gap_n: r.gapN,
-            gap_kind: r.gapKind,
-            end_scope_id: endScope?.id ?? null,
-            consumption_kind: r.consumptionKind,
-            blocking_mode: r.blockingMode,
-            catchup_policy: r.catchupPolicy,
-          });
+          await deleteFlowRecurrence(targetId);
+          return;
         }
+        const r = data.recurrence;
+        // A sub-day (Phase) or unscoped kind pins its start on a Day scope.
+        const startKind: ScopeKind =
+          data.durationKind === "week" ? "week"
+            : data.durationKind === "month" ? "month"
+              : data.durationKind === "season" ? "season"
+                : "day";
+        const startScope = await getOrCreateScope(startKind, r.startDate);
+        const endScope = r.endDate !== null ? await getOrCreateScope(startKind, r.endDate) : null;
+        await setFlowRecurrence(targetId, {
+          start_scope_id: startScope.id,
+          gap_n: r.gapN,
+          gap_kind: r.gapKind,
+          end_scope_id: endScope?.id ?? null,
+          consumption_kind: r.consumptionKind,
+          blocking_mode: r.blockingMode,
+          catchup_policy: r.catchupPolicy,
+        });
+      };
+      if (data.reconcile === "fork") {
+        // Archive & new: apply the edit to a deep clone; the original habit + history stay untouched.
+        const clone = await forkFlow(dbId);
+        await updateFlow(clone.id, flowFields);
+        await persistRecurrence(clone.id);
+      } else {
+        if (data.reconcile === "discard") await clearHabitModifications(dbId);
+        await updateFlow(dbId, flowFields);
+        await persistRecurrence(dbId);
       }
       await reload();
       setEditorModal(null);

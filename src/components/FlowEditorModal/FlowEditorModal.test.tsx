@@ -14,7 +14,19 @@ vi.mock("react-i18next", () => ({
 vi.mock("@/hooks/use-valid-flow-targets", () => ({ useValidFlowTargets: () => null }));
 
 // The recurrence load runs on mount for edit-mode flows; default to "not a habit".
-vi.mock("@/api/flows", () => ({ getFlowRecurrence: vi.fn().mockResolvedValue(null) }));
+vi.mock("@/api/flows", () => ({
+  getFlowRecurrence: vi.fn().mockResolvedValue(null),
+  habitCompletionCount: vi.fn().mockResolvedValue(0),
+}));
+vi.mock("@/api/scopes", () => ({
+  getScope: vi.fn().mockResolvedValue({
+    id: 1, kind: "week", label: "", start_date: "2026-01-04", end_date: "2026-01-10",
+    week_id: null, month_id: null, season_id: null, day_id: null,
+    part: null, start_datetime: null, end_datetime: null,
+  }),
+}));
+
+import { getFlowRecurrence, habitCompletionCount } from "@/api/flows";
 
 function mkFlow(overrides: Partial<MindmapNode> = {}): MindmapNode {
   return {
@@ -140,6 +152,28 @@ describe("FlowEditorModal — save", () => {
           recurrence: expect.objectContaining({ consumptionKind: "destructive", startDate: expect.any(String) }),
         }),
       ),
+    );
+  });
+
+  it("prompts to reconcile when a schedule change collides with completed iterations", async () => {
+    vi.mocked(getFlowRecurrence).mockResolvedValueOnce({
+      flow_id: 1, start_scope_id: 1, gap_n: null, gap_kind: null, end_scope_id: null,
+      consumption_kind: "destructive", blocking_mode: null, catchup_policy: null,
+    });
+    vi.mocked(habitCompletionCount).mockResolvedValueOnce(2);
+    render(<FlowEditorModal {...defaultProps} />);
+    await waitFor(() => expect(habitCompletionCount).toHaveBeenCalled());
+
+    // Change the flow window's N (2 → 3) — a schedule change.
+    fireEvent.change(screen.getByLabelText("fieldFlowScope"), { target: { value: "3" } });
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+
+    // The reconcile prompt appears instead of saving directly.
+    const forkBtn = await screen.findByRole("button", { name: "reconcileFork" });
+    expect(defaultProps.onSave).not.toHaveBeenCalled();
+    fireEvent.click(forkBtn);
+    await waitFor(() =>
+      expect(defaultProps.onSave).toHaveBeenCalledWith(expect.objectContaining({ reconcile: "fork" })),
     );
   });
 

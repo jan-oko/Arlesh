@@ -896,6 +896,129 @@ impl<'a> FlowRepository<'a> {
         Ok(())
     }
 
+    /// Number of distinct **completed** iterations of a Habit (used to detect divergent instances
+    /// before an edit-habit reconciliation).
+    pub async fn habit_completion_count(&self, flow_id: FlowId) -> Result<i64, FlowError> {
+        let count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(DISTINCT iteration_scope_id) FROM habit_instance_modifications
+             WHERE flow_id = ? AND status = 'done' AND tombstone_kind IS NULL",
+        )
+        .bind(flow_id.0)
+        .fetch_one(self.pool)
+        .await?;
+        Ok(count)
+    }
+
+    /// Clears every Habit Modification for a flow (drops all completion history) — the
+    /// delete-and-regenerate arm of edit-habit reconciliation.
+    pub async fn clear_habit_modifications(&self, flow_id: FlowId) -> Result<(), FlowError> {
+        sqlx::query("DELETE FROM habit_instance_modifications WHERE flow_id = ?")
+            .bind(flow_id.0)
+            .execute(self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// Deep-clones a flow's **template** — the flow row, its items, cycle pairs, and intra-flow
+    /// dependencies (remapped to the clone), but **not** its Recurrence or completion Modifications —
+    /// into a brand-new flow. The edit-habit "archive & new" reconciliation applies the edited
+    /// schedule to the clone, leaving the original habit (and its history) untouched.
+    pub async fn fork_flow(&self, flow_id: FlowId) -> Result<Flow, FlowError> {
+        let flow = self.get(flow_id).await?;
+        let new_id = sqlx::query(
+            "INSERT INTO flows
+                (title, instance_type, parent_type, parent_id, target_type, target_id,
+                 flow_duration_n, flow_duration_kind,
+                 flow_window_part, flow_window_time_start, flow_window_time_end, position)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(&flow.title)
+        .bind(&flow.instance_type)
+        .bind(&flow.parent_type)
+        .bind(flow.parent_id)
+        .bind(&flow.target_type)
+        .bind(flow.target_id)
+        .bind(flow.flow_duration_n)
+        .bind(&flow.flow_duration_kind)
+        .bind(&flow.flow_window_part)
+        .bind(&flow.flow_window_time_start)
+        .bind(&flow.flow_window_time_end)
+        .bind(now_position())
+        .execute(self.pool)
+        .await?
+        .last_insert_rowid();
+
+        let goals = self.list_goals(flow_id).await?;
+        let tasks = self.list_tasks(flow_id).await?;
+        let mut goal_map: HashMap<i64, i64> = HashMap::new();
+        let mut task_map: HashMap<i64, i64> = HashMap::new();
+        // Pass 1: clone every item under the new flow (temporary parent), recording old->new ids.
+        for g in &goals {
+            let id = sqlx::query(
+                "INSERT INTO flow_goals (flow_id, title, parent_type, parent_id, position) VALUES (?, ?, 'flow', ?, ?)",
+            )
+            .bind(new_id).bind(&g.title).bind(new_id).bind(g.position)
+            .execute(self.pool).await?.last_insert_rowid();
+            goal_map.insert(g.id, id);
+        }
+        for t in &tasks {
+            let id = sqlx::query(
+                "INSERT INTO flow_tasks (flow_id, title, parent_type, parent_id, position) VALUES (?, ?, 'flow', ?, ?)",
+            )
+            .bind(new_id).bind(&t.title).bind(new_id).bind(t.position)
+            .execute(self.pool).await?.last_insert_rowid();
+            task_map.insert(t.id, id);
+        }
+        // Item-id remap for parent/cycle/dependency references.
+        let map_item = |item_type: &str, item_id: i64| -> Result<i64, FlowError> {
+            match item_type {
+                "flow_goal" => goal_map.get(&item_id).copied(),
+                "flow_task" => task_map.get(&item_id).copied(),
+                _ => None,
+            }
+            .ok_or_else(|| FlowError::Invalid("dangling flow-item reference in fork".to_string()))
+        };
+        // Pass 2: repoint each clone's parent now that all new ids exist.
+        for g in &goals {
+            let (pt, pid) = match g.parent_type.as_str() {
+                "flow" => ("flow".to_string(), new_id),
+                other => (other.to_string(), map_item(other, g.parent_id)?),
+            };
+            sqlx::query("UPDATE flow_goals SET parent_type = ?, parent_id = ? WHERE id = ?")
+                .bind(&pt).bind(pid).bind(map_item("flow_goal", g.id)?)
+                .execute(self.pool).await?;
+        }
+        for t in &tasks {
+            let (pt, pid) = match t.parent_type.as_str() {
+                "flow" => ("flow".to_string(), new_id),
+                other => (other.to_string(), map_item(other, t.parent_id)?),
+            };
+            sqlx::query("UPDATE flow_tasks SET parent_type = ?, parent_id = ? WHERE id = ?")
+                .bind(&pt).bind(pid).bind(map_item("flow_task", t.id)?)
+                .execute(self.pool).await?;
+        }
+        // Clone cycle pairs and dependencies, remapped to the new items.
+        for c in self.list_all_cycles().await?.iter().filter(|c| c.flow_id == flow_id.0) {
+            sqlx::query(
+                "INSERT INTO flow_item_cycles
+                    (flow_id, item_type, item_id, scope_kind, scope_index, plan_kind, plan_start, plan_end, position)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            )
+            .bind(new_id).bind(&c.item_type).bind(map_item(&c.item_type, c.item_id)?)
+            .bind(&c.scope_kind).bind(c.scope_index).bind(&c.plan_kind).bind(c.plan_start).bind(c.plan_end).bind(c.position)
+            .execute(self.pool).await?;
+        }
+        for d in self.list_all_dependencies().await?.iter().filter(|d| d.flow_id == flow_id.0) {
+            sqlx::query(
+                "INSERT INTO flow_dependencies (flow_id, dependent_type, dependent_id, depends_on_type, depends_on_id) VALUES (?, ?, ?, ?, ?)",
+            )
+            .bind(new_id).bind(&d.dependent_type).bind(map_item(&d.dependent_type, d.dependent_id)?)
+            .bind(&d.depends_on_type).bind(map_item(&d.depends_on_type, d.depends_on_id)?)
+            .execute(self.pool).await?;
+        }
+        self.get(FlowId(new_id)).await
+    }
+
     /// Builds the iteration windows from the Repetition Start up to (and including the one covering)
     /// `now`, bounded by any end. A **Span** window spans `n` canonical periods and tiles
     /// contiguously; a **Phase** window is the fixed band / clock-range on its anchor day. Each next

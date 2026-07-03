@@ -203,6 +203,21 @@ export async function setHabitIterationDone(
   return invoke<void>("set_habit_iteration_done", { flowId, iterationScopeId, done, resolvedAtMs });
 }
 
+/** Number of distinct completed iterations of a Habit (divergence check for reconciliation). */
+export async function habitCompletionCount(flowId: number): Promise<number> {
+  return invoke<number>("habit_completion_count", { flowId });
+}
+
+/** Clears every Habit Modification for a flow (delete-and-regenerate reconciliation). */
+export async function clearHabitModifications(flowId: number): Promise<void> {
+  return invoke<void>("clear_habit_modifications", { flowId });
+}
+
+/** Deep-clones a flow's template into a new flow (archive-and-new reconciliation). */
+export async function forkFlow(flowId: number): Promise<Flow> {
+  return invoke<Flow>("fork_flow", { flowId });
+}
+
 // --- Flow items (Phase 7.3) ---
 
 /** Which flow-item table a row lives in. */

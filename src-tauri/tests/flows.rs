@@ -954,3 +954,81 @@ async fn completing_an_iteration_marks_it_done_and_uncompleting_reverts() {
     let reverted = repo.generate_habit_iterations(FlowId(flow.id), now).await.unwrap();
     assert_eq!(format!("{:?}", reverted[0].status), "Lapsed");
 }
+
+// --- Edit-habit reconciliation: fork / discard (Phase 8.5) ---
+
+#[tokio::test]
+async fn fork_flow_deep_clones_the_template_and_leaves_the_original() {
+    let pool = helpers::test_pool().await;
+    let repo = FlowRepository::new(&pool);
+    let flow = repo.create(create_req("Routine")).await.unwrap();
+    let goal = repo
+        .create_goal(CreateFlowItemRequest {
+            flow_id: flow.id, title: "Milestone".into(), parent_type: "flow".into(), parent_id: flow.id,
+        })
+        .await
+        .unwrap();
+    let task = repo
+        .create_task(CreateFlowItemRequest {
+            flow_id: flow.id, title: "Step".into(), parent_type: "flow_goal".into(), parent_id: goal.id,
+        })
+        .await
+        .unwrap();
+    repo.set_cycles(flow.id, FlowItemType::FlowTask, task.id, &[day_cycle(2)]).await.unwrap();
+    repo.add_dependency(flow.id, FlowItemType::FlowTask, task.id, FlowItemType::FlowGoal, goal.id).await.unwrap();
+
+    let forked = repo.fork_flow(FlowId(flow.id)).await.unwrap();
+    assert_ne!(forked.id, flow.id);
+    assert_eq!(forked.title, "Routine");
+
+    let new_goals = repo.list_goals(FlowId(forked.id)).await.unwrap();
+    let new_tasks = repo.list_tasks(FlowId(forked.id)).await.unwrap();
+    assert_eq!(new_goals.len(), 1);
+    assert_eq!(new_tasks.len(), 1);
+    let new_goal = &new_goals[0];
+    let new_task = &new_tasks[0];
+    assert_ne!(new_goal.id, goal.id);
+    assert_ne!(new_task.id, task.id);
+    // The child task is reparented under the CLONED goal, not the original.
+    assert_eq!(new_task.parent_type, "flow_goal");
+    assert_eq!(new_task.parent_id, new_goal.id);
+
+    let cycles: Vec<_> =
+        repo.list_all_cycles().await.unwrap().into_iter().filter(|c| c.flow_id == forked.id).collect();
+    assert_eq!(cycles.len(), 1);
+    assert_eq!(cycles[0].item_id, new_task.id);
+    assert_eq!(cycles[0].scope_index, Some(2));
+    let deps: Vec<_> =
+        repo.list_all_dependencies().await.unwrap().into_iter().filter(|d| d.flow_id == forked.id).collect();
+    assert_eq!(deps.len(), 1);
+    assert_eq!(deps[0].dependent_id, new_task.id);
+    assert_eq!(deps[0].depends_on_id, new_goal.id);
+
+    // The original template is untouched (no recurrence/completions carried over either).
+    assert_eq!(repo.list_goals(FlowId(flow.id)).await.unwrap().len(), 1);
+    assert!(repo.get_recurrence(FlowId(forked.id)).await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn clearing_modifications_drops_completions_and_reverts_iterations() {
+    let pool = helpers::test_pool().await;
+    let repo = FlowRepository::new(&pool);
+    let flow = repo.create(create_req("Habit")).await.unwrap();
+    repo.create_task(CreateFlowItemRequest {
+        flow_id: flow.id, title: "Do".into(), parent_type: "flow".into(), parent_id: flow.id,
+    })
+    .await
+    .unwrap();
+    let start = week_scope_id(&pool, ymd(2026, 1, 5)).await;
+    repo.set_recurrence(FlowId(flow.id), destructive_recurrence(start)).await.unwrap();
+
+    let now = ymd(2026, 3, 1).and_hms_opt(12, 0, 0).unwrap();
+    let scope = repo.generate_habit_iterations(FlowId(flow.id), now).await.unwrap()[0].anchor_scope_id;
+    repo.set_iteration_done(FlowId(flow.id), scope, true, 1_767_600_000_000).await.unwrap();
+    assert_eq!(repo.habit_completion_count(FlowId(flow.id)).await.unwrap(), 1);
+
+    repo.clear_habit_modifications(FlowId(flow.id)).await.unwrap();
+    assert_eq!(repo.habit_completion_count(FlowId(flow.id)).await.unwrap(), 0);
+    let reverted = repo.generate_habit_iterations(FlowId(flow.id), now).await.unwrap();
+    assert_eq!(format!("{:?}", reverted[0].status), "Lapsed");
+}

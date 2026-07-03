@@ -361,3 +361,30 @@ pub async fn set_habit_iteration_done(
         .await
         .map_err(|error| error.to_string())
 }
+
+/// Number of distinct completed iterations of a Habit (divergence detection for reconciliation).
+#[tauri::command]
+pub async fn habit_completion_count(pool: State<'_, DatabasePool>, flow_id: i64) -> Result<i64, String> {
+    FlowRepository::new(&pool)
+        .habit_completion_count(FlowId(flow_id))
+        .await
+        .map_err(|error| error.to_string())
+}
+
+/// Clears every Habit Modification for a flow (delete-and-regenerate reconciliation).
+#[tauri::command]
+pub async fn clear_habit_modifications(pool: State<'_, DatabasePool>, flow_id: i64) -> Result<(), String> {
+    FlowRepository::new(&pool)
+        .clear_habit_modifications(FlowId(flow_id))
+        .await
+        .map_err(|error| error.to_string())
+}
+
+/// Deep-clones a flow's template into a new flow (the archive-and-new reconciliation arm).
+#[tauri::command]
+pub async fn fork_flow(pool: State<'_, DatabasePool>, flow_id: i64) -> Result<Flow, String> {
+    FlowRepository::new(&pool)
+        .fork_flow(FlowId(flow_id))
+        .await
+        .map_err(|error| error.to_string())
+}

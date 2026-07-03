@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import type { InstanceType, ConsumptionKind, BlockingMode, CatchupPolicy } from "@/api/flows";
-import { getFlowRecurrence } from "@/api/flows";
+import { getFlowRecurrence, habitCompletionCount } from "@/api/flows";
 import { getScope } from "@/api/scopes";
 import EditorModal from "@/components/EditorModal/EditorModal";
 import RecurrenceField from "./RecurrenceField";
@@ -59,6 +59,12 @@ export interface FlowSaveData {
   windowTimeEnd: string | null;
   /** Absent = leave recurrence untouched; present (object or null) = set-or-clear it. */
   recurrence?: RecurrenceSave | null;
+  /**
+   * Edit-habit reconciliation choice, when a schedule change collides with completed iterations:
+   * `"fork"` applies the edit to a clone (archiving the original), `"discard"` clears the
+   * completions and regenerates. Absent = no divergence, save the edited flow directly.
+   */
+  reconcile?: "fork" | "discard";
 }
 
 function toFlowScopeKind(value: string): FlowScopeKind {
@@ -114,6 +120,11 @@ export default function FlowEditorModal({ node, availableTargets, heading, onSav
   const flowId = parseInt(node.id.split("-").pop() ?? "", 10);
   const isEdit = flowId > 0;
   const [recurrence, setRecurrence] = useState<RecurrenceUi>(() => defaultRecurrence(todayIso()));
+  // For edit-habit reconciliation: how many completed iterations exist, the schedule snapshot to
+  // diff against, and whether the reconcile prompt is showing.
+  const [completionCount, setCompletionCount] = useState(0);
+  const loadedRecurrenceRef = useRef<RecurrenceUi | null>(null);
+  const [reconcilePrompt, setReconcilePrompt] = useState(false);
 
   // No anchor at template time → a coarse filter that hides targets too small to ever hold the flow.
   const validIds = useValidFlowTargets(availableTargets, scoped, durationN, durationKind, null);
@@ -126,11 +137,16 @@ export default function FlowEditorModal({ node, availableTargets, heading, onSav
     let cancelled = false;
     void (async () => {
       const rec = await getFlowRecurrence(flowId);
-      if (rec === null || cancelled) return;
+      if (cancelled) return;
+      if (rec === null) {
+        loadedRecurrenceRef.current = null;
+        return;
+      }
       const startScope = await getScope(rec.start_scope_id);
       const endScope = rec.end_scope_id !== null ? await getScope(rec.end_scope_id) : null;
+      const count = await habitCompletionCount(flowId);
       if (cancelled) return;
-      setRecurrence({
+      const loaded: RecurrenceUi = {
         isHabit: true,
         startDate: startScope.start_date,
         gapEnabled: rec.gap_n !== null,
@@ -141,7 +157,10 @@ export default function FlowEditorModal({ node, availableTargets, heading, onSav
         consumptionKind: rec.consumption_kind,
         blockingMode: rec.blocking_mode ?? "overlapping",
         catchupPolicy: rec.catchup_policy ?? "next",
-      });
+      };
+      loadedRecurrenceRef.current = loaded;
+      setRecurrence(loaded);
+      setCompletionCount(count);
     })();
     return () => { cancelled = true; };
   }, [isEdit, flowId]);
@@ -152,8 +171,28 @@ export default function FlowEditorModal({ node, availableTargets, heading, onSav
     setTargetSearch("");
   }
 
-  async function handleSave() {
-    if (title.trim() === "") return;
+  // True when the edit changes the flow window or the Repetition (start/gap/end) — the things that
+  // alter which iteration scopes exist, and so would orphan completed iterations.
+  function scheduleChanged(): boolean {
+    const f = node.flow;
+    const wasScoped = f?.durationKind != null;
+    if (scoped !== wasScoped) return true;
+    if (scoped && f !== undefined) {
+      if (durationKind !== f.durationKind) return true;
+      if (!isPhaseKind(durationKind) && durationN !== f.durationN) return true;
+      if (durationKind === "part" && windowPart !== f.windowPart) return true;
+      if (durationKind === "exact" && (timeStart !== f.windowTimeStart || timeEnd !== f.windowTimeEnd)) return true;
+    }
+    const loaded = loadedRecurrenceRef.current;
+    if (loaded === null) return recurrence.isHabit; // becoming a habit for the first time
+    if (recurrence.startDate !== loaded.startDate) return true;
+    if (recurrence.gapEnabled !== loaded.gapEnabled) return true;
+    if (recurrence.gapEnabled && (recurrence.gapN !== loaded.gapN || recurrence.gapKind !== loaded.gapKind)) return true;
+    if (recurrence.endEnabled !== loaded.endEnabled) return true;
+    return recurrence.endEnabled && recurrence.endDate !== loaded.endDate;
+  }
+
+  async function doSave(reconcile?: "fork" | "discard") {
     setIsSaving(true);
     setSaveError(null);
     try {
@@ -186,11 +225,22 @@ export default function FlowEditorModal({ node, availableTargets, heading, onSav
         windowTimeStart: scoped && durationKind === "exact" ? timeStart : null,
         windowTimeEnd: scoped && durationKind === "exact" ? timeEnd : null,
         ...(isEdit && scoped ? { recurrence: recurrenceSave } : {}),
+        ...(reconcile !== undefined ? { reconcile } : {}),
       });
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err));
       setIsSaving(false);
     }
+  }
+
+  async function handleSave() {
+    if (title.trim() === "") return;
+    // A schedule change that would orphan completed iterations must be reconciled first.
+    if (isEdit && recurrence.isHabit && completionCount > 0 && scheduleChanged()) {
+      setReconcilePrompt(true);
+      return;
+    }
+    await doSave();
   }
 
   function handleKeyDown(event: React.KeyboardEvent) {
@@ -208,6 +258,22 @@ export default function FlowEditorModal({ node, availableTargets, heading, onSav
 
   return (
     <EditorModal heading={heading ?? t("editFlow")} onClose={onClose} onKeyDown={handleKeyDown} isSaving={isSaving} onSave={() => void handleSave()} saveError={saveError}>
+      {reconcilePrompt && (
+        <div className={styles.label}>
+          <span className={styles.depKind}>{t("reconcilePrompt", { count: completionCount })}</span>
+          <div className={styles.statusPills}>
+            <button type="button" className={styles.statusPill} onClick={() => { setReconcilePrompt(false); void doSave("fork"); }}>
+              {t("reconcileFork")}
+            </button>
+            <button type="button" className={styles.statusPill} onClick={() => { setReconcilePrompt(false); void doSave("discard"); }}>
+              {t("reconcileDiscard")}
+            </button>
+            <button type="button" className={styles.statusPill} onClick={() => setReconcilePrompt(false)}>
+              {t("reconcileCancel")}
+            </button>
+          </div>
+        </div>
+      )}
       <label className={styles.label}>
         {t("fieldTitle")}
         <input ref={titleRef} className={styles.input} value={title} onChange={(e) => setTitle(e.target.value)} type="text" />
