@@ -65,6 +65,7 @@ export function injectHabitInstances(root: MindmapNode, flows: Flow[], iteration
         title: `${flow.title} ${iteration.anchor_date}`,
         status: iteration.status === "done" ? "done" : "todo",
         virtual: true,
+        habitIteration: { flowId: flow.id, scopeId: iteration.anchor_scope_id },
         ...(past ? { scopeLifecycle: "lapsed" as const } : {}),
         position: iteration.index,
         tagIds: [],

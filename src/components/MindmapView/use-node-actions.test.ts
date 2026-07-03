@@ -9,7 +9,10 @@ vi.mock("@/api/tasks", () => ({
   TASK_STATUS: { TODO: "todo", IN_PROGRESS: "in_progress", DONE: "done" },
 }));
 
+vi.mock("@/api/flows", () => ({ setHabitIterationDone: vi.fn().mockResolvedValue(undefined) }));
+
 import { updateTask } from "@/api/tasks";
+import { setHabitIterationDone } from "@/api/flows";
 
 function mkNode(id: string, kind: NodeKind, children: MindmapNode[] = [], extra: Partial<MindmapNode> = {}): MindmapNode {
   return { id, kind, title: id, position: 0, tagIds: [], children, ...extra };
@@ -19,7 +22,13 @@ const TASK_NODE = mkNode("task-5", "task", [], { status: "todo" });
 const TASK_DONE = mkNode("task-6", "task", [], { status: "done" });
 const GOAL_NODE = mkNode("goal-2", "goal");
 const ASPECT = mkNode("aspect-1", "aspect");
-const PROJECT = mkNode("domain-3", "project", [TASK_NODE, TASK_DONE, GOAL_NODE, ASPECT]);
+const HABIT_ITER = mkNode("habit-3-100-virtual", "task", [], {
+  status: "todo", virtual: true, habitIteration: { flowId: 3, scopeId: 100 },
+});
+const HABIT_DONE = mkNode("habit-3-101-virtual", "task", [], {
+  status: "done", virtual: true, habitIteration: { flowId: 3, scopeId: 101 },
+});
+const PROJECT = mkNode("domain-3", "project", [TASK_NODE, TASK_DONE, GOAL_NODE, ASPECT, HABIT_ITER, HABIT_DONE]);
 const ROOT = mkNode("root", "domain", [PROJECT]);
 
 function makeOpts(overrides: Partial<Parameters<typeof useNodeActions>[0]> = {}) {
@@ -65,6 +74,25 @@ describe("useNodeActions — onStatusClick", () => {
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("goal-2"); });
     expect(updateTask).not.toHaveBeenCalled();
+  });
+
+  it("completes a not-done habit iteration instead of cycling a task", async () => {
+    const opts = makeOpts();
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onStatusClick("habit-3-100-virtual"); });
+    await vi.waitFor(() =>
+      expect(setHabitIterationDone).toHaveBeenCalledWith(3, 100, true, expect.any(Number)),
+    );
+    expect(updateTask).not.toHaveBeenCalled();
+  });
+
+  it("un-completes a done habit iteration", async () => {
+    const opts = makeOpts();
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onStatusClick("habit-3-101-virtual"); });
+    await vi.waitFor(() =>
+      expect(setHabitIterationDone).toHaveBeenCalledWith(3, 101, false, expect.any(Number)),
+    );
   });
 });
 

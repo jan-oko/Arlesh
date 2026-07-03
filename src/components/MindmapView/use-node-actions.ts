@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { findNode, findParent, collectAllNodeIds } from "@/utils/mindmap-tree";
 import { updateTask } from "@/api/tasks";
+import { setHabitIterationDone } from "@/api/flows";
 import { TASK_STATUS } from "@/utils/status-mapping";
 import { CLIPBOARD_OP } from "@/stores/use-mindmap-store";
 
@@ -49,7 +50,16 @@ export function useNodeActions({
   const onStatusClick = useCallback(
     (nodeId: string) => {
       const node = findNode(tree, nodeId);
-      if (node === undefined || node.kind !== "task") return;
+      if (node === undefined) return;
+      // A virtual Habit-iteration node toggles its completion (writes/clears Modifications).
+      if (node.habitIteration !== undefined) {
+        const done = node.status === TASK_STATUS.DONE;
+        void setHabitIterationDone(node.habitIteration.flowId, node.habitIteration.scopeId, !done, Date.now())
+          .then(() => reload())
+          .catch((err: unknown) => console.error(`${LOG_PREFIX} habit completion failed:`, err));
+        return;
+      }
+      if (node.kind !== "task") return;
       const dbId = parseInt(nodeId.split("-").pop() ?? "0", 10);
       void updateTask(dbId, { status: nextTaskStatus(node.status ?? TASK_STATUS.TODO) })
         .then(() => reload())

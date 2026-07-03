@@ -923,3 +923,34 @@ async fn starting_a_part_phase_flow_materializes_the_band() {
     assert_eq!(kind, "part_of_day");
     assert_eq!(part.as_deref(), Some("evening"));
 }
+
+#[tokio::test]
+async fn completing_an_iteration_marks_it_done_and_uncompleting_reverts() {
+    let pool = helpers::test_pool().await;
+    let repo = FlowRepository::new(&pool);
+    let flow = repo.create(create_req("Exercise")).await.unwrap(); // 2-week Span
+    repo.create_task(CreateFlowItemRequest {
+        flow_id: flow.id,
+        title: "Do it".into(),
+        parent_type: "flow".into(),
+        parent_id: flow.id,
+    })
+    .await
+    .unwrap();
+    let start = week_scope_id(&pool, ymd(2026, 1, 5)).await;
+    repo.set_recurrence(FlowId(flow.id), destructive_recurrence(start)).await.unwrap();
+
+    // Well past the first window → Destructive lapses it while unfinished.
+    let now = ymd(2026, 3, 1).and_hms_opt(12, 0, 0).unwrap();
+    let before = repo.generate_habit_iterations(FlowId(flow.id), now).await.unwrap();
+    let first_scope = before[0].anchor_scope_id;
+    assert_eq!(format!("{:?}", before[0].status), "Lapsed");
+
+    repo.set_iteration_done(FlowId(flow.id), first_scope, true, 1_767_600_000_000).await.unwrap();
+    let after = repo.generate_habit_iterations(FlowId(flow.id), now).await.unwrap();
+    assert_eq!(format!("{:?}", after[0].status), "Done");
+
+    repo.set_iteration_done(FlowId(flow.id), first_scope, false, 0).await.unwrap();
+    let reverted = repo.generate_habit_iterations(FlowId(flow.id), now).await.unwrap();
+    assert_eq!(format!("{:?}", reverted[0].status), "Lapsed");
+}

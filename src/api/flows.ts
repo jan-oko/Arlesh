@@ -190,6 +190,19 @@ export async function generateHabitIterations(flowId: number, now: string): Prom
   return invoke<HabitIteration[]>("generate_habit_iterations", { flowId, now });
 }
 
+/**
+ * Marks a Habit iteration (by its anchor scope) done or not-done, recording `resolvedAtMs` (epoch
+ * ms) as the completion instant. Writes/clears `done` Modifications for every flow item.
+ */
+export async function setHabitIterationDone(
+  flowId: number,
+  iterationScopeId: number,
+  done: boolean,
+  resolvedAtMs: number,
+): Promise<void> {
+  return invoke<void>("set_habit_iteration_done", { flowId, iterationScopeId, done, resolvedAtMs });
+}
+
 // --- Flow items (Phase 7.3) ---
 
 /** Which flow-item table a row lives in. */

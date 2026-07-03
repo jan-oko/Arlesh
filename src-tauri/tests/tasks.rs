@@ -1607,7 +1607,6 @@ async fn derives_goal_overdue_lapsed_and_exempts_resolved() {
             status: Some(GoalStatus::Achieved),
             time_scope: scope(),
             on_scope_exit: Some(OnScopeExit::Archive),
-            ..Default::default()
         })
         .await
         .unwrap();

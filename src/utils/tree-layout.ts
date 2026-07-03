@@ -61,6 +61,8 @@ export interface MindmapNode {
   scopeLifecycle?: ScopeLifecycle;
   /** A derived, read-only node (e.g. a virtual Habit iteration) with no backing DB row. */
   virtual?: boolean;
+  /** Present on a virtual Habit-iteration node: the flow and anchor scope it can be completed against. */
+  habitIteration?: { flowId: number; scopeId: number };
   plan?: TimeScope | null;
   flow?: FlowData;
   flowItem?: FlowItemData;

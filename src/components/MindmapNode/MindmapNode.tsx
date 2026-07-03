@@ -56,7 +56,9 @@ export default function MindmapNode({ node, position, isSelected, isCollapsed, i
       : scopeLifecycle === "overdue"
         ? "var(--overdue)"
         : "var(--node-border)";
-  const canClickStatus = node.kind === "task" && !isBlocked && onStatusClick !== undefined && node.virtual !== true;
+  const canClickStatus =
+    onStatusClick !== undefined &&
+    (node.habitIteration !== undefined || (node.kind === "task" && !isBlocked && node.virtual !== true));
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();

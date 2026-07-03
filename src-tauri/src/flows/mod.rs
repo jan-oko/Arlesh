@@ -850,6 +850,52 @@ impl<'a> FlowRepository<'a> {
         Ok(classify_iterations(&slots, consumption, &resolved, now))
     }
 
+    /// Marks a Habit iteration (identified by its anchor scope) done or not-done by writing/clearing
+    /// a `done` **Modification** for every flow item at that iteration scope. `resolved_at_ms` is the
+    /// completion instant (epoch ms) recorded on each row, so Blocking catch-up jumps are reproducible.
+    pub async fn set_iteration_done(
+        &self,
+        flow_id: FlowId,
+        iteration_scope_id: i64,
+        done: bool,
+        resolved_at_ms: i64,
+    ) -> Result<(), FlowError> {
+        if !done {
+            sqlx::query(
+                "DELETE FROM habit_instance_modifications
+                 WHERE flow_id = ? AND iteration_scope_id = ? AND status = 'done' AND tombstone_kind IS NULL",
+            )
+            .bind(flow_id.0)
+            .bind(iteration_scope_id)
+            .execute(self.pool)
+            .await?;
+            return Ok(());
+        }
+        let goals = self.list_goals(flow_id).await?;
+        let tasks = self.list_tasks(flow_id).await?;
+        let items = goals
+            .iter()
+            .map(|g| ("flow_goal", g.id))
+            .chain(tasks.iter().map(|t| ("flow_task", t.id)));
+        for (item_type, item_id) in items {
+            sqlx::query(
+                "INSERT INTO habit_instance_modifications
+                    (flow_id, item_type, item_id, iteration_scope_id, status, resolved_at)
+                 VALUES (?, ?, ?, ?, 'done', ?)
+                 ON CONFLICT(item_type, item_id, iteration_scope_id)
+                 DO UPDATE SET status = 'done', resolved_at = excluded.resolved_at, tombstone_kind = NULL",
+            )
+            .bind(flow_id.0)
+            .bind(item_type)
+            .bind(item_id)
+            .bind(iteration_scope_id)
+            .bind(resolved_at_ms)
+            .execute(self.pool)
+            .await?;
+        }
+        Ok(())
+    }
+
     /// Builds the iteration windows from the Repetition Start up to (and including the one covering)
     /// `now`, bounded by any end. A **Span** window spans `n` canonical periods and tiles
     /// contiguously; a **Phase** window is the fixed band / clock-range on its anchor day. Each next
