@@ -295,6 +295,111 @@ pub struct FlowDependency {
     pub depends_on_id: i64,
 }
 
+/// How a Habit treats unfinished instances as their iterations pass.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConsumptionKind {
+    /// Unfinished instances are archived once their iteration passes.
+    Destructive,
+    /// Unfinished instances survive past their iteration.
+    Accumulating,
+}
+
+impl ConsumptionKind {
+    /// The database string representation.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Destructive => "destructive",
+            Self::Accumulating => "accumulating",
+        }
+    }
+}
+
+/// Whether an Accumulating Habit keeps generating iterations while unresolved instances exist.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BlockingMode {
+    /// New iterations generate regardless of unresolved instances.
+    Overlapping,
+    /// New iterations are withheld while unresolved instances exist.
+    Blocking,
+}
+
+impl BlockingMode {
+    /// The database string representation.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Overlapping => "overlapping",
+            Self::Blocking => "blocking",
+        }
+    }
+}
+
+/// When a Blocking Habit's open iteration completes, how it advances.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CatchupPolicy {
+    /// Generate every missed iteration, in order.
+    AllPending,
+    /// Advance by a single iteration.
+    Next,
+    /// Jump to the current iteration, recording skipped ones as missed tombstones.
+    Latest,
+}
+
+impl CatchupPolicy {
+    /// The database string representation.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::AllPending => "all_pending",
+            Self::Next => "next",
+            Self::Latest => "latest",
+        }
+    }
+}
+
+/// A Habit's Recurrence: Repetition (Start, optional Gap, optional end) plus the Consumption config.
+/// Its presence marks the owning flow as a Habit. Consumption fields follow the tree — `blocking_mode`
+/// is set iff Accumulating, `catchup_policy` iff Blocking.
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct FlowRecurrence {
+    /// Owning flow (also the primary key — one recurrence per flow).
+    pub flow_id: i64,
+    /// The scope the recurrence starts on (of the flow's Duration kind).
+    pub start_scope_id: i64,
+    /// Idle span between one iteration window's end and the next's start; `None` = continuous.
+    pub gap_n: Option<i64>,
+    /// Kind of the Gap span (`day`/`week`/`month`/`season`); travels with `gap_n`.
+    pub gap_kind: Option<String>,
+    /// Optional end scope; `None` = open-ended.
+    pub end_scope_id: Option<i64>,
+    /// Destructive vs Accumulating.
+    pub consumption_kind: String,
+    /// Overlapping vs Blocking (set iff Accumulating).
+    pub blocking_mode: Option<String>,
+    /// Catch-up policy (set iff Blocking).
+    pub catchup_policy: Option<String>,
+}
+
+/// Request to set (create or replace) a flow's Recurrence, making it a Habit.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SetRecurrenceRequest {
+    /// The scope the recurrence starts on (of the flow's Duration kind).
+    pub start_scope_id: i64,
+    /// Gap magnitude; `None` = continuous (no gap).
+    pub gap_n: Option<i64>,
+    /// Gap kind; must accompany `gap_n` and be no finer than the flow's Duration kind.
+    pub gap_kind: Option<String>,
+    /// Optional end scope; `None` = open-ended.
+    pub end_scope_id: Option<i64>,
+    /// Destructive vs Accumulating.
+    pub consumption_kind: ConsumptionKind,
+    /// Overlapping vs Blocking; required iff Accumulating.
+    pub blocking_mode: Option<BlockingMode>,
+    /// Catch-up policy; required iff Blocking.
+    pub catchup_policy: Option<CatchupPolicy>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -308,5 +413,16 @@ mod tests {
     #[test]
     fn flow_id_roundtrip() {
         assert_eq!(i64::from(FlowId::from(9_i64)), 9);
+    }
+
+    #[test]
+    fn consumption_enums_cover_all_variants() {
+        assert_eq!(ConsumptionKind::Destructive.as_str(), "destructive");
+        assert_eq!(ConsumptionKind::Accumulating.as_str(), "accumulating");
+        assert_eq!(BlockingMode::Overlapping.as_str(), "overlapping");
+        assert_eq!(BlockingMode::Blocking.as_str(), "blocking");
+        assert_eq!(CatchupPolicy::AllPending.as_str(), "all_pending");
+        assert_eq!(CatchupPolicy::Next.as_str(), "next");
+        assert_eq!(CatchupPolicy::Latest.as_str(), "latest");
     }
 }

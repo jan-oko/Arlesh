@@ -32,13 +32,15 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 **Cycle Plan** — A flow item's *relative* Plan within its Cycle Scope (e.g. the morning of that day). Resolved to a concrete Plan on flow start. A flow item may hold multiple (Cycle Scope, Cycle Plan) pairs; each pair materializes a separate item per start/iteration. Hebrew: תכנון מחזור (provisional).
 
-**Habit** — A Flow with a Recurrence pattern. Its instances are generated automatically per iteration and are **virtual**: each is identified by (flow item, iteration scope), rendered from the template, with only divergences (status, edits, dependencies, deletion/archival tombstones) persisted in an overlay table. A Habit can be **Archived** (stops recurring; existing occurrences survive). Hebrew: TBD.
+**Habit** — A Flow with a Recurrence pattern. Its instances are generated automatically per iteration and are **virtual**: each is identified by (flow item, iteration scope), rendered from the template, with only divergences (status, edits, dependencies, deletion/archival tombstones) persisted as **Modification** rows. A Habit can be **Archived** (stops recurring; existing occurrences survive). Hebrew: TBD.
 
 **Recurrence** — A Habit's pattern, composed of **Repetition** (a Start anchor, an optional Gap of N of a scope kind ≥ the habit scope, and an optional end) and **Consumption** (see below). Hebrew: TBD.
 
 **Consumption** — A Habit's per-habit configuration for how unfinished instances are treated as iterations pass. A configurable tree: (1) **Destructive vs Accumulating** — are unfinished instances archived when their iteration passes, or do they survive? (2) if Accumulating, **Overlapping vs Blocking** — are new iterations generated while unresolved instances exist, or withheld? (3) if Blocking, **Catch-up policy** when the open iteration is completed — generate *all pending* missed iterations in order, only the *next* iteration (advance by one), or jump to the *latest* (current) iteration while recording the skipped intermediate iterations as missed tombstones (for streak/history). Hebrew: TBD.
 
-**Iteration** — One concrete occurrence window of a Habit, anchored from the Repetition Start plus accumulated flow-scope-and-gap steps. Hebrew: TBD.
+**Iteration** — One concrete occurrence window of a Habit, anchored from the Repetition Start plus accumulated flow-scope-and-gap steps (each iteration occupies one flow window; the Gap is the idle span between one window's end and the next's start, snapped to the canonical scope). Identified by its anchor scope (the window's first period). Hebrew: TBD.
+
+**Modification** — A persisted divergence of a virtual Habit instance from what the template would render, keyed by (flow item, iteration scope). Carries an overridden status, title, or blocked reason; a **tombstone** (deleted by the user, archived when its iteration passed unfinished, or missed when catch-up skipped it); and per-iteration dependency edges added or suppressed. An instance with no Modification renders purely from the template. Hebrew: TBD.
 
 **Blocker** — A condition that prevents a Task from being acted on. Either an explicit string reason or a virtual block from an unmet dependency. Hebrew: _חסם_.
 

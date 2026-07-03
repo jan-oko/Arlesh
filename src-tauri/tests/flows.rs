@@ -2,8 +2,9 @@ mod helpers;
 
 use arlesh_lib::flows::{
     model::{
-        CreateFlowItemRequest, CreateFlowRequest, FlowCycleInput, FlowId, FlowItemType,
-        InstanceType, StartFlowRequest, TargetRef, UpdateFlowItemRequest, UpdateFlowRequest,
+        BlockingMode, CatchupPolicy, ConsumptionKind, CreateFlowItemRequest, CreateFlowRequest,
+        FlowCycleInput, FlowId, FlowItemType, InstanceType, SetRecurrenceRequest, StartFlowRequest,
+        TargetRef, UpdateFlowItemRequest, UpdateFlowRequest,
     },
     FlowRepository,
 };
@@ -15,6 +16,23 @@ use arlesh_lib::tasks::{
 
 /// Creates a goal under aspect 1 whose Time Scope is the single canonical scope of `kind` covering
 /// `date`, returning its id. Used to give target candidates a concrete window to contain (or not).
+async fn week_scope_id(pool: &sqlx::SqlitePool, date: chrono::NaiveDate) -> i64 {
+    ScopeRepository::new(pool).get_or_create(ScopeKind::Week, date).await.unwrap().id
+}
+
+/// A minimal valid Recurrence: continuous (no gap), open-ended, Destructive.
+fn destructive_recurrence(start_scope_id: i64) -> SetRecurrenceRequest {
+    SetRecurrenceRequest {
+        start_scope_id,
+        gap_n: None,
+        gap_kind: None,
+        end_scope_id: None,
+        consumption_kind: ConsumptionKind::Destructive,
+        blocking_mode: None,
+        catchup_policy: None,
+    }
+}
+
 async fn scoped_goal(pool: &sqlx::SqlitePool, kind: ScopeKind, date: chrono::NaiveDate) -> i64 {
     let scope = ScopeRepository::new(pool).get_or_create(kind, date).await.unwrap();
     GoalRepository::new(pool)
@@ -469,4 +487,123 @@ async fn origins_reports_the_flow_title_for_materialised_nodes_only() {
     assert_eq!(origins.len(), 1);
     assert_eq!(origins[0].node_id, result.root_id);
     assert_eq!(origins[0].flow_title, "Feature");
+}
+
+// --- Phase 8.1: Recurrence (a flow becomes a Habit) ---
+
+#[tokio::test]
+async fn setting_a_recurrence_makes_a_flow_a_habit() {
+    let pool = helpers::test_pool().await;
+    let repo = FlowRepository::new(&pool);
+    let flow = repo.create(create_req("Exercise")).await.unwrap(); // week-scoped
+    assert!(repo.get_recurrence(FlowId(flow.id)).await.unwrap().is_none());
+
+    let start = week_scope_id(&pool, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap()).await;
+    let recurrence = repo
+        .set_recurrence(
+            FlowId(flow.id),
+            SetRecurrenceRequest {
+                start_scope_id: start,
+                gap_n: Some(1),
+                gap_kind: Some("week".into()),
+                end_scope_id: None,
+                consumption_kind: ConsumptionKind::Accumulating,
+                blocking_mode: Some(BlockingMode::Blocking),
+                catchup_policy: Some(CatchupPolicy::AllPending),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(recurrence.start_scope_id, start);
+    assert_eq!(recurrence.consumption_kind, "accumulating");
+    assert_eq!(recurrence.blocking_mode.as_deref(), Some("blocking"));
+    assert_eq!(recurrence.catchup_policy.as_deref(), Some("all_pending"));
+
+    let fetched = repo.get_recurrence(FlowId(flow.id)).await.unwrap();
+    assert!(fetched.is_some());
+}
+
+#[tokio::test]
+async fn setting_a_recurrence_replaces_the_previous_one() {
+    let pool = helpers::test_pool().await;
+    let repo = FlowRepository::new(&pool);
+    let flow = repo.create(create_req("Exercise")).await.unwrap();
+    let start = week_scope_id(&pool, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap()).await;
+
+    repo.set_recurrence(FlowId(flow.id), destructive_recurrence(start)).await.unwrap();
+    repo.set_recurrence(
+        FlowId(flow.id),
+        SetRecurrenceRequest { consumption_kind: ConsumptionKind::Accumulating, blocking_mode: Some(BlockingMode::Overlapping), ..destructive_recurrence(start) },
+    )
+    .await
+    .unwrap();
+
+    let fetched = repo.get_recurrence(FlowId(flow.id)).await.unwrap().unwrap();
+    assert_eq!(fetched.consumption_kind, "accumulating");
+    assert_eq!(fetched.blocking_mode.as_deref(), Some("overlapping"));
+}
+
+#[tokio::test]
+async fn deleting_a_recurrence_demotes_the_habit_back_to_a_plain_flow() {
+    let pool = helpers::test_pool().await;
+    let repo = FlowRepository::new(&pool);
+    let flow = repo.create(create_req("Exercise")).await.unwrap();
+    let start = week_scope_id(&pool, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap()).await;
+    repo.set_recurrence(FlowId(flow.id), destructive_recurrence(start)).await.unwrap();
+
+    repo.delete_recurrence(FlowId(flow.id)).await.unwrap();
+
+    assert!(repo.get_recurrence(FlowId(flow.id)).await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn a_recurrence_requires_a_scoped_flow() {
+    let pool = helpers::test_pool().await;
+    let repo = FlowRepository::new(&pool);
+    let flow = repo
+        .create(CreateFlowRequest { title: "Chores".into(), parent_type: "aspect".into(), parent_id: 1, ..Default::default() })
+        .await
+        .unwrap(); // Unscoped
+    let start = week_scope_id(&pool, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap()).await;
+
+    assert!(repo.set_recurrence(FlowId(flow.id), destructive_recurrence(start)).await.is_err());
+}
+
+#[tokio::test]
+async fn a_gap_finer_than_the_habit_scope_is_rejected() {
+    let pool = helpers::test_pool().await;
+    let repo = FlowRepository::new(&pool);
+    let flow = repo.create(create_req("Exercise")).await.unwrap(); // week habit scope
+    let start = week_scope_id(&pool, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap()).await;
+
+    let day_gap = SetRecurrenceRequest {
+        gap_n: Some(3),
+        gap_kind: Some("day".into()),
+        ..destructive_recurrence(start)
+    };
+    assert!(repo.set_recurrence(FlowId(flow.id), day_gap).await.is_err());
+}
+
+#[tokio::test]
+async fn an_inconsistent_consumption_tree_is_rejected() {
+    let pool = helpers::test_pool().await;
+    let repo = FlowRepository::new(&pool);
+    let flow = repo.create(create_req("Exercise")).await.unwrap();
+    let start = week_scope_id(&pool, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap()).await;
+
+    // Destructive must not carry a blocking mode.
+    let destructive_with_mode = SetRecurrenceRequest { blocking_mode: Some(BlockingMode::Blocking), ..destructive_recurrence(start) };
+    assert!(repo.set_recurrence(FlowId(flow.id), destructive_with_mode).await.is_err());
+
+    // Accumulating must carry a blocking mode.
+    let accumulating_without_mode = SetRecurrenceRequest { consumption_kind: ConsumptionKind::Accumulating, ..destructive_recurrence(start) };
+    assert!(repo.set_recurrence(FlowId(flow.id), accumulating_without_mode).await.is_err());
+
+    // Blocking must carry a catch-up policy.
+    let blocking_without_catchup = SetRecurrenceRequest {
+        consumption_kind: ConsumptionKind::Accumulating,
+        blocking_mode: Some(BlockingMode::Blocking),
+        ..destructive_recurrence(start)
+    };
+    assert!(repo.set_recurrence(FlowId(flow.id), blocking_without_catchup).await.is_err());
 }

@@ -114,6 +114,49 @@ export async function flowOrigins(nodes: TargetRef[]): Promise<FlowOrigin[]> {
   return invoke<FlowOrigin[]>("flow_origins", { nodes });
 }
 
+// --- Recurrence: a flow becomes a Habit (Phase 8.1) ---
+
+export type ConsumptionKind = "destructive" | "accumulating";
+export type BlockingMode = "overlapping" | "blocking";
+export type CatchupPolicy = "all_pending" | "next" | "latest";
+
+/** A Habit's Recurrence — Repetition (start/gap/end) plus the Consumption config. */
+export interface FlowRecurrence {
+  flow_id: number;
+  start_scope_id: number;
+  gap_n: number | null;
+  gap_kind: string | null;
+  end_scope_id: number | null;
+  consumption_kind: ConsumptionKind;
+  blocking_mode: BlockingMode | null;
+  catchup_policy: CatchupPolicy | null;
+}
+
+export interface SetRecurrenceRequest {
+  start_scope_id: number;
+  gap_n?: number | null;
+  gap_kind?: string | null;
+  end_scope_id?: number | null;
+  consumption_kind: ConsumptionKind;
+  blocking_mode?: BlockingMode | null;
+  catchup_policy?: CatchupPolicy | null;
+}
+
+/** Sets (creates or replaces) a flow's Recurrence, making it a Habit. */
+export async function setFlowRecurrence(flowId: number, request: SetRecurrenceRequest): Promise<FlowRecurrence> {
+  return invoke<FlowRecurrence>("set_flow_recurrence", { flowId, request });
+}
+
+/** Fetches a flow's Recurrence, or null if it is a plain (non-habit) flow. */
+export async function getFlowRecurrence(flowId: number): Promise<FlowRecurrence | null> {
+  return invoke<FlowRecurrence | null>("get_flow_recurrence", { flowId });
+}
+
+/** Deletes a flow's Recurrence, demoting the Habit back to a plain flow. */
+export async function deleteFlowRecurrence(flowId: number): Promise<void> {
+  return invoke<void>("delete_flow_recurrence", { flowId });
+}
+
 // --- Flow items (Phase 7.3) ---
 
 /** Which flow-item table a row lives in. */

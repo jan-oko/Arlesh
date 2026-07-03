@@ -18,9 +18,10 @@ use crate::tasks::model::{
 use crate::tasks::{effective_window, time_scope_bounds, GoalRepository, TaskRepository};
 use error::FlowError;
 use model::{
-    CreateFlowItemRequest, CreateFlowRequest, Flow, FlowCycleInput, FlowDependency, FlowGoal,
-    FlowId, FlowItemCycle, FlowItemType, FlowOrigin, FlowTask, MaterializedFlow, StartFlowRequest,
-    TargetRef, UpdateFlowItemRequest, UpdateFlowRequest,
+    BlockingMode, ConsumptionKind, CreateFlowItemRequest, CreateFlowRequest, Flow, FlowCycleInput,
+    FlowDependency, FlowGoal, FlowId, FlowItemCycle, FlowItemType, FlowOrigin, FlowRecurrence,
+    FlowTask, MaterializedFlow, SetRecurrenceRequest, StartFlowRequest, TargetRef,
+    UpdateFlowItemRequest, UpdateFlowRequest,
 };
 
 /// Advances `date` by `k` (possibly zero) periods of `kind`; `None` on calendar overflow.
@@ -54,6 +55,18 @@ fn min_period_days(kind: &str) -> Result<i64, FlowError> {
         "month" => 28,
         "season" => 89,
         other => return Err(FlowError::Invalid(format!("unsupported flow kind {other}"))),
+    })
+}
+
+/// Coarse-to-fine ordinal for a scope kind (`day` < `week` < `month` < `season`), used to check a
+/// Habit's Gap kind is no finer than its habit scope.
+fn scope_kind_rank(kind: &str) -> Result<i64, FlowError> {
+    Ok(match kind {
+        "day" => 0,
+        "week" => 1,
+        "month" => 2,
+        "season" => 3,
+        other => return Err(FlowError::Invalid(format!("unsupported scope kind {other}"))),
     })
 }
 
@@ -601,6 +614,101 @@ impl<'a> FlowRepository<'a> {
         .bind(parent.0).bind(parent.1)
         .execute(self.pool)
         .await?;
+        Ok(())
+    }
+
+    /// Sets (creates or replaces) a flow's Recurrence, making it a Habit. Requires a scoped flow;
+    /// validates that the Gap kind is no finer than the habit scope and that the Consumption tree is
+    /// consistent (a blocking mode iff Accumulating; a catch-up policy iff Blocking).
+    pub async fn set_recurrence(
+        &self,
+        flow_id: FlowId,
+        request: SetRecurrenceRequest,
+    ) -> Result<FlowRecurrence, FlowError> {
+        let flow = self.get(flow_id).await?;
+        let habit_kind = flow
+            .flow_duration_kind
+            .as_deref()
+            .ok_or_else(|| FlowError::Invalid("a habit requires a scoped flow".to_string()))?;
+
+        match (request.gap_n, request.gap_kind.as_deref()) {
+            (Some(n), Some(kind)) => {
+                if n < 1 {
+                    return Err(FlowError::Invalid("gap must be at least 1".to_string()));
+                }
+                if scope_kind_rank(kind)? < scope_kind_rank(habit_kind)? {
+                    return Err(FlowError::Invalid(
+                        "gap kind must be no finer than the habit scope".to_string(),
+                    ));
+                }
+            }
+            (None, None) => {}
+            _ => {
+                return Err(FlowError::Invalid(
+                    "gap magnitude and kind must be set together".to_string(),
+                ))
+            }
+        }
+
+        let accumulating = matches!(request.consumption_kind, ConsumptionKind::Accumulating);
+        if accumulating != request.blocking_mode.is_some() {
+            return Err(FlowError::Invalid(
+                "a blocking mode is set exactly when accumulating".to_string(),
+            ));
+        }
+        let blocking = matches!(request.blocking_mode, Some(BlockingMode::Blocking));
+        if blocking != request.catchup_policy.is_some() {
+            return Err(FlowError::Invalid(
+                "a catch-up policy is set exactly when blocking".to_string(),
+            ));
+        }
+
+        sqlx::query(
+            "INSERT INTO flow_recurrences
+                (flow_id, start_scope_id, gap_n, gap_kind, end_scope_id,
+                 consumption_kind, blocking_mode, catchup_policy)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(flow_id) DO UPDATE SET
+                start_scope_id = excluded.start_scope_id, gap_n = excluded.gap_n,
+                gap_kind = excluded.gap_kind, end_scope_id = excluded.end_scope_id,
+                consumption_kind = excluded.consumption_kind,
+                blocking_mode = excluded.blocking_mode, catchup_policy = excluded.catchup_policy",
+        )
+        .bind(flow_id.0)
+        .bind(request.start_scope_id)
+        .bind(request.gap_n)
+        .bind(&request.gap_kind)
+        .bind(request.end_scope_id)
+        .bind(request.consumption_kind.as_str())
+        .bind(request.blocking_mode.map(|mode| mode.as_str()))
+        .bind(request.catchup_policy.map(|policy| policy.as_str()))
+        .execute(self.pool)
+        .await?;
+
+        self.get_recurrence(flow_id)
+            .await?
+            .ok_or(FlowError::NotFound(flow_id.0))
+    }
+
+    /// Fetches a flow's Recurrence, or `None` if the flow is a plain (non-habit) flow.
+    pub async fn get_recurrence(&self, flow_id: FlowId) -> Result<Option<FlowRecurrence>, FlowError> {
+        let recurrence = sqlx::query_as::<_, FlowRecurrence>(
+            "SELECT flow_id, start_scope_id, gap_n, gap_kind, end_scope_id,
+                    consumption_kind, blocking_mode, catchup_policy
+             FROM flow_recurrences WHERE flow_id = ?",
+        )
+        .bind(flow_id.0)
+        .fetch_optional(self.pool)
+        .await?;
+        Ok(recurrence)
+    }
+
+    /// Deletes a flow's Recurrence, demoting the Habit back to a plain flow.
+    pub async fn delete_recurrence(&self, flow_id: FlowId) -> Result<(), FlowError> {
+        sqlx::query("DELETE FROM flow_recurrences WHERE flow_id = ?")
+            .bind(flow_id.0)
+            .execute(self.pool)
+            .await?;
         Ok(())
     }
 

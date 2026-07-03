@@ -7,8 +7,9 @@ use crate::{
     flows::{
         model::{
             CreateFlowItemRequest, CreateFlowRequest, Flow, FlowCycleInput, FlowDependency,
-            FlowGoal, FlowId, FlowItemCycle, FlowItemType, FlowOrigin, FlowTask, MaterializedFlow,
-            StartFlowRequest, TargetRef, UpdateFlowItemRequest, UpdateFlowRequest,
+            FlowGoal, FlowId, FlowItemCycle, FlowItemType, FlowOrigin, FlowRecurrence, FlowTask,
+            MaterializedFlow, SetRecurrenceRequest, StartFlowRequest, TargetRef,
+            UpdateFlowItemRequest, UpdateFlowRequest,
         },
         FlowRepository,
     },
@@ -188,6 +189,40 @@ pub async fn scope_valid_flow_targets(
     };
     FlowRepository::new(&pool)
         .valid_targets(duration, anchor_date, candidates)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+/// Sets (creates or replaces) a flow's Recurrence, making it a Habit.
+#[tauri::command]
+pub async fn set_flow_recurrence(
+    pool: State<'_, DatabasePool>,
+    flow_id: i64,
+    request: SetRecurrenceRequest,
+) -> Result<FlowRecurrence, String> {
+    FlowRepository::new(&pool)
+        .set_recurrence(FlowId(flow_id), request)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+/// Fetches a flow's Recurrence, or `null` if it is a plain (non-habit) flow.
+#[tauri::command]
+pub async fn get_flow_recurrence(
+    pool: State<'_, DatabasePool>,
+    flow_id: i64,
+) -> Result<Option<FlowRecurrence>, String> {
+    FlowRepository::new(&pool)
+        .get_recurrence(FlowId(flow_id))
+        .await
+        .map_err(|error| error.to_string())
+}
+
+/// Deletes a flow's Recurrence, demoting the Habit back to a plain flow.
+#[tauri::command]
+pub async fn delete_flow_recurrence(pool: State<'_, DatabasePool>, flow_id: i64) -> Result<(), String> {
+    FlowRepository::new(&pool)
+        .delete_recurrence(FlowId(flow_id))
         .await
         .map_err(|error| error.to_string())
 }
