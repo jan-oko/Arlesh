@@ -138,6 +138,8 @@ pub fn run() {
             commands::flows::delete_flow_recurrence,
             commands::flows::generate_habit_iterations,
             commands::flows::set_habit_iteration_done,
+            commands::flows::list_habit_item_completions,
+            commands::flows::set_habit_item_done,
             commands::flows::habit_completion_count,
             commands::flows::clear_habit_modifications,
             commands::flows::fork_flow,

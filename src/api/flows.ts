@@ -205,6 +205,34 @@ export async function setHabitIterationDone(
   return invoke<void>("set_habit_iteration_done", { flowId, iterationScopeId, done, resolvedAtMs });
 }
 
+/** A flow item marked done for one Habit iteration (a non-tombstoned `done` Modification). */
+export interface HabitItemCompletion {
+  item_type: FlowItemType;
+  item_id: number;
+  iteration_scope_id: number;
+}
+
+/** Every flow item currently marked done, with the iteration scope it was completed for. */
+export async function listHabitItemCompletions(flowId: number): Promise<HabitItemCompletion[]> {
+  return invoke<HabitItemCompletion[]>("list_habit_item_completions", { flowId });
+}
+
+/**
+ * Marks a single flow item (by its iteration scope) done or not-done, recording `resolvedAtMs`. The
+ * iteration reads as Done once all its items are — unlike {@link setHabitIterationDone}, which toggles
+ * every item at once.
+ */
+export async function setHabitItemDone(
+  flowId: number,
+  itemType: FlowItemType,
+  itemId: number,
+  iterationScopeId: number,
+  done: boolean,
+  resolvedAtMs: number,
+): Promise<void> {
+  return invoke<void>("set_habit_item_done", { flowId, itemType, itemId, iterationScopeId, done, resolvedAtMs });
+}
+
 /** Number of distinct completed iterations of a Habit (divergence check for reconciliation). */
 export async function habitCompletionCount(flowId: number): Promise<number> {
   return invoke<number>("habit_completion_count", { flowId });

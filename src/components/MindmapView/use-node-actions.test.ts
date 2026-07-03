@@ -9,10 +9,13 @@ vi.mock("@/api/tasks", () => ({
   TASK_STATUS: { TODO: "todo", IN_PROGRESS: "in_progress", DONE: "done" },
 }));
 
-vi.mock("@/api/flows", () => ({ setHabitIterationDone: vi.fn().mockResolvedValue(undefined) }));
+vi.mock("@/api/flows", () => ({
+  setHabitIterationDone: vi.fn().mockResolvedValue(undefined),
+  setHabitItemDone: vi.fn().mockResolvedValue(undefined),
+}));
 
 import { updateTask } from "@/api/tasks";
-import { setHabitIterationDone } from "@/api/flows";
+import { setHabitIterationDone, setHabitItemDone } from "@/api/flows";
 
 function mkNode(id: string, kind: NodeKind, children: MindmapNode[] = [], extra: Partial<MindmapNode> = {}): MindmapNode {
   return { id, kind, title: id, position: 0, tagIds: [], children, ...extra };
@@ -28,7 +31,10 @@ const HABIT_ITER = mkNode("habit-3-100-virtual", "task", [], {
 const HABIT_DONE = mkNode("habit-3-101-virtual", "task", [], {
   status: "done", virtual: true, habitIteration: { flowId: 3, scopeId: 101 },
 });
-const PROJECT = mkNode("domain-3", "project", [TASK_NODE, TASK_DONE, GOAL_NODE, ASPECT, HABIT_ITER, HABIT_DONE]);
+const HABIT_ITEM = mkNode("habititem-flow_task-4-0-virtual", "task", [], {
+  status: "todo", virtual: true, habitItem: { flowId: 3, itemType: "flow_task", itemId: 4, scopeId: 100 },
+});
+const PROJECT = mkNode("domain-3", "project", [TASK_NODE, TASK_DONE, GOAL_NODE, ASPECT, HABIT_ITER, HABIT_DONE, HABIT_ITEM]);
 const ROOT = mkNode("root", "domain", [PROJECT]);
 
 function makeOpts(overrides: Partial<Parameters<typeof useNodeActions>[0]> = {}) {
@@ -93,6 +99,17 @@ describe("useNodeActions — onStatusClick", () => {
     await vi.waitFor(() =>
       expect(setHabitIterationDone).toHaveBeenCalledWith(3, 101, false, expect.any(Number)),
     );
+  });
+
+  it("completes a single habit item instance without touching the whole iteration", async () => {
+    const opts = makeOpts();
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onStatusClick("habititem-flow_task-4-0-virtual"); });
+    await vi.waitFor(() =>
+      expect(setHabitItemDone).toHaveBeenCalledWith(3, "flow_task", 4, 100, true, expect.any(Number)),
+    );
+    expect(setHabitIterationDone).not.toHaveBeenCalled();
+    expect(updateTask).not.toHaveBeenCalled();
   });
 });
 

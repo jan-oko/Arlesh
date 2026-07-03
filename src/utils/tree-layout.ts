@@ -78,6 +78,8 @@ export interface MindmapNode {
   virtual?: boolean;
   /** Present on a virtual Habit-iteration node: the flow and anchor scope it can be completed against. */
   habitIteration?: { flowId: number; scopeId: number };
+  /** Present on a virtual per-iteration flow-item instance: the (flow, item, iteration scope) it toggles. */
+  habitItem?: { flowId: number; itemType: FlowItemType; itemId: number; scopeId: number };
   plan?: TimeScope | null;
   flow?: FlowData;
   flowItem?: FlowItemData;

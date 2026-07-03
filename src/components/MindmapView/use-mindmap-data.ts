@@ -7,7 +7,7 @@ import {
   listFlows, createFlow, updateFlow, deleteFlow,
   listAllFlowGoals, listAllFlowTasks, listAllFlowCycles, listAllFlowDependencies,
   createFlowGoal, createFlowTask, updateFlowGoal, updateFlowTask, deleteFlowItem, convertFlowItem,
-  generateHabitIterations,
+  generateHabitIterations, listHabitItemCompletions,
 } from "@/api/flows";
 import { findNode } from "@/utils/mindmap-tree";
 import type { Domain } from "@/api/domains";
@@ -16,7 +16,7 @@ import type { Goal } from "@/api/goals";
 import type { Info } from "@/api/infos";
 import type {
   Flow, CreateFlowRequest, UpdateFlowRequest,
-  FlowGoal, FlowTask, FlowItemCycle, FlowDependency, FlowItemType, HabitIteration,
+  FlowGoal, FlowTask, FlowItemCycle, FlowDependency, FlowItemType, HabitIteration, HabitItemCompletion,
 } from "@/api/flows";
 import { deriveScopeLifecycles } from "@/api/scope-lifecycle";
 import type { ItemLifecycle, ScopeLifecycle } from "@/api/scope-lifecycle";
@@ -43,12 +43,66 @@ function lifecycleMap(lifecycles: ItemLifecycle[]): Map<string, ScopeLifecycle> 
 }
 
 /**
- * Injects each Habit's derived iterations as **virtual**, read-only child nodes under its target
- * (or the flow node when it has no target). The `-virtual` id suffix keeps them out of every
- * DB-backed mutation (`dbIdFromNodeId` rejects a non-numeric tail). `iterationsByFlow[i]` is the
- * iteration list for `flows[i]` (empty for non-habits).
+ * Builds the flow's template items as **virtual**, per-iteration instances under one iteration root,
+ * mirroring the template's parent hierarchy. Each item is individually completable (`habitItem`); its
+ * status comes from `doneKeys` (`"itemType-itemId-scopeId"`). Returns the items parented on the flow
+ * (the iteration root's direct children); nested items are attached under their parent instance.
  */
-export function injectHabitInstances(root: MindmapNode, flows: Flow[], iterationsByFlow: HabitIteration[][]): void {
+function buildIterationItems(
+  flow: Flow,
+  scopeId: number,
+  index: number,
+  items: Array<{ itemType: FlowItemType; item: FlowGoal | FlowTask }>,
+  doneKeys: ReadonlySet<string>,
+  color: string | undefined,
+  past: boolean,
+): MindmapNode[] {
+  const nodeByItem = new Map<string, MindmapNode>();
+  for (const { itemType, item } of items) {
+    const done = doneKeys.has(`${itemType}-${item.id}-${scopeId}`);
+    nodeByItem.set(`${itemType}-${item.id}`, {
+      id: `habititem-${itemType}-${item.id}-${index}-virtual`,
+      kind: itemType === "flow_goal" ? "goal" : "task",
+      title: item.title,
+      status: done ? "done" : "todo",
+      virtual: true,
+      habitItem: { flowId: flow.id, itemType, itemId: item.id, scopeId },
+      ...(color !== undefined ? { color } : {}),
+      ...(past && !done ? { scopeLifecycle: "lapsed" as const } : {}),
+      position: item.position,
+      tagIds: [],
+      children: [],
+    });
+  }
+  const roots: MindmapNode[] = [];
+  for (const { itemType, item } of items) {
+    const node = nodeByItem.get(`${itemType}-${item.id}`);
+    if (node === undefined) continue;
+    const parent =
+      item.parent_type === "flow_goal" || item.parent_type === "flow_task"
+        ? nodeByItem.get(`${item.parent_type}-${item.parent_id}`)
+        : undefined;
+    if (parent !== undefined) parent.children.push(node);
+    else roots.push(node);
+  }
+  return roots;
+}
+
+/**
+ * Injects each Habit's derived iterations as **virtual**, read-only child nodes under its target
+ * (or the flow node when it has no target). Each iteration root carries the flow's items as its own
+ * virtual, per-item-completable instances. The `-virtual` id suffix keeps every injected node out of
+ * DB-backed mutations (`dbIdFromNodeId` rejects a non-numeric tail). `iterationsByFlow[i]` /
+ * `completionsByFlow[i]` correspond to `flows[i]` (empty for non-habits).
+ */
+export function injectHabitInstances(
+  root: MindmapNode,
+  flows: Flow[],
+  iterationsByFlow: HabitIteration[][],
+  flowGoals: FlowGoal[] = [],
+  flowTasks: FlowTask[] = [],
+  completionsByFlow: HabitItemCompletion[][] = [],
+): void {
   flows.forEach((flow, i) => {
     const iterations = iterationsByFlow[i] ?? [];
     if (iterations.length === 0) return;
@@ -58,6 +112,13 @@ export function injectHabitInstances(root: MindmapNode, flows: Flow[], iteration
         : `flow-${flow.id}`;
     const host = findNode(root, hostId);
     if (host === undefined) return;
+    const items: Array<{ itemType: FlowItemType; item: FlowGoal | FlowTask }> = [
+      ...flowGoals.filter((g) => g.flow_id === flow.id).map((item) => ({ itemType: "flow_goal" as const, item })),
+      ...flowTasks.filter((t) => t.flow_id === flow.id).map((item) => ({ itemType: "flow_task" as const, item })),
+    ];
+    const doneKeys = new Set(
+      (completionsByFlow[i] ?? []).map((c) => `${c.item_type}-${c.item_id}-${c.iteration_scope_id}`),
+    );
     for (const iteration of iterations) {
       const past = iteration.status === "lapsed" || iteration.status === "missed";
       host.children.push({
@@ -73,7 +134,7 @@ export function injectHabitInstances(root: MindmapNode, flows: Flow[], iteration
         ...(past ? { scopeLifecycle: "lapsed" as const } : {}),
         position: iteration.index,
         tagIds: [],
-        children: [],
+        children: buildIterationItems(flow, iteration.anchor_scope_id, iteration.index, items, doneKeys, host.color, past),
       });
     }
   });
@@ -460,10 +521,11 @@ export function useMindmapData(): MindmapData {
       applyLifecycles(built, lifecycleMap(lifecycles));
       // Derive each Habit's iterations (non-habits reject; treat as empty) and inject them as
       // virtual, read-only child nodes under their targets.
-      const iterationsByFlow = await Promise.all(
-        flows.map((f) => generateHabitIterations(f.id, localNowIso()).catch(() => [])),
-      );
-      injectHabitInstances(built, flows, iterationsByFlow);
+      const [iterationsByFlow, completionsByFlow] = await Promise.all([
+        Promise.all(flows.map((f) => generateHabitIterations(f.id, localNowIso()).catch(() => []))),
+        Promise.all(flows.map((f) => listHabitItemCompletions(f.id).catch(() => []))),
+      ]);
+      injectHabitInstances(built, flows, iterationsByFlow, flowGoals, flowTasks, completionsByFlow);
       setTree(built);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -493,10 +555,11 @@ export function useMindmapData(): MindmapData {
       applyLifecycles(built, lifecycleMap(lifecycles));
       // Derive each Habit's iterations (non-habits reject; treat as empty) and inject them as
       // virtual, read-only child nodes under their targets.
-      const iterationsByFlow = await Promise.all(
-        flows.map((f) => generateHabitIterations(f.id, localNowIso()).catch(() => [])),
-      );
-      injectHabitInstances(built, flows, iterationsByFlow);
+      const [iterationsByFlow, completionsByFlow] = await Promise.all([
+        Promise.all(flows.map((f) => generateHabitIterations(f.id, localNowIso()).catch(() => []))),
+        Promise.all(flows.map((f) => listHabitItemCompletions(f.id).catch(() => []))),
+      ]);
+      injectHabitInstances(built, flows, iterationsByFlow, flowGoals, flowTasks, completionsByFlow);
       setTree(built);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

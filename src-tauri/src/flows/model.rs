@@ -454,6 +454,18 @@ pub struct HabitIteration {
     pub status: IterationStatus,
 }
 
+/// A flow item marked done for one Habit iteration — a non-tombstoned `done` Modification. Lets the
+/// mindmap render per-item completion state for each iteration's virtual instances.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, sqlx::FromRow)]
+pub struct HabitItemCompletion {
+    /// Which flow-item table the completed item lives in (`flow_goal` or `flow_task`).
+    pub item_type: String,
+    /// The completed flow item's id.
+    pub item_id: i64,
+    /// The iteration scope the item was completed for.
+    pub iteration_scope_id: i64,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

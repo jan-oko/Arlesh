@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { findNode, findParent, collectAllNodeIds } from "@/utils/mindmap-tree";
 import { updateTask } from "@/api/tasks";
-import { setHabitIterationDone } from "@/api/flows";
+import { setHabitIterationDone, setHabitItemDone } from "@/api/flows";
 import { TASK_STATUS } from "@/utils/status-mapping";
 import { CLIPBOARD_OP } from "@/stores/use-mindmap-store";
 
@@ -51,12 +51,21 @@ export function useNodeActions({
     (nodeId: string) => {
       const node = findNode(tree, nodeId);
       if (node === undefined) return;
-      // A virtual Habit-iteration node toggles its completion (writes/clears Modifications).
+      // A virtual Habit-iteration node toggles its whole iteration (writes/clears every item's Modification).
       if (node.habitIteration !== undefined) {
         const done = node.status === TASK_STATUS.DONE;
         void setHabitIterationDone(node.habitIteration.flowId, node.habitIteration.scopeId, !done, Date.now())
           .then(() => reload())
           .catch((err: unknown) => console.error(`${LOG_PREFIX} habit completion failed:`, err));
+        return;
+      }
+      // A virtual per-iteration flow-item instance toggles just that item.
+      if (node.habitItem !== undefined) {
+        const { flowId, itemType, itemId, scopeId } = node.habitItem;
+        const done = node.status === TASK_STATUS.DONE;
+        void setHabitItemDone(flowId, itemType, itemId, scopeId, !done, Date.now())
+          .then(() => reload())
+          .catch((err: unknown) => console.error(`${LOG_PREFIX} habit item completion failed:`, err));
         return;
       }
       if (node.kind !== "task") return;

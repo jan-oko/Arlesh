@@ -6,7 +6,7 @@ import type { Domain } from "@/api/domains";
 import type { Goal } from "@/api/goals";
 import type { Task } from "@/api/tasks";
 import type { Info } from "@/api/infos";
-import type { Flow, HabitIteration } from "@/api/flows";
+import type { Flow, HabitIteration, FlowGoal, FlowTask } from "@/api/flows";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
@@ -815,6 +815,54 @@ describe("injectHabitInstances", () => {
     expect(project?.children).toHaveLength(1);
     expect(project?.children[0]?.virtual).toBe(true);
     expect(project?.children[0]?.color).toBe("#e74c3c"); // inherits the aspect colour like any node
+  });
+
+  it("renders the flow's items as per-item-completable children of each iteration", () => {
+    const root = buildTree(
+      [
+        { id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: "#0af", status: null, knowledge_base_directory: null, position: 0 },
+        { id: 96, title: "LOOK", description: null, subtype: "project", parent_id: 1, color: null, status: null, knowledge_base_directory: null, position: 0 },
+      ],
+      [], [], [],
+    );
+    const breakfast: FlowTask = { id: 4, flow_id: 3, title: "Breakfast", parent_type: "flow", parent_id: 3, position: 0 };
+    const dinner: FlowTask = { id: 5, flow_id: 3, title: "Dinner", parent_type: "flow", parent_id: 3, position: 1 };
+    injectHabitInstances(
+      root,
+      [mkFlow({ target_type: "project", target_id: 96 })],
+      [[iter(0, "active")]], // anchor_scope_id = 100
+      [],
+      [breakfast, dinner],
+      [[{ item_type: "flow_task", item_id: 4, iteration_scope_id: 100 }]], // breakfast done
+    );
+
+    const iteration = root.children[0]?.children[0]?.children[0]; // aspect → project → iteration root
+    const items = iteration?.children ?? [];
+    expect(items).toHaveLength(2);
+    expect(items[0]?.title).toBe("Breakfast");
+    expect(items[0]?.status).toBe("done"); // has a completion
+    expect(items[0]?.color).toBe("#0af"); // inherits the aspect colour
+    expect(items[0]?.id).toBe("habititem-flow_task-4-0-virtual"); // virtual, non-numeric tail
+    expect(items[0]?.habitItem).toEqual({ flowId: 3, itemType: "flow_task", itemId: 4, scopeId: 100 });
+    expect(items[1]?.title).toBe("Dinner");
+    expect(items[1]?.status).toBe("todo"); // no completion
+  });
+
+  it("nests a flow item under its parent item's instance for the same iteration", () => {
+    const root = buildTree(
+      [{ id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0 }],
+      [{ id: 5, title: "Fitness", parent_type: "domain", parent_id: 1, status: "active", blocked_reason: null, time_scope: null, on_scope_exit: null, tag_ids: [], position: 0 }],
+      [], [],
+    );
+    const routine: FlowGoal = { id: 7, flow_id: 3, title: "Routine", parent_type: "flow", parent_id: 3, position: 0 };
+    const pushups: FlowTask = { id: 8, flow_id: 3, title: "Push-ups", parent_type: "flow_goal", parent_id: 7, position: 0 };
+    injectHabitInstances(root, [mkFlow()], [[iter(0, "active")]], [routine], [pushups], []);
+
+    const iteration = root.children[0]?.children[0]?.children[0]; // aspect → goal 5 → iteration root
+    expect(iteration?.children).toHaveLength(1); // only the goal is a direct child
+    const goalInstance = iteration?.children[0];
+    expect(goalInstance?.title).toBe("Routine");
+    expect(goalInstance?.children[0]?.title).toBe("Push-ups"); // nested under its parent instance
   });
 
   it("skips flows with no iterations and missing targets", () => {
