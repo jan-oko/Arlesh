@@ -46,10 +46,16 @@ export default function MindmapNode({ node, position, isSelected, isCollapsed, i
   const activeHeight = isEditing ? computeEditHeight(position.depth, editLineCount) : height;
 
   const iconR = (iconWidth - 8) / 2;
-  const { isBlocked, iconColor, iconOpacity, fillColor, fillOpacity, label, textFill } = computeNodeAppearance(node, position.depth);
+  const { isBlocked, iconColor, iconOpacity, fillColor, fillOpacity, label, textFill, scopeLifecycle, nodeOpacity } = computeNodeAppearance(node, position.depth);
   const isRtl = isRtlText(node.title);
   const iconCx = isRtl ? width - iconWidth / 2 : iconWidth / 2;
-  const strokeColor = isSelected ? "var(--node-border-selected)" : isDragTarget ? "var(--accent)" : "var(--node-border)";
+  const strokeColor = isSelected
+    ? "var(--node-border-selected)"
+    : isDragTarget
+      ? "var(--accent)"
+      : scopeLifecycle === "overdue"
+        ? "var(--overdue)"
+        : "var(--node-border)";
   const canClickStatus = node.kind === "task" && !isBlocked && onStatusClick !== undefined;
 
   const handleClick = useCallback((e: React.MouseEvent) => {
@@ -77,7 +83,7 @@ export default function MindmapNode({ node, position, isSelected, isCollapsed, i
       onDoubleClick={handleDoubleClick}
       onContextMenu={handleContextMenu}
       onMouseDown={handleMouseDown}
-      style={{ cursor: "pointer", opacity: isDragSource === true ? 0 : undefined, pointerEvents: isDragSource === true ? "none" : undefined }}
+      style={{ cursor: "pointer", opacity: isDragSource === true ? 0 : (nodeOpacity === 1 ? undefined : nodeOpacity), pointerEvents: isDragSource === true ? "none" : undefined }}
     >
       <NodeRect node={node} width={width} height={activeHeight} iconWidth={iconWidth} iconCx={iconCx} iconCy={activeHeight / 2} iconR={iconR} fillColor={fillColor} fillOpacity={fillOpacity} strokeColor={strokeColor} isSelected={isSelected} isCollapsed={isCollapsed} iconColor={iconColor} iconOpacity={iconOpacity} isBlocked={isBlocked} canClickStatus={canClickStatus} isRtl={isRtl} onStatusIconClick={handleStatusIconClick} />
       <NodeLabel node={node} isEditing={isEditing} iconWidth={iconWidth} width={width} height={activeHeight} fontSize={fontSize} lineHeight={lineHeight} displayLineCount={displayLineCount} editLineCount={editLineCount} onEditLineCountChange={setEditLineCount} label={label} textFill={textFill} isRtl={isRtl} onCommitEdit={onCommitEdit} onCancelEdit={onCancelEdit} />

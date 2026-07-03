@@ -16,8 +16,28 @@ import type {
   Flow, CreateFlowRequest, UpdateFlowRequest,
   FlowGoal, FlowTask, FlowItemCycle, FlowDependency, FlowItemType,
 } from "@/api/flows";
+import { deriveScopeLifecycles } from "@/api/scope-lifecycle";
+import type { ItemLifecycle, ScopeLifecycle } from "@/api/scope-lifecycle";
 import type { MindmapNode, NodeKind, FlowCyclePair, FlowItemDep } from "@/utils/tree-layout";
 import { goalStatusToTaskStatus, taskStatusToGoalStatus } from "@/utils/status-mapping";
+
+/** Local wall-clock now as a `YYYY-MM-DDTHH:MM:SS` string for the scope-lifecycle derivation. */
+function localNowIso(): string {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+}
+
+/** Stamps each Task/Goal node with its derived scope lifecycle (Overdue/Lapsed styling). */
+function applyLifecycles(node: MindmapNode, byId: Map<string, ScopeLifecycle>): void {
+  const state = byId.get(node.id);
+  if (state !== undefined) node.scopeLifecycle = state;
+  for (const child of node.children) applyLifecycles(child, byId);
+}
+
+function lifecycleMap(lifecycles: ItemLifecycle[]): Map<string, ScopeLifecycle> {
+  return new Map(lifecycles.map((l) => [`${l.node_type}-${l.node_id}`, l.state]));
+}
 
 export const GOAL_CHILDREN_ACTION = {
   REMOVE: "remove",
@@ -380,7 +400,7 @@ export function useMindmapData(): MindmapData {
     setIsLoading(true);
     setError(null);
     try {
-      const [domains, goals, tasks, infos, flows, flowGoals, flowTasks, flowCycles, flowDeps] = await Promise.all([
+      const [domains, goals, tasks, infos, flows, flowGoals, flowTasks, flowCycles, flowDeps, lifecycles] = await Promise.all([
         listDomains(),
         listGoals(),
         listTasks(),
@@ -390,8 +410,11 @@ export function useMindmapData(): MindmapData {
         listAllFlowTasks(),
         listAllFlowCycles(),
         listAllFlowDependencies(),
+        deriveScopeLifecycles(localNowIso()),
       ]);
-      setTree(buildTree(domains, goals, tasks, infos, flows, flowGoals, flowTasks, flowCycles, flowDeps));
+      const built = buildTree(domains, goals, tasks, infos, flows, flowGoals, flowTasks, flowCycles, flowDeps);
+      applyLifecycles(built, lifecycleMap(lifecycles));
+      setTree(built);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -404,7 +427,7 @@ export function useMindmapData(): MindmapData {
   const silentLoad = useCallback(async () => {
     setError(null);
     try {
-      const [domains, goals, tasks, infos, flows, flowGoals, flowTasks, flowCycles, flowDeps] = await Promise.all([
+      const [domains, goals, tasks, infos, flows, flowGoals, flowTasks, flowCycles, flowDeps, lifecycles] = await Promise.all([
         listDomains(),
         listGoals(),
         listTasks(),
@@ -414,8 +437,11 @@ export function useMindmapData(): MindmapData {
         listAllFlowTasks(),
         listAllFlowCycles(),
         listAllFlowDependencies(),
+        deriveScopeLifecycles(localNowIso()),
       ]);
-      setTree(buildTree(domains, goals, tasks, infos, flows, flowGoals, flowTasks, flowCycles, flowDeps));
+      const built = buildTree(domains, goals, tasks, infos, flows, flowGoals, flowTasks, flowCycles, flowDeps);
+      applyLifecycles(built, lifecycleMap(lifecycles));
+      setTree(built);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }

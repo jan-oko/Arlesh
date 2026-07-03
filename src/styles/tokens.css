@@ -40,6 +40,7 @@ html, body, #root {
   --text-secondary: #888899;
   --accent: #7c7cff;
   --danger: #e74c3c;
+  --overdue: #d99a2b;
 
   /* Spacing */
   --space-1: 4px;

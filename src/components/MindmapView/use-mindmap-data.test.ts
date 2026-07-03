@@ -258,6 +258,7 @@ describe("useMindmapData", () => {
       if (cmd === "list_all_flow_tasks") return Promise.resolve([]);
       if (cmd === "list_all_flow_cycles") return Promise.resolve([]);
       if (cmd === "list_all_flow_dependencies") return Promise.resolve([]);
+      if (cmd === "derive_scope_lifecycles") return Promise.resolve([]);
       return Promise.resolve(null);
     });
   });
@@ -282,6 +283,7 @@ describe("useMindmapData", () => {
       if (cmd === "list_all_flow_tasks") return Promise.resolve([]);
       if (cmd === "list_all_flow_cycles") return Promise.resolve([]);
       if (cmd === "list_all_flow_dependencies") return Promise.resolve([]);
+      if (cmd === "derive_scope_lifecycles") return Promise.resolve([]);
       return Promise.resolve(null);
     });
     const { result } = renderHook(() => useMindmapData());
@@ -317,6 +319,7 @@ describe("useMindmapData — mutations", () => {
       if (cmd === "list_all_flow_tasks") return Promise.resolve([]);
       if (cmd === "list_all_flow_cycles") return Promise.resolve([]);
       if (cmd === "list_all_flow_dependencies") return Promise.resolve([]);
+      if (cmd === "derive_scope_lifecycles") return Promise.resolve([]);
       return Promise.resolve(null);
     });
   }
