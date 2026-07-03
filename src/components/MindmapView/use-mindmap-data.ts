@@ -7,14 +7,16 @@ import {
   listFlows, createFlow, updateFlow, deleteFlow,
   listAllFlowGoals, listAllFlowTasks, listAllFlowCycles, listAllFlowDependencies,
   createFlowGoal, createFlowTask, updateFlowGoal, updateFlowTask, deleteFlowItem, convertFlowItem,
+  generateHabitIterations,
 } from "@/api/flows";
+import { findNode } from "@/utils/mindmap-tree";
 import type { Domain } from "@/api/domains";
 import type { Task } from "@/api/tasks";
 import type { Goal } from "@/api/goals";
 import type { Info } from "@/api/infos";
 import type {
   Flow, CreateFlowRequest, UpdateFlowRequest,
-  FlowGoal, FlowTask, FlowItemCycle, FlowDependency, FlowItemType,
+  FlowGoal, FlowTask, FlowItemCycle, FlowDependency, FlowItemType, HabitIteration,
 } from "@/api/flows";
 import { deriveScopeLifecycles } from "@/api/scope-lifecycle";
 import type { ItemLifecycle, ScopeLifecycle } from "@/api/scope-lifecycle";
@@ -37,6 +39,39 @@ function applyLifecycles(node: MindmapNode, byId: Map<string, ScopeLifecycle>): 
 
 function lifecycleMap(lifecycles: ItemLifecycle[]): Map<string, ScopeLifecycle> {
   return new Map(lifecycles.map((l) => [`${l.node_type}-${l.node_id}`, l.state]));
+}
+
+/**
+ * Injects each Habit's derived iterations as **virtual**, read-only child nodes under its target
+ * (or the flow node when it has no target). The `-virtual` id suffix keeps them out of every
+ * DB-backed mutation (`dbIdFromNodeId` rejects a non-numeric tail). `iterationsByFlow[i]` is the
+ * iteration list for `flows[i]` (empty for non-habits).
+ */
+export function injectHabitInstances(root: MindmapNode, flows: Flow[], iterationsByFlow: HabitIteration[][]): void {
+  flows.forEach((flow, i) => {
+    const iterations = iterationsByFlow[i] ?? [];
+    if (iterations.length === 0) return;
+    const hostId =
+      flow.target_type !== null && flow.target_id !== null
+        ? `${flow.target_type}-${flow.target_id}`
+        : `flow-${flow.id}`;
+    const host = findNode(root, hostId);
+    if (host === undefined) return;
+    for (const iteration of iterations) {
+      const past = iteration.status === "lapsed" || iteration.status === "missed";
+      host.children.push({
+        id: `habit-${flow.id}-${iteration.index}-virtual`,
+        kind: flow.instance_type === "goal" ? "goal" : "task",
+        title: `${flow.title} ${iteration.anchor_date}`,
+        status: iteration.status === "done" ? "done" : "todo",
+        virtual: true,
+        ...(past ? { scopeLifecycle: "lapsed" as const } : {}),
+        position: iteration.index,
+        tagIds: [],
+        children: [],
+      });
+    }
+  });
 }
 
 export const GOAL_CHILDREN_ACTION = {
@@ -417,6 +452,12 @@ export function useMindmapData(): MindmapData {
       ]);
       const built = buildTree(domains, goals, tasks, infos, flows, flowGoals, flowTasks, flowCycles, flowDeps);
       applyLifecycles(built, lifecycleMap(lifecycles));
+      // Derive each Habit's iterations (non-habits reject; treat as empty) and inject them as
+      // virtual, read-only child nodes under their targets.
+      const iterationsByFlow = await Promise.all(
+        flows.map((f) => generateHabitIterations(f.id, localNowIso()).catch(() => [])),
+      );
+      injectHabitInstances(built, flows, iterationsByFlow);
       setTree(built);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -444,6 +485,12 @@ export function useMindmapData(): MindmapData {
       ]);
       const built = buildTree(domains, goals, tasks, infos, flows, flowGoals, flowTasks, flowCycles, flowDeps);
       applyLifecycles(built, lifecycleMap(lifecycles));
+      // Derive each Habit's iterations (non-habits reject; treat as empty) and inject them as
+      // virtual, read-only child nodes under their targets.
+      const iterationsByFlow = await Promise.all(
+        flows.map((f) => generateHabitIterations(f.id, localNowIso()).catch(() => [])),
+      );
+      injectHabitInstances(built, flows, iterationsByFlow);
       setTree(built);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

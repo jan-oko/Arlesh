@@ -59,6 +59,8 @@ export interface MindmapNode {
   onScopeExit?: OnScopeExit | null;
   /** Derived scope lifecycle at "now" (Task/Goal only); set by the view, never persisted. */
   scopeLifecycle?: ScopeLifecycle;
+  /** A derived, read-only node (e.g. a virtual Habit iteration) with no backing DB row. */
+  virtual?: boolean;
   plan?: TimeScope | null;
   flow?: FlowData;
   flowItem?: FlowItemData;

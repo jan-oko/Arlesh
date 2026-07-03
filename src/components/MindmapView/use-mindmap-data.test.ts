@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { renderHook, waitFor, act } from "@testing-library/react";
-import { buildTree, useMindmapData } from "./use-mindmap-data";
+import { buildTree, useMindmapData, injectHabitInstances } from "./use-mindmap-data";
 import type { Domain } from "@/api/domains";
 import type { Goal } from "@/api/goals";
 import type { Task } from "@/api/tasks";
 import type { Info } from "@/api/infos";
+import type { Flow, HabitIteration } from "@/api/flows";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
@@ -762,5 +763,46 @@ describe("useMindmapData — mutations", () => {
         id: 5, request: { parent_id: 1, position: 2 },
       });
     });
+  });
+});
+
+describe("injectHabitInstances", () => {
+  function mkFlow(overrides: Partial<Flow> = {}): Flow {
+    return {
+      id: 3, title: "Exercise", instance_type: "task",
+      parent_type: "domain", parent_id: 1,
+      target_type: "goal", target_id: 5,
+      flow_duration_n: 1, flow_duration_kind: "week",
+      flow_window_part: null, flow_window_time_start: null, flow_window_time_end: null,
+      position: 0, ...overrides,
+    };
+  }
+  function iter(index: number, status: HabitIteration["status"]): HabitIteration {
+    return { index, anchor_scope_id: 100 + index, anchor_date: `2026-01-0${index + 1}`, status };
+  }
+
+  it("adds a virtual, read-only child per iteration under the flow's target", () => {
+    const root = buildTree(
+      [{ id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0 }],
+      [{ id: 5, title: "Fitness", parent_type: "domain", parent_id: 1, status: "active", blocked_reason: null, time_scope: null, on_scope_exit: null, tag_ids: [], position: 0 }],
+      [], [],
+    );
+    injectHabitInstances(root, [mkFlow()], [[iter(0, "done"), iter(1, "active"), iter(2, "lapsed")]]);
+
+    const target = root.children[0]?.children[0]; // aspect → goal 5
+    expect(target?.id).toBe("goal-5");
+    const virtuals = target?.children ?? [];
+    expect(virtuals).toHaveLength(3);
+    expect(virtuals.every((n) => n.virtual === true)).toBe(true);
+    expect(virtuals[0]?.title).toBe("Exercise 2026-01-01");
+    expect(virtuals[0]?.status).toBe("done");
+    expect(virtuals[2]?.scopeLifecycle).toBe("lapsed"); // lapsed iterations are dimmed
+    expect(virtuals[2]?.id).toBe("habit-3-2-virtual"); // non-numeric tail keeps it out of mutations
+  });
+
+  it("skips flows with no iterations and missing targets", () => {
+    const root = buildTree([], [], [], []);
+    injectHabitInstances(root, [mkFlow(), mkFlow({ id: 9, target_type: null, target_id: null })], [[], [iter(0, "active")]]);
+    expect(root.children).toHaveLength(0); // no target found; nothing injected
   });
 });

@@ -56,7 +56,7 @@ export default function MindmapNode({ node, position, isSelected, isCollapsed, i
       : scopeLifecycle === "overdue"
         ? "var(--overdue)"
         : "var(--node-border)";
-  const canClickStatus = node.kind === "task" && !isBlocked && onStatusClick !== undefined;
+  const canClickStatus = node.kind === "task" && !isBlocked && onStatusClick !== undefined && node.virtual !== true;
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -68,9 +68,10 @@ export default function MindmapNode({ node, position, isSelected, isCollapsed, i
       onSelect(node.id);
     }
   }, [node.id, onSelect, onCtrlClick, onShiftClick]);
-  const handleDoubleClick = useCallback((e: React.MouseEvent) => { e.stopPropagation(); onDoubleClick(node.id); }, [node.id, onDoubleClick]);
-  const handleContextMenu = useCallback((e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); setContextMenu({ x: e.clientX, y: e.clientY }); }, []);
-  const handleMouseDown = useCallback((e: React.MouseEvent) => { if (e.button !== 0 || node.kind === "aspect") return; onDragStart(node.id, e.clientX, e.clientY); }, [node.id, node.kind, onDragStart]);
+  // A virtual node (derived Habit iteration) is read-only: no edit, drag, or context menu.
+  const handleDoubleClick = useCallback((e: React.MouseEvent) => { e.stopPropagation(); if (node.virtual === true) return; onDoubleClick(node.id); }, [node.id, node.virtual, onDoubleClick]);
+  const handleContextMenu = useCallback((e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); if (node.virtual === true) return; setContextMenu({ x: e.clientX, y: e.clientY }); }, [node.virtual]);
+  const handleMouseDown = useCallback((e: React.MouseEvent) => { if (e.button !== 0 || node.kind === "aspect" || node.virtual === true) return; onDragStart(node.id, e.clientX, e.clientY); }, [node.id, node.kind, node.virtual, onDragStart]);
   const handleStatusIconClick = useCallback((e: React.MouseEvent) => { e.stopPropagation(); onSelect(node.id); onStatusClick?.(node.id); }, [node.id, onSelect, onStatusClick]);
 
   return (
