@@ -193,38 +193,31 @@ export async function generateHabitIterations(flowId: number, now: string): Prom
 }
 
 /**
- * Marks a Habit iteration (by its anchor scope) done or not-done, recording `resolvedAtMs` (epoch
- * ms) as the completion instant. Writes/clears `done` Modifications for every flow item.
+ * A Habit iteration's completable instances: each flow item plus the flow **root** (`flow_root`),
+ * which is an instance in its own right, not just an aggregate of its items.
  */
-export async function setHabitIterationDone(
-  flowId: number,
-  iterationScopeId: number,
-  done: boolean,
-  resolvedAtMs: number,
-): Promise<void> {
-  return invoke<void>("set_habit_iteration_done", { flowId, iterationScopeId, done, resolvedAtMs });
-}
+export type HabitInstanceType = FlowItemType | "flow_root";
 
-/** A flow item marked done for one Habit iteration (a non-tombstoned `done` Modification). */
+/** An instance marked done for one Habit iteration (a non-tombstoned `done` Modification). */
 export interface HabitItemCompletion {
-  item_type: FlowItemType;
+  item_type: HabitInstanceType;
   item_id: number;
   iteration_scope_id: number;
 }
 
-/** Every flow item currently marked done, with the iteration scope it was completed for. */
+/** Every instance currently marked done, with the iteration scope it was completed for. */
 export async function listHabitItemCompletions(flowId: number): Promise<HabitItemCompletion[]> {
   return invoke<HabitItemCompletion[]>("list_habit_item_completions", { flowId });
 }
 
 /**
- * Marks a single flow item (by its iteration scope) done or not-done, recording `resolvedAtMs`. The
- * iteration reads as Done once all its items are — unlike {@link setHabitIterationDone}, which toggles
- * every item at once.
+ * Marks a single instance (a flow item, or the `flow_root` — with `itemId` = the flow id) done or
+ * not-done at one iteration scope, recording `resolvedAtMs`. The iteration reads as Done once the
+ * root and every item are done.
  */
 export async function setHabitItemDone(
   flowId: number,
-  itemType: FlowItemType,
+  itemType: HabitInstanceType,
   itemId: number,
   iterationScopeId: number,
   done: boolean,

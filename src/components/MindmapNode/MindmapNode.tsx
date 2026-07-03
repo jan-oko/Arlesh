@@ -60,8 +60,7 @@ export default function MindmapNode({ node, parentKind, position, isSelected, is
         : "var(--node-border)";
   const canClickStatus =
     onStatusClick !== undefined &&
-    (node.habitIteration !== undefined ||
-      node.habitItem !== undefined ||
+    (node.habitItem !== undefined ||
       (node.kind === "task" && !isBlocked && node.virtual !== true));
 
   const handleClick = useCallback((e: React.MouseEvent) => {

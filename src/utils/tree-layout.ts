@@ -1,6 +1,6 @@
 import { hierarchy, tree } from "d3-hierarchy";
 import type { TimeScope } from "@/api/time-scope";
-import type { InstanceType, FlowItemType } from "@/api/flows";
+import type { InstanceType, FlowItemType, HabitInstanceType } from "@/api/flows";
 import type { OnScopeExit, ScopeLifecycle } from "@/api/scope-lifecycle";
 
 export type NodeKind =
@@ -76,10 +76,12 @@ export interface MindmapNode {
   scopeLifecycle?: ScopeLifecycle;
   /** A derived, read-only node (e.g. a virtual Habit iteration) with no backing DB row. */
   virtual?: boolean;
-  /** Present on a virtual Habit-iteration node: the flow and anchor scope it can be completed against. */
-  habitIteration?: { flowId: number; scopeId: number };
-  /** Present on a virtual per-iteration flow-item instance: the (flow, item, iteration scope) it toggles. */
-  habitItem?: { flowId: number; itemType: FlowItemType; itemId: number; scopeId: number };
+  /**
+   * Present on any virtual Habit instance — a per-iteration flow-item instance, or the iteration
+   * **root** itself (`itemType: "flow_root"`, `itemId` = the flow id). Carries the
+   * (flow, instance, iteration scope) its status click toggles.
+   */
+  habitItem?: { flowId: number; itemType: HabitInstanceType; itemId: number; scopeId: number };
   plan?: TimeScope | null;
   flow?: FlowData;
   flowItem?: FlowItemData;

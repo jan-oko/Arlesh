@@ -27,6 +27,11 @@ use model::{
     UpdateFlowItemRequest, UpdateFlowRequest,
 };
 
+/// Sentinel `item_type` for the flow **root** instance in `habit_instance_modifications`. The root is
+/// an instance in its own right (not just an aggregate of items); its rows key `item_id` to the flow
+/// id so they stay unique per flow on a shared iteration scope.
+const ROOT_INSTANCE_TYPE: &str = "flow_root";
+
 /// Advances `date` by `k` (possibly zero) periods of `kind`; `None` on calendar overflow.
 fn advance(date: NaiveDate, k: i64, kind: &str) -> Option<NaiveDate> {
     match kind {
@@ -872,9 +877,10 @@ impl<'a> FlowRepository<'a> {
         Ok(classify_iterations(&slots, consumption, &resolved, now))
     }
 
-    /// Marks a Habit iteration (identified by its anchor scope) done or not-done by writing/clearing
-    /// a `done` **Modification** for every flow item at that iteration scope. `resolved_at_ms` is the
-    /// completion instant (epoch ms) recorded on each row, so Blocking catch-up jumps are reproducible.
+    /// Resolves (or un-resolves) a whole Habit iteration by writing/clearing a `done` **Modification**
+    /// for **every** instance at that scope — the flow root plus every flow item. `resolved_at_ms` is
+    /// the completion instant (epoch ms) recorded on each row, so Blocking catch-up jumps are
+    /// reproducible. Individual instances are toggled with [`set_item_done`].
     pub async fn set_iteration_done(
         &self,
         flow_id: FlowId,
@@ -895,9 +901,9 @@ impl<'a> FlowRepository<'a> {
         }
         let goals = self.list_goals(flow_id).await?;
         let tasks = self.list_tasks(flow_id).await?;
-        let items = goals
-            .iter()
-            .map(|g| ("flow_goal", g.id))
+        // The root is an instance too — keyed `(flow_root, flow_id)` so it stays unique per flow.
+        let items = std::iter::once((ROOT_INSTANCE_TYPE, flow_id.0))
+            .chain(goals.iter().map(|g| ("flow_goal", g.id)))
             .chain(tasks.iter().map(|t| ("flow_task", t.id)));
         for (item_type, item_id) in items {
             sqlx::query(
@@ -1386,17 +1392,16 @@ impl<'a> FlowRepository<'a> {
         Ok(slots)
     }
 
-    /// Maps each slot index to the day its iteration was completed — present only when every flow
-    /// item has a `done` Modification (not tombstoned) for that iteration scope.
+    /// Maps each slot index to the day its iteration was completed — present only when **every**
+    /// instance (the flow root plus every flow item) has a `done` Modification (not tombstoned) for
+    /// that iteration scope. An item-less flow still has one instance: its root.
     async fn iteration_resolutions(
         &self,
         flow_id: FlowId,
         slots: &[SlotWindow],
     ) -> Result<HashMap<i64, NaiveDateTime>, FlowError> {
-        let item_count = self.list_goals(flow_id).await?.len() + self.list_tasks(flow_id).await?.len();
-        if item_count == 0 {
-            return Ok(HashMap::new()); // No instances → no iteration is ever resolved.
-        }
+        // Instances = the flow root + each flow item.
+        let instance_count = 1 + self.list_goals(flow_id).await?.len() + self.list_tasks(flow_id).await?.len();
         let rows: Vec<(i64, i64, Option<i64>)> = sqlx::query_as(
             "SELECT iteration_scope_id, COUNT(*), MAX(resolved_at)
              FROM habit_instance_modifications
@@ -1412,7 +1417,7 @@ impl<'a> FlowRepository<'a> {
         let mut resolved = HashMap::new();
         for slot in slots {
             if let Some((done, last)) = by_scope.get(&slot.scope_id) {
-                if *done as usize == item_count {
+                if *done as usize == instance_count {
                     // `resolved_at` is epoch-ms; treated as a UTC-naive instant for classification.
                     // Sub-day-precision timezone reconciliation is deferred to the 8.4 write path.
                     let instant = last

@@ -120,21 +120,24 @@ export function injectHabitInstances(
       (completionsByFlow[i] ?? []).map((c) => `${c.item_type}-${c.item_id}-${c.iteration_scope_id}`),
     );
     for (const iteration of iterations) {
+      const scopeId = iteration.anchor_scope_id;
       const past = iteration.status === "lapsed" || iteration.status === "missed";
+      // The root is its own instance (`flow_root`, keyed by the flow id) with its own status.
+      const rootDone = doneKeys.has(`flow_root-${flow.id}-${scopeId}`);
       host.children.push({
         id: `habit-${flow.id}-${iteration.index}-virtual`,
         kind: flow.instance_type === "goal" ? "goal" : "task",
         title: `${flow.title} ${iteration.anchor_date}`,
-        status: iteration.status === "done" ? "done" : "todo",
+        status: rootDone ? "done" : "todo",
         virtual: true,
-        habitIteration: { flowId: flow.id, scopeId: iteration.anchor_scope_id },
+        habitItem: { flowId: flow.id, itemType: "flow_root", itemId: flow.id, scopeId },
         // Iterations are injected after buildTree's colour propagation, so inherit the host's
         // already-resolved aspect colour directly.
         ...(host.color !== undefined ? { color: host.color } : {}),
-        ...(past ? { scopeLifecycle: "lapsed" as const } : {}),
+        ...(past && !rootDone ? { scopeLifecycle: "lapsed" as const } : {}),
         position: iteration.index,
         tagIds: [],
-        children: buildIterationItems(flow, iteration.anchor_scope_id, iteration.index, items, doneKeys, host.color, past),
+        children: buildIterationItems(flow, scopeId, iteration.index, items, doneKeys, host.color, past),
       });
     }
   });

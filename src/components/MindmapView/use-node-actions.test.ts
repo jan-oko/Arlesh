@@ -10,12 +10,11 @@ vi.mock("@/api/tasks", () => ({
 }));
 
 vi.mock("@/api/flows", () => ({
-  setHabitIterationDone: vi.fn().mockResolvedValue(undefined),
   setHabitItemDone: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { updateTask } from "@/api/tasks";
-import { setHabitIterationDone, setHabitItemDone } from "@/api/flows";
+import { setHabitItemDone } from "@/api/flows";
 
 function mkNode(id: string, kind: NodeKind, children: MindmapNode[] = [], extra: Partial<MindmapNode> = {}): MindmapNode {
   return { id, kind, title: id, position: 0, tagIds: [], children, ...extra };
@@ -25,11 +24,11 @@ const TASK_NODE = mkNode("task-5", "task", [], { status: "todo" });
 const TASK_DONE = mkNode("task-6", "task", [], { status: "done" });
 const GOAL_NODE = mkNode("goal-2", "goal");
 const ASPECT = mkNode("aspect-1", "aspect");
-const HABIT_ITER = mkNode("habit-3-100-virtual", "task", [], {
-  status: "todo", virtual: true, habitIteration: { flowId: 3, scopeId: 100 },
+const HABIT_ITER = mkNode("habit-3-0-virtual", "task", [], {
+  status: "todo", virtual: true, habitItem: { flowId: 3, itemType: "flow_root", itemId: 3, scopeId: 100 },
 });
-const HABIT_DONE = mkNode("habit-3-101-virtual", "task", [], {
-  status: "done", virtual: true, habitIteration: { flowId: 3, scopeId: 101 },
+const HABIT_DONE = mkNode("habit-3-1-virtual", "task", [], {
+  status: "done", virtual: true, habitItem: { flowId: 3, itemType: "flow_root", itemId: 3, scopeId: 101 },
 });
 const HABIT_ITEM = mkNode("habititem-flow_task-4-0-virtual", "task", [], {
   status: "todo", virtual: true, habitItem: { flowId: 3, itemType: "flow_task", itemId: 4, scopeId: 100 },
@@ -82,33 +81,32 @@ describe("useNodeActions — onStatusClick", () => {
     expect(updateTask).not.toHaveBeenCalled();
   });
 
-  it("completes a not-done habit iteration instead of cycling a task", async () => {
+  it("completes the iteration root as its own instance instead of cycling a task", async () => {
     const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
-    act(() => { result.current.onStatusClick("habit-3-100-virtual"); });
+    act(() => { result.current.onStatusClick("habit-3-0-virtual"); });
     await vi.waitFor(() =>
-      expect(setHabitIterationDone).toHaveBeenCalledWith(3, 100, true, expect.any(Number)),
+      expect(setHabitItemDone).toHaveBeenCalledWith(3, "flow_root", 3, 100, true, expect.any(Number)),
     );
     expect(updateTask).not.toHaveBeenCalled();
   });
 
-  it("un-completes a done habit iteration", async () => {
+  it("un-completes a done iteration root", async () => {
     const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
-    act(() => { result.current.onStatusClick("habit-3-101-virtual"); });
+    act(() => { result.current.onStatusClick("habit-3-1-virtual"); });
     await vi.waitFor(() =>
-      expect(setHabitIterationDone).toHaveBeenCalledWith(3, 101, false, expect.any(Number)),
+      expect(setHabitItemDone).toHaveBeenCalledWith(3, "flow_root", 3, 101, false, expect.any(Number)),
     );
   });
 
-  it("completes a single habit item instance without touching the whole iteration", async () => {
+  it("completes a single habit item instance without touching the rest of the iteration", async () => {
     const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("habititem-flow_task-4-0-virtual"); });
     await vi.waitFor(() =>
       expect(setHabitItemDone).toHaveBeenCalledWith(3, "flow_task", 4, 100, true, expect.any(Number)),
     );
-    expect(setHabitIterationDone).not.toHaveBeenCalled();
     expect(updateTask).not.toHaveBeenCalled();
   });
 });

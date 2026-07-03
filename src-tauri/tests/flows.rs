@@ -602,21 +602,15 @@ async fn generating_a_habit_derives_and_classifies_its_iterations() {
         })
         .await
         .unwrap();
-    let item = repo
+    let _item = repo
         .create_task(CreateFlowItemRequest { flow_id: flow.id, title: "Workout".into(), parent_type: "flow".into(), parent_id: flow.id })
         .await
         .unwrap();
     let start = week_scope_id(&pool, chrono::NaiveDate::from_ymd_opt(2026, 1, 5).unwrap()).await;
     repo.set_recurrence(FlowId(flow.id), destructive_recurrence(start)).await.unwrap();
 
-    // Complete the first iteration (W0) — its single item marked done in the start-week scope.
-    sqlx::query(
-        "INSERT INTO habit_instance_modifications
-            (flow_id, item_type, item_id, iteration_scope_id, status, resolved_at)
-         VALUES (?, 'flow_task', ?, ?, 'done', ?)",
-    )
-    .bind(flow.id).bind(item.id).bind(start).bind(1_767_600_000_000_i64)
-    .execute(&pool).await.unwrap();
+    // Resolve the first iteration (W0) — the root and its single item marked done in the start-week scope.
+    repo.set_iteration_done(FlowId(flow.id), start, true, 1_767_600_000_000).await.unwrap();
 
     // now falls in W2 (2026-01-18..25): W0 done, W1 lapsed (passed unfinished), W2 active.
     let now = chrono::NaiveDate::from_ymd_opt(2026, 1, 22)
@@ -956,7 +950,7 @@ async fn completing_an_iteration_marks_it_done_and_uncompleting_reverts() {
 }
 
 #[tokio::test]
-async fn per_item_completion_resolves_the_iteration_only_when_all_items_done() {
+async fn iteration_resolves_only_when_the_root_and_every_item_are_done() {
     let pool = helpers::test_pool().await;
     let repo = FlowRepository::new(&pool);
     let flow = repo.create(create_req("Meals")).await.unwrap();
@@ -978,23 +972,37 @@ async fn per_item_completion_resolves_the_iteration_only_when_all_items_done() {
     let now = ymd(2026, 1, 8).and_hms_opt(12, 0, 0).unwrap(); // inside the first (Active) window
     let scope = repo.generate_habit_iterations(FlowId(flow.id), now).await.unwrap()[0].anchor_scope_id;
 
-    // One item done is not enough — the iteration stays open.
+    // Every item done but NOT the root → still open (the root is its own instance).
     repo.set_item_done(FlowId(flow.id), "flow_task", breakfast.id, scope, true, 1_767_600_000_000).await.unwrap();
-    assert_eq!(repo.list_item_completions(FlowId(flow.id)).await.unwrap().len(), 1);
-    let after_one = repo.generate_habit_iterations(FlowId(flow.id), now).await.unwrap();
-    assert_ne!(format!("{:?}", after_one[0].status), "Done");
-
-    // The last item resolves it.
     repo.set_item_done(FlowId(flow.id), "flow_task", dinner.id, scope, true, 1_767_600_000_000).await.unwrap();
+    assert_ne!(format!("{:?}", repo.generate_habit_iterations(FlowId(flow.id), now).await.unwrap()[0].status), "Done");
+
+    // Completing the root instance too resolves the iteration.
+    repo.set_item_done(FlowId(flow.id), "flow_root", flow.id, scope, true, 1_767_600_000_000).await.unwrap();
     let completions = repo.list_item_completions(FlowId(flow.id)).await.unwrap();
-    assert_eq!(completions.len(), 2);
-    assert!(completions.iter().all(|c| c.item_type == "flow_task" && c.iteration_scope_id == scope));
+    assert_eq!(completions.len(), 3); // breakfast, dinner, root
+    assert!(completions.iter().any(|c| c.item_type == "flow_root" && c.item_id == flow.id));
     assert_eq!(format!("{:?}", repo.generate_habit_iterations(FlowId(flow.id), now).await.unwrap()[0].status), "Done");
 
-    // Un-checking one item reverts the iteration.
-    repo.set_item_done(FlowId(flow.id), "flow_task", breakfast.id, scope, false, 0).await.unwrap();
-    assert_eq!(repo.list_item_completions(FlowId(flow.id)).await.unwrap().len(), 1);
+    // Un-checking the root alone reverts it.
+    repo.set_item_done(FlowId(flow.id), "flow_root", flow.id, scope, false, 0).await.unwrap();
     assert_ne!(format!("{:?}", repo.generate_habit_iterations(FlowId(flow.id), now).await.unwrap()[0].status), "Done");
+}
+
+#[tokio::test]
+async fn an_item_less_habit_resolves_by_completing_its_root() {
+    let pool = helpers::test_pool().await;
+    let repo = FlowRepository::new(&pool);
+    let flow = repo.create(create_req("Shave")).await.unwrap(); // no items — the root is the only instance
+    let start = week_scope_id(&pool, ymd(2026, 1, 5)).await;
+    repo.set_recurrence(FlowId(flow.id), destructive_recurrence(start)).await.unwrap();
+
+    let now = ymd(2026, 1, 8).and_hms_opt(12, 0, 0).unwrap();
+    let scope = repo.generate_habit_iterations(FlowId(flow.id), now).await.unwrap()[0].anchor_scope_id;
+    assert_ne!(format!("{:?}", repo.generate_habit_iterations(FlowId(flow.id), now).await.unwrap()[0].status), "Done");
+
+    repo.set_item_done(FlowId(flow.id), "flow_root", flow.id, scope, true, 1_767_600_000_000).await.unwrap();
+    assert_eq!(format!("{:?}", repo.generate_habit_iterations(FlowId(flow.id), now).await.unwrap()[0].status), "Done");
 }
 
 // --- Edit-habit reconciliation: fork / discard (Phase 8.5) ---

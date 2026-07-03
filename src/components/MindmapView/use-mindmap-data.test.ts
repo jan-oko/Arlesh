@@ -787,7 +787,14 @@ describe("injectHabitInstances", () => {
       [{ id: 5, title: "Fitness", parent_type: "domain", parent_id: 1, status: "active", blocked_reason: null, time_scope: null, on_scope_exit: null, tag_ids: [], position: 0 }],
       [], [],
     );
-    injectHabitInstances(root, [mkFlow()], [[iter(0, "done"), iter(1, "active"), iter(2, "lapsed")]]);
+    // The root of iteration 0 (scope 100) is completed; its own status drives the node's glyph.
+    injectHabitInstances(
+      root,
+      [mkFlow()],
+      [[iter(0, "done"), iter(1, "active"), iter(2, "lapsed")]],
+      [], [],
+      [[{ item_type: "flow_root", item_id: 3, iteration_scope_id: 100 }]],
+    );
 
     const target = root.children[0]?.children[0]; // aspect → goal 5
     expect(target?.id).toBe("goal-5");
@@ -795,8 +802,10 @@ describe("injectHabitInstances", () => {
     expect(virtuals).toHaveLength(3);
     expect(virtuals.every((n) => n.virtual === true)).toBe(true);
     expect(virtuals[0]?.title).toBe("Exercise 2026-01-01");
-    expect(virtuals[0]?.status).toBe("done");
-    expect(virtuals[2]?.scopeLifecycle).toBe("lapsed"); // lapsed iterations are dimmed
+    expect(virtuals[0]?.status).toBe("done"); // its root instance is completed
+    expect(virtuals[0]?.habitItem).toEqual({ flowId: 3, itemType: "flow_root", itemId: 3, scopeId: 100 });
+    expect(virtuals[1]?.status).toBe("todo"); // no root completion
+    expect(virtuals[2]?.scopeLifecycle).toBe("lapsed"); // lapsed + uncompleted iterations are dimmed
     expect(virtuals[2]?.id).toBe("habit-3-2-virtual"); // non-numeric tail keeps it out of mutations
   });
 

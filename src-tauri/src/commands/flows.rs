@@ -348,21 +348,6 @@ pub async fn list_all_flow_dependencies(
         .map_err(|error| error.to_string())
 }
 
-/// Marks a Habit iteration (by its anchor scope) done or not-done, recording `resolved_at_ms`.
-#[tauri::command]
-pub async fn set_habit_iteration_done(
-    pool: State<'_, DatabasePool>,
-    flow_id: i64,
-    iteration_scope_id: i64,
-    done: bool,
-    resolved_at_ms: i64,
-) -> Result<(), String> {
-    FlowRepository::new(&pool)
-        .set_iteration_done(FlowId(flow_id), iteration_scope_id, done, resolved_at_ms)
-        .await
-        .map_err(|error| error.to_string())
-}
-
 /// Lists every flow item currently marked done, with the iteration scope it was completed for.
 #[tauri::command]
 pub async fn list_habit_item_completions(
