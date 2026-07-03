@@ -170,9 +170,12 @@ export interface HabitIteration {
   status: IterationStatus;
 }
 
-/** Derives a Habit's iterations on `today` (ISO `YYYY-MM-DD`), classified per its Consumption. */
-export async function generateHabitIterations(flowId: number, today: string): Promise<HabitIteration[]> {
-  return invoke<HabitIteration[]>("generate_habit_iterations", { flowId, today });
+/**
+ * Derives a Habit's iterations at `now` (local wall-clock, ISO `YYYY-MM-DDTHH:MM:SS`), classified
+ * per its Consumption.
+ */
+export async function generateHabitIterations(flowId: number, now: string): Promise<HabitIteration[]> {
+  return invoke<HabitIteration[]>("generate_habit_iterations", { flowId, now });
 }
 
 // --- Flow items (Phase 7.3) ---

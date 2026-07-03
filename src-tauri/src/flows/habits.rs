@@ -1,32 +1,35 @@
 //! Pure Habit-iteration classification.
 //!
 //! Virtual Habit instances are **derived**, never persisted per iteration: given the recurrence,
-//! the reference day, and which iterations have been completed (the only persisted facts), this
+//! the reference instant, and which iterations have been completed (the only persisted facts), this
 //! module classifies the iteration schedule into `Active` / `Done` / `Lapsed` / `Missed`. It is
 //! deliberately free of the database and the calendar — the repository precomputes the concrete
 //! iteration windows (`SlotWindow`s) and the completion map, then calls [`classify_iterations`].
 //!
+//! Windows are half-open `[start, end)` datetimes, so both coarse (day-and-up) and sub-day
+//! (part-of-day / exact) Habits classify through the same instant comparisons.
+//!
 //! Future iterations are never generated (an ellipsis node stands in for them), so callers pass
-//! only the slots whose window has started on or before the reference day.
+//! only the slots whose window has started on or before the reference instant.
 
 use std::collections::HashMap;
 
-use chrono::NaiveDate;
+use chrono::NaiveDateTime;
 
 use super::model::{HabitIteration, IterationStatus};
 
-/// A precomputed iteration window: its ordinal, anchoring scope, and half-open-ish `[start, end]`
-/// day span (both inclusive days). Supplied index-ordered from the Repetition Start.
+/// A precomputed iteration window: its ordinal, anchoring scope, and half-open `[start, end)`
+/// datetime span. Supplied index-ordered from the Repetition Start.
 #[derive(Debug, Clone)]
 pub struct SlotWindow {
     /// Zero-based ordinal from the Repetition Start.
     pub index: i64,
     /// Scope anchoring the window's first period.
     pub scope_id: i64,
-    /// First day of the window.
-    pub start: NaiveDate,
-    /// Last day of the window.
-    pub end: NaiveDate,
+    /// Inclusive start of the window.
+    pub start: NaiveDateTime,
+    /// Exclusive end of the window (the window has passed once `now >= end`).
+    pub end: NaiveDateTime,
 }
 
 /// Parsed Consumption behavior — how a Habit treats unfinished instances as iterations pass.
@@ -43,17 +46,17 @@ pub enum Consumption {
 /// How a Blocking Habit advances when its open iteration completes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Catchup {
-    /// Release every backlogged iteration up to the completion day at once.
+    /// Release every backlogged iteration up to the completion instant at once.
     AllPending,
     /// Release exactly the next iteration.
     Next,
-    /// Jump to the iteration containing the completion day; intermediate ones become Missed.
+    /// Jump to the iteration containing the completion instant; intermediate ones become Missed.
     Latest,
 }
 
-/// The last slot whose window started on or before `day`, or `None` if `day` precedes them all.
-fn slot_at(slots: &[SlotWindow], day: NaiveDate) -> Option<usize> {
-    slots.iter().rposition(|slot| slot.start <= day)
+/// The last slot whose window started on or before `at`, or `None` if `at` precedes them all.
+fn slot_at(slots: &[SlotWindow], at: NaiveDateTime) -> Option<usize> {
+    slots.iter().rposition(|slot| slot.start <= at)
 }
 
 fn iteration(slot: &SlotWindow, status: IterationStatus) -> HabitIteration {
@@ -65,19 +68,19 @@ fn iteration(slot: &SlotWindow, status: IterationStatus) -> HabitIteration {
     }
 }
 
-/// Classifies the started iterations of a Habit on `today`.
+/// Classifies the started iterations of a Habit at `now`.
 ///
-/// `resolved` maps a slot index to the day that iteration was completed (present iff every instance
-/// in it is done). Only completed iterations appear in the map; `today` bounds the schedule (all
-/// `slots` are assumed to have started on or before it).
+/// `resolved` maps a slot index to the instant that iteration was completed (present iff every
+/// instance in it is done). Only completed iterations appear in the map; `now` bounds the schedule
+/// (all `slots` are assumed to have started on or before it).
 pub fn classify_iterations(
     slots: &[SlotWindow],
     consumption: Consumption,
-    resolved: &HashMap<i64, NaiveDate>,
-    today: NaiveDate,
+    resolved: &HashMap<i64, NaiveDateTime>,
+    now: NaiveDateTime,
 ) -> Vec<HabitIteration> {
     match consumption {
-        Consumption::Destructive => classify_destructive(slots, resolved, today),
+        Consumption::Destructive => classify_destructive(slots, resolved, now),
         Consumption::Overlapping => classify_overlapping(slots, resolved),
         Consumption::Blocking(catchup) => classify_blocking(slots, resolved, catchup),
     }
@@ -86,15 +89,15 @@ pub fn classify_iterations(
 /// Destructive: a passed unfinished iteration is Lapsed; only the current window can be Active.
 fn classify_destructive(
     slots: &[SlotWindow],
-    resolved: &HashMap<i64, NaiveDate>,
-    today: NaiveDate,
+    resolved: &HashMap<i64, NaiveDateTime>,
+    now: NaiveDateTime,
 ) -> Vec<HabitIteration> {
     slots
         .iter()
         .map(|slot| {
             let status = if resolved.contains_key(&slot.index) {
                 IterationStatus::Done
-            } else if slot.end < today {
+            } else if slot.end <= now {
                 IterationStatus::Lapsed
             } else {
                 IterationStatus::Active
@@ -104,10 +107,10 @@ fn classify_destructive(
         .collect()
 }
 
-/// Accumulating + Overlapping: every started iteration is Done or Active; nothing is archived.
+/// Accumulating + Overlapping: every started iteration is Done or Active; nothing lapses.
 fn classify_overlapping(
     slots: &[SlotWindow],
-    resolved: &HashMap<i64, NaiveDate>,
+    resolved: &HashMap<i64, NaiveDateTime>,
 ) -> Vec<HabitIteration> {
     slots
         .iter()
@@ -124,10 +127,10 @@ fn classify_overlapping(
 
 /// Accumulating + Blocking: iterations are withheld beyond the released frontier. `Next` and
 /// `Latest` keep a single open iteration; `AllPending` releases the whole backlog to the completion
-/// day. Withheld (future) iterations are omitted — the ellipsis node represents them.
+/// instant. Withheld (future) iterations are omitted — the ellipsis node represents them.
 fn classify_blocking(
     slots: &[SlotWindow],
-    resolved: &HashMap<i64, NaiveDate>,
+    resolved: &HashMap<i64, NaiveDateTime>,
     catchup: Catchup,
 ) -> Vec<HabitIteration> {
     match catchup {
@@ -141,7 +144,7 @@ fn classify_blocking(
 /// contiguous prefix, followed by one Active iteration (the current open one).
 fn classify_blocking_next(
     slots: &[SlotWindow],
-    resolved: &HashMap<i64, NaiveDate>,
+    resolved: &HashMap<i64, NaiveDateTime>,
 ) -> Vec<HabitIteration> {
     let mut result = Vec::new();
     for slot in slots {
@@ -155,11 +158,11 @@ fn classify_blocking_next(
     result
 }
 
-/// Single open iteration; completing it jumps to the slot containing the completion day, turning the
-/// skipped intermediate iterations into Missed.
+/// Single open iteration; completing it jumps to the slot containing the completion instant, turning
+/// the skipped intermediate iterations into Missed.
 fn classify_blocking_latest(
     slots: &[SlotWindow],
-    resolved: &HashMap<i64, NaiveDate>,
+    resolved: &HashMap<i64, NaiveDateTime>,
 ) -> Vec<HabitIteration> {
     let mut result = Vec::new();
     let mut cursor = 0usize;
@@ -170,7 +173,7 @@ fn classify_blocking_latest(
             break; // Open iteration blocks the rest.
         };
         result.push(iteration(slot, IterationStatus::Done));
-        // Jump to the slot the completion day falls in; the gap between becomes Missed.
+        // Jump to the slot the completion instant falls in; the gap between becomes Missed.
         let target = slot_at(slots, *resolved_on).unwrap_or(cursor).max(cursor + 1);
         for missed in &slots[cursor + 1..target.min(slots.len())] {
             result.push(iteration(missed, IterationStatus::Missed));
@@ -180,11 +183,11 @@ fn classify_blocking_latest(
     result
 }
 
-/// Completing an iteration releases the whole backlog up to that completion day; released-but-
+/// Completing an iteration releases the whole backlog up to that completion instant; released-but-
 /// unfinished iterations are Active. Beyond the frontier, blocking resumes (omitted here).
 fn classify_blocking_all_pending(
     slots: &[SlotWindow],
-    resolved: &HashMap<i64, NaiveDate>,
+    resolved: &HashMap<i64, NaiveDateTime>,
 ) -> Vec<HabitIteration> {
     // The frontier reaches the furthest of: any completed slot, and the slot each completion landed
     // in. With no completions it stays at slot 0 (only the first iteration is released).
@@ -213,16 +216,22 @@ fn classify_blocking_all_pending(
 mod tests {
     use super::*;
 
-    fn day(iso: &str) -> NaiveDate {
-        NaiveDate::parse_from_str(iso, "%Y-%m-%d").unwrap()
+    fn at(iso: &str) -> NaiveDateTime {
+        NaiveDateTime::parse_from_str(iso, "%Y-%m-%dT%H:%M:%S").unwrap()
     }
 
-    /// Four contiguous week windows starting 2026-01-05 (Mon): W0..W3, scope ids 100..103.
+    /// Four contiguous week windows starting 2026-01-05 (Mon): W0..W3, scope ids 100..103. Each is
+    /// the half-open `[Mon 00:00, next Mon 00:00)`.
     fn four_weeks() -> Vec<SlotWindow> {
         (0..4)
             .map(|i| {
-                let start = day("2026-01-05") + chrono::Duration::weeks(i);
-                SlotWindow { index: i, scope_id: 100 + i, start, end: start + chrono::Duration::days(6) }
+                let start = at("2026-01-05T00:00:00") + chrono::Duration::weeks(i);
+                SlotWindow {
+                    index: i,
+                    scope_id: 100 + i,
+                    start,
+                    end: start + chrono::Duration::weeks(1),
+                }
             })
             .collect()
     }
@@ -234,9 +243,9 @@ mod tests {
     #[test]
     fn destructive_lapses_passed_unfinished_and_keeps_the_current_active() {
         let slots = four_weeks();
-        let resolved = HashMap::from([(0, day("2026-01-06"))]); // W0 done, W1/W2 skipped
-        let today = day("2026-01-22"); // inside W2 (2026-01-19..25)
-        let result = classify_iterations(&slots[..3], Consumption::Destructive, &resolved, today);
+        let resolved = HashMap::from([(0, at("2026-01-06T00:00:00"))]); // W0 done, W1/W2 skipped
+        let now = at("2026-01-22T00:00:00"); // inside W2 (2026-01-19..26)
+        let result = classify_iterations(&slots[..3], Consumption::Destructive, &resolved, now);
         assert_eq!(
             statuses(&result),
             vec![
@@ -250,9 +259,9 @@ mod tests {
     #[test]
     fn overlapping_keeps_every_unfinished_iteration_active() {
         let slots = four_weeks();
-        let resolved = HashMap::from([(1, day("2026-01-14"))]);
-        let today = day("2026-01-22");
-        let result = classify_iterations(&slots[..3], Consumption::Overlapping, &resolved, today);
+        let resolved = HashMap::from([(1, at("2026-01-14T00:00:00"))]);
+        let now = at("2026-01-22T00:00:00");
+        let result = classify_iterations(&slots[..3], Consumption::Overlapping, &resolved, now);
         assert_eq!(
             statuses(&result),
             vec![
@@ -266,9 +275,9 @@ mod tests {
     #[test]
     fn blocking_next_shows_one_open_iteration_after_the_done_prefix() {
         let slots = four_weeks();
-        let resolved = HashMap::from([(0, day("2026-01-06"))]); // only W0 done
-        let today = day("2026-01-22");
-        let result = classify_iterations(&slots, Consumption::Blocking(Catchup::Next), &resolved, today);
+        let resolved = HashMap::from([(0, at("2026-01-06T00:00:00"))]); // only W0 done
+        let now = at("2026-01-22T00:00:00");
+        let result = classify_iterations(&slots, Consumption::Blocking(Catchup::Next), &resolved, now);
         // W1 is the single open iteration; W2/W3 are withheld (ellipsis).
         assert_eq!(statuses(&result), vec![(0, IterationStatus::Done), (1, IterationStatus::Active)]);
     }
@@ -276,11 +285,11 @@ mod tests {
     #[test]
     fn blocking_latest_marks_skipped_iterations_missed_on_a_late_completion() {
         let slots = four_weeks();
-        // W0 completed late — during W2's window (2026-01-19..25).
-        let resolved = HashMap::from([(0, day("2026-01-20"))]);
-        let today = day("2026-01-22");
-        let result = classify_iterations(&slots, Consumption::Blocking(Catchup::Latest), &resolved, today);
-        // W0 done; jump to W2 (contains the completion day) → W1 missed; W2 now open.
+        // W0 completed late — during W2's window (2026-01-19..26).
+        let resolved = HashMap::from([(0, at("2026-01-20T00:00:00"))]);
+        let now = at("2026-01-22T00:00:00");
+        let result = classify_iterations(&slots, Consumption::Blocking(Catchup::Latest), &resolved, now);
+        // W0 done; jump to W2 (contains the completion instant) → W1 missed; W2 now open.
         assert_eq!(
             statuses(&result),
             vec![
@@ -292,11 +301,12 @@ mod tests {
     }
 
     #[test]
-    fn blocking_all_pending_releases_the_backlog_up_to_the_completion_day() {
+    fn blocking_all_pending_releases_the_backlog_up_to_the_completion_instant() {
         let slots = four_weeks();
-        let resolved = HashMap::from([(0, day("2026-01-20"))]); // W0 completed during W2
-        let today = day("2026-01-22");
-        let result = classify_iterations(&slots, Consumption::Blocking(Catchup::AllPending), &resolved, today);
+        let resolved = HashMap::from([(0, at("2026-01-20T00:00:00"))]); // W0 completed during W2
+        let now = at("2026-01-22T00:00:00");
+        let result =
+            classify_iterations(&slots, Consumption::Blocking(Catchup::AllPending), &resolved, now);
         // Backlog W1, W2 released as pending (Active) rather than missed; W3 stays withheld.
         assert_eq!(
             statuses(&result),
@@ -312,9 +322,9 @@ mod tests {
     fn blocking_holds_at_the_first_iteration_until_it_is_done() {
         let slots = four_weeks();
         let resolved = HashMap::new();
-        let today = day("2026-01-22");
+        let now = at("2026-01-22T00:00:00");
         for catchup in [Catchup::Next, Catchup::Latest, Catchup::AllPending] {
-            let result = classify_iterations(&slots, Consumption::Blocking(catchup), &resolved, today);
+            let result = classify_iterations(&slots, Consumption::Blocking(catchup), &resolved, now);
             assert_eq!(statuses(&result), vec![(0, IterationStatus::Active)], "catchup {catchup:?}");
         }
     }

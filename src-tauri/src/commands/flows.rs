@@ -232,10 +232,10 @@ pub async fn delete_flow_recurrence(pool: State<'_, DatabasePool>, flow_id: i64)
 pub async fn generate_habit_iterations(
     pool: State<'_, DatabasePool>,
     flow_id: i64,
-    today: chrono::NaiveDate,
+    now: chrono::NaiveDateTime,
 ) -> Result<Vec<HabitIteration>, String> {
     FlowRepository::new(&pool)
-        .generate_habit_iterations(FlowId(flow_id), today)
+        .generate_habit_iterations(FlowId(flow_id), now)
         .await
         .map_err(|error| error.to_string())
 }

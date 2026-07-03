@@ -7,7 +7,7 @@ pub mod model;
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use chrono::{Duration, Months, NaiveDate};
+use chrono::{Duration, Months, NaiveDate, NaiveDateTime, NaiveTime};
 
 use crate::database::DatabasePool;
 use crate::scopes::model::{PartOfDay, Scope, ScopeId, ScopeKind};
@@ -743,13 +743,13 @@ impl<'a> FlowRepository<'a> {
         Ok(())
     }
 
-    /// Derives a Habit's iterations on `today`: the ordered schedule of started iterations, each
-    /// classified per the Consumption behavior (`flows::habits`). Future iterations are omitted (an
-    /// ellipsis stands in for them). Errors if the flow is not a Habit.
+    /// Derives a Habit's iterations at `now` (local wall-clock): the ordered schedule of started
+    /// iterations, each classified per the Consumption behavior (`flows::habits`). Future iterations
+    /// are omitted (an ellipsis stands in for them). Errors if the flow is not a Habit.
     pub async fn generate_habit_iterations(
         &self,
         flow_id: FlowId,
-        today: NaiveDate,
+        now: NaiveDateTime,
     ) -> Result<Vec<HabitIteration>, FlowError> {
         let recurrence = self
             .get_recurrence(flow_id)
@@ -771,10 +771,10 @@ impl<'a> FlowRepository<'a> {
         let gap = recurrence.gap_n.zip(recurrence.gap_kind);
 
         let slots = self
-            .habit_slots(&scopes, start_date, (flow_n, &flow_kind), gap.as_ref(), end_date, today)
+            .habit_slots(&scopes, start_date, (flow_n, &flow_kind), gap.as_ref(), end_date, now)
             .await?;
         let resolved = self.iteration_resolutions(flow_id, &slots).await?;
-        Ok(classify_iterations(&slots, consumption, &resolved, today))
+        Ok(classify_iterations(&slots, consumption, &resolved, now))
     }
 
     /// Builds the iteration windows from the Repetition Start up to (and including the one covering)
@@ -788,7 +788,7 @@ impl<'a> FlowRepository<'a> {
         window: (i64, &str),
         gap: Option<&(i64, String)>,
         end_date: Option<NaiveDate>,
-        today: NaiveDate,
+        now: NaiveDateTime,
     ) -> Result<Vec<SlotWindow>, FlowError> {
         let (flow_n, flow_kind) = window;
         let kind = flow_scope_kind(flow_kind)?;
@@ -798,13 +798,21 @@ impl<'a> FlowRepository<'a> {
         loop {
             let scope = scopes.get_or_create(kind, anchor).await?;
             let window_start = scope_start_date(&scope)?;
-            if window_start > today || end_date.is_some_and(|end| window_start > end) {
+            // A window counts as started once its first instant is at or before `now`.
+            if window_start.and_time(NaiveTime::MIN) > now
+                || end_date.is_some_and(|end| window_start > end)
+            {
                 break;
             }
             let next_contiguous = advance(window_start, flow_n, flow_kind)
                 .ok_or_else(|| FlowError::Invalid("iteration exceeds the calendar".to_string()))?;
-            let window_end = next_contiguous - Duration::days(1);
-            slots.push(SlotWindow { index, scope_id: scope.id, start: window_start, end: window_end });
+            // Half-open `[start 00:00, next-contiguous 00:00)`.
+            slots.push(SlotWindow {
+                index,
+                scope_id: scope.id,
+                start: window_start.and_time(NaiveTime::MIN),
+                end: next_contiguous.and_time(NaiveTime::MIN),
+            });
 
             anchor = match gap {
                 Some((n, gap_kind)) => advance(next_contiguous, *n, gap_kind),
@@ -822,7 +830,7 @@ impl<'a> FlowRepository<'a> {
         &self,
         flow_id: FlowId,
         slots: &[SlotWindow],
-    ) -> Result<HashMap<i64, NaiveDate>, FlowError> {
+    ) -> Result<HashMap<i64, NaiveDateTime>, FlowError> {
         let item_count = self.list_goals(flow_id).await?.len() + self.list_tasks(flow_id).await?.len();
         if item_count == 0 {
             return Ok(HashMap::new()); // No instances → no iteration is ever resolved.
@@ -843,11 +851,13 @@ impl<'a> FlowRepository<'a> {
         for slot in slots {
             if let Some((done, last)) = by_scope.get(&slot.scope_id) {
                 if *done as usize == item_count {
-                    let day = last
+                    // `resolved_at` is epoch-ms; treated as a UTC-naive instant for classification.
+                    // Sub-day-precision timezone reconciliation is deferred to the 8.4 write path.
+                    let instant = last
                         .and_then(chrono::DateTime::from_timestamp_millis)
-                        .map(|dt| dt.date_naive())
+                        .map(|dt| dt.naive_utc())
                         .unwrap_or(slot.end);
-                    resolved.insert(slot.index, day);
+                    resolved.insert(slot.index, instant);
                 }
             }
         }

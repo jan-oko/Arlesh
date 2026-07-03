@@ -618,9 +618,11 @@ async fn generating_a_habit_derives_and_classifies_its_iterations() {
     .bind(flow.id).bind(item.id).bind(start).bind(1_767_600_000_000_i64)
     .execute(&pool).await.unwrap();
 
-    // today falls in W2 (2026-01-19..25): W0 done, W1 lapsed (passed unfinished), W2 active.
-    let today = chrono::NaiveDate::from_ymd_opt(2026, 1, 22).unwrap();
-    let iterations = repo.generate_habit_iterations(FlowId(flow.id), today).await.unwrap();
+    // now falls in W2 (2026-01-18..25): W0 done, W1 lapsed (passed unfinished), W2 active.
+    let now = chrono::NaiveDate::from_ymd_opt(2026, 1, 22)
+        .unwrap()
+        .and_time(chrono::NaiveTime::MIN);
+    let iterations = repo.generate_habit_iterations(FlowId(flow.id), now).await.unwrap();
 
     assert_eq!(iterations.len(), 3);
     assert_eq!(iterations[0].index, 0);
@@ -635,8 +637,10 @@ async fn generating_iterations_requires_a_habit() {
     let pool = helpers::test_pool().await;
     let repo = FlowRepository::new(&pool);
     let flow = repo.create(create_req("Plain")).await.unwrap(); // no recurrence
-    let today = chrono::NaiveDate::from_ymd_opt(2026, 1, 22).unwrap();
-    assert!(repo.generate_habit_iterations(FlowId(flow.id), today).await.is_err());
+    let now = chrono::NaiveDate::from_ymd_opt(2026, 1, 22)
+        .unwrap()
+        .and_time(chrono::NaiveTime::MIN);
+    assert!(repo.generate_habit_iterations(FlowId(flow.id), now).await.is_err());
 }
 
 #[tokio::test]
