@@ -36,11 +36,11 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 **Recurrence** — A Habit's pattern, composed of **Repetition** (a Start anchor, an optional Gap of N of a scope kind ≥ the habit scope, and an optional end) and **Consumption** (see below). Hebrew: TBD.
 
-**Consumption** — A Habit's per-habit configuration for how unfinished instances are treated as iterations pass. A configurable tree: (1) **Destructive vs Accumulating** — are unfinished instances archived when their iteration passes, or do they survive? (2) if Accumulating, **Overlapping vs Blocking** — are new iterations generated while unresolved instances exist, or withheld? (3) if Blocking, **Catch-up policy** when the open iteration is completed — generate *all pending* missed iterations in order, only the *next* iteration (advance by one), or jump to the *latest* (current) iteration while recording the skipped intermediate iterations as missed tombstones (for streak/history). Hebrew: TBD.
+**Consumption** — A Habit's per-habit configuration for how unfinished instances are treated as iterations pass; the recurring form of a scoped item's **On-exit behavior**. A configurable tree: (1) **Destructive vs Accumulating** — do unfinished instances **lapse** (Archive-on-exit) when their iteration passes, or do they survive (Keep)? (2) if Accumulating, **Overlapping vs Blocking** — are new iterations generated while unresolved instances exist, or withheld? (3) if Blocking, **Catch-up policy** when the open iteration is completed — generate *all pending* missed iterations in order, only the *next* iteration (advance by one), or jump to the *latest* (current) iteration while recording the skipped intermediate iterations as missed tombstones (for streak/history). Hebrew: TBD.
 
 **Iteration** — One concrete occurrence window of a Habit, anchored from the Repetition Start plus accumulated flow-scope-and-gap steps (each iteration occupies one flow window; the Gap is the idle span between one window's end and the next's start, snapped to the canonical scope). Identified by its anchor scope (the window's first period). Hebrew: TBD.
 
-**Modification** — A persisted divergence of a virtual Habit instance from what the template would render, keyed by (flow item, iteration scope). Carries an overridden status, title, or blocked reason; a **tombstone** (deleted by the user, archived when its iteration passed unfinished, or missed when catch-up skipped it); and per-iteration dependency edges added or suppressed. An instance with no Modification renders purely from the template. Hebrew: TBD.
+**Modification** — A persisted divergence of a virtual Habit instance from what the template would render, keyed by (flow item, iteration scope). Carries an overridden status, title, or blocked reason; a **tombstone** (deleted by the user, lapsed when its iteration passed unfinished, or missed when catch-up skipped it); and per-iteration dependency edges added or suppressed. An instance with no Modification renders purely from the template. Hebrew: TBD.
 
 **Blocker** — A condition that prevents a Task from being acted on. Either an explicit string reason or a virtual block from an unmet dependency. Hebrew: _חסם_.
 
@@ -76,7 +76,11 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 **Active** — A Scope is active when it contains the current datetime. A Task/Goal is active when its Time Scope is active; Unscoped items are always active. Hebrew: TBD.
 
-**Archived (by scope)** — A Task/Goal whose Time Scope has fully passed. Hebrew: TBD.
+**On-exit behavior** — Set when a Task/Goal is given an *explicit* Time Scope (and inherited with the window otherwise): what happens once the item's window passes unfinished — **Archive** (the item **Lapses**, dropping from the active view) or **Keep** (the item stays, flagged **Overdue**). The single-occurrence form of a Habit's Consumption root (Archive = Destructive, Keep = Accumulating). Hebrew: TBD.
+
+**Overdue** — A derived state: a *Keep*-on-exit Task/Goal whose Time Scope has fully passed while still unfinished. Computed on read from (scope end, now, status); never stored. Hebrew: TBD.
+
+**Lapsed** — A derived state: an *Archive*-on-exit Task/Goal — or a Destructive Habit iteration — whose window has fully passed while still unfinished. Computed on read; never stored. Distinct from the deliberate goal **Archived** status (user-declared "no longer relevant"). Hebrew: TBD.
 
 **Person** — A knowledge-base entity representing a person. Hebrew: _אדם_ (singular), _אנשים_ (plural).
 

@@ -617,7 +617,7 @@ async fn generating_a_habit_derives_and_classifies_its_iterations() {
     .bind(flow.id).bind(item.id).bind(start).bind(1_767_600_000_000_i64)
     .execute(&pool).await.unwrap();
 
-    // today falls in W2 (2026-01-19..25): W0 done, W1 archived (passed unfinished), W2 active.
+    // today falls in W2 (2026-01-19..25): W0 done, W1 lapsed (passed unfinished), W2 active.
     let today = chrono::NaiveDate::from_ymd_opt(2026, 1, 22).unwrap();
     let iterations = repo.generate_habit_iterations(FlowId(flow.id), today).await.unwrap();
 
@@ -626,7 +626,7 @@ async fn generating_a_habit_derives_and_classifies_its_iterations() {
     assert_eq!(iterations[0].anchor_scope_id, start);
     assert_eq!(iterations[0].anchor_date, "2026-01-04"); // weeks snap to Sunday-start
     let kinds: Vec<_> = iterations.iter().map(|it| format!("{:?}", it.status)).collect();
-    assert_eq!(kinds, vec!["Done", "Archived", "Active"]);
+    assert_eq!(kinds, vec!["Done", "Lapsed", "Active"]);
 }
 
 #[tokio::test]

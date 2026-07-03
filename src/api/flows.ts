@@ -159,7 +159,7 @@ export async function deleteFlowRecurrence(flowId: number): Promise<void> {
 
 // --- Habit instance generation (Phase 8.2) ---
 
-export type IterationStatus = "active" | "done" | "archived" | "missed";
+export type IterationStatus = "active" | "done" | "lapsed" | "missed";
 
 /** A derived Habit iteration on a reference day (nothing is persisted per iteration). */
 export interface HabitIteration {

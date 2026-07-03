@@ -299,7 +299,7 @@ pub struct FlowDependency {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ConsumptionKind {
-    /// Unfinished instances are archived once their iteration passes.
+    /// Unfinished instances lapse (Archive-on-exit) once their iteration passes.
     Destructive,
     /// Unfinished instances survive past their iteration.
     Accumulating,
@@ -409,8 +409,9 @@ pub enum IterationStatus {
     Active,
     /// Every instance in the iteration is complete.
     Done,
-    /// Passed unfinished under a Destructive habit.
-    Archived,
+    /// Passed unfinished under a Destructive (Archive-on-exit) habit. Distinct from the deliberate
+    /// goal `Archived` status — this is the derived "scope passed unfinished" state.
+    Lapsed,
     /// Skipped by a Blocking `latest` catch-up.
     Missed,
 }

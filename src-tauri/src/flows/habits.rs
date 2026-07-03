@@ -2,7 +2,7 @@
 //!
 //! Virtual Habit instances are **derived**, never persisted per iteration: given the recurrence,
 //! the reference day, and which iterations have been completed (the only persisted facts), this
-//! module classifies the iteration schedule into `Active` / `Done` / `Archived` / `Missed`. It is
+//! module classifies the iteration schedule into `Active` / `Done` / `Lapsed` / `Missed`. It is
 //! deliberately free of the database and the calendar — the repository precomputes the concrete
 //! iteration windows (`SlotWindow`s) and the completion map, then calls [`classify_iterations`].
 //!
@@ -32,7 +32,7 @@ pub struct SlotWindow {
 /// Parsed Consumption behavior — how a Habit treats unfinished instances as iterations pass.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Consumption {
-    /// Unfinished iterations are archived once their window ends.
+    /// Unfinished iterations lapse (Archive-on-exit) once their window ends.
     Destructive,
     /// Unfinished iterations survive and pile up; every started iteration is Active or Done.
     Overlapping,
@@ -83,7 +83,7 @@ pub fn classify_iterations(
     }
 }
 
-/// Destructive: a passed unfinished iteration is Archived; only the current window can be Active.
+/// Destructive: a passed unfinished iteration is Lapsed; only the current window can be Active.
 fn classify_destructive(
     slots: &[SlotWindow],
     resolved: &HashMap<i64, NaiveDate>,
@@ -95,7 +95,7 @@ fn classify_destructive(
             let status = if resolved.contains_key(&slot.index) {
                 IterationStatus::Done
             } else if slot.end < today {
-                IterationStatus::Archived
+                IterationStatus::Lapsed
             } else {
                 IterationStatus::Active
             };
@@ -232,7 +232,7 @@ mod tests {
     }
 
     #[test]
-    fn destructive_archives_passed_unfinished_and_keeps_the_current_active() {
+    fn destructive_lapses_passed_unfinished_and_keeps_the_current_active() {
         let slots = four_weeks();
         let resolved = HashMap::from([(0, day("2026-01-06"))]); // W0 done, W1/W2 skipped
         let today = day("2026-01-22"); // inside W2 (2026-01-19..25)
@@ -241,7 +241,7 @@ mod tests {
             statuses(&result),
             vec![
                 (0, IterationStatus::Done),
-                (1, IterationStatus::Archived),
+                (1, IterationStatus::Lapsed),
                 (2, IterationStatus::Active),
             ]
         );
