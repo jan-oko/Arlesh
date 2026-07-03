@@ -1,6 +1,7 @@
 //! Flows: templates for Goal/Task subtrees, materialized on demand.
 
 pub mod error;
+pub mod habits;
 pub mod model;
 
 use std::collections::HashMap;
@@ -9,9 +10,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use chrono::{Duration, Months, NaiveDate};
 
 use crate::database::DatabasePool;
-use crate::scopes::model::{PartOfDay, Scope, ScopeKind};
+use crate::scopes::model::{PartOfDay, Scope, ScopeId, ScopeKind};
 use crate::scopes::resolve::interval_contains;
 use crate::scopes::ScopeRepository;
+use habits::{classify_iterations, Catchup, Consumption, SlotWindow};
 use crate::tasks::model::{
     CreateGoalRequest, CreateTaskRequest, Dependency, DurationSpec, TaskId, TimeScope,
 };
@@ -20,7 +22,7 @@ use error::FlowError;
 use model::{
     BlockingMode, ConsumptionKind, CreateFlowItemRequest, CreateFlowRequest, Flow, FlowCycleInput,
     FlowDependency, FlowGoal, FlowId, FlowItemCycle, FlowItemType, FlowOrigin, FlowRecurrence,
-    FlowTask, MaterializedFlow, SetRecurrenceRequest, StartFlowRequest, TargetRef,
+    FlowTask, HabitIteration, MaterializedFlow, SetRecurrenceRequest, StartFlowRequest, TargetRef,
     UpdateFlowItemRequest, UpdateFlowRequest,
 };
 
@@ -56,6 +58,35 @@ fn min_period_days(kind: &str) -> Result<i64, FlowError> {
         "season" => 89,
         other => return Err(FlowError::Invalid(format!("unsupported flow kind {other}"))),
     })
+}
+
+/// Parses the start-date string of a scope row into a `NaiveDate`.
+fn scope_start_date(scope: &Scope) -> Result<NaiveDate, FlowError> {
+    NaiveDate::parse_from_str(&scope.start_date, "%Y-%m-%d")
+        .map_err(|e| FlowError::Invalid(e.to_string()))
+}
+
+/// Reduces a stored Recurrence to the pure `Consumption` behavior its Consumption tree encodes.
+fn parse_consumption(recurrence: &FlowRecurrence) -> Result<Consumption, FlowError> {
+    match recurrence.consumption_kind.as_str() {
+        "destructive" => Ok(Consumption::Destructive),
+        "accumulating" => match recurrence.blocking_mode.as_deref() {
+            Some("overlapping") => Ok(Consumption::Overlapping),
+            Some("blocking") => {
+                let catchup = match recurrence.catchup_policy.as_deref() {
+                    Some("all_pending") => Catchup::AllPending,
+                    Some("next") => Catchup::Next,
+                    Some("latest") => Catchup::Latest,
+                    other => {
+                        return Err(FlowError::Invalid(format!("bad catch-up policy {other:?}")))
+                    }
+                };
+                Ok(Consumption::Blocking(catchup))
+            }
+            other => Err(FlowError::Invalid(format!("bad blocking mode {other:?}"))),
+        },
+        other => Err(FlowError::Invalid(format!("bad consumption kind {other}"))),
+    }
 }
 
 /// Coarse-to-fine ordinal for a scope kind (`day` < `week` < `month` < `season`), used to check a
@@ -710,6 +741,117 @@ impl<'a> FlowRepository<'a> {
             .execute(self.pool)
             .await?;
         Ok(())
+    }
+
+    /// Derives a Habit's iterations on `today`: the ordered schedule of started iterations, each
+    /// classified per the Consumption behavior (`flows::habits`). Future iterations are omitted (an
+    /// ellipsis stands in for them). Errors if the flow is not a Habit.
+    pub async fn generate_habit_iterations(
+        &self,
+        flow_id: FlowId,
+        today: NaiveDate,
+    ) -> Result<Vec<HabitIteration>, FlowError> {
+        let recurrence = self
+            .get_recurrence(flow_id)
+            .await?
+            .ok_or_else(|| FlowError::Invalid("flow is not a habit".to_string()))?;
+        let flow = self.get(flow_id).await?;
+        let (flow_n, flow_kind) = match (flow.flow_duration_n, flow.flow_duration_kind) {
+            (Some(n), Some(kind)) => (n, kind),
+            _ => return Err(FlowError::Invalid("a habit requires a scoped flow".to_string())),
+        };
+        let consumption = parse_consumption(&recurrence)?;
+
+        let scopes = ScopeRepository::new(self.pool);
+        let start_date = scope_start_date(&scopes.get(ScopeId(recurrence.start_scope_id)).await?)?;
+        let end_date = match recurrence.end_scope_id {
+            Some(id) => Some(scope_start_date(&scopes.get(ScopeId(id)).await?)?),
+            None => None,
+        };
+        let gap = recurrence.gap_n.zip(recurrence.gap_kind);
+
+        let slots = self
+            .habit_slots(&scopes, start_date, (flow_n, &flow_kind), gap.as_ref(), end_date, today)
+            .await?;
+        let resolved = self.iteration_resolutions(flow_id, &slots).await?;
+        Ok(classify_iterations(&slots, consumption, &resolved, today))
+    }
+
+    /// Builds the iteration windows from the Repetition Start up to (and including the one covering)
+    /// `today`, bounded by any end. Each window spans `flow_n` flow-kind periods; the next window's
+    /// anchor is the contiguous next start advanced by the Gap. Anchors are snapped to canonical
+    /// scopes via `get_or_create`.
+    async fn habit_slots(
+        &self,
+        scopes: &ScopeRepository<'_>,
+        start_date: NaiveDate,
+        window: (i64, &str),
+        gap: Option<&(i64, String)>,
+        end_date: Option<NaiveDate>,
+        today: NaiveDate,
+    ) -> Result<Vec<SlotWindow>, FlowError> {
+        let (flow_n, flow_kind) = window;
+        let kind = flow_scope_kind(flow_kind)?;
+        let mut slots = Vec::new();
+        let mut anchor = start_date;
+        let mut index = 0i64;
+        loop {
+            let scope = scopes.get_or_create(kind, anchor).await?;
+            let window_start = scope_start_date(&scope)?;
+            if window_start > today || end_date.is_some_and(|end| window_start > end) {
+                break;
+            }
+            let next_contiguous = advance(window_start, flow_n, flow_kind)
+                .ok_or_else(|| FlowError::Invalid("iteration exceeds the calendar".to_string()))?;
+            let window_end = next_contiguous - Duration::days(1);
+            slots.push(SlotWindow { index, scope_id: scope.id, start: window_start, end: window_end });
+
+            anchor = match gap {
+                Some((n, gap_kind)) => advance(next_contiguous, *n, gap_kind),
+                None => Some(next_contiguous),
+            }
+            .ok_or_else(|| FlowError::Invalid("iteration exceeds the calendar".to_string()))?;
+            index += 1;
+        }
+        Ok(slots)
+    }
+
+    /// Maps each slot index to the day its iteration was completed — present only when every flow
+    /// item has a `done` Modification (not tombstoned) for that iteration scope.
+    async fn iteration_resolutions(
+        &self,
+        flow_id: FlowId,
+        slots: &[SlotWindow],
+    ) -> Result<HashMap<i64, NaiveDate>, FlowError> {
+        let item_count = self.list_goals(flow_id).await?.len() + self.list_tasks(flow_id).await?.len();
+        if item_count == 0 {
+            return Ok(HashMap::new()); // No instances → no iteration is ever resolved.
+        }
+        let rows: Vec<(i64, i64, Option<i64>)> = sqlx::query_as(
+            "SELECT iteration_scope_id, COUNT(*), MAX(resolved_at)
+             FROM habit_instance_modifications
+             WHERE flow_id = ? AND status = 'done' AND tombstone_kind IS NULL
+             GROUP BY iteration_scope_id",
+        )
+        .bind(flow_id.0)
+        .fetch_all(self.pool)
+        .await?;
+        let by_scope: HashMap<i64, (i64, Option<i64>)> =
+            rows.into_iter().map(|(scope, done, last)| (scope, (done, last))).collect();
+
+        let mut resolved = HashMap::new();
+        for slot in slots {
+            if let Some((done, last)) = by_scope.get(&slot.scope_id) {
+                if *done as usize == item_count {
+                    let day = last
+                        .and_then(chrono::DateTime::from_timestamp_millis)
+                        .map(|dt| dt.date_naive())
+                        .unwrap_or(slot.end);
+                    resolved.insert(slot.index, day);
+                }
+            }
+        }
+        Ok(resolved)
     }
 
     /// Resolves the concrete flow window `[anchor, anchor + (n-1) periods]` of `kind`, returning

@@ -400,6 +400,34 @@ pub struct SetRecurrenceRequest {
     pub catchup_policy: Option<CatchupPolicy>,
 }
 
+/// The derived state of a Habit iteration on a given day (nothing is persisted — see the pure
+/// classifier in `flows::habits`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IterationStatus {
+    /// Open and awaiting completion.
+    Active,
+    /// Every instance in the iteration is complete.
+    Done,
+    /// Passed unfinished under a Destructive habit.
+    Archived,
+    /// Skipped by a Blocking `latest` catch-up.
+    Missed,
+}
+
+/// One derived Habit iteration: its ordinal, the scope anchoring its window, and current state.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HabitIteration {
+    /// Zero-based ordinal from the Repetition Start.
+    pub index: i64,
+    /// The scope anchoring the iteration window's first period (also the instance overlay key).
+    pub anchor_scope_id: i64,
+    /// The window's first day, ISO `YYYY-MM-DD` (drives the `{flow title} {start scope}` title).
+    pub anchor_date: String,
+    /// Derived state on the reference day.
+    pub status: IterationStatus,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

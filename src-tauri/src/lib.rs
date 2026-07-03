@@ -135,6 +135,7 @@ pub fn run() {
             commands::flows::set_flow_recurrence,
             commands::flows::get_flow_recurrence,
             commands::flows::delete_flow_recurrence,
+            commands::flows::generate_habit_iterations,
             commands::flows::set_flow_item_cycles,
             commands::flows::list_all_flow_cycles,
             commands::flows::add_flow_dependency,

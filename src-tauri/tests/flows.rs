@@ -585,6 +585,60 @@ async fn a_gap_finer_than_the_habit_scope_is_rejected() {
 }
 
 #[tokio::test]
+async fn generating_a_habit_derives_and_classifies_its_iterations() {
+    let pool = helpers::test_pool().await;
+    let repo = FlowRepository::new(&pool);
+    // A 1-week-window Destructive habit with a single item.
+    let flow = repo
+        .create(CreateFlowRequest {
+            title: "Exercise".into(),
+            instance_type: Some(InstanceType::Task),
+            parent_type: "aspect".into(),
+            parent_id: 1,
+            flow_duration_n: Some(1),
+            flow_duration_kind: Some("week".into()),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let item = repo
+        .create_task(CreateFlowItemRequest { flow_id: flow.id, title: "Workout".into(), parent_type: "flow".into(), parent_id: flow.id })
+        .await
+        .unwrap();
+    let start = week_scope_id(&pool, chrono::NaiveDate::from_ymd_opt(2026, 1, 5).unwrap()).await;
+    repo.set_recurrence(FlowId(flow.id), destructive_recurrence(start)).await.unwrap();
+
+    // Complete the first iteration (W0) — its single item marked done in the start-week scope.
+    sqlx::query(
+        "INSERT INTO habit_instance_modifications
+            (flow_id, item_type, item_id, iteration_scope_id, status, resolved_at)
+         VALUES (?, 'flow_task', ?, ?, 'done', ?)",
+    )
+    .bind(flow.id).bind(item.id).bind(start).bind(1_767_600_000_000_i64)
+    .execute(&pool).await.unwrap();
+
+    // today falls in W2 (2026-01-19..25): W0 done, W1 archived (passed unfinished), W2 active.
+    let today = chrono::NaiveDate::from_ymd_opt(2026, 1, 22).unwrap();
+    let iterations = repo.generate_habit_iterations(FlowId(flow.id), today).await.unwrap();
+
+    assert_eq!(iterations.len(), 3);
+    assert_eq!(iterations[0].index, 0);
+    assert_eq!(iterations[0].anchor_scope_id, start);
+    assert_eq!(iterations[0].anchor_date, "2026-01-04"); // weeks snap to Sunday-start
+    let kinds: Vec<_> = iterations.iter().map(|it| format!("{:?}", it.status)).collect();
+    assert_eq!(kinds, vec!["Done", "Archived", "Active"]);
+}
+
+#[tokio::test]
+async fn generating_iterations_requires_a_habit() {
+    let pool = helpers::test_pool().await;
+    let repo = FlowRepository::new(&pool);
+    let flow = repo.create(create_req("Plain")).await.unwrap(); // no recurrence
+    let today = chrono::NaiveDate::from_ymd_opt(2026, 1, 22).unwrap();
+    assert!(repo.generate_habit_iterations(FlowId(flow.id), today).await.is_err());
+}
+
+#[tokio::test]
 async fn an_inconsistent_consumption_tree_is_rejected() {
     let pool = helpers::test_pool().await;
     let repo = FlowRepository::new(&pool);

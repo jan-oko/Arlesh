@@ -157,6 +157,24 @@ export async function deleteFlowRecurrence(flowId: number): Promise<void> {
   return invoke<void>("delete_flow_recurrence", { flowId });
 }
 
+// --- Habit instance generation (Phase 8.2) ---
+
+export type IterationStatus = "active" | "done" | "archived" | "missed";
+
+/** A derived Habit iteration on a reference day (nothing is persisted per iteration). */
+export interface HabitIteration {
+  index: number;
+  anchor_scope_id: number;
+  /** The window's first day, ISO `YYYY-MM-DD`. */
+  anchor_date: string;
+  status: IterationStatus;
+}
+
+/** Derives a Habit's iterations on `today` (ISO `YYYY-MM-DD`), classified per its Consumption. */
+export async function generateHabitIterations(flowId: number, today: string): Promise<HabitIteration[]> {
+  return invoke<HabitIteration[]>("generate_habit_iterations", { flowId, today });
+}
+
 // --- Flow items (Phase 7.3) ---
 
 /** Which flow-item table a row lives in. */

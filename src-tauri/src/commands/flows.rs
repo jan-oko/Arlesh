@@ -8,7 +8,7 @@ use crate::{
         model::{
             CreateFlowItemRequest, CreateFlowRequest, Flow, FlowCycleInput, FlowDependency,
             FlowGoal, FlowId, FlowItemCycle, FlowItemType, FlowOrigin, FlowRecurrence, FlowTask,
-            MaterializedFlow, SetRecurrenceRequest, StartFlowRequest, TargetRef,
+            HabitIteration, MaterializedFlow, SetRecurrenceRequest, StartFlowRequest, TargetRef,
             UpdateFlowItemRequest, UpdateFlowRequest,
         },
         FlowRepository,
@@ -223,6 +223,19 @@ pub async fn get_flow_recurrence(
 pub async fn delete_flow_recurrence(pool: State<'_, DatabasePool>, flow_id: i64) -> Result<(), String> {
     FlowRepository::new(&pool)
         .delete_recurrence(FlowId(flow_id))
+        .await
+        .map_err(|error| error.to_string())
+}
+
+/// Derives a Habit's iterations on `today`, each classified per its Consumption behavior.
+#[tauri::command]
+pub async fn generate_habit_iterations(
+    pool: State<'_, DatabasePool>,
+    flow_id: i64,
+    today: chrono::NaiveDate,
+) -> Result<Vec<HabitIteration>, String> {
+    FlowRepository::new(&pool)
+        .generate_habit_iterations(FlowId(flow_id), today)
         .await
         .map_err(|error| error.to_string())
 }
