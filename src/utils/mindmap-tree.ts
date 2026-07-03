@@ -112,6 +112,15 @@ export function collectSubtreePostOrder(node: MindmapNode): Array<{ id: string; 
   return result;
 }
 
+/**
+ * Whether converting `node` to a Flow needs the destructive confirm prompt. Only a node with
+ * children loses anything meaningful (descendants are folded into flow items; the Keep-dependencies
+ * and Map-scopes toggles only apply to a subtree). A leaf converts straight away.
+ */
+export function conversionNeedsConfirm(node: MindmapNode): boolean {
+  return node.children.length > 0;
+}
+
 /** Returns all node IDs in the tree in depth-first pre-order. */
 export function collectAllNodeIds(root: MindmapNode): string[] {
   const result: string[] = [];

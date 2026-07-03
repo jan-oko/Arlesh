@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { connectedNodeIds, nearestInDirection, collectAllNodeIds, computeShiftSelectRange, parentAndChildrenIds, siblingIds, gatherSubtreeItems, collectSubtreePostOrder } from "./mindmap-tree";
+import { connectedNodeIds, nearestInDirection, collectAllNodeIds, computeShiftSelectRange, parentAndChildrenIds, siblingIds, gatherSubtreeItems, collectSubtreePostOrder, conversionNeedsConfirm } from "./mindmap-tree";
 import type { MindmapNode } from "./tree-layout";
 import type { Position } from "./tree-layout";
 
@@ -292,6 +292,16 @@ describe("gatherSubtreeItems", () => {
     const edges: Parameters<typeof gatherSubtreeItems>[8] = [];
     gatherSubtreeItems(root, layout, new Set(), 0, 0, 0, true, nodes, edges);
     expect(edges).toHaveLength(0);
+  });
+});
+
+describe("conversionNeedsConfirm", () => {
+  it("requires confirmation when the node has children (a subtree is lost)", () => {
+    expect(conversionNeedsConfirm(A)).toBe(true);
+  });
+
+  it("skips confirmation for a childless leaf (nothing to remap)", () => {
+    expect(conversionNeedsConfirm(A1)).toBe(false);
   });
 });
 

@@ -13,7 +13,7 @@ import { useMindmapStore, CLIPBOARD_OP } from "@/stores/use-mindmap-store";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { updateTask, reparentScopeConflicts } from "@/api/tasks";
 import { updateGoal } from "@/api/goals";
-import { findNode, findParent, collectTasksAndGoals, collectSubtreePostOrder, computeShiftSelectRange } from "@/utils/mindmap-tree";
+import { findNode, findParent, collectTasksAndGoals, collectSubtreePostOrder, computeShiftSelectRange, conversionNeedsConfirm } from "@/utils/mindmap-tree";
 import MindmapCanvas, { type MindmapCanvasHandle } from "@/components/MindmapCanvas/MindmapCanvas";
 import DragGhost from "@/components/DragGhost/DragGhost";
 import DragPlaceholder from "@/components/DragPlaceholder/DragPlaceholder";
@@ -150,7 +150,7 @@ export default function MindmapView() {
     (nodeId: string) => {
       const node = findNode(tree, nodeId);
       if (node === undefined) return;
-      if (node.children.length > 0) {
+      if (conversionNeedsConfirm(node)) {
         setConvertNode(node);
         return;
       }
