@@ -1641,12 +1641,38 @@ async fn derivation_tolerates_an_orphaned_item_whose_parent_was_deleted() {
         })
         .await
         .unwrap();
-    // Deleting the parent goal does not cascade — the child is left with a dangling parent ref.
-    goals.delete(parent.id.into()).await.unwrap();
+    // Orphan the child directly (a raw delete that skips the cascade), simulating stale data.
+    sqlx::query("DELETE FROM goals WHERE id = ?").bind(parent.id).execute(&pool).await.unwrap();
 
     // Deriving every item's lifecycle must NOT crash on the dangling ancestor (the render bug);
     // the orphan is simply unconstrained → Active.
     let now = NaiveDate::from_ymd_opt(2026, 2, 1).unwrap().and_hms_opt(12, 0, 0).unwrap();
     let states = derive_all_scope_lifecycles(&pool, now).await.unwrap();
     assert_eq!(task_state(&states, child.id), ScopeLifecycle::Active);
+}
+
+#[tokio::test]
+async fn deleting_a_goal_cascades_its_subtree() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let goals = GoalRepository::new(&pool);
+    let tasks = TaskRepository::new(&pool);
+    let parent = goals
+        .create(CreateGoalRequest { title: "Parent".into(), parent_type: "project".into(), parent_id: project_id, ..Default::default() })
+        .await
+        .unwrap();
+    let sub_goal = goals
+        .create(CreateGoalRequest { title: "Sub".into(), parent_type: "goal".into(), parent_id: parent.id, ..Default::default() })
+        .await
+        .unwrap();
+    let sub_task = tasks
+        .create(CreateTaskRequest { title: "Step".into(), parent_type: "goal".into(), parent_id: sub_goal.id, ..Default::default() })
+        .await
+        .unwrap();
+
+    goals.delete(parent.id.into()).await.unwrap();
+
+    // The whole subtree is gone — nothing is orphaned.
+    assert!(goals.get(sub_goal.id.into()).await.is_err());
+    assert!(tasks.get(sub_task.id.into()).await.is_err());
 }

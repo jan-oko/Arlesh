@@ -52,6 +52,67 @@ fn on_scope_exit_column(
     Some(requested.unwrap_or(OnScopeExit::Keep).as_str())
 }
 
+/// Deletes every info that hangs (directly or transitively) under `(parent_type, parent_id)`.
+/// Infos nest polymorphically with no foreign key, so the subtree is walked explicitly.
+async fn delete_infos_under(
+    pool: &DatabasePool,
+    parent_type: &str,
+    parent_id: i64,
+) -> Result<(), TaskError> {
+    let mut stack: Vec<i64> =
+        sqlx::query_scalar("SELECT id FROM infos WHERE parent_type = ? AND parent_id = ?")
+            .bind(parent_type)
+            .bind(parent_id)
+            .fetch_all(pool)
+            .await?;
+    let mut all = Vec::new();
+    while let Some(id) = stack.pop() {
+        all.push(id);
+        let children: Vec<i64> =
+            sqlx::query_scalar("SELECT id FROM infos WHERE parent_type = 'info' AND parent_id = ?")
+                .bind(id)
+                .fetch_all(pool)
+                .await?;
+        stack.extend(children);
+    }
+    for id in all {
+        sqlx::query("DELETE FROM infos WHERE id = ?").bind(id).execute(pool).await?;
+    }
+    Ok(())
+}
+
+/// Cascade-deletes a task/goal subtree: the node, every descendant task/goal, and all infos under
+/// them. Dependencies and tags fall away via their `ON DELETE CASCADE` foreign keys; the polymorphic
+/// parent links do not, so descendants are collected explicitly to avoid orphaning them.
+async fn delete_task_goal_subtree(
+    pool: &DatabasePool,
+    root_type: &str,
+    root_id: i64,
+) -> Result<(), TaskError> {
+    let mut stack = vec![(root_type.to_string(), root_id)];
+    let mut nodes = Vec::new();
+    while let Some((node_type, node_id)) = stack.pop() {
+        nodes.push((node_type.clone(), node_id));
+        for table in ["tasks", "goals"] {
+            let children: Vec<i64> = sqlx::query_scalar(&format!(
+                "SELECT id FROM {table} WHERE parent_type = ? AND parent_id = ?"
+            ))
+            .bind(&node_type)
+            .bind(node_id)
+            .fetch_all(pool)
+            .await?;
+            let child_kind = if table == "tasks" { "task" } else { "goal" };
+            stack.extend(children.into_iter().map(|id| (child_kind.to_string(), id)));
+        }
+    }
+    for (node_type, node_id) in &nodes {
+        delete_infos_under(pool, node_type, *node_id).await?;
+        let table = if node_type == "goal" { "goals" } else { "tasks" };
+        sqlx::query(&format!("DELETE FROM {table} WHERE id = ?")).bind(node_id).execute(pool).await?;
+    }
+    Ok(())
+}
+
 /// Reassembles a Time Scope value object from its flat row columns. A scope exists only when
 /// both boundary ids are present; the duration parameters are optional metadata on top.
 fn time_scope_from_row(
@@ -324,14 +385,10 @@ impl<'a> GoalRepository<'a> {
         self.get(id).await
     }
 
-    /// Deletes a goal by id.
+    /// Deletes a goal and its entire subtree (descendant tasks/goals and their infos).
     pub async fn delete(&self, id: GoalId) -> Result<(), TaskError> {
         self.get(id).await?;
-        sqlx::query("DELETE FROM goals WHERE id = ?")
-            .bind(id.0)
-            .execute(self.pool)
-            .await?;
-        Ok(())
+        delete_task_goal_subtree(self.pool, "goal", id.0).await
     }
 
     /// Returns true if the goal with `id` has status `achieved`.
@@ -593,14 +650,10 @@ impl<'a> TaskRepository<'a> {
         self.get(id).await
     }
 
-    /// Deletes a task by id.
+    /// Deletes a task and its entire subtree (descendant tasks/goals and their infos).
     pub async fn delete(&self, id: TaskId) -> Result<(), TaskError> {
         self.get(id).await?;
-        sqlx::query("DELETE FROM tasks WHERE id = ?")
-            .bind(id.0)
-            .execute(self.pool)
-            .await?;
-        Ok(())
+        delete_task_goal_subtree(self.pool, "task", id.0).await
     }
 
     /// Adds a dependency to a task, rejecting circular chains.
