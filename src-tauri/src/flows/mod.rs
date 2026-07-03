@@ -11,7 +11,7 @@ use chrono::{Duration, Months, NaiveDate, NaiveDateTime, NaiveTime};
 
 use crate::database::DatabasePool;
 use crate::scopes::model::{PartOfDay, Scope, ScopeId, ScopeKind};
-use crate::scopes::resolve::interval_contains;
+use crate::scopes::resolve::{interval_contains, scope_bounds};
 use crate::scopes::ScopeRepository;
 use habits::{classify_iterations, Catchup, Consumption, SlotWindow};
 use crate::tasks::model::{
@@ -61,6 +61,56 @@ fn min_period_days(kind: &str) -> Result<i64, FlowError> {
         "season" => 89,
         other => return Err(FlowError::Invalid(format!("unsupported flow kind {other}"))),
     })
+}
+
+/// A resolved Flow Window shape, ready to materialize per anchor: a coarse **Span** of canonical
+/// scopes, or a sub-day **Phase** (a part-of-day band, or an exact time-of-day range).
+enum WindowSpec {
+    /// Coarse: `n` periods of a canonical `kind`; windows tile contiguously (before the Gap).
+    Span {
+        /// Number of periods per window.
+        n: i64,
+        /// Canonical scope kind.
+        kind: ScopeKind,
+        /// The kind string (for `advance`).
+        kind_str: String,
+    },
+    /// Sub-day part-of-day band, at the same band each occurrence.
+    Part(PartOfDay),
+    /// Sub-day exact time-of-day range `[start, end)`, at the same clock times each occurrence.
+    Exact {
+        /// Window start time-of-day.
+        start: NaiveTime,
+        /// Window end time-of-day.
+        end: NaiveTime,
+    },
+}
+
+/// Parses an `HH:MM` time-of-day for an exact Phase window.
+fn parse_hhmm(value: Option<&str>) -> Result<NaiveTime, FlowError> {
+    let value =
+        value.ok_or_else(|| FlowError::Invalid("exact flow window needs a time range".to_string()))?;
+    NaiveTime::parse_from_str(value, "%H:%M").map_err(|e| FlowError::Invalid(e.to_string()))
+}
+
+/// Reads a flow's Flow Window into a [`WindowSpec`]. Phase kinds draw their band/time from the
+/// date-free descriptor columns; Span kinds use the `n`/canonical-kind Duration.
+fn window_spec(flow: &Flow, kind: &str, n: i64) -> Result<WindowSpec, FlowError> {
+    match kind {
+        "part" => {
+            let band = flow
+                .flow_window_part
+                .as_deref()
+                .and_then(PartOfDay::parse_db)
+                .ok_or_else(|| FlowError::Invalid("part flow window needs a valid band".to_string()))?;
+            Ok(WindowSpec::Part(band))
+        }
+        "exact" => Ok(WindowSpec::Exact {
+            start: parse_hhmm(flow.flow_window_time_start.as_deref())?,
+            end: parse_hhmm(flow.flow_window_time_end.as_deref())?,
+        }),
+        _ => Ok(WindowSpec::Span { n, kind: flow_scope_kind(kind)?, kind_str: kind.to_string() }),
+    }
 }
 
 /// Parses the start-date string of a scope row into a `NaiveDate`.
@@ -776,10 +826,13 @@ impl<'a> FlowRepository<'a> {
             .await?
             .ok_or_else(|| FlowError::Invalid("flow is not a habit".to_string()))?;
         let flow = self.get(flow_id).await?;
-        let (flow_n, flow_kind) = match (flow.flow_duration_n, flow.flow_duration_kind) {
-            (Some(n), Some(kind)) => (n, kind),
-            _ => return Err(FlowError::Invalid("a habit requires a scoped flow".to_string())),
-        };
+        let flow_kind = flow
+            .flow_duration_kind
+            .clone()
+            .ok_or_else(|| FlowError::Invalid("a habit requires a scoped flow".to_string()))?;
+        // `n` is only meaningful for a coarse Span; a Phase window carries its own band/time.
+        let flow_n = flow.flow_duration_n.unwrap_or(1);
+        let spec = window_spec(&flow, &flow_kind, flow_n)?;
         let consumption = parse_consumption(&recurrence)?;
 
         let scopes = ScopeRepository::new(self.pool);
@@ -791,54 +844,75 @@ impl<'a> FlowRepository<'a> {
         let gap = recurrence.gap_n.zip(recurrence.gap_kind);
 
         let slots = self
-            .habit_slots(&scopes, start_date, (flow_n, &flow_kind), gap.as_ref(), end_date, now)
+            .habit_slots(&scopes, start_date, spec, gap.as_ref(), end_date, now)
             .await?;
         let resolved = self.iteration_resolutions(flow_id, &slots).await?;
         Ok(classify_iterations(&slots, consumption, &resolved, now))
     }
 
     /// Builds the iteration windows from the Repetition Start up to (and including the one covering)
-    /// `today`, bounded by any end. Each window spans `flow_n` flow-kind periods; the next window's
-    /// anchor is the contiguous next start advanced by the Gap. Anchors are snapped to canonical
-    /// scopes via `get_or_create`.
+    /// `now`, bounded by any end. A **Span** window spans `n` canonical periods and tiles
+    /// contiguously; a **Phase** window is the fixed band / clock-range on its anchor day. Each next
+    /// anchor advances by the Gap — for a Phase window that Gap is the whole-day stride between
+    /// occurrence days (defaulting to daily), keeping the time-of-day fixed.
     async fn habit_slots(
         &self,
         scopes: &ScopeRepository<'_>,
         start_date: NaiveDate,
-        window: (i64, &str),
+        spec: WindowSpec,
         gap: Option<&(i64, String)>,
         end_date: Option<NaiveDate>,
         now: NaiveDateTime,
     ) -> Result<Vec<SlotWindow>, FlowError> {
-        let (flow_n, flow_kind) = window;
-        let kind = flow_scope_kind(flow_kind)?;
+        let overflow = || FlowError::Invalid("iteration exceeds the calendar".to_string());
         let mut slots = Vec::new();
         let mut anchor = start_date;
         let mut index = 0i64;
         loop {
-            let scope = scopes.get_or_create(kind, anchor).await?;
-            let window_start = scope_start_date(&scope)?;
+            // Materialize the window at this anchor and find where the next anchor tiles (Span only).
+            let (scope_id, start, end, span_next) = match &spec {
+                WindowSpec::Span { n, kind, kind_str } => {
+                    let scope = scopes.get_or_create(*kind, anchor).await?;
+                    let window_start = scope_start_date(&scope)?;
+                    let next_contiguous = advance(window_start, *n, kind_str).ok_or_else(overflow)?;
+                    (
+                        scope.id,
+                        window_start.and_time(NaiveTime::MIN),
+                        next_contiguous.and_time(NaiveTime::MIN),
+                        Some(next_contiguous),
+                    )
+                }
+                WindowSpec::Part(band) => {
+                    let scope = scopes.get_or_create_part(anchor, *band).await?;
+                    let (start, end) = scope_bounds(&scope)?;
+                    (scope.id, start, end, None)
+                }
+                WindowSpec::Exact { start: ts, end: te } => {
+                    let scope = scopes
+                        .get_or_create_exact(anchor.and_time(*ts), anchor.and_time(*te))
+                        .await?;
+                    let (start, end) = scope_bounds(&scope)?;
+                    (scope.id, start, end, None)
+                }
+            };
+
             // A window counts as started once its first instant is at or before `now`.
-            if window_start.and_time(NaiveTime::MIN) > now
-                || end_date.is_some_and(|end| window_start > end)
-            {
+            if start > now || end_date.is_some_and(|last| start.date() > last) {
                 break;
             }
-            let next_contiguous = advance(window_start, flow_n, flow_kind)
-                .ok_or_else(|| FlowError::Invalid("iteration exceeds the calendar".to_string()))?;
-            // Half-open `[start 00:00, next-contiguous 00:00)`.
-            slots.push(SlotWindow {
-                index,
-                scope_id: scope.id,
-                start: window_start.and_time(NaiveTime::MIN),
-                end: next_contiguous.and_time(NaiveTime::MIN),
-            });
+            slots.push(SlotWindow { index, scope_id, start, end });
 
-            anchor = match gap {
-                Some((n, gap_kind)) => advance(next_contiguous, *n, gap_kind),
-                None => Some(next_contiguous),
+            // Advance the anchor. A Span defaults to its contiguous next start; a Phase defaults to
+            // the next day. Either is then stepped by the Gap when one is set.
+            anchor = match (span_next, gap) {
+                (_, Some((n, gap_kind))) => {
+                    let base = span_next.unwrap_or(anchor);
+                    advance(base, *n, gap_kind)
+                }
+                (Some(next), None) => Some(next),
+                (None, None) => advance(anchor, 1, "day"),
             }
-            .ok_or_else(|| FlowError::Invalid("iteration exceeds the calendar".to_string()))?;
+            .ok_or_else(overflow)?;
             index += 1;
         }
         Ok(slots)
@@ -909,6 +983,34 @@ impl<'a> FlowRepository<'a> {
         ))
     }
 
+    /// Resolves a flow's Flow Window against a concrete `anchor` date into a Time Scope: a coarse
+    /// **Span** yields a `[start, end]` boundary of canonical scopes; a sub-day **Phase** yields a
+    /// single part/exact scope built on the anchor day. Returns the window and its first day.
+    async fn resolve_flow_window(
+        &self,
+        scopes: &ScopeRepository<'_>,
+        flow: &Flow,
+        anchor: NaiveDate,
+    ) -> Result<(TimeScope, NaiveDate), FlowError> {
+        let kind = flow
+            .flow_duration_kind
+            .as_deref()
+            .ok_or_else(|| FlowError::Invalid("flow has no window".to_string()))?;
+        let n = flow.flow_duration_n.unwrap_or(1);
+        match window_spec(flow, kind, n)? {
+            WindowSpec::Span { .. } => self.resolve_window(scopes, n, kind, anchor).await,
+            WindowSpec::Part(band) => {
+                let scope = scopes.get_or_create_part(anchor, band).await?;
+                Ok((TimeScope { start_id: scope.id, end_id: scope.id, duration: None }, anchor))
+            }
+            WindowSpec::Exact { start, end } => {
+                let scope =
+                    scopes.get_or_create_exact(anchor.and_time(start), anchor.and_time(end)).await?;
+                Ok((TimeScope { start_id: scope.id, end_id: scope.id, duration: None }, anchor))
+            }
+        }
+    }
+
     /// Filters `candidates` to the targets a flow of the given `duration` may materialise under.
     ///
     /// A target is valid when its effective Time Scope window (its own, or the nearest scoped
@@ -927,12 +1029,15 @@ impl<'a> FlowRepository<'a> {
             return Ok(candidates); // Unscoped flow: no window, no constraint.
         };
         let scopes = ScopeRepository::new(self.pool);
+        // A Phase window can't be resolved from `(n, kind)` alone (its band/time isn't carried here),
+        // so it always uses the coarse filter — where `min_period_days` is 0, i.e. every target
+        // passes and the exact check is deferred to `start`.
         let concrete = match anchor {
-            Some(date) => {
+            Some(date) if !matches!(kind.as_str(), "part" | "exact") => {
                 let (window, _) = self.resolve_window(&scopes, n, &kind, date).await?;
                 Some(time_scope_bounds(self.pool, &window).await?)
             }
-            None => None,
+            _ => None,
         };
         let min_days = n * min_period_days(&kind)?;
 
@@ -990,14 +1095,14 @@ impl<'a> FlowRepository<'a> {
         let goals = GoalRepository::new(self.pool);
         let tasks = TaskRepository::new(self.pool);
 
-        // Resolve the flow window (only when the flow is scoped).
+        // Resolve the flow window (only when the flow is scoped — Span or Phase).
         let (window, window_start): (Option<TimeScope>, Option<NaiveDate>) =
-            match (flow.flow_duration_n, flow.flow_duration_kind.as_deref()) {
-                (Some(n), Some(kind)) => {
-                    let (ts, start) = self.resolve_window(&scopes, n, kind, request.anchor_date).await?;
-                    (Some(ts), Some(start))
-                }
-                _ => (None, None),
+            if flow.flow_duration_kind.is_some() {
+                let (ts, start) =
+                    self.resolve_flow_window(&scopes, &flow, request.anchor_date).await?;
+                (Some(ts), Some(start))
+            } else {
+                (None, None)
             };
 
         // Materialise the root of the flow's Instance Type under the (kind-mapped) target.

@@ -728,3 +728,152 @@ async fn phase_exact_window_round_trips() {
         .await;
     assert!(bad.is_err(), "invalid part band should violate the CHECK");
 }
+
+// --- Sub-day (Phase) Habit generation (Feature B / S4) ---
+
+fn ymd(y: i32, m: u32, d: u32) -> chrono::NaiveDate {
+    chrono::NaiveDate::from_ymd_opt(y, m, d).unwrap()
+}
+
+#[tokio::test]
+async fn exact_phase_habit_recurs_at_the_fixed_time_each_day() {
+    let pool = helpers::test_pool().await;
+    let repo = FlowRepository::new(&pool);
+    let flow = repo
+        .create(CreateFlowRequest {
+            title: "Meds".into(),
+            instance_type: Some(InstanceType::Task),
+            parent_type: "aspect".into(),
+            parent_id: 1,
+            flow_duration_n: Some(1),
+            flow_duration_kind: Some("exact".into()),
+            flow_window_time_start: Some("10:00".into()),
+            flow_window_time_end: Some("12:00".into()),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    // The start scope pins only the first occurrence day; Gap of 1 day → daily at 10:00–12:00.
+    let day = ScopeRepository::new(&pool).get_or_create(ScopeKind::Day, ymd(2026, 1, 5)).await.unwrap();
+    repo.set_recurrence(
+        FlowId(flow.id),
+        SetRecurrenceRequest {
+            start_scope_id: day.id,
+            gap_n: Some(1),
+            gap_kind: Some("day".into()),
+            end_scope_id: None,
+            consumption_kind: ConsumptionKind::Destructive,
+            blocking_mode: None,
+            catchup_policy: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    // now = 2026-01-08 11:00, inside that day's 10:00–12:00 window.
+    let now = ymd(2026, 1, 8).and_hms_opt(11, 0, 0).unwrap();
+    let iters = repo.generate_habit_iterations(FlowId(flow.id), now).await.unwrap();
+    let dates: Vec<_> = iters.iter().map(|it| it.anchor_date.clone()).collect();
+    assert_eq!(dates, vec!["2026-01-05", "2026-01-06", "2026-01-07", "2026-01-08"]);
+    let kinds: Vec<_> = iters.iter().map(|it| format!("{:?}", it.status)).collect();
+    // The three passed days lapsed (Destructive, unfinished); today's window is still open.
+    assert_eq!(kinds, vec!["Lapsed", "Lapsed", "Lapsed", "Active"]);
+}
+
+#[tokio::test]
+async fn part_phase_habit_recurs_every_gap_days_in_the_same_band() {
+    let pool = helpers::test_pool().await;
+    let repo = FlowRepository::new(&pool);
+    let flow = repo
+        .create(CreateFlowRequest {
+            title: "Evening walk".into(),
+            instance_type: Some(InstanceType::Task),
+            parent_type: "aspect".into(),
+            parent_id: 1,
+            flow_duration_n: Some(1),
+            flow_duration_kind: Some("part".into()),
+            flow_window_part: Some("evening".into()),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    let day = ScopeRepository::new(&pool).get_or_create(ScopeKind::Day, ymd(2026, 1, 5)).await.unwrap();
+    // Gap of 2 days → every 2nd day's Evening: Jan 5, 7, 9, ...
+    repo.set_recurrence(
+        FlowId(flow.id),
+        SetRecurrenceRequest {
+            start_scope_id: day.id,
+            gap_n: Some(2),
+            gap_kind: Some("day".into()),
+            end_scope_id: None,
+            consumption_kind: ConsumptionKind::Destructive,
+            blocking_mode: None,
+            catchup_policy: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    // now = 2026-01-09 20:00, inside the Evening (18:00–22:00) of the third occurrence.
+    let now = ymd(2026, 1, 9).and_hms_opt(20, 0, 0).unwrap();
+    let iters = repo.generate_habit_iterations(FlowId(flow.id), now).await.unwrap();
+    let dates: Vec<_> = iters.iter().map(|it| it.anchor_date.clone()).collect();
+    assert_eq!(dates, vec!["2026-01-05", "2026-01-07", "2026-01-09"]);
+    let kinds: Vec<_> = iters.iter().map(|it| format!("{:?}", it.status)).collect();
+    assert_eq!(kinds, vec!["Lapsed", "Lapsed", "Active"]);
+}
+
+#[tokio::test]
+async fn starting_an_exact_phase_flow_materializes_a_sub_day_window() {
+    let pool = helpers::test_pool().await;
+    let repo = FlowRepository::new(&pool);
+    let flow = repo
+        .create(CreateFlowRequest {
+            title: "Meds".into(),
+            instance_type: Some(InstanceType::Task),
+            parent_type: "aspect".into(),
+            parent_id: 1,
+            flow_duration_n: Some(1),
+            flow_duration_kind: Some("exact".into()),
+            flow_window_time_start: Some("10:00".into()),
+            flow_window_time_end: Some("12:00".into()),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    // Target the (unscoped) aspect row; the anchor supplies only the day.
+    let mat = repo
+        .start(
+            FlowId(flow.id),
+            StartFlowRequest {
+                title: "Meds today".into(),
+                target_type: "aspect".into(),
+                target_id: 1,
+                anchor_date: ymd(2026, 1, 5),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(mat.root_type, "task");
+
+    // The materialized root carries a single exact scope spanning 10:00–12:00 on the anchor day.
+    let (start_id, end_id): (Option<i64>, Option<i64>) =
+        sqlx::query_as("SELECT time_scope_start_id, time_scope_end_id FROM tasks WHERE id = ?")
+            .bind(mat.root_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(start_id, end_id);
+    let (kind, sdt, edt): (String, Option<String>, Option<String>) =
+        sqlx::query_as("SELECT kind, start_datetime, end_datetime FROM scopes WHERE id = ?")
+            .bind(start_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(kind, "exact");
+    assert_eq!(sdt.as_deref(), Some("2026-01-05T10:00:00"));
+    assert_eq!(edt.as_deref(), Some("2026-01-05T12:00:00"));
+}
