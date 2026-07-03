@@ -7,7 +7,7 @@ pub mod model;
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use chrono::{Duration, Months, NaiveDate, NaiveDateTime, NaiveTime};
+use chrono::{Datelike, Duration, Months, NaiveDate, NaiveDateTime, NaiveTime};
 
 use crate::database::DatabasePool;
 use crate::scopes::model::{PartOfDay, Scope, ScopeId, ScopeKind};
@@ -15,7 +15,7 @@ use crate::scopes::resolve::{interval_contains, scope_bounds};
 use crate::scopes::ScopeRepository;
 use habits::{classify_iterations, Catchup, Consumption, SlotWindow};
 use crate::tasks::model::{
-    CreateGoalRequest, CreateTaskRequest, Dependency, DurationSpec, TaskId, TimeScope,
+    CreateGoalRequest, CreateTaskRequest, Dependency, DurationSpec, GoalId, TaskId, TimeScope,
 };
 use crate::tasks::{effective_window, time_scope_bounds, GoalRepository, TaskRepository};
 use error::FlowError;
@@ -110,6 +110,21 @@ fn window_spec(flow: &Flow, kind: &str, n: i64) -> Result<WindowSpec, FlowError>
             end: parse_hhmm(flow.flow_window_time_end.as_deref())?,
         }),
         _ => Ok(WindowSpec::Span { n, kind: flow_scope_kind(kind)?, kind_str: kind.to_string() }),
+    }
+}
+
+/// Whole `kind` periods from `from` to `to` (period starts), or `None` for an unsupported kind.
+/// Non-negative whenever `to >= from` (guaranteed here by scope containment). Used to turn a
+/// descendant's absolute Time Scope into a relative Cycle Scope offset within the flow window.
+fn periods_between(from: NaiveDate, to: NaiveDate, kind: &str) -> Option<i64> {
+    let month_delta =
+        (i64::from(to.year()) - i64::from(from.year())) * 12 + i64::from(to.month()) - i64::from(from.month());
+    match kind {
+        "day" => Some((to - from).num_days()),
+        "week" => Some((to - from).num_days() / 7),
+        "month" => Some(month_delta),
+        "season" => Some(month_delta / 3),
+        _ => None,
     }
 }
 
@@ -1017,6 +1032,224 @@ impl<'a> FlowRepository<'a> {
             .execute(self.pool).await?;
         }
         self.get(FlowId(new_id)).await
+    }
+
+    /// The task/goal children of a node, as `(kind, id)` pairs (used to walk a subtree to convert).
+    async fn task_goal_children(&self, parent_type: &str, parent_id: i64) -> Result<Vec<(String, i64)>, FlowError> {
+        let mut children = Vec::new();
+        let tasks: Vec<i64> = sqlx::query_scalar("SELECT id FROM tasks WHERE parent_type = ? AND parent_id = ?")
+            .bind(parent_type).bind(parent_id).fetch_all(self.pool).await?;
+        children.extend(tasks.into_iter().map(|id| ("task".to_string(), id)));
+        let goals: Vec<i64> = sqlx::query_scalar("SELECT id FROM goals WHERE parent_type = ? AND parent_id = ?")
+            .bind(parent_type).bind(parent_id).fetch_all(self.pool).await?;
+        children.extend(goals.into_iter().map(|id| ("goal".to_string(), id)));
+        Ok(children)
+    }
+
+    /// Converts a real Task/Goal subtree into a **Flow** template of the same Instance Type: the root
+    /// becomes the flow, every descendant goal/task becomes a flow item mirroring the hierarchy, and
+    /// the original subtree is deleted. When `keep_dependencies`, intra-subtree task dependencies are
+    /// remapped to flow dependencies. When `map_scopes`, the root's Time Scope becomes the flow Window
+    /// and each descendant's Time Scope becomes a relative Cycle Scope (offset within the window;
+    /// canonical kinds only — part/exact and Plans are dropped). Errors if the root's parent can't
+    /// hold a flow (i.e. it is a task).
+    pub async fn convert_to_flow(
+        &self,
+        root_type: &str,
+        root_id: i64,
+        keep_dependencies: bool,
+        map_scopes: bool,
+    ) -> Result<Flow, FlowError> {
+        let goals = GoalRepository::new(self.pool);
+        let tasks = TaskRepository::new(self.pool);
+        let scopes = ScopeRepository::new(self.pool);
+
+        // Read the root, and reject placements a flow can't occupy.
+        let (title, parent_type, parent_id, root_ts) = match root_type {
+            "goal" => {
+                let g = goals.get(GoalId(root_id)).await?;
+                (g.title, g.parent_type, g.parent_id, g.time_scope)
+            }
+            "task" => {
+                let t = tasks.get(TaskId(root_id)).await?;
+                (t.title, t.parent_type, t.parent_id, t.time_scope)
+            }
+            _ => return Err(FlowError::Invalid("only a task or goal can convert to a flow".to_string())),
+        };
+        if !matches!(parent_type.as_str(), "aspect" | "project" | "domain" | "goal") {
+            return Err(FlowError::Invalid("a flow cannot be parented under a task".to_string()));
+        }
+
+        // Map the root's Time Scope to the flow Window (Span / Phase) and note the window start date.
+        let mut win_n: Option<i64> = None;
+        let mut win_kind: Option<String> = None;
+        let mut win_part: Option<String> = None;
+        let mut win_time_start: Option<String> = None;
+        let mut win_time_end: Option<String> = None;
+        let mut window_start: Option<NaiveDate> = None;
+        if map_scopes {
+            if let Some(ts) = &root_ts {
+                let start = scopes.get(ScopeId(ts.start_id)).await?;
+                if let Some(dur) = &ts.duration {
+                    win_n = Some(dur.n);
+                    win_kind = Some(dur.kind.clone());
+                    window_start = Some(scope_start_date(&start)?);
+                } else {
+                    match start.kind.as_str() {
+                        "day" | "week" | "month" | "season" => {
+                            win_n = Some(1);
+                            win_kind = Some(start.kind.clone());
+                            window_start = Some(scope_start_date(&start)?);
+                        }
+                        "part_of_day" => {
+                            win_n = Some(1);
+                            win_kind = Some("part".to_string());
+                            win_part = start.part.clone();
+                            window_start = Some(scope_start_date(&start)?);
+                        }
+                        "exact" => {
+                            if let Some(sdt) = &start.start_datetime {
+                                let dt = NaiveDateTime::parse_from_str(sdt, "%Y-%m-%dT%H:%M:%S")
+                                    .map_err(|e| FlowError::Invalid(e.to_string()))?;
+                                win_n = Some(1);
+                                win_kind = Some("exact".to_string());
+                                win_time_start = Some(dt.format("%H:%M").to_string());
+                                win_time_end = start
+                                    .end_datetime
+                                    .as_deref()
+                                    .and_then(|e| NaiveDateTime::parse_from_str(e, "%Y-%m-%dT%H:%M:%S").ok())
+                                    .map(|e| e.format("%H:%M").to_string());
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        // Create the flow, targeting the root's former parent (a scope-valid default).
+        let flow_id = sqlx::query(
+            "INSERT INTO flows
+                (title, instance_type, parent_type, parent_id, target_type, target_id,
+                 flow_duration_n, flow_duration_kind, flow_window_part, flow_window_time_start,
+                 flow_window_time_end, position)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(&title).bind(root_type).bind(&parent_type).bind(parent_id)
+        .bind(&parent_type).bind(parent_id)
+        .bind(win_n).bind(&win_kind).bind(&win_part).bind(&win_time_start).bind(&win_time_end)
+        .bind(now_position())
+        .execute(self.pool).await?.last_insert_rowid();
+
+        // BFS the subtree (parents before children), tracking each node's real parent.
+        let root_key = (root_type.to_string(), root_id);
+        let mut order: Vec<(String, i64)> = self.task_goal_children(root_type, root_id).await?;
+        let mut parent_of: HashMap<(String, i64), (String, i64)> = HashMap::new();
+        for child in &order {
+            parent_of.insert(child.clone(), root_key.clone());
+        }
+        let mut i = 0;
+        while i < order.len() {
+            let (kind, id) = order[i].clone();
+            for child in self.task_goal_children(&kind, id).await? {
+                parent_of.insert(child.clone(), (kind.clone(), id));
+                order.push(child);
+            }
+            i += 1;
+        }
+
+        // Create a flow item per subtree node, mirroring the hierarchy.
+        let mut item_map: HashMap<(String, i64), (FlowItemType, i64)> = HashMap::new();
+        for (kind, id) in &order {
+            let (item_title, node_ts) = match kind.as_str() {
+                "goal" => {
+                    let g = goals.get(GoalId(*id)).await?;
+                    (g.title, g.time_scope)
+                }
+                _ => {
+                    let t = tasks.get(TaskId(*id)).await?;
+                    (t.title, t.time_scope)
+                }
+            };
+            let item_type = if kind == "goal" { FlowItemType::FlowGoal } else { FlowItemType::FlowTask };
+            let (parent_item_type, parent_item_id) = {
+                let parent = &parent_of[&(kind.clone(), *id)];
+                if parent == &root_key {
+                    ("flow".to_string(), flow_id)
+                } else {
+                    let (pit, pid) = &item_map[parent];
+                    (pit.as_str().to_string(), *pid)
+                }
+            };
+            let table = if kind == "goal" { "flow_goals" } else { "flow_tasks" };
+            let new_id = sqlx::query(&format!(
+                "INSERT INTO {table} (flow_id, title, parent_type, parent_id, position) VALUES (?, ?, ?, ?, ?)"
+            ))
+            .bind(flow_id).bind(&item_title).bind(&parent_item_type).bind(parent_item_id).bind(now_position())
+            .execute(self.pool).await?.last_insert_rowid();
+            item_map.insert((kind.clone(), *id), (item_type, new_id));
+
+            // Map the descendant's Time Scope to a relative Cycle Scope (canonical kinds only).
+            if map_scopes {
+                if let (Some(ws), Some(ts)) = (window_start, &node_ts) {
+                    let ds = scopes.get(ScopeId(ts.start_id)).await?;
+                    if matches!(ds.kind.as_str(), "day" | "week" | "month" | "season") {
+                        if let Some(offset) = periods_between(ws, scope_start_date(&ds)?, &ds.kind) {
+                            self.set_cycles(
+                                flow_id,
+                                item_type,
+                                new_id,
+                                &[FlowCycleInput {
+                                    scope_kind: Some(ds.kind.clone()),
+                                    scope_index: Some(offset + 1),
+                                    plan_kind: None,
+                                    plan_start: None,
+                                    plan_end: None,
+                                }],
+                            )
+                            .await?;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Remap intra-subtree task dependencies to flow dependencies.
+        if keep_dependencies {
+            for (kind, id) in std::iter::once(&root_key).chain(order.iter()) {
+                if kind.as_str() != "task" {
+                    continue;
+                }
+                let dependent = match item_map.get(&(kind.clone(), *id)) {
+                    Some(m) => *m,
+                    None => continue, // the root is not a flow item
+                };
+                for dep in tasks.list_dependencies(TaskId(*id)).await? {
+                    let dep_key = match dep {
+                        crate::tasks::model::Dependency::Task { id } => ("task".to_string(), id),
+                        crate::tasks::model::Dependency::Goal { id } => ("goal".to_string(), id),
+                    };
+                    if let Some((on_type, on_id)) = item_map.get(&dep_key) {
+                        sqlx::query(
+                            "INSERT INTO flow_dependencies (flow_id, dependent_type, dependent_id, depends_on_type, depends_on_id) VALUES (?, ?, ?, ?, ?)",
+                        )
+                        .bind(flow_id).bind(dependent.0.as_str()).bind(dependent.1)
+                        .bind(on_type.as_str()).bind(on_id)
+                        .execute(self.pool).await?;
+                    }
+                }
+            }
+        }
+
+        // Delete the original subtree (deepest first) and any info children.
+        for (kind, id) in std::iter::once(&root_key).chain(order.iter()).rev() {
+            sqlx::query("DELETE FROM infos WHERE parent_type = ? AND parent_id = ?")
+                .bind(kind).bind(id).execute(self.pool).await?;
+            let table = if kind == "goal" { "goals" } else { "tasks" };
+            sqlx::query(&format!("DELETE FROM {table} WHERE id = ?")).bind(id).execute(self.pool).await?;
+        }
+
+        self.get(FlowId(flow_id)).await
     }
 
     /// Builds the iteration windows from the Repetition Start up to (and including the one covering)

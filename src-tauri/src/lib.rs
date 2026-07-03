@@ -141,6 +141,7 @@ pub fn run() {
             commands::flows::habit_completion_count,
             commands::flows::clear_habit_modifications,
             commands::flows::fork_flow,
+            commands::flows::convert_to_flow,
             commands::flows::set_flow_item_cycles,
             commands::flows::list_all_flow_cycles,
             commands::flows::add_flow_dependency,

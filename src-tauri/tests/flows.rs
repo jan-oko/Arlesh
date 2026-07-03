@@ -10,8 +10,8 @@ use arlesh_lib::flows::{
 };
 use arlesh_lib::scopes::{model::ScopeKind, ScopeRepository};
 use arlesh_lib::tasks::{
-    model::{CreateGoalRequest, TimeScope},
-    GoalRepository,
+    model::{CreateGoalRequest, CreateTaskRequest, Dependency, GoalId, OnScopeExit, TaskId, TimeScope},
+    GoalRepository, TaskRepository,
 };
 
 /// Creates a goal under aspect 1 whose Time Scope is the single canonical scope of `kind` covering
@@ -1031,4 +1031,92 @@ async fn clearing_modifications_drops_completions_and_reverts_iterations() {
     assert_eq!(repo.habit_completion_count(FlowId(flow.id)).await.unwrap(), 0);
     let reverted = repo.generate_habit_iterations(FlowId(flow.id), now).await.unwrap();
     assert_eq!(format!("{:?}", reverted[0].status), "Lapsed");
+}
+
+// --- Convert a Task/Goal subtree into a Flow (context-menu feature) ---
+
+#[tokio::test]
+async fn convert_to_flow_builds_a_template_maps_scopes_deps_and_deletes_the_subtree() {
+    let pool = helpers::test_pool().await;
+    let goals = GoalRepository::new(&pool);
+    let tasks = TaskRepository::new(&pool);
+    let sc = ScopeRepository::new(&pool);
+
+    // Root goal under a domain (aspect 1), scoped to a week → maps to a Span(1, week) window.
+    let week = sc.get_or_create(ScopeKind::Week, ymd(2026, 1, 5)).await.unwrap();
+    let root = goals
+        .create(CreateGoalRequest {
+            title: "Routine".into(),
+            parent_type: "domain".into(),
+            parent_id: 1,
+            time_scope: Some(TimeScope { start_id: week.id, end_id: week.id, duration: None }),
+            on_scope_exit: Some(OnScopeExit::Keep),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    // A task scoped to a day inside that week → maps to a (day, offset) cycle scope.
+    let day = sc.get_or_create(ScopeKind::Day, ymd(2026, 1, 7)).await.unwrap();
+    let step = tasks
+        .create(CreateTaskRequest {
+            title: "Step".into(),
+            parent_type: "goal".into(),
+            parent_id: root.id,
+            time_scope: Some(TimeScope { start_id: day.id, end_id: day.id, duration: None }),
+            on_scope_exit: Some(OnScopeExit::Keep),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let prep = tasks
+        .create(CreateTaskRequest { title: "Prep".into(), parent_type: "goal".into(), parent_id: root.id, ..Default::default() })
+        .await
+        .unwrap();
+    tasks.add_dependency(step.id.into(), Dependency::Task { id: prep.id }).await.unwrap();
+
+    let repo = FlowRepository::new(&pool);
+    let flow = repo.convert_to_flow("goal", root.id, true, true).await.unwrap();
+
+    assert_eq!(flow.instance_type, "goal");
+    assert_eq!(flow.title, "Routine");
+    assert_eq!(flow.flow_duration_kind.as_deref(), Some("week")); // root scope → Span window
+    assert_eq!(flow.flow_duration_n, Some(1));
+
+    // Two flow-task items mirror the two task children.
+    assert_eq!(repo.list_goals(FlowId(flow.id)).await.unwrap().len(), 0);
+    let ftasks = repo.list_tasks(FlowId(flow.id)).await.unwrap();
+    assert_eq!(ftasks.len(), 2);
+
+    // The task→task dependency is remapped to a flow dependency.
+    let deps: Vec<_> =
+        repo.list_all_dependencies().await.unwrap().into_iter().filter(|d| d.flow_id == flow.id).collect();
+    assert_eq!(deps.len(), 1);
+
+    // The day-scoped item got a relative day cycle (Jan 7 is 3 days after the Sun-start → index 4).
+    let cycles: Vec<_> =
+        repo.list_all_cycles().await.unwrap().into_iter().filter(|c| c.flow_id == flow.id).collect();
+    assert_eq!(cycles.len(), 1);
+    assert_eq!(cycles[0].scope_kind.as_deref(), Some("day"));
+    assert_eq!(cycles[0].scope_index, Some(4));
+
+    // The original real subtree is gone.
+    assert!(goals.get(GoalId(root.id)).await.is_err());
+    assert!(tasks.get(TaskId(step.id)).await.is_err());
+    assert!(tasks.get(TaskId(prep.id)).await.is_err());
+}
+
+#[tokio::test]
+async fn convert_to_flow_rejects_a_task_under_a_task() {
+    let pool = helpers::test_pool().await;
+    let tasks = TaskRepository::new(&pool);
+    let parent = tasks
+        .create(CreateTaskRequest { title: "Parent".into(), parent_type: "domain".into(), parent_id: 1, ..Default::default() })
+        .await
+        .unwrap();
+    let child = tasks
+        .create(CreateTaskRequest { title: "Child".into(), parent_type: "task".into(), parent_id: parent.id, ..Default::default() })
+        .await
+        .unwrap();
+    // A flow can't be parented under a task, so converting the child is rejected.
+    assert!(FlowRepository::new(&pool).convert_to_flow("task", child.id, true, true).await.is_err());
 }

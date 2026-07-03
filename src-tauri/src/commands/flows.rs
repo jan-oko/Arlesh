@@ -388,3 +388,18 @@ pub async fn fork_flow(pool: State<'_, DatabasePool>, flow_id: i64) -> Result<Fl
         .await
         .map_err(|error| error.to_string())
 }
+
+/// Converts a real Task/Goal subtree into a Flow template of the same Instance Type.
+#[tauri::command]
+pub async fn convert_to_flow(
+    pool: State<'_, DatabasePool>,
+    node_type: String,
+    node_id: i64,
+    keep_dependencies: bool,
+    map_scopes: bool,
+) -> Result<Flow, String> {
+    FlowRepository::new(&pool)
+        .convert_to_flow(&node_type, node_id, keep_dependencies, map_scopes)
+        .await
+        .map_err(|error| error.to_string())
+}

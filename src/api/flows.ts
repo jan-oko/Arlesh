@@ -218,6 +218,20 @@ export async function forkFlow(flowId: number): Promise<Flow> {
   return invoke<Flow>("fork_flow", { flowId });
 }
 
+/**
+ * Converts a real Task/Goal subtree into a Flow template of the same instance type. `keepDependencies`
+ * remaps intra-subtree task dependencies; `mapScopes` translates the root's Time Scope to the flow
+ * Window and descendants' scopes to relative cycle scopes. The original subtree is deleted.
+ */
+export async function convertToFlow(
+  nodeType: string,
+  nodeId: number,
+  keepDependencies: boolean,
+  mapScopes: boolean,
+): Promise<Flow> {
+  return invoke<Flow>("convert_to_flow", { nodeType, nodeId, keepDependencies, mapScopes });
+}
+
 // --- Flow items (Phase 7.3) ---
 
 /** Which flow-item table a row lives in. */
