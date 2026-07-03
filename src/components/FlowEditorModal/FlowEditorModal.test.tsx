@@ -36,7 +36,7 @@ function mkFlow(overrides: Partial<MindmapNode> = {}): MindmapNode {
     position: 0,
     tagIds: [],
     children: [],
-    flow: { instanceType: "task", targetType: null, targetId: null, durationN: 2, durationKind: "week", windowPart: null, windowTimeStart: null, windowTimeEnd: null },
+    flow: { instanceType: "task", targetType: null, targetId: null, durationN: 2, durationKind: "week", windowPart: null, windowTimeStart: null, windowTimeEnd: null, isHabit: false },
     ...overrides,
   };
 }
@@ -66,7 +66,7 @@ describe("FlowEditorModal — initial state", () => {
   });
 
   it("shows the existing target as a chip", () => {
-    render(<FlowEditorModal {...defaultProps} node={mkFlow({ flow: { instanceType: "task", targetType: "goal", targetId: 7, durationN: 1, durationKind: "week", windowPart: null, windowTimeStart: null, windowTimeEnd: null } })} />);
+    render(<FlowEditorModal {...defaultProps} node={mkFlow({ flow: { instanceType: "task", targetType: "goal", targetId: 7, durationN: 1, durationKind: "week", windowPart: null, windowTimeStart: null, windowTimeEnd: null, isHabit: false } })} />);
     expect(screen.getByText("Backend Revamp")).toBeInTheDocument();
   });
 });
@@ -178,7 +178,7 @@ describe("FlowEditorModal — save", () => {
   });
 
   it("treats a flow with no stored scope as unscoped", () => {
-    render(<FlowEditorModal {...defaultProps} node={mkFlow({ flow: { instanceType: "task", targetType: null, targetId: null, durationN: null, durationKind: null, windowPart: null, windowTimeStart: null, windowTimeEnd: null } })} />);
+    render(<FlowEditorModal {...defaultProps} node={mkFlow({ flow: { instanceType: "task", targetType: null, targetId: null, durationN: null, durationKind: null, windowPart: null, windowTimeStart: null, windowTimeEnd: null, isHabit: false } })} />);
     expect(screen.getByRole("checkbox", { name: "flowScoped" })).not.toBeChecked();
   });
 
@@ -200,7 +200,7 @@ describe("FlowEditorModal — keyboard", () => {
 describe("FlowEditorModal — target display", () => {
   const flowWith = (targetType: string, targetId: number) => ({
     instanceType: "task" as const, targetType, targetId,
-    durationN: 2, durationKind: "week", windowPart: null, windowTimeStart: null, windowTimeEnd: null,
+    durationN: 2, durationKind: "week", windowPart: null, windowTimeStart: null, windowTimeEnd: null, isHabit: false,
   });
 
   it("resolves a domain-table target (project) to its title, not #id", () => {

@@ -292,6 +292,7 @@ export function buildTree(
         windowPart: flow.flow_window_part,
         windowTimeStart: flow.flow_window_time_start,
         windowTimeEnd: flow.flow_window_time_end,
+        isHabit: flow.is_habit,
       },
       tagIds: [],
       children: [],

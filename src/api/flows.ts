@@ -19,6 +19,8 @@ export interface Flow {
   // Phase-"exact" time-of-day range "HH:MM"; set iff kind is "exact".
   flow_window_time_start: string | null;
   flow_window_time_end: string | null;
+  // Whether this flow is a Habit (has a Recurrence) — derived on read.
+  is_habit: boolean;
   position: number;
 }
 

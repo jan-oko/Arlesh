@@ -233,18 +233,24 @@ impl<'a> FlowRepository<'a> {
 
     /// Fetches a flow by id.
     pub async fn get(&self, id: FlowId) -> Result<Flow, FlowError> {
-        sqlx::query_as::<_, Flow>("SELECT * FROM flows WHERE id = ?")
-            .bind(id.0)
-            .fetch_optional(self.pool)
-            .await?
-            .ok_or(FlowError::NotFound(id.0))
+        sqlx::query_as::<_, Flow>(
+            "SELECT flows.*, EXISTS(SELECT 1 FROM flow_recurrences WHERE flow_recurrences.flow_id = flows.id) AS is_habit
+             FROM flows WHERE id = ?",
+        )
+        .bind(id.0)
+        .fetch_optional(self.pool)
+        .await?
+        .ok_or(FlowError::NotFound(id.0))
     }
 
     /// Lists all flows in sort order.
     pub async fn list(&self) -> Result<Vec<Flow>, FlowError> {
-        Ok(sqlx::query_as::<_, Flow>("SELECT * FROM flows ORDER BY position ASC")
-            .fetch_all(self.pool)
-            .await?)
+        Ok(sqlx::query_as::<_, Flow>(
+            "SELECT flows.*, EXISTS(SELECT 1 FROM flow_recurrences WHERE flow_recurrences.flow_id = flows.id) AS is_habit
+             FROM flows ORDER BY position ASC",
+        )
+        .fetch_all(self.pool)
+        .await?)
     }
 
     /// Updates a flow.

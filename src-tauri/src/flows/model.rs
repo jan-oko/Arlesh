@@ -65,6 +65,9 @@ pub struct Flow {
     pub flow_window_time_start: Option<String>,
     /// Phase-`exact` window end time-of-day `HH:MM`; set iff kind is `exact`.
     pub flow_window_time_end: Option<String>,
+    /// Whether this flow is a Habit (has a Recurrence) — derived, not stored on the flows row.
+    #[sqlx(default)]
+    pub is_habit: bool,
     /// Sort position among siblings.
     pub position: i64,
 }

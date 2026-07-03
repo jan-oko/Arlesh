@@ -1144,3 +1144,19 @@ async fn convert_a_task_subtree_without_deps_or_scope_mapping() {
     assert!(repo.list_all_cycles().await.unwrap().iter().all(|c| c.flow_id != flow.id)); // no cycles mapped
     assert!(tasks.get(TaskId(root.id)).await.is_err());
 }
+
+#[tokio::test]
+async fn is_habit_flag_reflects_the_recurrence() {
+    let pool = helpers::test_pool().await;
+    let repo = FlowRepository::new(&pool);
+    let flow = repo.create(create_req("Routine")).await.unwrap();
+    assert!(!repo.get(FlowId(flow.id)).await.unwrap().is_habit);
+
+    let start = week_scope_id(&pool, ymd(2026, 1, 5)).await;
+    repo.set_recurrence(FlowId(flow.id), destructive_recurrence(start)).await.unwrap();
+    assert!(repo.get(FlowId(flow.id)).await.unwrap().is_habit);
+    assert!(repo.list().await.unwrap().iter().find(|f| f.id == flow.id).unwrap().is_habit);
+
+    repo.delete_recurrence(FlowId(flow.id)).await.unwrap();
+    assert!(!repo.get(FlowId(flow.id)).await.unwrap().is_habit);
+}

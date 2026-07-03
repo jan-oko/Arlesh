@@ -19,6 +19,8 @@ export interface FlowData {
   /** Phase-`exact` time-of-day range "HH:MM", when durationKind is "exact". */
   windowTimeStart: string | null;
   windowTimeEnd: string | null;
+  /** Whether this flow is a Habit (has a Recurrence) — drives the cyclical-arrows icon. */
+  isHabit: boolean;
 }
 
 /** A relative (Cycle Scope, Cycle Plan) pair on a flow item. */
