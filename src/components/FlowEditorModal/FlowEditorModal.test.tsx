@@ -196,3 +196,31 @@ describe("FlowEditorModal — keyboard", () => {
     expect(defaultProps.onClose).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("FlowEditorModal — target display", () => {
+  const flowWith = (targetType: string, targetId: number) => ({
+    instanceType: "task" as const, targetType, targetId,
+    durationN: 2, durationKind: "week", windowPart: null, windowTimeStart: null, windowTimeEnd: null,
+  });
+
+  it("resolves a domain-table target (project) to its title, not #id", () => {
+    const project: MindmapNode = {
+      id: "domain-9", kind: "project", title: "Platform", position: 0, tagIds: [], children: [],
+    };
+    render(
+      <FlowEditorModal
+        {...defaultProps}
+        node={mkFlow({ flow: flowWith("project", 9) })}
+        availableTargets={[...TARGETS, project]}
+      />,
+    );
+    expect(screen.getByText("Platform")).toBeInTheDocument();
+    expect(screen.queryByText("#9")).not.toBeInTheDocument();
+  });
+
+  it("hides the target search once a target is selected", () => {
+    render(<FlowEditorModal {...defaultProps} node={mkFlow({ flow: flowWith("goal", 7) })} />);
+    expect(screen.getByText("Backend Revamp")).toBeInTheDocument(); // the chip
+    expect(screen.queryByPlaceholderText("placeholderTargetSearch")).not.toBeInTheDocument();
+  });
+});

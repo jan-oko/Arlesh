@@ -78,10 +78,18 @@ function todayIso(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+/** Domain-table subtypes — all keyed `domain-<id>` in the tree, though a flow stores the subtype. */
+const DOMAIN_TABLE_KINDS = new Set<string>(["aspect", "project", "domain", "tag"]);
+
 function targetFromNode(node: MindmapNode, candidates: MindmapNode[]): TargetSelection | null {
   const flow = node.flow;
   if (flow === undefined || flow.targetType === null || flow.targetId === null) return null;
-  const match = candidates.find((c) => c.id === `${flow.targetType}-${flow.targetId}`);
+  // Normalize a domain-table target_type to the `domain-<id>` key the tree actually uses, so the
+  // pre-selected target resolves to its real title instead of falling back to `#<id>`.
+  const lookupId = DOMAIN_TABLE_KINDS.has(flow.targetType)
+    ? `domain-${flow.targetId}`
+    : `${flow.targetType}-${flow.targetId}`;
+  const match = candidates.find((c) => c.id === lookupId);
   const kind = match?.kind ?? (isNodeKind(flow.targetType) ? flow.targetType : null);
   if (kind === null) return null;
   return { kind, id: flow.targetId, title: match?.title ?? `#${flow.targetId}` };
@@ -365,19 +373,21 @@ export default function FlowEditorModal({ node, availableTargets, heading, onSav
             </div>
           </div>
         )}
-        <div className={styles.depSearchWrap}>
-          <input type="text" className={styles.depSearch} placeholder={t("placeholderTargetSearch")} value={targetSearch} onChange={(e) => setTargetSearch(e.target.value)} />
-          {searchResults.length > 0 && (
-            <div className={styles.depResults}>
-              {searchResults.map((n) => (
-                <div key={n.id} className={styles.depResult} onMouseDown={(e) => { e.preventDefault(); selectTarget(n); }}>
-                  <span>{n.title}</span>
-                  <span className={styles.depKind}>{t(`nodeKinds:${n.kind}`)}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        {target === null && (
+          <div className={styles.depSearchWrap}>
+            <input type="text" className={styles.depSearch} placeholder={t("placeholderTargetSearch")} value={targetSearch} onChange={(e) => setTargetSearch(e.target.value)} />
+            {searchResults.length > 0 && (
+              <div className={styles.depResults}>
+                {searchResults.map((n) => (
+                  <div key={n.id} className={styles.depResult} onMouseDown={(e) => { e.preventDefault(); selectTarget(n); }}>
+                    <span>{n.title}</span>
+                    <span className={styles.depKind}>{t(`nodeKinds:${n.kind}`)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </EditorModal>
   );

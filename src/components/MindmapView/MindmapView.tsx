@@ -114,26 +114,60 @@ export default function MindmapView() {
     [tree],
   );
 
-  // Opens the confirm prompt for converting a Task/Goal subtree into a Flow.
+  // Runs the conversion, reloads, then opens the new flow's editor so it can be configured.
+  const runConvertToFlow = useCallback(
+    async (node: MindmapNode, keepDependencies: boolean, mapScopes: boolean) => {
+      const dbId = parseInt(node.id.split("-").pop() ?? "0", 10);
+      const flow = await convertToFlow(node.kind, dbId, keepDependencies, mapScopes);
+      await reload();
+      const flowNode: MindmapNode = {
+        id: `flow-${flow.id}`,
+        kind: "flow",
+        title: flow.title,
+        flow: {
+          instanceType: flow.instance_type,
+          targetType: flow.target_type,
+          targetId: flow.target_id,
+          durationN: flow.flow_duration_n,
+          durationKind: flow.flow_duration_kind,
+          windowPart: flow.flow_window_part,
+          windowTimeStart: flow.flow_window_time_start,
+          windowTimeEnd: flow.flow_window_time_end,
+        },
+        position: flow.position,
+        tagIds: [],
+        children: [],
+      };
+      selectNode(flowNode.id);
+      setEditorModal({ nodeId: flowNode.id, node: flowNode });
+    },
+    [reload, selectNode, setEditorModal],
+  );
+
+  // A subtree with children prompts (destructive); a childless node converts straight away.
   const onConvertToFlow = useCallback(
     (nodeId: string) => {
       const node = findNode(tree, nodeId);
-      if (node !== undefined) setConvertNode(node);
+      if (node === undefined) return;
+      if (node.children.length > 0) {
+        setConvertNode(node);
+        return;
+      }
+      void runConvertToFlow(node, true, true).catch((err: unknown) =>
+        showToast({ nodeId, message: err instanceof Error ? err.message : String(err) }),
+      );
     },
-    [tree],
+    [tree, runConvertToFlow, showToast],
   );
 
-  // Runs the conversion, then reloads and selects the new flow. Errors propagate to the modal.
+  // From the confirm prompt: run with the chosen toggles. Errors propagate back to the modal.
   const handleConvertToFlow = useCallback(
     async (keepDependencies: boolean, mapScopes: boolean) => {
       if (convertNode === null) return;
-      const dbId = parseInt(convertNode.id.split("-").pop() ?? "0", 10);
-      const flow = await convertToFlow(convertNode.kind, dbId, keepDependencies, mapScopes);
-      await reload();
+      await runConvertToFlow(convertNode, keepDependencies, mapScopes);
       setConvertNode(null);
-      selectNode(`flow-${flow.id}`);
     },
-    [convertNode, reload, selectNode],
+    [convertNode, runConvertToFlow],
   );
 
   // Persists a brand-new flow under the pending parent, then closes the create editor.
