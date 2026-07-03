@@ -12,7 +12,13 @@ export interface Flow {
   target_type: string | null;
   target_id: number | null;
   flow_duration_n: number | null;
+  // Span ("day"|"week"|"month"|"season") or Phase ("part"|"exact").
   flow_duration_kind: string | null;
+  // Phase-"part" band (e.g. "evening"); set iff kind is "part".
+  flow_window_part: string | null;
+  // Phase-"exact" time-of-day range "HH:MM"; set iff kind is "exact".
+  flow_window_time_start: string | null;
+  flow_window_time_end: string | null;
   position: number;
 }
 
@@ -25,6 +31,9 @@ export interface CreateFlowRequest {
   target_id?: number | null;
   flow_duration_n?: number | null;
   flow_duration_kind?: string | null;
+  flow_window_part?: string | null;
+  flow_window_time_start?: string | null;
+  flow_window_time_end?: string | null;
 }
 
 export interface UpdateFlowRequest {
@@ -35,6 +44,9 @@ export interface UpdateFlowRequest {
   target_id?: number | null;
   flow_duration_n?: number | null;
   flow_duration_kind?: string | null;
+  flow_window_part?: string | null;
+  flow_window_time_start?: string | null;
+  flow_window_time_end?: string | null;
   parent_type?: string;
   parent_id?: number;
   position?: number;

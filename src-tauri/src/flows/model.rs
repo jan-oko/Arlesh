@@ -54,10 +54,17 @@ pub struct Flow {
     pub target_type: Option<String>,
     /// Default target node id for instances (if set).
     pub target_id: Option<i64>,
-    /// Flow-scope duration count (relative; anchored on start).
+    /// Flow-scope duration count (relative; anchored on start). For a Phase window this is 1.
     pub flow_duration_n: Option<i64>,
-    /// Flow-scope duration kind (e.g. "week").
+    /// Flow Window kind: a coarse **Span** (`day`/`week`/`month`/`season`) or a sub-day **Phase**
+    /// (`part`/`exact`).
     pub flow_duration_kind: Option<String>,
+    /// Phase-`part` band (e.g. `evening`); set iff kind is `part`.
+    pub flow_window_part: Option<String>,
+    /// Phase-`exact` window start time-of-day `HH:MM`; set iff kind is `exact`.
+    pub flow_window_time_start: Option<String>,
+    /// Phase-`exact` window end time-of-day `HH:MM`; set iff kind is `exact`.
+    pub flow_window_time_end: Option<String>,
     /// Sort position among siblings.
     pub position: i64,
 }
@@ -116,9 +123,18 @@ pub struct CreateFlowRequest {
     /// Flow-scope duration count.
     #[serde(default)]
     pub flow_duration_n: Option<i64>,
-    /// Flow-scope duration kind.
+    /// Flow Window kind (Span `day`/`week`/`month`/`season` or Phase `part`/`exact`).
     #[serde(default)]
     pub flow_duration_kind: Option<String>,
+    /// Phase-`part` band, when kind is `part`.
+    #[serde(default)]
+    pub flow_window_part: Option<String>,
+    /// Phase-`exact` window start time-of-day `HH:MM`, when kind is `exact`.
+    #[serde(default)]
+    pub flow_window_time_start: Option<String>,
+    /// Phase-`exact` window end time-of-day `HH:MM`, when kind is `exact`.
+    #[serde(default)]
+    pub flow_window_time_end: Option<String>,
 }
 
 /// Request body for updating a flow (fields left `None` are unchanged; `Some(None)` clears).
@@ -134,8 +150,14 @@ pub struct UpdateFlowRequest {
     pub target_id: Option<Option<i64>>,
     /// Flow-scope duration count (Some(None) clears).
     pub flow_duration_n: Option<Option<i64>>,
-    /// Flow-scope duration kind (Some(None) clears).
+    /// Flow Window kind (Some(None) clears).
     pub flow_duration_kind: Option<Option<String>>,
+    /// Phase-`part` band (Some(None) clears).
+    pub flow_window_part: Option<Option<String>>,
+    /// Phase-`exact` window start time-of-day (Some(None) clears).
+    pub flow_window_time_start: Option<Option<String>>,
+    /// Phase-`exact` window end time-of-day (Some(None) clears).
+    pub flow_window_time_end: Option<Option<String>>,
     /// New parent type (with parent_id).
     pub parent_type: Option<String>,
     /// New parent id (with parent_type).

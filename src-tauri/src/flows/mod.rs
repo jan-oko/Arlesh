@@ -52,6 +52,9 @@ fn target_parent_type(kind: &str) -> String {
 /// anchor-free coarse target filter to reject targets that could never hold the flow window.
 fn min_period_days(kind: &str) -> Result<i64, FlowError> {
     Ok(match kind {
+        // Phase windows are sub-day, so they impose no day-floor on a candidate target — the exact
+        // containment check at start does the real work.
+        "part" | "exact" => 0,
         "day" => 1,
         "week" => 7,
         "month" => 28,
@@ -89,25 +92,29 @@ fn parse_consumption(recurrence: &FlowRecurrence) -> Result<Consumption, FlowErr
     }
 }
 
-/// Coarse-to-fine ordinal for a scope kind (`day` < `week` < `month` < `season`), used to check a
-/// Habit's Gap kind is no finer than its habit scope.
+/// Fine-to-coarse ordinal for a scope kind (`exact` < `part` < `day` < `week` < `month` <
+/// `season`), used to check a Habit's Gap kind is no finer than its habit scope.
 fn scope_kind_rank(kind: &str) -> Result<i64, FlowError> {
     Ok(match kind {
-        "day" => 0,
-        "week" => 1,
-        "month" => 2,
-        "season" => 3,
+        "exact" => 0,
+        "part" => 1,
+        "day" => 2,
+        "week" => 3,
+        "month" => 4,
+        "season" => 5,
         other => return Err(FlowError::Invalid(format!("unsupported scope kind {other}"))),
     })
 }
 
-/// The canonical `ScopeKind` for a flow-scope kind string.
+/// The `ScopeKind` for a flow-scope kind string (Span or Phase).
 fn flow_scope_kind(kind: &str) -> Result<ScopeKind, FlowError> {
     match kind {
         "day" => Ok(ScopeKind::Day),
         "week" => Ok(ScopeKind::Week),
         "month" => Ok(ScopeKind::Month),
         "season" => Ok(ScopeKind::Season),
+        "part" => Ok(ScopeKind::PartOfDay),
+        "exact" => Ok(ScopeKind::Exact),
         other => Err(FlowError::Invalid(format!("unsupported flow kind {other}"))),
     }
 }
@@ -137,8 +144,9 @@ impl<'a> FlowRepository<'a> {
         let id = sqlx::query(
             "INSERT INTO flows
                 (title, instance_type, parent_type, parent_id, target_type, target_id,
-                 flow_duration_n, flow_duration_kind, position)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                 flow_duration_n, flow_duration_kind,
+                 flow_window_part, flow_window_time_start, flow_window_time_end, position)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&request.title)
         .bind(instance_type)
@@ -148,6 +156,9 @@ impl<'a> FlowRepository<'a> {
         .bind(request.target_id)
         .bind(request.flow_duration_n)
         .bind(&request.flow_duration_kind)
+        .bind(&request.flow_window_part)
+        .bind(&request.flow_window_time_start)
+        .bind(&request.flow_window_time_end)
         .bind(now_position())
         .execute(self.pool)
         .await?
@@ -183,12 +194,18 @@ impl<'a> FlowRepository<'a> {
         let target_id = request.target_id.unwrap_or(flow.target_id);
         let flow_duration_n = request.flow_duration_n.unwrap_or(flow.flow_duration_n);
         let flow_duration_kind = request.flow_duration_kind.unwrap_or(flow.flow_duration_kind);
+        let flow_window_part = request.flow_window_part.unwrap_or(flow.flow_window_part);
+        let flow_window_time_start =
+            request.flow_window_time_start.unwrap_or(flow.flow_window_time_start);
+        let flow_window_time_end =
+            request.flow_window_time_end.unwrap_or(flow.flow_window_time_end);
         let parent_type = request.parent_type.unwrap_or(flow.parent_type);
         let parent_id = request.parent_id.unwrap_or(flow.parent_id);
         let position = request.position.unwrap_or(flow.position);
         sqlx::query(
             "UPDATE flows SET title=?, instance_type=?, parent_type=?, parent_id=?,
-                target_type=?, target_id=?, flow_duration_n=?, flow_duration_kind=?, position=?
+                target_type=?, target_id=?, flow_duration_n=?, flow_duration_kind=?,
+                flow_window_part=?, flow_window_time_start=?, flow_window_time_end=?, position=?
              WHERE id=?",
         )
         .bind(&title)
@@ -199,6 +216,9 @@ impl<'a> FlowRepository<'a> {
         .bind(target_id)
         .bind(flow_duration_n)
         .bind(&flow_duration_kind)
+        .bind(&flow_window_part)
+        .bind(&flow_window_time_start)
+        .bind(&flow_window_time_end)
         .bind(position)
         .bind(id.0)
         .execute(self.pool)

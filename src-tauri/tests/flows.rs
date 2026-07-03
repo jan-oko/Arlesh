@@ -666,3 +666,65 @@ async fn an_inconsistent_consumption_tree_is_rejected() {
     };
     assert!(repo.set_recurrence(FlowId(flow.id), blocking_without_catchup).await.is_err());
 }
+
+// --- Phase (sub-day) Flow Window model round-trip (Feature B / S3) ---
+
+#[tokio::test]
+async fn phase_part_window_round_trips() {
+    let pool = helpers::test_pool().await;
+    let repo = FlowRepository::new(&pool);
+    let flow = repo
+        .create(CreateFlowRequest {
+            title: "Evening flow".into(),
+            instance_type: Some(InstanceType::Task),
+            parent_type: "aspect".into(),
+            parent_id: 1,
+            flow_duration_n: Some(1),
+            flow_duration_kind: Some("part".into()),
+            flow_window_part: Some("evening".into()),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(flow.flow_duration_kind.as_deref(), Some("part"));
+    assert_eq!(flow.flow_window_part.as_deref(), Some("evening"));
+    assert_eq!(flow.flow_window_time_start, None);
+}
+
+#[tokio::test]
+async fn phase_exact_window_round_trips() {
+    let pool = helpers::test_pool().await;
+    let repo = FlowRepository::new(&pool);
+    let flow = repo
+        .create(CreateFlowRequest {
+            title: "10-12 flow".into(),
+            instance_type: Some(InstanceType::Task),
+            parent_type: "aspect".into(),
+            parent_id: 1,
+            flow_duration_n: Some(1),
+            flow_duration_kind: Some("exact".into()),
+            flow_window_time_start: Some("10:00".into()),
+            flow_window_time_end: Some("12:00".into()),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(flow.flow_duration_kind.as_deref(), Some("exact"));
+    assert_eq!(flow.flow_window_time_start.as_deref(), Some("10:00"));
+    assert_eq!(flow.flow_window_time_end.as_deref(), Some("12:00"));
+    assert_eq!(flow.flow_window_part, None);
+
+    // An invalid part band is rejected by the CHECK constraint.
+    let bad = repo
+        .create(CreateFlowRequest {
+            title: "bad".into(),
+            instance_type: Some(InstanceType::Task),
+            parent_type: "aspect".into(),
+            parent_id: 1,
+            flow_duration_kind: Some("part".into()),
+            flow_window_part: Some("teatime".into()),
+            ..Default::default()
+        })
+        .await;
+    assert!(bad.is_err(), "invalid part band should violate the CHECK");
+}
