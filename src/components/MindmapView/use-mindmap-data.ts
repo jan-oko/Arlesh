@@ -67,6 +67,9 @@ export function injectHabitInstances(root: MindmapNode, flows: Flow[], iteration
         status: iteration.status === "done" ? "done" : "todo",
         virtual: true,
         habitIteration: { flowId: flow.id, scopeId: iteration.anchor_scope_id },
+        // Iterations are injected after buildTree's colour propagation, so inherit the host's
+        // already-resolved aspect colour directly.
+        ...(host.color !== undefined ? { color: host.color } : {}),
         ...(past ? { scopeLifecycle: "lapsed" as const } : {}),
         position: iteration.index,
         tagIds: [],

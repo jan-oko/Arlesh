@@ -803,7 +803,7 @@ describe("injectHabitInstances", () => {
   it("attaches iterations under a domain-table (project) target keyed domain-<id>", () => {
     const root = buildTree(
       [
-        { id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0 },
+        { id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: "#e74c3c", status: null, knowledge_base_directory: null, position: 0 },
         { id: 96, title: "LOOK", description: null, subtype: "project", parent_id: 1, color: null, status: null, knowledge_base_directory: null, position: 0 },
       ],
       [], [], [],
@@ -814,6 +814,7 @@ describe("injectHabitInstances", () => {
     expect(project?.id).toBe("domain-96");
     expect(project?.children).toHaveLength(1);
     expect(project?.children[0]?.virtual).toBe(true);
+    expect(project?.children[0]?.color).toBe("#e74c3c"); // inherits the aspect colour like any node
   });
 
   it("skips flows with no iterations and missing targets", () => {
