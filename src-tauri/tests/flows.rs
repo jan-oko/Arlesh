@@ -877,3 +877,49 @@ async fn starting_an_exact_phase_flow_materializes_a_sub_day_window() {
     assert_eq!(sdt.as_deref(), Some("2026-01-05T10:00:00"));
     assert_eq!(edt.as_deref(), Some("2026-01-05T12:00:00"));
 }
+
+#[tokio::test]
+async fn starting_a_part_phase_flow_materializes_the_band() {
+    let pool = helpers::test_pool().await;
+    let repo = FlowRepository::new(&pool);
+    let flow = repo
+        .create(CreateFlowRequest {
+            title: "Evening walk".into(),
+            instance_type: Some(InstanceType::Task),
+            parent_type: "aspect".into(),
+            parent_id: 1,
+            flow_duration_n: Some(1),
+            flow_duration_kind: Some("part".into()),
+            flow_window_part: Some("evening".into()),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let mat = repo
+        .start(
+            FlowId(flow.id),
+            StartFlowRequest {
+                title: "Walk".into(),
+                target_type: "aspect".into(),
+                target_id: 1,
+                anchor_date: ymd(2026, 1, 5),
+            },
+        )
+        .await
+        .unwrap();
+
+    let start_id: Option<i64> =
+        sqlx::query_scalar("SELECT time_scope_start_id FROM tasks WHERE id = ?")
+            .bind(mat.root_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let (kind, part): (String, Option<String>) =
+        sqlx::query_as("SELECT kind, part FROM scopes WHERE id = ?")
+            .bind(start_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(kind, "part_of_day");
+    assert_eq!(part.as_deref(), Some("evening"));
+}

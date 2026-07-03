@@ -1560,3 +1560,61 @@ async fn inherited_scope_and_on_exit_govern_children() {
     // Inherits Archive → Lapsed, even though the child itself is unscoped.
     assert_eq!(task_state(&states, child.id), ScopeLifecycle::Lapsed);
 }
+
+fn goal_state(states: &[arlesh_lib::tasks::lifecycle::ItemLifecycle], id: i64) -> ScopeLifecycle {
+    states
+        .iter()
+        .find(|s| s.node_type == "goal" && s.node_id == id)
+        .unwrap()
+        .state
+}
+
+#[tokio::test]
+async fn derives_goal_overdue_lapsed_and_exempts_resolved() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let past = day_scope(&pool, 2026, 1, 5).await;
+    let goals = GoalRepository::new(&pool);
+    let scope = || Some(TimeScope { start_id: past, end_id: past, duration: None });
+
+    let keep = goals
+        .create(CreateGoalRequest {
+            title: "Keep".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            time_scope: scope(),
+            on_scope_exit: Some(OnScopeExit::Keep),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let archive = goals
+        .create(CreateGoalRequest {
+            title: "Archive".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            time_scope: scope(),
+            on_scope_exit: Some(OnScopeExit::Archive),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let achieved = goals
+        .create(CreateGoalRequest {
+            title: "Achieved".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            status: Some(GoalStatus::Achieved),
+            time_scope: scope(),
+            on_scope_exit: Some(OnScopeExit::Archive),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    let now = NaiveDate::from_ymd_opt(2026, 2, 1).unwrap().and_hms_opt(12, 0, 0).unwrap();
+    let states = derive_all_scope_lifecycles(&pool, now).await.unwrap();
+    assert_eq!(goal_state(&states, keep.id), ScopeLifecycle::Overdue);
+    assert_eq!(goal_state(&states, archive.id), ScopeLifecycle::Lapsed);
+    assert_eq!(goal_state(&states, achieved.id), ScopeLifecycle::Active); // Achieved → exempt
+}
