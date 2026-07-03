@@ -3,10 +3,32 @@ mod helpers;
 use arlesh_lib::flows::{
     model::{
         CreateFlowItemRequest, CreateFlowRequest, FlowCycleInput, FlowId, FlowItemType,
-        InstanceType, StartFlowRequest, UpdateFlowItemRequest, UpdateFlowRequest,
+        InstanceType, StartFlowRequest, TargetRef, UpdateFlowItemRequest, UpdateFlowRequest,
     },
     FlowRepository,
 };
+use arlesh_lib::scopes::{model::ScopeKind, ScopeRepository};
+use arlesh_lib::tasks::{
+    model::{CreateGoalRequest, TimeScope},
+    GoalRepository,
+};
+
+/// Creates a goal under aspect 1 whose Time Scope is the single canonical scope of `kind` covering
+/// `date`, returning its id. Used to give target candidates a concrete window to contain (or not).
+async fn scoped_goal(pool: &sqlx::SqlitePool, kind: ScopeKind, date: chrono::NaiveDate) -> i64 {
+    let scope = ScopeRepository::new(pool).get_or_create(kind, date).await.unwrap();
+    GoalRepository::new(pool)
+        .create(CreateGoalRequest {
+            title: "Scoped".into(),
+            parent_type: "domain".into(),
+            parent_id: 1,
+            status: None,
+            time_scope: Some(TimeScope { start_id: scope.id, end_id: scope.id, duration: None }),
+        })
+        .await
+        .unwrap()
+        .id
+}
 
 fn day_cycle(index: i64) -> FlowCycleInput {
     FlowCycleInput { scope_kind: Some("day".into()), scope_index: Some(index), ..Default::default() }
@@ -355,4 +377,96 @@ async fn deleting_a_flow_cascades_to_its_items() {
 
     assert!(repo.get(FlowId(flow.id)).await.is_err());
     assert!(repo.list_tasks(FlowId(flow.id)).await.unwrap().is_empty());
+}
+
+// --- Phase 7.5: target scope-validity + flow-origin lookup ---
+
+#[tokio::test]
+async fn valid_targets_unscoped_flow_accepts_every_candidate() {
+    let pool = helpers::test_pool().await;
+    let repo = FlowRepository::new(&pool);
+    let july1 = chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap();
+    let goal = scoped_goal(&pool, ScopeKind::Day, july1).await; // even a day-scoped node passes
+    let cands = vec![
+        TargetRef { node_type: "aspect".into(), node_id: 1 },
+        TargetRef { node_type: "goal".into(), node_id: goal },
+    ];
+
+    // An Unscoped flow imposes no window, so no target is filtered out.
+    let valid = repo.valid_targets(None, None, cands.clone()).await.unwrap();
+    assert_eq!(valid, cands);
+}
+
+#[tokio::test]
+async fn valid_targets_concrete_anchor_filters_by_interval_containment() {
+    let pool = helpers::test_pool().await;
+    let july1 = chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap();
+    let week_goal = scoped_goal(&pool, ScopeKind::Week, july1).await;
+    let repo = FlowRepository::new(&pool);
+    let cands = vec![
+        TargetRef { node_type: "goal".into(), node_id: week_goal },
+        TargetRef { node_type: "aspect".into(), node_id: 1 }, // unscoped ancestor → always valid
+    ];
+
+    // A 1-week flow anchored inside the goal's week fits → both candidates valid.
+    let inside = repo
+        .valid_targets(Some((1, "week".into())), Some(july1), cands.clone())
+        .await
+        .unwrap();
+    assert_eq!(inside.len(), 2);
+
+    // Anchored in a different week, the goal can no longer contain the window → only the aspect.
+    let other_week = chrono::NaiveDate::from_ymd_opt(2026, 7, 15).unwrap();
+    let outside = repo
+        .valid_targets(Some((1, "week".into())), Some(other_week), cands)
+        .await
+        .unwrap();
+    assert_eq!(outside, vec![TargetRef { node_type: "aspect".into(), node_id: 1 }]);
+}
+
+#[tokio::test]
+async fn valid_targets_without_anchor_applies_coarse_length_filter() {
+    let pool = helpers::test_pool().await;
+    let july1 = chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap();
+    let week_goal = scoped_goal(&pool, ScopeKind::Week, july1).await;
+    let season_goal = scoped_goal(&pool, ScopeKind::Season, july1).await;
+    let repo = FlowRepository::new(&pool);
+    let cands = vec![
+        TargetRef { node_type: "goal".into(), node_id: week_goal },
+        TargetRef { node_type: "goal".into(), node_id: season_goal },
+    ];
+
+    // A 2-week flow with no anchor: a single week can never hold it; a season always can.
+    let valid = repo
+        .valid_targets(Some((2, "week".into())), None, cands)
+        .await
+        .unwrap();
+    assert_eq!(valid, vec![TargetRef { node_type: "goal".into(), node_id: season_goal }]);
+}
+
+#[tokio::test]
+async fn origins_reports_the_flow_title_for_materialised_nodes_only() {
+    let pool = helpers::test_pool().await;
+    let repo = FlowRepository::new(&pool);
+    let flow = repo.create(create_req("Feature")).await.unwrap();
+    repo.create_task(CreateFlowItemRequest { flow_id: flow.id, title: "Specify".into(), parent_type: "flow".into(), parent_id: flow.id })
+        .await
+        .unwrap();
+    let anchor = chrono::NaiveDate::from_ymd_opt(2026, 1, 5).unwrap();
+    let result = repo
+        .start(FlowId(flow.id), StartFlowRequest { title: "Run".into(), target_type: "aspect".into(), target_id: 1, anchor_date: anchor })
+        .await
+        .unwrap();
+
+    let origins = repo
+        .origins(vec![
+            TargetRef { node_type: result.root_type.clone(), node_id: result.root_id },
+            TargetRef { node_type: "task".into(), node_id: 999_999 }, // never materialised
+        ])
+        .await
+        .unwrap();
+
+    assert_eq!(origins.len(), 1);
+    assert_eq!(origins[0].node_id, result.root_id);
+    assert_eq!(origins[0].flow_title, "Feature");
 }

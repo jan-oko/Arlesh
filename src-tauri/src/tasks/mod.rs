@@ -9,7 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::database::DatabasePool;
 use error::TaskError;
-pub use scope_rules::{ReparentConflicts, ViolatingDescendant};
+pub use scope_rules::{effective_window, time_scope_bounds, ReparentConflicts, ViolatingDescendant};
 use model::{
     CreateGoalRequest, CreateTaskRequest, Dependency, DurationSpec, Goal, GoalId, GoalStatus, Task,
     TaskId, TaskStatus, TaskWithBlockers, TimeScope, UpdateGoalRequest, UpdateTaskRequest,

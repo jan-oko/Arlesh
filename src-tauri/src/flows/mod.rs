@@ -10,16 +10,17 @@ use chrono::{Duration, Months, NaiveDate};
 
 use crate::database::DatabasePool;
 use crate::scopes::model::{PartOfDay, Scope, ScopeKind};
+use crate::scopes::resolve::interval_contains;
 use crate::scopes::ScopeRepository;
 use crate::tasks::model::{
     CreateGoalRequest, CreateTaskRequest, Dependency, DurationSpec, TaskId, TimeScope,
 };
-use crate::tasks::{GoalRepository, TaskRepository};
+use crate::tasks::{effective_window, time_scope_bounds, GoalRepository, TaskRepository};
 use error::FlowError;
 use model::{
     CreateFlowItemRequest, CreateFlowRequest, Flow, FlowCycleInput, FlowDependency, FlowGoal,
-    FlowId, FlowItemCycle, FlowItemType, FlowTask, MaterializedFlow, StartFlowRequest,
-    UpdateFlowItemRequest, UpdateFlowRequest,
+    FlowId, FlowItemCycle, FlowItemType, FlowOrigin, FlowTask, MaterializedFlow, StartFlowRequest,
+    TargetRef, UpdateFlowItemRequest, UpdateFlowRequest,
 };
 
 /// Advances `date` by `k` (possibly zero) periods of `kind`; `None` on calendar overflow.
@@ -41,6 +42,19 @@ fn target_parent_type(kind: &str) -> String {
         _ => "project",
     }
     .to_string()
+}
+
+/// A safe lower bound, in days, on the shortest possible window a single period of `kind` can span
+/// (Feb is the 28-day floor for months; the shortest 3-month run bounds seasons). Used by the
+/// anchor-free coarse target filter to reject targets that could never hold the flow window.
+fn min_period_days(kind: &str) -> Result<i64, FlowError> {
+    Ok(match kind {
+        "day" => 1,
+        "week" => 7,
+        "month" => 28,
+        "season" => 89,
+        other => return Err(FlowError::Invalid(format!("unsupported flow kind {other}"))),
+    })
 }
 
 /// The canonical `ScopeKind` for a flow-scope kind string.
@@ -590,6 +604,100 @@ impl<'a> FlowRepository<'a> {
         Ok(())
     }
 
+    /// Resolves the concrete flow window `[anchor, anchor + (n-1) periods]` of `kind`, returning
+    /// the Time Scope and its start date. The anchor is snapped to the start of its canonical scope.
+    async fn resolve_window(
+        &self,
+        scopes: &ScopeRepository<'_>,
+        n: i64,
+        kind: &str,
+        anchor: NaiveDate,
+    ) -> Result<(TimeScope, NaiveDate), FlowError> {
+        let start_scope = scopes.get_or_create(flow_scope_kind(kind)?, anchor).await?;
+        let start_date = NaiveDate::parse_from_str(&start_scope.start_date, "%Y-%m-%d")
+            .map_err(|e| FlowError::Invalid(e.to_string()))?;
+        let end_date = advance(start_date, n - 1, kind)
+            .ok_or_else(|| FlowError::Invalid("window exceeds the calendar".to_string()))?;
+        let end_scope = scopes.get_or_create(flow_scope_kind(kind)?, end_date).await?;
+        Ok((
+            TimeScope {
+                start_id: start_scope.id,
+                end_id: end_scope.id,
+                duration: Some(DurationSpec { n, kind: kind.to_string() }),
+            },
+            start_date,
+        ))
+    }
+
+    /// Filters `candidates` to the targets a flow of the given `duration` may materialise under.
+    ///
+    /// A target is valid when its effective Time Scope window (its own, or the nearest scoped
+    /// ancestor's) wholly contains the flow window; a target with no scoped ancestor — and any
+    /// Unscoped flow (`duration` = `None`) — is always valid. With a concrete `anchor`, the window
+    /// is resolved and containment is exact; without one (template edit, before the anchor is
+    /// known), a coarse necessary check keeps only targets at least as long as the flow's shortest
+    /// possible window. The backend `start` still hard-rejects anything that slips through.
+    pub async fn valid_targets(
+        &self,
+        duration: Option<(i64, String)>,
+        anchor: Option<NaiveDate>,
+        candidates: Vec<TargetRef>,
+    ) -> Result<Vec<TargetRef>, FlowError> {
+        let Some((n, kind)) = duration else {
+            return Ok(candidates); // Unscoped flow: no window, no constraint.
+        };
+        let scopes = ScopeRepository::new(self.pool);
+        let concrete = match anchor {
+            Some(date) => {
+                let (window, _) = self.resolve_window(&scopes, n, &kind, date).await?;
+                Some(time_scope_bounds(self.pool, &window).await?)
+            }
+            None => None,
+        };
+        let min_days = n * min_period_days(&kind)?;
+
+        let mut valid = Vec::new();
+        for candidate in candidates {
+            let effective = effective_window(self.pool, &candidate.node_type, candidate.node_id).await?;
+            let fits = match (concrete, effective) {
+                (_, None) => true, // Unconstrained target.
+                (Some(window), Some(target)) => interval_contains(target, window),
+                (None, Some(target)) => (target.1 - target.0).num_days() >= min_days,
+            };
+            if fits {
+                valid.push(candidate);
+            }
+        }
+        Ok(valid)
+    }
+
+    /// For each of `nodes` that was materialised from a flow, returns its originating flow title
+    /// (nodes with no flow origin, or whose flow was since deleted, are omitted). Drives the
+    /// scope-clamp prompt's "from flow X" annotation.
+    pub async fn origins(&self, nodes: Vec<TargetRef>) -> Result<Vec<FlowOrigin>, FlowError> {
+        let mut origins = Vec::new();
+        for node in nodes {
+            let title: Option<String> = sqlx::query_scalar(
+                "SELECT f.title FROM flow_instance_nodes n \
+                 JOIN flow_instances i ON i.id = n.flow_instance_id \
+                 JOIN flows f ON f.id = i.flow_id \
+                 WHERE n.node_type = ? AND n.node_id = ? LIMIT 1",
+            )
+            .bind(&node.node_type)
+            .bind(node.node_id)
+            .fetch_optional(self.pool)
+            .await?;
+            if let Some(flow_title) = title {
+                origins.push(FlowOrigin {
+                    node_type: node.node_type,
+                    node_id: node.node_id,
+                    flow_title,
+                });
+            }
+        }
+        Ok(origins)
+    }
+
     /// Starts a flow: materialises its template into a real, independent Goal/Task subtree under
     /// the target, resolving every cycle pair and remapping intra-flow dependencies by fan-in.
     pub async fn start(
@@ -606,20 +714,8 @@ impl<'a> FlowRepository<'a> {
         let (window, window_start): (Option<TimeScope>, Option<NaiveDate>) =
             match (flow.flow_duration_n, flow.flow_duration_kind.as_deref()) {
                 (Some(n), Some(kind)) => {
-                    let start_scope = scopes.get_or_create(flow_scope_kind(kind)?, request.anchor_date).await?;
-                    let start_date = NaiveDate::parse_from_str(&start_scope.start_date, "%Y-%m-%d")
-                        .map_err(|e| FlowError::Invalid(e.to_string()))?;
-                    let end_date = advance(start_date, n - 1, kind)
-                        .ok_or_else(|| FlowError::Invalid("window exceeds the calendar".to_string()))?;
-                    let end_scope = scopes.get_or_create(flow_scope_kind(kind)?, end_date).await?;
-                    (
-                        Some(TimeScope {
-                            start_id: start_scope.id,
-                            end_id: end_scope.id,
-                            duration: Some(DurationSpec { n, kind: kind.to_string() }),
-                        }),
-                        Some(start_date),
-                    )
+                    let (ts, start) = self.resolve_window(&scopes, n, kind, request.anchor_date).await?;
+                    (Some(ts), Some(start))
                 }
                 _ => (None, None),
             };

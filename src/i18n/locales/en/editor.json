@@ -10,6 +10,7 @@
   "fieldAnchor": "Start on",
   "fieldInstanceType": "Instance type",
   "fieldTarget": "Target node",
+  "targetOutOfScope": "This target's scope can't contain the flow window — pick another anchor or target.",
   "fieldFlowScope": "Flow scope",
   "flowScoped": "Scoped instances",
   "fieldCycles": "Cycles",

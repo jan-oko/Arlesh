@@ -10,6 +10,7 @@
   "fieldAnchor": "תאריך התחלה",
   "fieldInstanceType": "סוג מופע",
   "fieldTarget": "צומת יעד",
+  "targetOutOfScope": "מסגרת הזמן של היעד אינה יכולה להכיל את מסגרת הסדר — בחרו תאריך התחלה או יעד אחר.",
   "fieldFlowScope": "מסגרת הסדר",
   "flowScoped": "מופעים עם מסגרת",
   "fieldCycles": "מחזורים",

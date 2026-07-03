@@ -257,6 +257,27 @@ pub struct MaterializedFlow {
     pub root_id: i64,
 }
 
+/// A candidate target node for a flow, referenced by kind and id. Used by the target-picker
+/// scope-validity check and the flow-origin lookup.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TargetRef {
+    /// Node kind (`aspect`/`domain`/`project`/`goal`/`task`).
+    pub node_type: String,
+    /// Node id.
+    pub node_id: i64,
+}
+
+/// A materialised node's originating flow: which real node it is and the flow it was started from.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct FlowOrigin {
+    /// The real node's kind (`goal` / `task`).
+    pub node_type: String,
+    /// The real node's id.
+    pub node_id: i64,
+    /// Title of the flow this node was materialised from.
+    pub flow_title: String,
+}
+
 /// An intra-flow dependency: `dependent` waits on `depends_on`.
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct FlowDependency {

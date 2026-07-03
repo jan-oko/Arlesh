@@ -356,6 +356,8 @@ export default function MindmapView() {
         <StartFlowModal
           flowTitle={startFlowNode.title}
           flowScoped={startFlowNode.flow?.durationKind != null}
+          durationN={startFlowNode.flow?.durationN ?? null}
+          durationKind={startFlowNode.flow?.durationKind ?? null}
           defaultTargetType={startFlowNode.flow?.targetType ?? null}
           defaultTargetId={startFlowNode.flow?.targetId ?? null}
           availableTargets={flowTargets}
@@ -384,12 +386,14 @@ export default function MindmapView() {
       {scopeClampRequest !== null && (
         <WarningConfirmModal
           heading={t("warnings:scopeClampHeading", { count: scopeClampRequest.conflicts.length })}
-          consequences={scopeClampRequest.conflicts.map((c) =>
-            t("warnings:scopeClampItem", {
+          consequences={scopeClampRequest.conflicts.map((c) => {
+            const item = t("warnings:scopeClampItem", {
               type: c.node_type === "goal" ? t("nodeKinds:goal") : t("nodeKinds:task"),
               id: c.node_id,
-            }),
-          )}
+            });
+            const flow = scopeClampRequest.flowOrigins[`${c.node_type}-${c.node_id}`];
+            return flow !== undefined ? t("warnings:scopeClampFromFlow", { item, flow }) : item;
+          })}
           actions={[{ label: t("warnings:scopeClampAction"), variant: "primary", onClick: () => resolveScopeClamp(true) }]}
           onCancel={() => resolveScopeClamp(false)}
         />

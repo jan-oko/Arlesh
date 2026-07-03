@@ -26,6 +26,25 @@ pub struct ViolatingDescendant {
     pub node_id: i64,
 }
 
+/// The effective Time Scope window governing children placed under `(node_type, node_id)`: the
+/// node's own window when scoped, otherwise the nearest scoped ancestor's, or `None` when nothing
+/// above it is scoped (unconstrained). Non-task/goal kinds carry no scope and return `None`.
+pub async fn effective_window(
+    pool: &DatabasePool,
+    node_type: &str,
+    node_id: i64,
+) -> Result<Option<Bounds>, TaskError> {
+    nearest_scoped_ancestor_window(pool, node_type, node_id).await
+}
+
+/// Resolves a Time Scope to its combined half-open datetime window.
+pub async fn time_scope_bounds(
+    pool: &DatabasePool,
+    time_scope: &TimeScope,
+) -> Result<Bounds, TaskError> {
+    time_scope_window(pool, time_scope).await
+}
+
 /// Resolves a single scope id to its half-open datetime window.
 pub(super) async fn scope_window(pool: &DatabasePool, scope_id: i64) -> Result<Bounds, TaskError> {
     let scope = ScopeRepository::new(pool).get(ScopeId(scope_id)).await?;

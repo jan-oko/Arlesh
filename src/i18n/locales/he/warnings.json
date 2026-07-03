@@ -19,5 +19,6 @@
   "scopeClampHeading_one": "צמצום המסגרת יוציא {{count}} פריט מקונן מהטווח — בחר מה יקרה",
   "scopeClampHeading_other": "צמצום המסגרת יוציא {{count}} פריטים מקוננים מהטווח — בחר מה יקרה",
   "scopeClampItem": "{{type}} #{{id}} ייצא מגבולות המסגרת החדשה",
+  "scopeClampFromFlow": "{{item}} (מהסדר \"{{flow}}\")",
   "scopeClampAction": "כווץ אותם למסגרת החדשה"
 }

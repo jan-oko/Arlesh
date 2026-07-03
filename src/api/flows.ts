@@ -80,6 +80,40 @@ export async function startFlow(flowId: number, request: StartFlowRequest): Prom
   return invoke<MaterializedFlow>("start_flow", { flowId, request });
 }
 
+// --- Target scope-validity & flow-origin lookup (Phase 7.5) ---
+
+/** A candidate target node, referenced by kind and numeric id. */
+export interface TargetRef {
+  node_type: string;
+  node_id: number;
+}
+
+/** A materialized node's originating flow (for the "from flow X" annotation). */
+export interface FlowOrigin {
+  node_type: string;
+  node_id: number;
+  flow_title: string;
+}
+
+/**
+ * Returns the subset of `candidates` a flow of the given duration may validly target. With a
+ * concrete `anchorDate` (ISO), containment is exact; with `null`, the coarse template-time check is
+ * used. A `null` duration (Unscoped flow) accepts every candidate.
+ */
+export async function scopeValidFlowTargets(
+  durationN: number | null,
+  durationKind: string | null,
+  anchorDate: string | null,
+  candidates: TargetRef[],
+): Promise<TargetRef[]> {
+  return invoke<TargetRef[]>("scope_valid_flow_targets", { durationN, durationKind, anchorDate, candidates });
+}
+
+/** For each of `nodes` materialized from a flow, its originating flow title. */
+export async function flowOrigins(nodes: TargetRef[]): Promise<FlowOrigin[]> {
+  return invoke<FlowOrigin[]>("flow_origins", { nodes });
+}
+
 // --- Flow items (Phase 7.3) ---
 
 /** Which flow-item table a row lives in. */

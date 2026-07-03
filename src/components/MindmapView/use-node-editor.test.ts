@@ -4,6 +4,7 @@ import { useNodeEditor } from "./use-node-editor";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { updateTask, scopeContainmentConflicts } from "@/api/tasks";
 import { updateGoal } from "@/api/goals";
+import { flowOrigins } from "@/api/flows";
 
 vi.mock("@/api/domains", () => ({
   listDomains: vi.fn().mockResolvedValue([]),
@@ -22,6 +23,11 @@ vi.mock("@/api/goals", () => ({
   updateGoal: vi.fn().mockResolvedValue(undefined),
   addTagToGoal: vi.fn().mockResolvedValue(undefined),
   removeTagFromGoal: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("@/api/flows", () => ({
+  updateFlow: vi.fn(), updateFlowGoal: vi.fn(), updateFlowTask: vi.fn(),
+  setFlowItemCycles: vi.fn(), addFlowDependency: vi.fn(), removeFlowDependency: vi.fn(),
+  flowOrigins: vi.fn().mockResolvedValue([]),
 }));
 
 const taskNode: MindmapNode = {
@@ -96,5 +102,19 @@ describe("useNodeEditor — checkScopeClamp confirm", () => {
     act(() => result.current.resolveScopeClamp(true));
     await expect(decision!).resolves.toBe(true);
     expect(result.current.scopeClampRequest).toBeNull();
+  });
+
+  it("annotates conflicting descendants that were materialized from a flow", async () => {
+    vi.mocked(scopeContainmentConflicts).mockResolvedValue([
+      { node_type: "task", node_id: 9 },
+      { node_type: "goal", node_id: 12 },
+    ]);
+    vi.mocked(flowOrigins).mockResolvedValue([{ node_type: "task", node_id: 9, flow_title: "Add Feature" }]);
+    const result = setup();
+
+    act(() => { void result.current.checkScopeClamp("task", 5, { start_id: 1, end_id: 1 }); });
+    await waitFor(() => expect(result.current.scopeClampRequest).not.toBeNull());
+
+    expect(result.current.scopeClampRequest?.flowOrigins).toEqual({ "task-9": "Add Feature" });
   });
 });

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import EditorModal from "@/components/EditorModal/EditorModal";
+import { useValidFlowTargets } from "@/hooks/use-valid-flow-targets";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 
 export interface StartFlowData {
@@ -36,6 +37,8 @@ function todayIso(): string {
 interface Props {
   flowTitle: string;
   flowScoped: boolean;
+  durationN: number | null;
+  durationKind: string | null;
   defaultTargetType: string | null;
   defaultTargetId: number | null;
   availableTargets: MindmapNode[];
@@ -47,7 +50,7 @@ interface Props {
  * Starts a flow: names the materialized root, picks the target node it's created under, and (for a
  * scoped flow) the anchor date whose flow-kind scope becomes the window's first period.
  */
-export default function StartFlowModal({ flowTitle, flowScoped, defaultTargetType, defaultTargetId, availableTargets, onStart, onClose }: Props) {
+export default function StartFlowModal({ flowTitle, flowScoped, durationN, durationKind, defaultTargetType, defaultTargetId, availableTargets, onStart, onClose }: Props) {
   const { t } = useTranslation(["editor", "nodeKinds"]);
   const [title, setTitle] = useState(flowTitle);
   const [target, setTarget] = useState<TargetSelection | null>(initialTarget(defaultTargetType, defaultTargetId, availableTargets));
@@ -56,6 +59,10 @@ export default function StartFlowModal({ flowTitle, flowScoped, defaultTargetTyp
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
+
+  // Only targets whose scope contains the concrete flow window (anchor + duration) are offered.
+  const validIds = useValidFlowTargets(availableTargets, flowScoped, durationN, durationKind, anchorDate);
+  const targetInvalid = target !== null && validIds !== null && !validIds.has(`${target.kind}-${target.id}`);
 
   useEffect(() => { titleRef.current?.focus(); titleRef.current?.select(); }, []);
 
@@ -66,7 +73,7 @@ export default function StartFlowModal({ flowTitle, flowScoped, defaultTargetTyp
   }
 
   async function handleSave() {
-    if (title.trim() === "" || target === null) return;
+    if (title.trim() === "" || target === null || targetInvalid) return;
     setIsSaving(true);
     setSaveError(null);
     try {
@@ -85,6 +92,7 @@ export default function StartFlowModal({ flowTitle, flowScoped, defaultTargetTyp
   const searchLower = targetSearch.trim().toLowerCase();
   const searchResults = searchLower === "" ? [] : availableTargets
     .filter((n) => n.title.toLowerCase().includes(searchLower))
+    .filter((n) => validIds === null || validIds.has(n.id))
     .filter((n) => !(target !== null && n.id === `${target.kind}-${target.id}`))
     .slice(0, 8);
 
@@ -98,12 +106,15 @@ export default function StartFlowModal({ flowTitle, flowScoped, defaultTargetTyp
         {t("fieldTarget")}
         {/* Exactly one target: once chosen, show it as a chip and hide the search until removed. */}
         {target !== null ? (
-          <div className={styles.depList}>
-            <div className={styles.depItem}>
-              <span>{target.title}<span className={styles.depKind}>{t(`nodeKinds:${target.kind}`)}</span></span>
-              <button type="button" className={styles.depRemoveBtn} onClick={() => setTarget(null)}>×</button>
+          <>
+            <div className={styles.depList}>
+              <div className={styles.depItem}>
+                <span>{target.title}<span className={styles.depKind}>{t(`nodeKinds:${target.kind}`)}</span></span>
+                <button type="button" className={styles.depRemoveBtn} onClick={() => setTarget(null)}>×</button>
+              </div>
             </div>
-          </div>
+            {targetInvalid && <p className={styles.errorMsg}>{t("targetOutOfScope")}</p>}
+          </>
         ) : (
           <div className={styles.depSearchWrap}>
             <input type="text" className={styles.depSearch} placeholder={t("placeholderTargetSearch")} value={targetSearch} onChange={(e) => setTargetSearch(e.target.value)} />

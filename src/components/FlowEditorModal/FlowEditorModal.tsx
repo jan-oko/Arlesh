@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import type { InstanceType } from "@/api/flows";
 import EditorModal from "@/components/EditorModal/EditorModal";
+import { useValidFlowTargets } from "@/hooks/use-valid-flow-targets";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 
 /** The relative window kinds a flow scope may span (a Duration, never Boundaries). */
@@ -72,6 +73,9 @@ export default function FlowEditorModal({ node, availableTargets, heading, onSav
   const [saveError, setSaveError] = useState<string | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
 
+  // No anchor at template time → a coarse filter that hides targets too small to ever hold the flow.
+  const validIds = useValidFlowTargets(availableTargets, scoped, durationN, durationKind, null);
+
   useEffect(() => { titleRef.current?.focus(); titleRef.current?.select(); }, []);
 
   function selectTarget(candidate: MindmapNode) {
@@ -108,6 +112,7 @@ export default function FlowEditorModal({ node, availableTargets, heading, onSav
   const searchResults = searchLower === "" ? [] : availableTargets
     .filter((n) => n.kind !== "flow" && n.id !== node.id)
     .filter((n) => n.title.toLowerCase().includes(searchLower))
+    .filter((n) => validIds === null || validIds.has(n.id))
     .filter((n) => !(target !== null && n.id === `${target.kind}-${target.id}`))
     .slice(0, 8);
 

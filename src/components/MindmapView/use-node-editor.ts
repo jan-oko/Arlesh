@@ -7,7 +7,7 @@ import type { FlowSaveData } from "@/components/FlowEditorModal/FlowEditorModal"
 import type { FlowItemSaveData } from "@/components/FlowItemEditorModal/FlowItemEditorModal";
 import {
   updateFlow, updateFlowGoal, updateFlowTask, setFlowItemCycles,
-  addFlowDependency, removeFlowDependency,
+  addFlowDependency, removeFlowDependency, flowOrigins,
 } from "@/api/flows";
 import type { Domain } from "@/api/domains";
 import { listDomains, updateDomain } from "@/api/domains";
@@ -33,6 +33,8 @@ export interface EditorModalState {
 /** A pending clamp-or-cancel prompt: the descendants a narrowed scope would orphan. */
 export interface ScopeClampRequest {
   conflicts: ViolatingDescendant[];
+  /** `"type-id"` → originating flow title, for descendants materialized from a flow. */
+  flowOrigins: Record<string, string>;
   resolve: (proceed: boolean) => void;
 }
 
@@ -91,10 +93,21 @@ export function useNodeEditor({ tree, allTasksAndGoals, renameNode, reload }: Op
     });
   }, []);
 
-  // Opens the clamp-or-cancel prompt for the given conflicts; resolves the user's choice.
+  // Opens the clamp-or-cancel prompt for the given conflicts; resolves the user's choice. Annotates
+  // any flow-originated descendants with their originating flow title (Phase 7.5).
   const confirmScopeClamp = useCallback(
-    (conflicts: ViolatingDescendant[]): Promise<boolean> =>
-      new Promise<boolean>((resolve) => setScopeClampRequest({ conflicts, resolve })),
+    async (conflicts: ViolatingDescendant[]): Promise<boolean> => {
+      const origins = await flowOrigins(
+        conflicts.map((c) => ({ node_type: c.node_type, node_id: c.node_id })),
+      );
+      const flowOriginMap: Record<string, string> = {};
+      for (const origin of origins) {
+        flowOriginMap[`${origin.node_type}-${origin.node_id}`] = origin.flow_title;
+      }
+      return new Promise<boolean>((resolve) =>
+        setScopeClampRequest({ conflicts, flowOrigins: flowOriginMap, resolve }),
+      );
+    },
     [],
   );
 

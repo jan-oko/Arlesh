@@ -10,6 +10,9 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
+// Coarse target filtering is covered by the hook's own tests; unrestricted (null) here.
+vi.mock("@/hooks/use-valid-flow-targets", () => ({ useValidFlowTargets: () => null }));
+
 function mkFlow(overrides: Partial<MindmapNode> = {}): MindmapNode {
   return {
     id: "flow-1",

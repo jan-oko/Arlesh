@@ -7,8 +7,8 @@ use crate::{
     flows::{
         model::{
             CreateFlowItemRequest, CreateFlowRequest, Flow, FlowCycleInput, FlowDependency,
-            FlowGoal, FlowId, FlowItemCycle, FlowItemType, FlowTask, MaterializedFlow,
-            StartFlowRequest, UpdateFlowItemRequest, UpdateFlowRequest,
+            FlowGoal, FlowId, FlowItemCycle, FlowItemType, FlowOrigin, FlowTask, MaterializedFlow,
+            StartFlowRequest, TargetRef, UpdateFlowItemRequest, UpdateFlowRequest,
         },
         FlowRepository,
     },
@@ -167,6 +167,39 @@ pub async fn start_flow(
 ) -> Result<MaterializedFlow, String> {
     FlowRepository::new(&pool)
         .start(FlowId(flow_id), request)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+/// Returns the subset of `candidates` a flow of the given duration may validly target. With a
+/// concrete `anchor_date`, containment is exact; without one it is the coarse template-time check.
+/// A `null` duration (Unscoped flow) accepts every candidate.
+#[tauri::command]
+pub async fn scope_valid_flow_targets(
+    pool: State<'_, DatabasePool>,
+    duration_n: Option<i64>,
+    duration_kind: Option<String>,
+    anchor_date: Option<chrono::NaiveDate>,
+    candidates: Vec<TargetRef>,
+) -> Result<Vec<TargetRef>, String> {
+    let duration = match (duration_n, duration_kind) {
+        (Some(n), Some(kind)) => Some((n, kind)),
+        _ => None,
+    };
+    FlowRepository::new(&pool)
+        .valid_targets(duration, anchor_date, candidates)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+/// For each of `nodes` that was materialised from a flow, returns its originating flow title.
+#[tauri::command]
+pub async fn flow_origins(
+    pool: State<'_, DatabasePool>,
+    nodes: Vec<TargetRef>,
+) -> Result<Vec<FlowOrigin>, String> {
+    FlowRepository::new(&pool)
+        .origins(nodes)
         .await
         .map_err(|error| error.to_string())
 }

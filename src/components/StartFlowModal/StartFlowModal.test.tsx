@@ -7,6 +7,12 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { dir: () => "ltr" } }),
 }));
 
+// The target filter is exercised in the hook's own tests; here it defaults to unrestricted (null),
+// with individual tests overriding it to drive the out-of-scope path.
+vi.mock("@/hooks/use-valid-flow-targets", () => ({ useValidFlowTargets: vi.fn(() => null) }));
+
+import { useValidFlowTargets } from "@/hooks/use-valid-flow-targets";
+
 function mkGoal(id: number, title: string): MindmapNode {
   return { id: `goal-${id}`, kind: "goal", title, status: "active", position: 0, tagIds: [], children: [] };
 }
@@ -16,6 +22,8 @@ const TARGETS = [mkGoal(7, "Backend"), mkGoal(8, "Frontend")];
 const defaultProps = {
   flowTitle: "Add Feature",
   flowScoped: true,
+  durationN: 2,
+  durationKind: "week",
   defaultTargetType: "goal",
   defaultTargetId: 7,
   availableTargets: TARGETS,
@@ -23,7 +31,10 @@ const defaultProps = {
   onClose: vi.fn(),
 };
 
-beforeEach(() => { vi.clearAllMocks(); });
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.mocked(useValidFlowTargets).mockReturnValue(null);
+});
 
 describe("StartFlowModal", () => {
   it("pre-fills the title and the flow's default target", () => {
@@ -60,6 +71,15 @@ describe("StartFlowModal", () => {
 
   it("does not start without a target", () => {
     render(<StartFlowModal {...defaultProps} defaultTargetType={null} defaultTargetId={null} />);
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    expect(defaultProps.onStart).not.toHaveBeenCalled();
+  });
+
+  it("blocks starting and warns when the chosen target is out of scope", () => {
+    // Only Frontend (goal-8) is valid; the pre-filled default Backend (goal-7) is not.
+    vi.mocked(useValidFlowTargets).mockReturnValue(new Set(["goal-8"]));
+    render(<StartFlowModal {...defaultProps} />);
+    expect(screen.getByText("targetOutOfScope")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "save" }));
     expect(defaultProps.onStart).not.toHaveBeenCalled();
   });

@@ -19,5 +19,6 @@
   "scopeClampHeading_one": "Narrowing this scope moves {{count}} nested item out of range — choose what happens",
   "scopeClampHeading_other": "Narrowing this scope moves {{count}} nested items out of range — choose what happens",
   "scopeClampItem": "{{type}} #{{id}} would fall outside the new scope",
+  "scopeClampFromFlow": "{{item}} (from flow \"{{flow}}\")",
   "scopeClampAction": "Clamp them to the new scope"
 }
