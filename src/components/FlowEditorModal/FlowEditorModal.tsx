@@ -6,9 +6,16 @@ import EditorModal from "@/components/EditorModal/EditorModal";
 import { useValidFlowTargets } from "@/hooks/use-valid-flow-targets";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 
-/** The relative window kinds a flow scope may span (a Duration, never Boundaries). */
-const FLOW_SCOPE_KINDS = ["day", "week", "month", "season"] as const;
+/** Flow Window kinds: coarse Spans (a Duration length) plus sub-day Phases (part/exact). */
+const FLOW_SCOPE_KINDS = ["day", "week", "month", "season", "part", "exact"] as const;
 type FlowScopeKind = (typeof FLOW_SCOPE_KINDS)[number];
+
+/** Part-of-day bands offered for a Phase-`part` window. */
+const PART_BANDS = ["morning", "noon", "afternoon", "evening", "night", "premorning"] as const;
+
+function isPhaseKind(kind: FlowScopeKind): boolean {
+  return kind === "part" || kind === "exact";
+}
 
 const INSTANCE_TYPES: InstanceType[] = ["goal", "task"];
 
@@ -32,6 +39,9 @@ export interface FlowSaveData {
   targetId: number | null;
   durationN: number | null;
   durationKind: string | null;
+  windowPart: string | null;
+  windowTimeStart: string | null;
+  windowTimeEnd: string | null;
 }
 
 function toFlowScopeKind(value: string): FlowScopeKind {
@@ -67,6 +77,9 @@ export default function FlowEditorModal({ node, availableTargets, heading, onSav
   const [scoped, setScoped] = useState<boolean>(node.flow?.durationN != null && node.flow.durationKind != null);
   const [durationN, setDurationN] = useState<number>(node.flow?.durationN ?? 1);
   const [durationKind, setDurationKind] = useState<FlowScopeKind>(toFlowScopeKind(node.flow?.durationKind ?? "week"));
+  const [windowPart, setWindowPart] = useState<string>(node.flow?.windowPart ?? "evening");
+  const [timeStart, setTimeStart] = useState<string>(node.flow?.windowTimeStart ?? "10:00");
+  const [timeEnd, setTimeEnd] = useState<string>(node.flow?.windowTimeEnd ?? "12:00");
   const [target, setTarget] = useState<TargetSelection | null>(targetFromNode(node, availableTargets));
   const [targetSearch, setTargetSearch] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -89,13 +102,18 @@ export default function FlowEditorModal({ node, availableTargets, heading, onSav
     setIsSaving(true);
     setSaveError(null);
     try {
+      const phase = isPhaseKind(durationKind);
       await onSave({
         title: title.trim(),
         instanceType,
         targetType: target?.kind ?? null,
         targetId: target?.id ?? null,
-        durationN: scoped ? durationN : null,
+        // A Phase window carries its band/time, not a length, so its N is fixed at 1.
+        durationN: scoped ? (phase ? 1 : durationN) : null,
         durationKind: scoped ? durationKind : null,
+        windowPart: scoped && durationKind === "part" ? windowPart : null,
+        windowTimeStart: scoped && durationKind === "exact" ? timeStart : null,
+        windowTimeEnd: scoped && durationKind === "exact" ? timeEnd : null,
       });
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err));
@@ -140,14 +158,6 @@ export default function FlowEditorModal({ node, availableTargets, heading, onSav
         </label>
         {scoped ? (
           <div className={styles.durationRow}>
-            <input
-              type="number"
-              min={1}
-              aria-label={t("fieldFlowScope")}
-              className={`${styles.control} ${styles.numberInput}`}
-              value={durationN}
-              onChange={(e) => setDurationN(Math.max(1, Number(e.target.value)))}
-            />
             <select
               aria-label={t("scopeDuration")}
               className={`${styles.control} ${styles.select}`}
@@ -158,6 +168,44 @@ export default function FlowEditorModal({ node, availableTargets, heading, onSav
                 <option key={kind} value={kind}>{kind}</option>
               ))}
             </select>
+            {durationKind === "part" ? (
+              <select
+                aria-label={t("fieldFlowScope")}
+                className={`${styles.control} ${styles.select}`}
+                value={windowPart}
+                onChange={(e) => setWindowPart(e.target.value)}
+              >
+                {PART_BANDS.map((band) => (
+                  <option key={band} value={band}>{band}</option>
+                ))}
+              </select>
+            ) : durationKind === "exact" ? (
+              <>
+                <input
+                  type="time"
+                  aria-label={t("windowTimeStart")}
+                  className={styles.control}
+                  value={timeStart}
+                  onChange={(e) => setTimeStart(e.target.value)}
+                />
+                <input
+                  type="time"
+                  aria-label={t("windowTimeEnd")}
+                  className={styles.control}
+                  value={timeEnd}
+                  onChange={(e) => setTimeEnd(e.target.value)}
+                />
+              </>
+            ) : (
+              <input
+                type="number"
+                min={1}
+                aria-label={t("fieldFlowScope")}
+                className={`${styles.control} ${styles.numberInput}`}
+                value={durationN}
+                onChange={(e) => setDurationN(Math.max(1, Number(e.target.value)))}
+              />
+            )}
           </div>
         ) : (
           <span className={styles.depKind}>{t("scopes:unscoped")}</span>

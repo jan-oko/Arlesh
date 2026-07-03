@@ -34,7 +34,7 @@ import styles from "./MindmapView.module.css";
 // A pristine flow used to seed the create editor before the flow is persisted.
 const BLANK_FLOW_NODE: MindmapNode = {
   id: "flow-new", kind: "flow", title: "", position: 0,
-  flow: { instanceType: "task", targetType: null, targetId: null, durationN: 1, durationKind: "week" },
+  flow: { instanceType: "task", targetType: null, targetId: null, durationN: 1, durationKind: "week", windowPart: null, windowTimeStart: null, windowTimeEnd: null },
   tagIds: [], children: [],
 };
 
@@ -126,6 +126,9 @@ export default function MindmapView() {
         target_id: data.targetId,
         flow_duration_n: data.durationN,
         flow_duration_kind: data.durationKind,
+        flow_window_part: data.windowPart,
+        flow_window_time_start: data.windowTimeStart,
+        flow_window_time_end: data.windowTimeEnd,
       });
       setFlowCreateParent(null);
     },

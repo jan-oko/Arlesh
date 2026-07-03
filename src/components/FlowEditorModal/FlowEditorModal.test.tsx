@@ -21,7 +21,7 @@ function mkFlow(overrides: Partial<MindmapNode> = {}): MindmapNode {
     position: 0,
     tagIds: [],
     children: [],
-    flow: { instanceType: "task", targetType: null, targetId: null, durationN: 2, durationKind: "week" },
+    flow: { instanceType: "task", targetType: null, targetId: null, durationN: 2, durationKind: "week", windowPart: null, windowTimeStart: null, windowTimeEnd: null },
     ...overrides,
   };
 }
@@ -51,7 +51,7 @@ describe("FlowEditorModal — initial state", () => {
   });
 
   it("shows the existing target as a chip", () => {
-    render(<FlowEditorModal {...defaultProps} node={mkFlow({ flow: { instanceType: "task", targetType: "goal", targetId: 7, durationN: 1, durationKind: "week" } })} />);
+    render(<FlowEditorModal {...defaultProps} node={mkFlow({ flow: { instanceType: "task", targetType: "goal", targetId: 7, durationN: 1, durationKind: "week", windowPart: null, windowTimeStart: null, windowTimeEnd: null } })} />);
     expect(screen.getByText("Backend Revamp")).toBeInTheDocument();
   });
 });
@@ -68,6 +68,9 @@ describe("FlowEditorModal — save", () => {
         targetId: null,
         durationN: 2,
         durationKind: "week",
+        windowPart: null,
+        windowTimeStart: null,
+        windowTimeEnd: null,
       }),
     );
   });
@@ -97,12 +100,34 @@ describe("FlowEditorModal — save", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "flowScoped" }));
     fireEvent.click(screen.getByRole("button", { name: "save" }));
     await waitFor(() =>
-      expect(defaultProps.onSave).toHaveBeenCalledWith(expect.objectContaining({ durationN: null, durationKind: null })),
+      expect(defaultProps.onSave).toHaveBeenCalledWith(expect.objectContaining({ durationN: null, durationKind: null, windowPart: null, windowTimeStart: null, windowTimeEnd: null })),
+    );
+  });
+
+  it("saves an exact Phase window with its time range", async () => {
+    render(<FlowEditorModal {...defaultProps} />);
+    fireEvent.change(screen.getByLabelText("scopeDuration"), { target: { value: "exact" } });
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() =>
+      expect(defaultProps.onSave).toHaveBeenCalledWith(
+        expect.objectContaining({ durationKind: "exact", durationN: 1, windowTimeStart: "10:00", windowTimeEnd: "12:00", windowPart: null }),
+      ),
+    );
+  });
+
+  it("saves a part-of-day Phase window with its band", async () => {
+    render(<FlowEditorModal {...defaultProps} />);
+    fireEvent.change(screen.getByLabelText("scopeDuration"), { target: { value: "part" } });
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() =>
+      expect(defaultProps.onSave).toHaveBeenCalledWith(
+        expect.objectContaining({ durationKind: "part", durationN: 1, windowPart: "evening", windowTimeStart: null }),
+      ),
     );
   });
 
   it("treats a flow with no stored scope as unscoped", () => {
-    render(<FlowEditorModal {...defaultProps} node={mkFlow({ flow: { instanceType: "task", targetType: null, targetId: null, durationN: null, durationKind: null } })} />);
+    render(<FlowEditorModal {...defaultProps} node={mkFlow({ flow: { instanceType: "task", targetType: null, targetId: null, durationN: null, durationKind: null, windowPart: null, windowTimeStart: null, windowTimeEnd: null } })} />);
     expect(screen.getByRole("checkbox", { name: "flowScoped" })).not.toBeChecked();
   });
 

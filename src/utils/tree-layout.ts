@@ -14,6 +14,11 @@ export interface FlowData {
   targetId: number | null;
   durationN: number | null;
   durationKind: string | null;
+  /** Phase-`part` band (e.g. "evening"), when durationKind is "part". */
+  windowPart: string | null;
+  /** Phase-`exact` time-of-day range "HH:MM", when durationKind is "exact". */
+  windowTimeStart: string | null;
+  windowTimeEnd: string | null;
 }
 
 /** A relative (Cycle Scope, Cycle Plan) pair on a flow item. */

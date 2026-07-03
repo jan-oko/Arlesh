@@ -12,6 +12,8 @@
   "fieldTarget": "Target node",
   "targetOutOfScope": "This target's scope can't contain the flow window — pick another anchor or target.",
   "fieldFlowScope": "Flow scope",
+  "windowTimeStart": "Start time",
+  "windowTimeEnd": "End time",
   "flowScoped": "Scoped instances",
   "fieldCycles": "Cycles",
   "cycleWholeScope": "Whole flow scope",

@@ -200,6 +200,9 @@ export function useNodeEditor({ tree, allTasksAndGoals, renameNode, reload }: Op
         target_id: data.targetId,
         flow_duration_n: data.durationN,
         flow_duration_kind: data.durationKind,
+        flow_window_part: data.windowPart,
+        flow_window_time_start: data.windowTimeStart,
+        flow_window_time_end: data.windowTimeEnd,
       });
       await reload();
       setEditorModal(null);
