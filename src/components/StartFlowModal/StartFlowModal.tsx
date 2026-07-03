@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
+import { entityNodeId } from "@/utils/tree-layout";
 import EditorModal from "@/components/EditorModal/EditorModal";
 import { useValidFlowTargets } from "@/hooks/use-valid-flow-targets";
 import styles from "@/components/EditorModal/EditorModal.module.css";
@@ -21,7 +22,8 @@ interface TargetSelection { kind: NodeKind; id: number; title: string; }
 
 function initialTarget(defaultTargetType: string | null, defaultTargetId: number | null, candidates: MindmapNode[]): TargetSelection | null {
   if (defaultTargetType === null || defaultTargetId === null) return null;
-  const match = candidates.find((c) => c.id === `${defaultTargetType}-${defaultTargetId}`);
+  const lookupId = entityNodeId(defaultTargetType, defaultTargetId);
+  const match = candidates.find((c) => c.id === lookupId);
   const kind = match?.kind ?? (isNodeKind(defaultTargetType) ? defaultTargetType : null);
   if (kind === null) return null;
   return { kind, id: defaultTargetId, title: match?.title ?? `#${defaultTargetId}` };
@@ -62,7 +64,7 @@ export default function StartFlowModal({ flowTitle, flowScoped, durationN, durat
 
   // Only targets whose scope contains the concrete flow window (anchor + duration) are offered.
   const validIds = useValidFlowTargets(availableTargets, flowScoped, durationN, durationKind, anchorDate);
-  const targetInvalid = target !== null && validIds !== null && !validIds.has(`${target.kind}-${target.id}`);
+  const targetInvalid = target !== null && validIds !== null && !validIds.has(entityNodeId(target.kind, target.id));
 
   useEffect(() => { titleRef.current?.focus(); titleRef.current?.select(); }, []);
 

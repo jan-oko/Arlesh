@@ -21,6 +21,7 @@ import type {
 import { deriveScopeLifecycles } from "@/api/scope-lifecycle";
 import type { ItemLifecycle, ScopeLifecycle } from "@/api/scope-lifecycle";
 import type { MindmapNode, NodeKind, FlowCyclePair, FlowItemDep } from "@/utils/tree-layout";
+import { entityNodeId } from "@/utils/tree-layout";
 import { goalStatusToTaskStatus, taskStatusToGoalStatus } from "@/utils/status-mapping";
 
 /** Local wall-clock now as a `YYYY-MM-DDTHH:MM:SS` string for the scope-lifecycle derivation. */
@@ -53,7 +54,7 @@ export function injectHabitInstances(root: MindmapNode, flows: Flow[], iteration
     if (iterations.length === 0) return;
     const hostId =
       flow.target_type !== null && flow.target_id !== null
-        ? `${flow.target_type}-${flow.target_id}`
+        ? entityNodeId(flow.target_type, flow.target_id)
         : `flow-${flow.id}`;
     const host = findNode(root, hostId);
     if (host === undefined) return;

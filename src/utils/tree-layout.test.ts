@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeLayout, computeSubtreeLayout } from "./tree-layout";
+import { computeLayout, computeSubtreeLayout, entityNodeId } from "./tree-layout";
 import type { MindmapNode } from "./tree-layout";
 
 function node(id: string, children: MindmapNode[] = []): MindmapNode {
@@ -78,5 +78,19 @@ describe("computeSubtreeLayout", () => {
     const positions = computeSubtreeLayout(root, new Set(), 1);
     expect(positions.size).toBe(1);
     expect(positions.has("r")).toBe(true);
+  });
+});
+
+describe("entityNodeId", () => {
+  it("maps every domain-table subtype into the shared domain-<id> namespace", () => {
+    expect(entityNodeId("project", 96)).toBe("domain-96");
+    expect(entityNodeId("aspect", 1)).toBe("domain-1");
+    expect(entityNodeId("domain", 4)).toBe("domain-4");
+    expect(entityNodeId("tag", 7)).toBe("domain-7");
+  });
+
+  it("keeps goal and task in their own namespaces", () => {
+    expect(entityNodeId("goal", 5)).toBe("goal-5");
+    expect(entityNodeId("task", 8)).toBe("task-8");
   });
 });

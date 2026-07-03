@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
+import { entityNodeId } from "@/utils/tree-layout";
 import type { InstanceType, ConsumptionKind, BlockingMode, CatchupPolicy } from "@/api/flows";
 import { getFlowRecurrence, habitCompletionCount } from "@/api/flows";
 import { getScope } from "@/api/scopes";
@@ -78,17 +79,12 @@ function todayIso(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-/** Domain-table subtypes — all keyed `domain-<id>` in the tree, though a flow stores the subtype. */
-const DOMAIN_TABLE_KINDS = new Set<string>(["aspect", "project", "domain", "tag"]);
-
 function targetFromNode(node: MindmapNode, candidates: MindmapNode[]): TargetSelection | null {
   const flow = node.flow;
   if (flow === undefined || flow.targetType === null || flow.targetId === null) return null;
   // Normalize a domain-table target_type to the `domain-<id>` key the tree actually uses, so the
   // pre-selected target resolves to its real title instead of falling back to `#<id>`.
-  const lookupId = DOMAIN_TABLE_KINDS.has(flow.targetType)
-    ? `domain-${flow.targetId}`
-    : `${flow.targetType}-${flow.targetId}`;
+  const lookupId = entityNodeId(flow.targetType, flow.targetId);
   const match = candidates.find((c) => c.id === lookupId);
   const kind = match?.kind ?? (isNodeKind(flow.targetType) ? flow.targetType : null);
   if (kind === null) return null;

@@ -11,7 +11,8 @@ function node(id: string, kind: MindmapNode["kind"]): MindmapNode {
   return { id, kind, title: id, status: "active", position: 0, tagIds: [], children: [] };
 }
 
-const CANDIDATES = [node("goal-7", "goal"), node("aspect-1", "aspect")];
+// Aspect/project/domain/tag nodes are keyed `domain-<id>` in the tree, though their kind is the subtype.
+const CANDIDATES = [node("goal-7", "goal"), node("domain-1", "aspect")];
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -34,7 +35,9 @@ describe("useValidFlowTargets", () => {
       { node_type: "goal", node_id: 7 },
       { node_type: "aspect", node_id: 1 },
     ]);
-    expect(result.current?.has("aspect-1")).toBe(true);
+    // The set is keyed by tree node id, so a domain-table target resolves as `domain-<id>` and the
+    // consumers' `validIds.has(node.id)` check matches (the previous `aspect-1` key never did).
+    expect(result.current?.has("domain-1")).toBe(true);
     expect(result.current?.has("goal-7")).toBe(false);
   });
 });

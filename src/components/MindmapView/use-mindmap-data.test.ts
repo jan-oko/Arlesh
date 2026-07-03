@@ -800,6 +800,22 @@ describe("injectHabitInstances", () => {
     expect(virtuals[2]?.id).toBe("habit-3-2-virtual"); // non-numeric tail keeps it out of mutations
   });
 
+  it("attaches iterations under a domain-table (project) target keyed domain-<id>", () => {
+    const root = buildTree(
+      [
+        { id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0 },
+        { id: 96, title: "LOOK", description: null, subtype: "project", parent_id: 1, color: null, status: null, knowledge_base_directory: null, position: 0 },
+      ],
+      [], [], [],
+    );
+    injectHabitInstances(root, [mkFlow({ target_type: "project", target_id: 96 })], [[iter(0, "active")]]);
+
+    const project = root.children[0]?.children[0]; // aspect → project 96
+    expect(project?.id).toBe("domain-96");
+    expect(project?.children).toHaveLength(1);
+    expect(project?.children[0]?.virtual).toBe(true);
+  });
+
   it("skips flows with no iterations and missing targets", () => {
     const root = buildTree([], [], [], []);
     injectHabitInstances(root, [mkFlow(), mkFlow({ id: 9, target_type: null, target_id: null })], [[], [iter(0, "active")]]);

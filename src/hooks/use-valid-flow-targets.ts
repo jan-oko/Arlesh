@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import type { MindmapNode } from "@/utils/tree-layout";
+import { entityNodeId } from "@/utils/tree-layout";
 import { scopeValidFlowTargets } from "@/api/flows";
 
 /**
  * Resolves which of `candidates` a scoped flow may target, given its duration and — when starting —
- * a concrete `anchorDate`. Returns a Set of valid node ids (`"kind-id"`, matching `MindmapNode.id`),
- * or `null` while unrestricted: an Unscoped flow (`scoped` false) or before the first result
+ * a concrete `anchorDate`. Returns a Set of valid tree node ids (via `entityNodeId`, so it matches
+ * `MindmapNode.id` — including `domain-<id>` for domain-table targets), or `null` while unrestricted: an Unscoped flow (`scoped` false) or before the first result
  * arrives. Callers treat `null` as "no filter". Re-queries when the duration or anchor changes.
  */
 export function useValidFlowTargets(
@@ -25,7 +26,7 @@ export function useValidFlowTargets(
       node_id: parseInt(candidate.id.split("-").pop() ?? "0", 10),
     }));
     void scopeValidFlowTargets(durationN, durationKind, anchorDate, refs).then((valid) => {
-      if (!cancelled) setFetched(new Set(valid.map((ref) => `${ref.node_type}-${ref.node_id}`)));
+      if (!cancelled) setFetched(new Set(valid.map((ref) => entityNodeId(ref.node_type, ref.node_id))));
     });
     return () => {
       cancelled = true;

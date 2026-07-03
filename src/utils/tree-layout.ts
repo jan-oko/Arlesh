@@ -7,6 +7,19 @@ export type NodeKind =
   | "aspect" | "project" | "domain" | "goal" | "task" | "tag" | "info"
   | "flow" | "flow_goal" | "flow_task";
 
+/** The four subtypes stored in the single `domains` table — all keyed `domain-<id>` in the tree. */
+const DOMAIN_TABLE_KINDS: ReadonlySet<string> = new Set(["aspect", "project", "domain", "tag"]);
+
+/**
+ * The tree node id for an entity referenced by its `(type, id)` (e.g. a flow's stored target or
+ * parent). Domain-table subtypes (aspect/project/domain/tag) share the single `domain-<id>`
+ * namespace; goal/task keep their own. Never build `` `${type}-${id}` `` directly — a `project`
+ * target would resolve to `project-<id>`, which no tree node uses, and silently miss.
+ */
+export function entityNodeId(type: string, id: number): string {
+  return DOMAIN_TABLE_KINDS.has(type) ? `domain-${id}` : `${type}-${id}`;
+}
+
 /** Flow-template data carried by a `flow`-kind node. */
 export interface FlowData {
   instanceType: InstanceType;
