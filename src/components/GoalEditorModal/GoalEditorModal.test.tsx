@@ -11,6 +11,16 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
+// TimeScopeField resolves scope labels on mount; stub the scope API so scoped-node renders
+// don't emit unhandled rejections. The on-exit toggle itself renders synchronously.
+vi.mock("@/api/scopes", () => ({
+  getScope: vi.fn().mockResolvedValue({
+    id: 1, kind: "day", start_date: "2026-01-05", end_date: "2026-01-05",
+    start_datetime: null, end_datetime: null, part: null,
+  }),
+  getOrCreateScope: vi.fn(),
+}));
+
 function mkNode(overrides: Partial<MindmapNode> = {}): MindmapNode {
   return {
     id: "goal-1",
@@ -67,6 +77,7 @@ describe("GoalEditorModal — save", () => {
         blockedReason: "",
         tagIds: [2],
         timeScope: null,
+        onScopeExit: null,
       }),
     );
   });
@@ -112,5 +123,35 @@ describe("GoalEditorModal — keyboard shortcuts", () => {
     render(<GoalEditorModal {...defaultProps} />);
     fireEvent.keyDown(screen.getByDisplayValue("Ship it"), { key: "Escape" });
     expect(defaultProps.onClose).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("GoalEditorModal — on-exit behavior", () => {
+  const scopedNode = mkNode({ timeScope: { start_id: 1, end_id: 1 } });
+
+  it("hides the on-exit toggle when the goal is unscoped", () => {
+    render(<GoalEditorModal {...defaultProps} />);
+    expect(screen.queryByRole("button", { name: "onScopeExitArchive" })).not.toBeInTheDocument();
+  });
+
+  it("shows the toggle for a scoped goal and saves the chosen behavior", async () => {
+    render(<GoalEditorModal {...defaultProps} node={scopedNode} />);
+    fireEvent.click(screen.getByRole("button", { name: "onScopeExitArchive" }));
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() =>
+      expect(defaultProps.onSave).toHaveBeenCalledWith(
+        expect.objectContaining({ onScopeExit: "archive" }),
+      ),
+    );
+  });
+
+  it("defaults a scoped goal with no prior choice to keep", async () => {
+    render(<GoalEditorModal {...defaultProps} node={scopedNode} />);
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() =>
+      expect(defaultProps.onSave).toHaveBeenCalledWith(
+        expect.objectContaining({ onScopeExit: "keep" }),
+      ),
+    );
   });
 });

@@ -1,6 +1,7 @@
 import { hierarchy, tree } from "d3-hierarchy";
 import type { TimeScope } from "@/api/time-scope";
 import type { InstanceType, FlowItemType } from "@/api/flows";
+import type { OnScopeExit, ScopeLifecycle } from "@/api/scope-lifecycle";
 
 export type NodeKind =
   | "aspect" | "project" | "domain" | "goal" | "task" | "tag" | "info"
@@ -49,6 +50,10 @@ export interface MindmapNode {
   knowledgeBaseDirectory?: string | null;
   color?: string;
   timeScope?: TimeScope | null;
+  /** On-exit behavior; present iff `timeScope` is (Task/Goal only). */
+  onScopeExit?: OnScopeExit | null;
+  /** Derived scope lifecycle at "now" (Task/Goal only); set by the view, never persisted. */
+  scopeLifecycle?: ScopeLifecycle;
   plan?: TimeScope | null;
   flow?: FlowData;
   flowItem?: FlowItemData;

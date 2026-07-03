@@ -3,8 +3,10 @@ import { useTranslation } from "react-i18next";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { Domain } from "@/api/domains";
 import type { TimeScope } from "@/api/time-scope";
+import type { OnScopeExit } from "@/api/scope-lifecycle";
 import EditorModal from "@/components/EditorModal/EditorModal";
 import TimeScopeField from "@/components/ScopePicker/TimeScopeField";
+import OnScopeExitField from "@/components/ScopePicker/OnScopeExitField";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 import { GOAL_STATUS } from "@/utils/status-mapping";
 
@@ -14,6 +16,7 @@ export interface GoalSaveData {
   blockedReason: string;
   tagIds: number[];
   timeScope: TimeScope | null;
+  onScopeExit: OnScopeExit | null;
 }
 
 const GOAL_STATUSES = Object.values(GOAL_STATUS);
@@ -33,6 +36,7 @@ export default function GoalEditorModal({ node, allTags, onSave, onCheckScopeCla
   const [blockedReason, setBlockedReason] = useState(node.blockedReason ?? "");
   const [tagIds, setTagIds] = useState<number[]>(node.tagIds);
   const [timeScope, setTimeScope] = useState<TimeScope | null>(node.timeScope ?? null);
+  const [onScopeExit, setOnScopeExit] = useState<OnScopeExit | null>(node.onScopeExit ?? null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
@@ -53,7 +57,14 @@ export default function GoalEditorModal({ node, allTags, onSave, onCheckScopeCla
         setIsSaving(false);
         return;
       }
-      await onSave({ title: title.trim(), status, blockedReason, tagIds, timeScope });
+      await onSave({
+        title: title.trim(),
+        status,
+        blockedReason,
+        tagIds,
+        timeScope,
+        onScopeExit: timeScope !== null ? (onScopeExit ?? "keep") : null,
+      });
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err));
       setIsSaving(false);
@@ -87,6 +98,12 @@ export default function GoalEditorModal({ node, allTags, onSave, onCheckScopeCla
         {t("fieldTimeScope")}
         <TimeScopeField value={timeScope} onChange={setTimeScope} />
       </div>
+      {timeScope !== null && (
+        <div className={styles.label}>
+          {t("fieldOnScopeExit")}
+          <OnScopeExitField value={onScopeExit} onChange={setOnScopeExit} />
+        </div>
+      )}
       <label className={styles.label}>
         {t("fieldBlockReason")}
         <textarea className={styles.textarea} value={blockedReason} onChange={(e) => setBlockedReason(e.target.value)} placeholder={t("placeholderBlockReason")} />

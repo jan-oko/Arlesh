@@ -4,9 +4,11 @@ import type { MindmapNode } from "@/utils/tree-layout";
 import type { Domain } from "@/api/domains";
 import type { Dependency } from "@/api/tasks";
 import type { TimeScope } from "@/api/time-scope";
+import type { OnScopeExit } from "@/api/scope-lifecycle";
 import { listTaskDependencies } from "@/api/tasks";
 import EditorModal from "@/components/EditorModal/EditorModal";
 import TimeScopeField from "@/components/ScopePicker/TimeScopeField";
+import OnScopeExitField from "@/components/ScopePicker/OnScopeExitField";
 import PlanField from "@/components/ScopePicker/PlanField";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 import { TASK_STATUS } from "@/utils/status-mapping";
@@ -19,6 +21,7 @@ export interface TaskSaveData {
   addedDeps: Dependency[];
   removedDeps: Dependency[];
   timeScope: TimeScope | null;
+  onScopeExit: OnScopeExit | null;
   plan: TimeScope | null;
 }
 
@@ -43,6 +46,7 @@ export default function TaskEditorModal({ node, allTags, availableForDep, onSave
   const [blockedReason, setBlockedReason] = useState(node.blockedReason ?? "");
   const [tagIds, setTagIds] = useState<number[]>(node.tagIds);
   const [timeScope, setTimeScope] = useState<TimeScope | null>(node.timeScope ?? null);
+  const [onScopeExit, setOnScopeExit] = useState<OnScopeExit | null>(node.onScopeExit ?? null);
   const [plan, setPlan] = useState<TimeScope | null>(node.plan ?? null);
   const [initialDeps, setInitialDeps] = useState<Dependency[]>([]);
   const [currentDeps, setCurrentDeps] = useState<Dependency[]>([]);
@@ -86,7 +90,11 @@ export default function TaskEditorModal({ node, allTags, availableForDep, onSave
         setIsSaving(false);
         return;
       }
-      await onSave({ title: title.trim(), status, blockedReason, tagIds, addedDeps, removedDeps, timeScope, plan });
+      await onSave({
+        title: title.trim(), status, blockedReason, tagIds, addedDeps, removedDeps, timeScope,
+        onScopeExit: timeScope !== null ? (onScopeExit ?? "keep") : null,
+        plan,
+      });
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err));
       setIsSaving(false);
@@ -134,6 +142,12 @@ export default function TaskEditorModal({ node, allTags, availableForDep, onSave
         {t("fieldTimeScope")}
         <TimeScopeField value={timeScope} onChange={setTimeScope} />
       </div>
+      {timeScope !== null && (
+        <div className={styles.label}>
+          {t("fieldOnScopeExit")}
+          <OnScopeExitField value={onScopeExit} onChange={setOnScopeExit} />
+        </div>
+      )}
       <div className={styles.label}>
         {t("fieldPlan")}
         <PlanField value={plan} timeScope={timeScope} onChange={setPlan} />

@@ -147,6 +147,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, renameNode, reload }: Op
         status: data.status,
         blocked_reason: data.blockedReason,
         time_scope: data.timeScope,
+        on_scope_exit: data.onScopeExit,
         plan: data.plan,
       });
       const tagsAdded = data.tagIds.filter((id) => !node.tagIds.includes(id));
@@ -175,6 +176,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, renameNode, reload }: Op
         status: data.status,
         blocked_reason: data.blockedReason,
         time_scope: data.timeScope,
+        on_scope_exit: data.onScopeExit,
       });
       const tagsAdded = data.tagIds.filter((id) => !node.tagIds.includes(id));
       const tagsRemoved = node.tagIds.filter((id) => !data.tagIds.includes(id));
