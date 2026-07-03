@@ -7,13 +7,16 @@ use arlesh_lib::{
     },
     scopes::{model::ScopeKind, ScopeRepository},
     tasks::{
+        derive_all_scope_lifecycles,
+        lifecycle::ScopeLifecycle,
         model::{
-            CreateGoalRequest, CreateTaskRequest, Dependency, DurationSpec, GoalStatus, TaskStatus,
-            TimeScope, UpdateGoalRequest, UpdateTaskRequest,
+            CreateGoalRequest, CreateTaskRequest, Dependency, DurationSpec, GoalStatus, OnScopeExit,
+            TaskStatus, TimeScope, UpdateGoalRequest, UpdateTaskRequest,
         },
         GoalRepository, TaskRepository,
     },
 };
+use chrono::NaiveDate;
 
 async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
     let aspect_id: i64 =
@@ -1385,4 +1388,175 @@ async fn goal_is_achieved() {
         .unwrap();
 
     assert!(goal_repo.is_achieved(goal.id.into()).await.unwrap());
+}
+
+// --- On-exit behavior + derived scope lifecycle (Feature A / S2) ---
+
+async fn day_scope(pool: &sqlx::SqlitePool, y: i32, m: u32, d: u32) -> i64 {
+    ScopeRepository::new(pool)
+        .get_or_create(ScopeKind::Day, NaiveDate::from_ymd_opt(y, m, d).unwrap())
+        .await
+        .unwrap()
+        .id
+}
+
+fn task_state(states: &[arlesh_lib::tasks::lifecycle::ItemLifecycle], id: i64) -> ScopeLifecycle {
+    states
+        .iter()
+        .find(|s| s.node_type == "task" && s.node_id == id)
+        .unwrap()
+        .state
+}
+
+#[tokio::test]
+async fn scoped_item_defaults_to_keep_and_unscoped_forces_null() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let scope = day_scope(&pool, 2026, 1, 5).await;
+    let repo = TaskRepository::new(&pool);
+
+    // Scoped without an explicit on-exit → defaults to Keep.
+    let scoped = repo
+        .create(CreateTaskRequest {
+            title: "Scoped".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            time_scope: Some(TimeScope { start_id: scope, end_id: scope, duration: None }),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(scoped.on_scope_exit, Some(OnScopeExit::Keep));
+
+    // Unscoped but an on-exit was provided → dropped (invariant: on-exit present iff scoped).
+    let unscoped = repo
+        .create(CreateTaskRequest {
+            title: "Unscoped".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            on_scope_exit: Some(OnScopeExit::Archive),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(unscoped.on_scope_exit, None);
+}
+
+#[tokio::test]
+async fn archive_on_exit_persists_and_clearing_scope_clears_it() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let scope = day_scope(&pool, 2026, 1, 5).await;
+    let repo = TaskRepository::new(&pool);
+
+    let task = repo
+        .create(CreateTaskRequest {
+            title: "Archive me".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            time_scope: Some(TimeScope { start_id: scope, end_id: scope, duration: None }),
+            on_scope_exit: Some(OnScopeExit::Archive),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(task.on_scope_exit, Some(OnScopeExit::Archive));
+
+    let cleared = repo
+        .update(
+            task.id.into(),
+            UpdateTaskRequest { time_scope: Some(None), ..Default::default() },
+        )
+        .await
+        .unwrap();
+    assert_eq!(cleared.time_scope, None);
+    assert_eq!(cleared.on_scope_exit, None);
+}
+
+#[tokio::test]
+async fn derives_overdue_lapsed_and_active() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let past = day_scope(&pool, 2026, 1, 5).await;
+    let repo = TaskRepository::new(&pool);
+    let scope = || Some(TimeScope { start_id: past, end_id: past, duration: None });
+
+    let keep = repo
+        .create(CreateTaskRequest {
+            title: "Keep".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            time_scope: scope(),
+            on_scope_exit: Some(OnScopeExit::Keep),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let archive = repo
+        .create(CreateTaskRequest {
+            title: "Archive".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            time_scope: scope(),
+            on_scope_exit: Some(OnScopeExit::Archive),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let done = repo
+        .create(CreateTaskRequest {
+            title: "Done".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            status: Some(TaskStatus::Done),
+            time_scope: scope(),
+            on_scope_exit: Some(OnScopeExit::Archive),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    // Well past the 2026-01-05 window.
+    let now = NaiveDate::from_ymd_opt(2026, 2, 1).unwrap().and_hms_opt(12, 0, 0).unwrap();
+    let states = derive_all_scope_lifecycles(&pool, now).await.unwrap();
+    assert_eq!(task_state(&states, keep.id), ScopeLifecycle::Overdue);
+    assert_eq!(task_state(&states, archive.id), ScopeLifecycle::Lapsed);
+    assert_eq!(task_state(&states, done.id), ScopeLifecycle::Active); // resolved → exempt
+}
+
+#[tokio::test]
+async fn inherited_scope_and_on_exit_govern_children() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let past = day_scope(&pool, 2026, 1, 5).await;
+    let repo = TaskRepository::new(&pool);
+
+    let parent = repo
+        .create(CreateTaskRequest {
+            title: "Parent".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            time_scope: Some(TimeScope { start_id: past, end_id: past, duration: None }),
+            on_scope_exit: Some(OnScopeExit::Archive),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    // Child carries no scope of its own — it inherits the parent's window and on-exit.
+    let child = repo
+        .create(CreateTaskRequest {
+            title: "Child".into(),
+            parent_type: "task".into(),
+            parent_id: parent.id,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(child.time_scope, None);
+    assert_eq!(child.on_scope_exit, None); // nothing stored on the child
+
+    let now = NaiveDate::from_ymd_opt(2026, 2, 1).unwrap().and_hms_opt(12, 0, 0).unwrap();
+    let states = derive_all_scope_lifecycles(&pool, now).await.unwrap();
+    // Inherits Archive → Lapsed, even though the child itself is unscoped.
+    assert_eq!(task_state(&states, child.id), ScopeLifecycle::Lapsed);
 }

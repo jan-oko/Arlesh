@@ -980,6 +980,7 @@ impl<'a> FlowRepository<'a> {
                     parent_id: request.target_id,
                     status: None,
                     time_scope: window.clone(),
+                    on_scope_exit: None,
                 })
                 .await?;
             ("goal".to_string(), g.id)
@@ -991,6 +992,7 @@ impl<'a> FlowRepository<'a> {
                     parent_id: request.target_id,
                     status: None,
                     time_scope: window.clone(),
+                    on_scope_exit: None,
                     plan: None,
                 })
                 .await?;
@@ -1046,10 +1048,10 @@ impl<'a> FlowRepository<'a> {
                 for pair in &pair_opts {
                     let (time_scope, plan) = self.resolve_pair(&scopes, pair.as_ref(), window_start).await?;
                     let node = if kind == FlowItemType::FlowGoal {
-                        let g = goals.create(CreateGoalRequest { title: title.clone(), parent_type: parent_node_type.clone(), parent_id: parent_node_id, status: None, time_scope }).await?;
+                        let g = goals.create(CreateGoalRequest { title: title.clone(), parent_type: parent_node_type.clone(), parent_id: parent_node_id, status: None, time_scope, on_scope_exit: None }).await?;
                         ("goal".to_string(), g.id)
                     } else {
-                        let t = tasks.create(CreateTaskRequest { title: title.clone(), parent_type: parent_node_type.clone(), parent_id: parent_node_id, status: None, time_scope, plan }).await?;
+                        let t = tasks.create(CreateTaskRequest { title: title.clone(), parent_type: parent_node_type.clone(), parent_id: parent_node_id, status: None, time_scope, plan, on_scope_exit: None }).await?;
                         ("task".to_string(), t.id)
                     };
                     self.record_node(instance_id, (&node.0, node.1), (kind.as_str(), id), (&parent_node_type, parent_node_id)).await?;

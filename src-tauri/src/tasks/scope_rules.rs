@@ -5,6 +5,7 @@
 //! other Domains), so "nearest scoped ancestor" walks only the task/goal links directly above an
 //! item. A null Time Scope inherits that ancestor's window.
 
+use chrono::NaiveDateTime;
 use serde::Serialize;
 
 use crate::database::DatabasePool;
@@ -13,7 +14,8 @@ use crate::scopes::resolve::{self, Bounds};
 use crate::scopes::ScopeRepository;
 
 use super::error::TaskError;
-use super::model::{GoalId, TaskId, TimeScope};
+use super::lifecycle::{derive_scope_lifecycle, ItemLifecycle};
+use super::model::{GoalId, GoalStatus, OnScopeExit, TaskId, TaskStatus, TimeScope};
 use super::{GoalRepository, TaskRepository};
 
 /// A descendant whose explicit Time Scope would fall outside a candidate window — i.e. one that
@@ -43,6 +45,70 @@ pub async fn time_scope_bounds(
     time_scope: &TimeScope,
 ) -> Result<Bounds, TaskError> {
     time_scope_window(pool, time_scope).await
+}
+
+/// The effective `(window, on-exit behavior)` governing an item: its own when explicitly scoped,
+/// else the nearest scoped ancestor's, or `None` when nothing above it is scoped (Unscoped). Unlike
+/// [`nearest_scoped_ancestor_window`], the walk includes the node itself.
+pub(super) async fn scope_governance(
+    pool: &DatabasePool,
+    node_type: &str,
+    node_id: i64,
+) -> Result<Option<(Bounds, OnScopeExit)>, TaskError> {
+    let mut node_type = node_type.to_string();
+    let mut node_id = node_id;
+    loop {
+        match node_type.as_str() {
+            "task" => {
+                let task = TaskRepository::new(pool).get(TaskId(node_id)).await?;
+                if let Some(ts) = &task.time_scope {
+                    let window = time_scope_window(pool, ts).await?;
+                    return Ok(Some((window, task.on_scope_exit.unwrap_or(OnScopeExit::Keep))));
+                }
+                node_type = task.parent_type;
+                node_id = task.parent_id;
+            }
+            "goal" => {
+                let goal = GoalRepository::new(pool).get(GoalId(node_id)).await?;
+                if let Some(ts) = &goal.time_scope {
+                    let window = time_scope_window(pool, ts).await?;
+                    return Ok(Some((window, goal.on_scope_exit.unwrap_or(OnScopeExit::Keep))));
+                }
+                node_type = goal.parent_type;
+                node_id = goal.parent_id;
+            }
+            _ => return Ok(None),
+        }
+    }
+}
+
+/// Derives the scope lifecycle (Active / Overdue / Lapsed) of every Task and Goal at `now`, using
+/// each item's effective governance. A Task is exempt once Done; a Goal once Achieved or Archived.
+pub async fn derive_all_scope_lifecycles(
+    pool: &DatabasePool,
+    now: NaiveDateTime,
+) -> Result<Vec<ItemLifecycle>, TaskError> {
+    let mut out = Vec::new();
+    for task in TaskRepository::new(pool).list().await? {
+        let (window, on_exit) = match scope_governance(pool, "task", task.id).await? {
+            Some((w, e)) => (Some(w), Some(e)),
+            None => (None, None),
+        };
+        let resolved = task.status == TaskStatus::Done.as_str();
+        let state = derive_scope_lifecycle(window, on_exit, resolved, now);
+        out.push(ItemLifecycle { node_type: "task".to_string(), node_id: task.id, state });
+    }
+    for goal in GoalRepository::new(pool).list().await? {
+        let (window, on_exit) = match scope_governance(pool, "goal", goal.id).await? {
+            Some((w, e)) => (Some(w), Some(e)),
+            None => (None, None),
+        };
+        let resolved = goal.status == GoalStatus::Achieved.as_str()
+            || goal.status == GoalStatus::Archived.as_str();
+        let state = derive_scope_lifecycle(window, on_exit, resolved, now);
+        out.push(ItemLifecycle { node_type: "goal".to_string(), node_id: goal.id, state });
+    }
+    Ok(out)
 }
 
 /// Resolves a single scope id to its half-open datetime window.

@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { TimeScope } from "@/api/time-scope";
+import type { OnScopeExit } from "@/api/scope-lifecycle";
 
 export interface Task {
   id: number;
@@ -10,6 +11,8 @@ export interface Task {
   blocked_reason: string | null;
   delegate_to: number | null;
   time_scope: TimeScope | null;
+  // Present iff time_scope is (inherited with the window otherwise).
+  on_scope_exit: OnScopeExit | null;
   plan: TimeScope | null;
   tag_ids: number[];
   position: number;
@@ -21,6 +24,8 @@ export interface CreateTaskRequest {
   parent_id: number;
   status?: string;
   time_scope?: TimeScope;
+  // Applied only when time_scope is set (defaults to "keep").
+  on_scope_exit?: OnScopeExit;
   plan?: TimeScope;
 }
 
@@ -31,6 +36,8 @@ export interface UpdateTaskRequest {
   delegate_to?: number | null;
   // Absent = leave unchanged, null = clear, value = set.
   time_scope?: TimeScope | null;
+  // Forced null when the scope is cleared; defaulted to "keep" when a scope is set without one.
+  on_scope_exit?: OnScopeExit | null;
   plan?: TimeScope | null;
   parent_type?: string;
   parent_id?: number;

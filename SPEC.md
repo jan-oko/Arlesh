@@ -104,7 +104,16 @@ Both forms resolve to a concrete inclusive `[start, end]` window. For a standalo
 
 A **null** Time Scope means *inherit the nearest scoped ancestor's window*. An item is truly **Unscoped** (always active) only when no ancestor is scoped.
 
-An item is **active** when its (own or inherited) Time Scope is active. An item whose Time Scope has fully passed is **archived** — a derived/virtual state computed on read, never a stored-status mutation.
+An item is **active** when its (own or inherited) Time Scope is active.
+
+#### On-exit behavior (Overdue vs Lapsed)
+
+Configuring an explicit Time Scope also sets an explicit **On-exit behavior** — what happens once the window has fully passed while the item is still unfinished:
+
+- **Keep** → the item stays, flagged **Overdue**.
+- **Archive** → the item **Lapses**, dropping from the active view.
+
+The value is present **iff** the item is explicitly scoped (a DB invariant); an inherited-scope item inherits the ancestor's behavior along with its window. Both **Overdue** and **Lapsed** are **derived** on read — a pure function of `(effective window, on-exit behavior, status, now)` in local wall-clock — never a stored-status mutation, and they auto-reverse if the scope is later widened. A resolved item (a Task that is Done, a Goal that is Achieved or Archived) is exempt. This is the single-occurrence form of a Habit's **Consumption** root (Archive = Destructive, Keep = Accumulating); **Lapsed** is distinct from the deliberate goal **Archived** status.
 
 ### Plan (scheduling)
 
@@ -154,11 +163,11 @@ A **Habit** is a Flow with a **Recurrence** pattern (a flow becomes a Habit when
 
 - **Repetition** — a Start anchor, an optional **Gap** of N of a scope kind ≥ the habit scope (default: no gap, continuous), and an optional end.
 - **Consumption** (per-habit, user-configurable tree):
-  1. **Destructive** (unfinished instances archived when their iteration passes; bounded) vs **Accumulating** (they survive).
+  1. **Destructive** (unfinished instances lapse when their iteration passes; bounded) vs **Accumulating** (they survive).
   2. If Accumulating: **Overlapping** (new iterations generated regardless) vs **Blocking** (withheld while unresolved instances exist).
   3. If Blocking, the **catch-up policy** when the open iteration completes: *all pending* (every missed iteration, in order), *next* (advance by one), or *latest* (jump to current, recording skipped iterations as missed tombstones).
 
-**Generation.** Iterations are **derived**, never persisted per iteration: a pure function of the Recurrence, the reference day, and the completed iterations (the only persisted facts — a completed instance carries a `resolved_at`). Each started iteration is classified `Active` / `Done` / `Archived` (Destructive, passed unfinished) / `Missed` (a Blocking `latest` skip). Only iterations whose window has begun are generated; future ones are the ellipsis. An iteration is *resolved* when every one of its (non-tombstoned) instances is done. Consumption semantics: Destructive archives any past unfinished iteration and keeps only the current window active; Overlapping keeps every started iteration active until done; Blocking withholds beyond the open iteration and, on completion, advances by **next** (release the next), **latest** (jump to the iteration containing the completion day; skipped ones become Missed), or **all pending** (release the whole backlog up to the completion day as active, blocking again beyond it).
+**Generation.** Iterations are **derived**, never persisted per iteration: a pure function of the Recurrence, the reference day, and the completed iterations (the only persisted facts — a completed instance carries a `resolved_at`). Each started iteration is classified `Active` / `Done` / `Lapsed` (Destructive, passed unfinished) / `Missed` (a Blocking `latest` skip). Only iterations whose window has begun are generated; future ones are the ellipsis. An iteration is *resolved* when every one of its (non-tombstoned) instances is done. Consumption semantics: Destructive lapses any past unfinished iteration and keeps only the current window active; Overlapping keeps every started iteration active until done; Blocking withholds beyond the open iteration and, on completion, advances by **next** (release the next), **latest** (jump to the iteration containing the completion day; skipped ones become Missed), or **all pending** (release the whole backlog up to the completion day as active, blocking again beyond it).
 
 **Display.** Instances render under the Target Node. Active and past instances render directly; an **ellipsis node** stands in for future instances (which can be unbounded under overlapping/open-ended recurrence). Double-click/double-enter the ellipsis to open a search combobox of virtual instances; selected ones are **display-pinned** (still virtual) and render on their own.
 

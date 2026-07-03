@@ -1,6 +1,7 @@
 //! Tasks and Goals: action items and desired states.
 
 pub mod error;
+pub mod lifecycle;
 pub mod model;
 mod scope_rules;
 
@@ -9,10 +10,14 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::database::DatabasePool;
 use error::TaskError;
-pub use scope_rules::{effective_window, time_scope_bounds, ReparentConflicts, ViolatingDescendant};
+pub use scope_rules::{
+    derive_all_scope_lifecycles, effective_window, time_scope_bounds, ReparentConflicts,
+    ViolatingDescendant,
+};
 use model::{
-    CreateGoalRequest, CreateTaskRequest, Dependency, DurationSpec, Goal, GoalId, GoalStatus, Task,
-    TaskId, TaskStatus, TaskWithBlockers, TimeScope, UpdateGoalRequest, UpdateTaskRequest,
+    CreateGoalRequest, CreateTaskRequest, Dependency, DurationSpec, Goal, GoalId, GoalStatus,
+    OnScopeExit, Task, TaskId, TaskStatus, TaskWithBlockers, TimeScope, UpdateGoalRequest,
+    UpdateTaskRequest,
 };
 
 // Internal row types that map directly to database columns via sqlx::FromRow.
@@ -32,6 +37,19 @@ fn time_scope_columns(
         }
         None => (None, None, None, None),
     }
+}
+
+/// The `on_scope_exit` column value for a write: absent (NULL) when the item is unscoped, otherwise
+/// the requested behavior defaulted to `keep` (the UI always supplies an explicit choice; this keeps
+/// the DB invariant "scoped ⟺ on-exit set" satisfied even when a caller omits it).
+fn on_scope_exit_column(
+    time_scope: &Option<TimeScope>,
+    requested: Option<OnScopeExit>,
+) -> Option<&'static str> {
+    if time_scope.is_none() {
+        return None;
+    }
+    Some(requested.unwrap_or(OnScopeExit::Keep).as_str())
 }
 
 /// Reassembles a Time Scope value object from its flat row columns. A scope exists only when
@@ -67,6 +85,7 @@ struct TaskRow {
     time_scope_end_id: Option<i64>,
     time_scope_duration_n: Option<i64>,
     time_scope_duration_kind: Option<String>,
+    on_scope_exit: Option<String>,
     plan_start_id: Option<i64>,
     plan_end_id: Option<i64>,
     position: i64,
@@ -88,6 +107,7 @@ impl From<TaskRow> for Task {
                 row.time_scope_duration_n,
                 row.time_scope_duration_kind,
             ),
+            on_scope_exit: row.on_scope_exit.as_deref().and_then(OnScopeExit::from_db),
             plan: time_scope_from_row(row.plan_start_id, row.plan_end_id, None, None),
             tag_ids: vec![],
             position: row.position,
@@ -107,6 +127,7 @@ struct GoalRow {
     time_scope_end_id: Option<i64>,
     time_scope_duration_n: Option<i64>,
     time_scope_duration_kind: Option<String>,
+    on_scope_exit: Option<String>,
     position: i64,
 }
 
@@ -125,6 +146,7 @@ impl From<GoalRow> for Goal {
                 row.time_scope_duration_n,
                 row.time_scope_duration_kind,
             ),
+            on_scope_exit: row.on_scope_exit.as_deref().and_then(OnScopeExit::from_db),
             tag_ids: vec![],
             position: row.position,
         }
@@ -177,11 +199,13 @@ impl<'a> GoalRepository<'a> {
         .await?;
         let status = request.status.as_ref().map(|s| s.as_str()).unwrap_or("active");
         let (ts_start, ts_end, ts_n, ts_kind) = time_scope_columns(&request.time_scope);
+        let on_exit = on_scope_exit_column(&request.time_scope, request.on_scope_exit);
         let id = sqlx::query(
             "INSERT INTO goals
                 (title, parent_type, parent_id, status,
-                 time_scope_start_id, time_scope_end_id, time_scope_duration_n, time_scope_duration_kind)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                 time_scope_start_id, time_scope_end_id, time_scope_duration_n, time_scope_duration_kind,
+                 on_scope_exit)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&request.title)
         .bind(&request.parent_type)
@@ -191,6 +215,7 @@ impl<'a> GoalRepository<'a> {
         .bind(ts_end)
         .bind(ts_n)
         .bind(&ts_kind)
+        .bind(on_exit)
         .execute(self.pool)
         .await?
         .last_insert_rowid();
@@ -250,6 +275,8 @@ impl<'a> GoalRepository<'a> {
             None => goal.time_scope,
         };
         let (ts_start, ts_end, ts_n, ts_kind) = time_scope_columns(&time_scope);
+        let requested_on_exit = request.on_scope_exit.unwrap_or(goal.on_scope_exit);
+        let on_exit = on_scope_exit_column(&time_scope, requested_on_exit);
         let (effective_parent_type, effective_parent_id) =
             match (request.parent_type.as_deref(), request.parent_id) {
                 (Some(parent_type), Some(parent_id)) => (parent_type.to_string(), parent_id),
@@ -280,7 +307,7 @@ impl<'a> GoalRepository<'a> {
         sqlx::query(
             "UPDATE goals SET title=?, status=?, blocked_reason=?,
                 time_scope_start_id=?, time_scope_end_id=?,
-                time_scope_duration_n=?, time_scope_duration_kind=?, position=? WHERE id=?",
+                time_scope_duration_n=?, time_scope_duration_kind=?, on_scope_exit=?, position=? WHERE id=?",
         )
         .bind(&title)
         .bind(&status)
@@ -289,6 +316,7 @@ impl<'a> GoalRepository<'a> {
         .bind(ts_end)
         .bind(ts_n)
         .bind(&ts_kind)
+        .bind(on_exit)
         .bind(position)
         .bind(id.0)
         .execute(self.pool)
@@ -383,13 +411,14 @@ impl<'a> TaskRepository<'a> {
         .await?;
         let status = request.status.as_ref().map(|s| s.as_str()).unwrap_or("todo");
         let (ts_start, ts_end, ts_n, ts_kind) = time_scope_columns(&request.time_scope);
+        let on_exit = on_scope_exit_column(&request.time_scope, request.on_scope_exit);
         let (plan_start, plan_end, _, _) = time_scope_columns(&request.plan);
         let id = sqlx::query(
             "INSERT INTO tasks
                 (title, parent_type, parent_id, status,
                  time_scope_start_id, time_scope_end_id, time_scope_duration_n,
-                 time_scope_duration_kind, plan_start_id, plan_end_id)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                 time_scope_duration_kind, on_scope_exit, plan_start_id, plan_end_id)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&request.title)
         .bind(&request.parent_type)
@@ -399,6 +428,7 @@ impl<'a> TaskRepository<'a> {
         .bind(ts_end)
         .bind(ts_n)
         .bind(&ts_kind)
+        .bind(on_exit)
         .bind(plan_start)
         .bind(plan_end)
         .execute(self.pool)
@@ -504,6 +534,8 @@ impl<'a> TaskRepository<'a> {
             None => task.time_scope,
         };
         let (ts_start, ts_end, ts_n, ts_kind) = time_scope_columns(&time_scope);
+        let requested_on_exit = request.on_scope_exit.unwrap_or(task.on_scope_exit);
+        let on_exit = on_scope_exit_column(&time_scope, requested_on_exit);
         let plan = match request.plan {
             Some(new_plan) => new_plan,
             None => task.plan,
@@ -541,7 +573,7 @@ impl<'a> TaskRepository<'a> {
         sqlx::query(
             "UPDATE tasks SET title=?, status=?, blocked_reason=?, delegate_to=?,
                 time_scope_start_id=?, time_scope_end_id=?, time_scope_duration_n=?,
-                time_scope_duration_kind=?, plan_start_id=?, plan_end_id=?, position=? WHERE id=?",
+                time_scope_duration_kind=?, on_scope_exit=?, plan_start_id=?, plan_end_id=?, position=? WHERE id=?",
         )
         .bind(&title)
         .bind(&status)
@@ -551,6 +583,7 @@ impl<'a> TaskRepository<'a> {
         .bind(ts_end)
         .bind(ts_n)
         .bind(&ts_kind)
+        .bind(on_exit)
         .bind(plan_start)
         .bind(plan_end)
         .bind(position)

@@ -5,6 +5,8 @@ use tauri::State;
 use crate::{
     database::DatabasePool,
     tasks::{
+        derive_all_scope_lifecycles,
+        lifecycle::ItemLifecycle,
         model::{
             CreateGoalRequest, CreateTaskRequest, Dependency, Goal, GoalId, Task, TaskId,
             TaskWithBlockers, TimeScope, UpdateGoalRequest, UpdateTaskRequest,
@@ -237,6 +239,19 @@ pub async fn remove_tag_from_goal(
 ) -> Result<(), String> {
     GoalRepository::new(&pool)
         .remove_tag(GoalId(goal_id), tag_id)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+/// Derives the scope lifecycle (Active / Overdue / Lapsed) of every Task and Goal at `now`
+/// (local wall-clock). Nothing is persisted — the result is a pure function of scope, status,
+/// and the reference instant.
+#[tauri::command]
+pub async fn derive_scope_lifecycles(
+    pool: State<'_, DatabasePool>,
+    now: chrono::NaiveDateTime,
+) -> Result<Vec<ItemLifecycle>, String> {
+    derive_all_scope_lifecycles(&pool, now)
         .await
         .map_err(|error| error.to_string())
 }

@@ -82,6 +82,36 @@ impl GoalStatus {
     }
 }
 
+/// What happens to a scoped item once its Time Scope has fully passed while still unfinished.
+/// The single-occurrence form of a Habit's Consumption root.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OnScopeExit {
+    /// The item **Lapses** — drops out of the active view.
+    Archive,
+    /// The item stays, flagged **Overdue**.
+    Keep,
+}
+
+impl OnScopeExit {
+    /// The database string representation.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Archive => "archive",
+            Self::Keep => "keep",
+        }
+    }
+
+    /// Parses the database string representation, if recognized.
+    pub fn from_db(value: &str) -> Option<Self> {
+        match value {
+            "archive" => Some(Self::Archive),
+            "keep" => Some(Self::Keep),
+            _ => None,
+        }
+    }
+}
+
 /// The Duration parameters of a Time Scope, retained after snapshotting so the UI can keep
 /// presenting and editing the scope in duration form.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -124,6 +154,8 @@ pub struct Task {
     pub delegate_to: Option<i64>,
     /// Relevance window (if set). A null value inherits the nearest scoped ancestor.
     pub time_scope: Option<TimeScope>,
+    /// On-exit behavior; present iff `time_scope` is (inherited with the window otherwise).
+    pub on_scope_exit: Option<OnScopeExit>,
     /// Scheduling window this task is planned into (if any). Must be contained in `time_scope`.
     pub plan: Option<TimeScope>,
     /// Tag domain ids attached to this task.
@@ -158,6 +190,8 @@ pub struct Goal {
     pub blocked_reason: Option<String>,
     /// Relevance window (if set). A null value inherits the nearest scoped ancestor.
     pub time_scope: Option<TimeScope>,
+    /// On-exit behavior; present iff `time_scope` is (inherited with the window otherwise).
+    pub on_scope_exit: Option<OnScopeExit>,
     /// Tag domain ids attached to this goal.
     pub tag_ids: Vec<i64>,
     /// Sort position among siblings; defaults to id (insertion order).
@@ -194,6 +228,9 @@ pub struct CreateTaskRequest {
     /// Initial relevance window.
     #[serde(default)]
     pub time_scope: Option<TimeScope>,
+    /// On-exit behavior; applied only when `time_scope` is set (defaults to Keep).
+    #[serde(default)]
+    pub on_scope_exit: Option<OnScopeExit>,
     /// Initial Plan (scheduling window).
     #[serde(default)]
     pub plan: Option<TimeScope>,
@@ -212,6 +249,9 @@ pub struct UpdateTaskRequest {
     pub delegate_to: Option<Option<i64>>,
     /// Relevance window to set (None leaves unchanged, Some(None) clears it).
     pub time_scope: Option<Option<TimeScope>>,
+    /// On-exit behavior to set (None leaves unchanged); forced NULL when the scope is cleared,
+    /// defaulted to Keep when a scope is set without one.
+    pub on_scope_exit: Option<Option<OnScopeExit>>,
     /// Plan window to set (None leaves unchanged, Some(None) clears it).
     pub plan: Option<Option<TimeScope>>,
     /// New parent entity type for re-parenting (must be set together with parent_id).
@@ -236,6 +276,9 @@ pub struct CreateGoalRequest {
     /// Initial relevance window.
     #[serde(default)]
     pub time_scope: Option<TimeScope>,
+    /// On-exit behavior; applied only when `time_scope` is set (defaults to Keep).
+    #[serde(default)]
+    pub on_scope_exit: Option<OnScopeExit>,
 }
 
 #[cfg(test)]
@@ -281,6 +324,9 @@ pub struct UpdateGoalRequest {
     pub blocked_reason: Option<String>,
     /// Relevance window to set (None leaves unchanged, Some(None) clears it).
     pub time_scope: Option<Option<TimeScope>>,
+    /// On-exit behavior to set (None leaves unchanged); forced NULL when the scope is cleared,
+    /// defaulted to Keep when a scope is set without one.
+    pub on_scope_exit: Option<Option<OnScopeExit>>,
     /// New parent entity type for re-parenting (must be set together with parent_id).
     pub parent_type: Option<String>,
     /// New parent entity id for re-parenting (must be set together with parent_type).

@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { TimeScope } from "@/api/time-scope";
+import type { OnScopeExit } from "@/api/scope-lifecycle";
 
 export interface Goal {
   id: number;
@@ -9,6 +10,8 @@ export interface Goal {
   status: string;
   blocked_reason: string | null;
   time_scope: TimeScope | null;
+  // Present iff time_scope is (inherited with the window otherwise).
+  on_scope_exit: OnScopeExit | null;
   tag_ids: number[];
   position: number;
 }
@@ -19,6 +22,8 @@ export interface CreateGoalRequest {
   parent_id: number;
   status?: string;
   time_scope?: TimeScope;
+  // Applied only when time_scope is set (defaults to "keep").
+  on_scope_exit?: OnScopeExit;
 }
 
 export interface UpdateGoalRequest {
@@ -27,6 +32,8 @@ export interface UpdateGoalRequest {
   blocked_reason?: string;
   // Absent = leave unchanged, null = clear, value = set.
   time_scope?: TimeScope | null;
+  // Forced null when the scope is cleared; defaulted to "keep" when a scope is set without one.
+  on_scope_exit?: OnScopeExit | null;
   parent_type?: string;
   parent_id?: number;
   position?: number;

@@ -42,6 +42,7 @@ async fn scoped_goal(pool: &sqlx::SqlitePool, kind: ScopeKind, date: chrono::Nai
             parent_id: 1,
             status: None,
             time_scope: Some(TimeScope { start_id: scope.id, end_id: scope.id, duration: None }),
+            on_scope_exit: None,
         })
         .await
         .unwrap()
