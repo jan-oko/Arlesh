@@ -13,6 +13,9 @@ vi.mock("react-i18next", () => ({
 // Coarse target filtering is covered by the hook's own tests; unrestricted (null) here.
 vi.mock("@/hooks/use-valid-flow-targets", () => ({ useValidFlowTargets: () => null }));
 
+// The recurrence load runs on mount for edit-mode flows; default to "not a habit".
+vi.mock("@/api/flows", () => ({ getFlowRecurrence: vi.fn().mockResolvedValue(null) }));
+
 function mkFlow(overrides: Partial<MindmapNode> = {}): MindmapNode {
   return {
     id: "flow-1",
@@ -71,6 +74,7 @@ describe("FlowEditorModal — save", () => {
         windowPart: null,
         windowTimeStart: null,
         windowTimeEnd: null,
+        recurrence: null,
       }),
     );
   });
@@ -122,6 +126,19 @@ describe("FlowEditorModal — save", () => {
     await waitFor(() =>
       expect(defaultProps.onSave).toHaveBeenCalledWith(
         expect.objectContaining({ durationKind: "part", durationN: 1, windowPart: "evening", windowTimeStart: null }),
+      ),
+    );
+  });
+
+  it("saves a Recurrence when the habit toggle is enabled", async () => {
+    render(<FlowEditorModal {...defaultProps} />);
+    fireEvent.click(screen.getByRole("checkbox", { name: "makeHabit" }));
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() =>
+      expect(defaultProps.onSave).toHaveBeenCalledWith(
+        expect.objectContaining({
+          recurrence: expect.objectContaining({ consumptionKind: "destructive", startDate: expect.any(String) }),
+        }),
       ),
     );
   });

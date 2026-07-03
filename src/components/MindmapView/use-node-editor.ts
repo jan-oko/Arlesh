@@ -8,7 +8,10 @@ import type { FlowItemSaveData } from "@/components/FlowItemEditorModal/FlowItem
 import {
   updateFlow, updateFlowGoal, updateFlowTask, setFlowItemCycles,
   addFlowDependency, removeFlowDependency, flowOrigins,
+  setFlowRecurrence, deleteFlowRecurrence,
 } from "@/api/flows";
+import { getOrCreateScope } from "@/api/scopes";
+import type { ScopeKind } from "@/api/scopes";
 import type { Domain } from "@/api/domains";
 import { listDomains, updateDomain } from "@/api/domains";
 import {
@@ -204,6 +207,31 @@ export function useNodeEditor({ tree, allTasksAndGoals, renameNode, reload }: Op
         flow_window_time_start: data.windowTimeStart,
         flow_window_time_end: data.windowTimeEnd,
       });
+      // Persist the Recurrence after the flow row, so gap validation sees the new scope kind.
+      if (data.recurrence !== undefined) {
+        if (data.recurrence === null) {
+          await deleteFlowRecurrence(dbId);
+        } else {
+          const r = data.recurrence;
+          // A sub-day (Phase) or unscoped kind pins its start on a Day scope.
+          const startKind: ScopeKind =
+            data.durationKind === "week" ? "week"
+              : data.durationKind === "month" ? "month"
+                : data.durationKind === "season" ? "season"
+                  : "day";
+          const startScope = await getOrCreateScope(startKind, r.startDate);
+          const endScope = r.endDate !== null ? await getOrCreateScope(startKind, r.endDate) : null;
+          await setFlowRecurrence(dbId, {
+            start_scope_id: startScope.id,
+            gap_n: r.gapN,
+            gap_kind: r.gapKind,
+            end_scope_id: endScope?.id ?? null,
+            consumption_kind: r.consumptionKind,
+            blocking_mode: r.blockingMode,
+            catchup_policy: r.catchupPolicy,
+          });
+        }
+      }
       await reload();
       setEditorModal(null);
     },

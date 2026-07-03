@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
-import type { InstanceType } from "@/api/flows";
+import type { InstanceType, ConsumptionKind, BlockingMode, CatchupPolicy } from "@/api/flows";
+import { getFlowRecurrence } from "@/api/flows";
+import { getScope } from "@/api/scopes";
 import EditorModal from "@/components/EditorModal/EditorModal";
+import RecurrenceField from "./RecurrenceField";
+import { defaultRecurrence, type RecurrenceUi } from "./recurrence-ui";
 import { useValidFlowTargets } from "@/hooks/use-valid-flow-targets";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 
@@ -32,6 +36,17 @@ interface TargetSelection {
   title: string;
 }
 
+/** Recurrence to persist alongside a flow save: an object sets/replaces it, `null` clears it. */
+export interface RecurrenceSave {
+  startDate: string;
+  gapN: number | null;
+  gapKind: string | null;
+  endDate: string | null;
+  consumptionKind: ConsumptionKind;
+  blockingMode: BlockingMode | null;
+  catchupPolicy: CatchupPolicy | null;
+}
+
 export interface FlowSaveData {
   title: string;
   instanceType: InstanceType;
@@ -42,10 +57,19 @@ export interface FlowSaveData {
   windowPart: string | null;
   windowTimeStart: string | null;
   windowTimeEnd: string | null;
+  /** Absent = leave recurrence untouched; present (object or null) = set-or-clear it. */
+  recurrence?: RecurrenceSave | null;
 }
 
 function toFlowScopeKind(value: string): FlowScopeKind {
   return FLOW_SCOPE_KINDS.find((kind) => kind === value) ?? "week";
+}
+
+/** Local wall-clock today as `YYYY-MM-DD`, the default Recurrence start. */
+function todayIso(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 function targetFromNode(node: MindmapNode, candidates: MindmapNode[]): TargetSelection | null {
@@ -86,10 +110,41 @@ export default function FlowEditorModal({ node, availableTargets, heading, onSav
   const [saveError, setSaveError] = useState<string | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
 
+  // Recurrence (Habit) is edit-only — it needs a persisted flow to key on.
+  const flowId = parseInt(node.id.split("-").pop() ?? "", 10);
+  const isEdit = flowId > 0;
+  const [recurrence, setRecurrence] = useState<RecurrenceUi>(() => defaultRecurrence(todayIso()));
+
   // No anchor at template time → a coarse filter that hides targets too small to ever hold the flow.
   const validIds = useValidFlowTargets(availableTargets, scoped, durationN, durationKind, null);
 
   useEffect(() => { titleRef.current?.focus(); titleRef.current?.select(); }, []);
+
+  // Prefill the Recurrence from the stored one (if this flow is already a Habit).
+  useEffect(() => {
+    if (!isEdit) return;
+    let cancelled = false;
+    void (async () => {
+      const rec = await getFlowRecurrence(flowId);
+      if (rec === null || cancelled) return;
+      const startScope = await getScope(rec.start_scope_id);
+      const endScope = rec.end_scope_id !== null ? await getScope(rec.end_scope_id) : null;
+      if (cancelled) return;
+      setRecurrence({
+        isHabit: true,
+        startDate: startScope.start_date,
+        gapEnabled: rec.gap_n !== null,
+        gapN: rec.gap_n ?? 1,
+        gapKind: rec.gap_kind ?? "day",
+        endEnabled: endScope !== null,
+        endDate: endScope?.start_date ?? startScope.start_date,
+        consumptionKind: rec.consumption_kind,
+        blockingMode: rec.blocking_mode ?? "overlapping",
+        catchupPolicy: rec.catchup_policy ?? "next",
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [isEdit, flowId]);
 
   function selectTarget(candidate: MindmapNode) {
     const id = parseInt(candidate.id.split("-").pop() ?? "0", 10);
@@ -103,6 +158,22 @@ export default function FlowEditorModal({ node, availableTargets, heading, onSav
     setSaveError(null);
     try {
       const phase = isPhaseKind(durationKind);
+      // Recurrence is set/cleared only for an already-persisted, scoped flow.
+      const recurrenceSave: RecurrenceSave | null =
+        recurrence.isHabit
+          ? {
+              startDate: recurrence.startDate,
+              gapN: recurrence.gapEnabled ? recurrence.gapN : null,
+              gapKind: recurrence.gapEnabled ? recurrence.gapKind : null,
+              endDate: recurrence.endEnabled ? recurrence.endDate : null,
+              consumptionKind: recurrence.consumptionKind,
+              blockingMode: recurrence.consumptionKind === "accumulating" ? recurrence.blockingMode : null,
+              catchupPolicy:
+                recurrence.consumptionKind === "accumulating" && recurrence.blockingMode === "blocking"
+                  ? recurrence.catchupPolicy
+                  : null,
+            }
+          : null;
       await onSave({
         title: title.trim(),
         instanceType,
@@ -114,6 +185,7 @@ export default function FlowEditorModal({ node, availableTargets, heading, onSav
         windowPart: scoped && durationKind === "part" ? windowPart : null,
         windowTimeStart: scoped && durationKind === "exact" ? timeStart : null,
         windowTimeEnd: scoped && durationKind === "exact" ? timeEnd : null,
+        ...(isEdit && scoped ? { recurrence: recurrenceSave } : {}),
       });
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err));
@@ -211,6 +283,12 @@ export default function FlowEditorModal({ node, availableTargets, heading, onSav
           <span className={styles.depKind}>{t("scopes:unscoped")}</span>
         )}
       </div>
+      {scoped && isEdit && (
+        <div className={styles.label}>
+          {t("fieldRecurrence")}
+          <RecurrenceField value={recurrence} onChange={setRecurrence} />
+        </div>
+      )}
       <div className={styles.label}>
         {t("fieldTarget")}
         {target !== null && (
