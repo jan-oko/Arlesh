@@ -3,7 +3,7 @@ import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { findNode, findParent, collectAllNodeIds } from "@/utils/mindmap-tree";
 import { updateTask } from "@/api/tasks";
 import { setHabitItemDone } from "@/api/flows";
-import { TASK_STATUS } from "@/utils/status-mapping";
+import { TASK_STATUS, GOAL_STATUS } from "@/utils/status-mapping";
 import { CLIPBOARD_OP } from "@/stores/use-mindmap-store";
 
 const LOG_PREFIX = "[arlesh]";
@@ -54,7 +54,8 @@ export function useNodeActions({
       // A virtual Habit instance (an item, or the iteration root `flow_root`) toggles just itself.
       if (node.habitItem !== undefined) {
         const { flowId, itemType, itemId, scopeId } = node.habitItem;
-        const done = node.status === TASK_STATUS.DONE;
+        // A goal instance reads "achieved" when complete; a task instance "done".
+        const done = node.status === TASK_STATUS.DONE || node.status === GOAL_STATUS.ACHIEVED;
         void setHabitItemDone(flowId, itemType, itemId, scopeId, !done, Date.now())
           .then(() => reload())
           .catch((err: unknown) => console.error(`${LOG_PREFIX} habit item completion failed:`, err));

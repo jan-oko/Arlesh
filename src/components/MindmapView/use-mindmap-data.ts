@@ -48,6 +48,12 @@ function lifecycleMap(lifecycles: ItemLifecycle[]): Map<string, ScopeLifecycle> 
  * status comes from `doneKeys` (`"itemType-itemId-scopeId"`). Returns the items parented on the flow
  * (the iteration root's direct children); nested items are attached under their parent instance.
  */
+/** Display status for a virtual Habit instance — goals read `achieved`/`active`, tasks `done`/`todo`. */
+function instanceStatus(isGoal: boolean, done: boolean): string {
+  if (isGoal) return done ? "achieved" : "active";
+  return done ? "done" : "todo";
+}
+
 function buildIterationItems(
   flow: Flow,
   scopeId: number,
@@ -64,7 +70,7 @@ function buildIterationItems(
       id: `habititem-${itemType}-${item.id}-${index}-virtual`,
       kind: itemType === "flow_goal" ? "goal" : "task",
       title: item.title,
-      status: done ? "done" : "todo",
+      status: instanceStatus(itemType === "flow_goal", done),
       virtual: true,
       habitItem: { flowId: flow.id, itemType, itemId: item.id, scopeId },
       ...(color !== undefined ? { color } : {}),
@@ -128,7 +134,7 @@ export function injectHabitInstances(
         id: `habit-${flow.id}-${iteration.index}-virtual`,
         kind: flow.instance_type === "goal" ? "goal" : "task",
         title: `${flow.title} ${iteration.anchor_date}`,
-        status: rootDone ? "done" : "todo",
+        status: instanceStatus(flow.instance_type === "goal", rootDone),
         virtual: true,
         habitItem: { flowId: flow.id, itemType: "flow_root", itemId: flow.id, scopeId },
         // Iterations are injected after buildTree's colour propagation, so inherit the host's

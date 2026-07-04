@@ -857,6 +857,36 @@ describe("injectHabitInstances", () => {
     expect(items[1]?.status).toBe("todo"); // no completion
   });
 
+  it("marks completed goal instances as achieved and open ones as active", () => {
+    const root = buildTree(
+      [
+        { id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0 },
+        { id: 96, title: "LOOK", description: null, subtype: "project", parent_id: 1, color: null, status: null, knowledge_base_directory: null, position: 0 },
+      ],
+      [], [], [],
+    );
+    const done: FlowGoal = { id: 9, flow_id: 3, title: "Milestone", parent_type: "flow", parent_id: 3, position: 0 };
+    const open: FlowGoal = { id: 10, flow_id: 3, title: "Stretch", parent_type: "flow", parent_id: 3, position: 1 };
+    injectHabitInstances(
+      root,
+      [mkFlow({ target_type: "project", target_id: 96, instance_type: "goal" })],
+      [[iter(0, "active")]], // scope 100
+      [done, open],
+      [],
+      [[
+        { item_type: "flow_root", item_id: 3, iteration_scope_id: 100 },
+        { item_type: "flow_goal", item_id: 9, iteration_scope_id: 100 },
+      ]],
+    );
+
+    const iteration = root.children[0]?.children[0]?.children[0]; // root goal instance
+    expect(iteration?.kind).toBe("goal");
+    expect(iteration?.status).toBe("achieved"); // root completed → achieved (not "done")
+    const items = iteration?.children ?? [];
+    expect(items.find((n) => n.title === "Milestone")?.status).toBe("achieved");
+    expect(items.find((n) => n.title === "Stretch")?.status).toBe("active"); // open → active (not "todo")
+  });
+
   it("nests a flow item under its parent item's instance for the same iteration", () => {
     const root = buildTree(
       [{ id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0 }],

@@ -24,7 +24,7 @@ export default function NodeIcon({ kind, status, isBlocked, isHabit, cx, cy, r, 
   if (kind === "aspect") return null;
   if (kind === "domain") return <DomainIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} />;
   if (kind === "project") return <ProjectIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} />;
-  if (kind === "goal") return <GoalIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} />;
+  if (kind === "goal") return <GoalIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} status={status} />;
   if (kind === "tag") return <TagIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} />;
   if (kind === "info") return <InfoIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} />;
   if (kind === "task") return <TaskIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} status={status} isBlocked={isBlocked} />;
@@ -34,7 +34,7 @@ export default function NodeIcon({ kind, status, isBlocked, isHabit, cx, cy, r, 
       : <FlowIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} />;
   }
   // Flow items are templates for goals/tasks — reuse their icons.
-  if (kind === "flow_goal") return <GoalIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} />;
+  if (kind === "flow_goal") return <GoalIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} status={status} />;
   if (kind === "flow_task") return <TaskIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} status={status} isBlocked={isBlocked} />;
   const _exhaustive: never = kind;
   throw new Error(`NodeIcon: unhandled kind "${String(_exhaustive)}"`);

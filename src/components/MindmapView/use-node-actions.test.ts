@@ -33,7 +33,10 @@ const HABIT_DONE = mkNode("habit-3-1-virtual", "task", [], {
 const HABIT_ITEM = mkNode("habititem-flow_task-4-0-virtual", "task", [], {
   status: "todo", virtual: true, habitItem: { flowId: 3, itemType: "flow_task", itemId: 4, scopeId: 100 },
 });
-const PROJECT = mkNode("domain-3", "project", [TASK_NODE, TASK_DONE, GOAL_NODE, ASPECT, HABIT_ITER, HABIT_DONE, HABIT_ITEM]);
+const HABIT_GOAL_DONE = mkNode("habititem-flow_goal-9-0-virtual", "goal", [], {
+  status: "achieved", virtual: true, habitItem: { flowId: 3, itemType: "flow_goal", itemId: 9, scopeId: 100 },
+});
+const PROJECT = mkNode("domain-3", "project", [TASK_NODE, TASK_DONE, GOAL_NODE, ASPECT, HABIT_ITER, HABIT_DONE, HABIT_ITEM, HABIT_GOAL_DONE]);
 const ROOT = mkNode("root", "domain", [PROJECT]);
 
 function makeOpts(overrides: Partial<Parameters<typeof useNodeActions>[0]> = {}) {
@@ -97,6 +100,15 @@ describe("useNodeActions — onStatusClick", () => {
     act(() => { result.current.onStatusClick("habit-3-1-virtual"); });
     await vi.waitFor(() =>
       expect(setHabitItemDone).toHaveBeenCalledWith(3, "flow_root", 3, 101, false, expect.any(Number)),
+    );
+  });
+
+  it("un-achieves a completed goal instance (achieved counts as done)", async () => {
+    const opts = makeOpts();
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onStatusClick("habititem-flow_goal-9-0-virtual"); });
+    await vi.waitFor(() =>
+      expect(setHabitItemDone).toHaveBeenCalledWith(3, "flow_goal", 9, 100, false, expect.any(Number)),
     );
   });
 
