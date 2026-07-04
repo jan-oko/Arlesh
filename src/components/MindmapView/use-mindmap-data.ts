@@ -840,6 +840,9 @@ export function useMindmapData(): MindmapData {
             } else {
               await deleteGoal(childDbId);
             }
+          } else if (child.kind === "info") {
+            // Reparent infos onto the new task, else the deleteGoal cascade below removes them.
+            await updateInfo(childDbId, { parent_type: "task", parent_id: newTask.id });
           }
         }
         await deleteGoal(dbId);

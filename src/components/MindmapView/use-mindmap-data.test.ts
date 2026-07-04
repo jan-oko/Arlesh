@@ -613,6 +613,17 @@ describe("useMindmapData — mutations", () => {
       expect(newId).toBe("task-99");
     });
 
+    it("goal→task: reparents info children onto the new task (not lost to the delete cascade)", async () => {
+      const newTask = mkTask({ id: 99, title: "Ship MVP" });
+      const infoUnderGoal = mkInfo({ id: 5, body: "traceback", parent_type: "goal", parent_id: 1 });
+      setupInvoke({ create_task: newTask, delete_goal: undefined, update_task: newTask, update_info: undefined, list_infos: [infoUnderGoal] });
+      const { result } = await loadedHook();
+
+      await act(async () => { await result.current.retypeNode("goal-1", "goal", "task"); });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("update_info", { id: 5, request: { parent_type: "task", parent_id: 99 } });
+    });
+
     it("task→goal: maps status, creates goal, deletes task", async () => {
       const newGoal = mkGoal({ id: 99, title: "Write code" });
       setupInvoke({ create_goal: newGoal, delete_task: undefined, update_goal: newGoal });
