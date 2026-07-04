@@ -1,0 +1,20 @@
+{
+  "statusLabel": "סטאטוס",
+  "mode": {
+    "all": "הכל",
+    "plan": "תכנון",
+    "start": "התחלה",
+    "do": "ביצוע"
+  },
+  "includeFlows": "כלול תהליכים",
+  "tagsLabel": "תגיות",
+  "tagMode": {
+    "any": "אחת",
+    "all": "כולן",
+    "exclude": "החרג"
+  },
+  "addTag": "הוסף סינון תגית…",
+  "removeTagFilter": "הסר סינון תגית",
+  "typesLabel": "סוגי צמתים",
+  "reset": "איפוס"
+}

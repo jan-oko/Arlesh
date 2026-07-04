@@ -9,11 +9,120 @@
   border-bottom: 1px solid var(--node-border);
 }
 
-.appName {
-  font-size: var(--text-sm);
-  font-weight: 600;
+.side {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/* Wraps a button + its popover so the popover positions relative to the button. */
+.anchor {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.iconBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--text-md);
+  cursor: pointer;
+}
+
+.iconBtn:hover {
+  background: var(--surface-raised);
   color: var(--text-primary);
-  letter-spacing: 0.04em;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px var(--space-3);
+  border-radius: 20px;
+  border: 1px solid var(--node-border);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-family: var(--font-sans);
+  cursor: pointer;
+}
+
+.pill:hover {
+  border-color: var(--accent);
+}
+
+.filterBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 3px var(--space-3);
+  border-radius: 6px;
+  border: 1px solid var(--node-border);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-family: var(--font-sans);
+  cursor: pointer;
+}
+
+.filterBtn:hover {
+  background: var(--surface-raised);
+  color: var(--text-primary);
+}
+
+.filterActive {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.badge {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+/* Click-catcher behind an open popover. */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+}
+
+.popover {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  inset-inline-start: 0;
+  z-index: 100;
+  min-width: 200px;
+  background: var(--surface-raised);
+  border: 1px solid var(--node-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  padding: var(--space-3);
+}
+
+.settingRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-family: var(--font-sans);
 }
 
 .langToggle {
@@ -27,6 +136,6 @@
 }
 
 .langToggle:hover {
-  background: var(--surface-raised);
+  background: var(--surface);
   color: var(--text-primary);
 }

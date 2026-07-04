@@ -1,0 +1,20 @@
+{
+  "statusLabel": "Status",
+  "mode": {
+    "all": "All",
+    "plan": "Plan",
+    "start": "Start",
+    "do": "Do"
+  },
+  "includeFlows": "Include flows",
+  "tagsLabel": "Tags",
+  "tagMode": {
+    "any": "Any",
+    "all": "All",
+    "exclude": "Exclude"
+  },
+  "addTag": "Add tag filter…",
+  "removeTagFilter": "Remove tag filter",
+  "typesLabel": "Node types",
+  "reset": "Reset"
+}

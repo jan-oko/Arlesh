@@ -17,6 +17,14 @@ export interface PendingToast {
   message: string;
 }
 
+/** Data the top bar needs to render the back-nav pills (pushed by MindmapView, which holds the tree). */
+export interface SubtreeNav {
+  rootTitle: string;
+  parentTitle: string;
+  /** Subtree id one level up (null = the parent is the true root). */
+  parentSubtreeId: string | null;
+}
+
 interface MindmapState {
   selectedNodeId: string | null;
   selectedNodeIds: ReadonlySet<string>;
@@ -24,6 +32,7 @@ interface MindmapState {
   clipboard: Clipboard | null;
   collapsedNodeIds: ReadonlySet<string>;
   pendingToast: PendingToast | null;
+  subtreeNav: SubtreeNav | null;
 
   selectNode: (id: string | null) => void;
   addToSelection: (id: string) => void;
@@ -35,6 +44,7 @@ interface MindmapState {
   toggleCollapsed: (id: string) => void;
   showToast: (toast: PendingToast) => void;
   clearToast: () => void;
+  setSubtreeNav: (nav: SubtreeNav | null) => void;
 }
 
 export const useMindmapStore = create<MindmapState>((set) => ({
@@ -44,6 +54,7 @@ export const useMindmapStore = create<MindmapState>((set) => ({
   clipboard: null,
   collapsedNodeIds: new Set(),
   pendingToast: null,
+  subtreeNav: null,
 
   selectNode: (id) =>
     set({
@@ -80,6 +91,8 @@ export const useMindmapStore = create<MindmapState>((set) => ({
     set({ subtreeRootId: null, selectedNodeId: null, selectedNodeIds: new Set() }),
 
   setClipboard: (clipboard) => set({ clipboard }),
+
+  setSubtreeNav: (subtreeNav) => set({ subtreeNav }),
 
   toggleCollapsed: (id) =>
     set((state) => {

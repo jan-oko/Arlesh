@@ -17,7 +17,8 @@ import { findNode, findParent, collectTasksAndGoals, collectSubtreePostOrder, co
 import MindmapCanvas, { type MindmapCanvasHandle } from "@/components/MindmapCanvas/MindmapCanvas";
 import DragGhost from "@/components/DragGhost/DragGhost";
 import DragPlaceholder from "@/components/DragPlaceholder/DragPlaceholder";
-import SubtreeNavPill from "@/components/SubtreeNavPill/SubtreeNavPill";
+import { useFilterStore } from "@/stores/use-filter-store";
+import { filterTree } from "@/utils/filter-tree";
 import StatusToast from "@/components/StatusToast/StatusToast";
 import TaskEditorModal from "@/components/TaskEditorModal/TaskEditorModal";
 import GoalEditorModal from "@/components/GoalEditorModal/GoalEditorModal";
@@ -48,7 +49,7 @@ export default function MindmapView() {
   const {
     selectedNodeId, selectedNodeIds, subtreeRootId, clipboard, collapsedNodeIds, pendingToast,
     selectNode, addToSelection, setSelection, enterSubtree, exitSubtree, exitToRoot,
-    setClipboard, toggleCollapsed, showToast, clearToast,
+    setClipboard, toggleCollapsed, showToast, clearToast, setSubtreeNav,
   } = useMindmapStore();
 
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
@@ -66,10 +67,11 @@ export default function MindmapView() {
     collectTasksAndGoals(tree, acc);
     return acc;
   }, [tree]);
-  const displayRoot = useMemo<MindmapNode>(
-    () => (subtreeRootId !== null ? (findNode(tree, subtreeRootId) ?? tree) : tree),
-    [subtreeRootId, tree],
-  );
+  const filter = useFilterStore((s) => s.filter);
+  const displayRoot = useMemo<MindmapNode>(() => {
+    const base = subtreeRootId !== null ? (findNode(tree, subtreeRootId) ?? tree) : tree;
+    return filterTree(base, filter);
+  }, [subtreeRootId, tree, filter]);
 
   const canvasRef = useRef<MindmapCanvasHandle>(null);
 
@@ -279,6 +281,15 @@ export default function MindmapView() {
 
   const subtreeParent = subtreeRootId !== null ? findParent(tree, subtreeRootId) : null;
   const subtreeParentId = subtreeParent !== null && subtreeParent.id !== "root" ? subtreeParent.id : null;
+
+  // Publish the back-nav descriptor to the store so the top bar can render the pills (it lacks the tree).
+  useEffect(() => {
+    setSubtreeNav(
+      subtreeRootId === null
+        ? null
+        : { rootTitle: tree.title, parentTitle: subtreeParent?.title ?? tree.title, parentSubtreeId: subtreeParentId },
+    );
+  }, [subtreeRootId, tree, subtreeParent, subtreeParentId, setSubtreeNav]);
   const handleExitSubtree = useCallback(() => exitSubtree(subtreeParentId), [exitSubtree, subtreeParentId]);
 
   const { onStatusClick, onCommitEdit, onCreateChild, onCreateSibling, onInsertParent, onDelete, onPaste } = useNodeActions({
@@ -390,14 +401,6 @@ export default function MindmapView() {
         onStatusClick={onStatusClick}
       />
 
-      {subtreeRootId !== null && (
-        <SubtreeNavPill
-          rootTitle={tree.title}
-          parentTitle={subtreeParent?.title ?? tree.title}
-          onBack={handleExitSubtree}
-          {...(subtreeParentId !== null ? { onBackToRoot: exitToRoot } : {})}
-        />
-      )}
 
       {pendingToast !== null && toastPosition !== undefined && (
         <StatusToast message={pendingToast.message} position={toastPosition} onDismiss={clearToast} />
