@@ -136,7 +136,13 @@ export function validTypesForCycling(kind: NodeKind, parentKind: NodeKind | null
     parentKind === null; // virtual root (shouldn't cycle, but safe)
 
   if (hasDomainParent) {
-    return DOMAIN_PARENT_CYCLE;
+    // Not every domain-table kind is valid under every parent (the backend would reject it):
+    // a Project must sit under an Aspect or Project, and a Tag cannot sit under a Tag.
+    return DOMAIN_PARENT_CYCLE.filter((kind) => {
+      if (kind === "project") return parentKind === "aspect" || parentKind === "project";
+      if (kind === "tag") return parentKind !== "tag";
+      return true;
+    });
   }
 
   // Under a task: goal child is invalid, but info is valid.

@@ -156,6 +156,14 @@ describe("useKeyboardMindmap — arrow navigation", () => {
     expect(opts.onCycleType).toHaveBeenCalledWith("task-1", 1);
   });
 
+  it("ignores Ctrl+ArrowDown key auto-repeat (no duplicate-sibling race) and does not fall back to navigate", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", code: "ArrowDown", ctrlKey: true, repeat: true, bubbles: true, cancelable: true }));
+    expect(opts.onCycleType).not.toHaveBeenCalled();
+    expect(opts.onNavigate).not.toHaveBeenCalled();
+  });
+
   it("Alt+ArrowUp calls onReorder with -1", () => {
     const opts = baseOptions();
     renderHook(() => useKeyboardMindmap(opts));
@@ -338,6 +346,14 @@ describe("useKeyboardMindmap — plain Enter cycles task status", () => {
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("Enter");
     expect(opts.onCycleStatus).toHaveBeenCalledWith("task-1");
+  });
+
+  it("toggles a goal's status on plain Enter (via onCycleStatus)", () => {
+    const goal: MindmapNode = { id: "goal-1", kind: "goal", title: "g", status: "active", position: 0, tagIds: [], children: [] };
+    const opts = baseOptions({ selectedNodeId: "goal-1", findNodeById: (id) => (id === "goal-1" ? goal : undefined) });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("Enter");
+    expect(opts.onCycleStatus).toHaveBeenCalledWith("goal-1");
   });
 
   it("does not call onCycleStatus when Shift+Enter is pressed", () => {

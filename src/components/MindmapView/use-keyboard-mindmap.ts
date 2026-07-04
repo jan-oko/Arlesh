@@ -79,13 +79,15 @@ export function useKeyboardMindmap(options: Options): void {
           break;
         case "ArrowUp":
           event.preventDefault();
-          if (event.ctrlKey && selectedNodeId !== null) onCycleType(selectedNodeId, -1);
+          // Type-cycling ignores key auto-repeat: each cross-table retype creates+deletes a node, and
+          // held-key repeats race the reload, spawning duplicate siblings.
+          if (event.ctrlKey) { if (!event.repeat && selectedNodeId !== null) onCycleType(selectedNodeId, -1); }
           else if (event.altKey && selectedNodeId !== null) onReorder(selectedNodeId, -1);
           else onNavigate("ArrowUp");
           break;
         case "ArrowDown":
           event.preventDefault();
-          if (event.ctrlKey && selectedNodeId !== null) onCycleType(selectedNodeId, 1);
+          if (event.ctrlKey) { if (!event.repeat && selectedNodeId !== null) onCycleType(selectedNodeId, 1); }
           else if (event.altKey && selectedNodeId !== null) onReorder(selectedNodeId, 1);
           else onNavigate("ArrowDown");
           break;
@@ -129,7 +131,8 @@ export function useKeyboardMindmap(options: Options): void {
                 lastEnterMs.current = now;
                 const isBlocked = node !== undefined && node.kind === "task" &&
                   node.blockedReason !== undefined && node.blockedReason !== null && node.blockedReason !== "";
-                if (node !== undefined && node.kind === "task" && !isBlocked) {
+                // Enter cycles a task's status, and toggles a goal's achieved state (both via onCycleStatus).
+                if (node !== undefined && (node.kind === "goal" || (node.kind === "task" && !isBlocked))) {
                   event.preventDefault();
                   onCycleStatus(selectedNodeId);
                 }

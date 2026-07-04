@@ -139,6 +139,27 @@ describe("isValidDropTarget — goal and task sources", () => {
   });
 });
 
+describe("validTypesForCycling — parent-subtype validity", () => {
+  it("offers Project only under an Aspect or Project parent", () => {
+    expect(validTypesForCycling("domain", "aspect")).toContain("project");
+    expect(validTypesForCycling("domain", "project")).toContain("project");
+    // A Project's parent must be an Aspect or Project — not a Domain or Tag.
+    expect(validTypesForCycling("domain", "domain")).not.toContain("project");
+    expect(validTypesForCycling("domain", "tag")).not.toContain("project");
+  });
+
+  it("does not offer Tag under a Tag parent (tags can't have tag children)", () => {
+    expect(validTypesForCycling("domain", "tag")).not.toContain("tag");
+    expect(validTypesForCycling("domain", "aspect")).toContain("tag");
+  });
+
+  it("still offers Domain under any domain-table parent", () => {
+    for (const parent of ["aspect", "project", "domain", "tag"] as const) {
+      expect(validTypesForCycling("project", parent)).toContain("domain");
+    }
+  });
+});
+
 describe("validTypesForCycling — info", () => {
   it("includes info in the cycle under a domain parent", () => {
     expect(validTypesForCycling("task", "domain")).toContain("info");
