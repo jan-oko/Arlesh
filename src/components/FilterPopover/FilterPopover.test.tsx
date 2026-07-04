@@ -34,18 +34,20 @@ describe("FilterPopover", () => {
     expect(screen.getByText("includeFlows")).toBeInTheDocument();
   });
 
-  it("toggles Info visibility off", () => {
+  it("toggles Info visibility off via the type pill", () => {
     render(<FilterPopover />);
-    fireEvent.click(screen.getByRole("checkbox", { name: "nodeKinds:info" }));
+    fireEvent.click(screen.getByRole("button", { name: "nodeKinds:info" }));
     expect(useFilterStore.getState().filter.showInfo).toBe(false);
   });
 
-  it("adds a tag filter (default Any) and cycles its mode Any→All", async () => {
+  it("adds a tag filter (default Any) from the search combobox and cycles its mode Any→All", async () => {
     render(<FilterPopover />);
-    await waitFor(() => expect(screen.getByRole("option", { name: "urgent" })).toBeInTheDocument());
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "1" } });
+    fireEvent.focus(await screen.findByPlaceholderText("addTag"));
+    await waitFor(() => expect(screen.getByText("urgent")).toBeInTheDocument());
+    fireEvent.mouseDown(screen.getByText("urgent"));
     expect(useFilterStore.getState().filter.tagFilters).toEqual([{ tagId: 1, mode: "any" }]);
-    fireEvent.click(screen.getByText("tagMode.any"));
+    // The mode pill shows a set-theory glyph; its accessible name is the mode.
+    fireEvent.click(screen.getByRole("button", { name: "tagMode.any" }));
     expect(useFilterStore.getState().filter.tagFilters[0]?.mode).toBe("all");
   });
 

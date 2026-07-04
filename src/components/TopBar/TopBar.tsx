@@ -57,14 +57,14 @@ export default function TopBar() {
         </div>
         {subtreeRootId !== null && subtreeNav !== null && (
           <>
-            <button className={styles.pill} type="button" onClick={() => exitSubtree(subtreeNav.parentSubtreeId)}>
-              <span aria-hidden="true">{backArrow}</span>{subtreeNav.parentTitle}
-            </button>
             {subtreeNav.parentSubtreeId !== null && (
               <button className={styles.pill} type="button" onClick={exitToRoot}>
                 <span aria-hidden="true">{ROOT_ICON}</span>{subtreeNav.rootTitle}
               </button>
             )}
+            <button className={styles.pill} type="button" onClick={() => exitSubtree(subtreeNav.parentSubtreeId)}>
+              <span aria-hidden="true">{backArrow}</span>{subtreeNav.parentTitle}
+            </button>
           </>
         )}
       </div>
