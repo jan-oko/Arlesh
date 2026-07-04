@@ -109,6 +109,8 @@ export interface MindmapNode {
   plan?: TimeScope | null;
   flow?: FlowData;
   flowItem?: FlowItemData;
+  /** Whether this node is marked NSFW — hidden (with its subtree) by the Work filter. */
+  nsfw?: boolean;
   position: number;
   tagIds: number[];
   children: MindmapNode[];

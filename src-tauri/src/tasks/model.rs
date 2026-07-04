@@ -160,6 +160,8 @@ pub struct Task {
     pub tag_ids: Vec<i64>,
     /// Sort position among siblings; defaults to id (insertion order).
     pub position: i64,
+    /// Whether this node is marked NSFW (hidden by the Work filter).
+    pub nsfw: bool,
 }
 
 /// A task row enriched with virtual block information.
@@ -204,6 +206,8 @@ pub struct Goal {
     pub tag_ids: Vec<i64>,
     /// Sort position among siblings; defaults to id (insertion order).
     pub position: i64,
+    /// Whether this node is marked NSFW (hidden by the Work filter).
+    pub nsfw: bool,
 }
 
 /// Dependency reference: either a task or a goal.
@@ -266,6 +270,8 @@ pub struct UpdateTaskRequest {
     pub parent_id: Option<i64>,
     /// New sort position among siblings (for sibling reordering).
     pub position: Option<i64>,
+    /// New NSFW flag, if changing.
+    pub nsfw: Option<bool>,
 }
 
 /// Request body for creating a goal.
@@ -337,4 +343,6 @@ pub struct UpdateGoalRequest {
     pub parent_id: Option<i64>,
     /// New sort position among siblings (for sibling reordering).
     pub position: Option<i64>,
+    /// New NSFW flag, if changing.
+    pub nsfw: Option<bool>,
 }

@@ -83,7 +83,7 @@ export default function MindmapView() {
     editorModal, setEditorModal, allTags, domainNames, availableForDep, onDoubleClick,
     onTaskSave, onGoalSave, onSimpleSave, onProjectSave, onInfoSave, onFlowSave, onFlowItemSave,
     checkScopeClamp, confirmScopeClamp, scopeClampRequest, resolveScopeClamp,
-  } = useNodeEditor({ tree, allTasksAndGoals, renameNode, reload });
+  } = useNodeEditor({ tree, allTasksAndGoals, reload });
 
   // Every flow item, used to offer intra-flow dependency targets within the same flow.
   const allFlowItems = useMemo(() => {
@@ -439,13 +439,13 @@ export default function MindmapView() {
         <GoalEditorModal node={editorModal.node} allTags={allTags} domainNames={domainNames} onSave={onGoalSave} onCheckScopeClamp={checkScopeClamp} onClose={() => setEditorModal(null)} />
       )}
       {editorModal !== null && editorModal.node.kind === "domain" && (
-        <TitleEditorModal heading={t("editor:editDomain")} title={editorModal.node.title} onSave={onSimpleSave} onClose={() => setEditorModal(null)} />
+        <TitleEditorModal heading={t("editor:editDomain")} title={editorModal.node.title} nsfw={editorModal.node.nsfw ?? false} onSave={onSimpleSave} onClose={() => setEditorModal(null)} />
       )}
       {editorModal !== null && editorModal.node.kind === "project" && (
         <ProjectEditorModal node={editorModal.node} onSave={onProjectSave} onClose={() => setEditorModal(null)} />
       )}
       {editorModal !== null && editorModal.node.kind === "tag" && (
-        <TitleEditorModal heading={t("editor:editTag")} title={editorModal.node.title} onSave={onSimpleSave} onClose={() => setEditorModal(null)} />
+        <TitleEditorModal heading={t("editor:editTag")} title={editorModal.node.title} nsfw={editorModal.node.nsfw ?? false} onSave={onSimpleSave} onClose={() => setEditorModal(null)} />
       )}
       {editorModal !== null && editorModal.node.kind === "info" && (
         <InfoEditorModal node={editorModal.node} onSave={onInfoSave} onClose={() => setEditorModal(null)} />

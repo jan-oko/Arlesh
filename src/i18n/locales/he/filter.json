@@ -17,5 +17,7 @@
   "addTag": "הוסף סינון תגית…",
   "removeTagFilter": "הסר סינון תגית",
   "typesLabel": "סוגי צמתים",
+  "workLabel": "עבודה",
+  "workMode": "הסתר פריטים לא לעבודה",
   "reset": "איפוס"
 }

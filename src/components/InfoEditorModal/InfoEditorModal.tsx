@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import EditorModal from "@/components/EditorModal/EditorModal";
+import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 import type { MindmapNode } from "@/utils/tree-layout";
 
@@ -8,6 +9,7 @@ import type { MindmapNode } from "@/utils/tree-layout";
 export interface InfoSaveData {
   body: string;
   details: string | null;
+  nsfw: boolean;
 }
 
 interface Props {
@@ -21,6 +23,7 @@ export default function InfoEditorModal({ node, onSave, onClose }: Props) {
   const { t } = useTranslation("editor");
   const [body, setBody] = useState(node.title);
   const [details, setDetails] = useState(node.infoDetails ?? "");
+  const [nsfw, setNsfw] = useState(node.nsfw ?? false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const bodyRef = useRef<HTMLInputElement>(null);
@@ -35,7 +38,7 @@ export default function InfoEditorModal({ node, onSave, onClose }: Props) {
     setIsSaving(true);
     setSaveError(null);
     try {
-      await onSave({ body: body.trim(), details: details.trim() === "" ? null : details });
+      await onSave({ body: body.trim(), details: details.trim() === "" ? null : details, nsfw });
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err));
       setIsSaving(false);
@@ -68,6 +71,7 @@ export default function InfoEditorModal({ node, onSave, onClose }: Props) {
         {t("fieldDetails")}
         <textarea className={styles.textarea} value={details} onChange={(e) => setDetails(e.target.value)} rows={6} />
       </label>
+      <EditorAdvanced nsfw={nsfw} onNsfwChange={setNsfw} />
     </EditorModal>
   );
 }

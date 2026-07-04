@@ -5,6 +5,7 @@ import { listDomains, DOMAIN_SUBTYPE } from "@/api/domains";
 import type { Domain } from "@/api/domains";
 import { useFilterStore } from "@/stores/use-filter-store";
 import type { StatusMode, TagFilterMode } from "@/utils/filter-tree";
+import Switch from "@/components/Switch/Switch";
 import styles from "./FilterPopover.module.css";
 
 const STATUS_MODES: StatusMode[] = ["all", "plan", "start", "do"];
@@ -88,11 +89,12 @@ export default function FilterPopover() {
   const removeTagFilter = useFilterStore((s) => s.removeTagFilter);
   const toggleShowInfo = useFilterStore((s) => s.toggleShowInfo);
   const toggleShowFlow = useFilterStore((s) => s.toggleShowFlow);
+  const toggleWorkMode = useFilterStore((s) => s.toggleWorkMode);
   const reset = useFilterStore((s) => s.reset);
 
   // Load all domains so each tag's *aspect* colour can be resolved by walking up to the nearest coloured ancestor.
   // Advanced (tags + type visibility) collapses; open by default only when something advanced is set.
-  const advancedActive = filter.tagFilters.length > 0 || !filter.showInfo || !filter.showFlow;
+  const advancedActive = filter.tagFilters.length > 0 || !filter.showInfo || !filter.showFlow || filter.workMode;
   const [advancedOpen, setAdvancedOpen] = useState(advancedActive);
 
   const [domains, setDomains] = useState<Domain[]>([]);
@@ -132,10 +134,7 @@ export default function FilterPopover() {
           ))}
         </div>
         {showFlowsSub && (
-          <label className={styles.check}>
-            <input type="checkbox" checked={filter.modeIncludeFlows} onChange={toggleModeFlows} />
-            {t("includeFlows")}
-          </label>
+          <Switch checked={filter.modeIncludeFlows} onChange={toggleModeFlows} label={t("includeFlows")} />
         )}
       </section>
 
@@ -181,6 +180,11 @@ export default function FilterPopover() {
             {t("nodeKinds:flow")}
           </button>
         </div>
+      </section>
+
+      <section className={styles.section}>
+        <div className={styles.sectionLabel}>{t("workLabel")}</div>
+        <Switch checked={filter.workMode} onChange={toggleWorkMode} label={t("workMode")} />
       </section>
 
       <button type="button" className={styles.reset} onClick={reset}>{t("reset")}</button>

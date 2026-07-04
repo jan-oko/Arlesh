@@ -12,6 +12,7 @@ interface FilterStore {
   removeTagFilter: (tagId: number) => void;
   toggleShowInfo: () => void;
   toggleShowFlow: () => void;
+  toggleWorkMode: () => void;
   reset: () => void;
 }
 
@@ -34,6 +35,7 @@ export const useFilterStore = create<FilterStore>()(
         set((s) => ({ filter: { ...s.filter, tagFilters: s.filter.tagFilters.filter((t) => t.tagId !== tagId) } })),
       toggleShowInfo: () => set((s) => ({ filter: { ...s.filter, showInfo: !s.filter.showInfo } })),
       toggleShowFlow: () => set((s) => ({ filter: { ...s.filter, showFlow: !s.filter.showFlow } })),
+      toggleWorkMode: () => set((s) => ({ filter: { ...s.filter, workMode: !s.filter.workMode } })),
       reset: () => set({ filter: DEFAULT_FILTER }),
     }),
     { name: "arlesh-filter" },

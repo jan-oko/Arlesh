@@ -4,6 +4,7 @@ import type { MindmapNode } from "@/utils/tree-layout";
 import type { FlowCyclePair, FlowItemDep } from "@/utils/tree-layout";
 import type { FlowItemType } from "@/api/flows";
 import EditorModal from "@/components/EditorModal/EditorModal";
+import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
 import FlowCycleField from "./FlowCycleField";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 
@@ -12,6 +13,7 @@ export interface FlowItemSaveData {
   cycles: FlowCyclePair[];
   addedDeps: FlowItemDep[];
   removedDeps: FlowItemDep[];
+  nsfw: boolean;
 }
 
 function depKey(dep: FlowItemDep): string { return `${dep.type}-${dep.id}`; }
@@ -40,6 +42,7 @@ export default function FlowItemEditorModal({ node, availableDeps, onSave, onClo
   const [title, setTitle] = useState(node.title);
   const [cycles, setCycles] = useState<FlowCyclePair[]>(node.flowItem?.cycles ?? []);
   const [currentDeps, setCurrentDeps] = useState<FlowItemDep[]>(node.flowItem?.dependsOn ?? []);
+  const [nsfw, setNsfw] = useState(node.nsfw ?? false);
   const [depSearch, setDepSearch] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -66,7 +69,7 @@ export default function FlowItemEditorModal({ node, availableDeps, onSave, onClo
     try {
       const addedDeps = currentDeps.filter((d) => !initialDeps.some((id) => depEquals(id, d)));
       const removedDeps = initialDeps.filter((d) => !currentDeps.some((cd) => depEquals(cd, d)));
-      await onSave({ title: title.trim(), cycles, addedDeps, removedDeps });
+      await onSave({ title: title.trim(), cycles, addedDeps, removedDeps, nsfw });
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err));
       setIsSaving(false);
@@ -137,6 +140,7 @@ export default function FlowItemEditorModal({ node, availableDeps, onSave, onClo
           )}
         </div>
       </div>
+      <EditorAdvanced nsfw={nsfw} onNsfwChange={setNsfw} />
     </EditorModal>
   );
 }

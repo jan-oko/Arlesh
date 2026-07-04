@@ -17,5 +17,7 @@
   "addTag": "Add tag filter…",
   "removeTagFilter": "Remove tag filter",
   "typesLabel": "Node types",
+  "workLabel": "Work",
+  "workMode": "Hide NSFW nodes",
   "reset": "Reset"
 }

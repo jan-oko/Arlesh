@@ -7,7 +7,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 const mockDomain: Domain = {
   id: 1, title: "Work", description: null, subtype: "aspect",
-  parent_id: null, color: "#ff0000", status: null, knowledge_base_directory: null, position: 0,
+  parent_id: null, color: "#ff0000", status: null, knowledge_base_directory: null, position: 0, nsfw: false,
 };
 
 beforeEach(() => {

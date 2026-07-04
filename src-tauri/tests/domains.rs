@@ -179,6 +179,7 @@ async fn update_domain() {
                 status: Some(ProjectStatus::Frozen),
                 knowledge_base_directory: None,
                 position: None,
+                nsfw: None,
             },
         )
         .await
@@ -278,6 +279,7 @@ async fn convert_project_subtype_to_domain() {
                 status: None,
                 knowledge_base_directory: None,
                 position: None,
+                nsfw: None,
             },
         )
         .await
@@ -331,6 +333,7 @@ async fn cannot_update_aspect() {
                 status: None,
                 knowledge_base_directory: None,
                 position: None,
+                nsfw: None,
             },
         )
         .await
@@ -372,6 +375,7 @@ async fn cannot_change_subtype_to_aspect() {
                 status: None,
                 knowledge_base_directory: None,
                 position: None,
+                nsfw: None,
             },
         )
         .await
@@ -437,6 +441,7 @@ async fn convert_domain_subtype_to_project() {
                 status: None,
                 knowledge_base_directory: None,
                 position: None,
+                nsfw: None,
             },
         )
         .await
@@ -474,6 +479,7 @@ async fn convert_domain_subtype_to_tag() {
                 status: None,
                 knowledge_base_directory: None,
                 position: None,
+                nsfw: None,
             },
         )
         .await
@@ -525,6 +531,7 @@ async fn project_status_achieved_and_archived() {
                 subtype: None,
                 knowledge_base_directory: None,
                 position: None,
+                nsfw: None,
             },
         )
         .await

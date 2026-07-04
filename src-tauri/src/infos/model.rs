@@ -32,6 +32,8 @@ pub struct Info {
     pub parent_id: i64,
     /// Display order among siblings.
     pub position: i64,
+    /// Whether this node is marked NSFW (hidden by the Work filter).
+    pub nsfw: bool,
 }
 
 /// Request body for creating an info node.
@@ -63,4 +65,6 @@ pub struct UpdateInfoRequest {
     pub parent_type: Option<String>,
     /// New parent id, if re-parenting.
     pub parent_id: Option<i64>,
+    /// New NSFW flag, if changing.
+    pub nsfw: Option<bool>,
 }

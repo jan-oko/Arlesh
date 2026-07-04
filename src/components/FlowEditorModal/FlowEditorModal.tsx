@@ -6,6 +6,8 @@ import type { InstanceType, ConsumptionKind, BlockingMode, CatchupPolicy } from 
 import { getFlowRecurrence, habitCompletionCount } from "@/api/flows";
 import { getScope } from "@/api/scopes";
 import EditorModal from "@/components/EditorModal/EditorModal";
+import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
+import Switch from "@/components/Switch/Switch";
 import RecurrenceField from "./RecurrenceField";
 import { defaultRecurrence, type RecurrenceUi } from "./recurrence-ui";
 import { useValidFlowTargets } from "@/hooks/use-valid-flow-targets";
@@ -63,6 +65,7 @@ export interface FlowSaveData {
   rootPlanKind: string | null;
   rootPlanStart: number | null;
   rootPlanEnd: number | null;
+  nsfw: boolean;
   /** Absent = leave recurrence untouched; present (object or null) = set-or-clear it. */
   recurrence?: RecurrenceSave | null;
   /**
@@ -132,6 +135,7 @@ export default function FlowEditorModal({ node, availableTargets, heading, onSav
       : null,
   );
   const [target, setTarget] = useState<TargetSelection | null>(targetFromNode(node, availableTargets));
+  const [nsfw, setNsfw] = useState(node.nsfw ?? false);
   const [targetSearch, setTargetSearch] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -247,6 +251,7 @@ export default function FlowEditorModal({ node, availableTargets, heading, onSav
         windowTimeEnd: scoped && durationKind === "exact" ? timeEnd : null,
         // The root Plan applies only to a task-instance flow with a Span window.
         ...planFields(instanceType === "task" && scoped && !phase ? rootPlan : null),
+        nsfw,
         ...(isEdit && scoped ? { recurrence: recurrenceSave } : {}),
         ...(reconcile !== undefined ? { reconcile } : {}),
       });
@@ -313,10 +318,7 @@ export default function FlowEditorModal({ node, availableTargets, heading, onSav
       </div>
       <div className={styles.label}>
         {t("fieldFlowScope")}
-        <label className={styles.tagOption}>
-          <input type="checkbox" checked={scoped} onChange={(e) => setScoped(e.target.checked)} />
-          {t("flowScoped")}
-        </label>
+        <Switch checked={scoped} onChange={setScoped} label={t("flowScoped")} />
         {scoped ? (
           <div className={styles.durationRow}>
             <select
@@ -410,6 +412,7 @@ export default function FlowEditorModal({ node, availableTargets, heading, onSav
           </div>
         )}
       </div>
+      <EditorAdvanced nsfw={nsfw} onNsfwChange={setNsfw} />
     </EditorModal>
   );
 }

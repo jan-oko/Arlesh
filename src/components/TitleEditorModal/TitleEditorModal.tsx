@@ -1,18 +1,21 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import EditorModal from "@/components/EditorModal/EditorModal";
+import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 
 interface Props {
   heading: string;
   title: string;
-  onSave: (title: string) => Promise<void>;
+  nsfw?: boolean;
+  onSave: (title: string, nsfw: boolean) => Promise<void>;
   onClose: () => void;
 }
 
-export default function TitleEditorModal({ heading, title: initialTitle, onSave, onClose }: Props) {
+export default function TitleEditorModal({ heading, title: initialTitle, nsfw: initialNsfw, onSave, onClose }: Props) {
   const { t } = useTranslation("editor");
   const [title, setTitle] = useState(initialTitle);
+  const [nsfw, setNsfw] = useState(initialNsfw ?? false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
@@ -27,7 +30,7 @@ export default function TitleEditorModal({ heading, title: initialTitle, onSave,
     setIsSaving(true);
     setSaveError(null);
     try {
-      await onSave(title.trim());
+      await onSave(title.trim(), nsfw);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err));
       setIsSaving(false);
@@ -58,6 +61,7 @@ export default function TitleEditorModal({ heading, title: initialTitle, onSave,
           type="text"
         />
       </label>
+      <EditorAdvanced nsfw={nsfw} onNsfwChange={setNsfw} />
     </EditorModal>
   );
 }

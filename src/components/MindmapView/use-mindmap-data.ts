@@ -82,6 +82,7 @@ function buildIterationItems(
       habitItem: { flowId: flow.id, itemType, itemId: item.id, scopeId },
       ...(color !== undefined ? { color } : {}),
       ...(past && !done ? { scopeLifecycle: "lapsed" as const } : {}),
+      nsfw: item.nsfw,
       position: item.position,
       tagIds: [],
       children: [],
@@ -149,6 +150,7 @@ export function injectHabitInstances(
         // already-resolved aspect colour directly.
         ...(host.color !== undefined ? { color: host.color } : {}),
         ...(past && !rootDone ? { scopeLifecycle: "lapsed" as const } : {}),
+        nsfw: flow.nsfw,
         position: iteration.index,
         tagIds: [],
         children: buildIterationItems(flow, scopeId, iteration.index, items, statuses, host.color, past),
@@ -320,6 +322,7 @@ export function buildTree(
       kind: subtypeToKind(domain.subtype),
       title: domain.title,
       position: domain.position,
+      nsfw: domain.nsfw,
       ...(domain.color !== null ? { color: domain.color } : {}),
       ...(domain.status !== null ? { status: domain.status } : {}),
       ...(domain.knowledge_base_directory !== null ? { knowledgeBaseDirectory: domain.knowledge_base_directory } : {}),
@@ -338,6 +341,7 @@ export function buildTree(
       timeScope: goal.time_scope,
       onScopeExit: goal.on_scope_exit,
       position: goal.position,
+      nsfw: goal.nsfw,
       tagIds: goal.tag_ids,
       children: [],
     });
@@ -355,6 +359,7 @@ export function buildTree(
       onScopeExit: task.on_scope_exit,
       plan: task.plan,
       position: task.position,
+      nsfw: task.nsfw,
       tagIds: task.tag_ids,
       children: [],
     });
@@ -387,6 +392,7 @@ export function buildTree(
       title: info.body,
       ...(info.details !== null ? { infoDetails: info.details } : {}),
       position: info.position,
+      nsfw: info.nsfw,
       tagIds: [],
       children: [],
     });
@@ -398,6 +404,7 @@ export function buildTree(
       kind: "flow",
       title: flow.title,
       position: flow.position,
+      nsfw: flow.nsfw,
       flow: {
         instanceType: flow.instance_type,
         targetType: flow.target_type,
@@ -442,6 +449,7 @@ export function buildTree(
       kind: itemType,
       title: item.title,
       position: item.position,
+      nsfw: item.nsfw,
       flowItem: {
         itemType,
         flowId: item.flow_id,

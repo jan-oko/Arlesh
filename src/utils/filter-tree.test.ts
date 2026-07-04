@@ -215,6 +215,29 @@ describe("filterTree — tag filters (Any/All/Exclude)", () => {
   });
 });
 
+describe("filterTree — Work mode hides NSFW subtrees", () => {
+  const t = () =>
+    n("root", "domain", {}, [
+      n("aspect-1", "aspect", {}, [
+        n("task-clean", "task", { status: "todo" }),
+        n("task-nsfw", "task", { status: "todo", nsfw: true }, [n("child", "task", { status: "todo" })]),
+      ]),
+    ]);
+
+  it("keeps the NSFW node and its subtree when Work mode is off", () => {
+    const kept = ids(filterTree(t(), f({ workMode: false })));
+    expect(kept).toContain("task-nsfw");
+    expect(kept).toContain("child");
+  });
+
+  it("drops the NSFW node and its whole subtree when Work mode is on", () => {
+    const kept = ids(filterTree(t(), f({ workMode: true })));
+    expect(kept).not.toContain("task-nsfw");
+    expect(kept).not.toContain("child");
+    expect(kept).toContain("task-clean");
+  });
+});
+
 describe("isFilterActive", () => {
   it("is false for the default filter", () => {
     expect(isFilterActive(DEFAULT_FILTER)).toBe(false);
@@ -223,5 +246,6 @@ describe("isFilterActive", () => {
     expect(isFilterActive({ ...DEFAULT_FILTER, statusMode: "do" })).toBe(true);
     expect(isFilterActive({ ...DEFAULT_FILTER, tagFilters: [{ tagId: 1, mode: "any" }] })).toBe(true);
     expect(isFilterActive({ ...DEFAULT_FILTER, showInfo: false })).toBe(true);
+    expect(isFilterActive({ ...DEFAULT_FILTER, workMode: true })).toBe(true);
   });
 });

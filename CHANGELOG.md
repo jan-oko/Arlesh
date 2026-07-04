@@ -8,6 +8,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **NSFW nodes + Work filter**: every node kind (Domain/Project/Tag, Goal, Task, Info, Flow, and flow-template items) can be marked **NSFW** from a new **Advanced** section in its editor modal — collapsible, shared across all editors. Marking a **flow item** NSFW is a real stored field that also propagates to that item's instances: the virtual Habit instances inherit it, and starting a flow copies it onto the materialized Goal/Task (the flow root's flag propagates to the root instance likewise). A new **Work** toggle under the filter's **Advanced** section hard-hides every NSFW node together with its whole subtree when on; it persists across reloads and lights the top-bar filter badge. Migration `0021` adds a `nsfw` column to `domains`, `goals`, `tasks`, `infos`, `flows`, `flow_goals`, and `flow_tasks`. All the boolean toggles in the filter and editor modals are now rendered as sliding **switches**.
+
 ### Changed
 - **Block reasons are now an ordered list** (previously a single string), on **both tasks and goals**. A task/goal is blocked (red stop-sign) when it has **any** reason — one of its explicit reasons, or a **virtual** one derived from an unmet dependency (a non-Done task / non-Achieved goal), now surfaced on the canvas. Explicit reasons live in a normalized `block_reasons` table (migration `0020`, replacing the `tasks/goals.blocked_reason` columns); cross-table type conversion copies them to the new node. The task/goal editor gains an add/remove **Block reasons** list.
 - **Tag picker is a search combobox**: the task/goal editor's tag checkboxes are replaced by a search-dropdown — chosen tags show as removable **pills**, and the options are **grouped by parent domain** (with each tag's colour).

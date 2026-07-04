@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import EditorModal from "@/components/EditorModal/EditorModal";
+import Switch from "@/components/Switch/Switch";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 
 interface Props {
@@ -42,14 +43,8 @@ export default function ConvertToFlowModal({ title, onConvert, onClose }: Props)
       saveError={saveError}
     >
       <span className={styles.depKind}>{t("convertToFlowWarning")}</span>
-      <label className={styles.tagOption}>
-        <input type="checkbox" checked={keepDependencies} onChange={(e) => setKeepDependencies(e.target.checked)} />
-        {t("convertKeepDeps")}
-      </label>
-      <label className={styles.tagOption}>
-        <input type="checkbox" checked={mapScopes} onChange={(e) => setMapScopes(e.target.checked)} />
-        {t("convertMapScopes")}
-      </label>
+      <Switch checked={keepDependencies} onChange={setKeepDependencies} label={t("convertKeepDeps")} />
+      <Switch checked={mapScopes} onChange={setMapScopes} label={t("convertMapScopes")} />
     </EditorModal>
   );
 }

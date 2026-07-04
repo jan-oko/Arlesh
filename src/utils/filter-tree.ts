@@ -21,6 +21,8 @@ export interface FilterState {
   tagFilters: TagFilter[];
   showInfo: boolean;
   showFlow: boolean;
+  /** Work mode: hard-hide any NSFW-marked node together with its whole subtree. */
+  workMode: boolean;
 }
 
 /** The neutral, indicator-off filter — shows everything. */
@@ -30,6 +32,7 @@ export const DEFAULT_FILTER: FilterState = {
   tagFilters: [],
   showInfo: true,
   showFlow: true,
+  workMode: false,
 };
 
 /** Goal statuses that read as resolved/inactive (hidden by Plan/Start). */
@@ -41,7 +44,7 @@ const STRUCTURAL_KINDS = new Set(["aspect", "domain", "project", "tag"]);
 
 /** Whether the filter differs from the neutral state (drives the top-bar active badge). */
 export function isFilterActive(f: FilterState): boolean {
-  return f.statusMode !== "all" || f.tagFilters.length > 0 || !f.showInfo || !f.showFlow;
+  return f.statusMode !== "all" || f.tagFilters.length > 0 || !f.showInfo || !f.showFlow || f.workMode;
 }
 
 /**
@@ -62,6 +65,8 @@ function flowHardHidden(node: MindmapNode, f: FilterState): boolean {
 
 /** Kinds hidden outright (their subtree is removed, not kept as an ancestor). */
 function typeHardHidden(node: MindmapNode, f: FilterState): boolean {
+  // Work mode drops any NSFW node and everything beneath it, regardless of kind.
+  if (f.workMode && node.nsfw === true) return true;
   if (node.kind === "info" && !f.showInfo) return true;
   return flowHardHidden(node, f);
 }

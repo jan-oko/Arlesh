@@ -32,7 +32,7 @@ describe("TitleEditorModal", () => {
   it("calls onSave with trimmed title when save button is clicked", async () => {
     render(<TitleEditorModal {...defaultProps} title="  My Title  " />);
     fireEvent.click(screen.getByRole("button", { name: "save" }));
-    await waitFor(() => expect(defaultProps.onSave).toHaveBeenCalledWith("My Title"));
+    await waitFor(() => expect(defaultProps.onSave).toHaveBeenCalledWith("My Title", false));
   });
 
   it("does not call onSave when title is blank", () => {
@@ -45,7 +45,7 @@ describe("TitleEditorModal", () => {
     render(<TitleEditorModal {...defaultProps} />);
     const input = screen.getByRole("textbox");
     fireEvent.keyDown(input, { key: "Enter" });
-    await waitFor(() => expect(defaultProps.onSave).toHaveBeenCalledWith("Original Title"));
+    await waitFor(() => expect(defaultProps.onSave).toHaveBeenCalledWith("Original Title", false));
   });
 
   it("calls onClose when Escape is pressed", () => {

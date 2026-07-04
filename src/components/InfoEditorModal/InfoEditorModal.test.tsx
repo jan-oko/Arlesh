@@ -28,13 +28,13 @@ describe("InfoEditorModal", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "fieldDetails" }), { target: { value: "  stack\ntrace  " } });
     fireEvent.click(screen.getByRole("button", { name: "save" }));
     await waitFor(() =>
-      expect(defaultProps.onSave).toHaveBeenCalledWith({ body: "Crash on load", details: "  stack\ntrace  " }),
+      expect(defaultProps.onSave).toHaveBeenCalledWith({ body: "Crash on load", details: "  stack\ntrace  ", nsfw: false }),
     );
   });
 
   it("saves null details when the field is left empty", async () => {
     render(<InfoEditorModal {...defaultProps} />);
     fireEvent.click(screen.getByRole("button", { name: "save" }));
-    await waitFor(() => expect(defaultProps.onSave).toHaveBeenCalledWith({ body: "Crash on save", details: null }));
+    await waitFor(() => expect(defaultProps.onSave).toHaveBeenCalledWith({ body: "Crash on save", details: null, nsfw: false }));
   });
 });

@@ -68,7 +68,7 @@ function makeOpts(overrides: Partial<Parameters<typeof useNodeActions>[0]> = {})
 describe("useNodeActions — onStatusClick", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(updateTask).mockResolvedValue({ id: 5, title: "task-5", parent_type: "project", parent_id: 3, status: "in_progress", delegate_to: null, time_scope: null, on_scope_exit: null, plan: null, tag_ids: [], position: 0 });
+    vi.mocked(updateTask).mockResolvedValue({ id: 5, title: "task-5", parent_type: "project", parent_id: 3, status: "in_progress", delegate_to: null, time_scope: null, on_scope_exit: null, plan: null, tag_ids: [], position: 0, nsfw: false });
   });
 
   it("cycles todo → in_progress for a task node", async () => {
@@ -79,7 +79,7 @@ describe("useNodeActions — onStatusClick", () => {
   });
 
   it("cycles done → todo for a task node", async () => {
-    vi.mocked(updateTask).mockResolvedValue({ id: 6, title: "task-6", parent_type: "project", parent_id: 3, status: "todo", delegate_to: null, time_scope: null, on_scope_exit: null, plan: null, tag_ids: [], position: 0 });
+    vi.mocked(updateTask).mockResolvedValue({ id: 6, title: "task-6", parent_type: "project", parent_id: 3, status: "todo", delegate_to: null, time_scope: null, on_scope_exit: null, plan: null, tag_ids: [], position: 0, nsfw: false });
     const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("task-6"); });

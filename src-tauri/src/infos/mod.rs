@@ -13,6 +13,7 @@ struct InfoRow {
     parent_type: String,
     parent_id: i64,
     position: i64,
+    nsfw: bool,
 }
 
 impl From<InfoRow> for Info {
@@ -24,6 +25,7 @@ impl From<InfoRow> for Info {
             parent_type: row.parent_type,
             parent_id: row.parent_id,
             position: row.position,
+            nsfw: row.nsfw,
         }
     }
 }
@@ -44,7 +46,7 @@ impl<'a> InfoRepository<'a> {
     pub async fn create(&self, req: CreateInfoRequest) -> Result<Info, sqlx::Error> {
         let row: InfoRow = sqlx::query_as(
             "INSERT INTO infos (body, details, parent_type, parent_id, position) VALUES (?, ?, ?, ?, ?) \
-             RETURNING id, body, details, parent_type, parent_id, position",
+             RETURNING id, body, details, parent_type, parent_id, position, nsfw",
         )
         .bind(&req.body)
         .bind(&req.details)
@@ -60,7 +62,7 @@ impl<'a> InfoRepository<'a> {
     #[tracing::instrument(skip(self))]
     pub async fn list(&self) -> Result<Vec<Info>, sqlx::Error> {
         let rows: Vec<InfoRow> = sqlx::query_as(
-            "SELECT id, body, details, parent_type, parent_id, position FROM infos ORDER BY position",
+            "SELECT id, body, details, parent_type, parent_id, position, nsfw FROM infos ORDER BY position",
         )
         .fetch_all(self.pool)
         .await?;
@@ -91,6 +93,13 @@ impl<'a> InfoRepository<'a> {
                 .execute(self.pool)
                 .await?;
         }
+        if let Some(nsfw) = req.nsfw {
+            sqlx::query("UPDATE infos SET nsfw = ?, updated_at = datetime('now') WHERE id = ?")
+                .bind(nsfw)
+                .bind(id.0)
+                .execute(self.pool)
+                .await?;
+        }
         if let (Some(pt), Some(pi)) = (req.parent_type, req.parent_id) {
             sqlx::query(
                 "UPDATE infos SET parent_type = ?, parent_id = ?, updated_at = datetime('now') WHERE id = ?",
@@ -102,7 +111,7 @@ impl<'a> InfoRepository<'a> {
             .await?;
         }
         let row: InfoRow = sqlx::query_as(
-            "SELECT id, body, details, parent_type, parent_id, position FROM infos WHERE id = ?",
+            "SELECT id, body, details, parent_type, parent_id, position, nsfw FROM infos WHERE id = ?",
         )
         .bind(id.0)
         .fetch_one(self.pool)

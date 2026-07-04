@@ -286,11 +286,12 @@ impl<'a> FlowRepository<'a> {
         let parent_type = request.parent_type.unwrap_or(flow.parent_type);
         let parent_id = request.parent_id.unwrap_or(flow.parent_id);
         let position = request.position.unwrap_or(flow.position);
+        let nsfw = request.nsfw.unwrap_or(flow.nsfw);
         sqlx::query(
             "UPDATE flows SET title=?, instance_type=?, parent_type=?, parent_id=?,
                 target_type=?, target_id=?, flow_duration_n=?, flow_duration_kind=?,
                 flow_window_part=?, flow_window_time_start=?, flow_window_time_end=?,
-                root_plan_kind=?, root_plan_start=?, root_plan_end=?, position=?
+                root_plan_kind=?, root_plan_start=?, root_plan_end=?, position=?, nsfw=?
              WHERE id=?",
         )
         .bind(&title)
@@ -308,6 +309,7 @@ impl<'a> FlowRepository<'a> {
         .bind(root_plan_start)
         .bind(root_plan_end)
         .bind(position)
+        .bind(nsfw)
         .bind(id.0)
         .execute(self.pool)
         .await?;
@@ -415,14 +417,16 @@ impl<'a> FlowRepository<'a> {
         let parent_type = request.parent_type.unwrap_or(goal.parent_type);
         let parent_id = request.parent_id.unwrap_or(goal.parent_id);
         let position = request.position.unwrap_or(goal.position);
+        let nsfw = request.nsfw.unwrap_or(goal.nsfw);
         sqlx::query(
-            "UPDATE flow_goals SET title=?, parent_type=?, parent_id=?, position=?
+            "UPDATE flow_goals SET title=?, parent_type=?, parent_id=?, position=?, nsfw=?
              WHERE id=?",
         )
         .bind(&title)
         .bind(&parent_type)
         .bind(parent_id)
         .bind(position)
+        .bind(nsfw)
         .bind(id)
         .execute(self.pool)
         .await?;
@@ -448,14 +452,16 @@ impl<'a> FlowRepository<'a> {
         let parent_type = request.parent_type.unwrap_or(task.parent_type);
         let parent_id = request.parent_id.unwrap_or(task.parent_id);
         let position = request.position.unwrap_or(task.position);
+        let nsfw = request.nsfw.unwrap_or(task.nsfw);
         sqlx::query(
-            "UPDATE flow_tasks SET title=?, parent_type=?, parent_id=?, position=?
+            "UPDATE flow_tasks SET title=?, parent_type=?, parent_id=?, position=?, nsfw=?
              WHERE id=?",
         )
         .bind(&title)
         .bind(&parent_type)
         .bind(parent_id)
         .bind(position)
+        .bind(nsfw)
         .bind(id)
         .execute(self.pool)
         .await?;
@@ -1651,18 +1657,22 @@ impl<'a> FlowRepository<'a> {
         .bind(flow_id.0).bind(&root_type).bind(root_id).bind(now_position())
         .execute(self.pool).await?.last_insert_rowid();
         self.record_node(instance_id, (&root_type, root_id), ("flow", flow_id.0), (&request.target_type, request.target_id)).await?;
+        if flow.nsfw {
+            let sql = if root_type == "goal" { "UPDATE goals SET nsfw = 1 WHERE id = ?" } else { "UPDATE tasks SET nsfw = 1 WHERE id = ?" };
+            sqlx::query(sql).bind(root_id).execute(self.pool).await?;
+        }
 
         // Owned item list + per-item cycles, so nothing borrows across awaits.
         let flow_goals = self.list_goals(flow_id).await?;
         let flow_tasks = self.list_tasks(flow_id).await?;
         let all_cycles = self.list_all_cycles().await?;
-        struct MItem { kind: FlowItemType, id: i64, title: String, parent_type: String, parent_id: i64, position: i64 }
+        struct MItem { kind: FlowItemType, id: i64, title: String, parent_type: String, parent_id: i64, position: i64, nsfw: bool }
         let mut items: Vec<MItem> = Vec::new();
         for g in &flow_goals {
-            items.push(MItem { kind: FlowItemType::FlowGoal, id: g.id, title: g.title.clone(), parent_type: g.parent_type.clone(), parent_id: g.parent_id, position: g.position });
+            items.push(MItem { kind: FlowItemType::FlowGoal, id: g.id, title: g.title.clone(), parent_type: g.parent_type.clone(), parent_id: g.parent_id, position: g.position, nsfw: g.nsfw });
         }
         for t in &flow_tasks {
-            items.push(MItem { kind: FlowItemType::FlowTask, id: t.id, title: t.title.clone(), parent_type: t.parent_type.clone(), parent_id: t.parent_id, position: t.position });
+            items.push(MItem { kind: FlowItemType::FlowTask, id: t.id, title: t.title.clone(), parent_type: t.parent_type.clone(), parent_id: t.parent_id, position: t.position, nsfw: t.nsfw });
         }
 
         // template (item_type, id) -> its instance node refs, in pair order.
@@ -1671,16 +1681,16 @@ impl<'a> FlowRepository<'a> {
         // Breadth-first from the root so a parent is always materialised before its children.
         let mut queue: Vec<(String, i64, String, i64)> = vec![("flow".to_string(), flow_id.0, root_type.clone(), root_id)];
         while let Some((parent_key_type, parent_key_id, parent_node_type, parent_node_id)) = queue.pop() {
-            let mut children: Vec<(FlowItemType, i64, String)> = items
+            let mut children: Vec<(FlowItemType, i64, String, bool)> = items
                 .iter()
                 .filter(|m| m.parent_type == parent_key_type && m.parent_id == parent_key_id)
-                .map(|m| (m.kind, m.id, m.title.clone()))
+                .map(|m| (m.kind, m.id, m.title.clone(), m.nsfw))
                 .collect();
-            children.sort_by_key(|(_, id, _)| {
+            children.sort_by_key(|(_, id, _, _)| {
                 items.iter().find(|m| m.id == *id).map(|m| m.position).unwrap_or(0)
             });
 
-            for (kind, id, title) in children {
+            for (kind, id, title, nsfw) in children {
                 let mut pairs: Vec<FlowItemCycle> = all_cycles
                     .iter()
                     .filter(|c| c.flow_id == flow_id.0 && c.item_type == kind.as_str() && c.item_id == id)
@@ -1701,6 +1711,10 @@ impl<'a> FlowRepository<'a> {
                         ("task".to_string(), t.id)
                     };
                     self.record_node(instance_id, (&node.0, node.1), (kind.as_str(), id), (&parent_node_type, parent_node_id)).await?;
+                    if nsfw {
+                        let sql = if node.0 == "goal" { "UPDATE goals SET nsfw = 1 WHERE id = ?" } else { "UPDATE tasks SET nsfw = 1 WHERE id = ?" };
+                        sqlx::query(sql).bind(node.1).execute(self.pool).await?;
+                    }
                     child_nodes.push(node);
                 }
 

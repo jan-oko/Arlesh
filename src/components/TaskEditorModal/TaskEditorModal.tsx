@@ -9,6 +9,7 @@ import type { TimeScope } from "@/api/time-scope";
 import type { OnScopeExit } from "@/api/scope-lifecycle";
 import { listTaskDependencies } from "@/api/tasks";
 import EditorModal from "@/components/EditorModal/EditorModal";
+import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
 import TimeScopeField from "@/components/ScopePicker/TimeScopeField";
 import OnScopeExitField from "@/components/ScopePicker/OnScopeExitField";
 import PlanField from "@/components/ScopePicker/PlanField";
@@ -25,6 +26,7 @@ export interface TaskSaveData {
   timeScope: TimeScope | null;
   onScopeExit: OnScopeExit | null;
   plan: TimeScope | null;
+  nsfw: boolean;
 }
 
 const TASK_STATUSES = Object.values(TASK_STATUS);
@@ -51,6 +53,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   const [timeScope, setTimeScope] = useState<TimeScope | null>(node.timeScope ?? null);
   const [onScopeExit, setOnScopeExit] = useState<OnScopeExit | null>(node.onScopeExit ?? null);
   const [plan, setPlan] = useState<TimeScope | null>(node.plan ?? null);
+  const [nsfw, setNsfw] = useState(node.nsfw ?? false);
   const [initialDeps, setInitialDeps] = useState<Dependency[]>([]);
   const [currentDeps, setCurrentDeps] = useState<Dependency[]>([]);
   const [depSearch, setDepSearch] = useState("");
@@ -94,7 +97,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
         title: title.trim(), status, blockReasons: blockReasons.map((r) => r.trim()).filter((r) => r !== ""),
         tagIds, addedDeps, removedDeps, timeScope,
         onScopeExit: timeScope !== null ? (onScopeExit ?? "keep") : null,
-        plan,
+        plan, nsfw,
       });
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err));
@@ -190,6 +193,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
           )}
         </div>
       </div>
+      <EditorAdvanced nsfw={nsfw} onNsfwChange={setNsfw} />
     </EditorModal>
   );
 }

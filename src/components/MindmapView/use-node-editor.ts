@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
+import type { MindmapNode } from "@/utils/tree-layout";
 import type { TaskSaveData } from "@/components/TaskEditorModal/TaskEditorModal";
 import type { GoalSaveData } from "@/components/GoalEditorModal/GoalEditorModal";
 import type { ProjectSaveData } from "@/components/ProjectEditorModal/ProjectEditorModal";
@@ -61,7 +61,6 @@ async function clampDescendants(
 interface Options {
   tree: MindmapNode;
   allTasksAndGoals: MindmapNode[];
-  renameNode: (id: string, kind: NodeKind, title: string) => Promise<void>;
   reload: () => Promise<void>;
 }
 
@@ -74,7 +73,7 @@ interface Result {
   onDoubleClick: (nodeId: string) => void;
   onTaskSave: (data: TaskSaveData) => Promise<void>;
   onGoalSave: (data: GoalSaveData) => Promise<void>;
-  onSimpleSave: (title: string) => Promise<void>;
+  onSimpleSave: (title: string, nsfw: boolean) => Promise<void>;
   onProjectSave: (data: ProjectSaveData) => Promise<void>;
   onInfoSave: (data: InfoSaveData) => Promise<void>;
   onFlowSave: (data: FlowSaveData) => Promise<void>;
@@ -87,7 +86,7 @@ interface Result {
   resolveScopeClamp: (proceed: boolean) => void;
 }
 
-export function useNodeEditor({ tree, allTasksAndGoals, renameNode, reload }: Options): Result {
+export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Result {
   const [editorModal, setEditorModal] = useState<EditorModalState | null>(null);
   const [allTags, setAllTags] = useState<Domain[]>([]);
   const [domainNames, setDomainNames] = useState<Map<number, string>>(new Map());
@@ -163,6 +162,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, renameNode, reload }: Op
         time_scope: data.timeScope,
         on_scope_exit: data.onScopeExit,
         plan: data.plan,
+        nsfw: data.nsfw,
       });
       await setBlockReasons("task", dbId, data.blockReasons);
       const tagsAdded = data.tagIds.filter((id) => !node.tagIds.includes(id));
@@ -191,6 +191,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, renameNode, reload }: Op
         status: data.status,
         time_scope: data.timeScope,
         on_scope_exit: data.onScopeExit,
+        nsfw: data.nsfw,
       });
       await setBlockReasons("goal", dbId, data.blockReasons);
       const tagsAdded = data.tagIds.filter((id) => !node.tagIds.includes(id));
@@ -221,6 +222,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, renameNode, reload }: Op
         root_plan_kind: data.rootPlanKind,
         root_plan_start: data.rootPlanStart,
         root_plan_end: data.rootPlanEnd,
+        nsfw: data.nsfw,
       };
       // Persist the Recurrence for `targetId` after its flow row, so gap validation sees the new kind.
       const persistRecurrence = async (targetId: number) => {
@@ -271,7 +273,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, renameNode, reload }: Op
       const flowItem = node.flowItem;
       if (flowItem === undefined) return;
       const dbId = parseInt(node.id.split("-").pop() ?? "0", 10);
-      const patch = { title: data.title };
+      const patch = { title: data.title, nsfw: data.nsfw };
       if (flowItem.itemType === "flow_goal") {
         await updateFlowGoal(dbId, patch);
       } else {
@@ -299,13 +301,16 @@ export function useNodeEditor({ tree, allTasksAndGoals, renameNode, reload }: Op
   );
 
   const onSimpleSave = useCallback(
-    async (title: string) => {
+    async (title: string, nsfw: boolean) => {
       if (editorModal === null) return;
-      const { nodeId, node } = editorModal;
-      await renameNode(nodeId, node.kind, title);
+      const { nodeId } = editorModal;
+      const dbId = parseInt(nodeId.split("-").pop() ?? "0", 10);
+      // Domain/tag editors: persist title and NSFW together, then refresh.
+      await updateDomain(dbId, { title, nsfw });
+      await reload();
       setEditorModal(null);
     },
-    [editorModal, renameNode],
+    [editorModal, reload],
   );
 
   const onProjectSave = useCallback(
@@ -315,6 +320,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, renameNode, reload }: Op
       const dbId = parseInt(nodeId.split("-").pop() ?? "0", 10);
       await updateDomain(dbId, {
         title: data.title,
+        nsfw: data.nsfw,
         ...(data.status !== "" ? { status: data.status } : {}),
         ...(data.knowledgeBaseDirectory !== "" ? { knowledge_base_directory: data.knowledgeBaseDirectory } : {}),
       });
@@ -328,7 +334,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, renameNode, reload }: Op
     async (data: InfoSaveData) => {
       if (editorModal === null) return;
       const dbId = parseInt(editorModal.nodeId.split("-").pop() ?? "0", 10);
-      await updateInfo(dbId, { body: data.body, details: data.details });
+      await updateInfo(dbId, { body: data.body, details: data.details, nsfw: data.nsfw });
       await reload();
       setEditorModal(null);
     },

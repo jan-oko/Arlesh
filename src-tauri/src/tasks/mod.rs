@@ -155,6 +155,7 @@ struct TaskRow {
     plan_start_id: Option<i64>,
     plan_end_id: Option<i64>,
     position: i64,
+    nsfw: bool,
 }
 
 impl From<TaskRow> for Task {
@@ -176,6 +177,7 @@ impl From<TaskRow> for Task {
             plan: time_scope_from_row(row.plan_start_id, row.plan_end_id, None, None),
             tag_ids: vec![],
             position: row.position,
+            nsfw: row.nsfw,
         }
     }
 }
@@ -193,6 +195,7 @@ struct GoalRow {
     time_scope_duration_kind: Option<String>,
     on_scope_exit: Option<String>,
     position: i64,
+    nsfw: bool,
 }
 
 impl From<GoalRow> for Goal {
@@ -212,6 +215,7 @@ impl From<GoalRow> for Goal {
             on_scope_exit: row.on_scope_exit.as_deref().and_then(OnScopeExit::from_db),
             tag_ids: vec![],
             position: row.position,
+            nsfw: row.nsfw,
         }
     }
 }
@@ -362,10 +366,11 @@ impl<'a> GoalRepository<'a> {
         }
 
         let position = request.position.unwrap_or(goal.position);
+        let nsfw = request.nsfw.unwrap_or(goal.nsfw);
         sqlx::query(
             "UPDATE goals SET title=?, status=?,
                 time_scope_start_id=?, time_scope_end_id=?,
-                time_scope_duration_n=?, time_scope_duration_kind=?, on_scope_exit=?, position=? WHERE id=?",
+                time_scope_duration_n=?, time_scope_duration_kind=?, on_scope_exit=?, position=?, nsfw=? WHERE id=?",
         )
         .bind(&title)
         .bind(&status)
@@ -375,6 +380,7 @@ impl<'a> GoalRepository<'a> {
         .bind(&ts_kind)
         .bind(on_exit)
         .bind(position)
+        .bind(nsfw)
         .bind(id.0)
         .execute(self.pool)
         .await?;
@@ -618,10 +624,11 @@ impl<'a> TaskRepository<'a> {
         }
 
         let position = request.position.unwrap_or(task.position);
+        let nsfw = request.nsfw.unwrap_or(task.nsfw);
         sqlx::query(
             "UPDATE tasks SET title=?, status=?, delegate_to=?,
                 time_scope_start_id=?, time_scope_end_id=?, time_scope_duration_n=?,
-                time_scope_duration_kind=?, on_scope_exit=?, plan_start_id=?, plan_end_id=?, position=? WHERE id=?",
+                time_scope_duration_kind=?, on_scope_exit=?, plan_start_id=?, plan_end_id=?, position=?, nsfw=? WHERE id=?",
         )
         .bind(&title)
         .bind(&status)
@@ -634,6 +641,7 @@ impl<'a> TaskRepository<'a> {
         .bind(plan_start)
         .bind(plan_end)
         .bind(position)
+        .bind(nsfw)
         .bind(id.0)
         .execute(self.pool)
         .await?;

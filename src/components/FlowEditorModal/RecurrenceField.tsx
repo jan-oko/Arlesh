@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import type { ConsumptionKind, BlockingMode, CatchupPolicy } from "@/api/flows";
 import type { RecurrenceUi } from "./recurrence-ui";
+import Switch from "@/components/Switch/Switch";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 
 const GAP_KINDS = ["day", "week", "month", "season"] as const;
@@ -25,10 +26,7 @@ export default function RecurrenceField({ value, onChange }: Props) {
 
   return (
     <div className={styles.label}>
-      <label className={styles.tagOption}>
-        <input type="checkbox" checked={value.isHabit} onChange={(e) => set({ isHabit: e.target.checked })} />
-        {t("makeHabit")}
-      </label>
+      <Switch checked={value.isHabit} onChange={(v) => set({ isHabit: v })} label={t("makeHabit")} />
       {value.isHabit && (
         <>
           <label className={styles.label}>
@@ -41,10 +39,7 @@ export default function RecurrenceField({ value, onChange }: Props) {
             />
           </label>
 
-          <label className={styles.tagOption}>
-            <input type="checkbox" checked={value.gapEnabled} onChange={(e) => set({ gapEnabled: e.target.checked })} />
-            {t("recurrenceGap")}
-          </label>
+          <Switch checked={value.gapEnabled} onChange={(v) => set({ gapEnabled: v })} label={t("recurrenceGap")} />
           {value.gapEnabled && (
             <div className={styles.durationRow}>
               <input
@@ -68,10 +63,7 @@ export default function RecurrenceField({ value, onChange }: Props) {
             </div>
           )}
 
-          <label className={styles.tagOption}>
-            <input type="checkbox" checked={value.endEnabled} onChange={(e) => set({ endEnabled: e.target.checked })} />
-            {t("recurrenceEnd")}
-          </label>
+          <Switch checked={value.endEnabled} onChange={(v) => set({ endEnabled: v })} label={t("recurrenceEnd")} />
           {value.endEnabled && (
             <input
               type="date"

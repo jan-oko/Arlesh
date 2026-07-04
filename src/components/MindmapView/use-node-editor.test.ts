@@ -43,7 +43,7 @@ const root: MindmapNode = {
 function setup() {
   const reload = vi.fn().mockResolvedValue(undefined);
   const { result } = renderHook(() =>
-    useNodeEditor({ tree: root, allTasksAndGoals: [taskNode], renameNode: vi.fn(), reload }),
+    useNodeEditor({ tree: root, allTasksAndGoals: [taskNode], reload }),
   );
   act(() => result.current.setEditorModal({ nodeId: "task-5", node: taskNode }));
   return result;
@@ -52,7 +52,7 @@ function setup() {
 const saveData = {
   title: "Task", status: "todo", blockReasons: [], tagIds: [],
   addedDeps: [], removedDeps: [], timeScope: { start_id: 1, end_id: 1 },
-  onScopeExit: null, plan: null,
+  onScopeExit: null, plan: null, nsfw: false,
 };
 
 beforeEach(() => vi.clearAllMocks());

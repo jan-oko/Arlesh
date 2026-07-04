@@ -36,7 +36,7 @@ function mkNode(overrides: Partial<MindmapNode> = {}): MindmapNode {
 }
 
 function mkTag(id: number, title: string): Domain {
-  return { id, title, description: null, subtype: "tag", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0 };
+  return { id, title, description: null, subtype: "tag", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, nsfw: false };
 }
 
 const TAG_A = mkTag(1, "frontend");
@@ -89,6 +89,7 @@ describe("GoalEditorModal — save", () => {
         tagIds: [2],
         timeScope: null,
         onScopeExit: null,
+        nsfw: false,
       }),
     );
   });

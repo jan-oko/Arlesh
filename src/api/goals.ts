@@ -13,6 +13,7 @@ export interface Goal {
   on_scope_exit: OnScopeExit | null;
   tag_ids: number[];
   position: number;
+  nsfw: boolean;
 }
 
 export interface CreateGoalRequest {
@@ -35,6 +36,7 @@ export interface UpdateGoalRequest {
   parent_type?: string;
   parent_id?: number;
   position?: number;
+  nsfw?: boolean;
 }
 
 export async function getGoal(id: number): Promise<Goal> {

@@ -413,6 +413,31 @@ async fn starting_an_unscoped_flow_materialises_one_item_each() {
 }
 
 #[tokio::test]
+async fn starting_a_flow_propagates_nsfw_to_instances() {
+    let pool = helpers::test_pool().await;
+    let repo = FlowRepository::new(&pool);
+    let flow = repo
+        .create(CreateFlowRequest { title: "Private".into(), instance_type: Some(InstanceType::Task), parent_type: "aspect".into(), parent_id: 1, ..Default::default() })
+        .await
+        .unwrap();
+    // Mark the flow root NSFW; one item NSFW, one item clean.
+    repo.update(FlowId(flow.id), UpdateFlowRequest { nsfw: Some(true), ..Default::default() }).await.unwrap();
+    let secret = repo.create_task(CreateFlowItemRequest { flow_id: flow.id, title: "Secret".into(), parent_type: "flow".into(), parent_id: flow.id }).await.unwrap();
+    repo.create_task(CreateFlowItemRequest { flow_id: flow.id, title: "Public".into(), parent_type: "flow".into(), parent_id: flow.id }).await.unwrap();
+    repo.update_task(secret.id, UpdateFlowItemRequest { nsfw: Some(true), ..Default::default() }).await.unwrap();
+
+    let anchor = chrono::NaiveDate::from_ymd_opt(2026, 1, 5).unwrap();
+    repo.start(FlowId(flow.id), StartFlowRequest { title: "Private Run".into(), target_type: "aspect".into(), target_id: 1, anchor_date: anchor }).await.unwrap();
+
+    // Root (from flow.nsfw) and Secret (from item.nsfw) are NSFW; Public is not.
+    let nsfw_titles: Vec<String> = sqlx::query_scalar("SELECT title FROM tasks WHERE nsfw = 1 ORDER BY title")
+        .fetch_all(&pool).await.unwrap();
+    assert_eq!(nsfw_titles, vec!["Private Run".to_string(), "Secret".to_string()]);
+    let clean: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tasks WHERE nsfw = 0").fetch_one(&pool).await.unwrap();
+    assert_eq!(clean, 1); // Public only
+}
+
+#[tokio::test]
 async fn deleting_a_flow_cascades_to_its_items() {
     let pool = helpers::test_pool().await;
     let repo = FlowRepository::new(&pool);

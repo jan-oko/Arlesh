@@ -234,6 +234,7 @@ The root of the map is "Arlesh" (top level). Aspect cells are its direct childre
 - **Include flows** subtoggle (Plan/Start), separate from the global Flow type toggle — both must be on for flows to show.
 - **Tag filters** in Any/All/Exclusion modes, combined per the Filtering Logic formula and AND-ed with the preset.
 - **Node-type visibility**: global Info and Flow toggles (hide those subtrees).
+- **Work** toggle: when on, hard-hides every node marked **NSFW** together with its whole subtree (dropped outright, not kept as an ancestor). Every node kind carries an `nsfw` flag, set from its editor modal. Marking a **flow item** NSFW is a real stored field that also propagates to that item's instances — the virtual Habit instances inherit it, and starting a flow copies it onto the materialized Goal/Task (the flow root's flag propagates to the root instance likewise).
 
 **Type cycling rules:**
 - New cell defaults to parent's type

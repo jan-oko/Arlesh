@@ -69,6 +69,8 @@ pub struct Domain {
     pub knowledge_base_directory: Option<String>,
     /// Sort position among siblings; defaults to id (insertion order).
     pub position: i64,
+    /// Whether this node is marked NSFW (hidden by the Work filter).
+    pub nsfw: bool,
 }
 
 /// Request body for creating a new domain.
@@ -105,4 +107,6 @@ pub struct UpdateDomainRequest {
     pub knowledge_base_directory: Option<String>,
     /// New sort position among siblings (for sibling reordering).
     pub position: Option<i64>,
+    /// New NSFW flag, if changing.
+    pub nsfw: Option<bool>,
 }
