@@ -54,6 +54,7 @@ async fn create_info_under_goal() {
     let info = InfoRepository::new(&pool)
         .create(CreateInfoRequest {
             body: "Important detail".into(),
+            details: None,
             parent_type: "goal".into(),
             parent_id: goal.id,
             position: 0,
@@ -85,6 +86,7 @@ async fn create_info_under_task() {
     let info = InfoRepository::new(&pool)
         .create(CreateInfoRequest {
             body: "Task note".into(),
+            details: None,
             parent_type: "task".into(),
             parent_id: task.id,
             position: 0,
@@ -119,6 +121,7 @@ async fn create_info_under_domain() {
     let info = InfoRepository::new(&pool)
         .create(CreateInfoRequest {
             body: "Domain note".into(),
+            details: None,
             parent_type: "domain".into(),
             parent_id: domain.id,
             position: 0,
@@ -139,6 +142,7 @@ async fn create_nested_info_under_info() {
     let parent_info = repo
         .create(CreateInfoRequest {
             body: "Parent note".into(),
+            details: None,
             parent_type: "project".into(),
             parent_id: project_id,
             position: 0,
@@ -149,6 +153,7 @@ async fn create_nested_info_under_info() {
     let child_info = repo
         .create(CreateInfoRequest {
             body: "Child note".into(),
+            details: None,
             parent_type: "info".into(),
             parent_id: parent_info.id,
             position: 0,
@@ -169,6 +174,7 @@ async fn list_infos_returns_all() {
     let a = repo
         .create(CreateInfoRequest {
             body: "Alpha".into(),
+            details: None,
             parent_type: "project".into(),
             parent_id: project_id,
             position: 0,
@@ -178,6 +184,7 @@ async fn list_infos_returns_all() {
     let b = repo
         .create(CreateInfoRequest {
             body: "Beta".into(),
+            details: None,
             parent_type: "project".into(),
             parent_id: project_id,
             position: 1,
@@ -199,6 +206,7 @@ async fn update_info_body() {
     let info = repo
         .create(CreateInfoRequest {
             body: "Old text".into(),
+            details: None,
             parent_type: "project".into(),
             parent_id: project_id,
             position: 0,
@@ -224,6 +232,7 @@ async fn update_info_position() {
     let info = repo
         .create(CreateInfoRequest {
             body: "Note".into(),
+            details: None,
             parent_type: "project".into(),
             parent_id: project_id,
             position: 5,
@@ -258,6 +267,7 @@ async fn update_info_parent() {
     let info = repo
         .create(CreateInfoRequest {
             body: "Reparented note".into(),
+            details: None,
             parent_type: "project".into(),
             parent_id: project_id,
             position: 0,
@@ -290,6 +300,7 @@ async fn delete_info() {
     let info = repo
         .create(CreateInfoRequest {
             body: "Temporary note".into(),
+            details: None,
             parent_type: "project".into(),
             parent_id: project_id,
             position: 0,
@@ -301,4 +312,38 @@ async fn delete_info() {
 
     let all = repo.list().await.unwrap();
     assert!(!all.iter().any(|i| i.id == info.id));
+}
+
+#[tokio::test]
+async fn details_round_trip_set_and_clear() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let repo = InfoRepository::new(&pool);
+
+    let info = repo
+        .create(CreateInfoRequest {
+            body: "Crash".into(),
+            details: Some("stack trace line 1\nline 2".into()),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            position: 0,
+        })
+        .await
+        .unwrap();
+    assert_eq!(info.details.as_deref(), Some("stack trace line 1\nline 2"));
+
+    // Update the details.
+    let updated = repo
+        .update(info.id.into(), UpdateInfoRequest { details: Some(Some("new trace".into())), ..Default::default() })
+        .await
+        .unwrap();
+    assert_eq!(updated.details.as_deref(), Some("new trace"));
+    assert_eq!(updated.body, "Crash"); // body untouched
+
+    // Clear the details.
+    let cleared = repo
+        .update(info.id.into(), UpdateInfoRequest { details: Some(None), ..Default::default() })
+        .await
+        .unwrap();
+    assert_eq!(cleared.details, None);
 }

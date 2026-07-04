@@ -22,8 +22,10 @@ impl From<InfoId> for i64 {
 pub struct Info {
     /// Database primary key.
     pub id: i64,
-    /// The text content of this info node.
+    /// The one-line text content (title) of this info node.
     pub body: String,
+    /// Optional longer supporting text (e.g. an error traceback); `None` when unset.
+    pub details: Option<String>,
     /// The kind of the parent node (aspect, project, domain, goal, task, tag, info).
     pub parent_type: String,
     /// The database id of the parent node.
@@ -35,8 +37,11 @@ pub struct Info {
 /// Request body for creating an info node.
 #[derive(Debug, Clone, Deserialize)]
 pub struct CreateInfoRequest {
-    /// Text content.
+    /// One-line text content.
     pub body: String,
+    /// Optional longer supporting text.
+    #[serde(default)]
+    pub details: Option<String>,
     /// Parent node kind.
     pub parent_type: String,
     /// Parent node database id.
@@ -48,8 +53,10 @@ pub struct CreateInfoRequest {
 /// Request body for updating an info node.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct UpdateInfoRequest {
-    /// New text content, if changing.
+    /// New one-line text content, if changing.
     pub body: Option<String>,
+    /// New details, if changing (`Some(None)` clears).
+    pub details: Option<Option<String>>,
     /// New display order, if changing.
     pub position: Option<i64>,
     /// New parent kind, if re-parenting.

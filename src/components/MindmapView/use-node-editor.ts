@@ -3,6 +3,8 @@ import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import type { TaskSaveData } from "@/components/TaskEditorModal/TaskEditorModal";
 import type { GoalSaveData } from "@/components/GoalEditorModal/GoalEditorModal";
 import type { ProjectSaveData } from "@/components/ProjectEditorModal/ProjectEditorModal";
+import type { InfoSaveData } from "@/components/InfoEditorModal/InfoEditorModal";
+import { updateInfo } from "@/api/infos";
 import type { FlowSaveData } from "@/components/FlowEditorModal/FlowEditorModal";
 import type { FlowItemSaveData } from "@/components/FlowItemEditorModal/FlowItemEditorModal";
 import {
@@ -72,6 +74,7 @@ interface Result {
   onGoalSave: (data: GoalSaveData) => Promise<void>;
   onSimpleSave: (title: string) => Promise<void>;
   onProjectSave: (data: ProjectSaveData) => Promise<void>;
+  onInfoSave: (data: InfoSaveData) => Promise<void>;
   onFlowSave: (data: FlowSaveData) => Promise<void>;
   onFlowItemSave: (data: FlowItemSaveData) => Promise<void>;
   /** Prompts to clamp orphaned descendants; resolves true to proceed, false to abort. */
@@ -312,9 +315,20 @@ export function useNodeEditor({ tree, allTasksAndGoals, renameNode, reload }: Op
     [editorModal, reload],
   );
 
+  const onInfoSave = useCallback(
+    async (data: InfoSaveData) => {
+      if (editorModal === null) return;
+      const dbId = parseInt(editorModal.nodeId.split("-").pop() ?? "0", 10);
+      await updateInfo(dbId, { body: data.body, details: data.details });
+      await reload();
+      setEditorModal(null);
+    },
+    [editorModal, reload],
+  );
+
   return {
     editorModal, setEditorModal, allTags, availableForDep, onDoubleClick,
-    onTaskSave, onGoalSave, onSimpleSave, onProjectSave, onFlowSave, onFlowItemSave,
+    onTaskSave, onGoalSave, onSimpleSave, onProjectSave, onInfoSave, onFlowSave, onFlowItemSave,
     checkScopeClamp, confirmScopeClamp, scopeClampRequest, resolveScopeClamp,
   };
 }

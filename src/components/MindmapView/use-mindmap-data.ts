@@ -350,6 +350,7 @@ export function buildTree(
       id: `info-${info.id}`,
       kind: "info",
       title: info.body,
+      ...(info.details !== null ? { infoDetails: info.details } : {}),
       position: info.position,
       tagIds: [],
       children: [],

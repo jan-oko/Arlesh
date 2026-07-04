@@ -38,7 +38,7 @@ function mkTask(overrides: Partial<Task> = {}): Task {
 
 function mkInfo(overrides: Partial<Info> = {}): Info {
   return {
-    id: 1, body: "Note", parent_type: "task", parent_id: 1, position: 0,
+    id: 1, body: "Note", details: null, parent_type: "task", parent_id: 1, position: 0,
     ...overrides,
   };
 }

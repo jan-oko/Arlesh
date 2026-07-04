@@ -23,6 +23,7 @@ import TaskEditorModal from "@/components/TaskEditorModal/TaskEditorModal";
 import GoalEditorModal from "@/components/GoalEditorModal/GoalEditorModal";
 import TitleEditorModal from "@/components/TitleEditorModal/TitleEditorModal";
 import ProjectEditorModal from "@/components/ProjectEditorModal/ProjectEditorModal";
+import InfoEditorModal from "@/components/InfoEditorModal/InfoEditorModal";
 import FlowEditorModal, { type FlowSaveData } from "@/components/FlowEditorModal/FlowEditorModal";
 import FlowItemEditorModal from "@/components/FlowItemEditorModal/FlowItemEditorModal";
 import StartFlowModal, { type StartFlowData } from "@/components/StartFlowModal/StartFlowModal";
@@ -76,7 +77,7 @@ export default function MindmapView() {
 
   const {
     editorModal, setEditorModal, allTags, availableForDep, onDoubleClick,
-    onTaskSave, onGoalSave, onSimpleSave, onProjectSave, onFlowSave, onFlowItemSave,
+    onTaskSave, onGoalSave, onSimpleSave, onProjectSave, onInfoSave, onFlowSave, onFlowItemSave,
     checkScopeClamp, confirmScopeClamp, scopeClampRequest, resolveScopeClamp,
   } = useNodeEditor({ tree, allTasksAndGoals, renameNode, reload });
 
@@ -413,6 +414,9 @@ export default function MindmapView() {
       )}
       {editorModal !== null && editorModal.node.kind === "tag" && (
         <TitleEditorModal heading={t("editor:editTag")} title={editorModal.node.title} onSave={onSimpleSave} onClose={() => setEditorModal(null)} />
+      )}
+      {editorModal !== null && editorModal.node.kind === "info" && (
+        <InfoEditorModal node={editorModal.node} onSave={onInfoSave} onClose={() => setEditorModal(null)} />
       )}
       {editorModal !== null && editorModal.node.kind === "flow" && (
         <FlowEditorModal node={editorModal.node} availableTargets={flowTargets} onSave={onFlowSave} onClose={() => setEditorModal(null)} />

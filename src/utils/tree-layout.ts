@@ -72,6 +72,8 @@ export interface MindmapNode {
   status?: string;
   blockedReason?: string | null;
   knowledgeBaseDirectory?: string | null;
+  /** Optional multi-line details on an `info` node (e.g. a traceback). */
+  infoDetails?: string | null;
   color?: string;
   timeScope?: TimeScope | null;
   /** On-exit behavior; present iff `timeScope` is (Task/Goal only). */
