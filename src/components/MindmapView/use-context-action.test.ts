@@ -18,7 +18,7 @@ function makeOpts(overrides: Partial<Parameters<typeof useContextAction>[0]> = {
     findNodeById: vi.fn((_id: string) => stubNode as MindmapNode | undefined),
     enterSubtree: vi.fn(),
     setEditingNodeId: vi.fn(),
-    cycleType: vi.fn(),
+    setType: vi.fn(),
     setClipboard: vi.fn(),
     clipboard: null,
     onPaste: vi.fn(),
@@ -53,18 +53,11 @@ describe("useContextAction", () => {
     expect(opts.setEditingNodeId).toHaveBeenCalledWith("domain-1");
   });
 
-  it("TYPE_UP calls cycleType with direction +1", () => {
+  it("a set-type:<kind> action calls setType with the parsed kind", () => {
     const opts = makeOpts();
     const { result } = renderHook(() => useContextAction(opts));
-    result.current.onContextAction("domain-1", CONTEXT_ACTION.TYPE_UP);
-    expect(opts.cycleType).toHaveBeenCalledWith("domain-1", 1);
-  });
-
-  it("TYPE_DOWN calls cycleType with direction -1", () => {
-    const opts = makeOpts();
-    const { result } = renderHook(() => useContextAction(opts));
-    result.current.onContextAction("domain-1", CONTEXT_ACTION.TYPE_DOWN);
-    expect(opts.cycleType).toHaveBeenCalledWith("domain-1", -1);
+    result.current.onContextAction("domain-1", "set-type:goal");
+    expect(opts.setType).toHaveBeenCalledWith("domain-1", "goal");
   });
 
   it("CUT stores a cut clipboard entry", () => {

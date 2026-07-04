@@ -232,7 +232,7 @@ export default function MindmapView() {
     displayRoot, tree, collapsedNodeIds, dragSourceId, dragTargetId,
   });
 
-  const { warningModal, setWarningModal, cycleType, retypeActions } = useNodeTypeManager({
+  const { warningModal, setWarningModal, cycleType, setType, retypeActions } = useNodeTypeManager({
     tree, retypeNode, selectNode, showToast,
   });
 
@@ -314,7 +314,7 @@ export default function MindmapView() {
   );
 
   const { onContextAction } = useContextAction({
-    findNodeById, enterSubtree, setEditingNodeId, cycleType,
+    findNodeById, enterSubtree, setEditingNodeId, setType,
     setClipboard, clipboard, onPaste, toggleCollapsed, onDelete, onNewFlow, onConvertToFlow, onStartFlow,
   });
 

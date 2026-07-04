@@ -1,8 +1,7 @@
 {
   "enterSubtree": "Enter subtree",
   "rename": "Rename",
-  "typeNext": "Type →",
-  "typePrev": "Type ←",
+  "setType": "Set type",
   "cut": "Cut",
   "copy": "Copy",
   "pasteAsChild": "Paste as child",

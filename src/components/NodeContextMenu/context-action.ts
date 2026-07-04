@@ -1,8 +1,8 @@
+import type { NodeKind } from "@/utils/tree-layout";
+
 export const CONTEXT_ACTION = {
   ENTER: "enter",
   RENAME: "rename",
-  TYPE_UP: "type-up",
-  TYPE_DOWN: "type-down",
   CUT: "cut",
   COPY: "copy",
   PASTE: "paste",
@@ -14,4 +14,9 @@ export const CONTEXT_ACTION = {
   DELETE: "delete",
 } as const;
 
-export type ContextMenuAction = typeof CONTEXT_ACTION[keyof typeof CONTEXT_ACTION];
+/** "Set type" submenu picks encode the target kind in the action string (e.g. `set-type:goal`). */
+export type SetTypeAction = `set-type:${NodeKind}`;
+
+export const SET_TYPE_PREFIX = "set-type:";
+
+export type ContextMenuAction = typeof CONTEXT_ACTION[keyof typeof CONTEXT_ACTION] | SetTypeAction;

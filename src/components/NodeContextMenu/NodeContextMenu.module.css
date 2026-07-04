@@ -37,3 +37,42 @@
   background: var(--node-border);
   margin: var(--space-1) 0;
 }
+
+/* "Set type" flyout submenu */
+.submenuItem {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.submenuLabel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.chevron {
+  color: var(--text-secondary);
+}
+
+.submenu {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: 100%;
+  margin-inline-start: -1px;
+  z-index: 101;
+  background: var(--surface-raised);
+  border: 1px solid var(--node-border);
+  border-radius: var(--node-radius);
+  padding: var(--space-1) 0;
+  min-width: 140px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  flex-direction: column;
+}
+
+.submenuItem:hover > .submenu,
+.submenuItem:focus-within > .submenu {
+  display: flex;
+}

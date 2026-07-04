@@ -49,6 +49,7 @@ interface Result {
   setWarningModal: (m: WarningModalState | null) => void;
   confirmRetype: (options?: RetypeOptions) => void;
   cycleType: (nodeId: string, direction: 1 | -1) => void;
+  setType: (nodeId: string, kind: NodeKind) => void;
   retypeActions: WarningAction[] | null;
 }
 
@@ -91,18 +92,11 @@ export function useNodeTypeManager({ tree, retypeNode, selectNode, showToast }: 
     [warningModal, retypeNode, selectNode],
   );
 
-  const cycleType = useCallback(
-    (nodeId: string, direction: 1 | -1) => {
-      const node = findNode(tree, nodeId);
-      if (node === undefined || node.kind === "aspect") return;
-      const parent = findParent(tree, nodeId);
-      const validTypes = validTypesForCycling(node.kind, parent?.kind ?? null);
-      if (validTypes.length <= 1) return;
-      const currentIdx = validTypes.indexOf(node.kind);
-      if (currentIdx === -1) return;
-      const newKind = validTypes[(currentIdx + direction + validTypes.length) % validTypes.length];
-      if (newKind === undefined || newKind === node.kind) return;
-
+  // Retypes `node` to `newKind`, prompting first for any destructive consequence (orphaned flow-goal
+  // children, non-info children under an info, or a goal↔task status remap with children/block reason).
+  const applyRetype = useCallback(
+    (node: MindmapNode, newKind: NodeKind) => {
+      const nodeId = node.id;
       // Flow items convert goal↔task; converting a flow-goal with flow-goal children into a
       // flow-task orphans those goals, so prompt to reparent or delete them first.
       if (node.kind === "flow_goal" || node.kind === "flow_task") {
@@ -175,7 +169,35 @@ export function useNodeTypeManager({ tree, retypeNode, selectNode, showToast }: 
         selectNode(newId ?? nodeId);
       });
     },
-    [tree, showToast, retypeNode, selectNode, t],
+    [showToast, retypeNode, selectNode, t],
+  );
+
+  const cycleType = useCallback(
+    (nodeId: string, direction: 1 | -1) => {
+      const node = findNode(tree, nodeId);
+      if (node === undefined || node.kind === "aspect") return;
+      const parent = findParent(tree, nodeId);
+      const validTypes = validTypesForCycling(node.kind, parent?.kind ?? null);
+      if (validTypes.length <= 1) return;
+      const currentIdx = validTypes.indexOf(node.kind);
+      if (currentIdx === -1) return;
+      const newKind = validTypes[(currentIdx + direction + validTypes.length) % validTypes.length];
+      if (newKind === undefined || newKind === node.kind) return;
+      applyRetype(node, newKind);
+    },
+    [tree, applyRetype],
+  );
+
+  // Retypes a node directly to a chosen valid kind (from the context-menu "Set type" submenu).
+  const setType = useCallback(
+    (nodeId: string, newKind: NodeKind) => {
+      const node = findNode(tree, nodeId);
+      if (node === undefined || node.kind === newKind) return;
+      const parent = findParent(tree, nodeId);
+      if (!validTypesForCycling(node.kind, parent?.kind ?? null).includes(newKind)) return;
+      applyRetype(node, newKind);
+    },
+    [tree, applyRetype],
   );
 
   const retypeActions = warningModal !== null
@@ -193,5 +215,5 @@ export function useNodeTypeManager({ tree, retypeNode, selectNode, showToast }: 
       )
     : null;
 
-  return { warningModal, setWarningModal, confirmRetype, cycleType, retypeActions };
+  return { warningModal, setWarningModal, confirmRetype, cycleType, setType, retypeActions };
 }

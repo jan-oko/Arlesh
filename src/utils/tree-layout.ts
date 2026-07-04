@@ -7,6 +7,15 @@ export type NodeKind =
   | "aspect" | "project" | "domain" | "goal" | "task" | "tag" | "info"
   | "flow" | "flow_goal" | "flow_task";
 
+const ALL_NODE_KINDS: NodeKind[] = [
+  "aspect", "project", "domain", "goal", "task", "tag", "info", "flow", "flow_goal", "flow_task",
+];
+
+/** Type guard: whether a string is a `NodeKind`. */
+export function isNodeKind(value: string): value is NodeKind {
+  return ALL_NODE_KINDS.some((kind) => kind === value);
+}
+
 /** The four subtypes stored in the single `domains` table — all keyed `domain-<id>` in the tree. */
 const DOMAIN_TABLE_KINDS: ReadonlySet<string> = new Set(["aspect", "project", "domain", "tag"]);
 

@@ -86,4 +86,17 @@ describe("useNodeTypeManager — cycle wraps around", () => {
     act(() => { result.current.cycleType("domain-9", -1); });
     expect(retypeNode).toHaveBeenCalledWith("domain-9", "domain", "info");
   });
+
+  it("setType retypes directly to a chosen valid kind (from the submenu)", () => {
+    const { result, retypeNode } = cycleHook(n("root", "domain", [n("aspect-1", "aspect", [n("goal-9", "goal")])]));
+    act(() => { result.current.setType("goal-9", "info"); });
+    expect(retypeNode).toHaveBeenCalledWith("goal-9", "goal", "info");
+  });
+
+  it("setType ignores a kind not valid for the node's parent", () => {
+    // A node under a task parent may only be task/info — goal is not offered.
+    const { result, retypeNode } = cycleHook(n("root", "domain", [n("task-1", "task", [n("task-9", "task")])]));
+    act(() => { result.current.setType("task-9", "goal"); });
+    expect(retypeNode).not.toHaveBeenCalled();
+  });
 });

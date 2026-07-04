@@ -69,17 +69,24 @@ describe("NodeContextMenu — canEnter", () => {
   });
 });
 
-describe("NodeContextMenu — canChangeType", () => {
-  it("shows type-up and type-down for domain nodes", () => {
+describe("NodeContextMenu — Set type submenu", () => {
+  it("shows a Set type entry with the valid target kinds for domain nodes", () => {
     render(<NodeContextMenu {...defaultProps} nodeKind="domain" />);
-    expect(screen.getByRole("button", { name: "typeNext" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "typePrev" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /setType/ })).toBeInTheDocument();
+    // Under a domain-table parent the cycle offers goal/task/etc (not the current "domain").
+    expect(screen.getByRole("button", { name: "nodeKinds:goal" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "nodeKinds:task" })).toBeInTheDocument();
   });
 
-  it("hides type buttons for aspect nodes", () => {
+  it("dispatches set-type:<kind> when a submenu option is clicked", () => {
+    render(<NodeContextMenu {...defaultProps} nodeKind="domain" />);
+    fireEvent.click(screen.getByRole("button", { name: "nodeKinds:task" }));
+    expect(defaultProps.onAction).toHaveBeenCalledWith("set-type:task");
+  });
+
+  it("hides Set type for aspect nodes", () => {
     render(<NodeContextMenu {...defaultProps} nodeKind="aspect" />);
-    expect(screen.queryByRole("button", { name: "typeNext" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "typePrev" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /setType/ })).not.toBeInTheDocument();
   });
 });
 

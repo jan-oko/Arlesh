@@ -1,7 +1,8 @@
 import { useCallback } from "react";
-import type { MindmapNode } from "@/utils/tree-layout";
+import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
+import { isNodeKind } from "@/utils/tree-layout";
 import type { ContextMenuAction } from "@/components/NodeContextMenu/context-action";
-import { CONTEXT_ACTION } from "@/components/NodeContextMenu/context-action";
+import { CONTEXT_ACTION, SET_TYPE_PREFIX } from "@/components/NodeContextMenu/context-action";
 import { CLIPBOARD_OP } from "@/stores/use-mindmap-store";
 
 interface ClipboardEntry {
@@ -13,7 +14,7 @@ interface Options {
   findNodeById: (id: string) => MindmapNode | undefined;
   enterSubtree: (id: string) => void;
   setEditingNodeId: (id: string | null) => void;
-  cycleType: (nodeId: string, direction: 1 | -1) => void;
+  setType: (nodeId: string, kind: NodeKind) => void;
   setClipboard: (entry: ClipboardEntry | null) => void;
   clipboard: ClipboardEntry | null;
   onPaste: (targetId: string) => void;
@@ -29,17 +30,21 @@ interface Result {
 }
 
 export function useContextAction({
-  findNodeById, enterSubtree, setEditingNodeId, cycleType,
+  findNodeById, enterSubtree, setEditingNodeId, setType,
   setClipboard, clipboard, onPaste, toggleCollapsed, onDelete, onNewFlow, onConvertToFlow, onStartFlow,
 }: Options): Result {
   const onContextAction = useCallback(
     (nodeId: string, action: ContextMenuAction) => {
       if (findNodeById(nodeId) === undefined) return;
+      // "Set type" submenu picks arrive as `set-type:<kind>`.
+      if (action.startsWith(SET_TYPE_PREFIX)) {
+        const kind = action.slice(SET_TYPE_PREFIX.length);
+        if (isNodeKind(kind)) setType(nodeId, kind);
+        return;
+      }
       switch (action) {
         case CONTEXT_ACTION.ENTER: enterSubtree(nodeId); break;
         case CONTEXT_ACTION.RENAME: setEditingNodeId(nodeId); break;
-        case CONTEXT_ACTION.TYPE_UP: cycleType(nodeId, 1); break;
-        case CONTEXT_ACTION.TYPE_DOWN: cycleType(nodeId, -1); break;
         case CONTEXT_ACTION.CUT: setClipboard({ operation: CLIPBOARD_OP.CUT, nodeIds: [nodeId] }); break;
         case CONTEXT_ACTION.COPY: setClipboard({ operation: CLIPBOARD_OP.COPY, nodeIds: [nodeId] }); break;
         case CONTEXT_ACTION.PASTE: if (clipboard !== null) onPaste(nodeId); break;
@@ -50,7 +55,7 @@ export function useContextAction({
         case CONTEXT_ACTION.DELETE: onDelete([nodeId]); break;
       }
     },
-    [findNodeById, enterSubtree, setEditingNodeId, cycleType, setClipboard, clipboard, onPaste, toggleCollapsed, onDelete, onNewFlow, onConvertToFlow, onStartFlow],
+    [findNodeById, enterSubtree, setEditingNodeId, setType, setClipboard, clipboard, onPaste, toggleCollapsed, onDelete, onNewFlow, onConvertToFlow, onStartFlow],
   );
 
   return { onContextAction };

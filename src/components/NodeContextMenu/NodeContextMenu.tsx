@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import type { NodeKind } from "@/utils/tree-layout";
+import { validTypesForCycling } from "@/utils/node-meta";
 import type { ContextMenuAction } from "./context-action";
 import styles from "./NodeContextMenu.module.css";
 
@@ -19,7 +20,7 @@ interface Props {
 const FLOW_PARENT_KINDS: NodeKind[] = ["aspect", "domain", "project", "goal"];
 
 export default function NodeContextMenu({ x, y, nodeKind, parentKind = null, isCollapsed, hasClipboard, onAction, onClose }: Props) {
-  const { t } = useTranslation("contextMenu");
+  const { t } = useTranslation(["contextMenu", "nodeKinds"]);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -31,7 +32,8 @@ export default function NodeContextMenu({ x, y, nodeKind, parentKind = null, isC
   }, [onClose]);
 
   const canEnter = nodeKind !== "task" && nodeKind !== "goal" && nodeKind !== "tag";
-  const canChangeType = nodeKind !== "aspect";
+  // The kinds this node can be set to (its valid cycle types, minus its current kind).
+  const typeOptions = validTypesForCycling(nodeKind, parentKind).filter((k) => k !== nodeKind);
   // A Flow templates a Goal/Task subtree, so it may be created under any node that can hold one.
   const canCreateFlow = nodeKind === "aspect" || nodeKind === "domain" || nodeKind === "project" || nodeKind === "goal";
   const isFlow = nodeKind === "flow";
@@ -51,8 +53,20 @@ export default function NodeContextMenu({ x, y, nodeKind, parentKind = null, isC
     <div ref={ref} className={styles.menu} style={{ left: x, top: y }}>
       {canEnter && item(t("enterSubtree"), "enter")}
       {item(t("rename"), "rename")}
-      {canChangeType && item(t("typeNext"), "type-up")}
-      {canChangeType && item(t("typePrev"), "type-down")}
+      {typeOptions.length > 0 && (
+        <div className={styles.submenuItem}>
+          <button className={`${styles.item} ${styles.submenuLabel}`} type="button">
+            {t("setType")}<span className={styles.chevron}>›</span>
+          </button>
+          <div className={styles.submenu}>
+            {typeOptions.map((k) => (
+              <button key={k} className={styles.item} type="button" onClick={() => { onAction(`set-type:${k}`); onClose(); }}>
+                {t(`nodeKinds:${k}`)}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <div className={styles.separator} />
       {item(t("cut"), "cut")}
       {item(t("copy"), "copy")}
