@@ -69,8 +69,13 @@ function typeHardHidden(node: MindmapNode, f: FilterState): boolean {
 /** Whether a node's own status satisfies the active mode. */
 function passesStatus(node: MindmapNode, f: FilterState): boolean {
   // In any filtered mode, structural containers never match on their own — they show only when they
-  // hold a content match (so empty/fully-resolved containers drop out).
-  if (f.statusMode !== "all" && STRUCTURAL_KINDS.has(node.kind)) return false;
+  // hold a content match (so empty/fully-resolved containers drop out). Exception: in Plan, an active
+  // aspect/domain/project shows on its own — planning may mean adding items to an empty one. (Resolved
+  // ones, and tags, stay ancestor-only.)
+  if (f.statusMode !== "all" && STRUCTURAL_KINDS.has(node.kind)) {
+    if (f.statusMode === "plan" && node.kind !== "tag") return !RESOLVED_GOAL.has(node.status ?? "");
+    return false;
+  }
   switch (f.statusMode) {
     case "all":
       return true;
