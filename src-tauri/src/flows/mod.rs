@@ -22,7 +22,7 @@ use error::FlowError;
 use model::{
     BlockingMode, ConsumptionKind, CreateFlowItemRequest, CreateFlowRequest, Flow, FlowCycleInput,
     FlowDependency, FlowGoal, FlowId, FlowItemCycle, FlowItemType, FlowOrigin, FlowRecurrence,
-    FlowTask, HabitIteration, HabitItemCompletion, MaterializedFlow, SetRecurrenceRequest,
+    FlowTask, HabitIteration, HabitItemStatus, MaterializedFlow, SetRecurrenceRequest,
     StartFlowRequest, TargetRef,
     UpdateFlowItemRequest, UpdateFlowRequest,
 };
@@ -891,7 +891,7 @@ impl<'a> FlowRepository<'a> {
     /// Resolves (or un-resolves) a whole Habit iteration by writing/clearing a `done` **Modification**
     /// for **every** instance at that scope — the flow root plus every flow item. `resolved_at_ms` is
     /// the completion instant (epoch ms) recorded on each row, so Blocking catch-up jumps are
-    /// reproducible. Individual instances are toggled with [`set_item_done`].
+    /// reproducible. Individual instances are toggled with [`set_item_status`].
     pub async fn set_iteration_done(
         &self,
         flow_id: FlowId,
@@ -935,61 +935,69 @@ impl<'a> FlowRepository<'a> {
         Ok(())
     }
 
-    /// Lists every flow item currently marked done (a non-tombstoned `done` Modification) with the
-    /// iteration scope it was completed for — the per-item completion state the mindmap renders.
-    pub async fn list_item_completions(
+    /// Lists every instance with a divergent (non-tombstoned) status Modification for this flow, and
+    /// the iteration scope it applies to — the per-instance state the mindmap renders (instances with
+    /// no row sit at their base status).
+    pub async fn list_item_statuses(
         &self,
         flow_id: FlowId,
-    ) -> Result<Vec<HabitItemCompletion>, FlowError> {
-        Ok(sqlx::query_as::<_, HabitItemCompletion>(
-            "SELECT item_type, item_id, iteration_scope_id
+    ) -> Result<Vec<HabitItemStatus>, FlowError> {
+        Ok(sqlx::query_as::<_, HabitItemStatus>(
+            "SELECT item_type, item_id, iteration_scope_id, status
              FROM habit_instance_modifications
-             WHERE flow_id = ? AND status = 'done' AND tombstone_kind IS NULL",
+             WHERE flow_id = ? AND status IS NOT NULL AND tombstone_kind IS NULL",
         )
         .bind(flow_id.0)
         .fetch_all(self.pool)
         .await?)
     }
 
-    /// Marks a **single** flow item done or not-done at one iteration scope, recording `resolved_at_ms`.
-    /// Unlike `set_iteration_done` (which toggles every item at once), this lets a Habit iteration be
-    /// completed item by item; the iteration reads as Done once all its items are.
-    pub async fn set_item_done(
+    /// Sets a **single** instance's status at one iteration scope. `status` `None` clears the
+    /// Modification (back to the base status); `Some(s)` upserts it (e.g. `in_progress`, `done`).
+    /// `resolved_at_ms` is recorded only for a `done` status (the completion instant that makes
+    /// Blocking catch-up reproducible). Unlike `set_iteration_done` (every instance at once), this
+    /// toggles one — so a Habit iteration can be advanced instance by instance.
+    pub async fn set_item_status(
         &self,
         flow_id: FlowId,
         item_type: &str,
         item_id: i64,
         iteration_scope_id: i64,
-        done: bool,
+        status: Option<&str>,
         resolved_at_ms: i64,
     ) -> Result<(), FlowError> {
-        if done {
-            sqlx::query(
-                "INSERT INTO habit_instance_modifications
-                    (flow_id, item_type, item_id, iteration_scope_id, status, resolved_at)
-                 VALUES (?, ?, ?, ?, 'done', ?)
-                 ON CONFLICT(item_type, item_id, iteration_scope_id)
-                 DO UPDATE SET status = 'done', resolved_at = excluded.resolved_at, tombstone_kind = NULL",
-            )
-            .bind(flow_id.0)
-            .bind(item_type)
-            .bind(item_id)
-            .bind(iteration_scope_id)
-            .bind(resolved_at_ms)
-            .execute(self.pool)
-            .await?;
-        } else {
-            sqlx::query(
-                "DELETE FROM habit_instance_modifications
-                 WHERE flow_id = ? AND item_type = ? AND item_id = ? AND iteration_scope_id = ?
-                   AND status = 'done' AND tombstone_kind IS NULL",
-            )
-            .bind(flow_id.0)
-            .bind(item_type)
-            .bind(item_id)
-            .bind(iteration_scope_id)
-            .execute(self.pool)
-            .await?;
+        match status {
+            Some(status) => {
+                let resolved_at = if status == "done" { Some(resolved_at_ms) } else { None };
+                sqlx::query(
+                    "INSERT INTO habit_instance_modifications
+                        (flow_id, item_type, item_id, iteration_scope_id, status, resolved_at)
+                     VALUES (?, ?, ?, ?, ?, ?)
+                     ON CONFLICT(item_type, item_id, iteration_scope_id)
+                     DO UPDATE SET status = excluded.status, resolved_at = excluded.resolved_at, tombstone_kind = NULL",
+                )
+                .bind(flow_id.0)
+                .bind(item_type)
+                .bind(item_id)
+                .bind(iteration_scope_id)
+                .bind(status)
+                .bind(resolved_at)
+                .execute(self.pool)
+                .await?;
+            }
+            None => {
+                sqlx::query(
+                    "DELETE FROM habit_instance_modifications
+                     WHERE flow_id = ? AND item_type = ? AND item_id = ? AND iteration_scope_id = ?
+                       AND tombstone_kind IS NULL",
+                )
+                .bind(flow_id.0)
+                .bind(item_type)
+                .bind(item_id)
+                .bind(iteration_scope_id)
+                .execute(self.pool)
+                .await?;
+            }
         }
         Ok(())
     }

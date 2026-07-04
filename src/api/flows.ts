@@ -209,32 +209,34 @@ export async function generateHabitIterations(flowId: number, now: string): Prom
  */
 export type HabitInstanceType = FlowItemType | "flow_root";
 
-/** An instance marked done for one Habit iteration (a non-tombstoned `done` Modification). */
-export interface HabitItemCompletion {
+/** An instance's divergent status for one Habit iteration (a non-tombstoned Modification). */
+export interface HabitItemStatus {
   item_type: HabitInstanceType;
   item_id: number;
   iteration_scope_id: number;
+  status: string;
 }
 
-/** Every instance currently marked done, with the iteration scope it was completed for. */
-export async function listHabitItemCompletions(flowId: number): Promise<HabitItemCompletion[]> {
-  return invoke<HabitItemCompletion[]>("list_habit_item_completions", { flowId });
+/** Every instance with a divergent status, and the iteration scope it applies to. */
+export async function listHabitItemStatuses(flowId: number): Promise<HabitItemStatus[]> {
+  return invoke<HabitItemStatus[]>("list_habit_item_statuses", { flowId });
 }
 
 /**
- * Marks a single instance (a flow item, or the `flow_root` — with `itemId` = the flow id) done or
- * not-done at one iteration scope, recording `resolvedAtMs`. The iteration reads as Done once the
- * root and every item are done.
+ * Sets a single instance's status (a flow item, or the `flow_root` — with `itemId` = the flow id) at
+ * one iteration scope. `status` `null` clears it (back to the base status: task `todo` / goal
+ * `active`); `resolvedAtMs` is recorded for a `done` status. The iteration reads Done once the root
+ * and every item are `done`.
  */
-export async function setHabitItemDone(
+export async function setHabitItemStatus(
   flowId: number,
   itemType: HabitInstanceType,
   itemId: number,
   iterationScopeId: number,
-  done: boolean,
+  status: string | null,
   resolvedAtMs: number,
 ): Promise<void> {
-  return invoke<void>("set_habit_item_done", { flowId, itemType, itemId, iterationScopeId, done, resolvedAtMs });
+  return invoke<void>("set_habit_item_status", { flowId, itemType, itemId, iterationScopeId, status, resolvedAtMs });
 }
 
 /** Number of distinct completed iterations of a Habit (divergence check for reconciliation). */

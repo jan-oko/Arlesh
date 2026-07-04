@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { findNode, findParent, collectAllNodeIds } from "@/utils/mindmap-tree";
 import { updateTask } from "@/api/tasks";
-import { setHabitItemDone } from "@/api/flows";
+import { setHabitItemStatus } from "@/api/flows";
 import { TASK_STATUS, GOAL_STATUS } from "@/utils/status-mapping";
 import { CLIPBOARD_OP } from "@/stores/use-mindmap-store";
 
@@ -51,14 +51,21 @@ export function useNodeActions({
     (nodeId: string) => {
       const node = findNode(tree, nodeId);
       if (node === undefined) return;
-      // A virtual Habit instance (an item, or the iteration root `flow_root`) toggles just itself.
+      // A virtual Habit instance (an item, or the iteration root `flow_root`) advances just itself: a
+      // goal toggles achieved; a task cycles todo → in_progress → done. `null` clears the Modification
+      // (back to the base status). A goal's "achieved" is stored canonically as `done`.
       if (node.habitItem !== undefined) {
         const { flowId, itemType, itemId, scopeId } = node.habitItem;
-        // A goal instance reads "achieved" when complete; a task instance "done".
-        const done = node.status === TASK_STATUS.DONE || node.status === GOAL_STATUS.ACHIEVED;
-        void setHabitItemDone(flowId, itemType, itemId, scopeId, !done, Date.now())
+        let next: string | null;
+        if (node.kind === "goal") {
+          next = node.status === GOAL_STATUS.ACHIEVED ? null : TASK_STATUS.DONE;
+        } else {
+          const cycled = nextTaskStatus(node.status ?? TASK_STATUS.TODO);
+          next = cycled === TASK_STATUS.TODO ? null : cycled;
+        }
+        void setHabitItemStatus(flowId, itemType, itemId, scopeId, next, Date.now())
           .then(() => reload())
-          .catch((err: unknown) => console.error(`${LOG_PREFIX} habit item completion failed:`, err));
+          .catch((err: unknown) => console.error(`${LOG_PREFIX} habit item status failed:`, err));
         return;
       }
       if (node.kind !== "task") return;

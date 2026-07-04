@@ -793,7 +793,7 @@ describe("injectHabitInstances", () => {
       [mkFlow()],
       [[iter(0, "done"), iter(1, "active"), iter(2, "lapsed")]],
       [], [],
-      [[{ item_type: "flow_root", item_id: 3, iteration_scope_id: 100 }]],
+      [[{ item_type: "flow_root", item_id: 3, iteration_scope_id: 100, status: "done" }]],
     );
 
     const target = root.children[0]?.children[0]; // aspect → goal 5
@@ -842,7 +842,7 @@ describe("injectHabitInstances", () => {
       [[iter(0, "active")]], // anchor_scope_id = 100
       [],
       [breakfast, dinner],
-      [[{ item_type: "flow_task", item_id: 4, iteration_scope_id: 100 }]], // breakfast done
+      [[{ item_type: "flow_task", item_id: 4, iteration_scope_id: 100, status: "done" }]], // breakfast done
     );
 
     const iteration = root.children[0]?.children[0]?.children[0]; // aspect → project → iteration root
@@ -874,8 +874,8 @@ describe("injectHabitInstances", () => {
       [done, open],
       [],
       [[
-        { item_type: "flow_root", item_id: 3, iteration_scope_id: 100 },
-        { item_type: "flow_goal", item_id: 9, iteration_scope_id: 100 },
+        { item_type: "flow_root", item_id: 3, iteration_scope_id: 100, status: "done" },
+        { item_type: "flow_goal", item_id: 9, iteration_scope_id: 100, status: "done" },
       ]],
     );
 

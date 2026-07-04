@@ -8,7 +8,7 @@ use crate::{
         model::{
             CreateFlowItemRequest, CreateFlowRequest, Flow, FlowCycleInput, FlowDependency,
             FlowGoal, FlowId, FlowItemCycle, FlowItemType, FlowOrigin, FlowRecurrence, FlowTask,
-            HabitIteration, HabitItemCompletion, MaterializedFlow, SetRecurrenceRequest,
+            HabitIteration, HabitItemStatus, MaterializedFlow, SetRecurrenceRequest,
             StartFlowRequest, TargetRef,
             UpdateFlowItemRequest, UpdateFlowRequest,
         },
@@ -348,31 +348,31 @@ pub async fn list_all_flow_dependencies(
         .map_err(|error| error.to_string())
 }
 
-/// Lists every flow item currently marked done, with the iteration scope it was completed for.
+/// Lists every instance's divergent status for this flow, with the iteration scope it applies to.
 #[tauri::command]
-pub async fn list_habit_item_completions(
+pub async fn list_habit_item_statuses(
     pool: State<'_, DatabasePool>,
     flow_id: i64,
-) -> Result<Vec<HabitItemCompletion>, String> {
+) -> Result<Vec<HabitItemStatus>, String> {
     FlowRepository::new(&pool)
-        .list_item_completions(FlowId(flow_id))
+        .list_item_statuses(FlowId(flow_id))
         .await
         .map_err(|error| error.to_string())
 }
 
-/// Marks a single flow item done or not-done at one iteration scope, recording `resolved_at_ms`.
+/// Sets a single instance's status at one iteration scope (`null` clears it), recording `resolved_at_ms`.
 #[tauri::command]
-pub async fn set_habit_item_done(
+pub async fn set_habit_item_status(
     pool: State<'_, DatabasePool>,
     flow_id: i64,
     item_type: String,
     item_id: i64,
     iteration_scope_id: i64,
-    done: bool,
+    status: Option<String>,
     resolved_at_ms: i64,
 ) -> Result<(), String> {
     FlowRepository::new(&pool)
-        .set_item_done(FlowId(flow_id), &item_type, item_id, iteration_scope_id, done, resolved_at_ms)
+        .set_item_status(FlowId(flow_id), &item_type, item_id, iteration_scope_id, status.as_deref(), resolved_at_ms)
         .await
         .map_err(|error| error.to_string())
 }

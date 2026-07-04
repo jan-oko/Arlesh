@@ -1007,20 +1007,46 @@ async fn iteration_resolves_only_when_the_root_and_every_item_are_done() {
     let scope = repo.generate_habit_iterations(FlowId(flow.id), now).await.unwrap()[0].anchor_scope_id;
 
     // Every item done but NOT the root → still open (the root is its own instance).
-    repo.set_item_done(FlowId(flow.id), "flow_task", breakfast.id, scope, true, 1_767_600_000_000).await.unwrap();
-    repo.set_item_done(FlowId(flow.id), "flow_task", dinner.id, scope, true, 1_767_600_000_000).await.unwrap();
+    repo.set_item_status(FlowId(flow.id), "flow_task", breakfast.id, scope, Some("done"), 1_767_600_000_000).await.unwrap();
+    repo.set_item_status(FlowId(flow.id), "flow_task", dinner.id, scope, Some("done"), 1_767_600_000_000).await.unwrap();
     assert_ne!(format!("{:?}", repo.generate_habit_iterations(FlowId(flow.id), now).await.unwrap()[0].status), "Done");
 
     // Completing the root instance too resolves the iteration.
-    repo.set_item_done(FlowId(flow.id), "flow_root", flow.id, scope, true, 1_767_600_000_000).await.unwrap();
-    let completions = repo.list_item_completions(FlowId(flow.id)).await.unwrap();
+    repo.set_item_status(FlowId(flow.id), "flow_root", flow.id, scope, Some("done"), 1_767_600_000_000).await.unwrap();
+    let completions = repo.list_item_statuses(FlowId(flow.id)).await.unwrap();
     assert_eq!(completions.len(), 3); // breakfast, dinner, root
     assert!(completions.iter().any(|c| c.item_type == "flow_root" && c.item_id == flow.id));
     assert_eq!(format!("{:?}", repo.generate_habit_iterations(FlowId(flow.id), now).await.unwrap()[0].status), "Done");
 
     // Un-checking the root alone reverts it.
-    repo.set_item_done(FlowId(flow.id), "flow_root", flow.id, scope, false, 0).await.unwrap();
+    repo.set_item_status(FlowId(flow.id), "flow_root", flow.id, scope, None, 0).await.unwrap();
     assert_ne!(format!("{:?}", repo.generate_habit_iterations(FlowId(flow.id), now).await.unwrap()[0].status), "Done");
+}
+
+#[tokio::test]
+async fn an_in_progress_instance_is_listed_but_does_not_resolve_the_iteration() {
+    let pool = helpers::test_pool().await;
+    let repo = FlowRepository::new(&pool);
+    let flow = repo.create(create_req("Chore")).await.unwrap();
+    let step = repo
+        .create_task(CreateFlowItemRequest { flow_id: flow.id, title: "Step".into(), parent_type: "flow".into(), parent_id: flow.id })
+        .await
+        .unwrap();
+    let start = week_scope_id(&pool, ymd(2026, 1, 5)).await;
+    repo.set_recurrence(FlowId(flow.id), destructive_recurrence(start)).await.unwrap();
+    let now = ymd(2026, 1, 8).and_hms_opt(12, 0, 0).unwrap();
+    let scope = repo.generate_habit_iterations(FlowId(flow.id), now).await.unwrap()[0].anchor_scope_id;
+
+    // in_progress is surfaced but is not a completion — the iteration stays open.
+    repo.set_item_status(FlowId(flow.id), "flow_task", step.id, scope, Some("in_progress"), 0).await.unwrap();
+    let statuses = repo.list_item_statuses(FlowId(flow.id)).await.unwrap();
+    assert_eq!(statuses.len(), 1);
+    assert_eq!(statuses[0].status, "in_progress");
+    assert_ne!(format!("{:?}", repo.generate_habit_iterations(FlowId(flow.id), now).await.unwrap()[0].status), "Done");
+
+    // Clearing it (back to todo) removes the row entirely.
+    repo.set_item_status(FlowId(flow.id), "flow_task", step.id, scope, None, 0).await.unwrap();
+    assert!(repo.list_item_statuses(FlowId(flow.id)).await.unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -1035,7 +1061,7 @@ async fn an_item_less_habit_resolves_by_completing_its_root() {
     let scope = repo.generate_habit_iterations(FlowId(flow.id), now).await.unwrap()[0].anchor_scope_id;
     assert_ne!(format!("{:?}", repo.generate_habit_iterations(FlowId(flow.id), now).await.unwrap()[0].status), "Done");
 
-    repo.set_item_done(FlowId(flow.id), "flow_root", flow.id, scope, true, 1_767_600_000_000).await.unwrap();
+    repo.set_item_status(FlowId(flow.id), "flow_root", flow.id, scope, Some("done"), 1_767_600_000_000).await.unwrap();
     assert_eq!(format!("{:?}", repo.generate_habit_iterations(FlowId(flow.id), now).await.unwrap()[0].status), "Done");
 }
 

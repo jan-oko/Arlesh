@@ -10,11 +10,11 @@ vi.mock("@/api/tasks", () => ({
 }));
 
 vi.mock("@/api/flows", () => ({
-  setHabitItemDone: vi.fn().mockResolvedValue(undefined),
+  setHabitItemStatus: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { updateTask } from "@/api/tasks";
-import { setHabitItemDone } from "@/api/flows";
+import { setHabitItemStatus } from "@/api/flows";
 
 function mkNode(id: string, kind: NodeKind, children: MindmapNode[] = [], extra: Partial<MindmapNode> = {}): MindmapNode {
   return { id, kind, title: id, position: 0, tagIds: [], children, ...extra };
@@ -36,7 +36,10 @@ const HABIT_ITEM = mkNode("habititem-flow_task-4-0-virtual", "task", [], {
 const HABIT_GOAL_DONE = mkNode("habititem-flow_goal-9-0-virtual", "goal", [], {
   status: "achieved", virtual: true, habitItem: { flowId: 3, itemType: "flow_goal", itemId: 9, scopeId: 100 },
 });
-const PROJECT = mkNode("domain-3", "project", [TASK_NODE, TASK_DONE, GOAL_NODE, ASPECT, HABIT_ITER, HABIT_DONE, HABIT_ITEM, HABIT_GOAL_DONE]);
+const HABIT_TASK_IP = mkNode("habititem-flow_task-7-0-virtual", "task", [], {
+  status: "in_progress", virtual: true, habitItem: { flowId: 3, itemType: "flow_task", itemId: 7, scopeId: 100 },
+});
+const PROJECT = mkNode("domain-3", "project", [TASK_NODE, TASK_DONE, GOAL_NODE, ASPECT, HABIT_ITER, HABIT_DONE, HABIT_ITEM, HABIT_GOAL_DONE, HABIT_TASK_IP]);
 const ROOT = mkNode("root", "domain", [PROJECT]);
 
 function makeOpts(overrides: Partial<Parameters<typeof useNodeActions>[0]> = {}) {
@@ -84,40 +87,49 @@ describe("useNodeActions — onStatusClick", () => {
     expect(updateTask).not.toHaveBeenCalled();
   });
 
-  it("completes the iteration root as its own instance instead of cycling a task", async () => {
+  it("advances a todo task-instance root to in_progress (not straight to done)", async () => {
     const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("habit-3-0-virtual"); });
     await vi.waitFor(() =>
-      expect(setHabitItemDone).toHaveBeenCalledWith(3, "flow_root", 3, 100, true, expect.any(Number)),
+      expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_root", 3, 100, "in_progress", expect.any(Number)),
     );
     expect(updateTask).not.toHaveBeenCalled();
   });
 
-  it("un-completes a done iteration root", async () => {
+  it("cycles a done task-instance root back to todo by clearing its status", async () => {
     const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("habit-3-1-virtual"); });
     await vi.waitFor(() =>
-      expect(setHabitItemDone).toHaveBeenCalledWith(3, "flow_root", 3, 101, false, expect.any(Number)),
+      expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_root", 3, 101, null, expect.any(Number)),
     );
   });
 
-  it("un-achieves a completed goal instance (achieved counts as done)", async () => {
+  it("advances an in_progress task instance to done", async () => {
+    const opts = makeOpts();
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onStatusClick("habititem-flow_task-7-0-virtual"); });
+    await vi.waitFor(() =>
+      expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_task", 7, 100, "done", expect.any(Number)),
+    );
+  });
+
+  it("un-achieves a completed goal instance by clearing its status", async () => {
     const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("habititem-flow_goal-9-0-virtual"); });
     await vi.waitFor(() =>
-      expect(setHabitItemDone).toHaveBeenCalledWith(3, "flow_goal", 9, 100, false, expect.any(Number)),
+      expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_goal", 9, 100, null, expect.any(Number)),
     );
   });
 
-  it("completes a single habit item instance without touching the rest of the iteration", async () => {
+  it("advances a single todo task instance without touching the rest of the iteration", async () => {
     const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("habititem-flow_task-4-0-virtual"); });
     await vi.waitFor(() =>
-      expect(setHabitItemDone).toHaveBeenCalledWith(3, "flow_task", 4, 100, true, expect.any(Number)),
+      expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_task", 4, 100, "in_progress", expect.any(Number)),
     );
     expect(updateTask).not.toHaveBeenCalled();
   });
