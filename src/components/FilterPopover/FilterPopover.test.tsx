@@ -34,14 +34,25 @@ describe("FilterPopover", () => {
     expect(screen.getByText("includeFlows")).toBeInTheDocument();
   });
 
-  it("toggles Info visibility off via the type pill", () => {
+  it("hides tags & type controls under a collapsed Advanced section by default", () => {
     render(<FilterPopover />);
+    expect(screen.queryByText("tagsLabel")).not.toBeInTheDocument();
+    expect(screen.queryByText("typesLabel")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("advanced"));
+    expect(screen.getByText("tagsLabel")).toBeInTheDocument();
+    expect(screen.getByText("typesLabel")).toBeInTheDocument();
+  });
+
+  it("toggles Info visibility off via the type pill (under Advanced)", () => {
+    render(<FilterPopover />);
+    fireEvent.click(screen.getByText("advanced")); // expand
     fireEvent.click(screen.getByRole("button", { name: "nodeKinds:info" }));
     expect(useFilterStore.getState().filter.showInfo).toBe(false);
   });
 
   it("adds a tag filter (default Any) from the search combobox and cycles its mode Any→All", async () => {
     render(<FilterPopover />);
+    fireEvent.click(screen.getByText("advanced")); // expand
     fireEvent.focus(await screen.findByPlaceholderText("addTag"));
     await waitFor(() => expect(screen.getByText("urgent")).toBeInTheDocument());
     fireEvent.mouseDown(screen.getByText("urgent"));

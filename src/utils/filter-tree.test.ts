@@ -129,6 +129,33 @@ describe("filterTree — flows & habits", () => {
   });
 });
 
+describe("filterTree — info nodes are attachments, never keep a resolved parent", () => {
+  it("hides an achieved goal whose only children are info notes (Start)", () => {
+    const t = n("root", "domain", {}, [
+      n("goal-done", "goal", { status: "achieved" }, [n("info-1", "info"), n("info-2", "info", {}, [n("info-3", "info")])]),
+    ]);
+    const kept = ids(filterTree(t, f({ statusMode: "start" })));
+    expect(kept).not.toContain("goal-done");
+    expect(kept).not.toContain("info-1");
+  });
+
+  it("keeps info notes under a task that is itself shown", () => {
+    const t = n("root", "domain", {}, [n("task-1", "task", { status: "todo" }, [n("info-1", "info")])]);
+    const kept = ids(filterTree(t, f({ statusMode: "start" })));
+    expect(kept).toContain("task-1");
+    expect(kept).toContain("info-1"); // rides along with its shown parent
+  });
+
+  it("keeps an achieved goal that also has a matching task child (info doesn't change that)", () => {
+    const t = n("root", "domain", {}, [
+      n("goal-done", "goal", { status: "achieved" }, [n("task-todo", "task", { status: "todo" }), n("info-1", "info")]),
+    ]);
+    const kept = ids(filterTree(t, f({ statusMode: "start" })));
+    expect(kept).toContain("goal-done"); // ancestor of the todo task
+    expect(kept).toContain("info-1");
+  });
+});
+
 describe("filterTree — type visibility", () => {
   const t = () => n("root", "domain", {}, [n("task-1", "task", { status: "todo" }, [n("info-1", "info")])]);
 

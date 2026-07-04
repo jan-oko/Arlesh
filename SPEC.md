@@ -229,7 +229,7 @@ The root of the map is "Arlesh" (top level). Aspect cells are its direct childre
 
 **Top bar:** a settings **gear** (popover with the Hebrew/English language toggle) at the start edge, the subtree **back-nav pills** beside it (shown only inside a subtree), and a **Filter** button (funnel) at the end edge that opens the filter popover and shows an active badge whenever a filter is engaged.
 
-**Mindmap filter:** prunes the displayed tree — a node is hidden unless it matches or has a matching descendant (ancestors of matches stay, keeping the map connected). Controls (persisted to localStorage):
+**Mindmap filter:** prunes the displayed tree — a node is hidden unless it matches or has a matching **content** descendant (ancestors of matches stay, keeping the map connected). Info notes are *attachments*: they ride along with a kept node but never keep one (an achieved goal whose only children are notes is still hidden). Only the status preset (and its flows subtoggle) shows by default; tag filters and type toggles live under an **Advanced filters** expander. Controls (persisted to localStorage):
 - **Status preset** (single): **All** · **Plan** (hide done tasks and achieved/frozen/archived goals) · **Start** (Plan, minus in-progress tasks with no todo child, minus blocked and scope-lapsed items, minus Habit flow nodes) · **Do** (only in-progress tasks; goals/structure appear as ancestors). Structural nodes always show in All/Plan/Start; in Do only as ancestors.
 - **Include flows** subtoggle (Plan/Start), separate from the global Flow type toggle — both must be on for flows to show.
 - **Tag filters** in Any/All/Exclusion modes, combined per the Filtering Logic formula and AND-ed with the preset.

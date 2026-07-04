@@ -109,17 +109,25 @@ function selfMatches(node: MindmapNode, f: FilterState): boolean {
 }
 
 /**
- * Prunes `root` to the active filter: a node is kept if it matches or has a kept descendant (so matches
- * stay reachable); type/flow-hidden subtrees are dropped outright. The root is always returned as a
- * container (possibly empty) so the canvas has something to render.
+ * Prunes `root` to the active filter: a node is kept if it matches or has a kept **content** descendant
+ * (info nodes are attachments — they ride along with a kept node but never keep it, so an achieved goal
+ * whose only children are notes is still hidden). Type/flow-hidden subtrees are dropped outright. The
+ * root is always returned as a container (possibly empty) so the canvas has something to render.
  */
 export function filterTree(root: MindmapNode, f: FilterState): MindmapNode {
   function prune(node: MindmapNode): MindmapNode | null {
     if (typeHardHidden(node, f)) return null;
-    const children = node.children
-      .map(prune)
-      .filter((n): n is MindmapNode => n !== null);
-    if (selfMatches(node, f) || children.length > 0) return { ...node, children };
+    const children: MindmapNode[] = [];
+    let hasContentMatch = false;
+    for (const child of node.children) {
+      const pruned = prune(child);
+      if (pruned === null) continue;
+      children.push(pruned);
+      if (child.kind !== "info") hasContentMatch = true;
+    }
+    // Info is carried by its parent's decision (visibility already handled by typeHardHidden above).
+    if (node.kind === "info") return { ...node, children };
+    if (selfMatches(node, f) || hasContentMatch) return { ...node, children };
     return null;
   }
   return prune(root) ?? { ...root, children: [] };

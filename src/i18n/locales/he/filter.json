@@ -7,6 +7,7 @@
     "do": "ביצוע"
   },
   "includeFlows": "כלול תהליכים",
+  "advanced": "סינון מתקדם",
   "tagsLabel": "תגיות",
   "tagMode": {
     "any": "אחת",

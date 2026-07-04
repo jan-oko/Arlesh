@@ -8,6 +8,8 @@ import type { StatusMode, TagFilterMode } from "@/utils/filter-tree";
 import styles from "./FilterPopover.module.css";
 
 const STATUS_MODES: StatusMode[] = ["all", "plan", "start", "do"];
+const CHEVRON_OPEN = "▾";
+const CHEVRON_CLOSED = "▸";
 const NEXT_TAG_MODE: Record<TagFilterMode, TagFilterMode> = { any: "all", all: "exclude", exclude: "any" };
 /** Set-theory glyphs: Any = union, All = intersection, Exclude = empty set. */
 const MODE_SYMBOL: Record<TagFilterMode, string> = { any: "∪", all: "∩", exclude: "∅" };
@@ -89,6 +91,10 @@ export default function FilterPopover() {
   const reset = useFilterStore((s) => s.reset);
 
   // Load all domains so each tag's *aspect* colour can be resolved by walking up to the nearest coloured ancestor.
+  // Advanced (tags + type visibility) collapses; open by default only when something advanced is set.
+  const advancedActive = filter.tagFilters.length > 0 || !filter.showInfo || !filter.showFlow;
+  const [advancedOpen, setAdvancedOpen] = useState(advancedActive);
+
   const [domains, setDomains] = useState<Domain[]>([]);
   useEffect(() => { void listDomains().then(setDomains); }, []);
   const byId = useMemo(() => new Map(domains.map((d) => [d.id, d])), [domains]);
@@ -133,6 +139,11 @@ export default function FilterPopover() {
         )}
       </section>
 
+      <button type="button" className={styles.advancedToggle} onClick={() => setAdvancedOpen((o) => !o)}>
+        <span aria-hidden="true">{advancedOpen ? CHEVRON_OPEN : CHEVRON_CLOSED}</span>{t("advanced")}
+      </button>
+
+      {advancedOpen && <>
       <section className={styles.section}>
         <div className={styles.sectionLabel}>{t("tagsLabel")}</div>
         {filter.tagFilters.length > 0 && (
@@ -173,6 +184,7 @@ export default function FilterPopover() {
       </section>
 
       <button type="button" className={styles.reset} onClick={reset}>{t("reset")}</button>
+      </>}
     </div>
   );
 }

@@ -7,6 +7,7 @@
     "do": "Do"
   },
   "includeFlows": "Include flows",
+  "advanced": "Advanced filters",
   "tagsLabel": "Tags",
   "tagMode": {
     "any": "Any",
