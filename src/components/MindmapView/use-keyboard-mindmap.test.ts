@@ -59,6 +59,8 @@ function baseOptions(overrides: Partial<Parameters<typeof useKeyboardMindmap>[0]
     onPaste: vi.fn(),
     onEnterSubtree: vi.fn(),
     onOpenSearch: vi.fn(),
+    onZoomIn: vi.fn(),
+    onZoomOut: vi.fn(),
     findNodeById: (id: string): MindmapNode | undefined =>
       id === "task-1" ? makeTask("task-1") : undefined,
     ...overrides,
@@ -242,6 +244,29 @@ describe("useKeyboardMindmap — Ctrl+V (paste)", () => {
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("v", { ctrlKey: true });
     expect(opts.onPaste).not.toHaveBeenCalled();
+  });
+});
+
+describe("useKeyboardMindmap — Ctrl+= / Ctrl+- (zoom)", () => {
+  it("Ctrl+= zooms in (physical Equal key)", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "=", code: "Equal", ctrlKey: true, bubbles: true, cancelable: true }));
+    expect(opts.onZoomIn).toHaveBeenCalled();
+  });
+
+  it("Ctrl+- zooms out (physical Minus key)", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "-", code: "Minus", ctrlKey: true, bubbles: true, cancelable: true }));
+    expect(opts.onZoomOut).toHaveBeenCalled();
+  });
+
+  it("plain = (no ctrl) does not zoom", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("=");
+    expect(opts.onZoomIn).not.toHaveBeenCalled();
   });
 });
 

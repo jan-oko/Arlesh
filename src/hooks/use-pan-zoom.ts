@@ -7,15 +7,32 @@ interface Transform {
   scale: number;
 }
 
+/** The live transform plus the measured viewport size, for visibility maths. */
+export interface Viewport extends Transform {
+  width: number;
+  height: number;
+}
+
 export interface PanZoomResult {
   springProps: SpringValues<Transform>;
   onMouseDown: (e: React.MouseEvent<SVGSVGElement>) => void;
   centerOnRoot: () => void;
+  /** Pans so the layout point `(lx, ly)` sits at the viewport centre. */
+  centerOnPoint: (lx: number, ly: number) => void;
+  /** Pans to centre `(lx, ly)` only if it's currently outside the comfortable viewport. */
+  ensureVisible: (lx: number, ly: number) => void;
+  zoomIn: () => void;
+  zoomOut: () => void;
+  /** Current transform + measured viewport size (read on demand). */
+  getViewport: () => Viewport;
 }
 
 const MIN_SCALE = 0.2;
 const MAX_SCALE = 3.0;
 const WHEEL_SENSITIVITY = 0.001;
+const ZOOM_STEP = 1.2; // per Ctrl+= / Ctrl+-
+/** Screen-px margin: a selected node closer than this to an edge is treated as off-screen. */
+const VISIBLE_MARGIN = 100;
 
 export function usePanZoom(svgRef: React.RefObject<SVGSVGElement | null>): PanZoomResult {
   const initialX = window.innerWidth / 2;
@@ -39,6 +56,12 @@ export function usePanZoom(svgRef: React.RefObject<SVGSVGElement | null>): PanZo
     },
     [api],
   );
+
+  // The visible canvas size — the real container rect, falling back to the window.
+  const size = useCallback(() => {
+    const rect = svgRef.current?.getBoundingClientRect();
+    return { w: rect?.width ?? window.innerWidth, h: rect?.height ?? window.innerHeight };
+  }, [svgRef]);
 
   // Left-click on canvas background or middle-click anywhere starts a pan
   const onMouseDown = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
@@ -75,6 +98,21 @@ export function usePanZoom(svgRef: React.RefObject<SVGSVGElement | null>): PanZo
     };
   }, [applyTransform]);
 
+  // Zoom toward a focal point in transform (SVG-local) space, clamped.
+  const zoomTo = useCallback(
+    (targetScale: number, focalX: number, focalY: number) => {
+      const cur = transform.current;
+      const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, targetScale));
+      const ratio = newScale / cur.scale;
+      applyTransform({
+        x: focalX - (focalX - cur.x) * ratio,
+        y: focalY - (focalY - cur.y) * ratio,
+        scale: newScale,
+      });
+    },
+    [applyTransform],
+  );
+
   // Wheel must be registered imperatively with passive:false so preventDefault works
   useEffect(() => {
     const el = svgRef.current;
@@ -83,26 +121,50 @@ export function usePanZoom(svgRef: React.RefObject<SVGSVGElement | null>): PanZo
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
       const delta = -e.deltaY * WHEEL_SENSITIVITY;
-      const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, transform.current.scale + delta));
-      const ratio = newScale / transform.current.scale;
-      applyTransform({
-        x: e.clientX - (e.clientX - transform.current.x) * ratio,
-        y: e.clientY - (e.clientY - transform.current.y) * ratio,
-        scale: newScale,
-      });
+      zoomTo(transform.current.scale + delta, e.clientX, e.clientY);
     };
 
     el.addEventListener("wheel", handleWheel, { passive: false });
     return () => el.removeEventListener("wheel", handleWheel);
-  }, [svgRef, applyTransform]);
+  }, [svgRef, zoomTo]);
 
-  const centerOnRoot = useCallback(() => {
-    applyTransform({
-      x: window.innerWidth / 2,
-      y: window.innerHeight / 2,
-      scale: transform.current.scale,
-    });
-  }, [applyTransform]);
+  const centerOnPoint = useCallback(
+    (lx: number, ly: number) => {
+      const { w, h } = size();
+      const s = transform.current.scale;
+      applyTransform({ x: w / 2 - lx * s, y: h / 2 - ly * s, scale: s });
+    },
+    [applyTransform, size],
+  );
 
-  return { springProps, onMouseDown, centerOnRoot };
+  const centerOnRoot = useCallback(() => centerOnPoint(0, 0), [centerOnPoint]);
+
+  const ensureVisible = useCallback(
+    (lx: number, ly: number) => {
+      const { w, h } = size();
+      const { x, y, scale } = transform.current;
+      const sx = x + lx * scale;
+      const sy = y + ly * scale;
+      if (sx >= VISIBLE_MARGIN && sx <= w - VISIBLE_MARGIN && sy >= VISIBLE_MARGIN && sy <= h - VISIBLE_MARGIN) return;
+      centerOnPoint(lx, ly);
+    },
+    [centerOnPoint, size],
+  );
+
+  const zoomIn = useCallback(() => {
+    const { w, h } = size();
+    zoomTo(transform.current.scale * ZOOM_STEP, w / 2, h / 2);
+  }, [zoomTo, size]);
+
+  const zoomOut = useCallback(() => {
+    const { w, h } = size();
+    zoomTo(transform.current.scale / ZOOM_STEP, w / 2, h / 2);
+  }, [zoomTo, size]);
+
+  const getViewport = useCallback((): Viewport => {
+    const { w, h } = size();
+    return { ...transform.current, width: w, height: h };
+  }, [size]);
+
+  return { springProps, onMouseDown, centerOnRoot, centerOnPoint, ensureVisible, zoomIn, zoomOut, getViewport };
 }

@@ -6,8 +6,16 @@ import MindmapTree from "@/components/MindmapTree/MindmapTree";
 import type { ContextMenuAction } from "@/components/NodeContextMenu/context-action";
 import styles from "./MindmapCanvas.module.css";
 
+import type { Viewport } from "@/hooks/use-pan-zoom";
+
 export interface MindmapCanvasHandle {
   centerOnRoot: () => void;
+  /** Pans to a layout point only if it's currently off-screen (for follow-the-selection). */
+  ensureVisible: (lx: number, ly: number) => void;
+  zoomIn: () => void;
+  zoomOut: () => void;
+  /** Current transform + viewport size, for the "is anything visible" check. */
+  getViewport: () => Viewport;
 }
 
 interface Props {
@@ -33,8 +41,8 @@ interface Props {
 
 const MindmapCanvas = forwardRef<MindmapCanvasHandle, Props>(function MindmapCanvas({ root, collapsedNodeIds, selectedNodeIds, editingNodeId, dragTargetId, dragSourceId, canvasOverlay, hasClipboard, onSelect, onCtrlClick, onShiftClick, onDoubleClick, onCommitEdit, onCancelEdit, onContextAction, onDragStart, onCanvasClick, onStatusClick }: Props, ref) {
   const svgRef = useRef<SVGSVGElement>(null);
-  const { springProps, onMouseDown, centerOnRoot } = usePanZoom(svgRef);
-  useImperativeHandle(ref, () => ({ centerOnRoot }), [centerOnRoot]);
+  const { springProps, onMouseDown, centerOnRoot, ensureVisible, zoomIn, zoomOut, getViewport } = usePanZoom(svgRef);
+  useImperativeHandle(ref, () => ({ centerOnRoot, ensureVisible, zoomIn, zoomOut, getViewport }), [centerOnRoot, ensureVisible, zoomIn, zoomOut, getViewport]);
 
   const transform = to(
     [springProps.x, springProps.y, springProps.scale],

@@ -37,6 +37,8 @@ interface Options {
   onPaste: (id: string) => void;
   onEnterSubtree: (id: string) => void;
   onOpenSearch: () => void;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
   findNodeById: (id: string) => MindmapNode | undefined;
 }
 
@@ -46,7 +48,7 @@ export function useKeyboardMindmap(options: Options): void {
     selectedNodeId, selectedNodeIds, subtreeRootId, clipboard,
     onNavigate, onCycleType, onReorder, onStartRename,
     onCreateChild, onCreateSibling, onInsertParent, onOpenEditor, onStartFlow, onDelete, onToggleCollapsed, onCycleStatus,
-    onDeselect, onExitSubtree, onExitToRoot, onCut, onCopy, onPaste, onEnterSubtree, onOpenSearch,
+    onDeselect, onExitSubtree, onExitToRoot, onCut, onCopy, onPaste, onEnterSubtree, onOpenSearch, onZoomIn, onZoomOut,
     findNodeById,
   } = options;
 
@@ -153,6 +155,20 @@ export function useKeyboardMindmap(options: Options): void {
             onToggleCollapsed(selectedNodeId);
           }
           break;
+        case "Equal":
+        case "NumpadAdd":
+          if (event.ctrlKey || event.metaKey) {
+            event.preventDefault(); // also suppresses the browser's page-zoom
+            onZoomIn();
+          }
+          break;
+        case "Minus":
+        case "NumpadSubtract":
+          if (event.ctrlKey || event.metaKey) {
+            event.preventDefault();
+            onZoomOut();
+          }
+          break;
         case "KeyS":
           if (!event.ctrlKey && !event.metaKey && selectedNodeId !== null) {
             const node = findNodeById(selectedNodeId);
@@ -228,7 +244,7 @@ export function useKeyboardMindmap(options: Options): void {
     selectedNodeId, selectedNodeIds, subtreeRootId, clipboard,
     onNavigate, onCycleType, onReorder, onStartRename,
     onCreateChild, onCreateSibling, onInsertParent, onOpenEditor, onStartFlow, onDelete, onToggleCollapsed, onCycleStatus,
-    onDeselect, onExitSubtree, onExitToRoot, onCut, onCopy, onPaste, onEnterSubtree, onOpenSearch,
+    onDeselect, onExitSubtree, onExitToRoot, onCut, onCopy, onPaste, onEnterSubtree, onOpenSearch, onZoomIn, onZoomOut,
     findNodeById,
   ]);
 }

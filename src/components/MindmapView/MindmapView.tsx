@@ -234,6 +234,30 @@ export default function MindmapView() {
     displayRoot, tree, collapsedNodeIds, dragSourceId, dragTargetId,
   });
 
+  // Follow the selection: when it *changes* to a node off the visible canvas (e.g. arrow navigation),
+  // pan to it. Guarded on an actual selection change so layout shifts under a stable selection don't pan.
+  const prevSelectedId = useRef<string | null>(null);
+  useEffect(() => {
+    if (selectedNodeId !== null && selectedNodeId !== prevSelectedId.current) {
+      const pos = positions.get(selectedNodeId);
+      if (pos !== undefined) canvasRef.current?.ensureVisible(pos.x, pos.y);
+    }
+    prevSelectedId.current = selectedNodeId;
+  }, [selectedNodeId, positions]);
+
+  // When the filter (or any layout change) leaves nothing on screen, recenter on the root.
+  useEffect(() => {
+    if (positions.size === 0) return;
+    const vp = canvasRef.current?.getViewport();
+    if (vp === undefined) return;
+    for (const p of positions.values()) {
+      const sx = vp.x + p.x * vp.scale;
+      const sy = vp.y + p.y * vp.scale;
+      if (sx >= 0 && sx <= vp.width && sy >= 0 && sy <= vp.height) return; // something is visible
+    }
+    canvasRef.current?.centerOnRoot();
+  }, [positions]);
+
   const { warningModal, setWarningModal, cycleType, setType, retypeActions } = useNodeTypeManager({
     tree, retypeNode, selectNode, showToast,
   });
@@ -367,6 +391,8 @@ export default function MindmapView() {
     onPaste,
     onEnterSubtree: enterSubtree,
     onOpenSearch: () => setNodeSearchOpen(true),
+    onZoomIn: () => canvasRef.current?.zoomIn(),
+    onZoomOut: () => canvasRef.current?.zoomOut(),
     findNodeById,
   });
   const toastPosition = pendingToast !== null ? positions.get(pendingToast.nodeId) : undefined;
