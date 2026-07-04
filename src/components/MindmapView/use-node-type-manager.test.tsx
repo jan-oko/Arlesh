@@ -66,3 +66,24 @@ describe("useNodeTypeManager — flow item cycling", () => {
     expect(retypeNode).not.toHaveBeenCalled();
   });
 });
+
+describe("useNodeTypeManager — cycle wraps around", () => {
+  function cycleHook(tree: MindmapNode, retypeNode = vi.fn().mockResolvedValue(null)) {
+    const { result } = renderHook(() =>
+      useNodeTypeManager({ tree, retypeNode, selectNode: vi.fn(), showToast: vi.fn() }),
+    );
+    return { result, retypeNode };
+  }
+
+  it("wraps from the last type (info) back to the first (domain) on ctrl+down", () => {
+    const { result, retypeNode } = cycleHook(n("root", "domain", [n("aspect-1", "aspect", [n("info-9", "info")])]));
+    act(() => { result.current.cycleType("info-9", 1); });
+    expect(retypeNode).toHaveBeenCalledWith("info-9", "info", "domain");
+  });
+
+  it("wraps from the first type (domain) back to the last (info) on ctrl+up", () => {
+    const { result, retypeNode } = cycleHook(n("root", "domain", [n("aspect-1", "aspect", [n("domain-9", "domain")])]));
+    act(() => { result.current.cycleType("domain-9", -1); });
+    expect(retypeNode).toHaveBeenCalledWith("domain-9", "domain", "info");
+  });
+});
