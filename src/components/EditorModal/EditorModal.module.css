@@ -417,7 +417,7 @@
 
 /* Immutable dependency-derived reasons: raw text (no input box, so they don't read as editable). */
 .virtualBlockerRow {
-  color: var(--text-secondary);
+  color: var(--text-primary);
   font-size: var(--text-sm);
   font-family: var(--font-sans);
   padding: 0 var(--space-1);
