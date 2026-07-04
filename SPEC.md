@@ -79,7 +79,7 @@ Tasks represent action items. Fields: title, parent (Project / Goal / Domain / T
 
 **Status:** To Do / In Progress / Done
 
-**Blockers:** A Task can be explicitly blocked with a string reason. A Task is also virtually blocked if it has any dependency on a non-Done Task or non-Achieved Goal, with reason `"Blocked by {id} ({title})"`.
+**Blockers:** A Task (and a Goal) can carry an **ordered list of explicit block reasons**, edited in its editor (add / remove / reorder rows). A Task is **additionally** blocked *virtually* by any dependency on a non-Done Task or non-Achieved Goal, with reason `"Blocked by {kind} {id} ({title})"`. The two combine: a Task/Goal reads as **blocked** on the canvas (red stop-sign) when it has **any** reason — explicit or virtual. Explicit reasons live in their own `block_reasons` table (polymorphic `owner_type`/`owner_id`, ordered by `position`); virtual reasons are derived at read time from the dependency edges, never stored. Cross-table type conversion copies the explicit reasons to the new node.
 
 **Dependencies:** Tasks can depend on other Tasks or Goals. Circular dependencies are rejected at write time.
 
