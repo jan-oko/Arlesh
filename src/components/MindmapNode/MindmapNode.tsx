@@ -94,7 +94,7 @@ export default function MindmapNode({ node, parentKind, position, isSelected, is
       <NodeRect node={node} width={width} height={activeHeight} iconWidth={iconWidth} iconCx={iconCx} iconCy={activeHeight / 2} iconR={iconR} fillColor={fillColor} fillOpacity={fillOpacity} strokeColor={strokeColor} isSelected={isSelected} isCollapsed={isCollapsed} iconColor={iconColor} iconOpacity={iconOpacity} isBlocked={isBlocked} canClickStatus={canClickStatus} isRtl={isRtl} onStatusIconClick={handleStatusIconClick} />
       <NodeLabel node={node} isEditing={isEditing} iconWidth={iconWidth} width={width} height={activeHeight} fontSize={fontSize} lineHeight={lineHeight} displayLineCount={displayLineCount} editLineCount={editLineCount} onEditLineCountChange={setEditLineCount} label={label} textFill={textFill} isRtl={isRtl} onCommitEdit={onCommitEdit} onCancelEdit={onCancelEdit} />
       {contextMenu !== null && createPortal(
-        <NodeContextMenu x={contextMenu.x} y={contextMenu.y} nodeKind={node.kind} parentKind={parentKind} isCollapsed={isCollapsed} hasClipboard={hasClipboard} onAction={(action) => onContextAction(node.id, action)} onClose={() => setContextMenu(null)} />,
+        <NodeContextMenu x={contextMenu.x} y={contextMenu.y} nodeKind={node.kind} parentKind={parentKind} childKinds={[...new Set(node.children.map((c) => c.kind))]} isCollapsed={isCollapsed} hasClipboard={hasClipboard} onAction={(action) => onContextAction(node.id, action)} onClose={() => setContextMenu(null)} />,
         document.body,
       )}
     </g>

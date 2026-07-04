@@ -121,14 +121,18 @@ export function conversionNeedsConfirm(node: MindmapNode): boolean {
   return node.children.length > 0;
 }
 
-/** Flattens the tree (excluding the virtual root) into `{ id, title, kind }` rows for node search. */
-export function collectSearchableNodes(root: MindmapNode): Array<{ id: string; title: string; kind: NodeKind }> {
-  const out: Array<{ id: string; title: string; kind: NodeKind }> = [];
-  function visit(n: MindmapNode, isRoot: boolean): void {
-    if (!isRoot) out.push({ id: n.id, title: n.title, kind: n.kind });
-    for (const child of n.children) visit(child, false);
+/** A flattened node for search: its id, title, kind, and ancestor titles nearest-first (root excluded). */
+export interface SearchableNode { id: string; title: string; kind: NodeKind; path: string[] }
+
+/** Flattens the tree (excluding the virtual root) into searchable rows carrying each node's ancestry. */
+export function collectSearchableNodes(root: MindmapNode): SearchableNode[] {
+  const out: SearchableNode[] = [];
+  function visit(n: MindmapNode, isRoot: boolean, ancestors: string[]): void {
+    if (!isRoot) out.push({ id: n.id, title: n.title, kind: n.kind, path: ancestors });
+    const childAncestors = isRoot ? [] : [n.title, ...ancestors];
+    for (const child of n.children) visit(child, false, childAncestors);
   }
-  visit(root, true);
+  visit(root, true, []);
   return out;
 }
 

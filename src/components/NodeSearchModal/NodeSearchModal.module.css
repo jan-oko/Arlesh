@@ -61,10 +61,25 @@
   background: var(--surface-hover, rgba(255, 255, 255, 0.08));
 }
 
+.label {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
 .title {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.parentPath {
+  color: var(--text-secondary);
+  opacity: 0.6;
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .kind {

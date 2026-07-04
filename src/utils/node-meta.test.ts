@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeNodeDimensions, estimateWrappedLineCount, getNodeSize, validTypesForCycling, isValidDropTarget, computeEditHeight } from "./node-meta";
+import { computeNodeDimensions, estimateWrappedLineCount, getNodeSize, validTypesForCycling, typeAcceptsChildren, isValidDropTarget, computeEditHeight } from "./node-meta";
 
 describe("computeNodeDimensions", () => {
   it("matches getNodeSize height for a short single-word title", () => {
@@ -157,6 +157,35 @@ describe("validTypesForCycling — parent-subtype validity", () => {
     for (const parent of ["aspect", "project", "domain", "tag"] as const) {
       expect(validTypesForCycling("project", parent)).toContain("domain");
     }
+  });
+});
+
+describe("typeAcceptsChildren", () => {
+  it("info can only hold info children", () => {
+    expect(typeAcceptsChildren("info", ["info"])).toBe(true);
+    expect(typeAcceptsChildren("info", ["task"])).toBe(false);
+    expect(typeAcceptsChildren("info", [])).toBe(true);
+  });
+
+  it("task cannot hold goal children (goal parent_type excludes task)", () => {
+    expect(typeAcceptsChildren("task", ["task", "info"])).toBe(true);
+    expect(typeAcceptsChildren("task", ["goal"])).toBe(false);
+  });
+
+  it("goal holds goal/task/info but not a domain-table child", () => {
+    expect(typeAcceptsChildren("goal", ["goal", "task", "info"])).toBe(true);
+    expect(typeAcceptsChildren("goal", ["project"])).toBe(false);
+  });
+
+  it("domain cannot hold a project child (a project needs an aspect/project parent)", () => {
+    expect(typeAcceptsChildren("domain", ["domain", "goal"])).toBe(true);
+    expect(typeAcceptsChildren("domain", ["project"])).toBe(false);
+  });
+
+  it("a tag holds only goal/task/info (no nested domain-table or flow)", () => {
+    expect(typeAcceptsChildren("tag", ["goal", "task", "info"])).toBe(true);
+    expect(typeAcceptsChildren("tag", ["domain"])).toBe(false);
+    expect(typeAcceptsChildren("tag", ["flow"])).toBe(false);
   });
 });
 

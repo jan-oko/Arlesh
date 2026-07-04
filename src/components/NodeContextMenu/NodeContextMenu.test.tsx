@@ -88,6 +88,14 @@ describe("NodeContextMenu — Set type submenu", () => {
     render(<NodeContextMenu {...defaultProps} nodeKind="aspect" />);
     expect(screen.queryByRole("button", { name: /setType/ })).not.toBeInTheDocument();
   });
+
+  it("omits target kinds that couldn't hold the node's children", () => {
+    // A goal (under a domain) with a goal child: Task and Info can't hold a goal, so they're not offered.
+    render(<NodeContextMenu {...defaultProps} nodeKind="goal" parentKind="domain" childKinds={["goal"]} />);
+    expect(screen.getByRole("button", { name: "nodeKinds:domain" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "nodeKinds:task" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "nodeKinds:info" })).not.toBeInTheDocument();
+  });
 });
 
 describe("NodeContextMenu — newFlow", () => {

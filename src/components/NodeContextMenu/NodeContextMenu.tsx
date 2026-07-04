@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import type { NodeKind } from "@/utils/tree-layout";
-import { validTypesForCycling } from "@/utils/node-meta";
+import { validTypesForCycling, typeAcceptsChildren } from "@/utils/node-meta";
 import type { ContextMenuAction } from "./context-action";
 import styles from "./NodeContextMenu.module.css";
 
@@ -11,6 +11,8 @@ interface Props {
   nodeKind: NodeKind;
   /** Kind of this node's parent (null at the root) — decides whether a flow can be placed here. */
   parentKind?: NodeKind | null;
+  /** Distinct kinds of this node's direct children — a target type that can't hold one is not offered. */
+  childKinds?: NodeKind[];
   isCollapsed: boolean;
   hasClipboard: boolean;
   onAction: (action: ContextMenuAction) => void;
@@ -19,7 +21,7 @@ interface Props {
 
 const FLOW_PARENT_KINDS: NodeKind[] = ["aspect", "domain", "project", "goal"];
 
-export default function NodeContextMenu({ x, y, nodeKind, parentKind = null, isCollapsed, hasClipboard, onAction, onClose }: Props) {
+export default function NodeContextMenu({ x, y, nodeKind, parentKind = null, childKinds = [], isCollapsed, hasClipboard, onAction, onClose }: Props) {
   const { t } = useTranslation(["contextMenu", "nodeKinds"]);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -32,8 +34,10 @@ export default function NodeContextMenu({ x, y, nodeKind, parentKind = null, isC
   }, [onClose]);
 
   const canEnter = nodeKind !== "task" && nodeKind !== "goal" && nodeKind !== "tag";
-  // The kinds this node can be set to (its valid cycle types, minus its current kind).
-  const typeOptions = validTypesForCycling(nodeKind, parentKind).filter((k) => k !== nodeKind);
+  // The kinds this node can be set to: its valid cycle types (minus its current kind), excluding any
+  // that couldn't hold the node's existing children.
+  const typeOptions = validTypesForCycling(nodeKind, parentKind)
+    .filter((k) => k !== nodeKind && typeAcceptsChildren(k, childKinds));
   // A Flow templates a Goal/Task subtree, so it may be created under any node that can hold one.
   const canCreateFlow = nodeKind === "aspect" || nodeKind === "domain" || nodeKind === "project" || nodeKind === "goal";
   const isFlow = nodeKind === "flow";

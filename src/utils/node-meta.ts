@@ -105,6 +105,26 @@ export const NODE_LABEL: Record<NodeKind, string> = {
 // All node types reachable from a domain-table parent (aspect/domain/project/tag).
 const DOMAIN_PARENT_CYCLE: NodeKind[] = ["domain", "project", "tag", "goal", "task", "info"];
 
+// Which direct-child kinds each kind may hold, from the backend's parent_type CHECK constraints
+// (goals: project|goal|domain, tasks: +task, flows: aspect|project|domain|goal, infos: anywhere;
+// projects need an aspect/project parent, tags can't nest). Used to hide a retype that would strand
+// an existing child under a type that can't hold it.
+const ALLOWED_CHILD_KINDS: Partial<Record<NodeKind, NodeKind[]>> = {
+  aspect: ["project", "domain", "tag", "goal", "task", "info", "flow"],
+  project: ["project", "domain", "tag", "goal", "task", "info", "flow"],
+  domain: ["domain", "tag", "goal", "task", "info", "flow"],
+  tag: ["goal", "task", "info"],
+  goal: ["goal", "task", "info", "flow"],
+  task: ["task", "info"],
+  info: ["info"],
+};
+
+/** Whether `target` can hold every one of `childKinds` as a direct child (an empty list is always ok). */
+export function typeAcceptsChildren(target: NodeKind, childKinds: readonly NodeKind[]): boolean {
+  const allowed = ALLOWED_CHILD_KINDS[target] ?? [];
+  return childKinds.every((kind) => allowed.includes(kind));
+}
+
 /**
  * Returns which types Ctrl+Up/Down may cycle through for a given node.
  *
