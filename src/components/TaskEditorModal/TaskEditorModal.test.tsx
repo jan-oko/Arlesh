@@ -47,6 +47,7 @@ const TAG_B = mkTag(2, "urgent");
 const defaultProps = {
   node: mkNode(),
   allTags: [TAG_A, TAG_B],
+  domainNames: new Map<number, string>(),
   availableForDep: [] as MindmapNode[],
   onSave: vi.fn().mockResolvedValue(undefined),
   onClose: vi.fn(),
@@ -58,12 +59,22 @@ describe("TaskEditorModal — initial state", () => {
     await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
   });
 
-  it("marks the node's tag as checked", async () => {
+  it("shows the node's selected tag as a pill; unselected tags stay in the closed dropdown", async () => {
     render(<TaskEditorModal {...defaultProps} />);
-    await waitFor(() => {
-      expect(screen.getByRole("checkbox", { name: "urgent" })).toBeChecked();
-      expect(screen.getByRole("checkbox", { name: "backend" })).not.toBeChecked();
-    });
+    await waitFor(() => expect(screen.getByText("urgent")).toBeInTheDocument()); // selected (id 2) → pill
+    expect(screen.queryByText("backend")).not.toBeInTheDocument(); // unselected, dropdown closed
+  });
+
+  it("adds a tag from the search dropdown", async () => {
+    render(<TaskEditorModal {...defaultProps} />);
+    fireEvent.focus(screen.getByPlaceholderText("placeholderTagSearch"));
+    fireEvent.mouseDown(screen.getByText("backend"));
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() =>
+      expect(defaultProps.onSave).toHaveBeenCalledWith(
+        expect.objectContaining({ tagIds: expect.arrayContaining([1, 2]) }),
+      ),
+    );
   });
 });
 
@@ -99,10 +110,10 @@ describe("TaskEditorModal — save", () => {
     );
   });
 
-  it("toggles a tag off and saves the updated tagIds", async () => {
+  it("removes a tag via its pill and saves the updated tagIds", async () => {
     render(<TaskEditorModal {...defaultProps} />);
-    await waitFor(() => expect(screen.getByRole("checkbox", { name: "urgent" })).toBeChecked());
-    fireEvent.click(screen.getByRole("checkbox", { name: "urgent" }));
+    await waitFor(() => expect(screen.getByText("urgent")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "removeTag" }));
     fireEvent.click(screen.getByRole("button", { name: "save" }));
     await waitFor(() =>
       expect(defaultProps.onSave).toHaveBeenCalledWith(

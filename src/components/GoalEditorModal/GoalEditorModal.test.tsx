@@ -45,6 +45,7 @@ const TAG_B = mkTag(2, "urgent");
 const defaultProps = {
   node: mkNode(),
   allTags: [TAG_A, TAG_B],
+  domainNames: new Map<number, string>(),
   onSave: vi.fn().mockResolvedValue(undefined),
   onClose: vi.fn(),
 };
@@ -57,12 +58,22 @@ describe("GoalEditorModal — initial state", () => {
     expect(screen.getByDisplayValue("Ship it")).toBeInTheDocument();
   });
 
-  it("marks the node's tag as checked", () => {
+  it("shows the node's selected tag as a pill; unselected tags stay in the closed dropdown", () => {
     render(<GoalEditorModal {...defaultProps} />);
-    const urgentCheckbox = screen.getByRole("checkbox", { name: "urgent" });
-    expect(urgentCheckbox).toBeChecked();
-    const frontendCheckbox = screen.getByRole("checkbox", { name: "frontend" });
-    expect(frontendCheckbox).not.toBeChecked();
+    expect(screen.getByText("urgent")).toBeInTheDocument(); // selected (id 2) → pill
+    expect(screen.queryByText("frontend")).not.toBeInTheDocument(); // unselected, dropdown closed
+  });
+
+  it("adds a tag from the search dropdown", async () => {
+    render(<GoalEditorModal {...defaultProps} />);
+    fireEvent.focus(screen.getByPlaceholderText("placeholderTagSearch"));
+    fireEvent.mouseDown(screen.getByText("frontend"));
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() =>
+      expect(defaultProps.onSave).toHaveBeenCalledWith(
+        expect.objectContaining({ tagIds: expect.arrayContaining([1, 2]) }),
+      ),
+    );
   });
 });
 
@@ -88,9 +99,10 @@ describe("GoalEditorModal — save", () => {
     expect(defaultProps.onSave).not.toHaveBeenCalled();
   });
 
-  it("toggles a tag on and saves the updated tagIds", async () => {
+  it("adds a tag from the dropdown and saves the updated tagIds", async () => {
     render(<GoalEditorModal {...defaultProps} />);
-    fireEvent.click(screen.getByRole("checkbox", { name: "frontend" }));
+    fireEvent.focus(screen.getByPlaceholderText("placeholderTagSearch"));
+    fireEvent.mouseDown(screen.getByText("frontend"));
     fireEvent.click(screen.getByRole("button", { name: "save" }));
     await waitFor(() =>
       expect(defaultProps.onSave).toHaveBeenCalledWith(

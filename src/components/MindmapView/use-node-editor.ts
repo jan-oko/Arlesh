@@ -69,6 +69,7 @@ interface Result {
   editorModal: EditorModalState | null;
   setEditorModal: (m: EditorModalState | null) => void;
   allTags: Domain[];
+  domainNames: Map<number, string>;
   availableForDep: MindmapNode[];
   onDoubleClick: (nodeId: string) => void;
   onTaskSave: (data: TaskSaveData) => Promise<void>;
@@ -89,9 +90,16 @@ interface Result {
 export function useNodeEditor({ tree, allTasksAndGoals, renameNode, reload }: Options): Result {
   const [editorModal, setEditorModal] = useState<EditorModalState | null>(null);
   const [allTags, setAllTags] = useState<Domain[]>([]);
+  const [domainNames, setDomainNames] = useState<Map<number, string>>(new Map());
   const [scopeClampRequest, setScopeClampRequest] = useState<ScopeClampRequest | null>(null);
 
-  useEffect(() => { void listDomains(DOMAIN_SUBTYPE.TAG).then(setAllTags); }, []);
+  // One load gives both the tags and the parent-domain titles used to section the tag picker.
+  useEffect(() => {
+    void listDomains().then((all) => {
+      setAllTags(all.filter((d) => d.subtype === DOMAIN_SUBTYPE.TAG));
+      setDomainNames(new Map(all.map((d) => [d.id, d.title])));
+    });
+  }, []);
 
   const resolveScopeClamp = useCallback((proceed: boolean) => {
     setScopeClampRequest((request) => {
@@ -328,7 +336,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, renameNode, reload }: Op
   );
 
   return {
-    editorModal, setEditorModal, allTags, availableForDep, onDoubleClick,
+    editorModal, setEditorModal, allTags, domainNames, availableForDep, onDoubleClick,
     onTaskSave, onGoalSave, onSimpleSave, onProjectSave, onInfoSave, onFlowSave, onFlowItemSave,
     checkScopeClamp, confirmScopeClamp, scopeClampRequest, resolveScopeClamp,
   };

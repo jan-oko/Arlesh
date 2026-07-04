@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import BlockReasonsField from "@/components/BlockReasonsField/BlockReasonsField";
+import TagPicker from "@/components/TagPicker/TagPicker";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { Domain } from "@/api/domains";
 import type { Dependency } from "@/api/tasks";
@@ -34,13 +35,14 @@ function depEquals(a: Dependency, b: Dependency): boolean { return a.type === b.
 interface Props {
   node: MindmapNode;
   allTags: Domain[];
+  domainNames: Map<number, string>;
   availableForDep: MindmapNode[];
   onSave: (data: TaskSaveData) => Promise<void>;
   onCheckScopeClamp?: (nodeType: "task" | "goal", dbId: number, timeScope: TimeScope) => Promise<boolean>;
   onClose: () => void;
 }
 
-export default function TaskEditorModal({ node, allTags, availableForDep, onSave, onCheckScopeClamp, onClose }: Props) {
+export default function TaskEditorModal({ node, allTags, domainNames, availableForDep, onSave, onCheckScopeClamp, onClose }: Props) {
   const { t } = useTranslation(["editor", "status", "nodeKinds"]);
   const [title, setTitle] = useState(node.title);
   const [status, setStatus] = useState(node.status ?? TASK_STATUS.TODO);
@@ -63,9 +65,6 @@ export default function TaskEditorModal({ node, allTags, availableForDep, onSave
     void listTaskDependencies(dbId).then((deps) => { setInitialDeps(deps); setCurrentDeps(deps); });
   }, [dbId]);
 
-  function toggleTag(tagId: number) {
-    setTagIds((prev) => prev.includes(tagId) ? prev.filter((id) => id !== tagId) : [...prev, tagId]);
-  }
 
   function removeDep(dep: Dependency) {
     setCurrentDeps((prev) => prev.filter((d) => !depEquals(d, dep)));
@@ -108,7 +107,6 @@ export default function TaskEditorModal({ node, allTags, availableForDep, onSave
     if (event.key === "Escape") onClose();
   }
 
-  const validTags = allTags.filter((tag) => tag.title.trim() !== "");
   const depSearchLower = depSearch.toLowerCase();
   const searchResults = depSearch.trim() === "" ? [] : availableForDep
     .filter((n) => n.kind === "task" || n.kind === "goal")
@@ -155,19 +153,7 @@ export default function TaskEditorModal({ node, allTags, availableForDep, onSave
         <PlanField value={plan} timeScope={timeScope} onChange={setPlan} />
       </div>
       <BlockReasonsField reasons={blockReasons} onChange={setBlockReasons} />
-      {validTags.length > 0 && (
-        <fieldset className={styles.tagSection}>
-          <legend className={styles.label}>{t("fieldTags")}</legend>
-          <div className={styles.tagList}>
-            {validTags.map((tag) => (
-              <label key={tag.id} className={styles.tagOption}>
-                <input type="checkbox" checked={tagIds.includes(tag.id)} onChange={() => toggleTag(tag.id)} />
-                {tag.title}
-              </label>
-            ))}
-          </div>
-        </fieldset>
-      )}
+      <TagPicker allTags={allTags} domainNames={domainNames} selectedIds={tagIds} onChange={setTagIds} />
       <div className={styles.depSection}>
         <span className={styles.label}>{t("fieldDependencies")}</span>
         {currentDeps.length > 0 && (

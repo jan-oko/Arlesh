@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import BlockReasonsField from "@/components/BlockReasonsField/BlockReasonsField";
+import TagPicker from "@/components/TagPicker/TagPicker";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { Domain } from "@/api/domains";
 import type { TimeScope } from "@/api/time-scope";
@@ -25,12 +26,13 @@ const GOAL_STATUSES = Object.values(GOAL_STATUS);
 interface Props {
   node: MindmapNode;
   allTags: Domain[];
+  domainNames: Map<number, string>;
   onSave: (data: GoalSaveData) => Promise<void>;
   onCheckScopeClamp?: (nodeType: "task" | "goal", dbId: number, timeScope: TimeScope) => Promise<boolean>;
   onClose: () => void;
 }
 
-export default function GoalEditorModal({ node, allTags, onSave, onCheckScopeClamp, onClose }: Props) {
+export default function GoalEditorModal({ node, allTags, domainNames, onSave, onCheckScopeClamp, onClose }: Props) {
   const { t } = useTranslation(["editor", "status"]);
   const [title, setTitle] = useState(node.title);
   const [status, setStatus] = useState(node.status ?? GOAL_STATUS.ACTIVE);
@@ -43,10 +45,6 @@ export default function GoalEditorModal({ node, allTags, onSave, onCheckScopeCla
   const titleRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { titleRef.current?.focus(); titleRef.current?.select(); }, []);
-
-  function toggleTag(tagId: number) {
-    setTagIds((prev) => prev.includes(tagId) ? prev.filter((id) => id !== tagId) : [...prev, tagId]);
-  }
 
   async function handleSave() {
     if (title.trim() === "") return;
@@ -77,8 +75,6 @@ export default function GoalEditorModal({ node, allTags, onSave, onCheckScopeCla
     if (event.key === "Escape") onClose();
   }
 
-  const validTags = allTags.filter((tag) => tag.title.trim() !== "");
-
   return (
     <EditorModal heading={t("editGoal")} onClose={onClose} onKeyDown={handleKeyDown} isSaving={isSaving} onSave={() => void handleSave()} saveError={saveError}>
       <label className={styles.label}>
@@ -106,19 +102,7 @@ export default function GoalEditorModal({ node, allTags, onSave, onCheckScopeCla
         </div>
       )}
       <BlockReasonsField reasons={blockReasons} onChange={setBlockReasons} />
-      {validTags.length > 0 && (
-        <fieldset className={styles.tagSection}>
-          <legend className={styles.label}>{t("fieldTags")}</legend>
-          <div className={styles.tagList}>
-            {validTags.map((tag) => (
-              <label key={tag.id} className={styles.tagOption}>
-                <input type="checkbox" checked={tagIds.includes(tag.id)} onChange={() => toggleTag(tag.id)} />
-                {tag.title}
-              </label>
-            ))}
-          </div>
-        </fieldset>
-      )}
+      <TagPicker allTags={allTags} domainNames={domainNames} selectedIds={tagIds} onChange={setTagIds} />
     </EditorModal>
   );
 }
