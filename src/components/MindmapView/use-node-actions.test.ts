@@ -9,11 +9,16 @@ vi.mock("@/api/tasks", () => ({
   TASK_STATUS: { TODO: "todo", IN_PROGRESS: "in_progress", DONE: "done" },
 }));
 
+vi.mock("@/api/goals", () => ({
+  updateGoal: vi.fn().mockResolvedValue({ id: 2, status: "achieved" }),
+}));
+
 vi.mock("@/api/flows", () => ({
   setHabitItemStatus: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { updateTask } from "@/api/tasks";
+import { updateGoal } from "@/api/goals";
 import { setHabitItemStatus } from "@/api/flows";
 
 function mkNode(id: string, kind: NodeKind, children: MindmapNode[] = [], extra: Partial<MindmapNode> = {}): MindmapNode {
@@ -22,7 +27,8 @@ function mkNode(id: string, kind: NodeKind, children: MindmapNode[] = [], extra:
 
 const TASK_NODE = mkNode("task-5", "task", [], { status: "todo" });
 const TASK_DONE = mkNode("task-6", "task", [], { status: "done" });
-const GOAL_NODE = mkNode("goal-2", "goal");
+const GOAL_NODE = mkNode("goal-2", "goal", [], { status: "active" });
+const GOAL_ACHIEVED = mkNode("goal-8", "goal", [], { status: "achieved" });
 const ASPECT = mkNode("aspect-1", "aspect");
 const HABIT_ITER = mkNode("habit-3-0-virtual", "task", [], {
   status: "todo", virtual: true, habitItem: { flowId: 3, itemType: "flow_root", itemId: 3, scopeId: 100 },
@@ -39,7 +45,7 @@ const HABIT_GOAL_DONE = mkNode("habititem-flow_goal-9-0-virtual", "goal", [], {
 const HABIT_TASK_IP = mkNode("habititem-flow_task-7-0-virtual", "task", [], {
   status: "in_progress", virtual: true, habitItem: { flowId: 3, itemType: "flow_task", itemId: 7, scopeId: 100 },
 });
-const PROJECT = mkNode("domain-3", "project", [TASK_NODE, TASK_DONE, GOAL_NODE, ASPECT, HABIT_ITER, HABIT_DONE, HABIT_ITEM, HABIT_GOAL_DONE, HABIT_TASK_IP]);
+const PROJECT = mkNode("domain-3", "project", [TASK_NODE, TASK_DONE, GOAL_NODE, GOAL_ACHIEVED, ASPECT, HABIT_ITER, HABIT_DONE, HABIT_ITEM, HABIT_GOAL_DONE, HABIT_TASK_IP]);
 const ROOT = mkNode("root", "domain", [PROJECT]);
 
 function makeOpts(overrides: Partial<Parameters<typeof useNodeActions>[0]> = {}) {
@@ -85,6 +91,21 @@ describe("useNodeActions — onStatusClick", () => {
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("goal-2"); });
     expect(updateTask).not.toHaveBeenCalled();
+  });
+
+  it("toggles a real active goal to achieved on status click", async () => {
+    const opts = makeOpts();
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onStatusClick("goal-2"); });
+    await vi.waitFor(() => expect(updateGoal).toHaveBeenCalledWith(2, { status: "achieved" }));
+    expect(updateTask).not.toHaveBeenCalled();
+  });
+
+  it("toggles a real achieved goal back to active on status click", async () => {
+    const opts = makeOpts();
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onStatusClick("goal-8"); });
+    await vi.waitFor(() => expect(updateGoal).toHaveBeenCalledWith(8, { status: "active" }));
   });
 
   it("advances a todo task-instance root to in_progress (not straight to done)", async () => {

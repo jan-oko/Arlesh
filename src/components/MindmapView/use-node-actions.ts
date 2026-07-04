@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { findNode, findParent, collectAllNodeIds } from "@/utils/mindmap-tree";
 import { updateTask } from "@/api/tasks";
+import { updateGoal } from "@/api/goals";
 import { setHabitItemStatus } from "@/api/flows";
 import { TASK_STATUS, GOAL_STATUS } from "@/utils/status-mapping";
 import { CLIPBOARD_OP } from "@/stores/use-mindmap-store";
@@ -66,6 +67,15 @@ export function useNodeActions({
         void setHabitItemStatus(flowId, itemType, itemId, scopeId, next, Date.now())
           .then(() => reload())
           .catch((err: unknown) => console.error(`${LOG_PREFIX} habit item status failed:`, err));
+        return;
+      }
+      // A real goal toggles active ↔ achieved on click (like a habit goal instance) — no modal needed.
+      if (node.kind === "goal") {
+        const dbId = parseInt(nodeId.split("-").pop() ?? "0", 10);
+        const next = node.status === GOAL_STATUS.ACHIEVED ? GOAL_STATUS.ACTIVE : GOAL_STATUS.ACHIEVED;
+        void updateGoal(dbId, { status: next })
+          .then(() => reload())
+          .catch((err: unknown) => console.error(`${LOG_PREFIX} goal status toggle failed:`, err));
         return;
       }
       if (node.kind !== "task") return;

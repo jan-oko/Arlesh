@@ -61,7 +61,7 @@ export default function MindmapNode({ node, parentKind, position, isSelected, is
   const canClickStatus =
     onStatusClick !== undefined &&
     (node.habitItem !== undefined ||
-      (node.kind === "task" && !isBlocked && node.virtual !== true));
+      ((node.kind === "task" || node.kind === "goal") && !isBlocked && node.virtual !== true));
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();

@@ -10,20 +10,27 @@ const RINGS =
 /** The arrow (shaft, head and fletching) that drops into the ring notch when a goal is achieved. */
 const ARROW =
   "m-610-118V390L1664 6V384h378l-384 384h-287l-223 223q4 15 4 33 0 27-10 50t-27.5 40.5-40.5 27.5-50 10-50-10-40.5-27.5T906 1074t-10-50 10-50 27.5-40.5T974 906t50-10q18 0 33 4zm128-37h197l128-128h-197V315l-128 128v197z";
-/** Centre dot for the open target (the achieved glyph's arrow supplies its own centre). */
-const CENTRE_DOT = "M1024 896a128 128 0 1 0 0 256 128 128 0 1 0 0-256z";
+/**
+ * Full concentric target for the open state — complete circles (no arrow notch), aligned to the MDL2
+ * ring radii so it sits with the achieved glyph. Five nested circles + even-odd fill = two rings and a
+ * centre dot.
+ */
+const FULL_TARGET =
+  "M1024 128a896 896 0 1 0 0 1792 896 896 0 1 0 0-1792zM1024 256a768 768 0 1 0 0 1536 768 768 0 1 0 0-1536zM1024 512a512 512 0 1 0 0 1024 512 512 0 1 0 0-1024zM1024 640a384 384 0 1 0 0 768 384 384 0 1 0 0-768zM1024 896a128 128 0 1 0 0 256 128 128 0 1 0 0-256z";
 
 /**
- * A goal renders as the MDL2 **Bullseye**: a plain target while open, and a target struck by an arrow
- * once **achieved**. Drawn in the shared node coordinate system by translate+scaling the 2048 box so
- * it fills the node's icon diameter (the arrow reaches the top-right corner).
+ * A goal renders as a target: a plain **full-circle** target while open, and the MDL2 **Bullseye** —
+ * a target struck by an arrow — once **achieved**. Drawn in the shared node coordinate system by
+ * translate+scaling the 2048 box so it fills the node's icon diameter (the arrow reaches the corner).
  */
 export default function GoalIcon({ cx, cy, r, color, opacity, status }: Props) {
   const achieved = status === GOAL_STATUS.ACHIEVED;
   const scale = r / 1024; // the 2048 box maps to the node's icon diameter (2r)
   return (
     <g transform={`translate(${cx} ${cy}) scale(${scale}) translate(-1024 -1024)`} fill={color} opacity={opacity}>
-      <path d={achieved ? RINGS + ARROW : RINGS + CENTRE_DOT} />
+      {achieved
+        ? <path d={RINGS + ARROW} />
+        : <path d={FULL_TARGET} fillRule="evenodd" />}
     </g>
   );
 }
