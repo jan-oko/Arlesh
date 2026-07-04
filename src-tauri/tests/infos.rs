@@ -249,6 +249,38 @@ async fn update_info_position() {
 }
 
 #[tokio::test]
+async fn update_info_nsfw_round_trips() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+
+    let repo = InfoRepository::new(&pool);
+    let info = repo
+        .create(CreateInfoRequest {
+            body: "Note".into(),
+            details: None,
+            parent_type: "project".into(),
+            parent_id: project_id,
+            position: 0,
+        })
+        .await
+        .unwrap();
+    assert!(!info.nsfw); // defaults to not-NSFW
+
+    let marked = repo
+        .update(info.id.into(), UpdateInfoRequest { nsfw: Some(true), ..Default::default() })
+        .await
+        .unwrap();
+    assert!(marked.nsfw);
+    assert_eq!(marked.body, "Note"); // body untouched
+
+    let cleared = repo
+        .update(info.id.into(), UpdateInfoRequest { nsfw: Some(false), ..Default::default() })
+        .await
+        .unwrap();
+    assert!(!cleared.nsfw);
+}
+
+#[tokio::test]
 async fn update_info_parent() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;

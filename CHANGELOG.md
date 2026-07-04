@@ -8,6 +8,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-07-04
+
 ### Added
 - **NSFW nodes + Work filter**: every node kind (Domain/Project/Tag, Goal, Task, Info, Flow, and flow-template items) can be marked **NSFW** from a new **Advanced** section in its editor modal — collapsible, shared across all editors. Marking a **flow item** NSFW is a real stored field that also propagates to that item's instances: the virtual Habit instances inherit it, and starting a flow copies it onto the materialized Goal/Task (the flow root's flag propagates to the root instance likewise). A new **Work** toggle under the filter's **Advanced** section hard-hides every NSFW node together with its whole subtree when on; it persists across reloads and lights the top-bar filter badge. Migration `0021` adds a `nsfw` column to `domains`, `goals`, `tasks`, `infos`, `flows`, `flow_goals`, and `flow_tasks`. All the boolean toggles in the filter and editor modals are now rendered as sliding **switches**.
 
