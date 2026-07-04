@@ -148,8 +148,6 @@ pub struct Task {
     pub parent_id: i64,
     /// Current status.
     pub status: String,
-    /// Explicit block reason (if set).
-    pub blocked_reason: Option<String>,
     /// Person id this task is delegated to (if any).
     pub delegate_to: Option<i64>,
     /// Relevance window (if set). A null value inherits the nearest scoped ancestor.
@@ -173,6 +171,18 @@ pub struct TaskWithBlockers {
     pub block_reasons: Vec<String>,
 }
 
+/// A single dependency edge: `task_id` depends on `(dependency_type, dependency_id)`. Returned by the
+/// bulk-load endpoint so the mindmap can derive virtual "blocked by" reasons without a per-task call.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskDependencyEdge {
+    /// The dependent task.
+    pub task_id: i64,
+    /// Kind of the dependency target: `task` or `goal`.
+    pub dependency_type: String,
+    /// Database id of the dependency target.
+    pub dependency_id: i64,
+}
+
 /// A goal row as returned from the database.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Goal {
@@ -186,8 +196,6 @@ pub struct Goal {
     pub parent_id: i64,
     /// Current status.
     pub status: String,
-    /// Explicit block reason (if set).
-    pub blocked_reason: Option<String>,
     /// Relevance window (if set). A null value inherits the nearest scoped ancestor.
     pub time_scope: Option<TimeScope>,
     /// On-exit behavior; present iff `time_scope` is (inherited with the window otherwise).
@@ -243,8 +251,6 @@ pub struct UpdateTaskRequest {
     pub title: Option<String>,
     /// New status (if provided).
     pub status: Option<TaskStatus>,
-    /// Explicit block reason to set or clear.
-    pub blocked_reason: Option<String>,
     /// Person to delegate to (None leaves unchanged, Some(None) clears it).
     pub delegate_to: Option<Option<i64>>,
     /// Relevance window to set (None leaves unchanged, Some(None) clears it).
@@ -320,8 +326,6 @@ pub struct UpdateGoalRequest {
     pub title: Option<String>,
     /// New status (if provided).
     pub status: Option<GoalStatus>,
-    /// Explicit block reason to set or clear.
-    pub blocked_reason: Option<String>,
     /// Relevance window to set (None leaves unchanged, Some(None) clears it).
     pub time_scope: Option<Option<TimeScope>>,
     /// On-exit behavior to set (None leaves unchanged); forced NULL when the scope is cleared,

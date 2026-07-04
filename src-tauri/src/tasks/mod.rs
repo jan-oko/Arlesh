@@ -16,8 +16,8 @@ pub use scope_rules::{
 };
 use model::{
     CreateGoalRequest, CreateTaskRequest, Dependency, DurationSpec, Goal, GoalId, GoalStatus,
-    OnScopeExit, Task, TaskId, TaskStatus, TaskWithBlockers, TimeScope, UpdateGoalRequest,
-    UpdateTaskRequest,
+    OnScopeExit, Task, TaskDependencyEdge, TaskId, TaskStatus, TaskWithBlockers, TimeScope,
+    UpdateGoalRequest, UpdateTaskRequest,
 };
 
 // Internal row types that map directly to database columns via sqlx::FromRow.
@@ -107,6 +107,12 @@ async fn delete_task_goal_subtree(
     }
     for (node_type, node_id) in &nodes {
         delete_infos_under(pool, node_type, *node_id).await?;
+        // Block reasons hang off a polymorphic owner link with no foreign key, like infos.
+        sqlx::query("DELETE FROM block_reasons WHERE owner_type = ? AND owner_id = ?")
+            .bind(node_type)
+            .bind(node_id)
+            .execute(pool)
+            .await?;
         let table = if node_type == "goal" { "goals" } else { "tasks" };
         sqlx::query(&format!("DELETE FROM {table} WHERE id = ?")).bind(node_id).execute(pool).await?;
     }
@@ -140,7 +146,6 @@ struct TaskRow {
     parent_type: String,
     parent_id: i64,
     status: String,
-    blocked_reason: Option<String>,
     delegate_to: Option<i64>,
     time_scope_start_id: Option<i64>,
     time_scope_end_id: Option<i64>,
@@ -160,7 +165,6 @@ impl From<TaskRow> for Task {
             parent_type: row.parent_type,
             parent_id: row.parent_id,
             status: row.status,
-            blocked_reason: row.blocked_reason,
             delegate_to: row.delegate_to,
             time_scope: time_scope_from_row(
                 row.time_scope_start_id,
@@ -183,7 +187,6 @@ struct GoalRow {
     parent_type: String,
     parent_id: i64,
     status: String,
-    blocked_reason: Option<String>,
     time_scope_start_id: Option<i64>,
     time_scope_end_id: Option<i64>,
     time_scope_duration_n: Option<i64>,
@@ -200,7 +203,6 @@ impl From<GoalRow> for Goal {
             parent_type: row.parent_type,
             parent_id: row.parent_id,
             status: row.status,
-            blocked_reason: row.blocked_reason,
             time_scope: time_scope_from_row(
                 row.time_scope_start_id,
                 row.time_scope_end_id,
@@ -326,11 +328,6 @@ impl<'a> GoalRepository<'a> {
             .map(|s| s.as_str())
             .unwrap_or(&goal.status)
             .to_string();
-        let blocked_reason = match request.blocked_reason {
-            Some(reason) if reason.is_empty() => None,
-            Some(reason) => Some(reason),
-            None => goal.blocked_reason,
-        };
         let time_scope = match request.time_scope {
             Some(new_time_scope) => new_time_scope,
             None => goal.time_scope,
@@ -366,13 +363,12 @@ impl<'a> GoalRepository<'a> {
 
         let position = request.position.unwrap_or(goal.position);
         sqlx::query(
-            "UPDATE goals SET title=?, status=?, blocked_reason=?,
+            "UPDATE goals SET title=?, status=?,
                 time_scope_start_id=?, time_scope_end_id=?,
                 time_scope_duration_n=?, time_scope_duration_kind=?, on_scope_exit=?, position=? WHERE id=?",
         )
         .bind(&title)
         .bind(&status)
-        .bind(&blocked_reason)
         .bind(ts_start)
         .bind(ts_end)
         .bind(ts_n)
@@ -517,10 +513,10 @@ impl<'a> TaskRepository<'a> {
     /// Fetches a task with its computed block reasons.
     pub async fn get_with_blockers(&self, id: TaskId) -> Result<TaskWithBlockers, TaskError> {
         let task = self.get(id).await?;
-        let mut reasons = Vec::new();
-        if let Some(ref reason) = task.blocked_reason {
-            reasons.push(reason.clone());
-        }
+        // Explicit reasons first (from the block_reasons table), then virtual ones from unmet dependencies.
+        let mut reasons = crate::block_reasons::BlockReasonRepository::new(self.pool)
+            .list_for("task", id.0)
+            .await?;
 
         let dependencies = self.list_dependencies(id).await?;
         for dependency in dependencies {
@@ -577,11 +573,6 @@ impl<'a> TaskRepository<'a> {
             .map(|s| s.as_str())
             .unwrap_or(&task.status)
             .to_string();
-        let blocked_reason = match request.blocked_reason {
-            Some(reason) if reason.is_empty() => None,
-            Some(reason) => Some(reason),
-            None => task.blocked_reason,
-        };
         let delegate_to = match request.delegate_to {
             Some(new_delegate) => new_delegate,
             None => task.delegate_to,
@@ -628,13 +619,12 @@ impl<'a> TaskRepository<'a> {
 
         let position = request.position.unwrap_or(task.position);
         sqlx::query(
-            "UPDATE tasks SET title=?, status=?, blocked_reason=?, delegate_to=?,
+            "UPDATE tasks SET title=?, status=?, delegate_to=?,
                 time_scope_start_id=?, time_scope_end_id=?, time_scope_duration_n=?,
                 time_scope_duration_kind=?, on_scope_exit=?, plan_start_id=?, plan_end_id=?, position=? WHERE id=?",
         )
         .bind(&title)
         .bind(&status)
-        .bind(&blocked_reason)
         .bind(delegate_to)
         .bind(ts_start)
         .bind(ts_end)
@@ -719,6 +709,23 @@ impl<'a> TaskRepository<'a> {
             })
             .collect();
         Ok(dependencies)
+    }
+
+    /// Lists every task-dependency edge across all tasks (for the mindmap bulk load).
+    pub async fn list_all_dependencies(&self) -> Result<Vec<TaskDependencyEdge>, TaskError> {
+        let rows: Vec<(i64, String, i64)> = sqlx::query_as(
+            "SELECT task_id, dependency_type, dependency_id FROM task_dependencies",
+        )
+        .fetch_all(self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|(task_id, dependency_type, dependency_id)| TaskDependencyEdge {
+                task_id,
+                dependency_type,
+                dependency_id,
+            })
+            .collect())
     }
 
     /// Attaches a tag to a task.

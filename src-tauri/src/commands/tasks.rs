@@ -8,8 +8,9 @@ use crate::{
         derive_all_scope_lifecycles,
         lifecycle::ItemLifecycle,
         model::{
-            CreateGoalRequest, CreateTaskRequest, Dependency, Goal, GoalId, Task, TaskId,
-            TaskWithBlockers, TimeScope, UpdateGoalRequest, UpdateTaskRequest,
+            CreateGoalRequest, CreateTaskRequest, Dependency, Goal, GoalId, Task,
+            TaskDependencyEdge, TaskId, TaskWithBlockers, TimeScope, UpdateGoalRequest,
+            UpdateTaskRequest,
         },
         GoalRepository, ReparentConflicts, TaskRepository, ViolatingDescendant,
     },
@@ -135,6 +136,17 @@ pub async fn list_task_dependencies(
 ) -> Result<Vec<Dependency>, String> {
     TaskRepository::new(&pool)
         .list_dependencies(TaskId(task_id))
+        .await
+        .map_err(|error| error.to_string())
+}
+
+/// Lists every task-dependency edge (for the mindmap bulk load).
+#[tauri::command]
+pub async fn list_all_task_dependencies(
+    pool: State<'_, DatabasePool>,
+) -> Result<Vec<TaskDependencyEdge>, String> {
+    TaskRepository::new(&pool)
+        .list_all_dependencies()
         .await
         .map_err(|error| error.to_string())
 }

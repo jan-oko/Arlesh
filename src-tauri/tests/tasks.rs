@@ -1,6 +1,7 @@
 mod helpers;
 
 use arlesh_lib::{
+    block_reasons::BlockReasonRepository,
     domains::{
         model::{CreateDomainRequest, DomainSubtype, ProjectStatus},
         DomainRepository,
@@ -684,28 +685,19 @@ async fn update_task_blocked_reason() {
         .await
         .unwrap();
 
-    let blocked = task_repo
-        .update(
-            task.id.into(),
-            UpdateTaskRequest {
-                blocked_reason: Some("Waiting on design".into()),
-                ..Default::default()
-            },
-        )
+    let _ = task_repo; // the block-reason list lives in its own repository now
+    let repo = BlockReasonRepository::new(&pool);
+    repo.set("task", task.id, &["Waiting on design".into(), "Needs review".into()])
         .await
         .unwrap();
+    assert_eq!(
+        repo.list_for("task", task.id).await.unwrap(),
+        vec!["Waiting on design".to_string(), "Needs review".to_string()],
+    );
 
-    assert_eq!(blocked.blocked_reason.as_deref(), Some("Waiting on design"));
-
-    let cleared = task_repo
-        .update(
-            task.id.into(),
-            UpdateTaskRequest { blocked_reason: Some(String::new()), ..Default::default() },
-        )
-        .await
-        .unwrap();
-
-    assert!(cleared.blocked_reason.is_none());
+    // Setting an empty list clears them; blank reasons are dropped.
+    repo.set("task", task.id, &[String::new(), "   ".into()]).await.unwrap();
+    assert!(repo.list_for("task", task.id).await.unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -725,14 +717,8 @@ async fn explicit_block_reason_surfaces_in_get_with_blockers() {
         .await
         .unwrap();
 
-    task_repo
-        .update(
-            task.id.into(),
-            UpdateTaskRequest {
-                blocked_reason: Some("Explicit reason".into()),
-                ..Default::default()
-            },
-        )
+    BlockReasonRepository::new(&pool)
+        .set("task", task.id, &["Explicit reason".into()])
         .await
         .unwrap();
 
@@ -1258,28 +1244,13 @@ async fn update_goal_blocked_reason() {
         .await
         .unwrap();
 
-    let blocked = goal_repo
-        .update(
-            goal.id.into(),
-            UpdateGoalRequest {
-                blocked_reason: Some("Waiting on funding".into()),
-                ..Default::default()
-            },
-        )
-        .await
-        .unwrap();
+    let _ = goal_repo;
+    let repo = BlockReasonRepository::new(&pool);
+    repo.set("goal", goal.id, &["Waiting on funding".into()]).await.unwrap();
+    assert_eq!(repo.list_for("goal", goal.id).await.unwrap(), vec!["Waiting on funding".to_string()]);
 
-    assert_eq!(blocked.blocked_reason.as_deref(), Some("Waiting on funding"));
-
-    let cleared = goal_repo
-        .update(
-            goal.id.into(),
-            UpdateGoalRequest { blocked_reason: Some(String::new()), ..Default::default() },
-        )
-        .await
-        .unwrap();
-
-    assert!(cleared.blocked_reason.is_none());
+    repo.set("goal", goal.id, &[]).await.unwrap();
+    assert!(repo.list_for("goal", goal.id).await.unwrap().is_empty());
 }
 
 #[tokio::test]

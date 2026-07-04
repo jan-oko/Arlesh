@@ -4,6 +4,7 @@
 
 const EMBEDDED_ICON: &[u8] = include_bytes!("../icons/128x128.png");
 
+pub mod block_reasons;
 pub mod commands;
 pub mod database;
 pub mod domains;
@@ -72,6 +73,8 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::block_reasons::list_all_block_reasons,
+            commands::block_reasons::set_block_reasons,
             commands::infos::create_info,
             commands::infos::list_infos,
             commands::infos::update_info,
@@ -91,6 +94,7 @@ pub fn run() {
             commands::tasks::add_task_dependency,
             commands::tasks::remove_task_dependency,
             commands::tasks::list_task_dependencies,
+            commands::tasks::list_all_task_dependencies,
             commands::tasks::create_goal,
             commands::tasks::get_goal,
             commands::tasks::list_goals,

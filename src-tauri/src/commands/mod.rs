@@ -1,5 +1,6 @@
 //! Tauri command entry points — thin wrappers that delegate to domain repositories.
 
+pub mod block_reasons;
 pub mod domains;
 pub mod flows;
 pub mod infos;
