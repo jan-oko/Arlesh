@@ -19,8 +19,15 @@ function makeFlow(id: string): MindmapNode {
   return { id, kind: "flow", title: "Flow", position: 0, tagIds: [], children: [] };
 }
 
+/** Physical-key code for a produced character, mirroring what a browser sets on the event. */
+function keyToCode(key: string): string {
+  if (/^[a-zA-Z]$/.test(key)) return `Key${key.toUpperCase()}`;
+  if (key === "/") return "Slash";
+  return key; // Arrow*, Enter, Tab, Delete, Escape, F2 — code === key
+}
+
 function fireKey(key: string, modifiers: { shiftKey?: boolean; ctrlKey?: boolean; altKey?: boolean } = {}) {
-  window.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...modifiers }));
+  window.dispatchEvent(new KeyboardEvent("keydown", { key, code: keyToCode(key), bubbles: true, cancelable: true, ...modifiers }));
 }
 
 function baseOptions(overrides: Partial<Parameters<typeof useKeyboardMindmap>[0]> = {}) {
@@ -235,6 +242,23 @@ describe("useKeyboardMindmap — Ctrl+/ (toggle collapsed)", () => {
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("/", { ctrlKey: true });
     expect(opts.onToggleCollapsed).toHaveBeenCalledWith("task-1");
+  });
+});
+
+describe("useKeyboardMindmap — layout-agnostic letter shortcuts", () => {
+  it("opens the editor on the physical E key even under a non-Latin layout", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    // Hebrew layout: physical E produces "ק", but the code is still "KeyE".
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "ק", code: "KeyE", bubbles: true, cancelable: true }));
+    expect(opts.onOpenEditor).toHaveBeenCalledWith("task-1");
+  });
+
+  it("cuts on the physical X key regardless of the produced character", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "ט", code: "KeyX", ctrlKey: true, bubbles: true, cancelable: true }));
+    expect(opts.onCut).toHaveBeenCalled();
   });
 });
 

@@ -56,7 +56,7 @@ export function useKeyboardMindmap(options: Options): void {
       if (isInputActive) return;
 
       if (isWarningActive) {
-        if (event.key === "Escape") {
+        if (event.code === "Escape") {
           event.preventDefault();
           event.stopImmediatePropagation();
           onDismissWarning();
@@ -64,7 +64,10 @@ export function useKeyboardMindmap(options: Options): void {
         return;
       }
 
-      switch (event.key) {
+      // Match on `event.code` (physical key position), not `event.key` (the produced character), so
+      // the letter shortcuts fire on the same physical keys under a non-Latin layout (e.g. Hebrew).
+      // For non-character keys (arrows, Enter, Tab, Delete, Escape, F2) `code` equals `key`.
+      switch (event.code) {
         case "ArrowLeft":
           event.preventDefault();
           onNavigate("ArrowLeft");
@@ -140,14 +143,13 @@ export function useKeyboardMindmap(options: Options): void {
             onDelete([...selectedNodeIds]);
           }
           break;
-        case "/":
+        case "Slash":
           if (event.ctrlKey && selectedNodeId !== null) {
             event.preventDefault();
             onToggleCollapsed(selectedNodeId);
           }
           break;
-        case "s":
-        case "S":
+        case "KeyS":
           if (!event.ctrlKey && !event.metaKey && selectedNodeId !== null) {
             const node = findNodeById(selectedNodeId);
             if (node !== undefined && node.kind === "flow") {
@@ -168,25 +170,25 @@ export function useKeyboardMindmap(options: Options): void {
             onDeselect();
           }
           break;
-        case "x":
+        case "KeyX":
           if (event.ctrlKey && selectedNodeId !== null) {
             event.preventDefault();
             onCut([...selectedNodeIds]);
           }
           break;
-        case "c":
+        case "KeyC":
           if (event.ctrlKey && selectedNodeId !== null) {
             event.preventDefault();
             onCopy([...selectedNodeIds]);
           }
           break;
-        case "v":
+        case "KeyV":
           if (event.ctrlKey && clipboard !== null && selectedNodeId !== null) {
             event.preventDefault();
             onPaste(selectedNodeId);
           }
           break;
-        case "e":
+        case "KeyE":
           if (selectedNodeId !== null) {
             const node = findNodeById(selectedNodeId);
             if (node !== undefined && node.kind !== "aspect") {
@@ -195,7 +197,7 @@ export function useKeyboardMindmap(options: Options): void {
             }
           }
           break;
-        case "r":
+        case "KeyR":
           if (selectedNodeId !== null) {
             const node = findNodeById(selectedNodeId);
             if (node !== undefined && node.kind !== "aspect") {
