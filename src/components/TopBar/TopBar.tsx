@@ -26,8 +26,11 @@ export default function TopBar() {
   const exitSubtree = useMindmapStore((s) => s.exitSubtree);
   const exitToRoot = useMindmapStore((s) => s.exitToRoot);
   const filter = useFilterStore((s) => s.filter);
+  // Popover-open state lives in the store so the Alt+F keyboard shortcut can toggle it too.
+  const filterOpen = useFilterStore((s) => s.popoverOpen);
+  const setFilterPopover = useFilterStore((s) => s.setFilterPopover);
+  const toggleFilterPopover = useFilterStore((s) => s.toggleFilterPopover);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [filterOpen, setFilterOpen] = useState(false);
 
   const backArrow = i18n.dir() === "rtl" ? "→" : "←";
   const active = isFilterActive(filter);
@@ -74,13 +77,13 @@ export default function TopBar() {
           <button
             className={`${styles.filterBtn}${active ? ` ${styles.filterActive}` : ""}`}
             type="button"
-            onClick={() => setFilterOpen((o) => !o)}
+            onClick={toggleFilterPopover}
           >
             <FunnelIcon />{t("filter")}{active && <span className={styles.badge} />}
           </button>
           {filterOpen && (
             <>
-              <div className={styles.backdrop} onClick={() => setFilterOpen(false)} />
+              <div className={styles.backdrop} onClick={() => setFilterPopover(false)} />
               <FilterPopover />
             </>
           )}

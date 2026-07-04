@@ -1,6 +1,15 @@
 import { useEffect, useRef } from "react";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { isNodeBlocked } from "@/utils/tree-layout";
+import type { StatusMode } from "@/utils/filter-tree";
+
+/** Alt+letter → filter status preset, matched on physical key so it works under any layout. */
+const STATUS_MODE_BY_CODE: Record<string, StatusMode> = {
+  KeyA: "all",
+  KeyP: "plan",
+  KeyS: "start",
+  KeyD: "do",
+};
 
 type ArrowKey = "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown";
 
@@ -39,6 +48,9 @@ interface Options {
   onOpenSearch: () => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
+  onToggleFilter: () => void;
+  onSetStatusMode: (mode: StatusMode) => void;
+  onFocusRoot: () => void;
   findNodeById: (id: string) => MindmapNode | undefined;
 }
 
@@ -49,6 +61,7 @@ export function useKeyboardMindmap(options: Options): void {
     onNavigate, onCycleType, onReorder, onStartRename,
     onCreateChild, onCreateSibling, onInsertParent, onOpenEditor, onStartFlow, onDelete, onToggleCollapsed, onCycleStatus,
     onDeselect, onExitSubtree, onExitToRoot, onCut, onCopy, onPaste, onEnterSubtree, onOpenSearch, onZoomIn, onZoomOut,
+    onToggleFilter, onSetStatusMode, onFocusRoot,
     findNodeById,
   } = options;
 
@@ -66,6 +79,26 @@ export function useKeyboardMindmap(options: Options): void {
           onDismissWarning();
         }
         return;
+      }
+
+      // Alt (alone) shortcuts fire regardless of selection: open the Filter menu, or jump to a
+      // status preset. Matched here before the main switch so Alt+S (Start mode) can't fall through
+      // to the plain-S "start flow" binding. Non-letter Alt combos (e.g. Alt+Arrow reorder) match no
+      // case and fall through to the main switch untouched.
+      if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+        if (event.code === "KeyF") {
+          event.preventDefault();
+          onToggleFilter();
+          return;
+        }
+        const mode = Object.prototype.hasOwnProperty.call(STATUS_MODE_BY_CODE, event.code)
+          ? STATUS_MODE_BY_CODE[event.code]
+          : undefined;
+        if (mode !== undefined) {
+          event.preventDefault();
+          onSetStatusMode(mode);
+          return;
+        }
       }
 
       // Match on `event.code` (physical key position), not `event.key` (the produced character), so
@@ -112,7 +145,15 @@ export function useKeyboardMindmap(options: Options): void {
           break;
         }
         case "Enter": {
-          if (selectedNodeId !== null) {
+          if (selectedNodeId === null) {
+            // Nothing selected: a plain Enter focuses the current display root.
+            if (!event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
+              event.preventDefault();
+              onFocusRoot();
+            }
+            break;
+          }
+          {
             if (event.shiftKey) {
               event.preventDefault();
               onCreateSibling(selectedNodeId);
@@ -245,6 +286,7 @@ export function useKeyboardMindmap(options: Options): void {
     onNavigate, onCycleType, onReorder, onStartRename,
     onCreateChild, onCreateSibling, onInsertParent, onOpenEditor, onStartFlow, onDelete, onToggleCollapsed, onCycleStatus,
     onDeselect, onExitSubtree, onExitToRoot, onCut, onCopy, onPaste, onEnterSubtree, onOpenSearch, onZoomIn, onZoomOut,
+    onToggleFilter, onSetStatusMode, onFocusRoot,
     findNodeById,
   ]);
 }

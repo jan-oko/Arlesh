@@ -68,6 +68,8 @@ export default function MindmapView() {
     return acc;
   }, [tree]);
   const filter = useFilterStore((s) => s.filter);
+  const setStatusMode = useFilterStore((s) => s.setStatusMode);
+  const toggleFilterPopover = useFilterStore((s) => s.toggleFilterPopover);
   const displayRoot = useMemo<MindmapNode>(() => {
     const base = subtreeRootId !== null ? (findNode(tree, subtreeRootId) ?? tree) : tree;
     return filterTree(base, filter);
@@ -393,6 +395,9 @@ export default function MindmapView() {
     onOpenSearch: () => setNodeSearchOpen(true),
     onZoomIn: () => canvasRef.current?.zoomIn(),
     onZoomOut: () => canvasRef.current?.zoomOut(),
+    onToggleFilter: toggleFilterPopover,
+    onSetStatusMode: setStatusMode,
+    onFocusRoot: () => selectNode(subtreeRootId ?? tree.id),
     findNodeById,
   });
   const toastPosition = pendingToast !== null ? positions.get(pendingToast.nodeId) : undefined;

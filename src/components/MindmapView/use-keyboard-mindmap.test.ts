@@ -61,6 +61,9 @@ function baseOptions(overrides: Partial<Parameters<typeof useKeyboardMindmap>[0]
     onOpenSearch: vi.fn(),
     onZoomIn: vi.fn(),
     onZoomOut: vi.fn(),
+    onToggleFilter: vi.fn(),
+    onSetStatusMode: vi.fn() as (mode: "all" | "plan" | "start" | "do") => void,
+    onFocusRoot: vi.fn(),
     findNodeById: (id: string): MindmapNode | undefined =>
       id === "task-1" ? makeTask("task-1") : undefined,
     ...overrides,
@@ -582,5 +585,66 @@ describe("useKeyboardMindmap — double-tap Enter enters subtree", () => {
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("Enter");
     expect(opts.onEnterSubtree).not.toHaveBeenCalled();
+  });
+});
+
+describe("useKeyboardMindmap — filter shortcuts (Alt)", () => {
+  it("Alt+F toggles the filter menu", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("f", { altKey: true });
+    expect(opts.onToggleFilter).toHaveBeenCalledTimes(1);
+  });
+
+  it("Alt+<first letter> selects each status mode", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("a", { altKey: true });
+    fireKey("p", { altKey: true });
+    fireKey("s", { altKey: true });
+    fireKey("d", { altKey: true });
+    expect(opts.onSetStatusMode).toHaveBeenNthCalledWith(1, "all");
+    expect(opts.onSetStatusMode).toHaveBeenNthCalledWith(2, "plan");
+    expect(opts.onSetStatusMode).toHaveBeenNthCalledWith(3, "start");
+    expect(opts.onSetStatusMode).toHaveBeenNthCalledWith(4, "do");
+  });
+
+  it("Alt+S selects the Start mode without starting a flow", () => {
+    const opts = baseOptions({ selectedNodeId: "flow-1", findNodeById: (id: string) => (id === "flow-1" ? makeFlow("flow-1") : undefined) });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("s", { altKey: true });
+    expect(opts.onSetStatusMode).toHaveBeenCalledWith("start");
+    expect(opts.onStartFlow).not.toHaveBeenCalled();
+  });
+
+  it("plain 's' still starts a flow (Alt gate does not swallow it)", () => {
+    const opts = baseOptions({ selectedNodeId: "flow-1", findNodeById: (id: string) => (id === "flow-1" ? makeFlow("flow-1") : undefined) });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("s");
+    expect(opts.onStartFlow).toHaveBeenCalledWith("flow-1");
+    expect(opts.onSetStatusMode).not.toHaveBeenCalled();
+  });
+
+  it("Alt+ArrowUp still reorders (the Alt filter gate lets non-letter keys through)", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("ArrowUp", { altKey: true });
+    expect(opts.onReorder).toHaveBeenCalledWith("task-1", -1);
+  });
+});
+
+describe("useKeyboardMindmap — Enter focuses the root when nothing is selected", () => {
+  it("focuses the display root on Enter with no selection", () => {
+    const opts = baseOptions({ selectedNodeId: null });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("Enter");
+    expect(opts.onFocusRoot).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not focus the root when a node is already selected", () => {
+    const opts = baseOptions({ selectedNodeId: "task-1" });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("Enter");
+    expect(opts.onFocusRoot).not.toHaveBeenCalled();
   });
 });

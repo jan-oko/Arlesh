@@ -221,6 +221,8 @@ The root of the map is "Arlesh" (top level). Aspect cells are its direct childre
 - `Ctrl+Up` / `Ctrl+Down` — cycle the cell's type through: Domain → Project → Goal → Task
 - `Double-click` — open editor modal to link the cell to KB resources
 - `Right-click` — context menu (enter subtree, change type, delete, etc.)
+- `Enter` — with a node selected: cycle a task's status / toggle a goal's achieved (double-tap enters a container as a subtree); **with nothing selected: focus the current display root**
+- `Alt+F` — toggle the filter menu; `Alt+A` / `Alt+P` / `Alt+S` / `Alt+D` — jump to the **All / Plan / Start / Do** status preset (matched by physical key)
 - `Escape` — go back one level when inside a subtree
 - `Shift+Escape` — go back to root
 - Back button / back-to-top button available in the UI
