@@ -137,6 +137,7 @@ pub fn run() {
             commands::flows::start_flow,
             commands::flows::scope_valid_flow_targets,
             commands::flows::flow_origins,
+            commands::flows::list_flow_instance_nodes,
             commands::flows::set_flow_recurrence,
             commands::flows::get_flow_recurrence,
             commands::flows::delete_flow_recurrence,

@@ -1,0 +1,12 @@
+{
+  "scope": "Scope: {{value}}",
+  "plan": "Plan: {{value}}",
+  "overdue": "Overdue",
+  "archived": "Archived",
+  "frozen": "Frozen",
+  "flowInstance": "Flow instance",
+  "habitInstance": "Habit instance",
+  "tags": "Tags: {{value}}",
+  "loading": "…",
+  "row": "Status"
+}

@@ -111,6 +111,8 @@ export interface MindmapNode {
   flowItem?: FlowItemData;
   /** Whether this node is marked NSFW — hidden (with its subtree) by the Work filter. */
   nsfw?: boolean;
+  /** Whether this real Goal/Task was materialized by a started flow (drives the flow-instance badge). */
+  fromFlow?: boolean;
   position: number;
   tagIds: number[];
   children: MindmapNode[];

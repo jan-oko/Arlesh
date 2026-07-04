@@ -8,6 +8,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Status-icon row below each node**: a compact row of badges rendered under a node, each with a hover tooltip (SVG `<title>`), aligned to the UI's leading edge (left in English, right in Hebrew). Badges: **Scope** (clock; tooltip shows the resolved window — crossed out once the window has passed), **Overdue** (red exclamation, for a kept-past-window item), **Archived** (box; for an archived goal/project or a lapsed scoped item), **Planned** (calendar; tooltip shows the Plan window), **Frozen** (snowflake; frozen goal/project), **Details** (ellipsis; an Info node with a Details description — tooltip shows it), **Flow/Habit instance** (the flow wave for a real Start-flow instance, the cyclical habit glyph for a virtual Habit iteration), and **Tags** (tag icon; tooltip lists the tag names). Backed by a pure `deriveStatusIndicators` mapper (unit-tested) and a new `list_flow_instance_nodes` command that surfaces which real Goal/Task nodes were materialized by a started flow.
+
 ## [0.2.0] — 2026-07-04
 
 ### Added

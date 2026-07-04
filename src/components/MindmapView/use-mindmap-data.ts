@@ -10,7 +10,7 @@ import {
   listFlows, createFlow, updateFlow, deleteFlow,
   listAllFlowGoals, listAllFlowTasks, listAllFlowCycles, listAllFlowDependencies,
   createFlowGoal, createFlowTask, updateFlowGoal, updateFlowTask, deleteFlowItem, convertFlowItem,
-  generateHabitIterations, listHabitItemStatuses,
+  generateHabitIterations, listHabitItemStatuses, listFlowInstanceNodes,
 } from "@/api/flows";
 import { findNode } from "@/utils/mindmap-tree";
 import type { Domain } from "@/api/domains";
@@ -19,7 +19,7 @@ import type { Goal } from "@/api/goals";
 import type { Info } from "@/api/infos";
 import type {
   Flow, CreateFlowRequest, UpdateFlowRequest,
-  FlowGoal, FlowTask, FlowItemCycle, FlowDependency, FlowItemType, HabitIteration, HabitItemStatus,
+  FlowGoal, FlowTask, FlowItemCycle, FlowDependency, FlowItemType, HabitIteration, HabitItemStatus, TargetRef,
 } from "@/api/flows";
 import { deriveScopeLifecycles } from "@/api/scope-lifecycle";
 import type { ItemLifecycle, ScopeLifecycle } from "@/api/scope-lifecycle";
@@ -304,6 +304,7 @@ export function buildTree(
   flowDeps: FlowDependency[] = [],
   blockReasons: BlockReason[] = [],
   taskDeps: TaskDependencyEdge[] = [],
+  flowInstanceRefs: TargetRef[] = [],
 ): MindmapNode {
   const nodeMap = new Map<string, MindmapNode>();
 
@@ -539,6 +540,12 @@ export function buildTree(
     }
   }
 
+  // Flag real Goal/Task nodes materialized by a started flow (drives the flow-instance badge).
+  for (const ref of flowInstanceRefs) {
+    const node = nodeMap.get(`${ref.node_type}-${ref.node_id}`);
+    if (node !== undefined) node.fromFlow = true;
+  }
+
   // Sort each parent's children by position so mixed-type siblings
   // (e.g. goals and tasks under the same project) respect insertion order
   // rather than being grouped by entity type.
@@ -566,7 +573,7 @@ export function useMindmapData(): MindmapData {
     setIsLoading(true);
     setError(null);
     try {
-      const [domains, goals, tasks, infos, flows, flowGoals, flowTasks, flowCycles, flowDeps, blockReasons, taskDeps, lifecycles] = await Promise.all([
+      const [domains, goals, tasks, infos, flows, flowGoals, flowTasks, flowCycles, flowDeps, blockReasons, taskDeps, flowInstanceRefs, lifecycles] = await Promise.all([
         listDomains(),
         listGoals(),
         listTasks(),
@@ -578,9 +585,10 @@ export function useMindmapData(): MindmapData {
         listAllFlowDependencies(),
         listAllBlockReasons(),
         listAllTaskDependencies(),
+        listFlowInstanceNodes(),
         deriveScopeLifecycles(localNowIso()),
       ]);
-      const built = buildTree(domains, goals, tasks, infos, flows, flowGoals, flowTasks, flowCycles, flowDeps, blockReasons, taskDeps);
+      const built = buildTree(domains, goals, tasks, infos, flows, flowGoals, flowTasks, flowCycles, flowDeps, blockReasons, taskDeps, flowInstanceRefs);
       applyLifecycles(built, lifecycleMap(lifecycles));
       // Derive each Habit's iterations (non-habits reject; treat as empty) and inject them as
       // virtual, read-only child nodes under their targets.
@@ -602,7 +610,7 @@ export function useMindmapData(): MindmapData {
   const silentLoad = useCallback(async () => {
     setError(null);
     try {
-      const [domains, goals, tasks, infos, flows, flowGoals, flowTasks, flowCycles, flowDeps, blockReasons, taskDeps, lifecycles] = await Promise.all([
+      const [domains, goals, tasks, infos, flows, flowGoals, flowTasks, flowCycles, flowDeps, blockReasons, taskDeps, flowInstanceRefs, lifecycles] = await Promise.all([
         listDomains(),
         listGoals(),
         listTasks(),
@@ -614,9 +622,10 @@ export function useMindmapData(): MindmapData {
         listAllFlowDependencies(),
         listAllBlockReasons(),
         listAllTaskDependencies(),
+        listFlowInstanceNodes(),
         deriveScopeLifecycles(localNowIso()),
       ]);
-      const built = buildTree(domains, goals, tasks, infos, flows, flowGoals, flowTasks, flowCycles, flowDeps, blockReasons, taskDeps);
+      const built = buildTree(domains, goals, tasks, infos, flows, flowGoals, flowTasks, flowCycles, flowDeps, blockReasons, taskDeps, flowInstanceRefs);
       applyLifecycles(built, lifecycleMap(lifecycles));
       // Derive each Habit's iterations (non-habits reject; treat as empty) and inject them as
       // virtual, read-only child nodes under their targets.

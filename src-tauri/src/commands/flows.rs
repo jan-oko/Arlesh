@@ -253,6 +253,17 @@ pub async fn flow_origins(
         .map_err(|error| error.to_string())
 }
 
+/// Every real node materialised by a started flow, for the mindmap's flow-instance badge.
+#[tauri::command]
+pub async fn list_flow_instance_nodes(
+    pool: State<'_, DatabasePool>,
+) -> Result<Vec<TargetRef>, String> {
+    FlowRepository::new(&pool)
+        .list_instance_node_refs()
+        .await
+        .map_err(|error| error.to_string())
+}
+
 /// Converts a flow item to the other kind (goal↔task), preserving its cycles and dependencies.
 #[tauri::command]
 pub async fn convert_flow_item(

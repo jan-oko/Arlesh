@@ -355,6 +355,19 @@ async fn starting_a_flow_materialises_a_subtree_with_fan_in_deps() {
     let scoped_root: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tasks WHERE id = ? AND time_scope_start_id IS NOT NULL")
         .bind(result.root_id).fetch_one(&pool).await.unwrap();
     assert_eq!(scoped_root, 1);
+
+    // Every materialised node is reported as a flow-instance ref (for the mindmap badge).
+    let refs = repo.list_instance_node_refs().await.unwrap();
+    assert_eq!(refs.len(), 4);
+    assert!(refs.iter().all(|r| r.node_type == "task"));
+    assert!(refs.iter().any(|r| r.node_id == result.root_id));
+}
+
+#[tokio::test]
+async fn instance_node_refs_are_empty_before_any_flow_starts() {
+    let pool = helpers::test_pool().await;
+    let repo = FlowRepository::new(&pool);
+    assert!(repo.list_instance_node_refs().await.unwrap().is_empty());
 }
 
 #[tokio::test]

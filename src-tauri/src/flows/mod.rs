@@ -1585,6 +1585,16 @@ impl<'a> FlowRepository<'a> {
         Ok(origins)
     }
 
+    /// Every real node materialised by a started flow, as `(node_type, node_id)` refs. Lets the
+    /// mindmap flag flow-originated Goals/Tasks (e.g. with a flow-instance badge) without a
+    /// per-node origin lookup.
+    pub async fn list_instance_node_refs(&self) -> Result<Vec<TargetRef>, FlowError> {
+        sqlx::query_as::<_, TargetRef>("SELECT node_type, node_id FROM flow_instance_nodes")
+            .fetch_all(self.pool)
+            .await
+            .map_err(Into::into)
+    }
+
     /// Starts a flow: materialises its template into a real, independent Goal/Task subtree under
     /// the target, resolving every cycle pair and remapping intra-flow dependencies by fan-in.
     pub async fn start(

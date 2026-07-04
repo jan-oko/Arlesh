@@ -4,8 +4,10 @@ import type { MindmapNode as MindmapNodeData, NodeKind, Position } from "@/utils
 import { isRtlText } from "@/utils/text-direction";
 import { computeNodeDimensions, computeEditHeight } from "@/utils/node-meta";
 import { computeNodeAppearance } from "@/utils/node-visuals";
+import { deriveStatusIndicators } from "@/utils/node-status-indicators";
 import NodeContextMenu from "@/components/NodeContextMenu/NodeContextMenu";
 import type { ContextMenuAction } from "@/components/NodeContextMenu/context-action";
+import StatusIconRow from "@/components/StatusIcons/StatusIconRow";
 import NodeRect from "./NodeRect";
 import NodeLabel from "./NodeLabel";
 
@@ -62,6 +64,8 @@ export default function MindmapNode({ node, parentKind, position, isSelected, is
     onStatusClick !== undefined &&
     (node.habitItem !== undefined ||
       ((node.kind === "task" || node.kind === "goal") && !isBlocked && node.virtual !== true));
+  // The status-icon row is hidden while editing, when the node grows to fit the textarea.
+  const statusIndicators = isEditing ? [] : deriveStatusIndicators(node);
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -93,6 +97,9 @@ export default function MindmapNode({ node, parentKind, position, isSelected, is
     >
       <NodeRect node={node} width={width} height={activeHeight} iconWidth={iconWidth} iconCx={iconCx} iconCy={activeHeight / 2} iconR={iconR} fillColor={fillColor} fillOpacity={fillOpacity} strokeColor={strokeColor} isSelected={isSelected} isCollapsed={isCollapsed} iconColor={iconColor} iconOpacity={iconOpacity} isBlocked={isBlocked} canClickStatus={canClickStatus} isRtl={isRtl} onStatusIconClick={handleStatusIconClick} />
       <NodeLabel node={node} isEditing={isEditing} iconWidth={iconWidth} width={width} height={activeHeight} fontSize={fontSize} lineHeight={lineHeight} displayLineCount={displayLineCount} editLineCount={editLineCount} onEditLineCountChange={setEditLineCount} label={label} textFill={textFill} isRtl={isRtl} onCommitEdit={onCommitEdit} onCancelEdit={onCancelEdit} />
+      {statusIndicators.length > 0 && (
+        <StatusIconRow node={node} indicators={statusIndicators} width={width} top={activeHeight} />
+      )}
       {contextMenu !== null && createPortal(
         <NodeContextMenu x={contextMenu.x} y={contextMenu.y} nodeKind={node.kind} parentKind={parentKind} childKinds={[...new Set(node.children.map((c) => c.kind))]} isCollapsed={isCollapsed} hasClipboard={hasClipboard} onAction={(action) => onContextAction(node.id, action)} onClose={() => setContextMenu(null)} />,
         document.body,

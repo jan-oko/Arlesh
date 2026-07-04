@@ -286,6 +286,7 @@ describe("useMindmapData", () => {
       if (cmd === "list_all_flow_dependencies") return Promise.resolve([]);
       if (cmd === "list_all_block_reasons") return Promise.resolve([]);
       if (cmd === "list_all_task_dependencies") return Promise.resolve([]);
+      if (cmd === "list_flow_instance_nodes") return Promise.resolve([]);
       if (cmd === "derive_scope_lifecycles") return Promise.resolve([]);
       return Promise.resolve(null);
     });
@@ -313,6 +314,7 @@ describe("useMindmapData", () => {
       if (cmd === "list_all_flow_dependencies") return Promise.resolve([]);
       if (cmd === "list_all_block_reasons") return Promise.resolve([]);
       if (cmd === "list_all_task_dependencies") return Promise.resolve([]);
+      if (cmd === "list_flow_instance_nodes") return Promise.resolve([]);
       if (cmd === "derive_scope_lifecycles") return Promise.resolve([]);
       return Promise.resolve(null);
     });
@@ -351,6 +353,7 @@ describe("useMindmapData — mutations", () => {
       if (cmd === "list_all_flow_dependencies") return Promise.resolve([]);
       if (cmd === "list_all_block_reasons") return Promise.resolve([]);
       if (cmd === "list_all_task_dependencies") return Promise.resolve([]);
+      if (cmd === "list_flow_instance_nodes") return Promise.resolve([]);
       if (cmd === "derive_scope_lifecycles") return Promise.resolve([]);
       return Promise.resolve(null);
     });

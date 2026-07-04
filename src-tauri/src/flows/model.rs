@@ -316,7 +316,7 @@ pub struct MaterializedFlow {
 
 /// A candidate target node for a flow, referenced by kind and id. Used by the target-picker
 /// scope-validity check and the flow-origin lookup.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::FromRow)]
 pub struct TargetRef {
     /// Node kind (`aspect`/`domain`/`project`/`goal`/`task`).
     pub node_type: String,

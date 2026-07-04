@@ -1,0 +1,12 @@
+{
+  "scope": "מסגרת: {{value}}",
+  "plan": "תכנון: {{value}}",
+  "overdue": "באיחור",
+  "archived": "בארכיון",
+  "frozen": "מוקפא",
+  "flowInstance": "מופע סדר",
+  "habitInstance": "מופע הרגל",
+  "tags": "תגיות: {{value}}",
+  "loading": "…",
+  "row": "סטטוס"
+}

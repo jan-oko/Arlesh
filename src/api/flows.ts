@@ -141,6 +141,11 @@ export async function flowOrigins(nodes: TargetRef[]): Promise<FlowOrigin[]> {
   return invoke<FlowOrigin[]>("flow_origins", { nodes });
 }
 
+/** Every real Goal/Task node materialized by a started flow (for the flow-instance badge). */
+export async function listFlowInstanceNodes(): Promise<TargetRef[]> {
+  return invoke<TargetRef[]>("list_flow_instance_nodes");
+}
+
 // --- Recurrence: a flow becomes a Habit (Phase 8.1) ---
 
 export type ConsumptionKind = "destructive" | "accumulating";
