@@ -113,7 +113,7 @@ const ALLOWED_CHILD_KINDS: Partial<Record<NodeKind, NodeKind[]>> = {
   aspect: ["project", "domain", "tag", "goal", "task", "info", "flow"],
   project: ["project", "domain", "tag", "goal", "task", "info", "flow"],
   domain: ["domain", "tag", "goal", "task", "info", "flow"],
-  tag: ["goal", "task", "info"],
+  tag: ["info"], // a tag is a label — it holds only info notes, no structural children
   goal: ["goal", "task", "info", "flow"],
   task: ["task", "info"],
   info: ["info"],

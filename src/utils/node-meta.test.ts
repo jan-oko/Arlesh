@@ -182,10 +182,12 @@ describe("typeAcceptsChildren", () => {
     expect(typeAcceptsChildren("domain", ["project"])).toBe(false);
   });
 
-  it("a tag holds only goal/task/info (no nested domain-table or flow)", () => {
-    expect(typeAcceptsChildren("tag", ["goal", "task", "info"])).toBe(true);
+  it("a tag holds only info children (it's a label, not a container)", () => {
+    expect(typeAcceptsChildren("tag", ["info"])).toBe(true);
+    expect(typeAcceptsChildren("tag", [])).toBe(true);
+    expect(typeAcceptsChildren("tag", ["goal"])).toBe(false);
+    expect(typeAcceptsChildren("tag", ["task"])).toBe(false);
     expect(typeAcceptsChildren("tag", ["domain"])).toBe(false);
-    expect(typeAcceptsChildren("tag", ["flow"])).toBe(false);
   });
 });
 
