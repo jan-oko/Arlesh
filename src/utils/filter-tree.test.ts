@@ -41,11 +41,26 @@ describe("filterTree — status modes", () => {
     expect(kept).toContain("project-1"); // structural container kept in Plan
   });
 
-  it("Plan hides an achieved/frozen goal (leaf) but keeps structure", () => {
+  it("Plan hides an achieved goal and the now-empty container above it", () => {
     const t = n("root", "domain", {}, [n("aspect-1", "aspect", {}, [n("goal-done", "goal", { status: "achieved" })])]);
     const kept = ids(filterTree(t, f({ statusMode: "plan" })));
     expect(kept).not.toContain("goal-done");
-    expect(kept).toContain("aspect-1"); // structural stays
+    expect(kept).not.toContain("aspect-1"); // empty container drops out too
+  });
+
+  it("keeps a container only while it holds a content match (Plan)", () => {
+    const t = n("root", "domain", {}, [
+      n("proj-empty", "project", {}, [n("g-done", "goal", { status: "achieved" })]),
+      n("proj-live", "project", {}, [n("t-todo", "task", { status: "todo" })]),
+    ]);
+    const kept = ids(filterTree(t, f({ statusMode: "plan" })));
+    expect(kept).not.toContain("proj-empty");
+    expect(kept).toContain("proj-live");
+  });
+
+  it("All still shows empty containers", () => {
+    const t = n("root", "domain", {}, [n("proj-empty", "project", {}, [n("g-done", "goal", { status: "achieved" })])]);
+    expect(ids(filterTree(t, f({ statusMode: "all" })))).toContain("proj-empty");
   });
 
   it("Start drops an in-progress task with no todo child", () => {

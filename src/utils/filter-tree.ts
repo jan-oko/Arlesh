@@ -36,6 +36,8 @@ export const DEFAULT_FILTER: FilterState = {
 const RESOLVED_GOAL = new Set(["achieved", "frozen", "archived"]);
 
 const FLOW_KINDS = new Set(["flow", "flow_goal", "flow_task"]);
+/** Container kinds with no status of their own — shown only as ancestors of a content match. */
+const STRUCTURAL_KINDS = new Set(["aspect", "domain", "project", "tag"]);
 
 /** Whether the filter differs from the neutral state (drives the top-bar active badge). */
 export function isFilterActive(f: FilterState): boolean {
@@ -64,8 +66,11 @@ function typeHardHidden(node: MindmapNode, f: FilterState): boolean {
   return flowHardHidden(node, f);
 }
 
-/** Whether a node's own status satisfies the active mode (structural/other kinds pass except in Do). */
+/** Whether a node's own status satisfies the active mode. */
 function passesStatus(node: MindmapNode, f: FilterState): boolean {
+  // In any filtered mode, structural containers never match on their own — they show only when they
+  // hold a content match (so empty/fully-resolved containers drop out).
+  if (f.statusMode !== "all" && STRUCTURAL_KINDS.has(node.kind)) return false;
   switch (f.statusMode) {
     case "all":
       return true;
