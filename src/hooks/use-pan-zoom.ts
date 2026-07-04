@@ -139,16 +139,25 @@ export function usePanZoom(svgRef: React.RefObject<SVGSVGElement | null>): PanZo
 
   const centerOnRoot = useCallback(() => centerOnPoint(0, 0), [centerOnPoint]);
 
+  // Pans the *minimum* amount to bring `(lx, ly)` just inside the margin at whichever edge it escaped
+  // (gentler than recentring — the node lands at the edge, not the middle).
   const ensureVisible = useCallback(
     (lx: number, ly: number) => {
       const { w, h } = size();
       const { x, y, scale } = transform.current;
       const sx = x + lx * scale;
       const sy = y + ly * scale;
-      if (sx >= VISIBLE_MARGIN && sx <= w - VISIBLE_MARGIN && sy >= VISIBLE_MARGIN && sy <= h - VISIBLE_MARGIN) return;
-      centerOnPoint(lx, ly);
+      const m = VISIBLE_MARGIN;
+      let nx = x;
+      let ny = y;
+      if (sx < m) nx = x + (m - sx);
+      else if (sx > w - m) nx = x - (sx - (w - m));
+      if (sy < m) ny = y + (m - sy);
+      else if (sy > h - m) ny = y - (sy - (h - m));
+      if (nx === x && ny === y) return; // already comfortably visible
+      applyTransform({ x: nx, y: ny, scale });
     },
-    [centerOnPoint, size],
+    [applyTransform, size],
   );
 
   const zoomIn = useCallback(() => {
