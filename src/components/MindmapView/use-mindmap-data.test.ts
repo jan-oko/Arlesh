@@ -665,6 +665,38 @@ describe("useMindmapData — mutations", () => {
       expect(newId).toBe("task-99");
     });
 
+    function flowChild(overrides: Partial<Flow>): Flow {
+      return {
+        id: 7, title: "Standup", instance_type: "task", parent_type: "domain", parent_id: 1,
+        target_type: null, target_id: null, flow_duration_n: 1, flow_duration_kind: "week",
+        flow_window_part: null, flow_window_time_start: null, flow_window_time_end: null,
+        is_habit: false, root_plan_kind: null, root_plan_start: null, root_plan_end: null, position: 0, ...overrides,
+      };
+    }
+
+    it("domain→goal: reparents a flow child onto the new goal (not orphaned)", async () => {
+      const PROJECT = mkDomain({ id: 2, subtype: "project", parent_id: 1, title: "Ops" });
+      const FLOW = flowChild({ id: 7, parent_type: "project", parent_id: 2 });
+      const newGoal = mkGoal({ id: 99, title: "Ops" });
+      setupInvoke({ list_domains: [ASPECT, PROJECT], list_flows: [FLOW], create_goal: newGoal, delete_domain: undefined, update_goal: newGoal, update_flow: FLOW });
+      const { result } = await loadedHook();
+
+      await act(async () => { await result.current.retypeNode("domain-2", "project", "goal"); });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("update_flow", { id: 7, request: { parent_type: "goal", parent_id: 99 } });
+    });
+
+    it("goal→project: reparents a flow child onto the new project", async () => {
+      const FLOW = flowChild({ id: 7, parent_type: "goal", parent_id: 1 });
+      const newDomain = mkDomain({ id: 99, subtype: "project", parent_id: 1, title: "Ship MVP" });
+      setupInvoke({ list_flows: [FLOW], create_domain: newDomain, delete_goal: undefined, update_domain: newDomain, update_flow: FLOW });
+      const { result } = await loadedHook();
+
+      await act(async () => { await result.current.retypeNode("goal-1", "goal", "project"); });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("update_flow", { id: 7, request: { parent_type: "project", parent_id: 99 } });
+    });
+
     it("goal→domain: creates domain, deletes goal, returns domain-id", async () => {
       const newDomain = mkDomain({ id: 99, subtype: "domain", parent_id: 1, title: "Ship MVP" });
       setupInvoke({ create_domain: newDomain, delete_goal: undefined, update_domain: newDomain });

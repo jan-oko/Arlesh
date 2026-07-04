@@ -36,13 +36,15 @@ restored automatically if converted back, only because the columns happen to sur
 
 ## 2. Orphaned children not re-parented
 
-`retypeNode` re-parents only goal/task/info children. It does **not** handle **flow** children, yet
-`typeAcceptsChildren` lists `flow` as valid under `goal`/`domain`/`project`. So:
+`retypeNode` re-parents goal/task/info children, and now **flow** children too, for the submenu-reachable
+conversions where the new node can legally parent a flow (flows may sit under aspect/project/domain/goal):
 
-- **domain/project → goal**, or **goal → domain/project**, on a node that **has a flow child**, is offered
-  by the submenu but leaves the flow's `parent_id` pointing at the deleted row — the flow is **orphaned**
-  (it drops out of the tree; it is not cascade-deleted). Logged as a `retypeNode: … child "…" orphaned`
-  warning for domain→goal/task, silent for goal/task→domain.
+- **domain/project → goal** and **goal → project/domain** now re-parent a flow child onto the new node.
+
+The remaining gap is only reachable via the unfiltered Ctrl+Up/Down **cycle** (not the submenu): converting
+a flow-bearing node to a **task** or **tag** — neither of which can parent a flow — still orphans it. Those
+conversions aren't offered by the submenu (`typeAcceptsChildren` excludes `flow` from task/tag), so this is
+deferred with the rest of the cycle work.
 
 (Domain-table children — a sub-project/domain/tag — are already excluded by `typeAcceptsChildren`, since
 goal/task/info can't hold them, so those aren't reachable.)
@@ -59,7 +61,8 @@ restore the original status. The cycle surfaces this with a toast; the submenu d
    rather than drop them? Several already map cleanly between goal and task.
 2. Should a conversion that drops data or orphans a flow child **prompt for confirmation** (as the cycle does
    for goal-children/non-info-children), with a summary of what will be lost?
-3. Should **flow** children be re-parented (to the surviving grandparent) instead of orphaned — or should
-   `typeAcceptsChildren` exclude `flow` so those conversions aren't offered at all (simplest interim fix)?
+3. Flow children are now re-parented onto the new node for submenu conversions (goal/project/domain
+   targets). Should the cycle's task/tag targets re-parent the flow to the surviving **grandparent**
+   instead of orphaning it?
 4. Should `info → …` carry the **details** field somewhere (e.g. appended to a description) instead of
    dropping it?

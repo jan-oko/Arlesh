@@ -771,6 +771,8 @@ export function useMindmapData(): MindmapData {
               await updateTask(childDbId, { parent_type: "goal", parent_id: newGoal.id });
             } else if (child.kind === "info") {
               await updateInfo(childDbId, { parent_type: "goal", parent_id: newGoal.id });
+            } else if (child.kind === "flow") {
+              await updateFlow(childDbId, { parent_type: "goal", parent_id: newGoal.id });
             } else {
               console.warn(`[arlesh] retypeNode: ${child.kind} child "${child.title}" orphaned`);
             }
@@ -812,6 +814,9 @@ export function useMindmapData(): MindmapData {
             await updateTask(childDbId, { parent_type: "project", parent_id: newDomain.id });
           } else if (child.kind === "info") {
             await updateInfo(childDbId, { parent_type: toKind, parent_id: newDomain.id });
+          } else if (child.kind === "flow" && (toKind === "project" || toKind === "domain")) {
+            // A flow can be parented by a project/domain (but not a tag) — reparent onto the new node.
+            await updateFlow(childDbId, { parent_type: toKind, parent_id: newDomain.id });
           }
         }
         if (fromKind === "goal") await deleteGoal(dbId);
