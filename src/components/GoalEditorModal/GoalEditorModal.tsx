@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import BlockReasonsField from "@/components/BlockReasonsField/BlockReasonsField";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { Domain } from "@/api/domains";
 import type { TimeScope } from "@/api/time-scope";
@@ -13,7 +14,7 @@ import { GOAL_STATUS } from "@/utils/status-mapping";
 export interface GoalSaveData {
   title: string;
   status: string;
-  blockedReason: string;
+  blockReasons: string[];
   tagIds: number[];
   timeScope: TimeScope | null;
   onScopeExit: OnScopeExit | null;
@@ -33,7 +34,7 @@ export default function GoalEditorModal({ node, allTags, onSave, onCheckScopeCla
   const { t } = useTranslation(["editor", "status"]);
   const [title, setTitle] = useState(node.title);
   const [status, setStatus] = useState(node.status ?? GOAL_STATUS.ACTIVE);
-  const [blockedReason, setBlockedReason] = useState(node.blockedReason ?? "");
+  const [blockReasons, setBlockReasons] = useState<string[]>(node.blockReasons ?? []);
   const [tagIds, setTagIds] = useState<number[]>(node.tagIds);
   const [timeScope, setTimeScope] = useState<TimeScope | null>(node.timeScope ?? null);
   const [onScopeExit, setOnScopeExit] = useState<OnScopeExit | null>(node.onScopeExit ?? null);
@@ -60,7 +61,7 @@ export default function GoalEditorModal({ node, allTags, onSave, onCheckScopeCla
       await onSave({
         title: title.trim(),
         status,
-        blockedReason,
+        blockReasons: blockReasons.map((r) => r.trim()).filter((r) => r !== ""),
         tagIds,
         timeScope,
         onScopeExit: timeScope !== null ? (onScopeExit ?? "keep") : null,
@@ -104,10 +105,7 @@ export default function GoalEditorModal({ node, allTags, onSave, onCheckScopeCla
           <OnScopeExitField value={onScopeExit} onChange={setOnScopeExit} />
         </div>
       )}
-      <label className={styles.label}>
-        {t("fieldBlockReason")}
-        <textarea className={styles.textarea} value={blockedReason} onChange={(e) => setBlockedReason(e.target.value)} placeholder={t("placeholderBlockReason")} />
-      </label>
+      <BlockReasonsField reasons={blockReasons} onChange={setBlockReasons} />
       {validTags.length > 0 && (
         <fieldset className={styles.tagSection}>
           <legend className={styles.label}>{t("fieldTags")}</legend>

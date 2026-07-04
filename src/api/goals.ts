@@ -8,7 +8,6 @@ export interface Goal {
   parent_type: string;
   parent_id: number;
   status: string;
-  blocked_reason: string | null;
   time_scope: TimeScope | null;
   // Present iff time_scope is (inherited with the window otherwise).
   on_scope_exit: OnScopeExit | null;
@@ -29,7 +28,6 @@ export interface CreateGoalRequest {
 export interface UpdateGoalRequest {
   title?: string;
   status?: string;
-  blocked_reason?: string;
   // Absent = leave unchanged, null = clear, value = set.
   time_scope?: TimeScope | null;
   // Forced null when the scope is cleared; defaulted to "keep" when a scope is set without one.

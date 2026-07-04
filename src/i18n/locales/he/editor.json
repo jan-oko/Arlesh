@@ -33,6 +33,9 @@
   "fieldTitle": "שם",
   "fieldStatus": "סטאטוס",
   "fieldBlockReason": "סיבת חסימה",
+  "fieldBlockReasons": "סיבות חסימה",
+  "addBlockReason": "הוסף סיבה",
+  "removeBlockReason": "הסר סיבה",
   "fieldTags": "תגיות",
   "fieldDependencies": "תלויות",
   "fieldTimeScope": "מסגרת זמן",
@@ -68,7 +71,7 @@
   "scopeDuration": "משך",
   "scopeLength": "אורך",
   "fieldKbDir": "ספריית בסיס ידע",
-  "placeholderBlockReason": "השאר ריק לניקוי",
+  "placeholderBlockReason": "סיבה…",
   "placeholderKbDir": "/path/to/vault",
   "placeholderDepSearch": "חפש משימות או מטרות להוספת תלות…"
 }

@@ -8,7 +8,6 @@ export interface Task {
   parent_type: string;
   parent_id: number;
   status: string;
-  blocked_reason: string | null;
   delegate_to: number | null;
   time_scope: TimeScope | null;
   // Present iff time_scope is (inherited with the window otherwise).
@@ -32,7 +31,6 @@ export interface CreateTaskRequest {
 export interface UpdateTaskRequest {
   title?: string;
   status?: string;
-  blocked_reason?: string;
   delegate_to?: number | null;
   // Absent = leave unchanged, null = clear, value = set.
   time_scope?: TimeScope | null;
@@ -119,6 +117,18 @@ export async function getTask(id: number): Promise<TaskWithBlockers> {
 
 export async function listTaskDependencies(taskId: number): Promise<Dependency[]> {
   return invoke<Dependency[]>("list_task_dependencies", { taskId });
+}
+
+/** A single dependency edge: `task_id` depends on `(dependency_type, dependency_id)`. */
+export interface TaskDependencyEdge {
+  task_id: number;
+  dependency_type: string; // "task" | "goal"
+  dependency_id: number;
+}
+
+/** Every task-dependency edge (for the mindmap bulk load / virtual block-reason derivation). */
+export async function listAllTaskDependencies(): Promise<TaskDependencyEdge[]> {
+  return invoke<TaskDependencyEdge[]>("list_all_task_dependencies");
 }
 
 export async function addTaskDependency(taskId: number, dependency: Dependency): Promise<void> {

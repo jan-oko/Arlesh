@@ -5,6 +5,7 @@ import type { GoalSaveData } from "@/components/GoalEditorModal/GoalEditorModal"
 import type { ProjectSaveData } from "@/components/ProjectEditorModal/ProjectEditorModal";
 import type { InfoSaveData } from "@/components/InfoEditorModal/InfoEditorModal";
 import { updateInfo } from "@/api/infos";
+import { setBlockReasons } from "@/api/block-reasons";
 import type { FlowSaveData } from "@/components/FlowEditorModal/FlowEditorModal";
 import type { FlowItemSaveData } from "@/components/FlowItemEditorModal/FlowItemEditorModal";
 import {
@@ -151,11 +152,11 @@ export function useNodeEditor({ tree, allTasksAndGoals, renameNode, reload }: Op
       await updateTask(dbId, {
         title: data.title,
         status: data.status,
-        blocked_reason: data.blockedReason,
         time_scope: data.timeScope,
         on_scope_exit: data.onScopeExit,
         plan: data.plan,
       });
+      await setBlockReasons("task", dbId, data.blockReasons);
       const tagsAdded = data.tagIds.filter((id) => !node.tagIds.includes(id));
       const tagsRemoved = node.tagIds.filter((id) => !data.tagIds.includes(id));
       for (const tagId of tagsAdded) await addTagToTask(dbId, tagId);
@@ -180,10 +181,10 @@ export function useNodeEditor({ tree, allTasksAndGoals, renameNode, reload }: Op
       await updateGoal(dbId, {
         title: data.title,
         status: data.status,
-        blocked_reason: data.blockedReason,
         time_scope: data.timeScope,
         on_scope_exit: data.onScopeExit,
       });
+      await setBlockReasons("goal", dbId, data.blockReasons);
       const tagsAdded = data.tagIds.filter((id) => !node.tagIds.includes(id));
       const tagsRemoved = node.tagIds.filter((id) => !data.tagIds.includes(id));
       for (const tagId of tagsAdded) await addTagToGoal(dbId, tagId);

@@ -305,3 +305,38 @@
   background-repeat: no-repeat;
   background-position: right var(--space-2) center;
 }
+
+/* Block-reason list (editable rows + add button) */
+.blockReasonList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.blockReasonRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.blockReasonRow .input {
+  flex: 1;
+}
+
+.addBlockReason {
+  align-self: flex-start;
+  background: none;
+  border: 1px dashed var(--node-border);
+  border-radius: var(--node-radius);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+}
+
+.addBlockReason:hover {
+  color: var(--text-primary);
+  border-color: var(--accent);
+}

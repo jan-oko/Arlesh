@@ -23,7 +23,7 @@ function mkDomain(overrides: Partial<Domain> = {}): Domain {
 function mkGoal(overrides: Partial<Goal> = {}): Goal {
   return {
     id: 1, title: "Goal", parent_type: "domain", parent_id: 1,
-    status: "active", blocked_reason: null, time_scope: null, on_scope_exit: null, tag_ids: [], position: 0,
+    status: "active", time_scope: null, on_scope_exit: null, tag_ids: [], position: 0,
     ...overrides,
   };
 }
@@ -31,7 +31,7 @@ function mkGoal(overrides: Partial<Goal> = {}): Goal {
 function mkTask(overrides: Partial<Task> = {}): Task {
   return {
     id: 1, title: "Task", parent_type: "goal", parent_id: 1,
-    status: "todo", blocked_reason: null, delegate_to: null, time_scope: null, on_scope_exit: null, plan: null, tag_ids: [], position: 0,
+    status: "todo", delegate_to: null, time_scope: null, on_scope_exit: null, plan: null, tag_ids: [], position: 0,
     ...overrides,
   };
 }
@@ -163,13 +163,38 @@ describe("buildTree", () => {
     expect(root.children[0]?.children[0]?.title).toBe("My note text");
   });
 
-  it("stores goal status and blocked reason on the node", () => {
+  it("stores goal status and its ordered block reasons on the node", () => {
     const aspect = mkDomain({ id: 1, subtype: "aspect" });
-    const goal = mkGoal({ id: 1, status: "frozen", blocked_reason: "waiting on X", parent_type: "domain", parent_id: 1 });
-    const root = buildTree([aspect], [goal], [], []);
+    const goal = mkGoal({ id: 1, status: "frozen", parent_type: "domain", parent_id: 1 });
+    const root = buildTree([aspect], [goal], [], [], [], [], [], [], [], [
+      { owner_type: "goal", owner_id: 1, reason: "waiting on X", position: 0 },
+      { owner_type: "goal", owner_id: 1, reason: "needs sign-off", position: 1 },
+    ]);
     const goalNode = root.children[0]?.children[0];
     expect(goalNode?.status).toBe("frozen");
-    expect(goalNode?.blockedReason).toBe("waiting on X");
+    expect(goalNode?.blockReasons).toEqual(["waiting on X", "needs sign-off"]);
+  });
+
+  it("derives virtual block reasons from unmet task dependencies", () => {
+    const aspect = mkDomain({ id: 1, subtype: "aspect" });
+    const blocker = mkTask({ id: 2, title: "Dep", status: "in_progress", parent_type: "project", parent_id: 1 });
+    const blocked = mkTask({ id: 3, title: "Waiter", parent_type: "project", parent_id: 1 });
+    const root = buildTree([aspect], [], [blocker, blocked], [], [], [], [], [], [], [], [
+      { task_id: 3, dependency_type: "task", dependency_id: 2 },
+    ]);
+    const node = root.children[0]?.children.find((c) => c.id === "task-3");
+    expect(node?.virtualBlockers).toEqual(["Blocked by task 2 (Dep)"]);
+  });
+
+  it("omits a virtual block reason once the dependency is done", () => {
+    const aspect = mkDomain({ id: 1, subtype: "aspect" });
+    const blocker = mkTask({ id: 2, title: "Dep", status: "done", parent_type: "project", parent_id: 1 });
+    const blocked = mkTask({ id: 3, title: "Waiter", parent_type: "project", parent_id: 1 });
+    const root = buildTree([aspect], [], [blocker, blocked], [], [], [], [], [], [], [], [
+      { task_id: 3, dependency_type: "task", dependency_id: 2 },
+    ]);
+    const node = root.children[0]?.children.find((c) => c.id === "task-3");
+    expect(node?.virtualBlockers).toEqual([]);
   });
 
   it("stores task tag_ids on the node", () => {
@@ -259,6 +284,8 @@ describe("useMindmapData", () => {
       if (cmd === "list_all_flow_tasks") return Promise.resolve([]);
       if (cmd === "list_all_flow_cycles") return Promise.resolve([]);
       if (cmd === "list_all_flow_dependencies") return Promise.resolve([]);
+      if (cmd === "list_all_block_reasons") return Promise.resolve([]);
+      if (cmd === "list_all_task_dependencies") return Promise.resolve([]);
       if (cmd === "derive_scope_lifecycles") return Promise.resolve([]);
       return Promise.resolve(null);
     });
@@ -284,6 +311,8 @@ describe("useMindmapData", () => {
       if (cmd === "list_all_flow_tasks") return Promise.resolve([]);
       if (cmd === "list_all_flow_cycles") return Promise.resolve([]);
       if (cmd === "list_all_flow_dependencies") return Promise.resolve([]);
+      if (cmd === "list_all_block_reasons") return Promise.resolve([]);
+      if (cmd === "list_all_task_dependencies") return Promise.resolve([]);
       if (cmd === "derive_scope_lifecycles") return Promise.resolve([]);
       return Promise.resolve(null);
     });
@@ -320,6 +349,8 @@ describe("useMindmapData — mutations", () => {
       if (cmd === "list_all_flow_tasks") return Promise.resolve([]);
       if (cmd === "list_all_flow_cycles") return Promise.resolve([]);
       if (cmd === "list_all_flow_dependencies") return Promise.resolve([]);
+      if (cmd === "list_all_block_reasons") return Promise.resolve([]);
+      if (cmd === "list_all_task_dependencies") return Promise.resolve([]);
       if (cmd === "derive_scope_lifecycles") return Promise.resolve([]);
       return Promise.resolve(null);
     });
@@ -827,7 +858,7 @@ describe("injectHabitInstances", () => {
   it("adds a virtual, read-only child per iteration under the flow's target", () => {
     const root = buildTree(
       [{ id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0 }],
-      [{ id: 5, title: "Fitness", parent_type: "domain", parent_id: 1, status: "active", blocked_reason: null, time_scope: null, on_scope_exit: null, tag_ids: [], position: 0 }],
+      [{ id: 5, title: "Fitness", parent_type: "domain", parent_id: 1, status: "active", time_scope: null, on_scope_exit: null, tag_ids: [], position: 0 }],
       [], [],
     );
     // The root of iteration 0 (scope 100) is completed; its own status drives the node's glyph.
@@ -933,7 +964,7 @@ describe("injectHabitInstances", () => {
   it("nests a flow item under its parent item's instance for the same iteration", () => {
     const root = buildTree(
       [{ id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0 }],
-      [{ id: 5, title: "Fitness", parent_type: "domain", parent_id: 1, status: "active", blocked_reason: null, time_scope: null, on_scope_exit: null, tag_ids: [], position: 0 }],
+      [{ id: 5, title: "Fitness", parent_type: "domain", parent_id: 1, status: "active", time_scope: null, on_scope_exit: null, tag_ids: [], position: 0 }],
       [], [],
     );
     const routine: FlowGoal = { id: 7, flow_id: 3, title: "Routine", parent_type: "flow", parent_id: 3, position: 0 };

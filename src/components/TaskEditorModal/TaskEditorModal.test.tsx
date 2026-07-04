@@ -29,7 +29,7 @@ function mkNode(overrides: Partial<MindmapNode> = {}): MindmapNode {
     kind: "task",
     title: "Write tests",
     status: "todo",
-    blockedReason: null,
+    blockReasons: [],
     position: 0,
     tagIds: [2],
     children: [],

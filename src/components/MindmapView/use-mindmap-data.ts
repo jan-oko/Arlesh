@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { listDomains, createDomain, updateDomain, deleteDomain } from "@/api/domains";
-import { listTasks, createTask, updateTask, deleteTask } from "@/api/tasks";
+import { listTasks, createTask, updateTask, deleteTask, listAllTaskDependencies } from "@/api/tasks";
+import type { TaskDependencyEdge } from "@/api/tasks";
+import { listAllBlockReasons, setBlockReasons } from "@/api/block-reasons";
+import type { BlockReason } from "@/api/block-reasons";
 import { listGoals, createGoal, updateGoal, deleteGoal } from "@/api/goals";
 import { listInfos, createInfo, updateInfo, deleteInfo } from "@/api/infos";
 import {
@@ -297,8 +300,19 @@ export function buildTree(
   flowTasks: FlowTask[] = [],
   flowCycles: FlowItemCycle[] = [],
   flowDeps: FlowDependency[] = [],
+  blockReasons: BlockReason[] = [],
+  taskDeps: TaskDependencyEdge[] = [],
 ): MindmapNode {
   const nodeMap = new Map<string, MindmapNode>();
+
+  // Explicit block reasons, grouped per owner in stored (position) order.
+  const manualBlockers = new Map<string, string[]>();
+  for (const br of blockReasons) {
+    const key = `${br.owner_type}-${br.owner_id}`;
+    const list = manualBlockers.get(key);
+    if (list === undefined) manualBlockers.set(key, [br.reason]);
+    else list.push(br.reason);
+  }
 
   for (const domain of domains) {
     nodeMap.set(`domain-${domain.id}`, {
@@ -320,7 +334,7 @@ export function buildTree(
       kind: "goal",
       title: goal.title,
       status: goal.status,
-      blockedReason: goal.blocked_reason,
+      blockReasons: manualBlockers.get(`goal-${goal.id}`) ?? [],
       timeScope: goal.time_scope,
       onScopeExit: goal.on_scope_exit,
       position: goal.position,
@@ -335,7 +349,8 @@ export function buildTree(
       kind: "task",
       title: task.title,
       status: task.status,
-      blockedReason: task.blocked_reason,
+      blockReasons: manualBlockers.get(`task-${task.id}`) ?? [],
+      virtualBlockers: [],
       timeScope: task.time_scope,
       onScopeExit: task.on_scope_exit,
       plan: task.plan,
@@ -343,6 +358,26 @@ export function buildTree(
       tagIds: task.tag_ids,
       children: [],
     });
+  }
+
+  // Virtual block reasons: a task is also blocked by any dependency on a non-done task / non-achieved
+  // goal. Derived here from the bulk dependency edges so the canvas shows it without per-task calls.
+  const taskById = new Map(tasks.map((t) => [t.id, t]));
+  const goalById = new Map(goals.map((g) => [g.id, g]));
+  for (const dep of taskDeps) {
+    const node = nodeMap.get(`task-${dep.task_id}`);
+    if (node === undefined) continue;
+    if (dep.dependency_type === "task") {
+      const target = taskById.get(dep.dependency_id);
+      if (target !== undefined && target.status !== "done") {
+        node.virtualBlockers?.push(`Blocked by task ${dep.dependency_id} (${target.title})`);
+      }
+    } else {
+      const target = goalById.get(dep.dependency_id);
+      if (target !== undefined && target.status !== "achieved") {
+        node.virtualBlockers?.push(`Blocked by goal ${dep.dependency_id} (${target.title})`);
+      }
+    }
   }
 
   for (const info of infos) {
@@ -523,7 +558,7 @@ export function useMindmapData(): MindmapData {
     setIsLoading(true);
     setError(null);
     try {
-      const [domains, goals, tasks, infos, flows, flowGoals, flowTasks, flowCycles, flowDeps, lifecycles] = await Promise.all([
+      const [domains, goals, tasks, infos, flows, flowGoals, flowTasks, flowCycles, flowDeps, blockReasons, taskDeps, lifecycles] = await Promise.all([
         listDomains(),
         listGoals(),
         listTasks(),
@@ -533,9 +568,11 @@ export function useMindmapData(): MindmapData {
         listAllFlowTasks(),
         listAllFlowCycles(),
         listAllFlowDependencies(),
+        listAllBlockReasons(),
+        listAllTaskDependencies(),
         deriveScopeLifecycles(localNowIso()),
       ]);
-      const built = buildTree(domains, goals, tasks, infos, flows, flowGoals, flowTasks, flowCycles, flowDeps);
+      const built = buildTree(domains, goals, tasks, infos, flows, flowGoals, flowTasks, flowCycles, flowDeps, blockReasons, taskDeps);
       applyLifecycles(built, lifecycleMap(lifecycles));
       // Derive each Habit's iterations (non-habits reject; treat as empty) and inject them as
       // virtual, read-only child nodes under their targets.
@@ -557,7 +594,7 @@ export function useMindmapData(): MindmapData {
   const silentLoad = useCallback(async () => {
     setError(null);
     try {
-      const [domains, goals, tasks, infos, flows, flowGoals, flowTasks, flowCycles, flowDeps, lifecycles] = await Promise.all([
+      const [domains, goals, tasks, infos, flows, flowGoals, flowTasks, flowCycles, flowDeps, blockReasons, taskDeps, lifecycles] = await Promise.all([
         listDomains(),
         listGoals(),
         listTasks(),
@@ -567,9 +604,11 @@ export function useMindmapData(): MindmapData {
         listAllFlowTasks(),
         listAllFlowCycles(),
         listAllFlowDependencies(),
+        listAllBlockReasons(),
+        listAllTaskDependencies(),
         deriveScopeLifecycles(localNowIso()),
       ]);
-      const built = buildTree(domains, goals, tasks, infos, flows, flowGoals, flowTasks, flowCycles, flowDeps);
+      const built = buildTree(domains, goals, tasks, infos, flows, flowGoals, flowTasks, flowCycles, flowDeps, blockReasons, taskDeps);
       applyLifecycles(built, lifecycleMap(lifecycles));
       // Derive each Habit's iterations (non-habits reject; treat as empty) and inject them as
       // virtual, read-only child nodes under their targets.
@@ -831,11 +870,11 @@ export function useMindmapData(): MindmapData {
         const parentType = kindToParentType(parent!.kind);
         const mappedStatus = goalStatusToTaskStatus(node?.status ?? "active");
         const newTask = await createTask({ title, parent_type: parentType, parent_id: parentDbId, status: mappedStatus });
-        const blockedReason = node?.blockedReason;
-        await updateTask(newTask.id, {
-          ...(oldPosition !== undefined ? { position: oldPosition } : {}),
-          ...(blockedReason != null && blockedReason !== "" ? { blocked_reason: blockedReason } : {}),
-        });
+        if (oldPosition !== undefined) await updateTask(newTask.id, { position: oldPosition });
+        // Carry the explicit block reasons across to the new owner (virtual dep-blockers regenerate).
+        if (node?.blockReasons !== undefined && node.blockReasons.length > 0) {
+          await setBlockReasons("task", newTask.id, node.blockReasons);
+        }
         for (const child of children) {
           const childDbId = dbIdFromNodeId(child.id);
           if (child.kind === "task") {
@@ -861,11 +900,10 @@ export function useMindmapData(): MindmapData {
         const parentType = kindToParentType(parent!.kind);
         const mappedStatus = taskStatusToGoalStatus(node?.status ?? "todo");
         const newGoal = await createGoal({ title, parent_type: parentType, parent_id: parentDbId, status: mappedStatus });
-        const blockedReason = node?.blockedReason;
-        await updateGoal(newGoal.id, {
-          ...(oldPosition !== undefined ? { position: oldPosition } : {}),
-          ...(blockedReason != null && blockedReason !== "" ? { blocked_reason: blockedReason } : {}),
-        });
+        if (oldPosition !== undefined) await updateGoal(newGoal.id, { position: oldPosition });
+        if (node?.blockReasons !== undefined && node.blockReasons.length > 0) {
+          await setBlockReasons("goal", newGoal.id, node.blockReasons);
+        }
         for (const child of children) {
           const childDbId = dbIdFromNodeId(child.id);
           if (child.kind === "task") {

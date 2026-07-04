@@ -33,6 +33,9 @@
   "fieldTitle": "Title",
   "fieldStatus": "Status",
   "fieldBlockReason": "Block reason",
+  "fieldBlockReasons": "Block reasons",
+  "addBlockReason": "Add reason",
+  "removeBlockReason": "Remove reason",
   "fieldTags": "Tags",
   "fieldDependencies": "Dependencies",
   "fieldTimeScope": "Time scope",
@@ -68,7 +71,7 @@
   "scopeDuration": "Duration",
   "scopeLength": "Length",
   "fieldKbDir": "Knowledge base directory",
-  "placeholderBlockReason": "Leave empty to clear",
+  "placeholderBlockReason": "Reason…",
   "placeholderKbDir": "/path/to/vault",
   "placeholderDepSearch": "Search tasks or goals to add dependency…"
 }

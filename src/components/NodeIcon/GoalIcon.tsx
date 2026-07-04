@@ -1,6 +1,6 @@
 import { GOAL_STATUS } from "@/utils/status-mapping";
 
-interface Props { cx: number; cy: number; r: number; color: string; opacity: number; status?: string | undefined }
+interface Props { cx: number; cy: number; r: number; color: string; opacity: number; status?: string | undefined; isBlocked?: boolean }
 
 // MDL2 "Bullseye" (Micon, MIT). The glyph's two concentric rings are notched at the top-right where
 // an arrow enters; we reuse those exact rings for both states so they stay pixel-identical. Open goal:
@@ -26,7 +26,18 @@ const FULL_TARGET =
  * a target struck by an arrow — once **achieved**. Drawn in the shared node coordinate system by
  * translate+scaling the 2048 box so it fills the node's icon diameter (the arrow reaches the corner).
  */
-export default function GoalIcon({ cx, cy, r, color, opacity, status }: Props) {
+export default function GoalIcon({ cx, cy, r, color, opacity, status, isBlocked = false }: Props) {
+  if (isBlocked) {
+    // Same red stop-sign as a blocked task, so a blocked goal reads the same at a glance.
+    const f = 0.42;
+    return (
+      <polygon
+        points={`${cx + r * f},${cy - r} ${cx + r},${cy - r * f} ${cx + r},${cy + r * f} ${cx + r * f},${cy + r} ${cx - r * f},${cy + r} ${cx - r},${cy + r * f} ${cx - r},${cy - r * f} ${cx - r * f},${cy - r}`}
+        fill="#dc2626"
+        opacity={opacity}
+      />
+    );
+  }
   const achieved = status === GOAL_STATUS.ACHIEVED;
   const scale = r / 1024; // the 2048 box maps to the node's icon diameter (2r)
   return (

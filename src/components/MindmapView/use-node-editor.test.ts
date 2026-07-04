@@ -29,6 +29,9 @@ vi.mock("@/api/flows", () => ({
   setFlowItemCycles: vi.fn(), addFlowDependency: vi.fn(), removeFlowDependency: vi.fn(),
   flowOrigins: vi.fn().mockResolvedValue([]),
 }));
+vi.mock("@/api/block-reasons", () => ({
+  setBlockReasons: vi.fn().mockResolvedValue(undefined),
+}));
 
 const taskNode: MindmapNode = {
   id: "task-5", kind: "task", title: "Task", tagIds: [], position: 0, children: [],
@@ -47,7 +50,7 @@ function setup() {
 }
 
 const saveData = {
-  title: "Task", status: "todo", blockedReason: "", tagIds: [],
+  title: "Task", status: "todo", blockReasons: [], tagIds: [],
   addedDeps: [], removedDeps: [], timeScope: { start_id: 1, end_id: 1 },
   onScopeExit: null, plan: null,
 };

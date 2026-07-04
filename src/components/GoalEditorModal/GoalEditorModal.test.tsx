@@ -27,7 +27,7 @@ function mkNode(overrides: Partial<MindmapNode> = {}): MindmapNode {
     kind: "goal",
     title: "Ship it",
     status: "active",
-    blockedReason: "",
+    blockReasons: [],
     position: 0,
     tagIds: [2],
     children: [],
@@ -74,7 +74,7 @@ describe("GoalEditorModal — save", () => {
       expect(defaultProps.onSave).toHaveBeenCalledWith({
         title: "Ship it",
         status: "active",
-        blockedReason: "",
+        blockReasons: [],
         tagIds: [2],
         timeScope: null,
         onScopeExit: null,

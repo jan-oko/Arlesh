@@ -16,6 +16,12 @@ export function isNodeKind(value: string): value is NodeKind {
   return ALL_NODE_KINDS.some((kind) => kind === value);
 }
 
+/** A task/goal is blocked when it has any block reason — explicit or virtual (from an unmet dependency). */
+export function isNodeBlocked(node: MindmapNode): boolean {
+  if (node.kind !== "task" && node.kind !== "goal") return false;
+  return (node.blockReasons?.length ?? 0) + (node.virtualBlockers?.length ?? 0) > 0;
+}
+
 /** The four subtypes stored in the single `domains` table — all keyed `domain-<id>` in the tree. */
 const DOMAIN_TABLE_KINDS: ReadonlySet<string> = new Set(["aspect", "project", "domain", "tag"]);
 
@@ -79,7 +85,10 @@ export interface MindmapNode {
   kind: NodeKind;
   title: string;
   status?: string;
-  blockedReason?: string | null;
+  /** Explicit block reasons (ordered), editable in the task/goal editor. */
+  blockReasons?: string[];
+  /** Derived, read-only "Blocked by …" reasons from this task's unmet dependencies. */
+  virtualBlockers?: string[];
   knowledgeBaseDirectory?: string | null;
   /** Optional multi-line details on an `info` node (e.g. a traceback). */
   infoDetails?: string | null;

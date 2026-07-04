@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import BlockReasonsField from "@/components/BlockReasonsField/BlockReasonsField";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { Domain } from "@/api/domains";
 import type { Dependency } from "@/api/tasks";
@@ -16,7 +17,7 @@ import { TASK_STATUS } from "@/utils/status-mapping";
 export interface TaskSaveData {
   title: string;
   status: string;
-  blockedReason: string;
+  blockReasons: string[];
   tagIds: number[];
   addedDeps: Dependency[];
   removedDeps: Dependency[];
@@ -43,7 +44,7 @@ export default function TaskEditorModal({ node, allTags, availableForDep, onSave
   const { t } = useTranslation(["editor", "status", "nodeKinds"]);
   const [title, setTitle] = useState(node.title);
   const [status, setStatus] = useState(node.status ?? TASK_STATUS.TODO);
-  const [blockedReason, setBlockedReason] = useState(node.blockedReason ?? "");
+  const [blockReasons, setBlockReasons] = useState<string[]>(node.blockReasons ?? []);
   const [tagIds, setTagIds] = useState<number[]>(node.tagIds);
   const [timeScope, setTimeScope] = useState<TimeScope | null>(node.timeScope ?? null);
   const [onScopeExit, setOnScopeExit] = useState<OnScopeExit | null>(node.onScopeExit ?? null);
@@ -91,7 +92,8 @@ export default function TaskEditorModal({ node, allTags, availableForDep, onSave
         return;
       }
       await onSave({
-        title: title.trim(), status, blockedReason, tagIds, addedDeps, removedDeps, timeScope,
+        title: title.trim(), status, blockReasons: blockReasons.map((r) => r.trim()).filter((r) => r !== ""),
+        tagIds, addedDeps, removedDeps, timeScope,
         onScopeExit: timeScope !== null ? (onScopeExit ?? "keep") : null,
         plan,
       });
@@ -152,10 +154,7 @@ export default function TaskEditorModal({ node, allTags, availableForDep, onSave
         {t("fieldPlan")}
         <PlanField value={plan} timeScope={timeScope} onChange={setPlan} />
       </div>
-      <label className={styles.label}>
-        {t("fieldBlockReason")}
-        <textarea className={styles.textarea} value={blockedReason} onChange={(e) => setBlockedReason(e.target.value)} placeholder={t("placeholderBlockReason")} />
-      </label>
+      <BlockReasonsField reasons={blockReasons} onChange={setBlockReasons} />
       {validTags.length > 0 && (
         <fieldset className={styles.tagSection}>
           <legend className={styles.label}>{t("fieldTags")}</legend>

@@ -1,4 +1,5 @@
 import type { MindmapNode } from "@/utils/tree-layout";
+import { isNodeBlocked } from "@/utils/tree-layout";
 import type { ScopeLifecycle } from "@/api/scope-lifecycle";
 
 export interface NodeAppearance {
@@ -16,11 +17,7 @@ export interface NodeAppearance {
 }
 
 export function computeNodeAppearance(node: MindmapNode, depth: number): NodeAppearance {
-  const isBlocked =
-    node.kind === "task" &&
-    node.blockedReason !== undefined &&
-    node.blockedReason !== null &&
-    node.blockedReason !== "";
+  const isBlocked = isNodeBlocked(node);
 
   const iconColor =
     node.kind === "aspect" ? "rgba(255,255,255,0.9)" : (node.color ?? "var(--text-secondary)");

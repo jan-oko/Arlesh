@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { MindmapNode } from "@/utils/tree-layout";
+import { isNodeBlocked } from "@/utils/tree-layout";
 
 type ArrowKey = "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown";
 
@@ -129,10 +130,9 @@ export function useKeyboardMindmap(options: Options): void {
                 onEnterSubtree(selectedNodeId);
               } else {
                 lastEnterMs.current = now;
-                const isBlocked = node !== undefined && node.kind === "task" &&
-                  node.blockedReason !== undefined && node.blockedReason !== null && node.blockedReason !== "";
-                // Enter cycles a task's status, and toggles a goal's achieved state (both via onCycleStatus).
-                if (node !== undefined && (node.kind === "goal" || (node.kind === "task" && !isBlocked))) {
+                // Enter cycles a task's status and toggles a goal's achieved state (both via
+                // onCycleStatus) — but not while the node is blocked.
+                if (node !== undefined && (node.kind === "goal" || node.kind === "task") && !isNodeBlocked(node)) {
                   event.preventDefault();
                   onCycleStatus(selectedNodeId);
                 }

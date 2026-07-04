@@ -144,11 +144,11 @@ export function useNodeTypeManager({ tree, retypeNode, selectNode, showToast }: 
         showToast({ nodeId, message: t("warnings:statusToast", { from: fromStatusLabel, to: toStatusLabel }) });
 
         const hasGoalChildren = node.kind === "goal" && node.children.some((c) => c.kind === "goal");
-        const hasBlockedReason = node.blockedReason != null && node.blockedReason !== "";
-        if (hasGoalChildren || hasBlockedReason) {
+        const blockReasons = node.blockReasons ?? [];
+        if (hasGoalChildren || blockReasons.length > 0) {
           const consequences: string[] = [];
-          if (hasBlockedReason) {
-            const reason = node.blockedReason ?? "";
+          if (blockReasons.length > 0) {
+            const reason = blockReasons.join("; ");
             const preview = reason.length > 40 ? `${reason.slice(0, 40)}…` : reason;
             consequences.push(t("warnings:blockReasonCarryOver", { preview }));
           }
