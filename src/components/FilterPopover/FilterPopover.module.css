@@ -69,21 +69,31 @@
   cursor: pointer;
 }
 
-.tagRow {
+/* Tag-filter chips: [mode glyph] name [×], wrapping, tinted by the tag's aspect colour. */
+.tagPills {
   display: flex;
-  align-items: center;
+  flex-wrap: wrap;
   gap: var(--space-2);
 }
 
-.modeBtn {
-  flex-shrink: 0;
-  width: 24px;
-  height: 24px;
+.tagPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px var(--space-1) 1px 2px;
+  border: 1px solid var(--node-border);
+  border-radius: 999px;
+  font-size: var(--text-sm);
+}
+
+.modeGlyph {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 18px;
+  height: 18px;
   border-radius: 999px;
-  border: 1px solid var(--node-border);
+  border: none;
   background: transparent;
   color: var(--text-secondary);
   font-size: var(--text-md);
@@ -91,20 +101,19 @@
   cursor: pointer;
 }
 
-.mode_any { color: var(--accent); border-color: var(--accent); }
-.mode_all { color: var(--accent); border-color: var(--accent); }
-.mode_exclude { color: #dc2626; border-color: #dc2626; }
+.mode_any,
+.mode_all { color: var(--accent); }
+.mode_exclude { color: #dc2626; }
 
-.tagName {
-  flex: 1;
+.tagPillName {
+  max-width: 120px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text-primary);
-  font-size: var(--text-sm);
 }
 
-.removeBtn {
+.tagPillX {
   background: none;
   border: none;
   color: var(--text-secondary);
@@ -113,7 +122,7 @@
   line-height: 1;
 }
 
-.removeBtn:hover {
+.tagPillX:hover {
   color: var(--text-primary);
 }
 

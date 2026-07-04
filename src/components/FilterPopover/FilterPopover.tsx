@@ -12,8 +12,13 @@ const NEXT_TAG_MODE: Record<TagFilterMode, TagFilterMode> = { any: "all", all: "
 /** Set-theory glyphs: Any = union, All = intersection, Exclude = empty set. */
 const MODE_SYMBOL: Record<TagFilterMode, string> = { any: "∪", all: "∩", exclude: "∅" };
 
+/** Faded background from a #rrggbb aspect colour (ignored for other formats). */
+function fade(color: string | null): string | undefined {
+  return color !== null && /^#[0-9a-fA-F]{6}$/.test(color) ? `${color}22` : undefined;
+}
+
 /** Searchable, portalled tag picker that adds a tag filter on select (so it isn't clipped by the popover). */
-function TagAdder({ available, onAdd }: { available: Domain[]; onAdd: (id: number) => void }) {
+function TagAdder({ available, colorOf, onAdd }: { available: Domain[]; colorOf: (id: number) => string | null; onAdd: (id: number) => void }) {
   const { t } = useTranslation("filter");
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -54,12 +59,15 @@ function TagAdder({ available, onAdd }: { available: Domain[]; onAdd: (id: numbe
       />
       {open && results.length > 0 && pos !== null && createPortal(
         <div className={styles.menu} style={{ position: "fixed", top: pos.top, left: pos.left, width: pos.width }}>
-          {results.map((tag) => (
-            <div key={tag.id} className={styles.menuItem} onMouseDown={(e) => { e.preventDefault(); onAdd(tag.id); setQuery(""); }}>
-              {tag.color !== null && <span className={styles.dot} style={{ background: tag.color }} />}
-              {tag.title}
-            </div>
-          ))}
+          {results.map((tag) => {
+            const color = colorOf(tag.id);
+            return (
+              <div key={tag.id} className={styles.menuItem} onMouseDown={(e) => { e.preventDefault(); onAdd(tag.id); setQuery(""); }}>
+                {color !== null && <span className={styles.dot} style={{ background: color }} />}
+                {tag.title}
+              </div>
+            );
+          })}
         </div>,
         document.body,
       )}
@@ -80,10 +88,23 @@ export default function FilterPopover() {
   const toggleShowFlow = useFilterStore((s) => s.toggleShowFlow);
   const reset = useFilterStore((s) => s.reset);
 
-  const [tags, setTags] = useState<Domain[]>([]);
-  useEffect(() => { void listDomains(DOMAIN_SUBTYPE.TAG).then(setTags); }, []);
+  // Load all domains so each tag's *aspect* colour can be resolved by walking up to the nearest coloured ancestor.
+  const [domains, setDomains] = useState<Domain[]>([]);
+  useEffect(() => { void listDomains().then(setDomains); }, []);
+  const byId = useMemo(() => new Map(domains.map((d) => [d.id, d])), [domains]);
+  const tags = useMemo(() => domains.filter((d) => d.subtype === DOMAIN_SUBTYPE.TAG), [domains]);
 
   const tagName = (id: number) => tags.find((tag) => tag.id === id)?.title ?? `#${id}`;
+  const colorOf = (id: number): string | null => {
+    const seen = new Set<number>();
+    let cur = byId.get(id);
+    while (cur !== undefined && !seen.has(cur.id)) {
+      if (cur.color !== null) return cur.color;
+      seen.add(cur.id);
+      cur = cur.parent_id !== null ? byId.get(cur.parent_id) : undefined;
+    }
+    return null;
+  };
   const selected = useMemo(() => new Set(filter.tagFilters.map((tf) => tf.tagId)), [filter.tagFilters]);
   const available = tags.filter((tag) => tag.title.trim() !== "" && !selected.has(tag.id));
   const showFlowsSub = filter.statusMode === "plan" || filter.statusMode === "start";
@@ -114,22 +135,29 @@ export default function FilterPopover() {
 
       <section className={styles.section}>
         <div className={styles.sectionLabel}>{t("tagsLabel")}</div>
-        {filter.tagFilters.map((tf) => (
-          <div key={tf.tagId} className={styles.tagRow}>
-            <button
-              type="button"
-              className={`${styles.modeBtn} ${styles[`mode_${tf.mode}`]}`}
-              title={t(`tagMode.${tf.mode}`)}
-              aria-label={t(`tagMode.${tf.mode}`)}
-              onClick={() => setTagFilterMode(tf.tagId, NEXT_TAG_MODE[tf.mode])}
-            >
-              {MODE_SYMBOL[tf.mode]}
-            </button>
-            <span className={styles.tagName}>{tagName(tf.tagId)}</span>
-            <button type="button" className={styles.removeBtn} aria-label={t("removeTagFilter")} onClick={() => removeTagFilter(tf.tagId)}>×</button>
+        {filter.tagFilters.length > 0 && (
+          <div className={styles.tagPills}>
+            {filter.tagFilters.map((tf) => {
+              const color = colorOf(tf.tagId);
+              return (
+                <span key={tf.tagId} className={styles.tagPill} style={{ borderColor: color ?? undefined, background: fade(color) }}>
+                  <button
+                    type="button"
+                    className={`${styles.modeGlyph} ${styles[`mode_${tf.mode}`]}`}
+                    title={t(`tagMode.${tf.mode}`)}
+                    aria-label={t(`tagMode.${tf.mode}`)}
+                    onClick={() => setTagFilterMode(tf.tagId, NEXT_TAG_MODE[tf.mode])}
+                  >
+                    {MODE_SYMBOL[tf.mode]}
+                  </button>
+                  <span className={styles.tagPillName}>{tagName(tf.tagId)}</span>
+                  <button type="button" className={styles.tagPillX} aria-label={t("removeTagFilter")} onClick={() => removeTagFilter(tf.tagId)}>×</button>
+                </span>
+              );
+            })}
           </div>
-        ))}
-        {available.length > 0 && <TagAdder available={available} onAdd={addTagFilter} />}
+        )}
+        {available.length > 0 && <TagAdder available={available} colorOf={colorOf} onAdd={addTagFilter} />}
       </section>
 
       <section className={styles.section}>
