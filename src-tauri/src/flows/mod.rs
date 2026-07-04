@@ -216,8 +216,9 @@ impl<'a> FlowRepository<'a> {
             "INSERT INTO flows
                 (title, instance_type, parent_type, parent_id, target_type, target_id,
                  flow_duration_n, flow_duration_kind,
-                 flow_window_part, flow_window_time_start, flow_window_time_end, position)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                 flow_window_part, flow_window_time_start, flow_window_time_end,
+                 root_plan_kind, root_plan_start, root_plan_end, position)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&request.title)
         .bind(instance_type)
@@ -230,6 +231,9 @@ impl<'a> FlowRepository<'a> {
         .bind(&request.flow_window_part)
         .bind(&request.flow_window_time_start)
         .bind(&request.flow_window_time_end)
+        .bind(&request.root_plan_kind)
+        .bind(request.root_plan_start)
+        .bind(request.root_plan_end)
         .bind(now_position())
         .execute(self.pool)
         .await?
@@ -276,13 +280,17 @@ impl<'a> FlowRepository<'a> {
             request.flow_window_time_start.unwrap_or(flow.flow_window_time_start);
         let flow_window_time_end =
             request.flow_window_time_end.unwrap_or(flow.flow_window_time_end);
+        let root_plan_kind = request.root_plan_kind.unwrap_or(flow.root_plan_kind);
+        let root_plan_start = request.root_plan_start.unwrap_or(flow.root_plan_start);
+        let root_plan_end = request.root_plan_end.unwrap_or(flow.root_plan_end);
         let parent_type = request.parent_type.unwrap_or(flow.parent_type);
         let parent_id = request.parent_id.unwrap_or(flow.parent_id);
         let position = request.position.unwrap_or(flow.position);
         sqlx::query(
             "UPDATE flows SET title=?, instance_type=?, parent_type=?, parent_id=?,
                 target_type=?, target_id=?, flow_duration_n=?, flow_duration_kind=?,
-                flow_window_part=?, flow_window_time_start=?, flow_window_time_end=?, position=?
+                flow_window_part=?, flow_window_time_start=?, flow_window_time_end=?,
+                root_plan_kind=?, root_plan_start=?, root_plan_end=?, position=?
              WHERE id=?",
         )
         .bind(&title)
@@ -296,6 +304,9 @@ impl<'a> FlowRepository<'a> {
         .bind(&flow_window_part)
         .bind(&flow_window_time_start)
         .bind(&flow_window_time_end)
+        .bind(&root_plan_kind)
+        .bind(root_plan_start)
+        .bind(root_plan_end)
         .bind(position)
         .bind(id.0)
         .execute(self.pool)
@@ -1016,8 +1027,9 @@ impl<'a> FlowRepository<'a> {
             "INSERT INTO flows
                 (title, instance_type, parent_type, parent_id, target_type, target_id,
                  flow_duration_n, flow_duration_kind,
-                 flow_window_part, flow_window_time_start, flow_window_time_end, position)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                 flow_window_part, flow_window_time_start, flow_window_time_end,
+                 root_plan_kind, root_plan_start, root_plan_end, position)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&flow.title)
         .bind(&flow.instance_type)
@@ -1030,6 +1042,9 @@ impl<'a> FlowRepository<'a> {
         .bind(&flow.flow_window_part)
         .bind(&flow.flow_window_time_start)
         .bind(&flow.flow_window_time_end)
+        .bind(&flow.root_plan_kind)
+        .bind(flow.root_plan_start)
+        .bind(flow.root_plan_end)
         .bind(now_position())
         .execute(self.pool)
         .await?
@@ -1578,6 +1593,21 @@ impl<'a> FlowRepository<'a> {
                 (None, None)
             };
 
+        // Resolve the root's relative Cycle Plan (task instance type only) against the window start.
+        let root_plan: Option<TimeScope> = match (
+            flow.root_plan_kind.as_deref(),
+            flow.root_plan_start,
+            flow.root_plan_end,
+            window_start,
+        ) {
+            (Some(pk), Some(ps), Some(pe), Some(base)) => {
+                let start = self.offset_scope(&scopes, base, ps, pk).await?;
+                let end = self.offset_scope(&scopes, base, pe, pk).await?;
+                Some(TimeScope { start_id: start.id, end_id: end.id, duration: None })
+            }
+            _ => None,
+        };
+
         // Materialise the root of the flow's Instance Type under the (kind-mapped) target.
         let root_parent_type = target_parent_type(&request.target_type);
         let (root_type, root_id) = if flow.instance_type == "goal" {
@@ -1601,7 +1631,7 @@ impl<'a> FlowRepository<'a> {
                     status: None,
                     time_scope: window.clone(),
                     on_scope_exit: None,
-                    plan: None,
+                    plan: root_plan,
                 })
                 .await?;
             ("task".to_string(), t.id)

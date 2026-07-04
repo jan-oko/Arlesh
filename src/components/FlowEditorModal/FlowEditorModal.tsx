@@ -9,6 +9,7 @@ import EditorModal from "@/components/EditorModal/EditorModal";
 import RecurrenceField from "./RecurrenceField";
 import { defaultRecurrence, type RecurrenceUi } from "./recurrence-ui";
 import { useValidFlowTargets } from "@/hooks/use-valid-flow-targets";
+import RootPlanField, { type RootPlanValue } from "./RootPlanField";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 
 /** Flow Window kinds: coarse Spans (a Duration length) plus sub-day Phases (part/exact). */
@@ -58,6 +59,10 @@ export interface FlowSaveData {
   windowPart: string | null;
   windowTimeStart: string | null;
   windowTimeEnd: string | null;
+  /** Root Cycle Plan (task instance type only); all null when unplanned or a goal instance. */
+  rootPlanKind: string | null;
+  rootPlanStart: number | null;
+  rootPlanEnd: number | null;
   /** Absent = leave recurrence untouched; present (object or null) = set-or-clear it. */
   recurrence?: RecurrenceSave | null;
   /**
@@ -70,6 +75,13 @@ export interface FlowSaveData {
 
 function toFlowScopeKind(value: string): FlowScopeKind {
   return FLOW_SCOPE_KINDS.find((kind) => kind === value) ?? "week";
+}
+
+/** Flattens the root Cycle Plan into the `FlowSaveData` fields (all null when unplanned). */
+function planFields(plan: RootPlanValue | null): Pick<FlowSaveData, "rootPlanKind" | "rootPlanStart" | "rootPlanEnd"> {
+  return plan === null
+    ? { rootPlanKind: null, rootPlanStart: null, rootPlanEnd: null }
+    : { rootPlanKind: plan.kind, rootPlanStart: plan.start, rootPlanEnd: plan.end };
 }
 
 /** Local wall-clock today as `YYYY-MM-DD`, the default Recurrence start. */
@@ -114,6 +126,11 @@ export default function FlowEditorModal({ node, availableTargets, heading, onSav
   const [windowPart, setWindowPart] = useState<string>(node.flow?.windowPart ?? "evening");
   const [timeStart, setTimeStart] = useState<string>(node.flow?.windowTimeStart ?? "10:00");
   const [timeEnd, setTimeEnd] = useState<string>(node.flow?.windowTimeEnd ?? "12:00");
+  const [rootPlan, setRootPlan] = useState<RootPlanValue | null>(
+    node.flow?.rootPlanKind != null && node.flow.rootPlanStart != null && node.flow.rootPlanEnd != null
+      ? { kind: node.flow.rootPlanKind, start: node.flow.rootPlanStart, end: node.flow.rootPlanEnd }
+      : null,
+  );
   const [target, setTarget] = useState<TargetSelection | null>(targetFromNode(node, availableTargets));
   const [targetSearch, setTargetSearch] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -228,6 +245,8 @@ export default function FlowEditorModal({ node, availableTargets, heading, onSav
         windowPart: scoped && durationKind === "part" ? windowPart : null,
         windowTimeStart: scoped && durationKind === "exact" ? timeStart : null,
         windowTimeEnd: scoped && durationKind === "exact" ? timeEnd : null,
+        // The root Plan applies only to a task-instance flow with a Span window.
+        ...planFields(instanceType === "task" && scoped && !phase ? rootPlan : null),
         ...(isEdit && scoped ? { recurrence: recurrenceSave } : {}),
         ...(reconcile !== undefined ? { reconcile } : {}),
       });
@@ -353,6 +372,12 @@ export default function FlowEditorModal({ node, availableTargets, heading, onSav
           <span className={styles.depKind}>{t("scopes:unscoped")}</span>
         )}
       </div>
+      {instanceType === "task" && scoped && !isPhaseKind(durationKind) && (
+        <div className={styles.label}>
+          {t("fieldPlan")}
+          <RootPlanField flowScopeN={durationN} flowScopeKind={durationKind} value={rootPlan} onChange={setRootPlan} />
+        </div>
+      )}
       {scoped && isEdit && (
         <div className={styles.label}>
           {t("fieldRecurrence")}

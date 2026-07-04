@@ -358,6 +358,40 @@ async fn starting_a_flow_materialises_a_subtree_with_fan_in_deps() {
 }
 
 #[tokio::test]
+async fn starting_a_task_flow_resolves_its_root_cycle_plan() {
+    let pool = helpers::test_pool().await;
+    let repo = FlowRepository::new(&pool);
+    // Task instance, 2-week window, root planned into days 2–3 of the window.
+    let flow = repo
+        .create(CreateFlowRequest {
+            root_plan_kind: Some("day".into()),
+            root_plan_start: Some(2),
+            root_plan_end: Some(3),
+            ..create_req("Feature")
+        })
+        .await
+        .unwrap();
+
+    let anchor = chrono::NaiveDate::from_ymd_opt(2026, 1, 5).unwrap();
+    let result = repo
+        .start(FlowId(flow.id), StartFlowRequest { title: "Run".into(), target_type: "aspect".into(), target_id: 1, anchor_date: anchor })
+        .await
+        .unwrap();
+
+    // The root task's Plan resolves to days 2–3 of the window. The 2-week window starts at its week
+    // scope (Sunday 2026-01-04), so day 2 = 2026-01-05 and day 3 = 2026-01-06.
+    let (plan_start, plan_end): (Option<i64>, Option<i64>) =
+        sqlx::query_as("SELECT plan_start_id, plan_end_id FROM tasks WHERE id = ?")
+            .bind(result.root_id).fetch_one(&pool).await.unwrap();
+    let start_date: String = sqlx::query_scalar("SELECT start_date FROM scopes WHERE id = ?")
+        .bind(plan_start.unwrap()).fetch_one(&pool).await.unwrap();
+    let end_date: String = sqlx::query_scalar("SELECT start_date FROM scopes WHERE id = ?")
+        .bind(plan_end.unwrap()).fetch_one(&pool).await.unwrap();
+    assert_eq!(start_date, "2026-01-05");
+    assert_eq!(end_date, "2026-01-06");
+}
+
+#[tokio::test]
 async fn starting_an_unscoped_flow_materialises_one_item_each() {
     let pool = helpers::test_pool().await;
     let repo = FlowRepository::new(&pool);

@@ -34,6 +34,10 @@ export interface FlowData {
   windowTimeEnd: string | null;
   /** Whether this flow is a Habit (has a Recurrence) — drives the cyclical-arrows icon. */
   isHabit: boolean;
+  /** Relative Cycle Plan for the root (task instance type only); all set together or all null. */
+  rootPlanKind: string | null;
+  rootPlanStart: number | null;
+  rootPlanEnd: number | null;
 }
 
 /** A relative (Cycle Scope, Cycle Plan) pair on a flow item. */

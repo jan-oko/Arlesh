@@ -206,6 +206,9 @@ export function useNodeEditor({ tree, allTasksAndGoals, renameNode, reload }: Op
         flow_window_part: data.windowPart,
         flow_window_time_start: data.windowTimeStart,
         flow_window_time_end: data.windowTimeEnd,
+        root_plan_kind: data.rootPlanKind,
+        root_plan_start: data.rootPlanStart,
+        root_plan_end: data.rootPlanEnd,
       };
       // Persist the Recurrence for `targetId` after its flow row, so gap validation sees the new kind.
       const persistRecurrence = async (targetId: number) => {

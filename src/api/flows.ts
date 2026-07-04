@@ -19,6 +19,11 @@ export interface Flow {
   // Phase-"exact" time-of-day range "HH:MM"; set iff kind is "exact".
   flow_window_time_start: string | null;
   flow_window_time_end: string | null;
+  // Relative Cycle Plan for the root (task instance type only): plan kind + start/end offsets within
+  // the flow window. All three set together, or all null (root unplanned).
+  root_plan_kind: string | null;
+  root_plan_start: number | null;
+  root_plan_end: number | null;
   // Whether this flow is a Habit (has a Recurrence) — derived on read.
   is_habit: boolean;
   position: number;
@@ -36,6 +41,9 @@ export interface CreateFlowRequest {
   flow_window_part?: string | null;
   flow_window_time_start?: string | null;
   flow_window_time_end?: string | null;
+  root_plan_kind?: string | null;
+  root_plan_start?: number | null;
+  root_plan_end?: number | null;
 }
 
 export interface UpdateFlowRequest {
@@ -49,6 +57,9 @@ export interface UpdateFlowRequest {
   flow_window_part?: string | null;
   flow_window_time_start?: string | null;
   flow_window_time_end?: string | null;
+  root_plan_kind?: string | null;
+  root_plan_start?: number | null;
+  root_plan_end?: number | null;
   parent_type?: string;
   parent_id?: number;
   position?: number;

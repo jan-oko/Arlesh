@@ -36,7 +36,7 @@ function mkFlow(overrides: Partial<MindmapNode> = {}): MindmapNode {
     position: 0,
     tagIds: [],
     children: [],
-    flow: { instanceType: "task", targetType: null, targetId: null, durationN: 2, durationKind: "week", windowPart: null, windowTimeStart: null, windowTimeEnd: null, isHabit: false },
+    flow: { instanceType: "task", targetType: null, targetId: null, durationN: 2, durationKind: "week", windowPart: null, windowTimeStart: null, windowTimeEnd: null, isHabit: false, rootPlanKind: null, rootPlanStart: null, rootPlanEnd: null },
     ...overrides,
   };
 }
@@ -66,7 +66,7 @@ describe("FlowEditorModal — initial state", () => {
   });
 
   it("shows the existing target as a chip", () => {
-    render(<FlowEditorModal {...defaultProps} node={mkFlow({ flow: { instanceType: "task", targetType: "goal", targetId: 7, durationN: 1, durationKind: "week", windowPart: null, windowTimeStart: null, windowTimeEnd: null, isHabit: false } })} />);
+    render(<FlowEditorModal {...defaultProps} node={mkFlow({ flow: { instanceType: "task", targetType: "goal", targetId: 7, durationN: 1, durationKind: "week", windowPart: null, windowTimeStart: null, windowTimeEnd: null, isHabit: false, rootPlanKind: null, rootPlanStart: null, rootPlanEnd: null } })} />);
     expect(screen.getByText("Backend Revamp")).toBeInTheDocument();
   });
 });
@@ -86,6 +86,9 @@ describe("FlowEditorModal — save", () => {
         windowPart: null,
         windowTimeStart: null,
         windowTimeEnd: null,
+        rootPlanKind: null,
+        rootPlanStart: null,
+        rootPlanEnd: null,
         recurrence: null,
       }),
     );
@@ -142,6 +145,32 @@ describe("FlowEditorModal — save", () => {
     );
   });
 
+  it("saves a root Cycle Plan chosen for a task-instance span window", async () => {
+    render(<FlowEditorModal {...defaultProps} />);
+    // Plan the root into day 3 of the 2-week window.
+    fireEvent.change(screen.getByRole("combobox", { name: "cyclePlanKind" }), { target: { value: "day" } });
+    fireEvent.click(screen.getByRole("button", { name: "kindDay 3" }));
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() =>
+      expect(defaultProps.onSave).toHaveBeenCalledWith(
+        expect.objectContaining({ rootPlanKind: "day", rootPlanStart: 3, rootPlanEnd: 3 }),
+      ),
+    );
+  });
+
+  it("omits the root plan for a goal-instance flow", async () => {
+    render(<FlowEditorModal {...defaultProps} />);
+    fireEvent.click(screen.getByRole("button", { name: "nodeKinds:goal" }));
+    // The plan kind select is not rendered for a goal instance.
+    expect(screen.queryByRole("combobox", { name: "cyclePlanKind" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() =>
+      expect(defaultProps.onSave).toHaveBeenCalledWith(
+        expect.objectContaining({ rootPlanKind: null, rootPlanStart: null, rootPlanEnd: null }),
+      ),
+    );
+  });
+
   it("saves a Recurrence when the habit toggle is enabled", async () => {
     render(<FlowEditorModal {...defaultProps} />);
     fireEvent.click(screen.getByRole("checkbox", { name: "makeHabit" }));
@@ -178,7 +207,7 @@ describe("FlowEditorModal — save", () => {
   });
 
   it("treats a flow with no stored scope as unscoped", () => {
-    render(<FlowEditorModal {...defaultProps} node={mkFlow({ flow: { instanceType: "task", targetType: null, targetId: null, durationN: null, durationKind: null, windowPart: null, windowTimeStart: null, windowTimeEnd: null, isHabit: false } })} />);
+    render(<FlowEditorModal {...defaultProps} node={mkFlow({ flow: { instanceType: "task", targetType: null, targetId: null, durationN: null, durationKind: null, windowPart: null, windowTimeStart: null, windowTimeEnd: null, isHabit: false, rootPlanKind: null, rootPlanStart: null, rootPlanEnd: null } })} />);
     expect(screen.getByRole("checkbox", { name: "flowScoped" })).not.toBeChecked();
   });
 
@@ -200,7 +229,7 @@ describe("FlowEditorModal — keyboard", () => {
 describe("FlowEditorModal — target display", () => {
   const flowWith = (targetType: string, targetId: number) => ({
     instanceType: "task" as const, targetType, targetId,
-    durationN: 2, durationKind: "week", windowPart: null, windowTimeStart: null, windowTimeEnd: null, isHabit: false,
+    durationN: 2, durationKind: "week", windowPart: null, windowTimeStart: null, windowTimeEnd: null, isHabit: false, rootPlanKind: null, rootPlanStart: null, rootPlanEnd: null,
   });
 
   it("resolves a domain-table target (project) to its title, not #id", () => {

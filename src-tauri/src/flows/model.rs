@@ -65,6 +65,13 @@ pub struct Flow {
     pub flow_window_time_start: Option<String>,
     /// Phase-`exact` window end time-of-day `HH:MM`; set iff kind is `exact`.
     pub flow_window_time_end: Option<String>,
+    /// Relative Cycle Plan for the **root** (task instance type only): plan window kind and
+    /// start/end offsets within the flow window. All three set together, or all null (unplanned).
+    pub root_plan_kind: Option<String>,
+    /// Root Cycle Plan start offset within the flow window.
+    pub root_plan_start: Option<i64>,
+    /// Root Cycle Plan end offset within the flow window.
+    pub root_plan_end: Option<i64>,
     /// Whether this flow is a Habit (has a Recurrence) — derived, not stored on the flows row.
     #[sqlx(default)]
     pub is_habit: bool,
@@ -138,6 +145,15 @@ pub struct CreateFlowRequest {
     /// Phase-`exact` window end time-of-day `HH:MM`, when kind is `exact`.
     #[serde(default)]
     pub flow_window_time_end: Option<String>,
+    /// Root Cycle Plan kind (task instance type only).
+    #[serde(default)]
+    pub root_plan_kind: Option<String>,
+    /// Root Cycle Plan start offset within the flow window.
+    #[serde(default)]
+    pub root_plan_start: Option<i64>,
+    /// Root Cycle Plan end offset within the flow window.
+    #[serde(default)]
+    pub root_plan_end: Option<i64>,
 }
 
 /// Request body for updating a flow (fields left `None` are unchanged; `Some(None)` clears).
@@ -161,6 +177,12 @@ pub struct UpdateFlowRequest {
     pub flow_window_time_start: Option<Option<String>>,
     /// Phase-`exact` window end time-of-day (Some(None) clears).
     pub flow_window_time_end: Option<Option<String>>,
+    /// Root Cycle Plan kind (Some(None) clears).
+    pub root_plan_kind: Option<Option<String>>,
+    /// Root Cycle Plan start offset (Some(None) clears).
+    pub root_plan_start: Option<Option<i64>>,
+    /// Root Cycle Plan end offset (Some(None) clears).
+    pub root_plan_end: Option<Option<i64>>,
     /// New parent type (with parent_id).
     pub parent_type: Option<String>,
     /// New parent id (with parent_type).
