@@ -58,6 +58,7 @@ function baseOptions(overrides: Partial<Parameters<typeof useKeyboardMindmap>[0]
     onCopy: vi.fn() as (ids: string[]) => void,
     onPaste: vi.fn(),
     onEnterSubtree: vi.fn(),
+    onOpenSearch: vi.fn(),
     findNodeById: (id: string): MindmapNode | undefined =>
       id === "task-1" ? makeTask("task-1") : undefined,
     ...overrides,
@@ -233,6 +234,15 @@ describe("useKeyboardMindmap — Ctrl+V (paste)", () => {
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("v", { ctrlKey: true });
     expect(opts.onPaste).not.toHaveBeenCalled();
+  });
+});
+
+describe("useKeyboardMindmap — Ctrl+O (node search)", () => {
+  it("opens the node search on Ctrl+O, even with no selection", () => {
+    const opts = baseOptions({ selectedNodeId: null });
+    renderHook(() => useKeyboardMindmap(opts));
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "ז", code: "KeyO", ctrlKey: true, bubbles: true, cancelable: true }));
+    expect(opts.onOpenSearch).toHaveBeenCalled();
   });
 });
 

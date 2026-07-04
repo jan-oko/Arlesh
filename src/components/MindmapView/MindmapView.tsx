@@ -13,7 +13,7 @@ import { useMindmapStore, CLIPBOARD_OP } from "@/stores/use-mindmap-store";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { updateTask, reparentScopeConflicts } from "@/api/tasks";
 import { updateGoal } from "@/api/goals";
-import { findNode, findParent, collectTasksAndGoals, collectSubtreePostOrder, computeShiftSelectRange, conversionNeedsConfirm } from "@/utils/mindmap-tree";
+import { findNode, findParent, collectTasksAndGoals, collectSubtreePostOrder, computeShiftSelectRange, conversionNeedsConfirm, collectSearchableNodes } from "@/utils/mindmap-tree";
 import MindmapCanvas, { type MindmapCanvasHandle } from "@/components/MindmapCanvas/MindmapCanvas";
 import DragGhost from "@/components/DragGhost/DragGhost";
 import DragPlaceholder from "@/components/DragPlaceholder/DragPlaceholder";
@@ -24,6 +24,7 @@ import GoalEditorModal from "@/components/GoalEditorModal/GoalEditorModal";
 import TitleEditorModal from "@/components/TitleEditorModal/TitleEditorModal";
 import ProjectEditorModal from "@/components/ProjectEditorModal/ProjectEditorModal";
 import InfoEditorModal from "@/components/InfoEditorModal/InfoEditorModal";
+import NodeSearchModal from "@/components/NodeSearchModal/NodeSearchModal";
 import FlowEditorModal, { type FlowSaveData } from "@/components/FlowEditorModal/FlowEditorModal";
 import FlowItemEditorModal from "@/components/FlowItemEditorModal/FlowItemEditorModal";
 import StartFlowModal, { type StartFlowData } from "@/components/StartFlowModal/StartFlowModal";
@@ -51,6 +52,7 @@ export default function MindmapView() {
   } = useMindmapStore();
 
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
+  const [nodeSearchOpen, setNodeSearchOpen] = useState(false);
   const [flowCreateParent, setFlowCreateParent] = useState<{ id: string; kind: NodeKind } | null>(null);
   const [startFlowNode, setStartFlowNode] = useState<MindmapNode | null>(null);
   const [convertNode, setConvertNode] = useState<MindmapNode | null>(null);
@@ -327,7 +329,7 @@ export default function MindmapView() {
   }, [selectedNodeId, tree, selectNode, setSelection]);
 
   useKeyboardMindmap({
-    isInputActive: editingNodeId !== null || editorModal !== null || flowCreateParent !== null || startFlowNode !== null || convertNode !== null || deleteTargets !== null,
+    isInputActive: editingNodeId !== null || editorModal !== null || flowCreateParent !== null || startFlowNode !== null || convertNode !== null || deleteTargets !== null || nodeSearchOpen,
     isWarningActive: warningModal !== null,
     onDismissWarning: () => setWarningModal(null),
     selectedNodeId,
@@ -353,6 +355,7 @@ export default function MindmapView() {
     onCopy: (ids) => setClipboard({ operation: CLIPBOARD_OP.COPY, nodeIds: ids }),
     onPaste,
     onEnterSubtree: enterSubtree,
+    onOpenSearch: () => setNodeSearchOpen(true),
     findNodeById,
   });
   const toastPosition = pendingToast !== null ? positions.get(pendingToast.nodeId) : undefined;
@@ -417,6 +420,13 @@ export default function MindmapView() {
       )}
       {editorModal !== null && editorModal.node.kind === "info" && (
         <InfoEditorModal node={editorModal.node} onSave={onInfoSave} onClose={() => setEditorModal(null)} />
+      )}
+      {nodeSearchOpen && (
+        <NodeSearchModal
+          nodes={collectSearchableNodes(tree)}
+          onSelect={(id) => { enterSubtree(id); setNodeSearchOpen(false); }}
+          onClose={() => setNodeSearchOpen(false)}
+        />
       )}
       {editorModal !== null && editorModal.node.kind === "flow" && (
         <FlowEditorModal node={editorModal.node} availableTargets={flowTargets} onSave={onFlowSave} onClose={() => setEditorModal(null)} />

@@ -2,6 +2,8 @@
   "save": "שמור",
   "saving": "שומר…",
   "cancel": "בטל",
+  "searchNodesPlaceholder": "חיפוש…",
+  "noResults": "אין תוצאות",
   "loading": "טוען…",
   "error": "שגיאה: {{message}}"
 }

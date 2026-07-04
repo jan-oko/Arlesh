@@ -35,6 +35,7 @@ interface Options {
   onCopy: (ids: string[]) => void;
   onPaste: (id: string) => void;
   onEnterSubtree: (id: string) => void;
+  onOpenSearch: () => void;
   findNodeById: (id: string) => MindmapNode | undefined;
 }
 
@@ -44,7 +45,7 @@ export function useKeyboardMindmap(options: Options): void {
     selectedNodeId, selectedNodeIds, subtreeRootId, clipboard,
     onNavigate, onCycleType, onReorder, onStartRename,
     onCreateChild, onCreateSibling, onInsertParent, onOpenEditor, onStartFlow, onDelete, onToggleCollapsed, onCycleStatus,
-    onDeselect, onExitSubtree, onExitToRoot, onCut, onCopy, onPaste, onEnterSubtree,
+    onDeselect, onExitSubtree, onExitToRoot, onCut, onCopy, onPaste, onEnterSubtree, onOpenSearch,
     findNodeById,
   } = options;
 
@@ -197,6 +198,12 @@ export function useKeyboardMindmap(options: Options): void {
             }
           }
           break;
+        case "KeyO":
+          if (event.ctrlKey) {
+            event.preventDefault();
+            onOpenSearch();
+          }
+          break;
         case "KeyR":
           if (selectedNodeId !== null) {
             const node = findNodeById(selectedNodeId);
@@ -218,7 +225,7 @@ export function useKeyboardMindmap(options: Options): void {
     selectedNodeId, selectedNodeIds, subtreeRootId, clipboard,
     onNavigate, onCycleType, onReorder, onStartRename,
     onCreateChild, onCreateSibling, onInsertParent, onOpenEditor, onStartFlow, onDelete, onToggleCollapsed, onCycleStatus,
-    onDeselect, onExitSubtree, onExitToRoot, onCut, onCopy, onPaste, onEnterSubtree,
+    onDeselect, onExitSubtree, onExitToRoot, onCut, onCopy, onPaste, onEnterSubtree, onOpenSearch,
     findNodeById,
   ]);
 }

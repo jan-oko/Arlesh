@@ -121,6 +121,17 @@ export function conversionNeedsConfirm(node: MindmapNode): boolean {
   return node.children.length > 0;
 }
 
+/** Flattens the tree (excluding the virtual root) into `{ id, title, kind }` rows for node search. */
+export function collectSearchableNodes(root: MindmapNode): Array<{ id: string; title: string; kind: NodeKind }> {
+  const out: Array<{ id: string; title: string; kind: NodeKind }> = [];
+  function visit(n: MindmapNode, isRoot: boolean): void {
+    if (!isRoot) out.push({ id: n.id, title: n.title, kind: n.kind });
+    for (const child of n.children) visit(child, false);
+  }
+  visit(root, true);
+  return out;
+}
+
 /** Returns all node IDs in the tree in depth-first pre-order. */
 export function collectAllNodeIds(root: MindmapNode): string[] {
   const result: string[] = [];
