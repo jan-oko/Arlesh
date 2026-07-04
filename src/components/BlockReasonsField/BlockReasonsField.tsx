@@ -44,7 +44,7 @@ export default function BlockReasonsField({ reasons, onChange, virtualBlockers =
           <div className={styles.virtualBlockers}>
             <span className={styles.virtualBlockersLabel}>{t("virtualBlockersLabel")}</span>
             {virtualBlockers.map((reason, i) => (
-              <input key={`v-${i}`} className={`${styles.input} ${styles.virtualBlockerRow}`} value={reason} readOnly disabled />
+              <div key={`v-${i}`} className={styles.virtualBlockerRow}>{reason}</div>
             ))}
           </div>
         )}

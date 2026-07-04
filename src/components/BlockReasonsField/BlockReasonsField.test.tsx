@@ -37,10 +37,11 @@ describe("BlockReasonsField", () => {
     expect(onChange).toHaveBeenCalledWith(["b"]);
   });
 
-  it("shows virtual blockers as read-only rows with no remove button", () => {
+  it("shows virtual blockers as plain-text rows (not inputs) with no remove button", () => {
     render(<BlockReasonsField reasons={["manual"]} onChange={vi.fn()} virtualBlockers={["Blocked by task 2 (Dep)"]} />);
-    const virtual = screen.getByDisplayValue("Blocked by task 2 (Dep)");
-    expect(virtual).toBeDisabled();
+    // Plain text, not an input (so it doesn't read as editable).
+    expect(screen.getByText("Blocked by task 2 (Dep)")).toBeInTheDocument();
+    expect(screen.queryByDisplayValue("Blocked by task 2 (Dep)")).not.toBeInTheDocument();
     // One editable reason → one remove button; the virtual row adds none.
     expect(screen.getAllByRole("button", { name: "removeBlockReason" })).toHaveLength(1);
   });

@@ -122,6 +122,16 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
     return availableForDep.find((n) => n.id === `${dep.type}-${dep.id}`)?.title ?? `${dep.type} #${dep.id}`;
   }
 
+  // Virtual blockers derived from the *current* (editable) dependencies — an unmet dependency (a
+  // non-Done task / non-Achieved goal) blocks. Recomputed live, so removing a dependency drops its row.
+  const virtualBlockers = currentDeps.flatMap((dep) => {
+    const target = availableForDep.find((n) => n.id === `${dep.type}-${dep.id}`);
+    const unmet = target === undefined
+      ? true
+      : dep.type === "task" ? target.status !== "done" : target.status !== "achieved";
+    return unmet ? [`Blocked by ${dep.type} ${dep.id} (${depTitle(dep)})`] : [];
+  });
+
   return (
     <EditorModal heading={t("editTask")} onClose={onClose} onKeyDown={handleKeyDown} isSaving={isSaving} onSave={() => void handleSave()} saveError={saveError}>
       <label className={styles.label}>
@@ -152,7 +162,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
         {t("fieldPlan")}
         <PlanField value={plan} timeScope={timeScope} onChange={setPlan} />
       </div>
-      <BlockReasonsField reasons={blockReasons} onChange={setBlockReasons} virtualBlockers={node.virtualBlockers ?? []} />
+      <BlockReasonsField reasons={blockReasons} onChange={setBlockReasons} virtualBlockers={virtualBlockers} />
       <TagPicker allTags={allTags} domainNames={domainNames} selectedIds={tagIds} onChange={setTagIds} />
       <div className={styles.depSection}>
         <span className={styles.label}>{t("fieldDependencies")}</span>
@@ -161,7 +171,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
             {currentDeps.map((dep) => (
               <div key={depKey(dep)} className={styles.depItem}>
                 <span>{depTitle(dep)}<span className={styles.depKind}>{t(`nodeKinds:${dep.type}`)}</span></span>
-                <button type="button" className={styles.depRemoveBtn} onClick={() => removeDep(dep)}>×</button>
+                <button type="button" className={styles.depRemoveBtn} aria-label={t("removeDependency")} onClick={() => removeDep(dep)}>×</button>
               </div>
             ))}
           </div>

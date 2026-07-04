@@ -53,6 +53,39 @@ const defaultProps = {
   onClose: vi.fn(),
 };
 
+describe("TaskEditorModal — virtual blockers from dependencies", () => {
+  const GOAL_DEP: MindmapNode = { id: "goal-9", kind: "goal", title: "Milestone", status: "active", position: 0, tagIds: [], children: [] };
+
+  function withDep() {
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === "list_task_dependencies") return Promise.resolve([{ type: "goal", id: 9 }]);
+      return Promise.resolve(null);
+    });
+    return render(<TaskEditorModal {...defaultProps} availableForDep={[GOAL_DEP]} />);
+  }
+
+  it("shows an unmet dependency as a virtual block reason", async () => {
+    withDep();
+    await waitFor(() => expect(screen.getByText("Blocked by goal 9 (Milestone)")).toBeInTheDocument());
+  });
+
+  it("drops the virtual block reason when its dependency is removed", async () => {
+    withDep();
+    await waitFor(() => expect(screen.getByText("Blocked by goal 9 (Milestone)")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "removeDependency" }));
+    expect(screen.queryByText("Blocked by goal 9 (Milestone)")).not.toBeInTheDocument();
+  });
+
+  it("does not show a virtual blocker for a met (achieved) dependency", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) =>
+      Promise.resolve(cmd === "list_task_dependencies" ? [{ type: "goal", id: 9 }] : null),
+    );
+    render(<TaskEditorModal {...defaultProps} availableForDep={[{ ...GOAL_DEP, status: "achieved" }]} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
+    expect(screen.queryByText(/Blocked by goal 9/)).not.toBeInTheDocument();
+  });
+});
+
 describe("TaskEditorModal — initial state", () => {
   it("pre-fills title from node", async () => {
     render(<TaskEditorModal {...defaultProps} />);

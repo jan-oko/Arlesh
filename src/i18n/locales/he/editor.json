@@ -42,6 +42,7 @@
   "ungroupedTags": "אחר",
   "removeTag": "הסר תגית",
   "fieldDependencies": "תלויות",
+  "removeDependency": "הסר תלות",
   "fieldTimeScope": "מסגרת זמן",
   "fieldOnScopeExit": "כשהמסגרת עוברת",
   "onScopeExitKeep": "השאר פעיל",

@@ -42,6 +42,7 @@
   "ungroupedTags": "Other",
   "removeTag": "Remove tag",
   "fieldDependencies": "Dependencies",
+  "removeDependency": "Remove dependency",
   "fieldTimeScope": "Time scope",
   "fieldOnScopeExit": "When scope passes",
   "onScopeExitKeep": "Keep",
