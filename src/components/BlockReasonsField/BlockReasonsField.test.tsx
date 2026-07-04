@@ -36,4 +36,12 @@ describe("BlockReasonsField", () => {
     fireEvent.click(removeButtons[0]!);
     expect(onChange).toHaveBeenCalledWith(["b"]);
   });
+
+  it("shows virtual blockers as read-only rows with no remove button", () => {
+    render(<BlockReasonsField reasons={["manual"]} onChange={vi.fn()} virtualBlockers={["Blocked by task 2 (Dep)"]} />);
+    const virtual = screen.getByDisplayValue("Blocked by task 2 (Dep)");
+    expect(virtual).toBeDisabled();
+    // One editable reason → one remove button; the virtual row adds none.
+    expect(screen.getAllByRole("button", { name: "removeBlockReason" })).toHaveLength(1);
+  });
 });

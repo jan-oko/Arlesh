@@ -36,6 +36,7 @@
   "fieldBlockReasons": "Block reasons",
   "addBlockReason": "Add reason",
   "removeBlockReason": "Remove reason",
+  "virtualBlockersLabel": "From dependencies",
   "fieldTags": "Tags",
   "placeholderTagSearch": "Search tags…",
   "ungroupedTags": "Other",

@@ -1,4 +1,5 @@
 import { GOAL_STATUS } from "@/utils/status-mapping";
+import BlockedMark from "./BlockedMark";
 
 interface Props { cx: number; cy: number; r: number; color: string; opacity: number; status?: string | undefined; isBlocked?: boolean }
 
@@ -27,17 +28,8 @@ const FULL_TARGET =
  * translate+scaling the 2048 box so it fills the node's icon diameter (the arrow reaches the corner).
  */
 export default function GoalIcon({ cx, cy, r, color, opacity, status, isBlocked = false }: Props) {
-  if (isBlocked) {
-    // Same red stop-sign as a blocked task, so a blocked goal reads the same at a glance.
-    const f = 0.42;
-    return (
-      <polygon
-        points={`${cx + r * f},${cy - r} ${cx + r},${cy - r * f} ${cx + r},${cy + r * f} ${cx + r * f},${cy + r} ${cx - r * f},${cy + r} ${cx - r},${cy + r * f} ${cx - r},${cy - r * f} ${cx - r * f},${cy - r}`}
-        fill="#dc2626"
-        opacity={opacity}
-      />
-    );
-  }
+  // Same blocked glyph as a task, so a blocked goal reads identically at a glance.
+  if (isBlocked) return <BlockedMark cx={cx} cy={cy} r={r} color={color} opacity={opacity} />;
   const achieved = status === GOAL_STATUS.ACHIEVED;
   const scale = r / 1024; // the 2048 box maps to the node's icon diameter (2r)
   return (

@@ -389,3 +389,34 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
+
+/* Tag popover: portalled to body, fixed-positioned to the input, so it escapes the modal's clip */
+.tagMenu {
+  z-index: 300;
+  background: var(--surface-raised);
+  border: 1px solid var(--node-border);
+  border-radius: var(--node-radius);
+  max-height: 220px;
+  overflow-y: auto;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+/* Virtual (dependency-derived) block reasons: immutable rows under the editable list */
+.virtualBlockers {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.virtualBlockersLabel {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.virtualBlockerRow {
+  opacity: 0.7;
+  cursor: default;
+}

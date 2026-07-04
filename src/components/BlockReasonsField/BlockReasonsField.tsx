@@ -4,14 +4,16 @@ import styles from "@/components/EditorModal/EditorModal.module.css";
 interface Props {
   reasons: string[];
   onChange: (reasons: string[]) => void;
+  /** Derived "Blocked by …" reasons from unmet dependencies — shown read-only, not editable here. */
+  virtualBlockers?: string[];
 }
 
 /**
  * Edits a task/goal's ordered list of explicit block reasons — each an inline text row that can be
- * removed, plus an "add" button. (Dependencies contribute further *virtual* blockers, shown via the
- * separate dependencies section; they are not editable here.)
+ * removed, plus an "add" button. Any **virtual** blockers (from unmet dependencies) follow as
+ * immutable rows so the full blocked picture is visible; they're changed by editing the dependencies.
  */
-export default function BlockReasonsField({ reasons, onChange }: Props) {
+export default function BlockReasonsField({ reasons, onChange, virtualBlockers = [] }: Props) {
   const { t } = useTranslation("editor");
   return (
     <div className={styles.label}>
@@ -38,6 +40,14 @@ export default function BlockReasonsField({ reasons, onChange }: Props) {
         <button type="button" className={styles.addBlockReason} onClick={() => onChange([...reasons, ""])}>
           {t("addBlockReason")}
         </button>
+        {virtualBlockers.length > 0 && (
+          <div className={styles.virtualBlockers}>
+            <span className={styles.virtualBlockersLabel}>{t("virtualBlockersLabel")}</span>
+            {virtualBlockers.map((reason, i) => (
+              <input key={`v-${i}`} className={`${styles.input} ${styles.virtualBlockerRow}`} value={reason} readOnly disabled />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

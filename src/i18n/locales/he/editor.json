@@ -36,6 +36,7 @@
   "fieldBlockReasons": "סיבות חסימה",
   "addBlockReason": "הוסף סיבה",
   "removeBlockReason": "הסר סיבה",
+  "virtualBlockersLabel": "מתלויות",
   "fieldTags": "תגיות",
   "placeholderTagSearch": "חיפוש תגיות…",
   "ungroupedTags": "אחר",

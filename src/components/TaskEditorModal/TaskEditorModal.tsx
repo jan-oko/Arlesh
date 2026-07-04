@@ -152,7 +152,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
         {t("fieldPlan")}
         <PlanField value={plan} timeScope={timeScope} onChange={setPlan} />
       </div>
-      <BlockReasonsField reasons={blockReasons} onChange={setBlockReasons} />
+      <BlockReasonsField reasons={blockReasons} onChange={setBlockReasons} virtualBlockers={node.virtualBlockers ?? []} />
       <TagPicker allTags={allTags} domainNames={domainNames} selectedIds={tagIds} onChange={setTagIds} />
       <div className={styles.depSection}>
         <span className={styles.label}>{t("fieldDependencies")}</span>

@@ -1,3 +1,5 @@
+import BlockedMark from "./BlockedMark";
+
 interface Props {
   cx: number;
   cy: number;
@@ -9,16 +11,7 @@ interface Props {
 }
 
 export default function TaskIcon({ cx, cy, r, color, opacity, status, isBlocked }: Props) {
-  if (isBlocked) {
-    const f = 0.42;
-    return (
-      <polygon
-        points={`${cx + r * f},${cy - r} ${cx + r},${cy - r * f} ${cx + r},${cy + r * f} ${cx + r * f},${cy + r} ${cx - r * f},${cy + r} ${cx - r},${cy + r * f} ${cx - r},${cy - r * f} ${cx - r * f},${cy - r}`}
-        fill="#dc2626"
-        opacity={opacity}
-      />
-    );
-  }
+  if (isBlocked) return <BlockedMark cx={cx} cy={cy} r={r} color={color} opacity={opacity} />;
 
   const cr = r * 0.85;
   const sw = r * 0.22;
