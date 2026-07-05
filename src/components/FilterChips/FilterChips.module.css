@@ -14,9 +14,10 @@
   gap: 4px;
   padding: 1px var(--space-1) 1px var(--space-2);
   border-radius: 999px;
-  border: 1px solid var(--chip-mode-color, var(--node-border));
+  /* Mode color is a quiet accent, not a shout: blended most of the way toward the neutral border. */
+  border: 1px solid color-mix(in srgb, var(--chip-mode-color, var(--node-border)) 35%, var(--node-border));
   background: var(--chip-tint, var(--surface-raised));
-  color: var(--chip-mode-color, var(--text-primary));
+  color: var(--text-primary);
   font-size: var(--text-sm);
   font-family: var(--font-sans);
   cursor: pointer;
@@ -25,6 +26,8 @@
 .symbol {
   font-family: var(--font-mono);
   line-height: 1;
+  color: var(--chip-mode-color, var(--text-secondary));
+  opacity: 0.85;
 }
 
 .label {
@@ -45,7 +48,7 @@
   border: none;
   border-radius: 999px;
   background: none;
-  color: inherit;
+  color: var(--text-secondary);
   line-height: 1;
   cursor: pointer;
 }

@@ -42,10 +42,10 @@ html, body, #root {
   --danger: #e74c3c;
   --overdue: #d99a2b;
 
-  /* Filter pill modes (Any/All/Exclude) — distinct hues so an active-filter chip's mode reads at a glance */
-  --mode-any: #3b82f6;
-  --mode-all: #22c55e;
-  --mode-exclude: #dc2626;
+  /* Filter pill modes (Any/All/Exclude) — muted hues so a chip's mode reads as a quiet accent, not a shout */
+  --mode-any: #6b8cae;
+  --mode-all: #6fa37c;
+  --mode-exclude: #b5605a;
 
   /* Spacing */
   --space-1: 4px;
