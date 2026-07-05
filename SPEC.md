@@ -71,7 +71,7 @@ Goals represent desired states. Fields: title, parent (Project / Goal / Domain),
 
 **Status:** Active / Achieved / Frozen / Archived
 
-Goals do **not** appear in the List view. Goals can be depended on by Tasks; a Goal-dependency blocks a Task until the Goal is Achieved.
+Goals are never List View *rows*, though they can optionally show as group headers there (see List View below). Goals can be depended on by Tasks; a Goal-dependency blocks a Task until the Goal is Achieved.
 
 ### Tasks
 
@@ -250,20 +250,26 @@ The root of the map is "Arlesh" (top level). Aspect cells are its direct childre
 
 ### List View
 
-A minimalistic task list. Filtering as described above.
+A compact-card task list, reached via a Mindmap/List tab in the top bar or the `Alt+L` shortcut (both toggle between the two views; view choice persists). Reuses the Mindmap's own loaded tree (flattened to Tasks) rather than fetching independently, so the two views never drift out of sync — a materialized Start-flow task or a virtual Habit instance shows consistently in both.
 
-**Task rows** display the task's tags and parent. Clicking a tag or parent inline adds it as a filter.
+**Rows are Tasks only** — real, flow-materialized, and virtual Habit instances alike. Goals, Projects, Domains, and every other kind are never list rows (Goals can optionally appear as group headers; see below). A row shows: a status control (click cycles To Do → In Progress → Done, or advances a Habit instance; disabled while the task is blocked, except for Habit instances which always advance), the title (click opens the Task editor), the same status-icon badge row as the Mindmap node (scope/plan/flow/tag badges with tooltips), and the task's **parent label** and **tag pills** — clicking either inline adds it as a filter, per the general Filtering Logic.
 
-**Goal visibility** can be toggled. When enabled, Goals appear as rows in the list, positioned immediately before their child tasks (acting as labeled group headers). Goals are hidden by default.
+**Goal visibility** can be toggled (off by default, in the List View's own toolbar). When enabled, each Goal appears as a group-header row immediately before its child tasks — grouping falls out naturally from walking the tree in the same position-sorted order the Mindmap uses, so no separate sort/group pass is needed; tasks with no resolved Goal ancestor group under their nearest Project instead.
 
-Four preset modes (separate from custom filters):
+**Filtering** shares the Mindmap's status preset, tag filters, and Info/Flow/Work toggles (same `FilterPopover`, same persisted state) — a filter set in one view is already applied when you switch to the other. The List View's own preset selector shows five options: **All / Plan / Start / Do** (identical semantics to the Mindmap's presets, and selecting one writes through to the shared status preset) plus **Unblock** — shows every blocked task, List-View-only, and does *not* change the shared status preset (switching back to the Mindmap shows whatever preset was last active there).
 
-| Mode    | Shows                                              |
-|---------|----------------------------------------------------|
-| Plan    | All tasks                                          |
-| Start   | To Do and In Progress tasks with no unresolved dependencies |
-| Do      | In Progress tasks only                             |
-| Unblock | All blocked tasks with their block reasons         |
+On top of the shared filters, the List View adds its own filter dimensions — all in the same Any/All/Exclusion pill pattern as tags (a searchable combobox for entity-valued dimensions, fixed-option buttons for enum-valued ones), living in extra sections of the same `FilterPopover` while List View is active:
+
+| Dimension | Values |
+|---|---|
+| Parent | The task's immediate parent (Project/Goal/Domain/Task/Aspect) |
+| Antecedent | Any ancestor in the chain (parent, grandparent, … up to the Aspect) |
+| Dependency | A specific Task/Goal this task depends on |
+| Task status | To Do / In Progress / Done |
+| Goal status | The resolved nearest-ancestor Goal's status |
+| Project status | The resolved nearest-ancestor Project's status |
+| Scope | Unscoped / Active / Overdue / Lapsed / Planned / Unplanned — independent axes, so e.g. Unscoped + Planned can both apply to the same task |
+| Blocked | Blocked / Not blocked |
 
 ---
 
@@ -271,7 +277,7 @@ Four preset modes (separate from custom filters):
 
 1. **Data layer** — schema, migrations, Tauri commands, integration tests. No UI.
 2. **Mindmap view** — SVG-based left-right balanced tree editor with full keyboard interaction.
-3. **List view** — filterable task list with the four preset modes.
+3. **List view** — filterable task list sharing the Mindmap's filters plus its own preset (All/Plan/Start/Do/Unblock) and pill-filter dimensions. Complete.
 4. **KB resources backend** — People, Events, Threads, Scopes as local DB entities. Obsidian integration stubbed behind an adapter interface.
 5. **Obsidian integration** — replace stub adapter with real Obsidian local-rest-api client. Note discovery, bidirectional sync.
 6. **Time Scopes** — Parts of Day and Exact scopes; datetime-boundary resolution (cached) and `active`; Time Scope (relevance) vs Plan split with interval-containment invariants and write-time enforcement; the Scope Picker component. Schema → commands → picker UI. See ADR 0001.

@@ -1,0 +1,39 @@
+{
+  "preset": {
+    "all": "All",
+    "plan": "Plan",
+    "start": "Start",
+    "do": "Do",
+    "unblock": "Unblock"
+  },
+  "showGoalHeaders": "Show goals",
+  "empty": "No tasks match the current filters.",
+  "cycleStatus": "Cycle status",
+  "filterByParent": "Filter by this parent",
+  "filterByTag": "Filter by this tag",
+  "filterSectionLabel": "List filters",
+  "parentLabel": "Parent",
+  "antecedentLabel": "Antecedent",
+  "dependencyLabel": "Dependency",
+  "taskStatusLabel": "Task status",
+  "goalStatusLabel": "Goal status",
+  "projectStatusLabel": "Project status",
+  "scopeStateLabel": "Scope",
+  "blockedLabel": "Blocked",
+  "addParent": "Add parent filter…",
+  "addAntecedent": "Add antecedent filter…",
+  "addDependency": "Add dependency filter…",
+  "removePill": "Remove filter",
+  "scopeState": {
+    "unscoped": "Unscoped",
+    "active": "Active",
+    "overdue": "Overdue",
+    "lapsed": "Lapsed",
+    "planned": "Planned",
+    "unplanned": "Unplanned"
+  },
+  "blockedState": {
+    "blocked": "Blocked",
+    "not_blocked": "Not blocked"
+  }
+}

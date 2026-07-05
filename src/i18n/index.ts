@@ -12,6 +12,7 @@ import en_navigation from "./locales/en/navigation.json";
 import en_scopes from "./locales/en/scopes.json";
 import en_filter from "./locales/en/filter.json";
 import en_statusIcons from "./locales/en/statusIcons.json";
+import en_listView from "./locales/en/listView.json";
 
 import he_common from "./locales/he/common.json";
 import he_contextMenu from "./locales/he/contextMenu.json";
@@ -23,6 +24,7 @@ import he_navigation from "./locales/he/navigation.json";
 import he_scopes from "./locales/he/scopes.json";
 import he_filter from "./locales/he/filter.json";
 import he_statusIcons from "./locales/he/statusIcons.json";
+import he_listView from "./locales/he/listView.json";
 
 void i18n
   .use(LanguageDetector)
@@ -40,6 +42,7 @@ void i18n
         scopes: en_scopes,
         filter: en_filter,
         statusIcons: en_statusIcons,
+        listView: en_listView,
       },
       he: {
         common: he_common,
@@ -52,6 +55,7 @@ void i18n
         scopes: he_scopes,
         filter: he_filter,
         statusIcons: he_statusIcons,
+        listView: he_listView,
       },
     },
     fallbackLng: "en",

@@ -5,6 +5,8 @@
   "settings": "הגדרות",
   "language": "שפה",
   "filter": "סינון",
+  "viewMindmap": "מפת חשיבה",
+  "viewList": "רשימה",
   "searchNodesPlaceholder": "חיפוש…",
   "noResults": "אין תוצאות",
   "loading": "טוען…",

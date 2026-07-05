@@ -1,0 +1,92 @@
+.card {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--surface-raised);
+  border: 1px solid var(--node-border);
+  border-radius: 10px;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.card:hover {
+  border-color: var(--node-border-selected);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+}
+
+.statusButton {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.statusButton:hover:not(:disabled) {
+  background: var(--node-bg-hover);
+}
+
+.statusButton:disabled {
+  cursor: default;
+}
+
+.main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.title {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  text-align: start;
+  cursor: pointer;
+}
+
+.title:hover {
+  text-decoration: underline;
+}
+
+.metaRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.parentLabel,
+.tagPill {
+  background: none;
+  border: 1px solid var(--node-border);
+  border-radius: 999px;
+  padding: 1px var(--space-2);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.parentLabel:hover,
+.tagPill:hover {
+  color: var(--text-primary);
+  border-color: var(--node-border-selected);
+}

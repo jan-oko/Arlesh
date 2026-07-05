@@ -64,7 +64,7 @@ function flowHardHidden(node: MindmapNode, f: FilterState): boolean {
 }
 
 /** Kinds hidden outright (their subtree is removed, not kept as an ancestor). */
-function typeHardHidden(node: MindmapNode, f: FilterState): boolean {
+export function typeHardHidden(node: MindmapNode, f: FilterState): boolean {
   // Work mode drops any NSFW node and everything beneath it, regardless of kind.
   if (f.workMode && node.nsfw === true) return true;
   if (node.kind === "info" && !f.showInfo) return true;
@@ -111,7 +111,7 @@ function passesStatus(node: MindmapNode, f: FilterState): boolean {
 }
 
 /** Combined tag predicate per SPEC: (∪Any) ∧ (∩All) ∧ ¬(∪Exclude). Only judges taggable nodes. */
-function passesTags(node: MindmapNode, f: FilterState): boolean {
+export function passesTags(node: MindmapNode, f: FilterState): boolean {
   if (f.tagFilters.length === 0) return true;
   if (node.kind !== "task" && node.kind !== "goal") return true;
   const has = (id: number) => node.tagIds.includes(id);

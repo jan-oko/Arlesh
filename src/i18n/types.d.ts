@@ -8,6 +8,7 @@ import type en_navigation from "./locales/en/navigation.json";
 import type en_scopes from "./locales/en/scopes.json";
 import type en_filter from "./locales/en/filter.json";
 import type en_statusIcons from "./locales/en/statusIcons.json";
+import type en_listView from "./locales/en/listView.json";
 
 declare module "i18next" {
   interface CustomTypeOptions {
@@ -23,6 +24,7 @@ declare module "i18next" {
       scopes: typeof en_scopes;
       filter: typeof en_filter;
       statusIcons: typeof en_statusIcons;
+      listView: typeof en_listView;
     };
   }
 }

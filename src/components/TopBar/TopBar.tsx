@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { useFilterStore } from "@/stores/use-filter-store";
+import { useViewStore } from "@/stores/use-view-store";
 import { isFilterActive } from "@/utils/filter-tree";
 import FilterPopover from "@/components/FilterPopover/FilterPopover";
 import styles from "./TopBar.module.css";
@@ -30,6 +31,8 @@ export default function TopBar() {
   const filterOpen = useFilterStore((s) => s.popoverOpen);
   const setFilterPopover = useFilterStore((s) => s.setFilterPopover);
   const toggleFilterPopover = useFilterStore((s) => s.toggleFilterPopover);
+  const view = useViewStore((s) => s.view);
+  const setView = useViewStore((s) => s.setView);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const backArrow = i18n.dir() === "rtl" ? "→" : "←";
@@ -57,6 +60,22 @@ export default function TopBar() {
               </div>
             </>
           )}
+        </div>
+        <div className={styles.viewTabs}>
+          <button
+            type="button"
+            className={`${styles.viewTab}${view === "mindmap" ? ` ${styles.viewTabActive}` : ""}`}
+            onClick={() => setView("mindmap")}
+          >
+            {t("viewMindmap")}
+          </button>
+          <button
+            type="button"
+            className={`${styles.viewTab}${view === "list" ? ` ${styles.viewTabActive}` : ""}`}
+            onClick={() => setView("list")}
+          >
+            {t("viewList")}
+          </button>
         </div>
         {subtreeRootId !== null && subtreeNav !== null && (
           <>

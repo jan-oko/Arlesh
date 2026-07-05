@@ -1,0 +1,39 @@
+{
+  "preset": {
+    "all": "הכול",
+    "plan": "תכנון",
+    "start": "התחלה",
+    "do": "ביצוע",
+    "unblock": "חסומות"
+  },
+  "showGoalHeaders": "הצג מטרות",
+  "empty": "אין משימות התואמות את הסינון הנוכחי.",
+  "cycleStatus": "החלף סטטוס",
+  "filterByParent": "סנן לפי הורה זה",
+  "filterByTag": "סנן לפי תגית זו",
+  "filterSectionLabel": "סינוני רשימה",
+  "parentLabel": "הורה",
+  "antecedentLabel": "קודם",
+  "dependencyLabel": "תלות",
+  "taskStatusLabel": "סטטוס משימה",
+  "goalStatusLabel": "סטטוס מטרה",
+  "projectStatusLabel": "סטטוס פרויקט",
+  "scopeStateLabel": "טווח",
+  "blockedLabel": "חסום",
+  "addParent": "הוסף סינון הורה…",
+  "addAntecedent": "הוסף סינון קודם…",
+  "addDependency": "הוסף סינון תלות…",
+  "removePill": "הסר סינון",
+  "scopeState": {
+    "unscoped": "ללא טווח",
+    "active": "פעיל",
+    "overdue": "באיחור",
+    "lapsed": "פג תוקף",
+    "planned": "מתוכנן",
+    "unplanned": "לא מתוכנן"
+  },
+  "blockedState": {
+    "blocked": "חסום",
+    "not_blocked": "לא חסום"
+  }
+}
