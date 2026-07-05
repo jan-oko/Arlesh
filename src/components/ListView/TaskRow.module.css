@@ -1,12 +1,16 @@
 .card {
   display: flex;
   align-items: flex-start;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  background: var(--surface-raised);
+  gap: var(--space-4);
+  padding: var(--space-4);
+  background: color-mix(
+    in srgb,
+    var(--card-tint, var(--surface-raised)) calc(var(--card-tint-opacity, 0) * 100%),
+    var(--surface-raised)
+  );
   border: 1px solid var(--node-border);
   border-radius: 10px;
-  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease, background-color 0.12s ease;
 }
 
 .card:hover {

@@ -8,6 +8,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- **List View cards now span the full row** (previously capped at 720px) and get more breathing room (larger padding, wider row gaps). Each card is also tinted with its aspect's colour, using the same fill/opacity derivation the Mindmap node uses, so a task's card matches its node's colour there.
+
 ### Added
 - **List View**: a new compact-card task list, alongside the Mindmap — switch between them with the top-bar tabs or **Alt+L**. Each task row shows its status (click to cycle To Do → In Progress → Done, or advance a Habit instance), title (click opens the editor), the same status badges as the Mindmap node, and clickable **parent**/**tag** labels that add themselves as a filter. Goals can optionally show as group headers above their tasks (off by default). List View shares the Mindmap's status preset, tag filters, and Info/Flow/Work toggles, adds its own **Unblock** preset (every blocked task), and gains eight new filter dimensions — **Parent, Antecedent, Dependency, Task status, Goal status, Project status, Scope state, and Blocked** — all in the same Any/All/Exclusion pill pattern as tags.
 - **Filter keyboard shortcuts**: **Alt+F** toggles the filter menu, and **Alt+A / Alt+P / Alt+S / Alt+D** jump straight to the **All / Plan / Start / Do** status presets (matched by physical key, so they work under a non-Latin layout). The filter popover's open state moved into the filter store (ephemeral, not persisted) so the shortcut and the top-bar button share it. Also: with **no node selected, Enter focuses the current display root**.

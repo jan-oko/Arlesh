@@ -1,6 +1,8 @@
+import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import type { TaskListRow } from "@/utils/list-filter";
 import { deriveStatusIndicators } from "@/utils/node-status-indicators";
+import { computeNodeAppearance } from "@/utils/node-visuals";
 import { useTagNames } from "@/hooks/use-tag-names";
 import TaskIcon from "@/components/NodeIcon/TaskIcon";
 import TaskRowBadges from "./TaskRowBadges";
@@ -28,8 +30,15 @@ export default function TaskRow({ row, onCycleStatus, onOpenEditor, onAddParentF
   // Mirrors the Mindmap node's own gating: a Habit instance always advances; a real task only while unblocked.
   const canClickStatus = node.habitItem !== undefined || !row.isBlocked;
 
+  // Same aspect-color derivation the Mindmap node uses, so a card's tint matches its node's fill there.
+  const { fillColor, fillOpacity } = computeNodeAppearance(node, row.ancestors.length);
+  const cardStyle: CSSProperties & Record<`--card-tint${string}`, string | number> = {
+    "--card-tint": fillColor,
+    "--card-tint-opacity": fillOpacity,
+  };
+
   return (
-    <div className={styles.card}>
+    <div className={styles.card} style={cardStyle}>
       <button
         type="button"
         className={styles.statusButton}
