@@ -88,6 +88,26 @@ describe("filterTree — status modes", () => {
     expect(kept).toContain("t-ok");
   });
 
+  it("Start hard-hides a blocked task and its whole subtree (not kept as an ancestor)", () => {
+    const t = n("root", "domain", {}, [
+      n("t-blocked", "task", { status: "todo", blockReasons: ["waiting"] }, [
+        n("t-child", "task", { status: "todo" }),
+      ]),
+    ]);
+    const kept = ids(filterTree(t, f({ statusMode: "start" })));
+    expect(kept).not.toContain("t-blocked");
+    expect(kept).not.toContain("t-child"); // gated behind the blocked parent
+  });
+
+  it("Start hard-hides a dependency-blocked goal that has a startable child", () => {
+    const t = n("root", "domain", {}, [
+      n("g-blocked", "goal", { status: "active", virtualBlockers: ["Blocked by task 9"] }, [
+        n("t-under", "task", { status: "todo" }),
+      ]),
+    ]);
+    expect(ids(filterTree(t, f({ statusMode: "start" })))).not.toContain("g-blocked");
+  });
+
   it("Plan still shows a blocked/lapsed task (those exclusions are Start-only)", () => {
     const t = n("root", "domain", {}, [n("t-blocked", "task", { status: "todo", virtualBlockers: ["dep"] })]);
     expect(ids(filterTree(t, f({ statusMode: "plan" })))).toContain("t-blocked");

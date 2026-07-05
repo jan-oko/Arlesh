@@ -12,6 +12,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - **Filter keyboard shortcuts**: **Alt+F** toggles the filter menu, and **Alt+A / Alt+P / Alt+S / Alt+D** jump straight to the **All / Plan / Start / Do** status presets (matched by physical key, so they work under a non-Latin layout). The filter popover's open state moved into the filter store (ephemeral, not persisted) so the shortcut and the top-bar button share it. Also: with **no node selected, Enter focuses the current display root**.
 - **Status-icon row below each node**: a compact row of badges rendered under a node, each with a hover tooltip (SVG `<title>`), aligned to the UI's leading edge (left in English, right in Hebrew). Badges: **Scope** (clock; tooltip shows the resolved window — crossed out once the window has passed), **Overdue** (red exclamation, for a kept-past-window item), **Archived** (box; for an archived goal/project or a lapsed scoped item), **Planned** (calendar; tooltip shows the Plan window), **Frozen** (snowflake; frozen goal/project), **Details** (ellipsis; an Info node with a Details description — tooltip shows it), **Flow/Habit instance** (the flow wave for a real Start-flow instance, the cyclical habit glyph for a virtual Habit iteration), and **Tags** (tag icon; tooltip lists the tag names). Backed by a pure `deriveStatusIndicators` mapper (unit-tested) and a new `list_flow_instance_nodes` command that surfaces which real Goal/Task nodes were materialized by a started flow.
 
+### Fixed
+- **Start filter no longer shows blocked items.** A blocked task/goal was correctly excluded from matching on its own, but `filterTree` still kept it when it had a startable descendant (ancestors of matches are retained to keep the tree connected), so blocked nodes leaked into Start. A blocked task/goal now hard-hides its whole subtree in Start mode — it gates what's beneath it, so nothing under it is "startable now" either.
+
 ## [0.2.0] — 2026-07-04
 
 ### Added

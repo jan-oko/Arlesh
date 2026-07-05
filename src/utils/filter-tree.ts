@@ -68,6 +68,9 @@ function typeHardHidden(node: MindmapNode, f: FilterState): boolean {
   // Work mode drops any NSFW node and everything beneath it, regardless of kind.
   if (f.workMode && node.nsfw === true) return true;
   if (node.kind === "info" && !f.showInfo) return true;
+  // In Start, a blocked task/goal gates its whole subtree: drop it outright rather than merely
+  // failing its self-match, which would otherwise keep it as an ancestor of a startable descendant.
+  if (f.statusMode === "start" && isNodeBlocked(node)) return true;
   return flowHardHidden(node, f);
 }
 
@@ -90,9 +93,9 @@ function passesStatus(node: MindmapNode, f: FilterState): boolean {
       return true;
     case "start": {
       if (node.kind !== "task" && node.kind !== "goal") return true;
-      // Start = things you can begin now: drop anything archived by scope (lapsed) or blocked.
+      // Start = things you can begin now: drop anything archived by scope (lapsed). (Blocked
+      // task/goals are dropped earlier, as a hard-hidden subtree — see typeHardHidden.)
       if (node.scopeLifecycle === "lapsed") return false;
-      if (isNodeBlocked(node)) return false;
       if (node.kind === "goal") return !RESOLVED_GOAL.has(node.status ?? "");
       if (node.status === "done") return false;
       // An in-progress task with nothing left to start (no direct todo child) drops out.
