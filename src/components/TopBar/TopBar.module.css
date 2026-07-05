@@ -95,6 +95,21 @@
   color: var(--surface);
 }
 
+.statusSelect {
+  padding: 3px var(--space-2);
+  border-radius: 6px;
+  border: 1px solid var(--node-border);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-family: var(--font-sans);
+  cursor: pointer;
+}
+
+.statusSelect:hover {
+  border-color: var(--accent);
+}
+
 .filterBtn {
   display: inline-flex;
   align-items: center;
@@ -112,18 +127,6 @@
 .filterBtn:hover {
   background: var(--surface-raised);
   color: var(--text-primary);
-}
-
-.filterActive {
-  border-color: var(--accent);
-  color: var(--text-primary);
-}
-
-.badge {
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  background: var(--accent);
 }
 
 /* Click-catcher behind an open popover. */

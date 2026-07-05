@@ -1,11 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import type { EntityOption } from "@/hooks/use-filter-display";
 import styles from "./FilterPopover.module.css";
-
-export interface EntityOption {
-  id: string;
-  label: string;
-}
 
 interface EntityAdderProps {
   placeholder: string;
@@ -57,6 +53,7 @@ export function EntityAdder({ placeholder, available, onAdd }: EntityAdderProps)
         <div className={styles.menu} style={{ position: "fixed", top: pos.top, left: pos.left, width: pos.width }}>
           {results.map((option) => (
             <div key={option.id} className={styles.menuItem} onMouseDown={(e) => { e.preventDefault(); onAdd(option.id); setQuery(""); }}>
+              {option.color !== null && <span className={styles.dot} style={{ background: option.color }} />}
               {option.label}
             </div>
           ))}

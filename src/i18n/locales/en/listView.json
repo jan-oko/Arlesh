@@ -7,6 +7,9 @@
     "unblock": "Unblock"
   },
   "showGoalHeaders": "Show goals",
+  "statusPresetLabel": "Status preset",
+  "hierarchyClusterLabel": "Hierarchy",
+  "statusScopeClusterLabel": "Status & Scope",
   "empty": "No tasks match the current filters.",
   "cycleStatus": "Cycle status",
   "filterByParent": "Filter by this parent",

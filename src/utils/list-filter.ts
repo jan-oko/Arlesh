@@ -11,6 +11,12 @@ export interface PillFilter {
   mode: PillMode;
 }
 
+/** Set-theory glyphs: Any = union, All = intersection, Exclude = empty set — shown on every pill/chip. */
+export const PILL_MODE_SYMBOL: Record<PillMode, string> = { any: "∪", all: "∩", exclude: "∅" };
+
+/** The mode a pill advances to when its chip is clicked (Any → All → Exclude → Any). */
+export const NEXT_PILL_MODE: Record<PillMode, PillMode> = { any: "all", all: "exclude", exclude: "any" };
+
 /** The List-View-exclusive filter dimensions (status preset, tags, and type toggles stay in the shared FilterState). */
 export type PillDimension =
   | "parent" | "antecedent" | "dependency"
@@ -25,7 +31,12 @@ export const PILL_DIMENSIONS: PillDimension[] = [
 
 /** List View's own preset selector: All/Plan/Start/Do write through to the shared status preset;
  * Unblock is List-View-only and does not touch it (see SPEC List View section). */
-export type ListPreset = "all" | "plan" | "start" | "do" | "unblock";
+export const LIST_PRESET_VALUES = ["all", "plan", "start", "do", "unblock"] as const;
+export type ListPreset = (typeof LIST_PRESET_VALUES)[number];
+
+export function isListPreset(value: string): value is ListPreset {
+  return (LIST_PRESET_VALUES as readonly string[]).includes(value);
+}
 
 export const TASK_STATUS_VALUES = ["todo", "in_progress", "done"] as const;
 export const GOAL_STATUS_VALUES = ["active", "achieved", "frozen", "archived"] as const;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { filterTree, isFilterActive, DEFAULT_FILTER } from "./filter-tree";
+import { filterTree, DEFAULT_FILTER } from "./filter-tree";
 import type { FilterState } from "./filter-tree";
 import type { MindmapNode, NodeKind } from "./tree-layout";
 
@@ -255,17 +255,5 @@ describe("filterTree — Work mode hides NSFW subtrees", () => {
     expect(kept).not.toContain("task-nsfw");
     expect(kept).not.toContain("child");
     expect(kept).toContain("task-clean");
-  });
-});
-
-describe("isFilterActive", () => {
-  it("is false for the default filter", () => {
-    expect(isFilterActive(DEFAULT_FILTER)).toBe(false);
-  });
-  it("is true when a mode / tag / type toggle is engaged", () => {
-    expect(isFilterActive({ ...DEFAULT_FILTER, statusMode: "do" })).toBe(true);
-    expect(isFilterActive({ ...DEFAULT_FILTER, tagFilters: [{ tagId: 1, mode: "any" }] })).toBe(true);
-    expect(isFilterActive({ ...DEFAULT_FILTER, showInfo: false })).toBe(true);
-    expect(isFilterActive({ ...DEFAULT_FILTER, workMode: true })).toBe(true);
   });
 });

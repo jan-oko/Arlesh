@@ -6,88 +6,91 @@ import { useListFilterStore } from "@/stores/use-list-filter-store";
 import { useViewStore } from "@/stores/use-view-store";
 import { DEFAULT_FILTER } from "@/utils/filter-tree";
 import { DEFAULT_LIST_FILTER } from "@/utils/list-filter";
-import { useMindmapData } from "@/components/MindmapView/use-mindmap-data";
-import type { MindmapNode } from "@/utils/tree-layout";
+import { useFilterDisplay } from "@/hooks/use-filter-display";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { dir: () => "ltr" } }),
 }));
 
-vi.mock("@/api/domains", () => ({
-  DOMAIN_SUBTYPE: { TAG: "tag" },
-  listDomains: vi.fn().mockResolvedValue([
-    { id: 1, title: "urgent", subtype: "tag", parent_id: 10, color: null, description: null, status: null, knowledge_base_directory: null, position: 0 },
-  ]),
-}));
+vi.mock("@/hooks/use-filter-display");
 
-vi.mock("@/components/MindmapView/use-mindmap-data");
+const mockUseFilterDisplay = vi.mocked(useFilterDisplay);
 
-const EMPTY_ROOT: MindmapNode = { id: "root", kind: "domain", title: "Arlesh", position: 0, tagIds: [], children: [] };
-const mockUseMindmapData = vi.mocked(useMindmapData);
+const EMPTY_DISPLAY = {
+  tagOptions: [], tagName: (id: number) => `#${id}`, tagColor: () => null,
+  nodeLabel: (ref: string) => ref, nodeColor: () => null,
+  parentPool: [], dependencyPool: [],
+  displayTaskStatus: (v: string) => v, displayGoalStatus: (v: string) => v,
+  displayProjectStatus: (v: string) => v, displayScopeState: (v: string) => v, displayBlocked: (v: string) => v,
+};
 
 beforeEach(() => {
   useFilterStore.setState({ filter: { ...DEFAULT_FILTER } });
   useListFilterStore.setState({ filter: { ...DEFAULT_LIST_FILTER, pills: { ...DEFAULT_LIST_FILTER.pills } } });
   useViewStore.setState({ view: "mindmap" });
-  mockUseMindmapData.mockReturnValue({
-    tree: EMPTY_ROOT,
-    isLoading: false,
-    error: null,
-    createNode: vi.fn(), createChild: vi.fn(), renameNode: vi.fn(), retypeNode: vi.fn(),
-    reorderNode: vi.fn(), moveNode: vi.fn(), removeNode: vi.fn(), createFlow: vi.fn(),
-    updateFlow: vi.fn(), reload: vi.fn(),
-  });
-  vi.clearAllMocks();
+  mockUseFilterDisplay.mockReturnValue(EMPTY_DISPLAY);
 });
 
 describe("FilterPopover", () => {
-  it("switches the status mode in the store", () => {
-    render(<FilterPopover />);
-    fireEvent.click(screen.getByText("mode.do"));
-    expect(useFilterStore.getState().filter.statusMode).toBe("do");
-  });
-
   it("shows the include-flows subtoggle only in Plan/Start", () => {
     render(<FilterPopover />);
     expect(screen.queryByText("includeFlows")).not.toBeInTheDocument(); // All
-    fireEvent.click(screen.getByText("mode.plan"));
-    expect(screen.getByText("includeFlows")).toBeInTheDocument();
+    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, statusMode: "plan" } });
+    const { unmount } = render(<FilterPopover />);
+    expect(screen.getAllByText("includeFlows").length).toBeGreaterThan(0);
+    unmount();
   });
 
-  it("hides tags & type controls under a collapsed Advanced section by default", () => {
+  it("toggles Info visibility off via the type pill (Mindmap only)", () => {
     render(<FilterPopover />);
-    expect(screen.queryByText("tagsLabel")).not.toBeInTheDocument();
-    expect(screen.queryByText("typesLabel")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByText("advanced"));
-    expect(screen.getByText("tagsLabel")).toBeInTheDocument();
-    expect(screen.getByText("typesLabel")).toBeInTheDocument();
-  });
-
-  it("toggles Info visibility off via the type pill (under Advanced)", () => {
-    render(<FilterPopover />);
-    fireEvent.click(screen.getByText("advanced")); // expand
     fireEvent.click(screen.getByRole("button", { name: "nodeKinds:info" }));
     expect(useFilterStore.getState().filter.showInfo).toBe(false);
   });
 
-  it("adds a tag filter (default Any) from the search combobox and cycles its mode Any→All", async () => {
+  it("does not show the node-type section while List View is active", () => {
+    useViewStore.setState({ view: "list" });
     render(<FilterPopover />);
-    fireEvent.click(screen.getByText("advanced")); // expand
+    expect(screen.queryByText("typesLabel")).not.toBeInTheDocument();
+  });
+
+  it("adds a tag filter (default Any) from the search combobox", async () => {
+    mockUseFilterDisplay.mockReturnValue({
+      ...EMPTY_DISPLAY,
+      tagOptions: [{ id: 1, label: "urgent", color: null }],
+    });
+    render(<FilterPopover />);
     fireEvent.focus(await screen.findByPlaceholderText("addTag"));
     await waitFor(() => expect(screen.getByText("urgent")).toBeInTheDocument());
     fireEvent.mouseDown(screen.getByText("urgent"));
     expect(useFilterStore.getState().filter.tagFilters).toEqual([{ tagId: 1, mode: "any" }]);
-    // The mode pill shows a set-theory glyph; its accessible name is the mode.
-    fireEvent.click(screen.getByRole("button", { name: "tagMode.any" }));
-    expect(useFilterStore.getState().filter.tagFilters[0]?.mode).toBe("all");
   });
 
-  it("removes a tag filter and resets the filter", async () => {
+  it("an already-selected tag no longer appears as a candidate", () => {
     useFilterStore.setState({ filter: { ...DEFAULT_FILTER, tagFilters: [{ tagId: 1, mode: "any" }] } });
+    mockUseFilterDisplay.mockReturnValue({
+      ...EMPTY_DISPLAY,
+      tagOptions: [{ id: 1, label: "urgent", color: null }],
+    });
     render(<FilterPopover />);
-    await waitFor(() => expect(screen.getByText("urgent")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "removeTagFilter" }));
-    expect(useFilterStore.getState().filter.tagFilters).toEqual([]);
+    expect(screen.queryByPlaceholderText("addTag")).not.toBeInTheDocument();
+  });
+
+  it("toggles Work mode", () => {
+    render(<FilterPopover />);
+    fireEvent.click(screen.getByText("workMode").closest("label") ?? screen.getByText("workMode"));
+    expect(useFilterStore.getState().filter.workMode).toBe(true);
+  });
+
+  it("reset clears the shared filter (and the list filter, while List View is active)", () => {
+    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, workMode: true } });
+    useViewStore.setState({ view: "list" });
+    useListFilterStore.setState({
+      filter: { ...DEFAULT_LIST_FILTER, pills: { ...DEFAULT_LIST_FILTER.pills, blocked: [{ value: "blocked", mode: "any" }] } },
+    });
+    render(<FilterPopover />);
+    fireEvent.click(screen.getByText("reset"));
+    expect(useFilterStore.getState().filter.workMode).toBe(false);
+    expect(useListFilterStore.getState().filter.pills.blocked).toEqual([]);
   });
 
   describe("List View filter sections", () => {
@@ -98,44 +101,60 @@ describe("FilterPopover", () => {
     it("does not render List-View-exclusive sections while the Mindmap is active", () => {
       useViewStore.setState({ view: "mindmap" });
       render(<FilterPopover />);
-      fireEvent.click(screen.getByText("advanced"));
       expect(screen.queryByText("listView:taskStatusLabel")).not.toBeInTheDocument();
     });
 
-    it("adds a fixed-option pill (task status) in 'any' mode by clicking it", () => {
+    it("renders the Hierarchy and Status & Scope clusters while List View is active", () => {
       render(<FilterPopover />);
-      fireEvent.click(screen.getByText("advanced"));
-      fireEvent.click(screen.getByText("status:task.todo"));
+      expect(screen.getByText("listView:hierarchyClusterLabel")).toBeInTheDocument();
+      expect(screen.getByText("listView:statusScopeClusterLabel")).toBeInTheDocument();
+    });
+
+    it("adds a fixed-option pill (task status) by clicking it", () => {
+      render(<FilterPopover />);
+      fireEvent.click(screen.getByText("todo"));
       expect(useListFilterStore.getState().filter.pills.taskStatus).toEqual([{ value: "todo", mode: "any" }]);
     });
 
-    it("cycles a fixed-option pill's mode and removes it", () => {
+    it("an already-added fixed value no longer appears as a candidate", () => {
       useListFilterStore.getState().addPill("blocked", "blocked");
       render(<FilterPopover />);
-      fireEvent.click(screen.getByText("advanced"));
-      fireEvent.click(screen.getByRole("button", { name: "tagMode.any" }));
-      expect(useListFilterStore.getState().filter.pills.blocked[0]?.mode).toBe("all");
-      fireEvent.click(screen.getByRole("button", { name: "removeTagFilter" }));
-      expect(useListFilterStore.getState().filter.pills.blocked).toEqual([]);
+      expect(screen.queryByText("blocked")).not.toBeInTheDocument();
+      expect(screen.getByText("not_blocked")).toBeInTheDocument();
     });
 
     it("adds a parent filter pill from the searchable combobox", async () => {
-      mockUseMindmapData.mockReturnValue({
-        tree: {
-          id: "root", kind: "domain", title: "Arlesh", position: 0, tagIds: [],
-          children: [{ id: "project-1", kind: "project", title: "Rocket", position: 0, tagIds: [], children: [] }],
-        },
-        isLoading: false, error: null,
-        createNode: vi.fn(), createChild: vi.fn(), renameNode: vi.fn(), retypeNode: vi.fn(),
-        reorderNode: vi.fn(), moveNode: vi.fn(), removeNode: vi.fn(), createFlow: vi.fn(),
-        updateFlow: vi.fn(), reload: vi.fn(),
+      mockUseFilterDisplay.mockReturnValue({
+        ...EMPTY_DISPLAY,
+        parentPool: [{ id: "project-1", label: "Rocket", color: "#e74c3c" }],
       });
       render(<FilterPopover />);
-      fireEvent.click(screen.getByText("advanced"));
       fireEvent.focus(await screen.findByPlaceholderText("listView:addParent"));
       await waitFor(() => expect(screen.getByText("Rocket")).toBeInTheDocument());
       fireEvent.mouseDown(screen.getByText("Rocket"));
       expect(useListFilterStore.getState().filter.pills.parent).toEqual([{ value: "project-1", mode: "any" }]);
+    });
+
+    it("an already-added parent no longer appears as a candidate", () => {
+      useListFilterStore.getState().addPill("parent", "project-1");
+      mockUseFilterDisplay.mockReturnValue({
+        ...EMPTY_DISPLAY,
+        parentPool: [{ id: "project-1", label: "Rocket", color: null }],
+      });
+      render(<FilterPopover />);
+      expect(screen.queryByPlaceholderText("listView:addParent")).not.toBeInTheDocument();
+    });
+
+    it("adds a dependency filter pill from its own pool (tasks/goals only)", async () => {
+      mockUseFilterDisplay.mockReturnValue({
+        ...EMPTY_DISPLAY,
+        dependencyPool: [{ id: "task-9", label: "Fuel up", color: null }],
+      });
+      render(<FilterPopover />);
+      fireEvent.focus(await screen.findByPlaceholderText("listView:addDependency"));
+      await waitFor(() => expect(screen.getByText("Fuel up")).toBeInTheDocument());
+      fireEvent.mouseDown(screen.getByText("Fuel up"));
+      expect(useListFilterStore.getState().filter.pills.dependency).toEqual([{ value: "task-9", mode: "any" }]);
     });
   });
 });

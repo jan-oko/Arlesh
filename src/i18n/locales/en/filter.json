@@ -1,13 +1,6 @@
 {
-  "statusLabel": "Status",
-  "mode": {
-    "all": "All",
-    "plan": "Plan",
-    "start": "Start",
-    "do": "Do"
-  },
+  "tagTypeClusterLabel": "Tags & Type",
   "includeFlows": "Include flows",
-  "advanced": "Advanced filters",
   "tagsLabel": "Tags",
   "tagMode": {
     "any": "Any",

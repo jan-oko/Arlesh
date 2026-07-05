@@ -42,10 +42,6 @@ const FLOW_KINDS = new Set(["flow", "flow_goal", "flow_task"]);
 /** Container kinds with no status of their own — shown only as ancestors of a content match. */
 const STRUCTURAL_KINDS = new Set(["aspect", "domain", "project", "tag"]);
 
-/** Whether the filter differs from the neutral state (drives the top-bar active badge). */
-export function isFilterActive(f: FilterState): boolean {
-  return f.statusMode !== "all" || f.tagFilters.length > 0 || !f.showInfo || !f.showFlow || f.workMode;
-}
 
 /**
  * A flow subtree is hidden as a unit (not softly, via ancestor-keeping) when: the global Flow toggle

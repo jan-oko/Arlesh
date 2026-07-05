@@ -93,19 +93,19 @@ describe("ListView", () => {
     expect(screen.getByText("listView:empty")).toBeInTheDocument();
   });
 
-  it("Plan/Start/Do preset clicks write through to the shared status mode", () => {
+  it("respects the Unblock preset when set externally (e.g. from the TopBar dropdown)", () => {
+    useListFilterStore.setState({ filter: { ...DEFAULT_LIST_FILTER, preset: "unblock" } });
+    mockUseListData.mockReturnValue({
+      tree: n("root", "domain"),
+      rows: [
+        row({ node: n("task-open", "task", { status: "todo" }), isBlocked: false }),
+        row({ node: n("task-blocked", "task", { status: "todo" }), isBlocked: true }),
+      ],
+      allTasksAndGoals: [], isLoading: false, error: null, reload: vi.fn(), onCycleStatus: vi.fn(),
+    });
     render(<ListView />);
-    fireEvent.click(screen.getByText("listView:preset.do"));
-    expect(useFilterStore.getState().filter.statusMode).toBe("do");
-    expect(useListFilterStore.getState().filter.preset).toBe("do");
-  });
-
-  it("Unblock preset does not change the shared status mode", () => {
-    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, statusMode: "plan" } });
-    render(<ListView />);
-    fireEvent.click(screen.getByText("listView:preset.unblock"));
-    expect(useFilterStore.getState().filter.statusMode).toBe("plan");
-    expect(useListFilterStore.getState().filter.preset).toBe("unblock");
+    expect(screen.queryByText("task-open")).not.toBeInTheDocument();
+    expect(screen.getByText("task-blocked")).toBeInTheDocument();
   });
 
   it("shows a Goal header when the goal-headers toggle is on", () => {

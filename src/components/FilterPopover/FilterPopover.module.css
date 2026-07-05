@@ -28,101 +28,24 @@
   letter-spacing: 0.04em;
 }
 
-.segmented {
+/* Groups a few sections under a heading (Tags & Type / Hierarchy / Status & Scope) — always
+ * expanded, separated by a divider rather than hidden behind a collapse. */
+.cluster {
   display: flex;
-  border: 1px solid var(--node-border);
-  border-radius: 6px;
-  overflow: hidden;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--node-border);
 }
 
-.seg {
-  flex: 1;
-  padding: 4px 0;
-  background: transparent;
-  border: none;
-  border-inline-start: 1px solid var(--node-border);
-  color: var(--text-secondary);
+.cluster:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+
+.clusterLabel {
   font-size: var(--text-sm);
-  font-family: var(--font-sans);
-  cursor: pointer;
-}
-
-.seg:first-child {
-  border-inline-start: none;
-}
-
-.seg:hover {
-  color: var(--text-primary);
-}
-
-.segActive {
-  background: var(--accent);
-  color: var(--surface);
-}
-
-.check {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--text-primary);
-  font-size: var(--text-sm);
-  cursor: pointer;
-}
-
-/* Tag-filter chips: [mode glyph] name [×], wrapping, tinted by the tag's aspect colour. */
-.tagPills {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-
-.tagPill {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  padding: 1px var(--space-1) 1px 2px;
-  border: 1px solid var(--node-border);
-  border-radius: 999px;
-  font-size: var(--text-sm);
-}
-
-.modeGlyph {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  border-radius: 999px;
-  border: none;
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: var(--text-md);
-  line-height: 1;
-  cursor: pointer;
-}
-
-.mode_any,
-.mode_all { color: var(--accent); }
-.mode_exclude { color: #dc2626; }
-
-.tagPillName {
-  max-width: 120px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text-primary);
-}
-
-.tagPillX {
-  background: none;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  padding: 0 2px;
-  line-height: 1;
-}
-
-.tagPillX:hover {
+  font-weight: 600;
   color: var(--text-primary);
 }
 
@@ -203,24 +126,6 @@
   border-color: var(--accent);
   color: var(--surface);
   text-decoration: none;
-}
-
-.advancedToggle {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  align-self: flex-start;
-  background: none;
-  border: none;
-  padding: 0;
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-  font-family: var(--font-sans);
-  cursor: pointer;
-}
-
-.advancedToggle:hover {
-  color: var(--text-primary);
 }
 
 .reset {

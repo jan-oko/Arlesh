@@ -136,6 +136,17 @@ export function collectSearchableNodes(root: MindmapNode): SearchableNode[] {
   return out;
 }
 
+/** Every node in the tree keyed by id — including the virtual root — for O(1) lookups (label, color). */
+export function flattenNodesById(root: MindmapNode): Map<string, MindmapNode> {
+  const map = new Map<string, MindmapNode>();
+  function visit(n: MindmapNode): void {
+    map.set(n.id, n);
+    for (const child of n.children) visit(child);
+  }
+  visit(root);
+  return map;
+}
+
 /** Returns all node IDs in the tree in depth-first pre-order. */
 export function collectAllNodeIds(root: MindmapNode): string[] {
   const result: string[] = [];

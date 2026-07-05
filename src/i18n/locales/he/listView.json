@@ -7,6 +7,9 @@
     "unblock": "חסומות"
   },
   "showGoalHeaders": "הצג מטרות",
+  "statusPresetLabel": "סטטוס מסונן",
+  "hierarchyClusterLabel": "היררכיה",
+  "statusScopeClusterLabel": "סטטוס וטווח",
   "empty": "אין משימות התואמות את הסינון הנוכחי.",
   "cycleStatus": "החלף סטטוס",
   "filterByParent": "סנן לפי הורה זה",

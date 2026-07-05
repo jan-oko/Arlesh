@@ -1,0 +1,55 @@
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-4);
+  border-bottom: 1px solid var(--node-border);
+  background: var(--surface);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px var(--space-1) 1px var(--space-2);
+  border-radius: 999px;
+  border: 1px solid var(--chip-mode-color, var(--node-border));
+  background: var(--chip-tint, var(--surface-raised));
+  color: var(--chip-mode-color, var(--text-primary));
+  font-size: var(--text-sm);
+  font-family: var(--font-sans);
+  cursor: pointer;
+}
+
+.symbol {
+  font-family: var(--font-mono);
+  line-height: 1;
+}
+
+.label {
+  color: var(--text-primary);
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.remove:hover {
+  background: rgba(220, 38, 38, 0.2);
+}

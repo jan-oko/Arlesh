@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { connectedNodeIds, nearestInDirection, collectAllNodeIds, computeShiftSelectRange, parentAndChildrenIds, siblingIds, gatherSubtreeItems, collectSubtreePostOrder, conversionNeedsConfirm } from "./mindmap-tree";
+import { connectedNodeIds, nearestInDirection, collectAllNodeIds, computeShiftSelectRange, parentAndChildrenIds, siblingIds, gatherSubtreeItems, collectSubtreePostOrder, conversionNeedsConfirm, flattenNodesById } from "./mindmap-tree";
 import type { MindmapNode } from "./tree-layout";
 import type { Position } from "./tree-layout";
 
@@ -328,5 +328,21 @@ describe("collectSubtreePostOrder", () => {
     const taskLeaf = { id: "task-9", kind: "task" as const, title: "t", position: 0, tagIds: [], children: [] };
     const result = collectSubtreePostOrder(taskLeaf);
     expect(result[0]?.kind).toBe("task");
+  });
+});
+
+describe("flattenNodesById", () => {
+  it("maps every node's id to itself, including the root", () => {
+    const map = flattenNodesById(TREE);
+    expect(map.get("root")).toBe(TREE);
+    expect(map.get("aspect-a")).toBe(ASPECT_A);
+    expect(map.get("child-1")).toBe(CHILD_1);
+    expect(map.get("child-2")).toBe(CHILD_2);
+    expect(map.get("aspect-b")).toBe(ASPECT_B);
+    expect(map.size).toBe(5);
+  });
+
+  it("returns undefined for an id not in the tree", () => {
+    expect(flattenNodesById(TREE).get("missing")).toBeUndefined();
   });
 });
