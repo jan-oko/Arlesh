@@ -60,6 +60,17 @@ describe("TaskRow", () => {
     expect(onOpenEditor).toHaveBeenCalledWith("task-1");
   });
 
+  it("double-clicking the card opens the editor", () => {
+    const onOpenEditor = vi.fn();
+    const { container } = render(
+      <TaskRow row={row()} onCycleStatus={vi.fn()} onOpenEditor={onOpenEditor} onAddParentFilter={vi.fn()} onAddTagFilter={vi.fn()} />,
+    );
+    const card = container.querySelector("[class*='card']");
+    expect(card).not.toBeNull();
+    if (card !== null) fireEvent.doubleClick(card);
+    expect(onOpenEditor).toHaveBeenCalledWith("task-1");
+  });
+
   it("clicking the parent label adds a parent filter", () => {
     const onAddParentFilter = vi.fn();
     render(<TaskRow row={row()} onCycleStatus={vi.fn()} onOpenEditor={vi.fn()} onAddParentFilter={onAddParentFilter} onAddTagFilter={vi.fn()} />);

@@ -20,7 +20,8 @@ interface Props {
 
 /** A compact card row for one Task: a status control (mirrors the Mindmap node's own glyph and click
  * behavior), the title, its status-icon badges, and clickable parent/tag labels (SPEC: clicking either
- * inline adds it as a filter). */
+ * inline adds it as a filter). Double-clicking anywhere on the card opens the Task editor, same as
+ * double-clicking the node on the Mindmap. */
 export default function TaskRow({ row, onCycleStatus, onOpenEditor, onAddParentFilter, onAddTagFilter }: Props) {
   const { t } = useTranslation(["listView", "nodeKinds"]);
   const tagNames = useTagNames();
@@ -38,7 +39,7 @@ export default function TaskRow({ row, onCycleStatus, onOpenEditor, onAddParentF
   };
 
   return (
-    <div className={styles.card} style={cardStyle}>
+    <div className={styles.card} style={cardStyle} onDoubleClick={() => onOpenEditor(node.id)}>
       <button
         type="button"
         className={styles.statusButton}
