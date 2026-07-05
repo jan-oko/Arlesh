@@ -1,0 +1,75 @@
+.wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 3px var(--space-2);
+  border-radius: 6px;
+  border: 1px solid var(--node-border);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-family: var(--font-sans);
+  cursor: pointer;
+}
+
+.trigger:hover {
+  border-color: var(--accent);
+}
+
+.value {
+  white-space: nowrap;
+}
+
+.chevron {
+  color: var(--text-secondary);
+  font-size: 10px;
+  line-height: 1;
+}
+
+/* Click-catcher behind the open menu. */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  inset-inline-start: 0;
+  z-index: 100;
+  min-width: 100%;
+  background: var(--surface-raised);
+  border: 1px solid var(--node-border);
+  border-radius: var(--node-radius);
+  padding: var(--space-1) 0;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+}
+
+.option {
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  padding: var(--space-1) var(--space-3);
+  text-align: start;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.optionHighlighted {
+  background: var(--node-bg-hover);
+}
+
+.optionSelected {
+  color: var(--accent);
+  font-weight: 600;
+}

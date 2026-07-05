@@ -1,5 +1,4 @@
 import { useState } from "react";
-import type { ChangeEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { useFilterStore } from "@/stores/use-filter-store";
@@ -9,6 +8,7 @@ import { LIST_PRESET_VALUES, isListPreset } from "@/utils/list-filter";
 import type { ListPreset } from "@/utils/list-filter";
 import FilterPopover from "@/components/FilterPopover/FilterPopover";
 import FilterChips from "@/components/FilterChips/FilterChips";
+import Select from "@/components/Select/Select";
 import styles from "./TopBar.module.css";
 
 const GEAR_ICON = "⚙";
@@ -54,8 +54,7 @@ export default function TopBar() {
     void i18n.changeLanguage(isHebrew ? "en" : "he");
   }
 
-  function handlePresetChange(e: ChangeEvent<HTMLSelectElement>) {
-    const { value } = e.target;
+  function selectPreset(value: string) {
     if (!isListPreset(value)) return;
     if (value === "unblock") {
       setListPreset("unblock");
@@ -101,16 +100,12 @@ export default function TopBar() {
               {t("common:viewList")}
             </button>
           </div>
-          <select
-            className={styles.statusSelect}
-            aria-label={t("listView:statusPresetLabel")}
+          <Select
             value={activePreset}
-            onChange={handlePresetChange}
-          >
-            {presetOptions.map((preset) => (
-              <option key={preset} value={preset}>{t(`listView:preset.${preset}`)}</option>
-            ))}
-          </select>
+            options={presetOptions.map((preset) => ({ value: preset, label: t(`listView:preset.${preset}`) }))}
+            onChange={selectPreset}
+            ariaLabel={t("listView:statusPresetLabel")}
+          />
           {subtreeRootId !== null && subtreeNav !== null && (
             <>
               {subtreeNav.parentSubtreeId !== null && (

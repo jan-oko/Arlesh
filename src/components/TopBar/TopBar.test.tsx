@@ -70,6 +70,7 @@ describe("TopBar", () => {
   describe("status preset dropdown", () => {
     it("offers only All/Plan/Start/Do in Mindmap view", () => {
       render(<TopBar />);
+      fireEvent.click(screen.getByRole("button", { name: "listView:statusPresetLabel" }));
       const options = screen.getAllByRole("option").map((o) => o.textContent);
       expect(options).toEqual(["listView:preset.all", "listView:preset.plan", "listView:preset.start", "listView:preset.do"]);
     });
@@ -77,13 +78,15 @@ describe("TopBar", () => {
     it("adds Unblock as a 5th option in List View", () => {
       useViewStore.setState({ view: "list" });
       render(<TopBar />);
+      fireEvent.click(screen.getByRole("button", { name: "listView:statusPresetLabel" }));
       const options = screen.getAllByRole("option").map((o) => o.textContent);
       expect(options).toContain("listView:preset.unblock");
     });
 
     it("selecting Plan writes through to the shared status mode and the list preset", () => {
       render(<TopBar />);
-      fireEvent.change(screen.getByRole("combobox"), { target: { value: "plan" } });
+      fireEvent.click(screen.getByRole("button", { name: "listView:statusPresetLabel" }));
+      fireEvent.click(screen.getByRole("option", { name: "listView:preset.plan" }));
       expect(useFilterStore.getState().filter.statusMode).toBe("plan");
       expect(useListFilterStore.getState().filter.preset).toBe("plan");
     });
@@ -92,7 +95,8 @@ describe("TopBar", () => {
       useViewStore.setState({ view: "list" });
       useFilterStore.setState({ filter: { ...DEFAULT_FILTER, statusMode: "do" } });
       render(<TopBar />);
-      fireEvent.change(screen.getByRole("combobox"), { target: { value: "unblock" } });
+      fireEvent.click(screen.getByRole("button", { name: "listView:statusPresetLabel" }));
+      fireEvent.click(screen.getByRole("option", { name: "listView:preset.unblock" }));
       expect(useFilterStore.getState().filter.statusMode).toBe("do");
       expect(useListFilterStore.getState().filter.preset).toBe("unblock");
     });
@@ -101,10 +105,10 @@ describe("TopBar", () => {
       useListFilterStore.setState({ filter: { ...DEFAULT_LIST_FILTER, preset: "unblock" } });
       useViewStore.setState({ view: "mindmap" });
       const { rerender } = render(<TopBar />);
-      expect(screen.getByRole("combobox")).toHaveValue("all");
+      expect(screen.getByRole("button", { name: "listView:statusPresetLabel" })).toHaveTextContent("listView:preset.all");
       useViewStore.setState({ view: "list" });
       rerender(<TopBar />);
-      expect(screen.getByRole("combobox")).toHaveValue("unblock");
+      expect(screen.getByRole("button", { name: "listView:statusPresetLabel" })).toHaveTextContent("listView:preset.unblock");
     });
   });
 
