@@ -72,6 +72,27 @@ describe("flattenTaskRows", () => {
     expect(childRow?.hasBlockedAncestor).toBe(true);
   });
 
+  it("hasNsfwAncestor is true when any ancestor (e.g. the Project) is marked NSFW, not just a direct parent", () => {
+    const tree = n("root", "domain", {}, [
+      n("aspect-1", "aspect", {}, [
+        n("project-1", "project", { nsfw: true }, [
+          n("goal-1", "goal", { status: "active", nsfw: false }, [
+            n("task-1", "task", { status: "todo", nsfw: false }),
+          ]),
+        ]),
+      ]),
+    ]);
+    const [row] = flattenTaskRows(tree, []);
+    expect(row?.node.nsfw).toBe(false);
+    expect(row?.hasNsfwAncestor).toBe(true);
+  });
+
+  it("hasNsfwAncestor is false when no ancestor is marked NSFW", () => {
+    const tree = n("root", "domain", {}, [n("aspect-1", "aspect", {}, [n("task-1", "task", { status: "todo" })])]);
+    const [row] = flattenTaskRows(tree, []);
+    expect(row?.hasNsfwAncestor).toBe(false);
+  });
+
   it("resolves this task's own dependency edges to target node ids", () => {
     const tree = n("root", "domain", {}, [n("task-5", "task", { status: "todo" })]);
     const deps: TaskDependencyEdge[] = [

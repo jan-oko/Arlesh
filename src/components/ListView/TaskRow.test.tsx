@@ -25,6 +25,7 @@ function row(over: Partial<TaskListRow> = {}): TaskListRow {
     dependencyRefs: [],
     isBlocked: false,
     hasBlockedAncestor: false,
+    hasNsfwAncestor: false,
     scopeTokens: ["unscoped", "unplanned"],
     ...over,
   };

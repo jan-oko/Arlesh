@@ -25,6 +25,7 @@ function row(over: Partial<TaskListRow> = {}): TaskListRow {
     dependencyRefs: [],
     isBlocked: false,
     hasBlockedAncestor: false,
+    hasNsfwAncestor: false,
     scopeTokens: ["unscoped", "unplanned"],
     ...over,
   };
@@ -125,6 +126,16 @@ describe("filterTaskList", () => {
   it("work mode hard-hides an NSFW task", () => {
     const rows = [row({ node: n("task-nsfw", "task", { status: "todo", nsfw: true }) })];
     expect(filterTaskList(rows, sf({ workMode: true }), lf())).toHaveLength(0);
+  });
+
+  it("work mode hard-hides a task nested under an NSFW ancestor, even though the task itself isn't marked", () => {
+    const rows = [row({ node: n("task-child", "task", { status: "todo", nsfw: false }), hasNsfwAncestor: true })];
+    expect(filterTaskList(rows, sf({ workMode: true }), lf())).toHaveLength(0);
+  });
+
+  it("work mode does not hide a non-NSFW task with no NSFW ancestor", () => {
+    const rows = [row({ node: n("task-clean", "task", { status: "todo", nsfw: false }), hasNsfwAncestor: false })];
+    expect(filterTaskList(rows, sf({ workMode: true }), lf())).toHaveLength(1);
   });
 
   it("parent filter (any) keeps only rows under the chosen parent", () => {

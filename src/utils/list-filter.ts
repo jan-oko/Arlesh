@@ -94,6 +94,9 @@ export interface TaskListRow {
   dependencyRefs: string[];
   isBlocked: boolean;
   hasBlockedAncestor: boolean;
+  /** Whether any ancestor (Project/Goal/Domain/Aspect) is marked NSFW — Work mode hides this task's
+   * subtree as a unit even when the task itself isn't flagged (mirrors the Mindmap's tree-pruning). */
+  hasNsfwAncestor: boolean;
   scopeTokens: string[];
 }
 
@@ -150,6 +153,7 @@ export function filterTaskList(
 ): TaskListRow[] {
   return rows.filter((row) => {
     if (typeHardHidden(row.node, shared)) return false;
+    if (shared.workMode && row.hasNsfwAncestor) return false;
     if (listFilter.preset === "unblock") {
       if (!row.isBlocked) return false;
     } else if (!passesListPreset(row, shared.statusMode)) {
