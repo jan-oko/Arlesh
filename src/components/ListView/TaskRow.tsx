@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import type { TaskListRow } from "@/utils/list-filter";
@@ -12,19 +13,29 @@ const ICON_R = 10;
 
 interface Props {
   row: TaskListRow;
+  isSelected: boolean;
+  isEditingTitle: boolean;
+  onSelect: (nodeId: string) => void;
   onCycleStatus: (nodeId: string) => void;
   onOpenEditor: (nodeId: string) => void;
+  onCommitTitle: (nodeId: string, title: string) => void;
+  onCancelTitleEdit: () => void;
   onAddParentFilter: (parentRef: string) => void;
   onAddTagFilter: (tagId: number) => void;
 }
 
 /** A compact card row for one Task: a status control (mirrors the Mindmap node's own glyph and click
- * behavior), the title, its status-icon badges, and clickable parent/tag labels (SPEC: clicking either
- * inline adds it as a filter). Double-clicking anywhere on the card opens the Task editor, same as
+ * behavior), the title (or an inline rename input, keyboard "R"), its status-icon badges, and clickable
+ * parent/tag labels (SPEC: clicking either inline adds it as a filter). Clicking anywhere on the card
+ * selects it (for keyboard navigation/actions); double-clicking opens the Task editor, same as
  * double-clicking the node on the Mindmap. */
-export default function TaskRow({ row, onCycleStatus, onOpenEditor, onAddParentFilter, onAddTagFilter }: Props) {
+export default function TaskRow({
+  row, isSelected, isEditingTitle, onSelect, onCycleStatus, onOpenEditor, onCommitTitle, onCancelTitleEdit,
+  onAddParentFilter, onAddTagFilter,
+}: Props) {
   const { t } = useTranslation(["listView", "nodeKinds"]);
   const tagNames = useTagNames();
+  const inputRef = useRef<HTMLInputElement>(null);
   const { node } = row;
   const parent = row.ancestors[row.ancestors.length - 1];
 
@@ -38,8 +49,19 @@ export default function TaskRow({ row, onCycleStatus, onOpenEditor, onAddParentF
     "--card-tint-opacity": fillOpacity,
   };
 
+  useEffect(() => {
+    if (!isEditingTitle) return;
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, [isEditingTitle]);
+
   return (
-    <div className={styles.card} style={cardStyle} onDoubleClick={() => onOpenEditor(node.id)}>
+    <div
+      className={`${styles.card}${isSelected ? ` ${styles.cardSelected}` : ""}`}
+      style={cardStyle}
+      onClick={() => onSelect(node.id)}
+      onDoubleClick={() => onOpenEditor(node.id)}
+    >
       <button
         type="button"
         className={styles.statusButton}
@@ -54,9 +76,24 @@ export default function TaskRow({ row, onCycleStatus, onOpenEditor, onAddParentF
 
       <div className={styles.main}>
         <div className={styles.titleRow}>
-          <button type="button" className={styles.title} onClick={() => onOpenEditor(node.id)}>
-            {node.title}
-          </button>
+          {isEditingTitle ? (
+            <input
+              ref={inputRef}
+              type="text"
+              className={styles.titleInput}
+              defaultValue={node.title}
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") { e.preventDefault(); onCommitTitle(node.id, e.currentTarget.value); }
+                if (e.key === "Escape") { e.stopPropagation(); onCancelTitleEdit(); }
+              }}
+              onBlur={(e) => onCommitTitle(node.id, e.currentTarget.value)}
+            />
+          ) : (
+            <button type="button" className={styles.title} onClick={() => onOpenEditor(node.id)}>
+              {node.title}
+            </button>
+          )}
           <TaskRowBadges node={node} indicators={deriveStatusIndicators(node)} />
         </div>
 
