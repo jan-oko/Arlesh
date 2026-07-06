@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import type { NodeKind } from "@/utils/tree-layout";
 import { validTypesForCycling, typeAcceptsChildren } from "@/utils/node-meta";
+import { canConvertNodeToFlow } from "@/utils/mindmap-tree";
 import type { ContextMenuAction } from "./context-action";
 import styles from "./NodeContextMenu.module.css";
 
@@ -18,8 +19,6 @@ interface Props {
   onAction: (action: ContextMenuAction) => void;
   onClose: () => void;
 }
-
-const FLOW_PARENT_KINDS: NodeKind[] = ["aspect", "domain", "project", "goal"];
 
 export default function NodeContextMenu({ x, y, nodeKind, parentKind = null, childKinds = [], isCollapsed, hasClipboard, onAction, onClose }: Props) {
   const { t } = useTranslation(["contextMenu", "nodeKinds"]);
@@ -41,9 +40,7 @@ export default function NodeContextMenu({ x, y, nodeKind, parentKind = null, chi
   // A Flow templates a Goal/Task subtree, so it may be created under any node that can hold one.
   const canCreateFlow = nodeKind === "aspect" || nodeKind === "domain" || nodeKind === "project" || nodeKind === "goal";
   const isFlow = nodeKind === "flow";
-  // A Goal/Task can convert into a Flow only where a flow may be parented (never under a Task).
-  const canConvertToFlow =
-    (nodeKind === "goal" || nodeKind === "task") && parentKind !== null && FLOW_PARENT_KINDS.includes(parentKind);
+  const canConvertToFlow = canConvertNodeToFlow(nodeKind, parentKind);
 
   function item(label: string, action: ContextMenuAction, disabled = false) {
     return (

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { connectedNodeIds, nearestInDirection, collectAllNodeIds, computeShiftSelectRange, parentAndChildrenIds, siblingIds, gatherSubtreeItems, collectSubtreePostOrder, conversionNeedsConfirm, flattenNodesById } from "./mindmap-tree";
+import { connectedNodeIds, nearestInDirection, collectAllNodeIds, computeShiftSelectRange, parentAndChildrenIds, siblingIds, gatherSubtreeItems, collectSubtreePostOrder, conversionNeedsConfirm, flattenNodesById, canConvertNodeToFlow } from "./mindmap-tree";
 import type { MindmapNode } from "./tree-layout";
 import type { Position } from "./tree-layout";
 
@@ -302,6 +302,33 @@ describe("conversionNeedsConfirm", () => {
 
   it("skips confirmation for a childless leaf (nothing to remap)", () => {
     expect(conversionNeedsConfirm(A1)).toBe(false);
+  });
+});
+
+describe("canConvertNodeToFlow", () => {
+  it("allows a task under a project", () => {
+    expect(canConvertNodeToFlow("task", "project")).toBe(true);
+  });
+
+  it("allows a goal under an aspect, domain, project, or goal", () => {
+    expect(canConvertNodeToFlow("goal", "aspect")).toBe(true);
+    expect(canConvertNodeToFlow("goal", "domain")).toBe(true);
+    expect(canConvertNodeToFlow("goal", "project")).toBe(true);
+    expect(canConvertNodeToFlow("goal", "goal")).toBe(true);
+  });
+
+  it("rejects a task or goal under a task (a flow can never parent there)", () => {
+    expect(canConvertNodeToFlow("task", "task")).toBe(false);
+    expect(canConvertNodeToFlow("goal", "task")).toBe(false);
+  });
+
+  it("rejects a node kind other than task/goal", () => {
+    expect(canConvertNodeToFlow("domain", "project")).toBe(false);
+    expect(canConvertNodeToFlow("flow", "project")).toBe(false);
+  });
+
+  it("rejects a node with no parent (the tree root)", () => {
+    expect(canConvertNodeToFlow("task", null)).toBe(false);
   });
 });
 

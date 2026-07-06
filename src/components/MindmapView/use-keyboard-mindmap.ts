@@ -51,6 +51,9 @@ interface Options {
   onToggleFilter: () => void;
   onSetStatusMode: (mode: StatusMode) => void;
   onFocusRoot: () => void;
+  onCenterOnNode: (id: string) => void;
+  onConvertToFlow: (id: string) => void;
+  onExtendSelection: (key: "ArrowUp" | "ArrowDown") => void;
   findNodeById: (id: string) => MindmapNode | undefined;
 }
 
@@ -61,7 +64,7 @@ export function useKeyboardMindmap(options: Options): void {
     onNavigate, onCycleType, onReorder, onStartRename,
     onCreateChild, onCreateSibling, onInsertParent, onOpenEditor, onStartFlow, onDelete, onToggleCollapsed, onCycleStatus,
     onDeselect, onExitSubtree, onExitToRoot, onCut, onCopy, onPaste, onEnterSubtree, onOpenSearch, onZoomIn, onZoomOut,
-    onToggleFilter, onSetStatusMode, onFocusRoot,
+    onToggleFilter, onSetStatusMode, onFocusRoot, onCenterOnNode, onConvertToFlow, onExtendSelection,
     findNodeById,
   } = options;
 
@@ -119,12 +122,14 @@ export function useKeyboardMindmap(options: Options): void {
           // held-key repeats race the reload, spawning duplicate siblings.
           if (event.ctrlKey) { if (!event.repeat && selectedNodeId !== null) onCycleType(selectedNodeId, -1); }
           else if (event.altKey && selectedNodeId !== null) onReorder(selectedNodeId, -1);
+          else if (event.shiftKey) onExtendSelection("ArrowUp");
           else onNavigate("ArrowUp");
           break;
         case "ArrowDown":
           event.preventDefault();
           if (event.ctrlKey) { if (!event.repeat && selectedNodeId !== null) onCycleType(selectedNodeId, 1); }
           else if (event.altKey && selectedNodeId !== null) onReorder(selectedNodeId, 1);
+          else if (event.shiftKey) onExtendSelection("ArrowDown");
           else onNavigate("ArrowDown");
           break;
         case "F2":
@@ -241,6 +246,15 @@ export function useKeyboardMindmap(options: Options): void {
           if (event.ctrlKey && selectedNodeId !== null) {
             event.preventDefault();
             onCopy([...selectedNodeIds]);
+          } else if (!event.ctrlKey && !event.metaKey && !event.altKey && selectedNodeId !== null) {
+            event.preventDefault();
+            onCenterOnNode(selectedNodeId);
+          }
+          break;
+        case "KeyF":
+          if (!event.ctrlKey && !event.metaKey && !event.altKey && selectedNodeId !== null) {
+            event.preventDefault();
+            onConvertToFlow(selectedNodeId);
           }
           break;
         case "KeyV":
@@ -286,7 +300,7 @@ export function useKeyboardMindmap(options: Options): void {
     onNavigate, onCycleType, onReorder, onStartRename,
     onCreateChild, onCreateSibling, onInsertParent, onOpenEditor, onStartFlow, onDelete, onToggleCollapsed, onCycleStatus,
     onDeselect, onExitSubtree, onExitToRoot, onCut, onCopy, onPaste, onEnterSubtree, onOpenSearch, onZoomIn, onZoomOut,
-    onToggleFilter, onSetStatusMode, onFocusRoot,
+    onToggleFilter, onSetStatusMode, onFocusRoot, onCenterOnNode, onConvertToFlow, onExtendSelection,
     findNodeById,
   ]);
 }
