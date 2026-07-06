@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { findNode, findParent, collectAllNodeIds } from "@/utils/mindmap-tree";
+import { isValidDropTarget } from "@/utils/node-meta";
 import { updateTask } from "@/api/tasks";
 import { updateGoal } from "@/api/goals";
 import { setHabitItemStatus } from "@/api/flows";
@@ -132,7 +133,12 @@ export function useNodeActions({
       const targetNode = findNode(tree, targetId);
       if (targetNode === undefined) return;
 
-      const nodeIds = clipboard.nodeIds;
+      // Drop the same rules drag-and-drop enforces (e.g. aspects are fixed and can't be reparented).
+      const nodeIds = clipboard.nodeIds.filter((id) => {
+        const node = findNode(tree, id);
+        return node !== undefined && isValidDropTarget(node.kind, targetNode.kind);
+      });
+      if (nodeIds.length === 0) return;
       const selectedSet = new Set(nodeIds);
 
       // Keep only top-level nodes (no ancestor in the selected set)

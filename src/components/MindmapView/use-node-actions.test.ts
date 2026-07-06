@@ -244,6 +244,24 @@ describe("useNodeActions — onPaste", () => {
     await vi.waitFor(() => expect(opts.moveNode).toHaveBeenCalled());
     expect(opts.setClipboard).not.toHaveBeenCalled();
   });
+
+  it("does not move an aspect node — aspects cannot be reparented", async () => {
+    const clipboard = { operation: CLIPBOARD_OP.COPY, nodeIds: ["aspect-1"] };
+    const opts = makeOpts({ clipboard });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onPaste("goal-2"); });
+    await Promise.resolve();
+    expect(opts.moveNode).not.toHaveBeenCalled();
+  });
+
+  it("pastes valid nodes alongside an aspect, skipping only the aspect", async () => {
+    const clipboard = { operation: CLIPBOARD_OP.COPY, nodeIds: ["aspect-1", "task-5"] };
+    const opts = makeOpts({ clipboard });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onPaste("goal-2"); });
+    await vi.waitFor(() => expect(opts.moveNode).toHaveBeenCalledWith("task-5", "task", "goal-2", "goal", 0));
+    expect(opts.moveNode).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("useNodeActions — onInsertParent", () => {
