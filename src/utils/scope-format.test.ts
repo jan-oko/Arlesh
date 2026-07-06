@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatScope, formatScopeRange } from "./scope-format";
+import { formatScope, formatScopeAnchor, formatScopeCore, formatScopeRange } from "./scope-format";
 import type { Scope } from "@/api/scopes";
 import type { ScopeLabelFns } from "@/hooks/use-scope-labels";
 
@@ -34,6 +34,39 @@ describe("formatScope (single)", () => {
   });
   it("renders a week as W{n} with the year", () => {
     expect(formatScope(mk(1, "week", "2026-06-14"), labels)).toMatch(/^W\d+ 2026$/);
+  });
+});
+
+describe("formatScopeAnchor", () => {
+  it("renders a day as dd/mm/yy", () => {
+    expect(formatScopeAnchor("day", "2026-06-20", labels)).toBe("20/06/26");
+  });
+  it("renders a month by name with the year", () => {
+    expect(formatScopeAnchor("month", "2026-06-01", labels)).toBe("June 2026");
+  });
+  it("renders a season by name with the year", () => {
+    expect(formatScopeAnchor("season", "2026-06-01", labels)).toBe("Summer 2026");
+  });
+  it("renders a week as W{n} with the year", () => {
+    expect(formatScopeAnchor("week", "2026-06-14", labels)).toMatch(/^W\d+ 2026$/);
+  });
+  it("agrees with formatScope for the same kind/date", () => {
+    expect(formatScopeAnchor("week", "2026-06-14", labels)).toBe(formatScope(mk(1, "week", "2026-06-14"), labels));
+  });
+});
+
+describe("formatScopeCore", () => {
+  it("renders a day without the year", () => {
+    expect(formatScopeCore("day", "2026-06-20", labels)).toBe("20/06");
+  });
+  it("renders a month by name without the year", () => {
+    expect(formatScopeCore("month", "2026-06-01", labels)).toBe("June");
+  });
+  it("renders a season by name without the year", () => {
+    expect(formatScopeCore("season", "2026-06-01", labels)).toBe("Summer");
+  });
+  it("renders a week as W{n} without the year", () => {
+    expect(formatScopeCore("week", "2026-06-14", labels)).toMatch(/^W\d+$/);
   });
 });
 

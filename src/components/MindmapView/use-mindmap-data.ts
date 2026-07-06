@@ -26,6 +26,10 @@ import type { ItemLifecycle, ScopeLifecycle } from "@/api/scope-lifecycle";
 import type { MindmapNode, NodeKind, FlowCyclePair, FlowItemDep } from "@/utils/tree-layout";
 import { entityNodeId } from "@/utils/tree-layout";
 import { goalStatusToTaskStatus, taskStatusToGoalStatus } from "@/utils/status-mapping";
+import { formatScopeCore } from "@/utils/scope-format";
+import type { ScopeLabelFns } from "@/hooks/use-scope-labels";
+import { useScopeLabels } from "@/hooks/use-scope-labels";
+import type { CanonicalKind } from "@/utils/scope-ref";
 
 /** Local wall-clock now as a `YYYY-MM-DDTHH:MM:SS` string for the scope-lifecycle derivation. */
 function localNowIso(): string {
@@ -52,6 +56,20 @@ function lifecycleMap(lifecycles: ItemLifecycle[]): Map<string, ScopeLifecycle> 
 function instanceStatus(isGoal: boolean, raw: string | undefined): string {
   if (isGoal) return raw === "done" ? "achieved" : "active";
   return raw ?? "todo";
+}
+
+function toCanonicalKind(kind: string | null): CanonicalKind | null {
+  return kind === "day" || kind === "week" || kind === "month" || kind === "season" ? kind : null;
+}
+
+/**
+ * A habit iteration's anchor, formatted as a scope of the flow's Duration kind (e.g. "W28", per
+ * SPEC's `{flow title} {start scope}`) rather than the raw ISO date — falls back to the raw date
+ * for a sub-day (Phase) window, which has no canonical scope label.
+ */
+function iterationAnchorLabel(flow: Flow, iteration: HabitIteration, labels: ScopeLabelFns): string {
+  const kind = toCanonicalKind(flow.flow_duration_kind);
+  return kind === null ? iteration.anchor_date : formatScopeCore(kind, iteration.anchor_date, labels);
 }
 
 /**
@@ -113,6 +131,7 @@ export function injectHabitInstances(
   root: MindmapNode,
   flows: Flow[],
   iterationsByFlow: HabitIteration[][],
+  labels: ScopeLabelFns,
   flowGoals: FlowGoal[] = [],
   flowTasks: FlowTask[] = [],
   statusesByFlow: HabitItemStatus[][] = [],
@@ -142,7 +161,7 @@ export function injectHabitInstances(
       host.children.push({
         id: `habit-${flow.id}-${iteration.index}-virtual`,
         kind: flow.instance_type === "goal" ? "goal" : "task",
-        title: `${flow.title} ${iteration.anchor_date}`,
+        title: `${flow.title} ${iterationAnchorLabel(flow, iteration, labels)}`,
         status: instanceStatus(flow.instance_type === "goal", rootRaw),
         virtual: true,
         habitItem: { flowId: flow.id, itemType: "flow_root", itemId: flow.id, scopeId },
@@ -568,6 +587,7 @@ export function useMindmapData(): MindmapData {
   const [tree, setTree] = useState<MindmapNode>(VIRTUAL_ROOT);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const scopeLabels = useScopeLabels();
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -596,14 +616,14 @@ export function useMindmapData(): MindmapData {
         Promise.all(flows.map((f) => generateHabitIterations(f.id, localNowIso()).catch(() => []))),
         Promise.all(flows.map((f) => listHabitItemStatuses(f.id).catch(() => []))),
       ]);
-      injectHabitInstances(built, flows, iterationsByFlow, flowGoals, flowTasks, statusesByFlow);
+      injectHabitInstances(built, flows, iterationsByFlow, scopeLabels, flowGoals, flowTasks, statusesByFlow);
       setTree(built);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [scopeLabels]);
 
   // Refreshes the tree in-place without the loading spinner — used for mutations
   // so the canvas stays mounted and pan/zoom state is preserved.
@@ -633,12 +653,12 @@ export function useMindmapData(): MindmapData {
         Promise.all(flows.map((f) => generateHabitIterations(f.id, localNowIso()).catch(() => []))),
         Promise.all(flows.map((f) => listHabitItemStatuses(f.id).catch(() => []))),
       ]);
-      injectHabitInstances(built, flows, iterationsByFlow, flowGoals, flowTasks, statusesByFlow);
+      injectHabitInstances(built, flows, iterationsByFlow, scopeLabels, flowGoals, flowTasks, statusesByFlow);
       setTree(built);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, []);
+  }, [scopeLabels]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect

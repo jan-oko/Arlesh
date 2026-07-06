@@ -57,26 +57,30 @@ interface ScopePickerProps {
   today?: string;
   /** Restricts selection to cells wholly within this inclusive date range. */
   constraint?: ScopeConstraint;
+  /** Locks the view to `initialKind`: hides ascend and disables double-click descend. */
+  lockKind?: boolean;
 }
 
 /**
  * A date-picker-style calendar for choosing a scope. Navigates season → month → week → day →
  * part-of-day (double-click a cell to descend, ↑ to ascend, ‹/› to browse). Clicking a cell
- * applies the active selection mode via `picker`.
+ * applies the active selection mode via `picker`. `lockKind` pins the view to a single kind, for
+ * callers where only that kind is a valid selection (e.g. a Habit's Recurrence anchor).
  */
 export default function ScopePicker({
   picker,
   initialKind = "season",
   today,
   constraint,
+  lockKind = false,
 }: ScopePickerProps) {
   const [viewKind, setViewKind] = useState<ViewKind>(initialKind);
   const [anchor, setAnchor] = useState<string>(today ?? todayIso());
   const now = today ?? todayIso();
 
   const cells = cellsForView(viewKind, anchor);
-  const parentKind = ascendKind(viewKind);
-  const childKind = descendKind(viewKind);
+  const parentKind = lockKind ? null : ascendKind(viewKind);
+  const childKind = lockKind ? null : descendKind(viewKind);
 
   function onCellDoubleClick(cell: ScopeCell) {
     if (childKind === null) return;
@@ -87,15 +91,17 @@ export default function ScopePicker({
   return (
     <div className={styles.picker}>
       <div className={styles.header}>
-        <button
-          type="button"
-          className={styles.navButton}
-          aria-label="up"
-          disabled={parentKind === null}
-          onClick={() => parentKind !== null && setViewKind(parentKind)}
-        >
-          ↑
-        </button>
+        {!lockKind && (
+          <button
+            type="button"
+            className={styles.navButton}
+            aria-label="up"
+            disabled={parentKind === null}
+            onClick={() => parentKind !== null && setViewKind(parentKind)}
+          >
+            ↑
+          </button>
+        )}
         <button
           type="button"
           className={styles.navButton}

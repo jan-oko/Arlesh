@@ -383,7 +383,7 @@ export default function FlowEditorModal({ node, availableTargets, heading, onSav
       {scoped && isEdit && (
         <div className={styles.label}>
           {t("fieldRecurrence")}
-          <RecurrenceField value={recurrence} onChange={setRecurrence} />
+          <RecurrenceField value={recurrence} onChange={setRecurrence} durationKind={durationKind} />
         </div>
       )}
       <div className={styles.label}>

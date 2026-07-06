@@ -74,6 +74,20 @@ describe("ScopePicker — navigation", () => {
   });
 });
 
+describe("ScopePicker — lockKind", () => {
+  it("hides the up button", () => {
+    render(<ScopePicker picker={stubPicker()} initialKind="week" today={TODAY} lockKind />);
+    expect(screen.queryByRole("button", { name: "up" })).not.toBeInTheDocument();
+  });
+
+  it("does not descend on double-click", () => {
+    render(<ScopePicker picker={stubPicker()} initialKind="month" today={TODAY} lockKind />);
+    fireEvent.doubleClick(screen.getByRole("button", { name: "June 2026" }));
+    expect(screen.getByRole("button", { name: "June 2026" })).toBeInTheDocument();
+    expect(screen.queryAllByText(/^Week \d+$/).length).toBe(0);
+  });
+});
+
 describe("ScopePicker — constraint", () => {
   it("disables cells outside the inclusive date range", () => {
     render(

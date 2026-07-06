@@ -9,6 +9,7 @@
 
 import type { Scope } from "@/api/scopes";
 import type { ScopeLabelFns } from "@/hooks/use-scope-labels";
+import type { CanonicalKind } from "@/utils/scope-ref";
 import { seasonOf, weekNumber } from "@/utils/scope-calendar";
 
 function parseDate(iso: string): { day: number; month: number; year: number } {
@@ -29,21 +30,19 @@ function ddmmyy(iso: string): string {
   return `${ddmm(iso)}/${pad2(parseDate(iso).year % 100)}`;
 }
 
-/** The year-less core and the (4-digit) year of a canonical scope, for the same-year suffix rule. */
-function scopeCore(scope: Scope, labels: ScopeLabelFns): { core: string; year: number } {
-  switch (scope.kind) {
+/** The year-less core and the (4-digit) year of a canonical kind/date pair, for the same-year suffix rule. */
+function scopeCore(kind: CanonicalKind, date: string, labels: ScopeLabelFns): { core: string; year: number } {
+  switch (kind) {
     case "day":
-      return { core: ddmm(scope.start_date), year: parseDate(scope.start_date).year };
+      return { core: ddmm(date), year: parseDate(date).year };
     case "week":
-      return { core: labels.week(weekNumber(scope.start_date)), year: parseDate(scope.start_date).year };
+      return { core: labels.week(weekNumber(date)), year: parseDate(date).year };
     case "month":
-      return { core: labels.month(parseDate(scope.start_date).month), year: parseDate(scope.start_date).year };
+      return { core: labels.month(parseDate(date).month), year: parseDate(date).year };
     case "season": {
-      const season = seasonOf(scope.start_date);
+      const season = seasonOf(date);
       return { core: labels.season(season.name), year: season.year };
     }
-    default:
-      return { core: scope.label, year: 0 };
   }
 }
 
@@ -51,8 +50,27 @@ function scopeCore(scope: Scope, labels: ScopeLabelFns): { core: string; year: n
 export function formatScope(scope: Scope, labels: ScopeLabelFns): string {
   if (scope.kind === "exact" || scope.kind === "part_of_day") return scope.label;
   if (scope.kind === "day") return ddmmyy(scope.start_date);
-  const { core, year } = scopeCore(scope, labels);
+  const { core, year } = scopeCore(scope.kind, scope.start_date, labels);
   return `${core} ${year}`;
+}
+
+/**
+ * Formats a canonical kind/date pair directly, without a materialized `Scope` row — for a calendar
+ * cell picked but not yet persisted (e.g. a Habit's Recurrence anchor).
+ */
+export function formatScopeAnchor(kind: CanonicalKind, date: string, labels: ScopeLabelFns): string {
+  if (kind === "day") return ddmmyy(date);
+  const { core, year } = scopeCore(kind, date, labels);
+  return `${core} ${year}`;
+}
+
+/**
+ * The year-less core label of a canonical kind/date pair (e.g. "W22") — for a Habit's compact
+ * iteration title, `{flow title} {start scope}` (SPEC: "Exercise W22"), where the year is implied.
+ */
+export function formatScopeCore(kind: CanonicalKind, date: string, labels: ScopeLabelFns): string {
+  if (kind === "day") return ddmm(date);
+  return scopeCore(kind, date, labels).core;
 }
 
 /** Formats a boundaries range (same-kind endpoints), factoring out a shared year as a suffix. */
@@ -61,8 +79,9 @@ export function formatScopeRange(start: Scope, end: Scope, labels: ScopeLabelFns
   if (start.kind !== end.kind || start.kind === "exact" || start.kind === "part_of_day") {
     return `${formatScope(start, labels)}-${formatScope(end, labels)}`;
   }
-  const a = scopeCore(start, labels);
-  const b = scopeCore(end, labels);
+  // `start.kind === end.kind` per the guard above; reuse it so both calls narrow the same way.
+  const a = scopeCore(start.kind, start.start_date, labels);
+  const b = scopeCore(start.kind, end.start_date, labels);
   if (a.year === b.year) return `${a.core}-${b.core} ${a.year}`;
   if (start.kind === "day") return `${ddmmyy(start.start_date)}-${ddmmyy(end.start_date)}`;
   return `${a.core} ${a.year}-${b.core} ${b.year}`;

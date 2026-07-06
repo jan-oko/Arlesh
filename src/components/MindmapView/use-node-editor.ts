@@ -7,6 +7,7 @@ import type { InfoSaveData } from "@/components/InfoEditorModal/InfoEditorModal"
 import { updateInfo } from "@/api/infos";
 import { setBlockReasons } from "@/api/block-reasons";
 import type { FlowSaveData } from "@/components/FlowEditorModal/FlowEditorModal";
+import { recurrenceStartKind } from "@/components/FlowEditorModal/recurrence-ui";
 import type { FlowItemSaveData } from "@/components/FlowItemEditorModal/FlowItemEditorModal";
 import {
   updateFlow, updateFlowGoal, updateFlowTask, setFlowItemCycles,
@@ -14,7 +15,6 @@ import {
   setFlowRecurrence, deleteFlowRecurrence, forkFlow, clearHabitModifications,
 } from "@/api/flows";
 import { getOrCreateScope } from "@/api/scopes";
-import type { ScopeKind } from "@/api/scopes";
 import type { Domain } from "@/api/domains";
 import { listDomains, updateDomain } from "@/api/domains";
 import {
@@ -232,12 +232,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
           return;
         }
         const r = data.recurrence;
-        // A sub-day (Phase) or unscoped kind pins its start on a Day scope.
-        const startKind: ScopeKind =
-          data.durationKind === "week" ? "week"
-            : data.durationKind === "month" ? "month"
-              : data.durationKind === "season" ? "season"
-                : "day";
+        const startKind = recurrenceStartKind(data.durationKind);
         const startScope = await getOrCreateScope(startKind, r.startDate);
         const endScope = r.endDate !== null ? await getOrCreateScope(startKind, r.endDate) : null;
         await setFlowRecurrence(targetId, {

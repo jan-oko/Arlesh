@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { buildTree, useMindmapData, injectHabitInstances } from "./use-mindmap-data";
+import { useScopeLabels } from "@/hooks/use-scope-labels";
 import type { Domain } from "@/api/domains";
 import type { Goal } from "@/api/goals";
 import type { Task } from "@/api/tasks";
@@ -9,6 +10,22 @@ import type { Info } from "@/api/infos";
 import type { Flow, HabitIteration, FlowGoal, FlowTask } from "@/api/flows";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+
+// A stable object reference, matching the real hook's `useMemo` — an inline object literal would
+// be a fresh reference every render, breaking the `useCallback([scopeLabels])` deps in the hook
+// under test and looping its `useEffect(() => { void load(); }, [load])` forever.
+const STUB_SCOPE_LABELS = {
+  unscoped: "Unscoped",
+  unplanned: "Unplanned",
+  week: (n: number) => `W${n}`,
+  month: (m: number) => ["Jan", "Feb", "Mar", "Apr", "May", "June"][m - 1] ?? "M",
+  season: (name: string) => name,
+  duration: (count: number, kind: string) => `${count} ${kind}`,
+};
+
+vi.mock("@/hooks/use-scope-labels", () => ({
+  useScopeLabels: () => STUB_SCOPE_LABELS,
+}));
 
 // --- Fixture helpers ---
 
@@ -858,6 +875,8 @@ describe("injectHabitInstances", () => {
     return { index, anchor_scope_id: 100 + index, anchor_date: `2026-01-0${index + 1}`, status };
   }
 
+  const LABELS = useScopeLabels();
+
   it("adds a virtual, read-only child per iteration under the flow's target", () => {
     const root = buildTree(
       [{ id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, nsfw: false }],
@@ -869,6 +888,7 @@ describe("injectHabitInstances", () => {
       root,
       [mkFlow()],
       [[iter(0, "done"), iter(1, "active"), iter(2, "lapsed")]],
+      LABELS,
       [], [],
       [[{ item_type: "flow_root", item_id: 3, iteration_scope_id: 100, status: "done" }]],
     );
@@ -878,12 +898,24 @@ describe("injectHabitInstances", () => {
     const virtuals = target?.children ?? [];
     expect(virtuals).toHaveLength(3);
     expect(virtuals.every((n) => n.virtual === true)).toBe(true);
-    expect(virtuals[0]?.title).toBe("Exercise 2026-01-01");
+    // The flow's Duration kind is "week" — the anchor renders as a formatted scope, not a raw date.
+    expect(virtuals[0]?.title).toBe("Exercise W1");
     expect(virtuals[0]?.status).toBe("done"); // its root instance is completed
     expect(virtuals[0]?.habitItem).toEqual({ flowId: 3, itemType: "flow_root", itemId: 3, scopeId: 100 });
     expect(virtuals[1]?.status).toBe("todo"); // no root completion
     expect(virtuals[2]?.scopeLifecycle).toBe("lapsed"); // lapsed + uncompleted iterations are dimmed
     expect(virtuals[2]?.id).toBe("habit-3-2-virtual"); // non-numeric tail keeps it out of mutations
+  });
+
+  it("falls back to the raw anchor date for a sub-day (Phase) window, which has no scope label", () => {
+    const root = buildTree(
+      [{ id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, nsfw: false }],
+      [{ id: 5, title: "Fitness", parent_type: "domain", parent_id: 1, status: "active", time_scope: null, on_scope_exit: null, tag_ids: [], position: 0, nsfw: false }],
+      [], [],
+    );
+    injectHabitInstances(root, [mkFlow({ flow_duration_kind: "exact" })], [[iter(0, "active")]], LABELS);
+    const virtuals = root.children[0]?.children[0]?.children ?? [];
+    expect(virtuals[0]?.title).toBe("Exercise 2026-01-01");
   });
 
   it("attaches iterations under a domain-table (project) target keyed domain-<id>", () => {
@@ -894,7 +926,7 @@ describe("injectHabitInstances", () => {
       ],
       [], [], [],
     );
-    injectHabitInstances(root, [mkFlow({ target_type: "project", target_id: 96 })], [[iter(0, "active")]]);
+    injectHabitInstances(root, [mkFlow({ target_type: "project", target_id: 96 })], [[iter(0, "active")]], LABELS);
 
     const project = root.children[0]?.children[0]; // aspect → project 96
     expect(project?.id).toBe("domain-96");
@@ -917,6 +949,7 @@ describe("injectHabitInstances", () => {
       root,
       [mkFlow({ target_type: "project", target_id: 96 })],
       [[iter(0, "active")]], // anchor_scope_id = 100
+      LABELS,
       [],
       [breakfast, dinner],
       [[{ item_type: "flow_task", item_id: 4, iteration_scope_id: 100, status: "done" }]], // breakfast done
@@ -948,6 +981,7 @@ describe("injectHabitInstances", () => {
       root,
       [mkFlow({ target_type: "project", target_id: 96, instance_type: "goal" })],
       [[iter(0, "active")]], // scope 100
+      LABELS,
       [done, open],
       [],
       [[
@@ -972,7 +1006,7 @@ describe("injectHabitInstances", () => {
     );
     const routine: FlowGoal = { id: 7, flow_id: 3, title: "Routine", parent_type: "flow", parent_id: 3, position: 0, nsfw: false };
     const pushups: FlowTask = { id: 8, flow_id: 3, title: "Push-ups", parent_type: "flow_goal", parent_id: 7, position: 0, nsfw: false };
-    injectHabitInstances(root, [mkFlow()], [[iter(0, "active")]], [routine], [pushups], []);
+    injectHabitInstances(root, [mkFlow()], [[iter(0, "active")]], LABELS, [routine], [pushups], []);
 
     const iteration = root.children[0]?.children[0]?.children[0]; // aspect → goal 5 → iteration root
     expect(iteration?.children).toHaveLength(1); // only the goal is a direct child
@@ -983,7 +1017,7 @@ describe("injectHabitInstances", () => {
 
   it("skips flows with no iterations and missing targets", () => {
     const root = buildTree([], [], [], []);
-    injectHabitInstances(root, [mkFlow(), mkFlow({ id: 9, target_type: null, target_id: null })], [[], [iter(0, "active")]]);
+    injectHabitInstances(root, [mkFlow(), mkFlow({ id: 9, target_type: null, target_id: null })], [[], [iter(0, "active")]], LABELS);
     expect(root.children).toHaveLength(0); // no target found; nothing injected
   });
 });

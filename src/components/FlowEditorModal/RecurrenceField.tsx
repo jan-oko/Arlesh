@@ -1,7 +1,8 @@
 import { useTranslation } from "react-i18next";
 import type { ConsumptionKind, BlockingMode, CatchupPolicy } from "@/api/flows";
-import type { RecurrenceUi } from "./recurrence-ui";
+import { recurrenceStartKind, type RecurrenceUi } from "./recurrence-ui";
 import Switch from "@/components/Switch/Switch";
+import AnchorScopeField from "@/components/ScopePicker/AnchorScopeField";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 
 const GAP_KINDS = ["day", "week", "month", "season"] as const;
@@ -10,6 +11,8 @@ const CATCHUP_POLICIES: CatchupPolicy[] = ["all_pending", "next", "latest"];
 interface Props {
   value: RecurrenceUi;
   onChange: (value: RecurrenceUi) => void;
+  /** The owning flow's Duration kind; the Recurrence anchors to a scope of this kind. */
+  durationKind: string | null;
 }
 
 /**
@@ -17,9 +20,10 @@ interface Props {
  * Consumption tree (Destructive vs Accumulating → Overlapping vs Blocking → catch-up policy) that
  * turn it into a **Habit**. Controlled; the parent materializes dates to scope ids and persists.
  */
-export default function RecurrenceField({ value, onChange }: Props) {
+export default function RecurrenceField({ value, onChange, durationKind }: Props) {
   const { t } = useTranslation("editor");
   const set = (patch: Partial<RecurrenceUi>) => onChange({ ...value, ...patch });
+  const anchorKind = recurrenceStartKind(durationKind);
 
   const catchupLabel = (policy: CatchupPolicy): string =>
     policy === "all_pending" ? t("catchupAllPending") : policy === "next" ? t("catchupNext") : t("catchupLatest");
@@ -29,15 +33,10 @@ export default function RecurrenceField({ value, onChange }: Props) {
       <Switch checked={value.isHabit} onChange={(v) => set({ isHabit: v })} label={t("makeHabit")} />
       {value.isHabit && (
         <>
-          <label className={styles.label}>
+          <div className={styles.label}>
             {t("recurrenceStart")}
-            <input
-              type="date"
-              className={styles.control}
-              value={value.startDate}
-              onChange={(e) => set({ startDate: e.target.value })}
-            />
-          </label>
+            <AnchorScopeField kind={anchorKind} date={value.startDate} onChange={(startDate) => set({ startDate })} />
+          </div>
 
           <Switch checked={value.gapEnabled} onChange={(v) => set({ gapEnabled: v })} label={t("recurrenceGap")} />
           {value.gapEnabled && (
@@ -65,13 +64,7 @@ export default function RecurrenceField({ value, onChange }: Props) {
 
           <Switch checked={value.endEnabled} onChange={(v) => set({ endEnabled: v })} label={t("recurrenceEnd")} />
           {value.endEnabled && (
-            <input
-              type="date"
-              aria-label={t("recurrenceEnd")}
-              className={styles.control}
-              value={value.endDate}
-              onChange={(e) => set({ endDate: e.target.value })}
-            />
+            <AnchorScopeField kind={anchorKind} date={value.endDate} onChange={(endDate) => set({ endDate })} />
           )}
 
           <div className={styles.label}>
