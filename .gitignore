@@ -1,5 +1,6 @@
 # Personal Claude settings — not for version control
 .claude/settings.local.json
+.claude/worktrees/
 
 # Build artifacts
 node_modules/
