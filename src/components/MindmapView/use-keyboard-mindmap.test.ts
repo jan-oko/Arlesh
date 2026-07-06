@@ -64,6 +64,9 @@ function baseOptions(overrides: Partial<Parameters<typeof useKeyboardMindmap>[0]
     onToggleFilter: vi.fn(),
     onSetStatusMode: vi.fn() as (mode: "all" | "plan" | "start" | "do") => void,
     onFocusRoot: vi.fn(),
+    onCenterOnNode: vi.fn(),
+    onConvertToFlow: vi.fn(),
+    onExtendSelection: vi.fn() as (key: "ArrowUp" | "ArrowDown") => void,
     findNodeById: (id: string): MindmapNode | undefined =>
       id === "task-1" ? makeTask("task-1") : undefined,
     ...overrides,
@@ -646,5 +649,71 @@ describe("useKeyboardMindmap — Enter focuses the root when nothing is selected
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("Enter");
     expect(opts.onFocusRoot).not.toHaveBeenCalled();
+  });
+});
+
+describe("useKeyboardMindmap — c centers the view on the selected node", () => {
+  it("calls onCenterOnNode with the selected node id", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("c");
+    expect(opts.onCenterOnNode).toHaveBeenCalledWith("task-1");
+  });
+
+  it("does nothing when no node is selected", () => {
+    const opts = baseOptions({ selectedNodeId: null });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("c");
+    expect(opts.onCenterOnNode).not.toHaveBeenCalled();
+  });
+
+  it("Ctrl+C still copies and does not center", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("c", { ctrlKey: true });
+    expect(opts.onCopy).toHaveBeenCalled();
+    expect(opts.onCenterOnNode).not.toHaveBeenCalled();
+  });
+});
+
+describe("useKeyboardMindmap — f converts an applicable node to a flow", () => {
+  it("calls onConvertToFlow with the selected node id", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("f");
+    expect(opts.onConvertToFlow).toHaveBeenCalledWith("task-1");
+  });
+
+  it("does nothing when no node is selected", () => {
+    const opts = baseOptions({ selectedNodeId: null });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("f");
+    expect(opts.onConvertToFlow).not.toHaveBeenCalled();
+  });
+
+  it("Alt+F still toggles the filter menu and does not convert", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("f", { altKey: true });
+    expect(opts.onToggleFilter).toHaveBeenCalledTimes(1);
+    expect(opts.onConvertToFlow).not.toHaveBeenCalled();
+  });
+});
+
+describe("useKeyboardMindmap — Shift+Arrow extends the selection", () => {
+  it("Shift+ArrowUp calls onExtendSelection with 'ArrowUp'", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("ArrowUp", { shiftKey: true });
+    expect(opts.onExtendSelection).toHaveBeenCalledWith("ArrowUp");
+    expect(opts.onNavigate).not.toHaveBeenCalled();
+  });
+
+  it("Shift+ArrowDown calls onExtendSelection with 'ArrowDown'", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("ArrowDown", { shiftKey: true });
+    expect(opts.onExtendSelection).toHaveBeenCalledWith("ArrowDown");
+    expect(opts.onNavigate).not.toHaveBeenCalled();
   });
 });

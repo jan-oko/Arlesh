@@ -121,6 +121,14 @@ export function conversionNeedsConfirm(node: MindmapNode): boolean {
   return node.children.length > 0;
 }
 
+/** Kinds a Flow may be parented under — mirrors the kinds a Flow may target for conversion. */
+const FLOW_PARENT_KINDS = new Set<NodeKind>(["aspect", "domain", "project", "goal"]);
+
+/** A Goal/Task can convert into a Flow only where a Flow may be parented (never under a Task). */
+export function canConvertNodeToFlow(nodeKind: NodeKind, parentKind: NodeKind | null): boolean {
+  return (nodeKind === "goal" || nodeKind === "task") && parentKind !== null && FLOW_PARENT_KINDS.has(parentKind);
+}
+
 /** A flattened node for search: its id, title, kind, and ancestor titles nearest-first (root excluded). */
 export interface SearchableNode { id: string; title: string; kind: NodeKind; path: string[] }
 

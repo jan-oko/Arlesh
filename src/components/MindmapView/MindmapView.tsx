@@ -13,7 +13,7 @@ import { useMindmapStore, CLIPBOARD_OP } from "@/stores/use-mindmap-store";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { updateTask, reparentScopeConflicts } from "@/api/tasks";
 import { updateGoal } from "@/api/goals";
-import { findNode, findParent, collectTasksAndGoals, collectSubtreePostOrder, computeShiftSelectRange, conversionNeedsConfirm, collectSearchableNodes } from "@/utils/mindmap-tree";
+import { findNode, findParent, collectTasksAndGoals, collectSubtreePostOrder, computeShiftSelectRange, conversionNeedsConfirm, canConvertNodeToFlow, collectSearchableNodes } from "@/utils/mindmap-tree";
 import MindmapCanvas, { type MindmapCanvasHandle } from "@/components/MindmapCanvas/MindmapCanvas";
 import DragGhost from "@/components/DragGhost/DragGhost";
 import DragPlaceholder from "@/components/DragPlaceholder/DragPlaceholder";
@@ -323,7 +323,29 @@ export default function MindmapView() {
     createNode, createChild, selectNode, setClipboard, setEditingNodeId,
   });
 
-  const { navigateArrow } = useNavigateArrow({ selectedNodeId, positions, tree, selectNode });
+  const { navigateArrow, extendSelection } = useNavigateArrow({ selectedNodeId, selectedNodeIds, positions, tree, selectNode, setSelection });
+
+  // Pans the canvas so the selected node sits at the viewport centre.
+  const onCenterOnSelected = useCallback(
+    (nodeId: string) => {
+      const pos = positions.get(nodeId);
+      if (pos !== undefined) canvasRef.current?.centerOnPoint(pos.x, pos.y);
+    },
+    [positions],
+  );
+
+  // Keyboard variant of the "Convert to Flow" context-menu action: no-ops on a node that
+  // isn't eligible (only a Goal/Task parented where a Flow may live).
+  const onConvertToFlowKey = useCallback(
+    (nodeId: string) => {
+      const node = findNode(tree, nodeId);
+      if (node === undefined) return;
+      const parent = findParent(tree, nodeId);
+      if (!canConvertNodeToFlow(node.kind, parent?.kind ?? null)) return;
+      onConvertToFlow(nodeId);
+    },
+    [tree, onConvertToFlow],
+  );
 
   // Opens the start-flow modal for a focused flow node.
   const onStartFlow = useCallback(
@@ -398,6 +420,9 @@ export default function MindmapView() {
     onToggleFilter: toggleFilterPopover,
     onSetStatusMode: setStatusMode,
     onFocusRoot: () => selectNode(subtreeRootId ?? tree.id),
+    onCenterOnNode: onCenterOnSelected,
+    onConvertToFlow: onConvertToFlowKey,
+    onExtendSelection: extendSelection,
     findNodeById,
   });
   const toastPosition = pendingToast !== null ? positions.get(pendingToast.nodeId) : undefined;
