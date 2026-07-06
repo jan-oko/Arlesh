@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { createDomain, updateDomain, deleteDomain } from "@/api/domains";
-import { createTask, updateTask, deleteTask } from "@/api/tasks";
+import { createDomain, updateDomain, deleteDomain, duplicateDomain } from "@/api/domains";
+import { createTask, updateTask, deleteTask, duplicateTask } from "@/api/tasks";
 import type { TaskDependencyEdge } from "@/api/tasks";
 import type { BlockReason } from "@/api/block-reasons";
-import { createGoal, updateGoal, deleteGoal } from "@/api/goals";
-import { createInfo, updateInfo, deleteInfo } from "@/api/infos";
+import { createGoal, updateGoal, deleteGoal, duplicateGoal } from "@/api/goals";
+import { createInfo, updateInfo, deleteInfo, duplicateInfo } from "@/api/infos";
 import { getErrorMessage } from "@/api/errors";
 import { asRetypeKind, retypeNode as backendRetype } from "@/api/retype";
 import type { StrandedChildren } from "@/api/retype";
@@ -217,6 +217,7 @@ interface MindmapData {
   retypeNode: (id: string, fromKind: NodeKind, toKind: NodeKind, options?: RetypeOptions) => Promise<string | null>;
   reorderNode: (id: string, direction: 1 | -1) => Promise<void>;
   moveNode: (id: string, kind: NodeKind, newParentId: string, newParentKind: NodeKind, position: number) => Promise<void>;
+  duplicateNode: (id: string, kind: NodeKind, targetId: string, targetKind: NodeKind, position: number) => Promise<void>;
   removeNode: (nodesToDelete: Array<{ id: string; kind: NodeKind }>) => Promise<void>;
   createFlow: (request: CreateFlowRequest) => Promise<Flow>;
   updateFlow: (id: number, request: UpdateFlowRequest) => Promise<void>;
@@ -955,6 +956,52 @@ export function useMindmapData(): MindmapData {
     [load],
   );
 
+  /**
+   * Deep-clones `id`'s whole subtree under `(targetId, targetKind)`, placing the new root at
+   * `position` — the COPY counterpart to `moveNode`'s CUT. Flows and flow items aren't duplicable;
+   * callers filter those out before getting here (`onPaste` does, with a toast).
+   */
+  const duplicateNode = useCallback(
+    async (id: string, kind: NodeKind, targetId: string, targetKind: NodeKind, position: number): Promise<void> => {
+      const dbId = dbIdFromNodeId(id);
+      const dbTargetId = dbIdFromNodeId(targetId);
+      // Exhaustive over NodeKind, for the same reason `moveNode` is: node ids are polymorphic, so a
+      // kind with no branch of its own must be a compile error rather than a fall-through that
+      // hands the id to whichever table the default happens to name.
+      switch (kind) {
+        case "goal":
+          await duplicateGoal(dbId, kindToParentType(targetKind), dbTargetId, position);
+          break;
+        case "task":
+          await duplicateTask(dbId, kindToParentType(targetKind), dbTargetId, position);
+          break;
+        case "info":
+          await duplicateInfo(dbId, kindToInfoParentType(targetKind), dbTargetId, position);
+          break;
+        case "project":
+        case "domain":
+        case "tag":
+          await duplicateDomain(dbId, dbTargetId, position);
+          break;
+        case "aspect":
+          // Aspects are the fixed roots of the board — there is no second Green.
+          throw new Error("Aspects are fixed and cannot be duplicated");
+        case "flow":
+        case "flow_goal":
+        case "flow_task":
+          // Flows carry a Recurrence, instances and completion history; what a duplicate of one
+          // should inherit is its own question, and `fork_flow` is the operation that asks it.
+          throw new Error(`${kind} nodes cannot be duplicated`);
+        default: {
+          const unhandled: never = kind;
+          throw new Error(`duplicateNode has no branch for node kind "${String(unhandled)}"`);
+        }
+      }
+      await load(false);
+    },
+    [load],
+  );
+
   const removeNode = useCallback(
     async (nodesToDelete: Array<{ id: string; kind: NodeKind }>): Promise<void> => {
       for (const { id, kind } of nodesToDelete) {
@@ -1007,6 +1054,7 @@ export function useMindmapData(): MindmapData {
     retypeNode,
     reorderNode,
     moveNode,
+    duplicateNode,
     removeNode,
     createFlow: createFlowNode,
     updateFlow: updateFlowNode,

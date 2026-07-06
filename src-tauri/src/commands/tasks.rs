@@ -4,6 +4,7 @@ use tauri::State;
 
 use crate::{
     database::session::SessionFactory,
+    duplicate::{duplicate_subtree, DuplicableKind},
     error::WireError,
     tasks::{
         lifecycle::ItemLifecycle,
@@ -103,6 +104,38 @@ pub async fn delete_task(factory: State<'_, SessionFactory>, id: i64) -> Result<
         .await
         .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)
+}
+
+/// Deep-clones a task and its whole subtree under `(target_type, target_id)`, putting the new
+/// root at `position`. Backs the Mindmap's Copy+Paste.
+///
+/// Transactional: the subtree lands whole or not at all.
+#[tauri::command]
+pub async fn duplicate_task(
+    factory: State<'_, SessionFactory>,
+    id: i64,
+    target_type: String,
+    target_id: i64,
+    position: i64,
+) -> Result<Task, WireError> {
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    let new_id = duplicate_subtree(
+        &mut db,
+        DuplicableKind::Task,
+        id,
+        &target_type,
+        target_id,
+        position,
+    )
+    .await
+    .map_err(WireError::from_error)?;
+    let task = db
+        .tasks()
+        .get(TaskId(new_id))
+        .await
+        .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)?;
+    Ok(task)
 }
 
 /// Adds a dependency to a task.
@@ -214,6 +247,38 @@ pub async fn delete_goal(factory: State<'_, SessionFactory>, id: i64) -> Result<
         .await
         .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)
+}
+
+/// Deep-clones a goal and its whole subtree under `(target_type, target_id)`, putting the new
+/// root at `position`. Backs the Mindmap's Copy+Paste.
+///
+/// Transactional: the subtree lands whole or not at all.
+#[tauri::command]
+pub async fn duplicate_goal(
+    factory: State<'_, SessionFactory>,
+    id: i64,
+    target_type: String,
+    target_id: i64,
+    position: i64,
+) -> Result<Goal, WireError> {
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    let new_id = duplicate_subtree(
+        &mut db,
+        DuplicableKind::Goal,
+        id,
+        &target_type,
+        target_id,
+        position,
+    )
+    .await
+    .map_err(WireError::from_error)?;
+    let goal = db
+        .goals()
+        .get(GoalId(new_id))
+        .await
+        .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)?;
+    Ok(goal)
 }
 
 /// Adds a tag to a task.

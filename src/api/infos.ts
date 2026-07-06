@@ -43,3 +43,12 @@ export async function updateInfo(id: number, request: UpdateInfoRequest): Promis
 export async function deleteInfo(id: number): Promise<void> {
   return invoke<void>("delete_info", { id });
 }
+
+export async function duplicateInfo(
+  id: number,
+  targetType: string,
+  targetId: number,
+  position: number,
+): Promise<Info> {
+  return invoke<Info>("duplicate_info", { id, targetType, targetId, position });
+}
