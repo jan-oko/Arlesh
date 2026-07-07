@@ -4,11 +4,13 @@ import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useListFilterStore } from "@/stores/use-list-filter-store";
 import { useViewStore } from "@/stores/use-view-store";
+import { useThemeStore } from "@/stores/use-theme-store";
 import { LIST_PRESET_VALUES, isListPreset } from "@/utils/list-filter";
 import type { ListPreset } from "@/utils/list-filter";
 import FilterPopover from "@/components/FilterPopover/FilterPopover";
 import FilterChips from "@/components/FilterChips/FilterChips";
 import Select from "@/components/Select/Select";
+import Switch from "@/components/Switch/Switch";
 import styles from "./TopBar.module.css";
 
 const GEAR_ICON = "⚙";
@@ -42,6 +44,8 @@ export default function TopBar() {
   const setView = useViewStore((s) => s.setView);
   const listPreset = useListFilterStore((s) => s.filter.preset);
   const setListPreset = useListFilterStore((s) => s.setPreset);
+  const theme = useThemeStore((s) => s.theme);
+  const toggleTheme = useThemeStore((s) => s.toggleTheme);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const backArrow = i18n.dir() === "rtl" ? "→" : "←";
@@ -79,6 +83,9 @@ export default function TopBar() {
                     <button className={styles.langToggle} type="button" onClick={toggleLanguage}>
                       {isHebrew ? "English" : "עברית"}
                     </button>
+                  </div>
+                  <div className={styles.settingRow}>
+                    <Switch checked={theme === "light"} onChange={toggleTheme} label={t("common:lightMode")} />
                   </div>
                 </div>
               </>

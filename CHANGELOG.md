@@ -8,6 +8,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Light mode**, toggled with a new **Light mode** switch in the settings popover (next to the language toggle). Persists across reloads (defaults to dark) and applies app-wide — top bar, popovers, modals, and the Mindmap canvas/nodes all get light equivalents, via a `data-theme="light"` attribute on the document root and a matching override block in `tokens.css`.
+
 ### Changed
 - **List View cards now span the full row** (previously capped at 720px) and get more breathing room (larger padding, wider row gaps). Each card is also tinted with its aspect's colour, using the same fill/opacity derivation the Mindmap node uses, so a task's card matches its node's colour there.
 - **List View: double-clicking anywhere on a task's card opens its editor**, in addition to the existing single click on the title — matching the Mindmap's own double-click-to-edit gesture.

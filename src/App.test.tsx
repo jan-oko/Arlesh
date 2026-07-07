@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import App from "./App";
 import { useViewStore } from "@/stores/use-view-store";
+import { useThemeStore } from "@/stores/use-theme-store";
 
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ i18n: { dir: () => "ltr" } }) }));
 vi.mock("@/components/TopBar/TopBar", () => ({ default: () => <div data-testid="top-bar" /> }));
@@ -10,6 +11,8 @@ vi.mock("@/components/ListView/ListView", () => ({ default: () => <div data-test
 
 beforeEach(() => {
   useViewStore.setState({ view: "mindmap" });
+  useThemeStore.setState({ theme: "dark" });
+  document.documentElement.removeAttribute("data-theme");
 });
 
 describe("App", () => {
@@ -42,5 +45,18 @@ describe("App", () => {
     fireEvent.keyDown(input, { code: "KeyL", altKey: true });
     expect(useViewStore.getState().view).toBe("mindmap");
     document.body.removeChild(input);
+  });
+
+  it("applies the current theme to the document root", () => {
+    useThemeStore.setState({ theme: "light" });
+    render(<App />);
+    expect(document.documentElement.dataset.theme).toBe("light");
+  });
+
+  it("updates the document root when the theme changes", () => {
+    render(<App />);
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    act(() => useThemeStore.setState({ theme: "light" }));
+    expect(document.documentElement.dataset.theme).toBe("light");
   });
 });

@@ -5,6 +5,7 @@ import TopBar from "@/components/TopBar/TopBar";
 import MindmapView from "@/components/MindmapView/MindmapView";
 import ListView from "@/components/ListView/ListView";
 import { useViewStore } from "@/stores/use-view-store";
+import { useThemeStore } from "@/stores/use-theme-store";
 import styles from "./App.module.css";
 
 /** Whether a shortcut should be suppressed because the user is typing. */
@@ -17,6 +18,11 @@ export default function App() {
   const { i18n } = useTranslation();
   const view = useViewStore((s) => s.view);
   const toggleView = useViewStore((s) => s.toggleView);
+  const theme = useThemeStore((s) => s.theme);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {

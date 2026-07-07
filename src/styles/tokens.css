@@ -61,3 +61,27 @@ html, body, #root {
   --text-base: 14px;
   --text-lg: 16px;
 }
+
+:root[data-theme="light"] {
+  /* Node */
+  --node-bg: #ffffff;
+  --node-bg-hover: #f0f0f7;
+  --node-bg-selected: #e5e5f7;
+  --node-border: #d3d3e0;
+  --node-border-selected: #5546d8;
+  --node-text: #1a1a2e;
+  --node-text-muted: #6b6b7a;
+
+  /* Canvas */
+  --canvas-bg: #f4f4fa;
+  --edge-color: #cacada;
+
+  /* UI chrome */
+  --surface: #ffffff;
+  --surface-raised: #f0f0f7;
+  --text-primary: #1a1a2e;
+  --text-secondary: #6b6b7a;
+  --accent: #5546d8;
+  --danger: #c0392b;
+  --overdue: #9c6510;
+}

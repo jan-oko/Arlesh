@@ -5,6 +5,7 @@ import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useListFilterStore } from "@/stores/use-list-filter-store";
 import { useViewStore } from "@/stores/use-view-store";
+import { useThemeStore } from "@/stores/use-theme-store";
 import { DEFAULT_FILTER } from "@/utils/filter-tree";
 import { DEFAULT_LIST_FILTER } from "@/utils/list-filter";
 import { useFilterDisplay } from "@/hooks/use-filter-display";
@@ -33,6 +34,7 @@ beforeEach(() => {
   useListFilterStore.setState({ filter: { ...DEFAULT_LIST_FILTER, pills: { ...DEFAULT_LIST_FILTER.pills } } });
   useMindmapStore.setState({ subtreeRootId: null, subtreeNav: null });
   useViewStore.setState({ view: "mindmap" });
+  useThemeStore.setState({ theme: "dark" });
   mockUseFilterDisplay.mockReturnValue(EMPTY_DISPLAY);
 });
 
@@ -109,6 +111,18 @@ describe("TopBar", () => {
       useViewStore.setState({ view: "list" });
       rerender(<TopBar />);
       expect(screen.getByRole("button", { name: "listView:statusPresetLabel" })).toHaveTextContent("listView:preset.unblock");
+    });
+  });
+
+  describe("settings popover", () => {
+    it("toggles the theme via the Light mode switch", () => {
+      render(<TopBar />);
+      fireEvent.click(screen.getByRole("button", { name: "common:settings" }));
+      const themeSwitch = screen.getByRole("checkbox", { name: "common:lightMode" });
+      expect(themeSwitch).not.toBeChecked();
+      fireEvent.click(themeSwitch);
+      expect(useThemeStore.getState().theme).toBe("light");
+      expect(themeSwitch).toBeChecked();
     });
   });
 
