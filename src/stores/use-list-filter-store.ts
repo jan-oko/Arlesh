@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { ListFilterState, ListPreset, PillDimension, PillMode } from "@/utils/list-filter";
 import { DEFAULT_LIST_FILTER } from "@/utils/list-filter";
+import { mergePersistedFilterSlice } from "@/stores/persist-merge";
 
 interface ListFilterStore {
   filter: ListFilterState;
@@ -53,6 +54,13 @@ export const useListFilterStore = create<ListFilterStore>()(
         })),
       reset: () => set({ filter: DEFAULT_LIST_FILTER }),
     }),
-    { name: "arlesh-list-filter", partialize: (state) => ({ filter: state.filter }) },
+    {
+      name: "arlesh-list-filter",
+      partialize: (state) => ({ filter: state.filter }),
+      merge: (persistedState, currentState) => ({
+        ...currentState,
+        filter: mergePersistedFilterSlice(persistedState, DEFAULT_LIST_FILTER),
+      }),
+    },
   ),
 );

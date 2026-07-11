@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { FilterState, StatusMode, TagFilterMode } from "@/utils/filter-tree";
 import { DEFAULT_FILTER, NEXT_ARCHIVED_MODE } from "@/utils/filter-tree";
+import { mergePersistedFilterSlice } from "@/stores/persist-merge";
 
 interface FilterStore {
   filter: FilterState;
@@ -48,6 +49,13 @@ export const useFilterStore = create<FilterStore>()(
         set((s) => ({ filter: { ...s.filter, archivedMode: NEXT_ARCHIVED_MODE[s.filter.archivedMode] } })),
       reset: () => set({ filter: DEFAULT_FILTER }),
     }),
-    { name: "arlesh-filter", partialize: (state) => ({ filter: state.filter }) },
+    {
+      name: "arlesh-filter",
+      partialize: (state) => ({ filter: state.filter }),
+      merge: (persistedState, currentState) => ({
+        ...currentState,
+        filter: mergePersistedFilterSlice(persistedState, DEFAULT_FILTER),
+      }),
+    },
   ),
 );
