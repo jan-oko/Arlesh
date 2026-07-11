@@ -119,7 +119,7 @@ function passesStatus(node: MindmapNode, f: FilterState): boolean {
       // which is the only way to hide an archived/lapsed item while not on a filtering preset.
       return withArchivedOverride(node, f, true);
     case "plan":
-      if (node.kind === "task") return node.status !== "done";
+      if (node.kind === "task") return withArchivedOverride(node, f, node.status !== "done");
       if (node.kind === "goal") return withArchivedOverride(node, f, !RESOLVED_GOAL.has(node.status ?? ""));
       return true;
     case "start": {
