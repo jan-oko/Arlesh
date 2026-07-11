@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useListFilterStore } from "@/stores/use-list-filter-store";
@@ -13,6 +13,9 @@ import Switch from "@/components/Switch/Switch";
 import PillFilterSection from "./PillFilterSection";
 import { EntityAdder, FixedValueAdder } from "./PillAdders";
 import styles from "./FilterPopover.module.css";
+
+const CHEVRON_OPEN = "▾";
+const CHEVRON_CLOSED = "▸";
 
 function archivedPillClass(mode: ArchivedMode): string {
   if (mode === "include") return `${styles.archivedPill} ${styles.archivedPillInclude}`;
@@ -33,6 +36,9 @@ export default function FilterPopover() {
   const toggleWorkMode = useFilterStore((s) => s.toggleWorkMode);
   const cycleArchivedMode = useFilterStore((s) => s.cycleArchivedMode);
   const reset = useFilterStore((s) => s.reset);
+  // Collapsed by default; auto-opens when the archived filter is already engaged, so an active
+  // filter is never hidden behind an unopened disclosure.
+  const [advancedOpen, setAdvancedOpen] = useState(filter.archivedMode !== "inactive");
 
   const view = useViewStore((s) => s.view);
   const listFilter = useListFilterStore((s) => s.filter);
@@ -96,17 +102,24 @@ export default function FilterPopover() {
 
       {view === "mindmap" && (
         <div className={styles.cluster}>
-          <div className={styles.clusterLabel}>{t("statusClusterLabel")}</div>
-          <PillFilterSection label={t("archivedLabel")}>
-            <button
-              type="button"
-              className={archivedPillClass(filter.archivedMode)}
-              onClick={cycleArchivedMode}
-              title={t(`archivedTooltip.${filter.archivedMode}`)}
-            >
-              {t("archivedPill")}
-            </button>
-          </PillFilterSection>
+          <button type="button" className={styles.advancedToggle} onClick={() => setAdvancedOpen((o) => !o)}>
+            <span aria-hidden="true">{advancedOpen ? CHEVRON_OPEN : CHEVRON_CLOSED}</span>
+            {t("advanced")}
+          </button>
+          {advancedOpen && (
+            <div className={styles.advancedBody}>
+              <PillFilterSection label={t("archivedLabel")}>
+                <button
+                  type="button"
+                  className={archivedPillClass(filter.archivedMode)}
+                  onClick={cycleArchivedMode}
+                  title={t(`archivedTooltip.${filter.archivedMode}`)}
+                >
+                  {t("archivedPill")}
+                </button>
+              </PillFilterSection>
+            </div>
+          )}
         </div>
       )}
 

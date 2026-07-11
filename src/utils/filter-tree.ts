@@ -122,8 +122,14 @@ function passesStatus(node: MindmapNode, f: FilterState): boolean {
       // shows everything.
       return true;
     case "plan":
-      if (node.kind === "task") return withArchivedOverride(node, f, node.status !== "done");
-      if (node.kind === "goal") return withArchivedOverride(node, f, !RESOLVED_GOAL.has(node.status ?? ""));
+      // Plan also hides anything effectively archived — not just a goal/project whose stored status
+      // is itself achieved/frozen/archived (RESOLVED_GOAL), but any scoped item a forced Resolution
+      // archived regardless of its stored status (e.g. a still-"active" goal, or any task, which has
+      // no stored status of its own to catch this).
+      if (node.kind === "task") return withArchivedOverride(node, f, node.status !== "done" && node.archived !== true);
+      if (node.kind === "goal") {
+        return withArchivedOverride(node, f, !RESOLVED_GOAL.has(node.status ?? "") && node.archived !== true);
+      }
       return true;
     case "start": {
       if (node.kind !== "task" && node.kind !== "goal") return true;

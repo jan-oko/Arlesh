@@ -12,7 +12,7 @@
   "typesLabel": "Node types",
   "workLabel": "Work",
   "workMode": "Hide NSFW nodes",
-  "statusClusterLabel": "Status",
+  "advanced": "Advanced",
   "archivedLabel": "Archived",
   "archivedPill": "Archived",
   "archivedTooltip": {

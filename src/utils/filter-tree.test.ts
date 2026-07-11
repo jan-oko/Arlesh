@@ -243,21 +243,39 @@ describe("filterTree — archived mode (Archived status + scope-Lapsed override)
       n("t-ok", "task", { status: "todo" }),
     ]);
 
-  it("inactive (default) preserves today's exact behavior", () => {
+  it("All shows everything", () => {
     expect(ids(filterTree(t(), f({ statusMode: "all" })))).toEqual(
       expect.arrayContaining(["goal-archived", "t-lapsed"]),
     );
+  });
+
+  it("Plan hides archived items by default, not just via explicit Exclude", () => {
     const plan = ids(filterTree(t(), f({ statusMode: "plan" })));
     expect(plan).not.toContain("goal-archived");
-    expect(plan).toContain("t-lapsed"); // lapsed-hiding is Start-only
+    expect(plan).not.toContain("t-lapsed");
+    expect(plan).toContain("t-ok");
+  });
+
+  it("Start hides archived items by default", () => {
     const start = ids(filterTree(t(), f({ statusMode: "start" })));
     expect(start).not.toContain("goal-archived");
     expect(start).not.toContain("t-lapsed");
   });
 
-  it("include forces archived/lapsed items to show under Plan and Start", () => {
+  it("Plan hides a goal whose stored status is active but whose scope forced it archived", () => {
+    const t = n("root", "domain", {}, [n("goal-forced", "goal", { status: "active", archived: true })]);
+    expect(ids(filterTree(t, f({ statusMode: "plan" })))).not.toContain("goal-forced");
+  });
+
+  it("Plan hides a frozen goal by default", () => {
+    const t = n("root", "domain", {}, [n("goal-frozen", "goal", { status: "frozen" })]);
+    expect(ids(filterTree(t, f({ statusMode: "plan" })))).not.toContain("goal-frozen");
+  });
+
+  it("include forces archived/lapsed items to show under Plan and Start (now needed under Plan too, since it hides them by default)", () => {
     const plan = ids(filterTree(t(), f({ statusMode: "plan", archivedMode: "include" })));
     expect(plan).toContain("goal-archived");
+    expect(plan).toContain("t-lapsed");
     const start = ids(filterTree(t(), f({ statusMode: "start", archivedMode: "include" })));
     expect(start).toContain("goal-archived");
     expect(start).toContain("t-lapsed");
@@ -273,20 +291,6 @@ describe("filterTree — archived mode (Archived status + scope-Lapsed override)
   it("does not affect achieved/frozen goals — only Archived status and Lapsed lifecycle", () => {
     const achieved = n("root", "domain", {}, [n("goal-achieved", "goal", { status: "achieved" })]);
     expect(ids(filterTree(achieved, f({ statusMode: "plan", archivedMode: "include" })))).not.toContain("goal-achieved");
-  });
-
-  it("exclude force-hides a lapsed task under Plan too, not just Start/All (regression)", () => {
-    // Plan's task branch checks only `status !== "done"` and previously never consulted archivedMode
-    // at all — a lapsed-but-not-done task (e.g. a Habit instance like "Journal") stayed visible under
-    // Plan regardless of the pill, since Plan is the default status preset most users browse in.
-    const kept = ids(filterTree(t(), f({ statusMode: "plan", archivedMode: "exclude" })));
-    expect(kept).not.toContain("t-lapsed");
-    expect(kept).toContain("t-ok");
-  });
-
-  it("include is a no-op for a lapsed task under Plan (already shown by default there)", () => {
-    const kept = ids(filterTree(t(), f({ statusMode: "plan", archivedMode: "include" })));
-    expect(kept).toContain("t-lapsed");
   });
 
   it("an archived structural container (project) responds to archivedMode under Plan", () => {

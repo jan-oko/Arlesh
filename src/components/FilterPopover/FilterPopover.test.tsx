@@ -81,8 +81,22 @@ describe("FilterPopover", () => {
     expect(useFilterStore.getState().filter.workMode).toBe(true);
   });
 
+  it("hides the archived pill behind a collapsed Advanced disclosure by default", () => {
+    render(<FilterPopover />);
+    expect(screen.queryByRole("button", { name: "archivedPill" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "advanced" }));
+    expect(screen.getByRole("button", { name: "archivedPill" })).toBeInTheDocument();
+  });
+
+  it("auto-opens the Advanced disclosure when the archived filter is already active", () => {
+    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, archivedMode: "exclude" } });
+    render(<FilterPopover />);
+    expect(screen.getByRole("button", { name: "archivedPill" })).toBeInTheDocument();
+  });
+
   it("cycles the archived pill Inactive → Include → Exclude → Inactive on click (Mindmap only)", () => {
     render(<FilterPopover />);
+    fireEvent.click(screen.getByRole("button", { name: "advanced" }));
     const pill = screen.getByRole("button", { name: "archivedPill" });
     expect(useFilterStore.getState().filter.archivedMode).toBe("inactive");
     fireEvent.click(pill);
@@ -93,9 +107,10 @@ describe("FilterPopover", () => {
     expect(useFilterStore.getState().filter.archivedMode).toBe("inactive");
   });
 
-  it("does not show the archived pill while List View is active", () => {
+  it("does not show the Advanced disclosure while List View is active", () => {
     useViewStore.setState({ view: "list" });
     render(<FilterPopover />);
+    expect(screen.queryByRole("button", { name: "advanced" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "archivedPill" })).not.toBeInTheDocument();
   });
 
