@@ -73,6 +73,12 @@ function flowHardHidden(node: MindmapNode, f: FilterState): boolean {
   return false;
 }
 
+/** An Archived-status node, or one whose scoped window lapsed (SPEC treats both as "archived-looking" —
+ * same status-row icon — and the archivedMode filter governs both together). */
+function isArchived(node: MindmapNode): boolean {
+  return node.status === "archived" || node.scopeLifecycle === "lapsed";
+}
+
 /** Kinds hidden outright (their subtree is removed, not kept as an ancestor). */
 export function typeHardHidden(node: MindmapNode, f: FilterState): boolean {
   // Work mode drops any NSFW node and everything beneath it, regardless of kind.
@@ -81,23 +87,18 @@ export function typeHardHidden(node: MindmapNode, f: FilterState): boolean {
   // In Start, a blocked task/goal gates its whole subtree: drop it outright rather than merely
   // failing its self-match, which would otherwise keep it as an ancestor of a startable descendant.
   if (f.statusMode === "start" && isNodeBlocked(node)) return true;
+  // archivedMode Exclude gates the whole subtree, same as blocked/NSFW above — otherwise an excluded
+  // Habit-instance goal with one still-undone (also-excluded) item and one already-`done` item would
+  // stay visible anyway, kept as an ancestor of that unrelated, ordinarily-visible done sibling.
+  if (f.archivedMode === "exclude" && isArchived(node)) return true;
   return flowHardHidden(node, f);
 }
 
-/** An Archived-status node, or one whose scoped window lapsed (SPEC treats both as "archived-looking" —
- * same status-row icon — and the archivedMode filter governs both together). */
-function isArchived(node: MindmapNode): boolean {
-  return node.status === "archived" || node.scopeLifecycle === "lapsed";
-}
-
-/** Layers the archivedMode override on top of a preset's own verdict for an archived-like node.
- * `base` is what the active preset would otherwise decide. Non-archived nodes always defer to `base`,
- * as does an archived node when archivedMode is `inactive` — so `inactive` reproduces today's exact
- * per-preset behavior (e.g. Plan/Start's bundled hiding of Archived goals). */
+/** Forces an archived-like node to self-match when archivedMode is `include`, overriding whatever the
+ * active preset would otherwise decide (e.g. Plan/Start's bundled hiding of Archived goals). `exclude`
+ * needs no handling here — it hard-hides the whole subtree earlier, in `typeHardHidden`. */
 function withArchivedOverride(node: MindmapNode, f: FilterState, base: boolean): boolean {
-  if (!isArchived(node)) return base;
-  if (f.archivedMode === "include") return true;
-  if (f.archivedMode === "exclude") return false;
+  if (f.archivedMode === "include" && isArchived(node)) return true;
   return base;
 }
 
@@ -115,9 +116,10 @@ function passesStatus(node: MindmapNode, f: FilterState): boolean {
   }
   switch (f.statusMode) {
     case "all":
-      // archivedMode is otherwise a no-op under All (everything already shows) except `exclude`,
-      // which is the only way to hide an archived/lapsed item while not on a filtering preset.
-      return withArchivedOverride(node, f, true);
+      // archivedMode `exclude` hides an archived/lapsed item under All too, but that's handled by
+      // the hard-hide in typeHardHidden (run before this); `include` is a no-op since All already
+      // shows everything.
+      return true;
     case "plan":
       if (node.kind === "task") return withArchivedOverride(node, f, node.status !== "done");
       if (node.kind === "goal") return withArchivedOverride(node, f, !RESOLVED_GOAL.has(node.status ?? ""));

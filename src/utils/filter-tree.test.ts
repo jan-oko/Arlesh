@@ -299,6 +299,28 @@ describe("filterTree — archived mode (Archived status + scope-Lapsed override)
     const kept = ids(filterTree(t(), f({ statusMode: "do", archivedMode: "include" })));
     expect(kept).not.toContain("goal-archived"); // Do never shows goals as self-matches
   });
+
+  it("exclude hard-hides the whole subtree, even when a sibling child is an ordinarily-visible done task (regression)", () => {
+    // A lapsed Habit-instance goal (e.g. "לאכול ארוחות נורמליות") with three item children: two
+    // already marked done (no scopeLifecycle of their own — plain done tasks, self-matching under
+    // All/Plan on their own merit) and one still-undone item (also lapsed, since it shares the root's
+    // "past" flag). Failing only the root's own self-match isn't enough — the done siblings' own
+    // self-match kept the root visible anyway as their ancestor. Exclude must drop the whole subtree.
+    const habitInstance = n("root", "domain", {}, [
+      n("habit-instance", "goal", { status: "active", scopeLifecycle: "lapsed" }, [
+        n("item-done-1", "task", { status: "done" }),
+        n("item-undone", "task", { status: "todo", scopeLifecycle: "lapsed" }),
+        n("item-done-2", "task", { status: "done" }),
+      ]),
+    ]);
+    for (const statusMode of ["all", "plan", "start"] as const) {
+      const kept = ids(filterTree(habitInstance, f({ statusMode, archivedMode: "exclude" })));
+      expect(kept, `under ${statusMode}`).not.toContain("habit-instance");
+      expect(kept, `under ${statusMode}`).not.toContain("item-done-1");
+      expect(kept, `under ${statusMode}`).not.toContain("item-undone");
+      expect(kept, `under ${statusMode}`).not.toContain("item-done-2");
+    }
+  });
 });
 
 describe("filterTree — Work mode hides NSFW subtrees", () => {
