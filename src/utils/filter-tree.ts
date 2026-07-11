@@ -7,6 +7,17 @@ export type StatusMode = "all" | "plan" | "start" | "do";
 /** How a single tag filter contributes to the combined tag predicate (SPEC Filtering Logic). */
 export type TagFilterMode = "any" | "all" | "exclude";
 
+/** Override for Archived-status/scope-Lapsed nodes, on top of whatever the status preset would
+ * otherwise decide. `inactive` defers entirely to the preset (today's exact behavior). */
+export type ArchivedMode = "inactive" | "include" | "exclude";
+
+/** The mode `archivedMode` advances to when its pill is clicked (Inactive → Include → Exclude → Inactive). */
+export const NEXT_ARCHIVED_MODE: Record<ArchivedMode, ArchivedMode> = {
+  inactive: "include",
+  include: "exclude",
+  exclude: "inactive",
+};
+
 /** One tag filter: a tag id in one of the three modes. */
 export interface TagFilter {
   tagId: number;
@@ -23,6 +34,8 @@ export interface FilterState {
   showFlow: boolean;
   /** Work mode: hard-hide any NSFW-marked node together with its whole subtree. */
   workMode: boolean;
+  /** Override for Archived-status/scope-Lapsed nodes on top of the status preset. */
+  archivedMode: ArchivedMode;
 }
 
 /** The neutral, indicator-off filter — shows everything. */
@@ -33,6 +46,7 @@ export const DEFAULT_FILTER: FilterState = {
   showInfo: true,
   showFlow: true,
   workMode: false,
+  archivedMode: "inactive",
 };
 
 /** Goal statuses that read as resolved/inactive (hidden by Plan/Start). */
@@ -70,6 +84,23 @@ export function typeHardHidden(node: MindmapNode, f: FilterState): boolean {
   return flowHardHidden(node, f);
 }
 
+/** An Archived-status node, or one whose scoped window lapsed (SPEC treats both as "archived-looking" —
+ * same status-row icon — and the archivedMode filter governs both together). */
+function isArchived(node: MindmapNode): boolean {
+  return node.status === "archived" || node.scopeLifecycle === "lapsed";
+}
+
+/** Layers the archivedMode override on top of a preset's own verdict for an archived-like node.
+ * `base` is what the active preset would otherwise decide. Non-archived nodes always defer to `base`,
+ * as does an archived node when archivedMode is `inactive` — so `inactive` reproduces today's exact
+ * per-preset behavior (e.g. Plan/Start's bundled hiding of Archived goals). */
+function withArchivedOverride(node: MindmapNode, f: FilterState, base: boolean): boolean {
+  if (!isArchived(node)) return base;
+  if (f.archivedMode === "include") return true;
+  if (f.archivedMode === "exclude") return false;
+  return base;
+}
+
 /** Whether a node's own status satisfies the active mode. */
 function passesStatus(node: MindmapNode, f: FilterState): boolean {
   // In any filtered mode, structural containers never match on their own — they show only when they
@@ -77,22 +108,26 @@ function passesStatus(node: MindmapNode, f: FilterState): boolean {
   // aspect/domain/project shows on its own — planning may mean adding items to an empty one. (Resolved
   // ones, and tags, stay ancestor-only.)
   if (f.statusMode !== "all" && STRUCTURAL_KINDS.has(node.kind)) {
-    if (f.statusMode === "plan" && node.kind !== "tag") return !RESOLVED_GOAL.has(node.status ?? "");
+    if (f.statusMode === "plan" && node.kind !== "tag") {
+      return withArchivedOverride(node, f, !RESOLVED_GOAL.has(node.status ?? ""));
+    }
     return false;
   }
   switch (f.statusMode) {
     case "all":
-      return true;
+      // archivedMode is otherwise a no-op under All (everything already shows) except `exclude`,
+      // which is the only way to hide an archived/lapsed item while not on a filtering preset.
+      return withArchivedOverride(node, f, true);
     case "plan":
       if (node.kind === "task") return node.status !== "done";
-      if (node.kind === "goal") return !RESOLVED_GOAL.has(node.status ?? "");
+      if (node.kind === "goal") return withArchivedOverride(node, f, !RESOLVED_GOAL.has(node.status ?? ""));
       return true;
     case "start": {
       if (node.kind !== "task" && node.kind !== "goal") return true;
       // Start = things you can begin now: drop anything archived by scope (lapsed). (Blocked
       // task/goals are dropped earlier, as a hard-hidden subtree — see typeHardHidden.)
-      if (node.scopeLifecycle === "lapsed") return false;
-      if (node.kind === "goal") return !RESOLVED_GOAL.has(node.status ?? "");
+      if (node.scopeLifecycle === "lapsed") return withArchivedOverride(node, f, false);
+      if (node.kind === "goal") return withArchivedOverride(node, f, !RESOLVED_GOAL.has(node.status ?? ""));
       if (node.status === "done") return false;
       // An in-progress task with nothing left to start (no direct todo child) drops out.
       if (node.status === "in_progress" && !node.children.some((c) => c.kind === "task" && c.status === "todo")) {
@@ -101,7 +136,8 @@ function passesStatus(node: MindmapNode, f: FilterState): boolean {
       return true;
     }
     case "do":
-      // Only in-progress tasks match; goals/structure appear solely as ancestors.
+      // Only in-progress tasks match; goals/structure appear solely as ancestors. archivedMode does
+      // not apply here — Do's "in-progress tasks only" invariant isn't about archived/lapsed status.
       return node.kind === "task" && node.status === "in_progress";
   }
 }

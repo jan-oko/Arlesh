@@ -8,10 +8,17 @@ import {
   TASK_STATUS_VALUES, GOAL_STATUS_VALUES, PROJECT_STATUS_VALUES, SCOPE_STATE_VALUES, BLOCKED_VALUES,
 } from "@/utils/list-filter";
 import type { PillDimension } from "@/utils/list-filter";
+import type { ArchivedMode } from "@/utils/filter-tree";
 import Switch from "@/components/Switch/Switch";
 import PillFilterSection from "./PillFilterSection";
 import { EntityAdder, FixedValueAdder } from "./PillAdders";
 import styles from "./FilterPopover.module.css";
+
+function archivedPillClass(mode: ArchivedMode): string {
+  if (mode === "include") return `${styles.archivedPill} ${styles.archivedPillInclude}`;
+  if (mode === "exclude") return `${styles.archivedPill} ${styles.archivedPillExclude}`;
+  return `${styles.archivedPill}`;
+}
 
 /** The filter panel opened from the top-bar Filter button — a pure "add a filter" chooser (active
  * filters render as chips in the TopBar). Status preset lives in the TopBar too. Grouped into a few
@@ -24,6 +31,7 @@ export default function FilterPopover() {
   const toggleShowInfo = useFilterStore((s) => s.toggleShowInfo);
   const toggleShowFlow = useFilterStore((s) => s.toggleShowFlow);
   const toggleWorkMode = useFilterStore((s) => s.toggleWorkMode);
+  const cycleArchivedMode = useFilterStore((s) => s.cycleArchivedMode);
   const reset = useFilterStore((s) => s.reset);
 
   const view = useViewStore((s) => s.view);
@@ -85,6 +93,22 @@ export default function FilterPopover() {
           <Switch checked={filter.workMode} onChange={toggleWorkMode} label={t("workMode")} />
         </PillFilterSection>
       </div>
+
+      {view === "mindmap" && (
+        <div className={styles.cluster}>
+          <div className={styles.clusterLabel}>{t("statusClusterLabel")}</div>
+          <PillFilterSection label={t("archivedLabel")}>
+            <button
+              type="button"
+              className={archivedPillClass(filter.archivedMode)}
+              onClick={cycleArchivedMode}
+              title={t(`archivedTooltip.${filter.archivedMode}`)}
+            >
+              {t("archivedPill")}
+            </button>
+          </PillFilterSection>
+        </div>
+      )}
 
       {view === "list" && (() => {
         const parentCandidates = availableEntities("parent", display.parentPool);

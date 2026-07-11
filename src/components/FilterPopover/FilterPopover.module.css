@@ -128,6 +128,32 @@
   text-decoration: none;
 }
 
+/* Archived tri-state pill: cycles Inactive (neutral) → Include (accent) → Exclude (mode-exclude) */
+.archivedPill {
+  align-self: flex-start;
+  padding: 2px var(--space-3);
+  border-radius: 999px;
+  border: 1px solid var(--node-border);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-family: var(--font-sans);
+  cursor: pointer;
+}
+
+.archivedPillInclude {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--surface);
+}
+
+.archivedPillExclude {
+  background: var(--mode-exclude);
+  border-color: var(--mode-exclude);
+  color: var(--surface);
+  text-decoration: line-through;
+}
+
 .reset {
   align-self: flex-start;
   background: none;

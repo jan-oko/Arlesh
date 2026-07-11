@@ -235,6 +235,58 @@ describe("filterTree — tag filters (Any/All/Exclude)", () => {
   });
 });
 
+describe("filterTree — archived mode (Archived status + scope-Lapsed override)", () => {
+  const t = () =>
+    n("root", "domain", {}, [
+      n("goal-archived", "goal", { status: "archived" }),
+      n("t-lapsed", "task", { status: "todo", scopeLifecycle: "lapsed" }),
+      n("t-ok", "task", { status: "todo" }),
+    ]);
+
+  it("inactive (default) preserves today's exact behavior", () => {
+    expect(ids(filterTree(t(), f({ statusMode: "all" })))).toEqual(
+      expect.arrayContaining(["goal-archived", "t-lapsed"]),
+    );
+    const plan = ids(filterTree(t(), f({ statusMode: "plan" })));
+    expect(plan).not.toContain("goal-archived");
+    expect(plan).toContain("t-lapsed"); // lapsed-hiding is Start-only
+    const start = ids(filterTree(t(), f({ statusMode: "start" })));
+    expect(start).not.toContain("goal-archived");
+    expect(start).not.toContain("t-lapsed");
+  });
+
+  it("include forces archived/lapsed items to show under Plan and Start", () => {
+    const plan = ids(filterTree(t(), f({ statusMode: "plan", archivedMode: "include" })));
+    expect(plan).toContain("goal-archived");
+    const start = ids(filterTree(t(), f({ statusMode: "start", archivedMode: "include" })));
+    expect(start).toContain("goal-archived");
+    expect(start).toContain("t-lapsed");
+  });
+
+  it("exclude force-hides archived/lapsed items even under All", () => {
+    const kept = ids(filterTree(t(), f({ statusMode: "all", archivedMode: "exclude" })));
+    expect(kept).not.toContain("goal-archived");
+    expect(kept).not.toContain("t-lapsed");
+    expect(kept).toContain("t-ok");
+  });
+
+  it("does not affect achieved/frozen goals — only Archived status and Lapsed lifecycle", () => {
+    const achieved = n("root", "domain", {}, [n("goal-achieved", "goal", { status: "achieved" })]);
+    expect(ids(filterTree(achieved, f({ statusMode: "plan", archivedMode: "include" })))).not.toContain("goal-achieved");
+  });
+
+  it("an archived structural container (project) responds to archivedMode under Plan", () => {
+    const withProj = n("root", "domain", {}, [n("proj-archived", "project", { status: "archived" }, [])]);
+    expect(ids(filterTree(withProj, f({ statusMode: "plan" })))).not.toContain("proj-archived");
+    expect(ids(filterTree(withProj, f({ statusMode: "plan", archivedMode: "include" })))).toContain("proj-archived");
+  });
+
+  it("has no effect under Do (which already shows only in-progress tasks)", () => {
+    const kept = ids(filterTree(t(), f({ statusMode: "do", archivedMode: "include" })));
+    expect(kept).not.toContain("goal-archived"); // Do never shows goals as self-matches
+  });
+});
+
 describe("filterTree — Work mode hides NSFW subtrees", () => {
   const t = () =>
     n("root", "domain", {}, [

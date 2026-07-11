@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { FilterState, StatusMode, TagFilterMode } from "@/utils/filter-tree";
-import { DEFAULT_FILTER } from "@/utils/filter-tree";
+import { DEFAULT_FILTER, NEXT_ARCHIVED_MODE } from "@/utils/filter-tree";
 
 interface FilterStore {
   filter: FilterState;
@@ -17,6 +17,7 @@ interface FilterStore {
   toggleShowInfo: () => void;
   toggleShowFlow: () => void;
   toggleWorkMode: () => void;
+  cycleArchivedMode: () => void;
   reset: () => void;
 }
 
@@ -43,6 +44,8 @@ export const useFilterStore = create<FilterStore>()(
       toggleShowInfo: () => set((s) => ({ filter: { ...s.filter, showInfo: !s.filter.showInfo } })),
       toggleShowFlow: () => set((s) => ({ filter: { ...s.filter, showFlow: !s.filter.showFlow } })),
       toggleWorkMode: () => set((s) => ({ filter: { ...s.filter, workMode: !s.filter.workMode } })),
+      cycleArchivedMode: () =>
+        set((s) => ({ filter: { ...s.filter, archivedMode: NEXT_ARCHIVED_MODE[s.filter.archivedMode] } })),
       reset: () => set({ filter: DEFAULT_FILTER }),
     }),
     { name: "arlesh-filter", partialize: (state) => ({ filter: state.filter }) },

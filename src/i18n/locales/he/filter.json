@@ -12,5 +12,13 @@
   "typesLabel": "סוגי צמתים",
   "workLabel": "עבודה",
   "workMode": "הסתר פריטים לא לעבודה",
+  "statusClusterLabel": "סטטוס",
+  "archivedLabel": "ארכיון",
+  "archivedPill": "בארכיון",
+  "archivedTooltip": {
+    "inactive": "ארכיון: ברירת מחדל",
+    "include": "ארכיון: כלול",
+    "exclude": "ארכיון: החרג"
+  },
   "reset": "איפוס"
 }

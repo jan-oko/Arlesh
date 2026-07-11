@@ -10,6 +10,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 - **Light mode**, toggled with a new **Light mode** switch in the settings popover (next to the language toggle). Persists across reloads (defaults to dark) and applies app-wide — top bar, popovers, modals, and the Mindmap canvas/nodes all get light equivalents, via a `data-theme="light"` attribute on the document root and a matching override block in `tokens.css`.
+- **Mindmap filter: an Archived tri-state pill**, in a new "Status" cluster (Mindmap only) in the filter popover. Cycles **Inactive → Include → Exclude** on click, overriding the status preset's handling of Archived-status Goals/Projects and scope-Lapsed items — the two states that already share the status row's archive-box badge — independently of achieved/frozen, which stay governed by the preset alone. Inactive (default) reproduces today's exact per-preset behavior; Include force-shows archived/lapsed items even under Plan/Start; Exclude force-hides them even under All. No effect under Do. Backed by a new `archivedMode` field on the persisted `FilterState`.
 
 ### Changed
 - **List View cards now span the full row** (previously capped at 720px) and get more breathing room (larger padding, wider row gaps). Each card is also tinted with its aspect's colour, using the same fill/opacity derivation the Mindmap node uses, so a task's card matches its node's colour there.

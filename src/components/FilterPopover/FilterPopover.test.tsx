@@ -81,6 +81,24 @@ describe("FilterPopover", () => {
     expect(useFilterStore.getState().filter.workMode).toBe(true);
   });
 
+  it("cycles the archived pill Inactive → Include → Exclude → Inactive on click (Mindmap only)", () => {
+    render(<FilterPopover />);
+    const pill = screen.getByRole("button", { name: "archivedPill" });
+    expect(useFilterStore.getState().filter.archivedMode).toBe("inactive");
+    fireEvent.click(pill);
+    expect(useFilterStore.getState().filter.archivedMode).toBe("include");
+    fireEvent.click(pill);
+    expect(useFilterStore.getState().filter.archivedMode).toBe("exclude");
+    fireEvent.click(pill);
+    expect(useFilterStore.getState().filter.archivedMode).toBe("inactive");
+  });
+
+  it("does not show the archived pill while List View is active", () => {
+    useViewStore.setState({ view: "list" });
+    render(<FilterPopover />);
+    expect(screen.queryByRole("button", { name: "archivedPill" })).not.toBeInTheDocument();
+  });
+
   it("reset clears the shared filter (and the list filter, while List View is active)", () => {
     useFilterStore.setState({ filter: { ...DEFAULT_FILTER, workMode: true } });
     useViewStore.setState({ view: "list" });
