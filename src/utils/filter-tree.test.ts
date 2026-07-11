@@ -79,7 +79,7 @@ describe("filterTree — status modes", () => {
   it("Start drops a blocked task and a scope-lapsed task", () => {
     const t = n("root", "domain", {}, [
       n("t-blocked", "task", { status: "todo", blockReasons: ["waiting"] }),
-      n("t-lapsed", "task", { status: "todo", scopeLifecycle: "lapsed" }),
+      n("t-lapsed", "task", { status: "todo", timing: "lapsed" }),
       n("t-ok", "task", { status: "todo" }),
     ]);
     const kept = ids(filterTree(t, f({ statusMode: "start" })));
@@ -239,7 +239,7 @@ describe("filterTree — archived mode (Archived status + scope-Lapsed override)
   const t = () =>
     n("root", "domain", {}, [
       n("goal-archived", "goal", { status: "archived" }),
-      n("t-lapsed", "task", { status: "todo", scopeLifecycle: "lapsed" }),
+      n("t-lapsed", "task", { status: "todo", timing: "lapsed", resolution: "missed", archived: true }),
       n("t-ok", "task", { status: "todo" }),
     ]);
 
@@ -300,16 +300,29 @@ describe("filterTree — archived mode (Archived status + scope-Lapsed override)
     expect(kept).not.toContain("goal-archived"); // Do never shows goals as self-matches
   });
 
+  it("catches a completed-but-past-window item too, not just an unresolved one (the original report)", () => {
+    // A Done task/Achieved goal whose scope has lapsed is now also `archived: true` (Resolution
+    // Completed forces effective Archival, same as Missed) — this is the actual bug that was
+    // reported: a done item beyond its scope wasn't being treated as archived at all.
+    const completed = n("root", "domain", {}, [
+      n("t-completed-lapsed", "task", { status: "done", timing: "lapsed", resolution: "completed", archived: true }),
+      n("t-ok", "task", { status: "todo" }),
+    ]);
+    const kept = ids(filterTree(completed, f({ statusMode: "all", archivedMode: "exclude" })));
+    expect(kept).not.toContain("t-completed-lapsed");
+    expect(kept).toContain("t-ok");
+  });
+
   it("exclude hard-hides the whole subtree, even when a sibling child is an ordinarily-visible done task (regression)", () => {
     // A lapsed Habit-instance goal (e.g. "לאכול ארוחות נורמליות") with three item children: two
-    // already marked done (no scopeLifecycle of their own — plain done tasks, self-matching under
-    // All/Plan on their own merit) and one still-undone item (also lapsed, since it shares the root's
-    // "past" flag). Failing only the root's own self-match isn't enough — the done siblings' own
-    // self-match kept the root visible anyway as their ancestor. Exclude must drop the whole subtree.
+    // already marked done (unscoped, no lifecycle of their own — plain done tasks, self-matching
+    // under All/Plan on their own merit) and one still-undone item (also lapsed, since it shares the
+    // root's "past" flag). Failing only the root's own self-match isn't enough — the done siblings'
+    // own self-match kept the root visible anyway as their ancestor. Exclude must drop the whole subtree.
     const habitInstance = n("root", "domain", {}, [
-      n("habit-instance", "goal", { status: "active", scopeLifecycle: "lapsed" }, [
+      n("habit-instance", "goal", { status: "active", timing: "lapsed", resolution: "missed", archived: true }, [
         n("item-done-1", "task", { status: "done" }),
-        n("item-undone", "task", { status: "todo", scopeLifecycle: "lapsed" }),
+        n("item-undone", "task", { status: "todo", timing: "lapsed", resolution: "missed", archived: true }),
         n("item-done-2", "task", { status: "done" }),
       ]),
     ]);

@@ -14,9 +14,22 @@ use crate::scopes::resolve::{self, Bounds};
 use crate::scopes::ScopeRepository;
 
 use super::error::TaskError;
-use super::lifecycle::{derive_scope_lifecycle, ItemLifecycle};
+use super::lifecycle::{derive_item_state, Archival, ItemLifecycle};
 use super::model::{GoalId, GoalStatus, OnScopeExit, TaskId, TaskStatus, TimeScope};
 use super::{GoalRepository, TaskRepository};
+
+/// Maps a Goal's stored status to its baseline Archival value, for [`derive_item_state`]'s `stored`
+/// parameter. `Achieved` intentionally maps to `Live`, not `Archived` — achievement is a separate,
+/// additive concept (the Resolution axis' `Completed`), not the Archival axis. An unrecognized
+/// status defensively falls back to `Live` (the least surprising default — never silently archives
+/// or freezes something).
+fn goal_stored_archival(status: &str) -> Archival {
+    match GoalStatus::from_db(status) {
+        Some(GoalStatus::Frozen) => Archival::Frozen,
+        Some(GoalStatus::Archived) => Archival::Archived,
+        Some(GoalStatus::Active) | Some(GoalStatus::Achieved) | None => Archival::Live,
+    }
+}
 
 /// A descendant whose explicit Time Scope would fall outside a candidate window — i.e. one that
 /// narrowing an ancestor's scope (or reparenting) would orphan.
@@ -92,8 +105,10 @@ pub(super) async fn scope_governance(
     }
 }
 
-/// Derives the scope lifecycle (Active / Overdue / Lapsed) of every Task and Goal at `now`, using
-/// each item's effective governance. A Task is exempt once Done; a Goal once Achieved or Archived.
+/// Derives the full lifecycle state (Timing / Resolution / Archival — see `lifecycle`'s module
+/// docs) of every Task and Goal at `now`, using each item's effective governance. A Task is
+/// resolved once Done; a Goal once Achieved or Archived. Tasks have no manual Archival concept
+/// (always fully derived); Goals carry their own stored Archival via [`goal_stored_archival`].
 pub async fn derive_all_scope_lifecycles(
     pool: &DatabasePool,
     now: NaiveDateTime,
@@ -104,19 +119,34 @@ pub async fn derive_all_scope_lifecycles(
             Some((w, e)) => (Some(w), Some(e)),
             None => (None, None),
         };
-        let resolved = task.status == TaskStatus::Done.as_str();
-        let state = derive_scope_lifecycle(window, on_exit, resolved, now);
-        out.push(ItemLifecycle { node_type: "task".to_string(), node_id: task.id, state });
+        let resolved = TaskStatus::from_db(&task.status) == Some(TaskStatus::Done);
+        let state = derive_item_state(window, on_exit, resolved, None, now);
+        out.push(ItemLifecycle {
+            node_type: "task".to_string(),
+            node_id: task.id,
+            timing: state.timing,
+            resolution: state.resolution,
+            archival: state.archival,
+            archival_conflict: state.archival_conflict,
+        });
     }
     for goal in GoalRepository::new(pool).list().await? {
         let (window, on_exit) = match scope_governance(pool, "goal", goal.id).await? {
             Some((w, e)) => (Some(w), Some(e)),
             None => (None, None),
         };
-        let resolved = goal.status == GoalStatus::Achieved.as_str()
-            || goal.status == GoalStatus::Archived.as_str();
-        let state = derive_scope_lifecycle(window, on_exit, resolved, now);
-        out.push(ItemLifecycle { node_type: "goal".to_string(), node_id: goal.id, state });
+        let parsed_status = GoalStatus::from_db(&goal.status);
+        let resolved = matches!(parsed_status, Some(GoalStatus::Achieved) | Some(GoalStatus::Archived));
+        let stored = Some(goal_stored_archival(&goal.status));
+        let state = derive_item_state(window, on_exit, resolved, stored, now);
+        out.push(ItemLifecycle {
+            node_type: "goal".to_string(),
+            node_id: goal.id,
+            timing: state.timing,
+            resolution: state.resolution,
+            archival: state.archival,
+            archival_conflict: state.archival_conflict,
+        });
     }
     Ok(out)
 }

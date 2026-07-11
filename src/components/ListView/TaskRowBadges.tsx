@@ -44,7 +44,10 @@ export default function TaskRowBadges({ node, indicators }: Props) {
       case "overdue":
         return { tooltip: t("overdue"), icon: <ExclamationIcon cx={R} cy={R} r={R} color={DANGER} /> };
       case "archived":
-        return { tooltip: t("archived"), icon: <ArchiveIcon cx={R} cy={R} r={R} color={MUTED} /> };
+        return {
+          tooltip: indicator.conflict === true ? t("archivedConflict") : t("archived"),
+          icon: <ArchiveIcon cx={R} cy={R} r={R} color={indicator.conflict === true ? DANGER : MUTED} />,
+        };
       case "planned":
         return {
           tooltip: t("plan", { value: planLabel ?? t("loading") }),

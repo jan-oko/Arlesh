@@ -1,7 +1,7 @@
 import { hierarchy, tree } from "d3-hierarchy";
 import type { TimeScope } from "@/api/time-scope";
 import type { InstanceType, FlowItemType, HabitInstanceType } from "@/api/flows";
-import type { OnScopeExit, ScopeLifecycle } from "@/api/scope-lifecycle";
+import type { OnScopeExit, Timing, Resolution } from "@/api/scope-lifecycle";
 
 export type NodeKind =
   | "aspect" | "project" | "domain" | "goal" | "task" | "tag" | "info"
@@ -96,8 +96,15 @@ export interface MindmapNode {
   timeScope?: TimeScope | null;
   /** On-exit behavior; present iff `timeScope` is (Task/Goal only). */
   onScopeExit?: OnScopeExit | null;
-  /** Derived scope lifecycle at "now" (Task/Goal only); set by the view, never persisted. */
-  scopeLifecycle?: ScopeLifecycle;
+  /** Derived window position at "now" (Task/Goal only); set by the view, never persisted. */
+  timing?: Timing;
+  /** Derived resolution outcome once `timing` is "lapsed" (Task/Goal only). */
+  resolution?: Resolution;
+  /** Effective archived-ness (Task/Goal only) — true forces the archived badge/filter regardless of
+   * `status`; may diverge from a manually-set Frozen `status` (see `archivalConflict`). */
+  archived?: boolean;
+  /** True when `archived` is true because a scope Resolution overrode a manually-set Frozen status. */
+  archivalConflict?: boolean;
   /** A derived, read-only node (e.g. a virtual Habit iteration) with no backing DB row. */
   virtual?: boolean;
   /**

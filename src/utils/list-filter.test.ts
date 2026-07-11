@@ -80,8 +80,18 @@ describe("deriveScopeStateTokens", () => {
   });
 
   it("scope lifecycle token when scoped", () => {
-    const node = n("t", "task", { timeScope: { start_id: 1, end_id: 1 }, scopeLifecycle: "overdue" });
+    const node = n("t", "task", { timeScope: { start_id: 1, end_id: 1 }, timing: "lapsed", resolution: "overdue" });
     expect(deriveScopeStateTokens(node)).toContain("overdue");
+  });
+
+  it("a completed-but-lapsed task still reads as active here (dimension predates archivedMode)", () => {
+    // Preserves this dimension's exact pre-existing behavior: a Done task never got a "lapsed"/
+    // "overdue" scope-state token before Resolution existed, even though it's now `archived: true`.
+    const node = n("t", "task", {
+      status: "done", timeScope: { start_id: 1, end_id: 1 }, timing: "lapsed", resolution: "completed", archived: true,
+    });
+    expect(deriveScopeStateTokens(node)).toContain("active");
+    expect(deriveScopeStateTokens(node)).not.toContain("lapsed");
   });
 
   it("planned when a Plan is set, independent of scope state", () => {

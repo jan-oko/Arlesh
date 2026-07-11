@@ -903,7 +903,9 @@ describe("injectHabitInstances", () => {
     expect(virtuals[0]?.status).toBe("done"); // its root instance is completed
     expect(virtuals[0]?.habitItem).toEqual({ flowId: 3, itemType: "flow_root", itemId: 3, scopeId: 100 });
     expect(virtuals[1]?.status).toBe("todo"); // no root completion
-    expect(virtuals[2]?.scopeLifecycle).toBe("lapsed"); // lapsed + uncompleted iterations are dimmed
+    expect(virtuals[2]?.timing).toBe("lapsed"); // lapsed + uncompleted iterations are dimmed
+    expect(virtuals[2]?.resolution).toBe("missed");
+    expect(virtuals[2]?.archived).toBe(true);
     expect(virtuals[2]?.id).toBe("habit-3-2-virtual"); // non-numeric tail keeps it out of mutations
   });
 
@@ -965,6 +967,44 @@ describe("injectHabitInstances", () => {
     expect(items[0]?.habitItem).toEqual({ flowId: 3, itemType: "flow_task", itemId: 4, scopeId: 100 });
     expect(items[1]?.title).toBe("Dinner");
     expect(items[1]?.status).toBe("todo"); // no completion
+  });
+
+  it("archives a past-window iteration's items regardless of done-ness (the original bug report)", () => {
+    // Previously only the undone item lapsed; a done-but-past-window item (and the done root) never
+    // archived at all, so e.g. a "לאכול ארוחות נורמליות" instance with 2/3 done meals stayed visible.
+    const root = buildTree(
+      [
+        { id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, nsfw: false },
+        { id: 96, title: "LOOK", description: null, subtype: "project", parent_id: 1, color: null, status: null, knowledge_base_directory: null, position: 0, nsfw: false },
+      ],
+      [], [], [],
+    );
+    const breakfast: FlowTask = { id: 4, flow_id: 3, title: "Breakfast", parent_type: "flow", parent_id: 3, position: 0, nsfw: false };
+    const dinner: FlowTask = { id: 5, flow_id: 3, title: "Dinner", parent_type: "flow", parent_id: 3, position: 1, nsfw: false };
+    injectHabitInstances(
+      root,
+      [mkFlow({ target_type: "project", target_id: 96 })],
+      [[iter(0, "lapsed")]], // anchor_scope_id = 100 — the whole iteration's window has passed
+      LABELS,
+      [],
+      [breakfast, dinner],
+      [[{ item_type: "flow_task", item_id: 4, iteration_scope_id: 100, status: "done" }]], // breakfast done, root+dinner not
+    );
+
+    const iterationRoot = root.children[0]?.children[0]?.children[0]; // aspect → project → iteration root
+    expect(iterationRoot?.timing).toBe("lapsed");
+    expect(iterationRoot?.resolution).toBe("missed"); // root itself was never completed
+    expect(iterationRoot?.archived).toBe(true);
+
+    const items = iterationRoot?.children ?? [];
+    const breakfastNode = items.find((n) => n.title === "Breakfast");
+    const dinnerNode = items.find((n) => n.title === "Dinner");
+    expect(breakfastNode?.status).toBe("done");
+    expect(breakfastNode?.resolution).toBe("completed"); // done AND past-window
+    expect(breakfastNode?.archived).toBe(true); // archived even though completed, not missed
+    expect(dinnerNode?.status).toBe("todo");
+    expect(dinnerNode?.resolution).toBe("missed");
+    expect(dinnerNode?.archived).toBe(true);
   });
 
   it("marks completed goal instances as achieved and open ones as active", () => {

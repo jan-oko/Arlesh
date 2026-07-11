@@ -22,7 +22,7 @@ import type {
   FlowGoal, FlowTask, FlowItemCycle, FlowDependency, FlowItemType, HabitIteration, HabitItemStatus, TargetRef,
 } from "@/api/flows";
 import { deriveScopeLifecycles } from "@/api/scope-lifecycle";
-import type { ItemLifecycle, ScopeLifecycle } from "@/api/scope-lifecycle";
+import type { ItemLifecycle } from "@/api/scope-lifecycle";
 import type { MindmapNode, NodeKind, FlowCyclePair, FlowItemDep } from "@/utils/tree-layout";
 import { entityNodeId } from "@/utils/tree-layout";
 import { goalStatusToTaskStatus, taskStatusToGoalStatus } from "@/utils/status-mapping";
@@ -38,15 +38,20 @@ function localNowIso(): string {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
 }
 
-/** Stamps each Task/Goal node with its derived scope lifecycle (Overdue/Lapsed styling). */
-function applyLifecycles(node: MindmapNode, byId: Map<string, ScopeLifecycle>): void {
-  const state = byId.get(node.id);
-  if (state !== undefined) node.scopeLifecycle = state;
+/** Stamps each Task/Goal node with its derived lifecycle (Timing/Resolution/effective Archival). */
+function applyLifecycles(node: MindmapNode, byId: Map<string, ItemLifecycle>): void {
+  const entry = byId.get(node.id);
+  if (entry !== undefined) {
+    node.timing = entry.timing;
+    if (entry.resolution !== undefined) node.resolution = entry.resolution;
+    node.archived = entry.archival === "archived";
+    node.archivalConflict = entry.archival_conflict;
+  }
   for (const child of node.children) applyLifecycles(child, byId);
 }
 
-function lifecycleMap(lifecycles: ItemLifecycle[]): Map<string, ScopeLifecycle> {
-  return new Map(lifecycles.map((l) => [`${l.node_type}-${l.node_id}`, l.state]));
+function lifecycleMap(lifecycles: ItemLifecycle[]): Map<string, ItemLifecycle> {
+  return new Map(lifecycles.map((l) => [`${l.node_type}-${l.node_id}`, l]));
 }
 
 /**
@@ -99,7 +104,9 @@ function buildIterationItems(
       virtual: true,
       habitItem: { flowId: flow.id, itemType, itemId: item.id, scopeId },
       ...(color !== undefined ? { color } : {}),
-      ...(past && !done ? { scopeLifecycle: "lapsed" as const } : {}),
+      ...(past
+        ? { timing: "lapsed" as const, resolution: done ? "completed" as const : "missed" as const, archived: true }
+        : { timing: "active" as const }),
       nsfw: item.nsfw,
       position: item.position,
       tagIds: [],
@@ -168,7 +175,9 @@ export function injectHabitInstances(
         // Iterations are injected after buildTree's colour propagation, so inherit the host's
         // already-resolved aspect colour directly.
         ...(host.color !== undefined ? { color: host.color } : {}),
-        ...(past && !rootDone ? { scopeLifecycle: "lapsed" as const } : {}),
+        ...(past
+          ? { timing: "lapsed" as const, resolution: rootDone ? "completed" as const : "missed" as const, archived: true }
+          : { timing: "active" as const }),
         nsfw: flow.nsfw,
         position: iteration.index,
         tagIds: [],

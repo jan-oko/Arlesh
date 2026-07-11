@@ -57,7 +57,10 @@ export default function StatusIconRow({ node, indicators, width, top }: Props) {
       case "overdue":
         return { tooltip: t("overdue"), icon: <ExclamationIcon cx={cx} cy={rowY} r={ICON_R} color={DANGER} /> };
       case "archived":
-        return { tooltip: t("archived"), icon: <ArchiveIcon cx={cx} cy={rowY} r={ICON_R} color={MUTED} /> };
+        return {
+          tooltip: indicator.conflict === true ? t("archivedConflict") : t("archived"),
+          icon: <ArchiveIcon cx={cx} cy={rowY} r={ICON_R} color={indicator.conflict === true ? DANGER : MUTED} />,
+        };
       case "planned":
         return {
           tooltip: t("plan", { value: planLabel ?? t("loading") }),

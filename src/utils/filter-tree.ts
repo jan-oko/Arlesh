@@ -73,10 +73,11 @@ function flowHardHidden(node: MindmapNode, f: FilterState): boolean {
   return false;
 }
 
-/** An Archived-status node, or one whose scoped window lapsed (SPEC treats both as "archived-looking" —
- * same status-row icon — and the archivedMode filter governs both together). */
+/** An Archived-status node, or one whose effective Archival was derived as archived (a scope
+ * Resolution of Completed or Missed forces this, regardless of done-ness — SPEC treats both as
+ * "archived-looking", same status-row icon, and the archivedMode filter governs both together). */
 function isArchived(node: MindmapNode): boolean {
-  return node.status === "archived" || node.scopeLifecycle === "lapsed";
+  return node.status === "archived" || node.archived === true;
 }
 
 /** Kinds hidden outright (their subtree is removed, not kept as an ancestor). */
@@ -126,9 +127,9 @@ function passesStatus(node: MindmapNode, f: FilterState): boolean {
       return true;
     case "start": {
       if (node.kind !== "task" && node.kind !== "goal") return true;
-      // Start = things you can begin now: drop anything archived by scope (lapsed). (Blocked
+      // Start = things you can begin now: drop anything whose window has passed. (Blocked
       // task/goals are dropped earlier, as a hard-hidden subtree — see typeHardHidden.)
-      if (node.scopeLifecycle === "lapsed") return withArchivedOverride(node, f, false);
+      if (node.timing === "lapsed") return withArchivedOverride(node, f, false);
       if (node.kind === "goal") return withArchivedOverride(node, f, !RESOLVED_GOAL.has(node.status ?? ""));
       if (node.status === "done") return false;
       // An in-progress task with nothing left to start (no direct todo child) drops out.

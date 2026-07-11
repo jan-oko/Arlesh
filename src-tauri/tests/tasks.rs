@@ -9,7 +9,7 @@ use arlesh_lib::{
     scopes::{model::ScopeKind, ScopeRepository},
     tasks::{
         derive_all_scope_lifecycles,
-        lifecycle::ScopeLifecycle,
+        lifecycle::{Archival, Resolution, Timing},
         model::{
             CreateGoalRequest, CreateTaskRequest, Dependency, DurationSpec, GoalStatus, OnScopeExit,
             TaskStatus, TimeScope, UpdateGoalRequest, UpdateTaskRequest,
@@ -1371,12 +1371,12 @@ async fn day_scope(pool: &sqlx::SqlitePool, y: i32, m: u32, d: u32) -> i64 {
         .id
 }
 
-fn task_state(states: &[arlesh_lib::tasks::lifecycle::ItemLifecycle], id: i64) -> ScopeLifecycle {
+fn task_state(states: &[arlesh_lib::tasks::lifecycle::ItemLifecycle], id: i64) -> arlesh_lib::tasks::lifecycle::ItemLifecycle {
     states
         .iter()
         .find(|s| s.node_type == "task" && s.node_id == id)
         .unwrap()
-        .state
+        .clone()
 }
 
 #[tokio::test]
@@ -1445,7 +1445,7 @@ async fn archive_on_exit_persists_and_clearing_scope_clears_it() {
 }
 
 #[tokio::test]
-async fn derives_overdue_lapsed_and_active() {
+async fn derives_overdue_missed_and_archives_a_completed_item() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
     let past = day_scope(&pool, 2026, 1, 5).await;
@@ -1490,9 +1490,23 @@ async fn derives_overdue_lapsed_and_active() {
     // Well past the 2026-01-05 window.
     let now = NaiveDate::from_ymd_opt(2026, 2, 1).unwrap().and_hms_opt(12, 0, 0).unwrap();
     let states = derive_all_scope_lifecycles(&pool, now).await.unwrap();
-    assert_eq!(task_state(&states, keep.id), ScopeLifecycle::Overdue);
-    assert_eq!(task_state(&states, archive.id), ScopeLifecycle::Lapsed);
-    assert_eq!(task_state(&states, done.id), ScopeLifecycle::Active); // resolved → exempt
+
+    let keep_state = task_state(&states, keep.id);
+    assert_eq!(keep_state.timing, Timing::Lapsed);
+    assert_eq!(keep_state.resolution, Some(Resolution::Overdue));
+    assert_eq!(keep_state.archival, Archival::Live); // Overdue never forces archival
+
+    let archive_state = task_state(&states, archive.id);
+    assert_eq!(archive_state.timing, Timing::Lapsed);
+    assert_eq!(archive_state.resolution, Some(Resolution::Missed));
+    assert_eq!(archive_state.archival, Archival::Archived);
+
+    // A Done task is no longer exempt from Timing — once its window passes, it's Lapsed +
+    // Completed, and now also archives (the behavior this whole model was introduced to fix).
+    let done_state = task_state(&states, done.id);
+    assert_eq!(done_state.timing, Timing::Lapsed);
+    assert_eq!(done_state.resolution, Some(Resolution::Completed));
+    assert_eq!(done_state.archival, Archival::Archived);
 }
 
 #[tokio::test]
@@ -1528,20 +1542,22 @@ async fn inherited_scope_and_on_exit_govern_children() {
 
     let now = NaiveDate::from_ymd_opt(2026, 2, 1).unwrap().and_hms_opt(12, 0, 0).unwrap();
     let states = derive_all_scope_lifecycles(&pool, now).await.unwrap();
-    // Inherits Archive → Lapsed, even though the child itself is unscoped.
-    assert_eq!(task_state(&states, child.id), ScopeLifecycle::Lapsed);
+    // Inherits Archive → Lapsed + Missed, even though the child itself is unscoped.
+    let child_state = task_state(&states, child.id);
+    assert_eq!(child_state.timing, Timing::Lapsed);
+    assert_eq!(child_state.resolution, Some(Resolution::Missed));
 }
 
-fn goal_state(states: &[arlesh_lib::tasks::lifecycle::ItemLifecycle], id: i64) -> ScopeLifecycle {
+fn goal_state(states: &[arlesh_lib::tasks::lifecycle::ItemLifecycle], id: i64) -> arlesh_lib::tasks::lifecycle::ItemLifecycle {
     states
         .iter()
         .find(|s| s.node_type == "goal" && s.node_id == id)
         .unwrap()
-        .state
+        .clone()
 }
 
 #[tokio::test]
-async fn derives_goal_overdue_lapsed_and_exempts_resolved() {
+async fn derives_goal_overdue_missed_and_archives_an_achieved_goal() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
     let past = day_scope(&pool, 2026, 1, 5).await;
@@ -1584,9 +1600,23 @@ async fn derives_goal_overdue_lapsed_and_exempts_resolved() {
 
     let now = NaiveDate::from_ymd_opt(2026, 2, 1).unwrap().and_hms_opt(12, 0, 0).unwrap();
     let states = derive_all_scope_lifecycles(&pool, now).await.unwrap();
-    assert_eq!(goal_state(&states, keep.id), ScopeLifecycle::Overdue);
-    assert_eq!(goal_state(&states, archive.id), ScopeLifecycle::Lapsed);
-    assert_eq!(goal_state(&states, achieved.id), ScopeLifecycle::Active); // Achieved → exempt
+
+    let keep_state = goal_state(&states, keep.id);
+    assert_eq!(keep_state.timing, Timing::Lapsed);
+    assert_eq!(keep_state.resolution, Some(Resolution::Overdue));
+    assert_eq!(keep_state.archival, Archival::Live);
+
+    let archive_state = goal_state(&states, archive.id);
+    assert_eq!(archive_state.timing, Timing::Lapsed);
+    assert_eq!(archive_state.resolution, Some(Resolution::Missed));
+    assert_eq!(archive_state.archival, Archival::Archived);
+
+    // An Achieved goal is no longer exempt from Timing — once its window passes, it's Lapsed +
+    // Completed, and now also archives (Achieved itself stays untouched as its own stored status).
+    let achieved_state = goal_state(&states, achieved.id);
+    assert_eq!(achieved_state.timing, Timing::Lapsed);
+    assert_eq!(achieved_state.resolution, Some(Resolution::Completed));
+    assert_eq!(achieved_state.archival, Archival::Archived);
 }
 
 #[tokio::test]
@@ -1619,7 +1649,7 @@ async fn derivation_tolerates_an_orphaned_item_whose_parent_was_deleted() {
     // the orphan is simply unconstrained → Active.
     let now = NaiveDate::from_ymd_opt(2026, 2, 1).unwrap().and_hms_opt(12, 0, 0).unwrap();
     let states = derive_all_scope_lifecycles(&pool, now).await.unwrap();
-    assert_eq!(task_state(&states, child.id), ScopeLifecycle::Active);
+    assert_eq!(task_state(&states, child.id).timing, Timing::Active);
 }
 
 #[tokio::test]

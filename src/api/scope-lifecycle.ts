@@ -3,19 +3,31 @@ import { invoke } from "@tauri-apps/api/core";
 /** What happens to a scoped item once its Time Scope has fully passed unfinished. */
 export type OnScopeExit = "archive" | "keep";
 
-/** Derived scope state of a Task/Goal at a reference instant (never persisted). */
-export type ScopeLifecycle = "active" | "overdue" | "lapsed";
+/** An item's window position relative to "now" (never persisted). Independent of resolution —
+ * unscoped items are always "active". */
+export type Timing = "pending" | "active" | "lapsed";
 
-/** One item's derived scope lifecycle, keyed by node reference. */
+/** Only meaningful once `Timing` is "lapsed": how the item was resolved by then. */
+export type Resolution = "completed" | "missed" | "overdue";
+
+/** An item's effective archived/frozen/live state. */
+export type Archival = "live" | "frozen" | "archived";
+
+/** One Task/Goal's derived lifecycle state, keyed by node reference. `resolution` is present only
+ * when `timing` is "lapsed". `archival_conflict` is true when a manually-set Frozen status was
+ * overridden because `resolution` forced `archival` to "archived". */
 export interface ItemLifecycle {
   node_type: string;
   node_id: number;
-  state: ScopeLifecycle;
+  timing: Timing;
+  resolution?: Resolution;
+  archival: Archival;
+  archival_conflict: boolean;
 }
 
 /**
- * Derives the scope lifecycle of every Task and Goal at `now` (a local wall-clock datetime,
- * ISO `YYYY-MM-DDTHH:MM:SS`). Pure — nothing is persisted.
+ * Derives the lifecycle (Timing/Resolution/effective Archival) of every Task and Goal at `now`
+ * (a local wall-clock datetime, ISO `YYYY-MM-DDTHH:MM:SS`). Pure — nothing is persisted.
  */
 export async function deriveScopeLifecycles(now: string): Promise<ItemLifecycle[]> {
   return invoke<ItemLifecycle[]>("derive_scope_lifecycles", { now });

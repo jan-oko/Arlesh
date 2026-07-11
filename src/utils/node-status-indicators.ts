@@ -11,16 +11,20 @@ export type StatusIndicatorType =
   | "flowInstance"
   | "tags";
 
-/** One badge to render below a node. `outOfScope` applies only to the `scope` clock. */
+/** One badge to render below a node. `outOfScope` applies only to the `scope` clock; `conflict`
+ * only to `archived`. */
 export interface StatusIndicator {
   type: StatusIndicatorType;
   /** For `scope`: the relevance window has passed, so the clock is drawn crossed-out. */
   outOfScope?: boolean;
+  /** For `archived`: this effective archival came from a scope Resolution overriding a
+   * manually-set Frozen status. */
+  conflict?: boolean;
 }
 
-/** A scoped item whose window has passed (kept → overdue, or archived → lapsed). */
+/** A scoped item whose window has passed. */
 function isPastWindow(node: MindmapNode): boolean {
-  return node.scopeLifecycle === "overdue" || node.scopeLifecycle === "lapsed";
+  return node.timing === "lapsed";
 }
 
 function hasInfoDetails(node: MindmapNode): boolean {
@@ -43,11 +47,11 @@ export function deriveStatusIndicators(node: MindmapNode): StatusIndicator[] {
   if (node.timeScope != null) {
     indicators.push({ type: "scope", outOfScope: isPastWindow(node) });
   }
-  if (node.scopeLifecycle === "overdue") {
+  if (node.resolution === "overdue") {
     indicators.push({ type: "overdue" });
   }
-  if (node.status === "archived" || node.scopeLifecycle === "lapsed") {
-    indicators.push({ type: "archived" });
+  if (node.status === "archived" || node.archived === true) {
+    indicators.push({ type: "archived", conflict: node.archivalConflict === true });
   }
   if (node.plan != null) {
     indicators.push({ type: "planned" });

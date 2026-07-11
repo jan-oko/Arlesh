@@ -50,14 +50,14 @@ export default function MindmapNode({ node, parentKind, position, isSelected, is
   const activeHeight = isEditing ? computeEditHeight(position.depth, editLineCount) : height;
 
   const iconR = (iconWidth - 8) / 2;
-  const { isBlocked, iconColor, iconOpacity, fillColor, fillOpacity, label, textFill, scopeLifecycle, nodeOpacity } = computeNodeAppearance(node, position.depth);
+  const { isBlocked, iconColor, iconOpacity, fillColor, fillOpacity, label, textFill, resolution, nodeOpacity } = computeNodeAppearance(node, position.depth);
   const isRtl = isRtlText(node.title);
   const iconCx = isRtl ? width - iconWidth / 2 : iconWidth / 2;
   const strokeColor = isSelected
     ? "var(--node-border-selected)"
     : isDragTarget
       ? "var(--accent)"
-      : scopeLifecycle === "overdue"
+      : resolution === "overdue"
         ? "var(--overdue)"
         : "var(--node-border)";
   const canClickStatus =

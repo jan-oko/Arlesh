@@ -20,28 +20,44 @@ describe("deriveStatusIndicators", () => {
   });
 
   it("shows a scope clock (not out of scope) for an active scoped task", () => {
-    const indicators = deriveStatusIndicators(node("task", { timeScope: scope, scopeLifecycle: "active" }));
+    const indicators = deriveStatusIndicators(node("task", { timeScope: scope, timing: "active" }));
     expect(indicators).toEqual([{ type: "scope", outOfScope: false }]);
   });
 
   it("crosses out the clock and adds an exclamation for an overdue (kept) item", () => {
-    const indicators = deriveStatusIndicators(node("task", { timeScope: scope, scopeLifecycle: "overdue" }));
+    const indicators = deriveStatusIndicators(node("task", { timeScope: scope, timing: "lapsed", resolution: "overdue" }));
     expect(indicators).toEqual([
       { type: "scope", outOfScope: true },
       { type: "overdue" },
     ]);
   });
 
-  it("crosses out the clock and adds an archive mark for a lapsed (archived) item", () => {
-    const indicators = deriveStatusIndicators(node("task", { timeScope: scope, scopeLifecycle: "lapsed" }));
+  it("crosses out the clock and adds an archive mark for a missed (archived) item", () => {
+    const indicators = deriveStatusIndicators(node("task", { timeScope: scope, timing: "lapsed", resolution: "missed", archived: true }));
     expect(indicators).toEqual([
       { type: "scope", outOfScope: true },
-      { type: "archived" },
+      { type: "archived", conflict: false },
+    ]);
+  });
+
+  it("crosses out the clock and adds an archive mark for a completed-but-past-window item too", () => {
+    // The original bug report: a Done/Achieved item beyond its scope should also archive.
+    const indicators = deriveStatusIndicators(node("task", { status: "done", timeScope: scope, timing: "lapsed", resolution: "completed", archived: true }));
+    expect(indicators).toEqual([
+      { type: "scope", outOfScope: true },
+      { type: "archived", conflict: false },
     ]);
   });
 
   it("shows an archive mark for a goal with archived status even without a scope", () => {
     expect(types(node("goal", { status: "archived" }))).toEqual(["archived"]);
+  });
+
+  it("flags a conflict when effective archival overrode a manually-set Frozen status", () => {
+    const indicators = deriveStatusIndicators(
+      node("goal", { status: "frozen", timeScope: scope, timing: "lapsed", resolution: "missed", archived: true, archivalConflict: true }),
+    );
+    expect(indicators).toContainEqual({ type: "archived", conflict: true });
   });
 
   it("shows a frozen mark for a frozen goal or project", () => {
@@ -75,7 +91,9 @@ describe("deriveStatusIndicators", () => {
     const busy = node("task", {
       status: "todo",
       timeScope: scope,
-      scopeLifecycle: "lapsed",
+      timing: "lapsed",
+      resolution: "missed",
+      archived: true,
       plan: scope,
       fromFlow: true,
       tagIds: [1],

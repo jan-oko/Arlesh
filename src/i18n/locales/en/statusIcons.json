@@ -3,6 +3,7 @@
   "plan": "Plan: {{value}}",
   "overdue": "Overdue",
   "archived": "Archived",
+  "archivedConflict": "Archived (overrode a manually-set Frozen status)",
   "frozen": "Frozen",
   "flowInstance": "Flow instance",
   "habitInstance": "Habit instance",

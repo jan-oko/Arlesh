@@ -54,6 +54,15 @@ impl TaskStatus {
         }
     }
 
+    /// Parses the database string representation, if recognized.
+    pub fn from_db(value: &str) -> Option<Self> {
+        match value {
+            "todo" => Some(Self::Todo),
+            "in_progress" => Some(Self::InProgress),
+            "done" => Some(Self::Done),
+            _ => None,
+        }
+    }
 }
 
 /// Goal lifecycle status.
@@ -78,6 +87,17 @@ impl GoalStatus {
             Self::Achieved => "achieved",
             Self::Frozen => "frozen",
             Self::Archived => "archived",
+        }
+    }
+
+    /// Parses the database string representation, if recognized.
+    pub fn from_db(value: &str) -> Option<Self> {
+        match value {
+            "active" => Some(Self::Active),
+            "achieved" => Some(Self::Achieved),
+            "frozen" => Some(Self::Frozen),
+            "archived" => Some(Self::Archived),
+            _ => None,
         }
     }
 }
@@ -305,11 +325,35 @@ mod tests {
     }
 
     #[test]
+    fn task_status_from_db_roundtrips_every_variant() {
+        for status in [TaskStatus::Todo, TaskStatus::InProgress, TaskStatus::Done] {
+            assert_eq!(TaskStatus::from_db(status.as_str()), Some(status));
+        }
+    }
+
+    #[test]
+    fn task_status_from_db_rejects_unrecognized_values() {
+        assert_eq!(TaskStatus::from_db("bogus"), None);
+    }
+
+    #[test]
     fn goal_status_as_str_covers_all_variants() {
         assert_eq!(GoalStatus::Active.as_str(), "active");
         assert_eq!(GoalStatus::Achieved.as_str(), "achieved");
         assert_eq!(GoalStatus::Frozen.as_str(), "frozen");
         assert_eq!(GoalStatus::Archived.as_str(), "archived");
+    }
+
+    #[test]
+    fn goal_status_from_db_roundtrips_every_variant() {
+        for status in [GoalStatus::Active, GoalStatus::Achieved, GoalStatus::Frozen, GoalStatus::Archived] {
+            assert_eq!(GoalStatus::from_db(status.as_str()), Some(status));
+        }
+    }
+
+    #[test]
+    fn goal_status_from_db_rejects_unrecognized_values() {
+        assert_eq!(GoalStatus::from_db("bogus"), None);
     }
 
     #[test]

@@ -1,6 +1,6 @@
 import type { MindmapNode } from "@/utils/tree-layout";
 import { isNodeBlocked } from "@/utils/tree-layout";
-import type { ScopeLifecycle } from "@/api/scope-lifecycle";
+import type { Resolution } from "@/api/scope-lifecycle";
 
 export interface NodeAppearance {
   isBlocked: boolean;
@@ -10,9 +10,10 @@ export interface NodeAppearance {
   fillOpacity: number;
   label: string;
   textFill: string;
-  /** Derived scope state, when the node has one (Task/Goal). Drives overdue accent / lapsed dim. */
-  scopeLifecycle: ScopeLifecycle | undefined;
-  /** Whole-node opacity multiplier — Lapsed items are dimmed to read as dropped from the view. */
+  /** Derived resolution outcome, once the node's scope has lapsed (Task/Goal only). Drives the
+   * overdue accent border. */
+  resolution: Resolution | undefined;
+  /** Whole-node opacity multiplier — archived items are dimmed to read as dropped from the view. */
   nodeOpacity: number;
 }
 
@@ -34,10 +35,10 @@ export function computeNodeAppearance(node: MindmapNode, depth: number): NodeApp
 
   const textFill = node.kind === "aspect" ? "rgba(255,255,255,0.9)" : "var(--node-text)";
 
-  const nodeOpacity = node.scopeLifecycle === "lapsed" ? 0.45 : 1;
+  const nodeOpacity = node.archived === true ? 0.45 : 1;
 
   return {
     isBlocked, iconColor, iconOpacity, fillColor, fillOpacity, label, textFill,
-    scopeLifecycle: node.scopeLifecycle, nodeOpacity,
+    resolution: node.resolution, nodeOpacity,
   };
 }

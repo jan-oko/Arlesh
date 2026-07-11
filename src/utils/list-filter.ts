@@ -123,11 +123,19 @@ export function matchesPillGroup(filters: readonly PillFilter[], rowValues: read
 }
 
 /** A task's Scope-state tokens: exactly one scoped/unscoped-lifecycle token, and one planned/unplanned
- * token — independent axes, so e.g. "unscoped" + "planned" can both apply to the same task. */
+ * token — independent axes, so e.g. "unscoped" + "planned" can both apply to the same task. This
+ * dimension's own semantics predate the archivedMode filter and are deliberately preserved exactly:
+ * a Completed (done, lapsed) item still reads as "active" here, same as before Resolution existed —
+ * only a Missed or Overdue resolution earns the "lapsed"/"overdue" token. */
 export function deriveScopeStateTokens(node: MindmapNode): string[] {
   const tokens: string[] = [];
-  if (node.timeScope == null) tokens.push("unscoped");
-  else if (node.scopeLifecycle !== undefined) tokens.push(node.scopeLifecycle);
+  if (node.timeScope == null) {
+    tokens.push("unscoped");
+  } else if (node.timing !== undefined) {
+    if (node.resolution === "missed") tokens.push("lapsed");
+    else if (node.resolution === "overdue") tokens.push("overdue");
+    else tokens.push("active");
+  }
   tokens.push(node.plan != null ? "planned" : "unplanned");
   return tokens;
 }
@@ -143,7 +151,7 @@ function passesListPreset(row: TaskListRow, statusMode: StatusMode): boolean {
       return row.node.status !== "done";
     case "start": {
       if (row.isBlocked || row.hasBlockedAncestor) return false;
-      if (row.node.scopeLifecycle === "lapsed") return false;
+      if (row.node.timing === "lapsed") return false;
       if (row.node.status === "done") return false;
       if (row.node.status === "in_progress" && !row.node.children.some((c) => c.kind === "task" && c.status === "todo")) {
         return false;

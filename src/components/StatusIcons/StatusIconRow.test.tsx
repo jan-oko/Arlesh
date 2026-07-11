@@ -33,9 +33,17 @@ describe("StatusIconRow", () => {
 
   it("renders a tooltip per indicator (keys resolve to i18n text at runtime)", () => {
     const scope = { start_id: 1, end_id: 2, duration: { n: 1, kind: "week" } };
-    const titles = renderRow(node("task", { status: "todo", timeScope: scope, scopeLifecycle: "overdue" }));
+    const titles = renderRow(node("task", { status: "todo", timeScope: scope, timing: "lapsed", resolution: "overdue" }));
     // scope clock (crossed) + overdue exclamation.
     expect(titles).toEqual(["scope", "overdue"]);
+  });
+
+  it("uses a distinct tooltip for an archived badge that overrode a manual Frozen status", () => {
+    const conflicted = node("goal", {
+      status: "frozen", timeScope: { start_id: 1, end_id: 2, duration: { n: 1, kind: "week" } },
+      timing: "lapsed", resolution: "missed", archived: true, archivalConflict: true,
+    });
+    expect(renderRow(conflicted)).toContain("archivedConflict");
   });
 
   it("uses the habit tooltip for a virtual habit instance and the flow tooltip otherwise", () => {

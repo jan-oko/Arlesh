@@ -48,6 +48,29 @@ pub enum ProjectStatus {
     Archived,
 }
 
+impl ProjectStatus {
+    /// Returns the database string representation.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Active => "active",
+            Self::Achieved => "achieved",
+            Self::Frozen => "frozen",
+            Self::Archived => "archived",
+        }
+    }
+
+    /// Parses the database string representation, if recognized.
+    pub fn from_db(value: &str) -> Option<Self> {
+        match value {
+            "active" => Some(Self::Active),
+            "achieved" => Some(Self::Achieved),
+            "frozen" => Some(Self::Frozen),
+            "archived" => Some(Self::Archived),
+            _ => None,
+        }
+    }
+}
+
 /// A domain row as returned from the database.
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Domain {
@@ -109,4 +132,29 @@ pub struct UpdateDomainRequest {
     pub position: Option<i64>,
     /// New NSFW flag, if changing.
     pub nsfw: Option<bool>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn project_status_as_str_covers_all_variants() {
+        assert_eq!(ProjectStatus::Active.as_str(), "active");
+        assert_eq!(ProjectStatus::Achieved.as_str(), "achieved");
+        assert_eq!(ProjectStatus::Frozen.as_str(), "frozen");
+        assert_eq!(ProjectStatus::Archived.as_str(), "archived");
+    }
+
+    #[test]
+    fn project_status_from_db_roundtrips_every_variant() {
+        for status in [ProjectStatus::Active, ProjectStatus::Achieved, ProjectStatus::Frozen, ProjectStatus::Archived] {
+            assert_eq!(ProjectStatus::from_db(status.as_str()), Some(status));
+        }
+    }
+
+    #[test]
+    fn project_status_from_db_rejects_unrecognized_values() {
+        assert_eq!(ProjectStatus::from_db("bogus"), None);
+    }
 }
