@@ -40,6 +40,7 @@ function baseOptions(overrides: Partial<Parameters<typeof useKeyboardMindmap>[0]
     subtreeRootId: null as string | null,
     clipboard: null,
     onNavigate: vi.fn(),
+    onPanCanvas: vi.fn(),
     onCycleType: vi.fn(),
     onReorder: vi.fn(),
     onStartRename: vi.fn(),
@@ -184,6 +185,65 @@ describe("useKeyboardMindmap — arrow navigation", () => {
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("ArrowDown", { altKey: true });
     expect(opts.onReorder).toHaveBeenCalledWith("task-1", 1);
+  });
+});
+
+describe("useKeyboardMindmap — arrow keys pan the canvas when nothing is selected", () => {
+  it("ArrowLeft calls onPanCanvas instead of onNavigate", () => {
+    const opts = baseOptions({ selectedNodeId: null });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("ArrowLeft");
+    expect(opts.onPanCanvas).toHaveBeenCalledWith("ArrowLeft");
+    expect(opts.onNavigate).not.toHaveBeenCalled();
+  });
+
+  it("ArrowRight calls onPanCanvas instead of onNavigate", () => {
+    const opts = baseOptions({ selectedNodeId: null });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("ArrowRight");
+    expect(opts.onPanCanvas).toHaveBeenCalledWith("ArrowRight");
+    expect(opts.onNavigate).not.toHaveBeenCalled();
+  });
+
+  it("ArrowUp calls onPanCanvas instead of onNavigate", () => {
+    const opts = baseOptions({ selectedNodeId: null });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("ArrowUp");
+    expect(opts.onPanCanvas).toHaveBeenCalledWith("ArrowUp");
+    expect(opts.onNavigate).not.toHaveBeenCalled();
+  });
+
+  it("ArrowDown calls onPanCanvas instead of onNavigate", () => {
+    const opts = baseOptions({ selectedNodeId: null });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("ArrowDown");
+    expect(opts.onPanCanvas).toHaveBeenCalledWith("ArrowDown");
+    expect(opts.onNavigate).not.toHaveBeenCalled();
+  });
+
+  it("does not pan when a node is selected", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("ArrowLeft");
+    fireKey("ArrowRight");
+    fireKey("ArrowUp");
+    fireKey("ArrowDown");
+    expect(opts.onPanCanvas).not.toHaveBeenCalled();
+  });
+
+  it("Shift+ArrowUp still extends selection rather than panning, even with nothing selected", () => {
+    const opts = baseOptions({ selectedNodeId: null });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("ArrowUp", { shiftKey: true });
+    expect(opts.onExtendSelection).toHaveBeenCalledWith("ArrowUp");
+    expect(opts.onPanCanvas).not.toHaveBeenCalled();
+  });
+
+  it("ignores all keys when isInputActive is true, including panning", () => {
+    const opts = baseOptions({ isInputActive: true, selectedNodeId: null });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("ArrowLeft");
+    expect(opts.onPanCanvas).not.toHaveBeenCalled();
   });
 });
 

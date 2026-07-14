@@ -27,6 +27,7 @@ interface Options {
   subtreeRootId: string | null;
   clipboard: ClipboardEntry | null;
   onNavigate: (key: ArrowKey) => void;
+  onPanCanvas: (key: ArrowKey) => void;
   onCycleType: (id: string, dir: 1 | -1) => void;
   onReorder: (id: string, dir: 1 | -1) => void;
   onStartRename: (id: string) => void;
@@ -61,7 +62,7 @@ export function useKeyboardMindmap(options: Options): void {
   const {
     isInputActive, isWarningActive, onDismissWarning,
     selectedNodeId, selectedNodeIds, subtreeRootId, clipboard,
-    onNavigate, onCycleType, onReorder, onStartRename,
+    onNavigate, onPanCanvas, onCycleType, onReorder, onStartRename,
     onCreateChild, onCreateSibling, onInsertParent, onOpenEditor, onStartFlow, onDelete, onToggleCollapsed, onCycleStatus,
     onDeselect, onExitSubtree, onExitToRoot, onCut, onCopy, onPaste, onEnterSubtree, onOpenSearch, onZoomIn, onZoomOut,
     onToggleFilter, onSetStatusMode, onFocusRoot, onCenterOnNode, onConvertToFlow, onExtendSelection,
@@ -110,11 +111,13 @@ export function useKeyboardMindmap(options: Options): void {
       switch (event.code) {
         case "ArrowLeft":
           event.preventDefault();
-          onNavigate("ArrowLeft");
+          if (selectedNodeId !== null) onNavigate("ArrowLeft");
+          else onPanCanvas("ArrowLeft");
           break;
         case "ArrowRight":
           event.preventDefault();
-          onNavigate("ArrowRight");
+          if (selectedNodeId !== null) onNavigate("ArrowRight");
+          else onPanCanvas("ArrowRight");
           break;
         case "ArrowUp":
           event.preventDefault();
@@ -123,14 +126,16 @@ export function useKeyboardMindmap(options: Options): void {
           if (event.ctrlKey) { if (!event.repeat && selectedNodeId !== null) onCycleType(selectedNodeId, -1); }
           else if (event.altKey && selectedNodeId !== null) onReorder(selectedNodeId, -1);
           else if (event.shiftKey) onExtendSelection("ArrowUp");
-          else onNavigate("ArrowUp");
+          else if (selectedNodeId !== null) onNavigate("ArrowUp");
+          else onPanCanvas("ArrowUp");
           break;
         case "ArrowDown":
           event.preventDefault();
           if (event.ctrlKey) { if (!event.repeat && selectedNodeId !== null) onCycleType(selectedNodeId, 1); }
           else if (event.altKey && selectedNodeId !== null) onReorder(selectedNodeId, 1);
           else if (event.shiftKey) onExtendSelection("ArrowDown");
-          else onNavigate("ArrowDown");
+          else if (selectedNodeId !== null) onNavigate("ArrowDown");
+          else onPanCanvas("ArrowDown");
           break;
         case "F2":
           event.preventDefault();
@@ -297,7 +302,7 @@ export function useKeyboardMindmap(options: Options): void {
   }, [
     isInputActive, isWarningActive, onDismissWarning,
     selectedNodeId, selectedNodeIds, subtreeRootId, clipboard,
-    onNavigate, onCycleType, onReorder, onStartRename,
+    onNavigate, onPanCanvas, onCycleType, onReorder, onStartRename,
     onCreateChild, onCreateSibling, onInsertParent, onOpenEditor, onStartFlow, onDelete, onToggleCollapsed, onCycleStatus,
     onDeselect, onExitSubtree, onExitToRoot, onCut, onCopy, onPaste, onEnterSubtree, onOpenSearch, onZoomIn, onZoomOut,
     onToggleFilter, onSetStatusMode, onFocusRoot, onCenterOnNode, onConvertToFlow, onExtendSelection,

@@ -14,6 +14,8 @@ export interface MindmapCanvasHandle {
   centerOnPoint: (lx: number, ly: number) => void;
   /** Pans to a layout point only if it's currently off-screen (for follow-the-selection). */
   ensureVisible: (lx: number, ly: number) => void;
+  /** Pans by a screen-pixel offset (e.g. keyboard-driven panning when no node is focused). */
+  panBy: (dx: number, dy: number) => void;
   zoomIn: () => void;
   zoomOut: () => void;
   /** Current transform + viewport size, for the "is anything visible" check. */
@@ -43,8 +45,8 @@ interface Props {
 
 const MindmapCanvas = forwardRef<MindmapCanvasHandle, Props>(function MindmapCanvas({ root, collapsedNodeIds, selectedNodeIds, editingNodeId, dragTargetId, dragSourceId, canvasOverlay, hasClipboard, onSelect, onCtrlClick, onShiftClick, onDoubleClick, onCommitEdit, onCancelEdit, onContextAction, onDragStart, onCanvasClick, onStatusClick }: Props, ref) {
   const svgRef = useRef<SVGSVGElement>(null);
-  const { springProps, onMouseDown, centerOnRoot, centerOnPoint, ensureVisible, zoomIn, zoomOut, getViewport } = usePanZoom(svgRef);
-  useImperativeHandle(ref, () => ({ centerOnRoot, centerOnPoint, ensureVisible, zoomIn, zoomOut, getViewport }), [centerOnRoot, centerOnPoint, ensureVisible, zoomIn, zoomOut, getViewport]);
+  const { springProps, onMouseDown, centerOnRoot, centerOnPoint, ensureVisible, panBy, zoomIn, zoomOut, getViewport } = usePanZoom(svgRef);
+  useImperativeHandle(ref, () => ({ centerOnRoot, centerOnPoint, ensureVisible, panBy, zoomIn, zoomOut, getViewport }), [centerOnRoot, centerOnPoint, ensureVisible, panBy, zoomIn, zoomOut, getViewport]);
 
   const transform = to(
     [springProps.x, springProps.y, springProps.scale],

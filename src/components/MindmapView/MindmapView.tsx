@@ -35,6 +35,9 @@ import WarningConfirmModal from "@/components/WarningConfirmModal/WarningConfirm
 import DeleteConfirmModal from "@/components/DeleteConfirmModal/DeleteConfirmModal";
 import styles from "./MindmapView.module.css";
 
+/** Screen-px moved per arrow-key press when panning the canvas (nothing selected). */
+const KEYBOARD_PAN_STEP = 80;
+
 // A pristine flow used to seed the create editor before the flow is persisted.
 const BLANK_FLOW_NODE: MindmapNode = {
   id: "flow-new", kind: "flow", title: "", position: 0,
@@ -325,6 +328,16 @@ export default function MindmapView() {
 
   const { navigateArrow, extendSelection } = useNavigateArrow({ selectedNodeId, selectedNodeIds, positions, tree, selectNode, setSelection });
 
+  // Arrow keys with no node focused pan the view itself instead of moving a selection.
+  const onPanCanvas = useCallback((key: "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown") => {
+    switch (key) {
+      case "ArrowLeft": canvasRef.current?.panBy(KEYBOARD_PAN_STEP, 0); break;
+      case "ArrowRight": canvasRef.current?.panBy(-KEYBOARD_PAN_STEP, 0); break;
+      case "ArrowUp": canvasRef.current?.panBy(0, KEYBOARD_PAN_STEP); break;
+      case "ArrowDown": canvasRef.current?.panBy(0, -KEYBOARD_PAN_STEP); break;
+    }
+  }, []);
+
   // Pans the canvas so the selected node sits at the viewport centre.
   const onCenterOnSelected = useCallback(
     (nodeId: string) => {
@@ -396,6 +409,7 @@ export default function MindmapView() {
     subtreeRootId,
     clipboard,
     onNavigate: navigateArrow,
+    onPanCanvas,
     onCycleType: cycleType,
     onReorder: (id, dir) => { void reorderNode(id, dir); },
     onStartRename: setEditingNodeId,

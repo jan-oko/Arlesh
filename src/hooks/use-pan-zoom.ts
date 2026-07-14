@@ -21,6 +21,8 @@ export interface PanZoomResult {
   centerOnPoint: (lx: number, ly: number) => void;
   /** Pans to centre `(lx, ly)` only if it's currently outside the comfortable viewport. */
   ensureVisible: (lx: number, ly: number) => void;
+  /** Pans by a screen-pixel offset (e.g. keyboard-driven panning when no node is focused). */
+  panBy: (dx: number, dy: number) => void;
   zoomIn: () => void;
   zoomOut: () => void;
   /** Current transform + measured viewport size (read on demand). */
@@ -139,6 +141,14 @@ export function usePanZoom(svgRef: React.RefObject<SVGSVGElement | null>): PanZo
 
   const centerOnRoot = useCallback(() => centerOnPoint(0, 0), [centerOnPoint]);
 
+  const panBy = useCallback(
+    (dx: number, dy: number) => {
+      const cur = transform.current;
+      applyTransform({ ...cur, x: cur.x + dx, y: cur.y + dy });
+    },
+    [applyTransform],
+  );
+
   // Pans the *minimum* amount to bring `(lx, ly)` just inside the margin at whichever edge it escaped
   // (gentler than recentring — the node lands at the edge, not the middle).
   const ensureVisible = useCallback(
@@ -175,5 +185,5 @@ export function usePanZoom(svgRef: React.RefObject<SVGSVGElement | null>): PanZo
     return { ...transform.current, width: w, height: h };
   }, [size]);
 
-  return { springProps, onMouseDown, centerOnRoot, centerOnPoint, ensureVisible, zoomIn, zoomOut, getViewport };
+  return { springProps, onMouseDown, centerOnRoot, centerOnPoint, ensureVisible, panBy, zoomIn, zoomOut, getViewport };
 }
