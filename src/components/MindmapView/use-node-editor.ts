@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { TaskSaveData } from "@/components/TaskEditorModal/TaskEditorModal";
 import type { GoalSaveData } from "@/components/GoalEditorModal/GoalEditorModal";
@@ -273,6 +274,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
       if (flowItem === undefined) return;
       const dbId = parseInt(node.id.split("-").pop() ?? "0", 10);
       const patch = { title: data.title, nsfw: data.nsfw };
+      void invoke("debug_log", { message: `[onFlowItemSave] received data.cycles=${JSON.stringify(data.cycles)}` }).catch(() => {});
       if (flowItem.itemType === "flow_goal") {
         await updateFlowGoal(dbId, patch);
       } else {

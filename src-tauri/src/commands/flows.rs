@@ -154,10 +154,13 @@ pub async fn update_flow_task(
     id: i64,
     request: UpdateFlowItemRequest,
 ) -> Result<FlowTask, String> {
-    FlowRepository::new(&pool)
+    eprintln!("[DIAG] update_flow_task called: id={id} request={request:?}");
+    let result = FlowRepository::new(&pool)
         .update_task(id, request)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string());
+    eprintln!("[DIAG] update_flow_task result: {result:?}");
+    result
 }
 
 /// Starts a flow, materialising it into a real subtree under the target.
@@ -300,10 +303,15 @@ pub async fn set_flow_item_cycles(
     item_id: i64,
     cycles: Vec<FlowCycleInput>,
 ) -> Result<(), String> {
-    FlowRepository::new(&pool)
+    eprintln!(
+        "[DIAG] set_flow_item_cycles called: flow_id={flow_id} item_type={item_type:?} item_id={item_id} cycles={cycles:?}"
+    );
+    let result = FlowRepository::new(&pool)
         .set_cycles(flow_id, item_type, item_id, &cycles)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string());
+    eprintln!("[DIAG] set_flow_item_cycles result: {result:?}");
+    result
 }
 
 /// Lists every flow's cycle pairs.
@@ -413,6 +421,13 @@ pub async fn fork_flow(pool: State<'_, DatabasePool>, flow_id: i64) -> Result<Fl
         .fork_flow(FlowId(flow_id))
         .await
         .map_err(|error| error.to_string())
+}
+
+/// Temporary diagnostic: prints an arbitrary message to the backend's stderr, so the frontend can
+/// surface state into the same terminal the `[DIAG]` command logs already go to.
+#[tauri::command]
+pub fn debug_log(message: String) {
+    eprintln!("[DIAG-JS] {message}");
 }
 
 /// Converts a real Task/Goal subtree into a Flow template of the same Instance Type.
