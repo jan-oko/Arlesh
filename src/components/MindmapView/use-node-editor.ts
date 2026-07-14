@@ -141,7 +141,11 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
   const onDoubleClick = useCallback(
     (nodeId: string) => {
       const node = findNode(tree, nodeId);
-      if (node === undefined || node.kind === "aspect") return;
+      // A virtual Habit instance isn't backed by a real Task/Goal row — its Time Scope is derived
+      // from the flow's Duration kind and the item's Cycle, not independently editable — and
+      // `onTaskSave`/`onGoalSave` would compute a `dbId` from its non-numeric `-virtual` id tail
+      // (NaN) and fail to save. It stays read-only here; only `onStatusClick` may mutate it.
+      if (node === undefined || node.kind === "aspect" || node.habitItem !== undefined) return;
       setEditorModal({ nodeId, node });
     },
     [tree],
