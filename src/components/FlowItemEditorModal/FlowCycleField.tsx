@@ -263,10 +263,12 @@ export default function FlowCycleField({ flowScopeN, flowScopeKind, value, onCha
 
           <div className={styles.statusPills}>
             <button type="button" className={styles.statusPill} onClick={addWhole}>{t("editor:cycleAddWhole")}</button>
-            {value.length > 0 && (
-              <button type="button" className={styles.statusPill} onClick={() => setMode("list")}>{t("editor:cycleDone")}</button>
-            )}
           </div>
+          {value.length > 0 && (
+            <div className={styles.actions}>
+              <button type="button" className={styles.saveBtn} onClick={() => setMode("list")}>{t("editor:cycleDone")}</button>
+            </div>
+          )}
         </div>
       )}
     </div>
