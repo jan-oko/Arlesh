@@ -60,11 +60,11 @@ interface Props {
 }
 
 /**
- * Edits a flow item's relative (Cycle Scope, Cycle Plan) pairs: existing pairs list as rows: "Add
- * cycle" or a row's edit action opens a drill-down picker (mirrors the app's ScopePicker) that
- * navigates the flow window's nested periods one level at a time — clicking a cell at the chosen
- * Cycle Scope Kind toggles that occurrence on/off immediately. Available only for a scoped flow —
- * an Unscoped flow's items have no cycles.
+ * Edits a flow item's relative (Cycle Scope, Cycle Plan) pairs. Existing pairs show as a compact
+ * chip list; a single edit/confirm toggle (pencil ↔ checkmark) switches to a drill-down picker
+ * (mirrors the app's ScopePicker) that navigates the flow window's nested periods one level at a
+ * time — clicking a cell at the chosen Cycle Scope Kind toggles that occurrence on/off immediately.
+ * Available only for a scoped flow — an Unscoped flow's items have no cycles.
  */
 export default function FlowCycleField({ flowScopeN, flowScopeKind, value, onChange }: Props) {
   const { t } = useTranslation(["editor", "scopes"]);
@@ -86,7 +86,7 @@ export default function FlowCycleField({ flowScopeN, flowScopeKind, value, onCha
   const currentLevel = levels[displayPath.length]!;
   const planKinds = atLeaf ? kindsBelow(targetKind) : [];
   const planCount = atLeaf && planKind !== "" ? cyclePlanCellCount(targetKind, planKind) : 0;
-  const isPicking = value.length === 0 || mode === "picker";
+  const isPicking = mode === "picker";
 
   function resetPlan() {
     setPlanKind("");
@@ -94,24 +94,13 @@ export default function FlowCycleField({ flowScopeN, flowScopeKind, value, onCha
     setPlanEnd(null);
   }
 
-  function openAdd() {
-    setTargetKind(scopeKinds[0]);
+  function toggleMode() {
+    if (isPicking) {
+      setMode("list");
+      return;
+    }
     setPath([]);
     resetPlan();
-    setMode("picker");
-  }
-
-  function editPair(pair: FlowCyclePair) {
-    if (pair.scopeKind === null || pair.scopeIndex === null) return;
-    const kind = pair.scopeKind as CycleScopeKind;
-    const kindLevels = cycleLevels(flowScopeN!, flowScopeKind!, kind);
-    const fullPath = indexToPath(kindLevels, pair.scopeIndex);
-    const trivialRoot = kindLevels.length > 0 && kindLevels[0]!.count === 1;
-    setTargetKind(kind);
-    setPath(fullPath.slice(trivialRoot ? 1 : 0, -1));
-    setPlanKind(pair.planKind ?? "");
-    setPlanStart(pair.planStart);
-    setPlanEnd(pair.planEnd);
     setMode("picker");
   }
 
@@ -165,28 +154,22 @@ export default function FlowCycleField({ flowScopeN, flowScopeKind, value, onCha
 
   return (
     <div>
-      {!isPicking && value.length > 0 && (
-        <div className={styles.depList}>
-          {value.map((pair) => (
-            <div key={cyclePairKey(pair)} className={styles.depItem}>
-              <span>{pair.scopeKind === null ? t("editor:cycleWholeScope") : pairLabel(t, pair, flowScopeN, flowScopeKind)}</span>
-              <span>
-                {pair.scopeKind !== null && (
-                  <button type="button" aria-label={t("editor:cycleEdit")} className={styles.depRemoveBtn} onClick={() => editPair(pair)}>✏</button>
-                )}
-                <button type="button" className={styles.depRemoveBtn} onClick={() => removePair(pair)}>×</button>
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {!isPicking && (
-        <div className={styles.statusPills}>
-          <button type="button" className={styles.statusPill} onClick={openAdd}>{t("editor:cycleAdd")}</button>
-          <button type="button" className={styles.statusPill} onClick={addWhole}>{t("editor:cycleAddWhole")}</button>
-        </div>
-      )}
+      <div className={styles.tagPills}>
+        {!isPicking && value.map((pair) => (
+          <span key={cyclePairKey(pair)} className={styles.tagPill}>
+            {pair.scopeKind === null ? t("editor:cycleWholeScope") : pairLabel(t, pair, flowScopeN, flowScopeKind)}
+            <button type="button" className={styles.tagPillRemove} onClick={() => removePair(pair)}>×</button>
+          </span>
+        ))}
+        <button
+          type="button"
+          aria-label={isPicking ? t("editor:cycleDone") : t("editor:cycleEdit")}
+          className={styles.depRemoveBtn}
+          onClick={toggleMode}
+        >
+          {isPicking ? "✔" : "✏"}
+        </button>
+      </div>
 
       {isPicking && (
         <div>
@@ -264,11 +247,6 @@ export default function FlowCycleField({ flowScopeN, flowScopeKind, value, onCha
           <div className={styles.statusPills}>
             <button type="button" className={styles.statusPill} onClick={addWhole}>{t("editor:cycleAddWhole")}</button>
           </div>
-          {value.length > 0 && (
-            <div className={styles.actions}>
-              <button type="button" className={styles.saveBtn} onClick={() => setMode("list")}>{t("editor:cycleDone")}</button>
-            </div>
-          )}
         </div>
       )}
     </div>

@@ -25,7 +25,8 @@ describe("FlowCycleField — day-scoped flow (single-level picker)", () => {
     render(<FlowCycleField {...base} />);
     expect(screen.getByRole("button", { name: "scopes:part.morning" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "scopes:part.premorning" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "editor:cycleAdd" })).not.toBeInTheDocument();
+    // Already in picker mode: the single toggle shows as the confirm (checkmark) state.
+    expect(screen.getByRole("button", { name: "editor:cycleDone" })).toBeInTheDocument();
   });
 
   it("toggles a cycle on immediately when a band is clicked — no separate Add step", () => {
@@ -62,20 +63,30 @@ describe("FlowCycleField — existing cycles render as a list by default", () =>
     expect(screen.queryByRole("button", { name: "scopes:part.morning" })).not.toBeInTheDocument();
   });
 
-  it("opens the picker via the Add cycle trigger", () => {
+  it("opens the picker via the single edit/confirm toggle", () => {
     render(<FlowCycleField {...base} />);
-    fireEvent.click(screen.getByRole("button", { name: "editor:cycleAdd" }));
+    fireEvent.click(screen.getByRole("button", { name: "editor:cycleEdit" }));
     expect(screen.getByRole("button", { name: "scopes:part.morning" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "editor:cycleDone" })).toBeInTheDocument();
   });
 
-  it("removes a row directly, without opening the picker", () => {
+  it("returns to the chip list when the confirm toggle is clicked", () => {
+    render(<FlowCycleField {...base} />);
+    fireEvent.click(screen.getByRole("button", { name: "editor:cycleEdit" }));
+    fireEvent.click(screen.getByRole("button", { name: "editor:cycleDone" }));
+    expect(screen.getByText("scopes:part.evening")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "scopes:part.morning" })).not.toBeInTheDocument();
+  });
+
+  it("removes a chip directly, without opening the picker", () => {
     render(<FlowCycleField {...base} />);
     fireEvent.click(screen.getByRole("button", { name: "×" }));
     expect(onChange).toHaveBeenCalledWith([]);
   });
 
-  it("adds a whole-scope cycle directly from the list, without opening the picker", () => {
+  it("adds a whole-scope cycle from within the picker", () => {
     render(<FlowCycleField {...base} />);
+    fireEvent.click(screen.getByRole("button", { name: "editor:cycleEdit" }));
     fireEvent.click(screen.getByRole("button", { name: "editor:cycleAddWhole" }));
     expect(onChange).toHaveBeenCalledWith([
       pair,
