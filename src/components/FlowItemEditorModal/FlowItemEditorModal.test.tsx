@@ -65,7 +65,7 @@ describe("FlowItemEditorModal", () => {
 
   it("adds a whole-scope cycle pair", async () => {
     render(<FlowItemEditorModal {...defaultProps} />);
-    fireEvent.click(screen.getByRole("button", { name: "cycleAddWhole" }));
+    fireEvent.click(screen.getByRole("button", { name: "editor:cycleAddWhole" }));
     fireEvent.click(screen.getByRole("button", { name: "save" }));
     await waitFor(() =>
       expect(defaultProps.onSave).toHaveBeenCalledWith(
@@ -74,8 +74,20 @@ describe("FlowItemEditorModal", () => {
     );
   });
 
+  it("adds a specific cycle by clicking a leaf cell — no separate confirm step", async () => {
+    render(<FlowItemEditorModal {...defaultProps} />);
+    fireEvent.click(screen.getByRole("button", { name: "editor:kindWeek 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "editor:kindDay 3" }));
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() =>
+      expect(defaultProps.onSave).toHaveBeenCalledWith(
+        expect.objectContaining({ cycles: [{ scopeKind: "day", scopeIndex: 3, planKind: null, planStart: null, planEnd: null }] }),
+      ),
+    );
+  });
+
   it("hides the cycle grid for an unscoped flow", () => {
     render(<FlowItemEditorModal {...defaultProps} node={mkItem({ flowItem: { itemType: "flow_task", flowId: 5, flowScopeN: null, flowScopeKind: null, cycles: [], dependsOn: [] } })} />);
-    expect(screen.queryByRole("button", { name: "cycleAddWhole" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "editor:cycleAddWhole" })).not.toBeInTheDocument();
   });
 });

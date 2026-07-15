@@ -59,3 +59,50 @@ export function cyclePairKey(pair: FlowCyclePair): string {
     .map((part) => (part === null ? "_" : String(part)))
     .join(":");
 }
+
+/** One level of the relative cycle navigator: `count` sibling slots at `kind`. */
+export interface CycleLevel {
+  kind: string;
+  count: number;
+}
+
+/**
+ * The ordered navigation levels from the flow's own repeated period down to `targetKind`: a root
+ * level (the flow's own kind, repeated `flowN` times — e.g. "which of the 2 weeks") followed by
+ * each canonical kind strictly between `flowKind` and `targetKind`, ending at `targetKind` itself.
+ * Empty when `targetKind` isn't strictly finer than `flowKind`.
+ */
+export function cycleLevels(flowN: number, flowKind: string, targetKind: CycleScopeKind): CycleLevel[] {
+  const flowIdx = indexOfKind(flowKind);
+  const targetIdx = indexOfKind(targetKind);
+  if (flowIdx === -1 || targetIdx === -1 || targetIdx <= flowIdx) return [];
+  const levels: CycleLevel[] = [{ kind: flowKind, count: flowN }];
+  for (let i = flowIdx; i < targetIdx; i++) {
+    levels.push({ kind: SCOPE_ORDER[i + 1]!, count: SUBDIVISIONS[i]! });
+  }
+  return levels;
+}
+
+/**
+ * Combines a 1-based per-level path (one index per `levels` entry, coarsest first) into the
+ * single flat 1-based scope index the backend resolves against the flow's window start.
+ */
+export function pathToIndex(levels: CycleLevel[], path: number[]): number {
+  let flat = 0;
+  for (let i = 0; i < levels.length; i++) {
+    flat = flat * levels[i]!.count + (path[i]! - 1);
+  }
+  return flat + 1;
+}
+
+/** Inverse of `pathToIndex`: decomposes a flat 1-based scope index back into its per-level path. */
+export function indexToPath(levels: CycleLevel[], index: number): number[] {
+  let remaining = index - 1;
+  const path: number[] = new Array(levels.length);
+  for (let i = levels.length - 1; i >= 0; i--) {
+    const count = levels[i]!.count;
+    path[i] = (remaining % count) + 1;
+    remaining = Math.floor(remaining / count);
+  }
+  return path;
+}

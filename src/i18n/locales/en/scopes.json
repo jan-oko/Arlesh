@@ -22,6 +22,14 @@
     "autumn": "Autumn",
     "winter": "Winter"
   },
+  "part": {
+    "morning": "Morning",
+    "noon": "Noon",
+    "afternoon": "Afternoon",
+    "evening": "Evening",
+    "night": "Night",
+    "premorning": "Premorning"
+  },
   "duration_day_one": "{{count}} day",
   "duration_day_other": "{{count}} days",
   "duration_week_one": "{{count}} week",

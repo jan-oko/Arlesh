@@ -22,6 +22,14 @@
     "autumn": "סתיו",
     "winter": "חורף"
   },
+  "part": {
+    "morning": "בוקר",
+    "noon": "צהריים",
+    "afternoon": "אחר הצהריים",
+    "evening": "ערב",
+    "night": "לילה",
+    "premorning": "לפנות בוקר"
+  },
   "duration_day_one": "{{count}} יום",
   "duration_day_other": "{{count}} ימים",
   "duration_week_one": "{{count}} שבוע",

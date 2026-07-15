@@ -26,6 +26,8 @@
   "cyclePlanNone": "No plan",
   "cycleAdd": "Add cycle",
   "cycleAddWhole": "Add whole-scope cycle",
+  "cycleEdit": "Edit cycle",
+  "cycleDone": "Done",
   "kindSeason": "Season",
   "kindMonth": "Month",
   "kindWeek": "Week",
