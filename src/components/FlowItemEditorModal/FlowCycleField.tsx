@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import type { FlowCyclePair } from "@/utils/tree-layout";
@@ -102,6 +103,9 @@ export default function FlowCycleField({ flowScopeN, flowScopeKind, value, onCha
       const pair: FlowCyclePair = { scopeKind, scopeIndex: index, ...planFields };
       if (!next.some((p) => cyclePairKey(p) === cyclePairKey(pair))) next.push(pair);
     }
+    void invoke("debug_log", {
+      message: `[FlowCycleField.addSelected] scopeKind=${String(scopeKind)} selected=${JSON.stringify([...selected])} value=${JSON.stringify(value)} next=${JSON.stringify(next)}`,
+    }).catch(() => {});
     onChange(next);
     setSelected(new Set());
   }
