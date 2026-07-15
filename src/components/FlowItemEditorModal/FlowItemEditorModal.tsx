@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { FlowCyclePair, FlowItemDep } from "@/utils/tree-layout";
@@ -70,7 +69,6 @@ export default function FlowItemEditorModal({ node, availableDeps, onSave, onClo
     try {
       const addedDeps = currentDeps.filter((d) => !initialDeps.some((id) => depEquals(id, d)));
       const removedDeps = initialDeps.filter((d) => !currentDeps.some((cd) => depEquals(cd, d)));
-      void invoke("debug_log", { message: `[FlowItemEditorModal.handleSave] cycles=${JSON.stringify(cycles)}` }).catch(() => {});
       await onSave({ title: title.trim(), cycles, addedDeps, removedDeps, nsfw });
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err));

@@ -149,7 +149,6 @@ pub fn run() {
             commands::flows::fork_flow,
             commands::flows::convert_to_flow,
             commands::flows::set_flow_item_cycles,
-            commands::flows::debug_log,
             commands::flows::list_all_flow_cycles,
             commands::flows::add_flow_dependency,
             commands::flows::remove_flow_dependency,
