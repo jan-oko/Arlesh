@@ -51,9 +51,6 @@ export default function FlowItemEditorModal({ node, availableDeps, onSave, onClo
   const initialDeps = node.flowItem?.dependsOn ?? [];
 
   useEffect(() => { titleRef.current?.focus(); titleRef.current?.select(); }, []);
-  useEffect(() => {
-    void invoke("debug_log", { message: `[FlowItemEditorModal] mount/update, cycles=${JSON.stringify(cycles)}` }).catch(() => {});
-  }, [cycles]);
 
   function removeDep(dep: FlowItemDep) {
     setCurrentDeps((prev) => prev.filter((d) => !depEquals(d, dep)));
@@ -115,10 +112,7 @@ export default function FlowItemEditorModal({ node, availableDeps, onSave, onClo
             flowScopeN={node.flowItem.flowScopeN}
             flowScopeKind={node.flowItem.flowScopeKind}
             value={cycles}
-            onChange={(pairs) => {
-              void invoke("debug_log", { message: `[FlowItemEditorModal] onChange(pairs)=${JSON.stringify(pairs)}` }).catch(() => {});
-              setCycles(pairs);
-            }}
+            onChange={setCycles}
           />
         </div>
       )}
