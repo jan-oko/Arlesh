@@ -10,3 +10,6 @@ coverage/
 
 # Environment
 .env
+
+# Serena MCP project cache
+.serena/
