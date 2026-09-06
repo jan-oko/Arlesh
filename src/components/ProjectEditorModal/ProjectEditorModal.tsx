@@ -4,6 +4,7 @@ import type { MindmapNode } from "@/utils/tree-layout";
 import EditorModal from "@/components/EditorModal/EditorModal";
 import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
 import styles from "@/components/EditorModal/EditorModal.module.css";
+import { PROJECT_STATUS } from "@/utils/status-mapping";
 
 export interface ProjectSaveData {
   title: string;
@@ -11,13 +12,6 @@ export interface ProjectSaveData {
   knowledgeBaseDirectory: string;
   nsfw: boolean;
 }
-
-const PROJECT_STATUS = {
-  ACTIVE: "active",
-  PAUSED: "paused",
-  COMPLETED: "completed",
-  ARCHIVED: "archived",
-} as const;
 
 const PROJECT_STATUSES = Object.values(PROJECT_STATUS);
 

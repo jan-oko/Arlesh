@@ -25,7 +25,7 @@ describe("flattenTaskRows", () => {
   it("resolves the nearest ancestor Goal and Project, with their status", () => {
     const tree = n("root", "domain", {}, [
       n("aspect-1", "aspect", {}, [
-        n("project-1", "project", { status: "paused" }, [
+        n("project-1", "project", { status: "frozen" }, [
           n("goal-1", "goal", { status: "achieved" }, [
             n("task-1", "task", { status: "todo" }),
           ]),
@@ -36,7 +36,7 @@ describe("flattenTaskRows", () => {
     expect(row?.goalRef).toBe("goal-1");
     expect(row?.goalStatus).toBe("achieved");
     expect(row?.projectRef).toBe("project-1");
-    expect(row?.projectStatus).toBe("paused");
+    expect(row?.projectStatus).toBe("frozen");
     expect(row?.parentRef).toBe("goal-1");
     expect(row?.ancestorRefs).toEqual(["aspect-1", "project-1", "goal-1"]);
   });

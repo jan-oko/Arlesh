@@ -66,11 +66,11 @@ describe("ProjectEditorModal — save", () => {
 
   it("calls onSave with updated status after clicking a status pill", async () => {
     render(<ProjectEditorModal {...defaultProps} />);
-    fireEvent.click(screen.getByRole("button", { name: "status:project.paused" }));
+    fireEvent.click(screen.getByRole("button", { name: "status:project.achieved" }));
     fireEvent.click(screen.getByRole("button", { name: "save" }));
     await waitFor(() =>
       expect(defaultProps.onSave).toHaveBeenCalledWith(
-        expect.objectContaining({ status: "paused" }),
+        expect.objectContaining({ status: "achieved" }),
       ),
     );
   });

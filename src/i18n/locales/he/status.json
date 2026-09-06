@@ -12,8 +12,8 @@
   },
   "project": {
     "active": "פעיל",
-    "paused": "מושהה",
-    "completed": "הושלם",
+    "achieved": "הושלם",
+    "frozen": "מוקפא",
     "archived": "בוידעם"
   }
 }

@@ -1,6 +1,7 @@
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { FilterState, StatusMode, TagFilterMode } from "@/utils/filter-tree";
 import { typeHardHidden, passesTags } from "@/utils/filter-tree";
+import { TASK_STATUS, GOAL_STATUS, PROJECT_STATUS } from "@/utils/status-mapping";
 
 /** Same any/all/exclude semantics as a tag filter, reused across every List View filter dimension. */
 export type PillMode = TagFilterMode;
@@ -38,9 +39,9 @@ export function isListPreset(value: string): value is ListPreset {
   return (LIST_PRESET_VALUES as readonly string[]).includes(value);
 }
 
-export const TASK_STATUS_VALUES = ["todo", "in_progress", "done"] as const;
-export const GOAL_STATUS_VALUES = ["active", "achieved", "frozen", "archived"] as const;
-export const PROJECT_STATUS_VALUES = ["active", "paused", "completed", "archived"] as const;
+export const TASK_STATUS_VALUES = Object.values(TASK_STATUS);
+export const GOAL_STATUS_VALUES = Object.values(GOAL_STATUS);
+export const PROJECT_STATUS_VALUES = Object.values(PROJECT_STATUS);
 export const SCOPE_STATE_VALUES = ["unscoped", "active", "overdue", "lapsed", "planned", "unplanned"] as const;
 export const BLOCKED_VALUES = ["blocked", "not_blocked"] as const;
 

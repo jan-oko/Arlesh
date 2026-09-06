@@ -12,8 +12,8 @@
   },
   "project": {
     "active": "Active",
-    "paused": "Paused",
-    "completed": "Completed",
+    "achieved": "Achieved",
+    "frozen": "Frozen",
     "archived": "Archived"
   }
 }

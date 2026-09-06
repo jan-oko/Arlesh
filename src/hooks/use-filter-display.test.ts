@@ -83,7 +83,7 @@ describe("useFilterDisplay", () => {
     const { result } = renderHook(() => useFilterDisplay());
     expect(result.current.displayTaskStatus("todo")).toBe("status:task.todo");
     expect(result.current.displayGoalStatus("achieved")).toBe("status:goal.achieved");
-    expect(result.current.displayProjectStatus("paused")).toBe("status:project.paused");
+    expect(result.current.displayProjectStatus("frozen")).toBe("status:project.frozen");
     expect(result.current.displayScopeState("overdue")).toBe("listView:scopeState.overdue");
     expect(result.current.displayBlocked("blocked")).toBe("listView:blockedState.blocked");
   });
