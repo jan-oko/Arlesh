@@ -52,6 +52,11 @@ export const DEFAULT_FILTER: FilterState = {
 /** Goal statuses that read as resolved/inactive (hidden by Plan/Start). */
 const RESOLVED_GOAL = new Set(["achieved", "frozen", "archived"]);
 
+/** Project statuses that shelve the whole subtree in Plan/Start: the work is deliberately off the
+ * table, so unresolved items inside it are neither plannable nor startable. **Achieved** is
+ * deliberately absent — finished work can still hold unfinished items worth surfacing. */
+const SHELVED_PROJECT = new Set(["frozen", "archived"]);
+
 const FLOW_KINDS = new Set(["flow", "flow_goal", "flow_task"]);
 /** Container kinds with no status of their own — shown only as ancestors of a content match. */
 const STRUCTURAL_KINDS = new Set(["aspect", "domain", "project", "tag"]);
@@ -80,6 +85,19 @@ function isArchived(node: MindmapNode): boolean {
   return node.status === "archived" || node.archived === true;
 }
 
+/**
+ * Whether `node` is a Project that Plan/Start shelve along with everything inside it. The Mindmap gets
+ * the subtree removal from tree-pruning; List View has no tree to prune, so it applies this to each
+ * row's ancestors itself (as it already does for blocked/NSFW ancestors).
+ */
+export function isShelvedProject(node: MindmapNode, f: FilterState): boolean {
+  if (node.kind !== "project") return false;
+  if (f.statusMode !== "plan" && f.statusMode !== "start") return false;
+  if (!SHELVED_PROJECT.has(node.status ?? "")) return false;
+  // The Archived pill's Include still wins for the Archived case, as it does everywhere else.
+  return !(f.archivedMode === "include" && isArchived(node));
+}
+
 /** Kinds hidden outright (their subtree is removed, not kept as an ancestor). */
 export function typeHardHidden(node: MindmapNode, f: FilterState): boolean {
   // Work mode drops any NSFW node and everything beneath it, regardless of kind.
@@ -92,6 +110,9 @@ export function typeHardHidden(node: MindmapNode, f: FilterState): boolean {
   // Habit-instance goal with one still-undone (also-excluded) item and one already-`done` item would
   // stay visible anyway, kept as an ancestor of that unrelated, ordinarily-visible done sibling.
   if (f.archivedMode === "exclude" && isArchived(node)) return true;
+  // A Frozen/Archived Project gates its subtree the same way: hide it outright rather than keeping it
+  // as the ancestor of unresolved work that is, by its status, not on the table.
+  if (isShelvedProject(node, f)) return true;
   return flowHardHidden(node, f);
 }
 

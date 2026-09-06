@@ -235,3 +235,32 @@ describe("filterTaskList — archived tasks under the Plan preset", () => {
     expect(kept.map((r) => r.node.id)).toEqual(["task-overdue"]);
   });
 });
+
+describe("filterTaskList — tasks inside a Frozen/Archived Project", () => {
+  const under = (status: string, projectId = "project-1") =>
+    row({ ancestors: [n(projectId, "project", { status }), n("domain-1", "domain")] });
+
+  it("plan preset hides a task inside a frozen project", () => {
+    expect(filterTaskList([under("frozen")], sf({ statusMode: "plan" }), lf())).toEqual([]);
+  });
+
+  it("start preset hides a task inside an archived project", () => {
+    expect(filterTaskList([under("archived")], sf({ statusMode: "start" }), lf())).toEqual([]);
+  });
+
+  it("plan preset still shows a task inside an achieved project", () => {
+    expect(filterTaskList([under("achieved")], sf({ statusMode: "plan" }), lf())).toHaveLength(1);
+  });
+
+  it("all preset still shows a task inside a frozen project", () => {
+    expect(filterTaskList([under("frozen")], sf({ statusMode: "all" }), lf())).toHaveLength(1);
+  });
+
+  it("hides a task whose outer project is frozen even when the nearest one is active", () => {
+    const nested = row({
+      ancestors: [n("project-outer", "project", { status: "frozen" }), n("project-inner", "project", { status: "active" })],
+      projectStatus: "active",
+    });
+    expect(filterTaskList([nested], sf({ statusMode: "plan" }), lf())).toEqual([]);
+  });
+});

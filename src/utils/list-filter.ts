@@ -1,6 +1,6 @@
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { FilterState, TagFilterMode } from "@/utils/filter-tree";
-import { typeHardHidden, passesTags, withArchivedOverride } from "@/utils/filter-tree";
+import { typeHardHidden, passesTags, withArchivedOverride, isShelvedProject } from "@/utils/filter-tree";
 import { TASK_STATUS, GOAL_STATUS, PROJECT_STATUS } from "@/utils/status-mapping";
 
 /** Same any/all/exclude semantics as a tag filter, reused across every List View filter dimension. */
@@ -147,6 +147,9 @@ export function deriveScopeStateTokens(node: MindmapNode): string[] {
  * canvas — plus an explicit blocked-ancestor check, since a flat list has no tree-pruning to cut off a
  * blocked subtree. */
 function passesListPreset(row: TaskListRow, f: FilterState): boolean {
+  // A Frozen/Archived Project shelves its whole subtree in Plan/Start. The Mindmap drops it by
+  // tree-pruning; a flat list needs the explicit ancestor walk (no-op under All/Do).
+  if (row.ancestors.some((a) => isShelvedProject(a, f))) return false;
   switch (f.statusMode) {
     case "all":
       return true;

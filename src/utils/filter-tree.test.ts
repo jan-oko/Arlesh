@@ -420,3 +420,43 @@ describe("filterTree — a status-less container inherits its nearest status-bea
     expect(kept).toContain("project-achieved");
   });
 });
+
+describe("filterTree — a Frozen/Archived Project shelves its whole subtree", () => {
+  const shelved = (status: string) =>
+    n("root", "domain", {}, [
+      n("project-shelved", "project", { status }, [
+        n("domain-1", "domain", {}, [n("task-todo", "task", { status: "todo" })]),
+      ]),
+    ]);
+
+  it("hides a frozen project and its unresolved work in Plan", () => {
+    const kept = ids(filterTree(shelved("frozen"), f({ statusMode: "plan" })));
+    expect(kept).not.toContain("project-shelved");
+    expect(kept).not.toContain("domain-1");
+    expect(kept).not.toContain("task-todo");
+  });
+
+  it("hides a frozen project and its unresolved work in Start", () => {
+    expect(ids(filterTree(shelved("frozen"), f({ statusMode: "start" })))).not.toContain("task-todo");
+  });
+
+  it("hides an archived project and its unresolved work in Plan", () => {
+    expect(ids(filterTree(shelved("archived"), f({ statusMode: "plan" })))).not.toContain("task-todo");
+  });
+
+  it("still shows an achieved project holding unresolved work (achieved is deliberately softer)", () => {
+    const kept = ids(filterTree(shelved("achieved"), f({ statusMode: "plan" })));
+    expect(kept).toContain("project-shelved");
+    expect(kept).toContain("task-todo");
+  });
+
+  it("shows a frozen project under All, as before", () => {
+    expect(ids(filterTree(shelved("frozen"), f({ statusMode: "all" })))).toContain("task-todo");
+  });
+
+  it("archivedMode include brings an archived project's subtree back under Plan", () => {
+    const kept = ids(filterTree(shelved("archived"), f({ statusMode: "plan", archivedMode: "include" })));
+    expect(kept).toContain("project-shelved");
+    expect(kept).toContain("task-todo");
+  });
+});
