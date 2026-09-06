@@ -1,11 +1,13 @@
-import type { MindmapNode, NodeKind, Position } from "@/utils/tree-layout";
+import type { MindmapNode, NodeKind, Orientation, Position } from "@/utils/tree-layout";
 import { computeLayout } from "@/utils/tree-layout";
+import { computeNodeDimensions } from "@/utils/node-meta";
 import MindmapEdge from "@/components/MindmapEdge/MindmapEdge";
 import MindmapNodeComponent from "@/components/MindmapNode/MindmapNode";
 import type { ContextMenuAction } from "@/components/NodeContextMenu/context-action";
 
 interface Props {
   root: MindmapNode;
+  orientation: Orientation;
   collapsedNodeIds: ReadonlySet<string>;
   selectedNodeIds: ReadonlySet<string>;
   editingNodeId: string | null;
@@ -23,12 +25,17 @@ interface Props {
   onStatusClick: (id: string) => void;
 }
 
-export default function MindmapTree({ root, collapsedNodeIds, selectedNodeIds, editingNodeId, dragTargetId, dragSourceId, hasClipboard, onSelect, onCtrlClick, onShiftClick, onDoubleClick, onCommitEdit, onCancelEdit, onContextAction, onDragStart, onStatusClick }: Props) {
-  const positions = computeLayout(root, collapsedNodeIds);
+export default function MindmapTree({ root, orientation, collapsedNodeIds, selectedNodeIds, editingNodeId, dragTargetId, dragSourceId, hasClipboard, onSelect, onCtrlClick, onShiftClick, onDoubleClick, onCommitEdit, onCancelEdit, onContextAction, onDragStart, onStatusClick }: Props) {
+  const positions = computeLayout(root, collapsedNodeIds, orientation);
 
-  const edges: Array<{ from: Position; to: Position; key: string }> = [];
+  const edges: Array<{ from: Position; to: Position; fromHeight: number; toHeight: number; key: string }> = [];
   const nodes: MindmapNode[] = [];
   const parentKindById = new Map<string, NodeKind | null>();
+
+  // Vertical edges meet the tops and bottoms of the boxes, so they need each node's rendered
+  // height, which grows with the wrapped title.
+  const renderedHeight = (node: MindmapNode, depth: number): number =>
+    computeNodeDimensions(depth, node.title).height;
 
   function collect(node: MindmapNode, parentKind: NodeKind | null) {
     nodes.push(node);
@@ -38,7 +45,13 @@ export default function MindmapTree({ root, collapsedNodeIds, selectedNodeIds, e
     for (const child of node.children) {
       const childPos = positions.get(child.id);
       if (childPos !== undefined) {
-        edges.push({ from: nodePos, to: childPos, key: `${node.id}-${child.id}` });
+        edges.push({
+          from: nodePos,
+          to: childPos,
+          fromHeight: renderedHeight(node, nodePos.depth),
+          toHeight: renderedHeight(child, childPos.depth),
+          key: `${node.id}-${child.id}`,
+        });
       }
       if (!collapsedNodeIds.has(node.id)) collect(child, node.kind);
     }
@@ -47,7 +60,9 @@ export default function MindmapTree({ root, collapsedNodeIds, selectedNodeIds, e
 
   return (
     <>
-      {edges.map((edge) => <MindmapEdge key={edge.key} from={edge.from} to={edge.to} />)}
+      {edges.map((edge) => (
+        <MindmapEdge key={edge.key} from={edge.from} to={edge.to} fromHeight={edge.fromHeight} toHeight={edge.toHeight} orientation={orientation} />
+      ))}
       {nodes.map((node) => {
         const pos = positions.get(node.id);
         if (pos === undefined) return null;

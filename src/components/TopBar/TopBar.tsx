@@ -42,6 +42,8 @@ export default function TopBar() {
   const toggleFilterPopover = useFilterStore((s) => s.toggleFilterPopover);
   const view = useViewStore((s) => s.view);
   const setView = useViewStore((s) => s.setView);
+  const mindmapOrientation = useViewStore((s) => s.mindmapOrientation);
+  const toggleMindmapOrientation = useViewStore((s) => s.toggleMindmapOrientation);
   const listPreset = useListFilterStore((s) => s.filter.preset);
   const setListPreset = useListFilterStore((s) => s.setPreset);
   const theme = useThemeStore((s) => s.theme);
@@ -87,6 +89,16 @@ export default function TopBar() {
                   <div className={styles.settingRow}>
                     <Switch checked={theme === "light"} onChange={toggleTheme} label={t("common:lightMode")} />
                   </div>
+                  {/* Branch axis only means something on the mindmap, so it stays out of List View. */}
+                  {view === "mindmap" && (
+                    <div className={styles.settingRow}>
+                      <Switch
+                        checked={mindmapOrientation === "vertical"}
+                        onChange={toggleMindmapOrientation}
+                        label={t("common:verticalLayout")}
+                      />
+                    </div>
+                  )}
                 </div>
               </>
             )}

@@ -29,6 +29,7 @@ function makeOpts(selectedNodeId: string) {
     selectedNodeIds: new Set([selectedNodeId]),
     positions: POSITIONS,
     tree: TREE,
+    orientation: "horizontal" as const,
     selectNode: vi.fn(),
     setSelection: vi.fn(),
   };
@@ -60,6 +61,7 @@ function makeSiblingOpts(selectedNodeId: string, selectedNodeIds: ReadonlySet<st
     selectedNodeIds,
     positions: SIBLING_POSITIONS,
     tree: SIBLING_TREE,
+    orientation: "horizontal" as const,
     selectNode: vi.fn(),
     setSelection: vi.fn(),
   };
@@ -69,7 +71,7 @@ describe("useNavigateArrow", () => {
   it("does nothing when no node is selected", () => {
     const selectNode = vi.fn();
     const { result } = renderHook(() => useNavigateArrow({
-      selectedNodeId: null, selectedNodeIds: new Set(), positions: POSITIONS, tree: TREE, selectNode, setSelection: vi.fn(),
+      selectedNodeId: null, selectedNodeIds: new Set(), positions: POSITIONS, tree: TREE, orientation: "horizontal" as const, selectNode, setSelection: vi.fn(),
     }));
     act(() => { result.current.navigateArrow("ArrowRight"); });
     expect(selectNode).not.toHaveBeenCalled();
@@ -161,5 +163,74 @@ describe("useNavigateArrow — extendSelection", () => {
     act(() => { result.current.extendSelection("ArrowUp"); });
     // Extends one step from the new anchor "s", not from the stale "r" focus of the previous sequence.
     expect(nextOpts.setSelection).toHaveBeenCalledWith(new Set(["r", "s"]), "s");
+  });
+});
+
+// Vertical orientation: the axes swap — depth runs down the y axis, siblings spread along x.
+//        root
+//     ┌────┴────┐
+//    [a]       [b]      (y=90)
+//     │
+//  [a-child]            (y=180)
+const V_POSITIONS = new Map<string, Position>([
+  ["root",    { x: 0,    y: 0,   depth: 0 }],
+  ["a",       { x: -220, y: 90,  depth: 1 }],
+  ["b",       { x: 220,  y: 90,  depth: 1 }],
+  ["a-child", { x: -220, y: 180, depth: 2 }],
+]);
+
+function makeVerticalOpts(selectedNodeId: string, selectedNodeIds: ReadonlySet<string> = new Set([selectedNodeId])) {
+  return {
+    selectedNodeId,
+    selectedNodeIds,
+    positions: V_POSITIONS,
+    tree: TREE,
+    orientation: "vertical" as const,
+    selectNode: vi.fn(),
+    setSelection: vi.fn(),
+  };
+}
+
+describe("useNavigateArrow — vertical orientation", () => {
+  it("ArrowDown from a moves to its child", () => {
+    const opts = makeVerticalOpts("a");
+    const { result } = renderHook(() => useNavigateArrow(opts));
+    act(() => { result.current.navigateArrow("ArrowDown"); });
+    expect(opts.selectNode).toHaveBeenCalledWith("a-child");
+  });
+
+  it("ArrowUp from child moves back to its parent", () => {
+    const opts = makeVerticalOpts("a-child");
+    const { result } = renderHook(() => useNavigateArrow(opts));
+    act(() => { result.current.navigateArrow("ArrowUp"); });
+    expect(opts.selectNode).toHaveBeenCalledWith("a");
+  });
+
+  it("ArrowRight from a moves to sibling b", () => {
+    const opts = makeVerticalOpts("a");
+    const { result } = renderHook(() => useNavigateArrow(opts));
+    act(() => { result.current.navigateArrow("ArrowRight"); });
+    expect(opts.selectNode).toHaveBeenCalledWith("b");
+  });
+
+  it("ArrowLeft from b moves to sibling a", () => {
+    const opts = makeVerticalOpts("b");
+    const { result } = renderHook(() => useNavigateArrow(opts));
+    act(() => { result.current.navigateArrow("ArrowLeft"); });
+    expect(opts.selectNode).toHaveBeenCalledWith("a");
+  });
+
+  it("ArrowDown from a does not escape to a sibling", () => {
+    const opts = makeVerticalOpts("b");
+    const { result } = renderHook(() => useNavigateArrow(opts));
+    act(() => { result.current.navigateArrow("ArrowLeft"); });
+    expect(opts.selectNode).not.toHaveBeenCalledWith("a-child");
+  });
+
+  it("extends a sibling selection along the horizontal axis", () => {
+    const opts = makeVerticalOpts("a");
+    const { result } = renderHook(() => useNavigateArrow(opts));
+    act(() => { result.current.extendSelection("ArrowRight"); });
+    expect(opts.setSelection).toHaveBeenCalledWith(new Set(["a", "b"]), "a");
   });
 });

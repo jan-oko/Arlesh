@@ -67,7 +67,8 @@ function baseOptions(overrides: Partial<Parameters<typeof useKeyboardMindmap>[0]
     onFocusRoot: vi.fn(),
     onCenterOnNode: vi.fn(),
     onConvertToFlow: vi.fn(),
-    onExtendSelection: vi.fn() as (key: "ArrowUp" | "ArrowDown") => void,
+    onExtendSelection: vi.fn() as (key: "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown") => void,
+    orientation: "horizontal" as const,
     findNodeById: (id: string): MindmapNode | undefined =>
       id === "task-1" ? makeTask("task-1") : undefined,
     ...overrides,
@@ -775,5 +776,37 @@ describe("useKeyboardMindmap — Shift+Arrow extends the selection", () => {
     fireKey("ArrowDown", { shiftKey: true });
     expect(opts.onExtendSelection).toHaveBeenCalledWith("ArrowDown");
     expect(opts.onNavigate).not.toHaveBeenCalled();
+  });
+});
+
+describe("shift+arrow selection axis follows the orientation", () => {
+  it("horizontal: Shift+Down extends the selection", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("ArrowDown", { shiftKey: true });
+    expect(opts.onExtendSelection).toHaveBeenCalledWith("ArrowDown");
+  });
+
+  it("horizontal: Shift+Right navigates instead of extending", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("ArrowRight", { shiftKey: true });
+    expect(opts.onExtendSelection).not.toHaveBeenCalled();
+    expect(opts.onNavigate).toHaveBeenCalledWith("ArrowRight");
+  });
+
+  it("vertical: Shift+Right extends the selection", () => {
+    const opts = baseOptions({ orientation: "vertical" as const });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("ArrowRight", { shiftKey: true });
+    expect(opts.onExtendSelection).toHaveBeenCalledWith("ArrowRight");
+  });
+
+  it("vertical: Shift+Down navigates instead of extending", () => {
+    const opts = baseOptions({ orientation: "vertical" as const });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("ArrowDown", { shiftKey: true });
+    expect(opts.onExtendSelection).not.toHaveBeenCalled();
+    expect(opts.onNavigate).toHaveBeenCalledWith("ArrowDown");
   });
 });

@@ -33,7 +33,7 @@ beforeEach(() => {
   useFilterStore.setState({ filter: { ...DEFAULT_FILTER } });
   useListFilterStore.setState({ filter: { ...DEFAULT_LIST_FILTER, pills: { ...DEFAULT_LIST_FILTER.pills } } });
   useMindmapStore.setState({ subtreeRootId: null, subtreeNav: null });
-  useViewStore.setState({ view: "mindmap" });
+  useViewStore.setState({ view: "mindmap", mindmapOrientation: "horizontal" });
   useThemeStore.setState({ theme: "dark" });
   mockUseFilterDisplay.mockReturnValue(EMPTY_DISPLAY);
 });
@@ -123,6 +123,23 @@ describe("TopBar", () => {
       fireEvent.click(themeSwitch);
       expect(useThemeStore.getState().theme).toBe("light");
       expect(themeSwitch).toBeChecked();
+    });
+
+    it("flips the mindmap orientation from the vertical-layout switch", () => {
+      render(<TopBar />);
+      fireEvent.click(screen.getByRole("button", { name: "common:settings" }));
+      const orientationSwitch = screen.getByRole("checkbox", { name: "common:verticalLayout" });
+      expect(orientationSwitch).not.toBeChecked();
+      fireEvent.click(orientationSwitch);
+      expect(useViewStore.getState().mindmapOrientation).toBe("vertical");
+      expect(orientationSwitch).toBeChecked();
+    });
+
+    it("hides the vertical-layout switch in List View, where it has no meaning", () => {
+      useViewStore.setState({ view: "list" });
+      render(<TopBar />);
+      fireEvent.click(screen.getByRole("button", { name: "common:settings" }));
+      expect(screen.queryByRole("checkbox", { name: "common:verticalLayout" })).not.toBeInTheDocument();
     });
   });
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import type { MindmapNode } from "@/utils/tree-layout";
+import type { MindmapNode, Orientation } from "@/utils/tree-layout";
 import { isNodeBlocked } from "@/utils/tree-layout";
 import type { StatusMode } from "@/utils/filter-tree";
 
@@ -54,7 +54,9 @@ interface Options {
   onFocusRoot: () => void;
   onCenterOnNode: (id: string) => void;
   onConvertToFlow: (id: string) => void;
-  onExtendSelection: (key: "ArrowUp" | "ArrowDown") => void;
+  onExtendSelection: (key: ArrowKey) => void;
+  /** Which axis branches grow along — decides which Shift+arrows walk the sibling range. */
+  orientation: Orientation;
   findNodeById: (id: string) => MindmapNode | undefined;
 }
 
@@ -66,13 +68,19 @@ export function useKeyboardMindmap(options: Options): void {
     onCreateChild, onCreateSibling, onInsertParent, onOpenEditor, onStartFlow, onDelete, onToggleCollapsed, onCycleStatus,
     onDeselect, onExitSubtree, onExitToRoot, onCut, onCopy, onPaste, onEnterSubtree, onOpenSearch, onZoomIn, onZoomOut,
     onToggleFilter, onSetStatusMode, onFocusRoot, onCenterOnNode, onConvertToFlow, onExtendSelection,
-    findNodeById,
+    orientation, findNodeById,
   } = options;
 
   const lastEnterMs = useRef(-Infinity);
   const DOUBLE_TAP_MS = 300;
 
   useEffect(() => {
+    // Siblings spread across the axis branches *don't* grow along, so that is the axis a
+    // Shift+arrow walks a selection range over.
+    const siblingAxisKeys: readonly ArrowKey[] =
+      orientation === "vertical" ? ["ArrowLeft", "ArrowRight"] : ["ArrowUp", "ArrowDown"];
+    const extendsSelection = (key: ArrowKey): boolean => siblingAxisKeys.includes(key);
+
     function handleKeyDown(event: KeyboardEvent) {
       if (isInputActive) return;
 
@@ -111,12 +119,14 @@ export function useKeyboardMindmap(options: Options): void {
       switch (event.code) {
         case "ArrowLeft":
           event.preventDefault();
-          if (selectedNodeId !== null) onNavigate("ArrowLeft");
+          if (event.shiftKey && extendsSelection("ArrowLeft")) onExtendSelection("ArrowLeft");
+          else if (selectedNodeId !== null) onNavigate("ArrowLeft");
           else onPanCanvas("ArrowLeft");
           break;
         case "ArrowRight":
           event.preventDefault();
-          if (selectedNodeId !== null) onNavigate("ArrowRight");
+          if (event.shiftKey && extendsSelection("ArrowRight")) onExtendSelection("ArrowRight");
+          else if (selectedNodeId !== null) onNavigate("ArrowRight");
           else onPanCanvas("ArrowRight");
           break;
         case "ArrowUp":
@@ -125,7 +135,7 @@ export function useKeyboardMindmap(options: Options): void {
           // held-key repeats race the reload, spawning duplicate siblings.
           if (event.ctrlKey) { if (!event.repeat && selectedNodeId !== null) onCycleType(selectedNodeId, -1); }
           else if (event.altKey && selectedNodeId !== null) onReorder(selectedNodeId, -1);
-          else if (event.shiftKey) onExtendSelection("ArrowUp");
+          else if (event.shiftKey && extendsSelection("ArrowUp")) onExtendSelection("ArrowUp");
           else if (selectedNodeId !== null) onNavigate("ArrowUp");
           else onPanCanvas("ArrowUp");
           break;
@@ -133,7 +143,7 @@ export function useKeyboardMindmap(options: Options): void {
           event.preventDefault();
           if (event.ctrlKey) { if (!event.repeat && selectedNodeId !== null) onCycleType(selectedNodeId, 1); }
           else if (event.altKey && selectedNodeId !== null) onReorder(selectedNodeId, 1);
-          else if (event.shiftKey) onExtendSelection("ArrowDown");
+          else if (event.shiftKey && extendsSelection("ArrowDown")) onExtendSelection("ArrowDown");
           else if (selectedNodeId !== null) onNavigate("ArrowDown");
           else onPanCanvas("ArrowDown");
           break;
@@ -306,6 +316,6 @@ export function useKeyboardMindmap(options: Options): void {
     onCreateChild, onCreateSibling, onInsertParent, onOpenEditor, onStartFlow, onDelete, onToggleCollapsed, onCycleStatus,
     onDeselect, onExitSubtree, onExitToRoot, onCut, onCopy, onPaste, onEnterSubtree, onOpenSearch, onZoomIn, onZoomOut,
     onToggleFilter, onSetStatusMode, onFocusRoot, onCenterOnNode, onConvertToFlow, onExtendSelection,
-    findNodeById,
+    orientation, findNodeById,
   ]);
 }

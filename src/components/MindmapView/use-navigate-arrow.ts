@@ -1,39 +1,45 @@
 import { useCallback, useEffect, useRef } from "react";
-import type { MindmapNode, Position } from "@/utils/tree-layout";
+import type { MindmapNode, Orientation, Position } from "@/utils/tree-layout";
 import { nearestInDirection, parentAndChildrenIds, siblingIds, computeShiftSelectRange } from "@/utils/mindmap-tree";
 
 type ArrowKey = "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown";
-type SiblingArrowKey = "ArrowUp" | "ArrowDown";
+
+/** Whether `key` points along the branch (parent↔child) axis rather than the sibling axis. */
+function isBranchAxisKey(key: ArrowKey, orientation: Orientation): boolean {
+  return orientation === "vertical"
+    ? key === "ArrowUp" || key === "ArrowDown"
+    : key === "ArrowLeft" || key === "ArrowRight";
+}
 
 interface Options {
   selectedNodeId: string | null;
   selectedNodeIds: ReadonlySet<string>;
   positions: Map<string, Position>;
   tree: MindmapNode;
+  orientation: Orientation;
   selectNode: (id: string | null) => void;
   setSelection: (ids: ReadonlySet<string>, anchorId: string) => void;
 }
 
 interface Result {
   navigateArrow: (key: ArrowKey) => void;
-  /** Shift+Up/Down: extends or shrinks a sibling selection range from a fixed anchor, like shift-click. */
-  extendSelection: (key: SiblingArrowKey) => void;
+  /** Shift+arrow along the sibling axis: extends or shrinks a range from a fixed anchor, like shift-click. */
+  extendSelection: (key: ArrowKey) => void;
 }
 
-export function useNavigateArrow({ selectedNodeId, selectedNodeIds, positions, tree, selectNode, setSelection }: Options): Result {
+export function useNavigateArrow({ selectedNodeId, selectedNodeIds, positions, tree, orientation, selectNode, setSelection }: Options): Result {
   const navigateArrow = useCallback(
     (key: ArrowKey) => {
       if (selectedNodeId === null) return;
-      // Left/Right: move among parent and children (whichever lies in that screen direction).
-      // Up/Down: move among siblings only.
-      const candidates =
-        key === "ArrowLeft" || key === "ArrowRight"
-          ? parentAndChildrenIds(tree, selectedNodeId)
-          : siblingIds(tree, selectedNodeId);
+      // Along the branch axis: move among parent and children (whichever lies in that screen
+      // direction). Along the sibling axis: move among siblings only.
+      const candidates = isBranchAxisKey(key, orientation)
+        ? parentAndChildrenIds(tree, selectedNodeId)
+        : siblingIds(tree, selectedNodeId);
       const target = nearestInDirection(selectedNodeId, positions, key, candidates);
       if (target !== undefined) selectNode(target);
     },
-    [selectedNodeId, positions, tree, selectNode],
+    [selectedNodeId, positions, tree, orientation, selectNode],
   );
 
   // The moving end of a shift-arrow selection sequence; the anchor (selectedNodeId) stays fixed.
@@ -44,7 +50,7 @@ export function useNavigateArrow({ selectedNodeId, selectedNodeIds, positions, t
   }, [selectedNodeIds]);
 
   const extendSelection = useCallback(
-    (key: SiblingArrowKey) => {
+    (key: ArrowKey) => {
       if (selectedNodeId === null) return;
       const siblings = siblingIds(tree, selectedNodeId);
       const focus = extendFocusRef.current ?? selectedNodeId;

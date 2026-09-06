@@ -1,6 +1,6 @@
 import { forwardRef, useImperativeHandle, useRef, type ReactNode } from "react";
 import { animated, to } from "@react-spring/web";
-import type { MindmapNode } from "@/utils/tree-layout";
+import type { MindmapNode, Orientation } from "@/utils/tree-layout";
 import { usePanZoom } from "@/hooks/use-pan-zoom";
 import MindmapTree from "@/components/MindmapTree/MindmapTree";
 import type { ContextMenuAction } from "@/components/NodeContextMenu/context-action";
@@ -24,6 +24,7 @@ export interface MindmapCanvasHandle {
 
 interface Props {
   root: MindmapNode;
+  orientation: Orientation;
   collapsedNodeIds: ReadonlySet<string>;
   selectedNodeIds: ReadonlySet<string>;
   editingNodeId: string | null;
@@ -43,7 +44,7 @@ interface Props {
   onStatusClick: (id: string) => void;
 }
 
-const MindmapCanvas = forwardRef<MindmapCanvasHandle, Props>(function MindmapCanvas({ root, collapsedNodeIds, selectedNodeIds, editingNodeId, dragTargetId, dragSourceId, canvasOverlay, hasClipboard, onSelect, onCtrlClick, onShiftClick, onDoubleClick, onCommitEdit, onCancelEdit, onContextAction, onDragStart, onCanvasClick, onStatusClick }: Props, ref) {
+const MindmapCanvas = forwardRef<MindmapCanvasHandle, Props>(function MindmapCanvas({ root, orientation, collapsedNodeIds, selectedNodeIds, editingNodeId, dragTargetId, dragSourceId, canvasOverlay, hasClipboard, onSelect, onCtrlClick, onShiftClick, onDoubleClick, onCommitEdit, onCancelEdit, onContextAction, onDragStart, onCanvasClick, onStatusClick }: Props, ref) {
   const svgRef = useRef<SVGSVGElement>(null);
   const { springProps, onMouseDown, centerOnRoot, centerOnPoint, ensureVisible, panBy, zoomIn, zoomOut, getViewport } = usePanZoom(svgRef);
   useImperativeHandle(ref, () => ({ centerOnRoot, centerOnPoint, ensureVisible, panBy, zoomIn, zoomOut, getViewport }), [centerOnRoot, centerOnPoint, ensureVisible, panBy, zoomIn, zoomOut, getViewport]);
@@ -56,7 +57,7 @@ const MindmapCanvas = forwardRef<MindmapCanvasHandle, Props>(function MindmapCan
   return (
     <animated.svg ref={svgRef} className={styles.canvas} width="100%" height="100%" onMouseDown={onMouseDown} onClick={onCanvasClick}>
       <animated.g style={{ transform }}>
-        <MindmapTree root={root} collapsedNodeIds={collapsedNodeIds} selectedNodeIds={selectedNodeIds} editingNodeId={editingNodeId} dragTargetId={dragTargetId} dragSourceId={dragSourceId} hasClipboard={hasClipboard} onSelect={onSelect} {...(onCtrlClick !== undefined ? { onCtrlClick } : {})} {...(onShiftClick !== undefined ? { onShiftClick } : {})} onDoubleClick={onDoubleClick} onCommitEdit={onCommitEdit} onCancelEdit={onCancelEdit} onContextAction={onContextAction} onDragStart={onDragStart} onStatusClick={onStatusClick} />
+        <MindmapTree root={root} orientation={orientation} collapsedNodeIds={collapsedNodeIds} selectedNodeIds={selectedNodeIds} editingNodeId={editingNodeId} dragTargetId={dragTargetId} dragSourceId={dragSourceId} hasClipboard={hasClipboard} onSelect={onSelect} {...(onCtrlClick !== undefined ? { onCtrlClick } : {})} {...(onShiftClick !== undefined ? { onShiftClick } : {})} onDoubleClick={onDoubleClick} onCommitEdit={onCommitEdit} onCancelEdit={onCancelEdit} onContextAction={onContextAction} onDragStart={onDragStart} onStatusClick={onStatusClick} />
         {canvasOverlay}
       </animated.g>
     </animated.svg>

@@ -18,6 +18,7 @@ import MindmapCanvas, { type MindmapCanvasHandle } from "@/components/MindmapCan
 import DragGhost from "@/components/DragGhost/DragGhost";
 import DragPlaceholder from "@/components/DragPlaceholder/DragPlaceholder";
 import { useFilterStore } from "@/stores/use-filter-store";
+import { useViewStore } from "@/stores/use-view-store";
 import { filterTree } from "@/utils/filter-tree";
 import StatusToast from "@/components/StatusToast/StatusToast";
 import TaskEditorModal from "@/components/TaskEditorModal/TaskEditorModal";
@@ -70,6 +71,7 @@ export default function MindmapView() {
     collectTasksAndGoals(tree, acc);
     return acc;
   }, [tree]);
+  const mindmapOrientation = useViewStore((s) => s.mindmapOrientation);
   const filter = useFilterStore((s) => s.filter);
   const setStatusMode = useFilterStore((s) => s.setStatusMode);
   const toggleFilterPopover = useFilterStore((s) => s.toggleFilterPopover);
@@ -236,7 +238,7 @@ export default function MindmapView() {
   const { dragSourceId, dragTargetId, ghostPos, onDragStart } = useDrag({ tree, moveNode: guardedMoveNode });
 
   const { effectiveCollapsedIds, positions, subtreeLayout, placeholderPos } = useCanvasLayout({
-    displayRoot, tree, collapsedNodeIds, dragSourceId, dragTargetId,
+    displayRoot, tree, collapsedNodeIds, dragSourceId, dragTargetId, orientation: mindmapOrientation,
   });
 
   // Follow the selection: when it *changes* to a node off the visible canvas (e.g. arrow navigation),
@@ -262,6 +264,17 @@ export default function MindmapView() {
     }
     canvasRef.current?.centerOnRoot();
   }, [positions]);
+
+  // Flipping the orientation relocates every node, so the viewport would otherwise be left looking
+  // at empty canvas. Pan to whatever was in focus — the selection, or the display root without one.
+  // Declared after the recenter-on-empty effect above so this wins when both fire in one commit.
+  const prevOrientation = useRef(mindmapOrientation);
+  useEffect(() => {
+    if (mindmapOrientation === prevOrientation.current) return;
+    prevOrientation.current = mindmapOrientation;
+    const pos = positions.get(selectedNodeId ?? displayRoot.id);
+    if (pos !== undefined) canvasRef.current?.centerOnPoint(pos.x, pos.y);
+  }, [mindmapOrientation, selectedNodeId, displayRoot, positions]);
 
   const { warningModal, setWarningModal, cycleType, setType, retypeActions } = useNodeTypeManager({
     tree, retypeNode, selectNode, showToast,
@@ -326,7 +339,7 @@ export default function MindmapView() {
     createNode, createChild, selectNode, setClipboard, setEditingNodeId,
   });
 
-  const { navigateArrow, extendSelection } = useNavigateArrow({ selectedNodeId, selectedNodeIds, positions, tree, selectNode, setSelection });
+  const { navigateArrow, extendSelection } = useNavigateArrow({ selectedNodeId, selectedNodeIds, positions, tree, orientation: mindmapOrientation, selectNode, setSelection });
 
   // Arrow keys with no node focused pan the view itself instead of moving a selection.
   const onPanCanvas = useCallback((key: "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown") => {
@@ -408,6 +421,7 @@ export default function MindmapView() {
     selectedNodeIds,
     subtreeRootId,
     clipboard,
+    orientation: mindmapOrientation,
     onNavigate: navigateArrow,
     onPanCanvas,
     onCycleType: cycleType,
@@ -450,6 +464,7 @@ export default function MindmapView() {
       <MindmapCanvas
         ref={canvasRef}
         root={displayRoot}
+        orientation={mindmapOrientation}
         collapsedNodeIds={effectiveCollapsedIds}
         selectedNodeIds={selectedNodeIds}
         editingNodeId={editingNodeId}
@@ -457,7 +472,7 @@ export default function MindmapView() {
         dragSourceId={dragSourceId}
         hasClipboard={clipboard !== null}
         canvasOverlay={placeholderPos !== null && targetPos !== undefined ? (
-          <DragPlaceholder placeholderPos={placeholderPos} targetPos={targetPos} subtreeLayout={subtreeLayout} collapsedNodeIds={collapsedNodeIds} dragSourceId={dragSourceId} tree={tree} />
+          <DragPlaceholder placeholderPos={placeholderPos} targetPos={targetPos} subtreeLayout={subtreeLayout} collapsedNodeIds={collapsedNodeIds} dragSourceId={dragSourceId} orientation={mindmapOrientation} tree={tree} />
         ) : undefined}
         onSelect={selectNode}
         onCtrlClick={handleCtrlClick}

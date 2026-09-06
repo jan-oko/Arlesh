@@ -1,6 +1,13 @@
-import type { MindmapNode, Position } from "@/utils/tree-layout";
+import type { MindmapNode, Orientation, Position } from "@/utils/tree-layout";
 import { getNodeSize } from "@/utils/node-meta";
+import { computeEdgePath, type EdgeEndpoint } from "@/utils/edge-path";
 import { gatherSubtreeItems, findNode } from "@/utils/mindmap-tree";
+
+/** The dragged preview boxes carry no title, so their base per-depth size is their rendered size. */
+function endpointAt(x: number, y: number, depth: number): EdgeEndpoint {
+  const { width, height } = getNodeSize(depth);
+  return { x, y, halfWidth: width / 2, halfHeight: height / 2 };
+}
 
 interface Props {
   placeholderPos: Position;
@@ -8,6 +15,7 @@ interface Props {
   subtreeLayout: Map<string, Position> | null;
   collapsedNodeIds: ReadonlySet<string>;
   dragSourceId: string | null;
+  orientation: Orientation;
   tree: MindmapNode;
 }
 
@@ -17,15 +25,15 @@ export default function DragPlaceholder({
   subtreeLayout,
   collapsedNodeIds,
   dragSourceId,
+  orientation,
   tree,
 }: Props) {
   const { width, height } = getNodeSize(placeholderPos.depth);
-  const fromSize = getNodeSize(targetPos.depth);
-  const goingRight = placeholderPos.x >= targetPos.x;
-  const fromX = targetPos.x + (goingRight ? fromSize.width / 2 : -fromSize.width / 2);
-  const toX = placeholderPos.x + (goingRight ? -width / 2 : width / 2);
-  const midX = (fromX + toX) / 2;
-  const edgePath = `M ${fromX} ${targetPos.y} C ${midX} ${targetPos.y}, ${midX} ${placeholderPos.y}, ${toX} ${placeholderPos.y}`;
+  const edgePath = computeEdgePath(
+    endpointAt(targetPos.x, targetPos.y, targetPos.depth),
+    endpointAt(placeholderPos.x, placeholderPos.y, placeholderPos.depth),
+    orientation,
+  );
 
   const subtreeNodes: Array<{ id: string; x: number; y: number; depthAbs: number }> = [];
   const subtreeEdges: Array<{ key: string; fx: number; fy: number; fdepth: number; tx: number; ty: number; tdepth: number }> = [];
@@ -47,21 +55,17 @@ export default function DragPlaceholder({
       <g transform={`translate(${placeholderPos.x - width / 2}, ${placeholderPos.y - height / 2})`}>
         <rect width={width} height={height} rx={6} fill="var(--accent)" fillOpacity={0.1} stroke="var(--accent)" strokeWidth={2} strokeDasharray="6 3" />
       </g>
-      {subtreeEdges.map((edge) => {
-        const efromSize = getNodeSize(edge.fdepth);
-        const etoSize = getNodeSize(edge.tdepth);
-        const eRight = edge.tx >= edge.fx;
-        const ex = edge.fx + (eRight ? efromSize.width / 2 : -efromSize.width / 2);
-        const ex2 = edge.tx + (eRight ? -etoSize.width / 2 : etoSize.width / 2);
-        const emx = (ex + ex2) / 2;
-        return (
-          <path
-            key={edge.key}
-            d={`M ${ex} ${edge.fy} C ${emx} ${edge.fy}, ${emx} ${edge.ty}, ${ex2} ${edge.ty}`}
-            stroke="var(--accent)" strokeWidth={1} strokeDasharray="4 2" fill="none" opacity={0.55}
-          />
-        );
-      })}
+      {subtreeEdges.map((edge) => (
+        <path
+          key={edge.key}
+          d={computeEdgePath(
+            endpointAt(edge.fx, edge.fy, edge.fdepth),
+            endpointAt(edge.tx, edge.ty, edge.tdepth),
+            orientation,
+          )}
+          stroke="var(--accent)" strokeWidth={1} strokeDasharray="4 2" fill="none" opacity={0.55}
+        />
+      ))}
       {subtreeNodes.map((n) => {
         const sz = getNodeSize(n.depthAbs);
         return (

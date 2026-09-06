@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeLayout, computeSubtreeLayout, entityNodeId } from "./tree-layout";
+import { computeLayout, computeSubtreeLayout, entityNodeId, HORIZONTAL_GAP } from "./tree-layout";
 import type { MindmapNode } from "./tree-layout";
 
 function node(id: string, children: MindmapNode[] = []): MindmapNode {
@@ -92,5 +92,72 @@ describe("entityNodeId", () => {
   it("keeps goal and task in their own namespaces", () => {
     expect(entityNodeId("goal", 5)).toBe("goal-5");
     expect(entityNodeId("task", 8)).toBe("task-8");
+  });
+});
+
+describe("computeLayout — vertical orientation", () => {
+  it("places root at origin", () => {
+    const root = node("root");
+    const positions = computeLayout(root, new Set(), "vertical");
+    expect(positions.get("root")).toEqual({ x: 0, y: 0, depth: 0 });
+  });
+
+  it("places a single child below root", () => {
+    const root = node("root", [node("a")]);
+    const positions = computeLayout(root, new Set(), "vertical");
+    expect(positions.get("a")!.y).toBeGreaterThan(positions.get("root")!.y);
+  });
+
+  it("splits two children below and above", () => {
+    const root = node("root", [node("below"), node("above")]);
+    const positions = computeLayout(root, new Set(), "vertical");
+    const rootY = positions.get("root")!.y;
+    expect(positions.get("below")!.y).toBeGreaterThan(rootY);
+    expect(positions.get("above")!.y).toBeLessThan(rootY);
+  });
+
+  it("spreads same-depth siblings sideways at a shared depth line", () => {
+    const root = node("root", [node("a"), node("b"), node("c")]);
+    const positions = computeLayout(root, new Set(), "vertical");
+    const a = positions.get("a")!;
+    const b = positions.get("b")!;
+    expect(a.y).toBe(b.y);
+    expect(a.x).not.toBe(b.x);
+  });
+
+  it("grows depth along y, not x", () => {
+    const root = node("root", [node("a", [node("a1")])]);
+    const positions = computeLayout(root, new Set(), "vertical");
+    const a = positions.get("a")!;
+    const a1 = positions.get("a1")!;
+    expect(a1.y).toBeGreaterThan(a.y);
+    expect(a1.x).toBe(a.x);
+  });
+
+  it("leaves same-side sibling spacing wide enough for the widest node", () => {
+    // Three children: a and b share the downward half, c takes the upward one.
+    const root = node("root", [node("a"), node("b"), node("c")]);
+    const positions = computeLayout(root, new Set(), "vertical");
+    const gap = Math.abs(positions.get("a")!.x - positions.get("b")!.x);
+    expect(gap).toBeGreaterThanOrEqual(HORIZONTAL_GAP);
+  });
+
+  it("defaults to horizontal when no orientation is given", () => {
+    const root = node("root", [node("a")]);
+    expect(computeLayout(root, new Set())).toEqual(computeLayout(root, new Set(), "horizontal"));
+  });
+});
+
+describe("computeSubtreeLayout — vertical orientation", () => {
+  it("places children below when direction is 1", () => {
+    const root = node("r", [node("c")]);
+    const positions = computeSubtreeLayout(root, new Set(), 1, "vertical");
+    expect(positions.get("c")!.y).toBeGreaterThan(0);
+  });
+
+  it("places children above when direction is -1", () => {
+    const root = node("r", [node("c")]);
+    const positions = computeSubtreeLayout(root, new Set(), -1, "vertical");
+    expect(positions.get("c")!.y).toBeLessThan(0);
   });
 });

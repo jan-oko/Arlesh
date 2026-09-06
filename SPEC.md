@@ -219,7 +219,17 @@ Filterable fields: parent domain/task, dependency, status, delegate-to, delegate
 
 ### Mindmap (Tree View)
 
-A canvas-based mind map editor. Layout: **left-right balanced tree** — children alternate left and right of their parent node. Implemented with a custom SVG renderer using D3's tree layout algorithm.
+A canvas-based mind map editor. Layout: a **balanced tree** whose branches grow along one of two
+orientations, toggled by the **Vertical layout** switch in the settings popover and persisted with
+the rest of the view state:
+
+- **Horizontal** (default) — the first ⌈n/2⌉ of the root's children go right, the rest left.
+- **Vertical** — the same split, rotated: the first half go down, the rest up.
+
+Implemented with a custom SVG renderer using D3's tree layout algorithm. The orientation decides
+which axis carries depth and which carries sibling spread; arrow-key navigation follows it, so the
+branch axis always walks parent↔child and the other always walks siblings. Flipping the orientation
+pans the canvas to keep the selected node (or the display root) in view.
 
 The root of the map is "Arlesh" (top level). Aspect cells are its direct children.
 
@@ -290,7 +300,7 @@ On top of the shared filters, the List View adds its own filter dimensions — a
 ## Implementation Phases
 
 1. **Data layer** — schema, migrations, Tauri commands, integration tests. No UI.
-2. **Mindmap view** — SVG-based left-right balanced tree editor with full keyboard interaction.
+2. **Mindmap view** — SVG-based balanced tree editor (horizontal or vertical) with full keyboard interaction.
 3. **List view** — filterable task list sharing the Mindmap's filters plus its own preset (All/Plan/Start/Do/Unblock) and pill-filter dimensions. Complete.
 4. **KB resources backend** — People, Events, Threads, Scopes as local DB entities. Obsidian integration stubbed behind an adapter interface.
 5. **Obsidian integration** — replace stub adapter with real Obsidian local-rest-api client. Note discovery, bidirectional sync.

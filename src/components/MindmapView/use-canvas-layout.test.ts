@@ -18,6 +18,7 @@ function baseOptions(overrides: Partial<Parameters<typeof useCanvasLayout>[0]> =
     collapsedNodeIds: new Set<string>(),
     dragSourceId: null,
     dragTargetId: null,
+    orientation: "horizontal" as const,
     ...overrides,
   };
 }
@@ -65,5 +66,35 @@ describe("useCanvasLayout", () => {
     })));
     expect(result.current.placeholderPos).not.toBeNull();
     expect(result.current.placeholderPos!.x).toBeGreaterThan(0);
+  });
+});
+
+describe("useCanvasLayout — vertical orientation", () => {
+  function verticalOptions(overrides: Partial<Parameters<typeof useCanvasLayout>[0]> = {}) {
+    return baseOptions({ orientation: "vertical" as const, ...overrides });
+  }
+
+  it("lays the tree out down the y axis", () => {
+    const { result } = renderHook(() => useCanvasLayout(verticalOptions()));
+    expect(result.current.positions.get("aspect")!.y).toBeGreaterThan(0);
+    expect(result.current.positions.get("aspect")!.x).toBe(0);
+  });
+
+  it("places the drop placeholder below a target below the root", () => {
+    const { result } = renderHook(() => useCanvasLayout(verticalOptions({
+      dragSourceId: "leaf",
+      dragTargetId: "aspect",
+    })));
+    const placeholder = result.current.placeholderPos;
+    expect(placeholder).not.toBeNull();
+    expect(placeholder!.y).toBeGreaterThan(result.current.positions.get("aspect")!.y);
+  });
+
+  it("gives the placeholder the depth of a child of the target", () => {
+    const { result } = renderHook(() => useCanvasLayout(verticalOptions({
+      dragSourceId: "leaf",
+      dragTargetId: "aspect",
+    })));
+    expect(result.current.placeholderPos!.depth).toBe(result.current.positions.get("aspect")!.depth + 1);
   });
 });

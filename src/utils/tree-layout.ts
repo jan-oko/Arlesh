@@ -135,14 +135,22 @@ export const HORIZONTAL_GAP = 220;
 export const VERTICAL_GAP = 90;
 
 /**
- * Computes pixel positions for every visible node in a left-right balanced mind map.
+ * Which axis branches grow along: `horizontal` spreads them left/right of the root,
+ * `vertical` spreads them down/up.
+ */
+export type Orientation = "horizontal" | "vertical";
+
+/**
+ * Computes pixel positions for every visible node in a balanced mind map.
  *
- * Root sits at (0, 0). The first ⌈n/2⌉ children go right (positive x);
- * the remainder go left (negative x). depth reflects distance from the display root.
+ * Root sits at (0, 0). The first ⌈n/2⌉ children take the positive direction along the
+ * orientation's branch axis (right when horizontal, down when vertical); the remainder take
+ * the negative one. depth reflects distance from the display root.
  */
 export function computeLayout(
   root: MindmapNode,
   collapsedIds: ReadonlySet<string>,
+  orientation: Orientation = "horizontal",
 ): Map<string, Position> {
   const positions = new Map<string, Position>();
   positions.set(root.id, { x: 0, y: 0, depth: 0 });
@@ -151,11 +159,11 @@ export function computeLayout(
   if (visibleChildren.length === 0) return positions;
 
   const splitIndex = Math.ceil(visibleChildren.length / 2);
-  const rightChildren = visibleChildren.slice(0, splitIndex);
-  const leftChildren = visibleChildren.slice(splitIndex);
+  const positiveChildren = visibleChildren.slice(0, splitIndex);
+  const negativeChildren = visibleChildren.slice(splitIndex);
 
-  layoutSubtree(rightChildren, collapsedIds, positions, 1);
-  layoutSubtree(leftChildren, collapsedIds, positions, -1);
+  layoutSubtree(positiveChildren, collapsedIds, positions, 1, orientation);
+  layoutSubtree(negativeChildren, collapsedIds, positions, -1, orientation);
 
   return positions;
 }
@@ -165,6 +173,7 @@ function layoutSubtree(
   collapsedIds: ReadonlySet<string>,
   positions: Map<string, Position>,
   direction: 1 | -1,
+  orientation: Orientation,
 ): void {
   if (children.length === 0) return;
 
@@ -177,17 +186,24 @@ function layoutSubtree(
     children,
   };
 
+  const isVertical = orientation === "vertical";
+  // d3.tree's nodeSize is [breadth, depth]. Sibling spacing must clear the widest node on the
+  // breadth axis, so the two gaps swap roles with the orientation.
+  const nodeSize: [number, number] = isVertical
+    ? [HORIZONTAL_GAP, VERTICAL_GAP]
+    : [VERTICAL_GAP, HORIZONTAL_GAP];
+
   const pruned = pruneCollapsed(virtualRoot, collapsedIds);
   const rootHierarchy = hierarchy(pruned, (node) => node.children);
-  const layout = tree<MindmapNode>().nodeSize([VERTICAL_GAP, HORIZONTAL_GAP]);
+  const layout = tree<MindmapNode>().nodeSize(nodeSize);
   const pointRoot = layout(rootHierarchy);
 
   pointRoot.each((node) => {
     if (node.data.id === "__virtual__") return;
-    // d3.tree: x = breadth, y = depth; rotate to horizontal layout
+    // d3.tree: x = breadth, y = depth. Vertical keeps that mapping; horizontal rotates it.
     positions.set(node.data.id, {
-      x: direction * node.y,
-      y: node.x,
+      x: isVertical ? node.x : direction * node.y,
+      y: isVertical ? direction * node.y : node.x,
       depth: node.depth,
     });
   });
@@ -201,11 +217,12 @@ export function computeSubtreeLayout(
   root: MindmapNode,
   collapsedIds: ReadonlySet<string>,
   direction: 1 | -1,
+  orientation: Orientation = "horizontal",
 ): Map<string, Position> {
   const positions = new Map<string, Position>();
   positions.set(root.id, { x: 0, y: 0, depth: 0 });
   if (!collapsedIds.has(root.id) && root.children.length > 0) {
-    layoutSubtree(root.children, collapsedIds, positions, direction);
+    layoutSubtree(root.children, collapsedIds, positions, direction, orientation);
   }
   return positions;
 }
