@@ -97,21 +97,30 @@ export function typeHardHidden(node: MindmapNode, f: FilterState): boolean {
 
 /** Forces an archived-like node to self-match when archivedMode is `include`, overriding whatever the
  * active preset would otherwise decide (e.g. Plan/Start's bundled hiding of Archived goals). `exclude`
- * needs no handling here — it hard-hides the whole subtree earlier, in `typeHardHidden`. */
-function withArchivedOverride(node: MindmapNode, f: FilterState, base: boolean): boolean {
+ * needs no handling here — it hard-hides the whole subtree earlier, in `typeHardHidden`. Shared with
+ * List View's own preset predicate so both surfaces read `archived` the same way. */
+export function withArchivedOverride(node: MindmapNode, f: FilterState, base: boolean): boolean {
   if (f.archivedMode === "include" && isArchived(node)) return true;
   return base;
 }
 
-/** Whether a node's own status satisfies the active mode. */
-function passesStatus(node: MindmapNode, f: FilterState): boolean {
+/** The status a container falls back to when neither it nor any ancestor carries one. */
+const UNSET_STATUS = "active";
+
+/**
+ * Whether a node's own status satisfies the active mode. `inheritedStatus` is the nearest
+ * status-bearing container ancestor's status, used only for containers of their own: a Domain/Aspect
+ * can never be given a status (only a Project can), so judging one on its own status alone made every
+ * Domain read as unresolved — keeping an achieved Project visible in Plan as their ancestor.
+ */
+function passesStatus(node: MindmapNode, f: FilterState, inheritedStatus: string): boolean {
   // In any filtered mode, structural containers never match on their own — they show only when they
   // hold a content match (so empty/fully-resolved containers drop out). Exception: in Plan, an active
   // aspect/domain/project shows on its own — planning may mean adding items to an empty one. (Resolved
   // ones, and tags, stay ancestor-only.)
   if (f.statusMode !== "all" && STRUCTURAL_KINDS.has(node.kind)) {
     if (f.statusMode === "plan" && node.kind !== "tag") {
-      return withArchivedOverride(node, f, !RESOLVED_GOAL.has(node.status ?? ""));
+      return withArchivedOverride(node, f, !RESOLVED_GOAL.has(node.status ?? inheritedStatus));
     }
     return false;
   }
@@ -163,8 +172,8 @@ export function passesTags(node: MindmapNode, f: FilterState): boolean {
   return true;
 }
 
-function selfMatches(node: MindmapNode, f: FilterState): boolean {
-  return passesStatus(node, f) && passesTags(node, f);
+function selfMatches(node: MindmapNode, f: FilterState, inheritedStatus: string): boolean {
+  return passesStatus(node, f, inheritedStatus) && passesTags(node, f);
 }
 
 /**
@@ -174,20 +183,25 @@ function selfMatches(node: MindmapNode, f: FilterState): boolean {
  * root is always returned as a container (possibly empty) so the canvas has something to render.
  */
 export function filterTree(root: MindmapNode, f: FilterState): MindmapNode {
-  function prune(node: MindmapNode): MindmapNode | null {
+  function prune(node: MindmapNode, inheritedStatus: string): MindmapNode | null {
     if (typeHardHidden(node, f)) return null;
+    // Only containers pass a status down — a Goal/Task always carries its own, and no container ever
+    // sits beneath one, so their statuses must not leak into the chain.
+    const inheritedForChildren = STRUCTURAL_KINDS.has(node.kind)
+      ? node.status ?? inheritedStatus
+      : inheritedStatus;
     const children: MindmapNode[] = [];
     let hasContentMatch = false;
     for (const child of node.children) {
-      const pruned = prune(child);
+      const pruned = prune(child, inheritedForChildren);
       if (pruned === null) continue;
       children.push(pruned);
       if (child.kind !== "info") hasContentMatch = true;
     }
     // Info is carried by its parent's decision (visibility already handled by typeHardHidden above).
     if (node.kind === "info") return { ...node, children };
-    if (selfMatches(node, f) || hasContentMatch) return { ...node, children };
+    if (selfMatches(node, f, inheritedStatus) || hasContentMatch) return { ...node, children };
     return null;
   }
-  return prune(root) ?? { ...root, children: [] };
+  return prune(root, UNSET_STATUS) ?? { ...root, children: [] };
 }

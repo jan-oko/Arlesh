@@ -1,6 +1,6 @@
 import type { MindmapNode } from "@/utils/tree-layout";
-import type { FilterState, StatusMode, TagFilterMode } from "@/utils/filter-tree";
-import { typeHardHidden, passesTags } from "@/utils/filter-tree";
+import type { FilterState, TagFilterMode } from "@/utils/filter-tree";
+import { typeHardHidden, passesTags, withArchivedOverride } from "@/utils/filter-tree";
 import { TASK_STATUS, GOAL_STATUS, PROJECT_STATUS } from "@/utils/status-mapping";
 
 /** Same any/all/exclude semantics as a tag filter, reused across every List View filter dimension. */
@@ -142,17 +142,19 @@ export function deriveScopeStateTokens(node: MindmapNode): string[] {
 }
 
 /** Task-only status-preset predicate (List View rows are always tasks, so no container logic is
- * needed here, unlike the Mindmap's passesStatus). Mirrors filter-tree.ts's task branches, plus an
- * explicit blocked-ancestor check since a flat list has no tree-pruning to cut off a blocked subtree. */
-function passesListPreset(row: TaskListRow, statusMode: StatusMode): boolean {
-  switch (statusMode) {
+ * needed here, unlike the Mindmap's passesStatus). Mirrors filter-tree.ts's task branches — including
+ * its effective-Archival clause, so a lapsed task archives out of Plan here exactly as it does on the
+ * canvas — plus an explicit blocked-ancestor check, since a flat list has no tree-pruning to cut off a
+ * blocked subtree. */
+function passesListPreset(row: TaskListRow, f: FilterState): boolean {
+  switch (f.statusMode) {
     case "all":
       return true;
     case "plan":
-      return row.node.status !== "done";
+      return withArchivedOverride(row.node, f, row.node.status !== "done" && row.node.archived !== true);
     case "start": {
       if (row.isBlocked || row.hasBlockedAncestor) return false;
-      if (row.node.timing === "lapsed") return false;
+      if (row.node.timing === "lapsed") return withArchivedOverride(row.node, f, false);
       if (row.node.status === "done") return false;
       if (row.node.status === "in_progress" && !row.node.children.some((c) => c.kind === "task" && c.status === "todo")) {
         return false;
@@ -176,7 +178,7 @@ export function filterTaskList(
     if (shared.workMode && row.hasNsfwAncestor) return false;
     if (listFilter.preset === "unblock") {
       if (!row.isBlocked) return false;
-    } else if (!passesListPreset(row, shared.statusMode)) {
+    } else if (!passesListPreset(row, shared)) {
       return false;
     }
     if (!passesTags(row.node, shared)) return false;

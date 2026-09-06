@@ -205,3 +205,33 @@ describe("filterTaskList", () => {
     expect(filterTaskList(rows, sf({ tagFilters: [{ tagId: 6, mode: "any" }] }), filter)).toHaveLength(0);
   });
 });
+
+describe("filterTaskList — archived tasks under the Plan preset", () => {
+  const archivedTask = () =>
+    n("task-archived", "task", {
+      status: "todo", timeScope: { start_id: 1, end_id: 1 }, timing: "lapsed",
+      resolution: "missed", archived: true,
+    });
+
+  it("plan preset hides a task whose effective Archival is archived, even when it isn't done", () => {
+    expect(filterTaskList([row({ node: archivedTask() })], sf({ statusMode: "plan" }), lf())).toEqual([]);
+  });
+
+  it("archivedMode include force-shows an archived task under Plan", () => {
+    const kept = filterTaskList([row({ node: archivedTask() })], sf({ statusMode: "plan", archivedMode: "include" }), lf());
+    expect(kept.map((r) => r.node.id)).toEqual(["task-archived"]);
+  });
+
+  it("archivedMode include force-shows a lapsed task under Start", () => {
+    const kept = filterTaskList([row({ node: archivedTask() })], sf({ statusMode: "start", archivedMode: "include" }), lf());
+    expect(kept.map((r) => r.node.id)).toEqual(["task-archived"]);
+  });
+
+  it("plan preset still shows an unfinished task that is merely overdue, not archived", () => {
+    const overdue = n("task-overdue", "task", {
+      status: "todo", timeScope: { start_id: 1, end_id: 1 }, timing: "lapsed", resolution: "overdue",
+    });
+    const kept = filterTaskList([row({ node: overdue })], sf({ statusMode: "plan" }), lf());
+    expect(kept.map((r) => r.node.id)).toEqual(["task-overdue"]);
+  });
+});

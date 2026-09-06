@@ -362,3 +362,61 @@ describe("filterTree — Work mode hides NSFW subtrees", () => {
     expect(kept).toContain("task-clean");
   });
 });
+
+describe("filterTree — a status-less container inherits its nearest status-bearing ancestor", () => {
+  const plan = f({ statusMode: "plan" });
+
+  it("hides a status-less domain under an achieved project, so the project drops out too", () => {
+    const t = n("root", "domain", {}, [
+      n("project-achieved", "project", { status: "achieved" }, [n("domain-1", "domain")]),
+    ]);
+    const kept = ids(filterTree(t, plan));
+    expect(kept).not.toContain("domain-1");
+    expect(kept).not.toContain("project-achieved");
+  });
+
+  it("hides a status-less domain under an archived project too", () => {
+    const t = n("root", "domain", {}, [
+      n("project-archived", "project", { status: "archived" }, [n("domain-1", "domain")]),
+    ]);
+    expect(ids(filterTree(t, plan))).not.toContain("domain-1");
+  });
+
+  it("still shows a status-less domain under an active project (planning into an empty one)", () => {
+    const t = n("root", "domain", {}, [
+      n("project-active", "project", { status: "active" }, [n("domain-1", "domain")]),
+    ]);
+    const kept = ids(filterTree(t, plan));
+    expect(kept).toContain("domain-1");
+    expect(kept).toContain("project-active");
+  });
+
+  it("inherits through an intermediate status-less domain (the reported COMMAND case)", () => {
+    const t = n("root", "domain", {}, [
+      n("project-achieved", "project", { status: "achieved" }, [
+        n("domain-outer", "domain", {}, [n("domain-inner", "domain")]),
+      ]),
+    ]);
+    const kept = ids(filterTree(t, plan));
+    expect(kept).not.toContain("domain-inner");
+    expect(kept).not.toContain("domain-outer");
+    expect(kept).not.toContain("project-achieved");
+  });
+
+  it("treats a domain with no status-bearing ancestor at all as active", () => {
+    const t = n("root", "domain", {}, [n("aspect-1", "aspect", {}, [n("domain-1", "domain")])]);
+    expect(ids(filterTree(t, plan))).toContain("domain-1");
+  });
+
+  it("keeps an achieved project whose subtree still holds an unresolved task", () => {
+    const t = n("root", "domain", {}, [
+      n("project-achieved", "project", { status: "achieved" }, [
+        n("domain-1", "domain", {}, [n("task-todo", "task", { status: "todo" })]),
+      ]),
+    ]);
+    const kept = ids(filterTree(t, plan));
+    expect(kept).toContain("task-todo");
+    expect(kept).toContain("domain-1");
+    expect(kept).toContain("project-achieved");
+  });
+});
