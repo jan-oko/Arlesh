@@ -59,9 +59,9 @@ export interface BindingMeta {
   /** i18n key in the `hotkeys` namespace. */
   labelKey: string;
   /**
-   * Dispatchable but not listed on the sheet. Used for the numpad aliases: `Ctrl+NumpadAdd` and
-   * `Ctrl+NumpadSubtract` dispatch zoom exactly as `Ctrl+=` / `Ctrl+-` do, but listing them as
-   * separate rows would just duplicate the zoom entries.
+   * Dispatchable but not listed on the sheet, for entries that duplicate a listed row:
+   * the numpad zoom aliases (`Ctrl+NumpadAdd` / `Ctrl+NumpadSubtract` alongside `Ctrl+=` / `Ctrl+-`)
+   * and the `Shift+Arrow` navigate/pan fall-throughs (see the dispatcher section).
    */
   hidden?: boolean;
 }
@@ -110,11 +110,26 @@ the **first** binding whose `chord` matches and whose `when(ctx)` passes, then c
 `event.preventDefault()` and `run(ctx)`. A binding with `allowRepeat: false` is skipped while
 `event.repeat` is true.
 
-Order encodes precedence. The three `ArrowLeft` behaviours become three ordered entries —
-extend-selection, navigate, pan-canvas — with mutually exclusive guards, replacing the current
-if/else chain. Because the registry is consulted in order and stops at the first match, the existing
-"Alt-group is checked before the main switch" special case disappears: `Alt+S` is simply a distinct
-chord from bare `S`, so the fall-through hazard the current comment warns about cannot arise.
+Order encodes precedence, and it only matters between entries that **share** a chord. Because
+matching is strict, the existing "Alt-group is checked before the main switch" special case
+disappears: `Alt+S` is simply a distinct chord from bare `S`, so the fall-through hazard the current
+comment warns about cannot arise.
+
+The arrow keys are where shared chords actually occur, and they need care. `Shift+Arrow` has **three**
+ordered behaviours in the current code, not one — the `else if` chain falls through:
+
+1. extend the selection, when the arrow lies on the sibling axis for the current orientation;
+2. otherwise **navigate**, when something is selected;
+3. otherwise **pan the canvas**.
+
+Step 2 is real, tested behaviour (`"horizontal: Shift+Right navigates instead of extending"`), so it
+must be modelled explicitly rather than lost. Each arrow therefore expands to a small ordered family
+— `Shift+…` extend / navigate / pan, then plain navigate / pan, plus `Ctrl+…` cycle-type and
+`Alt+…` reorder on Up/Down. A `arrowBindings(key)` factory generates the family so the table stays
+readable instead of listing 24 near-identical literals.
+
+The `Shift+…` navigate and pan entries are marked `hidden`: they exist to preserve behaviour, but
+listing them would duplicate the plain arrow rows on the sheet.
 
 The dispatcher holds no domain knowledge and no state.
 
