@@ -208,13 +208,15 @@ themselves.
 | Labels | Unit: every non-hidden `labelKey` resolves in `en` and `he` |
 | Overlay | RTL integration: `Ctrl+Shift+/` opens it, `Escape` closes it, all three sections render, the gear-popover entry opens it |
 
-## Open items for the user
+## Decisions
 
-- **Version bump.** `VERSION.txt` is at `0.2.0`. A new feature suggests `0.3.0`; per the versioning
-  rule this is not applied without confirmation.
-- **Non-US layouts.** `Ctrl+Shift+/` resolves to the physical `Slash` key, consistent with the
-  codebase's `event.code` convention. On layouts where `/` is not on that physical key the chord is
-  still the same physical position. No alias is added unless it proves to be a problem in practice.
+- **Version.** Confirmed by the user. `VERSION.txt` is at `0.3.0`, and the accumulated `[Unreleased]`
+  work (vertical layout, Light mode, List View, the filter redesign) was cut as
+  `[0.3.0] — 2026-09-10`. The cheat-sheet's own changelog entries therefore land in the **new**
+  `[Unreleased]` section. If 0.3.0 should instead *be* the cheat-sheet release, the entries move up
+  into that section — it carries today's date, so nothing else changes.
+- **Non-US layouts.** No alias; confirmed by the user. `Ctrl+Shift+/` resolves to the physical
+  `Slash` key, consistent with the codebase's `event.code` convention.
 
 ## Out of scope
 
