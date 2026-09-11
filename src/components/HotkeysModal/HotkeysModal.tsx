@@ -20,6 +20,28 @@ const SECTIONS: ReadonlyArray<{ section: Section; titleKey: HotkeyLabelKey }> = 
 /** Every binding in the app, display-side only — the same tables the handlers dispatch from. */
 const ALL_BINDINGS: readonly BindingMeta[] = [...GLOBAL_BINDINGS, ...MINDMAP_BINDINGS, ...LIST_BINDINGS];
 
+interface Row {
+  labelKey: HotkeyLabelKey;
+  chords: string[];
+}
+
+/**
+ * One row per distinct action, carrying every chord that triggers it — so the four arrow keys read
+ * as a single "← → ↑ ↓ move between cells" row rather than four identical lines. Order follows each
+ * action's first appearance in the table.
+ */
+function rowsFor(section: Section): Row[] {
+  const rows: Row[] = [];
+  for (const binding of ALL_BINDINGS) {
+    if (binding.section !== section || binding.hidden === true) continue;
+    const chord = formatChord(binding.chord);
+    const existing = rows.find((r) => r.labelKey === binding.labelKey);
+    if (existing === undefined) rows.push({ labelKey: binding.labelKey, chords: [chord] });
+    else if (!existing.chords.includes(chord)) existing.chords.push(chord);
+  }
+  return rows;
+}
+
 /** Ctrl+Shift+/ cheat-sheet: every keyboard binding, grouped by the surface it applies to. */
 export default function HotkeysModal({ onClose }: Props) {
   const { t } = useTranslation(["hotkeys"]);
@@ -41,16 +63,18 @@ export default function HotkeysModal({ onClose }: Props) {
         <h2 className={styles.title}>{t("hotkeys:title")}</h2>
         <div className={styles.sections}>
           {SECTIONS.map(({ section, titleKey }) => {
-            const rows = ALL_BINDINGS.filter((b) => b.section === section && b.hidden !== true);
+            const rows = rowsFor(section);
             if (rows.length === 0) return null;
             return (
               <section key={section} className={styles.section}>
                 <h3 className={styles.sectionTitle}>{t(`hotkeys:${titleKey}`)}</h3>
                 <dl className={styles.list}>
-                  {rows.map((binding) => (
-                    <div key={binding.id} className={styles.row}>
-                      <dt className={styles.chord}><kbd>{formatChord(binding.chord)}</kbd></dt>
-                      <dd className={styles.label}>{t(`hotkeys:${binding.labelKey}`)}</dd>
+                  {rows.map((row) => (
+                    <div key={row.labelKey} className={styles.row}>
+                      <dt className={styles.chord}>
+                        {row.chords.map((chord) => <kbd key={chord}>{chord}</kbd>)}
+                      </dt>
+                      <dd className={styles.label}>{t(`hotkeys:${row.labelKey}`)}</dd>
                     </div>
                   ))}
                 </dl>

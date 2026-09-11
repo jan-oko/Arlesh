@@ -22,11 +22,22 @@ describe("HotkeysModal", () => {
     expect(screen.getByText("Ctrl+Shift+/")).toBeInTheDocument();
   });
 
-  it("does not render bindings marked hidden", () => {
+  it("merges every chord that triggers one action into a single row", () => {
     render(<HotkeysModal onClose={vi.fn()} />);
-    // The numpad zoom alias is hidden; the primary Ctrl+= row is not.
-    expect(screen.queryByText("Ctrl+Numpad +")).not.toBeInTheDocument();
+    // Both zoom-in chords live on one row rather than duplicating the label.
     expect(screen.getByText("Ctrl+=")).toBeInTheDocument();
+    expect(screen.getByText("Ctrl+Numpad +")).toBeInTheDocument();
+    expect(screen.getAllByText("hotkeys:zoomIn")).toHaveLength(1);
+  });
+
+  it("omits hidden bindings, so the arrow row carries only the plain arrows", () => {
+    render(<HotkeysModal onClose={vi.fn()} />);
+    const label = screen.getByText("hotkeys:navigate");
+    const row = label.closest("div");
+    expect(row).not.toBeNull();
+    const chords = [...(row?.querySelectorAll("kbd") ?? [])].map((k) => k.textContent);
+    // The hidden Shift+arrow navigate fall-throughs must not leak into this row.
+    expect(chords).toEqual(["←", "→", "↑", "↓"]);
   });
 
   it("when Escape is pressed, closes", () => {

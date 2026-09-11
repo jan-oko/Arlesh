@@ -151,7 +151,7 @@ export const MINDMAP_BINDINGS: readonly Binding<MindmapContext>[] = [
   },
   {
     id: "mindmap.cycleTypeDown", section: "mindmap", chord: { code: "ArrowDown", ctrl: true },
-    labelKey: "cycleTypeDown", hidden: true, allowRepeat: false,
+    labelKey: "cycleType", allowRepeat: false,
     when: hasSelection,
     run: (c) => { if (c.selectedNodeId !== null) c.onCycleType(c.selectedNodeId, 1); },
   },
@@ -163,16 +163,17 @@ export const MINDMAP_BINDINGS: readonly Binding<MindmapContext>[] = [
   },
   {
     id: "mindmap.reorderDown", section: "mindmap", chord: { code: "ArrowDown", alt: true },
-    labelKey: "reorderDown", hidden: true,
+    labelKey: "reorder",
     when: hasSelection,
     run: (c) => { if (c.selectedNodeId !== null) c.onReorder(c.selectedNodeId, 1); },
   },
 
   // --- Arrow families ------------------------------------------------------------------------
+  // All four share one label so the cheat-sheet merges them into a single "← → ↑ ↓" row.
   ...arrowBindings("ArrowLeft", "navigate"),
-  ...arrowBindings("ArrowRight", "navigateRight"),
-  ...arrowBindings("ArrowUp", "navigateUp"),
-  ...arrowBindings("ArrowDown", "navigateDown"),
+  ...arrowBindings("ArrowRight", "navigate"),
+  ...arrowBindings("ArrowUp", "navigate"),
+  ...arrowBindings("ArrowDown", "navigate"),
 
   // --- Creation and editing ------------------------------------------------------------------
   {
@@ -252,7 +253,7 @@ export const MINDMAP_BINDINGS: readonly Binding<MindmapContext>[] = [
   },
   {
     id: "mindmap.zoomInNumpad", section: "mindmap", chord: { code: "NumpadAdd", ctrl: true },
-    labelKey: "zoomIn", hidden: true, run: (c) => c.onZoomIn(),
+    labelKey: "zoomIn", run: (c) => c.onZoomIn(),
   },
   {
     id: "mindmap.zoomOut", section: "mindmap", chord: { code: "Minus", ctrl: true },
@@ -260,7 +261,7 @@ export const MINDMAP_BINDINGS: readonly Binding<MindmapContext>[] = [
   },
   {
     id: "mindmap.zoomOutNumpad", section: "mindmap", chord: { code: "NumpadSubtract", ctrl: true },
-    labelKey: "zoomOut", hidden: true, run: (c) => c.onZoomOut(),
+    labelKey: "zoomOut", run: (c) => c.onZoomOut(),
   },
 
   // --- Subtree navigation --------------------------------------------------------------------
@@ -333,7 +334,7 @@ export const MINDMAP_BINDINGS: readonly Binding<MindmapContext>[] = [
   },
   {
     id: "mindmap.rename", section: "mindmap", chord: { code: "KeyR" },
-    labelKey: "rename", hidden: true,
+    labelKey: "rename",
     when: selectedKindIsNot("aspect"),
     run: (c) => { if (c.selectedNodeId !== null) c.onStartRename(c.selectedNodeId); },
   },

@@ -56,7 +56,10 @@
 
 .chord {
   flex: 0 0 auto;
-  min-width: 96px;
+  min-width: 112px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
 }
 
 .chord kbd {

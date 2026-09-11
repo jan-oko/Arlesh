@@ -42,16 +42,16 @@ export const LIST_BINDINGS: readonly Binding<ListContext>[] = [
   },
   ...statusBindings,
   {
+    id: "listView.navigateUp", section: "listView", chord: { code: "ArrowUp" },
+    labelKey: "navigateRows", run: (c) => c.onNavigate(-1),
+  },
+  {
     id: "listView.navigateDown", section: "listView", chord: { code: "ArrowDown" },
     labelKey: "navigateRows", run: (c) => c.onNavigate(1),
   },
   {
-    id: "listView.navigateUp", section: "listView", chord: { code: "ArrowUp" },
-    labelKey: "navigateRowsUp", hidden: true, run: (c) => c.onNavigate(-1),
-  },
-  {
     id: "listView.cycleStatus", section: "listView", chord: { code: "Enter" },
-    labelKey: "cycleStatus",
+    labelKey: "cycleRowStatus",
     when: (c) => c.selectedTaskId !== null && !c.isSelectedBlocked,
     run: (c) => { if (c.selectedTaskId !== null) c.onCycleStatus(c.selectedTaskId); },
   },
