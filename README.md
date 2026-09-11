@@ -10,6 +10,8 @@ Two main views (`Alt+L` or the top-bar tabs switch between them):
 - **Mindmap** — a left-right balanced tree editor for navigating and building the task hierarchy
 - **List** — a filterable task list sharing the Mindmap's filters, with its own preset modes (All / Plan / Start / Do / Unblock) and additional pill filters (parent, antecedent, dependency, statuses, scope, blocked)
 
+Both views are keyboard-driven; `Ctrl+Shift+/` opens a cheat-sheet listing every binding.
+
 ## Stack
 
 | Layer     | Choice                        |

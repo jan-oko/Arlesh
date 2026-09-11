@@ -8,6 +8,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **A keyboard cheat-sheet**, opened with **Ctrl+Shift+/** or from the settings popover's **Keyboard shortcuts** entry. Lists every binding in the app grouped into Global / Mindmap / List View, with the chords that share an action merged onto one row (so the four arrow keys read as a single `← → ↑ ↓` line). The list is generated from the same binding table the keyboard handlers dispatch from, so it can't fall out of date with what the keys actually do.
+
+### Fixed
+- **Keyboard shortcuts no longer fire when extra modifiers are held.** A shortcut now requires exactly the modifiers it names: **Ctrl+E** or **Shift+E** no longer open the editor (bare **E** still does), **Ctrl+Shift+C/X/V** no longer cut/copy/paste, and **Shift+Tab** no longer creates a child cell, so it returns to normal focus traversal. Most visibly, **Ctrl+Shift+/** no longer also collapses the selected node while opening the cheat-sheet.
+
 ## [0.3.0] — 2026-09-10
 
 ### Added
