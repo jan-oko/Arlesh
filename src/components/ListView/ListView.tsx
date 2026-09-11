@@ -13,12 +13,15 @@ import Switch from "@/components/Switch/Switch";
 import TaskRow from "./TaskRow";
 import GoalHeaderRow from "./GoalHeaderRow";
 import styles from "./ListView.module.css";
+import { useHotkeysStore } from "@/stores/use-hotkeys-store";
 
 export default function ListView() {
   const { t } = useTranslation(["common", "listView", "editor"]);
   const { tree, rows, allTasksAndGoals, isLoading, error, reload, onCycleStatus, renameNode } = useListData();
 
   const sharedFilter = useFilterStore((s) => s.filter);
+  // The cheat-sheet overlay gates background shortcuts the same way an open modal does.
+  const hotkeysOpen = useHotkeysStore((s) => s.isOpen);
   const addTagFilter = useFilterStore((s) => s.addTagFilter);
   const setStatusMode = useFilterStore((s) => s.setStatusMode);
   const toggleFilterPopover = useFilterStore((s) => s.toggleFilterPopover);
@@ -76,7 +79,7 @@ export default function ListView() {
   }
 
   useKeyboardListView({
-    isInputActive: editingTaskId !== null || editorModal !== null,
+    isInputActive: editingTaskId !== null || editorModal !== null || hotkeysOpen,
     selectedTaskId: activeSelectedId,
     isSelectedBlocked,
     onNavigate: handleNavigate,

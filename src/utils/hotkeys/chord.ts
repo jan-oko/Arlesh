@@ -1,5 +1,13 @@
+import type en_hotkeys from "@/i18n/locales/en/hotkeys.json";
+
 /** Which surface a binding belongs to — also the cheat-sheet's grouping. */
 export type Section = "global" | "mindmap" | "listView";
+
+/**
+ * A key of the `hotkeys` namespace. Typing it from the English locale means a binding referencing a
+ * label that doesn't exist is a compile error, not something the cheat-sheet renders as a raw key.
+ */
+export type HotkeyLabelKey = keyof typeof en_hotkeys;
 
 /**
  * A physical-key chord. Matching is strict: a modifier left unspecified must be ABSENT for the
@@ -19,7 +27,7 @@ export interface BindingMeta {
   section: Section;
   chord: Chord;
   /** Key within the `hotkeys` i18n namespace. */
-  labelKey: string;
+  labelKey: HotkeyLabelKey;
   /**
    * Dispatchable but not listed on the sheet, for entries that duplicate a listed row:
    * the numpad zoom aliases, and the Shift+Arrow navigate/pan fall-throughs.

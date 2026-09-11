@@ -19,11 +19,11 @@ function makeContext(overrides: Partial<TestContext> = {}): TestContext {
 
 const BINDINGS: readonly Binding<TestContext>[] = [
   {
-    id: "test.first", section: "global", chord: { code: "ArrowUp" }, labelKey: "first",
+    id: "test.first", section: "global", chord: { code: "ArrowUp" }, labelKey: "toggleView",
     when: (c) => c.selected !== null, run: (c) => c.onFirst(),
   },
   {
-    id: "test.second", section: "global", chord: { code: "ArrowUp" }, labelKey: "second",
+    id: "test.second", section: "global", chord: { code: "ArrowUp" }, labelKey: "deselect",
     run: (c) => c.onSecond(),
   },
 ];
@@ -72,7 +72,7 @@ describe("useHotkeys", () => {
     const onRepeatable = vi.fn();
     const ctx = makeContext();
     const bindings: readonly Binding<TestContext>[] = [{
-      id: "test.norepeat", section: "global", chord: { code: "ArrowUp", ctrl: true }, labelKey: "norepeat",
+      id: "test.norepeat", section: "global", chord: { code: "ArrowUp", ctrl: true }, labelKey: "zoomIn",
       allowRepeat: false, run: () => onRepeatable(),
     }];
     renderHook(() => useHotkeys(bindings, ctx, true));

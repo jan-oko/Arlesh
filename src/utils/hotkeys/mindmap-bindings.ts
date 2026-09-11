@@ -1,7 +1,7 @@
 import type { MindmapNode, Orientation } from "@/utils/tree-layout";
 import { isNodeBlocked } from "@/utils/tree-layout";
 import type { StatusMode } from "@/utils/filter-tree";
-import type { Binding } from "./chord";
+import type { Binding, HotkeyLabelKey } from "./chord";
 
 export type ArrowKey = "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown";
 
@@ -84,7 +84,7 @@ function extendsSelection(orientation: Orientation, key: ArrowKey): boolean {
  * three are modelled explicitly. The navigate/pan Shift variants are hidden from the cheat-sheet
  * because they duplicate the plain arrow rows.
  */
-function arrowBindings(key: ArrowKey, labelKey: string): readonly Binding<MindmapContext>[] {
+function arrowBindings(key: ArrowKey, labelKey: HotkeyLabelKey): readonly Binding<MindmapContext>[] {
   return [
     {
       id: `mindmap.extendSelection.${key}`, section: "mindmap", chord: { code: key, shift: true },
@@ -117,7 +117,7 @@ function arrowBindings(key: ArrowKey, labelKey: string): readonly Binding<Mindma
   ];
 }
 
-const STATUS_PRESETS: ReadonlyArray<{ code: string; mode: StatusMode; labelKey: string }> = [
+const STATUS_PRESETS: ReadonlyArray<{ code: string; mode: StatusMode; labelKey: HotkeyLabelKey }> = [
   { code: "KeyA", mode: "all", labelKey: "statusAll" },
   { code: "KeyP", mode: "plan", labelKey: "statusPlan" },
   { code: "KeyS", mode: "start", labelKey: "statusStart" },

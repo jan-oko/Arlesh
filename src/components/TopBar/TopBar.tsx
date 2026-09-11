@@ -5,6 +5,7 @@ import { useFilterStore } from "@/stores/use-filter-store";
 import { useListFilterStore } from "@/stores/use-list-filter-store";
 import { useViewStore } from "@/stores/use-view-store";
 import { useThemeStore } from "@/stores/use-theme-store";
+import { useHotkeysStore } from "@/stores/use-hotkeys-store";
 import { LIST_PRESET_VALUES, isListPreset } from "@/utils/list-filter";
 import type { ListPreset } from "@/utils/list-filter";
 import FilterPopover from "@/components/FilterPopover/FilterPopover";
@@ -48,6 +49,7 @@ export default function TopBar() {
   const setListPreset = useListFilterStore((s) => s.setPreset);
   const theme = useThemeStore((s) => s.theme);
   const toggleTheme = useThemeStore((s) => s.toggleTheme);
+  const toggleHotkeys = useHotkeysStore((s) => s.toggle);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const backArrow = i18n.dir() === "rtl" ? "→" : "←";
@@ -99,6 +101,15 @@ export default function TopBar() {
                       />
                     </div>
                   )}
+                  <div className={styles.settingRow}>
+                    <button
+                      className={styles.langToggle}
+                      type="button"
+                      onClick={() => { setSettingsOpen(false); toggleHotkeys(); }}
+                    >
+                      {t("common:keyboardShortcuts")}
+                    </button>
+                  </div>
                 </div>
               </>
             )}

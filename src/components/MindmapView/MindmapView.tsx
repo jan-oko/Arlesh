@@ -19,6 +19,7 @@ import DragGhost from "@/components/DragGhost/DragGhost";
 import DragPlaceholder from "@/components/DragPlaceholder/DragPlaceholder";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useViewStore } from "@/stores/use-view-store";
+import { useHotkeysStore } from "@/stores/use-hotkeys-store";
 import { filterTree } from "@/utils/filter-tree";
 import StatusToast from "@/components/StatusToast/StatusToast";
 import TaskEditorModal from "@/components/TaskEditorModal/TaskEditorModal";
@@ -72,6 +73,8 @@ export default function MindmapView() {
     return acc;
   }, [tree]);
   const mindmapOrientation = useViewStore((s) => s.mindmapOrientation);
+  // The cheat-sheet overlay gates background shortcuts the same way an open modal does.
+  const hotkeysOpen = useHotkeysStore((s) => s.isOpen);
   const filter = useFilterStore((s) => s.filter);
   const setStatusMode = useFilterStore((s) => s.setStatusMode);
   const toggleFilterPopover = useFilterStore((s) => s.toggleFilterPopover);
@@ -414,7 +417,7 @@ export default function MindmapView() {
   }, [selectedNodeId, tree, selectNode, setSelection]);
 
   useKeyboardMindmap({
-    isInputActive: editingNodeId !== null || editorModal !== null || flowCreateParent !== null || startFlowNode !== null || convertNode !== null || deleteTargets !== null || nodeSearchOpen,
+    isInputActive: editingNodeId !== null || editorModal !== null || flowCreateParent !== null || startFlowNode !== null || convertNode !== null || deleteTargets !== null || nodeSearchOpen || hotkeysOpen,
     isWarningActive: warningModal !== null,
     onDismissWarning: () => setWarningModal(null),
     selectedNodeId,

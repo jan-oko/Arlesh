@@ -1,5 +1,5 @@
 import type { StatusMode } from "@/utils/filter-tree";
-import type { Binding } from "./chord";
+import type { Binding, HotkeyLabelKey } from "./chord";
 
 /** What the List View bindings act on — the hook's options minus its gating flag. */
 export interface ListContext {
@@ -16,7 +16,7 @@ export interface ListContext {
 }
 
 /** Alt+letter → status preset, matched on physical key so it works under any layout. */
-const STATUS_PRESETS: ReadonlyArray<{ code: string; mode: StatusMode; labelKey: string }> = [
+const STATUS_PRESETS: ReadonlyArray<{ code: string; mode: StatusMode; labelKey: HotkeyLabelKey }> = [
   { code: "KeyA", mode: "all", labelKey: "statusAll" },
   { code: "KeyP", mode: "plan", labelKey: "statusPlan" },
   { code: "KeyS", mode: "start", labelKey: "statusStart" },
