@@ -32,7 +32,7 @@ vi.mock("@/hooks/use-scope-labels", () => ({
 function mkDomain(overrides: Partial<Domain> = {}): Domain {
   return {
     id: 1, title: "Domain", description: null, subtype: "aspect",
-    parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, nsfw: false,
+    parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false,
     ...overrides,
   };
 }
@@ -40,7 +40,7 @@ function mkDomain(overrides: Partial<Domain> = {}): Domain {
 function mkGoal(overrides: Partial<Goal> = {}): Goal {
   return {
     id: 1, title: "Goal", parent_type: "domain", parent_id: 1,
-    status: "active", time_scope: null, on_scope_exit: null, tag_ids: [], position: 0, nsfw: false,
+    status: "active", time_scope: null, on_scope_exit: null, tag_ids: [], position: 0, is_private: false,
     ...overrides,
   };
 }
@@ -48,14 +48,14 @@ function mkGoal(overrides: Partial<Goal> = {}): Goal {
 function mkTask(overrides: Partial<Task> = {}): Task {
   return {
     id: 1, title: "Task", parent_type: "goal", parent_id: 1,
-    status: "todo", delegate_to: null, time_scope: null, on_scope_exit: null, plan: null, tag_ids: [], position: 0, nsfw: false,
+    status: "todo", delegate_to: null, time_scope: null, on_scope_exit: null, plan: null, tag_ids: [], position: 0, is_private: false,
     ...overrides,
   };
 }
 
 function mkInfo(overrides: Partial<Info> = {}): Info {
   return {
-    id: 1, body: "Note", details: null, parent_type: "task", parent_id: 1, position: 0, nsfw: false,
+    id: 1, body: "Note", details: null, parent_type: "task", parent_id: 1, position: 0, is_private: false,
     ...overrides,
   };
 }
@@ -263,9 +263,9 @@ describe("buildTree", () => {
 
   it("wires flow items under their flow with cycles, deps, and the flow's scope", () => {
     const aspect = mkDomain({ id: 1, subtype: "aspect" });
-    const flow = { id: 5, title: "Feature", instance_type: "task" as const, parent_type: "aspect", parent_id: 1, target_type: null, target_id: null, flow_duration_n: 2, flow_duration_kind: "week", flow_window_part: null, flow_window_time_start: null, flow_window_time_end: null, is_habit: false, root_plan_kind: null, root_plan_start: null, root_plan_end: null, position: 0, nsfw: false };
-    const specify = { id: 1, flow_id: 5, title: "Specify", parent_type: "flow", parent_id: 5, blocked_reason: null, position: 0, nsfw: false };
-    const implement = { id: 2, flow_id: 5, title: "Implement", parent_type: "flow", parent_id: 5, blocked_reason: null, position: 1, nsfw: false };
+    const flow = { id: 5, title: "Feature", instance_type: "task" as const, parent_type: "aspect", parent_id: 1, target_type: null, target_id: null, flow_duration_n: 2, flow_duration_kind: "week", flow_window_part: null, flow_window_time_start: null, flow_window_time_end: null, is_habit: false, root_plan_kind: null, root_plan_start: null, root_plan_end: null, position: 0, is_private: false };
+    const specify = { id: 1, flow_id: 5, title: "Specify", parent_type: "flow", parent_id: 5, blocked_reason: null, position: 0, is_private: false };
+    const implement = { id: 2, flow_id: 5, title: "Implement", parent_type: "flow", parent_id: 5, blocked_reason: null, position: 1, is_private: false };
     const cycle = { id: 1, flow_id: 5, item_type: "flow_task" as const, item_id: 1, scope_kind: "day", scope_index: 3, plan_kind: null, plan_start: null, plan_end: null, position: 0 };
     const dep = { id: 1, flow_id: 5, dependent_type: "flow_task" as const, dependent_id: 2, depends_on_type: "flow_task" as const, depends_on_id: 1 };
 
@@ -721,7 +721,7 @@ describe("useMindmapData — mutations", () => {
         id: 7, title: "Standup", instance_type: "task", parent_type: "domain", parent_id: 1,
         target_type: null, target_id: null, flow_duration_n: 1, flow_duration_kind: "week",
         flow_window_part: null, flow_window_time_start: null, flow_window_time_end: null,
-        is_habit: false, root_plan_kind: null, root_plan_start: null, root_plan_end: null, position: 0, nsfw: false, ...overrides,
+        is_habit: false, root_plan_kind: null, root_plan_start: null, root_plan_end: null, position: 0, is_private: false, ...overrides,
       };
     }
 
@@ -868,7 +868,7 @@ describe("injectHabitInstances", () => {
       target_type: "goal", target_id: 5,
       flow_duration_n: 1, flow_duration_kind: "week",
       flow_window_part: null, flow_window_time_start: null, flow_window_time_end: null,
-      is_habit: false, root_plan_kind: null, root_plan_start: null, root_plan_end: null, position: 0, nsfw: false, ...overrides,
+      is_habit: false, root_plan_kind: null, root_plan_start: null, root_plan_end: null, position: 0, is_private: false, ...overrides,
     };
   }
   function iter(index: number, status: HabitIteration["status"]): HabitIteration {
@@ -879,8 +879,8 @@ describe("injectHabitInstances", () => {
 
   it("adds a virtual, read-only child per iteration under the flow's target", () => {
     const root = buildTree(
-      [{ id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, nsfw: false }],
-      [{ id: 5, title: "Fitness", parent_type: "domain", parent_id: 1, status: "active", time_scope: null, on_scope_exit: null, tag_ids: [], position: 0, nsfw: false }],
+      [{ id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false }],
+      [{ id: 5, title: "Fitness", parent_type: "domain", parent_id: 1, status: "active", time_scope: null, on_scope_exit: null, tag_ids: [], position: 0, is_private: false }],
       [], [],
     );
     // The root of iteration 0 (scope 100) is completed; its own status drives the node's glyph.
@@ -911,8 +911,8 @@ describe("injectHabitInstances", () => {
 
   it("falls back to the raw anchor date for a sub-day (Phase) window, which has no scope label", () => {
     const root = buildTree(
-      [{ id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, nsfw: false }],
-      [{ id: 5, title: "Fitness", parent_type: "domain", parent_id: 1, status: "active", time_scope: null, on_scope_exit: null, tag_ids: [], position: 0, nsfw: false }],
+      [{ id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false }],
+      [{ id: 5, title: "Fitness", parent_type: "domain", parent_id: 1, status: "active", time_scope: null, on_scope_exit: null, tag_ids: [], position: 0, is_private: false }],
       [], [],
     );
     injectHabitInstances(root, [mkFlow({ flow_duration_kind: "exact" })], [[iter(0, "active")]], LABELS);
@@ -923,8 +923,8 @@ describe("injectHabitInstances", () => {
   it("attaches iterations under a domain-table (project) target keyed domain-<id>", () => {
     const root = buildTree(
       [
-        { id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: "#e74c3c", status: null, knowledge_base_directory: null, position: 0, nsfw: false },
-        { id: 96, title: "LOOK", description: null, subtype: "project", parent_id: 1, color: null, status: null, knowledge_base_directory: null, position: 0, nsfw: false },
+        { id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: "#e74c3c", status: null, knowledge_base_directory: null, position: 0, is_private: false },
+        { id: 96, title: "LOOK", description: null, subtype: "project", parent_id: 1, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false },
       ],
       [], [], [],
     );
@@ -940,13 +940,13 @@ describe("injectHabitInstances", () => {
   it("renders the flow's items as per-item-completable children of each iteration", () => {
     const root = buildTree(
       [
-        { id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: "#0af", status: null, knowledge_base_directory: null, position: 0, nsfw: false },
-        { id: 96, title: "LOOK", description: null, subtype: "project", parent_id: 1, color: null, status: null, knowledge_base_directory: null, position: 0, nsfw: false },
+        { id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: "#0af", status: null, knowledge_base_directory: null, position: 0, is_private: false },
+        { id: 96, title: "LOOK", description: null, subtype: "project", parent_id: 1, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false },
       ],
       [], [], [],
     );
-    const breakfast: FlowTask = { id: 4, flow_id: 3, title: "Breakfast", parent_type: "flow", parent_id: 3, position: 0, nsfw: false };
-    const dinner: FlowTask = { id: 5, flow_id: 3, title: "Dinner", parent_type: "flow", parent_id: 3, position: 1, nsfw: false };
+    const breakfast: FlowTask = { id: 4, flow_id: 3, title: "Breakfast", parent_type: "flow", parent_id: 3, position: 0, is_private: false };
+    const dinner: FlowTask = { id: 5, flow_id: 3, title: "Dinner", parent_type: "flow", parent_id: 3, position: 1, is_private: false };
     injectHabitInstances(
       root,
       [mkFlow({ target_type: "project", target_id: 96 })],
@@ -974,13 +974,13 @@ describe("injectHabitInstances", () => {
     // archived at all, so e.g. a "לאכול ארוחות נורמליות" instance with 2/3 done meals stayed visible.
     const root = buildTree(
       [
-        { id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, nsfw: false },
-        { id: 96, title: "LOOK", description: null, subtype: "project", parent_id: 1, color: null, status: null, knowledge_base_directory: null, position: 0, nsfw: false },
+        { id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false },
+        { id: 96, title: "LOOK", description: null, subtype: "project", parent_id: 1, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false },
       ],
       [], [], [],
     );
-    const breakfast: FlowTask = { id: 4, flow_id: 3, title: "Breakfast", parent_type: "flow", parent_id: 3, position: 0, nsfw: false };
-    const dinner: FlowTask = { id: 5, flow_id: 3, title: "Dinner", parent_type: "flow", parent_id: 3, position: 1, nsfw: false };
+    const breakfast: FlowTask = { id: 4, flow_id: 3, title: "Breakfast", parent_type: "flow", parent_id: 3, position: 0, is_private: false };
+    const dinner: FlowTask = { id: 5, flow_id: 3, title: "Dinner", parent_type: "flow", parent_id: 3, position: 1, is_private: false };
     injectHabitInstances(
       root,
       [mkFlow({ target_type: "project", target_id: 96 })],
@@ -1010,13 +1010,13 @@ describe("injectHabitInstances", () => {
   it("marks completed goal instances as achieved and open ones as active", () => {
     const root = buildTree(
       [
-        { id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, nsfw: false },
-        { id: 96, title: "LOOK", description: null, subtype: "project", parent_id: 1, color: null, status: null, knowledge_base_directory: null, position: 0, nsfw: false },
+        { id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false },
+        { id: 96, title: "LOOK", description: null, subtype: "project", parent_id: 1, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false },
       ],
       [], [], [],
     );
-    const done: FlowGoal = { id: 9, flow_id: 3, title: "Milestone", parent_type: "flow", parent_id: 3, position: 0, nsfw: false };
-    const open: FlowGoal = { id: 10, flow_id: 3, title: "Stretch", parent_type: "flow", parent_id: 3, position: 1, nsfw: false };
+    const done: FlowGoal = { id: 9, flow_id: 3, title: "Milestone", parent_type: "flow", parent_id: 3, position: 0, is_private: false };
+    const open: FlowGoal = { id: 10, flow_id: 3, title: "Stretch", parent_type: "flow", parent_id: 3, position: 1, is_private: false };
     injectHabitInstances(
       root,
       [mkFlow({ target_type: "project", target_id: 96, instance_type: "goal" })],
@@ -1040,12 +1040,12 @@ describe("injectHabitInstances", () => {
 
   it("nests a flow item under its parent item's instance for the same iteration", () => {
     const root = buildTree(
-      [{ id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, nsfw: false }],
-      [{ id: 5, title: "Fitness", parent_type: "domain", parent_id: 1, status: "active", time_scope: null, on_scope_exit: null, tag_ids: [], position: 0, nsfw: false }],
+      [{ id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false }],
+      [{ id: 5, title: "Fitness", parent_type: "domain", parent_id: 1, status: "active", time_scope: null, on_scope_exit: null, tag_ids: [], position: 0, is_private: false }],
       [], [],
     );
-    const routine: FlowGoal = { id: 7, flow_id: 3, title: "Routine", parent_type: "flow", parent_id: 3, position: 0, nsfw: false };
-    const pushups: FlowTask = { id: 8, flow_id: 3, title: "Push-ups", parent_type: "flow_goal", parent_id: 7, position: 0, nsfw: false };
+    const routine: FlowGoal = { id: 7, flow_id: 3, title: "Routine", parent_type: "flow", parent_id: 3, position: 0, is_private: false };
+    const pushups: FlowTask = { id: 8, flow_id: 3, title: "Push-ups", parent_type: "flow_goal", parent_id: 7, position: 0, is_private: false };
     injectHabitInstances(root, [mkFlow()], [[iter(0, "active")]], LABELS, [routine], [pushups], []);
 
     const iteration = root.children[0]?.children[0]?.children[0]; // aspect → goal 5 → iteration root

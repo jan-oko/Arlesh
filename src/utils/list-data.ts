@@ -30,7 +30,7 @@ function buildRow(node: MindmapNode, ancestors: readonly MindmapNode[], depsByTa
     dependencyRefs: depsByTask.get(dbId) ?? [],
     isBlocked: isNodeBlocked(node),
     hasBlockedAncestor: ancestors.some(isNodeBlocked),
-    hasNsfwAncestor: ancestors.some((a) => a.nsfw === true),
+    hasPrivateAncestor: ancestors.some((a) => a.isPrivate === true),
     scopeTokens: deriveScopeStateTokens(node),
   };
 }

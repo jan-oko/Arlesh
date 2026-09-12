@@ -75,10 +75,10 @@ describe("FilterPopover", () => {
     expect(screen.queryByPlaceholderText("addTag")).not.toBeInTheDocument();
   });
 
-  it("toggles Work mode", () => {
+  it("toggles Private Mode", () => {
     render(<FilterPopover />);
-    fireEvent.click(screen.getByText("workMode").closest("label") ?? screen.getByText("workMode"));
-    expect(useFilterStore.getState().filter.workMode).toBe(true);
+    fireEvent.click(screen.getByText("privateMode").closest("label") ?? screen.getByText("privateMode"));
+    expect(useFilterStore.getState().filter.privateMode).toBe(true);
   });
 
   it("hides the archived pill behind a collapsed Advanced disclosure by default", () => {
@@ -115,14 +115,14 @@ describe("FilterPopover", () => {
   });
 
   it("reset clears the shared filter (and the list filter, while List View is active)", () => {
-    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, workMode: true } });
+    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, privateMode: true } });
     useViewStore.setState({ view: "list" });
     useListFilterStore.setState({
       filter: { ...DEFAULT_LIST_FILTER, pills: { ...DEFAULT_LIST_FILTER.pills, blocked: [{ value: "blocked", mode: "any" }] } },
     });
     render(<FilterPopover />);
     fireEvent.click(screen.getByText("reset"));
-    expect(useFilterStore.getState().filter.workMode).toBe(false);
+    expect(useFilterStore.getState().filter.privateMode).toBe(false);
     expect(useListFilterStore.getState().filter.pills.blocked).toEqual([]);
   });
 

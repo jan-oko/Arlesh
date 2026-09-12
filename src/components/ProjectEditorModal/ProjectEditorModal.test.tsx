@@ -53,7 +53,7 @@ describe("ProjectEditorModal — save", () => {
         title: "My Project",
         status: "active",
         knowledgeBaseDirectory: "/kb/path",
-        nsfw: false,
+        isPrivate: false,
       }),
     );
   });

@@ -15,7 +15,7 @@ export interface Task {
   plan: TimeScope | null;
   tag_ids: number[];
   position: number;
-  nsfw: boolean;
+  is_private: boolean;
 }
 
 export interface CreateTaskRequest {
@@ -41,7 +41,7 @@ export interface UpdateTaskRequest {
   parent_type?: string;
   parent_id?: number;
   position?: number;
-  nsfw?: boolean;
+  is_private?: boolean;
 }
 
 export async function listTasks(): Promise<Task[]> {

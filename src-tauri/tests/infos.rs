@@ -249,7 +249,7 @@ async fn update_info_position() {
 }
 
 #[tokio::test]
-async fn update_info_nsfw_round_trips() {
+async fn update_info_private_round_trips() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
 
@@ -264,20 +264,20 @@ async fn update_info_nsfw_round_trips() {
         })
         .await
         .unwrap();
-    assert!(!info.nsfw); // defaults to not-NSFW
+    assert!(!info.is_private); // defaults to not-private
 
     let marked = repo
-        .update(info.id.into(), UpdateInfoRequest { nsfw: Some(true), ..Default::default() })
+        .update(info.id.into(), UpdateInfoRequest { is_private: Some(true), ..Default::default() })
         .await
         .unwrap();
-    assert!(marked.nsfw);
+    assert!(marked.is_private);
     assert_eq!(marked.body, "Note"); // body untouched
 
     let cleared = repo
-        .update(info.id.into(), UpdateInfoRequest { nsfw: Some(false), ..Default::default() })
+        .update(info.id.into(), UpdateInfoRequest { is_private: Some(false), ..Default::default() })
         .await
         .unwrap();
-    assert!(!cleared.nsfw);
+    assert!(!cleared.is_private);
 }
 
 #[tokio::test]

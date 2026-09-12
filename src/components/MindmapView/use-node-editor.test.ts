@@ -58,7 +58,7 @@ function setup() {
 const saveData = {
   title: "Task", status: "todo", blockReasons: [], tagIds: [],
   addedDeps: [], removedDeps: [], timeScope: { start_id: 1, end_id: 1 },
-  onScopeExit: null, plan: null, nsfw: false,
+  onScopeExit: null, plan: null, isPrivate: false,
 };
 
 beforeEach(() => vi.clearAllMocks());

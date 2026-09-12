@@ -27,7 +27,7 @@ export interface Flow {
   // Whether this flow is a Habit (has a Recurrence) — derived on read.
   is_habit: boolean;
   position: number;
-  nsfw: boolean;
+  is_private: boolean;
 }
 
 export interface CreateFlowRequest {
@@ -64,7 +64,7 @@ export interface UpdateFlowRequest {
   parent_type?: string;
   parent_id?: number;
   position?: number;
-  nsfw?: boolean;
+  is_private?: boolean;
 }
 
 export async function listFlows(): Promise<Flow[]> {
@@ -288,7 +288,7 @@ export interface FlowGoal {
   parent_type: string;
   parent_id: number;
   position: number;
-  nsfw: boolean;
+  is_private: boolean;
 }
 
 /** A flow-task template item. */
@@ -299,7 +299,7 @@ export interface FlowTask {
   parent_type: string;
   parent_id: number;
   position: number;
-  nsfw: boolean;
+  is_private: boolean;
 }
 
 /** A relative (Cycle Scope, Cycle Plan) pair carried by a flow item. */
@@ -347,7 +347,7 @@ export interface UpdateFlowItemRequest {
   parent_type?: string;
   parent_id?: number;
   position?: number;
-  nsfw?: boolean;
+  is_private?: boolean;
 }
 
 export async function listAllFlowGoals(): Promise<FlowGoal[]> {

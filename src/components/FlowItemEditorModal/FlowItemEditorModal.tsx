@@ -14,7 +14,7 @@ export interface FlowItemSaveData {
   cycles: FlowCyclePair[];
   addedDeps: FlowItemDep[];
   removedDeps: FlowItemDep[];
-  nsfw: boolean;
+  isPrivate: boolean;
 }
 
 function depKey(dep: FlowItemDep): string { return `${dep.type}-${dep.id}`; }
@@ -44,7 +44,7 @@ export default function FlowItemEditorModal({ node, availableDeps, onSave, onClo
   const [title, setTitle] = useState(node.title);
   const [cycles, setCycles] = useState<FlowCyclePair[]>(node.flowItem?.cycles ?? []);
   const [currentDeps, setCurrentDeps] = useState<FlowItemDep[]>(node.flowItem?.dependsOn ?? []);
-  const [nsfw, setNsfw] = useState(node.nsfw ?? false);
+  const [isPrivate, setIsPrivate] = useState(node.isPrivate ?? false);
   const [depSearch, setDepSearch] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -71,7 +71,7 @@ export default function FlowItemEditorModal({ node, availableDeps, onSave, onClo
     try {
       const addedDeps = currentDeps.filter((d) => !initialDeps.some((id) => depEquals(id, d)));
       const removedDeps = initialDeps.filter((d) => !currentDeps.some((cd) => depEquals(cd, d)));
-      await onSave({ title: title.trim(), cycles, addedDeps, removedDeps, nsfw });
+      await onSave({ title: title.trim(), cycles, addedDeps, removedDeps, isPrivate });
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err));
       setIsSaving(false);
@@ -142,7 +142,7 @@ export default function FlowItemEditorModal({ node, availableDeps, onSave, onClo
           )}
         </div>
       </div>
-      <EditorAdvanced nsfw={nsfw} onNsfwChange={setNsfw} />
+      <EditorAdvanced isPrivate={isPrivate} onPrivateChange={setIsPrivate} />
     </EditorModal>
   );
 }

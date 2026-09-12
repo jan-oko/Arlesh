@@ -16,7 +16,7 @@ interface ListFilterStore {
 
 /** Persisted List View filter state: its own preset selector, goal-header toggle, and the eight
  * List-View-exclusive pill filters (parent/antecedent/dependency/statuses/scope/blocked). Status
- * preset, tag filters, and Info/Flow/Work toggles are shared with the Mindmap via useFilterStore. */
+ * preset, tag filters, and Info/Flow/Private toggles are shared with the Mindmap via useFilterStore. */
 export const useListFilterStore = create<ListFilterStore>()(
   persist(
     (set) => ({

@@ -17,7 +17,7 @@ interface FilterStore {
   removeTagFilter: (tagId: number) => void;
   toggleShowInfo: () => void;
   toggleShowFlow: () => void;
-  toggleWorkMode: () => void;
+  togglePrivateMode: () => void;
   cycleArchivedMode: () => void;
   reset: () => void;
 }
@@ -44,7 +44,7 @@ export const useFilterStore = create<FilterStore>()(
         set((s) => ({ filter: { ...s.filter, tagFilters: s.filter.tagFilters.filter((t) => t.tagId !== tagId) } })),
       toggleShowInfo: () => set((s) => ({ filter: { ...s.filter, showInfo: !s.filter.showInfo } })),
       toggleShowFlow: () => set((s) => ({ filter: { ...s.filter, showFlow: !s.filter.showFlow } })),
-      toggleWorkMode: () => set((s) => ({ filter: { ...s.filter, workMode: !s.filter.workMode } })),
+      togglePrivateMode: () => set((s) => ({ filter: { ...s.filter, privateMode: !s.filter.privateMode } })),
       cycleArchivedMode: () =>
         set((s) => ({ filter: { ...s.filter, archivedMode: NEXT_ARCHIVED_MODE[s.filter.archivedMode] } })),
       reset: () => set({ filter: DEFAULT_FILTER }),

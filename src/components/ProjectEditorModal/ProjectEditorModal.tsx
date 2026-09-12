@@ -11,7 +11,7 @@ export interface ProjectSaveData {
   title: string;
   status: string;
   knowledgeBaseDirectory: string;
-  nsfw: boolean;
+  isPrivate: boolean;
 }
 
 const PROJECT_STATUSES = Object.values(PROJECT_STATUS);
@@ -28,7 +28,7 @@ export default function ProjectEditorModal({ node, onSave, onClose }: Props) {
   const [title, setTitle] = useState(node.title);
   const [status, setStatus] = useState(node.status ?? PROJECT_STATUS.ACTIVE);
   const [kbDir, setKbDir] = useState(node.knowledgeBaseDirectory ?? "");
-  const [nsfw, setNsfw] = useState(node.nsfw ?? false);
+  const [isPrivate, setIsPrivate] = useState(node.isPrivate ?? false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
@@ -40,7 +40,7 @@ export default function ProjectEditorModal({ node, onSave, onClose }: Props) {
     setIsSaving(true);
     setSaveError(null);
     try {
-      await onSave({ title: title.trim(), status, knowledgeBaseDirectory: kbDir.trim(), nsfw });
+      await onSave({ title: title.trim(), status, knowledgeBaseDirectory: kbDir.trim(), isPrivate });
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err));
       setIsSaving(false);
@@ -72,7 +72,7 @@ export default function ProjectEditorModal({ node, onSave, onClose }: Props) {
         {t("fieldKbDir")}
         <input className={styles.input} value={kbDir} onChange={(e) => setKbDir(e.target.value)} type="text" placeholder={t("placeholderKbDir")} />
       </label>
-      <EditorAdvanced nsfw={nsfw} onNsfwChange={setNsfw} />
+      <EditorAdvanced isPrivate={isPrivate} onPrivateChange={setIsPrivate} />
     </EditorModal>
   );
 }

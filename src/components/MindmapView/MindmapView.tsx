@@ -501,13 +501,13 @@ export default function MindmapView() {
         <GoalEditorModal node={editorModal.node} allTags={allTags} domainNames={domainNames} onSave={onGoalSave} onCheckScopeClamp={checkScopeClamp} onClose={() => setEditorModal(null)} />
       )}
       {editorModal !== null && editorModal.node.kind === "domain" && (
-        <TitleEditorModal heading={t("editor:editDomain")} title={editorModal.node.title} nsfw={editorModal.node.nsfw ?? false} onSave={onSimpleSave} onClose={() => setEditorModal(null)} />
+        <TitleEditorModal heading={t("editor:editDomain")} title={editorModal.node.title} isPrivate={editorModal.node.isPrivate ?? false} onSave={onSimpleSave} onClose={() => setEditorModal(null)} />
       )}
       {editorModal !== null && editorModal.node.kind === "project" && (
         <ProjectEditorModal node={editorModal.node} onSave={onProjectSave} onClose={() => setEditorModal(null)} />
       )}
       {editorModal !== null && editorModal.node.kind === "tag" && (
-        <TitleEditorModal heading={t("editor:editTag")} title={editorModal.node.title} nsfw={editorModal.node.nsfw ?? false} onSave={onSimpleSave} onClose={() => setEditorModal(null)} />
+        <TitleEditorModal heading={t("editor:editTag")} title={editorModal.node.title} isPrivate={editorModal.node.isPrivate ?? false} onSave={onSimpleSave} onClose={() => setEditorModal(null)} />
       )}
       {editorModal !== null && editorModal.node.kind === "info" && (
         <InfoEditorModal node={editorModal.node} onSave={onInfoSave} onClose={() => setEditorModal(null)} />

@@ -8,16 +8,16 @@ import styles from "@/components/EditorModal/EditorModal.module.css";
 interface Props {
   heading: string;
   title: string;
-  nsfw?: boolean;
-  onSave: (title: string, nsfw: boolean) => Promise<void>;
+  isPrivate?: boolean;
+  onSave: (title: string, isPrivate: boolean) => Promise<void>;
   onClose: () => void;
 }
 
-export default function TitleEditorModal({ heading, title: initialTitle, nsfw: initialNsfw, onSave, onClose }: Props) {
+export default function TitleEditorModal({ heading, title: initialTitle, isPrivate: initialIsPrivate, onSave, onClose }: Props) {
   useInputCapture();
   const { t } = useTranslation("editor");
   const [title, setTitle] = useState(initialTitle);
-  const [nsfw, setNsfw] = useState(initialNsfw ?? false);
+  const [isPrivate, setIsPrivate] = useState(initialIsPrivate ?? false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
@@ -32,7 +32,7 @@ export default function TitleEditorModal({ heading, title: initialTitle, nsfw: i
     setIsSaving(true);
     setSaveError(null);
     try {
-      await onSave(title.trim(), nsfw);
+      await onSave(title.trim(), isPrivate);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err));
       setIsSaving(false);
@@ -63,7 +63,7 @@ export default function TitleEditorModal({ heading, title: initialTitle, nsfw: i
           type="text"
         />
       </label>
-      <EditorAdvanced nsfw={nsfw} onNsfwChange={setNsfw} />
+      <EditorAdvanced isPrivate={isPrivate} onPrivateChange={setIsPrivate} />
     </EditorModal>
   );
 }

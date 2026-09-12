@@ -21,7 +21,7 @@ export interface GoalSaveData {
   tagIds: number[];
   timeScope: TimeScope | null;
   onScopeExit: OnScopeExit | null;
-  nsfw: boolean;
+  isPrivate: boolean;
 }
 
 const GOAL_STATUSES = Object.values(GOAL_STATUS);
@@ -44,7 +44,7 @@ export default function GoalEditorModal({ node, allTags, domainNames, onSave, on
   const [tagIds, setTagIds] = useState<number[]>(node.tagIds);
   const [timeScope, setTimeScope] = useState<TimeScope | null>(node.timeScope ?? null);
   const [onScopeExit, setOnScopeExit] = useState<OnScopeExit | null>(node.onScopeExit ?? null);
-  const [nsfw, setNsfw] = useState(node.nsfw ?? false);
+  const [isPrivate, setIsPrivate] = useState(node.isPrivate ?? false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
@@ -68,7 +68,7 @@ export default function GoalEditorModal({ node, allTags, domainNames, onSave, on
         tagIds,
         timeScope,
         onScopeExit: timeScope !== null ? (onScopeExit ?? "keep") : null,
-        nsfw,
+        isPrivate,
       });
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err));
@@ -109,7 +109,7 @@ export default function GoalEditorModal({ node, allTags, domainNames, onSave, on
       )}
       <BlockReasonsField reasons={blockReasons} onChange={setBlockReasons} />
       <TagPicker allTags={allTags} domainNames={domainNames} selectedIds={tagIds} onChange={setTagIds} />
-      <EditorAdvanced nsfw={nsfw} onNsfwChange={setNsfw} />
+      <EditorAdvanced isPrivate={isPrivate} onPrivateChange={setIsPrivate} />
     </EditorModal>
   );
 }

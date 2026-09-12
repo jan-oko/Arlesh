@@ -50,6 +50,7 @@ Arlesh supports multiple languages via `react-i18next`. Translation files live i
 | Person            | אדם / אנשים   | KB person entity                                   |
 | Event             | אירוע         | KB event entity                                    |
 | Thread            | שרשור         | KB train-of-thought entity                         |
+| Private           | פרטי          | Node flag; hidden unless Private Mode is on         |
 
 ---
 

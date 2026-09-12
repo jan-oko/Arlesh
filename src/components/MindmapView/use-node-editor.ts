@@ -73,7 +73,7 @@ interface Result {
   onDoubleClick: (nodeId: string) => void;
   onTaskSave: (data: TaskSaveData) => Promise<void>;
   onGoalSave: (data: GoalSaveData) => Promise<void>;
-  onSimpleSave: (title: string, nsfw: boolean) => Promise<void>;
+  onSimpleSave: (title: string, isPrivate: boolean) => Promise<void>;
   onProjectSave: (data: ProjectSaveData) => Promise<void>;
   onInfoSave: (data: InfoSaveData) => Promise<void>;
   onFlowSave: (data: FlowSaveData) => Promise<void>;
@@ -166,7 +166,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
         time_scope: data.timeScope,
         on_scope_exit: data.onScopeExit,
         plan: data.plan,
-        nsfw: data.nsfw,
+        is_private: data.isPrivate,
       });
       await setBlockReasons("task", dbId, data.blockReasons);
       const tagsAdded = data.tagIds.filter((id) => !node.tagIds.includes(id));
@@ -195,7 +195,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
         status: data.status,
         time_scope: data.timeScope,
         on_scope_exit: data.onScopeExit,
-        nsfw: data.nsfw,
+        is_private: data.isPrivate,
       });
       await setBlockReasons("goal", dbId, data.blockReasons);
       const tagsAdded = data.tagIds.filter((id) => !node.tagIds.includes(id));
@@ -226,7 +226,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
         root_plan_kind: data.rootPlanKind,
         root_plan_start: data.rootPlanStart,
         root_plan_end: data.rootPlanEnd,
-        nsfw: data.nsfw,
+        isPrivate: data.isPrivate,
       };
       // Persist the Recurrence for `targetId` after its flow row, so gap validation sees the new kind.
       const persistRecurrence = async (targetId: number) => {
@@ -272,7 +272,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
       const flowItem = node.flowItem;
       if (flowItem === undefined) return;
       const dbId = parseInt(node.id.split("-").pop() ?? "0", 10);
-      const patch = { title: data.title, nsfw: data.nsfw };
+      const patch = { title: data.title, isPrivate: data.isPrivate };
       if (flowItem.itemType === "flow_goal") {
         await updateFlowGoal(dbId, patch);
       } else {
@@ -300,12 +300,12 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
   );
 
   const onSimpleSave = useCallback(
-    async (title: string, nsfw: boolean) => {
+    async (title: string, isPrivate: boolean) => {
       if (editorModal === null) return;
       const { nodeId } = editorModal;
       const dbId = parseInt(nodeId.split("-").pop() ?? "0", 10);
-      // Domain/tag editors: persist title and NSFW together, then refresh.
-      await updateDomain(dbId, { title, nsfw });
+      // Domain/tag editors: persist title and privacy together, then refresh.
+      await updateDomain(dbId, { title, is_private: isPrivate });
       await reload();
       setEditorModal(null);
     },
@@ -319,7 +319,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
       const dbId = parseInt(nodeId.split("-").pop() ?? "0", 10);
       await updateDomain(dbId, {
         title: data.title,
-        nsfw: data.nsfw,
+        is_private: data.isPrivate,
         ...(data.status !== "" ? { status: data.status } : {}),
         ...(data.knowledgeBaseDirectory !== "" ? { knowledge_base_directory: data.knowledgeBaseDirectory } : {}),
       });
@@ -333,7 +333,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
     async (data: InfoSaveData) => {
       if (editorModal === null) return;
       const dbId = parseInt(editorModal.nodeId.split("-").pop() ?? "0", 10);
-      await updateInfo(dbId, { body: data.body, details: data.details, nsfw: data.nsfw });
+      await updateInfo(dbId, { body: data.body, details: data.details, is_private: data.isPrivate });
       await reload();
       setEditorModal(null);
     },
