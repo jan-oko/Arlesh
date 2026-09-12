@@ -6,6 +6,7 @@ import type { FlowItemType } from "@/api/flows";
 import EditorModal from "@/components/EditorModal/EditorModal";
 import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
 import FlowCycleField from "./FlowCycleField";
+import { useInputCapture } from "@/hooks/use-input-capture";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 
 export interface FlowItemSaveData {
@@ -36,6 +37,7 @@ interface Props {
  * cycle pairs, and intra-flow dependencies on other items in the same flow.
  */
 export default function FlowItemEditorModal({ node, availableDeps, onSave, onClose }: Props) {
+  useInputCapture();
   const { t } = useTranslation(["editor", "nodeKinds"]);
   const itemType: FlowItemType = node.flowItem?.itemType ?? "flow_task";
 

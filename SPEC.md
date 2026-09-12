@@ -255,7 +255,7 @@ The root of the map is "Arlesh" (top level). Aspect cells are its direct childre
 - `Right-click` — context menu (enter subtree, change type, delete, etc.)
 - Back button / back-to-top button available in the UI
 
-A shortcut requires exactly the modifiers listed — `Ctrl+E` does not open the editor, only a bare `E` does. Every binding above is declared once in the shared hotkey registry (`src/utils/hotkeys/`), which is also what the cheat-sheet renders, so this list, the overlay, and the handlers cannot disagree.
+A shortcut requires exactly the modifiers listed — `Ctrl+E` does not open the editor, only a bare `E` does. Every binding above is declared once in the shared hotkey registry (`src/utils/hotkeys/`), which is also what the cheat-sheet renders, so this list, the overlay, and the handlers cannot disagree. The view-level bindings (Mindmap and List View) are suppressed whenever a modal or an inline rename is on screen; the global ones (`Alt+L`, `Ctrl+Shift+/`) always stay live. That suppression is driven by the modals and inline editors themselves, each registering while it is mounted (`src/stores/use-input-capture-store.ts`), rather than by the views tracking which of their own state flags imply an open modal — a flag can outlive the UI it describes, and a stale one would silently kill every view binding until the view remounted.
 
 **Entering a subtree:** Right-clicking a cell and selecting "Enter" re-roots the map at that cell. Navigation back: back button, back-to-top button, `Shift+Escape` (up one level), or `Ctrl+Escape` (straight back to the root).
 

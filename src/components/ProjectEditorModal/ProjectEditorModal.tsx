@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { MindmapNode } from "@/utils/tree-layout";
 import EditorModal from "@/components/EditorModal/EditorModal";
 import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
+import { useInputCapture } from "@/hooks/use-input-capture";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 import { PROJECT_STATUS } from "@/utils/status-mapping";
 
@@ -22,6 +23,7 @@ interface Props {
 }
 
 export default function ProjectEditorModal({ node, onSave, onClose }: Props) {
+  useInputCapture();
   const { t } = useTranslation(["editor", "status"]);
   const [title, setTitle] = useState(node.title);
   const [status, setStatus] = useState(node.status ?? PROJECT_STATUS.ACTIVE);

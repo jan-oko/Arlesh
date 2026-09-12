@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import EditorModal from "@/components/EditorModal/EditorModal";
 import Switch from "@/components/Switch/Switch";
+import { useInputCapture } from "@/hooks/use-input-capture";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 
 interface Props {
@@ -16,6 +17,7 @@ interface Props {
  * default).
  */
 export default function ConvertToFlowModal({ title, onConvert, onClose }: Props) {
+  useInputCapture();
   const { t } = useTranslation("editor");
   const [keepDependencies, setKeepDependencies] = useState(true);
   const [mapScopes, setMapScopes] = useState(true);

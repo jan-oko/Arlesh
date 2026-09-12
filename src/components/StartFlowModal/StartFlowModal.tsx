@@ -4,6 +4,7 @@ import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { entityNodeId } from "@/utils/tree-layout";
 import EditorModal from "@/components/EditorModal/EditorModal";
 import { useValidFlowTargets } from "@/hooks/use-valid-flow-targets";
+import { useInputCapture } from "@/hooks/use-input-capture";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 
 export interface StartFlowData {
@@ -53,6 +54,7 @@ interface Props {
  * scoped flow) the anchor date whose flow-kind scope becomes the window's first period.
  */
 export default function StartFlowModal({ flowTitle, flowScoped, durationN, durationKind, defaultTargetType, defaultTargetId, availableTargets, onStart, onClose }: Props) {
+  useInputCapture();
   const { t } = useTranslation(["editor", "nodeKinds"]);
   const [title, setTitle] = useState(flowTitle);
   const [target, setTarget] = useState<TargetSelection | null>(initialTarget(defaultTargetType, defaultTargetId, availableTargets));

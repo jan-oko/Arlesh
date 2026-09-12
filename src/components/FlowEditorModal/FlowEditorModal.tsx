@@ -12,6 +12,7 @@ import RecurrenceField from "./RecurrenceField";
 import { defaultRecurrence, type RecurrenceUi } from "./recurrence-ui";
 import { useValidFlowTargets } from "@/hooks/use-valid-flow-targets";
 import RootPlanField, { type RootPlanValue } from "./RootPlanField";
+import { useInputCapture } from "@/hooks/use-input-capture";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 
 /** Flow Window kinds: coarse Spans (a Duration length) plus sub-day Phases (part/exact). */
@@ -119,6 +120,7 @@ interface Props {
  * and default Target Node. Flow items and their cycle scopes are edited separately (Phase 7.3).
  */
 export default function FlowEditorModal({ node, availableTargets, heading, onSave, onClose }: Props) {
+  useInputCapture();
   const { t } = useTranslation(["editor", "nodeKinds", "scopes"]);
   const [title, setTitle] = useState(node.title);
   const [instanceType, setInstanceType] = useState<InstanceType>(node.flow?.instanceType ?? "task");

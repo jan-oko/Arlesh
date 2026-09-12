@@ -10,6 +10,7 @@ import EditorModal from "@/components/EditorModal/EditorModal";
 import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
 import TimeScopeField from "@/components/ScopePicker/TimeScopeField";
 import OnScopeExitField from "@/components/ScopePicker/OnScopeExitField";
+import { useInputCapture } from "@/hooks/use-input-capture";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 import { GOAL_STATUS } from "@/utils/status-mapping";
 
@@ -35,6 +36,7 @@ interface Props {
 }
 
 export default function GoalEditorModal({ node, allTags, domainNames, onSave, onCheckScopeClamp, onClose }: Props) {
+  useInputCapture();
   const { t } = useTranslation(["editor", "status"]);
   const [title, setTitle] = useState(node.title);
   const [status, setStatus] = useState(node.status ?? GOAL_STATUS.ACTIVE);

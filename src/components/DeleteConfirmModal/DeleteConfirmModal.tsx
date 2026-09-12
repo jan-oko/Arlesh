@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { useInputCapture } from "@/hooks/use-input-capture";
 import styles from "./DeleteConfirmModal.module.css";
 
 interface Props {
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export default function DeleteConfirmModal({ nodeTitle, nodeCount, descendantCount, isDeleting, error, onConfirm, onCancel }: Props) {
+  useInputCapture();
   const { t } = useTranslation(["warnings", "common"]);
   const heading = nodeCount > 1
     ? t("warnings:deleteMultipleHeading", { count: nodeCount })

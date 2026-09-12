@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import EditorModal from "@/components/EditorModal/EditorModal";
 import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
+import { useInputCapture } from "@/hooks/use-input-capture";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 
 interface Props {
@@ -13,6 +14,7 @@ interface Props {
 }
 
 export default function TitleEditorModal({ heading, title: initialTitle, nsfw: initialNsfw, onSave, onClose }: Props) {
+  useInputCapture();
   const { t } = useTranslation("editor");
   const [title, setTitle] = useState(initialTitle);
   const [nsfw, setNsfw] = useState(initialNsfw ?? false);

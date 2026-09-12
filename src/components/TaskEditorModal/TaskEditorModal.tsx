@@ -13,6 +13,7 @@ import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
 import TimeScopeField from "@/components/ScopePicker/TimeScopeField";
 import OnScopeExitField from "@/components/ScopePicker/OnScopeExitField";
 import PlanField from "@/components/ScopePicker/PlanField";
+import { useInputCapture } from "@/hooks/use-input-capture";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 import { TASK_STATUS } from "@/utils/status-mapping";
 
@@ -45,6 +46,7 @@ interface Props {
 }
 
 export default function TaskEditorModal({ node, allTags, domainNames, availableForDep, onSave, onCheckScopeClamp, onClose }: Props) {
+  useInputCapture();
   const { t } = useTranslation(["editor", "status", "nodeKinds"]);
   const [title, setTitle] = useState(node.title);
   const [status, setStatus] = useState(node.status ?? TASK_STATUS.TODO);
