@@ -137,7 +137,7 @@ sequenceDiagram
   participant UI as MindmapView
   participant DB as nodes::retype
   UI->>DB: retype(node, to_kind, child_policy)
-  Note right of DB: one SQLite transaction:<br/>carries TimeScope, Plan,<br/>OnExit, tags, deps;<br/>legal-parent table consulted
+  Note right of DB: one SQLite transaction:<br/>carries TimeScope, Plan,<br/>OnExit, tags, deps<br/>legal-parent table consulted once
   DB-->>UI: NodeRef
               </pre>
             </div>
