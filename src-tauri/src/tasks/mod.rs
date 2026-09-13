@@ -19,8 +19,8 @@ use crate::database::DatabasePool;
 use crate::infos::model::InfoId;
 use error::TaskError;
 pub use scope_rules::{
-    conflicts_for_new_time_scope, derive_all_scope_lifecycles, effective_window,
-    reparent_conflicts, time_scope_bounds, ReparentConflicts, ViolatingDescendant,
+    conflicts_for_new_time_scope, derive_all_scope_lifecycles, nearest_scoped_ancestor_window,
+    reparent_conflicts, time_scope_window, ReparentConflicts, ViolatingDescendant,
 };
 use model::{
     CreateGoalRequest, CreateTaskRequest, Dependency, DurationSpec, Goal, GoalId, GoalStatus,
@@ -551,6 +551,19 @@ impl<'session> GoalOperator<'session> {
         Ok(goal.status == GoalStatus::Achieved.as_str())
     }
 
+    /// Sets a goal's privacy flag.
+    ///
+    /// One statement over one column, so it needs no containment check and no transaction of its
+    /// own. `flows::start` uses it to propagate a flow's privacy onto the goal it materialises.
+    pub async fn set_private(&mut self, id: GoalId, is_private: bool) -> Result<(), TaskError> {
+        sqlx::query("UPDATE goals SET is_private = ? WHERE id = ?")
+            .bind(is_private)
+            .bind(id.0)
+            .execute(&mut *self.connection)
+            .await?;
+        Ok(())
+    }
+
     /// Attaches a tag to a goal.
     pub async fn add_tag(&mut self, goal_id: GoalId, tag_id: i64) -> Result<(), TaskError> {
         sqlx::query(
@@ -826,6 +839,19 @@ impl<'session> TaskOperator<'session> {
                 dependency_id,
             })
             .collect())
+    }
+
+    /// Sets a task's privacy flag.
+    ///
+    /// One statement over one column, so it needs no containment check and no transaction of its
+    /// own. `flows::start` uses it to propagate a flow's privacy onto the task it materialises.
+    pub async fn set_private(&mut self, id: TaskId, is_private: bool) -> Result<(), TaskError> {
+        sqlx::query("UPDATE tasks SET is_private = ? WHERE id = ?")
+            .bind(is_private)
+            .bind(id.0)
+            .execute(&mut *self.connection)
+            .await?;
+        Ok(())
     }
 
     /// Attaches a tag to a task.

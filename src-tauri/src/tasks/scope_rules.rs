@@ -13,8 +13,7 @@
 use chrono::NaiveDateTime;
 use serde::Serialize;
 
-use crate::database::session::{Db, SessionFactory, SessionMode};
-use crate::database::DatabasePool;
+use crate::database::session::{Db, SessionMode};
 use crate::scopes::model::ScopeId;
 use crate::scopes::resolve::{self, Bounds};
 
@@ -43,34 +42,6 @@ pub struct ViolatingDescendant {
     pub node_type: String,
     /// The descendant's id.
     pub node_id: i64,
-}
-
-/// The effective Time Scope window governing children placed under `(node_type, node_id)`: the
-/// node's own window when scoped, otherwise the nearest scoped ancestor's, or `None` when nothing
-/// above it is scoped (unconstrained). Non-task/goal kinds carry no scope and return `None`.
-///
-/// **Transitional.** It takes a pool because `flows` — Task 2.2 Step 4 — still holds one and has
-/// no session to lend, so it opens a pooled session of its own and delegates. Once `flows` runs on
-/// sessions its call becomes a direct `nearest_scoped_ancestor_window` and this goes away.
-pub async fn effective_window(
-    pool: &DatabasePool,
-    node_type: &str,
-    node_id: i64,
-) -> Result<Option<Bounds>, TaskError> {
-    let mut db = SessionFactory::new(pool.clone()).connect().await?;
-    nearest_scoped_ancestor_window(&mut db, node_type, node_id).await
-}
-
-/// Resolves a Time Scope to its combined half-open datetime window.
-///
-/// **Transitional**, for the same reason as [`effective_window`]: it exists so that pool-bound
-/// `flows` can still reach the session-based `time_scope_window`.
-pub async fn time_scope_bounds(
-    pool: &DatabasePool,
-    time_scope: &TimeScope,
-) -> Result<Bounds, TaskError> {
-    let mut db = SessionFactory::new(pool.clone()).connect().await?;
-    time_scope_window(&mut db, time_scope).await
 }
 
 /// The effective `(window, on-exit behavior)` governing an item: its own when explicitly scoped,
@@ -177,7 +148,7 @@ pub(super) async fn scope_window<M: SessionMode>(
 
 /// Resolves a Time Scope's boundaries to its combined window: the start of the start boundary
 /// through the end of the end boundary.
-pub(super) async fn time_scope_window<M: SessionMode>(
+pub async fn time_scope_window<M: SessionMode>(
     db: &mut Db<M>,
     time_scope: &TimeScope,
 ) -> Result<Bounds, TaskError> {
@@ -196,7 +167,7 @@ fn reject_unless_contained(outer: Bounds, inner: Bounds, message: &str) -> Resul
 
 /// Walks up the contiguous task/goal ancestor chain from a parent reference, returning the window
 /// of the nearest ancestor that has an explicit Time Scope, or `None` if none is scoped.
-pub(super) async fn nearest_scoped_ancestor_window<M: SessionMode>(
+pub async fn nearest_scoped_ancestor_window<M: SessionMode>(
     db: &mut Db<M>,
     parent_type: &str,
     parent_id: i64,
