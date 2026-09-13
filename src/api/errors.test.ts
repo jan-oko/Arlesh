@@ -51,6 +51,22 @@ describe("getErrorMessage", () => {
   it("stringifies anything else", () => {
     expect(getErrorMessage("boom")).toBe("boom");
   });
+
+  it("stringifies null", () => {
+    expect(getErrorMessage(null)).toBe("null");
+  });
+
+  it("stringifies undefined", () => {
+    expect(getErrorMessage(undefined)).toBe("undefined");
+  });
+
+  it("returns the message from a plain object with a message but no kind", () => {
+    // This is the shape a forward-compatible backend kind arrives as: not a
+    // recognised WireError (no valid `kind`), not an Error instance, but
+    // still carrying a usable message that should be shown rather than
+    // falling through to "[object Object]".
+    expect(getErrorMessage({ message: "x" })).toBe("x");
+  });
 });
 
 describe("a rejected invoke", () => {
