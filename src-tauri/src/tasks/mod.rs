@@ -1128,10 +1128,11 @@ fn session_factory(pool: &DatabasePool) -> SessionFactory {
 /// Pool-bound Goal CRUD: a **transitional shim** over [`GoalOperator`] and the goal operations
 /// above, holding no SQL of its own so the two paths cannot drift.
 ///
-/// Its remaining callers are `flows` (`convert_to_flow` and `start`, Task 2.2 Step 4) and the
-/// integration tests those and `tasks` share; the struct goes when Step 4 moves `flows` onto
-/// sessions and its tests follow. Each method opens its own session — pooled for reads, and
-/// transactional for the writes that ADR-0004 requires to land in one piece, since a pool-bound
+/// **No source file calls it any more** — Task 2.2 Step 4 moved `flows` onto sessions, so
+/// `convert_to_flow` and `start` reach goals through `db.goals()` and [`create_goal`] now. Its
+/// remaining callers are the integration tests `flows`, `infos`, `block_reasons` and `tasks`
+/// share; the struct goes when those move too. Each method opens its own session — pooled for
+/// reads, and transactional for the writes that ADR-0004 requires to land in one piece, since a pool-bound
 /// caller has no session of its own to join. No `tracing::instrument` on these methods: the named
 /// operations they delegate to are instrumented, and a span on a method that only delegates would
 /// just nest an identical one inside it.
@@ -1198,9 +1199,9 @@ impl<'a> GoalRepository<'a> {
 /// Pool-bound Task CRUD and dependency operations: a **transitional shim** over [`TaskOperator`]
 /// and the task operations above, holding no SQL of its own so the two paths cannot drift.
 ///
-/// Kept alive by the same callers as [`GoalRepository`] — `flows` (Task 2.2 Step 4) and the
-/// integration tests — and retired with it. Reads open a pooled session, writes a transactional
-/// one; see [`GoalRepository`] for why.
+/// Kept alive by the same callers as [`GoalRepository`] — integration-test fixtures only, now
+/// that `flows` runs on sessions — and retired with it. Reads open a pooled session, writes a
+/// transactional one; see [`GoalRepository`] for why.
 pub struct TaskRepository<'a> {
     pool: &'a DatabasePool,
 }

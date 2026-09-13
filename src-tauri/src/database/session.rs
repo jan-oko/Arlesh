@@ -109,6 +109,15 @@ impl SessionMode for Transactional {
 /// site is exactly that. `tasks` keeps `insert`, `update` and `delete_row` private for this
 /// reason; only the case-3 free functions are reachable.
 ///
+/// `flows` extends the same corollary to the second half of the consistency rule: every one of
+/// its operations whose write depends on a read it took first — `update`, `delete`, the two item
+/// updates, `convert_item`, `set_recurrence`, `set_iteration_done`, `fork_flow` — is private on
+/// the operator, with a `Db<Transactional>` free function ([`crate::flows::update_flow`] and its
+/// siblings) as the only way in. An operator wraps a bare connection and is deliberately
+/// mode-agnostic, so it cannot demand a transaction in its signature; only a free function over
+/// the session can. What stays on the operator is what reads nothing first: single writes, and
+/// multi-statement writes like `set_cycles` whose doc says they are not atomic alone.
+///
 /// What is **not** sanctioned is reaching a second resource from inside an operator by minting a
 /// sibling out of that operator's own connection borrow. It compiles, and it is how the
 /// exclusivity this design buys gets quietly given back: the operator's `new` is crate-visible
