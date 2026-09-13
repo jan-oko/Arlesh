@@ -2,6 +2,7 @@
 
 use crate::{
     domains::error::DomainError,
+    flows::error::FlowError,
     knowledge_base::error::KnowledgeBaseError,
     scopes::error::ScopeError,
     tasks::error::TaskError,
@@ -22,4 +23,11 @@ pub enum AppError {
     /// Knowledge-base entity operation error.
     #[error(transparent)]
     KnowledgeBase(#[from] KnowledgeBaseError),
+    /// Flow operation error.
+    #[error(transparent)]
+    Flow(#[from] FlowError),
+    /// A database error occurred with no domain-specific error to wrap it (e.g. the `infos`
+    /// and `block_reasons` repositories, which have no domain error enum of their own).
+    #[error("database error: {0}")]
+    Database(#[from] sqlx::Error),
 }
