@@ -1,9 +1,13 @@
 mod helpers;
 
-use arlesh_lib::domains::{
-    model::{CreateDomainRequest, DomainSubtype, ProjectStatus, UpdateDomainRequest},
-    DomainRepository,
+use arlesh_lib::{
+    commands::domains::create_domain,
+    domains::{
+        model::{CreateDomainRequest, DomainSubtype, ProjectStatus, UpdateDomainRequest},
+        DomainRepository,
+    },
 };
+use tauri::Manager;
 
 async fn green_aspect_id(pool: &sqlx::SqlitePool) -> i64 {
     sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Growth' AND subtype = 'aspect'")
@@ -538,4 +542,45 @@ async fn project_status_achieved_and_archived() {
         .unwrap();
 
     assert_eq!(archived.status.as_deref(), Some("archived"));
+}
+
+// The tests above exercise the repository shim, not the command. `create_domain` writes an insert
+// and then a position update, so it runs on a transactional session, and nothing but a test
+// catches a command that opens `begin()` and forgets `commit()` — see `Db::commit`'s docs. The
+// test below calls the real command function, with a real `tauri::State` lent by a mock app, and
+// asserts row contents on disk rather than merely `Ok`.
+
+#[tokio::test]
+async fn the_create_domain_command_commits_the_insert_and_the_position_update_together() {
+    let pool = helpers::test_pool().await;
+    let aspect_id = green_aspect_id(&pool).await;
+    let app = helpers::command_host(&pool);
+
+    let project = create_domain(
+        app.state(),
+        CreateDomainRequest {
+            title: "Committed Project".into(),
+            description: None,
+            subtype: DomainSubtype::Project,
+            parent_id: Some(aspect_id),
+            status: Some(ProjectStatus::Active),
+            knowledge_base_directory: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    // The command's session is gone by now, so the pool's one connection is free to read over.
+    let (title, position): (String, i64) =
+        sqlx::query_as("SELECT title, position FROM domains WHERE id = ?")
+            .bind(project.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+
+    assert_eq!(title, "Committed Project");
+    assert!(
+        position > 0,
+        "the command must commit the insert and the position update together, not roll them back"
+    );
 }
