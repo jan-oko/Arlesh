@@ -18,7 +18,7 @@ function node(kind: NodeKind, extra: Partial<MindmapNode> = {}): MindmapNode {
 function renderRow(n: MindmapNode) {
   const { container } = render(
     <svg>
-      <StatusIconRow node={n} indicators={deriveStatusIndicators(n)} width={160} top={36} />
+      <StatusIconRow node={n} indicators={deriveStatusIndicators(n)} top={36} />
     </svg>,
   );
   return Array.from(container.querySelectorAll("title")).map((t) => t.textContent);

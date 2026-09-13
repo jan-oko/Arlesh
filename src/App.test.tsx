@@ -4,7 +4,6 @@ import App from "./App";
 import { useViewStore } from "@/stores/use-view-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 
-vi.mock("react-i18next", () => ({ useTranslation: () => ({ i18n: { dir: () => "ltr" } }) }));
 vi.mock("@/components/TopBar/TopBar", () => ({ default: () => <div data-testid="top-bar" /> }));
 vi.mock("@/components/MindmapView/MindmapView", () => ({ default: () => <div data-testid="mindmap-view" /> }));
 vi.mock("@/components/ListView/ListView", () => ({ default: () => <div data-testid="list-view" /> }));

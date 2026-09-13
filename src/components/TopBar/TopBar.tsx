@@ -16,6 +16,7 @@ import styles from "./TopBar.module.css";
 
 const GEAR_ICON = "⚙";
 const ROOT_ICON = "↑";
+const BACK_ICON = "←";
 /** Unblock only makes sense — and only appears as an option — while List View is active. */
 const MINDMAP_PRESETS: readonly ListPreset[] = LIST_PRESET_VALUES.filter((p) => p !== "unblock");
 
@@ -29,8 +30,7 @@ function FunnelIcon() {
 }
 
 export default function TopBar() {
-  const { t, i18n } = useTranslation(["common", "listView"]);
-  const isHebrew = i18n.resolvedLanguage === "he";
+  const { t } = useTranslation(["common", "listView"]);
   const subtreeRootId = useMindmapStore((s) => s.subtreeRootId);
   const subtreeNav = useMindmapStore((s) => s.subtreeNav);
   const exitSubtree = useMindmapStore((s) => s.exitSubtree);
@@ -52,15 +52,10 @@ export default function TopBar() {
   const toggleHotkeys = useHotkeysStore((s) => s.toggle);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  const backArrow = i18n.dir() === "rtl" ? "→" : "←";
   // Unblock is List-View-only and doesn't touch the shared status mode — so its "active" state must
   // itself be gated on the current view, or a stale Unblock selection would leak into the Mindmap.
   const activePreset: ListPreset = view === "list" && listPreset === "unblock" ? "unblock" : statusMode;
   const presetOptions = view === "list" ? LIST_PRESET_VALUES : MINDMAP_PRESETS;
-
-  function toggleLanguage() {
-    void i18n.changeLanguage(isHebrew ? "en" : "he");
-  }
 
   function selectPreset(value: string) {
     if (!isListPreset(value)) return;
@@ -83,12 +78,6 @@ export default function TopBar() {
                 <div className={styles.backdrop} onClick={() => setSettingsOpen(false)} />
                 <div className={styles.popover}>
                   <div className={styles.settingRow}>
-                    <span>{t("common:language")}</span>
-                    <button className={styles.langToggle} type="button" onClick={toggleLanguage}>
-                      {isHebrew ? "English" : "עברית"}
-                    </button>
-                  </div>
-                  <div className={styles.settingRow}>
                     <Switch checked={theme === "light"} onChange={toggleTheme} label={t("common:lightMode")} />
                   </div>
                   {/* Branch axis only means something on the mindmap, so it stays out of List View. */}
@@ -103,7 +92,7 @@ export default function TopBar() {
                   )}
                   <div className={styles.settingRow}>
                     <button
-                      className={styles.langToggle}
+                      className={styles.popoverBtn}
                       type="button"
                       onClick={() => { setSettingsOpen(false); toggleHotkeys(); }}
                     >
@@ -144,7 +133,7 @@ export default function TopBar() {
                 </button>
               )}
               <button className={styles.pill} type="button" onClick={() => exitSubtree(subtreeNav.parentSubtreeId)}>
-                <span aria-hidden="true">{backArrow}</span>{subtreeNav.parentTitle}
+                <span aria-hidden="true">{BACK_ICON}</span>{subtreeNav.parentTitle}
               </button>
             </>
           )}

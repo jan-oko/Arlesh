@@ -1,5 +1,4 @@
 import { useEffect } from "react";
-import { useTranslation } from "react-i18next";
 import "@/styles/tokens.css";
 import TopBar from "@/components/TopBar/TopBar";
 import MindmapView from "@/components/MindmapView/MindmapView";
@@ -13,7 +12,6 @@ import { GLOBAL_BINDINGS } from "@/utils/hotkeys/global-bindings";
 import styles from "./App.module.css";
 
 export default function App() {
-  const { i18n } = useTranslation();
   const view = useViewStore((s) => s.view);
   const toggleView = useViewStore((s) => s.toggleView);
   const theme = useThemeStore((s) => s.theme);
@@ -28,7 +26,7 @@ export default function App() {
   useHotkeys(GLOBAL_BINDINGS, { onToggleView: toggleView, onToggleHotkeys: toggleHotkeys }, true);
 
   return (
-    <div className={styles.shell} dir={i18n.dir()}>
+    <div className={styles.shell}>
       <TopBar />
       {view === "mindmap" ? <MindmapView /> : <ListView />}
       {hotkeysOpen && <HotkeysModal onClose={closeHotkeys} />}

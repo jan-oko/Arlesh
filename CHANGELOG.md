@@ -2,7 +2,8 @@
 
 All notable changes to Arlesh are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
-Versions follow [Semantic Versioning](https://semver.org/).
+Arlesh is a personal app in live preview with no release cycle, so new entries collect under
+`[Unreleased]`; the numbered sections below are kept as history.
 
 ---
 
@@ -17,6 +18,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Fixed
 - **Mindmap and List View keyboard shortcuts no longer go dead until you switch views.** Each view decided whether its bindings were live from a set of state flags meant to say "a modal or inline rename is open" — but a flag could stay set after the thing it described had left the screen (a delete confirmation whose target was gone from the reloaded tree, an inline rename whose node stopped rendering). Once that happened every Mindmap/List binding stayed dead, with nothing on screen left to clear the flag, until the view was unmounted by switching to the other view and back. The global **Alt+L** and **Ctrl+Shift+/** were never affected, which is what made it look like only "some" shortcuts had stopped. Modals and inline editors now register themselves while they are mounted, so what suppresses the shortcuts can no longer disagree with what is actually on screen.
 - **Keyboard shortcuts no longer fire when extra modifiers are held.** A shortcut now requires exactly the modifiers it names: **Ctrl+E** or **Shift+E** no longer open the editor (bare **E** still does), **Ctrl+Shift+C/X/V** no longer cut/copy/paste, and **Shift+Tab** no longer creates a child cell, so it returns to normal focus traversal. Most visibly, **Ctrl+Shift+/** no longer also collapses the selected node while opening the cheat-sheet.
+
+### Removed
+- **Hebrew is no longer a supported interface language**, and the **Language** row is gone from the settings popover — the app is English-only. If you had switched the interface to Hebrew, it now reads English. This only affects the app's own labels: **titles you type yourself still render right-to-left when you write them in Hebrew**, on mindmap nodes and in the List View, exactly as before. Status badges under a node now always sit along its left edge rather than flipping with the interface language.
 
 ## [0.3.0] — 2026-09-10
 

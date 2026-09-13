@@ -144,7 +144,7 @@
   font-family: var(--font-sans);
 }
 
-.langToggle {
+.popoverBtn {
   font-size: var(--text-sm);
   padding: 2px var(--space-2);
   border-radius: 4px;
@@ -154,7 +154,7 @@
   cursor: pointer;
 }
 
-.langToggle:hover {
+.popoverBtn:hover {
   background: var(--surface);
   color: var(--text-primary);
 }
