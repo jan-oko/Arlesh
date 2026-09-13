@@ -13,6 +13,8 @@ use crate::{
 /// The frontend matches on this to decide how to react (e.g. show a
 /// "not found" toast vs. prompt for confirmation) instead of parsing the
 /// human-readable `message`. Serialises in snake_case.
+///
+/// Mirrored in src/api/errors.ts
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WireErrorKind {
@@ -31,8 +33,10 @@ pub enum WireErrorKind {
     /// A database-level error occurred.
     Database,
     /// An unexpected or unmapped internal error occurred (e.g. corrupted
-    /// persisted data). Also the fallback for error variants introduced
-    /// after this mapping was written.
+    /// persisted data). The matches assigning this kind are deliberately
+    /// exhaustive with no wildcard arm: a new domain error variant must be
+    /// classified explicitly and will fail to compile until it is, rather
+    /// than silently falling back to this kind.
     Internal,
 }
 
@@ -44,14 +48,14 @@ pub enum WireErrorKind {
 #[derive(Debug, Clone, Serialize)]
 pub struct WireError {
     /// Stable, machine-readable classification of the error.
-    pub kind: WireErrorKind,
+    kind: WireErrorKind,
     /// Human-readable description, suitable for logs or a generic toast.
-    pub message: String,
+    message: String,
     /// Optional structured payload carrying extra context for the frontend.
     /// Unused until Phase 4 (e.g. confirmation prompts); omitted from the
     /// serialised form when absent.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub details: Option<serde_json::Value>,
+    details: Option<serde_json::Value>,
 }
 
 impl WireError {
@@ -108,6 +112,7 @@ fn kind_of(error: &AppError) -> WireErrorKind {
         AppError::Scope(inner) => scope_kind(inner),
         AppError::KnowledgeBase(inner) => knowledge_base_kind(inner),
         AppError::Flow(inner) => flow_kind(inner),
+        AppError::Database(sqlx::Error::RowNotFound) => WireErrorKind::NotFound,
         AppError::Database(_) => WireErrorKind::Database,
     }
 }
@@ -378,41 +383,55 @@ mod tests {
     // --- AppError::Database (infos / block_reasons repositories) ---
 
     #[test]
-    fn app_error_database_maps_to_database() {
+    fn app_error_database_row_not_found_maps_to_not_found() {
         assert_eq!(
             kind_of(AppError::Database(sqlx::Error::RowNotFound)),
+            WireErrorKind::NotFound
+        );
+    }
+
+    #[test]
+    fn app_error_database_maps_to_database() {
+        assert_eq!(
+            kind_of(AppError::Database(sqlx::Error::Protocol(
+                "mock error".to_string()
+            ))),
             WireErrorKind::Database
         );
     }
 
     // --- kind serialisation spellings ---
 
+    /// Every `WireErrorKind` variant's expected snake_case spelling. Matched
+    /// exhaustively with no wildcard, so adding a variant without adding an
+    /// arm here is a compile error rather than a silently-passing test.
+    fn spelling(kind: WireErrorKind) -> &'static str {
+        match kind {
+            WireErrorKind::NotFound => "not_found",
+            WireErrorKind::ContainmentViolated => "containment_violated",
+            WireErrorKind::InvalidRequest => "invalid_request",
+            WireErrorKind::NeedsConfirmation => "needs_confirmation",
+            WireErrorKind::Database => "database",
+            WireErrorKind::Internal => "internal",
+        }
+    }
+
     #[test]
     fn kind_serialises_to_expected_snake_case_spellings() {
-        assert_eq!(
-            serde_json::to_value(WireErrorKind::NotFound).expect("serialise"),
-            serde_json::json!("not_found")
-        );
-        assert_eq!(
-            serde_json::to_value(WireErrorKind::ContainmentViolated).expect("serialise"),
-            serde_json::json!("containment_violated")
-        );
-        assert_eq!(
-            serde_json::to_value(WireErrorKind::InvalidRequest).expect("serialise"),
-            serde_json::json!("invalid_request")
-        );
-        assert_eq!(
-            serde_json::to_value(WireErrorKind::NeedsConfirmation).expect("serialise"),
-            serde_json::json!("needs_confirmation")
-        );
-        assert_eq!(
-            serde_json::to_value(WireErrorKind::Database).expect("serialise"),
-            serde_json::json!("database")
-        );
-        assert_eq!(
-            serde_json::to_value(WireErrorKind::Internal).expect("serialise"),
-            serde_json::json!("internal")
-        );
+        let kinds = [
+            WireErrorKind::NotFound,
+            WireErrorKind::ContainmentViolated,
+            WireErrorKind::InvalidRequest,
+            WireErrorKind::NeedsConfirmation,
+            WireErrorKind::Database,
+            WireErrorKind::Internal,
+        ];
+        for kind in kinds {
+            assert_eq!(
+                serde_json::to_value(kind).expect("serialise"),
+                serde_json::json!(spelling(kind))
+            );
+        }
     }
 
     // --- WireError shape ---
