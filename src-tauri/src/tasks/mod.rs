@@ -1059,8 +1059,9 @@ fn session_factory(pool: &DatabasePool) -> SessionFactory {
 /// integration tests those and `tasks` share; the struct goes when Step 4 moves `flows` onto
 /// sessions and its tests follow. Each method opens its own session — pooled for reads, and
 /// transactional for the writes that ADR-0004 requires to land in one piece, since a pool-bound
-/// caller has no session of its own to join. No `tracing::instrument` here: the operator methods
-/// these delegate to are the ones worth a span.
+/// caller has no session of its own to join. Nothing in this module carries
+/// `tracing::instrument`: the repository these shims replace carried none either, and a span on a
+/// method that only delegates would just nest inside the one it delegates to.
 pub struct GoalRepository<'a> {
     pool: &'a DatabasePool,
 }
