@@ -72,6 +72,24 @@ impl<'session> InfoOperator<'session> {
         Ok(rows.into_iter().map(Into::into).collect())
     }
 
+    /// Returns the ids of the info nodes hanging directly off `(parent_type, parent_id)`.
+    ///
+    /// Infos nest polymorphically with no foreign key, so a caller deleting a subtree has to walk
+    /// the levels itself; this is the one query that walk needs. The cascade itself lives in
+    /// `tasks`, which owns the other half of the subtree.
+    #[tracing::instrument(skip(self))]
+    pub async fn child_ids(
+        &mut self,
+        parent_type: &str,
+        parent_id: i64,
+    ) -> Result<Vec<i64>, sqlx::Error> {
+        sqlx::query_scalar("SELECT id FROM infos WHERE parent_type = ? AND parent_id = ?")
+            .bind(parent_type)
+            .bind(parent_id)
+            .fetch_all(&mut *self.connection)
+            .await
+    }
+
     /// Updates an info node.
     ///
     /// Multi-statement — one `UPDATE` per field the request touches (up to five: body, details,
