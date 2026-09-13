@@ -216,9 +216,12 @@ impl<'session> DomainOperator<'session> {
 /// Transitional: the SQL now lives on [`DomainOperator`], and every method here checks a
 /// connection out of the pool and delegates to it, so repository and operator cannot drift while
 /// callers move over. None of these methods was ever transactional at the repository level, so
-/// the shim does not introduce one either. This struct's last callers today are
-/// `tests/tasks.rs` and `tests/block_reasons.rs`, both out of this slice's scope; it goes away
-/// once Task 2.2 Step 3 (`tasks`) migrates them.
+/// the shim does not introduce one either. This struct's remaining callers are fixture helpers
+/// in `tests/tasks.rs`, `tests/block_reasons.rs`, `tests/infos.rs`, and `tests/knowledge_base.rs`
+/// (each uses it only to create a project/tag before exercising its own domain), plus its own
+/// test suite in `tests/domains.rs`. Only `tests/tasks.rs` falls within Task 2.2 Step 3's scope,
+/// so the shim will not retire once that step lands — it goes away only once every one of those
+/// fixtures, and `tests/domains.rs` itself, is migrated or removed.
 ///
 /// The methods below carry no `tracing::instrument`: each delegates to an operator method, and
 /// the operator methods themselves carry none either (matching the original repository, which

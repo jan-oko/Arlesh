@@ -164,7 +164,21 @@ impl<'session> ScopeOperator<'session> {
     /// Month, Season parents) if absent. The scope inherits its Day's containment ids.
     ///
     /// Multi-statement — the recursive creation of the Day (and its own parents) plus an insert
-    /// of the part scope — and so **not atomic on its own**; see [`Self::get_or_create`].
+    /// of the part scope — and so **not atomic on its own**. It opens no transaction: per
+    /// ADR-0004 only the outermost caller decides the boundary.
+    ///
+    /// ```no_run
+    /// # use arlesh_lib::database::session::SessionFactory;
+    /// # use arlesh_lib::scopes::error::ScopeError;
+    /// # use arlesh_lib::scopes::model::PartOfDay;
+    /// # use chrono::NaiveDate;
+    /// # async fn get_or_create_part(factory: &SessionFactory, date: NaiveDate) -> Result<(), ScopeError> {
+    /// let mut db = factory.begin().await?;
+    /// db.scopes().get_or_create_part(date, PartOfDay::Morning).await?;
+    /// db.commit().await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn get_or_create_part(
         &mut self,
         date: NaiveDate,
