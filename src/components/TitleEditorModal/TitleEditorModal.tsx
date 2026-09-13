@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { getErrorMessage } from "@/api/errors";
 import EditorModal from "@/components/EditorModal/EditorModal";
 import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
 import styles from "@/components/EditorModal/EditorModal.module.css";
@@ -32,7 +33,7 @@ export default function TitleEditorModal({ heading, title: initialTitle, nsfw: i
     try {
       await onSave(title.trim(), nsfw);
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : String(err));
+      setSaveError(getErrorMessage(err));
       setIsSaving(false);
     }
   }

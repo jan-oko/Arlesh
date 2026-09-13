@@ -6,6 +6,7 @@ import { listAllBlockReasons, setBlockReasons } from "@/api/block-reasons";
 import type { BlockReason } from "@/api/block-reasons";
 import { listGoals, createGoal, updateGoal, deleteGoal } from "@/api/goals";
 import { listInfos, createInfo, updateInfo, deleteInfo } from "@/api/infos";
+import { getErrorMessage } from "@/api/errors";
 import {
   listFlows, createFlow, updateFlow, deleteFlow,
   listAllFlowGoals, listAllFlowTasks, listAllFlowCycles, listAllFlowDependencies,
@@ -628,7 +629,7 @@ export function useMindmapData(): MindmapData {
       injectHabitInstances(built, flows, iterationsByFlow, scopeLabels, flowGoals, flowTasks, statusesByFlow);
       setTree(built);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(getErrorMessage(err));
     } finally {
       setIsLoading(false);
     }
@@ -665,7 +666,7 @@ export function useMindmapData(): MindmapData {
       injectHabitInstances(built, flows, iterationsByFlow, scopeLabels, flowGoals, flowTasks, statusesByFlow);
       setTree(built);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(getErrorMessage(err));
     }
   }, [scopeLabels]);
 

@@ -13,6 +13,7 @@ import { useMindmapStore, CLIPBOARD_OP } from "@/stores/use-mindmap-store";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { updateTask, reparentScopeConflicts } from "@/api/tasks";
 import { updateGoal } from "@/api/goals";
+import { getErrorMessage } from "@/api/errors";
 import { findNode, findParent, collectTasksAndGoals, collectSubtreePostOrder, computeShiftSelectRange, conversionNeedsConfirm, canConvertNodeToFlow, collectSearchableNodes } from "@/utils/mindmap-tree";
 import MindmapCanvas, { type MindmapCanvasHandle } from "@/components/MindmapCanvas/MindmapCanvas";
 import DragGhost from "@/components/DragGhost/DragGhost";
@@ -173,7 +174,7 @@ export default function MindmapView() {
         return;
       }
       void runConvertToFlow(node, true, true).catch((err: unknown) =>
-        showToast({ nodeId, message: err instanceof Error ? err.message : String(err) }),
+        showToast({ nodeId, message: getErrorMessage(err) }),
       );
     },
     [tree, runConvertToFlow, showToast],
@@ -320,7 +321,7 @@ export default function MindmapView() {
     setDeleteError(null);
     void removeNode(nodesToDelete)
       .then(() => { setDeleteTargets(null); selectNode(focusId); })
-      .catch((err: unknown) => { setDeleteError(err instanceof Error ? err.message : String(err)); })
+      .catch((err: unknown) => { setDeleteError(getErrorMessage(err)); })
       .finally(() => setIsDeleting(false));
   }, [deleteTargets, tree, removeNode, selectNode]);
 
