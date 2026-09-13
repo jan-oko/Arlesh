@@ -3,7 +3,6 @@
 pub mod error;
 pub mod model;
 
-use crate::database::DatabasePool;
 use error::KnowledgeBaseError;
 use model::{
     CreateEventRequest, CreatePersonRequest, CreateThreadRequest, Event, Person, PersonId, Thread,
@@ -16,9 +15,6 @@ use model::{
 /// the borrow rules and for where an operation belongs.
 pub struct PersonOperator<'session> {
     /// The session's connection, borrowed for the duration of this operator's life.
-    // Unfulfilled the moment Task 2.2 moves the first query method onto this operator,
-    // which is rustc telling that task to delete these two lines.
-    #[expect(dead_code, reason = "read by the query methods Task 2.2 brings")]
     connection: &'session mut sqlx::SqliteConnection,
 }
 
@@ -27,21 +23,12 @@ impl<'session> PersonOperator<'session> {
     pub(crate) fn new(connection: &'session mut sqlx::SqliteConnection) -> Self {
         Self { connection }
     }
-}
-
-/// Repository for Person CRUD operations.
-pub struct PersonRepository<'a> {
-    pool: &'a DatabasePool,
-}
-
-impl<'a> PersonRepository<'a> {
-    /// Creates a new repository backed by `pool`.
-    pub fn new(pool: &'a DatabasePool) -> Self {
-        Self { pool }
-    }
 
     /// Creates a new person.
-    pub async fn create(&self, request: CreatePersonRequest) -> Result<Person, KnowledgeBaseError> {
+    ///
+    /// A single `INSERT` (followed by a read of the created row), so it is atomic on its own —
+    /// SQLite gives statement-level atomicity to a single write.
+    pub async fn create(&mut self, request: CreatePersonRequest) -> Result<Person, KnowledgeBaseError> {
         let aliases = serde_json::to_string(&request.aliases.unwrap_or_default())
             .unwrap_or_else(|_| "[]".into());
         let id = sqlx::query(
@@ -50,32 +37,34 @@ impl<'a> PersonRepository<'a> {
         .bind(&request.name)
         .bind(&aliases)
         .bind(&request.linked_note)
-        .execute(self.pool)
+        .execute(&mut *self.connection)
         .await?
         .last_insert_rowid();
         self.get(PersonId(id)).await
     }
 
     /// Fetches a person by id.
-    pub async fn get(&self, id: PersonId) -> Result<Person, KnowledgeBaseError> {
+    pub async fn get(&mut self, id: PersonId) -> Result<Person, KnowledgeBaseError> {
         sqlx::query_as::<_, Person>("SELECT * FROM people WHERE id = ?")
             .bind(id.0)
-            .fetch_optional(self.pool)
+            .fetch_optional(&mut *self.connection)
             .await?
             .ok_or(KnowledgeBaseError::PersonNotFound(id.0))
     }
 
     /// Lists all people.
-    pub async fn list(&self) -> Result<Vec<Person>, KnowledgeBaseError> {
+    pub async fn list(&mut self) -> Result<Vec<Person>, KnowledgeBaseError> {
         sqlx::query_as::<_, Person>("SELECT * FROM people ORDER BY name")
-            .fetch_all(self.pool)
+            .fetch_all(&mut *self.connection)
             .await
             .map_err(Into::into)
     }
 
     /// Updates a person.
+    ///
+    /// A single `UPDATE` (preceded and followed by reads), so it is atomic on its own.
     pub async fn update(
-        &self,
+        &mut self,
         id: PersonId,
         request: UpdatePersonRequest,
     ) -> Result<Person, KnowledgeBaseError> {
@@ -92,17 +81,19 @@ impl<'a> PersonRepository<'a> {
             .bind(&aliases)
             .bind(&linked_note)
             .bind(id.0)
-            .execute(self.pool)
+            .execute(&mut *self.connection)
             .await?;
         self.get(id).await
     }
 
     /// Deletes a person by id.
-    pub async fn delete(&self, id: PersonId) -> Result<(), KnowledgeBaseError> {
+    ///
+    /// A single `DELETE` (preceded by a read), so it is atomic on its own.
+    pub async fn delete(&mut self, id: PersonId) -> Result<(), KnowledgeBaseError> {
         self.get(id).await?;
         sqlx::query("DELETE FROM people WHERE id = ?")
             .bind(id.0)
-            .execute(self.pool)
+            .execute(&mut *self.connection)
             .await?;
         Ok(())
     }
@@ -114,9 +105,6 @@ impl<'a> PersonRepository<'a> {
 /// the borrow rules and for where an operation belongs.
 pub struct EventOperator<'session> {
     /// The session's connection, borrowed for the duration of this operator's life.
-    // Unfulfilled the moment Task 2.2 moves the first query method onto this operator,
-    // which is rustc telling that task to delete these two lines.
-    #[expect(dead_code, reason = "read by the query methods Task 2.2 brings")]
     connection: &'session mut sqlx::SqliteConnection,
 }
 
@@ -125,21 +113,11 @@ impl<'session> EventOperator<'session> {
     pub(crate) fn new(connection: &'session mut sqlx::SqliteConnection) -> Self {
         Self { connection }
     }
-}
-
-/// Repository for Event CRUD operations.
-pub struct EventRepository<'a> {
-    pool: &'a DatabasePool,
-}
-
-impl<'a> EventRepository<'a> {
-    /// Creates a new repository backed by `pool`.
-    pub fn new(pool: &'a DatabasePool) -> Self {
-        Self { pool }
-    }
 
     /// Creates a new event.
-    pub async fn create(&self, request: CreateEventRequest) -> Result<Event, KnowledgeBaseError> {
+    ///
+    /// A single `INSERT` (followed by a read of the created row), so it is atomic on its own.
+    pub async fn create(&mut self, request: CreateEventRequest) -> Result<Event, KnowledgeBaseError> {
         let id = sqlx::query(
             "INSERT INTO events (title, scope_id, event_time, linked_note) VALUES (?, ?, ?, ?)",
         )
@@ -147,29 +125,31 @@ impl<'a> EventRepository<'a> {
         .bind(request.scope_id)
         .bind(&request.event_time)
         .bind(&request.linked_note)
-        .execute(self.pool)
+        .execute(&mut *self.connection)
         .await?
         .last_insert_rowid();
         sqlx::query_as::<_, Event>("SELECT * FROM events WHERE id = ?")
             .bind(id)
-            .fetch_one(self.pool)
+            .fetch_one(&mut *self.connection)
             .await
             .map_err(Into::into)
     }
 
     /// Lists all events.
-    pub async fn list(&self) -> Result<Vec<Event>, KnowledgeBaseError> {
+    pub async fn list(&mut self) -> Result<Vec<Event>, KnowledgeBaseError> {
         sqlx::query_as::<_, Event>("SELECT * FROM events ORDER BY id")
-            .fetch_all(self.pool)
+            .fetch_all(&mut *self.connection)
             .await
             .map_err(Into::into)
     }
 
     /// Deletes an event by id.
-    pub async fn delete(&self, id: i64) -> Result<(), KnowledgeBaseError> {
+    ///
+    /// A single `DELETE`, so it is atomic on its own.
+    pub async fn delete(&mut self, id: i64) -> Result<(), KnowledgeBaseError> {
         let rows = sqlx::query("DELETE FROM events WHERE id = ?")
             .bind(id)
-            .execute(self.pool)
+            .execute(&mut *self.connection)
             .await?
             .rows_affected();
         if rows == 0 {
@@ -185,9 +165,6 @@ impl<'a> EventRepository<'a> {
 /// the borrow rules and for where an operation belongs.
 pub struct ThreadOperator<'session> {
     /// The session's connection, borrowed for the duration of this operator's life.
-    // Unfulfilled the moment Task 2.2 moves the first query method onto this operator,
-    // which is rustc telling that task to delete these two lines.
-    #[expect(dead_code, reason = "read by the query methods Task 2.2 brings")]
     connection: &'session mut sqlx::SqliteConnection,
 }
 
@@ -196,47 +173,39 @@ impl<'session> ThreadOperator<'session> {
     pub(crate) fn new(connection: &'session mut sqlx::SqliteConnection) -> Self {
         Self { connection }
     }
-}
-
-/// Repository for Thread CRUD operations.
-pub struct ThreadRepository<'a> {
-    pool: &'a DatabasePool,
-}
-
-impl<'a> ThreadRepository<'a> {
-    /// Creates a new repository backed by `pool`.
-    pub fn new(pool: &'a DatabasePool) -> Self {
-        Self { pool }
-    }
 
     /// Creates a new thread.
-    pub async fn create(&self, request: CreateThreadRequest) -> Result<Thread, KnowledgeBaseError> {
+    ///
+    /// A single `INSERT` (followed by a read of the created row), so it is atomic on its own.
+    pub async fn create(&mut self, request: CreateThreadRequest) -> Result<Thread, KnowledgeBaseError> {
         let id = sqlx::query("INSERT INTO threads (title, linked_note) VALUES (?, ?)")
             .bind(&request.title)
             .bind(&request.linked_note)
-            .execute(self.pool)
+            .execute(&mut *self.connection)
             .await?
             .last_insert_rowid();
         sqlx::query_as::<_, Thread>("SELECT * FROM threads WHERE id = ?")
             .bind(id)
-            .fetch_one(self.pool)
+            .fetch_one(&mut *self.connection)
             .await
             .map_err(Into::into)
     }
 
     /// Lists all threads.
-    pub async fn list(&self) -> Result<Vec<Thread>, KnowledgeBaseError> {
+    pub async fn list(&mut self) -> Result<Vec<Thread>, KnowledgeBaseError> {
         sqlx::query_as::<_, Thread>("SELECT * FROM threads ORDER BY title")
-            .fetch_all(self.pool)
+            .fetch_all(&mut *self.connection)
             .await
             .map_err(Into::into)
     }
 
     /// Deletes a thread by id.
-    pub async fn delete(&self, id: i64) -> Result<(), KnowledgeBaseError> {
+    ///
+    /// A single `DELETE`, so it is atomic on its own.
+    pub async fn delete(&mut self, id: i64) -> Result<(), KnowledgeBaseError> {
         let rows = sqlx::query("DELETE FROM threads WHERE id = ?")
             .bind(id)
-            .execute(self.pool)
+            .execute(&mut *self.connection)
             .await?
             .rows_affected();
         if rows == 0 {
