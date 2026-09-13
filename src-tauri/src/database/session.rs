@@ -85,16 +85,29 @@ impl SessionMode for Transactional {
 /// Three cases, and every database operation in this crate is exactly one of them:
 ///
 /// 1. **One resource** — a method on that resource's operator, taking `&mut self`. Most of the
-///    crate. `GoalOperator::create`, `ScopeOperator::get`.
+///    crate. `GoalOperator::list`, `ScopeOperator::get`.
 /// 2. **Several resources** — a free function taking `&mut Db<M>`, reaching each resource by
 ///    calling `db.scopes()`, `db.goals()`, `db.tasks()` inline, one at a time. It takes the
-///    session precisely because it needs more than one resource from it.
+///    session precisely because it needs more than one resource from it. `tasks`'
+///    scope-containment rules are all of this kind.
 /// 3. **Several resources, atomically** — the same, but taking `&mut Db<Transactional>`
 ///    specifically, so calling it non-atomically is a compile error rather than a silent
-///    correctness bug. `start`, `fork_flow`, `convert_to_flow`, `set_iteration_done` and the
-///    subtree deletes are all of this kind. Such an operation **joins the caller's session and
-///    never opens its own**: only the outermost caller decides the transaction boundary, and
-///    that is a standing rule the type system does not enforce.
+///    correctness bug. `start`, `fork_flow`, `convert_to_flow`, `set_iteration_done`, the subtree
+///    deletes and `tasks::create_task`/`update_task` and their goal counterparts are all of this
+///    kind. Such an operation **joins the caller's session and never opens its own**: only the
+///    outermost caller decides the transaction boundary, and that is a standing rule the type
+///    system does not enforce.
+///
+/// Which of 2 and 3 applies is decided by the operation's **consistency requirement**, not by
+/// counting the statements it writes: any read a later write depends on — a containment check, a
+/// cycle search — is a case-3 window, even when the write itself is a single statement.
+///
+/// Case 1 has a corollary worth stating, because case 3 is where the rules live: when an
+/// operation splits into "the SQL" and "the SQL plus its rules", the operator half must be
+/// **module-private**. `db.tasks().insert(request)` compiling from another module is a way to
+/// write a row with the rules skipped, and the mechanically obvious translation of a legacy call
+/// site is exactly that. `tasks` keeps `insert`, `update` and `delete_row` private for this
+/// reason; only the case-3 free functions are reachable.
 ///
 /// What is **not** sanctioned is reaching a second resource from inside an operator by minting a
 /// sibling out of that operator's own connection borrow. It compiles, and it is how the

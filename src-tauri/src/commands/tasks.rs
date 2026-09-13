@@ -106,17 +106,23 @@ pub async fn delete_task(factory: State<'_, SessionFactory>, id: i64) -> Result<
 }
 
 /// Adds a dependency to a task.
+///
+/// Transactional despite writing only once: the cycle check in front of the `INSERT` is a read the
+/// write depends on, and without a transaction two concurrent calls can each see no cycle and
+/// jointly create one. The transaction closes that window — SQLite refuses the second writer
+/// rather than letting both land.
 #[tauri::command]
 pub async fn add_task_dependency(
     factory: State<'_, SessionFactory>,
     task_id: i64,
     dependency: Dependency,
 ) -> Result<(), WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
     db.tasks()
         .add_dependency(TaskId(task_id), dependency)
         .await
-        .map_err(WireError::from_error)
+        .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)
 }
 
 /// Removes a dependency from a task.

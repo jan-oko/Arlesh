@@ -1744,9 +1744,18 @@ async fn title_and_parent(pool: &sqlx::SqlitePool, table: &str, id: i64) -> (Str
         .unwrap()
 }
 
-/// Counts the rows `sql` matches for `id`, straight from the database.
-async fn row_count(pool: &sqlx::SqlitePool, sql: &str, id: i64) -> i64 {
-    sqlx::query_scalar(sql).bind(id).fetch_one(pool).await.unwrap()
+/// Counts the rows of `table` whose `column` equals `value`, straight from the database.
+///
+/// Takes the column rather than a whole predicate on purpose: a helper that binds one value into
+/// caller-supplied SQL silently binds NULL for every extra `?`, so `id = ? OR parent_id = ?` reads
+/// as `id = 1 OR parent_id = NULL` and the second half quietly never matches. One placeholder,
+/// one bind, no way to get that wrong.
+async fn count_where(pool: &sqlx::SqlitePool, table: &str, column: &str, value: i64) -> i64 {
+    sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {table} WHERE {column} = ?"))
+        .bind(value)
+        .fetch_one(pool)
+        .await
+        .unwrap()
 }
 
 #[tokio::test]
@@ -1848,17 +1857,22 @@ async fn the_delete_task_command_commits_the_whole_subtree() {
     task_commands::delete_task(app.state(), root.id).await.unwrap();
 
     assert_eq!(
-        row_count(&pool, "SELECT COUNT(*) FROM tasks WHERE id = ? OR parent_id = ?", root.id).await,
+        count_where(&pool, "tasks", "id", root.id).await,
         0,
-        "the command must commit the deletion of the root and its descendants"
+        "the command must commit the root's deletion"
     );
     assert_eq!(
-        row_count(&pool, "SELECT COUNT(*) FROM infos WHERE parent_id = ?", child.id).await,
+        count_where(&pool, "tasks", "id", child.id).await,
+        0,
+        "the descendant task must go with the root"
+    );
+    assert_eq!(
+        count_where(&pool, "infos", "parent_id", child.id).await,
         0,
         "the descendant's infos must go with it"
     );
     assert_eq!(
-        row_count(&pool, "SELECT COUNT(*) FROM block_reasons WHERE owner_id = ?", root.id).await,
+        count_where(&pool, "block_reasons", "owner_id", root.id).await,
         0,
         "the block reasons must go with the task"
     );
@@ -1952,13 +1966,74 @@ async fn the_delete_goal_command_commits_the_whole_subtree() {
     task_commands::delete_goal(app.state(), root.id).await.unwrap();
 
     assert_eq!(
-        row_count(&pool, "SELECT COUNT(*) FROM goals WHERE id = ?", root.id).await,
+        count_where(&pool, "goals", "id", root.id).await,
         0,
         "the command must commit the goal's deletion"
     );
     assert_eq!(
-        row_count(&pool, "SELECT COUNT(*) FROM tasks WHERE id = ?", child.id).await,
+        count_where(&pool, "tasks", "id", child.id).await,
         0,
         "the descendant task must go with it"
+    );
+}
+
+#[tokio::test]
+async fn the_add_task_dependency_command_commits_the_edge_it_checked() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let tasks = TaskRepository::new(&pool);
+    let blocker = tasks
+        .create(CreateTaskRequest {
+            title: "Blocker".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let blocked = tasks
+        .create(CreateTaskRequest {
+            title: "Blocked".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let app = helpers::command_host(&pool);
+
+    task_commands::add_task_dependency(
+        app.state(),
+        blocked.id,
+        Dependency::Task { id: blocker.id },
+    )
+    .await
+    .unwrap();
+
+    // One INSERT, but a transactional command: the cycle check in front of it is a read the write
+    // depends on. The edge must still be on disk once the session closes.
+    let edge: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM task_dependencies
+         WHERE task_id = ? AND dependency_type = 'task' AND dependency_id = ?",
+    )
+    .bind(blocked.id)
+    .bind(blocker.id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(edge, 1, "the command must commit the dependency edge it validated");
+
+    // And the check itself still rejects the reverse edge, inside the transaction.
+    let cycle = task_commands::add_task_dependency(
+        app.state(),
+        blocker.id,
+        Dependency::Task { id: blocked.id },
+    )
+    .await;
+    assert!(cycle.is_err(), "the cycle check must still reject the reverse edge");
+    assert_eq!(
+        count_where(&pool, "task_dependencies", "task_id", blocker.id).await,
+        0,
+        "a rejected dependency must leave nothing behind"
     );
 }

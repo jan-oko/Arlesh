@@ -245,10 +245,11 @@ async fn fetch_goal_tag_ids(
 
 /// The column values a goal update writes: the caller's request merged over the stored row.
 ///
-/// Its fields are private and it has no public constructor, so the only way to reach
-/// [`GoalOperator::update`] is through [`update_goal`] — which is where the containment rules are
-/// checked. That is deliberate: an unvalidated goal write should not be expressible.
-pub struct GoalWrite {
+/// Private, like `GoalOperator::update` which consumes it and `GoalWrite::merge` which is the only
+/// thing that builds one. Together those close the write path: [`update_goal`] — where the
+/// containment rules are checked — is the only way to change a goal. An unvalidated goal write is
+/// not expressible.
+struct GoalWrite {
     /// The new parent, when the request asks for a move; `None` leaves the parent link alone.
     reparent: Option<(String, i64)>,
     /// The parent the merged Time Scope is validated against — the new one when reparenting.
@@ -304,9 +305,9 @@ impl GoalWrite {
 
 /// The column values a task update writes: the caller's request merged over the stored row.
 ///
-/// Private fields, for the same reason as [`GoalWrite`]: [`TaskOperator::update`] is reachable
-/// only through [`update_task`], which validates first.
-pub struct TaskWrite {
+/// Private, for the same reason as [`GoalWrite`]: with the struct, its `merge` and the operator
+/// method that consumes it all module-private, [`update_task`] is the only way to change a task.
+struct TaskWrite {
     /// The new parent, when the request asks for a move; `None` leaves the parent link alone.
     reparent: Option<(String, i64)>,
     /// The parent the merged Time Scope and Plan are validated against.
@@ -392,25 +393,18 @@ impl<'session> GoalOperator<'session> {
     }
 
     /// Inserts a goal row and returns it, **without validating scope containment** — use
-    /// [`create_goal`], which validates and then calls this.
+    /// [`create_goal`], this method's only caller.
+    ///
+    /// **Module-private on purpose.** `db.goals().insert(request)` is the mechanically obvious way
+    /// to write a goal, it takes a request type whose every field is public, and it skips the
+    /// containment rules — so it must not be reachable from another module. Privacy is what makes
+    /// the unvalidated write unwritable; [`create_goal`] is the only entry point.
     ///
     /// Multi-statement (the `INSERT`, then the sort-position `UPDATE`) and so **not atomic on its
     /// own**. It opens no transaction: per ADR-0004 only the outermost caller decides the
-    /// boundary, and a method that began its own could never join one.
-    ///
-    /// ```no_run
-    /// # use arlesh_lib::database::session::SessionFactory;
-    /// # use arlesh_lib::tasks::{error::TaskError, model::CreateGoalRequest};
-    /// # async fn add(factory: &SessionFactory) -> Result<(), TaskError> {
-    /// let mut db = factory.begin().await?;
-    /// db.goals()
-    ///     .insert(CreateGoalRequest { title: "Ship it".into(), ..Default::default() })
-    ///     .await?;
-    /// db.commit().await?;
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub async fn insert(&mut self, request: CreateGoalRequest) -> Result<Goal, TaskError> {
+    /// boundary, and a method that began its own could never join one. See [`create_goal`] for the
+    /// transactional shape.
+    async fn insert(&mut self, request: CreateGoalRequest) -> Result<Goal, TaskError> {
         let status = request.status.as_ref().map(|s| s.as_str()).unwrap_or("active");
         let (ts_start, ts_end, ts_n, ts_kind) = time_scope_columns(&request.time_scope);
         let on_exit = on_scope_exit_column(&request.time_scope, request.on_scope_exit);
@@ -454,12 +448,12 @@ impl<'session> GoalOperator<'session> {
 
     /// The status and title of a goal, without its tags — the two columns a "blocked by goal"
     /// summary needs.
-    pub async fn status_and_title(&mut self, id: i64) -> Result<(String, String), TaskError> {
+    pub async fn status_and_title(&mut self, id: GoalId) -> Result<(String, String), TaskError> {
         sqlx::query_as("SELECT status, title FROM goals WHERE id = ?")
-            .bind(id)
+            .bind(id.0)
             .fetch_optional(&mut *self.connection)
             .await?
-            .ok_or(TaskError::GoalNotFound(id))
+            .ok_or(TaskError::GoalNotFound(id.0))
     }
 
     /// Lists all goals.
@@ -493,28 +487,17 @@ impl<'session> GoalOperator<'session> {
         )
     }
 
-    /// Writes already-merged column values onto a goal and returns the stored row.
+    /// Writes already-merged column values onto a goal and returns the stored row. **Validates
+    /// nothing** — see [`update_goal`], this method's only caller.
+    ///
+    /// Module-private for the same reason as [`Self::insert`]: it writes without checking the
+    /// containment rules. Doubly closed, in fact — [`GoalWrite`] is private too, so even inside
+    /// this module the argument can only come from `GoalWrite::merge`.
     ///
     /// Multi-statement when the write reparents (the parent link moves in its own `UPDATE`) and so
-    /// **not atomic on its own**; it opens no transaction, per ADR-0004. [`GoalWrite`] cannot be
-    /// built outside this module, so the shape to write is [`update_goal`]'s:
-    ///
-    /// ```no_run
-    /// # use arlesh_lib::database::session::SessionFactory;
-    /// # use arlesh_lib::tasks::{error::TaskError, model::{GoalId, UpdateGoalRequest}, update_goal};
-    /// # async fn rename(factory: &SessionFactory) -> Result<(), TaskError> {
-    /// let mut db = factory.begin().await?;
-    /// update_goal(
-    ///     &mut db,
-    ///     GoalId(1),
-    ///     UpdateGoalRequest { title: Some("Renamed".into()), ..Default::default() },
-    /// )
-    /// .await?;
-    /// db.commit().await?;
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub async fn update(&mut self, id: GoalId, write: GoalWrite) -> Result<Goal, TaskError> {
+    /// **not atomic on its own**; it opens no transaction, per ADR-0004. See [`update_goal`] for
+    /// the transactional shape.
+    async fn update(&mut self, id: GoalId, write: GoalWrite) -> Result<Goal, TaskError> {
         let (ts_start, ts_end, ts_n, ts_kind) = time_scope_columns(&write.time_scope);
         let on_exit = on_scope_exit_column(&write.time_scope, write.on_scope_exit);
 
@@ -551,7 +534,10 @@ impl<'session> GoalOperator<'session> {
 
     /// Deletes one goal row and nothing else. Descendants and the infos and block reasons hanging
     /// off them are the subtree cascade's job — see [`delete_goal`].
-    pub async fn delete_row(&mut self, id: GoalId) -> Result<(), TaskError> {
+    ///
+    /// Module-private: called directly it orphans the whole subtree under the goal, since the
+    /// polymorphic parent links have no foreign key to cascade along.
+    async fn delete_row(&mut self, id: GoalId) -> Result<(), TaskError> {
         sqlx::query("DELETE FROM goals WHERE id = ?")
             .bind(id.0)
             .execute(&mut *self.connection)
@@ -606,25 +592,18 @@ impl<'session> TaskOperator<'session> {
     }
 
     /// Inserts a task row and returns it, **without validating scope containment** — use
-    /// [`create_task`], which validates and then calls this.
+    /// [`create_task`], this method's only caller.
+    ///
+    /// **Module-private on purpose.** `db.tasks().insert(request)` is the mechanically obvious way
+    /// to write a task, it takes a request type whose every field is public, and it skips the
+    /// containment rules — so it must not be reachable from another module. Privacy is what makes
+    /// the unvalidated write unwritable; [`create_task`] is the only entry point.
     ///
     /// Multi-statement (the `INSERT`, then the sort-position `UPDATE`) and so **not atomic on its
     /// own**. It opens no transaction: per ADR-0004 only the outermost caller decides the
-    /// boundary, and a method that began its own could never join one.
-    ///
-    /// ```no_run
-    /// # use arlesh_lib::database::session::SessionFactory;
-    /// # use arlesh_lib::tasks::{error::TaskError, model::CreateTaskRequest};
-    /// # async fn add(factory: &SessionFactory) -> Result<(), TaskError> {
-    /// let mut db = factory.begin().await?;
-    /// db.tasks()
-    ///     .insert(CreateTaskRequest { title: "Write it up".into(), ..Default::default() })
-    ///     .await?;
-    /// db.commit().await?;
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub async fn insert(&mut self, request: CreateTaskRequest) -> Result<Task, TaskError> {
+    /// boundary, and a method that began its own could never join one. See [`create_task`] for the
+    /// transactional shape.
+    async fn insert(&mut self, request: CreateTaskRequest) -> Result<Task, TaskError> {
         let status = request.status.as_ref().map(|s| s.as_str()).unwrap_or("todo");
         let (ts_start, ts_end, ts_n, ts_kind) = time_scope_columns(&request.time_scope);
         let on_exit = on_scope_exit_column(&request.time_scope, request.on_scope_exit);
@@ -700,28 +679,17 @@ impl<'session> TaskOperator<'session> {
         )
     }
 
-    /// Writes already-merged column values onto a task and returns the stored row.
+    /// Writes already-merged column values onto a task and returns the stored row. **Validates
+    /// nothing** — see [`update_task`], this method's only caller.
+    ///
+    /// Module-private for the same reason as [`Self::insert`]: it writes without checking the
+    /// containment rules. Doubly closed, in fact — [`TaskWrite`] is private too, so even inside
+    /// this module the argument can only come from `TaskWrite::merge`.
     ///
     /// Multi-statement when the write reparents (the parent link moves in its own `UPDATE`) and so
-    /// **not atomic on its own**; it opens no transaction, per ADR-0004. [`TaskWrite`] cannot be
-    /// built outside this module, so the shape to write is [`update_task`]'s:
-    ///
-    /// ```no_run
-    /// # use arlesh_lib::database::session::SessionFactory;
-    /// # use arlesh_lib::tasks::{error::TaskError, model::{TaskId, UpdateTaskRequest}, update_task};
-    /// # async fn rename(factory: &SessionFactory) -> Result<(), TaskError> {
-    /// let mut db = factory.begin().await?;
-    /// update_task(
-    ///     &mut db,
-    ///     TaskId(1),
-    ///     UpdateTaskRequest { title: Some("Renamed".into()), ..Default::default() },
-    /// )
-    /// .await?;
-    /// db.commit().await?;
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub async fn update(&mut self, id: TaskId, write: TaskWrite) -> Result<Task, TaskError> {
+    /// **not atomic on its own**; it opens no transaction, per ADR-0004. See [`update_task`] for
+    /// the transactional shape.
+    async fn update(&mut self, id: TaskId, write: TaskWrite) -> Result<Task, TaskError> {
         let (ts_start, ts_end, ts_n, ts_kind) = time_scope_columns(&write.time_scope);
         let on_exit = on_scope_exit_column(&write.time_scope, write.on_scope_exit);
         let (plan_start, plan_end, _, _) = time_scope_columns(&write.plan);
@@ -762,7 +730,10 @@ impl<'session> TaskOperator<'session> {
 
     /// Deletes one task row and nothing else. Descendants and the infos and block reasons hanging
     /// off them are the subtree cascade's job — see [`delete_task`].
-    pub async fn delete_row(&mut self, id: TaskId) -> Result<(), TaskError> {
+    ///
+    /// Module-private: called directly it orphans the whole subtree under the task, since the
+    /// polymorphic parent links have no foreign key to cascade along.
+    async fn delete_row(&mut self, id: TaskId) -> Result<(), TaskError> {
         sqlx::query("DELETE FROM tasks WHERE id = ?")
             .bind(id.0)
             .execute(&mut *self.connection)
@@ -771,6 +742,11 @@ impl<'session> TaskOperator<'session> {
     }
 
     /// Adds a dependency to a task, rejecting circular chains.
+    ///
+    /// One write, but a **check-then-write**: the cycle search reads the edges the `INSERT` is
+    /// validated against, so the caller must open a transaction even though a single statement is
+    /// atomic by itself. Statement count is the wrong test here; the dependency between the read
+    /// and the write is what decides. It opens no transaction of its own, per ADR-0004.
     pub async fn add_dependency(
         &mut self,
         task_id: TaskId,
@@ -917,6 +893,21 @@ impl<'session> TaskOperator<'session> {
 /// than a `GoalOperator` method. It takes a transactional session because the insert writes twice
 /// (the row, then its sort position) and because validating inside the transaction is what stops
 /// the parent's scope changing between the check and the write.
+///
+/// This is the **only** way to write a goal row: the operator method underneath is module-private.
+///
+/// ```no_run
+/// # use arlesh_lib::database::session::SessionFactory;
+/// # use arlesh_lib::tasks::{create_goal, error::TaskError, model::CreateGoalRequest};
+/// # async fn add(factory: &SessionFactory) -> Result<(), TaskError> {
+/// let mut db = factory.begin().await?;
+/// create_goal(&mut db, CreateGoalRequest { title: "Ship it".into(), ..Default::default() })
+///     .await?;
+/// db.commit().await?;
+/// # Ok(())
+/// # }
+/// ```
+#[tracing::instrument(skip(db))]
 pub async fn create_goal(
     db: &mut Db<Transactional>,
     request: CreateGoalRequest,
@@ -934,7 +925,26 @@ pub async fn create_goal(
 /// Updates a goal, rejecting the write if the merged Time Scope escapes the effective parent's.
 ///
 /// Reads the stored row, merges the request over it, validates, then writes — all on one
-/// transactional session, so the row cannot move underneath the check.
+/// transactional session, so the row cannot move underneath the check. This is the **only** way to
+/// change a goal row: the operator method underneath is module-private, and so is the merged
+/// `GoalWrite` value it takes.
+///
+/// ```no_run
+/// # use arlesh_lib::database::session::SessionFactory;
+/// # use arlesh_lib::tasks::{error::TaskError, model::{GoalId, UpdateGoalRequest}, update_goal};
+/// # async fn rename(factory: &SessionFactory) -> Result<(), TaskError> {
+/// let mut db = factory.begin().await?;
+/// update_goal(
+///     &mut db,
+///     GoalId(1),
+///     UpdateGoalRequest { title: Some("Renamed".into()), ..Default::default() },
+/// )
+/// .await?;
+/// db.commit().await?;
+/// # Ok(())
+/// # }
+/// ```
+#[tracing::instrument(skip(db))]
 pub async fn update_goal(
     db: &mut Db<Transactional>,
     id: GoalId,
@@ -948,6 +958,7 @@ pub async fn update_goal(
 }
 
 /// Deletes a goal and its entire subtree (descendant tasks/goals and their infos).
+#[tracing::instrument(skip(db))]
 pub async fn delete_goal(db: &mut Db<Transactional>, id: GoalId) -> Result<(), TaskError> {
     db.goals().get(id).await?;
     delete_task_goal_subtree(db, "goal", id.0).await
@@ -959,6 +970,21 @@ pub async fn delete_goal(db: &mut Db<Transactional>, id: GoalId) -> Result<(), T
 /// rather than a `TaskOperator` method. It takes a transactional session because the insert writes
 /// twice (the row, then its sort position) and because validating inside the transaction is what
 /// stops an ancestor's scope changing between the check and the write.
+///
+/// This is the **only** way to write a task row: the operator method underneath is module-private.
+///
+/// ```no_run
+/// # use arlesh_lib::database::session::SessionFactory;
+/// # use arlesh_lib::tasks::{create_task, error::TaskError, model::CreateTaskRequest};
+/// # async fn add(factory: &SessionFactory) -> Result<(), TaskError> {
+/// let mut db = factory.begin().await?;
+/// create_task(&mut db, CreateTaskRequest { title: "Write it up".into(), ..Default::default() })
+///     .await?;
+/// db.commit().await?;
+/// # Ok(())
+/// # }
+/// ```
+#[tracing::instrument(skip(db))]
 pub async fn create_task(
     db: &mut Db<Transactional>,
     request: CreateTaskRequest,
@@ -978,7 +1004,26 @@ pub async fn create_task(
 /// the effective parent.
 ///
 /// Reads the stored row, merges the request over it, validates, then writes — all on one
-/// transactional session, so the row cannot move underneath the check.
+/// transactional session, so the row cannot move underneath the check. This is the **only** way to
+/// change a task row: the operator method underneath is module-private, and so is the merged
+/// `TaskWrite` value it takes.
+///
+/// ```no_run
+/// # use arlesh_lib::database::session::SessionFactory;
+/// # use arlesh_lib::tasks::{error::TaskError, model::{TaskId, UpdateTaskRequest}, update_task};
+/// # async fn rename(factory: &SessionFactory) -> Result<(), TaskError> {
+/// let mut db = factory.begin().await?;
+/// update_task(
+///     &mut db,
+///     TaskId(1),
+///     UpdateTaskRequest { title: Some("Renamed".into()), ..Default::default() },
+/// )
+/// .await?;
+/// db.commit().await?;
+/// # Ok(())
+/// # }
+/// ```
+#[tracing::instrument(skip(db))]
 pub async fn update_task(
     db: &mut Db<Transactional>,
     id: TaskId,
@@ -998,6 +1043,7 @@ pub async fn update_task(
 }
 
 /// Deletes a task and its entire subtree (descendant tasks/goals and their infos).
+#[tracing::instrument(skip(db))]
 pub async fn delete_task(db: &mut Db<Transactional>, id: TaskId) -> Result<(), TaskError> {
     db.tasks().get(id).await?;
     delete_task_goal_subtree(db, "task", id.0).await
@@ -1008,6 +1054,7 @@ pub async fn delete_task(db: &mut Db<Transactional>, id: TaskId) -> Result<(), T
 ///
 /// Reads tasks, goals and block reasons, so it is a free function over the session. Nothing is
 /// written — a pooled session is enough.
+#[tracing::instrument(skip(db))]
 pub async fn get_task_with_blockers<M: SessionMode>(
     db: &mut Db<M>,
     id: TaskId,
@@ -1030,7 +1077,7 @@ pub async fn get_task_with_blockers<M: SessionMode>(
             }
             Dependency::Goal { id: dependency_id } => {
                 let (goal_status, goal_title) =
-                    db.goals().status_and_title(dependency_id).await?;
+                    db.goals().status_and_title(GoalId(dependency_id)).await?;
                 if goal_status != GoalStatus::Achieved.as_str() {
                     reasons.push(format!(
                         "Blocked by goal {} ({})",
@@ -1059,9 +1106,9 @@ fn session_factory(pool: &DatabasePool) -> SessionFactory {
 /// integration tests those and `tasks` share; the struct goes when Step 4 moves `flows` onto
 /// sessions and its tests follow. Each method opens its own session — pooled for reads, and
 /// transactional for the writes that ADR-0004 requires to land in one piece, since a pool-bound
-/// caller has no session of its own to join. Nothing in this module carries
-/// `tracing::instrument`: the repository these shims replace carried none either, and a span on a
-/// method that only delegates would just nest inside the one it delegates to.
+/// caller has no session of its own to join. No `tracing::instrument` on these methods: the named
+/// operations they delegate to are instrumented, and a span on a method that only delegates would
+/// just nest an identical one inside it.
 pub struct GoalRepository<'a> {
     pool: &'a DatabasePool,
 }
@@ -1205,17 +1252,18 @@ impl<'a> TaskRepository<'a> {
     }
 
     /// Adds a dependency to a task, rejecting circular chains.
+    ///
+    /// Transactional for the reason `add_task_dependency` is: the cycle check is a read the
+    /// `INSERT` depends on, and only a transaction keeps the two from being interleaved.
     pub async fn add_dependency(
         &self,
         task_id: TaskId,
         dependency: Dependency,
     ) -> Result<(), TaskError> {
-        session_factory(self.pool)
-            .connect()
-            .await?
-            .tasks()
-            .add_dependency(task_id, dependency)
-            .await
+        let mut db = session_factory(self.pool).begin().await?;
+        db.tasks().add_dependency(task_id, dependency).await?;
+        db.commit().await?;
+        Ok(())
     }
 
     /// Removes a dependency from a task.
