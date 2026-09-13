@@ -28,6 +28,10 @@ png = "0.17"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt", "macros"] }
+# `test` brings `tauri::test::mock_app`, the only way to obtain a real `tauri::State` — it is a
+# newtype over a borrow with no public constructor, so without this a Tauri command cannot be
+# called from a test at all. See `tests/helpers.rs::command_host`.
+tauri = { version = "2", features = ["test"] }
 
 # Debug builds statically link the whole dependency tree into every binary (the app plus one
 # binary per integration-test file), and full DWARF debug info dominates the on-disk size. Keep

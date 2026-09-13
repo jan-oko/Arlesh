@@ -2,6 +2,7 @@ mod helpers;
 
 use arlesh_lib::{
     block_reasons::BlockReasonRepository,
+    commands::block_reasons::{list_all_block_reasons, set_block_reasons},
     database::session::SessionFactory,
     domains::{
         model::{CreateDomainRequest, DomainSubtype, ProjectStatus},
@@ -12,6 +13,7 @@ use arlesh_lib::{
         GoalRepository, TaskRepository,
     },
 };
+use tauri::Manager;
 
 async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
     let aspect_id: i64 =
@@ -87,7 +89,12 @@ async fn make_task(pool: &sqlx::SqlitePool, project_id: i64) -> i64 {
         .id
 }
 
-/// Reads an owner's list back over a connection the session under test no longer holds.
+/// Reads an owner's list back over the pool, after the session under test has released it.
+///
+/// The test pool has **one** connection, so this is the same connection the session used, not an
+/// independent observer: it distinguishes committed from rolled-back, which is what these tests
+/// assert, but it could not distinguish committed from still-open. Calling it while a session is
+/// alive would block on `acquire` until sqlx's 30-second timeout.
 async fn reasons_on_disk(pool: &sqlx::SqlitePool, owner_id: i64) -> Vec<String> {
     sqlx::query_scalar(
         "SELECT reason FROM block_reasons WHERE owner_type = 'task' AND owner_id = ? ORDER BY position",
@@ -197,4 +204,58 @@ async fn delete_for_over_a_session_removes_only_that_owner() {
 
     assert!(reasons_on_disk(&pool, task_id).await.is_empty());
     assert_eq!(reasons_on_disk(&pool, other_task_id).await, vec!["kept".to_string()]);
+}
+
+// The two tests above exercise the session, not the command. They cannot catch the one mistake the
+// session types do not prevent — a command that opens `begin()` and forgets `commit()` — because
+// they are a copy of the command's body rather than the command itself. The two below call the real
+// command functions, with a real `tauri::State` lent by a mock app. Delete the `db.commit()` line
+// from `set_block_reasons` and the first of them fails.
+
+#[tokio::test]
+async fn the_set_block_reasons_command_commits_what_it_writes() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let task_id = make_task(&pool, project_id).await;
+    let app = helpers::command_host(&pool);
+
+    set_block_reasons(
+        app.state(),
+        "task".into(),
+        task_id,
+        vec!["first".into(), "second".into()],
+    )
+    .await
+    .unwrap();
+
+    // The command's session is gone by now, so the pool's one connection is free to read over.
+    assert_eq!(
+        reasons_on_disk(&pool, task_id).await,
+        vec!["first".to_string(), "second".to_string()],
+        "the command must commit its transaction, not roll it back on drop"
+    );
+}
+
+#[tokio::test]
+async fn the_set_block_reasons_command_replaces_rather_than_appends() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let task_id = make_task(&pool, project_id).await;
+    let app = helpers::command_host(&pool);
+
+    set_block_reasons(app.state(), "task".into(), task_id, vec!["original".into()])
+        .await
+        .unwrap();
+    set_block_reasons(app.state(), "task".into(), task_id, vec!["replaced".into()])
+        .await
+        .unwrap();
+
+    assert_eq!(
+        reasons_on_disk(&pool, task_id).await,
+        vec!["replaced".to_string()]
+    );
+    // And the read command sees the same thing over its own pooled session.
+    let all = list_all_block_reasons(app.state()).await.unwrap();
+    assert_eq!(all.len(), 1);
+    assert_eq!(all[0].reason, "replaced");
 }

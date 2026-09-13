@@ -1,7 +1,11 @@
 //! Block reasons: an ordered list of explicit reasons a task or goal is blocked.
 //!
 //! The owner link (`owner_type`, `owner_id`) is polymorphic across tasks and goals, so — like the info
-//! parent link — there is no foreign key and deletes are cleaned up here via [`BlockReasonOperator::delete_for`].
+//! parent link — there is no foreign key, and nothing cascades: a deleted owner's reasons have to be
+//! removed explicitly. [`BlockReasonOperator::delete_for`] is the method for that, but the only
+//! cleanup in the crate today is a `DELETE` written inline in the task/goal subtree delete
+//! (`tasks/mod.rs:111`) and nothing calls `delete_for` yet. Routing that site through this module is
+//! Task 2.2 Step 3's job; until then the statement exists twice.
 
 pub mod model;
 
@@ -118,7 +122,8 @@ impl<'session> BlockReasonOperator<'session> {
         Ok(())
     }
 
-    /// Removes every reason for an owner (called when the task/goal itself is deleted).
+    /// Removes every reason for an owner — the cleanup a deleted task or goal needs, since the
+    /// owner link has no foreign key to cascade. Nothing calls it yet; see the module docs.
     #[tracing::instrument(skip(self))]
     pub async fn delete_for(&mut self, owner_type: &str, owner_id: i64) -> Result<(), sqlx::Error> {
         sqlx::query("DELETE FROM block_reasons WHERE owner_type = ? AND owner_id = ?")
@@ -133,9 +138,12 @@ impl<'session> BlockReasonOperator<'session> {
 /// Repository for the block-reason list of tasks and goals.
 ///
 /// Transitional: the SQL now lives on [`BlockReasonOperator`], and every method here checks a
-/// connection out of the pool and delegates to it, so the two cannot drift while callers move
-/// over. This struct goes away with its last caller — today [`TaskRepository`](crate::tasks::TaskRepository),
-/// which Task 2.2 Step 3 migrates.
+/// connection out of the pool and delegates to it, so repository and operator cannot drift while
+/// callers move over. This struct goes away with its last caller — today
+/// [`TaskRepository`](crate::tasks::TaskRepository), which Task 2.2 Step 3 migrates.
+///
+/// The methods below carry no `tracing::instrument`: each delegates to an operator method that is
+/// already instrumented, and a second attribute would only nest an identical span inside it.
 pub struct BlockReasonRepository<'a> {
     pool: &'a DatabasePool,
 }
@@ -147,14 +155,12 @@ impl<'a> BlockReasonRepository<'a> {
     }
 
     /// Returns every block reason across all owners (for the mindmap bulk load), ordered.
-    #[tracing::instrument(skip(self))]
     pub async fn list_all(&self) -> Result<Vec<BlockReason>, sqlx::Error> {
         let mut connection = self.pool.acquire().await?;
         BlockReasonOperator::new(&mut connection).list_all().await
     }
 
     /// Returns the ordered reason texts for a single owner.
-    #[tracing::instrument(skip(self))]
     pub async fn list_for(&self, owner_type: &str, owner_id: i64) -> Result<Vec<String>, sqlx::Error> {
         let mut connection = self.pool.acquire().await?;
         BlockReasonOperator::new(&mut connection)
@@ -166,7 +172,6 @@ impl<'a> BlockReasonRepository<'a> {
     ///
     /// Opens its own transaction, because a pool-bound caller has no session to join. Callers
     /// that already hold one must use [`BlockReasonOperator::set`] instead.
-    #[tracing::instrument(skip(self, reasons))]
     pub async fn set(&self, owner_type: &str, owner_id: i64, reasons: &[String]) -> Result<(), sqlx::Error> {
         let mut transaction = self.pool.begin().await?;
         BlockReasonOperator::new(&mut transaction)
@@ -176,8 +181,7 @@ impl<'a> BlockReasonRepository<'a> {
         Ok(())
     }
 
-    /// Removes every reason for an owner (called when the task/goal itself is deleted).
-    #[tracing::instrument(skip(self))]
+    /// Removes every reason for an owner. See [`BlockReasonOperator::delete_for`].
     pub async fn delete_for(&self, owner_type: &str, owner_id: i64) -> Result<(), sqlx::Error> {
         let mut connection = self.pool.acquire().await?;
         BlockReasonOperator::new(&mut connection)
