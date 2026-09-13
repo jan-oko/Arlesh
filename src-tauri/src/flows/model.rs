@@ -77,8 +77,8 @@ pub struct Flow {
     pub is_habit: bool,
     /// Sort position among siblings.
     pub position: i64,
-    /// Whether this flow is marked NSFW (hidden by the Work filter).
-    pub nsfw: bool,
+    /// Whether this flow is private (hidden unless Private Mode is on).
+    pub is_private: bool,
 }
 
 /// A flow-goal (template item) row.
@@ -96,8 +96,8 @@ pub struct FlowGoal {
     pub parent_id: i64,
     /// Sort position among siblings.
     pub position: i64,
-    /// Whether this item is marked NSFW (hidden by the Work filter; propagates to its instances).
-    pub nsfw: bool,
+    /// Whether this item is private (hidden unless Private Mode is on; propagates to its instances).
+    pub is_private: bool,
 }
 
 /// A flow-task (template item) row.
@@ -115,8 +115,8 @@ pub struct FlowTask {
     pub parent_id: i64,
     /// Sort position among siblings.
     pub position: i64,
-    /// Whether this item is marked NSFW (hidden by the Work filter; propagates to its instances).
-    pub nsfw: bool,
+    /// Whether this item is private (hidden unless Private Mode is on; propagates to its instances).
+    pub is_private: bool,
 }
 
 /// Request body for creating a flow.
@@ -195,8 +195,8 @@ pub struct UpdateFlowRequest {
     pub parent_id: Option<i64>,
     /// New sort position.
     pub position: Option<i64>,
-    /// New NSFW flag, if changing.
-    pub nsfw: Option<bool>,
+    /// New private flag, if changing.
+    pub is_private: Option<bool>,
 }
 
 /// Request body for creating a flow item (goal or task).
@@ -243,8 +243,8 @@ pub struct UpdateFlowItemRequest {
     pub parent_id: Option<i64>,
     /// New sort position.
     pub position: Option<i64>,
-    /// New NSFW flag, if changing.
-    pub nsfw: Option<bool>,
+    /// New private flag, if changing.
+    pub is_private: Option<bool>,
 }
 
 /// A relative (Cycle Scope, Cycle Plan) pair carried by a flow item.

@@ -108,7 +108,7 @@ function buildIterationItems(
       ...(past
         ? { timing: "lapsed" as const, resolution: done ? "completed" as const : "missed" as const, archived: true }
         : { timing: "active" as const }),
-      nsfw: item.nsfw,
+      isPrivate: item.is_private,
       position: item.position,
       tagIds: [],
       children: [],
@@ -179,7 +179,7 @@ export function injectHabitInstances(
         ...(past
           ? { timing: "lapsed" as const, resolution: rootDone ? "completed" as const : "missed" as const, archived: true }
           : { timing: "active" as const }),
-        nsfw: flow.nsfw,
+        isPrivate: flow.is_private,
         position: iteration.index,
         tagIds: [],
         children: buildIterationItems(flow, scopeId, iteration.index, items, statuses, host.color, past),
@@ -352,7 +352,7 @@ export function buildTree(
       kind: subtypeToKind(domain.subtype),
       title: domain.title,
       position: domain.position,
-      nsfw: domain.nsfw,
+      isPrivate: domain.is_private,
       ...(domain.color !== null ? { color: domain.color } : {}),
       ...(domain.status !== null ? { status: domain.status } : {}),
       ...(domain.knowledge_base_directory !== null ? { knowledgeBaseDirectory: domain.knowledge_base_directory } : {}),
@@ -371,7 +371,7 @@ export function buildTree(
       timeScope: goal.time_scope,
       onScopeExit: goal.on_scope_exit,
       position: goal.position,
-      nsfw: goal.nsfw,
+      isPrivate: goal.is_private,
       tagIds: goal.tag_ids,
       children: [],
     });
@@ -389,7 +389,7 @@ export function buildTree(
       onScopeExit: task.on_scope_exit,
       plan: task.plan,
       position: task.position,
-      nsfw: task.nsfw,
+      isPrivate: task.is_private,
       tagIds: task.tag_ids,
       children: [],
     });
@@ -422,7 +422,7 @@ export function buildTree(
       title: info.body,
       ...(info.details !== null ? { infoDetails: info.details } : {}),
       position: info.position,
-      nsfw: info.nsfw,
+      isPrivate: info.is_private,
       tagIds: [],
       children: [],
     });
@@ -434,7 +434,7 @@ export function buildTree(
       kind: "flow",
       title: flow.title,
       position: flow.position,
-      nsfw: flow.nsfw,
+      isPrivate: flow.is_private,
       flow: {
         instanceType: flow.instance_type,
         targetType: flow.target_type,
@@ -479,7 +479,7 @@ export function buildTree(
       kind: itemType,
       title: item.title,
       position: item.position,
-      nsfw: item.nsfw,
+      isPrivate: item.is_private,
       flowItem: {
         itemType,
         flowId: item.flow_id,

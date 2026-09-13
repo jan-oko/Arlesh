@@ -5,6 +5,7 @@ import { formatChord } from "@/utils/hotkeys/chord";
 import { GLOBAL_BINDINGS } from "@/utils/hotkeys/global-bindings";
 import { MINDMAP_BINDINGS } from "@/utils/hotkeys/mindmap-bindings";
 import { LIST_BINDINGS } from "@/utils/hotkeys/list-bindings";
+import { useInputCapture } from "@/hooks/use-input-capture";
 import styles from "./HotkeysModal.module.css";
 
 interface Props {
@@ -44,6 +45,7 @@ function rowsFor(section: Section): Row[] {
 
 /** Ctrl+Shift+/ cheat-sheet: every keyboard binding, grouped by the surface it applies to. */
 export default function HotkeysModal({ onClose }: Props) {
+  useInputCapture();
   const { t } = useTranslation(["hotkeys"]);
 
   useEffect(() => {

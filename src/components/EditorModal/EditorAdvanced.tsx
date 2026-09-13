@@ -7,17 +7,17 @@ const CHEVRON_OPEN = "▾";
 const CHEVRON_CLOSED = "▸";
 
 interface Props {
-  nsfw: boolean;
-  onNsfwChange: (checked: boolean) => void;
+  isPrivate: boolean;
+  onPrivateChange: (checked: boolean) => void;
 }
 
 /**
  * Collapsible **Advanced** section shared by every editor modal — holds the less-common toggles
- * (currently the NSFW / Work-mode switch). Collapsed by default; auto-opens when NSFW is set.
+ * (currently the Private switch). Collapsed by default; auto-opens when the node is private.
  */
-export default function EditorAdvanced({ nsfw, onNsfwChange }: Props) {
+export default function EditorAdvanced({ isPrivate, onPrivateChange }: Props) {
   const { t } = useTranslation("editor");
-  const [open, setOpen] = useState(nsfw);
+  const [open, setOpen] = useState(isPrivate);
   return (
     <>
       <button type="button" className={styles.advancedToggle} onClick={() => setOpen((o) => !o)}>
@@ -26,7 +26,7 @@ export default function EditorAdvanced({ nsfw, onNsfwChange }: Props) {
       </button>
       {open && (
         <div className={styles.advancedBody}>
-          <Switch checked={nsfw} onChange={onNsfwChange} label={t("markNsfw")} />
+          <Switch checked={isPrivate} onChange={onPrivateChange} label={t("markPrivate")} />
         </div>
       )}
     </>

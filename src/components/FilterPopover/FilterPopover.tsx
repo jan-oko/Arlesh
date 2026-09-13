@@ -33,7 +33,7 @@ export default function FilterPopover() {
   const addTagFilter = useFilterStore((s) => s.addTagFilter);
   const toggleShowInfo = useFilterStore((s) => s.toggleShowInfo);
   const toggleShowFlow = useFilterStore((s) => s.toggleShowFlow);
-  const toggleWorkMode = useFilterStore((s) => s.toggleWorkMode);
+  const togglePrivateMode = useFilterStore((s) => s.togglePrivateMode);
   const cycleArchivedMode = useFilterStore((s) => s.cycleArchivedMode);
   const reset = useFilterStore((s) => s.reset);
   // Collapsed by default; auto-opens when the archived filter is already engaged, so an active
@@ -95,8 +95,8 @@ export default function FilterPopover() {
           </PillFilterSection>
         )}
 
-        <PillFilterSection label={t("workLabel")}>
-          <Switch checked={filter.workMode} onChange={toggleWorkMode} label={t("workMode")} />
+        <PillFilterSection label={t("privateLabel")}>
+          <Switch checked={filter.privateMode} onChange={togglePrivateMode} label={t("privateMode")} />
         </PillFilterSection>
       </div>
 

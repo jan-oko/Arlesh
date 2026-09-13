@@ -15,7 +15,7 @@ export interface Domain {
   status: string | null;
   knowledge_base_directory: string | null;
   position: number;
-  nsfw: boolean;
+  is_private: boolean;
 }
 
 export interface CreateDomainRequest {
@@ -35,7 +35,7 @@ export interface UpdateDomainRequest {
   status?: string;
   knowledge_base_directory?: string;
   position?: number;
-  nsfw?: boolean;
+  is_private?: boolean;
 }
 
 export async function listDomains(subtype?: string): Promise<Domain[]> {

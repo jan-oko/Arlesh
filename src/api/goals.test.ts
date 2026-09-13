@@ -10,7 +10,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 const mockGoal: Goal = {
   id: 1, title: "Ship MVP", parent_type: "domain", parent_id: 2,
-  status: "active", time_scope: null, on_scope_exit: null, tag_ids: [], position: 0, nsfw: false,
+  status: "active", time_scope: null, on_scope_exit: null, tag_ids: [], position: 0, is_private: false,
 };
 
 beforeEach(() => {

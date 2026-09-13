@@ -106,9 +106,10 @@ export interface TaskListRow {
   dependencyRefs: string[];
   isBlocked: boolean;
   hasBlockedAncestor: boolean;
-  /** Whether any ancestor (Project/Goal/Domain/Aspect) is marked NSFW — Work mode hides this task's
-   * subtree as a unit even when the task itself isn't flagged (mirrors the Mindmap's tree-pruning). */
-  hasNsfwAncestor: boolean;
+  /** Whether any ancestor (Project/Goal/Domain/Aspect) is marked private — outside Private Mode the
+   * subtree is hidden as a unit even when the task itself isn't flagged (mirrors the Mindmap's
+   * tree-pruning). */
+  hasPrivateAncestor: boolean;
   scopeTokens: string[];
 }
 
@@ -169,7 +170,7 @@ function passesListPreset(row: TaskListRow, f: FilterState): boolean {
   }
 }
 
-/** Filters the flattened task rows per the shared filter (status preset, tags, Info/Flow/Work) and
+/** Filters the flattened task rows per the shared filter (status preset, tags, Info/Flow/Private) and
  * the List-View-exclusive filters. Unblock overrides the status preset to "blocked tasks only". */
 export function filterTaskList(
   rows: readonly TaskListRow[],
@@ -178,7 +179,7 @@ export function filterTaskList(
 ): TaskListRow[] {
   return rows.filter((row) => {
     if (typeHardHidden(row.node, shared)) return false;
-    if (shared.workMode && row.hasNsfwAncestor) return false;
+    if (!shared.privateMode && row.hasPrivateAncestor) return false;
     if (listFilter.preset === "unblock") {
       if (!row.isBlocked) return false;
     } else if (!passesListPreset(row, shared)) {

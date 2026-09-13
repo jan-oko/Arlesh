@@ -2,7 +2,8 @@
 
 All notable changes to Arlesh are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
-Versions follow [Semantic Versioning](https://semver.org/).
+Arlesh is a personal app in live preview with no release cycle, so new entries collect under
+`[Unreleased]`; the numbered sections below are kept as history.
 
 ---
 
@@ -11,8 +12,15 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Added
 - **A keyboard cheat-sheet**, opened with **Ctrl+Shift+/** or from the settings popover's **Keyboard shortcuts** entry. Lists every binding in the app grouped into Global / Mindmap / List View, with the chords that share an action merged onto one row (so the four arrow keys read as a single `← → ↑ ↓` line). The list is generated from the same binding table the keyboard handlers dispatch from, so it can't fall out of date with what the keys actually do.
 
+### Changed
+- **The NSFW flag is now called Private, and the Work filter is now Private Mode — with the switch turned around.** Marking a node **Private** (the toggle in each editor modal's **Advanced** section) means the same thing it always did: the node and its whole subtree are hidden as a unit. What changed is the default. The old **Work** toggle was off by default and showed everything, hiding marked nodes only once you turned it on; the new **Private Mode** toggle is off by default and *hides* private nodes, and you turn it on to reveal them — so private work stays out of sight unless you ask for it. If you had the Work toggle on, nothing visibly changes; if you had it off, nodes you'd marked are now hidden until you switch Private Mode on in the filter popover. Migration `0022` renames the `nsfw` column to `is_private` on every node table; no flags are lost.
+
 ### Fixed
+- **Mindmap and List View keyboard shortcuts no longer go dead until you switch views.** Each view decided whether its bindings were live from a set of state flags meant to say "a modal or inline rename is open" — but a flag could stay set after the thing it described had left the screen (a delete confirmation whose target was gone from the reloaded tree, an inline rename whose node stopped rendering). Once that happened every Mindmap/List binding stayed dead, with nothing on screen left to clear the flag, until the view was unmounted by switching to the other view and back. The global **Alt+L** and **Ctrl+Shift+/** were never affected, which is what made it look like only "some" shortcuts had stopped. Modals and inline editors now register themselves while they are mounted, so what suppresses the shortcuts can no longer disagree with what is actually on screen.
 - **Keyboard shortcuts no longer fire when extra modifiers are held.** A shortcut now requires exactly the modifiers it names: **Ctrl+E** or **Shift+E** no longer open the editor (bare **E** still does), **Ctrl+Shift+C/X/V** no longer cut/copy/paste, and **Shift+Tab** no longer creates a child cell, so it returns to normal focus traversal. Most visibly, **Ctrl+Shift+/** no longer also collapses the selected node while opening the cheat-sheet.
+
+### Removed
+- **Hebrew is no longer a supported interface language**, and the **Language** row is gone from the settings popover — the app is English-only. If you had switched the interface to Hebrew, it now reads English. This only affects the app's own labels: **titles you type yourself still render right-to-left when you write them in Hebrew**, on mindmap nodes and in the List View, exactly as before. Status badges under a node now always sit along its left edge rather than flipping with the interface language.
 
 ## [0.3.0] — 2026-09-10
 

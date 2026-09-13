@@ -22,28 +22,24 @@ const DANGER = "var(--danger)";
 interface Props {
   node: MindmapNode;
   indicators: StatusIndicator[];
-  /** Node box width (local coords); the row aligns to the leading edge under it. */
-  width: number;
   /** Node box height (local coords); the row sits just below it. */
   top: number;
 }
 
 /**
- * A row of status badges rendered just below a node, aligned to the **UI**'s leading edge (left in
- * English, right in Hebrew — independent of the node title's own direction), each with an SVG
- * `<title>` tooltip. Scope/Plan tooltips resolve their window labels asynchronously; tags resolve
- * their names.
+ * A row of status badges rendered just below a node, aligned to the node box's left edge
+ * (independent of the node title's own text direction), each with an SVG `<title>` tooltip.
+ * Scope/Plan tooltips resolve their window labels asynchronously; tags resolve their names.
  */
-export default function StatusIconRow({ node, indicators, width, top }: Props) {
-  const { t, i18n } = useTranslation("statusIcons");
-  const isRtl = i18n.dir() === "rtl";
+export default function StatusIconRow({ node, indicators, top }: Props) {
+  const { t } = useTranslation("statusIcons");
   const scopeLabel = useScopeRangeLabel(node.timeScope);
   const planLabel = useScopeRangeLabel(node.plan);
   const tagNames = useTagNames();
 
   const rowY = top + ROW_GAP + ICON_R;
-  // First badge hugs the leading edge; subsequent badges march inward (rightward in LTR, leftward in RTL).
-  const cxFor = (i: number) => (isRtl ? width - ICON_R - i * ICON_SPACING : ICON_R + i * ICON_SPACING);
+  // First badge hugs the left edge; subsequent badges march rightward.
+  const cxFor = (i: number) => ICON_R + i * ICON_SPACING;
 
   const tagsValue = node.tagIds.map((id) => tagNames.get(id) ?? `#${id}`).join(", ");
 

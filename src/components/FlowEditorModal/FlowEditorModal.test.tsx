@@ -89,7 +89,7 @@ describe("FlowEditorModal — save", () => {
         rootPlanKind: null,
         rootPlanStart: null,
         rootPlanEnd: null,
-        nsfw: false,
+        isPrivate: false,
         recurrence: null,
       }),
     );

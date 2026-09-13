@@ -13,6 +13,6 @@ Additional rules live in `.claude/rules/`. Read them before starting any task.
 ## Key conventions
 
 - `SPEC.md` is the authoritative design document. Update it when design decisions are made or revised.
-- `CHANGELOG.md` uses Keep a Changelog format. Update it whenever a meaningful change is made.
-- `VERSION.txt` holds the current semver. Ask the user before bumping it; do not bump it automatically. See `.claude/rules/versioning.md` for guidance.
+- `CHANGELOG.md` uses Keep a Changelog format, under a single `[Unreleased]` section — this is a personal app in live preview, with no release cycle. Record every meaningful change there using the `Added` / `Changed` / `Fixed` / `Removed` headings. It is user-facing: describe behaviour, not refactors.
+- **Commit all changes at the end of every request.** Stage and commit everything modified during the request in a single commit with a clear message. Do not leave the working tree dirty.
 - The five implementation phases in `SPEC.md` define sequencing. Do not implement Phase N+1 features while Phase N is in progress unless explicitly asked.

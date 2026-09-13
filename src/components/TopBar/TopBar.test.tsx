@@ -11,10 +11,7 @@ import { DEFAULT_LIST_FILTER } from "@/utils/list-filter";
 import { useFilterDisplay } from "@/hooks/use-filter-display";
 
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string) => key,
-    i18n: { resolvedLanguage: "en", dir: () => "ltr", changeLanguage: vi.fn() },
-  }),
+  useTranslation: () => ({ t: (key: string) => key }),
 }));
 
 vi.mock("@/hooks/use-filter-display");

@@ -340,26 +340,26 @@ describe("filterTree — archived mode (Archived status + scope-Lapsed override)
   });
 });
 
-describe("filterTree — Work mode hides NSFW subtrees", () => {
+describe("filterTree — Private Mode reveals private subtrees", () => {
   const t = () =>
     n("root", "domain", {}, [
       n("aspect-1", "aspect", {}, [
         n("task-clean", "task", { status: "todo" }),
-        n("task-nsfw", "task", { status: "todo", nsfw: true }, [n("child", "task", { status: "todo" })]),
+        n("task-private", "task", { status: "todo", isPrivate: true }, [n("child", "task", { status: "todo" })]),
       ]),
     ]);
 
-  it("keeps the NSFW node and its subtree when Work mode is off", () => {
-    const kept = ids(filterTree(t(), f({ workMode: false })));
-    expect(kept).toContain("task-nsfw");
-    expect(kept).toContain("child");
-  });
-
-  it("drops the NSFW node and its whole subtree when Work mode is on", () => {
-    const kept = ids(filterTree(t(), f({ workMode: true })));
-    expect(kept).not.toContain("task-nsfw");
+  it("drops a private node and its whole subtree when Private Mode is off", () => {
+    const kept = ids(filterTree(t(), f({ privateMode: false })));
+    expect(kept).not.toContain("task-private");
     expect(kept).not.toContain("child");
     expect(kept).toContain("task-clean");
+  });
+
+  it("keeps a private node and its subtree when Private Mode is on", () => {
+    const kept = ids(filterTree(t(), f({ privateMode: true })));
+    expect(kept).toContain("task-private");
+    expect(kept).toContain("child");
   });
 });
 

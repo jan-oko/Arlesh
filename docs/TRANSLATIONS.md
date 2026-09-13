@@ -1,82 +1,56 @@
 # Translations
 
-Arlesh supports multiple languages via `react-i18next`. Translation files live in `src/i18n/locales/{lang}/{namespace}.json`.
+Every user-facing string in the frontend goes through `react-i18next` rather than sitting as a
+literal in JSX. Translation files live in `src/i18n/locales/{lang}/{namespace}.json`.
 
----
-
-## Adding a language
-
-1. Copy `src/i18n/locales/en/` to `src/i18n/locales/{lang}/`.
-2. Translate every value in every JSON file. Keys must not change.
-3. In `src/i18n/index.ts`, import all namespace files for the new locale and add an entry to the `resources` object.
-4. In `src/components/TopBar/TopBar.tsx`, add a branch to `toggleLanguage()` and update the button label.
+**English is currently the only locale.** i18next stays in place because it keeps every string
+addressable by key — which makes wording changes a one-file edit and leaves the door open to a
+second locale — not because a translation is pending.
 
 ---
 
 ## Namespaces
 
-| Namespace      | Content                                      |
-|----------------|----------------------------------------------|
-| `common`       | Save, Cancel, Loading, Error                 |
-| `contextMenu`  | Context menu item labels                     |
-| `editor`       | Modal headings, field labels, placeholders   |
-| `nodeKinds`    | Entity display names                         |
-| `status`       | Status pill labels (task / goal / project)   |
-| `warnings`     | Warning modal copy and toast messages        |
-| `navigation`   | Subtree navigation pill label                |
+| Namespace      | Content                                        |
+|----------------|------------------------------------------------|
+| `common`       | Save, Cancel, Loading, Error                   |
+| `contextMenu`  | Context menu item labels                       |
+| `editor`       | Modal headings, field labels, placeholders     |
+| `nodeKinds`    | Entity display names                           |
+| `status`       | Status pill labels (task / goal / project)     |
+| `warnings`     | Warning modal copy and toast messages          |
+| `navigation`   | Subtree navigation pill label                  |
+| `scopes`       | Time-scope and plan window labels              |
+| `filter`       | Filter popover and chip labels                 |
+| `statusIcons`  | Status-badge tooltips                          |
+| `listView`     | List View presets, columns, empty states       |
+| `hotkeys`      | Keyboard cheat-sheet action labels             |
 
 ---
 
-## Domain terminology
+## Adding a string
 
-| English           | Hebrew        | Notes                                              |
-|-------------------|---------------|----------------------------------------------------|
-| Aspect            | היבט          | Six fixed life-area containers (Red, Purple…)      |
-| Project           | פרויקט        | Large domain under an Aspect                       |
-| Domain            | גזרה          | General organizational container                  |
-| Tag (sing.)       | תג            | Flat leaf marker node                              |
-| Tags (pl.)        | תגיות         |                                                    |
-| Goal              | מטרה          | Desired state entity                               |
-| Task              | משימה         | Action item                                        |
-| Blocker           | חסם           | Condition preventing task progress                 |
-| Dependency        | תלות          | Prerequisite relationship                          |
-| Dependencies      | תלויות        |                                                    |
-| Knowledge Base    | בסיס ידע      | External Obsidian vault                            |
-| Scope             | מסגרת         | Time-range entity                                  |
-| Season            | עונה          | 3-month period                                     |
-| Month             | חודש          |                                                    |
-| Week              | שבוע          |                                                    |
-| Day               | יום           |                                                    |
-| Person            | אדם / אנשים   | KB person entity                                   |
-| Event             | אירוע         | KB event entity                                    |
-| Thread            | שרשור         | KB train-of-thought entity                         |
+1. Add the key and its English value to `src/i18n/locales/en/<namespace>.json`.
+2. Reference it with `const { t } = useTranslation("<namespace>")` then `t("key")`.
+   Interpolation: `t("key", { name })` against a `"{{name}}"` placeholder in the value.
+
+Keys are typed from the English JSON (`src/i18n/types.d.ts`), so `t("unknownKey")` is a compile
+error — add the entry before referencing it.
+
+A *new* namespace must be registered in both `src/i18n/index.ts` and `src/i18n/types.d.ts`.
 
 ---
 
-## Status values
+## Adding a language
 
-### Task
+1. Copy `src/i18n/locales/en/` to `src/i18n/locales/{lang}/` and translate every value.
+   Keys must not change.
+2. In `src/i18n/index.ts`, import the new locale's namespace files, add them to `resources`,
+   and drop the hardcoded `lng: "en"` in favour of a language detector or an explicit setting.
+3. Add a way to switch languages (the settings popover in `TopBar.tsx` is the natural home).
+4. If the language is right-to-left, set `dir` on the app shell in `App.tsx` from
+   `i18n.dir()`, and re-check any layout that assumes a left leading edge —
+   `StatusIconRow` in particular.
 
-| Key          | English     | Hebrew    |
-|--------------|-------------|-----------|
-| `todo`       | To Do       | פתוח      |
-| `in_progress`| In Progress | בתהליך    |
-| `done`       | Done        | בוצע      |
-
-### Goal
-
-| Key        | English  | Hebrew   |
-|------------|----------|----------|
-| `active`   | Active   | פעיל     |
-| `achieved` | Achieved | הושלם    |
-| `frozen`   | Frozen   | מוקפא    |
-| `archived` | Archived | בוידעם   |
-
-### Project
-
-| Key         | English   | Hebrew   |
-|-------------|-----------|----------|
-| `active`    | Active    | פעיל     |
-| `paused`    | Paused    | מושהה    |
-| `completed` | Completed | הושלם    |
-| `archived`  | Archived  | בוידעם   |
+Note that `src/utils/text-direction.ts` handles the direction of **user-entered content**
+(node titles) and is independent of the UI language — it stays correct either way.

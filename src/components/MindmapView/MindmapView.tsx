@@ -20,7 +20,7 @@ import DragGhost from "@/components/DragGhost/DragGhost";
 import DragPlaceholder from "@/components/DragPlaceholder/DragPlaceholder";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useViewStore } from "@/stores/use-view-store";
-import { useHotkeysStore } from "@/stores/use-hotkeys-store";
+import { useIsInputCaptured } from "@/hooks/use-input-capture";
 import { filterTree } from "@/utils/filter-tree";
 import StatusToast from "@/components/StatusToast/StatusToast";
 import TaskEditorModal from "@/components/TaskEditorModal/TaskEditorModal";
@@ -75,7 +75,7 @@ export default function MindmapView() {
   }, [tree]);
   const mindmapOrientation = useViewStore((s) => s.mindmapOrientation);
   // The cheat-sheet overlay gates background shortcuts the same way an open modal does.
-  const hotkeysOpen = useHotkeysStore((s) => s.isOpen);
+  const isInputCaptured = useIsInputCaptured();
   const filter = useFilterStore((s) => s.filter);
   const setStatusMode = useFilterStore((s) => s.setStatusMode);
   const toggleFilterPopover = useFilterStore((s) => s.toggleFilterPopover);
@@ -418,7 +418,7 @@ export default function MindmapView() {
   }, [selectedNodeId, tree, selectNode, setSelection]);
 
   useKeyboardMindmap({
-    isInputActive: editingNodeId !== null || editorModal !== null || flowCreateParent !== null || startFlowNode !== null || convertNode !== null || deleteTargets !== null || nodeSearchOpen || hotkeysOpen,
+    isInputActive: isInputCaptured,
     isWarningActive: warningModal !== null,
     onDismissWarning: () => setWarningModal(null),
     selectedNodeId,
@@ -502,13 +502,13 @@ export default function MindmapView() {
         <GoalEditorModal node={editorModal.node} allTags={allTags} domainNames={domainNames} onSave={onGoalSave} onCheckScopeClamp={checkScopeClamp} onClose={() => setEditorModal(null)} />
       )}
       {editorModal !== null && editorModal.node.kind === "domain" && (
-        <TitleEditorModal heading={t("editor:editDomain")} title={editorModal.node.title} nsfw={editorModal.node.nsfw ?? false} onSave={onSimpleSave} onClose={() => setEditorModal(null)} />
+        <TitleEditorModal heading={t("editor:editDomain")} title={editorModal.node.title} isPrivate={editorModal.node.isPrivate ?? false} onSave={onSimpleSave} onClose={() => setEditorModal(null)} />
       )}
       {editorModal !== null && editorModal.node.kind === "project" && (
         <ProjectEditorModal node={editorModal.node} onSave={onProjectSave} onClose={() => setEditorModal(null)} />
       )}
       {editorModal !== null && editorModal.node.kind === "tag" && (
-        <TitleEditorModal heading={t("editor:editTag")} title={editorModal.node.title} nsfw={editorModal.node.nsfw ?? false} onSave={onSimpleSave} onClose={() => setEditorModal(null)} />
+        <TitleEditorModal heading={t("editor:editTag")} title={editorModal.node.title} isPrivate={editorModal.node.isPrivate ?? false} onSave={onSimpleSave} onClose={() => setEditorModal(null)} />
       )}
       {editorModal !== null && editorModal.node.kind === "info" && (
         <InfoEditorModal node={editorModal.node} onSave={onInfoSave} onClose={() => setEditorModal(null)} />

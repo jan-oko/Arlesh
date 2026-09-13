@@ -25,7 +25,7 @@ function row(over: Partial<TaskListRow> = {}): TaskListRow {
     dependencyRefs: [],
     isBlocked: false,
     hasBlockedAncestor: false,
-    hasNsfwAncestor: false,
+    hasPrivateAncestor: false,
     scopeTokens: ["unscoped", "unplanned"],
     ...over,
   };
@@ -133,19 +133,27 @@ describe("filterTaskList", () => {
       .toEqual(["task-blocked"]);
   });
 
-  it("work mode hard-hides an NSFW task", () => {
-    const rows = [row({ node: n("task-nsfw", "task", { status: "todo", nsfw: true }) })];
-    expect(filterTaskList(rows, sf({ workMode: true }), lf())).toHaveLength(0);
+  it("hard-hides a private task while Private Mode is off", () => {
+    const rows = [row({ node: n("task-private", "task", { status: "todo", isPrivate: true }) })];
+    expect(filterTaskList(rows, sf({ privateMode: false }), lf())).toHaveLength(0);
   });
 
-  it("work mode hard-hides a task nested under an NSFW ancestor, even though the task itself isn't marked", () => {
-    const rows = [row({ node: n("task-child", "task", { status: "todo", nsfw: false }), hasNsfwAncestor: true })];
-    expect(filterTaskList(rows, sf({ workMode: true }), lf())).toHaveLength(0);
+  it("hard-hides a task nested under a private ancestor, even though the task itself isn't marked", () => {
+    const rows = [row({ node: n("task-child", "task", { status: "todo", isPrivate: false }), hasPrivateAncestor: true })];
+    expect(filterTaskList(rows, sf({ privateMode: false }), lf())).toHaveLength(0);
   });
 
-  it("work mode does not hide a non-NSFW task with no NSFW ancestor", () => {
-    const rows = [row({ node: n("task-clean", "task", { status: "todo", nsfw: false }), hasNsfwAncestor: false })];
-    expect(filterTaskList(rows, sf({ workMode: true }), lf())).toHaveLength(1);
+  it("does not hide a non-private task with no private ancestor", () => {
+    const rows = [row({ node: n("task-clean", "task", { status: "todo", isPrivate: false }), hasPrivateAncestor: false })];
+    expect(filterTaskList(rows, sf({ privateMode: false }), lf())).toHaveLength(1);
+  });
+
+  it("shows a private task and one under a private ancestor once Private Mode is on", () => {
+    const rows = [
+      row({ node: n("task-private", "task", { status: "todo", isPrivate: true }) }),
+      row({ node: n("task-child", "task", { status: "todo", isPrivate: false }), hasPrivateAncestor: true }),
+    ];
+    expect(filterTaskList(rows, sf({ privateMode: true }), lf())).toHaveLength(2);
   });
 
   it("parent filter (any) keeps only rows under the chosen parent", () => {

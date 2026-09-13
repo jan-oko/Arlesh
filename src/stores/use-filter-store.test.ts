@@ -30,7 +30,7 @@ describe("rehydration from a persisted shape older than the archivedMode field (
         state: {
           filter: {
             statusMode: "plan", modeIncludeFlows: true, tagFilters: [],
-            showInfo: true, showFlow: true, workMode: true,
+            showInfo: true, showFlow: true, privateMode: true,
           },
         },
         version: 0,
@@ -40,7 +40,7 @@ describe("rehydration from a persisted shape older than the archivedMode field (
 
     const filter = useFilterStore.getState().filter;
     expect(filter.archivedMode).toBe("inactive"); // backfilled, not undefined
-    expect(filter.workMode).toBe(true); // pre-existing persisted fields are still honored
+    expect(filter.privateMode).toBe(true); // pre-existing persisted fields are still honored
     expect(filter.statusMode).toBe("plan");
 
     useFilterStore.getState().cycleArchivedMode();

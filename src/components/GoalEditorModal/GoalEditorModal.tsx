@@ -11,6 +11,7 @@ import EditorModal from "@/components/EditorModal/EditorModal";
 import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
 import TimeScopeField from "@/components/ScopePicker/TimeScopeField";
 import OnScopeExitField from "@/components/ScopePicker/OnScopeExitField";
+import { useInputCapture } from "@/hooks/use-input-capture";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 import { GOAL_STATUS } from "@/utils/status-mapping";
 
@@ -21,7 +22,7 @@ export interface GoalSaveData {
   tagIds: number[];
   timeScope: TimeScope | null;
   onScopeExit: OnScopeExit | null;
-  nsfw: boolean;
+  isPrivate: boolean;
 }
 
 const GOAL_STATUSES = Object.values(GOAL_STATUS);
@@ -36,6 +37,7 @@ interface Props {
 }
 
 export default function GoalEditorModal({ node, allTags, domainNames, onSave, onCheckScopeClamp, onClose }: Props) {
+  useInputCapture();
   const { t } = useTranslation(["editor", "status"]);
   const [title, setTitle] = useState(node.title);
   const [status, setStatus] = useState(node.status ?? GOAL_STATUS.ACTIVE);
@@ -43,7 +45,7 @@ export default function GoalEditorModal({ node, allTags, domainNames, onSave, on
   const [tagIds, setTagIds] = useState<number[]>(node.tagIds);
   const [timeScope, setTimeScope] = useState<TimeScope | null>(node.timeScope ?? null);
   const [onScopeExit, setOnScopeExit] = useState<OnScopeExit | null>(node.onScopeExit ?? null);
-  const [nsfw, setNsfw] = useState(node.nsfw ?? false);
+  const [isPrivate, setIsPrivate] = useState(node.isPrivate ?? false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
@@ -67,7 +69,7 @@ export default function GoalEditorModal({ node, allTags, domainNames, onSave, on
         tagIds,
         timeScope,
         onScopeExit: timeScope !== null ? (onScopeExit ?? "keep") : null,
-        nsfw,
+        isPrivate,
       });
     } catch (err) {
       setSaveError(getErrorMessage(err));
@@ -108,7 +110,7 @@ export default function GoalEditorModal({ node, allTags, domainNames, onSave, on
       )}
       <BlockReasonsField reasons={blockReasons} onChange={setBlockReasons} />
       <TagPicker allTags={allTags} domainNames={domainNames} selectedIds={tagIds} onChange={setTagIds} />
-      <EditorAdvanced nsfw={nsfw} onNsfwChange={setNsfw} />
+      <EditorAdvanced isPrivate={isPrivate} onPrivateChange={setIsPrivate} />
     </EditorModal>
   );
 }

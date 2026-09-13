@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { estimateWrappedLineCount } from "@/utils/node-meta";
+import { useInputCapture } from "@/hooks/use-input-capture";
 
 interface Props {
   node: MindmapNode;
@@ -21,6 +22,7 @@ interface Props {
 }
 
 export default function NodeLabel({ node, isEditing, iconWidth, width, height, fontSize, lineHeight, displayLineCount, editLineCount, onEditLineCountChange, label, textFill, isRtl, onCommitEdit, onCancelEdit }: Props) {
+  useInputCapture(isEditing);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {

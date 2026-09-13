@@ -115,10 +115,10 @@ impl<'a> DomainRepository<'a> {
             .knowledge_base_directory
             .or(domain.knowledge_base_directory);
         let position = request.position.unwrap_or(domain.position);
-        let nsfw = request.nsfw.unwrap_or(domain.nsfw);
+        let is_private = request.is_private.unwrap_or(domain.is_private);
 
         sqlx::query(
-            "UPDATE domains SET title=?, description=?, subtype=?, parent_id=?, status=?, knowledge_base_directory=?, position=?, nsfw=? WHERE id=?",
+            "UPDATE domains SET title=?, description=?, subtype=?, parent_id=?, status=?, knowledge_base_directory=?, position=?, is_private=? WHERE id=?",
         )
         .bind(&title)
         .bind(&description)
@@ -127,7 +127,7 @@ impl<'a> DomainRepository<'a> {
         .bind(&status)
         .bind(&knowledge_base_directory)
         .bind(position)
-        .bind(nsfw)
+        .bind(is_private)
         .bind(id.0)
         .execute(self.pool)
         .await?;

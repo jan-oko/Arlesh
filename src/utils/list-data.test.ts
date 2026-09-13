@@ -72,25 +72,25 @@ describe("flattenTaskRows", () => {
     expect(childRow?.hasBlockedAncestor).toBe(true);
   });
 
-  it("hasNsfwAncestor is true when any ancestor (e.g. the Project) is marked NSFW, not just a direct parent", () => {
+  it("hasPrivateAncestor is true when any ancestor (e.g. the Project) is marked private, not just a direct parent", () => {
     const tree = n("root", "domain", {}, [
       n("aspect-1", "aspect", {}, [
-        n("project-1", "project", { nsfw: true }, [
-          n("goal-1", "goal", { status: "active", nsfw: false }, [
-            n("task-1", "task", { status: "todo", nsfw: false }),
+        n("project-1", "project", { isPrivate: true }, [
+          n("goal-1", "goal", { status: "active", isPrivate: false }, [
+            n("task-1", "task", { status: "todo", isPrivate: false }),
           ]),
         ]),
       ]),
     ]);
     const [row] = flattenTaskRows(tree, []);
-    expect(row?.node.nsfw).toBe(false);
-    expect(row?.hasNsfwAncestor).toBe(true);
+    expect(row?.node.isPrivate).toBe(false);
+    expect(row?.hasPrivateAncestor).toBe(true);
   });
 
-  it("hasNsfwAncestor is false when no ancestor is marked NSFW", () => {
+  it("hasPrivateAncestor is false when no ancestor is marked private", () => {
     const tree = n("root", "domain", {}, [n("aspect-1", "aspect", {}, [n("task-1", "task", { status: "todo" })])]);
     const [row] = flattenTaskRows(tree, []);
-    expect(row?.hasNsfwAncestor).toBe(false);
+    expect(row?.hasPrivateAncestor).toBe(false);
   });
 
   it("resolves this task's own dependency edges to target node ids", () => {

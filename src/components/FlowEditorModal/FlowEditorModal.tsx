@@ -13,6 +13,7 @@ import RecurrenceField from "./RecurrenceField";
 import { defaultRecurrence, type RecurrenceUi } from "./recurrence-ui";
 import { useValidFlowTargets } from "@/hooks/use-valid-flow-targets";
 import RootPlanField, { type RootPlanValue } from "./RootPlanField";
+import { useInputCapture } from "@/hooks/use-input-capture";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 
 /** Flow Window kinds: coarse Spans (a Duration length) plus sub-day Phases (part/exact). */
@@ -66,7 +67,7 @@ export interface FlowSaveData {
   rootPlanKind: string | null;
   rootPlanStart: number | null;
   rootPlanEnd: number | null;
-  nsfw: boolean;
+  isPrivate: boolean;
   /** Absent = leave recurrence untouched; present (object or null) = set-or-clear it. */
   recurrence?: RecurrenceSave | null;
   /**
@@ -120,6 +121,7 @@ interface Props {
  * and default Target Node. Flow items and their cycle scopes are edited separately (Phase 7.3).
  */
 export default function FlowEditorModal({ node, availableTargets, heading, onSave, onClose }: Props) {
+  useInputCapture();
   const { t } = useTranslation(["editor", "nodeKinds", "scopes"]);
   const [title, setTitle] = useState(node.title);
   const [instanceType, setInstanceType] = useState<InstanceType>(node.flow?.instanceType ?? "task");
@@ -136,7 +138,7 @@ export default function FlowEditorModal({ node, availableTargets, heading, onSav
       : null,
   );
   const [target, setTarget] = useState<TargetSelection | null>(targetFromNode(node, availableTargets));
-  const [nsfw, setNsfw] = useState(node.nsfw ?? false);
+  const [isPrivate, setIsPrivate] = useState(node.isPrivate ?? false);
   const [targetSearch, setTargetSearch] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -252,7 +254,7 @@ export default function FlowEditorModal({ node, availableTargets, heading, onSav
         windowTimeEnd: scoped && durationKind === "exact" ? timeEnd : null,
         // The root Plan applies only to a task-instance flow with a Span window.
         ...planFields(instanceType === "task" && scoped && !phase ? rootPlan : null),
-        nsfw,
+        isPrivate,
         ...(isEdit && scoped ? { recurrence: recurrenceSave } : {}),
         ...(reconcile !== undefined ? { reconcile } : {}),
       });
@@ -413,7 +415,7 @@ export default function FlowEditorModal({ node, availableTargets, heading, onSav
           </div>
         )}
       </div>
-      <EditorAdvanced nsfw={nsfw} onNsfwChange={setNsfw} />
+      <EditorAdvanced isPrivate={isPrivate} onPrivateChange={setIsPrivate} />
     </EditorModal>
   );
 }

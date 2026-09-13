@@ -5,6 +5,7 @@ import type { TaskListRow } from "@/utils/list-filter";
 import { deriveStatusIndicators } from "@/utils/node-status-indicators";
 import { computeNodeAppearance } from "@/utils/node-visuals";
 import { useTagNames } from "@/hooks/use-tag-names";
+import { useInputCapture } from "@/hooks/use-input-capture";
 import TaskIcon from "@/components/NodeIcon/TaskIcon";
 import TaskRowBadges from "./TaskRowBadges";
 import styles from "./TaskRow.module.css";
@@ -33,6 +34,7 @@ export default function TaskRow({
   row, isSelected, isEditingTitle, onSelect, onCycleStatus, onOpenEditor, onCommitTitle, onCancelTitleEdit,
   onAddParentFilter, onAddTagFilter,
 }: Props) {
+  useInputCapture(isEditingTitle);
   const { t } = useTranslation(["listView", "nodeKinds"]);
   const tagNames = useTagNames();
   const inputRef = useRef<HTMLInputElement>(null);

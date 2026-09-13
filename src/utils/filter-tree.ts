@@ -32,20 +32,21 @@ export interface FilterState {
   tagFilters: TagFilter[];
   showInfo: boolean;
   showFlow: boolean;
-  /** Work mode: hard-hide any NSFW-marked node together with its whole subtree. */
-  workMode: boolean;
+  /** Private Mode: when off (the default), any node marked private is hard-hidden together with
+   * its whole subtree; turning it on reveals them. */
+  privateMode: boolean;
   /** Override for Archived-status/scope-Lapsed nodes on top of the status preset. */
   archivedMode: ArchivedMode;
 }
 
-/** The neutral, indicator-off filter — shows everything. */
+/** The neutral, indicator-off filter — shows everything except nodes marked private. */
 export const DEFAULT_FILTER: FilterState = {
   statusMode: "all",
   modeIncludeFlows: true,
   tagFilters: [],
   showInfo: true,
   showFlow: true,
-  workMode: false,
+  privateMode: false,
   archivedMode: "inactive",
 };
 
@@ -88,7 +89,7 @@ function isArchived(node: MindmapNode): boolean {
 /**
  * Whether `node` is a Project that Plan/Start shelve along with everything inside it. The Mindmap gets
  * the subtree removal from tree-pruning; List View has no tree to prune, so it applies this to each
- * row's ancestors itself (as it already does for blocked/NSFW ancestors).
+ * row's ancestors itself (as it already does for blocked/private ancestors).
  */
 export function isShelvedProject(node: MindmapNode, f: FilterState): boolean {
   if (node.kind !== "project") return false;
@@ -100,13 +101,13 @@ export function isShelvedProject(node: MindmapNode, f: FilterState): boolean {
 
 /** Kinds hidden outright (their subtree is removed, not kept as an ancestor). */
 export function typeHardHidden(node: MindmapNode, f: FilterState): boolean {
-  // Work mode drops any NSFW node and everything beneath it, regardless of kind.
-  if (f.workMode && node.nsfw === true) return true;
+  // Outside Private Mode, a private node and everything beneath it are dropped, regardless of kind.
+  if (!f.privateMode && node.isPrivate === true) return true;
   if (node.kind === "info" && !f.showInfo) return true;
   // In Start, a blocked task/goal gates its whole subtree: drop it outright rather than merely
   // failing its self-match, which would otherwise keep it as an ancestor of a startable descendant.
   if (f.statusMode === "start" && isNodeBlocked(node)) return true;
-  // archivedMode Exclude gates the whole subtree, same as blocked/NSFW above — otherwise an excluded
+  // archivedMode Exclude gates the whole subtree, same as blocked/private above — otherwise an excluded
   // Habit-instance goal with one still-undone (also-excluded) item and one already-`done` item would
   // stay visible anyway, kept as an ancestor of that unrelated, ordinarily-visible done sibling.
   if (f.archivedMode === "exclude" && isArchived(node)) return true;

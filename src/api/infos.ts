@@ -7,7 +7,7 @@ export interface Info {
   parent_type: string;
   parent_id: number;
   position: number;
-  nsfw: boolean;
+  is_private: boolean;
 }
 
 export interface CreateInfoRequest {
@@ -25,7 +25,7 @@ export interface UpdateInfoRequest {
   position?: number;
   parent_type?: string;
   parent_id?: number;
-  nsfw?: boolean;
+  is_private?: boolean;
 }
 
 export async function listInfos(): Promise<Info[]> {

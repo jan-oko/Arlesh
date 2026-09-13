@@ -6,7 +6,7 @@ import type { Info, CreateInfoRequest } from "./infos";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 const mockInfo: Info = {
-  id: 1, body: "Remember to update docs", details: null, parent_type: "task", parent_id: 3, position: 0, nsfw: false,
+  id: 1, body: "Remember to update docs", details: null, parent_type: "task", parent_id: 3, position: 0, is_private: false,
 };
 
 beforeEach(() => {
