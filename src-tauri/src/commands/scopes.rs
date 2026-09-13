@@ -6,7 +6,7 @@ use tauri::State;
 
 use crate::{
     database::DatabasePool,
-    error::{WireError, WireErrorKind},
+    error::WireError,
     scopes::{
         error::ScopeError,
         model::{PartOfDay, Scope, ScopeId, ScopeKind},
@@ -44,11 +44,8 @@ pub async fn get_or_create_scope(
     kind: ScopeKind,
     date: String,
 ) -> Result<Scope, WireError> {
-    let parsed_date = NaiveDate::parse_from_str(&date, "%Y-%m-%d").map_err(|error| WireError {
-        kind: WireErrorKind::InvalidRequest,
-        message: format!("invalid date: {error}"),
-        details: None,
-    })?;
+    let parsed_date = NaiveDate::parse_from_str(&date, "%Y-%m-%d")
+        .map_err(|error| WireError::invalid_request(format!("invalid date: {error}")))?;
     ScopeRepository::new(&pool)
         .get_or_create(kind, parsed_date)
         .await
@@ -62,11 +59,8 @@ pub async fn get_or_create_part_scope(
     date: String,
     part: PartOfDay,
 ) -> Result<Scope, WireError> {
-    let parsed_date = NaiveDate::parse_from_str(&date, "%Y-%m-%d").map_err(|error| WireError {
-        kind: WireErrorKind::InvalidRequest,
-        message: format!("invalid date: {error}"),
-        details: None,
-    })?;
+    let parsed_date = NaiveDate::parse_from_str(&date, "%Y-%m-%d")
+        .map_err(|error| WireError::invalid_request(format!("invalid date: {error}")))?;
     ScopeRepository::new(&pool)
         .get_or_create_part(parsed_date, part)
         .await
@@ -82,10 +76,8 @@ pub async fn get_or_create_exact_scope(
     end: String,
 ) -> Result<Scope, WireError> {
     let parse = |value: &str| {
-        NaiveDateTime::parse_from_str(value, EXACT_DATETIME_FORMAT).map_err(|error| WireError {
-            kind: WireErrorKind::InvalidRequest,
-            message: format!("invalid datetime {value:?}: {error}"),
-            details: None,
+        NaiveDateTime::parse_from_str(value, EXACT_DATETIME_FORMAT).map_err(|error| {
+            WireError::invalid_request(format!("invalid datetime {value:?}: {error}"))
         })
     };
     let start = parse(&start)?;

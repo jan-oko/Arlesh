@@ -74,6 +74,22 @@ impl WireError {
             details: None,
         }
     }
+
+    /// Builds an [`InvalidRequest`](WireErrorKind::InvalidRequest) [`WireError`] directly,
+    /// bypassing [`AppError`].
+    ///
+    /// For errors that arise at the command boundary and have no domain-error home to route
+    /// through `AppError` — e.g. parsing a caller-supplied string (a date, a datetime) before it
+    /// ever reaches a repository. Forcing such a parsing failure into `AppError` would drag a
+    /// request-validation concern into the domain error surface, so this constructor is the
+    /// escape hatch for that boundary instead.
+    pub fn invalid_request(message: impl Into<String>) -> Self {
+        Self {
+            kind: WireErrorKind::InvalidRequest,
+            message: message.into(),
+            details: None,
+        }
+    }
 }
 
 impl From<AppError> for WireError {
@@ -424,6 +440,28 @@ mod tests {
         assert_eq!(
             object.get("message"),
             Some(&serde_json::json!("domain 42 not found"))
+        );
+        assert!(!object.contains_key("details"));
+    }
+
+    #[test]
+    fn invalid_request_builds_an_invalid_request_kind_with_the_given_message_and_no_details() {
+        let wire = WireError::invalid_request("invalid date: bad input");
+        assert_eq!(wire.kind, WireErrorKind::InvalidRequest);
+        assert_eq!(wire.message, "invalid date: bad input");
+        assert_eq!(wire.details, None);
+
+        let value = serde_json::to_value(&wire).expect("serialise");
+        let object = value
+            .as_object()
+            .expect("wire error serialises to an object");
+        assert_eq!(
+            object.get("kind"),
+            Some(&serde_json::json!("invalid_request"))
+        );
+        assert_eq!(
+            object.get("message"),
+            Some(&serde_json::json!("invalid date: bad input"))
         );
         assert!(!object.contains_key("details"));
     }
