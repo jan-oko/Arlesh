@@ -2,7 +2,6 @@
 
 pub mod model;
 
-use crate::database::DatabasePool;
 use model::{CreateInfoRequest, Info, InfoId, UpdateInfoRequest};
 
 #[derive(sqlx::FromRow)]
@@ -36,9 +35,6 @@ impl From<InfoRow> for Info {
 /// the borrow rules and for where an operation belongs.
 pub struct InfoOperator<'session> {
     /// The session's connection, borrowed for the duration of this operator's life.
-    // Unfulfilled the moment Task 2.2 moves the first query method onto this operator,
-    // which is rustc telling that task to delete these two lines.
-    #[expect(dead_code, reason = "read by the query methods Task 2.2 brings")]
     connection: &'session mut sqlx::SqliteConnection,
 }
 
@@ -47,22 +43,10 @@ impl<'session> InfoOperator<'session> {
     pub(crate) fn new(connection: &'session mut sqlx::SqliteConnection) -> Self {
         Self { connection }
     }
-}
-
-/// Repository for info node CRUD operations.
-pub struct InfoRepository<'a> {
-    pool: &'a DatabasePool,
-}
-
-impl<'a> InfoRepository<'a> {
-    /// Creates a repository bound to the given connection pool.
-    pub fn new(pool: &'a DatabasePool) -> Self {
-        Self { pool }
-    }
 
     /// Creates a new info node.
     #[tracing::instrument(skip(self))]
-    pub async fn create(&self, req: CreateInfoRequest) -> Result<Info, sqlx::Error> {
+    pub async fn create(&mut self, req: CreateInfoRequest) -> Result<Info, sqlx::Error> {
         let row: InfoRow = sqlx::query_as(
             "INSERT INTO infos (body, details, parent_type, parent_id, position) VALUES (?, ?, ?, ?, ?) \
              RETURNING id, body, details, parent_type, parent_id, position, is_private",
@@ -72,51 +56,70 @@ impl<'a> InfoRepository<'a> {
         .bind(&req.parent_type)
         .bind(req.parent_id)
         .bind(req.position)
-        .fetch_one(self.pool)
+        .fetch_one(&mut *self.connection)
         .await?;
         Ok(row.into())
     }
 
     /// Returns all info nodes.
     #[tracing::instrument(skip(self))]
-    pub async fn list(&self) -> Result<Vec<Info>, sqlx::Error> {
+    pub async fn list(&mut self) -> Result<Vec<Info>, sqlx::Error> {
         let rows: Vec<InfoRow> = sqlx::query_as(
             "SELECT id, body, details, parent_type, parent_id, position, is_private FROM infos ORDER BY position",
         )
-        .fetch_all(self.pool)
+        .fetch_all(&mut *self.connection)
         .await?;
         Ok(rows.into_iter().map(Into::into).collect())
     }
 
     /// Updates an info node.
+    ///
+    /// Multi-statement — one `UPDATE` per field the request touches (up to five: body, details,
+    /// position, privacy, parent) — and so **not atomic on its own**. It opens no transaction: per
+    /// ADR-0004 only the outermost caller decides the boundary, and a method that began its own
+    /// could never join one.
+    ///
+    /// ```no_run
+    /// # use arlesh_lib::database::session::SessionFactory;
+    /// # use arlesh_lib::infos::model::{InfoId, UpdateInfoRequest};
+    /// # async fn update(factory: &SessionFactory) -> Result<(), sqlx::Error> {
+    /// let mut db = factory.begin().await?;
+    /// db.infos().update(InfoId(1), UpdateInfoRequest {
+    ///     body: Some("Updated".to_string()),
+    ///     ..Default::default()
+    /// }).await?;
+    /// db.commit().await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     #[tracing::instrument(skip(self))]
-    pub async fn update(&self, id: InfoId, req: UpdateInfoRequest) -> Result<Info, sqlx::Error> {
+    pub async fn update(&mut self, id: InfoId, req: UpdateInfoRequest) -> Result<Info, sqlx::Error> {
         if let Some(body) = &req.body {
             sqlx::query("UPDATE infos SET body = ?, updated_at = datetime('now') WHERE id = ?")
                 .bind(body)
                 .bind(id.0)
-                .execute(self.pool)
+                .execute(&mut *self.connection)
                 .await?;
         }
         if let Some(details) = &req.details {
             sqlx::query("UPDATE infos SET details = ?, updated_at = datetime('now') WHERE id = ?")
                 .bind(details)
                 .bind(id.0)
-                .execute(self.pool)
+                .execute(&mut *self.connection)
                 .await?;
         }
         if let Some(pos) = req.position {
             sqlx::query("UPDATE infos SET position = ?, updated_at = datetime('now') WHERE id = ?")
                 .bind(pos)
                 .bind(id.0)
-                .execute(self.pool)
+                .execute(&mut *self.connection)
                 .await?;
         }
         if let Some(is_private) = req.is_private {
             sqlx::query("UPDATE infos SET is_private = ?, updated_at = datetime('now') WHERE id = ?")
                 .bind(is_private)
                 .bind(id.0)
-                .execute(self.pool)
+                .execute(&mut *self.connection)
                 .await?;
         }
         if let (Some(pt), Some(pi)) = (req.parent_type, req.parent_id) {
@@ -126,24 +129,24 @@ impl<'a> InfoRepository<'a> {
             .bind(&pt)
             .bind(pi)
             .bind(id.0)
-            .execute(self.pool)
+            .execute(&mut *self.connection)
             .await?;
         }
         let row: InfoRow = sqlx::query_as(
             "SELECT id, body, details, parent_type, parent_id, position, is_private FROM infos WHERE id = ?",
         )
         .bind(id.0)
-        .fetch_one(self.pool)
+        .fetch_one(&mut *self.connection)
         .await?;
         Ok(row.into())
     }
 
     /// Deletes an info node.
     #[tracing::instrument(skip(self))]
-    pub async fn delete(&self, id: InfoId) -> Result<(), sqlx::Error> {
+    pub async fn delete(&mut self, id: InfoId) -> Result<(), sqlx::Error> {
         sqlx::query("DELETE FROM infos WHERE id = ?")
             .bind(id.0)
-            .execute(self.pool)
+            .execute(&mut *self.connection)
             .await?;
         Ok(())
     }
