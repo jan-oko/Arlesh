@@ -4,6 +4,7 @@ use tauri::State;
 
 use crate::{
     database::DatabasePool,
+    error::WireError,
     flows::{
         model::{
             CreateFlowItemRequest, CreateFlowRequest, Flow, FlowCycleInput, FlowDependency,
@@ -21,29 +22,29 @@ use crate::{
 pub async fn create_flow(
     pool: State<'_, DatabasePool>,
     request: CreateFlowRequest,
-) -> Result<Flow, String> {
+) -> Result<Flow, WireError> {
     FlowRepository::new(&pool)
         .create(request)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Fetches a flow by id.
 #[tauri::command]
-pub async fn get_flow(pool: State<'_, DatabasePool>, id: i64) -> Result<Flow, String> {
+pub async fn get_flow(pool: State<'_, DatabasePool>, id: i64) -> Result<Flow, WireError> {
     FlowRepository::new(&pool)
         .get(FlowId(id))
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Lists all flows.
 #[tauri::command]
-pub async fn list_flows(pool: State<'_, DatabasePool>) -> Result<Vec<Flow>, String> {
+pub async fn list_flows(pool: State<'_, DatabasePool>) -> Result<Vec<Flow>, WireError> {
     FlowRepository::new(&pool)
         .list()
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Updates a flow.
@@ -52,20 +53,20 @@ pub async fn update_flow(
     pool: State<'_, DatabasePool>,
     id: i64,
     request: UpdateFlowRequest,
-) -> Result<Flow, String> {
+) -> Result<Flow, WireError> {
     FlowRepository::new(&pool)
         .update(FlowId(id), request)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Deletes a flow (and its items).
 #[tauri::command]
-pub async fn delete_flow(pool: State<'_, DatabasePool>, id: i64) -> Result<(), String> {
+pub async fn delete_flow(pool: State<'_, DatabasePool>, id: i64) -> Result<(), WireError> {
     FlowRepository::new(&pool)
         .delete(FlowId(id))
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Creates a flow-goal item.
@@ -73,11 +74,11 @@ pub async fn delete_flow(pool: State<'_, DatabasePool>, id: i64) -> Result<(), S
 pub async fn create_flow_goal(
     pool: State<'_, DatabasePool>,
     request: CreateFlowItemRequest,
-) -> Result<FlowGoal, String> {
+) -> Result<FlowGoal, WireError> {
     FlowRepository::new(&pool)
         .create_goal(request)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Creates a flow-task item.
@@ -85,11 +86,11 @@ pub async fn create_flow_goal(
 pub async fn create_flow_task(
     pool: State<'_, DatabasePool>,
     request: CreateFlowItemRequest,
-) -> Result<FlowTask, String> {
+) -> Result<FlowTask, WireError> {
     FlowRepository::new(&pool)
         .create_task(request)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Lists a flow's goal items.
@@ -97,11 +98,11 @@ pub async fn create_flow_task(
 pub async fn list_flow_goals(
     pool: State<'_, DatabasePool>,
     flow_id: i64,
-) -> Result<Vec<FlowGoal>, String> {
+) -> Result<Vec<FlowGoal>, WireError> {
     FlowRepository::new(&pool)
         .list_goals(FlowId(flow_id))
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Lists a flow's task items.
@@ -109,29 +110,29 @@ pub async fn list_flow_goals(
 pub async fn list_flow_tasks(
     pool: State<'_, DatabasePool>,
     flow_id: i64,
-) -> Result<Vec<FlowTask>, String> {
+) -> Result<Vec<FlowTask>, WireError> {
     FlowRepository::new(&pool)
         .list_tasks(FlowId(flow_id))
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Lists every flow's goal items.
 #[tauri::command]
-pub async fn list_all_flow_goals(pool: State<'_, DatabasePool>) -> Result<Vec<FlowGoal>, String> {
+pub async fn list_all_flow_goals(pool: State<'_, DatabasePool>) -> Result<Vec<FlowGoal>, WireError> {
     FlowRepository::new(&pool)
         .list_all_goals()
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Lists every flow's task items.
 #[tauri::command]
-pub async fn list_all_flow_tasks(pool: State<'_, DatabasePool>) -> Result<Vec<FlowTask>, String> {
+pub async fn list_all_flow_tasks(pool: State<'_, DatabasePool>) -> Result<Vec<FlowTask>, WireError> {
     FlowRepository::new(&pool)
         .list_all_tasks()
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Updates a flow-goal item.
@@ -140,11 +141,11 @@ pub async fn update_flow_goal(
     pool: State<'_, DatabasePool>,
     id: i64,
     request: UpdateFlowItemRequest,
-) -> Result<FlowGoal, String> {
+) -> Result<FlowGoal, WireError> {
     FlowRepository::new(&pool)
         .update_goal(id, request)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Updates a flow-task item.
@@ -153,11 +154,11 @@ pub async fn update_flow_task(
     pool: State<'_, DatabasePool>,
     id: i64,
     request: UpdateFlowItemRequest,
-) -> Result<FlowTask, String> {
+) -> Result<FlowTask, WireError> {
     FlowRepository::new(&pool)
         .update_task(id, request)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Starts a flow, materialising it into a real subtree under the target.
@@ -166,11 +167,11 @@ pub async fn start_flow(
     pool: State<'_, DatabasePool>,
     flow_id: i64,
     request: StartFlowRequest,
-) -> Result<MaterializedFlow, String> {
+) -> Result<MaterializedFlow, WireError> {
     FlowRepository::new(&pool)
         .start(FlowId(flow_id), request)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Returns the subset of `candidates` a flow of the given duration may validly target. With a
@@ -183,7 +184,7 @@ pub async fn scope_valid_flow_targets(
     duration_kind: Option<String>,
     anchor_date: Option<chrono::NaiveDate>,
     candidates: Vec<TargetRef>,
-) -> Result<Vec<TargetRef>, String> {
+) -> Result<Vec<TargetRef>, WireError> {
     let duration = match (duration_n, duration_kind) {
         (Some(n), Some(kind)) => Some((n, kind)),
         _ => None,
@@ -191,7 +192,7 @@ pub async fn scope_valid_flow_targets(
     FlowRepository::new(&pool)
         .valid_targets(duration, anchor_date, candidates)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Sets (creates or replaces) a flow's Recurrence, making it a Habit.
@@ -200,11 +201,11 @@ pub async fn set_flow_recurrence(
     pool: State<'_, DatabasePool>,
     flow_id: i64,
     request: SetRecurrenceRequest,
-) -> Result<FlowRecurrence, String> {
+) -> Result<FlowRecurrence, WireError> {
     FlowRepository::new(&pool)
         .set_recurrence(FlowId(flow_id), request)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Fetches a flow's Recurrence, or `null` if it is a plain (non-habit) flow.
@@ -212,20 +213,20 @@ pub async fn set_flow_recurrence(
 pub async fn get_flow_recurrence(
     pool: State<'_, DatabasePool>,
     flow_id: i64,
-) -> Result<Option<FlowRecurrence>, String> {
+) -> Result<Option<FlowRecurrence>, WireError> {
     FlowRepository::new(&pool)
         .get_recurrence(FlowId(flow_id))
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Deletes a flow's Recurrence, demoting the Habit back to a plain flow.
 #[tauri::command]
-pub async fn delete_flow_recurrence(pool: State<'_, DatabasePool>, flow_id: i64) -> Result<(), String> {
+pub async fn delete_flow_recurrence(pool: State<'_, DatabasePool>, flow_id: i64) -> Result<(), WireError> {
     FlowRepository::new(&pool)
         .delete_recurrence(FlowId(flow_id))
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Derives a Habit's iterations on `today`, each classified per its Consumption behavior.
@@ -234,11 +235,11 @@ pub async fn generate_habit_iterations(
     pool: State<'_, DatabasePool>,
     flow_id: i64,
     now: chrono::NaiveDateTime,
-) -> Result<Vec<HabitIteration>, String> {
+) -> Result<Vec<HabitIteration>, WireError> {
     FlowRepository::new(&pool)
         .generate_habit_iterations(FlowId(flow_id), now)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// For each of `nodes` that was materialised from a flow, returns its originating flow title.
@@ -246,22 +247,22 @@ pub async fn generate_habit_iterations(
 pub async fn flow_origins(
     pool: State<'_, DatabasePool>,
     nodes: Vec<TargetRef>,
-) -> Result<Vec<FlowOrigin>, String> {
+) -> Result<Vec<FlowOrigin>, WireError> {
     FlowRepository::new(&pool)
         .origins(nodes)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Every real node materialised by a started flow, for the mindmap's flow-instance badge.
 #[tauri::command]
 pub async fn list_flow_instance_nodes(
     pool: State<'_, DatabasePool>,
-) -> Result<Vec<TargetRef>, String> {
+) -> Result<Vec<TargetRef>, WireError> {
     FlowRepository::new(&pool)
         .list_instance_node_refs()
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Converts a flow item to the other kind (goal↔task), preserving its cycles and dependencies.
@@ -271,11 +272,11 @@ pub async fn convert_flow_item(
     from_type: FlowItemType,
     id: i64,
     to_type: FlowItemType,
-) -> Result<i64, String> {
+) -> Result<i64, WireError> {
     FlowRepository::new(&pool)
         .convert_item(from_type, id, to_type)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Deletes a flow item (goal or task) and its cycles and dependency links.
@@ -284,11 +285,11 @@ pub async fn delete_flow_item(
     pool: State<'_, DatabasePool>,
     item_type: FlowItemType,
     id: i64,
-) -> Result<(), String> {
+) -> Result<(), WireError> {
     FlowRepository::new(&pool)
         .delete_item(item_type, id)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Replaces a flow item's (Cycle Scope, Cycle Plan) pairs.
@@ -299,22 +300,22 @@ pub async fn set_flow_item_cycles(
     item_type: FlowItemType,
     item_id: i64,
     cycles: Vec<FlowCycleInput>,
-) -> Result<(), String> {
+) -> Result<(), WireError> {
     FlowRepository::new(&pool)
         .set_cycles(flow_id, item_type, item_id, &cycles)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Lists every flow's cycle pairs.
 #[tauri::command]
 pub async fn list_all_flow_cycles(
     pool: State<'_, DatabasePool>,
-) -> Result<Vec<FlowItemCycle>, String> {
+) -> Result<Vec<FlowItemCycle>, WireError> {
     FlowRepository::new(&pool)
         .list_all_cycles()
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Adds an intra-flow dependency (`dependent` waits on `depends_on`).
@@ -326,11 +327,11 @@ pub async fn add_flow_dependency(
     dependent_id: i64,
     depends_on_type: FlowItemType,
     depends_on_id: i64,
-) -> Result<(), String> {
+) -> Result<(), WireError> {
     FlowRepository::new(&pool)
         .add_dependency(flow_id, dependent_type, dependent_id, depends_on_type, depends_on_id)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Removes an intra-flow dependency.
@@ -341,22 +342,22 @@ pub async fn remove_flow_dependency(
     dependent_id: i64,
     depends_on_type: FlowItemType,
     depends_on_id: i64,
-) -> Result<(), String> {
+) -> Result<(), WireError> {
     FlowRepository::new(&pool)
         .remove_dependency(dependent_type, dependent_id, depends_on_type, depends_on_id)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Lists every flow's dependencies.
 #[tauri::command]
 pub async fn list_all_flow_dependencies(
     pool: State<'_, DatabasePool>,
-) -> Result<Vec<FlowDependency>, String> {
+) -> Result<Vec<FlowDependency>, WireError> {
     FlowRepository::new(&pool)
         .list_all_dependencies()
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Lists every instance's divergent status for this flow, with the iteration scope it applies to.
@@ -364,11 +365,11 @@ pub async fn list_all_flow_dependencies(
 pub async fn list_habit_item_statuses(
     pool: State<'_, DatabasePool>,
     flow_id: i64,
-) -> Result<Vec<HabitItemStatus>, String> {
+) -> Result<Vec<HabitItemStatus>, WireError> {
     FlowRepository::new(&pool)
         .list_item_statuses(FlowId(flow_id))
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Sets a single instance's status at one iteration scope (`null` clears it), recording `resolved_at_ms`.
@@ -381,38 +382,38 @@ pub async fn set_habit_item_status(
     iteration_scope_id: i64,
     status: Option<String>,
     resolved_at_ms: i64,
-) -> Result<(), String> {
+) -> Result<(), WireError> {
     FlowRepository::new(&pool)
         .set_item_status(FlowId(flow_id), &item_type, item_id, iteration_scope_id, status.as_deref(), resolved_at_ms)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Number of distinct completed iterations of a Habit (divergence detection for reconciliation).
 #[tauri::command]
-pub async fn habit_completion_count(pool: State<'_, DatabasePool>, flow_id: i64) -> Result<i64, String> {
+pub async fn habit_completion_count(pool: State<'_, DatabasePool>, flow_id: i64) -> Result<i64, WireError> {
     FlowRepository::new(&pool)
         .habit_completion_count(FlowId(flow_id))
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Clears every Habit Modification for a flow (delete-and-regenerate reconciliation).
 #[tauri::command]
-pub async fn clear_habit_modifications(pool: State<'_, DatabasePool>, flow_id: i64) -> Result<(), String> {
+pub async fn clear_habit_modifications(pool: State<'_, DatabasePool>, flow_id: i64) -> Result<(), WireError> {
     FlowRepository::new(&pool)
         .clear_habit_modifications(FlowId(flow_id))
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Deep-clones a flow's template into a new flow (the archive-and-new reconciliation arm).
 #[tauri::command]
-pub async fn fork_flow(pool: State<'_, DatabasePool>, flow_id: i64) -> Result<Flow, String> {
+pub async fn fork_flow(pool: State<'_, DatabasePool>, flow_id: i64) -> Result<Flow, WireError> {
     FlowRepository::new(&pool)
         .fork_flow(FlowId(flow_id))
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Converts a real Task/Goal subtree into a Flow template of the same Instance Type.
@@ -423,9 +424,9 @@ pub async fn convert_to_flow(
     node_id: i64,
     keep_dependencies: bool,
     map_scopes: bool,
-) -> Result<Flow, String> {
+) -> Result<Flow, WireError> {
     FlowRepository::new(&pool)
         .convert_to_flow(&node_type, node_id, keep_dependencies, map_scopes)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }

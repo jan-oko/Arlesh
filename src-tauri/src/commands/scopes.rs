@@ -6,6 +6,7 @@ use tauri::State;
 
 use crate::{
     database::DatabasePool,
+    error::{WireError, WireErrorKind},
     scopes::{
         error::ScopeError,
         model::{PartOfDay, Scope, ScopeId, ScopeKind},
@@ -42,13 +43,16 @@ pub async fn get_or_create_scope(
     pool: State<'_, DatabasePool>,
     kind: ScopeKind,
     date: String,
-) -> Result<Scope, String> {
-    let parsed_date = NaiveDate::parse_from_str(&date, "%Y-%m-%d")
-        .map_err(|error| format!("invalid date: {}", error))?;
+) -> Result<Scope, WireError> {
+    let parsed_date = NaiveDate::parse_from_str(&date, "%Y-%m-%d").map_err(|error| WireError {
+        kind: WireErrorKind::InvalidRequest,
+        message: format!("invalid date: {error}"),
+        details: None,
+    })?;
     ScopeRepository::new(&pool)
         .get_or_create(kind, parsed_date)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Gets or creates the Part-of-Day scope for a date and band.
@@ -57,13 +61,16 @@ pub async fn get_or_create_part_scope(
     pool: State<'_, DatabasePool>,
     date: String,
     part: PartOfDay,
-) -> Result<Scope, String> {
-    let parsed_date = NaiveDate::parse_from_str(&date, "%Y-%m-%d")
-        .map_err(|error| format!("invalid date: {}", error))?;
+) -> Result<Scope, WireError> {
+    let parsed_date = NaiveDate::parse_from_str(&date, "%Y-%m-%d").map_err(|error| WireError {
+        kind: WireErrorKind::InvalidRequest,
+        message: format!("invalid date: {error}"),
+        details: None,
+    })?;
     ScopeRepository::new(&pool)
         .get_or_create_part(parsed_date, part)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Gets or creates the Exact scope for an arbitrary `[start, end)` datetime window (minute
@@ -73,26 +80,29 @@ pub async fn get_or_create_exact_scope(
     pool: State<'_, DatabasePool>,
     start: String,
     end: String,
-) -> Result<Scope, String> {
+) -> Result<Scope, WireError> {
     let parse = |value: &str| {
-        NaiveDateTime::parse_from_str(value, EXACT_DATETIME_FORMAT)
-            .map_err(|error| format!("invalid datetime {value:?}: {error}"))
+        NaiveDateTime::parse_from_str(value, EXACT_DATETIME_FORMAT).map_err(|error| WireError {
+            kind: WireErrorKind::InvalidRequest,
+            message: format!("invalid datetime {value:?}: {error}"),
+            details: None,
+        })
     };
     let start = parse(&start)?;
     let end = parse(&end)?;
     ScopeRepository::new(&pool)
         .get_or_create_exact(start, end)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Fetches a scope by id.
 #[tauri::command]
-pub async fn get_scope(pool: State<'_, DatabasePool>, id: i64) -> Result<Scope, String> {
+pub async fn get_scope(pool: State<'_, DatabasePool>, id: i64) -> Result<Scope, WireError> {
     ScopeRepository::new(&pool)
         .get(ScopeId(id))
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Resolves a scope to its datetime window and current active state.
@@ -100,12 +110,12 @@ pub async fn get_scope(pool: State<'_, DatabasePool>, id: i64) -> Result<Scope, 
 pub async fn resolve_scope(
     pool: State<'_, DatabasePool>,
     id: i64,
-) -> Result<ResolvedScope, String> {
+) -> Result<ResolvedScope, WireError> {
     let scope = ScopeRepository::new(&pool)
         .get(ScopeId(id))
         .await
-        .map_err(|error| error.to_string())?;
-    resolve(&scope, Local::now().naive_local()).map_err(|error| error.to_string())
+        .map_err(WireError::from_error)?;
+    resolve(&scope, Local::now().naive_local()).map_err(WireError::from_error)
 }
 
 #[cfg(test)]

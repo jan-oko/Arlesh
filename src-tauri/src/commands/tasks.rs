@@ -4,6 +4,7 @@ use tauri::State;
 
 use crate::{
     database::DatabasePool,
+    error::WireError,
     tasks::{
         derive_all_scope_lifecycles,
         lifecycle::ItemLifecycle,
@@ -21,11 +22,11 @@ use crate::{
 pub async fn create_task(
     pool: State<'_, DatabasePool>,
     request: CreateTaskRequest,
-) -> Result<Task, String> {
+) -> Result<Task, WireError> {
     TaskRepository::new(&pool)
         .create(request)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Fetches a task by id with computed blockers.
@@ -33,20 +34,20 @@ pub async fn create_task(
 pub async fn get_task(
     pool: State<'_, DatabasePool>,
     id: i64,
-) -> Result<TaskWithBlockers, String> {
+) -> Result<TaskWithBlockers, WireError> {
     TaskRepository::new(&pool)
         .get_with_blockers(TaskId(id))
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Lists all tasks.
 #[tauri::command]
-pub async fn list_tasks(pool: State<'_, DatabasePool>) -> Result<Vec<Task>, String> {
+pub async fn list_tasks(pool: State<'_, DatabasePool>) -> Result<Vec<Task>, WireError> {
     TaskRepository::new(&pool)
         .list()
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Updates a task.
@@ -55,11 +56,11 @@ pub async fn update_task(
     pool: State<'_, DatabasePool>,
     id: i64,
     request: UpdateTaskRequest,
-) -> Result<Task, String> {
+) -> Result<Task, WireError> {
     TaskRepository::new(&pool)
         .update(TaskId(id), request)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Returns the task/goal descendants of a node that a candidate Time Scope would orphan, for the
@@ -70,11 +71,11 @@ pub async fn scope_containment_conflicts(
     node_type: String,
     node_id: i64,
     time_scope: TimeScope,
-) -> Result<Vec<ViolatingDescendant>, String> {
+) -> Result<Vec<ViolatingDescendant>, WireError> {
     TaskRepository::new(&pool)
         .scope_containment_conflicts(&node_type, node_id, &time_scope)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Returns the items a reparent of `node` under `new_parent` would orphan, plus the ancestor Time
@@ -86,20 +87,20 @@ pub async fn reparent_scope_conflicts(
     node_id: i64,
     new_parent_type: String,
     new_parent_id: i64,
-) -> Result<ReparentConflicts, String> {
+) -> Result<ReparentConflicts, WireError> {
     TaskRepository::new(&pool)
         .reparent_scope_conflicts(&node_type, node_id, &new_parent_type, new_parent_id)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Deletes a task.
 #[tauri::command]
-pub async fn delete_task(pool: State<'_, DatabasePool>, id: i64) -> Result<(), String> {
+pub async fn delete_task(pool: State<'_, DatabasePool>, id: i64) -> Result<(), WireError> {
     TaskRepository::new(&pool)
         .delete(TaskId(id))
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Adds a dependency to a task.
@@ -108,11 +109,11 @@ pub async fn add_task_dependency(
     pool: State<'_, DatabasePool>,
     task_id: i64,
     dependency: Dependency,
-) -> Result<(), String> {
+) -> Result<(), WireError> {
     TaskRepository::new(&pool)
         .add_dependency(TaskId(task_id), dependency)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Removes a dependency from a task.
@@ -121,11 +122,11 @@ pub async fn remove_task_dependency(
     pool: State<'_, DatabasePool>,
     task_id: i64,
     dependency: Dependency,
-) -> Result<(), String> {
+) -> Result<(), WireError> {
     TaskRepository::new(&pool)
         .remove_dependency(TaskId(task_id), dependency)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Lists all dependencies for a task.
@@ -133,22 +134,22 @@ pub async fn remove_task_dependency(
 pub async fn list_task_dependencies(
     pool: State<'_, DatabasePool>,
     task_id: i64,
-) -> Result<Vec<Dependency>, String> {
+) -> Result<Vec<Dependency>, WireError> {
     TaskRepository::new(&pool)
         .list_dependencies(TaskId(task_id))
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Lists every task-dependency edge (for the mindmap bulk load).
 #[tauri::command]
 pub async fn list_all_task_dependencies(
     pool: State<'_, DatabasePool>,
-) -> Result<Vec<TaskDependencyEdge>, String> {
+) -> Result<Vec<TaskDependencyEdge>, WireError> {
     TaskRepository::new(&pool)
         .list_all_dependencies()
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Creates a new goal.
@@ -156,29 +157,29 @@ pub async fn list_all_task_dependencies(
 pub async fn create_goal(
     pool: State<'_, DatabasePool>,
     request: CreateGoalRequest,
-) -> Result<Goal, String> {
+) -> Result<Goal, WireError> {
     GoalRepository::new(&pool)
         .create(request)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Fetches a goal by id.
 #[tauri::command]
-pub async fn get_goal(pool: State<'_, DatabasePool>, id: i64) -> Result<Goal, String> {
+pub async fn get_goal(pool: State<'_, DatabasePool>, id: i64) -> Result<Goal, WireError> {
     GoalRepository::new(&pool)
         .get(GoalId(id))
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Lists all goals.
 #[tauri::command]
-pub async fn list_goals(pool: State<'_, DatabasePool>) -> Result<Vec<Goal>, String> {
+pub async fn list_goals(pool: State<'_, DatabasePool>) -> Result<Vec<Goal>, WireError> {
     GoalRepository::new(&pool)
         .list()
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Updates a goal.
@@ -187,20 +188,20 @@ pub async fn update_goal(
     pool: State<'_, DatabasePool>,
     id: i64,
     request: UpdateGoalRequest,
-) -> Result<Goal, String> {
+) -> Result<Goal, WireError> {
     GoalRepository::new(&pool)
         .update(GoalId(id), request)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Deletes a goal.
 #[tauri::command]
-pub async fn delete_goal(pool: State<'_, DatabasePool>, id: i64) -> Result<(), String> {
+pub async fn delete_goal(pool: State<'_, DatabasePool>, id: i64) -> Result<(), WireError> {
     GoalRepository::new(&pool)
         .delete(GoalId(id))
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Adds a tag to a task.
@@ -209,11 +210,11 @@ pub async fn add_tag_to_task(
     pool: State<'_, DatabasePool>,
     task_id: i64,
     tag_id: i64,
-) -> Result<(), String> {
+) -> Result<(), WireError> {
     TaskRepository::new(&pool)
         .add_tag(TaskId(task_id), tag_id)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Removes a tag from a task.
@@ -222,11 +223,11 @@ pub async fn remove_tag_from_task(
     pool: State<'_, DatabasePool>,
     task_id: i64,
     tag_id: i64,
-) -> Result<(), String> {
+) -> Result<(), WireError> {
     TaskRepository::new(&pool)
         .remove_tag(TaskId(task_id), tag_id)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Adds a tag to a goal.
@@ -235,11 +236,11 @@ pub async fn add_tag_to_goal(
     pool: State<'_, DatabasePool>,
     goal_id: i64,
     tag_id: i64,
-) -> Result<(), String> {
+) -> Result<(), WireError> {
     GoalRepository::new(&pool)
         .add_tag(GoalId(goal_id), tag_id)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Removes a tag from a goal.
@@ -248,11 +249,11 @@ pub async fn remove_tag_from_goal(
     pool: State<'_, DatabasePool>,
     goal_id: i64,
     tag_id: i64,
-) -> Result<(), String> {
+) -> Result<(), WireError> {
     GoalRepository::new(&pool)
         .remove_tag(GoalId(goal_id), tag_id)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Derives the scope lifecycle (Active / Overdue / Lapsed) of every Task and Goal at `now`
@@ -262,8 +263,8 @@ pub async fn remove_tag_from_goal(
 pub async fn derive_scope_lifecycles(
     pool: State<'_, DatabasePool>,
     now: chrono::NaiveDateTime,
-) -> Result<Vec<ItemLifecycle>, String> {
+) -> Result<Vec<ItemLifecycle>, WireError> {
     derive_all_scope_lifecycles(&pool, now)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
