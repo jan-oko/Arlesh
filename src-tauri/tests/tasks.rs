@@ -1,8 +1,11 @@
 mod helpers;
 
+// Aliased rather than imported by name: several command functions share a name with a test below
+// (`delete_task`, `delete_goal`), and the alias keeps the call sites saying which one they mean.
+use arlesh_lib::commands::tasks as task_commands;
 use arlesh_lib::{
-    database::session::SessionFactory,
     block_reasons::BlockReasonRepository,
+    database::session::SessionFactory,
     domains::{
         model::{CreateDomainRequest, DomainSubtype, ProjectStatus},
         DomainRepository,
@@ -19,6 +22,7 @@ use arlesh_lib::{
     },
 };
 use chrono::NaiveDate;
+use tauri::Manager;
 
 async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
     let aspect_id: i64 =
@@ -1688,4 +1692,273 @@ async fn deleting_a_goal_cascades_its_subtree() {
     // The whole subtree is gone — nothing is orphaned.
     assert!(goals.get(sub_goal.id.into()).await.is_err());
     assert!(tasks.get(sub_task.id.into()).await.is_err());
+}
+
+// --- Command-level tests for the transactional commands (Task 2.2 Step 3) ---
+//
+// Every `tasks` command that opens a transactional session gets one of these. They call the real
+// command function — `tauri::State` has no public constructor, so `helpers::command_host` stands
+// up a mock app to lend one — and assert what is on disk afterwards, never merely that the call
+// returned `Ok`. A command whose `db.commit()` line is deleted still compiles and still returns
+// `Ok`; the rollback is visible only in the rows, which is what these read.
+//
+// The pool has a single connection (see `helpers::test_pool`), so every raw read below happens
+// after the command's session has been committed and dropped.
+
+/// A second project, so a reparent has somewhere to go.
+async fn make_second_project(pool: &sqlx::SqlitePool) -> i64 {
+    let aspect_id: i64 =
+        sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Growth' AND subtype = 'aspect'")
+            .fetch_one(pool)
+            .await
+            .unwrap();
+    DomainRepository::new(pool)
+        .create(CreateDomainRequest {
+            title: "Second Project".into(),
+            description: None,
+            subtype: DomainSubtype::Project,
+            parent_id: Some(aspect_id),
+            status: Some(ProjectStatus::Active),
+            knowledge_base_directory: None,
+        })
+        .await
+        .unwrap()
+        .id
+}
+
+/// The row's title and sort position, read straight from the database.
+async fn title_and_position(pool: &sqlx::SqlitePool, table: &str, id: i64) -> (String, i64) {
+    sqlx::query_as(&format!("SELECT title, position FROM {table} WHERE id = ?"))
+        .bind(id)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+/// The row's title and parent id, read straight from the database.
+async fn title_and_parent(pool: &sqlx::SqlitePool, table: &str, id: i64) -> (String, i64) {
+    sqlx::query_as(&format!("SELECT title, parent_id FROM {table} WHERE id = ?"))
+        .bind(id)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+/// Counts the rows `sql` matches for `id`, straight from the database.
+async fn row_count(pool: &sqlx::SqlitePool, sql: &str, id: i64) -> i64 {
+    sqlx::query_scalar(sql).bind(id).fetch_one(pool).await.unwrap()
+}
+
+#[tokio::test]
+async fn the_create_task_command_commits_the_insert_and_the_position_update_together() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let app = helpers::command_host(&pool);
+
+    let created = task_commands::create_task(
+        app.state(),
+        CreateTaskRequest {
+            title: "Committed Task".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    let (title, position) = title_and_position(&pool, "tasks", created.id).await;
+    assert_eq!(title, "Committed Task", "the command must commit the insert, not roll it back");
+    assert!(
+        position > 1_600_000_000_000,
+        "the position update must land with the insert, got {position}"
+    );
+}
+
+#[tokio::test]
+async fn the_update_task_command_commits_the_reparent_and_the_field_update_together() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let other_project_id = make_second_project(&pool).await;
+    let task = TaskRepository::new(&pool)
+        .create(CreateTaskRequest {
+            title: "Before".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let app = helpers::command_host(&pool);
+
+    task_commands::update_task(
+        app.state(),
+        task.id,
+        UpdateTaskRequest {
+            title: Some("After".into()),
+            parent_type: Some("project".into()),
+            parent_id: Some(other_project_id),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    // Two separate UPDATE statements: the parent move and the field write. Both or neither.
+    let (title, parent_id) = title_and_parent(&pool, "tasks", task.id).await;
+    assert_eq!(title, "After", "the command must commit the field update");
+    assert_eq!(parent_id, other_project_id, "the command must commit the reparent");
+}
+
+#[tokio::test]
+async fn the_delete_task_command_commits_the_whole_subtree() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let tasks = TaskRepository::new(&pool);
+    let root = tasks
+        .create(CreateTaskRequest {
+            title: "Root".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let child = tasks
+        .create(CreateTaskRequest {
+            title: "Child".into(),
+            parent_type: "task".into(),
+            parent_id: root.id,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO infos (body, parent_type, parent_id, position) VALUES (?, 'task', ?, 0)")
+        .bind("A note on the child")
+        .bind(child.id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    BlockReasonRepository::new(&pool)
+        .set("task", root.id, &["waiting".to_string()])
+        .await
+        .unwrap();
+    let app = helpers::command_host(&pool);
+
+    task_commands::delete_task(app.state(), root.id).await.unwrap();
+
+    assert_eq!(
+        row_count(&pool, "SELECT COUNT(*) FROM tasks WHERE id = ? OR parent_id = ?", root.id).await,
+        0,
+        "the command must commit the deletion of the root and its descendants"
+    );
+    assert_eq!(
+        row_count(&pool, "SELECT COUNT(*) FROM infos WHERE parent_id = ?", child.id).await,
+        0,
+        "the descendant's infos must go with it"
+    );
+    assert_eq!(
+        row_count(&pool, "SELECT COUNT(*) FROM block_reasons WHERE owner_id = ?", root.id).await,
+        0,
+        "the block reasons must go with the task"
+    );
+}
+
+#[tokio::test]
+async fn the_create_goal_command_commits_the_insert_and_the_position_update_together() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let app = helpers::command_host(&pool);
+
+    let created = task_commands::create_goal(
+        app.state(),
+        CreateGoalRequest {
+            title: "Committed Goal".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    let (title, position) = title_and_position(&pool, "goals", created.id).await;
+    assert_eq!(title, "Committed Goal", "the command must commit the insert, not roll it back");
+    assert!(
+        position > 1_600_000_000_000,
+        "the position update must land with the insert, got {position}"
+    );
+}
+
+#[tokio::test]
+async fn the_update_goal_command_commits_the_reparent_and_the_field_update_together() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let other_project_id = make_second_project(&pool).await;
+    let goal = GoalRepository::new(&pool)
+        .create(CreateGoalRequest {
+            title: "Before".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let app = helpers::command_host(&pool);
+
+    task_commands::update_goal(
+        app.state(),
+        goal.id,
+        UpdateGoalRequest {
+            title: Some("After".into()),
+            parent_type: Some("project".into()),
+            parent_id: Some(other_project_id),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    let (title, parent_id) = title_and_parent(&pool, "goals", goal.id).await;
+    assert_eq!(title, "After", "the command must commit the field update");
+    assert_eq!(parent_id, other_project_id, "the command must commit the reparent");
+}
+
+#[tokio::test]
+async fn the_delete_goal_command_commits_the_whole_subtree() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let goals = GoalRepository::new(&pool);
+    let root = goals
+        .create(CreateGoalRequest {
+            title: "Root".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let child = TaskRepository::new(&pool)
+        .create(CreateTaskRequest {
+            title: "Step".into(),
+            parent_type: "goal".into(),
+            parent_id: root.id,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let app = helpers::command_host(&pool);
+
+    task_commands::delete_goal(app.state(), root.id).await.unwrap();
+
+    assert_eq!(
+        row_count(&pool, "SELECT COUNT(*) FROM goals WHERE id = ?", root.id).await,
+        0,
+        "the command must commit the goal's deletion"
+    );
+    assert_eq!(
+        row_count(&pool, "SELECT COUNT(*) FROM tasks WHERE id = ?", child.id).await,
+        0,
+        "the descendant task must go with it"
+    );
 }
