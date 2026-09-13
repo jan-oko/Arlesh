@@ -51,7 +51,7 @@ pub struct ViolatingDescendant {
 ///
 /// **Transitional.** It takes a pool because `flows` — Task 2.2 Step 4 — still holds one and has
 /// no session to lend, so it opens a pooled session of its own and delegates. Once `flows` runs on
-/// sessions its call becomes a direct [`nearest_scoped_ancestor_window`] and this goes away.
+/// sessions its call becomes a direct `nearest_scoped_ancestor_window` and this goes away.
 pub async fn effective_window(
     pool: &DatabasePool,
     node_type: &str,
@@ -64,7 +64,7 @@ pub async fn effective_window(
 /// Resolves a Time Scope to its combined half-open datetime window.
 ///
 /// **Transitional**, for the same reason as [`effective_window`]: it exists so that pool-bound
-/// `flows` can still reach [`time_scope_window`].
+/// `flows` can still reach the session-based `time_scope_window`.
 pub async fn time_scope_bounds(
     pool: &DatabasePool,
     time_scope: &TimeScope,

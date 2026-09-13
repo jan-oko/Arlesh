@@ -377,7 +377,7 @@ impl TaskWrite {
 
 /// Reads and writes goals on a session's connection.
 ///
-/// Obtained as `db.goals()` and used inline; see [`Db`](crate::database::session::Db) for
+/// Obtained as `db.goals()` and used inline; see [`Db`] for
 /// the borrow rules and for where an operation belongs. Scope containment is **not** checked
 /// here — it reads scopes as well as goals, so it lives in [`create_goal`] and [`update_goal`].
 pub struct GoalOperator<'session> {
@@ -590,7 +590,7 @@ impl<'session> GoalOperator<'session> {
 
 /// Reads and writes tasks on a session's connection.
 ///
-/// Obtained as `db.tasks()` and used inline; see [`Db`](crate::database::session::Db) for
+/// Obtained as `db.tasks()` and used inline; see [`Db`] for
 /// the borrow rules and for where an operation belongs. Scope containment is **not** checked
 /// here — it reads scopes and goals as well as tasks, so it lives in [`create_task`] and
 /// [`update_task`].
