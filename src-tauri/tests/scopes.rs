@@ -2,10 +2,14 @@ mod helpers;
 
 use chrono::{NaiveDate, NaiveDateTime};
 
-use arlesh_lib::scopes::{
-    model::{PartOfDay, ScopeKind},
-    ScopeRepository,
+use arlesh_lib::{
+    commands::scopes::{get_or_create_part_scope, get_or_create_scope},
+    scopes::{
+        model::{PartOfDay, ScopeKind},
+        ScopeRepository,
+    },
 };
+use tauri::Manager;
 
 #[tokio::test]
 async fn get_or_create_day_populates_containment() {
@@ -159,4 +163,55 @@ async fn get_or_create_exact_stores_datetimes_and_is_idempotent() {
     assert_eq!(first.start_date, "2026-06-20");
     assert_eq!(first.end_date, "2026-06-22");
     assert_eq!(first.id, second.id, "identical exact windows dedupe");
+}
+
+// The tests above exercise the repository shim, not the command. `get_or_create_scope` and
+// `get_or_create_part_scope` run on a transactional session (containment parents are created
+// recursively, so more than one row may be written), and nothing but a test catches a command
+// that opens `begin()` and forgets `commit()` — see `Db::commit`'s docs. The two below call the
+// real command functions, with a real `tauri::State` lent by a mock app, and assert row counts on
+// disk rather than merely `Ok`.
+
+/// Counts every scope row on disk, over the same one-connection pool the command used.
+async fn scope_count_on_disk(pool: &sqlx::SqlitePool) -> i64 {
+    sqlx::query_scalar("SELECT COUNT(*) FROM scopes")
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn the_get_or_create_scope_command_commits_the_day_and_its_containment_parents() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let date = NaiveDate::from_ymd_opt(2026, 6, 20).unwrap();
+
+    let day = get_or_create_scope(app.state(), ScopeKind::Day, date.to_string())
+        .await
+        .unwrap();
+
+    assert_eq!(day.kind, "day");
+    assert_eq!(
+        scope_count_on_disk(&pool).await,
+        4,
+        "the command must commit the day and its week/month/season parents, not roll them back"
+    );
+}
+
+#[tokio::test]
+async fn the_get_or_create_part_scope_command_commits_the_day_and_the_part() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let date = NaiveDate::from_ymd_opt(2026, 6, 21).unwrap();
+
+    let part = get_or_create_part_scope(app.state(), date.to_string(), PartOfDay::Morning)
+        .await
+        .unwrap();
+
+    assert_eq!(part.kind, "part_of_day");
+    assert_eq!(
+        scope_count_on_disk(&pool).await,
+        5,
+        "the command must commit the part plus the day/week/month/season it depends on"
+    );
 }
