@@ -50,6 +50,10 @@ pub fn run() {
             })
             .expect("database setup failed");
 
+            // Both the pool and the factory are managed during the migration to sessions: every
+            // command still resolves `State<DatabasePool>`, while migrated ones resolve
+            // `State<SessionFactory>`. The pool goes away once the last command has moved over.
+            app.manage(database::session::SessionFactory::new(pool.clone()));
             app.manage(pool);
 
             if let Some(window) = app.get_webview_window("main") {

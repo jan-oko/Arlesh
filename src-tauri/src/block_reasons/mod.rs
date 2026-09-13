@@ -27,6 +27,27 @@ impl From<BlockReasonRow> for BlockReason {
     }
 }
 
+/// Reads and writes the reasons a task or goal is blocked, on a
+/// [`Db`](crate::database::session::Db) session's connection.
+///
+/// Borrowed from the session for the duration of a single call — `db.block_reasons().…` — and never
+/// stored: the session lends its one connection to one operator at a time, so binding two
+/// operators simultaneously is a borrow-check error.
+pub struct BlockReasonOperator<'session> {
+    /// The session's connection, borrowed for the duration of this operator's life.
+    // Unfulfilled the moment Task 2.2 moves the first query method onto this operator,
+    // which is rustc telling that task to delete these two lines.
+    #[expect(dead_code, reason = "read by the query methods Task 2.2 brings")]
+    connection: &'session mut sqlx::SqliteConnection,
+}
+
+impl<'session> BlockReasonOperator<'session> {
+    /// Wraps the connection a session is lending.
+    pub(crate) fn new(connection: &'session mut sqlx::SqliteConnection) -> Self {
+        Self { connection }
+    }
+}
+
 /// Repository for the block-reason list of tasks and goals.
 pub struct BlockReasonRepository<'a> {
     pool: &'a DatabasePool,

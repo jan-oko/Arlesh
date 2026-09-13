@@ -1,5 +1,7 @@
 //! Database connection and migration management.
 
+pub mod session;
+
 use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::SqlitePool;
 

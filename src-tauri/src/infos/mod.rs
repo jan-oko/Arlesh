@@ -30,6 +30,27 @@ impl From<InfoRow> for Info {
     }
 }
 
+/// Reads and writes notes attached to other resources, on a
+/// [`Db`](crate::database::session::Db) session's connection.
+///
+/// Borrowed from the session for the duration of a single call — `db.infos().…` — and never
+/// stored: the session lends its one connection to one operator at a time, so binding two
+/// operators simultaneously is a borrow-check error.
+pub struct InfoOperator<'session> {
+    /// The session's connection, borrowed for the duration of this operator's life.
+    // Unfulfilled the moment Task 2.2 moves the first query method onto this operator,
+    // which is rustc telling that task to delete these two lines.
+    #[expect(dead_code, reason = "read by the query methods Task 2.2 brings")]
+    connection: &'session mut sqlx::SqliteConnection,
+}
+
+impl<'session> InfoOperator<'session> {
+    /// Wraps the connection a session is lending.
+    pub(crate) fn new(connection: &'session mut sqlx::SqliteConnection) -> Self {
+        Self { connection }
+    }
+}
+
 /// Repository for info node CRUD operations.
 pub struct InfoRepository<'a> {
     pool: &'a DatabasePool,
