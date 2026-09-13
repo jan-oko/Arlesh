@@ -199,11 +199,10 @@ fn now_position() -> i64 {
 }
 
 /// Reads and writes flow templates — and their items, cycles, recurrences and instances —
-/// on a [`Db`](crate::database::session::Db) session's connection.
+/// on a session's connection.
 ///
-/// Borrowed from the session for the duration of a single call — `db.flows().…` — and never
-/// stored: the session lends its one connection to one operator at a time, so binding two
-/// operators simultaneously is a borrow-check error.
+/// Obtained as `db.flows()` and used inline; see [`Db`](crate::database::session::Db) for
+/// the borrow rules and for where an operation belongs.
 pub struct FlowOperator<'session> {
     /// The session's connection, borrowed for the duration of this operator's life.
     // Unfulfilled the moment Task 2.2 moves the first query method onto this operator,

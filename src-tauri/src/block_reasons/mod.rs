@@ -27,12 +27,10 @@ impl From<BlockReasonRow> for BlockReason {
     }
 }
 
-/// Reads and writes the reasons a task or goal is blocked, on a
-/// [`Db`](crate::database::session::Db) session's connection.
+/// Reads and writes the reasons a task or goal is blocked, on a session's connection.
 ///
-/// Borrowed from the session for the duration of a single call — `db.block_reasons().…` — and never
-/// stored: the session lends its one connection to one operator at a time, so binding two
-/// operators simultaneously is a borrow-check error.
+/// Obtained as `db.block_reasons()` and used inline; see [`Db`](crate::database::session::Db) for
+/// the borrow rules and for where an operation belongs.
 pub struct BlockReasonOperator<'session> {
     /// The session's connection, borrowed for the duration of this operator's life.
     // Unfulfilled the moment Task 2.2 moves the first query method onto this operator,

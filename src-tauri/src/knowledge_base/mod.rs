@@ -10,12 +10,10 @@ use model::{
     UpdatePersonRequest,
 };
 
-/// Reads and writes knowledge-base people on a
-/// [`Db`](crate::database::session::Db) session's connection.
+/// Reads and writes knowledge-base people on a session's connection.
 ///
-/// Borrowed from the session for the duration of a single call — `db.people().…` — and never
-/// stored: the session lends its one connection to one operator at a time, so binding two
-/// operators simultaneously is a borrow-check error.
+/// Obtained as `db.people()` and used inline; see [`Db`](crate::database::session::Db) for
+/// the borrow rules and for where an operation belongs.
 pub struct PersonOperator<'session> {
     /// The session's connection, borrowed for the duration of this operator's life.
     // Unfulfilled the moment Task 2.2 moves the first query method onto this operator,
@@ -110,12 +108,10 @@ impl<'a> PersonRepository<'a> {
     }
 }
 
-/// Reads and writes knowledge-base events on a
-/// [`Db`](crate::database::session::Db) session's connection.
+/// Reads and writes knowledge-base events on a session's connection.
 ///
-/// Borrowed from the session for the duration of a single call — `db.events().…` — and never
-/// stored: the session lends its one connection to one operator at a time, so binding two
-/// operators simultaneously is a borrow-check error.
+/// Obtained as `db.events()` and used inline; see [`Db`](crate::database::session::Db) for
+/// the borrow rules and for where an operation belongs.
 pub struct EventOperator<'session> {
     /// The session's connection, borrowed for the duration of this operator's life.
     // Unfulfilled the moment Task 2.2 moves the first query method onto this operator,
@@ -183,12 +179,10 @@ impl<'a> EventRepository<'a> {
     }
 }
 
-/// Reads and writes knowledge-base threads on a
-/// [`Db`](crate::database::session::Db) session's connection.
+/// Reads and writes knowledge-base threads on a session's connection.
 ///
-/// Borrowed from the session for the duration of a single call — `db.threads().…` — and never
-/// stored: the session lends its one connection to one operator at a time, so binding two
-/// operators simultaneously is a borrow-check error.
+/// Obtained as `db.threads()` and used inline; see [`Db`](crate::database::session::Db) for
+/// the borrow rules and for where an operation belongs.
 pub struct ThreadOperator<'session> {
     /// The session's connection, borrowed for the duration of this operator's life.
     // Unfulfilled the moment Task 2.2 moves the first query method onto this operator,

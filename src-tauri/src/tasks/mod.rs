@@ -244,11 +244,10 @@ async fn fetch_goal_tag_ids(
     .await
 }
 
-/// Reads and writes goals on a [`Db`](crate::database::session::Db) session's connection.
+/// Reads and writes goals on a session's connection.
 ///
-/// Borrowed from the session for the duration of a single call — `db.goals().…` — and never
-/// stored: the session lends its one connection to one operator at a time, so binding two
-/// operators simultaneously is a borrow-check error.
+/// Obtained as `db.goals()` and used inline; see [`Db`](crate::database::session::Db) for
+/// the borrow rules and for where an operation belongs.
 pub struct GoalOperator<'session> {
     /// The session's connection, borrowed for the duration of this operator's life.
     // Unfulfilled the moment Task 2.2 moves the first query method onto this operator,
@@ -442,11 +441,10 @@ impl<'a> GoalRepository<'a> {
     }
 }
 
-/// Reads and writes tasks on a [`Db`](crate::database::session::Db) session's connection.
+/// Reads and writes tasks on a session's connection.
 ///
-/// Borrowed from the session for the duration of a single call — `db.tasks().…` — and never
-/// stored: the session lends its one connection to one operator at a time, so binding two
-/// operators simultaneously is a borrow-check error.
+/// Obtained as `db.tasks()` and used inline; see [`Db`](crate::database::session::Db) for
+/// the borrow rules and for where an operation belongs.
 pub struct TaskOperator<'session> {
     /// The session's connection, borrowed for the duration of this operator's life.
     // Unfulfilled the moment Task 2.2 moves the first query method onto this operator,

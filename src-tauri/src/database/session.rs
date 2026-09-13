@@ -28,12 +28,19 @@ use crate::knowledge_base::{EventOperator, PersonOperator, ThreadOperator};
 use crate::scopes::ScopeOperator;
 use crate::tasks::{GoalOperator, TaskOperator};
 
+/// Makes [`SessionMode`] sealed: only this module can name it, so only this module can add a
+/// session mode. There are two, and there is no third for anyone to invent.
+mod sealed {
+    /// Supertrait of [`SessionMode`](super::SessionMode), unnameable outside this crate.
+    pub trait ModeIsSealed {}
+}
+
 /// How a [`Db`] session holds its one connection: see [`Pooled`] and [`Transactional`].
 ///
-/// The two implementors are markers only — they carry no data and exist solely to give the two
-/// session modes distinct types. Both handles dereference to [`SqliteConnection`], so every
+/// Sealed — the two implementors are markers only, carry no data, and exist solely to give the
+/// two session modes distinct types. Both handles dereference to [`SqliteConnection`], so every
 /// resource operator is written once and serves both modes.
-pub trait SessionMode {
+pub trait SessionMode: sealed::ModeIsSealed {
     /// The owned connection handle a session in this mode keeps for its whole life.
     type Handle: DerefMut<Target = SqliteConnection> + Send;
 }
@@ -41,16 +48,17 @@ pub trait SessionMode {
 /// A session holding one connection checked out of the pool, with no transaction open.
 ///
 /// Each statement commits on its own. A `Db<Pooled>` has nothing to commit, and so has no
-/// [`Db::commit`] method.
-#[derive(Debug, Clone, Copy)]
+/// [`Db::commit`] method. Type-level only: never instantiated.
 pub struct Pooled;
 
 /// A session holding one connection with a transaction open on it.
 ///
 /// Writes are invisible to other connections until [`Db::commit`] is called, and are rolled back
-/// if the session is dropped without it.
-#[derive(Debug, Clone, Copy)]
+/// if the session is dropped without it. Type-level only: never instantiated.
 pub struct Transactional;
+
+impl sealed::ModeIsSealed for Pooled {}
+impl sealed::ModeIsSealed for Transactional {}
 
 impl SessionMode for Pooled {
     type Handle = PoolConnection<Sqlite>;
@@ -62,15 +70,38 @@ impl SessionMode for Transactional {
 
 /// One database session, owning exactly one connection for its whole life.
 ///
+/// # Borrowing
+///
 /// Work is done through the per-resource operators the session hands out — `db.goals()`,
 /// `db.tasks()`, `db.scopes()` and so on. Each accessor borrows the session mutably for the
-/// duration of a single call, so operators are used inline (`db.goals().create(…).await?`) and
-/// never stored: binding two at once is a compile error, because both would be borrowing the one
-/// connection the session owns.
+/// duration of a single call, so operators are used **inline** (`db.goals().create(…).await?`)
+/// and never stored: binding two at once is a compile error, because both would be borrowing the
+/// one connection the session owns. The diagnostic is "cannot borrow `*db` as mutable more than
+/// once at a time", and the fix is always to stop holding the first operator, never to find a
+/// way around the borrow.
 ///
-/// A composite operation that must be atomic takes `&mut Db<Transactional>`, and nested
-/// operations join the caller's session rather than opening their own — only the outermost
-/// caller decides the transaction boundary.
+/// # Where an operation lives
+///
+/// Three cases, and every database operation in this crate is exactly one of them:
+///
+/// 1. **One resource** — a method on that resource's operator, taking `&mut self`. Most of the
+///    crate. `GoalOperator::create`, `ScopeOperator::get`.
+/// 2. **Several resources** — a free function taking `&mut Db<M>`, reaching each resource by
+///    calling `db.scopes()`, `db.goals()`, `db.tasks()` inline, one at a time. It takes the
+///    session precisely because it needs more than one resource from it.
+/// 3. **Several resources, atomically** — the same, but taking `&mut Db<Transactional>`
+///    specifically, so calling it non-atomically is a compile error rather than a silent
+///    correctness bug. `start`, `fork_flow`, `convert_to_flow`, `set_iteration_done` and the
+///    subtree deletes are all of this kind. Such an operation **joins the caller's session and
+///    never opens its own**: only the outermost caller decides the transaction boundary, and
+///    that is a standing rule the type system does not enforce.
+///
+/// What is **not** sanctioned is reaching a second resource from inside an operator by minting a
+/// sibling out of that operator's own connection borrow. It compiles, and it is how the
+/// exclusivity this design buys gets quietly given back: the operator's `new` is crate-visible
+/// only because this module lives in a different one, not as an escape hatch. An operator method
+/// that finds it wants a second resource is case 2 wearing the wrong hat — move it out to a free
+/// function over the session.
 pub struct Db<M: SessionMode> {
     /// The one connection this session owns, either pooled or with a transaction open on it.
     handle: M::Handle,
@@ -155,7 +186,7 @@ impl Db<Transactional> {
     /// A pooled session has nothing to commit, and saying otherwise does not compile — the same
     /// code with `connect` in place of `begin` is rejected:
     ///
-    /// ```compile_fail
+    /// ```compile_fail,E0599
     /// # use arlesh_lib::database::session::SessionFactory;
     /// # async fn atomically(factory: &SessionFactory) -> Result<(), sqlx::Error> {
     /// let session = factory.connect().await?;
@@ -163,6 +194,12 @@ impl Db<Transactional> {
     /// # Ok(())
     /// # }
     /// ```
+    // On the two doctests above: the `E0599` on the second is advisory only — rustdoc enforces
+    // doctest error codes on nightly and ignores them on stable, verified here by pinning the
+    // wrong code and watching the test still pass. What makes the guard non-vacuous is the pair.
+    // The blocks differ by exactly one identifier, `begin` versus `connect`, so the second cannot
+    // be failing for an unrelated reason while the first still compiles. Keep them one word apart
+    // if you edit either.
     #[tracing::instrument(skip(self))]
     pub async fn commit(self) -> Result<(), sqlx::Error> {
         self.handle.commit().await
@@ -244,6 +281,10 @@ mod tests {
                 std::process::id(),
                 NEXT_DATABASE.fetch_add(1, Ordering::Relaxed)
             ));
+            // `mode=rwc` opens an existing file rather than failing, so a database leaked by an
+            // aborted earlier run would be reused once the OS recycles that pid — and the
+            // `CREATE TABLE` below would then panic on a table that already exists.
+            remove_database_files(&path);
             let pool = SqlitePoolOptions::new()
                 .max_connections(max_connections)
                 .connect(&format!("sqlite://{}?mode=rwc", path.display()))
@@ -274,9 +315,14 @@ mod tests {
 
     impl Drop for ScratchDatabase {
         fn drop(&mut self) {
-            for suffix in ["", "-wal", "-shm"] {
-                let _ = std::fs::remove_file(format!("{}{suffix}", self.path.display()));
-            }
+            remove_database_files(&self.path);
+        }
+    }
+
+    /// Deletes a scratch database and the WAL sidecars sqlx creates beside it, if they exist.
+    fn remove_database_files(path: &std::path::Path) {
+        for suffix in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
         }
     }
 
