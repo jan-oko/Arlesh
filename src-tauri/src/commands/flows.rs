@@ -11,14 +11,13 @@ use crate::{
     database::session::SessionFactory,
     error::WireError,
     flows::{
+        self,
         model::{
             CreateFlowItemRequest, CreateFlowRequest, Flow, FlowCycleInput, FlowDependency,
             FlowGoal, FlowId, FlowItemCycle, FlowItemType, FlowOrigin, FlowRecurrence, FlowTask,
             HabitIteration, HabitItemStatus, MaterializedFlow, SetRecurrenceRequest,
-            StartFlowRequest, TargetRef,
-            UpdateFlowItemRequest, UpdateFlowRequest,
+            StartFlowRequest, TargetRef, UpdateFlowItemRequest, UpdateFlowRequest,
         },
-        self,
     },
 };
 
