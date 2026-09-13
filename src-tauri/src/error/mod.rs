@@ -1,11 +1,12 @@
-//! Top-level application error type.
+//! Top-level application error type, and its wire representation.
+
+mod wire;
+
+pub use wire::{WireError, WireErrorKind};
 
 use crate::{
-    domains::error::DomainError,
-    flows::error::FlowError,
-    knowledge_base::error::KnowledgeBaseError,
-    scopes::error::ScopeError,
-    tasks::error::TaskError,
+    domains::error::DomainError, flows::error::FlowError,
+    knowledge_base::error::KnowledgeBaseError, scopes::error::ScopeError, tasks::error::TaskError,
 };
 
 /// Application-level error wrapping all domain errors.
