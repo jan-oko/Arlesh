@@ -268,9 +268,9 @@ impl<'session> ScopeOperator<'session> {
 /// Transitional: the SQL now lives on [`ScopeOperator`], and every method here checks a
 /// connection out of the pool and delegates to it, so repository and operator cannot drift while
 /// callers move over. None of these methods was ever transactional at the repository level, so
-/// the shim does not introduce one either. This struct goes away once its remaining callers —
-/// `FlowRepository` (`flows/mod.rs`) and `tasks/scope_rules.rs` — are migrated in Task 2.2 Steps
-/// 3 and 4.
+/// the shim does not introduce one either. `tasks/scope_rules.rs` stopped calling it in Task 2.2
+/// Step 3; the struct goes away once its last source caller, `FlowRepository` (`flows/mod.rs`),
+/// is migrated in Step 4 and `tests/scopes.rs` and `tests/flows.rs` follow.
 ///
 /// The methods below carry no `tracing::instrument`: each delegates to an operator method, and
 /// the operator methods themselves carry none either (matching the original repository, which

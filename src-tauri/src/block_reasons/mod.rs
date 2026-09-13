@@ -2,10 +2,9 @@
 //!
 //! The owner link (`owner_type`, `owner_id`) is polymorphic across tasks and goals, so — like the info
 //! parent link — there is no foreign key, and nothing cascades: a deleted owner's reasons have to be
-//! removed explicitly. [`BlockReasonOperator::delete_for`] is the method for that, but the only
-//! cleanup in the crate today is a `DELETE` written inline in the task/goal subtree delete
-//! (`tasks/mod.rs:111`) and nothing calls `delete_for` yet. Routing that site through this module is
-//! Task 2.2 Step 3's job; until then the statement exists twice.
+//! removed explicitly. [`BlockReasonOperator::delete_for`] is the method for that, and the
+//! task/goal subtree delete is its one caller: it used to repeat the `DELETE` inline against the
+//! pool, and Task 2.2 Step 3 routed it through here when that delete moved onto a session.
 
 pub mod model;
 
@@ -139,8 +138,9 @@ impl<'session> BlockReasonOperator<'session> {
 ///
 /// Transitional: the SQL now lives on [`BlockReasonOperator`], and every method here checks a
 /// connection out of the pool and delegates to it, so repository and operator cannot drift while
-/// callers move over. This struct goes away with its last caller — today
-/// [`TaskRepository`](crate::tasks::TaskRepository), which Task 2.2 Step 3 migrates.
+/// callers move over. No source file calls it any more — Task 2.2 Step 3 moved the last one, the
+/// task/goal subtree delete, onto `db.block_reasons()`. Its remaining callers are test fixtures in
+/// `tests/block_reasons.rs` and `tests/tasks.rs`; the struct goes away when those move too.
 ///
 /// The methods below carry no `tracing::instrument`: each delegates to an operator method that is
 /// already instrumented, and a second attribute would only nest an identical span inside it.

@@ -1,6 +1,7 @@
 mod helpers;
 
 use arlesh_lib::{
+    database::session::SessionFactory,
     block_reasons::BlockReasonRepository,
     domains::{
         model::{CreateDomainRequest, DomainSubtype, ProjectStatus},
@@ -1371,6 +1372,17 @@ async fn day_scope(pool: &sqlx::SqlitePool, y: i32, m: u32, d: u32) -> i64 {
         .id
 }
 
+/// Derives every item's lifecycle over a pooled session, the way the `derive_scope_lifecycles`
+/// command does. The session is dropped before returning: the test pool has one connection, and
+/// the callers below go on to read it.
+async fn lifecycles(
+    pool: &sqlx::SqlitePool,
+    now: chrono::NaiveDateTime,
+) -> Vec<arlesh_lib::tasks::lifecycle::ItemLifecycle> {
+    let mut db = SessionFactory::new(pool.clone()).connect().await.unwrap();
+    derive_all_scope_lifecycles(&mut db, now).await.unwrap()
+}
+
 fn task_state(states: &[arlesh_lib::tasks::lifecycle::ItemLifecycle], id: i64) -> arlesh_lib::tasks::lifecycle::ItemLifecycle {
     states
         .iter()
@@ -1489,7 +1501,7 @@ async fn derives_overdue_missed_and_archives_a_completed_item() {
 
     // Well past the 2026-01-05 window.
     let now = NaiveDate::from_ymd_opt(2026, 2, 1).unwrap().and_hms_opt(12, 0, 0).unwrap();
-    let states = derive_all_scope_lifecycles(&pool, now).await.unwrap();
+    let states = lifecycles(&pool, now).await;
 
     let keep_state = task_state(&states, keep.id);
     assert_eq!(keep_state.timing, Timing::Lapsed);
@@ -1541,7 +1553,7 @@ async fn inherited_scope_and_on_exit_govern_children() {
     assert_eq!(child.on_scope_exit, None); // nothing stored on the child
 
     let now = NaiveDate::from_ymd_opt(2026, 2, 1).unwrap().and_hms_opt(12, 0, 0).unwrap();
-    let states = derive_all_scope_lifecycles(&pool, now).await.unwrap();
+    let states = lifecycles(&pool, now).await;
     // Inherits Archive → Lapsed + Missed, even though the child itself is unscoped.
     let child_state = task_state(&states, child.id);
     assert_eq!(child_state.timing, Timing::Lapsed);
@@ -1599,7 +1611,7 @@ async fn derives_goal_overdue_missed_and_archives_an_achieved_goal() {
         .unwrap();
 
     let now = NaiveDate::from_ymd_opt(2026, 2, 1).unwrap().and_hms_opt(12, 0, 0).unwrap();
-    let states = derive_all_scope_lifecycles(&pool, now).await.unwrap();
+    let states = lifecycles(&pool, now).await;
 
     let keep_state = goal_state(&states, keep.id);
     assert_eq!(keep_state.timing, Timing::Lapsed);
@@ -1648,7 +1660,7 @@ async fn derivation_tolerates_an_orphaned_item_whose_parent_was_deleted() {
     // Deriving every item's lifecycle must NOT crash on the dangling ancestor (the render bug);
     // the orphan is simply unconstrained → Active.
     let now = NaiveDate::from_ymd_opt(2026, 2, 1).unwrap().and_hms_opt(12, 0, 0).unwrap();
-    let states = derive_all_scope_lifecycles(&pool, now).await.unwrap();
+    let states = lifecycles(&pool, now).await;
     assert_eq!(task_state(&states, child.id).timing, Timing::Active);
 }
 
