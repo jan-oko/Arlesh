@@ -398,6 +398,28 @@ pub async fn set_habit_item_status(
         .map_err(WireError::from_error)
 }
 
+/// Resolves (or un-resolves) a whole Habit iteration: writes or clears a `done` Modification for
+/// every instance at `iteration_scope_id` — the flow root and each of its items.
+///
+/// SPEC: "an iteration is *resolved* when every one of its (non-tombstoned) instances is done".
+/// [`set_habit_item_status`] moves one instance; this moves the iteration as a unit, which is why
+/// it opens a transaction — the instance list is read first and one row is written per instance,
+/// so a half-applied run would leave the iteration neither done nor undone.
+#[tauri::command]
+pub async fn set_habit_iteration_done(
+    factory: State<'_, SessionFactory>,
+    flow_id: i64,
+    iteration_scope_id: i64,
+    done: bool,
+    resolved_at_ms: i64,
+) -> Result<(), WireError> {
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    flows::set_iteration_done(&mut db, FlowId(flow_id), iteration_scope_id, done, resolved_at_ms)
+        .await
+        .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)
+}
+
 /// Number of distinct completed iterations of a Habit (divergence detection for reconciliation).
 #[tauri::command]
 pub async fn habit_completion_count(

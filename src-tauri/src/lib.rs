@@ -147,6 +147,7 @@ pub fn run() {
             commands::flows::generate_habit_iterations,
             commands::flows::list_habit_item_statuses,
             commands::flows::set_habit_item_status,
+            commands::flows::set_habit_iteration_done,
             commands::flows::habit_completion_count,
             commands::flows::clear_habit_modifications,
             commands::flows::fork_flow,

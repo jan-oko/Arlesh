@@ -357,6 +357,39 @@ async fn the_set_flow_recurrence_command_commits_the_recurrence() {
 }
 
 #[tokio::test]
+async fn the_set_habit_iteration_done_command_commits_a_modification_for_every_instance() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let flow = flow_commands::create_flow(app.state(), create_req("Routine")).await.unwrap();
+    flow_commands::create_flow_task(
+        app.state(),
+        CreateFlowItemRequest {
+            flow_id: flow.id,
+            title: "Exercise".into(),
+            parent_type: "flow".into(),
+            parent_id: flow.id,
+        },
+    )
+    .await
+    .unwrap();
+    let iteration = ScopeRepository::new(&pool)
+        .get_or_create(ScopeKind::Week, ymd(2026, 1, 5))
+        .await
+        .unwrap()
+        .id;
+
+    flow_commands::set_habit_iteration_done(app.state(), flow.id, iteration, true, 1_767_600_000_000)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        count_where(&pool, "habit_instance_modifications", "flow_id", flow.id).await,
+        2,
+        "the root instance and the one item — an iteration resolves as a unit or not at all"
+    );
+}
+
+#[tokio::test]
 async fn the_generate_habit_iterations_command_commits_the_scopes_it_materialises() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);

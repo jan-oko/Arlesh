@@ -1508,6 +1508,10 @@ pub async fn set_flow_recurrence(
 ///
 /// Transactional: the set of instances is read first and one row is written per instance, so a
 /// half-applied run would leave the iteration neither done nor undone.
+///
+/// Reached from the UI through the `set_habit_iteration_done` command. It is the whole-iteration
+/// counterpart of `set_habit_item_status`: SPEC defines an iteration as resolved when every one of
+/// its non-tombstoned instances is done, and this is the operation that says so in one step.
 #[tracing::instrument(skip(db))]
 pub async fn set_iteration_done(
     db: &mut Db<Transactional>,
