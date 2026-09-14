@@ -6,7 +6,6 @@ pub mod resolve;
 
 use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime};
 
-use crate::database::DatabasePool;
 use error::ScopeError;
 use model::{PartOfDay, Scope, ScopeId, ScopeKind};
 use resolve::EXACT_DATETIME_FORMAT;
@@ -277,78 +276,6 @@ impl<'session> ScopeOperator<'session> {
         .last_insert_rowid();
 
         self.get(ScopeId(id)).await
-    }
-}
-
-/// Repository for scope get-or-create and lookup operations.
-///
-/// Transitional: the SQL now lives on [`ScopeOperator`], and every method here checks a
-/// connection out of the pool and delegates to it, so repository and operator cannot drift while
-/// callers move over. None of these methods was ever transactional at the repository level, so
-/// the shim does not introduce one either. **No source file calls it any more** — Task 2.2
-/// Step 3 moved `tasks/scope_rules.rs` off it and Step 4 moved `flows`, which now takes a
-/// [`ScopeOperator`] directly. Its remaining callers are `tests/scopes.rs`, `tests/flows.rs`
-/// and `tests/tasks.rs`; the struct goes away when those move too.
-///
-/// The methods below carry no `tracing::instrument`: each delegates to an operator method, and
-/// the operator methods themselves carry none either (matching the original repository, which
-/// had no instrumentation).
-pub struct ScopeRepository<'a> {
-    pool: &'a DatabasePool,
-}
-
-impl<'a> ScopeRepository<'a> {
-    /// Creates a new repository backed by `pool`.
-    pub fn new(pool: &'a DatabasePool) -> Self {
-        Self { pool }
-    }
-
-    /// Fetches a scope by id.
-    pub async fn get(&self, id: ScopeId) -> Result<Scope, ScopeError> {
-        let mut connection = self.pool.acquire().await?;
-        ScopeOperator::new(&mut connection).get(id).await
-    }
-
-    /// Returns the scope for `date` at the given `kind`, creating it if it doesn't exist yet.
-    /// Containment parents (week/month/season) are recursively created first.
-    pub fn get_or_create(
-        &self,
-        kind: ScopeKind,
-        date: NaiveDate,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Scope, ScopeError>> + Send + '_>>
-    {
-        Box::pin(async move {
-            let mut connection = self.pool.acquire().await?;
-            ScopeOperator::new(&mut connection)
-                .get_or_create(kind, date)
-                .await
-        })
-    }
-
-    /// Returns the Part-of-Day scope for `date` + `part`, creating it (and its Day, Week,
-    /// Month, Season parents) if absent. The scope inherits its Day's containment ids.
-    pub async fn get_or_create_part(
-        &self,
-        date: NaiveDate,
-        part: PartOfDay,
-    ) -> Result<Scope, ScopeError> {
-        let mut connection = self.pool.acquire().await?;
-        ScopeOperator::new(&mut connection)
-            .get_or_create_part(date, part)
-            .await
-    }
-
-    /// Returns the Exact scope for the half-open `[start, end)` datetime window, creating it
-    /// if absent. Exact scopes lie outside the canonical hierarchy and carry no containment ids.
-    pub async fn get_or_create_exact(
-        &self,
-        start: NaiveDateTime,
-        end: NaiveDateTime,
-    ) -> Result<Scope, ScopeError> {
-        let mut connection = self.pool.acquire().await?;
-        ScopeOperator::new(&mut connection)
-            .get_or_create_exact(start, end)
-            .await
     }
 }
 

@@ -8,7 +8,6 @@
 
 pub mod model;
 
-use crate::database::DatabasePool;
 use model::BlockReason;
 
 #[derive(sqlx::FromRow)]
@@ -131,61 +130,5 @@ impl<'session> BlockReasonOperator<'session> {
             .execute(&mut *self.connection)
             .await?;
         Ok(())
-    }
-}
-
-/// Repository for the block-reason list of tasks and goals.
-///
-/// Transitional: the SQL now lives on [`BlockReasonOperator`], and every method here checks a
-/// connection out of the pool and delegates to it, so repository and operator cannot drift while
-/// callers move over. No source file calls it any more — Task 2.2 Step 3 moved the last one, the
-/// task/goal subtree delete, onto `db.block_reasons()`. Its remaining callers are test fixtures in
-/// `tests/block_reasons.rs` and `tests/tasks.rs`; the struct goes away when those move too.
-///
-/// The methods below carry no `tracing::instrument`: each delegates to an operator method that is
-/// already instrumented, and a second attribute would only nest an identical span inside it.
-pub struct BlockReasonRepository<'a> {
-    pool: &'a DatabasePool,
-}
-
-impl<'a> BlockReasonRepository<'a> {
-    /// Creates a repository bound to the given connection pool.
-    pub fn new(pool: &'a DatabasePool) -> Self {
-        Self { pool }
-    }
-
-    /// Returns every block reason across all owners (for the mindmap bulk load), ordered.
-    pub async fn list_all(&self) -> Result<Vec<BlockReason>, sqlx::Error> {
-        let mut connection = self.pool.acquire().await?;
-        BlockReasonOperator::new(&mut connection).list_all().await
-    }
-
-    /// Returns the ordered reason texts for a single owner.
-    pub async fn list_for(&self, owner_type: &str, owner_id: i64) -> Result<Vec<String>, sqlx::Error> {
-        let mut connection = self.pool.acquire().await?;
-        BlockReasonOperator::new(&mut connection)
-            .list_for(owner_type, owner_id)
-            .await
-    }
-
-    /// Replaces the whole ordered list for an owner. Empty/blank reasons are skipped.
-    ///
-    /// Opens its own transaction, because a pool-bound caller has no session to join. Callers
-    /// that already hold one must use [`BlockReasonOperator::set`] instead.
-    pub async fn set(&self, owner_type: &str, owner_id: i64, reasons: &[String]) -> Result<(), sqlx::Error> {
-        let mut transaction = self.pool.begin().await?;
-        BlockReasonOperator::new(&mut transaction)
-            .set(owner_type, owner_id, reasons)
-            .await?;
-        transaction.commit().await?;
-        Ok(())
-    }
-
-    /// Removes every reason for an owner. See [`BlockReasonOperator::delete_for`].
-    pub async fn delete_for(&self, owner_type: &str, owner_id: i64) -> Result<(), sqlx::Error> {
-        let mut connection = self.pool.acquire().await?;
-        BlockReasonOperator::new(&mut connection)
-            .delete_for(owner_type, owner_id)
-            .await
     }
 }
