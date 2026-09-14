@@ -402,3 +402,43 @@ working: the net caught a fixture that had stopped reaching the hook.
    climbing scope chains. It was already paid on every load; collapsing the round trips does not
    make it cheaper, and it is now inside the transaction. If load latency is still felt after this
    phase, that is where to look next — not at the IPC count.
+
+---
+
+## 11. Merge back into `worktree-architecture-review`
+
+Merged the moving base into this branch after the work was committed and green.
+
+**Clean — no conflicts.** The expected `invoke_handler!` collision in `src-tauri/src/lib.rs` did
+not materialise: the one commit the base had gained since `acaea4e` was `cc580b0` ("Move flows.rs
+and tasks.rs off the repository shims"), which touches only `src-tauri/tests/flows.rs` and
+`src-tauri/tests/tasks.rs` — two test files this phase never opened.
+
+```
+Merge made by the 'ort' strategy.
+ src-tauri/tests/flows.rs |  986 +++++++++++++++++++++-------------
+ src-tauri/tests/tasks.rs | 1343 +++++++++++++++++++++++++++-------------------
+ 2 files changed, 1432 insertions(+), 897 deletions(-)
+```
+
+### Post-merge verification
+
+Backend, from `src-tauri/`:
+
+| Command | Result |
+|---|---|
+| `cargo build` | `Finished dev profile … in 14.69s` — 0 warnings |
+| `cargo clippy --all-targets` | `Finished` — **0 warnings, 0 errors** |
+| `cargo test` | **329 passed, 0 failed** across 15 binaries (133/0/8/4/18/43/16/0/12/13/**5**/13/50/14) |
+
+Frontend, from the repo root:
+
+| Command | Result |
+|---|---|
+| `npm test` | **78 files, 1006 passed, 0 failed** |
+| `npm run build` | `✓ built in 17.97s` |
+| `npm run lint` | clean, no output |
+
+Identical to the pre-merge numbers — `cc580b0`'s rewrite of the two test files changed neither
+count (43 in `flows.rs`, 50 in `tasks.rs` both before and after), so the merge moved nothing this
+phase depends on.
