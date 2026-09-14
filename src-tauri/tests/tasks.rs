@@ -2037,3 +2037,155 @@ async fn the_add_task_dependency_command_commits_the_edge_it_checked() {
         "a rejected dependency must leave nothing behind"
     );
 }
+
+// --- The broken-chain policy (Phase 3, Task 3.3) ---
+//
+// One corrupt tree, two callers, two answers. The renderer treats a chain it cannot follow as
+// unconstrained and keeps drawing, because one bad row must not blank the whole mindmap; a write
+// underneath that same row is refused, because the invariant it would have to satisfy cannot be
+// read. Before the ancestry chain, "nothing found" said both of those at once, and which one you
+// got depended on which of four near-identical walks you happened to call.
+
+/// Inserts a task row straight into the database, skipping every rule, so a test can build a
+/// tree the write path would never produce.
+async fn insert_raw_task(pool: &sqlx::SqlitePool, id: i64, parent_type: &str, parent_id: i64) {
+    sqlx::query(
+        "INSERT INTO tasks (id, title, parent_type, parent_id, status) VALUES (?, ?, ?, ?, 'todo')",
+    )
+    .bind(id)
+    .bind(format!("raw task {id}"))
+    .bind(parent_type)
+    .bind(parent_id)
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
+/// Creates a task through the real write path, which is where containment is checked.
+async fn create_task_under(
+    pool: &sqlx::SqlitePool,
+    request: CreateTaskRequest,
+) -> Result<arlesh_lib::tasks::model::Task, arlesh_lib::tasks::error::TaskError> {
+    let mut db = SessionFactory::new(pool.clone()).begin().await.unwrap();
+    let created = arlesh_lib::tasks::create_task(&mut db, request).await;
+    if created.is_ok() {
+        db.commit().await.unwrap();
+    }
+    created
+}
+
+#[tokio::test]
+async fn a_dangling_ancestor_renders_fine_and_rejects_a_write() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let (_, week_in_july, _) = july_scopes(&pool).await;
+    let goal = GoalRepository::new(&pool)
+        .create(CreateGoalRequest {
+            title: "Doomed Parent".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let orphan = TaskRepository::new(&pool)
+        .create(CreateTaskRequest {
+            title: "Orphan".into(),
+            parent_type: "goal".into(),
+            parent_id: goal.id,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    // A raw delete that skips the cascade — the shape stale data actually takes.
+    sqlx::query("DELETE FROM goals WHERE id = ?").bind(goal.id).execute(&pool).await.unwrap();
+
+    // Read path: the orphan is unconstrained, and everything still renders.
+    let now = NaiveDate::from_ymd_opt(2026, 2, 1).unwrap().and_hms_opt(12, 0, 0).unwrap();
+    let states = lifecycles(&pool, now).await;
+    assert_eq!(task_state(&states, orphan.id).timing, Timing::Active);
+
+    // Write path: the very same chain refuses a scoped child, because the window that child
+    // would have to fit inside cannot be read.
+    let rejected = create_task_under(
+        &pool,
+        CreateTaskRequest {
+            title: "Scoped Child".into(),
+            parent_type: "task".into(),
+            parent_id: orphan.id,
+            time_scope: Some(single(week_in_july)),
+            ..Default::default()
+        },
+    )
+    .await;
+    assert!(
+        matches!(rejected, Err(arlesh_lib::tasks::error::TaskError::GoalNotFound(id)) if id == goal.id),
+        "the write must name the reference it could not follow, got {rejected:?}",
+    );
+    assert_eq!(
+        scoped_children_of(&pool, orphan.id).await,
+        0,
+        "a rejected write must leave nothing behind"
+    );
+}
+
+/// Counts the tasks parented by task `parent_id`. Written out rather than reusing `count_where`
+/// because the polymorphic parent link needs both halves: task 1 and goal 1 are different
+/// parents, and matching on `parent_id` alone conflates them.
+async fn scoped_children_of(pool: &sqlx::SqlitePool, parent_id: i64) -> i64 {
+    sqlx::query_scalar("SELECT COUNT(*) FROM tasks WHERE parent_type = 'task' AND parent_id = ?")
+        .bind(parent_id)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn a_cyclic_ancestor_chain_renders_fine_and_rejects_a_write() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let (_, week_in_july, _) = july_scopes(&pool).await;
+    let anchor = TaskRepository::new(&pool)
+        .create(CreateTaskRequest {
+            title: "Anchor".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    // 9001 and 9002 are each other's parent. Nothing in `update_task`, `reparent_conflicts` or
+    // the schema prevents this today; before the chain's cycle guard every walk below spun
+    // forever and hung the app.
+    insert_raw_task(&pool, 9001, "task", 9002).await;
+    insert_raw_task(&pool, 9002, "task", 9001).await;
+
+    // Read path: the derivation terminates, the cyclic pair is unconstrained, and the healthy
+    // task beside them still renders.
+    let now = NaiveDate::from_ymd_opt(2026, 2, 1).unwrap().and_hms_opt(12, 0, 0).unwrap();
+    let states = lifecycles(&pool, now).await;
+    assert_eq!(task_state(&states, 9001).timing, Timing::Active);
+    assert_eq!(task_state(&states, anchor.id).timing, Timing::Active);
+
+    // Write path: the same cycle refuses a scoped child.
+    let rejected = create_task_under(
+        &pool,
+        CreateTaskRequest {
+            title: "Scoped Child".into(),
+            parent_type: "task".into(),
+            parent_id: 9001,
+            time_scope: Some(single(week_in_july)),
+            ..Default::default()
+        },
+    )
+    .await;
+    assert!(
+        matches!(rejected, Err(arlesh_lib::tasks::error::TaskError::AncestorCycle { .. })),
+        "a cyclic chain must reject the write rather than hang, got {rejected:?}",
+    );
+    assert_eq!(
+        scoped_children_of(&pool, 9001).await,
+        1,
+        "only 9002 remains a child of 9001 — the rejected write left nothing behind"
+    );
+}

@@ -9,6 +9,11 @@
 //! [`Db`] session rather than a method on one resource's operator — see [`Db`]'s
 //! `# Where an operation lives`. All of them are read-only analysis, so they are generic over the
 //! session mode and serve `connect()` and `begin()` alike.
+//!
+//! None of them walks the tree itself. [`ancestry::climb`] reads the chain once and each rule is
+//! a pure search over it, which is also where the broken-chain policy is chosen: the renderer
+//! takes [`Search::or_unconstrained`](super::ancestry::Search::or_unconstrained) and keeps going,
+//! a write takes [`Search::or_reject`](super::ancestry::Search::or_reject) and refuses.
 
 use chrono::NaiveDateTime;
 use serde::Serialize;
@@ -17,6 +22,7 @@ use crate::database::session::{Db, SessionMode};
 use crate::scopes::model::ScopeId;
 use crate::scopes::resolve::{self, Bounds};
 
+use super::ancestry;
 use super::error::TaskError;
 use super::lifecycle::{derive_item_state, Archival, ItemLifecycle};
 use super::model::{GoalId, GoalStatus, OnScopeExit, TaskId, TaskStatus, TimeScope};
@@ -47,46 +53,18 @@ pub struct ViolatingDescendant {
 /// The effective `(window, on-exit behavior)` governing an item: its own when explicitly scoped,
 /// else the nearest scoped ancestor's, or `None` when nothing above it is scoped (Unscoped). Unlike
 /// [`nearest_scoped_ancestor_window`], the walk includes the node itself.
+/// Reads only, and on the **read** path: a broken chain leaves the item unconstrained rather
+/// than failing, so one corrupt row cannot blank the whole mindmap. The break is logged.
 pub(super) async fn scope_governance<M: SessionMode>(
     db: &mut Db<M>,
     node_type: &str,
     node_id: i64,
 ) -> Result<Option<(Bounds, OnScopeExit)>, TaskError> {
-    let mut node_type = node_type.to_string();
-    let mut node_id = node_id;
-    loop {
-        match node_type.as_str() {
-            "task" => {
-                // A dangling parent (the referenced item was deleted) breaks the chain: there is no
-                // scoped ancestor above it, so the item is unconstrained rather than an error.
-                let task = match db.tasks().get(TaskId(node_id)).await {
-                    Ok(task) => task,
-                    Err(TaskError::TaskNotFound(_)) => return Ok(None),
-                    Err(error) => return Err(error),
-                };
-                if let Some(ts) = &task.time_scope {
-                    let window = time_scope_window(db, ts).await?;
-                    return Ok(Some((window, task.on_scope_exit.unwrap_or(OnScopeExit::Keep))));
-                }
-                node_type = task.parent_type;
-                node_id = task.parent_id;
-            }
-            "goal" => {
-                let goal = match db.goals().get(GoalId(node_id)).await {
-                    Ok(goal) => goal,
-                    Err(TaskError::GoalNotFound(_)) => return Ok(None),
-                    Err(error) => return Err(error),
-                };
-                if let Some(ts) = &goal.time_scope {
-                    let window = time_scope_window(db, ts).await?;
-                    return Ok(Some((window, goal.on_scope_exit.unwrap_or(OnScopeExit::Keep))));
-                }
-                node_type = goal.parent_type;
-                node_id = goal.parent_id;
-            }
-            _ => return Ok(None),
-        }
-    }
+    let chain = ancestry::climb(db, node_type, node_id).await?;
+    let Some((time_scope, on_exit)) = chain.nearest_scoped().or_unconstrained() else {
+        return Ok(None);
+    };
+    Ok(Some((time_scope_window(db, time_scope).await?, on_exit)))
 }
 
 /// Derives the full lifecycle state (Timing / Resolution / Archival — see `lifecycle`'s module
@@ -165,36 +143,21 @@ fn reject_unless_contained(outer: Bounds, inner: Bounds, message: &str) -> Resul
     }
 }
 
-/// Walks up the contiguous task/goal ancestor chain from a parent reference, returning the window
-/// of the nearest ancestor that has an explicit Time Scope, or `None` if none is scoped.
+/// The window of the nearest ancestor of `(parent_type, parent_id)` — itself included — that has
+/// an explicit Time Scope, or `None` if none is scoped.
+///
+/// On the **write** path: a broken chain rejects, because the constraint the caller is about to
+/// check against could not be read.
 pub async fn nearest_scoped_ancestor_window<M: SessionMode>(
     db: &mut Db<M>,
     parent_type: &str,
     parent_id: i64,
 ) -> Result<Option<Bounds>, TaskError> {
-    let mut node_type = parent_type.to_string();
-    let mut node_id = parent_id;
-    loop {
-        match node_type.as_str() {
-            "task" => {
-                let task = db.tasks().get(TaskId(node_id)).await?;
-                if let Some(ts) = &task.time_scope {
-                    return Ok(Some(time_scope_window(db, ts).await?));
-                }
-                node_type = task.parent_type;
-                node_id = task.parent_id;
-            }
-            "goal" => {
-                let goal = db.goals().get(GoalId(node_id)).await?;
-                if let Some(ts) = &goal.time_scope {
-                    return Ok(Some(time_scope_window(db, ts).await?));
-                }
-                node_type = goal.parent_type;
-                node_id = goal.parent_id;
-            }
-            _ => return Ok(None),
-        }
-    }
+    let chain = ancestry::climb(db, parent_type, parent_id).await?;
+    let Some((time_scope, _)) = chain.nearest_scoped().or_reject()? else {
+        return Ok(None);
+    };
+    Ok(Some(time_scope_window(db, time_scope).await?))
 }
 
 /// Like [`nearest_scoped_ancestor_window`] but returns the ancestor's Time Scope itself (the clamp
@@ -204,53 +167,26 @@ pub(super) async fn nearest_scoped_ancestor_time_scope<M: SessionMode>(
     parent_type: &str,
     parent_id: i64,
 ) -> Result<Option<TimeScope>, TaskError> {
-    let mut node_type = parent_type.to_string();
-    let mut node_id = parent_id;
-    loop {
-        match node_type.as_str() {
-            "task" => {
-                let task = db.tasks().get(TaskId(node_id)).await?;
-                if let Some(ts) = task.time_scope {
-                    return Ok(Some(ts));
-                }
-                node_type = task.parent_type;
-                node_id = task.parent_id;
-            }
-            "goal" => {
-                let goal = db.goals().get(GoalId(node_id)).await?;
-                if let Some(ts) = goal.time_scope {
-                    return Ok(Some(ts));
-                }
-                node_type = goal.parent_type;
-                node_id = goal.parent_id;
-            }
-            _ => return Ok(None),
-        }
-    }
+    let chain = ancestry::climb(db, parent_type, parent_id).await?;
+    Ok(chain.nearest_scoped().or_reject()?.map(|(time_scope, _)| time_scope.clone()))
 }
 
-/// Walks up the contiguous task ancestor chain, returning the window of the nearest task ancestor
-/// that has a Plan, or `None`.
+/// The window of the nearest **task** ancestor that has a Plan, or `None`.
+///
+/// Tasks only: a goal on the chain ends the search, because only tasks have a Plan for a Plan to
+/// nest inside. On the **write** path, so a chain broken at a task rejects — but a chain broken
+/// beyond a goal that already stopped the search does not. See
+/// [`AncestryChain::nearest_planned`](super::ancestry::AncestryChain::nearest_planned).
 pub(super) async fn nearest_planned_ancestor_window<M: SessionMode>(
     db: &mut Db<M>,
     parent_type: &str,
     parent_id: i64,
 ) -> Result<Option<Bounds>, TaskError> {
-    let mut node_type = parent_type.to_string();
-    let mut node_id = parent_id;
-    loop {
-        match node_type.as_str() {
-            "task" => {
-                let task = db.tasks().get(TaskId(node_id)).await?;
-                if let Some(plan) = &task.plan {
-                    return Ok(Some(time_scope_window(db, plan).await?));
-                }
-                node_type = task.parent_type;
-                node_id = task.parent_id;
-            }
-            _ => return Ok(None),
-        }
-    }
+    let chain = ancestry::climb(db, parent_type, parent_id).await?;
+    let Some(plan) = chain.nearest_planned().or_reject()? else {
+        return Ok(None);
+    };
+    Ok(Some(time_scope_window(db, plan).await?))
 }
 
 /// Rejects a task write that breaks a containment invariant: Plan ⊆ own Time Scope, own Time
