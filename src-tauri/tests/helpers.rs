@@ -58,3 +58,12 @@ pub fn command_host(pool: &SqlitePool) -> tauri::App<tauri::test::MockRuntime> {
     app.manage(SessionFactory::new(pool.clone()));
     app
 }
+
+/// A [`SessionFactory`] over `pool`, for tests that drive a session themselves rather than through
+/// a command — seeding a fixture, or standing in for a caller that fails part-way and rolls back.
+///
+/// The one-connection caution above applies unchanged: commit or drop the session before reading
+/// the pool.
+pub fn session_factory(pool: &SqlitePool) -> SessionFactory {
+    SessionFactory::new(pool.clone())
+}

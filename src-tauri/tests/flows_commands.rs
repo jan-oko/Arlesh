@@ -13,14 +13,19 @@
 mod helpers;
 
 use arlesh_lib::commands::flows as flow_commands;
-use arlesh_lib::flows::model::{
-    ConsumptionKind, CreateFlowItemRequest, CreateFlowRequest, FlowCycleInput, FlowItemType,
-    InstanceType, SetRecurrenceRequest, StartFlowRequest, TargetRef, UpdateFlowItemRequest,
-    UpdateFlowRequest,
+use arlesh_lib::flows::{
+    self,
+    model::{
+        ConsumptionKind, CreateFlowItemRequest, CreateFlowRequest, FlowCycleInput, FlowId,
+        FlowItemType, InstanceType, SetRecurrenceRequest, StartFlowRequest, TargetRef,
+        UpdateFlowItemRequest, UpdateFlowRequest,
+    },
 };
+use arlesh_lib::infos::model::CreateInfoRequest;
 use arlesh_lib::scopes::{model::ScopeKind, ScopeRepository};
 use arlesh_lib::tasks::{
-    model::{CreateGoalRequest, CreateTaskRequest, TimeScope},
+    create_goal, create_task,
+    model::{CreateGoalRequest, CreateTaskRequest, Dependency, GoalId, TaskId, TimeScope},
     GoalRepository, TaskRepository,
 };
 use tauri::Manager;
@@ -42,6 +47,19 @@ async fn text_at(pool: &sqlx::SqlitePool, table: &str, column: &str, id: i64) ->
     sqlx::query_scalar(&format!("SELECT {column} FROM {table} WHERE id = ?"))
         .bind(id)
         .fetch_optional(pool)
+        .await
+        .unwrap()
+}
+
+/// Counts the block reasons hanging off one polymorphic owner.
+///
+/// `owner_id` alone is not a key — a goal and a task can share an id — so both halves of the link
+/// are bound, which [`count_where`] cannot express with its single placeholder.
+async fn count_block_reasons(pool: &sqlx::SqlitePool, owner_type: &str, owner_id: i64) -> i64 {
+    sqlx::query_scalar("SELECT COUNT(*) FROM block_reasons WHERE owner_type = ? AND owner_id = ?")
+        .bind(owner_type)
+        .bind(owner_id)
+        .fetch_one(pool)
         .await
         .unwrap()
 }
@@ -512,6 +530,246 @@ async fn the_convert_to_flow_command_commits_the_template_and_the_deletion() {
         count_where(&pool, "tasks", "id", step.id).await,
         0,
         "and its descendant — the deletion and the inserts commit together or not at all"
+    );
+}
+
+/// Every row `convert_to_flow`'s subtree delete has to reach, by id.
+///
+/// Held by id rather than re-derived from a predicate: a "descendants of the root" query stops
+/// matching the moment the root is deleted, so an assertion written that way silently shrinks to
+/// checking the root alone.
+struct ConvertSubtree {
+    /// The goal the conversion is rooted at, scoped to a week so the flow gets a Span window.
+    root_id: i64,
+    /// A task child of the root, scoped to a day inside that week so a cycle pair is mapped.
+    child_id: i64,
+    /// A task child of `child_id` — a second level, so the cascade has to recurse.
+    grandchild_id: i64,
+    /// An info attached to the root.
+    outer_info_id: i64,
+    /// An info attached to `outer_info_id`, not to the root — the nesting the old raw delete loop
+    /// never reached.
+    nested_info_id: i64,
+}
+
+/// Seeds the subtree both cascade tests convert, and commits it.
+///
+/// Built through the session API rather than through a command because it is fixture data, not the
+/// behaviour under test: one transaction, committed, so the pool is quiet before the test begins.
+async fn seed_convert_subtree(pool: &sqlx::SqlitePool) -> ConvertSubtree {
+    let mut db = helpers::session_factory(pool).begin().await.unwrap();
+
+    let week = db.scopes().get_or_create(ScopeKind::Week, ymd(2026, 1, 5)).await.unwrap();
+    let day = db.scopes().get_or_create(ScopeKind::Day, ymd(2026, 1, 7)).await.unwrap();
+
+    let root = create_goal(
+        &mut db,
+        CreateGoalRequest {
+            title: "Routine".into(),
+            parent_type: "domain".into(),
+            parent_id: 1,
+            time_scope: Some(TimeScope { start_id: week.id, end_id: week.id, duration: None }),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let child = create_task(
+        &mut db,
+        CreateTaskRequest {
+            title: "Step".into(),
+            parent_type: "goal".into(),
+            parent_id: root.id,
+            time_scope: Some(TimeScope { start_id: day.id, end_id: day.id, duration: None }),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let grandchild = create_task(
+        &mut db,
+        CreateTaskRequest {
+            title: "Sub-step".into(),
+            parent_type: "task".into(),
+            parent_id: child.id,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    // A dependency inside the subtree, so the conversion writes a flow_dependencies row too.
+    db.tasks()
+        .add_dependency(TaskId(child.id), Dependency::Task { id: grandchild.id })
+        .await
+        .unwrap();
+
+    // Block reasons and infos hang off polymorphic owner links with no foreign key, so nothing in
+    // the schema removes them when their owner goes: the cascade has to do it by hand.
+    db.block_reasons().set("goal", root.id, &["waiting on review".into()]).await.unwrap();
+    db.block_reasons().set("task", child.id, &["blocked".into()]).await.unwrap();
+    let outer = db
+        .infos()
+        .create(CreateInfoRequest {
+            body: "outer note".into(),
+            details: None,
+            parent_type: "goal".into(),
+            parent_id: root.id,
+            position: 0,
+        })
+        .await
+        .unwrap();
+    let nested = db
+        .infos()
+        .create(CreateInfoRequest {
+            body: "nested note".into(),
+            details: None,
+            parent_type: "info".into(),
+            parent_id: outer.id,
+            position: 0,
+        })
+        .await
+        .unwrap();
+
+    db.commit().await.unwrap();
+
+    ConvertSubtree {
+        root_id: root.id,
+        child_id: child.id,
+        grandchild_id: grandchild.id,
+        outer_info_id: outer.id,
+        nested_info_id: nested.id,
+    }
+}
+
+#[tokio::test]
+async fn the_convert_to_flow_command_commits_the_whole_cascade_under_the_deleted_subtree() {
+    let pool = helpers::test_pool().await;
+    let seeded = seed_convert_subtree(&pool).await;
+    let app = helpers::command_host(&pool);
+
+    flow_commands::convert_to_flow(app.state(), "goal".into(), seeded.root_id, true, true)
+        .await
+        .unwrap();
+
+    assert_eq!(count_where(&pool, "goals", "id", seeded.root_id).await, 0, "the root goal");
+    assert_eq!(count_where(&pool, "tasks", "id", seeded.child_id).await, 0, "its child task");
+    assert_eq!(
+        count_where(&pool, "tasks", "id", seeded.grandchild_id).await,
+        0,
+        "its grandchild task"
+    );
+    assert_eq!(
+        count_block_reasons(&pool, "goal", seeded.root_id).await,
+        0,
+        "the root's block reason — no foreign key takes it, so the cascade must"
+    );
+    assert_eq!(
+        count_block_reasons(&pool, "task", seeded.child_id).await,
+        0,
+        "and the child's"
+    );
+    assert_eq!(
+        count_where(&pool, "infos", "id", seeded.outer_info_id).await,
+        0,
+        "the info attached to the root"
+    );
+    assert_eq!(
+        count_where(&pool, "infos", "id", seeded.nested_info_id).await,
+        0,
+        "and the one nested under that info, which the old delete loop left behind"
+    );
+}
+
+#[tokio::test]
+async fn a_convert_to_flow_aborted_after_the_delete_restores_the_subtree_and_leaves_no_template() {
+    let pool = helpers::test_pool().await;
+    let seeded = seed_convert_subtree(&pool).await;
+
+    // A second, unconvertible subtree: a task parented under a task, which `convert_to_flow`
+    // rejects outright ("a flow cannot be parented under a task"). It is the failure this test
+    // injects — see the comment at the injection point.
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    let blocker_parent = create_task(
+        &mut db,
+        CreateTaskRequest {
+            title: "Parent".into(),
+            parent_type: "domain".into(),
+            parent_id: 1,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let unconvertible = create_task(
+        &mut db,
+        CreateTaskRequest {
+            title: "Child".into(),
+            parent_type: "task".into(),
+            parent_id: blocker_parent.id,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    db.commit().await.unwrap();
+
+    // The command's own shape: begin, convert, (…), commit. This test stands in for the caller and
+    // fails where the command's `?` would fire.
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    let flow = flows::convert_to_flow(&mut db, "goal", seeded.root_id, true, true).await.unwrap();
+
+    // The conversion really did get past its delete — otherwise the rollback assertions below
+    // would hold vacuously.
+    assert!(db.goals().get(GoalId(seeded.root_id)).await.is_err(), "deleted inside the transaction");
+    assert_eq!(
+        db.flows().list_tasks(FlowId(flow.id)).await.unwrap().len(),
+        2,
+        "and really did build the template first"
+    );
+
+    // The injected failure: a second conversion in the same transaction, rejected by the
+    // operation's own guard on real input. Any error raised after `convert_to_flow` returns
+    // reaches the database the same way — the `Db<Transactional>` is dropped without `commit()`
+    // and sqlx rolls back — so this stands for the whole class, the failing `commit()` included.
+    let rejected = flows::convert_to_flow(&mut db, "task", unconvertible.id, true, true).await;
+    assert!(rejected.is_err(), "a task under a task cannot become a flow");
+    drop(db);
+
+    // Everything the conversion deleted is back, by id.
+    assert_eq!(count_where(&pool, "goals", "id", seeded.root_id).await, 1, "the root goal");
+    assert_eq!(count_where(&pool, "tasks", "id", seeded.child_id).await, 1, "its child task");
+    assert_eq!(
+        count_where(&pool, "tasks", "id", seeded.grandchild_id).await,
+        1,
+        "its grandchild task"
+    );
+    assert_eq!(
+        count_block_reasons(&pool, "goal", seeded.root_id).await,
+        1,
+        "the root's block reason — the cascade widened in Task 2.2, so the rollback must undo it"
+    );
+    assert_eq!(count_block_reasons(&pool, "task", seeded.child_id).await, 1, "and the child's");
+    assert_eq!(
+        count_where(&pool, "infos", "id", seeded.outer_info_id).await,
+        1,
+        "the info attached to the root"
+    );
+    assert_eq!(
+        count_where(&pool, "infos", "id", seeded.nested_info_id).await,
+        1,
+        "and the one nested under that info"
+    );
+
+    // And nothing of the abandoned template survives.
+    assert_eq!(count_where(&pool, "flows", "id", flow.id).await, 0, "the template's flow row");
+    assert_eq!(count_where(&pool, "flow_goals", "flow_id", flow.id).await, 0, "its goal items");
+    assert_eq!(count_where(&pool, "flow_tasks", "flow_id", flow.id).await, 0, "its task items");
+    assert_eq!(count_where(&pool, "flow_item_cycles", "flow_id", flow.id).await, 0, "its cycles");
+    assert_eq!(
+        count_where(&pool, "flow_dependencies", "flow_id", flow.id).await,
+        0,
+        "its remapped dependencies"
     );
 }
 
