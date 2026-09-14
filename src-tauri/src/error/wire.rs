@@ -134,6 +134,9 @@ fn task_kind(error: &TaskError) -> WireErrorKind {
     match error {
         TaskError::TaskNotFound(_) | TaskError::GoalNotFound(_) => WireErrorKind::NotFound,
         TaskError::CircularDependency => WireErrorKind::InvalidRequest,
+        // Not `InvalidRequest`: the request was fine and the stored tree is not. Nothing the
+        // caller can rephrase will fix it, which is what `Internal` means here.
+        TaskError::AncestorCycle { .. } => WireErrorKind::Internal,
         TaskError::ScopeContainment(_) => WireErrorKind::ContainmentViolated,
         TaskError::Scope(inner) => scope_kind(inner),
         TaskError::Database(_) => WireErrorKind::Database,

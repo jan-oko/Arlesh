@@ -6,6 +6,7 @@
 //! [`update_task`], [`delete_task`], [`get_task_with_blockers`] and their goal counterparts. See
 //! [`Db`]'s `# Where an operation lives`.
 
+mod ancestry;
 pub mod error;
 pub mod lifecycle;
 pub mod model;
@@ -14,6 +15,7 @@ mod scope_rules;
 use std::collections::{HashSet, VecDeque};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use ancestry::{AncestryLink, NodeKind, NodeRef};
 use crate::database::session::{Db, SessionFactory, SessionMode, Transactional};
 use crate::database::DatabasePool;
 use crate::infos::model::InfoId;
@@ -217,6 +219,36 @@ impl From<GoalRow> for Goal {
             is_private: row.is_private,
         }
     }
+}
+
+/// The narrow task row one step of an ancestry climb reads.
+///
+/// Nine columns and no tag query, against the sixteen columns plus a join [`TaskRow`] costs.
+/// A climb reads one of these per level of the tree, so the difference is per-step.
+#[derive(sqlx::FromRow)]
+struct TaskAncestryRow {
+    parent_type: String,
+    parent_id: i64,
+    time_scope_start_id: Option<i64>,
+    time_scope_end_id: Option<i64>,
+    time_scope_duration_n: Option<i64>,
+    time_scope_duration_kind: Option<String>,
+    on_scope_exit: Option<String>,
+    plan_start_id: Option<i64>,
+    plan_end_id: Option<i64>,
+}
+
+/// The narrow goal row one step of an ancestry climb reads. Goals have no Plan column, so the
+/// link's `plan` is always absent.
+#[derive(sqlx::FromRow)]
+struct GoalAncestryRow {
+    parent_type: String,
+    parent_id: i64,
+    time_scope_start_id: Option<i64>,
+    time_scope_end_id: Option<i64>,
+    time_scope_duration_n: Option<i64>,
+    time_scope_duration_kind: Option<String>,
+    on_scope_exit: Option<String>,
 }
 
 async fn fetch_task_tag_ids(
@@ -446,6 +478,35 @@ impl<'session> GoalOperator<'session> {
         Ok(Goal { tag_ids, ..row.into() })
     }
 
+    /// The six ancestry fields of a goal, as one step of an [`ancestry::climb`].
+    ///
+    /// Module-private: the climb is the only caller, and it is the only thing that should be
+    /// reading a half-row. Anything wanting a goal wants [`Self::get`].
+    async fn ancestry_link(&mut self, id: GoalId) -> Result<AncestryLink, TaskError> {
+        let row = sqlx::query_as::<_, GoalAncestryRow>(
+            "SELECT parent_type, parent_id, time_scope_start_id, time_scope_end_id,
+                    time_scope_duration_n, time_scope_duration_kind, on_scope_exit
+             FROM goals WHERE id = ?",
+        )
+        .bind(id.0)
+        .fetch_optional(&mut *self.connection)
+        .await?
+        .ok_or(TaskError::GoalNotFound(id.0))?;
+        Ok(AncestryLink {
+            kind: NodeKind::Goal,
+            id: id.0,
+            parent: NodeRef::new(row.parent_type, row.parent_id),
+            time_scope: time_scope_from_row(
+                row.time_scope_start_id,
+                row.time_scope_end_id,
+                row.time_scope_duration_n,
+                row.time_scope_duration_kind,
+            ),
+            plan: None,
+            on_scope_exit: row.on_scope_exit.as_deref().and_then(OnScopeExit::from_db),
+        })
+    }
+
     /// The status and title of a goal, without its tags — the two columns a "blocked by goal"
     /// summary needs.
     pub async fn status_and_title(&mut self, id: GoalId) -> Result<(String, String), TaskError> {
@@ -659,6 +720,36 @@ impl<'session> TaskOperator<'session> {
             .ok_or(TaskError::TaskNotFound(id.0))?;
         let tag_ids = fetch_task_tag_ids(&mut *self.connection, id.0).await?;
         Ok(Task { tag_ids, ..row.into() })
+    }
+
+    /// The six ancestry fields of a task, as one step of an [`ancestry::climb`].
+    ///
+    /// Module-private for the same reason as [`GoalOperator::ancestry_link`]: the climb is its
+    /// only caller, and anything else wanting a task wants [`Self::get`].
+    async fn ancestry_link(&mut self, id: TaskId) -> Result<AncestryLink, TaskError> {
+        let row = sqlx::query_as::<_, TaskAncestryRow>(
+            "SELECT parent_type, parent_id, time_scope_start_id, time_scope_end_id,
+                    time_scope_duration_n, time_scope_duration_kind, on_scope_exit,
+                    plan_start_id, plan_end_id
+             FROM tasks WHERE id = ?",
+        )
+        .bind(id.0)
+        .fetch_optional(&mut *self.connection)
+        .await?
+        .ok_or(TaskError::TaskNotFound(id.0))?;
+        Ok(AncestryLink {
+            kind: NodeKind::Task,
+            id: id.0,
+            parent: NodeRef::new(row.parent_type, row.parent_id),
+            time_scope: time_scope_from_row(
+                row.time_scope_start_id,
+                row.time_scope_end_id,
+                row.time_scope_duration_n,
+                row.time_scope_duration_kind,
+            ),
+            plan: time_scope_from_row(row.plan_start_id, row.plan_end_id, None, None),
+            on_scope_exit: row.on_scope_exit.as_deref().and_then(OnScopeExit::from_db),
+        })
     }
 
     /// Lists all tasks.
