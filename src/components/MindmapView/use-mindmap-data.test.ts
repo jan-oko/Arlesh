@@ -8,6 +8,8 @@ import type { Goal } from "@/api/goals";
 import type { Task } from "@/api/tasks";
 import type { Info } from "@/api/infos";
 import type { Flow, HabitIteration, FlowGoal, FlowTask } from "@/api/flows";
+import type { MindmapLoad } from "@/api/mindmap";
+import { useMindmapStore } from "@/stores/use-mindmap-store";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
@@ -56,6 +58,17 @@ function mkTask(overrides: Partial<Task> = {}): Task {
 function mkInfo(overrides: Partial<Info> = {}): Info {
   return {
     id: 1, body: "Note", details: null, parent_type: "task", parent_id: 1, position: 0, is_private: false,
+    ...overrides,
+  };
+}
+
+function mkFlow(overrides: Partial<Flow> = {}): Flow {
+  return {
+    id: 1, title: "Flow", instance_type: "task", parent_type: "domain", parent_id: 1,
+    target_type: null, target_id: null, flow_duration_n: 1, flow_duration_kind: "week",
+    flow_window_part: null, flow_window_time_start: null, flow_window_time_end: null,
+    is_habit: false, root_plan_kind: null, root_plan_start: null, root_plan_end: null,
+    position: 0, is_private: false,
     ...overrides,
   };
 }
@@ -288,23 +301,37 @@ describe("buildTree", () => {
 
 // --- useMindmapData hook integration ---
 
+// The hook makes exactly one fetch — `load_mindmap` — so the stub builds the whole envelope
+// rather than answering thirteen list commands. `overrides` names the fields a test cares about;
+// everything else is empty. (`habits` defaults to one loaded, empty entry per flow, which is what
+// the backend returns for a flow with no recurrence.)
+function mindmapEnvelope(overrides: Partial<MindmapLoad> = {}): MindmapLoad {
+  const flows = overrides.flows ?? [];
+  return {
+    domains: [], goals: [], tasks: [], infos: [], flows: [],
+    flow_goals: [], flow_tasks: [], flow_cycles: [], flow_dependencies: [],
+    block_reasons: [], task_dependencies: [], flow_instance_nodes: [], lifecycles: [],
+    habits: flows.map((flow) => ({
+      flow_id: flow.id,
+      flow_title: flow.title,
+      result: { outcome: "loaded" as const, iterations: [], statuses: [] },
+    })),
+    ...overrides,
+  };
+}
+
+/** The list a test supplied for `command`, or `fallback` when it did not name that command. */
+function listExtra<T>(extras: Record<string, unknown>, command: string, fallback: T[]): T[] {
+  const supplied = extras[command];
+  return Array.isArray(supplied) ? supplied : fallback;
+}
+
 describe("useMindmapData", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useMindmapStore.getState().clearToast();
     vi.mocked(invoke).mockImplementation((cmd: string) => {
-      if (cmd === "list_domains") return Promise.resolve([]);
-      if (cmd === "list_goals") return Promise.resolve([]);
-      if (cmd === "list_tasks") return Promise.resolve([]);
-      if (cmd === "list_infos") return Promise.resolve([]);
-      if (cmd === "list_flows") return Promise.resolve([]);
-      if (cmd === "list_all_flow_goals") return Promise.resolve([]);
-      if (cmd === "list_all_flow_tasks") return Promise.resolve([]);
-      if (cmd === "list_all_flow_cycles") return Promise.resolve([]);
-      if (cmd === "list_all_flow_dependencies") return Promise.resolve([]);
-      if (cmd === "list_all_block_reasons") return Promise.resolve([]);
-      if (cmd === "list_all_task_dependencies") return Promise.resolve([]);
-      if (cmd === "list_flow_instance_nodes") return Promise.resolve([]);
-      if (cmd === "derive_scope_lifecycles") return Promise.resolve([]);
+      if (cmd === "load_mindmap") return Promise.resolve(mindmapEnvelope());
       return Promise.resolve(null);
     });
   });
@@ -320,19 +347,7 @@ describe("useMindmapData", () => {
   it("populates the tree from API data on mount", async () => {
     const aspect: Domain = mkDomain({ id: 1, subtype: "aspect", title: "Work" });
     vi.mocked(invoke).mockImplementation((cmd: string) => {
-      if (cmd === "list_domains") return Promise.resolve([aspect]);
-      if (cmd === "list_goals") return Promise.resolve([]);
-      if (cmd === "list_tasks") return Promise.resolve([]);
-      if (cmd === "list_infos") return Promise.resolve([]);
-      if (cmd === "list_flows") return Promise.resolve([]);
-      if (cmd === "list_all_flow_goals") return Promise.resolve([]);
-      if (cmd === "list_all_flow_tasks") return Promise.resolve([]);
-      if (cmd === "list_all_flow_cycles") return Promise.resolve([]);
-      if (cmd === "list_all_flow_dependencies") return Promise.resolve([]);
-      if (cmd === "list_all_block_reasons") return Promise.resolve([]);
-      if (cmd === "list_all_task_dependencies") return Promise.resolve([]);
-      if (cmd === "list_flow_instance_nodes") return Promise.resolve([]);
-      if (cmd === "derive_scope_lifecycles") return Promise.resolve([]);
+      if (cmd === "load_mindmap") return Promise.resolve(mindmapEnvelope({ domains: [aspect] }));
       return Promise.resolve(null);
     });
     const { result } = renderHook(() => useMindmapData());
@@ -346,6 +361,82 @@ describe("useMindmapData", () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.error).toBe("backend down");
   });
+
+  it("fetches the whole mindmap in a single round trip", async () => {
+    const { result } = renderHook(() => useMindmapData());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(vi.mocked(invoke).mock.calls.map((call) => call[0])).toEqual(["load_mindmap"]);
+  });
+
+  it("toasts the flow whose habit iterations failed instead of silently emptying it", async () => {
+    const flow = mkFlow({ id: 7, title: "Standup" });
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === "load_mindmap") {
+        return Promise.resolve(
+          mindmapEnvelope({
+            flows: [flow],
+            habits: [
+              {
+                flow_id: 7,
+                flow_title: "Standup",
+                result: { outcome: "failed", message: "a habit requires a scoped flow" },
+              },
+            ],
+          }),
+        );
+      }
+      return Promise.resolve(null);
+    });
+
+    const { result } = renderHook(() => useMindmapData());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    // The load still succeeds — one bad flow does not blank the mindmap.
+    expect(result.current.error).toBeNull();
+    const toast = useMindmapStore.getState().pendingToast;
+    // i18next is not initialised under test, so `t` echoes the key; the assertion is that the
+    // singular key was chosen and anchored on the node the missing iterations would hang under.
+    expect(toast?.message).toBe("habitLoadFailed");
+    expect(toast?.nodeId).toBe("flow-7");
+  });
+
+  it("names one flow and counts the rest when several fail", async () => {
+    const flows = [mkFlow({ id: 7, title: "Standup" }), mkFlow({ id: 8, title: "Retro" })];
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === "load_mindmap") {
+        return Promise.resolve(
+          mindmapEnvelope({
+            flows,
+            habits: flows.map((flow) => ({
+              flow_id: flow.id,
+              flow_title: flow.title,
+              result: { outcome: "failed" as const, message: "nope" },
+            })),
+          }),
+        );
+      }
+      return Promise.resolve(null);
+    });
+
+    const { result } = renderHook(() => useMindmapData());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(useMindmapStore.getState().pendingToast?.message).toBe("habitLoadFailedMore");
+  });
+
+  it("raises no toast when every flow loads", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === "load_mindmap") {
+        return Promise.resolve(mindmapEnvelope({ flows: [mkFlow({ id: 7, title: "Standup" })] }));
+      }
+      return Promise.resolve(null);
+    });
+
+    const { result } = renderHook(() => useMindmapData());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(useMindmapStore.getState().pendingToast).toBeNull();
+  });
 });
 
 // --- useMindmapData mutation tests ---
@@ -356,22 +447,30 @@ describe("useMindmapData — mutations", () => {
   const TASK = mkTask({ id: 1, parent_type: "goal", parent_id: 1, title: "Write code", position: 0 });
   const TASK2 = mkTask({ id: 2, parent_type: "goal", parent_id: 1, title: "Review PR", position: 1 });
 
+  /**
+   * Stubs `invoke`. `extras` is still keyed by the command a test is thinking of — the thirteen
+   * list commands now land in the single `load_mindmap` envelope rather than answering on their
+   * own, and everything else (`create_goal`, `delete_domain`, …) is returned as before.
+   */
   function setupInvoke(extras: Record<string, unknown> = {}) {
+    const envelope = mindmapEnvelope({
+      domains: listExtra(extras, "list_domains", [ASPECT]),
+      goals: listExtra(extras, "list_goals", [GOAL]),
+      tasks: listExtra(extras, "list_tasks", [TASK, TASK2]),
+      infos: listExtra(extras, "list_infos", []),
+      flows: listExtra(extras, "list_flows", []),
+      flow_goals: listExtra(extras, "list_all_flow_goals", []),
+      flow_tasks: listExtra(extras, "list_all_flow_tasks", []),
+      flow_cycles: listExtra(extras, "list_all_flow_cycles", []),
+      flow_dependencies: listExtra(extras, "list_all_flow_dependencies", []),
+      block_reasons: listExtra(extras, "list_all_block_reasons", []),
+      task_dependencies: listExtra(extras, "list_all_task_dependencies", []),
+      flow_instance_nodes: listExtra(extras, "list_flow_instance_nodes", []),
+      lifecycles: listExtra(extras, "derive_scope_lifecycles", []),
+    });
     vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === "load_mindmap") return Promise.resolve(envelope);
       if (Object.prototype.hasOwnProperty.call(extras, cmd)) return Promise.resolve(extras[cmd]);
-      if (cmd === "list_domains") return Promise.resolve([ASPECT]);
-      if (cmd === "list_goals") return Promise.resolve([GOAL]);
-      if (cmd === "list_tasks") return Promise.resolve([TASK, TASK2]);
-      if (cmd === "list_infos") return Promise.resolve([]);
-      if (cmd === "list_flows") return Promise.resolve([]);
-      if (cmd === "list_all_flow_goals") return Promise.resolve([]);
-      if (cmd === "list_all_flow_tasks") return Promise.resolve([]);
-      if (cmd === "list_all_flow_cycles") return Promise.resolve([]);
-      if (cmd === "list_all_flow_dependencies") return Promise.resolve([]);
-      if (cmd === "list_all_block_reasons") return Promise.resolve([]);
-      if (cmd === "list_all_task_dependencies") return Promise.resolve([]);
-      if (cmd === "list_flow_instance_nodes") return Promise.resolve([]);
-      if (cmd === "derive_scope_lifecycles") return Promise.resolve([]);
       return Promise.resolve(null);
     });
   }
