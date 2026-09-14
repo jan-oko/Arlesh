@@ -52,9 +52,11 @@ pub struct ViolatingDescendant {
 
 /// The effective `(window, on-exit behavior)` governing an item: its own when explicitly scoped,
 /// else the nearest scoped ancestor's, or `None` when nothing above it is scoped (Unscoped). Unlike
-/// [`nearest_scoped_ancestor_window`], the walk includes the node itself.
-/// Reads only, and on the **read** path: a broken chain leaves the item unconstrained rather
-/// than failing, so one corrupt row cannot blank the whole mindmap. The break is logged.
+/// [`nearest_scoped_ancestor_window`], the chain includes the node itself — this one climbs from
+/// the node, the ancestor searches climb from its parent.
+///
+/// On the **read** path: a broken chain leaves the item unconstrained rather than failing, so one
+/// corrupt row cannot blank the whole mindmap. The break is logged rather than swallowed.
 pub(super) async fn scope_governance<M: SessionMode>(
     db: &mut Db<M>,
     node_type: &str,
