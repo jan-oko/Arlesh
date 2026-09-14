@@ -32,8 +32,8 @@ use crate::tasks::model::{
     CreateGoalRequest, CreateTaskRequest, Dependency, DurationSpec, GoalId, TaskId, TimeScope,
 };
 use crate::tasks::{
-    create_goal, create_task, delete_goal, delete_task, nearest_scoped_ancestor_window,
-    time_scope_window,
+    add_task_dependency, create_goal, create_task, delete_goal, delete_task,
+    nearest_scoped_ancestor_window, time_scope_window,
 };
 use error::FlowError;
 use model::{
@@ -2013,7 +2013,7 @@ pub async fn start(
             if dtype != "task" { continue; } // only tasks can be dependents in the real model
             for (btype, bid) in &blockers {
                 let dependency = if btype == "goal" { Dependency::Goal { id: *bid } } else { Dependency::Task { id: *bid } };
-                db.tasks().add_dependency(TaskId(*did), dependency).await?;
+                add_task_dependency(db, TaskId(*did), dependency).await?;
             }
         }
     }

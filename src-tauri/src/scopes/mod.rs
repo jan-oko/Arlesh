@@ -81,6 +81,15 @@ impl<'session> ScopeOperator<'session> {
     /// an insert of the scope itself — and so **not atomic on its own**. It opens no transaction:
     /// per ADR-0004 only the outermost caller decides the boundary.
     ///
+    /// A check-then-write that nonetheless stays an **operator method**, which the rule allows
+    /// only when a schema constraint independently enforces the checked invariant. Here it does:
+    /// `scopes_canonical_uniq` (`migrations/0005_part_of_day_and_exact_scopes.sql`) is unique on
+    /// `(kind, start_date)` for the four canonical kinds, so a lost race between the probe and the
+    /// insert raises a constraint error rather than producing a duplicate scope. Contrast
+    /// [`crate::tasks::add_task_dependency`], whose acyclicity check has no such backstop and is
+    /// therefore a free function over a transactional session. Staying a method is also what lets
+    /// the five window helpers in `flows` hold only a `&mut ScopeOperator`, as ADR-0004 requires.
+    ///
     /// ```no_run
     /// # use arlesh_lib::database::session::SessionFactory;
     /// # use arlesh_lib::scopes::error::ScopeError;
@@ -167,6 +176,10 @@ impl<'session> ScopeOperator<'session> {
     /// of the part scope — and so **not atomic on its own**. It opens no transaction: per
     /// ADR-0004 only the outermost caller decides the boundary.
     ///
+    /// An operator method for the same reason as [`Self::get_or_create`]: `scopes_part_uniq` is
+    /// unique on `(start_date, part)` for `part_of_day` rows, so a lost race between the probe and
+    /// the insert is a constraint error, not a duplicate.
+    ///
     /// ```no_run
     /// # use arlesh_lib::database::session::SessionFactory;
     /// # use arlesh_lib::scopes::error::ScopeError;
@@ -227,6 +240,10 @@ impl<'session> ScopeOperator<'session> {
 
     /// Returns the Exact scope for the half-open `[start, end)` datetime window, creating it
     /// if absent. Exact scopes lie outside the canonical hierarchy and carry no containment ids.
+    ///
+    /// An operator method for the same reason as [`Self::get_or_create`]: `scopes_exact_uniq` is
+    /// unique on `(start_datetime, end_datetime)` for `exact` rows, so a lost race between the
+    /// probe and the insert is a constraint error, not a duplicate.
     pub async fn get_or_create_exact(
         &mut self,
         start: NaiveDateTime,

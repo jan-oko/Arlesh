@@ -24,7 +24,7 @@ use arlesh_lib::flows::{
 use arlesh_lib::infos::model::CreateInfoRequest;
 use arlesh_lib::scopes::{model::ScopeKind, ScopeRepository};
 use arlesh_lib::tasks::{
-    create_goal, create_task,
+    add_task_dependency, create_goal, create_task,
     model::{CreateGoalRequest, CreateTaskRequest, Dependency, GoalId, TaskId, TimeScope},
     GoalRepository, TaskRepository,
 };
@@ -599,8 +599,7 @@ async fn seed_convert_subtree(pool: &sqlx::SqlitePool) -> ConvertSubtree {
     .unwrap();
 
     // A dependency inside the subtree, so the conversion writes a flow_dependencies row too.
-    db.tasks()
-        .add_dependency(TaskId(child.id), Dependency::Task { id: grandchild.id })
+    add_task_dependency(&mut db, TaskId(child.id), Dependency::Task { id: grandchild.id })
         .await
         .unwrap();
 

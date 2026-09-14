@@ -118,8 +118,7 @@ pub async fn add_task_dependency(
     dependency: Dependency,
 ) -> Result<(), WireError> {
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    db.tasks()
-        .add_dependency(TaskId(task_id), dependency)
+    crate::tasks::add_task_dependency(&mut db, TaskId(task_id), dependency)
         .await
         .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)

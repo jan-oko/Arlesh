@@ -118,6 +118,16 @@ impl SessionMode for Transactional {
 /// the session can. What stays on the operator is what reads nothing first: single writes, and
 /// multi-statement writes like `set_cycles` whose doc says they are not atomic alone.
 ///
+/// The rule has exactly one exemption, and it is about **consequence, not shape**: a
+/// check-then-write may stay an operator method when a **schema constraint independently enforces
+/// the invariant the check is testing**, because then a lost race is a constraint error rather
+/// than corruption. `ScopeOperator::get_or_create` and its two siblings probe for a scope before
+/// inserting one, and `scopes_canonical_uniq`, `scopes_part_uniq` and `scopes_exact_uniq` stand
+/// behind them; each doc names its index, so the exemption is visible rather than assumed.
+/// `tasks::add_task_dependency` is the counter-example that fixes the boundary: nothing in the
+/// schema expresses acyclicity, so two callers can each see no cycle and jointly create one, and
+/// it is a free function over `Db<Transactional>`.
+///
 /// What is **not** sanctioned is reaching a second resource from inside an operator by minting a
 /// sibling out of that operator's own connection borrow. It compiles, and it is how the
 /// exclusivity this design buys gets quietly given back: the operator's `new` is crate-visible

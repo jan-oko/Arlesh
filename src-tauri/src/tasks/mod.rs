@@ -756,11 +756,13 @@ impl<'session> TaskOperator<'session> {
 
     /// Adds a dependency to a task, rejecting circular chains.
     ///
-    /// One write, but a **check-then-write**: the cycle search reads the edges the `INSERT` is
-    /// validated against, so the caller must open a transaction even though a single statement is
-    /// atomic by itself. Statement count is the wrong test here; the dependency between the read
-    /// and the write is what decides. It opens no transaction of its own, per ADR-0004.
-    pub async fn add_dependency(
+    /// **Module-private.** One write, but a **check-then-write**: the cycle search reads the edges
+    /// the `INSERT` is validated against, and *nothing in the schema expresses acyclicity*, so a
+    /// lost race silently creates a cycle rather than raising a constraint error. That makes the
+    /// transaction part of the operation's contract, and an operator — wrapping a bare connection,
+    /// deliberately mode-agnostic — cannot demand one in its signature. [`add_task_dependency`] is
+    /// the entry point and this method's only caller outside the module.
+    async fn add_dependency(
         &mut self,
         task_id: TaskId,
         dependency: Dependency,
@@ -1068,6 +1070,37 @@ pub async fn update_task(
     db.tasks().update(id, write).await
 }
 
+/// Adds a dependency to a task, rejecting chains that would close a cycle.
+///
+/// A **check-then-write**, and so a free function over a transactional session rather than an
+/// operator method, even though it touches one resource and writes one statement. The cycle search
+/// reads the very edges the `INSERT` is validated against, and **no schema constraint expresses
+/// acyclicity**: two concurrent calls can each find no cycle and jointly create one, and the
+/// database would accept both. The transaction is what closes that window — SQLite refuses the
+/// second writer instead of letting both land — so it belongs in the signature.
+///
+/// (Contrast [`crate::scopes::ScopeOperator::get_or_create`], whose probe-then-insert stays an
+/// operator method because a unique index independently enforces what it checks.)
+///
+/// ```no_run
+/// # use arlesh_lib::database::session::SessionFactory;
+/// # use arlesh_lib::tasks::{add_task_dependency, error::TaskError, model::{Dependency, TaskId}};
+/// # async fn depend(factory: &SessionFactory) -> Result<(), TaskError> {
+/// let mut db = factory.begin().await?;
+/// add_task_dependency(&mut db, TaskId(1), Dependency::Task { id: 2 }).await?;
+/// db.commit().await?;
+/// # Ok(())
+/// # }
+/// ```
+#[tracing::instrument(skip(db))]
+pub async fn add_task_dependency(
+    db: &mut Db<Transactional>,
+    task_id: TaskId,
+    dependency: Dependency,
+) -> Result<(), TaskError> {
+    db.tasks().add_dependency(task_id, dependency).await
+}
+
 /// Deletes a task and its entire subtree (descendant tasks/goals and their infos).
 #[tracing::instrument(skip(db))]
 pub async fn delete_task(db: &mut Db<Transactional>, id: TaskId) -> Result<(), TaskError> {
@@ -1280,7 +1313,7 @@ impl<'a> TaskRepository<'a> {
 
     /// Adds a dependency to a task, rejecting circular chains.
     ///
-    /// Transactional for the reason `add_task_dependency` is: the cycle check is a read the
+    /// Transactional for the reason [`add_task_dependency`] is: the cycle check is a read the
     /// `INSERT` depends on, and only a transaction keeps the two from being interleaved.
     pub async fn add_dependency(
         &self,
@@ -1288,7 +1321,7 @@ impl<'a> TaskRepository<'a> {
         dependency: Dependency,
     ) -> Result<(), TaskError> {
         let mut db = session_factory(self.pool).begin().await?;
-        db.tasks().add_dependency(task_id, dependency).await?;
+        add_task_dependency(&mut db, task_id, dependency).await?;
         db.commit().await?;
         Ok(())
     }
