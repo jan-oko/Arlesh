@@ -6,23 +6,21 @@ use arlesh_lib::{
         error::KnowledgeBaseError,
         model::{CreateEventRequest, CreatePersonRequest, CreateThreadRequest, UpdatePersonRequest},
     },
-    tasks::{
-        model::CreateTaskRequest,
-        TaskRepository,
-    },
+    tasks::{create_task, model::CreateTaskRequest, update_task},
 };
 
 async fn make_project_id(pool: &sqlx::SqlitePool) -> i64 {
-    use arlesh_lib::domains::{
-        model::{CreateDomainRequest, DomainSubtype, ProjectStatus},
-        DomainRepository,
-    };
+    use arlesh_lib::domains::model::{CreateDomainRequest, DomainSubtype, ProjectStatus};
     let aspect_id: i64 =
         sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Growth' AND subtype = 'aspect'")
             .fetch_one(pool)
             .await
             .unwrap();
-    DomainRepository::new(pool)
+    helpers::session_factory(pool)
+        .connect()
+        .await
+        .unwrap()
+        .domains()
         .create(CreateDomainRequest {
             title: "Knowledge Base Test Project".into(),
             description: None,
@@ -107,32 +105,35 @@ async fn person_linked_to_task_via_delegation() {
         })
         .await
         .unwrap();
-    drop(db); // release the pool's one connection before TaskRepository claims it
+    drop(db); // release the pool's one connection before the next session claims it
 
-    let task_repo = TaskRepository::new(&pool);
-    let task = task_repo
-        .create(CreateTaskRequest {
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    let task = create_task(
+        &mut db,
+        CreateTaskRequest {
             title: "Delegated Task".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
             ..Default::default()
-        })
-        .await
-        .unwrap();
+        },
+    )
+    .await
+    .unwrap();
 
-    task_repo
-        .update(
-            task.id.into(),
-            arlesh_lib::tasks::model::UpdateTaskRequest {
-                delegate_to: Some(Some(person.id)),
-                ..Default::default()
-            },
-        )
-        .await
-        .unwrap();
+    update_task(
+        &mut db,
+        task.id.into(),
+        arlesh_lib::tasks::model::UpdateTaskRequest {
+            delegate_to: Some(Some(person.id)),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
 
-    let fetched = task_repo.get(task.id.into()).await.unwrap();
+    let fetched = db.tasks().get(task.id.into()).await.unwrap();
+    db.commit().await.unwrap();
     assert_eq!(fetched.delegate_to, Some(person.id));
 }
 

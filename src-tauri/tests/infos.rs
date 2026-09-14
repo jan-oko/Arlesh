@@ -3,14 +3,11 @@ mod helpers;
 use arlesh_lib::{
     commands::infos::update_info,
     database::session::SessionFactory,
-    domains::{
-        model::{CreateDomainRequest, DomainSubtype, ProjectStatus},
-        DomainRepository,
-    },
+    domains::model::{CreateDomainRequest, DomainSubtype, ProjectStatus},
     infos::model::{CreateInfoRequest, UpdateInfoRequest},
     tasks::{
+        create_goal, create_task,
         model::{CreateGoalRequest, CreateTaskRequest},
-        GoalRepository, TaskRepository,
     },
 };
 use tauri::Manager;
@@ -21,7 +18,11 @@ async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
             .fetch_one(pool)
             .await
             .unwrap();
-    DomainRepository::new(pool)
+    helpers::session_factory(pool)
+        .connect()
+        .await
+        .unwrap()
+        .domains()
         .create(CreateDomainRequest {
             title: "Info Test Project".into(),
             description: None,
@@ -40,16 +41,20 @@ async fn create_info_under_goal() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
 
-    let goal = GoalRepository::new(&pool)
-        .create(CreateGoalRequest {
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    let goal = create_goal(
+        &mut db,
+        CreateGoalRequest {
             title: "A Goal".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
             ..Default::default()
-        })
-        .await
-        .unwrap();
+        },
+    )
+    .await
+    .unwrap();
+    db.commit().await.unwrap();
 
     let factory = SessionFactory::new(pool.clone());
     let mut db = factory.connect().await.unwrap();
@@ -75,16 +80,20 @@ async fn create_info_under_task() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
 
-    let task = TaskRepository::new(&pool)
-        .create(CreateTaskRequest {
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    let task = create_task(
+        &mut db,
+        CreateTaskRequest {
             title: "A Task".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
             ..Default::default()
-        })
-        .await
-        .unwrap();
+        },
+    )
+    .await
+    .unwrap();
+    db.commit().await.unwrap();
 
     let factory = SessionFactory::new(pool.clone());
     let mut db = factory.connect().await.unwrap();
@@ -112,7 +121,11 @@ async fn create_info_under_domain() {
             .fetch_one(&pool)
             .await
             .unwrap();
-    let domain = DomainRepository::new(&pool)
+    let domain = helpers::session_factory(&pool)
+        .connect()
+        .await
+        .unwrap()
+        .domains()
         .create(CreateDomainRequest {
             title: "My Domain".into(),
             description: None,
@@ -309,16 +322,20 @@ async fn update_info_private_round_trips() {
 async fn update_info_parent() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
-    let task = TaskRepository::new(&pool)
-        .create(CreateTaskRequest {
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    let task = create_task(
+        &mut db,
+        CreateTaskRequest {
             title: "Target Task".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
             ..Default::default()
-        })
-        .await
-        .unwrap();
+        },
+    )
+    .await
+    .unwrap();
+    db.commit().await.unwrap();
 
     let factory = SessionFactory::new(pool.clone());
     let mut db = factory.connect().await.unwrap();

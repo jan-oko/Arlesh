@@ -4,20 +4,18 @@ use chrono::{NaiveDate, NaiveDateTime};
 
 use arlesh_lib::{
     commands::scopes::{get_or_create_part_scope, get_or_create_scope},
-    scopes::{
-        model::{PartOfDay, ScopeKind},
-        ScopeRepository,
-    },
+    scopes::model::{PartOfDay, ScopeKind},
 };
 use tauri::Manager;
 
 #[tokio::test]
 async fn get_or_create_day_populates_containment() {
     let pool = helpers::test_pool().await;
-    let repo = ScopeRepository::new(&pool);
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
     let date = NaiveDate::from_ymd_opt(2026, 6, 20).unwrap();
 
-    let day = repo.get_or_create(ScopeKind::Day, date).await.unwrap();
+    let day = db.scopes().get_or_create(ScopeKind::Day, date).await.unwrap();
+    db.commit().await.unwrap();
 
     assert_eq!(day.kind, "day");
     assert_eq!(day.start_date, "2026-06-20");
@@ -29,11 +27,12 @@ async fn get_or_create_day_populates_containment() {
 #[tokio::test]
 async fn week_scope_has_correct_sunday_to_saturday_bounds() {
     let pool = helpers::test_pool().await;
-    let repo = ScopeRepository::new(&pool);
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
     // 2026-06-20 is a Saturday; week should start 2026-06-14 (Sunday)
     let date = NaiveDate::from_ymd_opt(2026, 6, 20).unwrap();
 
-    let week = repo.get_or_create(ScopeKind::Week, date).await.unwrap();
+    let week = db.scopes().get_or_create(ScopeKind::Week, date).await.unwrap();
+    db.commit().await.unwrap();
 
     assert_eq!(week.start_date, "2026-06-14");
     assert_eq!(week.end_date, "2026-06-20");
@@ -42,10 +41,11 @@ async fn week_scope_has_correct_sunday_to_saturday_bounds() {
 #[tokio::test]
 async fn month_scope_has_correct_bounds() {
     let pool = helpers::test_pool().await;
-    let repo = ScopeRepository::new(&pool);
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
     let date = NaiveDate::from_ymd_opt(2026, 6, 15).unwrap();
 
-    let month = repo.get_or_create(ScopeKind::Month, date).await.unwrap();
+    let month = db.scopes().get_or_create(ScopeKind::Month, date).await.unwrap();
+    db.commit().await.unwrap();
 
     assert_eq!(month.start_date, "2026-06-01");
     assert_eq!(month.end_date, "2026-06-30");
@@ -55,10 +55,11 @@ async fn month_scope_has_correct_bounds() {
 #[tokio::test]
 async fn season_is_summer_for_june() {
     let pool = helpers::test_pool().await;
-    let repo = ScopeRepository::new(&pool);
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
     let date = NaiveDate::from_ymd_opt(2026, 6, 20).unwrap();
 
-    let season = repo.get_or_create(ScopeKind::Season, date).await.unwrap();
+    let season = db.scopes().get_or_create(ScopeKind::Season, date).await.unwrap();
+    db.commit().await.unwrap();
 
     assert_eq!(season.label, "Summer 2026");
     assert_eq!(season.start_date, "2026-06-01");
@@ -68,11 +69,12 @@ async fn season_is_summer_for_june() {
 #[tokio::test]
 async fn get_or_create_is_idempotent() {
     let pool = helpers::test_pool().await;
-    let repo = ScopeRepository::new(&pool);
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
     let date = NaiveDate::from_ymd_opt(2026, 6, 20).unwrap();
 
-    let first = repo.get_or_create(ScopeKind::Day, date).await.unwrap();
-    let second = repo.get_or_create(ScopeKind::Day, date).await.unwrap();
+    let first = db.scopes().get_or_create(ScopeKind::Day, date).await.unwrap();
+    let second = db.scopes().get_or_create(ScopeKind::Day, date).await.unwrap();
+    db.commit().await.unwrap();
 
     assert_eq!(first.id, second.id);
 }
@@ -80,11 +82,12 @@ async fn get_or_create_is_idempotent() {
 #[tokio::test]
 async fn winter_season_spans_dec_to_feb() {
     let pool = helpers::test_pool().await;
-    let repo = ScopeRepository::new(&pool);
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
     // Dec 2026 → Winter 2026 (starts Dec 1 2026, ends Feb 28 2027)
     let date = NaiveDate::from_ymd_opt(2026, 12, 1).unwrap();
 
-    let season = repo.get_or_create(ScopeKind::Season, date).await.unwrap();
+    let season = db.scopes().get_or_create(ScopeKind::Season, date).await.unwrap();
+    db.commit().await.unwrap();
 
     assert_eq!(season.label, "Winter 2026");
     assert_eq!(season.start_date, "2026-12-01");
@@ -94,10 +97,11 @@ async fn winter_season_spans_dec_to_feb() {
 #[tokio::test]
 async fn december_month_scope_spans_into_next_year() {
     let pool = helpers::test_pool().await;
-    let repo = ScopeRepository::new(&pool);
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
     let date = NaiveDate::from_ymd_opt(2026, 12, 15).unwrap();
 
-    let month = repo.get_or_create(ScopeKind::Month, date).await.unwrap();
+    let month = db.scopes().get_or_create(ScopeKind::Month, date).await.unwrap();
+    db.commit().await.unwrap();
 
     assert_eq!(month.start_date, "2026-12-01");
     assert_eq!(month.end_date, "2026-12-31");
@@ -107,10 +111,11 @@ async fn december_month_scope_spans_into_next_year() {
 #[tokio::test]
 async fn get_or_create_part_populates_day_and_containment() {
     let pool = helpers::test_pool().await;
-    let repo = ScopeRepository::new(&pool);
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
     let date = NaiveDate::from_ymd_opt(2026, 6, 20).unwrap();
 
-    let morning = repo.get_or_create_part(date, PartOfDay::Morning).await.unwrap();
+    let morning = db.scopes().get_or_create_part(date, PartOfDay::Morning).await.unwrap();
+    db.commit().await.unwrap();
 
     assert_eq!(morning.kind, "part_of_day");
     assert_eq!(morning.start_date, "2026-06-20");
@@ -124,10 +129,11 @@ async fn get_or_create_part_populates_day_and_containment() {
 #[tokio::test]
 async fn night_part_ends_on_the_following_day() {
     let pool = helpers::test_pool().await;
-    let repo = ScopeRepository::new(&pool);
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
     let date = NaiveDate::from_ymd_opt(2026, 6, 20).unwrap();
 
-    let night = repo.get_or_create_part(date, PartOfDay::Night).await.unwrap();
+    let night = db.scopes().get_or_create_part(date, PartOfDay::Night).await.unwrap();
+    db.commit().await.unwrap();
 
     assert_eq!(night.start_date, "2026-06-20");
     assert_eq!(night.end_date, "2026-06-21");
@@ -136,12 +142,13 @@ async fn night_part_ends_on_the_following_day() {
 #[tokio::test]
 async fn get_or_create_part_is_idempotent_per_part() {
     let pool = helpers::test_pool().await;
-    let repo = ScopeRepository::new(&pool);
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
     let date = NaiveDate::from_ymd_opt(2026, 6, 20).unwrap();
 
-    let first = repo.get_or_create_part(date, PartOfDay::Noon).await.unwrap();
-    let second = repo.get_or_create_part(date, PartOfDay::Noon).await.unwrap();
-    let other = repo.get_or_create_part(date, PartOfDay::Evening).await.unwrap();
+    let first = db.scopes().get_or_create_part(date, PartOfDay::Noon).await.unwrap();
+    let second = db.scopes().get_or_create_part(date, PartOfDay::Noon).await.unwrap();
+    let other = db.scopes().get_or_create_part(date, PartOfDay::Evening).await.unwrap();
+    db.commit().await.unwrap();
 
     assert_eq!(first.id, second.id);
     assert_ne!(first.id, other.id, "different parts of the same day are distinct scopes");
@@ -150,12 +157,13 @@ async fn get_or_create_part_is_idempotent_per_part() {
 #[tokio::test]
 async fn get_or_create_exact_stores_datetimes_and_is_idempotent() {
     let pool = helpers::test_pool().await;
-    let repo = ScopeRepository::new(&pool);
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
     let start = "2026-06-20T09:30:00".parse::<NaiveDateTime>().unwrap();
     let end = "2026-06-22T14:00:00".parse::<NaiveDateTime>().unwrap();
 
-    let first = repo.get_or_create_exact(start, end).await.unwrap();
-    let second = repo.get_or_create_exact(start, end).await.unwrap();
+    let first = db.scopes().get_or_create_exact(start, end).await.unwrap();
+    let second = db.scopes().get_or_create_exact(start, end).await.unwrap();
+    db.commit().await.unwrap();
 
     assert_eq!(first.kind, "exact");
     assert_eq!(first.start_datetime.as_deref(), Some("2026-06-20T09:30:00"));
@@ -165,7 +173,7 @@ async fn get_or_create_exact_stores_datetimes_and_is_idempotent() {
     assert_eq!(first.id, second.id, "identical exact windows dedupe");
 }
 
-// The tests above exercise the repository shim, not the command. `get_or_create_scope` and
+// The tests above drive a session directly, not the command. `get_or_create_scope` and
 // `get_or_create_part_scope` run on a transactional session (containment parents are created
 // recursively, so more than one row may be written), and nothing but a test catches a command
 // that opens `begin()` and forgets `commit()` — see `Db::commit`'s docs. The two below call the

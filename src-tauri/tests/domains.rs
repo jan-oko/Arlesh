@@ -2,10 +2,7 @@ mod helpers;
 
 use arlesh_lib::{
     commands::domains::create_domain,
-    domains::{
-        model::{CreateDomainRequest, DomainSubtype, ProjectStatus, UpdateDomainRequest},
-        DomainRepository,
-    },
+    domains::model::{CreateDomainRequest, DomainSubtype, ProjectStatus, UpdateDomainRequest},
 };
 use tauri::Manager;
 
@@ -19,10 +16,10 @@ async fn green_aspect_id(pool: &sqlx::SqlitePool) -> i64 {
 #[tokio::test]
 async fn create_project_under_aspect() {
     let pool = helpers::test_pool().await;
-    let repo = DomainRepository::new(&pool);
     let aspect_id = green_aspect_id(&pool).await;
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
 
-    let project = repo
+    let project = db.domains()
         .create(CreateDomainRequest {
             title: "Rust Learning".into(),
             description: Some("Learn Rust".into()),
@@ -38,16 +35,16 @@ async fn create_project_under_aspect() {
     assert_eq!(project.subtype, "project");
     assert_eq!(project.parent_id, Some(aspect_id));
 
-    let fetched = repo.get(project.id.into()).await.unwrap();
+    let fetched = db.domains().get(project.id.into()).await.unwrap();
     assert_eq!(fetched.id, project.id);
 }
 
 #[tokio::test]
 async fn cannot_create_aspect() {
     let pool = helpers::test_pool().await;
-    let repo = DomainRepository::new(&pool);
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
 
-    let err = repo
+    let err = db.domains()
         .create(CreateDomainRequest {
             title: "New Aspect".into(),
             description: None,
@@ -69,10 +66,10 @@ async fn cannot_create_aspect() {
 #[tokio::test]
 async fn cannot_delete_aspect() {
     let pool = helpers::test_pool().await;
-    let repo = DomainRepository::new(&pool);
     let aspect_id = green_aspect_id(&pool).await;
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
 
-    let err = repo.delete(aspect_id.into()).await.unwrap_err();
+    let err = db.domains().delete(aspect_id.into()).await.unwrap_err();
     assert!(
         matches!(err, arlesh_lib::domains::error::DomainError::FixedAspect),
         "expected FixedAspect, got {:?}",
@@ -83,10 +80,10 @@ async fn cannot_delete_aspect() {
 #[tokio::test]
 async fn tag_cannot_be_parent_of_another_tag() {
     let pool = helpers::test_pool().await;
-    let repo = DomainRepository::new(&pool);
     let aspect_id = green_aspect_id(&pool).await;
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
 
-    let tag = repo
+    let tag = db.domains()
         .create(CreateDomainRequest {
             title: "rust".into(),
             description: None,
@@ -98,7 +95,7 @@ async fn tag_cannot_be_parent_of_another_tag() {
         .await
         .unwrap();
 
-    let err = repo
+    let err = db.domains()
         .create(CreateDomainRequest {
             title: "child-tag".into(),
             description: None,
@@ -120,10 +117,10 @@ async fn tag_cannot_be_parent_of_another_tag() {
 #[tokio::test]
 async fn project_requires_aspect_or_project_parent() {
     let pool = helpers::test_pool().await;
-    let repo = DomainRepository::new(&pool);
     let aspect_id = green_aspect_id(&pool).await;
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
 
-    let domain = repo
+    let domain = db.domains()
         .create(CreateDomainRequest {
             title: "General".into(),
             description: None,
@@ -135,7 +132,7 @@ async fn project_requires_aspect_or_project_parent() {
         .await
         .unwrap();
 
-    let err = repo
+    let err = db.domains()
         .create(CreateDomainRequest {
             title: "Bad Project".into(),
             description: None,
@@ -157,10 +154,10 @@ async fn project_requires_aspect_or_project_parent() {
 #[tokio::test]
 async fn update_domain() {
     let pool = helpers::test_pool().await;
-    let repo = DomainRepository::new(&pool);
     let aspect_id = green_aspect_id(&pool).await;
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
 
-    let project = repo
+    let project = db.domains()
         .create(CreateDomainRequest {
             title: "Old Title".into(),
             description: None,
@@ -172,7 +169,7 @@ async fn update_domain() {
         .await
         .unwrap();
 
-    let updated = repo
+    let updated = db.domains()
         .update(
             project.id.into(),
             UpdateDomainRequest {
@@ -196,10 +193,10 @@ async fn update_domain() {
 #[tokio::test]
 async fn list_all_domains_includes_aspects_and_created() {
     let pool = helpers::test_pool().await;
-    let repo = DomainRepository::new(&pool);
     let aspect_id = green_aspect_id(&pool).await;
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
 
-    let project = repo
+    let project = db.domains()
         .create(CreateDomainRequest {
             title: "Listed Project".into(),
             description: None,
@@ -211,7 +208,7 @@ async fn list_all_domains_includes_aspects_and_created() {
         .await
         .unwrap();
 
-    let all = repo.list(None).await.unwrap();
+    let all = db.domains().list(None).await.unwrap();
     // 6 seeded aspects + 1 created project
     assert!(all.len() >= 7);
     assert!(all.iter().any(|d| d.subtype == "aspect"));
@@ -221,10 +218,10 @@ async fn list_all_domains_includes_aspects_and_created() {
 #[tokio::test]
 async fn list_domains_by_subtype() {
     let pool = helpers::test_pool().await;
-    let repo = DomainRepository::new(&pool);
     let aspect_id = green_aspect_id(&pool).await;
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
 
-    let project = repo
+    let project = db.domains()
         .create(CreateDomainRequest {
             title: "Only Project".into(),
             description: None,
@@ -236,7 +233,7 @@ async fn list_domains_by_subtype() {
         .await
         .unwrap();
 
-    repo.create(CreateDomainRequest {
+    db.domains().create(CreateDomainRequest {
         title: "A Domain".into(),
         description: None,
         subtype: DomainSubtype::Domain,
@@ -247,7 +244,7 @@ async fn list_domains_by_subtype() {
     .await
     .unwrap();
 
-    let projects = repo.list(Some(DomainSubtype::Project)).await.unwrap();
+    let projects = db.domains().list(Some(DomainSubtype::Project)).await.unwrap();
     assert!(projects.iter().all(|d| d.subtype == "project"));
     assert!(projects.iter().any(|d| d.id == project.id));
 }
@@ -255,10 +252,10 @@ async fn list_domains_by_subtype() {
 #[tokio::test]
 async fn convert_project_subtype_to_domain() {
     let pool = helpers::test_pool().await;
-    let repo = DomainRepository::new(&pool);
     let aspect_id = green_aspect_id(&pool).await;
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
 
-    let project = repo
+    let project = db.domains()
         .create(CreateDomainRequest {
             title: "Becoming Domain".into(),
             description: None,
@@ -272,7 +269,7 @@ async fn convert_project_subtype_to_domain() {
 
     assert_eq!(project.subtype, "project");
 
-    let converted = repo
+    let converted = db.domains()
         .update(
             project.id.into(),
             UpdateDomainRequest {
@@ -295,10 +292,10 @@ async fn convert_project_subtype_to_domain() {
 #[tokio::test]
 async fn delete_domain() {
     let pool = helpers::test_pool().await;
-    let repo = DomainRepository::new(&pool);
     let aspect_id = green_aspect_id(&pool).await;
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
 
-    let domain = repo
+    let domain = db.domains()
         .create(CreateDomainRequest {
             title: "Doomed Domain".into(),
             description: None,
@@ -310,9 +307,9 @@ async fn delete_domain() {
         .await
         .unwrap();
 
-    repo.delete(domain.id.into()).await.unwrap();
+    db.domains().delete(domain.id.into()).await.unwrap();
 
-    let err = repo.get(domain.id.into()).await.unwrap_err();
+    let err = db.domains().get(domain.id.into()).await.unwrap_err();
     assert!(
         matches!(err, arlesh_lib::domains::error::DomainError::NotFound(_)),
         "expected NotFound, got {:?}",
@@ -323,10 +320,10 @@ async fn delete_domain() {
 #[tokio::test]
 async fn cannot_update_aspect() {
     let pool = helpers::test_pool().await;
-    let repo = DomainRepository::new(&pool);
     let aspect_id = green_aspect_id(&pool).await;
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
 
-    let err = repo
+    let err = db.domains()
         .update(
             aspect_id.into(),
             UpdateDomainRequest {
@@ -353,10 +350,10 @@ async fn cannot_update_aspect() {
 #[tokio::test]
 async fn cannot_change_subtype_to_aspect() {
     let pool = helpers::test_pool().await;
-    let repo = DomainRepository::new(&pool);
     let aspect_id = green_aspect_id(&pool).await;
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
 
-    let domain = repo
+    let domain = db.domains()
         .create(CreateDomainRequest {
             title: "Aspiring Domain".into(),
             description: None,
@@ -368,7 +365,7 @@ async fn cannot_change_subtype_to_aspect() {
         .await
         .unwrap();
 
-    let err = repo
+    let err = db.domains()
         .update(
             domain.id.into(),
             UpdateDomainRequest {
@@ -395,9 +392,9 @@ async fn cannot_change_subtype_to_aspect() {
 #[tokio::test]
 async fn project_without_parent_is_rejected() {
     let pool = helpers::test_pool().await;
-    let repo = DomainRepository::new(&pool);
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
 
-    let err = repo
+    let err = db.domains()
         .create(CreateDomainRequest {
             title: "Parentless Project".into(),
             description: None,
@@ -419,10 +416,10 @@ async fn project_without_parent_is_rejected() {
 #[tokio::test]
 async fn convert_domain_subtype_to_project() {
     let pool = helpers::test_pool().await;
-    let repo = DomainRepository::new(&pool);
     let aspect_id = green_aspect_id(&pool).await;
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
 
-    let domain = repo
+    let domain = db.domains()
         .create(CreateDomainRequest {
             title: "Will Become Project".into(),
             description: None,
@@ -434,7 +431,7 @@ async fn convert_domain_subtype_to_project() {
         .await
         .unwrap();
 
-    let converted = repo
+    let converted = db.domains()
         .update(
             domain.id.into(),
             UpdateDomainRequest {
@@ -457,10 +454,10 @@ async fn convert_domain_subtype_to_project() {
 #[tokio::test]
 async fn convert_domain_subtype_to_tag() {
     let pool = helpers::test_pool().await;
-    let repo = DomainRepository::new(&pool);
     let aspect_id = green_aspect_id(&pool).await;
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
 
-    let domain = repo
+    let domain = db.domains()
         .create(CreateDomainRequest {
             title: "Will Become Tag".into(),
             description: None,
@@ -472,7 +469,7 @@ async fn convert_domain_subtype_to_tag() {
         .await
         .unwrap();
 
-    let converted = repo
+    let converted = db.domains()
         .update(
             domain.id.into(),
             UpdateDomainRequest {
@@ -495,7 +492,11 @@ async fn convert_domain_subtype_to_tag() {
 #[tokio::test]
 async fn list_by_aspect_subtype() {
     let pool = helpers::test_pool().await;
-    let aspects = DomainRepository::new(&pool)
+    let aspects = helpers::session_factory(&pool)
+        .connect()
+        .await
+        .unwrap()
+        .domains()
         .list(Some(DomainSubtype::Aspect))
         .await
         .unwrap();
@@ -507,10 +508,10 @@ async fn list_by_aspect_subtype() {
 #[tokio::test]
 async fn project_status_achieved_and_archived() {
     let pool = helpers::test_pool().await;
-    let repo = DomainRepository::new(&pool);
     let aspect_id = green_aspect_id(&pool).await;
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
 
-    let project = repo
+    let project = db.domains()
         .create(CreateDomainRequest {
             title: "Status Project".into(),
             description: None,
@@ -524,7 +525,7 @@ async fn project_status_achieved_and_archived() {
 
     assert_eq!(project.status.as_deref(), Some("achieved"));
 
-    let archived = repo
+    let archived = db.domains()
         .update(
             project.id.into(),
             UpdateDomainRequest {
@@ -544,7 +545,7 @@ async fn project_status_achieved_and_archived() {
     assert_eq!(archived.status.as_deref(), Some("archived"));
 }
 
-// The tests above exercise the repository shim, not the command. `create_domain` writes an insert
+// The tests above drive a session directly, not the command. `create_domain` writes an insert
 // and then a position update, so it runs on a transactional session, and nothing but a test
 // catches a command that opens `begin()` and forgets `commit()` — see `Db::commit`'s docs. The
 // test below calls the real command function, with a real `tauri::State` lent by a mock app, and

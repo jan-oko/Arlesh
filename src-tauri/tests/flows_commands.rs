@@ -22,11 +22,10 @@ use arlesh_lib::flows::{
     },
 };
 use arlesh_lib::infos::model::CreateInfoRequest;
-use arlesh_lib::scopes::{model::ScopeKind, ScopeRepository};
+use arlesh_lib::scopes::model::ScopeKind;
 use arlesh_lib::tasks::{
     add_task_dependency, create_goal, create_task,
     model::{CreateGoalRequest, CreateTaskRequest, Dependency, GoalId, TaskId, TimeScope},
-    GoalRepository, TaskRepository,
 };
 use tauri::Manager;
 
@@ -331,7 +330,11 @@ async fn the_set_flow_recurrence_command_commits_the_recurrence() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
     let flow = flow_commands::create_flow(app.state(), create_req("Routine")).await.unwrap();
-    let start = ScopeRepository::new(&pool)
+    let start = helpers::session_factory(&pool)
+        .connect()
+        .await
+        .unwrap()
+        .scopes()
         .get_or_create(ScopeKind::Week, ymd(2026, 1, 5))
         .await
         .unwrap()
@@ -372,7 +375,11 @@ async fn the_set_habit_iteration_done_command_commits_a_modification_for_every_i
     )
     .await
     .unwrap();
-    let iteration = ScopeRepository::new(&pool)
+    let iteration = helpers::session_factory(&pool)
+        .connect()
+        .await
+        .unwrap()
+        .scopes()
         .get_or_create(ScopeKind::Week, ymd(2026, 1, 5))
         .await
         .unwrap()
@@ -394,7 +401,11 @@ async fn the_generate_habit_iterations_command_commits_the_scopes_it_materialise
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
     let flow = flow_commands::create_flow(app.state(), create_req("Routine")).await.unwrap();
-    let start = ScopeRepository::new(&pool)
+    let start = helpers::session_factory(&pool)
+        .connect()
+        .await
+        .unwrap()
+        .scopes()
         .get_or_create(ScopeKind::Week, ymd(2026, 1, 5))
         .await
         .unwrap()
@@ -524,29 +535,39 @@ async fn the_fork_flow_command_commits_the_whole_clone() {
 async fn the_convert_to_flow_command_commits_the_template_and_the_deletion() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let scope = ScopeRepository::new(&pool)
+    let scope = helpers::session_factory(&pool)
+        .connect()
+        .await
+        .unwrap()
+        .scopes()
         .get_or_create(ScopeKind::Week, ymd(2026, 1, 5))
         .await
         .unwrap();
-    let root = GoalRepository::new(&pool)
-        .create(CreateGoalRequest {
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    let root = create_goal(
+        &mut db,
+        CreateGoalRequest {
             title: "Routine".into(),
             parent_type: "domain".into(),
             parent_id: 1,
             time_scope: Some(TimeScope { start_id: scope.id, end_id: scope.id, duration: None }),
             ..Default::default()
-        })
-        .await
-        .unwrap();
-    let step = TaskRepository::new(&pool)
-        .create(CreateTaskRequest {
+        },
+    )
+    .await
+    .unwrap();
+    let step = create_task(
+        &mut db,
+        CreateTaskRequest {
             title: "Step".into(),
             parent_type: "goal".into(),
             parent_id: root.id,
             ..Default::default()
-        })
-        .await
-        .unwrap();
+        },
+    )
+    .await
+    .unwrap();
+    db.commit().await.unwrap();
 
     let flow = flow_commands::convert_to_flow(app.state(), "goal".into(), root.id, true, true)
         .await

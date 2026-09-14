@@ -1,16 +1,12 @@
 mod helpers;
 
 use arlesh_lib::{
-    block_reasons::BlockReasonRepository,
     commands::block_reasons::{list_all_block_reasons, set_block_reasons},
     database::session::SessionFactory,
-    domains::{
-        model::{CreateDomainRequest, DomainSubtype, ProjectStatus},
-        DomainRepository,
-    },
+    domains::model::{CreateDomainRequest, DomainSubtype, ProjectStatus},
     tasks::{
+        create_goal, create_task, delete_task,
         model::{CreateGoalRequest, CreateTaskRequest},
-        GoalRepository, TaskRepository,
     },
 };
 use tauri::Manager;
@@ -21,7 +17,11 @@ async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
             .fetch_one(pool)
             .await
             .unwrap();
-    DomainRepository::new(pool)
+    helpers::session_factory(pool)
+        .connect()
+        .await
+        .unwrap()
+        .domains()
         .create(CreateDomainRequest {
             title: "Block Test Project".into(),
             description: None,
@@ -39,20 +39,25 @@ async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
 async fn list_all_returns_reasons_for_every_owner() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
-    let task = TaskRepository::new(&pool)
-        .create(CreateTaskRequest { title: "T".into(), parent_type: "project".into(), parent_id: project_id, status: None, ..Default::default() })
-        .await
-        .unwrap();
-    let goal = GoalRepository::new(&pool)
-        .create(CreateGoalRequest { title: "G".into(), parent_type: "project".into(), parent_id: project_id, status: None, ..Default::default() })
-        .await
-        .unwrap();
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    let task = create_task(
+        &mut db,
+        CreateTaskRequest { title: "T".into(), parent_type: "project".into(), parent_id: project_id, status: None, ..Default::default() },
+    )
+    .await
+    .unwrap();
+    let goal = create_goal(
+        &mut db,
+        CreateGoalRequest { title: "G".into(), parent_type: "project".into(), parent_id: project_id, status: None, ..Default::default() },
+    )
+    .await
+    .unwrap();
 
-    let repo = BlockReasonRepository::new(&pool);
-    repo.set("task", task.id, &["a".into(), "b".into()]).await.unwrap();
-    repo.set("goal", goal.id, &["x".into()]).await.unwrap();
+    db.block_reasons().set("task", task.id, &["a".into(), "b".into()]).await.unwrap();
+    db.block_reasons().set("goal", goal.id, &["x".into()]).await.unwrap();
 
-    let all = repo.list_all().await.unwrap();
+    let all = db.block_reasons().list_all().await.unwrap();
+    db.commit().await.unwrap();
     assert_eq!(all.len(), 3);
     // Positions are 0-based per owner and preserved.
     let task_reasons: Vec<_> = all.iter().filter(|r| r.owner_type == "task").collect();
@@ -66,27 +71,34 @@ async fn list_all_returns_reasons_for_every_owner() {
 async fn deleting_a_task_removes_its_block_reasons() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
-    let task_repo = TaskRepository::new(&pool);
-    let task = task_repo
-        .create(CreateTaskRequest { title: "T".into(), parent_type: "project".into(), parent_id: project_id, status: None, ..Default::default() })
-        .await
-        .unwrap();
-    let repo = BlockReasonRepository::new(&pool);
-    repo.set("task", task.id, &["stuck".into()]).await.unwrap();
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    let task = create_task(
+        &mut db,
+        CreateTaskRequest { title: "T".into(), parent_type: "project".into(), parent_id: project_id, status: None, ..Default::default() },
+    )
+    .await
+    .unwrap();
+    db.block_reasons().set("task", task.id, &["stuck".into()]).await.unwrap();
 
-    task_repo.delete(task.id.into()).await.unwrap();
+    delete_task(&mut db, task.id.into()).await.unwrap();
 
-    assert!(repo.list_for("task", task.id).await.unwrap().is_empty());
-    assert!(repo.list_all().await.unwrap().is_empty());
+    assert!(db.block_reasons().list_for("task", task.id).await.unwrap().is_empty());
+    assert!(db.block_reasons().list_all().await.unwrap().is_empty());
+    db.commit().await.unwrap();
 }
 
 /// A task to hang block reasons off, since the owner link is polymorphic and unconstrained.
 async fn make_task(pool: &sqlx::SqlitePool, project_id: i64) -> i64 {
-    TaskRepository::new(pool)
-        .create(CreateTaskRequest { title: "T".into(), parent_type: "project".into(), parent_id: project_id, status: None, ..Default::default() })
-        .await
-        .unwrap()
-        .id
+    let mut db = helpers::session_factory(pool).begin().await.unwrap();
+    let id = create_task(
+        &mut db,
+        CreateTaskRequest { title: "T".into(), parent_type: "project".into(), parent_id: project_id, status: None, ..Default::default() },
+    )
+    .await
+    .unwrap()
+    .id;
+    db.commit().await.unwrap();
+    id
 }
 
 /// Reads an owner's list back over the pool, after the session under test has released it.
