@@ -480,6 +480,68 @@ No CHANGELOG entry (refactor). No `VERSION.txt` bump.
 
 ---
 
+## Merging the moving base back in
+
+`git merge worktree-architecture-review` (at `f9e7078`, which had gained the Phase 6 mindmap
+command and the deletion of the six repository shims).
+
+**Not clean — one conflict, plus one silent break the merge did not flag.**
+
+### The conflict: `src-tauri/src/tasks/mod.rs`, import block, one hunk
+
+- *Their side* narrowed `use crate::database::session::{…}` to `{Db, SessionMode, Transactional}`
+  and dropped `use crate::database::DatabasePool`, because the repository shims that needed
+  `SessionFactory` and the pool are gone.
+- *My side* had added `use ancestry::{AncestryLink, NodeKind, NodeRef};` above the unchanged
+  original imports.
+
+The two edits are independent, so the resolution is just the union: their narrowed session import,
+plus my `ancestry` line, placed with the other local-module imports. Nothing was dropped and no
+judgement call was involved.
+
+### The break git merged cleanly and should not have
+
+`src-tauri/tests/tasks.rs` auto-merged without a conflict, but the result did not compile: the base
+had converted the whole file off `TaskRepository`/`GoalRepository` and then deleted those types,
+while my appended tests — which git placed after the converted region — still called them at three
+sites. A textual merge cannot see that.
+
+Fixed by converting those three sites to the same session idiom the rest of the file now uses, via
+my existing `create_task_under` helper plus a new `create_goal_under` beside it; `create_task_under`
+itself moved from `SessionFactory::new(pool.clone())` to `helpers::session_factory(pool)` to match.
+Test bodies and assertions are unchanged.
+
+### Post-merge verification
+
+```
+$ cargo build
+(clean)
+
+$ cargo clippy --all-targets
+(zero warnings)
+
+$ cargo test
+test result: ok. 157 passed;   (lib)
+test result: ok. 0 passed;
+test result: ok. 8 passed;
+test result: ok. 4 passed;
+test result: ok. 18 passed;
+test result: ok. 43 passed;
+test result: ok. 16 passed;
+test result: ok. 0 passed;
+test result: ok. 12 passed;
+test result: ok. 13 passed;
+test result: ok. 5 passed;     (new from the base — Phase 6)
+test result: ok. 13 passed;
+test result: ok. 52 passed;    (tests/tasks.rs)
+test result: ok. 14 passed;
+--- 355 passed, 0 failed ---
+```
+
+324 baseline → 350 mine → 355 with the base's five merged in. Nothing failing.
+
+---
+
 ## Self-review findings
 
 - **An early `count_where(&pool, "tasks", "parent_id", orphan.id)` assertion passed for the wrong

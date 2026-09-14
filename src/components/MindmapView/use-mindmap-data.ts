@@ -1,17 +1,20 @@
 import { useCallback, useEffect, useState } from "react";
-import { listDomains, createDomain, updateDomain, deleteDomain } from "@/api/domains";
-import { listTasks, createTask, updateTask, deleteTask, listAllTaskDependencies } from "@/api/tasks";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
+import { createDomain, updateDomain, deleteDomain } from "@/api/domains";
+import { createTask, updateTask, deleteTask } from "@/api/tasks";
 import type { TaskDependencyEdge } from "@/api/tasks";
-import { listAllBlockReasons, setBlockReasons } from "@/api/block-reasons";
+import { setBlockReasons } from "@/api/block-reasons";
 import type { BlockReason } from "@/api/block-reasons";
-import { listGoals, createGoal, updateGoal, deleteGoal } from "@/api/goals";
-import { listInfos, createInfo, updateInfo, deleteInfo } from "@/api/infos";
+import { createGoal, updateGoal, deleteGoal } from "@/api/goals";
+import { createInfo, updateInfo, deleteInfo } from "@/api/infos";
 import { getErrorMessage } from "@/api/errors";
+import { loadMindmap, habitIterations, habitStatuses } from "@/api/mindmap";
+import type { MindmapLoad } from "@/api/mindmap";
+import { useMindmapStore } from "@/stores/use-mindmap-store";
 import {
-  listFlows, createFlow, updateFlow, deleteFlow,
-  listAllFlowGoals, listAllFlowTasks, listAllFlowCycles, listAllFlowDependencies,
+  createFlow, updateFlow, deleteFlow,
   createFlowGoal, createFlowTask, updateFlowGoal, updateFlowTask, deleteFlowItem, convertFlowItem,
-  generateHabitIterations, listHabitItemStatuses, listFlowInstanceNodes,
 } from "@/api/flows";
 import { findNode } from "@/utils/mindmap-tree";
 import type { Domain } from "@/api/domains";
@@ -22,7 +25,6 @@ import type {
   Flow, CreateFlowRequest, UpdateFlowRequest,
   FlowGoal, FlowTask, FlowItemCycle, FlowDependency, FlowItemType, HabitIteration, HabitItemStatus, TargetRef,
 } from "@/api/flows";
-import { deriveScopeLifecycles } from "@/api/scope-lifecycle";
 import type { ItemLifecycle } from "@/api/scope-lifecycle";
 import type { MindmapNode, NodeKind, FlowCyclePair, FlowItemDep } from "@/utils/tree-layout";
 import { entityNodeId } from "@/utils/tree-layout";
@@ -593,86 +595,87 @@ export function buildTree(
   return root;
 }
 
+/** The tree node a flow's iterations hang under — the toast's anchor when they are missing. */
+function habitHostId(flow: Flow): string {
+  return flow.target_type !== null && flow.target_id !== null
+    ? entityNodeId(flow.target_type, flow.target_id)
+    : `flow-${flow.id}`;
+}
+
+/**
+ * Tells the user which flows lost their Habit iterations to a backend failure.
+ *
+ * These used to be swallowed by a per-call `.catch(() => [])`, which made a failed derivation
+ * indistinguishable from a flow that genuinely has none. The envelope now carries the reason per
+ * flow, and the notice is anchored on the node the missing iterations would have hung under.
+ * Only one toast fits, so the first failure is named and the rest are counted.
+ */
+function reportHabitFailures(
+  data: MindmapLoad,
+  showToast: (toast: { nodeId: string; message: string }) => void,
+  t: TFunction<"warnings">,
+): void {
+  const failed = data.habits.filter((entry) => entry.result.outcome === "failed");
+  const first = failed[0];
+  if (first === undefined) return;
+  const flow = data.flows.find((candidate) => candidate.id === first.flow_id);
+  showToast({
+    nodeId: flow === undefined ? `flow-${first.flow_id}` : habitHostId(flow),
+    message:
+      failed.length === 1
+        ? t("habitLoadFailed", { title: first.flow_title })
+        : t("habitLoadFailedMore", { title: first.flow_title, count: failed.length - 1 }),
+  });
+}
+
 export function useMindmapData(): MindmapData {
   const [tree, setTree] = useState<MindmapNode>(VIRTUAL_ROOT);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const scopeLabels = useScopeLabels();
+  const showToast = useMindmapStore((state) => state.showToast);
+  const { t } = useTranslation("warnings");
 
-  const load = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const [domains, goals, tasks, infos, flows, flowGoals, flowTasks, flowCycles, flowDeps, blockReasons, taskDeps, flowInstanceRefs, lifecycles] = await Promise.all([
-        listDomains(),
-        listGoals(),
-        listTasks(),
-        listInfos(),
-        listFlows(),
-        listAllFlowGoals(),
-        listAllFlowTasks(),
-        listAllFlowCycles(),
-        listAllFlowDependencies(),
-        listAllBlockReasons(),
-        listAllTaskDependencies(),
-        listFlowInstanceNodes(),
-        deriveScopeLifecycles(localNowIso()),
-      ]);
-      const built = buildTree(domains, goals, tasks, infos, flows, flowGoals, flowTasks, flowCycles, flowDeps, blockReasons, taskDeps, flowInstanceRefs);
-      applyLifecycles(built, lifecycleMap(lifecycles));
-      // Derive each Habit's iterations (non-habits reject; treat as empty) and inject them as
-      // virtual, read-only child nodes under their targets.
-      const [iterationsByFlow, statusesByFlow] = await Promise.all([
-        Promise.all(flows.map((f) => generateHabitIterations(f.id, localNowIso()).catch(() => []))),
-        Promise.all(flows.map((f) => listHabitItemStatuses(f.id).catch(() => []))),
-      ]);
-      injectHabitInstances(built, flows, iterationsByFlow, scopeLabels, flowGoals, flowTasks, statusesByFlow);
-      setTree(built);
-    } catch (err) {
-      setError(getErrorMessage(err));
-    } finally {
-      setIsLoading(false);
-    }
-  }, [scopeLabels]);
-
-  // Refreshes the tree in-place without the loading spinner — used for mutations
-  // so the canvas stays mounted and pan/zoom state is preserved.
-  const silentLoad = useCallback(async () => {
-    setError(null);
-    try {
-      const [domains, goals, tasks, infos, flows, flowGoals, flowTasks, flowCycles, flowDeps, blockReasons, taskDeps, flowInstanceRefs, lifecycles] = await Promise.all([
-        listDomains(),
-        listGoals(),
-        listTasks(),
-        listInfos(),
-        listFlows(),
-        listAllFlowGoals(),
-        listAllFlowTasks(),
-        listAllFlowCycles(),
-        listAllFlowDependencies(),
-        listAllBlockReasons(),
-        listAllTaskDependencies(),
-        listFlowInstanceNodes(),
-        deriveScopeLifecycles(localNowIso()),
-      ]);
-      const built = buildTree(domains, goals, tasks, infos, flows, flowGoals, flowTasks, flowCycles, flowDeps, blockReasons, taskDeps, flowInstanceRefs);
-      applyLifecycles(built, lifecycleMap(lifecycles));
-      // Derive each Habit's iterations (non-habits reject; treat as empty) and inject them as
-      // virtual, read-only child nodes under their targets.
-      const [iterationsByFlow, statusesByFlow] = await Promise.all([
-        Promise.all(flows.map((f) => generateHabitIterations(f.id, localNowIso()).catch(() => []))),
-        Promise.all(flows.map((f) => listHabitItemStatuses(f.id).catch(() => []))),
-      ]);
-      injectHabitInstances(built, flows, iterationsByFlow, scopeLabels, flowGoals, flowTasks, statusesByFlow);
-      setTree(built);
-    } catch (err) {
-      setError(getErrorMessage(err));
-    }
-  }, [scopeLabels]);
+  /**
+   * Loads the whole mindmap and rebuilds the tree.
+   *
+   * `showSpinner` is the only thing separating the initial load from the refresh every mutation
+   * ends with: a mutation keeps the canvas mounted so pan/zoom survives. The fetch is one round
+   * trip either way — `load_mindmap` resolves the per-flow Habit wave backend-side.
+   */
+  const load = useCallback(
+    async (showSpinner: boolean) => {
+      if (showSpinner) setIsLoading(true);
+      setError(null);
+      try {
+        const data = await loadMindmap(localNowIso());
+        const built = buildTree(
+          data.domains, data.goals, data.tasks, data.infos, data.flows, data.flow_goals,
+          data.flow_tasks, data.flow_cycles, data.flow_dependencies, data.block_reasons,
+          data.task_dependencies, data.flow_instance_nodes,
+        );
+        applyLifecycles(built, lifecycleMap(data.lifecycles));
+        // Inject each Habit's iterations as virtual, read-only child nodes under their targets.
+        // A flow whose derivation failed contributes an empty list here and a notice below —
+        // it is not silently indistinguishable from a flow that simply has no iterations.
+        injectHabitInstances(
+          built, data.flows, habitIterations(data.habits), scopeLabels,
+          data.flow_goals, data.flow_tasks, habitStatuses(data.habits),
+        );
+        setTree(built);
+        reportHabitFailures(data, showToast, t);
+      } catch (err) {
+        setError(getErrorMessage(err));
+      } finally {
+        if (showSpinner) setIsLoading(false);
+      }
+    },
+    [scopeLabels, showToast, t],
+  );
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load();
+    void load(true);
   }, [load]);
 
   const createNode = useCallback(
@@ -688,7 +691,7 @@ export function useMindmapData(): MindmapData {
           id: `domain-${domain.id}`, kind: childKind, title: domain.title,
           position: domain.position, tagIds: [], children: [],
         };
-        await silentLoad();
+        await load(false);
         return newNode;
       }
 
@@ -698,7 +701,7 @@ export function useMindmapData(): MindmapData {
           id: `goal-${goal.id}`, kind: "goal", title: goal.title,
           status: goal.status, position: goal.position, tagIds: [], children: [],
         };
-        await silentLoad();
+        await load(false);
         return newNode;
       }
 
@@ -708,7 +711,7 @@ export function useMindmapData(): MindmapData {
           id: `task-${task.id}`, kind: "task", title: task.title,
           status: task.status, position: task.position, tagIds: [], children: [],
         };
-        await silentLoad();
+        await load(false);
         return newNode;
       }
 
@@ -723,7 +726,7 @@ export function useMindmapData(): MindmapData {
           id: `info-${info.id}`, kind: "info", title: info.body,
           position: info.position, tagIds: [], children: [],
         };
-        await silentLoad();
+        await load(false);
         return newNode;
       }
 
@@ -740,13 +743,13 @@ export function useMindmapData(): MindmapData {
           kind: childKind, title: item.title,
           position: item.position, tagIds: [], children: [],
         };
-        await silentLoad();
+        await load(false);
         return newNode;
       }
 
       throw new Error(`Cannot create a node of kind "${childKind}"`);
     },
-    [silentLoad, tree],
+    [load, tree],
   );
 
   const createChild = useCallback(
@@ -786,9 +789,9 @@ export function useMindmapData(): MindmapData {
       } else {
         await import("@/api/domains").then(({ updateDomain }) => updateDomain(dbId, { title }));
       }
-      await silentLoad();
+      await load(false);
     },
-    [silentLoad],
+    [load],
   );
 
   const retypeNode = useCallback(
@@ -819,7 +822,7 @@ export function useMindmapData(): MindmapData {
         }
 
         const newId = await convertFlowItem(fromKind, dbId, toKind);
-        await silentLoad();
+        await load(false);
         return toKind === "flow_goal" ? `flowgoal-${newId}` : `flowtask-${newId}`;
       }
 
@@ -828,7 +831,7 @@ export function useMindmapData(): MindmapData {
       // Same-table conversion: node ID is unchanged.
       if (domainTableKinds.has(fromKind) && domainTableKinds.has(toKind)) {
         await updateDomain(dbId, { subtype: toKind });
-        await silentLoad();
+        await load(false);
         return null;
       }
 
@@ -864,7 +867,7 @@ export function useMindmapData(): MindmapData {
             }
           }
           await deleteDomain(dbId);
-          await silentLoad();
+          await load(false);
           return `goal-${newGoal.id}`;
         } else {
           const newTask = await createTask({ title, parent_type: parentType, parent_id: parentDbId });
@@ -880,7 +883,7 @@ export function useMindmapData(): MindmapData {
             }
           }
           await deleteDomain(dbId);
-          await silentLoad();
+          await load(false);
           return `task-${newTask.id}`;
         }
       }
@@ -907,7 +910,7 @@ export function useMindmapData(): MindmapData {
         }
         if (fromKind === "goal") await deleteGoal(dbId);
         else await deleteTask(dbId);
-        await silentLoad();
+        await load(false);
         return `domain-${newDomain.id}`;
       }
 
@@ -938,7 +941,7 @@ export function useMindmapData(): MindmapData {
           }
         }
         await deleteGoal(dbId);
-        await silentLoad();
+        await load(false);
         return `task-${newTask.id}`;
       }
 
@@ -962,7 +965,7 @@ export function useMindmapData(): MindmapData {
           }
         }
         await deleteTask(dbId);
-        await silentLoad();
+        await load(false);
         return `goal-${newGoal.id}`;
       }
 
@@ -997,7 +1000,7 @@ export function useMindmapData(): MindmapData {
         if (fromKind === "goal") await deleteGoal(dbId);
         else if (fromKind === "task") await deleteTask(dbId);
         else if (fromKind !== "aspect") await deleteDomain(dbId);
-        await silentLoad();
+        await load(false);
         return `info-${newInfo.id}`;
       }
 
@@ -1015,7 +1018,7 @@ export function useMindmapData(): MindmapData {
               }
             }
             await deleteInfo(dbId);
-            await silentLoad();
+            await load(false);
             return `goal-${newGoal.id}`;
           } else {
             const newTask = await createTask({ title, parent_type: parentType, parent_id: parentDbId });
@@ -1026,7 +1029,7 @@ export function useMindmapData(): MindmapData {
               }
             }
             await deleteInfo(dbId);
-            await silentLoad();
+            await load(false);
             return `task-${newTask.id}`;
           }
         }
@@ -1042,14 +1045,14 @@ export function useMindmapData(): MindmapData {
             }
           }
           await deleteInfo(dbId);
-          await silentLoad();
+          await load(false);
           return `domain-${newDomain.id}`;
         }
       }
 
       return null;
     },
-    [silentLoad, tree],
+    [load, tree],
   );
 
   const reorderNode = useCallback(
@@ -1086,9 +1089,9 @@ export function useMindmapData(): MindmapData {
         setPos(nodeDbId, node.kind, neighborPos),
         setPos(neighborDbId, neighbor.kind, nodePos),
       ]);
-      await silentLoad();
+      await load(false);
     },
-    [silentLoad, tree],
+    [load, tree],
   );
 
   const moveNode = useCallback(
@@ -1111,9 +1114,9 @@ export function useMindmapData(): MindmapData {
           updateDomain(dbId, { parent_id: dbParentId, position }),
         );
       }
-      await silentLoad();
+      await load(false);
     },
-    [silentLoad],
+    [load],
   );
 
   const removeNode = useCallback(
@@ -1128,27 +1131,30 @@ export function useMindmapData(): MindmapData {
         else if (kind === "flow_task") await deleteFlowItem("flow_task", dbId);
         else if (kind !== "aspect") await deleteDomain(dbId);
       }
-      await silentLoad();
+      await load(false);
     },
-    [silentLoad],
+    [load],
   );
 
   const createFlowNode = useCallback(
     async (request: CreateFlowRequest): Promise<Flow> => {
       const flow = await createFlow(request);
-      await silentLoad();
+      await load(false);
       return flow;
     },
-    [silentLoad],
+    [load],
   );
 
   const updateFlowNode = useCallback(
     async (id: number, request: UpdateFlowRequest): Promise<void> => {
       await updateFlow(id, request);
-      await silentLoad();
+      await load(false);
     },
-    [silentLoad],
+    [load],
   );
+
+  // `reload` is the public, spinner-showing entry point; the flag stays inside the hook.
+  const reload = useCallback(() => load(true), [load]);
 
   return {
     tree,
@@ -1163,6 +1169,6 @@ export function useMindmapData(): MindmapData {
     removeNode,
     createFlow: createFlowNode,
     updateFlow: updateFlowNode,
-    reload: silentLoad,
+    reload: reload,
   };
 }

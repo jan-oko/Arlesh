@@ -5,7 +5,6 @@ pub mod model;
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::database::DatabasePool;
 use error::DomainError;
 use model::{CreateDomainRequest, Domain, DomainId, DomainSubtype, UpdateDomainRequest};
 
@@ -208,66 +207,6 @@ impl<'session> DomainOperator<'session> {
             DomainSubtype::Domain | DomainSubtype::Aspect => {}
         }
         Ok(())
-    }
-}
-
-/// Repository for all domain CRUD operations.
-///
-/// Transitional: the SQL now lives on [`DomainOperator`], and every method here checks a
-/// connection out of the pool and delegates to it, so repository and operator cannot drift while
-/// callers move over. None of these methods was ever transactional at the repository level, so
-/// the shim does not introduce one either. This struct's remaining callers are fixture helpers
-/// in `tests/tasks.rs`, `tests/block_reasons.rs`, `tests/infos.rs`, and `tests/knowledge_base.rs`
-/// (each uses it only to create a project/tag before exercising its own domain), plus its own
-/// test suite in `tests/domains.rs`. Only `tests/tasks.rs` falls within Task 2.2 Step 3's scope,
-/// so the shim will not retire once that step lands — it goes away only once every one of those
-/// fixtures, and `tests/domains.rs` itself, is migrated or removed.
-///
-/// The methods below carry no `tracing::instrument`: each delegates to an operator method, and
-/// the operator methods themselves carry none either (matching the original repository, which
-/// had no instrumentation).
-pub struct DomainRepository<'a> {
-    pool: &'a DatabasePool,
-}
-
-impl<'a> DomainRepository<'a> {
-    /// Creates a new repository backed by `pool`.
-    pub fn new(pool: &'a DatabasePool) -> Self {
-        Self { pool }
-    }
-
-    /// Creates a new domain. Aspects cannot be created via this method.
-    pub async fn create(&self, request: CreateDomainRequest) -> Result<Domain, DomainError> {
-        let mut connection = self.pool.acquire().await?;
-        DomainOperator::new(&mut connection).create(request).await
-    }
-
-    /// Fetches a domain by id.
-    pub async fn get(&self, id: DomainId) -> Result<Domain, DomainError> {
-        let mut connection = self.pool.acquire().await?;
-        DomainOperator::new(&mut connection).get(id).await
-    }
-
-    /// Lists all domains, optionally filtered to a specific subtype.
-    pub async fn list(&self, subtype: Option<DomainSubtype>) -> Result<Vec<Domain>, DomainError> {
-        let mut connection = self.pool.acquire().await?;
-        DomainOperator::new(&mut connection).list(subtype).await
-    }
-
-    /// Updates an existing domain. Aspects cannot be updated.
-    pub async fn update(
-        &self,
-        id: DomainId,
-        request: UpdateDomainRequest,
-    ) -> Result<Domain, DomainError> {
-        let mut connection = self.pool.acquire().await?;
-        DomainOperator::new(&mut connection).update(id, request).await
-    }
-
-    /// Deletes a domain by id. Aspects cannot be deleted.
-    pub async fn delete(&self, id: DomainId) -> Result<(), DomainError> {
-        let mut connection = self.pool.acquire().await?;
-        DomainOperator::new(&mut connection).delete(id).await
     }
 }
 

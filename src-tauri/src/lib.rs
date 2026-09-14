@@ -12,6 +12,7 @@ pub mod error;
 pub mod flows;
 pub mod infos;
 pub mod knowledge_base;
+pub mod mindmap;
 pub mod scopes;
 pub mod tasks;
 
@@ -157,6 +158,7 @@ pub fn run() {
             commands::flows::add_flow_dependency,
             commands::flows::remove_flow_dependency,
             commands::flows::list_all_flow_dependencies,
+            commands::mindmap::load_mindmap,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -20,5 +20,7 @@
   "scopeClampHeading_other": "Narrowing this scope moves {{count}} nested items out of range — choose what happens",
   "scopeClampItem": "{{type}} #{{id}} would fall outside the new scope",
   "scopeClampFromFlow": "{{item}} (from flow \"{{flow}}\")",
-  "scopeClampAction": "Clamp them to the new scope"
+  "scopeClampAction": "Clamp them to the new scope",
+  "habitLoadFailed": "Habit iterations for \"{{title}}\" could not be loaded",
+  "habitLoadFailedMore": "Habit iterations for \"{{title}}\" and {{count}} other flows could not be loaded"
 }
