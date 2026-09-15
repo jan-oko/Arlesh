@@ -16,6 +16,7 @@
 pub mod error;
 pub mod habits;
 pub mod model;
+mod render;
 
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -35,6 +36,10 @@ use crate::tasks::{
     nearest_scoped_ancestor_window, time_scope_window,
 };
 use error::FlowError;
+use render::{
+    render, FlowTemplate, NodeRef, PlannedSource, RenderedPlan, ResolvedPair, ScopeTable,
+    TemplateItem,
+};
 use model::{
     BlockingMode, ConsumptionKind, CreateFlowItemRequest, CreateFlowRequest, Flow, FlowCycleInput,
     FlowDependency, FlowGoal, FlowId, FlowItemCycle, FlowItemType, FlowOrigin, FlowRecurrence,
@@ -1508,7 +1513,8 @@ pub async fn set_flow_recurrence(
 /// Transactional: the set of instances is read first and one row is written per instance, so a
 /// half-applied run would leave the iteration neither done nor undone.
 ///
-/// Reached from the UI through the `set_habit_iteration_done` command. It is the whole-iteration
+/// Exposed as the `set_habit_iteration_done` Tauri command (registered in `lib.rs`); the frontend
+/// does not call it yet. It is the whole-iteration
 /// counterpart of `set_habit_item_status`: SPEC defines an iteration as resolved when every one of
 /// its non-tombstoned instances is done, and this is the operation that says so in one step.
 #[tracing::instrument(skip(db))]
@@ -1857,8 +1863,217 @@ pub async fn convert_to_flow(
     db.flows().get(FlowId(flow_id)).await
 }
 
+/// Loads a flow's template — items (goals then tasks, each in position order), cycle pairs and
+/// dependencies — filtered to that one flow.
+///
+/// All four reads happen **before** the first write. That is safe, and load-bearing for the split:
+/// [`start`] writes goals, tasks, scopes, `flow_instances`, `flow_instance_nodes` and
+/// `task_dependencies`, and never touches a flow-template table, so nothing it does can change
+/// what these reads return.
+#[tracing::instrument(skip(db))]
+async fn load_template<M: SessionMode>(
+    db: &mut Db<M>,
+    flow_id: FlowId,
+) -> Result<FlowTemplate, FlowError> {
+    let goals = db.flows().list_goals(flow_id).await?;
+    let tasks = db.flows().list_tasks(flow_id).await?;
+    let cycles = db.flows().list_all_cycles().await?;
+    let dependencies = db.flows().list_all_dependencies().await?;
+
+    let mut items: Vec<TemplateItem> = Vec::with_capacity(goals.len() + tasks.len());
+    for goal in &goals {
+        items.push(TemplateItem {
+            kind: FlowItemType::FlowGoal,
+            id: goal.id,
+            title: goal.title.clone(),
+            parent_type: goal.parent_type.clone(),
+            parent_id: goal.parent_id,
+            position: goal.position,
+            is_private: goal.is_private,
+        });
+    }
+    for task in &tasks {
+        items.push(TemplateItem {
+            kind: FlowItemType::FlowTask,
+            id: task.id,
+            title: task.title.clone(),
+            parent_type: task.parent_type.clone(),
+            parent_id: task.parent_id,
+            position: task.position,
+            is_private: task.is_private,
+        });
+    }
+
+    Ok(FlowTemplate {
+        items,
+        cycles: cycles.into_iter().filter(|c| c.flow_id == flow_id.0).collect(),
+        dependencies: dependencies.into_iter().filter(|d| d.flow_id == flow_id.0).collect(),
+    })
+}
+
+/// Resolves every scope a flow materialisation needs into a lookup table, in two rounds per pair:
+/// the Cycle Scope from the window start, then the Cycle Plan from *that scope's* own start date.
+/// Both rounds already live inside [`resolve_pair`]; this walks the pairs.
+///
+/// **This writes.** `offset_scope` mints scope rows through `get_or_create`, so the gather must run
+/// inside the caller's transaction — it cannot be hoisted out with the template reads. It takes a
+/// single [`ScopeOperator`] rather than the session because scopes are the only resource it needs.
+///
+/// `cycles` is the *reachable* pair list, not every pair the flow owns: an orphaned item is never
+/// walked, so resolving its pairs would mint scope rows the single-pass version never minted.
+async fn resolve_scopes(
+    scopes: &mut ScopeOperator<'_>,
+    flow: &Flow,
+    anchor: NaiveDate,
+    cycles: &[FlowItemCycle],
+) -> Result<ScopeTable, FlowError> {
+    // The flow window, only when the flow is scoped (Span or Phase).
+    let (window, window_start): (Option<TimeScope>, Option<NaiveDate>) =
+        if flow.flow_duration_kind.is_some() {
+            let (time_scope, start) = resolve_flow_window(scopes, flow, anchor).await?;
+            (Some(time_scope), Some(start))
+        } else {
+            (None, None)
+        };
+
+    // The root's relative Cycle Plan (task instance type only), against the window start.
+    let root_plan: Option<TimeScope> = match (
+        flow.root_plan_kind.as_deref(),
+        flow.root_plan_start,
+        flow.root_plan_end,
+        window_start,
+    ) {
+        (Some(kind), Some(plan_start), Some(plan_end), Some(base)) => {
+            let start = offset_scope(scopes, base, plan_start, kind).await?;
+            let end = offset_scope(scopes, base, plan_end, kind).await?;
+            Some(TimeScope { start_id: start.id, end_id: end.id, duration: None })
+        }
+        _ => None,
+    };
+
+    let mut pairs: HashMap<i64, ResolvedPair> = HashMap::with_capacity(cycles.len());
+    for cycle in cycles {
+        let (time_scope, plan) = resolve_pair(scopes, Some(cycle), window_start).await?;
+        pairs.insert(cycle.id, ResolvedPair { time_scope, plan });
+    }
+
+    Ok(ScopeTable { window, root_plan, pairs })
+}
+
+/// Writes a [`RenderedPlan`]: create each node under its already-written parent, record it against
+/// the flow instance, then add the dependency edges once every node has a real id.
+///
+/// The plan lists nodes in creation order with every parent ahead of its children, so one pass
+/// suffices. Node 0 is the root: it is the only node whose parent is the start target rather than
+/// another node, and it is the one the `flow_instances` row is opened on — between its creation
+/// and its `flow_instance_nodes` row, as it always has been.
+#[tracing::instrument(skip(db, plan))]
+async fn write_plan(
+    db: &mut Db<Transactional>,
+    flow_id: FlowId,
+    request: &StartFlowRequest,
+    plan: &RenderedPlan,
+) -> Result<MaterializedFlow, FlowError> {
+    let dangling = || FlowError::Invalid("rendered plan references an unwritten node".to_string());
+    let mut written: Vec<(String, i64)> = Vec::with_capacity(plan.nodes.len());
+    let mut opened: Option<i64> = None;
+
+    for node in &plan.nodes {
+        // The root's two parent spellings differ: `create_*` takes the kind-mapped target type,
+        // `record_node` the raw one. For every other node both are the parent node's own type.
+        let (create_parent, record_parent) = match node.parent {
+            None => (
+                (target_parent_type(&request.target_type), request.target_id),
+                (request.target_type.clone(), request.target_id),
+            ),
+            Some(NodeRef(index)) => {
+                let parent = written.get(index).ok_or_else(dangling)?.clone();
+                (parent.clone(), parent)
+            }
+        };
+
+        let created = match node.kind {
+            InstanceType::Goal => {
+                let goal = create_goal(
+                    db,
+                    CreateGoalRequest {
+                        title: node.title.clone(),
+                        parent_type: create_parent.0,
+                        parent_id: create_parent.1,
+                        status: None,
+                        time_scope: node.time_scope.clone(),
+                        on_scope_exit: None,
+                    },
+                )
+                .await?;
+                ("goal".to_string(), goal.id)
+            }
+            InstanceType::Task => {
+                let task = create_task(
+                    db,
+                    CreateTaskRequest {
+                        title: node.title.clone(),
+                        parent_type: create_parent.0,
+                        parent_id: create_parent.1,
+                        status: None,
+                        time_scope: node.time_scope.clone(),
+                        plan: node.plan.clone(),
+                        on_scope_exit: None,
+                    },
+                )
+                .await?;
+                ("task".to_string(), task.id)
+            }
+        };
+
+        let instance_id = match opened {
+            Some(id) => id,
+            None => {
+                let id = db.flows().open_instance(flow_id, &created.0, created.1).await?;
+                opened = Some(id);
+                id
+            }
+        };
+        let source = match node.source {
+            PlannedSource::Root => ("flow", flow_id.0),
+            PlannedSource::Item(kind, id) => (kind.as_str(), id),
+        };
+        db.flows()
+            .record_node(
+                instance_id,
+                (&created.0, created.1),
+                source,
+                (&record_parent.0, record_parent.1),
+            )
+            .await?;
+        if node.is_private {
+            set_node_private(db, &created.0, created.1).await?;
+        }
+        written.push(created);
+    }
+
+    for edge in &plan.edges {
+        let dependent = written.get(edge.dependent.0).ok_or_else(dangling)?.1;
+        let (blocker_type, blocker_id) = written.get(edge.blocker.0).ok_or_else(dangling)?.clone();
+        let dependency = if blocker_type == "goal" {
+            Dependency::Goal { id: blocker_id }
+        } else {
+            Dependency::Task { id: blocker_id }
+        };
+        add_task_dependency(db, TaskId(dependent), dependency).await?;
+    }
+
+    let (root_type, root_id) = written.into_iter().next().ok_or_else(dangling)?;
+    Ok(MaterializedFlow { root_type, root_id })
+}
+
 /// Starts a flow: materialises its template into a real, independent Goal/Task subtree under
 /// the target, resolving every cycle pair and remapping intra-flow dependencies by fan-in.
+///
+/// Three steps, in order: **resolve** every scope the flow needs ([`resolve_scopes`], which mints
+/// them), **render** the subtree as a plan of placeholder nodes and edges ([`render`], pure), then
+/// **write** it ([`write_plan`], which decides nothing). Everything that decides the *shape* of a
+/// materialisation is therefore testable without a database.
 ///
 /// Reads and writes flows, scopes, goals and tasks — the operation ADR-0004 was written for. Its
 /// signature demands a transactional session so that a failure part-way through materialisation
@@ -1871,157 +2086,11 @@ pub async fn start(
     request: StartFlowRequest,
 ) -> Result<MaterializedFlow, FlowError> {
     let flow = db.flows().get(flow_id).await?;
-
-    // Resolve the flow window (only when the flow is scoped — Span or Phase).
-    let (window, window_start): (Option<TimeScope>, Option<NaiveDate>) =
-        if flow.flow_duration_kind.is_some() {
-            let (ts, start) =
-                resolve_flow_window(&mut db.scopes(), &flow, request.anchor_date).await?;
-            (Some(ts), Some(start))
-        } else {
-            (None, None)
-        };
-
-    // Resolve the root's relative Cycle Plan (task instance type only) against the window start.
-    let root_plan: Option<TimeScope> = match (
-        flow.root_plan_kind.as_deref(),
-        flow.root_plan_start,
-        flow.root_plan_end,
-        window_start,
-    ) {
-        (Some(pk), Some(ps), Some(pe), Some(base)) => {
-            let start = offset_scope(&mut db.scopes(), base, ps, pk).await?;
-            let end = offset_scope(&mut db.scopes(), base, pe, pk).await?;
-            Some(TimeScope { start_id: start.id, end_id: end.id, duration: None })
-        }
-        _ => None,
-    };
-
-    // Materialise the root of the flow's Instance Type under the (kind-mapped) target.
-    let root_parent_type = target_parent_type(&request.target_type);
-    let (root_type, root_id) = if flow.instance_type == "goal" {
-        let g = create_goal(
-            db,
-            CreateGoalRequest {
-                title: request.title.clone(),
-                parent_type: root_parent_type.clone(),
-                parent_id: request.target_id,
-                status: None,
-                time_scope: window.clone(),
-                on_scope_exit: None,
-            },
-        )
-        .await?;
-        ("goal".to_string(), g.id)
-    } else {
-        let t = create_task(
-            db,
-            CreateTaskRequest {
-                title: request.title.clone(),
-                parent_type: root_parent_type.clone(),
-                parent_id: request.target_id,
-                status: None,
-                time_scope: window.clone(),
-                on_scope_exit: None,
-                plan: root_plan,
-            },
-        )
-        .await?;
-        ("task".to_string(), t.id)
-    };
-
-    let instance_id = db.flows().open_instance(flow_id, &root_type, root_id).await?;
-    db.flows()
-        .record_node(
-            instance_id,
-            (&root_type, root_id),
-            ("flow", flow_id.0),
-            (&request.target_type, request.target_id),
-        )
-        .await?;
-    if flow.is_private {
-        set_node_private(db, &root_type, root_id).await?;
-    }
-
-    // Owned item list + per-item cycles, so nothing borrows across awaits.
-    let flow_goals = db.flows().list_goals(flow_id).await?;
-    let flow_tasks = db.flows().list_tasks(flow_id).await?;
-    let all_cycles = db.flows().list_all_cycles().await?;
-    struct MItem { kind: FlowItemType, id: i64, title: String, parent_type: String, parent_id: i64, position: i64, is_private: bool }
-    let mut items: Vec<MItem> = Vec::new();
-    for g in &flow_goals {
-        items.push(MItem { kind: FlowItemType::FlowGoal, id: g.id, title: g.title.clone(), parent_type: g.parent_type.clone(), parent_id: g.parent_id, position: g.position, is_private: g.is_private });
-    }
-    for t in &flow_tasks {
-        items.push(MItem { kind: FlowItemType::FlowTask, id: t.id, title: t.title.clone(), parent_type: t.parent_type.clone(), parent_id: t.parent_id, position: t.position, is_private: t.is_private });
-    }
-
-    // template (item_type, id) -> its instance node refs, in pair order.
-    let mut instances: HashMap<(String, i64), Vec<(String, i64)>> = HashMap::new();
-
-    // Breadth-first from the root so a parent is always materialised before its children.
-    let mut queue: Vec<(String, i64, String, i64)> = vec![("flow".to_string(), flow_id.0, root_type.clone(), root_id)];
-    while let Some((parent_key_type, parent_key_id, parent_node_type, parent_node_id)) = queue.pop() {
-        let mut children: Vec<(FlowItemType, i64, String, bool)> = items
-            .iter()
-            .filter(|m| m.parent_type == parent_key_type && m.parent_id == parent_key_id)
-            .map(|m| (m.kind, m.id, m.title.clone(), m.is_private))
-            .collect();
-        children.sort_by_key(|(_, id, _, _)| {
-            items.iter().find(|m| m.id == *id).map(|m| m.position).unwrap_or(0)
-        });
-
-        for (kind, id, title, is_private) in children {
-            let mut pairs: Vec<FlowItemCycle> = all_cycles
-                .iter()
-                .filter(|c| c.flow_id == flow_id.0 && c.item_type == kind.as_str() && c.item_id == id)
-                .cloned()
-                .collect();
-            pairs.sort_by_key(|c| c.position);
-            let pair_opts: Vec<Option<FlowItemCycle>> =
-                if pairs.is_empty() { vec![None] } else { pairs.into_iter().map(Some).collect() };
-
-            let mut child_nodes: Vec<(String, i64)> = Vec::new();
-            for pair in &pair_opts {
-                let (time_scope, plan) =
-                    resolve_pair(&mut db.scopes(), pair.as_ref(), window_start).await?;
-                let node = if kind == FlowItemType::FlowGoal {
-                    let g = create_goal(db, CreateGoalRequest { title: title.clone(), parent_type: parent_node_type.clone(), parent_id: parent_node_id, status: None, time_scope, on_scope_exit: None }).await?;
-                    ("goal".to_string(), g.id)
-                } else {
-                    let t = create_task(db, CreateTaskRequest { title: title.clone(), parent_type: parent_node_type.clone(), parent_id: parent_node_id, status: None, time_scope, plan, on_scope_exit: None }).await?;
-                    ("task".to_string(), t.id)
-                };
-                db.flows().record_node(instance_id, (&node.0, node.1), (kind.as_str(), id), (&parent_node_type, parent_node_id)).await?;
-                if is_private {
-                    set_node_private(db, &node.0, node.1).await?;
-                }
-                child_nodes.push(node);
-            }
-
-            // Children of this item nest under its first instance.
-            if let Some(first) = child_nodes.first().cloned() {
-                queue.push((kind.as_str().to_string(), id, first.0, first.1));
-            }
-            instances.insert((kind.as_str().to_string(), id), child_nodes);
-        }
-    }
-
-    // Fan-in dependencies: each dependent-task instance waits on every blocker instance.
-    let flow_dependencies = db.flows().list_all_dependencies().await?;
-    for dep in flow_dependencies.iter().filter(|d| d.flow_id == flow_id.0) {
-        let dependents = instances.get(&(dep.dependent_type.clone(), dep.dependent_id)).cloned().unwrap_or_default();
-        let blockers = instances.get(&(dep.depends_on_type.clone(), dep.depends_on_id)).cloned().unwrap_or_default();
-        for (dtype, did) in &dependents {
-            if dtype != "task" { continue; } // only tasks can be dependents in the real model
-            for (btype, bid) in &blockers {
-                let dependency = if btype == "goal" { Dependency::Goal { id: *bid } } else { Dependency::Task { id: *bid } };
-                add_task_dependency(db, TaskId(*did), dependency).await?;
-            }
-        }
-    }
-
-    Ok(MaterializedFlow { root_type, root_id })
+    let template = load_template(db, flow_id).await?;
+    let cycles = template.planned_cycles(flow_id.0);
+    let scopes = resolve_scopes(&mut db.scopes(), &flow, request.anchor_date, &cycles).await?;
+    let plan = render(&flow, &request.title, &template, &scopes);
+    write_plan(db, flow_id, &request, &plan).await
 }
 
 /// Marks a freshly materialised node private, propagating a flow's (or flow item's) privacy onto
