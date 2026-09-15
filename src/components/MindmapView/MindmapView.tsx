@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMindmapData } from "./use-mindmap-data";
-import type { LoadCondition } from "./use-mindmap-data";
+import { useDismissableLoadCondition } from "./use-dismissable-load-condition";
 import { useDrag } from "./use-drag";
 import { useCanvasLayout } from "./use-canvas-layout";
 import { useNodeTypeManager } from "./use-node-type-manager";
@@ -61,11 +61,7 @@ export default function MindmapView() {
   } = useMindmapStore();
 
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
-  // The load condition banner is dismissable for the session, but a dismissal only ever
-  // suppresses the exact condition instance shown when it was dismissed — a later load, even one
-  // with the same failures, produces a new `LoadCondition` object and the banner returns.
-  const [dismissedLoadCondition, setDismissedLoadCondition] = useState<LoadCondition | null>(null);
-  const showHabitBanner = loadCondition.failedFlows.length > 0 && loadCondition !== dismissedLoadCondition;
+  const { visibleFailedFlows, dismiss: dismissHabitBanner } = useDismissableLoadCondition(loadCondition);
   const [nodeSearchOpen, setNodeSearchOpen] = useState(false);
   const [flowCreateParent, setFlowCreateParent] = useState<{ id: string; kind: NodeKind } | null>(null);
   const [startFlowNode, setStartFlowNode] = useState<MindmapNode | null>(null);
@@ -471,11 +467,8 @@ export default function MindmapView() {
 
   return (
     <div className={styles.container}>
-      {showHabitBanner && (
-        <HabitFailureBanner
-          failedFlows={loadCondition.failedFlows}
-          onDismiss={() => setDismissedLoadCondition(loadCondition)}
-        />
+      {visibleFailedFlows.length > 0 && (
+        <HabitFailureBanner failedFlows={visibleFailedFlows} onDismiss={dismissHabitBanner} />
       )}
       <MindmapCanvas
         ref={canvasRef}
