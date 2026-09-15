@@ -10,6 +10,7 @@ mod ancestry;
 pub mod error;
 pub mod lifecycle;
 pub mod model;
+pub mod retype;
 mod scope_rules;
 
 use std::collections::{HashSet, VecDeque};
