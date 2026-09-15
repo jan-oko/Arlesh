@@ -15,7 +15,18 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::model::{GoalStatus, OnScopeExit, TaskStatus, TimeScope};
+use super::model::{
+    CreateGoalRequest, CreateTaskRequest, GoalId, GoalStatus, OnScopeExit, TaskId, TaskStatus,
+    TimeScope, UpdateGoalRequest, UpdateTaskRequest,
+};
+use crate::database::session::{Db, SessionMode, Transactional};
+use crate::domains::error::DomainError;
+use crate::domains::model::{
+    CreateDomainRequest, DomainId, DomainSubtype, ProjectStatus, UpdateDomainRequest,
+};
+use crate::error::AppError;
+use crate::flows::model::{FlowId, UpdateFlowRequest};
+use crate::infos::model::{InfoId, UpdateInfoRequest};
 
 /// A kind a node can be retyped from, and to.
 ///
@@ -197,6 +208,11 @@ pub struct SourceNode {
     pub tag_ids: Vec<i64>,
     /// Explicit block reasons (goals and tasks only).
     pub block_reasons: Vec<String>,
+    /// How many dependency edges point **at** this node — other tasks waiting on it. Not a
+    /// column of the row, but lost with it all the same when the target cannot be depended on.
+    pub dependents: usize,
+    /// How many dependency edges this node owns — the things it waits on (tasks only).
+    pub depends_on: usize,
 }
 
 /// The field values that survive onto the new node, already translated into the target's
@@ -321,6 +337,14 @@ fn carry_fields(
     let scoped_target = matches!(target, RetypeKind::Goal | RetypeKind::Task);
     let domain_target = target.is_domain_table();
 
+    // A retype **inside** the `domains` table is a `subtype` update on one row: nothing is
+    // deleted, so no field can be lost. A Project's Obsidian directory stops applying when it
+    // becomes a Domain, but the column keeps its value and comes back if it is made a Project
+    // again — naming that as a loss would be false. Only children can be stranded here.
+    if source.kind.is_domain_table() && domain_target {
+        return everything(source);
+    }
+
     // Status: translated when both kinds have a vocabulary, dropped when the target has none.
     // A status still at its kind's default carries no user intent, so losing it is not reported.
     let status = match (&source.status, target.status_vocabulary()) {
@@ -400,6 +424,18 @@ fn carry_fields(
         lost_fields,
     );
 
+    // Dependency edges are the one loss that is not a column of this row. Only a task or a goal
+    // can be depended on, and only a task can depend on anything, so a retype out of those kinds
+    // ends the edges either way — inbound ones by deletion, outbound ones by the `task_id`
+    // cascade. Both are counted so the prompt can say how many.
+    keep_count(scoped_target, source.dependents, "dependents", lost_fields);
+    keep_count(
+        target == RetypeKind::Task,
+        source.depends_on,
+        "dependencies",
+        lost_fields,
+    );
+
     Carried {
         title: source.title.clone(),
         position: source.position,
@@ -413,6 +449,39 @@ fn carry_fields(
         delegate_to,
         tag_ids,
         block_reasons,
+    }
+}
+
+/// Every field carried through unchanged, for a retype that rewrites no row.
+fn everything(source: &SourceNode) -> Carried {
+    Carried {
+        title: source.title.clone(),
+        position: source.position,
+        is_private: source.is_private,
+        status: source.status.clone(),
+        description: source.description.clone(),
+        knowledge_base_directory: source.knowledge_base_directory.clone(),
+        time_scope: source.time_scope.clone(),
+        on_scope_exit: source.on_scope_exit,
+        plan: source.plan.clone(),
+        delegate_to: source.delegate_to,
+        tag_ids: source.tag_ids.clone(),
+        block_reasons: source.block_reasons.clone(),
+    }
+}
+
+/// Records a count of relationships the target cannot hold. Zero is never a loss.
+fn keep_count(
+    target_has_them: bool,
+    count: usize,
+    field: &'static str,
+    lost_fields: &mut Vec<LostField>,
+) {
+    if count > 0 && !target_has_them {
+        lost_fields.push(LostField {
+            field,
+            value: count.to_string(),
+        });
     }
 }
 
@@ -527,6 +596,648 @@ fn truncate(value: &str) -> String {
     format!("{head}…")
 }
 
+// ===========================================================================
+// Carrying a plan out
+// ===========================================================================
+
+/// What to do with the children the target kind cannot hold.
+///
+/// The choice the frontend's existing reparent-or-delete prompt already offers; it reaches the
+/// backend now instead of being acted on by a loop of separate calls.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StrandedChildren {
+    /// Move them up to the retyped node's own parent.
+    Reparent,
+    /// Delete them, and everything beneath them.
+    Delete,
+}
+
+/// The node a retype produced, so the caller can reselect it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct RetypedNode {
+    /// Its kind — the retype's target.
+    pub kind: RetypeKind,
+    /// Its row id. Unchanged when the retype stayed inside the `domains` table.
+    pub id: i64,
+}
+
+/// Where the node being retyped hangs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Parent {
+    /// The parent row's id. `None` only for a top-level domain, which has no parent row.
+    id: Option<i64>,
+    /// The parent's kind spelling, for the `parent_type` columns that record one.
+    kind: String,
+}
+
+/// A retype read out of the database and decided, but not yet written.
+///
+/// Produced by [`plan_node_retype`] and consumed by [`apply_retype`]. The two are separate so the
+/// command boundary can put the plan's losses to the caller and refuse, without the domain
+/// needing to know anything about confirmation prompts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlannedRetype {
+    /// The node as it stands.
+    pub source: SourceNode,
+    /// What the retype would do.
+    pub plan: TransferPlan,
+    /// Where the node hangs, so stranded children have somewhere to go. Private: only
+    /// [`plan_node_retype`] can establish it, so a plan cannot be assembled by hand.
+    parent: Parent,
+}
+
+/// Reads a node, its parent and its direct children, and decides what retyping it to `target`
+/// would carry, strand and drop. **Writes nothing.**
+///
+/// Reads goals, tasks, domains, infos, flows and block reasons, so it is a free function over the
+/// session rather than any one operator's method — see [`Db`]'s `# Where an operation lives`.
+#[tracing::instrument(skip(db))]
+pub async fn plan_node_retype<M: SessionMode>(
+    db: &mut Db<M>,
+    source_kind: RetypeKind,
+    source_id: i64,
+    target: RetypeKind,
+) -> Result<PlannedRetype, AppError> {
+    let (source, parent) = read_source(db, source_kind, source_id).await?;
+    let children = read_children(db, source_kind, source_id).await?;
+    let plan = plan_retype(&source, &children, target);
+    Ok(PlannedRetype {
+        source,
+        plan,
+        parent,
+    })
+}
+
+/// Carries a planned retype out — the whole of it, or none of it.
+///
+/// Takes a transactional session because every half of this is a way to corrupt the tree on its
+/// own: a create without the matching delete leaves two nodes, a delete without the dependency
+/// repointing leaves edges aimed at an id SQLite will hand to some unrelated future row. The
+/// order below is `convert_flow_item`'s — create, repoint every reference, move the children,
+/// delete the old row — because that is the order in which nothing is ever unreferenced.
+///
+/// Rejects nothing on its own: whether the caller was allowed to lose what
+/// [`TransferPlan::loses_anything`] reports is the command boundary's question, asked in
+/// [`crate::commands::retype`].
+#[tracing::instrument(skip(db, planned))]
+pub async fn apply_retype(
+    db: &mut Db<Transactional>,
+    planned: &PlannedRetype,
+    stranded: StrandedChildren,
+) -> Result<RetypedNode, AppError> {
+    let PlannedRetype {
+        source,
+        plan,
+        parent,
+    } = planned;
+    let target = plan.target;
+
+    if source.kind == target {
+        return Ok(RetypedNode {
+            kind: target,
+            id: source.id,
+        });
+    }
+
+    // Inside the `domains` table a retype is a `subtype` update: the row keeps its id, so its
+    // children keep pointing at the right thing and only the stranded ones need handling.
+    if source.kind.is_domain_table() && target.is_domain_table() {
+        db.domains()
+            .update(
+                DomainId(source.id),
+                UpdateDomainRequest {
+                    subtype: Some(domain_subtype(target)),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        settle_stranded(db, plan, parent, stranded).await?;
+        return Ok(RetypedNode {
+            kind: target,
+            id: source.id,
+        });
+    }
+
+    let new_id = create_node(db, plan, parent).await?;
+    carry_attachments(db, source, plan, new_id).await?;
+    move_references(db, source, target, new_id).await?;
+    adopt_children(db, plan, new_id).await?;
+    settle_stranded(db, plan, parent, stranded).await?;
+    delete_old_row(db, source).await?;
+
+    Ok(RetypedNode {
+        kind: target,
+        id: new_id,
+    })
+}
+
+/// Writes the new row, with every field the plan says carries, and returns its id.
+async fn create_node(
+    db: &mut Db<Transactional>,
+    plan: &TransferPlan,
+    parent: &Parent,
+) -> Result<i64, AppError> {
+    let carried = &plan.carried;
+    match plan.target {
+        RetypeKind::Goal => {
+            let goal = super::create_goal(
+                db,
+                CreateGoalRequest {
+                    title: carried.title.clone(),
+                    parent_type: goal_task_parent_type(&parent.kind).to_string(),
+                    parent_id: parent_row_id(parent)?,
+                    status: carried.status.as_deref().and_then(GoalStatus::from_db),
+                    time_scope: carried.time_scope.clone(),
+                    on_scope_exit: carried.on_scope_exit,
+                },
+            )
+            .await?;
+            // `CreateGoalRequest` carries neither, and both are part of the node's identity:
+            // `position` is where it sits among its siblings, `is_private` whether it is visible
+            // at all. Dropping the second is the bug `convert_flow_item` still has.
+            super::update_goal(
+                db,
+                GoalId(goal.id),
+                UpdateGoalRequest {
+                    position: Some(carried.position),
+                    is_private: Some(carried.is_private),
+                    ..Default::default()
+                },
+            )
+            .await?;
+            Ok(goal.id)
+        }
+        RetypeKind::Task => {
+            let task = super::create_task(
+                db,
+                CreateTaskRequest {
+                    title: carried.title.clone(),
+                    parent_type: goal_task_parent_type(&parent.kind).to_string(),
+                    parent_id: parent_row_id(parent)?,
+                    status: carried.status.as_deref().and_then(TaskStatus::from_db),
+                    time_scope: carried.time_scope.clone(),
+                    on_scope_exit: carried.on_scope_exit,
+                    plan: carried.plan.clone(),
+                },
+            )
+            .await?;
+            super::update_task(
+                db,
+                TaskId(task.id),
+                UpdateTaskRequest {
+                    delegate_to: Some(carried.delegate_to),
+                    position: Some(carried.position),
+                    is_private: Some(carried.is_private),
+                    ..Default::default()
+                },
+            )
+            .await?;
+            Ok(task.id)
+        }
+        domain_kind => {
+            let domain = db
+                .domains()
+                .create(CreateDomainRequest {
+                    title: carried.title.clone(),
+                    description: carried.description.clone(),
+                    subtype: domain_subtype(domain_kind),
+                    parent_id: Some(parent_row_id(parent)?),
+                    status: carried.status.as_deref().and_then(ProjectStatus::from_db),
+                    knowledge_base_directory: carried.knowledge_base_directory.clone(),
+                })
+                .await?;
+            db.domains()
+                .update(
+                    DomainId(domain.id),
+                    UpdateDomainRequest {
+                        position: Some(carried.position),
+                        is_private: Some(carried.is_private),
+                        ..Default::default()
+                    },
+                )
+                .await?;
+            Ok(domain.id)
+        }
+    }
+}
+
+/// Moves the tag rows and the block reasons that survive onto the new node.
+///
+/// Both hang off the node rather than living in its row — tags through a join table keyed by the
+/// old id, block reasons through a polymorphic owner link with no foreign key — so both are
+/// re-created against the new node here and swept from the old one by [`delete_old_row`].
+async fn carry_attachments(
+    db: &mut Db<Transactional>,
+    source: &SourceNode,
+    plan: &TransferPlan,
+    new_id: i64,
+) -> Result<(), AppError> {
+    for tag_id in &plan.carried.tag_ids {
+        match plan.target {
+            RetypeKind::Goal => db.goals().add_tag(GoalId(new_id), *tag_id).await?,
+            RetypeKind::Task => db.tasks().add_tag(TaskId(new_id), *tag_id).await?,
+            // Only goals and tasks have a tag join table, so the plan carries no tags to any
+            // other kind and this arm never runs.
+            _ => {}
+        }
+    }
+    if !plan.carried.block_reasons.is_empty() {
+        db.block_reasons()
+            .set(
+                plan.target.as_str(),
+                new_id,
+                &plan.carried.block_reasons,
+            )
+            .await?;
+    }
+    let _ = source;
+    Ok(())
+}
+
+/// Repoints every reference held *by another row* at the node, before the node stops existing.
+///
+/// The one that matters is `task_dependencies.dependency_id`: polymorphic, no foreign key, and in
+/// a schema with no `AUTOINCREMENT` anywhere, so a stale edge is not inert — the freed id goes to
+/// the next task or goal created, and the edge silently re-attaches to it.
+async fn move_references(
+    db: &mut Db<Transactional>,
+    source: &SourceNode,
+    target: RetypeKind,
+    new_id: i64,
+) -> Result<(), AppError> {
+    let from = source.kind.as_str();
+    match target {
+        RetypeKind::Goal | RetypeKind::Task => {
+            db.tasks()
+                .repoint_dependents(from, source.id, target.as_str(), new_id)
+                .await?;
+        }
+        // Only a task or a goal can be depended on, so there is nowhere to aim these. The plan
+        // has already reported them as lost and the caller has acknowledged it.
+        _ => db.tasks().drop_dependents(from, source.id).await?,
+    }
+    Ok(())
+}
+
+/// Reparents every child the target can hold onto the new row.
+async fn adopt_children(
+    db: &mut Db<Transactional>,
+    plan: &TransferPlan,
+    new_id: i64,
+) -> Result<(), AppError> {
+    let destination = Parent {
+        id: Some(new_id),
+        kind: plan.target.as_str().to_string(),
+    };
+    for child in &plan.moved_children {
+        reparent(db, child, &destination).await?;
+    }
+    Ok(())
+}
+
+/// Reparents or deletes the children the target cannot hold, as the caller chose.
+async fn settle_stranded(
+    db: &mut Db<Transactional>,
+    plan: &TransferPlan,
+    parent: &Parent,
+    stranded: StrandedChildren,
+) -> Result<(), AppError> {
+    for child in &plan.lost_children {
+        match stranded {
+            // Up to the retyped node's own parent — which may itself refuse the child, in which
+            // case the `parent_type` CHECK constraint rejects the write and the whole retype
+            // rolls back rather than half-applying. Loud beats corrupt.
+            StrandedChildren::Reparent => reparent(db, child, parent).await?,
+            StrandedChildren::Delete => delete_child(db, child).await?,
+        }
+    }
+    Ok(())
+}
+
+/// Moves one child under `destination`.
+async fn reparent(
+    db: &mut Db<Transactional>,
+    child: &ChildNode,
+    destination: &Parent,
+) -> Result<(), AppError> {
+    match child.kind {
+        ChildKind::Goal => {
+            super::update_goal(
+                db,
+                GoalId(child.id),
+                UpdateGoalRequest {
+                    parent_type: Some(goal_task_parent_type(&destination.kind).to_string()),
+                    parent_id: Some(parent_row_id(destination)?),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        }
+        ChildKind::Task => {
+            super::update_task(
+                db,
+                TaskId(child.id),
+                UpdateTaskRequest {
+                    parent_type: Some(goal_task_parent_type(&destination.kind).to_string()),
+                    parent_id: Some(parent_row_id(destination)?),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        }
+        ChildKind::Info => {
+            db.infos()
+                .update(
+                    InfoId(child.id),
+                    UpdateInfoRequest {
+                        parent_type: Some(destination.kind.clone()),
+                        parent_id: Some(parent_row_id(destination)?),
+                        ..Default::default()
+                    },
+                )
+                .await?;
+        }
+        ChildKind::Flow => {
+            crate::flows::update_flow(
+                db,
+                FlowId(child.id),
+                UpdateFlowRequest {
+                    parent_type: Some(destination.kind.clone()),
+                    parent_id: Some(parent_row_id(destination)?),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        }
+        ChildKind::Domain | ChildKind::Project | ChildKind::Tag => {
+            db.domains()
+                .update(
+                    DomainId(child.id),
+                    UpdateDomainRequest {
+                        parent_id: Some(parent_row_id(destination)?),
+                        ..Default::default()
+                    },
+                )
+                .await?;
+        }
+    }
+    Ok(())
+}
+
+/// Deletes one child and everything beneath it.
+async fn delete_child(db: &mut Db<Transactional>, child: &ChildNode) -> Result<(), AppError> {
+    match child.kind {
+        ChildKind::Goal => super::delete_goal(db, GoalId(child.id)).await?,
+        ChildKind::Task => super::delete_task(db, TaskId(child.id)).await?,
+        ChildKind::Info => db.infos().delete(InfoId(child.id)).await?,
+        ChildKind::Flow => crate::flows::delete_flow(db, FlowId(child.id)).await?,
+        // `domains.parent_id` has no `ON DELETE`, so a domain that still has children of its own
+        // is refused by the foreign key and the retype rolls back. Reparenting is the way out.
+        ChildKind::Domain | ChildKind::Project | ChildKind::Tag => {
+            db.domains().delete(DomainId(child.id)).await?
+        }
+    }
+    Ok(())
+}
+
+/// Deletes the row the retype moved off, and the block reasons hanging off it.
+///
+/// Deliberately **not** the subtree cascade: every child has already been adopted by the new row
+/// or settled, and the cascade would take the adopted ones with it.
+async fn delete_old_row(db: &mut Db<Transactional>, source: &SourceNode) -> Result<(), AppError> {
+    db.block_reasons()
+        .delete_for(source.kind.as_str(), source.id)
+        .await?;
+    match source.kind {
+        RetypeKind::Goal => db.goals().delete_row(GoalId(source.id)).await?,
+        RetypeKind::Task => db.tasks().delete_row(TaskId(source.id)).await?,
+        RetypeKind::Domain | RetypeKind::Project | RetypeKind::Tag => {
+            db.domains().delete(DomainId(source.id)).await?
+        }
+    }
+    Ok(())
+}
+
+/// Reads the node being retyped, and where it hangs.
+async fn read_source<M: SessionMode>(
+    db: &mut Db<M>,
+    kind: RetypeKind,
+    id: i64,
+) -> Result<(SourceNode, Parent), AppError> {
+    match kind {
+        RetypeKind::Goal => {
+            let goal = db.goals().get(GoalId(id)).await?;
+            let block_reasons = db.block_reasons().list_for("goal", id).await?;
+            let dependents = db.tasks().count_dependents("goal", id).await?;
+            let parent = Parent {
+                id: Some(goal.parent_id),
+                kind: goal.parent_type.clone(),
+            };
+            Ok((
+                SourceNode {
+                    kind,
+                    id,
+                    title: goal.title,
+                    position: goal.position,
+                    is_private: goal.is_private,
+                    status: Some(goal.status),
+                    description: None,
+                    knowledge_base_directory: None,
+                    time_scope: goal.time_scope,
+                    on_scope_exit: goal.on_scope_exit,
+                    plan: None,
+                    delegate_to: None,
+                    tag_ids: goal.tag_ids,
+                    block_reasons,
+                    dependents: dependents.max(0) as usize,
+                    depends_on: 0,
+                },
+                parent,
+            ))
+        }
+        RetypeKind::Task => {
+            let task = db.tasks().get(TaskId(id)).await?;
+            let block_reasons = db.block_reasons().list_for("task", id).await?;
+            let dependents = db.tasks().count_dependents("task", id).await?;
+            let depends_on = db.tasks().count_dependencies(TaskId(id)).await?;
+            let parent = Parent {
+                id: Some(task.parent_id),
+                kind: task.parent_type.clone(),
+            };
+            Ok((
+                SourceNode {
+                    kind,
+                    id,
+                    title: task.title,
+                    position: task.position,
+                    is_private: task.is_private,
+                    status: Some(task.status),
+                    description: None,
+                    knowledge_base_directory: None,
+                    time_scope: task.time_scope,
+                    on_scope_exit: task.on_scope_exit,
+                    plan: task.plan,
+                    delegate_to: task.delegate_to,
+                    tag_ids: task.tag_ids,
+                    block_reasons,
+                    dependents: dependents.max(0) as usize,
+                    depends_on: depends_on.max(0) as usize,
+                },
+                parent,
+            ))
+        }
+        RetypeKind::Domain | RetypeKind::Project | RetypeKind::Tag => {
+            let domain = db.domains().get(DomainId(id)).await?;
+            let parent_kind = match domain.parent_id {
+                Some(parent_id) => db.domains().get(DomainId(parent_id)).await?.subtype,
+                None => String::new(),
+            };
+            Ok((
+                SourceNode {
+                    kind,
+                    id,
+                    title: domain.title,
+                    position: domain.position,
+                    is_private: domain.is_private,
+                    status: domain.status,
+                    description: domain.description,
+                    knowledge_base_directory: domain.knowledge_base_directory,
+                    time_scope: None,
+                    on_scope_exit: None,
+                    plan: None,
+                    delegate_to: None,
+                    tag_ids: vec![],
+                    block_reasons: vec![],
+                    dependents: 0,
+                    depends_on: 0,
+                },
+                Parent {
+                    id: domain.parent_id,
+                    kind: parent_kind,
+                },
+            ))
+        }
+    }
+}
+
+/// Reads every direct child of a node, across all five child tables.
+///
+/// Each parent link is polymorphic and none of them carries a foreign key, so there is no cascade
+/// to lean on and every table is asked separately.
+async fn read_children<M: SessionMode>(
+    db: &mut Db<M>,
+    kind: RetypeKind,
+    id: i64,
+) -> Result<Vec<ChildNode>, AppError> {
+    let mut children = Vec::new();
+
+    // `goals.parent_type`/`tasks.parent_type` discriminate three cases, not five: `goal`, `task`,
+    // and "a row in the domains table" — which the frontend always writes as `project` but which
+    // older rows may spell `domain`. Both spellings have to be asked for.
+    for parent_type in goal_task_parent_spellings(kind) {
+        for goal_id in db.goals().child_ids(parent_type, id).await? {
+            let goal = db.goals().get(GoalId(goal_id)).await?;
+            children.push(ChildNode {
+                kind: ChildKind::Goal,
+                id: goal_id,
+                title: goal.title,
+            });
+        }
+        for task_id in db.tasks().child_ids(parent_type, id).await? {
+            let task = db.tasks().get(TaskId(task_id)).await?;
+            children.push(ChildNode {
+                kind: ChildKind::Task,
+                id: task_id,
+                title: task.title,
+            });
+        }
+    }
+
+    let infos = db.infos().list().await?;
+    for info in infos {
+        if info.parent_type == kind.as_str() && info.parent_id == id {
+            children.push(ChildNode {
+                kind: ChildKind::Info,
+                id: info.id,
+                title: info.body,
+            });
+        }
+    }
+
+    for flow in db.flows().list().await? {
+        if flow.parent_type == kind.as_str() && flow.parent_id == id {
+            children.push(ChildNode {
+                kind: ChildKind::Flow,
+                id: flow.id,
+                title: flow.title,
+            });
+        }
+    }
+
+    if kind.is_domain_table() {
+        for domain in db.domains().list(None).await? {
+            if domain.parent_id != Some(id) {
+                continue;
+            }
+            let Some(child_kind) = RetypeKind::from_db(&domain.subtype) else {
+                // An Aspect: fixed, top-level, and never anybody's child.
+                continue;
+            };
+            children.push(ChildNode {
+                kind: ChildKind::from(child_kind),
+                id: domain.id,
+                title: domain.title,
+            });
+        }
+    }
+
+    Ok(children)
+}
+
+/// The `parent_type` spellings a goal or task child of this kind could be stored with.
+fn goal_task_parent_spellings(kind: RetypeKind) -> &'static [&'static str] {
+    match kind {
+        RetypeKind::Goal => &["goal"],
+        RetypeKind::Task => &["task"],
+        RetypeKind::Domain | RetypeKind::Project | RetypeKind::Tag => &["project", "domain"],
+    }
+}
+
+/// The `parent_type` a goal or task takes under a parent of this kind.
+///
+/// Three cases, not five: `goals.parent_type` and `tasks.parent_type` cannot say `tag` or
+/// `aspect` at all, and the tree resolves anything that is not `goal` or `task` by id against the
+/// `domains` table — so every domain-table parent is spelled `project`. Mirrors
+/// `kindToParentType` in `src/components/MindmapView/use-mindmap-data.ts`.
+fn goal_task_parent_type(parent_kind: &str) -> &'static str {
+    match parent_kind {
+        "goal" => "goal",
+        "task" => "task",
+        _ => "project",
+    }
+}
+
+/// The parent's row id, or a refusal naming why the retype cannot proceed without one.
+fn parent_row_id(parent: &Parent) -> Result<i64, AppError> {
+    parent.id.ok_or_else(|| {
+        AppError::Domain(DomainError::InvalidParent(
+            "a top-level node has no parent to hang this under".into(),
+        ))
+    })
+}
+
+/// The `domains.subtype` a domain-table [`RetypeKind`] writes.
+fn domain_subtype(kind: RetypeKind) -> DomainSubtype {
+    match kind {
+        RetypeKind::Project => DomainSubtype::Project,
+        RetypeKind::Tag => DomainSubtype::Tag,
+        // Goal and Task never reach here: every caller has already matched on a domain-table
+        // target. `Domain` is the honest default for the remaining arm.
+        _ => DomainSubtype::Domain,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -548,6 +1259,8 @@ mod tests {
             delegate_to: None,
             tag_ids: vec![],
             block_reasons: vec![],
+            dependents: 0,
+            depends_on: 0,
         }
     }
 
@@ -724,7 +1437,7 @@ mod tests {
     // --- the domain-table pairs ---
 
     #[test]
-    fn a_project_becoming_a_domain_loses_its_obsidian_directory() {
+    fn a_project_becoming_a_domain_keeps_every_field_because_no_row_is_rewritten() {
         let source = SourceNode {
             knowledge_base_directory: Some("Projects/Arlesh".into()),
             ..project(1)
@@ -732,8 +1445,32 @@ mod tests {
 
         let plan = plan_retype(&source, &[], RetypeKind::Domain);
 
-        assert_eq!(lost_field_names(&plan), vec!["knowledge_base_directory"]);
+        assert_eq!(
+            lost_field_names(&plan),
+            Vec::<&str>::new(),
+            "a subtype change deletes nothing; the directory column keeps its value"
+        );
         assert_eq!(plan.carried.description, Some("The big one".to_string()));
+        assert_eq!(
+            plan.carried.knowledge_base_directory,
+            Some("Projects/Arlesh".to_string())
+        );
+    }
+
+    #[test]
+    fn a_project_becoming_a_goal_does_lose_its_obsidian_directory() {
+        let source = SourceNode {
+            knowledge_base_directory: Some("Projects/Arlesh".into()),
+            ..project(1)
+        };
+
+        let plan = plan_retype(&source, &[], RetypeKind::Goal);
+
+        assert_eq!(
+            lost_field_names(&plan),
+            vec!["description", "knowledge_base_directory"],
+            "here the domains row really is deleted"
+        );
     }
 
     #[test]
@@ -854,6 +1591,45 @@ mod tests {
         };
         let plan = plan_retype(&chosen, &[], RetypeKind::Domain);
         assert_eq!(lost_field_names(&plan), vec!["status"]);
+    }
+
+    #[test]
+    fn inbound_dependencies_are_lost_when_the_target_cannot_be_depended_on() {
+        let source = SourceNode {
+            dependents: 2,
+            ..goal(1)
+        };
+
+        assert_eq!(
+            lost_field_names(&plan_retype(&source, &[], RetypeKind::Task)),
+            Vec::<&str>::new(),
+            "a task can be depended on, so the edges move rather than end"
+        );
+        assert_eq!(
+            plan_retype(&source, &[], RetypeKind::Project).lost_fields,
+            vec![LostField {
+                field: "dependents",
+                value: "2".into()
+            }]
+        );
+    }
+
+    #[test]
+    fn outgoing_dependencies_are_lost_by_anything_that_is_not_a_task() {
+        let source = SourceNode {
+            depends_on: 3,
+            ..task(1)
+        };
+
+        assert_eq!(
+            lost_field_names(&plan_retype(&source, &[], RetypeKind::Goal)),
+            vec!["dependencies"],
+            "only a task can depend on things"
+        );
+        assert_eq!(
+            plan_retype(&source, &[], RetypeKind::Task).lost_fields,
+            Vec::<LostField>::new()
+        );
     }
 
     #[test]

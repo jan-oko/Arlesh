@@ -7,5 +7,6 @@ pub mod flows;
 pub mod infos;
 pub mod knowledge_base;
 pub mod mindmap;
+pub mod retype;
 pub mod scopes;
 pub mod tasks;
