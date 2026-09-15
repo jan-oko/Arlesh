@@ -2793,6 +2793,7 @@ async fn the_retype_node_command_refuses_until_the_caller_acknowledges_the_child
         serde_json::json!({
             "lost_children": [{ "kind": "goal", "id": sub_goal.id, "title": "Finish the tutorial" }],
             "lost_fields": [],
+            "parent_climb": null,
         }),
         "the payload must name what is at stake — a refusal you can only accept blind is not consent"
     );

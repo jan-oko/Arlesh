@@ -26,12 +26,13 @@ use crate::domains::model::{
 };
 use crate::error::AppError;
 use crate::flows::model::{FlowId, UpdateFlowRequest};
-use crate::infos::model::{InfoId, UpdateInfoRequest};
+use crate::infos::model::{CreateInfoRequest, InfoId, UpdateInfoRequest};
 
 /// A kind a node can be retyped from, and to.
 ///
-/// The five kinds that live in the `goals`, `tasks` and `domains` tables. Infos and flows are
-/// child kinds only — see [`ChildKind`].
+/// The five kinds that live in the `goals`, `tasks` and `domains` tables, plus `Info`. A flow is
+/// still a child kind only — see [`ChildKind`] — since it has no field-transfer story of its own
+/// (Phase 5 gave it its own conversion, `convert_flow_item`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RetypeKind {
@@ -45,6 +46,8 @@ pub enum RetypeKind {
     Project,
     /// A flat label, in `domains` with subtype `tag`.
     Tag,
+    /// A free-standing note, in `infos`.
+    Info,
 }
 
 impl RetypeKind {
@@ -56,6 +59,7 @@ impl RetypeKind {
             Self::Domain => "domain",
             Self::Project => "project",
             Self::Tag => "tag",
+            Self::Info => "info",
         }
     }
 
@@ -67,6 +71,7 @@ impl RetypeKind {
             "domain" => Some(Self::Domain),
             "project" => Some(Self::Project),
             "tag" => Some(Self::Tag),
+            "info" => Some(Self::Info),
             _ => None,
         }
     }
@@ -93,6 +98,9 @@ impl RetypeKind {
                 ChildKind::Goal | ChildKind::Task | ChildKind::Info | ChildKind::Flow
             ),
             Self::Task => matches!(child, ChildKind::Task | ChildKind::Info),
+            // Mirrors `ALLOWED_CHILD_KINDS.info` in `src/utils/node-meta.ts`: an info nests only
+            // under another info.
+            Self::Info => child == ChildKind::Info,
         }
     }
 
@@ -101,7 +109,7 @@ impl RetypeKind {
         match self {
             Self::Goal | Self::Project => Some(StatusVocabulary::GoalLike),
             Self::Task => Some(StatusVocabulary::TaskLike),
-            Self::Domain | Self::Tag => None,
+            Self::Domain | Self::Tag | Self::Info => None,
         }
     }
 }
@@ -150,6 +158,7 @@ impl From<RetypeKind> for ChildKind {
             RetypeKind::Domain => Self::Domain,
             RetypeKind::Project => Self::Project,
             RetypeKind::Tag => Self::Tag,
+            RetypeKind::Info => Self::Info,
         }
     }
 }
@@ -192,7 +201,9 @@ pub struct SourceNode {
     pub is_private: bool,
     /// Raw status, in the source kind's vocabulary; `None` for kinds that have no status.
     pub status: Option<String>,
-    /// Longer description (domain-table kinds only).
+    /// Longer description. `Domain.description` and `Info.details` are the same domain concept —
+    /// the long-form body under a node's one-line title (see SPEC) — so this one field holds
+    /// either, populated for domain-table kinds and for infos.
     pub description: Option<String>,
     /// Linked Obsidian directory (projects only).
     pub knowledge_base_directory: Option<String>,
@@ -232,7 +243,7 @@ pub struct Carried {
     pub is_private: bool,
     /// Status in the **target's** vocabulary, when both kinds have one.
     pub status: Option<String>,
-    /// Description, when the target is a domain-table kind.
+    /// Description, when the target is a domain-table kind or an info (see [`SourceNode::description`]).
     pub description: Option<String>,
     /// Linked Obsidian directory, when the target is a project.
     pub knowledge_base_directory: Option<String>,
@@ -276,27 +287,36 @@ pub struct TransferPlan {
     pub lost_children: Vec<ChildNode>,
     /// Fields with no counterpart on the target.
     pub lost_fields: Vec<LostField>,
+    /// Set when the node's current parent is not one the target's `parent_type` CHECK accepts,
+    /// naming the climb to the nearest ancestor it does accept. `None` when the node's parent
+    /// needs no change. Computed by [`plan_node_retype`], never by [`plan_retype`] itself — the
+    /// database is what knows a node's ancestors — so it starts `None` here and is filled in
+    /// afterward.
+    pub parent_climb: Option<ParentClimb>,
 }
 
 impl TransferPlan {
-    /// Whether anything at all would be lost — a child or a field.
+    /// Whether anything at all would be lost, or the node would move further up the tree than
+    /// its own retype — a child, a field, or a pending parent climb.
     ///
     /// The consent rule is deliberately **uniform**: the command refuses until the caller
-    /// acknowledges, whether what is at stake is a subtree or a single dropped column. Splitting
-    /// it (consent for children, a notification for fields) is the documented fallback if the
-    /// prompt proves too noisy in practice.
+    /// acknowledges, whether what is at stake is a subtree, a single dropped column, or the node
+    /// leaving the parent it currently sits under. Splitting it (consent for children, a
+    /// notification for fields) is the documented fallback if the prompt proves too noisy in
+    /// practice.
     pub fn loses_anything(&self) -> bool {
-        !self.lost_children.is_empty() || !self.lost_fields.is_empty()
+        !self.lost_children.is_empty() || !self.lost_fields.is_empty() || self.parent_climb.is_some()
     }
 
     /// The losses as the `details` payload of a `needs_confirmation` wire error.
     ///
-    /// Shape: `{ "lost_children": [{ kind, id, title }], "lost_fields": [{ field, value }] }`.
-    /// Both keys are always present, so the frontend can render each list without probing.
+    /// Shape: `{ "lost_children": [...], "lost_fields": [...], "parent_climb": {...} | null }`.
+    /// All three keys are always present, so the frontend can render each without probing.
     pub fn details(&self) -> serde_json::Value {
         serde_json::json!({
             "lost_children": self.lost_children,
             "lost_fields": self.lost_fields,
+            "parent_climb": self.parent_climb,
         })
     }
 }
@@ -321,6 +341,8 @@ pub fn plan_retype(source: &SourceNode, children: &[ChildNode], target: RetypeKi
         moved_children,
         lost_children,
         lost_fields,
+        // Only `plan_node_retype` can know a node's ancestors; filled in there.
+        parent_climb: None,
     }
 }
 
@@ -336,6 +358,10 @@ fn carry_fields(
 ) -> Carried {
     let scoped_target = matches!(target, RetypeKind::Goal | RetypeKind::Task);
     let domain_target = target.is_domain_table();
+    // `Domain.description` and `Info.details` are the same domain concept, so both count as
+    // "has somewhere for the long-form body to go" — an info is not a domain-table kind, but it
+    // has the column all the same.
+    let has_long_body = domain_target || target == RetypeKind::Info;
 
     // A retype **inside** the `domains` table is a `subtype` update on one row: nothing is
     // deleted, so no field can be lost. A Project's Obsidian directory stops applying when it
@@ -362,7 +388,7 @@ fn carry_fields(
     };
 
     let description = keep_if(
-        domain_target,
+        has_long_body,
         source.description.clone(),
         "description",
         |value: &String| truncate(value),
@@ -631,6 +657,178 @@ struct Parent {
     kind: String,
 }
 
+/// One end of a [`ParentClimb`]: a parent's kind and id, named for a confirmation prompt.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct NamedParent {
+    /// The parent's kind spelling — a [`RetypeKind`] spelling, or `"aspect"`.
+    pub kind: String,
+    /// The parent row's id.
+    pub id: i64,
+    /// Its display title, so a prompt can name it.
+    pub title: String,
+}
+
+/// A retype whose target's `parent_type` CHECK does not accept the node's current parent, and so
+/// would move it further up the tree — to the nearest ancestor the target does accept.
+///
+/// This is the fix for a corruption the old frontend orchestration could write: retyping an info
+/// nested under another info into a goal wrote `parent_type: "project"` with `parent_id` pointing
+/// at the *info's* row — a polymorphic reference labelled with the wrong table, because nothing
+/// climbed past the info to find a real domains-table ancestor. [`climb_to_acceptable_parent`]
+/// computes the climb; it is never performed silently — see [`TransferPlan::parent_climb`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ParentClimb {
+    /// The parent the node currently hangs under.
+    pub from: NamedParent,
+    /// The ancestor it would hang under instead.
+    pub to: NamedParent,
+}
+
+/// Which table a parent-kind spelling ultimately resolves against, for deciding whether a
+/// `parent_type` CHECK (or, for a domains-table target, the `parent_id` foreign key into
+/// `domains`) will accept it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ParentCategory {
+    /// A row in the `domains` table — aspect, project, domain or tag. Every `parent_type` CHECK
+    /// that accepts a domains-table kind at all accepts the collapsed `"project"` spelling (see
+    /// [`goal_task_parent_type`]), so this category is accepted wherever any domains-table parent
+    /// is accepted.
+    DomainsTable,
+    /// A row in `goals`.
+    Goal,
+    /// A row in `tasks`.
+    Task,
+    /// A row in `infos`.
+    Info,
+}
+
+/// Categorizes a raw parent-kind spelling — a `parent_type` value or a `domains.subtype` — by
+/// which table it resolves against.
+fn category_of(kind: &str) -> ParentCategory {
+    match kind {
+        "goal" => ParentCategory::Goal,
+        "task" => ParentCategory::Task,
+        "info" => ParentCategory::Info,
+        _ => ParentCategory::DomainsTable,
+    }
+}
+
+/// Whether `target`'s parent link accepts a parent in this category.
+fn accepts_category(target: RetypeKind, category: ParentCategory) -> bool {
+    match target {
+        RetypeKind::Goal => matches!(category, ParentCategory::DomainsTable | ParentCategory::Goal),
+        RetypeKind::Task => matches!(
+            category,
+            ParentCategory::DomainsTable | ParentCategory::Goal | ParentCategory::Task
+        ),
+        // A domains-table target's `parent_id` is a real foreign key into `domains` — nothing
+        // else will even insert.
+        RetypeKind::Domain | RetypeKind::Project | RetypeKind::Tag => {
+            matches!(category, ParentCategory::DomainsTable)
+        }
+        // An info's own `parent_type` CHECK is the widest of any kind's — aspect, project,
+        // domain, goal, task, tag or info all spelled literally — so nothing ever needs to climb
+        // to become one.
+        RetypeKind::Info => true,
+    }
+}
+
+/// How many ancestors [`climb_to_acceptable_parent`] will look through before refusing. Only a
+/// cyclic or dangling parent chain — corrupt data, never a real tree — could exhaust this.
+const MAX_CLIMB_STEPS: usize = 64;
+
+/// The refusal when a climb exhausts [`MAX_CLIMB_STEPS`] without reaching an acceptable ancestor.
+fn no_acceptable_ancestor() -> AppError {
+    AppError::Domain(DomainError::InvalidParent(
+        "this node has no ancestor the new kind can hang under".into(),
+    ))
+}
+
+/// Resolves the parent a retype to `target` should actually use: `start` unchanged, unless
+/// `target`'s parent link would refuse it, in which case the nearest ancestor it does accept —
+/// read off the database, since the ancestors themselves are not part of `start`.
+///
+/// Writes nothing, and performs nothing on its own: the caller decides, from the returned
+/// [`ParentClimb`], whether the climb needs the same acknowledgement as a lost child or field
+/// before [`apply_retype`] carries it out.
+async fn climb_to_acceptable_parent<M: SessionMode>(
+    db: &mut Db<M>,
+    start: &Parent,
+    target: RetypeKind,
+) -> Result<(Parent, Option<ParentClimb>), AppError> {
+    let Some(start_id) = start.id else {
+        // A top-level domains row has no parent to climb to, but needs none: `DomainsTable` is
+        // accepted everywhere.
+        return Ok((start.clone(), None));
+    };
+    if accepts_category(target, category_of(&start.kind)) {
+        return Ok((start.clone(), None));
+    }
+
+    let from = NamedParent {
+        title: fetch_title(db, &start.kind, start_id).await?,
+        kind: start.kind.clone(),
+        id: start_id,
+    };
+
+    let mut kind = start.kind.clone();
+    let mut id = start_id;
+    for _ in 0..MAX_CLIMB_STEPS {
+        let (next_kind, next_id) = next_parent_of(db, &kind, id)
+            .await?
+            .ok_or_else(no_acceptable_ancestor)?;
+        if accepts_category(target, category_of(&next_kind)) {
+            let to = NamedParent {
+                title: fetch_title(db, &next_kind, next_id).await?,
+                kind: next_kind.clone(),
+                id: next_id,
+            };
+            let landing = Parent { id: Some(next_id), kind: next_kind };
+            return Ok((landing, Some(ParentClimb { from, to })));
+        }
+        kind = next_kind;
+        id = next_id;
+    }
+    Err(no_acceptable_ancestor())
+}
+
+/// This row's own parent, as `(kind, id)`.
+///
+/// `None` only for a domains-table row with no parent (a top-level Aspect) — which
+/// [`climb_to_acceptable_parent`] never actually asks about, since `DomainsTable` is always
+/// accepted and the climb stops one step earlier.
+async fn next_parent_of<M: SessionMode>(
+    db: &mut Db<M>,
+    kind: &str,
+    id: i64,
+) -> Result<Option<(String, i64)>, AppError> {
+    Ok(match kind {
+        "goal" => {
+            let goal = db.goals().get(GoalId(id)).await?;
+            Some((goal.parent_type, goal.parent_id))
+        }
+        "task" => {
+            let task = db.tasks().get(TaskId(id)).await?;
+            Some((task.parent_type, task.parent_id))
+        }
+        "info" => {
+            let info = db.infos().get(InfoId(id)).await?;
+            Some((info.parent_type, info.parent_id))
+        }
+        _ => None,
+    })
+}
+
+/// This row's display title, across every kind a parent can be.
+async fn fetch_title<M: SessionMode>(db: &mut Db<M>, kind: &str, id: i64) -> Result<String, AppError> {
+    Ok(match kind {
+        "goal" => db.goals().get(GoalId(id)).await?.title,
+        "task" => db.tasks().get(TaskId(id)).await?.title,
+        "info" => db.infos().get(InfoId(id)).await?.body,
+        _ => db.domains().get(DomainId(id)).await?.title,
+    })
+}
+
 /// A retype read out of the database and decided, but not yet written.
 ///
 /// Produced by [`plan_node_retype`] and consumed by [`apply_retype`]. The two are separate so the
@@ -661,7 +859,9 @@ pub async fn plan_node_retype<M: SessionMode>(
 ) -> Result<PlannedRetype, AppError> {
     let (source, parent) = read_source(db, source_kind, source_id).await?;
     let children = read_children(db, source_kind, source_id).await?;
-    let plan = plan_retype(&source, &children, target);
+    let mut plan = plan_retype(&source, &children, target);
+    let (parent, parent_climb) = climb_to_acceptable_parent(db, &parent, target).await?;
+    plan.parent_climb = parent_climb;
     Ok(PlannedRetype {
         source,
         plan,
@@ -794,6 +994,32 @@ async fn create_node(
             )
             .await?;
             Ok(task.id)
+        }
+        RetypeKind::Info => {
+            // Unlike `goal_task_parent_type`'s collapse, an info's own `parent_type` CHECK
+            // accepts the parent's literal spelling — aspect, project, domain, goal, task, tag or
+            // info — so `parent.kind` (already climbed to something the CHECK accepts) is written
+            // as-is.
+            let info = db
+                .infos()
+                .create(CreateInfoRequest {
+                    body: carried.title.clone(),
+                    details: carried.description.clone(),
+                    parent_type: parent.kind.clone(),
+                    parent_id: parent_row_id(parent)?,
+                    position: carried.position,
+                })
+                .await?;
+            db.infos()
+                .update(
+                    InfoId(info.id),
+                    UpdateInfoRequest {
+                        is_private: Some(carried.is_private),
+                        ..Default::default()
+                    },
+                )
+                .await?;
+            Ok(info.id)
         }
         domain_kind => {
             let domain = db
@@ -1012,6 +1238,7 @@ async fn delete_old_row(db: &mut Db<Transactional>, source: &SourceNode) -> Resu
     match source.kind {
         RetypeKind::Goal => db.goals().delete_row(GoalId(source.id)).await?,
         RetypeKind::Task => db.tasks().delete_row(TaskId(source.id)).await?,
+        RetypeKind::Info => db.infos().delete(InfoId(source.id)).await?,
         RetypeKind::Domain | RetypeKind::Project | RetypeKind::Tag => {
             db.domains().delete(DomainId(source.id)).await?
         }
@@ -1083,6 +1310,34 @@ async fn read_source<M: SessionMode>(
                     block_reasons,
                     dependents: dependents.max(0) as usize,
                     depends_on: depends_on.max(0) as usize,
+                },
+                parent,
+            ))
+        }
+        RetypeKind::Info => {
+            let info = db.infos().get(InfoId(id)).await?;
+            let parent = Parent {
+                id: Some(info.parent_id),
+                kind: info.parent_type.clone(),
+            };
+            Ok((
+                SourceNode {
+                    kind,
+                    id,
+                    title: info.body,
+                    position: info.position,
+                    is_private: info.is_private,
+                    status: None,
+                    description: info.details,
+                    knowledge_base_directory: None,
+                    time_scope: None,
+                    on_scope_exit: None,
+                    plan: None,
+                    delegate_to: None,
+                    tag_ids: vec![],
+                    block_reasons: vec![],
+                    dependents: 0,
+                    depends_on: 0,
                 },
                 parent,
             ))
@@ -1201,6 +1456,9 @@ fn goal_task_parent_spellings(kind: RetypeKind) -> &'static [&'static str] {
         RetypeKind::Goal => &["goal"],
         RetypeKind::Task => &["task"],
         RetypeKind::Domain | RetypeKind::Project | RetypeKind::Tag => &["project", "domain"],
+        // Neither CHECK allows `parent_type = 'info'`, so a goal or task can never actually be
+        // parented on an info — there is nothing to look up.
+        RetypeKind::Info => &[],
     }
 }
 
@@ -1656,6 +1914,7 @@ mod tests {
             serde_json::json!({
                 "lost_children": [],
                 "lost_fields": [{ "field": "plan", "value": "4" }],
+                "parent_climb": null,
             })
         );
     }
@@ -1708,11 +1967,177 @@ mod tests {
             RetypeKind::Domain,
             RetypeKind::Project,
             RetypeKind::Tag,
+            RetypeKind::Info,
         ] {
             assert_eq!(RetypeKind::from_db(kind.as_str()), Some(kind));
             assert_eq!(ChildKind::from(kind).as_str(), kind.as_str());
         }
-        assert_eq!(RetypeKind::from_db("info"), None);
         assert_eq!(RetypeKind::from_db("flow"), None);
+    }
+
+    // --- info, as a sixth retypeable kind ---
+
+    fn info(id: i64) -> SourceNode {
+        SourceNode {
+            kind: RetypeKind::Info,
+            status: None,
+            description: None,
+            ..goal(id)
+        }
+    }
+
+    #[test]
+    fn an_info_accepts_only_an_info_child() {
+        assert!(RetypeKind::Info.accepts_child(ChildKind::Info));
+        for other in [ChildKind::Goal, ChildKind::Task, ChildKind::Domain, ChildKind::Project, ChildKind::Tag, ChildKind::Flow] {
+            assert!(!RetypeKind::Info.accepts_child(other), "an info cannot hold a {other:?}");
+        }
+    }
+
+    #[test]
+    fn every_target_kind_accepts_an_info_child() {
+        for target in [
+            RetypeKind::Goal,
+            RetypeKind::Task,
+            RetypeKind::Domain,
+            RetypeKind::Project,
+            RetypeKind::Tag,
+            RetypeKind::Info,
+        ] {
+            assert!(target.accepts_child(ChildKind::Info), "{target:?} should accept an info child");
+        }
+    }
+
+    #[test]
+    fn an_info_target_has_no_status_vocabulary_so_a_non_default_status_is_lost() {
+        let source = SourceNode { status: Some("achieved".into()), ..task(1) };
+        let plan = plan_retype(&source, &[], RetypeKind::Info);
+        assert_eq!(
+            lost_field_names(&plan),
+            vec!["status"],
+            "a task's non-default status has nowhere to go on an info"
+        );
+    }
+
+    #[test]
+    fn an_info_source_carries_no_status_since_it_never_had_one() {
+        let plan = plan_retype(&info(1), &[], RetypeKind::Task);
+        assert_eq!(plan.carried.status, None);
+        assert!(!lost_field_names(&plan).contains(&"status"), "an info never had a status to lose");
+    }
+
+    #[test]
+    fn an_info_becoming_a_project_carries_its_details_into_description() {
+        let source = SourceNode {
+            description: Some("Longer text".into()),
+            ..info(1)
+        };
+        let plan = plan_retype(&source, &[], RetypeKind::Project);
+        assert_eq!(plan.carried.description, Some("Longer text".to_string()));
+        assert!(!plan.loses_anything());
+    }
+
+    #[test]
+    fn a_project_becoming_an_info_carries_its_description_into_details() {
+        let plan = plan_retype(&project(1), &[], RetypeKind::Info);
+        assert_eq!(plan.carried.description, Some("The big one".to_string()));
+    }
+
+    #[test]
+    fn an_info_becoming_a_task_loses_its_details_since_a_task_has_no_such_column() {
+        let source = SourceNode {
+            description: Some("Longer text".into()),
+            ..info(1)
+        };
+        let plan = plan_retype(&source, &[], RetypeKind::Task);
+        assert_eq!(lost_field_names(&plan), vec!["description"]);
+        assert_eq!(plan.carried.description, None);
+    }
+
+    #[test]
+    fn a_task_becoming_an_info_has_nothing_to_carry_into_details_and_loses_nothing_there() {
+        let plan = plan_retype(&task(1), &[], RetypeKind::Info);
+        assert!(
+            !lost_field_names(&plan).contains(&"description"),
+            "a task never had a description, so there is nothing to report losing"
+        );
+    }
+
+    #[test]
+    fn an_info_becoming_a_task_keeps_its_privacy_and_position() {
+        let source = SourceNode {
+            is_private: true,
+            position: 4,
+            ..info(1)
+        };
+        let plan = plan_retype(&source, &[], RetypeKind::Task);
+        assert!(plan.carried.is_private, "privacy carries from an info to a task");
+        assert_eq!(plan.carried.position, 4);
+    }
+
+    #[test]
+    fn a_pending_parent_climb_alone_still_requires_confirmation() {
+        let mut plan = plan_retype(&task(1), &[], RetypeKind::Goal);
+        assert!(!plan.loses_anything(), "no climb yet — plan_retype never sets one");
+
+        plan.parent_climb = Some(ParentClimb {
+            from: NamedParent { kind: "info".into(), id: 2, title: "Note".into() },
+            to: NamedParent { kind: "project".into(), id: 3, title: "Ops".into() },
+        });
+
+        assert!(plan.loses_anything(), "leaving the current parent needs the same consent as a loss");
+        assert_eq!(
+            plan.details()["parent_climb"],
+            serde_json::json!({
+                "from": { "kind": "info", "id": 2, "title": "Note" },
+                "to": { "kind": "project", "id": 3, "title": "Ops" },
+            })
+        );
+    }
+
+    #[test]
+    fn domains_table_parents_are_accepted_by_every_target() {
+        for target in [
+            RetypeKind::Goal,
+            RetypeKind::Task,
+            RetypeKind::Domain,
+            RetypeKind::Project,
+            RetypeKind::Tag,
+            RetypeKind::Info,
+        ] {
+            assert!(accepts_category(target, ParentCategory::DomainsTable));
+        }
+    }
+
+    #[test]
+    fn only_a_task_or_task_like_target_accepts_a_task_shaped_parent() {
+        assert!(!accepts_category(RetypeKind::Goal, ParentCategory::Task));
+        assert!(accepts_category(RetypeKind::Task, ParentCategory::Task));
+        assert!(!accepts_category(RetypeKind::Domain, ParentCategory::Task));
+        assert!(accepts_category(RetypeKind::Info, ParentCategory::Task));
+    }
+
+    #[test]
+    fn only_an_info_target_accepts_an_info_shaped_parent() {
+        for target in [
+            RetypeKind::Goal,
+            RetypeKind::Task,
+            RetypeKind::Domain,
+            RetypeKind::Project,
+            RetypeKind::Tag,
+        ] {
+            assert!(!accepts_category(target, ParentCategory::Info), "{target:?} CHECK never spells \"info\"");
+        }
+        assert!(accepts_category(RetypeKind::Info, ParentCategory::Info));
+    }
+
+    #[test]
+    fn category_of_reads_the_raw_kind_spelling() {
+        assert_eq!(category_of("goal"), ParentCategory::Goal);
+        assert_eq!(category_of("task"), ParentCategory::Task);
+        assert_eq!(category_of("info"), ParentCategory::Info);
+        for domains_table_kind in ["aspect", "project", "domain", "tag"] {
+            assert_eq!(category_of(domains_table_kind), ParentCategory::DomainsTable);
+        }
     }
 }

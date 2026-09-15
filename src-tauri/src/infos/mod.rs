@@ -72,6 +72,18 @@ impl<'session> InfoOperator<'session> {
         Ok(rows.into_iter().map(Into::into).collect())
     }
 
+    /// Reads one info node by id.
+    #[tracing::instrument(skip(self))]
+    pub async fn get(&mut self, id: InfoId) -> Result<Info, sqlx::Error> {
+        let row: InfoRow = sqlx::query_as(
+            "SELECT id, body, details, parent_type, parent_id, position, is_private FROM infos WHERE id = ?",
+        )
+        .bind(id.0)
+        .fetch_one(&mut *self.connection)
+        .await?;
+        Ok(row.into())
+    }
+
     /// Returns the ids of the info nodes hanging directly off `(parent_type, parent_id)`.
     ///
     /// Infos nest polymorphically with no foreign key, so a caller deleting a subtree has to walk

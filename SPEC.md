@@ -278,6 +278,22 @@ A **keyboard cheat-sheet** overlay is available from that settings entry or with
   - Goal → Task: Active → To Do, Achieved → Done, Frozen → To Do, Archived → To Do
   - Task → Goal: To Do → Active, In Progress → Active, Done → Achieved
 
+**Retyping (backend):** every node kind a node can become — Goal, Task, Domain, Project, Tag, and
+**Info** — is one `RetypeKind` handled by a single atomic backend command (`retype_node`); nothing
+retypes through separate frontend-issued create/reparent/delete calls, Info included. Three rulings
+that fell out of giving Info the same treatment as the rest:
+- **`Info.details` and `Domain.description` are the same domain concept** — the long-form body
+  under a node's one-line title. A retype between an info and a domain/project/tag carries that
+  value across (into `description` one way, into `details` the other); a retype between an info
+  and a goal/task drops it, since neither has a column for it at all.
+- `Info.body` is the one-line title and maps to every other kind's `title`, both ways. `is_private`
+  and sort position always carry, to every kind.
+- If the target kind's `parent_type` cannot accept the node's current parent (e.g. an info nested
+  under another info, retyped to a Goal — a Goal's parent must be a Project, Goal, or Domain), the
+  backend climbs to the nearest ancestor it can accept rather than writing a mislabeled polymorphic
+  reference. The climb is named in the same confirmation prompt as a stranded child or a dropped
+  field, and is only carried out once acknowledged — never silently.
+
 ### List View
 
 A compact-card task list, reached via a Mindmap/List tab in the top bar or the `Alt+L` shortcut (both toggle between the two views; view choice persists). Reuses the Mindmap's own loaded tree (flattened to Tasks) rather than fetching independently, so the two views never drift out of sync — a materialized Start-flow task or a virtual Habit instance shows consistently in both.
