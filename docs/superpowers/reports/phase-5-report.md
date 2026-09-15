@@ -445,3 +445,300 @@ Ranked by how likely they are to slip through the frozen suite unnoticed:
 Only this file. `src-tauri/` is byte-identical to the session's starting commit (`0941d9b`);
 `tests/flows.rs` is **unchanged**, as are `CHANGELOG.md`, `SPEC.md` and `VERSION.txt` (no behaviour
 changed, so no entry was due).
+
+---
+
+# Phase 5 — completion report (session 2)
+
+**Status: 5.1, 5.2 and 5.3 are done, plus the ride-along doc fix.** `src-tauri/tests/flows.rs` is
+byte-identical to its state at the base commit. Verification at the end of the work: `cargo build`
+clean, `cargo clippy --all-targets` **0 warnings**, `cargo test` **374 passed, 0 failed**
+(355 baseline + 3 new integration tests + 16 new renderer unit tests).
+
+The handover above was accurate on every point re-checked, with one deliberate departure noted
+in §B.
+
+---
+
+## A. The dependents-vs-blockers test, written first
+
+New binary **`src-tauri/tests/flow_fan_in.rs`** (3 tests). It is a *separate* test binary precisely
+so that `tests/flows.rs` could stay byte-identical and keep serving as the frozen contract.
+
+`fan_in_filters_dependents_to_tasks_but_never_filters_blockers` asserts, on a **goal-instance**
+flow (a goal item cannot hang off a task root — `goals.parent_type` has a CHECK constraint, which
+is why the fixture is not a task-instance flow):
+
+* `Build` (task, two cycle pairs) depends on `Approve` (**goal**, one instance) → **two** edges,
+  each with `dependency_type = 'goal'` and `dependency_id` = the Approve goal's real id.
+* `Design` (**goal**) depends on `Spec` (task) → **zero** edges.
+* The assertion is on the exact `(task_id, dependency_type, dependency_id)` row set, not on a
+  count. This matters: the fixture is deliberately balanced so that filtering the *wrong* side
+  still yields a plausible edge count. Only the per-row comparison separates the two.
+
+The other two: `fan_in_is_a_cross_product_of_dependent_and_blocker_instances` (3 x 2 -> 6 exact
+rows, which a zip would fail) and `fan_in_ignores_other_flows_and_items_without_instances`.
+
+**All three were run against the unmodified tree and seen to pass** before `src/flows/mod.rs` was
+touched (`cargo test --test flow_fan_in` -> `3 passed; 0 failed`). They were committed on their own
+as `f85a4aa`, ahead of any production change.
+
+**Mutation check, to prove the net actually catches something.** With the filter moved to the
+blocker side (`if btype != "task" { continue; }` inside the inner loop, the `dtype` guard removed):
+
+* `cargo test --test flows` -> **43 passed, 0 failed** — the frozen suite is completely blind to it.
+* `cargo test --test flow_fan_in` -> the asymmetry test **fails**.
+
+That is the concrete justification for the handover's §4 claim. The mutation was reverted
+(`git checkout --` on `mod.rs`) before any real work started.
+
+---
+
+## B. The renderer: signature and plan types
+
+`src-tauri/src/flows/render.rs` (750 lines incl. 16 unit tests), a **private** child module of
+`flows`, so it reaches `super::resolve_pair` / `offset_scope` / `resolve_flow_window` without
+widening anything. Its items are `pub(crate)`.
+
+```rust
+pub(crate) struct NodeRef(pub usize);            // index into RenderedPlan::nodes
+pub(crate) enum PlannedSource { Root, Item(FlowItemType, i64) }
+
+pub(crate) struct PlannedNode {
+    parent: Option<NodeRef>, kind: InstanceType, title: String,
+    time_scope: Option<TimeScope>, plan: Option<TimeScope>,
+    is_private: bool, source: PlannedSource,
+}
+pub(crate) struct PlannedEdge  { dependent: NodeRef, blocker: NodeRef }
+pub(crate) struct RenderedPlan { nodes: Vec<PlannedNode>, edges: Vec<PlannedEdge> }
+
+pub(crate) struct TemplateItem { kind, id, title, parent_type, parent_id, position, is_private }
+pub(crate) struct FlowTemplate { items, cycles, dependencies }   // all filtered to one flow
+pub(crate) struct ResolvedPair { time_scope: Option<TimeScope>, plan: Option<TimeScope> }
+pub(crate) struct ScopeTable {
+    window: Option<TimeScope>, root_plan: Option<TimeScope>,
+    pairs: HashMap<i64, ResolvedPair>,           // keyed by FlowItemCycle.id
+}
+
+pub(crate) fn render(
+    flow: &Flow, root_title: &str, template: &FlowTemplate, scopes: &ScopeTable,
+) -> RenderedPlan                                 // pure, total — no Result, no db, no clock
+```
+
+All 16 unit tests use handwritten `FlowTemplate` / `ScopeTable` values. **None touches a database.**
+
+### One design change from the handover, and why
+
+The handover proposed that the gather resolve **every** cycle the flow owns, accepting a drift for
+orphaned items (§5, "flagged, unresolved"), and rejected gathering only reachable items because it
+"requires the traversal to run before the gather". That reasoning does not hold: what the gather
+needs is not the full render, only the **walk order**, which is a small pure computation.
+
+So the walk is factored out as `fn visit_order(&FlowTemplate, flow_id) -> Vec<Visit>` and used by
+**both** halves — `FlowTemplate::planned_cycles()` flattens it into the pair list the gather
+consumes, and `render` allocates nodes along it. One walk, no duplicated ordering rules.
+
+Two things this buys, both of which turned out to matter:
+
+1. **No orphan drift at all.** Not only are no extra scope rows minted; an orphan carrying a
+   malformed `scope_kind` still cannot fail a start. Under an all-pairs gather it would — `start()`
+   would go from `Ok` to `Err(Invalid("unsupported cycle kind fortnight"))`. That is a
+   user-visible behaviour change this phase's contract forbids, and it is now covered by scenario 5
+   of the differential check below.
+2. **Scope ids are unchanged.** Scope rows are numbered as they are minted, so gathering in table
+   order rather than walk order renumbers the shared calendar. No test asserts a start-minted scope
+   id, so this would have slipped through silently; gathering in walk order makes the whole
+   `scopes` table come out byte-identical, which is what let the differential check in §D be exact.
+
+This is *not* a fix to the pre-existing orphan behaviour — `start()` behaves exactly as it did. It
+is a refusal to introduce a new divergence. The three items on the do-not-fix list are untouched
+(see §F).
+
+---
+
+## C. How the fan-in came out pure
+
+Cleanly, and the handover's analysis held in full. Three points:
+
+* **The read hoist is safe.** `list_goals` / `list_tasks` / `list_all_cycles` /
+  `list_all_dependencies` all moved above the first write, into `load_template()`. `start()` writes
+  `goals`, `tasks`, `scopes`, `flow_instances`, `flow_instance_nodes` and `task_dependencies` and
+  never a `flow_*` template table, so nothing it does can change what those reads return. This was
+  re-derived from the write set rather than taken on trust; §D is the empirical half of the
+  argument.
+* **`instances` was already a pure value.** It is now
+  `HashMap<(String, i64), Vec<(InstanceType, NodeRef)>>` — carrying the kind alongside the
+  placeholder means the `"task"` filter needs no lookup back into the node list, so `render` stays
+  total with no indexing and no `unwrap`.
+* **`Dependency` stayed out of the pure layer**, as advised. `write_plan` derives
+  `Dependency::Goal` vs `::Task` from the blocker's *written* type string.
+
+Renderer tests covering the fan-in specifically (7 of the 16):
+
+| Test | Pins |
+|---|---|
+| `one_dependent_over_two_blockers_fans_in_to_two_edges` | the basic fan-in, exact pairs |
+| `three_dependents_over_two_blockers_is_a_cross_product_not_a_zip` | 3 x 2 -> 6, exact pairs |
+| `a_goal_dependent_yields_no_edges_at_all` | the `continue` |
+| `a_goal_blocker_is_kept_because_only_dependents_are_filtered` | **the asymmetry** |
+| `both_sides_of_the_asymmetry_at_once` | both in one flow; asserts *which* edge survives, since the count is symmetric under a wrong-side filter |
+| `a_dependency_naming_an_item_with_no_instances_yields_nothing` | `unwrap_or_default()`, three ways |
+| `dependencies_are_remapped_in_template_order` | edge order |
+
+Plus the walk: root-only, root attributes, unpaired item, three pairs in position order,
+children-under-the-first-instance, sibling position order, stack-not-queue descent order, orphan
+exclusion, and `planned_cycles` through a parent chain.
+
+A note on the unit-test fixtures: the first draft gave goal items and task items overlapping
+numeric ids and immediately tripped the preserved sort-key defect (a task sorted by a goal's
+position). That is an independent confirmation that the port reproduces the defect faithfully, but
+per the handover's advice the fixtures were changed to disjoint id ranges rather than left to pin
+the buggy ordering.
+
+---
+
+## D. Evidence `start()`'s behaviour is preserved, beyond "the suite passes"
+
+A temporary differential harness (`tests/zz_dump.rs`, written, run, and **deleted** — it is not in
+the final tree) ran `start()` over five flow shapes and dumped every table `start()` can touch —
+`goals`, `tasks`, `task_dependencies`, `flow_instances`, `flow_instance_nodes` and **`scopes`** —
+every column of every row in rowid order, plus the `Result` of each call.
+
+The five scenarios:
+
+1. Empty task-root flow, scoped, with a root Cycle Plan.
+2. Empty goal-root flow, same.
+3. Mixed goal/task tree, goal root: two top-level goals, a task under each, a task nested two deep,
+   an orphan; a three-pair parent with Cycle Plans; a private goal item; and four dependencies
+   covering task->goal (kept, goal-typed), goal->task (dropped), task->task (kept), and a blocker
+   with no instances.
+4. Unscoped and private: every pair resolves to `(None, None)`; privacy fires on the root and on
+   one item but not the other.
+5. An orphan carrying an unsupported cycle kind — the case that would regress under an all-pairs
+   gather.
+
+The harness was run against the refactored tree, then `src/flows/mod.rs` was restored from the
+pre-refactor commit (`git checkout f85a4aa -- …`, `render.rs` removed) and run again.
+
+**Result: the two dumps are identical**, 126 lines, once the wall-clock `position` column is
+normalised — that is `now_position()`, a millisecond `SystemTime` stamp that differs between any
+two runs of anything. Every id, parent, scope id, plan id, privacy flag, dependency row,
+`flow_instance_nodes` row and `scopes` row matches exactly, in the same order, including scenario
+3's interleaved goal/task/scope id sequence and scenario 5's `Ok`.
+
+That is the claim the test suite alone cannot make: not just "nothing asserted broke" but "the
+database is byte-for-byte what it was".
+
+Secondary evidence: `tests/flows.rs` passes **unchanged** (43/43; `git diff` against the base
+commit is empty for that file), and `tests/flows_commands.rs` (16) and `tests/mindmap_commands.rs`
+(13), which read flow instance nodes back, are also untouched and green.
+
+---
+
+## E. The new `start()`
+
+**12 lines including the signature and closing brace; 6 lines of body.** Target was "well under
+40".
+
+```rust
+#[tracing::instrument(skip(db))]
+pub async fn start(
+    db: &mut Db<Transactional>,
+    flow_id: FlowId,
+    request: StartFlowRequest,
+) -> Result<MaterializedFlow, FlowError> {
+    let flow = db.flows().get(flow_id).await?;
+    let template = load_template(db, flow_id).await?;
+    let cycles = template.planned_cycles(flow_id.0);
+    let scopes = resolve_scopes(&mut db.scopes(), &flow, request.anchor_date, &cycles).await?;
+    let plan = render(&flow, &request.title, &template, &scopes);
+    write_plan(db, flow_id, &request, &plan).await
+}
+```
+
+Supporting functions in `flows/mod.rs`, all module-private:
+
+* `load_template<M: SessionMode>(&mut Db<M>, FlowId) -> Result<FlowTemplate, FlowError>` — the four
+  hoisted reads. Generic over session mode because it only reads.
+* `resolve_scopes(&mut ScopeOperator<'_>, &Flow, NaiveDate, &[FlowItemCycle]) -> Result<ScopeTable, FlowError>`
+  — **5.1**. Takes a single `ScopeOperator`, matching the module doc and `habit_slots`; the caller
+  passes `&mut db.scopes()`, so it runs inside the caller's transaction, which is mandatory because
+  `offset_scope` -> `get_or_create` **writes**. The two rounds stay inside `resolve_pair`, reused
+  per pair exactly as the handover recommended.
+* `write_plan(&mut Db<Transactional>, FlowId, &StartFlowRequest, &RenderedPlan) -> Result<MaterializedFlow, FlowError>`
+  — **5.3**, ~85 lines, all of it mechanical. It keeps `record_node` and the `flow_instances`
+  insert, decides nothing, and holds **one** `if node.is_private` covering root and items alike
+  (the handover's §8 point: the double-write is conditional, and the root is just `nodes[0]`).
+  `open_instance` sits between the root's `create_*` and the root's `record_node`, as before.
+  Placeholders are resolved with `written.get(i).ok_or_else(…)?`, never `[i]` and never `unwrap`.
+
+---
+
+## F. The do-not-fix list — all three left alone
+
+1. **`children.sort_by_key` looks items up by id alone, ignoring kind.** Ported verbatim into
+   `visit_order`, with a comment saying it is preserved and not endorsed, and a pointer to why
+   fixing it here would be a behaviour change. Confirmed reproduced (see §C's fixture note).
+2. **The walk is a stack, not a queue.** Ported as `Vec` + `pop()`. There is now an explicit unit
+   test, `all_of_a_parents_children_precede_any_descent_and_subtrees_descend_in_reverse`, pinning
+   the reverse-subtree order, so a future "fix to a real queue" fails loudly instead of silently
+   renumbering rows. The misleading "breadth-first" comment is gone; the doc now says what it is.
+3. **Scope-minting drift for orphaned items.** Not introduced — see §B. `start()`'s behaviour here
+   is unchanged from the pre-refactor tree, proven by scenario 5 of §D.
+
+## G. Ride-along doc fix
+
+`flows/mod.rs` `set_iteration_done` now reads:
+
+> Exposed as the `set_habit_iteration_done` Tauri command (registered in `lib.rs`); the frontend
+> does not call it yet.
+
+## H. Concerns
+
+1. **The sort-key defect is now easier to trip over, not harder.** It is documented in two places
+   and reproduced faithfully, but the renderer's unit tests deliberately avoid it, so nothing in
+   the suite pins its current (wrong) behaviour. Whoever fixes it should expect `tests/flows.rs` to
+   stay green — no test covers mixed-kind sibling order — and should therefore add a failing test
+   *before* fixing, the way the fan-in was handled here.
+2. **A cyclic in-flow parent chain still hangs.** `A` parented under `B` and `B` under `A` makes
+   both `visit_order` and the old walk loop forever. Behaviour is unchanged (the pre-refactor walk
+   hung too, while also writing unbounded rows), so it was left alone, but it is now reached one
+   step earlier — inside `planned_cycles`, before any write, rather than mid-materialisation. Worth
+   a bounded-visit guard as a separate change; not added here because it changes behaviour.
+3. **`render` is total by construction, and two `unwrap_or(NodeRef(0))` fallbacks in it are
+   unreachable** (a visit index always indexes the list it came from; a parent visit always
+   precedes its children). They are commented as such. The alternative would be to make `render`
+   fallible, which is worse — the whole point of the split is that the deciding half has no failure
+   modes.
+4. **`write_plan` is ~85 lines**, longer than the handover's "~30 line" sketch, almost all of it
+   the two `CreateGoalRequest` / `CreateTaskRequest` literals. It would shrink if the create DTOs
+   gained an `is_private` field, which would also collapse the privacy double-write — but that
+   changes create semantics for every other caller and belongs in its own change, as §8 said.
+5. **No `CHANGELOG.md` entry**, deliberately: nothing user-visible changed, and §D is the evidence
+   for that claim. `VERSION.txt` untouched.
+
+## I. Files changed
+
+* `src-tauri/src/flows/render.rs` — **new** (750 lines, 16 unit tests).
+* `src-tauri/src/flows/mod.rs` — `mod render;`, `load_template`, `resolve_scopes`, `write_plan`,
+  the rewritten `start`, and the `set_iteration_done` doc fix.
+* `src-tauri/tests/flow_fan_in.rs` — **new** (3 integration tests).
+* `docs/superpowers/reports/phase-5-report.md` — this section.
+
+`src-tauri/tests/flows.rs`, `CHANGELOG.md`, `SPEC.md`, `README.md` and `VERSION.txt` are
+unchanged.
+
+## J. The merge back in
+
+`git merge worktree-architecture-review` at `8e26513` ("Retype a node once, atomically, and say
+what it costs first") — **no conflicts**, 8 files, +2445/-1, all of it the concurrent `tasks/`
+retype work (`src/tasks/retype.rs`, `src/commands/retype.rs`, `src/error/wire.rs`,
+`tests/tasks.rs`). It touches nothing this phase touched; `flows/` did not move.
+
+Textual cleanliness is not evidence, so the full verification was re-run against the merged tree:
+
+* `cargo build` — clean, 0 warnings.
+* `cargo clippy --all-targets` — **0 warnings**.
+* `cargo test` — **405 passed, 0 failed** (374 here + 31 from the merged retype work: lib unit
+  tests 173 -> 200, `tests/tasks.rs` 52 -> 56).
+* `tests/flows.rs` still **43/43** and still byte-identical to the base commit.
