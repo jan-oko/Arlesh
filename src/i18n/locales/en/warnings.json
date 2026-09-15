@@ -21,6 +21,26 @@
   "scopeClampItem": "{{type}} #{{id}} would fall outside the new scope",
   "scopeClampFromFlow": "{{item}} (from flow \"{{flow}}\")",
   "scopeClampAction": "Clamp them to the new scope",
+  "strandedChildren_one": "{{count}} child cannot live under the new type — choose what happens to it",
+  "strandedChildren_other": "{{count}} children cannot live under the new type — choose what happens to them",
+  "strandedChild": "{{kind}}: \"{{title}}\"",
+  "lostField": {
+    "status": "Status \"{{value}}\" has no equivalent and will be cleared",
+    "time_scope": "The Time Scope ({{value}}) and its on-exit behaviour will be dropped",
+    "plan": "The Plan ({{value}}) will be dropped",
+    "delegate_to": "The delegate will be cleared",
+    "description": "The description will be deleted: \"{{value}}\"",
+    "knowledge_base_directory": "The Obsidian directory link ({{value}}) will be deleted",
+    "tags_one": "{{count}} tag will be detached",
+    "tags_other": "{{count}} tags will be detached",
+    "block_reasons": "The block reasons will be deleted: \"{{value}}\"",
+    "dependents_one": "{{count}} task waiting on this will stop waiting",
+    "dependents_other": "{{count}} tasks waiting on this will stop waiting",
+    "dependencies_one": "{{count}} thing this waits on will be forgotten",
+    "dependencies_other": "{{count}} things this waits on will be forgotten"
+  },
+  "lostFieldFallback": "{{field}} will be lost ({{value}})",
+  "retypeFailed": "Convert failed: {{message}}",
   "habitLoadFailed": "Habit iterations for \"{{title}}\" could not be loaded",
   "habitLoadFailedMore": "Habit iterations for \"{{title}}\" and {{count}} other flows could not be loaded"
 }
