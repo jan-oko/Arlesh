@@ -183,11 +183,10 @@ struct Visit {
 ///   but sibling *subtrees* are descended in reverse order. The old comment called this
 ///   breadth-first; it never was.
 /// * Sibling sorting is by `position`, stably, so ties fall back to goals-before-tasks.
-/// * The position looked up for that sort is found **by item id alone, ignoring the item's kind**.
-///   `flow_goals` and `flow_tasks` have independent autoincrements, so in a flow holding both, a
-///   task can be sorted by an unrelated goal's position. This is a real defect, preserved verbatim
-///   and knowingly: correcting it here would reorder materialised siblings, which is a behaviour
-///   change, and would destroy the evidence that this split is not one. It is fixed separately.
+/// * That `position` is each sibling's own — read straight off the `TemplateItem` being sorted, not
+///   looked up by id. It used to be looked up by id alone, ignoring the item's kind; since
+///   `flow_goals` and `flow_tasks` have independent autoincrements, a flow holding both could sort
+///   a task by an unrelated goal's position. Fixed.
 ///
 /// A parent always precedes its children, so callers may resolve a parent's placeholder before
 /// they need it.
@@ -202,15 +201,7 @@ fn visit_order(template: &FlowTemplate, flow_id: i64) -> Vec<Visit> {
             .enumerate()
             .filter(|(_, item)| item.parent_type == parent_type && item.parent_id == parent_id)
             .collect();
-        children.sort_by_key(|(_, child)| {
-            // By id alone, kind ignored — see the doc comment. Preserved, not endorsed.
-            template
-                .items
-                .iter()
-                .find(|item| item.id == child.id)
-                .map(|item| item.position)
-                .unwrap_or(0)
-        });
+        children.sort_by_key(|(_, child)| child.position);
 
         for (index, child) in children {
             let mut pairs: Vec<&FlowItemCycle> = template
@@ -516,6 +507,26 @@ mod tests {
         let plan = render(&flow(), "Run", &template, &ScopeTable::default());
 
         assert_eq!(titles(&plan), ["Run", "First", "Second", "Third"]);
+    }
+
+    #[test]
+    fn siblings_sort_by_their_own_position_even_when_a_goal_and_a_task_share_an_id() {
+        // `flow_goals` and `flow_tasks` have independent rowid sequences, so a goal and a task can
+        // legitimately share an id. The goal (id 1, position 100) is listed first, as
+        // `FlowTemplate::items` requires; the task with the *same* id (position 0) must still sort
+        // by its own position, not the goal's.
+        let template = FlowTemplate {
+            items: vec![
+                item(FlowItemType::FlowGoal, 1, "GoalHigh", ("flow", FLOW_ID), 100),
+                item(FlowItemType::FlowTask, 1, "TaskLow", ("flow", FLOW_ID), 0),
+                item(FlowItemType::FlowTask, 2, "TaskMid", ("flow", FLOW_ID), 50),
+            ],
+            ..Default::default()
+        };
+
+        let plan = render(&flow(), "Run", &template, &ScopeTable::default());
+
+        assert_eq!(titles(&plan), ["Run", "TaskLow", "TaskMid", "GoalHigh"]);
     }
 
     #[test]
