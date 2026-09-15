@@ -785,14 +785,21 @@ impl<'session> FlowOperator<'session> {
             return Ok(id);
         }
         // Common fields carry over regardless of which table the item lives in.
-        let (flow_id, title, parent_type, parent_id, position) = match from {
+        let (flow_id, title, parent_type, parent_id, position, is_private) = match from {
             FlowItemType::FlowGoal => {
                 let g = sqlx::query_as::<_, FlowGoal>("SELECT * FROM flow_goals WHERE id = ?")
                     .bind(id)
                     .fetch_optional(&mut *self.connection)
                     .await?
                     .ok_or(FlowError::NotFound(id))?;
-                (g.flow_id, g.title, g.parent_type, g.parent_id, g.position)
+                (
+                    g.flow_id,
+                    g.title,
+                    g.parent_type,
+                    g.parent_id,
+                    g.position,
+                    g.is_private,
+                )
             }
             FlowItemType::FlowTask => {
                 let t = sqlx::query_as::<_, FlowTask>("SELECT * FROM flow_tasks WHERE id = ?")
@@ -800,7 +807,14 @@ impl<'session> FlowOperator<'session> {
                     .fetch_optional(&mut *self.connection)
                     .await?
                     .ok_or(FlowError::NotFound(id))?;
-                (t.flow_id, t.title, t.parent_type, t.parent_id, t.position)
+                (
+                    t.flow_id,
+                    t.title,
+                    t.parent_type,
+                    t.parent_id,
+                    t.position,
+                    t.is_private,
+                )
             }
         };
 
@@ -809,14 +823,15 @@ impl<'session> FlowOperator<'session> {
             FlowItemType::FlowTask => "flow_tasks",
         };
         let new_id = sqlx::query(&format!(
-            "INSERT INTO {new_table} (flow_id, title, parent_type, parent_id, position)
-             VALUES (?, ?, ?, ?, ?)"
+            "INSERT INTO {new_table} (flow_id, title, parent_type, parent_id, position, is_private)
+             VALUES (?, ?, ?, ?, ?, ?)"
         ))
         .bind(flow_id)
         .bind(&title)
         .bind(&parent_type)
         .bind(parent_id)
         .bind(position)
+        .bind(is_private)
         .execute(&mut *self.connection)
         .await?
         .last_insert_rowid();

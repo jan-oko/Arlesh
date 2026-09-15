@@ -7,7 +7,8 @@ use arlesh_lib::flows::{
         TargetRef, UpdateFlowItemRequest, UpdateFlowRequest,
     },
     convert_flow_item, convert_to_flow, delete_flow, fork_flow, generate_habit_iterations,
-    set_flow_recurrence, set_iteration_done, start, update_flow, update_flow_task, valid_targets,
+    set_flow_recurrence, set_iteration_done, start, update_flow, update_flow_goal,
+    update_flow_task, valid_targets,
 };
 use arlesh_lib::scopes::model::ScopeKind;
 use arlesh_lib::tasks::{
@@ -303,6 +304,60 @@ async fn converting_an_item_preserves_cycles_deps_and_children() {
     let reparented = helpers::session_factory(&pool).connect().await.unwrap().flows().list_all_tasks().await.unwrap().into_iter().find(|t| t.id == child.id).unwrap();
     assert_eq!(reparented.parent_type, "flow_task");
     assert_eq!(reparented.parent_id, new_id);
+}
+
+#[tokio::test]
+async fn converting_a_private_goal_to_a_task_keeps_it_private() {
+    let pool = helpers::test_pool().await;
+    let flow = helpers::session_factory(&pool).connect().await.unwrap().flows().create(create_req("Feature")).await.unwrap();
+    let goal = helpers::session_factory(&pool).connect().await.unwrap().flows().create_goal(CreateFlowItemRequest { flow_id: flow.id, title: "Secret".into(), parent_type: "flow".into(), parent_id: flow.id })
+        .await
+        .unwrap();
+    {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = update_flow_goal(&mut db, goal.id, UpdateFlowItemRequest { is_private: Some(true), ..Default::default() }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
+        .unwrap();
+
+    let new_id = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = convert_flow_item(&mut db, FlowItemType::FlowGoal, goal.id, FlowItemType::FlowTask).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
+        .unwrap();
+
+    let new_task = helpers::session_factory(&pool).connect().await.unwrap().flows().list_all_tasks().await.unwrap().into_iter().find(|t| t.id == new_id).unwrap();
+    assert!(new_task.is_private, "a private flow goal must stay private after converting to a task");
+}
+
+#[tokio::test]
+async fn converting_a_private_task_to_a_goal_keeps_it_private() {
+    let pool = helpers::test_pool().await;
+    let flow = helpers::session_factory(&pool).connect().await.unwrap().flows().create(create_req("Feature")).await.unwrap();
+    let task = helpers::session_factory(&pool).connect().await.unwrap().flows().create_task(CreateFlowItemRequest { flow_id: flow.id, title: "Secret".into(), parent_type: "flow".into(), parent_id: flow.id })
+        .await
+        .unwrap();
+    {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = update_flow_task(&mut db, task.id, UpdateFlowItemRequest { is_private: Some(true), ..Default::default() }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
+        .unwrap();
+
+    let new_id = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = convert_flow_item(&mut db, FlowItemType::FlowTask, task.id, FlowItemType::FlowGoal).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
+        .unwrap();
+
+    let new_goal = helpers::session_factory(&pool).connect().await.unwrap().flows().list_all_goals().await.unwrap().into_iter().find(|g| g.id == new_id).unwrap();
+    assert!(new_goal.is_private, "a private flow task must stay private after converting to a goal");
 }
 
 #[tokio::test]
