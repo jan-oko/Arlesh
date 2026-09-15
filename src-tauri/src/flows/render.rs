@@ -179,9 +179,9 @@ struct Visit {
 /// Three ordering rules decide the order real rows are created in, and all three are deliberately
 /// as the single-pass version had them:
 ///
-/// * The "queue" is a **stack**, so all of one parent's children are visited before any descent,
-///   but sibling *subtrees* are descended in reverse order. The old comment called this
-///   breadth-first; it never was.
+/// * The pending work is a **stack**: popped from the back, so all of one parent's children are
+///   visited before any descent into them, but sibling *subtrees* are descended in reverse order
+///   (the last child pushed is the first one popped).
 /// * Sibling sorting is by `position`, stably, so ties fall back to goals-before-tasks.
 /// * That `position` is each sibling's own — read straight off the `TemplateItem` being sorted, not
 ///   looked up by id. It used to be looked up by id alone, ignoring the item's kind; since
@@ -192,9 +192,9 @@ struct Visit {
 /// they need it.
 fn visit_order(template: &FlowTemplate, flow_id: i64) -> Vec<Visit> {
     let mut visits: Vec<Visit> = Vec::new();
-    let mut queue: Vec<(String, i64, Option<usize>)> = vec![("flow".to_string(), flow_id, None)];
+    let mut stack: Vec<(String, i64, Option<usize>)> = vec![("flow".to_string(), flow_id, None)];
 
-    while let Some((parent_type, parent_id, parent_visit)) = queue.pop() {
+    while let Some((parent_type, parent_id, parent_visit)) = stack.pop() {
         let mut children: Vec<(usize, &TemplateItem)> = template
             .items
             .iter()
@@ -216,7 +216,7 @@ fn visit_order(template: &FlowTemplate, flow_id: i64) -> Vec<Visit> {
                 pairs.iter().map(|cycle| Some(cycle.id)).collect()
             };
 
-            queue.push((child.kind.as_str().to_string(), child.id, Some(visits.len())));
+            stack.push((child.kind.as_str().to_string(), child.id, Some(visits.len())));
             visits.push(Visit { item: index, parent: parent_visit, pairs });
         }
     }
