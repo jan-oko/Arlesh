@@ -94,6 +94,22 @@ impl WireError {
             details: None,
         }
     }
+
+    /// Builds a [`NeedsConfirmation`](WireErrorKind::NeedsConfirmation) [`WireError`] carrying the
+    /// structured `details` the frontend needs to say what is at stake.
+    ///
+    /// The one error kind that is not a failure: the request was well-formed and the backend is
+    /// able to carry it out, but doing so would destroy something, so it refuses until the caller
+    /// says it knows. `details` is what makes that answerable — a refusal the user can only
+    /// accept blind is not consent. `retype_node` is the first caller; its payload is
+    /// [`crate::tasks::retype::TransferPlan::details`].
+    pub fn needs_confirmation(message: impl Into<String>, details: serde_json::Value) -> Self {
+        Self {
+            kind: WireErrorKind::NeedsConfirmation,
+            message: message.into(),
+            details: Some(details),
+        }
+    }
 }
 
 impl From<AppError> for WireError {
@@ -464,6 +480,29 @@ mod tests {
             Some(&serde_json::json!("domain 42 not found"))
         );
         assert!(!object.contains_key("details"));
+    }
+
+    #[test]
+    fn needs_confirmation_carries_its_details_through_to_the_serialised_form() {
+        let wire = WireError::needs_confirmation(
+            "retyping this goal would lose 1 child",
+            serde_json::json!({ "lost_children": [{ "kind": "goal", "id": 4 }] }),
+        );
+        assert_eq!(wire.kind, WireErrorKind::NeedsConfirmation);
+
+        let value = serde_json::to_value(&wire).expect("serialise");
+        let object = value
+            .as_object()
+            .expect("wire error serialises to an object");
+        assert_eq!(
+            object.get("kind"),
+            Some(&serde_json::json!("needs_confirmation"))
+        );
+        assert_eq!(
+            object.get("details"),
+            Some(&serde_json::json!({ "lost_children": [{ "kind": "goal", "id": 4 }] })),
+            "the payload is what makes the refusal answerable"
+        );
     }
 
     #[test]

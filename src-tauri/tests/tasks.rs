@@ -2472,3 +2472,526 @@ async fn a_cyclic_ancestor_chain_renders_fine_and_rejects_a_write() {
         "only 9002 remains a child of 9001 — the rejected write left nothing behind"
     );
 }
+
+// ---------------------------------------------------------------------------
+// retype_node — Phase 4
+// ---------------------------------------------------------------------------
+
+/// A goal worth retyping: scoped, private, tagged twice, blocked for a reason, depended on by two
+/// tasks, and holding one task child and one info child.
+struct RetypeFixture {
+    project_id: i64,
+    scope_id: i64,
+    goal_id: i64,
+    tag_ids: (i64, i64),
+    dependents: (i64, i64),
+    task_child_id: i64,
+    info_child_id: i64,
+}
+
+async fn seed_retype_fixture(pool: &sqlx::SqlitePool) -> RetypeFixture {
+    let project_id = make_project(pool).await;
+    let tag_a = make_tag(pool).await;
+    let tag_b = helpers::session_factory(pool)
+        .connect()
+        .await
+        .unwrap()
+        .domains()
+        .create(CreateDomainRequest {
+            title: "second-tag".into(),
+            description: None,
+            subtype: DomainSubtype::Tag,
+            parent_id: None,
+            status: None,
+            knowledge_base_directory: None,
+        })
+        .await
+        .unwrap()
+        .id;
+    let scope_id = helpers::session_factory(pool)
+        .connect()
+        .await
+        .unwrap()
+        .scopes()
+        .get_or_create(ScopeKind::Week, NaiveDate::from_ymd_opt(2026, 7, 1).unwrap())
+        .await
+        .unwrap()
+        .id;
+
+    let mut db = helpers::session_factory(pool).begin().await.unwrap();
+    let goal = create_goal(
+        &mut db,
+        CreateGoalRequest {
+            title: "Learn Rust".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            status: Some(GoalStatus::Frozen),
+            time_scope: Some(TimeScope {
+                start_id: scope_id,
+                end_id: scope_id,
+                duration: Some(DurationSpec { n: 2, kind: "week".into() }),
+            }),
+            on_scope_exit: Some(OnScopeExit::Archive),
+        },
+    )
+    .await
+    .unwrap();
+    update_goal(
+        &mut db,
+        arlesh_lib::tasks::model::GoalId(goal.id),
+        UpdateGoalRequest { is_private: Some(true), ..Default::default() },
+    )
+    .await
+    .unwrap();
+    db.goals().add_tag(arlesh_lib::tasks::model::GoalId(goal.id), tag_a).await.unwrap();
+    db.goals().add_tag(arlesh_lib::tasks::model::GoalId(goal.id), tag_b).await.unwrap();
+    db.block_reasons()
+        .set("goal", goal.id, &["waiting on the borrow checker".to_string()])
+        .await
+        .unwrap();
+
+    let task_child = create_task(
+        &mut db,
+        CreateTaskRequest {
+            title: "Read the book".into(),
+            parent_type: "goal".into(),
+            parent_id: goal.id,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let info_child = db
+        .infos()
+        .create(arlesh_lib::infos::model::CreateInfoRequest {
+            body: "ownership is the hard bit".into(),
+            details: None,
+            parent_type: "goal".into(),
+            parent_id: goal.id,
+            position: 0,
+        })
+        .await
+        .unwrap();
+
+    let mut dependents = Vec::new();
+    for title in ["Ship the crate", "Write the post"] {
+        let dependent = create_task(
+            &mut db,
+            CreateTaskRequest {
+                title: title.into(),
+                parent_type: "project".into(),
+                parent_id: project_id,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        add_task_dependency(
+            &mut db,
+            arlesh_lib::tasks::model::TaskId(dependent.id),
+            Dependency::Goal { id: goal.id },
+        )
+        .await
+        .unwrap();
+        dependents.push(dependent.id);
+    }
+    db.commit().await.unwrap();
+
+    RetypeFixture {
+        project_id,
+        scope_id,
+        goal_id: goal.id,
+        tag_ids: (tag_a, tag_b),
+        dependents: (dependents[0], dependents[1]),
+        task_child_id: task_child.id,
+        info_child_id: info_child.id,
+    }
+}
+
+/// The columns a retyped task must have carried over, read straight off the row.
+#[derive(sqlx::FromRow)]
+struct RetypedTaskRow {
+    title: String,
+    status: String,
+    time_scope_start_id: Option<i64>,
+    time_scope_end_id: Option<i64>,
+    time_scope_duration_n: Option<i64>,
+    time_scope_duration_kind: Option<String>,
+    on_scope_exit: Option<String>,
+    is_private: bool,
+}
+
+async fn retyped_task_row(pool: &sqlx::SqlitePool, id: i64) -> RetypedTaskRow {
+    sqlx::query_as(
+        "SELECT title, status, time_scope_start_id, time_scope_end_id, time_scope_duration_n,
+                time_scope_duration_kind, on_scope_exit, is_private FROM tasks WHERE id = ?",
+    )
+    .bind(id)
+    .fetch_one(pool)
+    .await
+    .unwrap()
+}
+
+async fn dependency_rows(pool: &sqlx::SqlitePool) -> Vec<(i64, String, i64)> {
+    sqlx::query_as(
+        "SELECT task_id, dependency_type, dependency_id FROM task_dependencies ORDER BY task_id",
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
+async fn the_retype_node_command_carries_a_goals_scope_tags_and_inbound_dependencies_onto_the_task()
+{
+    let pool = helpers::test_pool().await;
+    let seeded = seed_retype_fixture(&pool).await;
+    let app = helpers::command_host(&pool);
+
+    // Nothing a task cannot hold, so no acknowledgement is asked for.
+    let retyped = arlesh_lib::commands::retype::retype_node(
+        app.state(),
+        "goal".into(),
+        seeded.goal_id,
+        "task".into(),
+        None,
+    )
+    .await
+    .expect("a goal with only task and info children loses nothing");
+    let new_id = retyped.id;
+
+    // The row itself — read back from the pool, so only a committed transaction can satisfy it.
+    let row = retyped_task_row(&pool, new_id).await;
+    assert_eq!(row.title, "Learn Rust");
+    assert_eq!(row.status, "todo", "a frozen goal is not a done task");
+    assert_eq!(
+        (row.time_scope_start_id, row.time_scope_end_id),
+        (Some(seeded.scope_id), Some(seeded.scope_id)),
+        "the Time Scope"
+    );
+    assert_eq!(
+        (row.time_scope_duration_n, row.time_scope_duration_kind.as_deref()),
+        (Some(2), Some("week")),
+        "including the Duration form it was set in"
+    );
+    assert_eq!(
+        row.on_scope_exit.as_deref(),
+        Some("archive"),
+        "and its on-exit behaviour"
+    );
+    assert!(
+        row.is_private,
+        "privacy carries — the flow-item precedent drops it, this must not"
+    );
+
+    // The tags moved into the task join table.
+    let mut tags: Vec<i64> =
+        sqlx::query_scalar("SELECT tag_id FROM tags_on_tasks WHERE task_id = ?")
+            .bind(new_id)
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    tags.sort_unstable();
+    let mut expected = vec![seeded.tag_ids.0, seeded.tag_ids.1];
+    expected.sort_unstable();
+    assert_eq!(tags, expected, "both tags must be re-attached to the new owner");
+
+    // The explicit block reason followed its owner.
+    let reasons: Vec<String> = sqlx::query_scalar(
+        "SELECT reason FROM block_reasons WHERE owner_type = 'task' AND owner_id = ?",
+    )
+    .bind(new_id)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(reasons, vec!["waiting on the borrow checker".to_string()]);
+    assert_eq!(
+        count_where(&pool, "block_reasons", "owner_id", seeded.goal_id).await,
+        0,
+        "and left none behind on the deleted goal"
+    );
+
+    // Both inbound dependency edges now name the task, and none dangles at the dead goal id.
+    let mut edges = dependency_rows(&pool).await;
+    edges.sort();
+    assert_eq!(
+        edges,
+        vec![
+            (
+                seeded.dependents.0.min(seeded.dependents.1),
+                "task".to_string(),
+                new_id
+            ),
+            (
+                seeded.dependents.0.max(seeded.dependents.1),
+                "task".to_string(),
+                new_id
+            ),
+        ],
+        "every edge must be repointed: `dependency_id` has no foreign key and SQLite reuses freed ids"
+    );
+
+    // Children came with it, and the old row is gone.
+    let (child_parent_type, child_parent_id): (String, i64) =
+        sqlx::query_as("SELECT parent_type, parent_id FROM tasks WHERE id = ?")
+            .bind(seeded.task_child_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!((child_parent_type.as_str(), child_parent_id), ("task", new_id));
+    let (info_parent_type, info_parent_id): (String, i64) =
+        sqlx::query_as("SELECT parent_type, parent_id FROM infos WHERE id = ?")
+            .bind(seeded.info_child_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!((info_parent_type.as_str(), info_parent_id), ("task", new_id));
+    assert_eq!(
+        count_where(&pool, "goals", "id", seeded.goal_id).await,
+        0,
+        "the goal row is gone"
+    );
+}
+
+#[tokio::test]
+async fn the_retype_node_command_refuses_until_the_caller_acknowledges_the_children_it_would_strand()
+{
+    let pool = helpers::test_pool().await;
+    let seeded = seed_retype_fixture(&pool).await;
+    let sub_goal = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_goal(
+            &mut db,
+            CreateGoalRequest {
+                title: "Finish the tutorial".into(),
+                parent_type: "goal".into(),
+                parent_id: seeded.goal_id,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        db.commit().await.unwrap();
+        __r
+    };
+    let app = helpers::command_host(&pool);
+
+    let refused = arlesh_lib::commands::retype::retype_node(
+        app.state(),
+        "goal".into(),
+        seeded.goal_id,
+        "task".into(),
+        None,
+    )
+    .await
+    .expect_err("a task cannot hold a sub-goal, so the command must ask first");
+
+    let wire = serde_json::to_value(&refused).unwrap();
+    assert_eq!(wire["kind"], serde_json::json!("needs_confirmation"));
+    assert_eq!(
+        wire["details"],
+        serde_json::json!({
+            "lost_children": [{ "kind": "goal", "id": sub_goal.id, "title": "Finish the tutorial" }],
+            "lost_fields": [],
+        }),
+        "the payload must name what is at stake — a refusal you can only accept blind is not consent"
+    );
+    assert_eq!(
+        count_where(&pool, "goals", "id", seeded.goal_id).await,
+        1,
+        "and the refusal must write nothing"
+    );
+
+    // Acknowledged, with the sub-goal moved up rather than deleted.
+    let retyped = arlesh_lib::commands::retype::retype_node(
+        app.state(),
+        "goal".into(),
+        seeded.goal_id,
+        "task".into(),
+        Some(arlesh_lib::tasks::retype::StrandedChildren::Reparent),
+    )
+    .await
+    .unwrap();
+
+    let (parent_type, parent_id): (String, i64) =
+        sqlx::query_as("SELECT parent_type, parent_id FROM goals WHERE id = ?")
+            .bind(sub_goal.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        (parent_type.as_str(), parent_id),
+        ("project", seeded.project_id),
+        "the stranded sub-goal moves up to the retyped node's own parent"
+    );
+    assert_eq!(count_where(&pool, "tasks", "id", retyped.id).await, 1);
+    assert_eq!(count_where(&pool, "goals", "id", seeded.goal_id).await, 0);
+}
+
+#[tokio::test]
+async fn a_retype_that_fails_after_the_create_leaves_the_tree_exactly_as_it_was() {
+    let pool = helpers::test_pool().await;
+    let seeded = seed_retype_fixture(&pool).await;
+
+    // The command's own shape: begin, plan, apply, commit. This test stands in for the caller and
+    // fails where the command's `?` would fire — after the create and the delete have both landed
+    // inside the transaction.
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    let planned = arlesh_lib::tasks::retype::plan_node_retype(
+        &mut db,
+        arlesh_lib::tasks::retype::RetypeKind::Goal,
+        seeded.goal_id,
+        arlesh_lib::tasks::retype::RetypeKind::Task,
+    )
+    .await
+    .unwrap();
+    let node = arlesh_lib::tasks::retype::apply_retype(
+        &mut db,
+        &planned,
+        arlesh_lib::tasks::retype::StrandedChildren::Reparent,
+    )
+    .await
+    .unwrap();
+
+    // The retype really did get past its delete — otherwise the assertions below hold vacuously.
+    assert!(
+        db.tasks()
+            .get(arlesh_lib::tasks::model::TaskId(node.id))
+            .await
+            .is_ok(),
+        "the new task exists inside the transaction"
+    );
+    assert!(
+        db.goals()
+            .get(arlesh_lib::tasks::model::GoalId(seeded.goal_id))
+            .await
+            .is_err(),
+        "and the goal is already gone inside it"
+    );
+
+    // The injected failure: a retype of a node that does not exist, rejected on real input. Any
+    // error raised after `apply_retype` returns reaches the database the same way — the
+    // `Db<Transactional>` is dropped without `commit()` and sqlx rolls back — so this stands for
+    // the whole class, the failing `commit()` included.
+    let rejected = arlesh_lib::tasks::retype::plan_node_retype(
+        &mut db,
+        arlesh_lib::tasks::retype::RetypeKind::Goal,
+        909_909,
+        arlesh_lib::tasks::retype::RetypeKind::Task,
+    )
+    .await;
+    assert!(rejected.is_err(), "there is no goal 909909");
+    drop(db);
+
+    // Nothing moved.
+    assert_eq!(
+        count_where(&pool, "goals", "id", seeded.goal_id).await,
+        1,
+        "the goal is back"
+    );
+    assert_eq!(
+        count_where(&pool, "tasks", "id", node.id).await,
+        0,
+        "the new task never existed"
+    );
+    assert_eq!(
+        count_where(&pool, "tags_on_goals", "goal_id", seeded.goal_id).await,
+        2,
+        "its tags are still its own"
+    );
+    assert_eq!(
+        count_where(&pool, "block_reasons", "owner_id", seeded.goal_id).await,
+        1,
+        "and its block reason"
+    );
+    let mut edges = dependency_rows(&pool).await;
+    edges.sort();
+    assert_eq!(
+        edges,
+        vec![
+            (
+                seeded.dependents.0.min(seeded.dependents.1),
+                "goal".to_string(),
+                seeded.goal_id
+            ),
+            (
+                seeded.dependents.0.max(seeded.dependents.1),
+                "goal".to_string(),
+                seeded.goal_id
+            ),
+        ],
+        "both dependency edges still name the goal"
+    );
+    let (child_parent_type, child_parent_id): (String, i64) =
+        sqlx::query_as("SELECT parent_type, parent_id FROM tasks WHERE id = ?")
+            .bind(seeded.task_child_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        (child_parent_type.as_str(), child_parent_id),
+        ("goal", seeded.goal_id),
+        "and the task child never moved"
+    );
+}
+
+#[tokio::test]
+async fn retyping_a_goal_to_a_project_ends_the_dependencies_it_announced_rather_than_dangling_them()
+{
+    let pool = helpers::test_pool().await;
+    let seeded = seed_retype_fixture(&pool).await;
+    let app = helpers::command_host(&pool);
+
+    // A project cannot be depended on, cannot be scoped and cannot be tagged, so all of it is at
+    // stake and the command refuses first.
+    let refused = arlesh_lib::commands::retype::retype_node(
+        app.state(),
+        "goal".into(),
+        seeded.goal_id,
+        "project".into(),
+        None,
+    )
+    .await
+    .expect_err("a project holds none of this");
+    let wire = serde_json::to_value(&refused).unwrap();
+    let lost: Vec<String> = wire["details"]["lost_fields"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|entry| entry["field"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(
+        lost,
+        vec!["time_scope", "tags", "block_reasons", "dependents"],
+        "including the two tasks waiting on it, which are not a column of its row"
+    );
+
+    let retyped = arlesh_lib::commands::retype::retype_node(
+        app.state(),
+        "goal".into(),
+        seeded.goal_id,
+        "project".into(),
+        Some(arlesh_lib::tasks::retype::StrandedChildren::Reparent),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        dependency_rows(&pool).await,
+        vec![],
+        "the edges are deleted outright — left behind they would re-attach to the next row given the freed id"
+    );
+    let (subtype, status, is_private): (String, Option<String>, bool) =
+        sqlx::query_as("SELECT subtype, status, is_private FROM domains WHERE id = ?")
+            .bind(retyped.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(subtype, "project");
+    assert_eq!(
+        status.as_deref(),
+        Some("frozen"),
+        "a project speaks the goal status vocabulary"
+    );
+    assert!(is_private, "and privacy still carries");
+}

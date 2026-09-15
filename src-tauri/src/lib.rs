@@ -109,6 +109,7 @@ pub fn run() {
             commands::tasks::add_tag_to_goal,
             commands::tasks::remove_tag_from_goal,
             commands::tasks::derive_scope_lifecycles,
+            commands::retype::retype_node,
             commands::scopes::get_or_create_scope,
             commands::scopes::get_or_create_part_scope,
             commands::scopes::get_or_create_exact_scope,

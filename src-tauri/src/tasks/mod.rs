@@ -10,6 +10,7 @@ mod ancestry;
 pub mod error;
 pub mod lifecycle;
 pub mod model;
+pub mod retype;
 mod scope_rules;
 
 use std::collections::{HashSet, VecDeque};
@@ -931,6 +932,79 @@ impl<'session> TaskOperator<'session> {
                 dependency_id,
             })
             .collect())
+    }
+
+    /// Counts the dependency edges that point **at** `(node_type, node_id)` — the rows where it
+    /// is the thing depended on rather than the dependent.
+    ///
+    /// Module-private: only [`retype`] asks, and only because those rows carry no foreign key
+    /// (`task_dependencies.dependency_id` is polymorphic) and so nothing else would notice them
+    /// going stale.
+    async fn count_dependents(&mut self, node_type: &str, node_id: i64) -> Result<i64, TaskError> {
+        Ok(sqlx::query_scalar(
+            "SELECT COUNT(*) FROM task_dependencies WHERE dependency_type = ? AND dependency_id = ?",
+        )
+        .bind(node_type)
+        .bind(node_id)
+        .fetch_one(&mut *self.connection)
+        .await?)
+    }
+
+    /// Counts the dependency edges a task owns — the things it is waiting on.
+    ///
+    /// Module-private, for the same caller: they die with the task row's `ON DELETE CASCADE`, so
+    /// a retype away from `task` has to count them before it can say what it is about to drop.
+    async fn count_dependencies(&mut self, task_id: TaskId) -> Result<i64, TaskError> {
+        Ok(
+            sqlx::query_scalar("SELECT COUNT(*) FROM task_dependencies WHERE task_id = ?")
+                .bind(task_id.0)
+                .fetch_one(&mut *self.connection)
+                .await?,
+        )
+    }
+
+    /// Aims every inbound dependency edge at a different node.
+    ///
+    /// **Module-private, and only ever correct inside a retype's transaction.** The rows it moves
+    /// have no foreign key on `dependency_id`, and no table in this schema uses `AUTOINCREMENT`,
+    /// so SQLite hands a deleted row's id to the next insert: an edge left pointing at a deleted
+    /// node does not dangle harmlessly, it silently re-attaches to whatever unrelated task or
+    /// goal is created next. Repointing before the delete is what stops that.
+    async fn repoint_dependents(
+        &mut self,
+        from_type: &str,
+        from_id: i64,
+        to_type: &str,
+        to_id: i64,
+    ) -> Result<(), TaskError> {
+        // `OR IGNORE`: the primary key is (task_id, dependency_type, dependency_id), so a task
+        // already depending on the destination would collide. That edge is redundant, and the row
+        // it would have duplicated is dropped by the sweep just below.
+        sqlx::query(
+            "UPDATE OR IGNORE task_dependencies SET dependency_type = ?, dependency_id = ?
+             WHERE dependency_type = ? AND dependency_id = ?",
+        )
+        .bind(to_type)
+        .bind(to_id)
+        .bind(from_type)
+        .bind(from_id)
+        .execute(&mut *self.connection)
+        .await?;
+        self.drop_dependents(from_type, from_id).await
+    }
+
+    /// Deletes every inbound dependency edge aimed at a node.
+    ///
+    /// Module-private. The counterpart to [`Self::repoint_dependents`] for a retype whose target
+    /// cannot be depended on at all: only a task or a goal can, so becoming a domain, project or
+    /// tag ends those edges rather than moving them.
+    async fn drop_dependents(&mut self, node_type: &str, node_id: i64) -> Result<(), TaskError> {
+        sqlx::query("DELETE FROM task_dependencies WHERE dependency_type = ? AND dependency_id = ?")
+            .bind(node_type)
+            .bind(node_id)
+            .execute(&mut *self.connection)
+            .await?;
+        Ok(())
     }
 
     /// Sets a task's privacy flag.
