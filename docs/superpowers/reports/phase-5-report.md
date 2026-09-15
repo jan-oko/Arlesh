@@ -727,3 +727,18 @@ Supporting functions in `flows/mod.rs`, all module-private:
 
 `src-tauri/tests/flows.rs`, `CHANGELOG.md`, `SPEC.md`, `README.md` and `VERSION.txt` are
 unchanged.
+
+## J. The merge back in
+
+`git merge worktree-architecture-review` at `8e26513` ("Retype a node once, atomically, and say
+what it costs first") — **no conflicts**, 8 files, +2445/-1, all of it the concurrent `tasks/`
+retype work (`src/tasks/retype.rs`, `src/commands/retype.rs`, `src/error/wire.rs`,
+`tests/tasks.rs`). It touches nothing this phase touched; `flows/` did not move.
+
+Textual cleanliness is not evidence, so the full verification was re-run against the merged tree:
+
+* `cargo build` — clean, 0 warnings.
+* `cargo clippy --all-targets` — **0 warnings**.
+* `cargo test` — **405 passed, 0 failed** (374 here + 31 from the merged retype work: lib unit
+  tests 173 -> 200, `tests/tasks.rs` 52 -> 56).
+* `tests/flows.rs` still **43/43** and still byte-identical to the base commit.
