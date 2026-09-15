@@ -1,6 +1,4 @@
 import { useCallback, useEffect, useState } from "react";
-import { useTranslation } from "react-i18next";
-import type { TFunction } from "i18next";
 import { createDomain, updateDomain, deleteDomain } from "@/api/domains";
 import { createTask, updateTask, deleteTask } from "@/api/tasks";
 import type { TaskDependencyEdge } from "@/api/tasks";
@@ -12,7 +10,6 @@ import { asRetypeKind, retypeNode as backendRetype } from "@/api/retype";
 import type { StrandedChildren } from "@/api/retype";
 import { loadMindmap, habitIterations, habitStatuses } from "@/api/mindmap";
 import type { MindmapLoad } from "@/api/mindmap";
-import { useMindmapStore } from "@/stores/use-mindmap-store";
 import {
   createFlow, updateFlow, deleteFlow,
   createFlowGoal, createFlowTask, updateFlowGoal, updateFlowTask, deleteFlowItem, convertFlowItem,
@@ -220,6 +217,8 @@ interface MindmapData {
   tree: MindmapNode;
   isLoading: boolean;
   error: string | null;
+  /** Background load conditions from the most recent load — currently, Habit derivation failures. */
+  loadCondition: LoadCondition;
   createNode: (parentId: string, parentKind: NodeKind, childKind: NodeKind, title: string) => Promise<MindmapNode>;
   createChild: (parentId: string, parentKind: NodeKind, title: string) => Promise<MindmapNode>;
   renameNode: (id: string, kind: NodeKind, title: string) => Promise<void>;
@@ -603,46 +602,46 @@ export function buildTree(
   return root;
 }
 
-/** The tree node a flow's iterations hang under — the toast's anchor when they are missing. */
-function habitHostId(flow: Flow): string {
-  return flow.target_type !== null && flow.target_id !== null
-    ? entityNodeId(flow.target_type, flow.target_id)
-    : `flow-${flow.id}`;
+/** One flow whose Habit iterations failed to derive, as the banner needs it. */
+export interface FailedFlow {
+  id: number;
+  title: string;
 }
 
 /**
- * Tells the user which flows lost their Habit iterations to a backend failure.
+ * A background load condition: something the current load's data got wrong that the user did
+ * not cause, about a node that may be anywhere on the tree. Distinct from `error` (the load
+ * failed entirely) and from a `PendingToast` (something the user just did, anchored on the node
+ * they did it to) — a failed Habit derivation means the tree is *currently showing wrong data*,
+ * which calls for a persistent banner rather than a toast that fades while the data stays wrong.
+ */
+export interface LoadCondition {
+  failedFlows: FailedFlow[];
+}
+
+const NO_FAILURES: LoadCondition = { failedFlows: [] };
+
+/**
+ * Collects every flow whose Habit iterations failed to derive this load.
  *
  * These used to be swallowed by a per-call `.catch(() => [])`, which made a failed derivation
  * indistinguishable from a flow that genuinely has none. The envelope now carries the reason per
- * flow, and the notice is anchored on the node the missing iterations would have hung under.
- * Only one toast fits, so the first failure is named and the rest are counted.
+ * flow. Every failure is listed — there is no "name the first, count the rest" compromise here;
+ * that compromise only ever existed because a single toast slot was the only vehicle for it.
  */
-function reportHabitFailures(
-  data: MindmapLoad,
-  showToast: (toast: { nodeId: string; message: string }) => void,
-  t: TFunction<"warnings">,
-): void {
-  const failed = data.habits.filter((entry) => entry.result.outcome === "failed");
-  const first = failed[0];
-  if (first === undefined) return;
-  const flow = data.flows.find((candidate) => candidate.id === first.flow_id);
-  showToast({
-    nodeId: flow === undefined ? `flow-${first.flow_id}` : habitHostId(flow),
-    message:
-      failed.length === 1
-        ? t("habitLoadFailed", { title: first.flow_title })
-        : t("habitLoadFailedMore", { title: first.flow_title, count: failed.length - 1 }),
-  });
+function collectFailedHabits(data: MindmapLoad): LoadCondition {
+  const failedFlows = data.habits
+    .filter((entry) => entry.result.outcome === "failed")
+    .map((entry) => ({ id: entry.flow_id, title: entry.flow_title }));
+  return failedFlows.length === 0 ? NO_FAILURES : { failedFlows };
 }
 
 export function useMindmapData(): MindmapData {
   const [tree, setTree] = useState<MindmapNode>(VIRTUAL_ROOT);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [loadCondition, setLoadCondition] = useState<LoadCondition>(NO_FAILURES);
   const scopeLabels = useScopeLabels();
-  const showToast = useMindmapStore((state) => state.showToast);
-  const { t } = useTranslation("warnings");
 
   /**
    * Loads the whole mindmap and rebuilds the tree.
@@ -664,21 +663,21 @@ export function useMindmapData(): MindmapData {
         );
         applyLifecycles(built, lifecycleMap(data.lifecycles));
         // Inject each Habit's iterations as virtual, read-only child nodes under their targets.
-        // A flow whose derivation failed contributes an empty list here and a notice below —
-        // it is not silently indistinguishable from a flow that simply has no iterations.
+        // A flow whose derivation failed contributes an empty list here and a load condition
+        // below — it is not silently indistinguishable from a flow that simply has no iterations.
         injectHabitInstances(
           built, data.flows, habitIterations(data.habits), scopeLabels,
           data.flow_goals, data.flow_tasks, habitStatuses(data.habits),
         );
         setTree(built);
-        reportHabitFailures(data, showToast, t);
+        setLoadCondition(collectFailedHabits(data));
       } catch (err) {
         setError(getErrorMessage(err));
       } finally {
         if (showSpinner) setIsLoading(false);
       }
     },
-    [scopeLabels, showToast, t],
+    [scopeLabels],
   );
 
   useEffect(() => {
@@ -1052,6 +1051,7 @@ export function useMindmapData(): MindmapData {
     tree,
     isLoading,
     error,
+    loadCondition,
     createNode,
     createChild,
     renameNode,

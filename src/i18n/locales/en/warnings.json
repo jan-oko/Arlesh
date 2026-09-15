@@ -41,6 +41,5 @@
   },
   "lostFieldFallback": "{{field}} will be lost ({{value}})",
   "retypeFailed": "Convert failed: {{message}}",
-  "habitLoadFailed": "Habit iterations for \"{{title}}\" could not be loaded",
-  "habitLoadFailedMore": "Habit iterations for \"{{title}}\" and {{count}} other flows could not be loaded"
+  "habitLoadFailedBanner": "Habit iterations could not be loaded for:"
 }
