@@ -511,6 +511,48 @@ describe("useMindmapData — mutations", () => {
     return hook;
   }
 
+  describe("reload", () => {
+    // MindmapView early-returns a full-screen "Loading…" whenever isLoading is true, which
+    // unmounts the whole canvas — losing pan, zoom and DOM focus. `reload` is what every
+    // mutation calls afterwards (status toggles, edits, deletes, conversions), so it must
+    // refresh in place and never raise the spinner. Only the initial mount may do that.
+    it("refreshes without ever raising the loading spinner", async () => {
+      setupInvoke();
+      const { result } = await loadedHook();
+
+      // The load has to be observably in-flight. With an instantly-resolving mock React batches
+      // the spinner on and off into a single render and nothing can see it — but in the real app
+      // load_mindmap takes real time, so the spinner renders and MindmapView unmounts the canvas.
+      const passthrough = vi.mocked(invoke).getMockImplementation();
+      if (passthrough === undefined) throw new Error("invoke mock has no implementation");
+      let release = (): void => { throw new Error("gate never armed"); };
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      vi.mocked(invoke).mockImplementation(async (cmd, args) => {
+        if (cmd === "load_mindmap") await gate;
+        return passthrough(cmd, args);
+      });
+
+      let pending: Promise<void> = Promise.resolve();
+      act(() => { pending = result.current.reload(); });
+
+      // The refresh is in flight right now. The canvas must still be mounted.
+      expect(result.current.isLoading).toBe(false);
+
+      await act(async () => { release(); await pending; });
+    });
+
+    it("still fetches the tree again", async () => {
+      setupInvoke();
+      const { result } = await loadedHook();
+      const before = vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "load_mindmap").length;
+
+      await act(async () => { await result.current.reload(); });
+
+      const after = vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "load_mindmap").length;
+      expect(after).toBe(before + 1);
+    });
+  });
+
   describe("createNode", () => {
     it("domain child kind: calls create_domain with the correct subtype and parent_id", async () => {
       const newDomain = mkDomain({ id: 10, subtype: "project", title: "Ops", parent_id: 1 });

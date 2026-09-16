@@ -947,8 +947,12 @@ export function useMindmapData(): MindmapData {
     [load],
   );
 
-  // `reload` is the public, spinner-showing entry point; the flag stays inside the hook.
-  const reload = useCallback(() => load(true), [load]);
+  // Refreshes the tree in place, WITHOUT the spinner — every caller is a post-mutation refresh
+  // (status toggles, edits, deletes, conversions). `MindmapView` early-returns a full-screen
+  // "Loading…" whenever `isLoading` is true, which unmounts the canvas and takes pan, zoom and
+  // focus with it, so raising the spinner here makes every mutation flash the whole view.
+  // Only the initial mount passes `true`.
+  const reload = useCallback(() => load(false), [load]);
 
   return {
     tree,
