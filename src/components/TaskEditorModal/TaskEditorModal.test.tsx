@@ -217,3 +217,15 @@ describe("TaskEditorModal — save error", () => {
     await waitFor(() => expect(screen.getByText("Network error")).toBeInTheDocument());
   });
 });
+
+describe("TaskEditorModal — bd issue link", () => {
+  it("shows the issue a linked task is tracked as", () => {
+    render(<TaskEditorModal {...defaultProps} node={mkNode({ beadsId: "Arlesh-5fs" })} />);
+    expect(screen.getByText("Arlesh-5fs")).toBeInTheDocument();
+  });
+
+  it("shows no issue row at all for an unlinked task", () => {
+    render(<TaskEditorModal {...defaultProps} node={mkNode()} />);
+    expect(screen.queryByText("fieldBeadsId")).not.toBeInTheDocument();
+  });
+});

@@ -4,6 +4,7 @@ import type { MindmapNode } from "@/utils/tree-layout";
 import { getErrorMessage } from "@/api/errors";
 import EditorModal from "@/components/EditorModal/EditorModal";
 import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
+import BeadsIdField from "@/components/EditorModal/BeadsIdField";
 import { useInputCapture } from "@/hooks/use-input-capture";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 import { PROJECT_STATUS } from "@/utils/status-mapping";
@@ -59,6 +60,7 @@ export default function ProjectEditorModal({ node, onSave, onClose }: Props) {
         {t("fieldTitle")}
         <input ref={titleRef} className={styles.input} value={title} onChange={(e) => setTitle(e.target.value)} type="text" />
       </label>
+      <BeadsIdField beadsId={node.beadsId} />
       <div className={styles.label}>
         {t("fieldStatus")}
         <div className={styles.statusPills}>

@@ -10,6 +10,7 @@ Arlesh is a personal app in live preview with no release cycle, so new entries c
 ## [Unreleased]
 
 ### Added
+- **A Task, Goal or Project tracked as a `bd` issue now says which one.** Open its editor and the issue id — `Arlesh-5fs` and the like — sits under the title as an **Issue** row. It is there to read, not to edit: nothing in the app can type, change or clear it, because `bd` owns the issue and Arlesh only mirrors which one a node belongs to. The link is set from outside the app (the MCP server), so for now most nodes have none — and a node with none shows nothing at all in its place, no empty row and no placeholder.
 - **A keyboard cheat-sheet**, opened with **Ctrl+Shift+/** or from the settings popover's **Keyboard shortcuts** entry. Lists every binding in the app grouped into Global / Mindmap / List View, with the chords that share an action merged onto one row (so the four arrow keys read as a single `← → ↑ ↓` line). The list is generated from the same binding table the keyboard handlers dispatch from, so it can't fall out of date with what the keys actually do.
 
 ### Changed

@@ -16,6 +16,9 @@ export interface Domain {
   knowledge_base_directory: string | null;
   position: number;
   is_private: boolean;
+  // The bd issue this Project is tracked as; absent when it is tracked as none. Written only by
+  // the MCP server — no update request carries it.
+  beads_id?: string;
 }
 
 export interface CreateDomainRequest {

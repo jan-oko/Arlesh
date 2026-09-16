@@ -14,6 +14,9 @@ export interface Goal {
   tag_ids: number[];
   position: number;
   is_private: boolean;
+  // The bd issue this goal is tracked as; absent when it is tracked as none. Written only by the
+  // MCP server — no update request carries it.
+  beads_id?: string;
 }
 
 export interface CreateGoalRequest {
