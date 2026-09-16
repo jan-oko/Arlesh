@@ -53,7 +53,18 @@ impl<'session> DomainOperator<'session> {
         self.validate_parent(&request.subtype, request.parent_id).await?;
 
         let subtype_str = subtype_to_str(&request.subtype);
-        let status_str = request.status.as_ref().map(|s| status_to_str(s));
+        // A Project with no status already *reads* as Active everywhere (`UNSET_STATUS` in
+        // `filter-tree.ts`), but a stored NULL matches no value, so List View's Project-status
+        // filter silently excluded every such Project along with its whole subtree of tasks.
+        // Store what the app already means. Only a Project carries a status — a Domain or Tag
+        // keeps NULL, since the vocabulary does not apply to them.
+        let status_str = match request.status.as_ref() {
+            Some(status) => Some(status_to_str(status)),
+            None if request.subtype == DomainSubtype::Project => {
+                Some(status_to_str(&model::ProjectStatus::Active))
+            }
+            None => None,
+        };
 
         let id = sqlx::query(
             "INSERT INTO domains (title, description, subtype, parent_id, status, knowledge_base_directory)

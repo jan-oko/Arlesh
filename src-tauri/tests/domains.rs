@@ -585,3 +585,56 @@ async fn the_create_domain_command_commits_the_insert_and_the_position_update_to
         "the command must commit the insert and the position update together, not roll them back"
     );
 }
+
+/// A Project created with no status must read back as Active, not NULL.
+///
+/// The app already treats an unset container status as Active (`UNSET_STATUS` in
+/// `filter-tree.ts`), but a stored NULL matched no value, so List View's Project-status filter
+/// silently excluded every such Project. Migration `0023` backfilled the existing rows; this is
+/// what stops new ones from reintroducing them.
+#[tokio::test]
+async fn a_project_created_without_a_status_defaults_to_active() {
+    let pool = helpers::test_pool().await;
+    let aspect_id = green_aspect_id(&pool).await;
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
+
+    let project = db
+        .domains()
+        .create(CreateDomainRequest {
+            title: "Unset".into(),
+            description: None,
+            subtype: DomainSubtype::Project,
+            parent_id: Some(aspect_id),
+            status: None,
+            knowledge_base_directory: None,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(project.status.as_deref(), Some("active"), "a new Project must default to active");
+}
+
+/// Only a Project carries a status — a Domain or Tag keeps NULL, since the status vocabulary
+/// does not apply to them and defaulting one would change how the filters read it.
+#[tokio::test]
+async fn a_domain_created_without_a_status_keeps_none() {
+    let pool = helpers::test_pool().await;
+    let aspect_id = green_aspect_id(&pool).await;
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
+
+    for subtype in [DomainSubtype::Domain, DomainSubtype::Tag] {
+        let created = db
+            .domains()
+            .create(CreateDomainRequest {
+                title: format!("{subtype:?} unset"),
+                description: None,
+                subtype: subtype.clone(),
+                parent_id: Some(aspect_id),
+                status: None,
+                knowledge_base_directory: None,
+            })
+            .await
+            .unwrap();
+        assert_eq!(created.status, None, "{subtype:?} must not be given a status");
+    }
+}
