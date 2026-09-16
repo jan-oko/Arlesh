@@ -22,7 +22,7 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 **Flow Window** — A Flow's own relevance window, resolved against the start anchor at materialization. Two forms: a **Span** — a coarse Duration of N of a scope kind (`day`/`week`/`month`/`season`), a relative *length* — or a **Phase** — a sub-day, fixed *time-of-day*: a part-of-day band (e.g. Evening) or an exact `HH:MM–HH:MM` clock range, carried date-free on the template and combined with the anchor's date on start. A Habit whose window is a Phase recurs at that fixed time-of-day, stepping whole days by its Gap ("10:00–12:00 daily", "Evening every 2 days").
 
-**Instance Type** — Whether a Flow materializes its root (and constrains its children) as a Goal or a Task.
+**Instance Type** — Whether a Flow materializes its root (and constrains its children) as a Goal, a Task, or a Commitment.
 
 **Target Node** — The default node under which a Flow's instances are created. Overridable when starting the Flow.
 
@@ -44,6 +44,12 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 **Modification** — A persisted divergence of a virtual Habit instance from what the template would render, keyed by (flow item, iteration scope). Carries an overridden status, title, or blocked reason; a **tombstone** (deleted by the user, lapsed when its iteration passed unfinished, or missed when catch-up skipped it); and per-iteration dependency edges added or suppressed. An instance with no Modification renders purely from the template.
 
+**Commitment** — Something that must be *kept* rather than *done*: an obligation or abstention holding over a window ("asleep by 23:00", "no social media today"). A content node kind alongside Goal and Task, parented anywhere a Task can be, and able to parent Tasks and other Commitments. Unlike a Task it is never completed by acting; it carries a **Verdict** instead of a status, and it is never scheduled, delegated, blocked or depended upon. Recurs by being a Habit's **Instance Type**.
+
+**Verdict** — A Commitment's resolution: `unresolved` · `kept` · `broken`. Always recorded explicitly — neither outcome is ever inferred, from the passage of the window or from the state of the Commitment's children. `unresolved` is the initial value and means only "you have not said".
+
+**Verdict Window** — How long past the end of a Commitment's Time Scope a Verdict may still be recorded. While it lasts the Commitment stays live; once it passes an `unresolved` Commitment is Archived, still unresolved. Expressed as a **Duration** — a count of N of any scope kind — in the same form a Habit's **Gap** and a Time Scope's Duration take, and independent of the Commitment's own scope kind: a monthly commitment may be answerable for two days. Set per Commitment and inherited down the tree like Time Scope; there is no global default.
+
 **Blocker** — A condition that prevents a Task from being acted on. Either an explicit string reason or a virtual block from an unmet dependency.
 
 **Dependency** — A prerequisite relationship from a Task to another Task or Goal. Circular dependencies are rejected at write time.
@@ -51,6 +57,8 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 ---
 
 ## Status values
+
+**Commitment verdict:** `unresolved` (Unresolved) · `kept` (Kept) · `broken` (Broken)
 
 **Task status:** `todo` (To Do / פתוח) · `in_progress` (In Progress / בתהליך) · `done` (Done / בוצע)
 
@@ -99,6 +107,8 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 - A Goal cannot be the parent of a Task that already has another Goal parent elsewhere in the tree.
 - Circular Task/Goal dependencies are always rejected.
 - Type cycling (Ctrl+Up/Down) follows the valid-type sequence for the node's parent context.
+- A Commitment must have an **effective** Time Scope — its own, or inherited from a scoped ancestor. A Commitment with no scoped ancestor at all is rejected; there is no Unscoped Commitment.
+- A Commitment's Verdict is never derived. Neither its children nor the passing of its window ever sets it.
 - Scope containment is evaluated on **resolved datetime boundaries** (interval containment), so it holds uniformly across canonical, exact, and multi-scope-kind windows. Scope X is "within" scope F iff X's window ⊆ F's window.
 - A child item's explicit Time Scope must be **wholly contained** within its parent's Time Scope.
 - A Task's Plan must be wholly contained within that task's Time Scope, and within its parent's Plan.

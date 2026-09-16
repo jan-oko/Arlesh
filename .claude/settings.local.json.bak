@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo test *)",
+      "Bash(cargo tarpaulin *)"
+    ],
+    "additionalDirectories": [
+      "/home/atai/Projects/INSIGHT/Apps/CLI/State"
+    ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd /home/atai/Green/CODE/Arlesh && NL=$'\\n'; msg=\"\"; failed=0; gs=$(git status --short 2>/dev/null); if [ -n \"$gs\" ]; then msg+=\"Uncommitted changes:${NL}${gs}${NL}\"; failed=1; else msg+=\"Git: working tree clean${NL}\"; fi; if [ -f src-tauri/Cargo.toml ]; then cc=$(cargo clippy --manifest-path src-tauri/Cargo.toml --color never -- -D warnings 2>&1); if [ $? -ne 0 ]; then msg+=\"${NL}Clippy:${NL}${cc}${NL}\"; failed=1; else msg+=\"Clippy: ok${NL}\"; fi; else msg+=\"Clippy: skipped (no src-tauri yet)${NL}\"; fi; if [ -f src-tauri/Cargo.toml ]; then ct=$(cargo test --manifest-path src-tauri/Cargo.toml 2>&1); if [ $? -ne 0 ]; then msg+=\"${NL}Rust tests:${NL}${ct}${NL}\"; failed=1; else msg+=\"Rust tests: ok${NL}\"; fi; fi; if [ -f src-tauri/Cargo.toml ]; then cv=$(CARGO_TARGET_DIR=/home/atai/.cache/arlesh/tarpaulin cargo tarpaulin --manifest-path src-tauri/Cargo.toml --engine ptrace --skip-clean --exclude-files 'src/commands/*' --fail-under 85 2>&1); if [ $? -ne 0 ]; then msg+=\"${NL}Coverage:${NL}${cv}${NL}\"; failed=1; else pct=$(printf '%s' \"$cv\" | grep -oE '[0-9.]+% coverage' | head -1); msg+=\"Coverage: ${pct:-unknown} (excl commands/)${NL}\"; fi; fi; if [ -f tsconfig.json ] && [ -f node_modules/.bin/tsc ]; then tc=$(node_modules/.bin/tsc --noEmit 2>&1); if [ $? -ne 0 ]; then msg+=\"${NL}TypeScript:${NL}${tc}${NL}\"; failed=1; else msg+=\"TypeScript: ok${NL}\"; fi; elif [ -f tsconfig.json ]; then msg+=\"TypeScript: skipped (not installed yet)${NL}\"; else msg+=\"TypeScript: skipped (no tsconfig.json yet)${NL}\"; fi; if [ -f eslint.config.js ] || [ -f .eslintrc.js ] || [ -f eslint.config.ts ]; then el=$(node_modules/.bin/eslint src/ --no-color 2>&1); if [ $? -ne 0 ]; then msg+=\"${NL}ESLint:${NL}${el}${NL}\"; failed=1; else msg+=\"ESLint: ok${NL}\"; fi; else msg+=\"ESLint: skipped (no config yet)${NL}\"; fi; if [ -f node_modules/.bin/vitest ]; then ts=$(node_modules/.bin/vitest run 2>&1); if [ $? -ne 0 ]; then msg+=\"${NL}Tests:${NL}${ts}${NL}\"; failed=1; else msg+=\"Tests: ok${NL}\"; fi; else msg+=\"Tests: skipped (vitest not installed)${NL}\"; fi; if [ $failed -ne 0 ]; then printf '%s' \"$msg\" | jq -Rs '{\"decision\":\"block\",\"reason\":.}'; else printf '%s' \"$msg\" | jq -Rs '{\"systemMessage\":.}'; fi",
+            "statusMessage": "Running convention checks..."
+          }
+        ]
+      }
+    ]
+  }
+}
