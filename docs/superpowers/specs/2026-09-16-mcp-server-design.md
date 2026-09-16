@@ -1,10 +1,10 @@
 # Read-only MCP server hosted by the Arlesh app
 
 An MCP endpoint served over localhost HTTP from inside the running Tauri app, exposing the
-backend's read commands as eight resource-grouped tools. An agent — Claude Code, Claude Desktop —
-can then read tasks, goals, flows, habits, domains, KB entries and scopes without the user
-transcribing them. Writes are out of scope for this iteration but the design is shaped so they
-drop in as additional operations rather than a new architecture.
+backend's reads as five resource-grouped tools built around `load_mindmap`'s whole-graph snapshot.
+An agent — Claude Code, Claude Desktop — can then read tasks, goals, flows, habits, domains, KB
+entries and scopes without the user transcribing them. Writes are out of scope for this iteration
+but the design is shaped so they drop in as additional operations rather than a new architecture.
 
 ## Motivation
 
@@ -12,10 +12,10 @@ Arlesh's data is only reachable through its own UI. Any agent asked to help plan
 goal tree, or sanity-check a Flow's dependencies has to be told the contents by hand, which is both
 tedious and lossy.
 
-The backend is already well-positioned for this. `src-tauri/src/commands/` is a thin adapter — every
-command is `Repository::new(&pool).method(..).await.map_err(|e| e.to_string())` — so the real logic
-lives in the domain modules and a second adapter can sit beside the first without duplicating
-anything.
+The backend is well-positioned for this after ADR-0004. `src-tauri/src/commands/` is a thin
+adapter — each command opens a session from the `SessionFactory` and delegates to a stateless
+resource operator — so the real logic lives in the domain modules and a second adapter can sit
+beside the first without duplicating anything.
 
 ## Status
 
@@ -26,44 +26,62 @@ accepted
 ### How the MCP layer reaches the data
 
 - **Call the `#[tauri::command]` functions.** The literal reading of "wrap the exported commands".
-  Rejected: every command takes `State<'_, DatabasePool>`, which cannot be constructed outside a
-  Tauri invoke context. Reaching a one-line pass-through would mean fighting the framework.
+  Rejected: every command takes `State<'_, SessionFactory>`, which cannot be constructed outside a
+  Tauri invoke context — `tests/helpers.rs::command_host` has to stand up a whole mock app to get
+  one. Reaching a two-line delegation that way is fighting the framework.
 - **Extract a service tier that both `commands/` and `mcp/` call.** Rejected as YAGNI: the commands
-  hold no logic to share. The tier would buy an indirection and nothing else. It stays available if
-  write operations later need shared validation, and promoting to it is mechanical.
-- **Call the repositories directly, as a sibling adapter to `commands/`.** Chosen. See below.
+  hold no logic to share beyond the session-mode choice, which is per-operation and documented at
+  each site. The tier would buy an indirection and nothing else.
+- **Open sessions from the same `SessionFactory`, as a sibling adapter to `commands/`.** Chosen.
+  See below.
 
 ### Where the server runs
 
-- **Standalone binary opening `arlesh.db` directly.** Works when the app is closed, and trivial to
-  launch over stdio. Rejected: once writes land, two processes share one SQLite file — the pool has
-  no WAL pragma today (`database/mod.rs:10`) — and the open app would not see changes until it
-  refetched.
-- **Hosted by the running app.** Chosen. One process, one pool, no concurrency question, and a
+- **Standalone binary opening `arlesh.db` directly.** Works when the app is closed. Rejected: once
+  writes land, two processes share one SQLite file — the pool has no WAL pragma — and the open app
+  would not see changes until it refetched.
+- **Hosted by the running app.** Chosen. One process, one factory, no concurrency question, and a
   later write path can push live updates into the open UI. The cost is that the agent gets nothing
   while Arlesh is closed.
 
 ### Tool granularity
 
-- **One tool per command.** ~33 tools now, ~80 once writes land. Rejected: MCP clients load every
-  tool definition into context, and the agent still has to compose multi-step queries itself.
-- **Agent-shaped tools** (`whats_ready`, `task_detail`). Rejected for this iteration: best
-  ergonomics, but it requires new query logic and — as the filtering section below records — the
-  semantics it would need do not exist in Rust.
-- **Grouped by resource, an `operation` enum per tool.** Chosen. Eight tools, compact context
-  footprint, direct mapping onto existing commands, and writes later become new enum variants.
+- **One tool per command.** ~33 read tools now, ~85 once writes land. Rejected: MCP clients load
+  every tool definition into context, and the agent still has to compose multi-step queries itself.
+- **Eight tools grouped per resource, mirroring the read commands one-for-one.** This was the
+  approved shape before ADR-0004 landed. Rejected on seeing `load_mindmap`: thirteen of those
+  operations are fields of a single existing payload, so the grouped surface would be eight tools
+  whose combined output one tool already returns.
+- **A `load_mindmap` snapshot plus targeted tools for what it does not cover.** Chosen. Five tools,
+  fifteen operations, and the common case — "show me everything" — is one call rather than
+  thirteen.
+
+### Whether the snapshot may write
+
+`load_mindmap` writes, despite reading like a query: deriving a Habit's iterations materialises the
+scope rows its windows land on, which is why the command opens a transactional session and commits.
+
+- **Exclude it from the server** and rebuild the surface from pure reads. Rejected: it discards the
+  single most useful payload on the server to preserve a label.
+- **Run it on a session that is deliberately never committed.** Tempting, and it genuinely works —
+  sqlx rolls the derived scopes back on drop and the payload still returns complete. Rejected
+  because the payload's habit iterations reference those scope ids, so a later
+  `arlesh_scopes.resolve` on one returns NotFound. A snapshot containing ids that do not resolve is
+  a worse failure than an honest write.
+- **Include it, commit, and annotate it `read_only_hint = false`.** Chosen. Its writes create no
+  user content — no task, goal or flow — and are confined to materialising scope rows the UI would
+  materialise on its next load anyway.
 
 ### How much filtering to expose
 
-The backend has no query-level filtering: the list queries are `SELECT * FROM <table> ORDER BY
-position ASC` with no `WHERE` (`tasks/mod.rs:561`, `:314`, `flows/mod.rs:393`, `:400`, and the KB
-and infos equivalents). The one exception is `DomainRepository::list`, which takes an optional
-subtype and does `WHERE subtype = ?` (`domains/mod.rs:74`).
+The backend has no query-level filtering: the list operators are `SELECT * FROM <table> ORDER BY
+position ASC` with no `WHERE`. The one exception is the domains operator, which takes an optional
+subtype.
 
-Two pieces of filter-adjacent logic *are* in Rust and are exposed as commands:
-`tasks/lifecycle.rs` derives the Timing / Resolution / Archival axes that the UI filters on, via
-`derive_scope_lifecycles(now)`; and `FlowRepository::valid_targets` (`flows/mod.rs:1524`, exposed as
-the `scope_valid_flow_targets` command) filters candidate targets by flow duration.
+Two pieces of filter-adjacent logic are in Rust and reachable: `tasks/lifecycle.rs` derives the
+Timing / Resolution / Archival axes the UI filters on, and the flows operator's `valid_targets`
+filters candidate targets by flow duration. The `lifecycles` field of `MindmapLoad` carries the
+former for every task and goal in the same payload.
 
 What is TypeScript-only is the filter *predicates* — the List presets (`all` / `plan` / `start` /
 `do` / `unblock`), pill dimensions, tag modes, archived modes — in `src/utils/filter-tree.ts` and
@@ -72,35 +90,42 @@ What is TypeScript-only is the filter *predicates* — the List presets (`all` /
 - **Port the preset predicates to Rust and expose them as tool filters.** Rejected: two
   implementations of the same rules, guaranteed to drift from the UI.
 - **Port to Rust and have the frontend call them.** Rejected for this iteration: one definition and
-  the right long-term answer, but it restructures working Phase-3 code that is otherwise untouched
-  by this work.
-- **Expose raw rows plus the lifecycle derivation.** Chosen. The useful half is available — an agent
-  can answer "what is overdue" by joining `tasks.list` against `tasks.lifecycles` — and the MCP
-  server stays an adapter rather than becoming a reason to restructure the filter layer. Preset
-  parity is filed as follow-up work.
+  the right long-term answer, but it restructures working Phase-3 code otherwise untouched here.
+- **Expose the snapshot, whose `lifecycles` field already carries the derivation.** Chosen. An
+  agent can answer "what is overdue" from one call. Preset parity is filed as follow-up work
+  (`Arlesh-32r`).
 
 ## Design
 
 ### 1. Module placement
 
 A new `src-tauri/src/mcp/` module, declared in `lib.rs` beside the existing domain modules. It
-holds a handler struct owning a cloned `DatabasePool`, with `#[tool_router]` / `#[tool]` methods
-that construct repositories the same way `commands/` does:
+holds a handler struct owning a cloned `SessionFactory`, with `#[tool_router]` / `#[tool]` methods
+that open a session the same way `commands/` does:
 
 ```rust
-TaskRepository::new(&self.pool).list().await
+let mut db = self.factory.connect().await?;
+db.tasks().get(TaskId(id)).await
 ```
 
-`commands/` is not modified. The two adapters are peers over one domain layer.
+Reads use `connect()` (pooled). The one operation that writes — the snapshot — uses `begin()` and
+commits, exactly as `commands::mindmap::load_mindmap` does.
+
+`commands/` is not modified. The two adapters are peers over one session layer.
 
 The crate's `#![deny(missing_docs)]` and `#![deny(clippy::all)]` apply, so every `pub` item in the
 module is documented. Per `.claude/rules/rust.md`, no `.unwrap()` or `.expect()` in this path.
+
+**Operators must be used inline** (ADR-0004): two cannot be bound simultaneously, and the borrow
+error when they are is among Rust's least readable. Each tool body opens its session, calls one
+operator inline, and returns.
 
 ### 2. Transport and lifecycle
 
 `rmcp`'s `StreamableHttpService` is a tower service. An axum `Router` mounts it at `/mcp`, and
 `tauri::async_runtime::spawn` serves it on `127.0.0.1:4747` from the existing `setup` hook in
-`lib.rs`, after `app.manage(pool)`. The port is overridable with `ARLESH_MCP_PORT`.
+`lib.rs`, after `app.manage(SessionFactory::new(pool))`. The port is overridable with
+`ARLESH_MCP_PORT`.
 
 Two guards:
 
@@ -118,51 +143,63 @@ during implementation against the version that resolves.
 
 ### 3. Tool surface
 
-Eight tools, every one annotated `read_only_hint = true`. Each takes an `operation` discriminant
-plus that operation's parameters, which mirror the existing command signatures one-for-one.
+Five tools. Each takes an `operation` discriminant plus that operation's parameters, which mirror
+the existing command signatures. All are annotated `read_only_hint = true` except `arlesh_snapshot`.
 
-| Tool | Operations | Backing commands |
+| Tool | Operations | Notes |
 | --- | --- | --- |
-| `arlesh_tasks` | `list`, `get(id)`, `list_goals`, `get_goal(id)`, `dependencies(task_id)`, `all_dependencies`, `containment_conflicts(node_type, node_id, time_scope)`, `lifecycles(now)` | `list_tasks`, `get_task`, `list_goals`, `get_goal`, `list_task_dependencies`, `list_all_task_dependencies`, `scope_containment_conflicts`, `derive_scope_lifecycles` |
-| `arlesh_flows` | `list`, `get(id)`, `goals(flow_id)`, `tasks(flow_id)`, `all_goals`, `all_tasks`, `valid_targets(duration_n, duration_kind, anchor_date, candidates)`, `origins(nodes)`, `instance_nodes`, `all_cycles`, `all_dependencies` | the corresponding `commands::flows` reads |
-| `arlesh_habits` | `recurrence(flow_id)`, `iterations(flow_id, now)`, `item_statuses(flow_id)`, `completion_count(flow_id)` | `get_flow_recurrence`, `generate_habit_iterations`, `list_habit_item_statuses`, `habit_completion_count` |
-| `arlesh_domains` | `list(subtype?)`, `get(id)` | `list_domains`, `get_domain` |
-| `arlesh_kb` | `list_people`, `get_person(id)`, `list_events`, `list_threads` | `commands::knowledge_base` reads |
-| `arlesh_scopes` | `get(id)`, `resolve(id)` | `get_scope`, `resolve_scope` |
-| `arlesh_infos` | `list` | `list_infos` |
-| `arlesh_block_reasons` | `list` | `list_all_block_reasons` |
+| `arlesh_snapshot` | `load(now)` | `MindmapLoad` — domains, goals, tasks, infos, flows, flow goals/tasks/cycles/dependencies, block reasons, task dependencies, flow instance nodes, lifecycles, and per-flow habit iterations and statuses. **Not read-only.** |
+| `arlesh_scopes` | `get(id)`, `resolve(id)`, `resolve_many(ids)` | Turns the snapshot's scope ids into dates. |
+| `arlesh_kb` | `list_people`, `get_person(id)`, `list_events`, `list_threads` | The one domain the snapshot ignores entirely. |
+| `arlesh_tasks` | `get(id)`, `containment_conflicts(node_type, node_id, time_scope)` | `get` returns `TaskWithBlockers` — the task plus explicit *and* virtual block reasons. `containment_conflicts` is a what-if query. |
+| `arlesh_flows` | `get(id)`, `recurrence(flow_id)`, `completion_count(flow_id)`, `valid_targets(duration_n, duration_kind, anchor_date, candidates)`, `origins(nodes)` | The flow questions the snapshot does not answer: the stored recurrence config (as opposed to its derived iterations), and the two what-if queries. |
 
-Habits are split out of flows deliberately. Folded in, `arlesh_flows` would carry fifteen
-operations and its schema would be the largest single thing in the agent's context.
+Everything absent from this table is absent because `arlesh_snapshot` already returns it:
+`list_tasks`, `list_goals`, `get_goal`, `list_domains`, `get_domain`, `list_infos`, `list_flows`,
+`list_flow_goals`, `list_flow_tasks`, `list_all_flow_*`, `list_all_task_dependencies`,
+`list_all_block_reasons`, `list_flow_instance_nodes`, `derive_scope_lifecycles`,
+`generate_habit_iterations` and `list_habit_item_statuses`.
 
-Two notes on the surface:
+Every write command is excluded, including `retype_node`, `start_flow`, and the `get_or_create_*`
+scope commands.
 
-- `generate_habit_iterations` reads despite its name. Its body is pure — it ends at
-  `Ok(classify_iterations(..))` (`flows/mod.rs:894`); the `INSERT`/`DELETE` statements nearby belong
-  to `set_habit_item_status` and `clear_habit_modifications`. It is safely read-only.
-- `lifecycles` is what makes the chosen filtering option worth shipping. Without it the agent sees
-  raw rows and has to infer overdue-ness from dates; with it, it gets the same derivation the UI
-  renders.
-
-Every `get_or_create_*` scope command is excluded — those write.
+**`resolve_many` is new.** It is the only operation without a one-to-one backend counterpart: a
+loop over the scopes operator's `resolve`, added because `Task.time_scope` carries `start_id` /
+`end_id` rather than dates. Without it an agent holding a snapshot must make one round trip per
+distinct scope id just to learn when anything is scheduled. It adds no logic beyond the loop.
 
 ### 4. Errors and output
 
-Tools return `Json<T>` of the domain models, so the MCP wire representation is byte-identical to
-what the frontend receives from `invoke()` and there is one serde shape to reason about.
+Tools return `Json<T>` of the domain models, so the MCP wire representation is the same serde shape
+the frontend receives from `invoke()`.
 
-Repository errors map to a `CallToolResult` with `is_error: true` carrying `error.to_string()` —
-the same stringification `commands/` performs. No new error type is introduced.
+Errors reuse `WireError` rather than re-inventing stringification: each tool maps its domain error
+with `WireError::from_error`, and the tool result carries `is_error: true` with the `WireError`
+serialised as structured content. That keeps the `kind` discriminant — `not_found`,
+`containment_violated`, `invalid_request`, `database`, `internal` — machine-readable for the agent
+in the same way it is for the frontend, instead of flattening it to a message string.
 
 ### 5. Testing
 
-`src-tauri/tests/mcp.rs`, using the existing `helpers::test_pool()` (in-memory SQLite with
-migrations run), matching the other eight integration-test files.
+`src-tauri/tests/mcp.rs`, using `helpers::test_pool()` and `helpers::session_factory()` — the
+latter exists precisely for "tests that drive a session themselves rather than through a command".
 
 - Per-tool tests call the handler methods directly against a seeded pool and assert on the returned
   JSON. No HTTP in the test path.
-- One test asserts the router lists all eight tools, to catch a tool silently dropped from
-  registration.
+- One test asserts the router lists all five tools, to catch a tool dropped from registration.
+- One test asserts an error path maps to the right `WireErrorKind` — a `get` on a missing id
+  returning `not_found` rather than a generic failure.
+- One test asserts `arlesh_snapshot.load` commits: after the call, the derived scope rows are
+  present in the pool. `tests/mindmap_commands.rs` already asserts on rows rather than on the
+  result for this reason — a missing commit still returns `Ok`.
+
+**Coverage.** The project's quality gate is `cargo tarpaulin --fail-under 85` excluding
+`src/commands/*`. `src/mcp/` is not under that exclusion, so it counts toward the threshold and
+needs genuine per-operation tests, not a smoke test.
+
+One caution from `helpers.rs`: the test pool has **one connection**. A test that holds a `Db`
+session open and then queries the pool waits out sqlx's 30-second acquire timeout and fails as a
+connection timeout rather than an assertion. Commit or drop the session before reading the pool.
 
 An end-to-end HTTP test is deliberately omitted: it would mostly exercise `rmcp`. The real
 end-to-end check is connecting a client to a running app.
@@ -180,15 +217,19 @@ end-to-end check is connecting a client to a running app.
 
 - **The agent sees nothing when Arlesh is closed.** This is the accepted cost of hosting in-app, and
   the failure is silent from the client's side — a connection refusal, not an explanatory error.
+- **The most useful tool is not read-only.** `arlesh_snapshot` materialises scope rows. The server
+  is read-only in the sense that matters — no user content is created or changed — but the label is
+  not literally true, and the tool annotation says so rather than hiding it.
 - **Any local process can read the user's task database** while the app runs. Localhost binding plus
   host/origin validation stops browser pages and remote callers, not other programs on the machine.
-  For a read-only personal task DB this was judged acceptable; a bearer token is the escalation if
-  that changes.
-- **Lists are unbounded.** `arlesh_tasks.list` returns every task. On a personal database this is
-  fine, and it is the thing most likely to need a filter parameter first as the data grows.
+  For a read-only personal task DB this was judged acceptable; a bearer token is the escalation.
+- **The snapshot is unbounded.** It returns every task, goal, flow and domain in one payload. On a
+  personal database this is fine, and it is the thing most likely to need narrowing first as the
+  data grows — at which point a filter argument on `load` is the natural place to put it.
 - **Preset semantics remain unavailable to agents.** "What should I start" cannot be answered the
   way the List view answers it. The agent can approximate from raw fields and the lifecycle axes,
-  and will not agree with the UI at the edges. Porting the predicates to Rust and having the
-  frontend consume them is the follow-up that closes this.
+  and will not agree with the UI at the edges. `Arlesh-32r` closes this.
 - **Writes are additive.** They become new `operation` variants with `read_only_hint` dropped on the
-  affected tools. No transport, module or testing change is implied.
+  affected tools. No transport, module or testing change is implied — though a write operation
+  touching more than one statement must open `begin()` and commit, and per ADR-0004 a nested
+  composite operation must join the caller's session rather than opening its own.
