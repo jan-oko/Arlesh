@@ -5,6 +5,7 @@ import { entityNodeId } from "@/utils/tree-layout";
 import type { InstanceType, ConsumptionKind, BlockingMode, CatchupPolicy } from "@/api/flows";
 import { getFlowRecurrence, habitCompletionCount } from "@/api/flows";
 import { getScope } from "@/api/scopes";
+import { getErrorMessage } from "@/api/errors";
 import EditorModal from "@/components/EditorModal/EditorModal";
 import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
 import Switch from "@/components/Switch/Switch";
@@ -258,7 +259,7 @@ export default function FlowEditorModal({ node, availableTargets, heading, onSav
         ...(reconcile !== undefined ? { reconcile } : {}),
       });
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : String(err));
+      setSaveError(getErrorMessage(err));
       setIsSaving(false);
     }
   }

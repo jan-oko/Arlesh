@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { entityNodeId } from "@/utils/tree-layout";
+import { getErrorMessage } from "@/api/errors";
 import EditorModal from "@/components/EditorModal/EditorModal";
 import { useValidFlowTargets } from "@/hooks/use-valid-flow-targets";
 import { useInputCapture } from "@/hooks/use-input-capture";
@@ -83,7 +84,7 @@ export default function StartFlowModal({ flowTitle, flowScoped, durationN, durat
     try {
       await onStart({ title: title.trim(), targetType: target.kind, targetId: target.id, anchorDate });
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : String(err));
+      setSaveError(getErrorMessage(err));
       setIsSaving(false);
     }
   }

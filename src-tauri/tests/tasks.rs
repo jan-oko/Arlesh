@@ -1,23 +1,28 @@
 mod helpers;
 
+// Aliased rather than imported by name: several command functions share a name with a test below
+// (`delete_task`, `delete_goal`), and the alias keeps the call sites saying which one they mean.
+// The free functions `delete_task`/`delete_goal` collide the same way, so those two are reached
+// through their full path (`arlesh_lib::tasks::delete_task`/`delete_goal`) at the call site
+// instead of being imported bare.
+use arlesh_lib::commands::tasks as task_commands;
 use arlesh_lib::{
-    block_reasons::BlockReasonRepository,
-    domains::{
-        model::{CreateDomainRequest, DomainSubtype, ProjectStatus},
-        DomainRepository,
-    },
-    scopes::{model::ScopeKind, ScopeRepository},
+    database::session::SessionFactory,
+    domains::model::{CreateDomainRequest, DomainSubtype, ProjectStatus},
+    scopes::model::ScopeKind,
     tasks::{
-        derive_all_scope_lifecycles,
+        add_task_dependency, conflicts_for_new_time_scope, create_goal, create_task,
+        derive_all_scope_lifecycles, get_task_with_blockers,
         lifecycle::{Archival, Resolution, Timing},
         model::{
             CreateGoalRequest, CreateTaskRequest, Dependency, DurationSpec, GoalStatus, OnScopeExit,
             TaskStatus, TimeScope, UpdateGoalRequest, UpdateTaskRequest,
         },
-        GoalRepository, TaskRepository,
+        reparent_conflicts, update_goal, update_task,
     },
 };
 use chrono::NaiveDate;
+use tauri::Manager;
 
 async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
     let aspect_id: i64 =
@@ -25,8 +30,7 @@ async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
             .fetch_one(pool)
             .await
             .unwrap();
-    DomainRepository::new(pool)
-        .create(CreateDomainRequest {
+    helpers::session_factory(pool).connect().await.unwrap().domains().create(CreateDomainRequest {
             title: "Test Project".into(),
             description: None,
             subtype: DomainSubtype::Project,
@@ -45,8 +49,7 @@ async fn make_tag(pool: &sqlx::SqlitePool) -> i64 {
             .fetch_one(pool)
             .await
             .unwrap();
-    DomainRepository::new(pool)
-        .create(CreateDomainRequest {
+    helpers::session_factory(pool).connect().await.unwrap().domains().create(CreateDomainRequest {
             title: "test-tag".into(),
             description: None,
             subtype: DomainSubtype::Tag,
@@ -64,30 +67,36 @@ async fn create_task_and_goal() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
 
-    let task = TaskRepository::new(&pool)
-        .create(CreateTaskRequest {
+    let task = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
             title: "Write tests".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
     assert_eq!(task.title, "Write tests");
     assert_eq!(task.status, "todo");
     assert!(task.tag_ids.is_empty());
 
-    let goal = GoalRepository::new(&pool)
-        .create(CreateGoalRequest {
+    let goal = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_goal(&mut db, CreateGoalRequest {
             title: "Ship Phase 1".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
     assert_eq!(goal.status, "active");
@@ -98,36 +107,47 @@ async fn create_task_and_goal() {
 async fn undone_dependency_blocks_task() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
-    let task_repo = TaskRepository::new(&pool);
 
-    let dependency = task_repo
-        .create(CreateTaskRequest {
+    let dependency = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
             title: "Dependency".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
-    let task = task_repo
-        .create(CreateTaskRequest {
+    let task = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
             title: "Blocked Task".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
-    task_repo
-        .add_dependency(task.id.into(), Dependency::Task { id: dependency.id })
-        .await
+    {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = add_task_dependency(&mut db, task.id.into(), Dependency::Task { id: dependency.id }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
-    let with_blockers = task_repo.get_with_blockers(task.id.into()).await.unwrap();
+    let with_blockers = {
+        let mut db = helpers::session_factory(&pool).connect().await.unwrap();
+        get_task_with_blockers(&mut db, task.id.into()).await
+    }.unwrap();
     assert_eq!(with_blockers.block_reasons.len(), 1);
     assert!(with_blockers.block_reasons[0].contains("Dependency"));
 }
@@ -136,47 +156,61 @@ async fn undone_dependency_blocks_task() {
 async fn done_dependency_unblocks_task() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
-    let task_repo = TaskRepository::new(&pool);
 
-    let dependency = task_repo
-        .create(CreateTaskRequest {
+    let dependency = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
             title: "Dep".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
-    let task = task_repo
-        .create(CreateTaskRequest {
+    let task = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
             title: "Task".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
-    task_repo
-        .add_dependency(task.id.into(), Dependency::Task { id: dependency.id })
-        .await
+    {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = add_task_dependency(&mut db, task.id.into(), Dependency::Task { id: dependency.id }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
-    task_repo
-        .update(
+    {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = update_task(&mut db,
             dependency.id.into(),
             UpdateTaskRequest {
                 status: Some(arlesh_lib::tasks::model::TaskStatus::Done),
                 ..Default::default()
             },
-        )
-        .await
+        ).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
-    let with_blockers = task_repo.get_with_blockers(task.id.into()).await.unwrap();
+    let with_blockers = {
+        let mut db = helpers::session_factory(&pool).connect().await.unwrap();
+        get_task_with_blockers(&mut db, task.id.into()).await
+    }.unwrap();
     assert!(with_blockers.block_reasons.is_empty(), "should be unblocked");
 }
 
@@ -184,38 +218,49 @@ async fn done_dependency_unblocks_task() {
 async fn circular_dependency_rejected() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
-    let task_repo = TaskRepository::new(&pool);
 
-    let task_a = task_repo
-        .create(CreateTaskRequest {
+    let task_a = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
             title: "A".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
-    let task_b = task_repo
-        .create(CreateTaskRequest {
+    let task_b = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
             title: "B".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
-    task_repo
-        .add_dependency(task_a.id.into(), Dependency::Task { id: task_b.id })
-        .await
+    {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = add_task_dependency(&mut db, task_a.id.into(), Dependency::Task { id: task_b.id }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
-    let err = task_repo
-        .add_dependency(task_b.id.into(), Dependency::Task { id: task_a.id })
-        .await
+    let err = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = add_task_dependency(&mut db, task_b.id.into(), Dependency::Task { id: task_a.id }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap_err();
 
     assert!(
@@ -229,51 +274,67 @@ async fn circular_dependency_rejected() {
 async fn goal_dependency_blocks_task_until_achieved() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
-    let task_repo = TaskRepository::new(&pool);
-    let goal_repo = GoalRepository::new(&pool);
 
-    let goal = goal_repo
-        .create(CreateGoalRequest {
+    let goal = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_goal(&mut db, CreateGoalRequest {
             title: "The Goal".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
-    let task = task_repo
-        .create(CreateTaskRequest {
+    let task = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
             title: "Task".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
-    task_repo
-        .add_dependency(task.id.into(), Dependency::Goal { id: goal.id })
-        .await
+    {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = add_task_dependency(&mut db, task.id.into(), Dependency::Goal { id: goal.id }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
-    let blocked = task_repo.get_with_blockers(task.id.into()).await.unwrap();
+    let blocked = {
+        let mut db = helpers::session_factory(&pool).connect().await.unwrap();
+        get_task_with_blockers(&mut db, task.id.into()).await
+    }.unwrap();
     assert_eq!(blocked.block_reasons.len(), 1);
 
-    goal_repo
-        .update(
+    {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = update_goal(&mut db,
             goal.id.into(),
             UpdateGoalRequest {
                 status: Some(GoalStatus::Achieved),
                 ..Default::default()
             },
-        )
-        .await
+        ).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
-    let unblocked = task_repo.get_with_blockers(task.id.into()).await.unwrap();
+    let unblocked = {
+        let mut db = helpers::session_factory(&pool).connect().await.unwrap();
+        get_task_with_blockers(&mut db, task.id.into()).await
+    }.unwrap();
     assert!(unblocked.block_reasons.is_empty());
 }
 
@@ -286,8 +347,7 @@ async fn reparent_task_to_different_project() {
             .fetch_one(&pool)
             .await
             .unwrap();
-    let project_b_id = DomainRepository::new(&pool)
-        .create(CreateDomainRequest {
+    let project_b_id = helpers::session_factory(&pool).connect().await.unwrap().domains().create(CreateDomainRequest {
             title: "Project B".into(),
             description: None,
             subtype: DomainSubtype::Project,
@@ -298,31 +358,36 @@ async fn reparent_task_to_different_project() {
         .await
         .unwrap()
         .id;
-    let task_repo = TaskRepository::new(&pool);
 
-    let task = task_repo
-        .create(CreateTaskRequest {
+    let task = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
             title: "Movable Task".into(),
             parent_type: "project".into(),
             parent_id: project_a_id,
             status: None,
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
     assert_eq!(task.parent_id, project_a_id);
 
-    let moved = task_repo
-        .update(
+    let moved = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = update_task(&mut db,
             task.id.into(),
             UpdateTaskRequest {
                 parent_type: Some("project".into()),
                 parent_id: Some(project_b_id),
                 ..Default::default()
             },
-        )
-        .await
+        ).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
     assert_eq!(moved.parent_id, project_b_id);
@@ -333,27 +398,29 @@ async fn add_and_remove_tag_on_task() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
     let tag_id = make_tag(&pool).await;
-    let task_repo = TaskRepository::new(&pool);
 
-    let task = task_repo
-        .create(CreateTaskRequest {
+    let task = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
             title: "Tagged Task".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
     assert!(task.tag_ids.is_empty());
 
-    task_repo.add_tag(task.id.into(), tag_id).await.unwrap();
-    let tagged = task_repo.get(task.id.into()).await.unwrap();
+    helpers::session_factory(&pool).connect().await.unwrap().tasks().add_tag(task.id.into(), tag_id).await.unwrap();
+    let tagged = helpers::session_factory(&pool).connect().await.unwrap().tasks().get(task.id.into()).await.unwrap();
     assert_eq!(tagged.tag_ids, vec![tag_id]);
 
-    task_repo.remove_tag(task.id.into(), tag_id).await.unwrap();
-    let untagged = task_repo.get(task.id.into()).await.unwrap();
+    helpers::session_factory(&pool).connect().await.unwrap().tasks().remove_tag(task.id.into(), tag_id).await.unwrap();
+    let untagged = helpers::session_factory(&pool).connect().await.unwrap().tasks().get(task.id.into()).await.unwrap();
     assert!(untagged.tag_ids.is_empty());
 }
 
@@ -362,22 +429,24 @@ async fn list_tasks_includes_tag_ids() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
     let tag_id = make_tag(&pool).await;
-    let task_repo = TaskRepository::new(&pool);
 
-    let task = task_repo
-        .create(CreateTaskRequest {
+    let task = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
             title: "Task With Tag".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
-    task_repo.add_tag(task.id.into(), tag_id).await.unwrap();
+    helpers::session_factory(&pool).connect().await.unwrap().tasks().add_tag(task.id.into(), tag_id).await.unwrap();
 
-    let all_tasks = task_repo.list().await.unwrap();
+    let all_tasks = helpers::session_factory(&pool).connect().await.unwrap().tasks().list().await.unwrap();
     let found = all_tasks.iter().find(|t| t.id == task.id).unwrap();
     assert_eq!(found.tag_ids, vec![tag_id]);
 }
@@ -386,25 +455,30 @@ async fn list_tasks_includes_tag_ids() {
 async fn update_task_title() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
-    let task_repo = TaskRepository::new(&pool);
 
-    let task = task_repo
-        .create(CreateTaskRequest {
+    let task = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
             title: "Old Title".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
-    let updated = task_repo
-        .update(
+    let updated = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = update_task(&mut db,
             task.id.into(),
             UpdateTaskRequest { title: Some("New Title".into()), ..Default::default() },
-        )
-        .await
+        ).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
     assert_eq!(updated.title, "New Title");
@@ -414,22 +488,29 @@ async fn update_task_title() {
 async fn delete_task() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
-    let task_repo = TaskRepository::new(&pool);
 
-    let task = task_repo
-        .create(CreateTaskRequest {
+    let task = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
             title: "Doomed Task".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
-    task_repo.delete(task.id.into()).await.unwrap();
+    {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = arlesh_lib::tasks::delete_task(&mut db, task.id.into()).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }.unwrap();
 
-    let err = task_repo.get(task.id.into()).await.unwrap_err();
+    let err = helpers::session_factory(&pool).connect().await.unwrap().tasks().get(task.id.into()).await.unwrap_err();
     assert!(
         matches!(err, arlesh_lib::tasks::error::TaskError::TaskNotFound(_)),
         "expected TaskNotFound, got {:?}",
@@ -441,40 +522,47 @@ async fn delete_task() {
 async fn remove_dependency() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
-    let task_repo = TaskRepository::new(&pool);
 
-    let dep = task_repo
-        .create(CreateTaskRequest {
+    let dep = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
             title: "Dep".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
-    let task = task_repo
-        .create(CreateTaskRequest {
+    let task = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
             title: "Task".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
             ..Default::default()
-        })
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
+        .unwrap();
+
+    {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = add_task_dependency(&mut db, task.id.into(), Dependency::Task { id: dep.id }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
+        .unwrap();
+    helpers::session_factory(&pool).connect().await.unwrap().tasks().remove_dependency(task.id.into(), Dependency::Task { id: dep.id })
         .await
         .unwrap();
 
-    task_repo
-        .add_dependency(task.id.into(), Dependency::Task { id: dep.id })
-        .await
-        .unwrap();
-    task_repo
-        .remove_dependency(task.id.into(), Dependency::Task { id: dep.id })
-        .await
-        .unwrap();
-
-    let deps = task_repo.list_dependencies(task.id.into()).await.unwrap();
+    let deps = helpers::session_factory(&pool).connect().await.unwrap().tasks().list_dependencies(task.id.into()).await.unwrap();
     assert!(deps.is_empty());
 }
 
@@ -482,25 +570,30 @@ async fn remove_dependency() {
 async fn update_goal_title() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
-    let goal_repo = GoalRepository::new(&pool);
 
-    let goal = goal_repo
-        .create(CreateGoalRequest {
+    let goal = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_goal(&mut db, CreateGoalRequest {
             title: "Old Goal".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
-    let updated = goal_repo
-        .update(
+    let updated = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = update_goal(&mut db,
             goal.id.into(),
             UpdateGoalRequest { title: Some("New Goal".into()), ..Default::default() },
-        )
-        .await
+        ).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
     assert_eq!(updated.title, "New Goal");
@@ -510,22 +603,29 @@ async fn update_goal_title() {
 async fn delete_goal() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
-    let goal_repo = GoalRepository::new(&pool);
 
-    let goal = goal_repo
-        .create(CreateGoalRequest {
+    let goal = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_goal(&mut db, CreateGoalRequest {
             title: "Doomed Goal".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
-    goal_repo.delete(goal.id.into()).await.unwrap();
+    {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = arlesh_lib::tasks::delete_goal(&mut db, goal.id.into()).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }.unwrap();
 
-    let err = goal_repo.get(goal.id.into()).await.unwrap_err();
+    let err = helpers::session_factory(&pool).connect().await.unwrap().goals().get(goal.id.into()).await.unwrap_err();
     assert!(
         matches!(err, arlesh_lib::tasks::error::TaskError::GoalNotFound(_)),
         "expected GoalNotFound, got {:?}",
@@ -538,27 +638,29 @@ async fn add_and_remove_tag_on_goal() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
     let tag_id = make_tag(&pool).await;
-    let goal_repo = GoalRepository::new(&pool);
 
-    let goal = goal_repo
-        .create(CreateGoalRequest {
+    let goal = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_goal(&mut db, CreateGoalRequest {
             title: "Tagged Goal".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
     assert!(goal.tag_ids.is_empty());
 
-    goal_repo.add_tag(goal.id.into(), tag_id).await.unwrap();
-    let tagged = goal_repo.get(goal.id.into()).await.unwrap();
+    helpers::session_factory(&pool).connect().await.unwrap().goals().add_tag(goal.id.into(), tag_id).await.unwrap();
+    let tagged = helpers::session_factory(&pool).connect().await.unwrap().goals().get(goal.id.into()).await.unwrap();
     assert_eq!(tagged.tag_ids, vec![tag_id]);
 
-    goal_repo.remove_tag(goal.id.into(), tag_id).await.unwrap();
-    let untagged = goal_repo.get(goal.id.into()).await.unwrap();
+    helpers::session_factory(&pool).connect().await.unwrap().goals().remove_tag(goal.id.into(), tag_id).await.unwrap();
+    let untagged = helpers::session_factory(&pool).connect().await.unwrap().goals().get(goal.id.into()).await.unwrap();
     assert!(untagged.tag_ids.is_empty());
 }
 
@@ -567,22 +669,24 @@ async fn list_goals_includes_tag_ids() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
     let tag_id = make_tag(&pool).await;
-    let goal_repo = GoalRepository::new(&pool);
 
-    let goal = goal_repo
-        .create(CreateGoalRequest {
+    let goal = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_goal(&mut db, CreateGoalRequest {
             title: "Goal With Tag".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
-    goal_repo.add_tag(goal.id.into(), tag_id).await.unwrap();
+    helpers::session_factory(&pool).connect().await.unwrap().goals().add_tag(goal.id.into(), tag_id).await.unwrap();
 
-    let all_goals = goal_repo.list().await.unwrap();
+    let all_goals = helpers::session_factory(&pool).connect().await.unwrap().goals().list().await.unwrap();
     let found = all_goals.iter().find(|g| g.id == goal.id).unwrap();
     assert_eq!(found.tag_ids, vec![tag_id]);
 }
@@ -596,8 +700,7 @@ async fn reparent_goal_to_different_project() {
             .fetch_one(&pool)
             .await
             .unwrap();
-    let project_b_id = DomainRepository::new(&pool)
-        .create(CreateDomainRequest {
+    let project_b_id = helpers::session_factory(&pool).connect().await.unwrap().domains().create(CreateDomainRequest {
             title: "Project B".into(),
             description: None,
             subtype: DomainSubtype::Project,
@@ -608,31 +711,36 @@ async fn reparent_goal_to_different_project() {
         .await
         .unwrap()
         .id;
-    let goal_repo = GoalRepository::new(&pool);
 
-    let goal = goal_repo
-        .create(CreateGoalRequest {
+    let goal = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_goal(&mut db, CreateGoalRequest {
             title: "Movable Goal".into(),
             parent_type: "project".into(),
             parent_id: project_a_id,
             status: None,
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
     assert_eq!(goal.parent_id, project_a_id);
 
-    let moved = goal_repo
-        .update(
+    let moved = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = update_goal(&mut db,
             goal.id.into(),
             UpdateGoalRequest {
                 parent_type: Some("project".into()),
                 parent_id: Some(project_b_id),
                 ..Default::default()
             },
-        )
-        .await
+        ).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
     assert_eq!(moved.parent_id, project_b_id);
@@ -642,27 +750,32 @@ async fn reparent_goal_to_different_project() {
 async fn update_task_status_to_in_progress() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
-    let task_repo = TaskRepository::new(&pool);
 
-    let task = task_repo
-        .create(CreateTaskRequest {
+    let task = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
             title: "In Progress Task".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
     assert_eq!(task.status, "todo");
 
-    let updated = task_repo
-        .update(
+    let updated = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = update_task(&mut db,
             task.id.into(),
             UpdateTaskRequest { status: Some(TaskStatus::InProgress), ..Default::default() },
-        )
-        .await
+        ).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
     assert_eq!(updated.status, "in_progress");
@@ -672,57 +785,74 @@ async fn update_task_status_to_in_progress() {
 async fn update_task_blocked_reason() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
-    let task_repo = TaskRepository::new(&pool);
 
-    let task = task_repo
-        .create(CreateTaskRequest {
+    let task = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
             title: "Blockable Task".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
-    let _ = task_repo; // the block-reason list lives in its own repository now
-    let repo = BlockReasonRepository::new(&pool);
-    repo.set("task", task.id, &["Waiting on design".into(), "Needs review".into()])
-        .await
+    {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = db.block_reasons().set("task", task.id, &["Waiting on design".into(), "Needs review".into()]).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
     assert_eq!(
-        repo.list_for("task", task.id).await.unwrap(),
+        helpers::session_factory(&pool).connect().await.unwrap().block_reasons().list_for("task", task.id).await.unwrap(),
         vec!["Waiting on design".to_string(), "Needs review".to_string()],
     );
 
     // Setting an empty list clears them; blank reasons are dropped.
-    repo.set("task", task.id, &[String::new(), "   ".into()]).await.unwrap();
-    assert!(repo.list_for("task", task.id).await.unwrap().is_empty());
+    {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = db.block_reasons().set("task", task.id, &[String::new(), "   ".into()]).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }.unwrap();
+    assert!(helpers::session_factory(&pool).connect().await.unwrap().block_reasons().list_for("task", task.id).await.unwrap().is_empty());
 }
 
 #[tokio::test]
 async fn explicit_block_reason_surfaces_in_get_with_blockers() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
-    let task_repo = TaskRepository::new(&pool);
 
-    let task = task_repo
-        .create(CreateTaskRequest {
+    let task = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
             title: "Blocked Task".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
-    BlockReasonRepository::new(&pool)
-        .set("task", task.id, &["Explicit reason".into()])
-        .await
+    {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = db.block_reasons().set("task", task.id, &["Explicit reason".into()]).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
-    let with_blockers = task_repo.get_with_blockers(task.id.into()).await.unwrap();
+    let with_blockers = {
+        let mut db = helpers::session_factory(&pool).connect().await.unwrap();
+        get_task_with_blockers(&mut db, task.id.into()).await
+    }.unwrap();
     assert!(with_blockers.block_reasons.iter().any(|r| r.contains("Explicit reason")));
 }
 
@@ -730,28 +860,30 @@ async fn explicit_block_reason_surfaces_in_get_with_blockers() {
 async fn update_task_scope() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
-    let task_repo = TaskRepository::new(&pool);
 
-    let scope = ScopeRepository::new(&pool)
-        .get_or_create(ScopeKind::Day, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap())
+    let scope = helpers::session_factory(&pool).connect().await.unwrap().scopes().get_or_create(ScopeKind::Day, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap())
         .await
         .unwrap();
 
-    let task = task_repo
-        .create(CreateTaskRequest {
+    let task = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
             title: "Scoped Task".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
     assert!(task.time_scope.is_none());
 
-    let updated = task_repo
-        .update(
+    let updated = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = update_task(&mut db,
             task.id.into(),
             UpdateTaskRequest {
                 time_scope: Some(Some(TimeScope {
@@ -761,8 +893,10 @@ async fn update_task_scope() {
                 })),
                 ..Default::default()
             },
-        )
-        .await
+        ).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
     let time_scope = updated.time_scope.expect("time scope set");
@@ -774,14 +908,13 @@ async fn update_task_scope() {
 async fn task_time_scope_duration_params_round_trip() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
-    let task_repo = TaskRepository::new(&pool);
-    let scope = ScopeRepository::new(&pool)
-        .get_or_create(ScopeKind::Week, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap())
+    let scope = helpers::session_factory(&pool).connect().await.unwrap().scopes().get_or_create(ScopeKind::Week, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap())
         .await
         .unwrap();
 
-    let task = task_repo
-        .create(CreateTaskRequest {
+    let task = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
             title: "Duration Task".into(),
             parent_type: "project".into(),
             parent_id: project_id,
@@ -791,8 +924,10 @@ async fn task_time_scope_duration_params_round_trip() {
                 duration: Some(DurationSpec { n: 3, kind: "week".into() }),
             }),
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
     // The snapshotted window persists alongside the remembered duration parameters.
@@ -805,39 +940,41 @@ async fn task_time_scope_duration_params_round_trip() {
 async fn task_plan_is_independent_of_time_scope() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
-    let task_repo = TaskRepository::new(&pool);
-    let scope_repo = ScopeRepository::new(&pool);
-    let week = scope_repo
-        .get_or_create(ScopeKind::Week, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap())
+    let week = helpers::session_factory(&pool).connect().await.unwrap().scopes().get_or_create(ScopeKind::Week, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap())
         .await
         .unwrap();
-    let day = scope_repo
-        .get_or_create(ScopeKind::Day, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap())
+    let day = helpers::session_factory(&pool).connect().await.unwrap().scopes().get_or_create(ScopeKind::Day, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap())
         .await
         .unwrap();
 
-    let task = task_repo
-        .create(CreateTaskRequest {
+    let task = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
             title: "Planned Task".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             time_scope: Some(TimeScope { start_id: week.id, end_id: week.id, duration: None }),
             plan: Some(single(day.id)),
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
     assert_eq!(task.time_scope.expect("time scope").start_id, week.id);
     assert_eq!(task.plan.map(|p| (p.start_id, p.end_id)), Some((day.id, day.id)));
 
     // Clearing the Plan leaves the Time Scope intact.
-    let cleared = task_repo
-        .update(
+    let cleared = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = update_task(&mut db,
             task.id.into(),
             UpdateTaskRequest { plan: Some(None), ..Default::default() },
-        )
-        .await
+        ).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
     assert!(cleared.plan.is_none());
     assert!(cleared.time_scope.is_some(), "clearing Plan must not clear Time Scope");
@@ -847,27 +984,27 @@ async fn task_plan_is_independent_of_time_scope() {
 async fn plan_within_time_scope_is_accepted() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
-    let scope_repo = ScopeRepository::new(&pool);
     // 2026-07-01 (Wed) sits inside its own Sun–Sat week.
-    let week = scope_repo
-        .get_or_create(ScopeKind::Week, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap())
+    let week = helpers::session_factory(&pool).connect().await.unwrap().scopes().get_or_create(ScopeKind::Week, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap())
         .await
         .unwrap();
-    let day = scope_repo
-        .get_or_create(ScopeKind::Day, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap())
+    let day = helpers::session_factory(&pool).connect().await.unwrap().scopes().get_or_create(ScopeKind::Day, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap())
         .await
         .unwrap();
 
-    let task = TaskRepository::new(&pool)
-        .create(CreateTaskRequest {
+    let task = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
             title: "Planned".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             time_scope: Some(TimeScope { start_id: week.id, end_id: week.id, duration: None }),
             plan: Some(single(day.id)),
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
     assert_eq!(task.plan.map(|p| (p.start_id, p.end_id)), Some((day.id, day.id)));
 }
@@ -876,27 +1013,27 @@ async fn plan_within_time_scope_is_accepted() {
 async fn plan_outside_time_scope_is_rejected() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
-    let scope_repo = ScopeRepository::new(&pool);
-    let week = scope_repo
-        .get_or_create(ScopeKind::Week, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap())
+    let week = helpers::session_factory(&pool).connect().await.unwrap().scopes().get_or_create(ScopeKind::Week, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap())
         .await
         .unwrap();
     // A day three weeks later is not contained in the time-scope week.
-    let far_day = scope_repo
-        .get_or_create(ScopeKind::Day, chrono::NaiveDate::from_ymd_opt(2026, 7, 20).unwrap())
+    let far_day = helpers::session_factory(&pool).connect().await.unwrap().scopes().get_or_create(ScopeKind::Day, chrono::NaiveDate::from_ymd_opt(2026, 7, 20).unwrap())
         .await
         .unwrap();
 
-    let result = TaskRepository::new(&pool)
-        .create(CreateTaskRequest {
+    let result = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
             title: "Bad plan".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             time_scope: Some(TimeScope { start_id: week.id, end_id: week.id, duration: None }),
             plan: Some(single(far_day.id)),
             ..Default::default()
-        })
-        .await;
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    };
 
     assert!(
         matches!(result, Err(arlesh_lib::tasks::error::TaskError::ScopeContainment(_))),
@@ -913,17 +1050,13 @@ fn single(scope_id: i64) -> TimeScope {
 async fn july_scopes(
     pool: &sqlx::SqlitePool,
 ) -> (i64, i64, i64) {
-    let repo = ScopeRepository::new(pool);
-    let july = repo
-        .get_or_create(ScopeKind::Month, chrono::NaiveDate::from_ymd_opt(2026, 7, 15).unwrap())
+    let july = helpers::session_factory(pool).connect().await.unwrap().scopes().get_or_create(ScopeKind::Month, chrono::NaiveDate::from_ymd_opt(2026, 7, 15).unwrap())
         .await
         .unwrap();
-    let week_in_july = repo
-        .get_or_create(ScopeKind::Week, chrono::NaiveDate::from_ymd_opt(2026, 7, 15).unwrap())
+    let week_in_july = helpers::session_factory(pool).connect().await.unwrap().scopes().get_or_create(ScopeKind::Week, chrono::NaiveDate::from_ymd_opt(2026, 7, 15).unwrap())
         .await
         .unwrap();
-    let week_in_august = repo
-        .get_or_create(ScopeKind::Week, chrono::NaiveDate::from_ymd_opt(2026, 8, 15).unwrap())
+    let week_in_august = helpers::session_factory(pool).connect().await.unwrap().scopes().get_or_create(ScopeKind::Week, chrono::NaiveDate::from_ymd_opt(2026, 8, 15).unwrap())
         .await
         .unwrap();
     (july.id, week_in_july.id, week_in_august.id)
@@ -935,26 +1068,32 @@ async fn child_time_scope_within_ancestor_is_accepted() {
     let project_id = make_project(&pool).await;
     let (july, week_in_july, _) = july_scopes(&pool).await;
 
-    let goal = GoalRepository::new(&pool)
-        .create(CreateGoalRequest {
+    let goal = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_goal(&mut db, CreateGoalRequest {
             title: "July Goal".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             time_scope: Some(single(july)),
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
-    let task = TaskRepository::new(&pool)
-        .create(CreateTaskRequest {
+    let task = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
             title: "Week Task".into(),
             parent_type: "goal".into(),
             parent_id: goal.id,
             time_scope: Some(single(week_in_july)),
             ..Default::default()
-        })
-        .await;
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    };
     assert!(task.is_ok(), "a week inside the goal's month should be accepted: {task:?}");
 }
 
@@ -964,26 +1103,32 @@ async fn child_time_scope_outside_ancestor_is_rejected() {
     let project_id = make_project(&pool).await;
     let (july, _, week_in_august) = july_scopes(&pool).await;
 
-    let goal = GoalRepository::new(&pool)
-        .create(CreateGoalRequest {
+    let goal = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_goal(&mut db, CreateGoalRequest {
             title: "July Goal".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             time_scope: Some(single(july)),
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
-    let result = TaskRepository::new(&pool)
-        .create(CreateTaskRequest {
+    let result = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
             title: "August Task".into(),
             parent_type: "goal".into(),
             parent_id: goal.id,
             time_scope: Some(single(week_in_august)),
             ..Default::default()
-        })
-        .await;
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    };
     assert!(matches!(
         result,
         Err(arlesh_lib::tasks::error::TaskError::ScopeContainment(_))
@@ -995,35 +1140,40 @@ async fn narrowing_a_scope_reports_violating_descendants() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
     let (july, week_in_july, _) = july_scopes(&pool).await;
-    let goal_repo = GoalRepository::new(&pool);
-    let task_repo = TaskRepository::new(&pool);
 
     // Goal scoped to July, with a task child also scoped to all of July.
-    let goal = goal_repo
-        .create(CreateGoalRequest {
+    let goal = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_goal(&mut db, CreateGoalRequest {
             title: "July Goal".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             time_scope: Some(single(july)),
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
-    let task = task_repo
-        .create(CreateTaskRequest {
+    let task = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
             title: "Whole July Task".into(),
             parent_type: "goal".into(),
             parent_id: goal.id,
             time_scope: Some(single(july)),
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
     // Narrowing the goal to a single week would orphan the month-scoped task.
-    let conflicts = task_repo
-        .scope_containment_conflicts("goal", goal.id, &single(week_in_july))
-        .await
+    let conflicts = {
+        let mut db = helpers::session_factory(&pool).connect().await.unwrap();
+        conflicts_for_new_time_scope(&mut db, "goal", goal.id, &single(week_in_july)).await
+    }
         .unwrap();
     assert_eq!(conflicts.len(), 1);
     assert_eq!(conflicts[0].node_type, "task");
@@ -1035,51 +1185,61 @@ async fn reparenting_under_a_tighter_ancestor_is_rejected() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
     let (july, week_in_july, week_in_august) = july_scopes(&pool).await;
-    let goal_repo = GoalRepository::new(&pool);
-    let task_repo = TaskRepository::new(&pool);
 
-    let july_goal = goal_repo
-        .create(CreateGoalRequest {
+    let july_goal = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_goal(&mut db, CreateGoalRequest {
             title: "July Goal".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             time_scope: Some(single(july)),
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
-    let august_goal = goal_repo
-        .create(CreateGoalRequest {
+    let august_goal = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_goal(&mut db, CreateGoalRequest {
             title: "August Goal".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             time_scope: Some(single(week_in_august)),
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
-    let task = task_repo
-        .create(CreateTaskRequest {
+    let task = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
             title: "Week Task".into(),
             parent_type: "goal".into(),
             parent_id: july_goal.id,
             time_scope: Some(single(week_in_july)),
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
     // Moving the July-week task under the August goal must be rejected.
-    let result = task_repo
-        .update(
+    let result = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = update_task(&mut db,
             task.id.into(),
             UpdateTaskRequest {
                 parent_type: Some("goal".into()),
                 parent_id: Some(august_goal.id),
                 ..Default::default()
             },
-        )
-        .await;
+        ).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    };
     assert!(matches!(
         result,
         Err(arlesh_lib::tasks::error::TaskError::ScopeContainment(_))
@@ -1091,34 +1251,39 @@ async fn reparent_conflicts_flags_a_node_that_would_leave_its_new_ancestor() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
     let (july, _week_in_july, week_in_august) = july_scopes(&pool).await;
-    let goal_repo = GoalRepository::new(&pool);
-    let task_repo = TaskRepository::new(&pool);
 
-    let july_goal = goal_repo
-        .create(CreateGoalRequest {
+    let july_goal = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_goal(&mut db, CreateGoalRequest {
             title: "July".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             time_scope: Some(single(july)),
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
     // A task scoped to August, currently under the (unscoped) project.
-    let task = task_repo
-        .create(CreateTaskRequest {
+    let task = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
             title: "August task".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             time_scope: Some(single(week_in_august)),
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
-    let result = task_repo
-        .reparent_scope_conflicts("task", task.id, "goal", july_goal.id)
-        .await
+    let result = {
+        let mut db = helpers::session_factory(&pool).connect().await.unwrap();
+        reparent_conflicts(&mut db, "task", task.id, "goal", july_goal.id).await
+    }
         .unwrap();
 
     assert!(result.ancestor_time_scope.is_some());
@@ -1132,33 +1297,38 @@ async fn reparent_conflicts_empty_when_node_fits_the_new_ancestor() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
     let (july, week_in_july, _) = july_scopes(&pool).await;
-    let goal_repo = GoalRepository::new(&pool);
-    let task_repo = TaskRepository::new(&pool);
 
-    let july_goal = goal_repo
-        .create(CreateGoalRequest {
+    let july_goal = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_goal(&mut db, CreateGoalRequest {
             title: "July".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             time_scope: Some(single(july)),
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
-    let task = task_repo
-        .create(CreateTaskRequest {
+    let task = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
             title: "Fits".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             time_scope: Some(single(week_in_july)),
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
-    let result = task_repo
-        .reparent_scope_conflicts("task", task.id, "goal", july_goal.id)
-        .await
+    let result = {
+        let mut db = helpers::session_factory(&pool).connect().await.unwrap();
+        reparent_conflicts(&mut db, "task", task.id, "goal", july_goal.id).await
+    }
         .unwrap();
     assert!(result.conflicts.is_empty());
 }
@@ -1168,22 +1338,25 @@ async fn reparent_conflicts_none_under_an_unscoped_parent() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
     let (_, _, week_in_august) = july_scopes(&pool).await;
-    let task_repo = TaskRepository::new(&pool);
 
-    let task = task_repo
-        .create(CreateTaskRequest {
+    let task = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
             title: "Scoped".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             time_scope: Some(single(week_in_august)),
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
-    let result = task_repo
-        .reparent_scope_conflicts("task", task.id, "project", project_id)
-        .await
+    let result = {
+        let mut db = helpers::session_factory(&pool).connect().await.unwrap();
+        reparent_conflicts(&mut db, "task", task.id, "project", project_id).await
+    }
         .unwrap();
     assert!(result.ancestor_time_scope.is_none());
     assert!(result.conflicts.is_empty());
@@ -1193,34 +1366,36 @@ async fn reparent_conflicts_none_under_an_unscoped_parent() {
 async fn update_rejects_plan_outside_time_scope() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
-    let scope_repo = ScopeRepository::new(&pool);
-    let week = scope_repo
-        .get_or_create(ScopeKind::Week, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap())
+    let week = helpers::session_factory(&pool).connect().await.unwrap().scopes().get_or_create(ScopeKind::Week, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap())
         .await
         .unwrap();
-    let far_day = scope_repo
-        .get_or_create(ScopeKind::Day, chrono::NaiveDate::from_ymd_opt(2026, 7, 20).unwrap())
+    let far_day = helpers::session_factory(&pool).connect().await.unwrap().scopes().get_or_create(ScopeKind::Day, chrono::NaiveDate::from_ymd_opt(2026, 7, 20).unwrap())
         .await
         .unwrap();
-    let task_repo = TaskRepository::new(&pool);
 
-    let task = task_repo
-        .create(CreateTaskRequest {
+    let task = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
             title: "Scoped".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             time_scope: Some(TimeScope { start_id: week.id, end_id: week.id, duration: None }),
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
-    let result = task_repo
-        .update(
+    let result = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = update_task(&mut db,
             task.id.into(),
             UpdateTaskRequest { plan: Some(Some(single(far_day.id))), ..Default::default() },
-        )
-        .await;
+        ).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    };
     assert!(matches!(
         result,
         Err(arlesh_lib::tasks::error::TaskError::ScopeContainment(_))
@@ -1231,52 +1406,64 @@ async fn update_rejects_plan_outside_time_scope() {
 async fn update_goal_blocked_reason() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
-    let goal_repo = GoalRepository::new(&pool);
 
-    let goal = goal_repo
-        .create(CreateGoalRequest {
+    let goal = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_goal(&mut db, CreateGoalRequest {
             title: "Blockable Goal".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
-    let _ = goal_repo;
-    let repo = BlockReasonRepository::new(&pool);
-    repo.set("goal", goal.id, &["Waiting on funding".into()]).await.unwrap();
-    assert_eq!(repo.list_for("goal", goal.id).await.unwrap(), vec!["Waiting on funding".to_string()]);
+    {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = db.block_reasons().set("goal", goal.id, &["Waiting on funding".into()]).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }.unwrap();
+    assert_eq!(helpers::session_factory(&pool).connect().await.unwrap().block_reasons().list_for("goal", goal.id).await.unwrap(), vec!["Waiting on funding".to_string()]);
 
-    repo.set("goal", goal.id, &[]).await.unwrap();
-    assert!(repo.list_for("goal", goal.id).await.unwrap().is_empty());
+    {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = db.block_reasons().set("goal", goal.id, &[]).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }.unwrap();
+    assert!(helpers::session_factory(&pool).connect().await.unwrap().block_reasons().list_for("goal", goal.id).await.unwrap().is_empty());
 }
 
 #[tokio::test]
 async fn update_goal_scope() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
-    let goal_repo = GoalRepository::new(&pool);
 
-    let scope = ScopeRepository::new(&pool)
-        .get_or_create(ScopeKind::Month, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap())
+    let scope = helpers::session_factory(&pool).connect().await.unwrap().scopes().get_or_create(ScopeKind::Month, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap())
         .await
         .unwrap();
 
-    let goal = goal_repo
-        .create(CreateGoalRequest {
+    let goal = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_goal(&mut db, CreateGoalRequest {
             title: "Scoped Goal".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
-    let updated = goal_repo
-        .update(
+    let updated = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = update_goal(&mut db,
             goal.id.into(),
             UpdateGoalRequest {
                 time_scope: Some(Some(TimeScope {
@@ -1286,8 +1473,10 @@ async fn update_goal_scope() {
                 })),
                 ..Default::default()
             },
-        )
-        .await
+        ).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
     let time_scope = updated.time_scope.expect("time scope set");
@@ -1299,34 +1488,42 @@ async fn update_goal_scope() {
 async fn goal_frozen_and_archived_statuses() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
-    let goal_repo = GoalRepository::new(&pool);
 
-    let goal = goal_repo
-        .create(CreateGoalRequest {
+    let goal = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_goal(&mut db, CreateGoalRequest {
             title: "Status Goal".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
-    let frozen = goal_repo
-        .update(
+    let frozen = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = update_goal(&mut db,
             goal.id.into(),
             UpdateGoalRequest { status: Some(GoalStatus::Frozen), ..Default::default() },
-        )
-        .await
+        ).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
     assert_eq!(frozen.status, "frozen");
 
-    let archived = goal_repo
-        .update(
+    let archived = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = update_goal(&mut db,
             goal.id.into(),
             UpdateGoalRequest { status: Some(GoalStatus::Archived), ..Default::default() },
-        )
-        .await
+        ).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
     assert_eq!(archived.status, "archived");
 }
@@ -1335,40 +1532,55 @@ async fn goal_frozen_and_archived_statuses() {
 async fn goal_is_achieved() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
-    let goal_repo = GoalRepository::new(&pool);
 
-    let goal = goal_repo
-        .create(CreateGoalRequest {
+    let goal = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_goal(&mut db, CreateGoalRequest {
             title: "Achievement Goal".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
-    assert!(!goal_repo.is_achieved(goal.id.into()).await.unwrap());
+    assert!(!helpers::session_factory(&pool).connect().await.unwrap().goals().is_achieved(goal.id.into()).await.unwrap());
 
-    goal_repo
-        .update(
+    {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = update_goal(&mut db,
             goal.id.into(),
             UpdateGoalRequest { status: Some(GoalStatus::Achieved), ..Default::default() },
-        )
-        .await
+        ).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
-    assert!(goal_repo.is_achieved(goal.id.into()).await.unwrap());
+    assert!(helpers::session_factory(&pool).connect().await.unwrap().goals().is_achieved(goal.id.into()).await.unwrap());
 }
 
 // --- On-exit behavior + derived scope lifecycle (Feature A / S2) ---
 
 async fn day_scope(pool: &sqlx::SqlitePool, y: i32, m: u32, d: u32) -> i64 {
-    ScopeRepository::new(pool)
-        .get_or_create(ScopeKind::Day, NaiveDate::from_ymd_opt(y, m, d).unwrap())
+    helpers::session_factory(pool).connect().await.unwrap().scopes().get_or_create(ScopeKind::Day, NaiveDate::from_ymd_opt(y, m, d).unwrap())
         .await
         .unwrap()
         .id
+}
+
+/// Derives every item's lifecycle over a pooled session, the way the `derive_scope_lifecycles`
+/// command does. The session is dropped before returning: the test pool has one connection, and
+/// the callers below go on to read it.
+async fn lifecycles(
+    pool: &sqlx::SqlitePool,
+    now: chrono::NaiveDateTime,
+) -> Vec<arlesh_lib::tasks::lifecycle::ItemLifecycle> {
+    let mut db = SessionFactory::new(pool.clone()).connect().await.unwrap();
+    derive_all_scope_lifecycles(&mut db, now).await.unwrap()
 }
 
 fn task_state(states: &[arlesh_lib::tasks::lifecycle::ItemLifecycle], id: i64) -> arlesh_lib::tasks::lifecycle::ItemLifecycle {
@@ -1384,31 +1596,36 @@ async fn scoped_item_defaults_to_keep_and_unscoped_forces_null() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
     let scope = day_scope(&pool, 2026, 1, 5).await;
-    let repo = TaskRepository::new(&pool);
 
     // Scoped without an explicit on-exit → defaults to Keep.
-    let scoped = repo
-        .create(CreateTaskRequest {
+    let scoped = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
             title: "Scoped".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             time_scope: Some(TimeScope { start_id: scope, end_id: scope, duration: None }),
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
     assert_eq!(scoped.on_scope_exit, Some(OnScopeExit::Keep));
 
     // Unscoped but an on-exit was provided → dropped (invariant: on-exit present iff scoped).
-    let unscoped = repo
-        .create(CreateTaskRequest {
+    let unscoped = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
             title: "Unscoped".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             on_scope_exit: Some(OnScopeExit::Archive),
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
     assert_eq!(unscoped.on_scope_exit, None);
 }
@@ -1418,27 +1635,32 @@ async fn archive_on_exit_persists_and_clearing_scope_clears_it() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
     let scope = day_scope(&pool, 2026, 1, 5).await;
-    let repo = TaskRepository::new(&pool);
 
-    let task = repo
-        .create(CreateTaskRequest {
+    let task = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
             title: "Archive me".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             time_scope: Some(TimeScope { start_id: scope, end_id: scope, duration: None }),
             on_scope_exit: Some(OnScopeExit::Archive),
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
     assert_eq!(task.on_scope_exit, Some(OnScopeExit::Archive));
 
-    let cleared = repo
-        .update(
+    let cleared = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = update_task(&mut db,
             task.id.into(),
             UpdateTaskRequest { time_scope: Some(None), ..Default::default() },
-        )
-        .await
+        ).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
     assert_eq!(cleared.time_scope, None);
     assert_eq!(cleared.on_scope_exit, None);
@@ -1449,33 +1671,39 @@ async fn derives_overdue_missed_and_archives_a_completed_item() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
     let past = day_scope(&pool, 2026, 1, 5).await;
-    let repo = TaskRepository::new(&pool);
     let scope = || Some(TimeScope { start_id: past, end_id: past, duration: None });
 
-    let keep = repo
-        .create(CreateTaskRequest {
+    let keep = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
             title: "Keep".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             time_scope: scope(),
             on_scope_exit: Some(OnScopeExit::Keep),
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
-    let archive = repo
-        .create(CreateTaskRequest {
+    let archive = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
             title: "Archive".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             time_scope: scope(),
             on_scope_exit: Some(OnScopeExit::Archive),
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
-    let done = repo
-        .create(CreateTaskRequest {
+    let done = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
             title: "Done".into(),
             parent_type: "project".into(),
             parent_id: project_id,
@@ -1483,13 +1711,15 @@ async fn derives_overdue_missed_and_archives_a_completed_item() {
             time_scope: scope(),
             on_scope_exit: Some(OnScopeExit::Archive),
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
     // Well past the 2026-01-05 window.
     let now = NaiveDate::from_ymd_opt(2026, 2, 1).unwrap().and_hms_opt(12, 0, 0).unwrap();
-    let states = derive_all_scope_lifecycles(&pool, now).await.unwrap();
+    let states = lifecycles(&pool, now).await;
 
     let keep_state = task_state(&states, keep.id);
     assert_eq!(keep_state.timing, Timing::Lapsed);
@@ -1514,34 +1744,39 @@ async fn inherited_scope_and_on_exit_govern_children() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
     let past = day_scope(&pool, 2026, 1, 5).await;
-    let repo = TaskRepository::new(&pool);
 
-    let parent = repo
-        .create(CreateTaskRequest {
+    let parent = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
             title: "Parent".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             time_scope: Some(TimeScope { start_id: past, end_id: past, duration: None }),
             on_scope_exit: Some(OnScopeExit::Archive),
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
     // Child carries no scope of its own — it inherits the parent's window and on-exit.
-    let child = repo
-        .create(CreateTaskRequest {
+    let child = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
             title: "Child".into(),
             parent_type: "task".into(),
             parent_id: parent.id,
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
     assert_eq!(child.time_scope, None);
     assert_eq!(child.on_scope_exit, None); // nothing stored on the child
 
     let now = NaiveDate::from_ymd_opt(2026, 2, 1).unwrap().and_hms_opt(12, 0, 0).unwrap();
-    let states = derive_all_scope_lifecycles(&pool, now).await.unwrap();
+    let states = lifecycles(&pool, now).await;
     // Inherits Archive → Lapsed + Missed, even though the child itself is unscoped.
     let child_state = task_state(&states, child.id);
     assert_eq!(child_state.timing, Timing::Lapsed);
@@ -1561,45 +1796,53 @@ async fn derives_goal_overdue_missed_and_archives_an_achieved_goal() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
     let past = day_scope(&pool, 2026, 1, 5).await;
-    let goals = GoalRepository::new(&pool);
     let scope = || Some(TimeScope { start_id: past, end_id: past, duration: None });
 
-    let keep = goals
-        .create(CreateGoalRequest {
+    let keep = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_goal(&mut db, CreateGoalRequest {
             title: "Keep".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             time_scope: scope(),
             on_scope_exit: Some(OnScopeExit::Keep),
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
-    let archive = goals
-        .create(CreateGoalRequest {
+    let archive = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_goal(&mut db, CreateGoalRequest {
             title: "Archive".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             time_scope: scope(),
             on_scope_exit: Some(OnScopeExit::Archive),
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
-    let achieved = goals
-        .create(CreateGoalRequest {
+    let achieved = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_goal(&mut db, CreateGoalRequest {
             title: "Achieved".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             status: Some(GoalStatus::Achieved),
             time_scope: scope(),
             on_scope_exit: Some(OnScopeExit::Archive),
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
     let now = NaiveDate::from_ymd_opt(2026, 2, 1).unwrap().and_hms_opt(12, 0, 0).unwrap();
-    let states = derive_all_scope_lifecycles(&pool, now).await.unwrap();
+    let states = lifecycles(&pool, now).await;
 
     let keep_state = goal_state(&states, keep.id);
     assert_eq!(keep_state.timing, Timing::Lapsed);
@@ -1623,24 +1866,29 @@ async fn derives_goal_overdue_missed_and_archives_an_achieved_goal() {
 async fn derivation_tolerates_an_orphaned_item_whose_parent_was_deleted() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
-    let goals = GoalRepository::new(&pool);
-    let parent = goals
-        .create(CreateGoalRequest {
+    let parent = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_goal(&mut db, CreateGoalRequest {
             title: "Parent".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
-    let child = TaskRepository::new(&pool)
-        .create(CreateTaskRequest {
+    let child = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
             title: "Child".into(),
             parent_type: "goal".into(),
             parent_id: parent.id,
             ..Default::default()
-        })
-        .await
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
     // Orphan the child directly (a raw delete that skips the cascade), simulating stale data.
     sqlx::query("DELETE FROM goals WHERE id = ?").bind(parent.id).execute(&pool).await.unwrap();
@@ -1648,7 +1896,7 @@ async fn derivation_tolerates_an_orphaned_item_whose_parent_was_deleted() {
     // Deriving every item's lifecycle must NOT crash on the dangling ancestor (the render bug);
     // the orphan is simply unconstrained → Active.
     let now = NaiveDate::from_ymd_opt(2026, 2, 1).unwrap().and_hms_opt(12, 0, 0).unwrap();
-    let states = derive_all_scope_lifecycles(&pool, now).await.unwrap();
+    let states = lifecycles(&pool, now).await;
     assert_eq!(task_state(&states, child.id).timing, Timing::Active);
 }
 
@@ -1656,24 +1904,1095 @@ async fn derivation_tolerates_an_orphaned_item_whose_parent_was_deleted() {
 async fn deleting_a_goal_cascades_its_subtree() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
-    let goals = GoalRepository::new(&pool);
-    let tasks = TaskRepository::new(&pool);
-    let parent = goals
-        .create(CreateGoalRequest { title: "Parent".into(), parent_type: "project".into(), parent_id: project_id, ..Default::default() })
-        .await
+    let parent = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_goal(&mut db, CreateGoalRequest { title: "Parent".into(), parent_type: "project".into(), parent_id: project_id, ..Default::default() }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
-    let sub_goal = goals
-        .create(CreateGoalRequest { title: "Sub".into(), parent_type: "goal".into(), parent_id: parent.id, ..Default::default() })
-        .await
+    let sub_goal = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_goal(&mut db, CreateGoalRequest { title: "Sub".into(), parent_type: "goal".into(), parent_id: parent.id, ..Default::default() }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
-    let sub_task = tasks
-        .create(CreateTaskRequest { title: "Step".into(), parent_type: "goal".into(), parent_id: sub_goal.id, ..Default::default() })
-        .await
+    let sub_task = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest { title: "Step".into(), parent_type: "goal".into(), parent_id: sub_goal.id, ..Default::default() }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
         .unwrap();
 
-    goals.delete(parent.id.into()).await.unwrap();
+    {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = arlesh_lib::tasks::delete_goal(&mut db, parent.id.into()).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }.unwrap();
 
     // The whole subtree is gone — nothing is orphaned.
-    assert!(goals.get(sub_goal.id.into()).await.is_err());
-    assert!(tasks.get(sub_task.id.into()).await.is_err());
+    assert!(helpers::session_factory(&pool).connect().await.unwrap().goals().get(sub_goal.id.into()).await.is_err());
+    assert!(helpers::session_factory(&pool).connect().await.unwrap().tasks().get(sub_task.id.into()).await.is_err());
+}
+
+// --- Command-level tests for the transactional commands (Task 2.2 Step 3) ---
+//
+// Every `tasks` command that opens a transactional session gets one of these. They call the real
+// command function — `tauri::State` has no public constructor, so `helpers::command_host` stands
+// up a mock app to lend one — and assert what is on disk afterwards, never merely that the call
+// returned `Ok`. A command whose `db.commit()` line is deleted still compiles and still returns
+// `Ok`; the rollback is visible only in the rows, which is what these read.
+//
+// The pool has a single connection (see `helpers::test_pool`), so every raw read below happens
+// after the command's session has been committed and dropped.
+
+/// A second project, so a reparent has somewhere to go.
+async fn make_second_project(pool: &sqlx::SqlitePool) -> i64 {
+    let aspect_id: i64 =
+        sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Growth' AND subtype = 'aspect'")
+            .fetch_one(pool)
+            .await
+            .unwrap();
+    helpers::session_factory(pool).connect().await.unwrap().domains().create(CreateDomainRequest {
+            title: "Second Project".into(),
+            description: None,
+            subtype: DomainSubtype::Project,
+            parent_id: Some(aspect_id),
+            status: Some(ProjectStatus::Active),
+            knowledge_base_directory: None,
+        })
+        .await
+        .unwrap()
+        .id
+}
+
+/// The row's title and sort position, read straight from the database.
+async fn title_and_position(pool: &sqlx::SqlitePool, table: &str, id: i64) -> (String, i64) {
+    sqlx::query_as(&format!("SELECT title, position FROM {table} WHERE id = ?"))
+        .bind(id)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+/// The row's title and parent id, read straight from the database.
+async fn title_and_parent(pool: &sqlx::SqlitePool, table: &str, id: i64) -> (String, i64) {
+    sqlx::query_as(&format!("SELECT title, parent_id FROM {table} WHERE id = ?"))
+        .bind(id)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+/// Counts the rows of `table` whose `column` equals `value`, straight from the database.
+///
+/// Takes the column rather than a whole predicate on purpose: a helper that binds one value into
+/// caller-supplied SQL silently binds NULL for every extra `?`, so `id = ? OR parent_id = ?` reads
+/// as `id = 1 OR parent_id = NULL` and the second half quietly never matches. One placeholder,
+/// one bind, no way to get that wrong.
+async fn count_where(pool: &sqlx::SqlitePool, table: &str, column: &str, value: i64) -> i64 {
+    sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {table} WHERE {column} = ?"))
+        .bind(value)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn the_create_task_command_commits_the_insert_and_the_position_update_together() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let app = helpers::command_host(&pool);
+
+    let created = task_commands::create_task(
+        app.state(),
+        CreateTaskRequest {
+            title: "Committed Task".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    let (title, position) = title_and_position(&pool, "tasks", created.id).await;
+    assert_eq!(title, "Committed Task", "the command must commit the insert, not roll it back");
+    assert!(
+        position > 1_600_000_000_000,
+        "the position update must land with the insert, got {position}"
+    );
+}
+
+#[tokio::test]
+async fn the_update_task_command_commits_the_reparent_and_the_field_update_together() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let other_project_id = make_second_project(&pool).await;
+    let task = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
+            title: "Before".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            ..Default::default()
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
+        .unwrap();
+    let app = helpers::command_host(&pool);
+
+    task_commands::update_task(
+        app.state(),
+        task.id,
+        UpdateTaskRequest {
+            title: Some("After".into()),
+            parent_type: Some("project".into()),
+            parent_id: Some(other_project_id),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    // Two separate UPDATE statements: the parent move and the field write. Both or neither.
+    let (title, parent_id) = title_and_parent(&pool, "tasks", task.id).await;
+    assert_eq!(title, "After", "the command must commit the field update");
+    assert_eq!(parent_id, other_project_id, "the command must commit the reparent");
+}
+
+#[tokio::test]
+async fn the_delete_task_command_commits_the_whole_subtree() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let root = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
+            title: "Root".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            ..Default::default()
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
+        .unwrap();
+    let child = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
+            title: "Child".into(),
+            parent_type: "task".into(),
+            parent_id: root.id,
+            ..Default::default()
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
+        .unwrap();
+    sqlx::query("INSERT INTO infos (body, parent_type, parent_id, position) VALUES (?, 'task', ?, 0)")
+        .bind("A note on the child")
+        .bind(child.id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = db.block_reasons().set("task", root.id, &["waiting".to_string()]).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
+        .unwrap();
+    let app = helpers::command_host(&pool);
+
+    task_commands::delete_task(app.state(), root.id).await.unwrap();
+
+    assert_eq!(
+        count_where(&pool, "tasks", "id", root.id).await,
+        0,
+        "the command must commit the root's deletion"
+    );
+    assert_eq!(
+        count_where(&pool, "tasks", "id", child.id).await,
+        0,
+        "the descendant task must go with the root"
+    );
+    assert_eq!(
+        count_where(&pool, "infos", "parent_id", child.id).await,
+        0,
+        "the descendant's infos must go with it"
+    );
+    assert_eq!(
+        count_where(&pool, "block_reasons", "owner_id", root.id).await,
+        0,
+        "the block reasons must go with the task"
+    );
+}
+
+#[tokio::test]
+async fn the_create_goal_command_commits_the_insert_and_the_position_update_together() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let app = helpers::command_host(&pool);
+
+    let created = task_commands::create_goal(
+        app.state(),
+        CreateGoalRequest {
+            title: "Committed Goal".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    let (title, position) = title_and_position(&pool, "goals", created.id).await;
+    assert_eq!(title, "Committed Goal", "the command must commit the insert, not roll it back");
+    assert!(
+        position > 1_600_000_000_000,
+        "the position update must land with the insert, got {position}"
+    );
+}
+
+#[tokio::test]
+async fn the_update_goal_command_commits_the_reparent_and_the_field_update_together() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let other_project_id = make_second_project(&pool).await;
+    let goal = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_goal(&mut db, CreateGoalRequest {
+            title: "Before".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            ..Default::default()
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
+        .unwrap();
+    let app = helpers::command_host(&pool);
+
+    task_commands::update_goal(
+        app.state(),
+        goal.id,
+        UpdateGoalRequest {
+            title: Some("After".into()),
+            parent_type: Some("project".into()),
+            parent_id: Some(other_project_id),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    let (title, parent_id) = title_and_parent(&pool, "goals", goal.id).await;
+    assert_eq!(title, "After", "the command must commit the field update");
+    assert_eq!(parent_id, other_project_id, "the command must commit the reparent");
+}
+
+#[tokio::test]
+async fn the_delete_goal_command_commits_the_whole_subtree() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let root = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_goal(&mut db, CreateGoalRequest {
+            title: "Root".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            ..Default::default()
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
+        .unwrap();
+    let child = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
+            title: "Step".into(),
+            parent_type: "goal".into(),
+            parent_id: root.id,
+            ..Default::default()
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
+        .unwrap();
+    let app = helpers::command_host(&pool);
+
+    task_commands::delete_goal(app.state(), root.id).await.unwrap();
+
+    assert_eq!(
+        count_where(&pool, "goals", "id", root.id).await,
+        0,
+        "the command must commit the goal's deletion"
+    );
+    assert_eq!(
+        count_where(&pool, "tasks", "id", child.id).await,
+        0,
+        "the descendant task must go with it"
+    );
+}
+
+#[tokio::test]
+async fn the_add_task_dependency_command_commits_the_edge_it_checked() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let blocker = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
+            title: "Blocker".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            ..Default::default()
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
+        .unwrap();
+    let blocked = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
+            title: "Blocked".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            ..Default::default()
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
+        .unwrap();
+    let app = helpers::command_host(&pool);
+
+    task_commands::add_task_dependency(
+        app.state(),
+        blocked.id,
+        Dependency::Task { id: blocker.id },
+    )
+    .await
+    .unwrap();
+
+    // One INSERT, but a transactional command: the cycle check in front of it is a read the write
+    // depends on. The edge must still be on disk once the session closes.
+    let edge: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM task_dependencies
+         WHERE task_id = ? AND dependency_type = 'task' AND dependency_id = ?",
+    )
+    .bind(blocked.id)
+    .bind(blocker.id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(edge, 1, "the command must commit the dependency edge it validated");
+
+    // And the check itself still rejects the reverse edge, inside the transaction.
+    let cycle = task_commands::add_task_dependency(
+        app.state(),
+        blocker.id,
+        Dependency::Task { id: blocked.id },
+    )
+    .await;
+    assert!(cycle.is_err(), "the cycle check must still reject the reverse edge");
+    assert_eq!(
+        count_where(&pool, "task_dependencies", "task_id", blocker.id).await,
+        0,
+        "a rejected dependency must leave nothing behind"
+    );
+}
+
+// --- The broken-chain policy (Phase 3, Task 3.3) ---
+//
+// One corrupt tree, two callers, two answers. The renderer treats a chain it cannot follow as
+// unconstrained and keeps drawing, because one bad row must not blank the whole mindmap; a write
+// underneath that same row is refused, because the invariant it would have to satisfy cannot be
+// read. Before the ancestry chain, "nothing found" said both of those at once, and which one you
+// got depended on which of four near-identical walks you happened to call.
+
+/// Inserts a task row straight into the database, skipping every rule, so a test can build a
+/// tree the write path would never produce.
+async fn insert_raw_task(pool: &sqlx::SqlitePool, id: i64, parent_type: &str, parent_id: i64) {
+    sqlx::query(
+        "INSERT INTO tasks (id, title, parent_type, parent_id, status) VALUES (?, ?, ?, ?, 'todo')",
+    )
+    .bind(id)
+    .bind(format!("raw task {id}"))
+    .bind(parent_type)
+    .bind(parent_id)
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
+/// Creates a task through the real write path, which is where containment is checked.
+async fn create_task_under(
+    pool: &sqlx::SqlitePool,
+    request: CreateTaskRequest,
+) -> Result<arlesh_lib::tasks::model::Task, arlesh_lib::tasks::error::TaskError> {
+    let mut db = helpers::session_factory(pool).begin().await.unwrap();
+    let created = create_task(&mut db, request).await;
+    if created.is_ok() {
+        db.commit().await.unwrap();
+    }
+    created
+}
+
+/// Creates a goal through the real write path, for the fixtures below.
+async fn create_goal_under(
+    pool: &sqlx::SqlitePool,
+    request: CreateGoalRequest,
+) -> arlesh_lib::tasks::model::Goal {
+    let mut db = helpers::session_factory(pool).begin().await.unwrap();
+    let created = create_goal(&mut db, request).await.unwrap();
+    db.commit().await.unwrap();
+    created
+}
+
+#[tokio::test]
+async fn a_dangling_ancestor_renders_fine_and_rejects_a_write() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let (_, week_in_july, _) = july_scopes(&pool).await;
+    let goal = create_goal_under(
+        &pool,
+        CreateGoalRequest {
+            title: "Doomed Parent".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            ..Default::default()
+        },
+    )
+    .await;
+    let orphan = create_task_under(
+        &pool,
+        CreateTaskRequest {
+            title: "Orphan".into(),
+            parent_type: "goal".into(),
+            parent_id: goal.id,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    // A raw delete that skips the cascade — the shape stale data actually takes.
+    sqlx::query("DELETE FROM goals WHERE id = ?").bind(goal.id).execute(&pool).await.unwrap();
+
+    // Read path: the orphan is unconstrained, and everything still renders.
+    let now = NaiveDate::from_ymd_opt(2026, 2, 1).unwrap().and_hms_opt(12, 0, 0).unwrap();
+    let states = lifecycles(&pool, now).await;
+    assert_eq!(task_state(&states, orphan.id).timing, Timing::Active);
+
+    // Write path: the very same chain refuses a scoped child, because the window that child
+    // would have to fit inside cannot be read.
+    let rejected = create_task_under(
+        &pool,
+        CreateTaskRequest {
+            title: "Scoped Child".into(),
+            parent_type: "task".into(),
+            parent_id: orphan.id,
+            time_scope: Some(single(week_in_july)),
+            ..Default::default()
+        },
+    )
+    .await;
+    assert!(
+        matches!(rejected, Err(arlesh_lib::tasks::error::TaskError::GoalNotFound(id)) if id == goal.id),
+        "the write must name the reference it could not follow, got {rejected:?}",
+    );
+    assert_eq!(
+        scoped_children_of(&pool, orphan.id).await,
+        0,
+        "a rejected write must leave nothing behind"
+    );
+}
+
+/// Counts the tasks parented by task `parent_id`. Written out rather than reusing `count_where`
+/// because the polymorphic parent link needs both halves: task 1 and goal 1 are different
+/// parents, and matching on `parent_id` alone conflates them.
+async fn scoped_children_of(pool: &sqlx::SqlitePool, parent_id: i64) -> i64 {
+    sqlx::query_scalar("SELECT COUNT(*) FROM tasks WHERE parent_type = 'task' AND parent_id = ?")
+        .bind(parent_id)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn a_cyclic_ancestor_chain_renders_fine_and_rejects_a_write() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let (_, week_in_july, _) = july_scopes(&pool).await;
+    let anchor = create_task_under(
+        &pool,
+        CreateTaskRequest {
+            title: "Anchor".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    // 9001 and 9002 are each other's parent. Nothing in `update_task`, `reparent_conflicts` or
+    // the schema prevents this today; before the chain's cycle guard every walk below spun
+    // forever and hung the app.
+    insert_raw_task(&pool, 9001, "task", 9002).await;
+    insert_raw_task(&pool, 9002, "task", 9001).await;
+
+    // Read path: the derivation terminates, the cyclic pair is unconstrained, and the healthy
+    // task beside them still renders.
+    let now = NaiveDate::from_ymd_opt(2026, 2, 1).unwrap().and_hms_opt(12, 0, 0).unwrap();
+    let states = lifecycles(&pool, now).await;
+    assert_eq!(task_state(&states, 9001).timing, Timing::Active);
+    assert_eq!(task_state(&states, anchor.id).timing, Timing::Active);
+
+    // Write path: the same cycle refuses a scoped child.
+    let rejected = create_task_under(
+        &pool,
+        CreateTaskRequest {
+            title: "Scoped Child".into(),
+            parent_type: "task".into(),
+            parent_id: 9001,
+            time_scope: Some(single(week_in_july)),
+            ..Default::default()
+        },
+    )
+    .await;
+    assert!(
+        matches!(rejected, Err(arlesh_lib::tasks::error::TaskError::AncestorCycle { .. })),
+        "a cyclic chain must reject the write rather than hang, got {rejected:?}",
+    );
+    assert_eq!(
+        scoped_children_of(&pool, 9001).await,
+        1,
+        "only 9002 remains a child of 9001 — the rejected write left nothing behind"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// retype_node — Phase 4
+// ---------------------------------------------------------------------------
+
+/// A goal worth retyping: scoped, private, tagged twice, blocked for a reason, depended on by two
+/// tasks, and holding one task child and one info child.
+struct RetypeFixture {
+    project_id: i64,
+    scope_id: i64,
+    goal_id: i64,
+    tag_ids: (i64, i64),
+    dependents: (i64, i64),
+    task_child_id: i64,
+    info_child_id: i64,
+}
+
+async fn seed_retype_fixture(pool: &sqlx::SqlitePool) -> RetypeFixture {
+    let project_id = make_project(pool).await;
+    let tag_a = make_tag(pool).await;
+    let tag_b = helpers::session_factory(pool)
+        .connect()
+        .await
+        .unwrap()
+        .domains()
+        .create(CreateDomainRequest {
+            title: "second-tag".into(),
+            description: None,
+            subtype: DomainSubtype::Tag,
+            parent_id: None,
+            status: None,
+            knowledge_base_directory: None,
+        })
+        .await
+        .unwrap()
+        .id;
+    let scope_id = helpers::session_factory(pool)
+        .connect()
+        .await
+        .unwrap()
+        .scopes()
+        .get_or_create(ScopeKind::Week, NaiveDate::from_ymd_opt(2026, 7, 1).unwrap())
+        .await
+        .unwrap()
+        .id;
+
+    let mut db = helpers::session_factory(pool).begin().await.unwrap();
+    let goal = create_goal(
+        &mut db,
+        CreateGoalRequest {
+            title: "Learn Rust".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            status: Some(GoalStatus::Frozen),
+            time_scope: Some(TimeScope {
+                start_id: scope_id,
+                end_id: scope_id,
+                duration: Some(DurationSpec { n: 2, kind: "week".into() }),
+            }),
+            on_scope_exit: Some(OnScopeExit::Archive),
+        },
+    )
+    .await
+    .unwrap();
+    update_goal(
+        &mut db,
+        arlesh_lib::tasks::model::GoalId(goal.id),
+        UpdateGoalRequest { is_private: Some(true), ..Default::default() },
+    )
+    .await
+    .unwrap();
+    db.goals().add_tag(arlesh_lib::tasks::model::GoalId(goal.id), tag_a).await.unwrap();
+    db.goals().add_tag(arlesh_lib::tasks::model::GoalId(goal.id), tag_b).await.unwrap();
+    db.block_reasons()
+        .set("goal", goal.id, &["waiting on the borrow checker".to_string()])
+        .await
+        .unwrap();
+
+    let task_child = create_task(
+        &mut db,
+        CreateTaskRequest {
+            title: "Read the book".into(),
+            parent_type: "goal".into(),
+            parent_id: goal.id,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let info_child = db
+        .infos()
+        .create(arlesh_lib::infos::model::CreateInfoRequest {
+            body: "ownership is the hard bit".into(),
+            details: None,
+            parent_type: "goal".into(),
+            parent_id: goal.id,
+            position: 0,
+        })
+        .await
+        .unwrap();
+
+    let mut dependents = Vec::new();
+    for title in ["Ship the crate", "Write the post"] {
+        let dependent = create_task(
+            &mut db,
+            CreateTaskRequest {
+                title: title.into(),
+                parent_type: "project".into(),
+                parent_id: project_id,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        add_task_dependency(
+            &mut db,
+            arlesh_lib::tasks::model::TaskId(dependent.id),
+            Dependency::Goal { id: goal.id },
+        )
+        .await
+        .unwrap();
+        dependents.push(dependent.id);
+    }
+    db.commit().await.unwrap();
+
+    RetypeFixture {
+        project_id,
+        scope_id,
+        goal_id: goal.id,
+        tag_ids: (tag_a, tag_b),
+        dependents: (dependents[0], dependents[1]),
+        task_child_id: task_child.id,
+        info_child_id: info_child.id,
+    }
+}
+
+/// The columns a retyped task must have carried over, read straight off the row.
+#[derive(sqlx::FromRow)]
+struct RetypedTaskRow {
+    title: String,
+    status: String,
+    time_scope_start_id: Option<i64>,
+    time_scope_end_id: Option<i64>,
+    time_scope_duration_n: Option<i64>,
+    time_scope_duration_kind: Option<String>,
+    on_scope_exit: Option<String>,
+    is_private: bool,
+}
+
+async fn retyped_task_row(pool: &sqlx::SqlitePool, id: i64) -> RetypedTaskRow {
+    sqlx::query_as(
+        "SELECT title, status, time_scope_start_id, time_scope_end_id, time_scope_duration_n,
+                time_scope_duration_kind, on_scope_exit, is_private FROM tasks WHERE id = ?",
+    )
+    .bind(id)
+    .fetch_one(pool)
+    .await
+    .unwrap()
+}
+
+async fn dependency_rows(pool: &sqlx::SqlitePool) -> Vec<(i64, String, i64)> {
+    sqlx::query_as(
+        "SELECT task_id, dependency_type, dependency_id FROM task_dependencies ORDER BY task_id",
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
+async fn the_retype_node_command_carries_a_goals_scope_tags_and_inbound_dependencies_onto_the_task()
+{
+    let pool = helpers::test_pool().await;
+    let seeded = seed_retype_fixture(&pool).await;
+    let app = helpers::command_host(&pool);
+
+    // Nothing a task cannot hold, so no acknowledgement is asked for.
+    let retyped = arlesh_lib::commands::retype::retype_node(
+        app.state(),
+        "goal".into(),
+        seeded.goal_id,
+        "task".into(),
+        None,
+    )
+    .await
+    .expect("a goal with only task and info children loses nothing");
+    let new_id = retyped.id;
+
+    // The row itself — read back from the pool, so only a committed transaction can satisfy it.
+    let row = retyped_task_row(&pool, new_id).await;
+    assert_eq!(row.title, "Learn Rust");
+    assert_eq!(row.status, "todo", "a frozen goal is not a done task");
+    assert_eq!(
+        (row.time_scope_start_id, row.time_scope_end_id),
+        (Some(seeded.scope_id), Some(seeded.scope_id)),
+        "the Time Scope"
+    );
+    assert_eq!(
+        (row.time_scope_duration_n, row.time_scope_duration_kind.as_deref()),
+        (Some(2), Some("week")),
+        "including the Duration form it was set in"
+    );
+    assert_eq!(
+        row.on_scope_exit.as_deref(),
+        Some("archive"),
+        "and its on-exit behaviour"
+    );
+    assert!(
+        row.is_private,
+        "privacy carries — the flow-item precedent drops it, this must not"
+    );
+
+    // The tags moved into the task join table.
+    let mut tags: Vec<i64> =
+        sqlx::query_scalar("SELECT tag_id FROM tags_on_tasks WHERE task_id = ?")
+            .bind(new_id)
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    tags.sort_unstable();
+    let mut expected = vec![seeded.tag_ids.0, seeded.tag_ids.1];
+    expected.sort_unstable();
+    assert_eq!(tags, expected, "both tags must be re-attached to the new owner");
+
+    // The explicit block reason followed its owner.
+    let reasons: Vec<String> = sqlx::query_scalar(
+        "SELECT reason FROM block_reasons WHERE owner_type = 'task' AND owner_id = ?",
+    )
+    .bind(new_id)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(reasons, vec!["waiting on the borrow checker".to_string()]);
+    assert_eq!(
+        count_where(&pool, "block_reasons", "owner_id", seeded.goal_id).await,
+        0,
+        "and left none behind on the deleted goal"
+    );
+
+    // Both inbound dependency edges now name the task, and none dangles at the dead goal id.
+    let mut edges = dependency_rows(&pool).await;
+    edges.sort();
+    assert_eq!(
+        edges,
+        vec![
+            (
+                seeded.dependents.0.min(seeded.dependents.1),
+                "task".to_string(),
+                new_id
+            ),
+            (
+                seeded.dependents.0.max(seeded.dependents.1),
+                "task".to_string(),
+                new_id
+            ),
+        ],
+        "every edge must be repointed: `dependency_id` has no foreign key and SQLite reuses freed ids"
+    );
+
+    // Children came with it, and the old row is gone.
+    let (child_parent_type, child_parent_id): (String, i64) =
+        sqlx::query_as("SELECT parent_type, parent_id FROM tasks WHERE id = ?")
+            .bind(seeded.task_child_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!((child_parent_type.as_str(), child_parent_id), ("task", new_id));
+    let (info_parent_type, info_parent_id): (String, i64) =
+        sqlx::query_as("SELECT parent_type, parent_id FROM infos WHERE id = ?")
+            .bind(seeded.info_child_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!((info_parent_type.as_str(), info_parent_id), ("task", new_id));
+    assert_eq!(
+        count_where(&pool, "goals", "id", seeded.goal_id).await,
+        0,
+        "the goal row is gone"
+    );
+}
+
+#[tokio::test]
+async fn the_retype_node_command_refuses_until_the_caller_acknowledges_the_children_it_would_strand()
+{
+    let pool = helpers::test_pool().await;
+    let seeded = seed_retype_fixture(&pool).await;
+    let sub_goal = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_goal(
+            &mut db,
+            CreateGoalRequest {
+                title: "Finish the tutorial".into(),
+                parent_type: "goal".into(),
+                parent_id: seeded.goal_id,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        db.commit().await.unwrap();
+        __r
+    };
+    let app = helpers::command_host(&pool);
+
+    let refused = arlesh_lib::commands::retype::retype_node(
+        app.state(),
+        "goal".into(),
+        seeded.goal_id,
+        "task".into(),
+        None,
+    )
+    .await
+    .expect_err("a task cannot hold a sub-goal, so the command must ask first");
+
+    let wire = serde_json::to_value(&refused).unwrap();
+    assert_eq!(wire["kind"], serde_json::json!("needs_confirmation"));
+    assert_eq!(
+        wire["details"],
+        serde_json::json!({
+            "lost_children": [{ "kind": "goal", "id": sub_goal.id, "title": "Finish the tutorial" }],
+            "lost_fields": [],
+            "parent_climb": null,
+        }),
+        "the payload must name what is at stake — a refusal you can only accept blind is not consent"
+    );
+    assert_eq!(
+        count_where(&pool, "goals", "id", seeded.goal_id).await,
+        1,
+        "and the refusal must write nothing"
+    );
+
+    // Acknowledged, with the sub-goal moved up rather than deleted.
+    let retyped = arlesh_lib::commands::retype::retype_node(
+        app.state(),
+        "goal".into(),
+        seeded.goal_id,
+        "task".into(),
+        Some(arlesh_lib::tasks::retype::StrandedChildren::Reparent),
+    )
+    .await
+    .unwrap();
+
+    let (parent_type, parent_id): (String, i64) =
+        sqlx::query_as("SELECT parent_type, parent_id FROM goals WHERE id = ?")
+            .bind(sub_goal.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        (parent_type.as_str(), parent_id),
+        ("project", seeded.project_id),
+        "the stranded sub-goal moves up to the retyped node's own parent"
+    );
+    assert_eq!(count_where(&pool, "tasks", "id", retyped.id).await, 1);
+    assert_eq!(count_where(&pool, "goals", "id", seeded.goal_id).await, 0);
+}
+
+#[tokio::test]
+async fn a_retype_that_fails_after_the_create_leaves_the_tree_exactly_as_it_was() {
+    let pool = helpers::test_pool().await;
+    let seeded = seed_retype_fixture(&pool).await;
+
+    // The command's own shape: begin, plan, apply, commit. This test stands in for the caller and
+    // fails where the command's `?` would fire — after the create and the delete have both landed
+    // inside the transaction.
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    let planned = arlesh_lib::tasks::retype::plan_node_retype(
+        &mut db,
+        arlesh_lib::tasks::retype::RetypeKind::Goal,
+        seeded.goal_id,
+        arlesh_lib::tasks::retype::RetypeKind::Task,
+    )
+    .await
+    .unwrap();
+    let node = arlesh_lib::tasks::retype::apply_retype(
+        &mut db,
+        &planned,
+        arlesh_lib::tasks::retype::StrandedChildren::Reparent,
+    )
+    .await
+    .unwrap();
+
+    // The retype really did get past its delete — otherwise the assertions below hold vacuously.
+    assert!(
+        db.tasks()
+            .get(arlesh_lib::tasks::model::TaskId(node.id))
+            .await
+            .is_ok(),
+        "the new task exists inside the transaction"
+    );
+    assert!(
+        db.goals()
+            .get(arlesh_lib::tasks::model::GoalId(seeded.goal_id))
+            .await
+            .is_err(),
+        "and the goal is already gone inside it"
+    );
+
+    // The injected failure: a retype of a node that does not exist, rejected on real input. Any
+    // error raised after `apply_retype` returns reaches the database the same way — the
+    // `Db<Transactional>` is dropped without `commit()` and sqlx rolls back — so this stands for
+    // the whole class, the failing `commit()` included.
+    let rejected = arlesh_lib::tasks::retype::plan_node_retype(
+        &mut db,
+        arlesh_lib::tasks::retype::RetypeKind::Goal,
+        909_909,
+        arlesh_lib::tasks::retype::RetypeKind::Task,
+    )
+    .await;
+    assert!(rejected.is_err(), "there is no goal 909909");
+    drop(db);
+
+    // Nothing moved.
+    assert_eq!(
+        count_where(&pool, "goals", "id", seeded.goal_id).await,
+        1,
+        "the goal is back"
+    );
+    assert_eq!(
+        count_where(&pool, "tasks", "id", node.id).await,
+        0,
+        "the new task never existed"
+    );
+    assert_eq!(
+        count_where(&pool, "tags_on_goals", "goal_id", seeded.goal_id).await,
+        2,
+        "its tags are still its own"
+    );
+    assert_eq!(
+        count_where(&pool, "block_reasons", "owner_id", seeded.goal_id).await,
+        1,
+        "and its block reason"
+    );
+    let mut edges = dependency_rows(&pool).await;
+    edges.sort();
+    assert_eq!(
+        edges,
+        vec![
+            (
+                seeded.dependents.0.min(seeded.dependents.1),
+                "goal".to_string(),
+                seeded.goal_id
+            ),
+            (
+                seeded.dependents.0.max(seeded.dependents.1),
+                "goal".to_string(),
+                seeded.goal_id
+            ),
+        ],
+        "both dependency edges still name the goal"
+    );
+    let (child_parent_type, child_parent_id): (String, i64) =
+        sqlx::query_as("SELECT parent_type, parent_id FROM tasks WHERE id = ?")
+            .bind(seeded.task_child_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        (child_parent_type.as_str(), child_parent_id),
+        ("goal", seeded.goal_id),
+        "and the task child never moved"
+    );
+}
+
+#[tokio::test]
+async fn retyping_a_goal_to_a_project_ends_the_dependencies_it_announced_rather_than_dangling_them()
+{
+    let pool = helpers::test_pool().await;
+    let seeded = seed_retype_fixture(&pool).await;
+    let app = helpers::command_host(&pool);
+
+    // A project cannot be depended on, cannot be scoped and cannot be tagged, so all of it is at
+    // stake and the command refuses first.
+    let refused = arlesh_lib::commands::retype::retype_node(
+        app.state(),
+        "goal".into(),
+        seeded.goal_id,
+        "project".into(),
+        None,
+    )
+    .await
+    .expect_err("a project holds none of this");
+    let wire = serde_json::to_value(&refused).unwrap();
+    let lost: Vec<String> = wire["details"]["lost_fields"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|entry| entry["field"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(
+        lost,
+        vec!["time_scope", "tags", "block_reasons", "dependents"],
+        "including the two tasks waiting on it, which are not a column of its row"
+    );
+
+    let retyped = arlesh_lib::commands::retype::retype_node(
+        app.state(),
+        "goal".into(),
+        seeded.goal_id,
+        "project".into(),
+        Some(arlesh_lib::tasks::retype::StrandedChildren::Reparent),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        dependency_rows(&pool).await,
+        vec![],
+        "the edges are deleted outright — left behind they would re-attach to the next row given the freed id"
+    );
+    let (subtype, status, is_private): (String, Option<String>, bool) =
+        sqlx::query_as("SELECT subtype, status, is_private FROM domains WHERE id = ?")
+            .bind(retyped.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(subtype, "project");
+    assert_eq!(
+        status.as_deref(),
+        Some("frozen"),
+        "a project speaks the goal status vocabulary"
+    );
+    assert!(is_private, "and privacy still carries");
 }

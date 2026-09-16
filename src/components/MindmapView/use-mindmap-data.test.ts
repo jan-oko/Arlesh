@@ -8,6 +8,8 @@ import type { Goal } from "@/api/goals";
 import type { Task } from "@/api/tasks";
 import type { Info } from "@/api/infos";
 import type { Flow, HabitIteration, FlowGoal, FlowTask } from "@/api/flows";
+import type { MindmapLoad } from "@/api/mindmap";
+import { useMindmapStore } from "@/stores/use-mindmap-store";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
@@ -56,6 +58,17 @@ function mkTask(overrides: Partial<Task> = {}): Task {
 function mkInfo(overrides: Partial<Info> = {}): Info {
   return {
     id: 1, body: "Note", details: null, parent_type: "task", parent_id: 1, position: 0, is_private: false,
+    ...overrides,
+  };
+}
+
+function mkFlow(overrides: Partial<Flow> = {}): Flow {
+  return {
+    id: 1, title: "Flow", instance_type: "task", parent_type: "domain", parent_id: 1,
+    target_type: null, target_id: null, flow_duration_n: 1, flow_duration_kind: "week",
+    flow_window_part: null, flow_window_time_start: null, flow_window_time_end: null,
+    is_habit: false, root_plan_kind: null, root_plan_start: null, root_plan_end: null,
+    position: 0, is_private: false,
     ...overrides,
   };
 }
@@ -288,23 +301,37 @@ describe("buildTree", () => {
 
 // --- useMindmapData hook integration ---
 
+// The hook makes exactly one fetch — `load_mindmap` — so the stub builds the whole envelope
+// rather than answering thirteen list commands. `overrides` names the fields a test cares about;
+// everything else is empty. (`habits` defaults to one loaded, empty entry per flow, which is what
+// the backend returns for a flow with no recurrence.)
+function mindmapEnvelope(overrides: Partial<MindmapLoad> = {}): MindmapLoad {
+  const flows = overrides.flows ?? [];
+  return {
+    domains: [], goals: [], tasks: [], infos: [], flows: [],
+    flow_goals: [], flow_tasks: [], flow_cycles: [], flow_dependencies: [],
+    block_reasons: [], task_dependencies: [], flow_instance_nodes: [], lifecycles: [],
+    habits: flows.map((flow) => ({
+      flow_id: flow.id,
+      flow_title: flow.title,
+      result: { outcome: "loaded" as const, iterations: [], statuses: [] },
+    })),
+    ...overrides,
+  };
+}
+
+/** The list a test supplied for `command`, or `fallback` when it did not name that command. */
+function listExtra<T>(extras: Record<string, unknown>, command: string, fallback: T[]): T[] {
+  const supplied = extras[command];
+  return Array.isArray(supplied) ? supplied : fallback;
+}
+
 describe("useMindmapData", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useMindmapStore.getState().clearToast();
     vi.mocked(invoke).mockImplementation((cmd: string) => {
-      if (cmd === "list_domains") return Promise.resolve([]);
-      if (cmd === "list_goals") return Promise.resolve([]);
-      if (cmd === "list_tasks") return Promise.resolve([]);
-      if (cmd === "list_infos") return Promise.resolve([]);
-      if (cmd === "list_flows") return Promise.resolve([]);
-      if (cmd === "list_all_flow_goals") return Promise.resolve([]);
-      if (cmd === "list_all_flow_tasks") return Promise.resolve([]);
-      if (cmd === "list_all_flow_cycles") return Promise.resolve([]);
-      if (cmd === "list_all_flow_dependencies") return Promise.resolve([]);
-      if (cmd === "list_all_block_reasons") return Promise.resolve([]);
-      if (cmd === "list_all_task_dependencies") return Promise.resolve([]);
-      if (cmd === "list_flow_instance_nodes") return Promise.resolve([]);
-      if (cmd === "derive_scope_lifecycles") return Promise.resolve([]);
+      if (cmd === "load_mindmap") return Promise.resolve(mindmapEnvelope());
       return Promise.resolve(null);
     });
   });
@@ -320,19 +347,7 @@ describe("useMindmapData", () => {
   it("populates the tree from API data on mount", async () => {
     const aspect: Domain = mkDomain({ id: 1, subtype: "aspect", title: "Work" });
     vi.mocked(invoke).mockImplementation((cmd: string) => {
-      if (cmd === "list_domains") return Promise.resolve([aspect]);
-      if (cmd === "list_goals") return Promise.resolve([]);
-      if (cmd === "list_tasks") return Promise.resolve([]);
-      if (cmd === "list_infos") return Promise.resolve([]);
-      if (cmd === "list_flows") return Promise.resolve([]);
-      if (cmd === "list_all_flow_goals") return Promise.resolve([]);
-      if (cmd === "list_all_flow_tasks") return Promise.resolve([]);
-      if (cmd === "list_all_flow_cycles") return Promise.resolve([]);
-      if (cmd === "list_all_flow_dependencies") return Promise.resolve([]);
-      if (cmd === "list_all_block_reasons") return Promise.resolve([]);
-      if (cmd === "list_all_task_dependencies") return Promise.resolve([]);
-      if (cmd === "list_flow_instance_nodes") return Promise.resolve([]);
-      if (cmd === "derive_scope_lifecycles") return Promise.resolve([]);
+      if (cmd === "load_mindmap") return Promise.resolve(mindmapEnvelope({ domains: [aspect] }));
       return Promise.resolve(null);
     });
     const { result } = renderHook(() => useMindmapData());
@@ -346,6 +361,107 @@ describe("useMindmapData", () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.error).toBe("backend down");
   });
+
+  it("fetches the whole mindmap in a single round trip", async () => {
+    const { result } = renderHook(() => useMindmapData());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(vi.mocked(invoke).mock.calls.map((call) => call[0])).toEqual(["load_mindmap"]);
+  });
+
+  it("surfaces the flow whose habit iterations failed as a load condition instead of silently emptying it", async () => {
+    const flow = mkFlow({ id: 7, title: "Standup" });
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === "load_mindmap") {
+        return Promise.resolve(
+          mindmapEnvelope({
+            flows: [flow],
+            habits: [
+              {
+                flow_id: 7,
+                flow_title: "Standup",
+                result: { outcome: "failed", message: "a habit requires a scoped flow" },
+              },
+            ],
+          }),
+        );
+      }
+      return Promise.resolve(null);
+    });
+
+    const { result } = renderHook(() => useMindmapData());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    // The load still succeeds — one bad flow does not blank the mindmap.
+    expect(result.current.error).toBeNull();
+    // This is a load condition (background, node-agnostic), not a `pendingToast` (anchored,
+    // user-caused) — a failed derivation means the tree is currently showing wrong data, which
+    // calls for a persistent banner rather than a toast anchored on a node the user never touched.
+    expect(useMindmapStore.getState().pendingToast).toBeNull();
+    expect(result.current.loadCondition.failedFlows).toEqual([{ id: 7, title: "Standup" }]);
+  });
+
+  it("lists every failed flow, not just the first, when several fail", async () => {
+    const flows = [mkFlow({ id: 7, title: "Standup" }), mkFlow({ id: 8, title: "Retro" })];
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === "load_mindmap") {
+        return Promise.resolve(
+          mindmapEnvelope({
+            flows,
+            habits: flows.map((flow) => ({
+              flow_id: flow.id,
+              flow_title: flow.title,
+              result: { outcome: "failed" as const, message: "nope" },
+            })),
+          }),
+        );
+      }
+      return Promise.resolve(null);
+    });
+
+    const { result } = renderHook(() => useMindmapData());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.loadCondition.failedFlows).toEqual([
+      { id: 7, title: "Standup" },
+      { id: 8, title: "Retro" },
+    ]);
+  });
+
+  it("reports no load condition when every flow loads", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === "load_mindmap") {
+        return Promise.resolve(mindmapEnvelope({ flows: [mkFlow({ id: 7, title: "Standup" })] }));
+      }
+      return Promise.resolve(null);
+    });
+
+    const { result } = renderHook(() => useMindmapData());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.loadCondition.failedFlows).toEqual([]);
+  });
+
+  it("clears a previously reported load condition once a subsequent load has no failures", async () => {
+    const flow = mkFlow({ id: 7, title: "Standup" });
+    let habits: MindmapLoad["habits"] = [
+      { flow_id: 7, flow_title: "Standup", result: { outcome: "failed", message: "nope" } },
+    ];
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === "load_mindmap") return Promise.resolve(mindmapEnvelope({ flows: [flow], habits }));
+      return Promise.resolve(null);
+    });
+
+    const { result } = renderHook(() => useMindmapData());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.loadCondition.failedFlows).toEqual([{ id: 7, title: "Standup" }]);
+
+    habits = [{ flow_id: 7, flow_title: "Standup", result: { outcome: "loaded", iterations: [], statuses: [] } }];
+    await act(async () => {
+      await result.current.reload();
+    });
+
+    expect(result.current.loadCondition.failedFlows).toEqual([]);
+  });
 });
 
 // --- useMindmapData mutation tests ---
@@ -356,22 +472,30 @@ describe("useMindmapData — mutations", () => {
   const TASK = mkTask({ id: 1, parent_type: "goal", parent_id: 1, title: "Write code", position: 0 });
   const TASK2 = mkTask({ id: 2, parent_type: "goal", parent_id: 1, title: "Review PR", position: 1 });
 
+  /**
+   * Stubs `invoke`. `extras` is still keyed by the command a test is thinking of — the thirteen
+   * list commands now land in the single `load_mindmap` envelope rather than answering on their
+   * own, and everything else (`create_goal`, `delete_domain`, …) is returned as before.
+   */
   function setupInvoke(extras: Record<string, unknown> = {}) {
+    const envelope = mindmapEnvelope({
+      domains: listExtra(extras, "list_domains", [ASPECT]),
+      goals: listExtra(extras, "list_goals", [GOAL]),
+      tasks: listExtra(extras, "list_tasks", [TASK, TASK2]),
+      infos: listExtra(extras, "list_infos", []),
+      flows: listExtra(extras, "list_flows", []),
+      flow_goals: listExtra(extras, "list_all_flow_goals", []),
+      flow_tasks: listExtra(extras, "list_all_flow_tasks", []),
+      flow_cycles: listExtra(extras, "list_all_flow_cycles", []),
+      flow_dependencies: listExtra(extras, "list_all_flow_dependencies", []),
+      block_reasons: listExtra(extras, "list_all_block_reasons", []),
+      task_dependencies: listExtra(extras, "list_all_task_dependencies", []),
+      flow_instance_nodes: listExtra(extras, "list_flow_instance_nodes", []),
+      lifecycles: listExtra(extras, "derive_scope_lifecycles", []),
+    });
     vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === "load_mindmap") return Promise.resolve(envelope);
       if (Object.prototype.hasOwnProperty.call(extras, cmd)) return Promise.resolve(extras[cmd]);
-      if (cmd === "list_domains") return Promise.resolve([ASPECT]);
-      if (cmd === "list_goals") return Promise.resolve([GOAL]);
-      if (cmd === "list_tasks") return Promise.resolve([TASK, TASK2]);
-      if (cmd === "list_infos") return Promise.resolve([]);
-      if (cmd === "list_flows") return Promise.resolve([]);
-      if (cmd === "list_all_flow_goals") return Promise.resolve([]);
-      if (cmd === "list_all_flow_tasks") return Promise.resolve([]);
-      if (cmd === "list_all_flow_cycles") return Promise.resolve([]);
-      if (cmd === "list_all_flow_dependencies") return Promise.resolve([]);
-      if (cmd === "list_all_block_reasons") return Promise.resolve([]);
-      if (cmd === "list_all_task_dependencies") return Promise.resolve([]);
-      if (cmd === "list_flow_instance_nodes") return Promise.resolve([]);
-      if (cmd === "derive_scope_lifecycles") return Promise.resolve([]);
       return Promise.resolve(null);
     });
   }
@@ -386,6 +510,48 @@ describe("useMindmapData — mutations", () => {
     await waitFor(() => expect(hook.result.current.isLoading).toBe(false));
     return hook;
   }
+
+  describe("reload", () => {
+    // MindmapView early-returns a full-screen "Loading…" whenever isLoading is true, which
+    // unmounts the whole canvas — losing pan, zoom and DOM focus. `reload` is what every
+    // mutation calls afterwards (status toggles, edits, deletes, conversions), so it must
+    // refresh in place and never raise the spinner. Only the initial mount may do that.
+    it("refreshes without ever raising the loading spinner", async () => {
+      setupInvoke();
+      const { result } = await loadedHook();
+
+      // The load has to be observably in-flight. With an instantly-resolving mock React batches
+      // the spinner on and off into a single render and nothing can see it — but in the real app
+      // load_mindmap takes real time, so the spinner renders and MindmapView unmounts the canvas.
+      const passthrough = vi.mocked(invoke).getMockImplementation();
+      if (passthrough === undefined) throw new Error("invoke mock has no implementation");
+      let release = (): void => { throw new Error("gate never armed"); };
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      vi.mocked(invoke).mockImplementation(async (cmd, args) => {
+        if (cmd === "load_mindmap") await gate;
+        return passthrough(cmd, args);
+      });
+
+      let pending: Promise<void> = Promise.resolve();
+      act(() => { pending = result.current.reload(); });
+
+      // The refresh is in flight right now. The canvas must still be mounted.
+      expect(result.current.isLoading).toBe(false);
+
+      await act(async () => { release(); await pending; });
+    });
+
+    it("still fetches the tree again", async () => {
+      setupInvoke();
+      const { result } = await loadedHook();
+      const before = vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "load_mindmap").length;
+
+      await act(async () => { await result.current.reload(); });
+
+      const after = vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "load_mindmap").length;
+      expect(after).toBe(before + 1);
+    });
+  });
 
   describe("createNode", () => {
     it("domain child kind: calls create_domain with the correct subtype and parent_id", async () => {
@@ -619,75 +785,89 @@ describe("useMindmapData — mutations", () => {
   });
 
   describe("retypeNode", () => {
-    it("same-table project→domain: calls update_domain with the new subtype", async () => {
-      const PROJECT = mkDomain({ id: 2, subtype: "project", parent_id: 1, title: "Ops" });
-      setupInvoke({ list_domains: [ASPECT, PROJECT], update_domain: { ...PROJECT, subtype: "domain" } });
-      const { result } = await loadedHook();
-
-      let newId: string | null | undefined;
-      await act(async () => { newId = await result.current.retypeNode("domain-2", "project", "domain"); });
-
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith("update_domain", {
-        id: 2, request: { subtype: "domain" },
-      });
-      expect(newId).toBeNull();
-    });
-
-    it("domain→goal: creates goal, re-parents children, deletes domain", async () => {
-      const PROJECT = mkDomain({ id: 2, subtype: "project", parent_id: 1, title: "Ops" });
-      const newGoal = mkGoal({ id: 99, title: "Ops" });
-      setupInvoke({ list_domains: [ASPECT, PROJECT], create_goal: newGoal, delete_domain: undefined, update_goal: newGoal });
-      const { result } = await loadedHook();
-
-      let newId: string | null | undefined;
-      await act(async () => { newId = await result.current.retypeNode("domain-2", "project", "goal"); });
-
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith("create_goal", {
-        request: { title: "Ops", parent_type: "project", parent_id: 1 },
-      });
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith("delete_domain", { id: 2 });
-      expect(newId).toBe("goal-99");
-    });
-
-    it("goal→task: maps status, creates task, deletes goal", async () => {
-      const newTask = mkTask({ id: 99, title: "Ship MVP" });
-      setupInvoke({ create_task: newTask, delete_goal: undefined, update_task: newTask });
+    // Everything between the goals, tasks and domains tables is one atomic `retype_node` call.
+    // These tests used to assert the create/reparent/delete sequence the hook issued by hand,
+    // which meant they encoded the field, tag and dependency drops as expected behaviour rather
+    // than catching them.
+    it("goal→task: one retype_node call, and no create/delete of its own", async () => {
+      setupInvoke({ retype_node: { kind: "task", id: 99 } });
       const { result } = await loadedHook();
 
       let newId: string | null | undefined;
       await act(async () => { newId = await result.current.retypeNode("goal-1", "goal", "task"); });
 
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith("create_task", {
-        request: { title: "Ship MVP", parent_type: "project", parent_id: 1, status: "todo" },
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("retype_node", {
+        nodeType: "goal", nodeId: 1, targetType: "task", strandedChildren: null,
       });
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith("delete_goal", { id: 1 });
+      expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("create_task", expect.anything());
+      expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("delete_goal", expect.anything());
       expect(newId).toBe("task-99");
     });
 
-    it("goal→task: reparents info children onto the new task (not lost to the delete cascade)", async () => {
-      const newTask = mkTask({ id: 99, title: "Ship MVP" });
-      const infoUnderGoal = mkInfo({ id: 5, body: "traceback", parent_type: "goal", parent_id: 1 });
-      setupInvoke({ create_task: newTask, delete_goal: undefined, update_task: newTask, update_info: undefined, list_infos: [infoUnderGoal] });
-      const { result } = await loadedHook();
-
-      await act(async () => { await result.current.retypeNode("goal-1", "goal", "task"); });
-
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith("update_info", { id: 5, request: { parent_type: "task", parent_id: 99 } });
-    });
-
-    it("task→goal: maps status, creates goal, deletes task", async () => {
-      const newGoal = mkGoal({ id: 99, title: "Write code" });
-      setupInvoke({ create_goal: newGoal, delete_task: undefined, update_goal: newGoal });
+    it("task→goal: one call, and the new goal's node id comes back", async () => {
+      setupInvoke({ retype_node: { kind: "goal", id: 99 } });
       const { result } = await loadedHook();
 
       let newId: string | null | undefined;
       await act(async () => { newId = await result.current.retypeNode("task-1", "task", "goal"); });
 
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith("create_goal", {
-        request: { title: "Write code", parent_type: "goal", parent_id: 1, status: "active" },
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("retype_node", {
+        nodeType: "task", nodeId: 1, targetType: "goal", strandedChildren: null,
       });
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith("delete_task", { id: 1 });
       expect(newId).toBe("goal-99");
+    });
+
+    it("same-table project→domain: one call, and the id is unchanged", async () => {
+      const PROJECT = mkDomain({ id: 2, subtype: "project", parent_id: 1, title: "Ops" });
+      setupInvoke({ list_domains: [ASPECT, PROJECT], retype_node: { kind: "domain", id: 2 } });
+      const { result } = await loadedHook();
+
+      let newId: string | null | undefined;
+      await act(async () => { newId = await result.current.retypeNode("domain-2", "project", "domain"); });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("retype_node", {
+        nodeType: "project", nodeId: 2, targetType: "domain", strandedChildren: null,
+      });
+      expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("update_domain", expect.anything());
+      expect(newId).toBe("domain-2");
+    });
+
+    it("goal→project: a domain-table target comes back as a domain- node id", async () => {
+      setupInvoke({ retype_node: { kind: "project", id: 99 } });
+      const { result } = await loadedHook();
+
+      let newId: string | null | undefined;
+      await act(async () => { newId = await result.current.retypeNode("goal-1", "goal", "project"); });
+
+      expect(newId).toBe("domain-99");
+    });
+
+    it("passes the caller's choice for stranded children through as the acknowledgement", async () => {
+      setupInvoke({ retype_node: { kind: "task", id: 99 } });
+      const { result } = await loadedHook();
+
+      await act(async () => {
+        await result.current.retypeNode("goal-1", "goal", "task", { strandedChildren: "delete" });
+      });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("retype_node", {
+        nodeType: "goal", nodeId: 1, targetType: "task", strandedChildren: "delete",
+      });
+    });
+
+    it("lets a rejection through rather than swallowing it", async () => {
+      setupInvoke({});
+      vi.mocked(invoke).mockImplementation((cmd: string) => {
+        if (cmd === "retype_node") {
+          return Promise.reject({ kind: "needs_confirmation", message: "would lose 1 child", details: {} });
+        }
+        return Promise.resolve(undefined);
+      });
+      const { result } = await loadedHook();
+
+      await expect(result.current.retypeNode("goal-1", "goal", "task")).rejects.toMatchObject({
+        kind: "needs_confirmation",
+      });
     });
 
     it("returns null when the node has no parent (e.g. an aspect with no retype path)", async () => {
@@ -700,130 +880,57 @@ describe("useMindmapData — mutations", () => {
       expect(newId).toBeNull();
     });
 
-    it("domain→task: creates task, deletes domain, returns task-id", async () => {
+    // Infos go through `retype_node` too. These three used to assert the hand-rolled
+    // create/reparent/delete sequence, which encoded three defects as expected behaviour: the
+    // `details` and `is_private` drop, the duplicate node left behind when the final delete
+    // failed, and the mislabelled `parent_type` written for a node nested under an info.
+    it("domain→info: one retype_node call, and no create/delete of its own", async () => {
       const PROJECT = mkDomain({ id: 2, subtype: "project", parent_id: 1, title: "Ops" });
-      const newTask = mkTask({ id: 99, title: "Ops", parent_type: "project", parent_id: 1 });
-      setupInvoke({ list_domains: [ASPECT, PROJECT], create_task: newTask, delete_domain: undefined, update_task: newTask });
-      const { result } = await loadedHook();
-
-      let newId: string | null | undefined;
-      await act(async () => { newId = await result.current.retypeNode("domain-2", "project", "task"); });
-
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith("create_task", {
-        request: { title: "Ops", parent_type: "project", parent_id: 1 },
-      });
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith("delete_domain", { id: 2 });
-      expect(newId).toBe("task-99");
-    });
-
-    function flowChild(overrides: Partial<Flow>): Flow {
-      return {
-        id: 7, title: "Standup", instance_type: "task", parent_type: "domain", parent_id: 1,
-        target_type: null, target_id: null, flow_duration_n: 1, flow_duration_kind: "week",
-        flow_window_part: null, flow_window_time_start: null, flow_window_time_end: null,
-        is_habit: false, root_plan_kind: null, root_plan_start: null, root_plan_end: null, position: 0, is_private: false, ...overrides,
-      };
-    }
-
-    it("domain→goal: reparents a flow child onto the new goal (not orphaned)", async () => {
-      const PROJECT = mkDomain({ id: 2, subtype: "project", parent_id: 1, title: "Ops" });
-      const FLOW = flowChild({ id: 7, parent_type: "project", parent_id: 2 });
-      const newGoal = mkGoal({ id: 99, title: "Ops" });
-      setupInvoke({ list_domains: [ASPECT, PROJECT], list_flows: [FLOW], create_goal: newGoal, delete_domain: undefined, update_goal: newGoal, update_flow: FLOW });
-      const { result } = await loadedHook();
-
-      await act(async () => { await result.current.retypeNode("domain-2", "project", "goal"); });
-
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith("update_flow", { id: 7, request: { parent_type: "goal", parent_id: 99 } });
-    });
-
-    it("goal→project: reparents a flow child onto the new project", async () => {
-      const FLOW = flowChild({ id: 7, parent_type: "goal", parent_id: 1 });
-      const newDomain = mkDomain({ id: 99, subtype: "project", parent_id: 1, title: "Ship MVP" });
-      setupInvoke({ list_flows: [FLOW], create_domain: newDomain, delete_goal: undefined, update_domain: newDomain, update_flow: FLOW });
-      const { result } = await loadedHook();
-
-      await act(async () => { await result.current.retypeNode("goal-1", "goal", "project"); });
-
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith("update_flow", { id: 7, request: { parent_type: "project", parent_id: 99 } });
-    });
-
-    it("goal→domain: creates domain, deletes goal, returns domain-id", async () => {
-      const newDomain = mkDomain({ id: 99, subtype: "domain", parent_id: 1, title: "Ship MVP" });
-      setupInvoke({ create_domain: newDomain, delete_goal: undefined, update_domain: newDomain });
-      const { result } = await loadedHook();
-
-      let newId: string | null | undefined;
-      await act(async () => { newId = await result.current.retypeNode("goal-1", "goal", "domain"); });
-
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith("create_domain", {
-        request: expect.objectContaining({ title: "Ship MVP", subtype: "domain", parent_id: 1 }),
-      });
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith("delete_goal", { id: 1 });
-      expect(newId).toBe("domain-99");
-    });
-
-    it("task→domain: creates domain, deletes task, returns domain-id", async () => {
-      const newDomain = mkDomain({ id: 99, subtype: "domain", parent_id: 1, title: "Write code" });
-      setupInvoke({ create_domain: newDomain, delete_task: undefined, update_domain: newDomain });
-      const { result } = await loadedHook();
-
-      let newId: string | null | undefined;
-      await act(async () => { newId = await result.current.retypeNode("task-1", "task", "domain"); });
-
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith("create_domain", {
-        request: expect.objectContaining({ title: "Write code", subtype: "domain" }),
-      });
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith("delete_task", { id: 1 });
-      expect(newId).toBe("domain-99");
-    });
-
-    it("domain→info: creates info, deletes domain, returns info-id", async () => {
-      const PROJECT = mkDomain({ id: 2, subtype: "project", parent_id: 1, title: "Ops" });
-      const newInfo = mkInfo({ id: 10, body: "Ops", parent_type: "aspect", parent_id: 1, position: 0 });
-      setupInvoke({ list_domains: [ASPECT, PROJECT], create_info: newInfo, delete_domain: undefined });
+      setupInvoke({ list_domains: [ASPECT, PROJECT], retype_node: { kind: "info", id: 10 } });
       const { result } = await loadedHook();
 
       let newId: string | null | undefined;
       await act(async () => { newId = await result.current.retypeNode("domain-2", "project", "info"); });
 
-      // Parent of domain-2 is ASPECT (kind="aspect"), so parent_type is "aspect"
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith("create_info", {
-        request: expect.objectContaining({ body: "Ops", parent_type: "aspect", parent_id: 1 }),
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("retype_node", {
+        nodeType: "project", nodeId: 2, targetType: "info", strandedChildren: null,
       });
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith("delete_domain", { id: 2 });
+      expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("create_info", expect.anything());
+      expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("delete_domain", expect.anything());
       expect(newId).toBe("info-10");
     });
 
-    it("info→goal: creates goal, deletes info, returns goal-id", async () => {
+    it("info→goal: one call, and the new goal's node id comes back", async () => {
       const INFO = mkInfo({ id: 5, body: "My note", parent_type: "task", parent_id: 1 });
-      const newGoal = mkGoal({ id: 99, title: "My note", parent_type: "goal", parent_id: 1 });
-      setupInvoke({ list_infos: [INFO], create_goal: newGoal, delete_info: undefined, update_goal: newGoal });
+      setupInvoke({ list_infos: [INFO], retype_node: { kind: "goal", id: 99 } });
       const { result } = await loadedHook();
 
       let newId: string | null | undefined;
       await act(async () => { newId = await result.current.retypeNode("info-5", "info", "goal"); });
 
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith("create_goal", {
-        request: expect.objectContaining({ title: "My note" }),
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("retype_node", {
+        nodeType: "info", nodeId: 5, targetType: "goal", strandedChildren: null,
       });
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith("delete_info", { id: 5 });
+      expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("create_goal", expect.anything());
+      expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("delete_info", expect.anything());
       expect(newId).toBe("goal-99");
     });
 
-    it("info→domain: creates domain, deletes info, returns domain-id", async () => {
+    it("info→domain: one call, and no separate position update", async () => {
       const INFO = mkInfo({ id: 5, body: "My note", parent_type: "task", parent_id: 1 });
-      const newDomain = mkDomain({ id: 99, subtype: "domain", parent_id: 1, title: "My note" });
-      setupInvoke({ list_infos: [INFO], create_domain: newDomain, delete_info: undefined, update_domain: newDomain });
+      setupInvoke({ list_infos: [INFO], retype_node: { kind: "domain", id: 99 } });
       const { result } = await loadedHook();
 
       let newId: string | null | undefined;
       await act(async () => { newId = await result.current.retypeNode("info-5", "info", "domain"); });
 
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith("create_domain", {
-        request: expect.objectContaining({ title: "My note", subtype: "domain" }),
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("retype_node", {
+        nodeType: "info", nodeId: 5, targetType: "domain", strandedChildren: null,
       });
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith("delete_info", { id: 5 });
+      expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("create_domain", expect.anything());
+      // The old path set `position` in a second call, so a crash between the two left the node
+      // at position 0. There is no second call now.
+      expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("update_domain", expect.anything());
       expect(newId).toBe("domain-99");
     });
 

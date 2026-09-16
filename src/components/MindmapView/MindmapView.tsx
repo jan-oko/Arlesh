@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMindmapData } from "./use-mindmap-data";
+import { useDismissableLoadCondition } from "./use-dismissable-load-condition";
 import { useDrag } from "./use-drag";
 import { useCanvasLayout } from "./use-canvas-layout";
 import { useNodeTypeManager } from "./use-node-type-manager";
@@ -13,6 +14,7 @@ import { useMindmapStore, CLIPBOARD_OP } from "@/stores/use-mindmap-store";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { updateTask, reparentScopeConflicts } from "@/api/tasks";
 import { updateGoal } from "@/api/goals";
+import { getErrorMessage } from "@/api/errors";
 import { findNode, findParent, collectTasksAndGoals, collectSubtreePostOrder, computeShiftSelectRange, conversionNeedsConfirm, canConvertNodeToFlow, collectSearchableNodes } from "@/utils/mindmap-tree";
 import MindmapCanvas, { type MindmapCanvasHandle } from "@/components/MindmapCanvas/MindmapCanvas";
 import DragGhost from "@/components/DragGhost/DragGhost";
@@ -21,7 +23,8 @@ import { useFilterStore } from "@/stores/use-filter-store";
 import { useViewStore } from "@/stores/use-view-store";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
 import { filterTree } from "@/utils/filter-tree";
-import StatusToast from "@/components/StatusToast/StatusToast";
+import AnchoredToast from "@/components/AnchoredToast/AnchoredToast";
+import HabitFailureBanner from "@/components/HabitFailureBanner/HabitFailureBanner";
 import TaskEditorModal from "@/components/TaskEditorModal/TaskEditorModal";
 import GoalEditorModal from "@/components/GoalEditorModal/GoalEditorModal";
 import TitleEditorModal from "@/components/TitleEditorModal/TitleEditorModal";
@@ -49,7 +52,7 @@ const BLANK_FLOW_NODE: MindmapNode = {
 
 export default function MindmapView() {
   const { t } = useTranslation(["common", "editor", "warnings", "nodeKinds"]);
-  const { tree, isLoading, error, createNode, createChild, renameNode, retypeNode, reorderNode, moveNode, removeNode, createFlow, reload } =
+  const { tree, isLoading, error, loadCondition, createNode, createChild, renameNode, retypeNode, reorderNode, moveNode, removeNode, createFlow, reload } =
     useMindmapData();
   const {
     selectedNodeId, selectedNodeIds, subtreeRootId, clipboard, collapsedNodeIds, pendingToast,
@@ -58,6 +61,7 @@ export default function MindmapView() {
   } = useMindmapStore();
 
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
+  const { visibleFailedFlows, dismiss: dismissHabitBanner } = useDismissableLoadCondition(loadCondition);
   const [nodeSearchOpen, setNodeSearchOpen] = useState(false);
   const [flowCreateParent, setFlowCreateParent] = useState<{ id: string; kind: NodeKind } | null>(null);
   const [startFlowNode, setStartFlowNode] = useState<MindmapNode | null>(null);
@@ -173,7 +177,7 @@ export default function MindmapView() {
         return;
       }
       void runConvertToFlow(node, true, true).catch((err: unknown) =>
-        showToast({ nodeId, message: err instanceof Error ? err.message : String(err) }),
+        showToast({ nodeId, message: getErrorMessage(err) }),
       );
     },
     [tree, runConvertToFlow, showToast],
@@ -320,7 +324,7 @@ export default function MindmapView() {
     setDeleteError(null);
     void removeNode(nodesToDelete)
       .then(() => { setDeleteTargets(null); selectNode(focusId); })
-      .catch((err: unknown) => { setDeleteError(err instanceof Error ? err.message : String(err)); })
+      .catch((err: unknown) => { setDeleteError(getErrorMessage(err)); })
       .finally(() => setIsDeleting(false));
   }, [deleteTargets, tree, removeNode, selectNode]);
 
@@ -456,7 +460,6 @@ export default function MindmapView() {
     onExtendSelection: extendSelection,
     findNodeById,
   });
-  const toastPosition = pendingToast !== null ? positions.get(pendingToast.nodeId) : undefined;
   const targetPos = dragTargetId !== null ? positions.get(dragTargetId) : undefined;
 
   if (isLoading) return <div className={styles.centered}>{t("common:loading")}</div>;
@@ -464,6 +467,9 @@ export default function MindmapView() {
 
   return (
     <div className={styles.container}>
+      {visibleFailedFlows.length > 0 && (
+        <HabitFailureBanner failedFlows={visibleFailedFlows} onDismiss={dismissHabitBanner} />
+      )}
       <MindmapCanvas
         ref={canvasRef}
         root={displayRoot}
@@ -490,9 +496,7 @@ export default function MindmapView() {
       />
 
 
-      {pendingToast !== null && toastPosition !== undefined && (
-        <StatusToast message={pendingToast.message} position={toastPosition} onDismiss={clearToast} />
-      )}
+      <AnchoredToast toast={pendingToast} positions={positions} onDismiss={clearToast} />
 
       {editorModal !== null && editorModal.node.kind === "task" && (
         <TaskEditorModal node={editorModal.node} allTags={allTags} domainNames={domainNames} availableForDep={availableForDep} onSave={onTaskSave} onCheckScopeClamp={checkScopeClamp} onClose={() => setEditorModal(null)} />

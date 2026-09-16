@@ -3,7 +3,10 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import type { RetypeOptions } from "./use-mindmap-data";
-import { GOAL_CHILDREN_ACTION, INFO_CHILDREN_ACTION } from "./use-mindmap-data";
+import { GOAL_CHILDREN_ACTION } from "./use-mindmap-data";
+import type { RetypeLosses } from "@/api/retype";
+import { retypeLosses, STRANDED_CHILDREN } from "@/api/retype";
+import { getErrorMessage } from "@/api/errors";
 import type { WarningAction } from "@/components/WarningConfirmModal/warning-confirm";
 import { WARNING_VARIANT } from "@/components/WarningConfirmModal/warning-confirm";
 import { validTypesForCycling, crossesGoalTaskBoundary } from "@/utils/node-meta";
@@ -34,7 +37,58 @@ export interface WarningModalState {
   heading: string;
   consequences: string[];
   hasGoalChildren: boolean;
-  hasNonInfoChildren: boolean;
+  /**
+   * What the backend refused to destroy or move without being told to, when this prompt came
+   * from `retype_node`'s `needs_confirmation`. `null` for the one prompt the frontend still
+   * raises on its own: flow items, which convert through their own command.
+   */
+  losses: RetypeLosses | null;
+}
+
+/** Every kind the backend can report as a stranded child. */
+const STRANDABLE_KINDS: readonly NodeKind[] = ["goal", "task", "domain", "project", "tag", "info", "flow"];
+
+/** A stranded child's kind, translated — or the raw spelling if the backend named a new one. */
+function childKindLabel(kind: string, t: Tf): string {
+  const known = STRANDABLE_KINDS.find((candidate) => candidate === kind);
+  return known === undefined ? kind : t(`nodeKinds:${known}`);
+}
+
+/**
+ * Renders the backend's loss list as prompt lines.
+ *
+ * Every field key the command can emit has its own string; an unrecognised one falls back to
+ * naming the field rather than rendering a raw key, so a field added to `tasks::retype` shows up
+ * as readable text before anybody gets round to translating it.
+ */
+function describeLosses(losses: RetypeLosses, t: Tf): string[] {
+  const lines: string[] = [];
+  if (losses.lost_children.length > 0) {
+    lines.push(t("warnings:strandedChildren", { count: losses.lost_children.length }));
+    for (const child of losses.lost_children) {
+      lines.push(t("warnings:strandedChild", { kind: childKindLabel(child.kind, t), title: child.title }));
+    }
+  }
+  for (const field of losses.lost_fields) {
+    lines.push(
+      t(`warnings:lostField.${field.field}`, {
+        value: field.value,
+        count: Number(field.value),
+        defaultValue: t("warnings:lostFieldFallback", { field: field.field, value: field.value }),
+      }),
+    );
+  }
+  // Not a loss but still a surprise: the new kind cannot hang where the old one did, so the node
+  // moves further up the tree. Named rather than performed silently.
+  if (losses.parent_climb !== null) {
+    lines.push(
+      t("warnings:parentClimb", {
+        from: losses.parent_climb.from.title,
+        to: losses.parent_climb.to.title,
+      }),
+    );
+  }
+  return lines;
 }
 
 interface Options {
@@ -54,23 +108,43 @@ interface Result {
 }
 
 function buildRetypeActions(
-  hasGoalChildren: boolean,
-  hasNonInfoChildren: boolean,
+  modal: WarningModalState,
   reparentLabel: string,
   deleteLabel: string,
   convertLabel: string,
   confirm: (options?: RetypeOptions) => void,
 ): WarningAction[] {
+  const { hasGoalChildren, losses } = modal;
+  // A backend refusal: confirming means passing `strandedChildren`, which is both the choice and
+  // the acknowledgement. When only fields are at stake there is nothing to choose, but the
+  // acknowledgement is still required — the command refuses again without it.
+  if (losses !== null) {
+    if (losses.lost_children.length === 0) {
+      return [
+        {
+          label: convertLabel,
+          variant: WARNING_VARIANT.PRIMARY,
+          onClick: () => { confirm({ strandedChildren: STRANDED_CHILDREN.REPARENT }); },
+        },
+      ];
+    }
+    return [
+      {
+        label: reparentLabel,
+        variant: WARNING_VARIANT.PRIMARY,
+        onClick: () => { confirm({ strandedChildren: STRANDED_CHILDREN.REPARENT }); },
+      },
+      {
+        label: deleteLabel,
+        variant: WARNING_VARIANT.DANGER,
+        onClick: () => { confirm({ strandedChildren: STRANDED_CHILDREN.DELETE }); },
+      },
+    ];
+  }
   if (hasGoalChildren) {
     return [
       { label: reparentLabel, variant: WARNING_VARIANT.PRIMARY, onClick: () => { confirm({ goalChildrenAction: GOAL_CHILDREN_ACTION.REPARENT }); } },
       { label: deleteLabel, variant: WARNING_VARIANT.DANGER, onClick: () => { confirm({ goalChildrenAction: GOAL_CHILDREN_ACTION.REMOVE }); } },
-    ];
-  }
-  if (hasNonInfoChildren) {
-    return [
-      { label: reparentLabel, variant: WARNING_VARIANT.PRIMARY, onClick: () => { confirm({ infoChildrenAction: INFO_CHILDREN_ACTION.REPARENT }); } },
-      { label: deleteLabel, variant: WARNING_VARIANT.DANGER, onClick: () => { confirm({ infoChildrenAction: INFO_CHILDREN_ACTION.REMOVE }); } },
     ];
   }
   return [{ label: convertLabel, variant: WARNING_VARIANT.PRIMARY, onClick: () => { confirm(); } }];
@@ -80,20 +154,54 @@ export function useNodeTypeManager({ tree, retypeNode, selectNode, showToast }: 
   const { t } = useTranslation(["warnings", "nodeKinds", "status"]);
   const [warningModal, setWarningModal] = useState<WarningModalState | null>(null);
 
+  /**
+   * Runs a retype and deals with however it comes back.
+   *
+   * A `needs_confirmation` refusal is not a failure: it is the backend saying the retype would
+   * destroy something and naming each thing, so it becomes this prompt. Anything else is a real
+   * failure and gets a toast — a retype that quietly did nothing is exactly the class of bug
+   * this whole path exists to end.
+   */
+  const runRetype = useCallback(
+    (nodeId: string, fromKind: NodeKind, toKind: NodeKind, options?: RetypeOptions) => {
+      void retypeNode(nodeId, fromKind, toKind, options).then(
+        (newId) => {
+          selectNode(newId ?? nodeId);
+        },
+        (error: unknown) => {
+          const losses = retypeLosses(error);
+          if (losses !== null) {
+            setWarningModal({
+              nodeId, fromKind, toKind,
+              heading: t("warnings:convertHeading", { kind: t(`nodeKinds:${toKind}`) }),
+              consequences: describeLosses(losses, t),
+              hasGoalChildren: false,
+              losses,
+            });
+            return;
+          }
+          showToast({ nodeId, message: t("warnings:retypeFailed", { message: getErrorMessage(error) }) });
+        },
+      );
+    },
+    [retypeNode, selectNode, showToast, t],
+  );
+
   const confirmRetype = useCallback(
     (options?: RetypeOptions) => {
       if (warningModal === null) return;
       const { nodeId, fromKind, toKind } = warningModal;
       setWarningModal(null);
-      void retypeNode(nodeId, fromKind, toKind, options).then((newId) => {
-        selectNode(newId ?? nodeId);
-      });
+      runRetype(nodeId, fromKind, toKind, options);
     },
-    [warningModal, retypeNode, selectNode],
+    [warningModal, runRetype],
   );
 
-  // Retypes `node` to `newKind`, prompting first for any destructive consequence (orphaned flow-goal
-  // children, non-info children under an info, or a goal↔task status remap with children/block reason).
+  // Retypes `node` to `newKind`. Flow items come first — they convert through their own command,
+  // not `retype_node`, so their one prompt is still raised here. Everything else just runs: the
+  // backend refuses and names what is at stake, and `runRetype` turns that refusal into the same
+  // prompt. Infos used to need a second bespoke prompt here; `retype_node` now enumerates the
+  // children an info cannot hold, so the generic path covers them.
   const applyRetype = useCallback(
     (node: MindmapNode, newKind: NodeKind) => {
       const nodeId = node.id;
@@ -108,27 +216,14 @@ export function useNodeTypeManager({ tree, retypeNode, selectNode, showToast }: 
             nodeId, fromKind: node.kind, toKind: newKind,
             heading: t("warnings:convertHeading", { kind: t(`nodeKinds:${newKind}`) }),
             consequences: [t("warnings:subgoalsUnderTask", { count })],
-            hasGoalChildren: true, hasNonInfoChildren: false,
+            hasGoalChildren: true, losses: null,
           });
           return;
         }
-        void retypeNode(nodeId, node.kind, newKind).then((newId) => selectNode(newId ?? nodeId));
+        runRetype(nodeId, node.kind, newKind);
         return;
       }
 
-      if (newKind === "info") {
-        const nonInfoChildren = node.children.filter((c) => c.kind !== "info");
-        if (nonInfoChildren.length > 0) {
-          setWarningModal({
-            nodeId, fromKind: node.kind, toKind: newKind,
-            heading: t("warnings:convertHeading", { kind: t(`nodeKinds:${newKind}`) }),
-            consequences: [t("warnings:nonInfoChildrenUnderInfo", { count: nonInfoChildren.length })],
-            hasGoalChildren: false,
-            hasNonInfoChildren: true,
-          });
-          return;
-        }
-      }
 
       if (crossesGoalTaskBoundary(node.kind, newKind)) {
         const rawOldStatus = node.status ?? (node.kind === "goal" ? GOAL_STATUS.ACTIVE : TASK_STATUS.TODO);
@@ -141,35 +236,15 @@ export function useNodeTypeManager({ tree, retypeNode, selectNode, showToast }: 
         const toStatusLabel = node.kind === "goal"
           ? labelTaskStatus(rawNewStatus, t)
           : labelGoalStatus(rawNewStatus, t);
+        // A notification, not a question: the status always remaps and there is nothing to
+        // decide. What *is* at stake — a sub-goal a task cannot hold, a Plan a goal has no
+        // column for — the backend enumerates, and only it can, so nothing is predicted here.
         showToast({ nodeId, message: t("warnings:statusToast", { from: fromStatusLabel, to: toStatusLabel }) });
-
-        const hasGoalChildren = node.kind === "goal" && node.children.some((c) => c.kind === "goal");
-        const blockReasons = node.blockReasons ?? [];
-        if (hasGoalChildren || blockReasons.length > 0) {
-          const consequences: string[] = [];
-          if (blockReasons.length > 0) {
-            const reason = blockReasons.join("; ");
-            const preview = reason.length > 40 ? `${reason.slice(0, 40)}…` : reason;
-            consequences.push(t("warnings:blockReasonCarryOver", { preview }));
-          }
-          if (hasGoalChildren) {
-            const count = node.children.filter((c) => c.kind === "goal").length;
-            consequences.push(t("warnings:subgoalsUnderTask", { count }));
-          }
-          setWarningModal({
-            nodeId, fromKind: node.kind, toKind: newKind,
-            heading: t("warnings:convertHeading", { kind: t(`nodeKinds:${newKind}`) }),
-            consequences, hasGoalChildren, hasNonInfoChildren: false,
-          });
-          return;
-        }
       }
 
-      void retypeNode(nodeId, node.kind, newKind).then((newId) => {
-        selectNode(newId ?? nodeId);
-      });
+      runRetype(nodeId, node.kind, newKind);
     },
-    [showToast, retypeNode, selectNode, t],
+    [showToast, runRetype, t],
   );
 
   const cycleType = useCallback(
@@ -202,14 +277,9 @@ export function useNodeTypeManager({ tree, retypeNode, selectNode, showToast }: 
 
   const retypeActions = warningModal !== null
     ? buildRetypeActions(
-        warningModal.hasGoalChildren,
-        warningModal.hasNonInfoChildren,
-        warningModal.hasNonInfoChildren
-          ? t("warnings:reparentNonInfoChildren")
-          : t("warnings:reparentSubgoals"),
-        warningModal.hasNonInfoChildren
-          ? t("warnings:deleteNonInfoChildren")
-          : t("warnings:deleteSubgoals"),
+        warningModal,
+        t("warnings:reparentSubgoals"),
+        t("warnings:deleteSubgoals"),
         t("warnings:convertHeading", { kind: t(`nodeKinds:${warningModal.toKind}`) }),
         confirmRetype,
       )

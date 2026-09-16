@@ -8,6 +8,7 @@ import type { Dependency } from "@/api/tasks";
 import type { TimeScope } from "@/api/time-scope";
 import type { OnScopeExit } from "@/api/scope-lifecycle";
 import { listTaskDependencies } from "@/api/tasks";
+import { getErrorMessage } from "@/api/errors";
 import EditorModal from "@/components/EditorModal/EditorModal";
 import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
 import TimeScopeField from "@/components/ScopePicker/TimeScopeField";
@@ -102,7 +103,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
         plan, isPrivate,
       });
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : String(err));
+      setSaveError(getErrorMessage(err));
       setIsSaving(false);
     }
   }

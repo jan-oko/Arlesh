@@ -114,7 +114,7 @@ pub struct CreateDomainRequest {
 }
 
 /// Request body for updating an existing domain.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 pub struct UpdateDomainRequest {
     /// New title (if provided).
     pub title: Option<String>,

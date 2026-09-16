@@ -12,6 +12,7 @@ pub mod error;
 pub mod flows;
 pub mod infos;
 pub mod knowledge_base;
+pub mod mindmap;
 pub mod scopes;
 pub mod tasks;
 
@@ -50,7 +51,10 @@ pub fn run() {
             })
             .expect("database setup failed");
 
-            app.manage(pool);
+            // The factory is the sole owner of the pool: every command resolves
+            // `State<SessionFactory>` and reaches the database only through a session it hands
+            // out. Nothing managed here can acquire a connection behind a session's back.
+            app.manage(database::session::SessionFactory::new(pool));
 
             if let Some(window) = app.get_webview_window("main") {
                 let icon = match app.default_window_icon().cloned() {
@@ -105,6 +109,7 @@ pub fn run() {
             commands::tasks::add_tag_to_goal,
             commands::tasks::remove_tag_from_goal,
             commands::tasks::derive_scope_lifecycles,
+            commands::retype::retype_node,
             commands::scopes::get_or_create_scope,
             commands::scopes::get_or_create_part_scope,
             commands::scopes::get_or_create_exact_scope,
@@ -144,6 +149,7 @@ pub fn run() {
             commands::flows::generate_habit_iterations,
             commands::flows::list_habit_item_statuses,
             commands::flows::set_habit_item_status,
+            commands::flows::set_habit_iteration_done,
             commands::flows::habit_completion_count,
             commands::flows::clear_habit_modifications,
             commands::flows::fork_flow,
@@ -153,6 +159,7 @@ pub fn run() {
             commands::flows::add_flow_dependency,
             commands::flows::remove_flow_dependency,
             commands::flows::list_all_flow_dependencies,
+            commands::mindmap::load_mindmap,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

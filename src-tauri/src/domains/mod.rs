@@ -5,30 +5,66 @@ pub mod model;
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::database::DatabasePool;
 use error::DomainError;
 use model::{CreateDomainRequest, Domain, DomainId, DomainSubtype, UpdateDomainRequest};
 
-/// Repository for all domain CRUD operations.
-pub struct DomainRepository<'a> {
-    pool: &'a DatabasePool,
+/// Reads and writes aspects, projects, domains and tags on a session's connection.
+///
+/// Obtained as `db.domains()` and used inline; see [`Db`](crate::database::session::Db) for
+/// the borrow rules and for where an operation belongs.
+pub struct DomainOperator<'session> {
+    /// The session's connection, borrowed for the duration of this operator's life.
+    connection: &'session mut sqlx::SqliteConnection,
 }
 
-impl<'a> DomainRepository<'a> {
-    /// Creates a new repository backed by `pool`.
-    pub fn new(pool: &'a DatabasePool) -> Self {
-        Self { pool }
+impl<'session> DomainOperator<'session> {
+    /// Wraps the connection a session is lending.
+    pub(crate) fn new(connection: &'session mut sqlx::SqliteConnection) -> Self {
+        Self { connection }
     }
 
     /// Creates a new domain. Aspects cannot be created via this method.
-    pub async fn create(&self, request: CreateDomainRequest) -> Result<Domain, DomainError> {
+    ///
+    /// Multi-statement — an insert followed by a position update — and so **not atomic on its
+    /// own**. It opens no transaction: per ADR-0004 only the outermost caller decides the
+    /// boundary, and a method that began its own could never join one.
+    ///
+    /// ```no_run
+    /// # use arlesh_lib::database::session::SessionFactory;
+    /// # use arlesh_lib::domains::model::{CreateDomainRequest, DomainSubtype};
+    /// # async fn create(factory: &SessionFactory) -> Result<(), arlesh_lib::domains::error::DomainError> {
+    /// let mut db = factory.begin().await?;
+    /// db.domains().create(CreateDomainRequest {
+    ///     title: "Learn Rust".into(),
+    ///     description: None,
+    ///     subtype: DomainSubtype::Domain,
+    ///     parent_id: None,
+    ///     status: None,
+    ///     knowledge_base_directory: None,
+    /// }).await?;
+    /// db.commit().await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn create(&mut self, request: CreateDomainRequest) -> Result<Domain, DomainError> {
         if request.subtype == DomainSubtype::Aspect {
             return Err(DomainError::FixedAspect);
         }
         self.validate_parent(&request.subtype, request.parent_id).await?;
 
         let subtype_str = subtype_to_str(&request.subtype);
-        let status_str = request.status.as_ref().map(|s| status_to_str(s));
+        // A Project with no status already *reads* as Active everywhere (`UNSET_STATUS` in
+        // `filter-tree.ts`), but a stored NULL matches no value, so List View's Project-status
+        // filter silently excluded every such Project along with its whole subtree of tasks.
+        // Store what the app already means. Only a Project carries a status — a Domain or Tag
+        // keeps NULL, since the vocabulary does not apply to them.
+        let status_str = match request.status.as_ref() {
+            Some(status) => Some(status_to_str(status)),
+            None if request.subtype == DomainSubtype::Project => {
+                Some(status_to_str(&model::ProjectStatus::Active))
+            }
+            None => None,
+        };
 
         let id = sqlx::query(
             "INSERT INTO domains (title, description, subtype, parent_id, status, knowledge_base_directory)
@@ -40,7 +76,7 @@ impl<'a> DomainRepository<'a> {
         .bind(request.parent_id)
         .bind(status_str)
         .bind(&request.knowledge_base_directory)
-        .execute(self.pool)
+        .execute(&mut *self.connection)
         .await?
         .last_insert_rowid();
 
@@ -51,43 +87,46 @@ impl<'a> DomainRepository<'a> {
         sqlx::query("UPDATE domains SET position = ? WHERE id = ?")
             .bind(position)
             .bind(id)
-            .execute(self.pool)
+            .execute(&mut *self.connection)
             .await?;
 
         self.get(DomainId(id)).await
     }
 
     /// Fetches a domain by id.
-    pub async fn get(&self, id: DomainId) -> Result<Domain, DomainError> {
+    pub async fn get(&mut self, id: DomainId) -> Result<Domain, DomainError> {
         sqlx::query_as::<_, Domain>("SELECT * FROM domains WHERE id = ?")
             .bind(id.0)
-            .fetch_optional(self.pool)
+            .fetch_optional(&mut *self.connection)
             .await?
             .ok_or(DomainError::NotFound(id.0))
     }
 
     /// Lists all domains, optionally filtered to a specific subtype.
-    pub async fn list(&self, subtype: Option<DomainSubtype>) -> Result<Vec<Domain>, DomainError> {
+    pub async fn list(&mut self, subtype: Option<DomainSubtype>) -> Result<Vec<Domain>, DomainError> {
         match subtype {
             Some(subtype_value) => {
                 sqlx::query_as::<_, Domain>(
                     "SELECT * FROM domains WHERE subtype = ? ORDER BY position ASC",
                 )
                 .bind(subtype_to_str(&subtype_value))
-                .fetch_all(self.pool)
+                .fetch_all(&mut *self.connection)
                 .await
                 .map_err(Into::into)
             }
             None => sqlx::query_as::<_, Domain>("SELECT * FROM domains ORDER BY position ASC")
-                .fetch_all(self.pool)
+                .fetch_all(&mut *self.connection)
                 .await
                 .map_err(Into::into),
         }
     }
 
     /// Updates an existing domain. Aspects cannot be updated.
+    ///
+    /// A single `UPDATE` statement (preceded and followed by reads), so it is atomic on its own —
+    /// SQLite gives statement-level atomicity to a single write.
     pub async fn update(
-        &self,
+        &mut self,
         id: DomainId,
         request: UpdateDomainRequest,
     ) -> Result<Domain, DomainError> {
@@ -129,27 +168,30 @@ impl<'a> DomainRepository<'a> {
         .bind(position)
         .bind(is_private)
         .bind(id.0)
-        .execute(self.pool)
+        .execute(&mut *self.connection)
         .await?;
 
         self.get(id).await
     }
 
     /// Deletes a domain by id. Aspects cannot be deleted.
-    pub async fn delete(&self, id: DomainId) -> Result<(), DomainError> {
+    ///
+    /// A single `DELETE` statement (preceded by a read), so it is atomic on its own.
+    pub async fn delete(&mut self, id: DomainId) -> Result<(), DomainError> {
         let domain = self.get(id).await?;
         if domain.subtype == "aspect" {
             return Err(DomainError::FixedAspect);
         }
         sqlx::query("DELETE FROM domains WHERE id = ?")
             .bind(id.0)
-            .execute(self.pool)
+            .execute(&mut *self.connection)
             .await?;
         Ok(())
     }
 
+    /// Validates that `parent_id` is an acceptable parent for a domain of the given `subtype`.
     async fn validate_parent(
-        &self,
+        &mut self,
         subtype: &DomainSubtype,
         parent_id: Option<i64>,
     ) -> Result<(), DomainError> {

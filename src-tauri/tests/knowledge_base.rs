@@ -1,28 +1,26 @@
 mod helpers;
 
 use arlesh_lib::{
+    database::session::SessionFactory,
     knowledge_base::{
         error::KnowledgeBaseError,
         model::{CreateEventRequest, CreatePersonRequest, CreateThreadRequest, UpdatePersonRequest},
-        EventRepository, PersonRepository, ThreadRepository,
     },
-    tasks::{
-        model::CreateTaskRequest,
-        TaskRepository,
-    },
+    tasks::{create_task, model::CreateTaskRequest, update_task},
 };
 
 async fn make_project_id(pool: &sqlx::SqlitePool) -> i64 {
-    use arlesh_lib::domains::{
-        model::{CreateDomainRequest, DomainSubtype, ProjectStatus},
-        DomainRepository,
-    };
+    use arlesh_lib::domains::model::{CreateDomainRequest, DomainSubtype, ProjectStatus};
     let aspect_id: i64 =
         sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Growth' AND subtype = 'aspect'")
             .fetch_one(pool)
             .await
             .unwrap();
-    DomainRepository::new(pool)
+    helpers::session_factory(pool)
+        .connect()
+        .await
+        .unwrap()
+        .domains()
         .create(CreateDomainRequest {
             title: "Knowledge Base Test Project".into(),
             description: None,
@@ -39,9 +37,11 @@ async fn make_project_id(pool: &sqlx::SqlitePool) -> i64 {
 #[tokio::test]
 async fn create_and_fetch_person() {
     let pool = helpers::test_pool().await;
-    let repo = PersonRepository::new(&pool);
+    let factory = SessionFactory::new(pool.clone());
+    let mut db = factory.connect().await.unwrap();
 
-    let person = repo
+    let person = db
+        .people()
         .create(CreatePersonRequest {
             name: "Alice".into(),
             aliases: Some(vec!["Al".into()]),
@@ -53,16 +53,18 @@ async fn create_and_fetch_person() {
     assert_eq!(person.name, "Alice");
     assert!(person.aliases.contains("Al"));
 
-    let fetched = repo.get(person.id.into()).await.unwrap();
+    let fetched = db.people().get(person.id.into()).await.unwrap();
     assert_eq!(fetched.name, person.name);
 }
 
 #[tokio::test]
 async fn update_person_aliases() {
     let pool = helpers::test_pool().await;
-    let repo = PersonRepository::new(&pool);
+    let factory = SessionFactory::new(pool.clone());
+    let mut db = factory.connect().await.unwrap();
 
-    let person = repo
+    let person = db
+        .people()
         .create(CreatePersonRequest {
             name: "Bob".into(),
             aliases: None,
@@ -71,7 +73,8 @@ async fn update_person_aliases() {
         .await
         .unwrap();
 
-    let updated = repo
+    let updated = db
+        .people()
         .update(
             person.id.into(),
             UpdatePersonRequest {
@@ -91,7 +94,10 @@ async fn person_linked_to_task_via_delegation() {
     let pool = helpers::test_pool().await;
     let project_id = make_project_id(&pool).await;
 
-    let person = PersonRepository::new(&pool)
+    let factory = SessionFactory::new(pool.clone());
+    let mut db = factory.connect().await.unwrap();
+    let person = db
+        .people()
         .create(CreatePersonRequest {
             name: "Carol".into(),
             aliases: None,
@@ -99,49 +105,56 @@ async fn person_linked_to_task_via_delegation() {
         })
         .await
         .unwrap();
+    drop(db); // release the pool's one connection before the next session claims it
 
-    let task_repo = TaskRepository::new(&pool);
-    let task = task_repo
-        .create(CreateTaskRequest {
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    let task = create_task(
+        &mut db,
+        CreateTaskRequest {
             title: "Delegated Task".into(),
             parent_type: "project".into(),
             parent_id: project_id,
             status: None,
             ..Default::default()
-        })
-        .await
-        .unwrap();
+        },
+    )
+    .await
+    .unwrap();
 
-    task_repo
-        .update(
-            task.id.into(),
-            arlesh_lib::tasks::model::UpdateTaskRequest {
-                delegate_to: Some(Some(person.id)),
-                ..Default::default()
-            },
-        )
-        .await
-        .unwrap();
+    update_task(
+        &mut db,
+        task.id.into(),
+        arlesh_lib::tasks::model::UpdateTaskRequest {
+            delegate_to: Some(Some(person.id)),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
 
-    let fetched = task_repo.get(task.id.into()).await.unwrap();
+    let fetched = db.tasks().get(task.id.into()).await.unwrap();
+    db.commit().await.unwrap();
     assert_eq!(fetched.delegate_to, Some(person.id));
 }
 
 #[tokio::test]
 async fn list_people() {
     let pool = helpers::test_pool().await;
-    let repo = PersonRepository::new(&pool);
+    let factory = SessionFactory::new(pool.clone());
+    let mut db = factory.connect().await.unwrap();
 
-    let alice = repo
+    let alice = db
+        .people()
         .create(CreatePersonRequest { name: "Alice".into(), aliases: None, linked_note: None })
         .await
         .unwrap();
-    let bob = repo
+    let bob = db
+        .people()
         .create(CreatePersonRequest { name: "Bob".into(), aliases: None, linked_note: None })
         .await
         .unwrap();
 
-    let all = repo.list().await.unwrap();
+    let all = db.people().list().await.unwrap();
     assert!(all.iter().any(|p| p.id == alice.id));
     assert!(all.iter().any(|p| p.id == bob.id));
 }
@@ -149,16 +162,18 @@ async fn list_people() {
 #[tokio::test]
 async fn delete_person() {
     let pool = helpers::test_pool().await;
-    let repo = PersonRepository::new(&pool);
+    let factory = SessionFactory::new(pool.clone());
+    let mut db = factory.connect().await.unwrap();
 
-    let person = repo
+    let person = db
+        .people()
         .create(CreatePersonRequest { name: "Doomed".into(), aliases: None, linked_note: None })
         .await
         .unwrap();
 
-    repo.delete(person.id.into()).await.unwrap();
+    db.people().delete(person.id.into()).await.unwrap();
 
-    let err = repo.get(person.id.into()).await.unwrap_err();
+    let err = db.people().get(person.id.into()).await.unwrap_err();
     assert!(
         matches!(err, KnowledgeBaseError::PersonNotFound(_)),
         "expected PersonNotFound, got {:?}",
@@ -169,7 +184,9 @@ async fn delete_person() {
 #[tokio::test]
 async fn person_not_found() {
     let pool = helpers::test_pool().await;
-    let err = PersonRepository::new(&pool).get(999.into()).await.unwrap_err();
+    let factory = SessionFactory::new(pool.clone());
+    let mut db = factory.connect().await.unwrap();
+    let err = db.people().get(999.into()).await.unwrap_err();
     assert!(
         matches!(err, KnowledgeBaseError::PersonNotFound(999)),
         "expected PersonNotFound(999), got {:?}",
@@ -180,9 +197,11 @@ async fn person_not_found() {
 #[tokio::test]
 async fn create_and_list_events() {
     let pool = helpers::test_pool().await;
-    let repo = EventRepository::new(&pool);
+    let factory = SessionFactory::new(pool.clone());
+    let mut db = factory.connect().await.unwrap();
 
-    let e1 = repo
+    let e1 = db
+        .events()
         .create(CreateEventRequest {
             title: "Conference".into(),
             scope_id: None,
@@ -191,7 +210,8 @@ async fn create_and_list_events() {
         })
         .await
         .unwrap();
-    let e2 = repo
+    let e2 = db
+        .events()
         .create(CreateEventRequest {
             title: "Meeting".into(),
             scope_id: None,
@@ -204,7 +224,7 @@ async fn create_and_list_events() {
     assert_eq!(e1.title, "Conference");
     assert_eq!(e2.title, "Meeting");
 
-    let all = repo.list().await.unwrap();
+    let all = db.events().list().await.unwrap();
     assert!(all.iter().any(|e| e.id == e1.id));
     assert!(all.iter().any(|e| e.id == e2.id));
 }
@@ -212,9 +232,11 @@ async fn create_and_list_events() {
 #[tokio::test]
 async fn delete_event() {
     let pool = helpers::test_pool().await;
-    let repo = EventRepository::new(&pool);
+    let factory = SessionFactory::new(pool.clone());
+    let mut db = factory.connect().await.unwrap();
 
-    let event = repo
+    let event = db
+        .events()
         .create(CreateEventRequest {
             title: "Doomed Event".into(),
             scope_id: None,
@@ -224,16 +246,18 @@ async fn delete_event() {
         .await
         .unwrap();
 
-    repo.delete(event.id).await.unwrap();
+    db.events().delete(event.id).await.unwrap();
 
-    let all = repo.list().await.unwrap();
+    let all = db.events().list().await.unwrap();
     assert!(!all.iter().any(|e| e.id == event.id));
 }
 
 #[tokio::test]
 async fn delete_event_not_found() {
     let pool = helpers::test_pool().await;
-    let err = EventRepository::new(&pool).delete(999).await.unwrap_err();
+    let factory = SessionFactory::new(pool.clone());
+    let mut db = factory.connect().await.unwrap();
+    let err = db.events().delete(999).await.unwrap_err();
     assert!(
         matches!(err, KnowledgeBaseError::EventNotFound(999)),
         "expected EventNotFound(999), got {:?}",
@@ -244,20 +268,23 @@ async fn delete_event_not_found() {
 #[tokio::test]
 async fn create_and_list_threads() {
     let pool = helpers::test_pool().await;
-    let repo = ThreadRepository::new(&pool);
+    let factory = SessionFactory::new(pool.clone());
+    let mut db = factory.connect().await.unwrap();
 
-    let t1 = repo
+    let t1 = db
+        .threads()
         .create(CreateThreadRequest { title: "Alpha Thread".into(), linked_note: None })
         .await
         .unwrap();
-    let t2 = repo
+    let t2 = db
+        .threads()
         .create(CreateThreadRequest { title: "Beta Thread".into(), linked_note: None })
         .await
         .unwrap();
 
     assert_eq!(t1.title, "Alpha Thread");
 
-    let all = repo.list().await.unwrap();
+    let all = db.threads().list().await.unwrap();
     assert!(all.iter().any(|t| t.id == t1.id));
     assert!(all.iter().any(|t| t.id == t2.id));
 }
@@ -265,23 +292,27 @@ async fn create_and_list_threads() {
 #[tokio::test]
 async fn delete_thread() {
     let pool = helpers::test_pool().await;
-    let repo = ThreadRepository::new(&pool);
+    let factory = SessionFactory::new(pool.clone());
+    let mut db = factory.connect().await.unwrap();
 
-    let thread = repo
+    let thread = db
+        .threads()
         .create(CreateThreadRequest { title: "Doomed Thread".into(), linked_note: None })
         .await
         .unwrap();
 
-    repo.delete(thread.id).await.unwrap();
+    db.threads().delete(thread.id).await.unwrap();
 
-    let all = repo.list().await.unwrap();
+    let all = db.threads().list().await.unwrap();
     assert!(!all.iter().any(|t| t.id == thread.id));
 }
 
 #[tokio::test]
 async fn delete_thread_not_found() {
     let pool = helpers::test_pool().await;
-    let err = ThreadRepository::new(&pool).delete(999).await.unwrap_err();
+    let factory = SessionFactory::new(pool.clone());
+    let mut db = factory.connect().await.unwrap();
+    let err = db.threads().delete(999).await.unwrap_err();
     assert!(
         matches!(err, KnowledgeBaseError::ThreadNotFound(999)),
         "expected ThreadNotFound(999), got {:?}",
@@ -292,16 +323,19 @@ async fn delete_thread_not_found() {
 #[tokio::test]
 async fn update_person_linked_note() {
     let pool = helpers::test_pool().await;
-    let repo = PersonRepository::new(&pool);
+    let factory = SessionFactory::new(pool.clone());
+    let mut db = factory.connect().await.unwrap();
 
-    let person = repo
+    let person = db
+        .people()
         .create(CreatePersonRequest { name: "Dana".into(), aliases: None, linked_note: None })
         .await
         .unwrap();
 
     assert!(person.linked_note.is_none());
 
-    let updated = repo
+    let updated = db
+        .people()
         .update(
             person.id.into(),
             UpdatePersonRequest {

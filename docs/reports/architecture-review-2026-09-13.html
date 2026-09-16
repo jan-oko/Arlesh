@@ -1,0 +1,992 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Architecture review — Arlesh</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+      mermaid.initialize({ startOnLoad: true, theme: "neutral", securityLevel: "loose" });
+    </script>
+    <style>
+      .seam { stroke-dasharray: 4 4; }
+      .deep { background: linear-gradient(135deg, #0f172a, #1e293b); }
+      .hatch {
+        background-image: repeating-linear-gradient(45deg, #fee2e2, #fee2e2 5px, #fecaca 5px, #fecaca 10px);
+      }
+      .lbl { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+      .mermaid { display: flex; justify-content: center; }
+      @media print { .noprint { display: none; } }
+    </style>
+  </head>
+  <body class="bg-stone-50 text-slate-900 font-sans antialiased">
+    <main class="max-w-5xl mx-auto px-6 py-12 space-y-12">
+
+      <!-- ═══════════════ HEADER ═══════════════ -->
+      <header class="border-b border-slate-300 pb-8">
+        <div class="flex items-baseline justify-between flex-wrap gap-3">
+          <h1 class="font-serif text-4xl tracking-tight">Architecture review — Arlesh</h1>
+          <span class="font-mono text-xs text-slate-500">2026-09-13 · branch <span class="text-slate-700">worktree-architecture-review</span> @ 2bfc55a</span>
+        </div>
+
+        <div class="mt-6 grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+          <div class="rounded border border-slate-200 bg-white px-3 py-2">
+            <div class="lbl text-slate-400">Rust</div><div class="font-mono text-lg">12,568</div><div class="text-slate-500">lines · 80 commands</div>
+          </div>
+          <div class="rounded border border-slate-200 bg-white px-3 py-2">
+            <div class="lbl text-slate-400">TypeScript</div><div class="font-mono text-lg">22,617</div><div class="text-slate-500">lines · 129 modules</div>
+          </div>
+          <div class="rounded border border-slate-200 bg-white px-3 py-2">
+            <div class="lbl text-slate-400">Rust coverage</div><div class="font-mono text-lg">85.4%</div><div class="text-slate-500">excl. commands/</div>
+          </div>
+          <div class="rounded border border-slate-200 bg-white px-3 py-2">
+            <div class="lbl text-slate-400">Phases done</div><div class="font-mono text-lg">1–3</div><div class="text-slate-500">of 8 in SPEC.md</div>
+          </div>
+        </div>
+
+        <div class="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-slate-600">
+          <span class="lbl text-slate-400">Legend</span>
+          <span class="flex items-center gap-2"><span class="inline-block w-6 h-4 border border-slate-400 bg-white"></span> module</span>
+          <span class="flex items-center gap-2"><svg width="26" height="6"><line x1="0" y1="3" x2="26" y2="3" stroke="#64748b" stroke-width="2" class="seam"/></svg> seam</span>
+          <span class="flex items-center gap-2"><svg width="26" height="8"><line x1="0" y1="4" x2="20" y2="4" stroke="#dc2626" stroke-width="2"/><path d="M20 1 L26 4 L20 7 Z" fill="#dc2626"/></svg> leakage</span>
+          <span class="flex items-center gap-2"><span class="inline-block w-6 h-4 deep border-2 border-slate-900"></span> deep module</span>
+        </div>
+      </header>
+
+      <!-- ═══════════════ THE FINDING ═══════════════ -->
+      <section class="rounded-lg border-2 border-slate-900 deep text-stone-100 p-7">
+        <div class="lbl text-emerald-400 mb-3">The through-line</div>
+        <p class="font-serif text-2xl leading-snug">Arlesh's domain is implemented twice — once in Rust, once in TypeScript — because the Tauri seam is cut at table-CRUD granularity instead of use-case granularity.</p>
+        <p class="mt-4 text-sm text-slate-300 leading-relaxed">Three independent sweeps of the backend, the Mindmap cluster, and the IPC/modal layer each arrived here from a different direction. <span class="font-mono text-xs bg-slate-800 px-1.5 py-0.5 rounded">src/api/</span> holds 68 functions and <span class="text-white font-medium">zero statements that are not <span class="font-mono">return invoke(…)</span></span>. Because that layer offers no depth to put anything in, orchestration accumulated one level above it — in <span class="font-mono text-xs">use-mindmap-data.ts</span> and <span class="font-mono text-xs">use-node-editor.ts</span> — where it has no transaction, no invariant enforcement, and in the worst case silently discards user data.</p>
+        <p class="mt-3 text-sm text-slate-300 leading-relaxed">Every candidate below is a variation on moving one domain operation back across that seam, or on splitting a module that grew because there was nowhere else for the knowledge to go.</p>
+      </section>
+
+      <!-- ═══════════════ EVIDENCE: CHANGE AMPLIFICATION ═══════════════ -->
+      <section class="rounded-lg border border-slate-200 bg-white p-6">
+        <h2 class="font-serif text-xl">Measured change amplification</h2>
+        <p class="mt-2 text-sm text-slate-600">Co-change coupling across all 232 commits. One Flow feature crosses the seam five times, every time.</p>
+
+        <div class="mt-5 grid md:grid-cols-2 gap-6">
+          <div>
+            <div class="lbl text-slate-400 mb-2">Commits touching <span class="font-mono normal-case tracking-normal">flows/mod.rs</span> (23)</div>
+            <div class="space-y-1.5 font-mono text-xs">
+              <div class="flex items-center gap-2"><div class="h-5 bg-red-500" style="width:100%"></div><span class="text-slate-600 whitespace-nowrap">23/23 tests/flows.rs</span></div>
+              <div class="flex items-center gap-2"><div class="h-5 bg-red-500" style="width:87%"></div><span class="text-slate-600 whitespace-nowrap">20/23 src/api/flows.ts</span></div>
+              <div class="flex items-center gap-2"><div class="h-5 bg-red-400" style="width:70%"></div><span class="text-slate-600 whitespace-nowrap">16/23 commands/flows.rs</span></div>
+              <div class="flex items-center gap-2"><div class="h-5 bg-red-400" style="width:65%"></div><span class="text-slate-600 whitespace-nowrap">15/23 flows/model.rs</span></div>
+              <div class="flex items-center gap-2"><div class="h-5 bg-red-400" style="width:65%"></div><span class="text-slate-600 whitespace-nowrap">15/23 lib.rs</span></div>
+              <div class="flex items-center gap-2"><div class="h-5 bg-amber-400" style="width:52%"></div><span class="text-slate-600 whitespace-nowrap">12/23 use-mindmap-data.ts</span></div>
+            </div>
+          </div>
+          <div>
+            <div class="lbl text-slate-400 mb-2">Churn — most-edited code files</div>
+            <div class="space-y-1.5 font-mono text-xs">
+              <div class="flex items-center gap-2"><div class="h-5 bg-slate-800" style="width:100%"></div><span class="text-slate-600 whitespace-nowrap">41 MindmapView.tsx <span class="text-red-600">· 0 tests</span></span></div>
+              <div class="flex items-center gap-2"><div class="h-5 bg-slate-700" style="width:80%"></div><span class="text-slate-600 whitespace-nowrap">33 use-mindmap-data.ts</span></div>
+              <div class="flex items-center gap-2"><div class="h-5 bg-slate-600" style="width:71%"></div><span class="text-slate-600 whitespace-nowrap">29 tree-layout.ts</span></div>
+              <div class="flex items-center gap-2"><div class="h-5 bg-slate-600" style="width:71%"></div><span class="text-slate-600 whitespace-nowrap">29 lib.rs <span class="text-slate-400">(registration)</span></span></div>
+              <div class="flex items-center gap-2"><div class="h-5 bg-slate-500" style="width:56%"></div><span class="text-slate-600 whitespace-nowrap">23 flows/mod.rs</span></div>
+              <div class="flex items-center gap-2"><div class="h-5 bg-slate-500" style="width:54%"></div><span class="text-slate-600 whitespace-nowrap">22 src/api/flows.ts</span></div>
+            </div>
+          </div>
+        </div>
+        <p class="mt-5 text-xs text-slate-500 border-t border-slate-100 pt-3">The most-churned code file in the repository has no test. The second most-churned is 1,167 lines returning a 13-key bag.</p>
+      </section>
+
+      <h2 class="font-serif text-3xl pt-4">Candidates</h2>
+
+      <section id="candidates" class="space-y-10">
+
+        <!-- ───────── 1 ───────── -->
+        <article id="c1" class="rounded-lg border border-slate-200 bg-white p-6">
+          <div class="flex items-start justify-between gap-4 flex-wrap">
+            <h3 class="font-serif text-2xl">1 · Give the backend a <span class="font-mono text-lg">retype_node</span> interface</h3>
+            <div class="flex gap-2 shrink-0">
+              <span class="rounded-full bg-emerald-100 text-emerald-800 px-3 py-1 text-xs font-medium">Strong</span>
+              <span class="rounded-full bg-slate-100 text-slate-600 px-3 py-1 text-xs font-mono">in-process</span>
+            </div>
+          </div>
+
+          <div class="mt-3 font-mono text-sm text-slate-600 space-y-0.5">
+            <div>src/components/MindmapView/use-mindmap-data.ts:793-1052</div>
+            <div>src-tauri/src/flows/mod.rs:508-592 <span class="text-slate-400">— convert_item(), the same operation done properly</span></div>
+            <div>src/utils/node-meta.ts <span class="text-slate-400">— validTypesForCycling, the rule's 4th home</span></div>
+          </div>
+
+          <div class="mt-5 grid md:grid-cols-2 gap-4">
+            <div class="rounded border border-red-200 bg-red-50/40 p-4">
+              <div class="lbl text-red-700 mb-3">Before — 6 unsequenced round-trips</div>
+              <pre class="mermaid">
+sequenceDiagram
+  participant UI as retypeNode (TS)
+  participant DB as backend
+  UI->>DB: create_goal(title, parent, status)
+  Note right of DB: time_scope, plan,<br/>on_scope_exit, nsfw,<br/>tags, deps — NOT PASSED
+  UI->>DB: update_goal(position)
+  UI->>DB: update_task(child 1 → new parent)
+  UI->>DB: update_task(child N → new parent)
+  UI->>DB: delete_goal(old node)
+  Note right of UI: no transaction —<br/>failure leaves tree<br/>half-converted
+              </pre>
+            </div>
+            <div class="rounded border-2 border-slate-900 p-4">
+              <div class="lbl text-slate-900 mb-3">After — one interface, one transaction</div>
+              <pre class="mermaid">
+sequenceDiagram
+  participant UI as MindmapView
+  participant DB as nodes::retype
+  UI->>DB: retype(node, to_kind, child_policy)
+  Note right of DB: one SQLite transaction:<br/>carries TimeScope, Plan,<br/>OnExit, tags, deps<br/>legal-parent table consulted once
+  DB-->>UI: NodeRef
+              </pre>
+            </div>
+          </div>
+
+          <div class="mt-5 rounded border border-red-300 bg-red-50 p-4">
+            <div class="lbl text-red-800 mb-2">This one is a live data-loss bug, not only a shape problem</div>
+            <p class="text-sm text-slate-800"><span class="font-mono text-xs">use-mindmap-data.ts:946</span> calls <span class="font-mono text-xs">createGoal({ title, parent_type, parent_id, status })</span> — no <span class="font-mono text-xs">time_scope</span>, no <span class="font-mono text-xs">plan</span>, no <span class="font-mono text-xs">on_scope_exit</span>, no <span class="font-mono text-xs">nsfw</span>, no tags, no dependencies. <strong>Retyping a scoped, planned Task to a Goal silently discards its Time Scope and its On-exit behavior.</strong> Orphaned children are handled by <span class="font-mono text-xs">console.warn</span> at line 866.</p>
+          </div>
+
+          <div class="mt-4 grid md:grid-cols-3 gap-4 text-sm">
+            <div><div class="lbl text-slate-400 mb-1">Problem</div><p>The retype operation is shallow at the seam and absent from the backend, so 250 lines of TypeScript compose it from six raw CRUD commands without atomicity or invariant enforcement.</p></div>
+            <div><div class="lbl text-slate-400 mb-1">Solution</div><p>One <span class="font-mono text-xs">nodes::retype(node_ref, to_kind, child_policy)</span> in a single transaction, with the legal-parent table as one <span class="font-mono text-xs">const</span> shared by retype, create and reparent.</p></div>
+            <div><div class="lbl text-slate-400 mb-1">Deletion test</div><p class="text-emerald-800 font-medium">Concentrates, emphatically.</p><p class="text-slate-600 text-xs mt-1">Removes ~250 lines, the orphan branch, the data-loss bug and the atomicity hole together.</p></div>
+          </div>
+
+          <div class="mt-4">
+            <div class="lbl text-slate-400 mb-2">Wins</div>
+            <ul class="grid sm:grid-cols-2 gap-x-6 gap-y-1 text-sm list-disc list-inside marker:text-emerald-600">
+              <li>Locality: one legal-parent table</li>
+              <li>Time Scope stops being dropped</li>
+              <li>Retype becomes atomic</li>
+              <li>Tests: integration, not mocked <span class="font-mono text-xs">invoke</span></li>
+              <li>Deletes 225 test lines asserting wire strings</li>
+              <li>Leverage: create/reparent share the rule</li>
+            </ul>
+          </div>
+
+          <div class="mt-4 rounded border border-amber-300 bg-amber-50 px-4 py-2 text-sm">
+            <span class="font-medium text-amber-900">ADR-0001</span> — no conflict; this <em>closes</em> a breach of its stated "invariants enforced at write time".
+          </div>
+        </article>
+
+        <!-- ───────── 2 ───────── -->
+        <article id="c2" class="rounded-lg border border-slate-200 bg-white p-6">
+          <div class="flex items-start justify-between gap-4 flex-wrap">
+            <h3 class="font-serif text-2xl">2 · Put the repositories behind a unit of work</h3>
+            <div class="flex gap-2 shrink-0">
+              <span class="rounded-full bg-emerald-100 text-emerald-800 px-3 py-1 text-xs font-medium">Strong</span>
+              <span class="rounded-full bg-slate-100 text-slate-600 px-3 py-1 text-xs font-mono">in-process</span>
+            </div>
+          </div>
+
+          <div class="mt-3 font-mono text-sm text-slate-600 space-y-0.5">
+            <div>src-tauri/src/flows/mod.rs:1157-1354 <span class="text-slate-400">— convert_to_flow, 197 lines, 0 tests</span></div>
+            <div>src-tauri/src/flows/mod.rs:1038-1136 <span class="text-slate-400">— fork_flow, 99 lines, 0 tests</span></div>
+            <div>src-tauri/src/flows/mod.rs:1598-1753 <span class="text-slate-400">— start()</span></div>
+            <div>src-tauri/src/tasks/mod.rs:87-120 <span class="text-slate-400">— delete_task_goal_subtree</span></div>
+          </div>
+
+          <div class="mt-5 grid md:grid-cols-2 gap-4">
+            <div class="rounded border border-red-200 bg-red-50/40 p-4">
+              <div class="lbl text-red-700 mb-3">Before — <span class="normal-case tracking-normal font-mono">convert_to_flow</span> on a bare pool</div>
+              <svg viewBox="0 0 340 210" class="w-full" style="max-height:210px">
+                <line x1="20" y1="20" x2="20" y2="190" stroke="#94a3b8" stroke-width="2"/>
+                <g font-size="9" font-family="ui-monospace,monospace" fill="#334155">
+                  <circle cx="20" cy="35" r="4" fill="#64748b"/><text x="32" y="38">BFS insert flow template…</text>
+                  <circle cx="20" cy="60" r="4" fill="#64748b"/><text x="32" y="63">insert flow_item 1..N</text>
+                  <circle cx="20" cy="85" r="4" fill="#64748b"/><text x="32" y="88">insert cycles, dependencies</text>
+                  <circle cx="20" cy="125" r="5" fill="#dc2626"/><text x="32" y="128" fill="#dc2626" font-weight="bold">DELETE original subtree</text>
+                  <circle cx="20" cy="150" r="4" fill="#64748b"/><text x="32" y="153">…one DELETE per node, reversed</text>
+                </g>
+                <rect x="150" y="24" width="180" height="108" fill="none" stroke="#dc2626" stroke-width="1.5" class="seam"/>
+                <text x="240" y="16" font-size="9" fill="#dc2626" text-anchor="middle" font-weight="bold">failure anywhere here …</text>
+                <text x="240" y="150" font-size="9" fill="#dc2626" text-anchor="middle">… leaves a partial template</text>
+                <text x="240" y="163" font-size="9" fill="#dc2626" text-anchor="middle">AND the original subtree</text>
+                <text x="240" y="183" font-size="9" fill="#dc2626" text-anchor="middle" font-weight="bold">0 tests cover this path</text>
+              </svg>
+            </div>
+            <div class="rounded border-2 border-slate-900 p-4">
+              <div class="lbl text-slate-900 mb-3">After — one transaction, all-or-nothing</div>
+              <svg viewBox="0 0 340 210" class="w-full" style="max-height:210px">
+                <rect x="30" y="24" width="280" height="150" rx="4" fill="#0f172a"/>
+                <text x="170" y="45" font-size="10" fill="#34d399" text-anchor="middle" font-family="ui-monospace,monospace" font-weight="bold">BEGIN</text>
+                <g font-size="9" font-family="ui-monospace,monospace" fill="#cbd5e1">
+                  <text x="170" y="72" text-anchor="middle">insert template</text>
+                  <text x="170" y="92" text-anchor="middle">insert items · cycles · deps</text>
+                  <text x="170" y="112" text-anchor="middle">delete original subtree</text>
+                </g>
+                <text x="170" y="145" font-size="10" fill="#34d399" text-anchor="middle" font-family="ui-monospace,monospace" font-weight="bold">COMMIT</text>
+                <text x="170" y="193" font-size="9" fill="#475569" text-anchor="middle">repositories take &amp;mut SqliteConnection</text>
+              </svg>
+            </div>
+          </div>
+
+          <div class="mt-4 grid md:grid-cols-3 gap-4 text-sm">
+            <div><div class="lbl text-slate-400 mb-1">Problem</div><p>Exactly one module in the backend opens a transaction (<span class="font-mono text-xs">block_reasons</span>); every other multi-write domain operation runs statement-by-statement on the pool, so "this is not atomic" is part of the interface and is documented nowhere.</p></div>
+            <div><div class="lbl text-slate-400 mb-1">Solution</div><p>Repositories accept an executor rather than owning the pool, so composite operations open one transaction and pass it down.</p></div>
+            <div><div class="lbl text-slate-400 mb-1">Deletion test</div><p class="text-slate-800 font-medium">N/A — missing capability.</p><p class="text-slate-600 text-xs mt-1">A direct consequence of #6: with operations hung off <span class="font-mono text-xs">&amp;DatabasePool</span>, there is no place to put a transaction.</p></div>
+          </div>
+
+          <div class="mt-4">
+            <div class="lbl text-slate-400 mb-2">Wins</div>
+            <ul class="grid sm:grid-cols-2 gap-x-6 gap-y-1 text-sm list-disc list-inside marker:text-emerald-600">
+              <li>Partial writes become impossible</li>
+              <li>Failure-injection tests become meaningful</li>
+              <li>Fixes <span class="font-mono text-xs">set_iteration_done</span> half-done corruption</li>
+              <li>Locality: atomicity stated once</li>
+            </ul>
+          </div>
+        </article>
+
+        <!-- ───────── 3 ───────── -->
+        <article id="c3" class="rounded-lg border border-slate-200 bg-white p-6">
+          <div class="flex items-start justify-between gap-4 flex-wrap">
+            <h3 class="font-serif text-2xl">3 · One materialization module — <span class="font-mono text-lg">render(flow, window)</span></h3>
+            <div class="flex gap-2 shrink-0">
+              <span class="rounded-full bg-emerald-100 text-emerald-800 px-3 py-1 text-xs font-medium">Strong</span>
+              <span class="rounded-full bg-slate-100 text-slate-600 px-3 py-1 text-xs font-mono">in-process</span>
+            </div>
+          </div>
+
+          <div class="mt-3 font-mono text-sm text-slate-600 space-y-0.5">
+            <div>src-tauri/src/flows/mod.rs:1598-1753 <span class="text-slate-400">— start(), the real-instance pipeline</span></div>
+            <div>src-tauri/src/flows/mod.rs:863-895 <span class="text-slate-400">— generate_habit_iterations(), returns only <em>when</em></span></div>
+            <div>src/components/MindmapView/use-mindmap-data.ts:81-190 <span class="text-slate-400">— the other half, in TypeScript</span></div>
+          </div>
+
+          <div class="mt-5 grid md:grid-cols-2 gap-4">
+            <div class="rounded border border-red-200 bg-red-50/40 p-4">
+              <div class="lbl text-red-700 mb-3">Before — one rule, split across the seam</div>
+              <pre class="mermaid">
+flowchart TB
+  T[Flow template]
+  T --> S["start&lpar;&rpar; · Rust"]
+  T --> G["generate_habit_iterations&lpar;&rpar;"]
+  S --> R["real copy<br/>cycles resolved ✓<br/>deps remapped ✓"]
+  G --> W["Vec&lt;HabitIteration&gt;<br/><i>dates only</i>"]
+  W -.->|crosses seam| B["buildIterationItems&lpar;&rpar;<br/>TypeScript re-walks<br/>the template"]
+  B --> V["virtual instance<br/>cycles resolved ✗"]
+  classDef leak stroke:#dc2626,stroke-width:2px,fill:#fee2e2;
+  class W,B,V leak
+              </pre>
+            </div>
+            <div class="rounded border-2 border-slate-900 p-4">
+              <div class="lbl text-slate-900 mb-3">After — one renderer, two persistence modes</div>
+              <pre class="mermaid">
+flowchart TB
+  T[Flow template]
+  T --> M["flows::materialize<br/><b>render&lpar;flow, window&rpar;</b>"]
+  M --> I["InstanceTree<br/>TimeScope · Plan · status<br/>blockers · nesting"]
+  I --> P1["start&lpar;&rpar; = render, then persist"]
+  I --> P2["habit = render, then<br/>apply Modifications"]
+  classDef deep fill:#0f172a,color:#fff,stroke:#0f172a,stroke-width:2px;
+  class M deep
+              </pre>
+            </div>
+          </div>
+
+          <div class="mt-5 rounded border border-amber-300 bg-amber-50 p-4 text-sm">
+            <div class="lbl text-amber-800 mb-2">ADR-0002 is only half-implemented</div>
+            <p class="text-slate-800">A Habit's flow items get <strong>no Cycle Scope or Cycle Plan resolved per iteration at all</strong>, while the identical template started as a plain Flow does. Meanwhile <span class="font-mono text-xs">tombstone_kind</span> is only ever read as <span class="font-mono text-xs">IS NULL</span> and never written, and <span class="font-mono text-xs">habit_instance_dependencies</span> (migration 0013) has zero references in <span class="font-mono text-xs">src/</span>. <strong>Modification</strong> — per ADR-0002 the entire storage model for virtual instances — exists only as a status column.</p>
+            <p class="mt-2 text-slate-700">No conflict: this implements the ADR more faithfully than the current code does. It keeps "two representations by design" while unifying the rendering rule the ADR assumes is shared.</p>
+          </div>
+
+          <div class="mt-4 grid md:grid-cols-3 gap-4 text-sm">
+            <div><div class="lbl text-slate-400 mb-1">Problem</div><p>The module's interface is far shallower than the problem: <span class="font-mono text-xs">generate_habit_iterations</span> tells the caller <em>when</em> an iteration falls and never <em>what</em> it contains.</p></div>
+            <div><div class="lbl text-slate-400 mb-1">Solution</div><p>One verb returning an <span class="font-mono text-xs">InstanceTree</span> carrying resolved Time Scope, Plan, status, blockers and nesting for every item.</p></div>
+            <div><div class="lbl text-slate-400 mb-1">Deletion test</div><p class="text-emerald-800 font-medium">Concentrates.</p><p class="text-slate-600 text-xs mt-1">The TypeScript in <span class="font-mono text-xs">buildIterationItems</span>/<span class="font-mono text-xs">injectHabitInstances</span> vanishes rather than moving — it has no independent reason to exist.</p></div>
+          </div>
+
+          <div class="mt-4">
+            <div class="lbl text-slate-400 mb-2">Wins</div>
+            <ul class="grid sm:grid-cols-2 gap-x-6 gap-y-1 text-sm list-disc list-inside marker:text-emerald-600">
+              <li>Habits finally resolve cycle pairs</li>
+              <li>Pure function: template → instances</li>
+              <li>Deletes 16 raw <span class="font-mono text-xs">sqlx</span> test assertions</li>
+              <li>Unblocks tombstones and Modification</li>
+            </ul>
+          </div>
+        </article>
+
+        <!-- ───────── 4 ───────── -->
+        <article id="c4" class="rounded-lg border border-slate-200 bg-white p-6">
+          <div class="flex items-start justify-between gap-4 flex-wrap">
+            <h3 class="font-serif text-2xl">4 · One <span class="font-mono text-lg">ScopeGovernance</span> ascent, one pure containment check</h3>
+            <div class="flex gap-2 shrink-0">
+              <span class="rounded-full bg-emerald-100 text-emerald-800 px-3 py-1 text-xs font-medium">Strong</span>
+              <span class="rounded-full bg-slate-100 text-slate-600 px-3 py-1 text-xs font-mono">in-process</span>
+            </div>
+          </div>
+
+          <div class="mt-3 font-mono text-sm text-slate-600 space-y-0.5">
+            <div>src-tauri/src/tasks/scope_rules.rs:66-106, 181-209, 213-241, 245-265</div>
+            <div>src/components/ScopePicker/PlanField.tsx:320-359 <span class="text-slate-400">— the frontend's second copy</span></div>
+          </div>
+
+          <div class="mt-5 grid md:grid-cols-2 gap-4">
+            <div class="rounded border border-red-200 bg-red-50/40 p-4">
+              <div class="lbl text-red-700 mb-3">Before — four identical ascents</div>
+              <svg viewBox="0 0 340 190" class="w-full" style="max-height:190px">
+                <g font-size="7.5" font-family="ui-monospace,monospace">
+                  <!-- four columns -->
+                  <g>
+                    <rect x="6" y="24" width="76" height="126" fill="none" stroke="#cbd5e1"/>
+                    <text x="44" y="18" text-anchor="middle" fill="#475569">scope_governance</text>
+                    <rect x="14" y="34" width="60" height="16" fill="#f1f5f9" stroke="#94a3b8"/><text x="44" y="45" text-anchor="middle" fill="#334155">loop { match }</text>
+                    <rect x="14" y="56" width="60" height="16" fill="#f1f5f9" stroke="#94a3b8"/><text x="44" y="67" text-anchor="middle" fill="#334155">"task" =&gt; …</text>
+                    <rect x="14" y="78" width="60" height="16" fill="#f1f5f9" stroke="#94a3b8"/><text x="44" y="89" text-anchor="middle" fill="#334155">"goal" =&gt; …</text>
+                    <rect x="14" y="100" width="60" height="16" fill="#fee2e2" stroke="#dc2626"/><text x="44" y="111" text-anchor="middle" fill="#991b1b">Err ⇒ Ok(None)</text>
+                    <rect x="14" y="122" width="60" height="16" fill="#f1f5f9" stroke="#94a3b8"/><text x="44" y="133" text-anchor="middle" fill="#334155">→ window</text>
+                  </g>
+                  <g>
+                    <rect x="90" y="24" width="76" height="126" fill="none" stroke="#cbd5e1"/>
+                    <text x="128" y="18" text-anchor="middle" fill="#475569">…ancestor_window</text>
+                    <rect x="98" y="34" width="60" height="16" fill="#f1f5f9" stroke="#94a3b8"/><text x="128" y="45" text-anchor="middle" fill="#334155">loop { match }</text>
+                    <rect x="98" y="56" width="60" height="16" fill="#f1f5f9" stroke="#94a3b8"/><text x="128" y="67" text-anchor="middle" fill="#334155">"task" =&gt; …</text>
+                    <rect x="98" y="78" width="60" height="16" fill="#f1f5f9" stroke="#94a3b8"/><text x="128" y="89" text-anchor="middle" fill="#334155">"goal" =&gt; …</text>
+                    <rect x="98" y="100" width="60" height="16" fill="#fee2e2" stroke="#dc2626"/><text x="128" y="111" text-anchor="middle" fill="#991b1b">Err ⇒ propagate</text>
+                    <rect x="98" y="122" width="60" height="16" fill="#f1f5f9" stroke="#94a3b8"/><text x="128" y="133" text-anchor="middle" fill="#334155">→ window</text>
+                  </g>
+                  <g>
+                    <rect x="174" y="24" width="76" height="126" fill="none" stroke="#cbd5e1"/>
+                    <text x="212" y="18" text-anchor="middle" fill="#475569">…time_scope</text>
+                    <rect x="182" y="34" width="60" height="16" fill="#f1f5f9" stroke="#94a3b8"/><text x="212" y="45" text-anchor="middle" fill="#334155">loop { match }</text>
+                    <rect x="182" y="56" width="60" height="16" fill="#f1f5f9" stroke="#94a3b8"/><text x="212" y="67" text-anchor="middle" fill="#334155">"task" =&gt; …</text>
+                    <rect x="182" y="78" width="60" height="16" fill="#f1f5f9" stroke="#94a3b8"/><text x="212" y="89" text-anchor="middle" fill="#334155">"goal" =&gt; …</text>
+                    <rect x="182" y="100" width="60" height="16" fill="#f1f5f9" stroke="#94a3b8"/><text x="212" y="111" text-anchor="middle" fill="#334155">…</text>
+                    <rect x="182" y="122" width="60" height="16" fill="#f1f5f9" stroke="#94a3b8"/><text x="212" y="133" text-anchor="middle" fill="#334155">→ TimeScope</text>
+                  </g>
+                  <g>
+                    <rect x="258" y="24" width="76" height="126" fill="none" stroke="#cbd5e1"/>
+                    <text x="296" y="18" text-anchor="middle" fill="#475569">…planned_window</text>
+                    <rect x="266" y="34" width="60" height="16" fill="#f1f5f9" stroke="#94a3b8"/><text x="296" y="45" text-anchor="middle" fill="#334155">loop { match }</text>
+                    <rect x="266" y="56" width="60" height="16" fill="#f1f5f9" stroke="#94a3b8"/><text x="296" y="67" text-anchor="middle" fill="#334155">"task" =&gt; …</text>
+                    <rect x="266" y="78" width="60" height="16" fill="#f1f5f9" stroke="#94a3b8"/><text x="296" y="89" text-anchor="middle" fill="#334155">"goal" =&gt; …</text>
+                    <rect x="266" y="100" width="60" height="16" fill="#f1f5f9" stroke="#94a3b8"/><text x="296" y="111" text-anchor="middle" fill="#334155">…</text>
+                    <rect x="266" y="122" width="60" height="16" fill="#f1f5f9" stroke="#94a3b8"/><text x="296" y="133" text-anchor="middle" fill="#334155">→ plan window</text>
+                  </g>
+                  <text x="170" y="172" text-anchor="middle" fill="#dc2626" font-size="9" font-weight="bold">all four take &amp;DatabasePool — the invariant cannot be unit-tested</text>
+                  <text x="170" y="184" text-anchor="middle" fill="#dc2626" font-size="8">two of them disagree about a dangling parent</text>
+                </g>
+              </svg>
+            </div>
+            <div class="rounded border-2 border-slate-900 p-4">
+              <div class="lbl text-slate-900 mb-3">After — resolve once, check purely</div>
+              <svg viewBox="0 0 340 190" class="w-full" style="max-height:190px">
+                <rect x="40" y="24" width="260" height="58" rx="3" fill="#0f172a"/>
+                <text x="170" y="44" text-anchor="middle" font-size="10" font-family="ui-monospace,monospace" fill="#fff" font-weight="bold">ScopeGovernance::resolve(node)</text>
+                <text x="170" y="60" text-anchor="middle" font-size="8" font-family="ui-monospace,monospace" fill="#94a3b8">one ascent · one error mode · &amp;DatabasePool</text>
+                <text x="170" y="73" text-anchor="middle" font-size="8" font-family="ui-monospace,monospace" fill="#cbd5e1">{ window, time_scope, plan_window, on_exit }</text>
+
+                <line x1="170" y1="82" x2="170" y2="104" stroke="#64748b" stroke-width="2" class="seam"/>
+                <text x="248" y="97" font-size="7.5" fill="#64748b" font-family="ui-monospace,monospace">seam: no pool below</text>
+
+                <rect x="40" y="104" width="260" height="50" rx="3" fill="none" stroke="#0f172a" stroke-width="2"/>
+                <text x="170" y="124" text-anchor="middle" font-size="10" font-family="ui-monospace,monospace" fill="#0f172a" font-weight="bold">containment::check(gov, candidate)</text>
+                <text x="170" y="140" text-anchor="middle" font-size="8" font-family="ui-monospace,monospace" fill="#475569">pure · table-driven unit test over Bounds</text>
+
+                <text x="170" y="175" text-anchor="middle" font-size="9" fill="#059669" font-weight="bold">Plan ⊆ TimeScope ⊆ parent — stated once</text>
+              </svg>
+            </div>
+          </div>
+
+          <div class="mt-5 rounded border border-red-300 bg-red-50 p-4 text-sm">
+            <div class="lbl text-red-800 mb-2">The frontend holds a third, lossy copy</div>
+            <p class="text-slate-800">The backend checks containment on half-open <span class="font-mono text-xs">NaiveDateTime</span> intervals. <span class="font-mono text-xs">ScopePicker.tsx:46-49</span> checks it on <strong>inclusive ISO date strings</strong>, fed by a hand-rolled inverse in <span class="font-mono text-xs">PlanField.tsx:348-355</span> that fabricates a UTC <span class="font-mono text-xs">Z</span> on a local wall-clock string and then truncates to <span class="font-mono text-xs">.slice(0, 10)</span>. A Part-of-Day or Exact Time Scope degrades to whole-day granularity, so <strong>the picker enables Plan cells the backend will reject</strong>. <span class="font-mono text-xs">PlanField</span> never enforces <span class="font-mono text-xs">Plan ⊆ parent's Plan</span> at all.</p>
+          </div>
+
+          <div class="mt-4 grid md:grid-cols-3 gap-4 text-sm">
+            <div><div class="lbl text-slate-400 mb-1">Problem</div><p>ADR-0001's three write-time invariants have no single home: four DB-bound ancestor walks in Rust plus a date-string approximation in React.</p></div>
+            <div><div class="lbl text-slate-400 mb-1">Solution</div><p>One parameterized ascent producing a <span class="font-mono text-xs">ScopeGovernance</span> value, plus a pure <span class="font-mono text-xs">check</span> that never sees a pool; a <span class="font-mono text-xs">plan_candidates</span> command replaces the client-side predicate.</p></div>
+            <div><div class="lbl text-slate-400 mb-1">Deletion test</div><p class="text-emerald-800 font-medium">Concentrates.</p><p class="text-slate-600 text-xs mt-1">~110 lines go, the error modes unify, and the client copy vanishes into one call.</p></div>
+          </div>
+
+          <div class="mt-4">
+            <div class="lbl text-slate-400 mb-2">Wins</div>
+            <ul class="grid sm:grid-cols-2 gap-x-6 gap-y-1 text-sm list-disc list-inside marker:text-emerald-600">
+              <li>Containment testable without SQLite</li>
+              <li>Sub-day scopes stop mis-rendering</li>
+              <li>One error mode, not two</li>
+              <li>Precedent exists: <span class="font-mono text-xs">scopeValidFlowTargets</span></li>
+            </ul>
+          </div>
+
+          <div class="mt-4 rounded border border-amber-300 bg-amber-50 px-4 py-2 text-sm">
+            <span class="font-medium text-amber-900">ADR-0001</span> — the frontend copy is neither interval containment nor FK equality; it is string comparison on truncated dates. This restores the ADR's stated model.
+          </div>
+        </article>
+
+        <!-- ───────── 5 ───────── -->
+        <article id="c5" class="rounded-lg border border-slate-200 bg-white p-6">
+          <div class="flex items-start justify-between gap-4 flex-wrap">
+            <h3 class="font-serif text-2xl">5 · Re-cut the commands layer around use cases</h3>
+            <div class="flex gap-2 shrink-0">
+              <span class="rounded-full bg-emerald-100 text-emerald-800 px-3 py-1 text-xs font-medium">Strong</span>
+              <span class="rounded-full bg-slate-100 text-slate-600 px-3 py-1 text-xs font-mono">ports &amp; adapters</span>
+            </div>
+          </div>
+
+          <div class="mt-3 font-mono text-sm text-slate-600 space-y-0.5">
+            <div>src-tauri/src/commands/ <span class="text-slate-400">— 1,155 lines, 80 commands, ~1 line of logic</span></div>
+            <div>src-tauri/src/error.rs:12-24 <span class="text-slate-400">— AppError omits FlowError entirely</span></div>
+            <div>src/components/MindmapView/use-mindmap-data.ts:601-670 <span class="text-slate-400">— the 13-call fan-out, written twice</span></div>
+          </div>
+
+          <div class="mt-5 grid md:grid-cols-2 gap-4">
+            <div class="rounded border border-red-200 bg-red-50/40 p-4">
+              <div class="lbl text-red-700 mb-3">Before — leverage ≈ 1.0 per command</div>
+              <svg viewBox="0 0 340 200" class="w-full" style="max-height:200px">
+                <rect x="118" y="6" width="104" height="22" rx="2" fill="#fff" stroke="#334155"/>
+                <text x="170" y="21" text-anchor="middle" font-size="9" font-family="ui-monospace,monospace">load() · TS</text>
+                <g stroke="#dc2626" stroke-width="1">
+                  <line x1="170" y1="28" x2="20" y2="62"/><line x1="170" y1="28" x2="45" y2="62"/><line x1="170" y1="28" x2="70" y2="62"/>
+                  <line x1="170" y1="28" x2="95" y2="62"/><line x1="170" y1="28" x2="120" y2="62"/><line x1="170" y1="28" x2="145" y2="62"/>
+                  <line x1="170" y1="28" x2="170" y2="62"/><line x1="170" y1="28" x2="195" y2="62"/><line x1="170" y1="28" x2="220" y2="62"/>
+                  <line x1="170" y1="28" x2="245" y2="62"/><line x1="170" y1="28" x2="270" y2="62"/><line x1="170" y1="28" x2="295" y2="62"/>
+                  <line x1="170" y1="28" x2="320" y2="62"/>
+                </g>
+                <g fill="#fecaca" stroke="#dc2626" stroke-width="0.8">
+                  <rect x="13" y="62" width="14" height="14"/><rect x="38" y="62" width="14" height="14"/><rect x="63" y="62" width="14" height="14"/>
+                  <rect x="88" y="62" width="14" height="14"/><rect x="113" y="62" width="14" height="14"/><rect x="138" y="62" width="14" height="14"/>
+                  <rect x="163" y="62" width="14" height="14"/><rect x="188" y="62" width="14" height="14"/><rect x="213" y="62" width="14" height="14"/>
+                  <rect x="238" y="62" width="14" height="14"/><rect x="263" y="62" width="14" height="14"/><rect x="288" y="62" width="14" height="14"/>
+                  <rect x="313" y="62" width="14" height="14"/>
+                </g>
+                <text x="170" y="90" text-anchor="middle" font-size="8.5" fill="#991b1b" font-family="ui-monospace,monospace">13 parallel commands</text>
+                <g stroke="#dc2626" stroke-width="1" class="seam">
+                  <line x1="270" y1="76" x2="250" y2="108"/><line x1="270" y1="76" x2="290" y2="108"/>
+                </g>
+                <rect x="222" y="108" width="118" height="18" fill="#fee2e2" stroke="#dc2626" stroke-width="0.8"/>
+                <text x="281" y="121" text-anchor="middle" font-size="7.5" fill="#991b1b" font-family="ui-monospace,monospace">+ 2 N+1 fan-outs over flows</text>
+                <rect x="60" y="140" width="220" height="24" rx="2" fill="#fff" stroke="#334155"/>
+                <text x="170" y="156" text-anchor="middle" font-size="8.5" font-family="ui-monospace,monospace">domain tree rebuilt in TypeScript</text>
+                <text x="170" y="182" text-anchor="middle" font-size="8.5" fill="#991b1b" font-weight="bold">every error arrives as an opaque String</text>
+                <text x="170" y="194" text-anchor="middle" font-size="7.5" fill="#991b1b">so the client writes .catch(() =&gt; [])</text>
+              </svg>
+            </div>
+            <div class="rounded border-2 border-slate-900 p-4">
+              <div class="lbl text-slate-900 mb-3">After — coarse, use-case shaped</div>
+              <svg viewBox="0 0 340 200" class="w-full" style="max-height:200px">
+                <rect x="118" y="6" width="104" height="22" rx="2" fill="#fff" stroke="#334155"/>
+                <text x="170" y="21" text-anchor="middle" font-size="9" font-family="ui-monospace,monospace">useMindmapTree()</text>
+                <line x1="170" y1="28" x2="170" y2="58" stroke="#0f172a" stroke-width="2"/>
+                <rect x="85" y="58" width="170" height="30" rx="2" fill="#0f172a"/>
+                <text x="170" y="77" text-anchor="middle" font-size="10" font-family="ui-monospace,monospace" fill="#fff" font-weight="bold">load_mindmap()</text>
+                <line x1="170" y1="88" x2="170" y2="112" stroke="#64748b" stroke-width="2" class="seam"/>
+                <text x="256" y="104" font-size="7.5" fill="#64748b" font-family="ui-monospace,monospace">one seam</text>
+                <rect x="60" y="112" width="220" height="34" rx="2" fill="none" stroke="#0f172a" stroke-width="2"/>
+                <text x="170" y="126" text-anchor="middle" font-size="8.5" font-family="ui-monospace,monospace" fill="#0f172a">tree assembled in Rust, one query plan</text>
+                <text x="170" y="140" text-anchor="middle" font-size="8" font-family="ui-monospace,monospace" fill="#475569">AppError { kind, message, details }</text>
+                <text x="170" y="172" text-anchor="middle" font-size="9" fill="#059669" font-weight="bold">CRUD commands stay — granularity changes</text>
+                <text x="170" y="186" text-anchor="middle" font-size="7.5" fill="#475569">callers can branch on "not a habit" vs "db gone"</text>
+              </svg>
+            </div>
+          </div>
+
+          <div class="mt-4 grid md:grid-cols-3 gap-4 text-sm">
+            <div><div class="lbl text-slate-400 mb-1">Problem</div><p>CLAUDE.md asked for thin commands and got them — but thin was never the goal, <em>deep</em> was; 80 commands each hand back one table and stringify every structured error.</p></div>
+            <div><div class="lbl text-slate-400 mb-1">Solution</div><p>Keep the adapter, change its granularity: a serializable <span class="font-mono text-xs">AppError</span> (with <span class="font-mono text-xs">FlowError</span> added) plus a handful of use-case commands beside the CRUD ones.</p></div>
+            <div><div class="lbl text-slate-400 mb-1">Deletion test</div><p class="text-slate-800 font-medium">Moves — it is a legitimate adapter.</p><p class="text-slate-600 text-xs mt-1">But <span class="font-mono text-xs">load_mindmap</span> <em>concentrates</em>: it removes 13 round-trips, two N+1 fan-outs and a client-side join.</p></div>
+          </div>
+
+          <div class="mt-4">
+            <div class="lbl text-slate-400 mb-2">Wins</div>
+            <ul class="grid sm:grid-cols-2 gap-x-6 gap-y-1 text-sm list-disc list-inside marker:text-emerald-600">
+              <li>Leverage: one call, whole tree</li>
+              <li>Error modes survive the seam</li>
+              <li><span class="font-mono text-xs">FlowError</span> rejoins <span class="font-mono text-xs">AppError</span></li>
+              <li>Kills the duplicated 33-line loader</li>
+            </ul>
+          </div>
+        </article>
+
+        <!-- ───────── 6 ───────── -->
+        <article id="c6" class="rounded-lg border border-slate-200 bg-white p-6">
+          <div class="flex items-start justify-between gap-4 flex-wrap">
+            <h3 class="font-serif text-2xl">6 · Split <span class="font-mono text-lg">FlowRepository</span> — four modules in one struct</h3>
+            <div class="flex gap-2 shrink-0">
+              <span class="rounded-full bg-emerald-100 text-emerald-800 px-3 py-1 text-xs font-medium">Strong</span>
+              <span class="rounded-full bg-slate-100 text-slate-600 px-3 py-1 text-xs font-mono">in-process</span>
+            </div>
+          </div>
+
+          <div class="mt-3 font-mono text-sm text-slate-600">src-tauri/src/flows/mod.rs <span class="text-slate-400">— 1,754 lines, 40 methods, one impl block</span></div>
+
+          <div class="mt-5 grid md:grid-cols-2 gap-4">
+            <div class="rounded border border-red-200 bg-red-50/40 p-4">
+              <div class="lbl text-red-700 mb-3">Before — one interface, four concerns</div>
+              <svg viewBox="0 0 300 220" class="w-full" style="max-height:220px">
+                <rect x="30" y="14" width="240" height="26" fill="#fecaca" stroke="#dc2626" stroke-width="1.5"/>
+                <text x="150" y="31" text-anchor="middle" font-size="9" font-family="ui-monospace,monospace" fill="#991b1b" font-weight="bold">interface: 40 methods, &amp;DatabasePool</text>
+                <rect x="30" y="40" width="240" height="150" fill="#f8fafc" stroke="#dc2626" stroke-width="1.5"/>
+                <g font-size="8" font-family="ui-monospace,monospace" fill="#334155">
+                  <rect x="40" y="50" width="220" height="26" fill="#e2e8f0" stroke="#94a3b8"/><text x="150" y="66" text-anchor="middle">template CRUD · L213-689</text>
+                  <rect x="40" y="82" width="220" height="26" fill="#e2e8f0" stroke="#94a3b8"/><text x="150" y="98" text-anchor="middle">window algebra · L36-135, L1361-1514</text>
+                  <rect x="40" y="114" width="220" height="26" fill="#e2e8f0" stroke="#94a3b8"/><text x="150" y="130" text-anchor="middle">habit overlay · L901-1032</text>
+                  <rect x="40" y="146" width="220" height="26" fill="#e2e8f0" stroke="#94a3b8"/><text x="150" y="162" text-anchor="middle">materialization · L1038-1354, L1598+</text>
+                </g>
+                <text x="150" y="207" text-anchor="middle" font-size="8" fill="#991b1b">to <em>start</em> a flow you must learn 20 methods about <em>editing</em> one</text>
+              </svg>
+            </div>
+            <div class="rounded border-2 border-slate-900 p-4">
+              <div class="lbl text-slate-900 mb-3">After — four narrow interfaces</div>
+              <svg viewBox="0 0 300 220" class="w-full" style="max-height:220px">
+                <g font-family="ui-monospace,monospace">
+                  <rect x="14" y="20" width="130" height="14" fill="#0f172a"/><text x="79" y="31" text-anchor="middle" font-size="7.5" fill="#fff">templates</text>
+                  <rect x="14" y="34" width="130" height="62" fill="#f1f5f9" stroke="#0f172a" stroke-width="1.5"/><text x="79" y="70" text-anchor="middle" font-size="7" fill="#475569">CRUD</text>
+
+                  <rect x="156" y="20" width="130" height="14" fill="#0f172a"/><text x="221" y="31" text-anchor="middle" font-size="7.5" fill="#fff">window</text>
+                  <rect x="156" y="34" width="130" height="62" fill="#f1f5f9" stroke="#0f172a" stroke-width="1.5"/>
+                  <text x="221" y="62" text-anchor="middle" font-size="7" fill="#475569">pure · no pool</text>
+                  <text x="221" y="76" text-anchor="middle" font-size="6.5" fill="#059669">WindowSpec::resolve</text>
+
+                  <rect x="14" y="112" width="130" height="14" fill="#0f172a"/><text x="79" y="123" text-anchor="middle" font-size="7.5" fill="#fff">overlay</text>
+                  <rect x="14" y="126" width="130" height="62" fill="#f1f5f9" stroke="#0f172a" stroke-width="1.5"/><text x="79" y="162" text-anchor="middle" font-size="7" fill="#475569">Modification r/w</text>
+
+                  <rect x="156" y="112" width="130" height="14" fill="#0f172a"/><text x="221" y="123" text-anchor="middle" font-size="7.5" fill="#fff">materialize</text>
+                  <rect x="156" y="126" width="130" height="62" fill="#f1f5f9" stroke="#0f172a" stroke-width="1.5"/><text x="221" y="162" text-anchor="middle" font-size="7" fill="#475569">→ candidate 3</text>
+
+                  <text x="150" y="207" text-anchor="middle" font-size="8" fill="#059669" font-weight="bold">thin bars = interface · tall bodies = implementation</text>
+                </g>
+              </svg>
+            </div>
+          </div>
+
+          <div class="mt-5 rounded border border-red-300 bg-red-50 p-4 text-sm">
+            <div class="lbl text-red-800 mb-2">The split vocabulary is already a live bug</div>
+            <p class="text-slate-800">Four scope-kind matchers live in this one file and they don't agree on spelling. <span class="font-mono text-xs">window_spec</span> (L105) matches <span class="font-mono text-xs">"part"</span>; <span class="font-mono text-xs">offset_scope</span> (L706), in the same struct, matches <span class="font-mono text-xs">"part_of_day"</span>. <strong>A cycle pair stored with <span class="font-mono text-xs">scope_kind = "part"</span> falls straight into <span class="font-mono text-xs">Err(FlowError::Invalid("unsupported cycle kind"))</span></strong> — and no test exercises a part-kind Cycle Scope. Both fields are typed <span class="font-mono text-xs">string</span> where <span class="font-mono text-xs">ScopeKind</span> already exists and already round-trips through serde.</p>
+          </div>
+
+          <div class="mt-4 grid md:grid-cols-3 gap-4 text-sm">
+            <div><div class="lbl text-slate-400 mb-1">Problem</div><p>Not shallow — <em>unfactored</em>. Four unrelated responsibilities share one struct, one error type and one pool, so nothing inside can be reused or tested without all of it.</p></div>
+            <div><div class="lbl text-slate-400 mb-1">Solution</div><p><span class="font-mono text-xs">flows::{templates, window, overlay, materialize}</span>, with <span class="font-mono text-xs">window</span> pure; every kind field becomes a typed <span class="font-mono text-xs">ScopeKind</span> carrying <span class="font-mono text-xs">advance</span>/<span class="font-mono text-xs">rank</span>/<span class="font-mono text-xs">period_days</span> as methods.</p></div>
+            <div><div class="lbl text-slate-400 mb-1">Deletion test</div><p class="text-slate-800 font-medium">Mixed — and that is the finding.</p><p class="text-slate-600 text-xs mt-1">Delete the <em>struct</em> and complexity concentrates into four narrow modules. Delete any one <em>method</em> and it reappears at the call site. The struct isn't earning its keep; the methods are.</p></div>
+          </div>
+
+          <div class="mt-4">
+            <div class="lbl text-slate-400 mb-2">Wins</div>
+            <ul class="grid sm:grid-cols-2 gap-x-6 gap-y-1 text-sm list-disc list-inside marker:text-emerald-600">
+              <li>Window algebra unit-testable, no DB</li>
+              <li><span class="font-mono text-xs">"part"</span>/<span class="font-mono text-xs">"part_of_day"</span> becomes a compile error</li>
+              <li>Locality: one calendar authority</li>
+              <li>Natural home for <span class="font-mono text-xs">tracing::instrument</span></li>
+            </ul>
+          </div>
+        </article>
+
+        <!-- ───────── 7 ───────── -->
+        <article id="c7" class="rounded-lg border border-slate-200 bg-white p-6">
+          <div class="flex items-start justify-between gap-4 flex-wrap">
+            <h3 class="font-serif text-2xl">7 · Split <span class="font-mono text-lg">use-mindmap-data.ts</span> into three</h3>
+            <div class="flex gap-2 shrink-0">
+              <span class="rounded-full bg-emerald-100 text-emerald-800 px-3 py-1 text-xs font-medium">Strong</span>
+              <span class="rounded-full bg-slate-100 text-slate-600 px-3 py-1 text-xs font-mono">mock</span>
+            </div>
+          </div>
+
+          <div class="mt-3 font-mono text-sm text-slate-600">src/components/MindmapView/use-mindmap-data.ts:1-1167 <span class="text-slate-400">— 13-key bag, 33 commits</span></div>
+
+          <div class="mt-5 grid md:grid-cols-2 gap-4">
+            <div class="rounded border border-red-200 bg-red-50/40 p-4">
+              <div class="lbl text-red-700 mb-3">Before — mass diagram</div>
+              <svg viewBox="0 0 300 220" class="w-full" style="max-height:220px">
+                <rect x="50" y="18" width="200" height="54" fill="#fecaca" stroke="#dc2626" stroke-width="1.5"/>
+                <text x="150" y="38" text-anchor="middle" font-size="8.5" font-family="ui-monospace,monospace" fill="#991b1b" font-weight="bold">interface: 13 keys</text>
+                <text x="150" y="52" text-anchor="middle" font-size="6.5" font-family="ui-monospace,monospace" fill="#991b1b">tree · isLoading · error · createNode · createChild</text>
+                <text x="150" y="63" text-anchor="middle" font-size="6.5" font-family="ui-monospace,monospace" fill="#991b1b">renameNode · retypeNode · reorderNode · moveNode …</text>
+                <rect x="50" y="72" width="200" height="112" fill="#f8fafc" stroke="#dc2626" stroke-width="1.5"/>
+                <g font-size="7" font-family="ui-monospace,monospace" fill="#334155">
+                  <text x="150" y="88" text-anchor="middle">tree builder (deep — keep)</text>
+                  <text x="150" y="104" text-anchor="middle">id codec</text>
+                  <text x="150" y="120" text-anchor="middle">loader · load + silentLoad, byte-identical</text>
+                  <text x="150" y="136" text-anchor="middle">CRUD table-dispatcher</text>
+                  <text x="150" y="152" text-anchor="middle" fill="#991b1b" font-weight="bold">retypeNode — 260 lines (22%)</text>
+                  <text x="150" y="170" text-anchor="middle" fill="#991b1b">updateFlow: exposed, never destructured</text>
+                </g>
+                <text x="150" y="202" text-anchor="middle" font-size="8" fill="#991b1b">interface nearly as wide as what it hides</text>
+                <text x="150" y="213" text-anchor="middle" font-size="7.5" fill="#991b1b">50 vi.mock blocks · the 13-arm invoke stub written 3×</text>
+              </svg>
+            </div>
+            <div class="rounded border-2 border-slate-900 p-4">
+              <div class="lbl text-slate-900 mb-3">After — three interfaces, one React</div>
+              <svg viewBox="0 0 300 220" class="w-full" style="max-height:220px">
+                <g font-family="ui-monospace,monospace">
+                  <rect x="30" y="16" width="240" height="13" fill="#0f172a"/>
+                  <text x="150" y="26" text-anchor="middle" font-size="7" fill="#fff">useMindmapTree() → 4 keys</text>
+                  <rect x="30" y="29" width="240" height="42" fill="#f1f5f9" stroke="#0f172a" stroke-width="1.5"/>
+                  <text x="150" y="54" text-anchor="middle" font-size="7" fill="#475569">load · build · lifecycles · habits — once, not twice</text>
+
+                  <rect x="30" y="85" width="240" height="13" fill="#0f172a"/>
+                  <text x="150" y="95" text-anchor="middle" font-size="7" fill="#fff">executeNodeCommand(cmd) → 1 verb</text>
+                  <rect x="30" y="98" width="240" height="42" fill="#f1f5f9" stroke="#0f172a" stroke-width="1.5"/>
+                  <text x="150" y="117" text-anchor="middle" font-size="7" fill="#475569">id codec · table dispatch · reparenting</text>
+                  <text x="150" y="130" text-anchor="middle" font-size="6.5" fill="#059669">no React — pure over a command union</text>
+
+                  <rect x="30" y="154" width="240" height="13" fill="#0f172a"/>
+                  <text x="150" y="164" text-anchor="middle" font-size="7" fill="#fff">planRetype(node, toKind) → Command[]</text>
+                  <rect x="30" y="167" width="240" height="30" fill="#f1f5f9" stroke="#0f172a" stroke-width="1.5"/>
+                  <text x="150" y="186" text-anchor="middle" font-size="6.5" fill="#475569">9 conversion directions become data</text>
+
+                  <text x="150" y="213" text-anchor="middle" font-size="8" fill="#059669" font-weight="bold">tests assert command lists, not wire strings</text>
+                </g>
+              </svg>
+            </div>
+          </div>
+
+          <div class="mt-4 grid md:grid-cols-3 gap-4 text-sm">
+            <div><div class="lbl text-slate-400 mb-1">Problem</div><p>Five separable concerns share a file with no shared interface; the 13 returned keys have nothing in common except that each ends in <span class="font-mono text-xs">await silentLoad()</span>.</p></div>
+            <div><div class="lbl text-slate-400 mb-1">Solution</div><p>A tree source, a pure command executor, and a pure retype planner — the first two feeding candidates 1 and 5.</p></div>
+            <div><div class="lbl text-slate-400 mb-1">Deletion test</div><p class="text-slate-800 font-medium">Mixed — split it.</p><p class="text-slate-600 text-xs mt-1"><span class="font-mono text-xs">buildTree</span> concentrates (keep; it's the best-tested thing here). The CRUD wrappers just move — each is a <span class="font-mono text-xs">switch</span> plus a reload.</p></div>
+          </div>
+
+          <div class="mt-4">
+            <div class="lbl text-slate-400 mb-2">Wins</div>
+            <ul class="grid sm:grid-cols-2 gap-x-6 gap-y-1 text-sm list-disc list-inside marker:text-emerald-600">
+              <li>Deletes 33 duplicated loader lines</li>
+              <li>Removes dead <span class="font-mono text-xs">updateFlow</span> path</li>
+              <li>Retype testable without <span class="font-mono text-xs">renderHook</span></li>
+              <li>Private <span class="font-mono text-xs">findNodeInTree</span> duplicate goes</li>
+            </ul>
+          </div>
+        </article>
+
+        <!-- ───────── 8 ───────── -->
+        <article id="c8" class="rounded-lg border border-slate-200 bg-white p-6">
+          <div class="flex items-start justify-between gap-4 flex-wrap">
+            <h3 class="font-serif text-2xl">8 · Collapse MindmapView's nine hooks into three</h3>
+            <div class="flex gap-2 shrink-0">
+              <span class="rounded-full bg-emerald-100 text-emerald-800 px-3 py-1 text-xs font-medium">Strong</span>
+              <span class="rounded-full bg-slate-100 text-slate-600 px-3 py-1 text-xs font-mono">in-process</span>
+            </div>
+          </div>
+
+          <div class="mt-3 font-mono text-sm text-slate-600 space-y-0.5">
+            <div>src/components/MindmapView/MindmapView.tsx:1-617 <span class="text-red-600">— no test file exists</span></div>
+            <div>use-node-editor.ts (17 keys) · use-node-actions.ts (7) · use-context-action.ts (1 key / 11 options)</div>
+          </div>
+
+          <div class="mt-5 grid md:grid-cols-2 gap-4">
+            <div class="rounded border border-red-200 bg-red-50/40 p-4">
+              <div class="lbl text-red-700 mb-3">Before — 69 values through a shared bus</div>
+              <pre class="mermaid">
+flowchart TB
+  MV["MindmapView.tsx<br/>617 lines · 0 tests<br/><b>destructures 69 values</b>"]
+  H1[useMindmapData · 13] --> MV
+  H2[useNodeEditor · 17] --> MV
+  H3[useNodeActions · 7] --> MV
+  H4[useNodeTypeManager · 6] --> MV
+  H5[useCanvasLayout · 4] --> MV
+  H6[useDrag · 4] --> MV
+  H7[useNavigateArrow · 2] --> MV
+  H8[useContextAction · 1] --> MV
+  MV -->|re-threads 38 options| KB[useKeyboardMindmap]
+  MV -->|19 props, uses 2| C[MindmapCanvas]
+  classDef leak stroke:#dc2626,stroke-width:2px,fill:#fee2e2;
+  class MV leak
+              </pre>
+            </div>
+            <div class="rounded border-2 border-slate-900 p-4">
+              <div class="lbl text-slate-900 mb-3">After — three seams on the real axes</div>
+              <pre class="mermaid">
+flowchart TB
+  MV["MindmapView.tsx<br/><i>a render function</i>"]
+  T["useMindmapTree&lpar;&rpar;<br/>tree · loading · refresh"] --> MV
+  N["useNodeCommands&lpar;tree&rpar;<br/>execute · runContextAction<br/>advanceStatus · retype"] --> MV
+  C["useCanvasController&lpar;…&rpar;<br/>layout · drag · camera<br/><i>ordering is implementation</i>"] --> MV
+  MV -->|4 grouped objects| KB["useHotkeys&lpar;MINDMAP_BINDINGS&rpar;"]
+  classDef deep fill:#0f172a,color:#fff,stroke:#0f172a,stroke-width:2px;
+  class T,N,C deep
+              </pre>
+            </div>
+          </div>
+
+          <div class="mt-5 rounded border border-amber-300 bg-amber-50 p-4 text-sm">
+            <div class="lbl text-amber-800 mb-2">Load-bearing constraints with no module to hold them</div>
+            <ul class="list-disc list-inside space-y-1 text-slate-800">
+              <li><span class="font-mono text-xs">MindmapView.tsx:271-273</span> carries the comment <em>"Declared after the recenter-on-empty effect above so this wins when both fire in one commit."</em> Three effects write to <span class="font-mono text-xs">canvasRef</span> and <strong>their source order is the only thing keeping them correct.</strong></li>
+              <li>The id-decode <span class="font-mono text-xs">parseInt(id.split("-").pop() ?? "0", 10)</span> appears at lines 135, 196, 222-223 and 393 — reimplementing <span class="font-mono text-xs">dbIdFromNodeId</span>, which differs by <em>throwing</em> on a non-numeric tail. The virtual-Habit <span class="font-mono text-xs">-virtual</span> suffix is designed to hit that throw, so <strong>four call sites silently bypass the guard and yield <span class="font-mono text-xs">NaN</span>.</strong></li>
+              <li>Habit status-cycling is forked between <span class="font-mono text-xs">use-node-actions.ts</span> and <span class="font-mono text-xs">use-list-data.ts</span>, and has already diverged: List View has no Goal branch and <strong>no <span class="font-mono text-xs">.catch</span> on either promise</strong> — a failed habit write there is a silent unhandled rejection.</li>
+            </ul>
+          </div>
+
+          <div class="mt-4 grid md:grid-cols-3 gap-4 text-sm">
+            <div><div class="lbl text-slate-400 mb-1">Problem</div><p>Nine hooks were extracted for testability, but the code deciding <em>how to call them</em> — where the ordering and invariant bugs live — stayed in an untested 617-line component. That is the locality failure.</p></div>
+            <div><div class="lbl text-slate-400 mb-1">Solution</div><p>Three hooks on the node-mutation, tree-source and canvas axes; <span class="font-mono text-xs">MindmapContext</span> composed of those four objects instead of 31 flat members.</p></div>
+            <div><div class="lbl text-slate-400 mb-1">Deletion test</div><p class="text-slate-800 font-medium">N/A — this is residue.</p><p class="text-slate-600 text-xs mt-1">Nothing was hidden from it, so nothing deletes. The fix is to move knowledge <em>into</em> the hooks until this file is a render function.</p></div>
+          </div>
+
+          <div class="mt-4">
+            <div class="lbl text-slate-400 mb-2">Wins</div>
+            <ul class="grid sm:grid-cols-2 gap-x-6 gap-y-1 text-sm list-disc list-inside marker:text-emerald-600">
+              <li>Camera ordering becomes implementation</li>
+              <li>A <span class="font-mono text-xs">MindmapView.test.tsx</span> becomes writable</li>
+              <li>Keyboard arrange block: 33 stubs → 4</li>
+              <li>One <span class="font-mono text-xs">advanceStatus</span> for both views</li>
+              <li>Deletes <span class="font-mono text-xs">useContextAction</span> outright</li>
+              <li>Locality: id decode in one place</li>
+            </ul>
+          </div>
+
+          <div class="mt-4 rounded border border-amber-300 bg-amber-50 px-4 py-2 text-sm">
+            <span class="font-medium text-amber-900">ADR-0003</span> — compatible, and it <em>strengthens</em> the ADR. Leave <span class="font-mono text-xs">MINDMAP_BINDINGS</span> and <span class="font-mono text-xs">useHotkeys</span> alone; they are the good part. The ADR kept the flat <span class="font-mono text-xs">Options</span> deliberately, as the migration's regression net. That net has served its purpose — keeping it permanently is now cost, not safety. Grouping <span class="font-mono text-xs">MindmapContext</span> would be a follow-up ADR, not a reversal.
+          </div>
+        </article>
+
+        <!-- ───────── 9 ───────── -->
+        <article id="c9" class="rounded-lg border border-slate-200 bg-white p-6">
+          <div class="flex items-start justify-between gap-4 flex-wrap">
+            <h3 class="font-serif text-2xl">9 · <span class="font-mono text-lg">useEditorForm</span> — the save lifecycle, copied nine times</h3>
+            <div class="flex gap-2 shrink-0">
+              <span class="rounded-full bg-amber-100 text-amber-800 px-3 py-1 text-xs font-medium">Worth exploring</span>
+              <span class="rounded-full bg-slate-100 text-slate-600 px-3 py-1 text-xs font-mono">in-process</span>
+            </div>
+          </div>
+
+          <div class="mt-3 font-mono text-sm text-slate-600">src/components/EditorModal/EditorModal.tsx:1-43 <span class="text-slate-400">+ nine sibling modals, 1,449 lines</span></div>
+
+          <div class="mt-5 grid md:grid-cols-2 gap-4">
+            <div class="rounded border border-red-200 bg-red-50/40 p-4">
+              <div class="lbl text-red-700 mb-3">Before — cross-section, 9 layers deep</div>
+              <svg viewBox="0 0 300 220" class="w-full" style="max-height:220px">
+                <g font-size="7" font-family="ui-monospace,monospace" fill="#334155">
+                  <rect x="30" y="10" width="240" height="15" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.7"/><text x="36" y="21">TaskEditorModal — isSaving · saveError · try/catch · focus · keydown</text>
+                  <rect x="30" y="27" width="240" height="15" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.7"/><text x="36" y="38">GoalEditorModal — <tspan fill="#991b1b">same 20 lines</tspan></text>
+                  <rect x="30" y="44" width="240" height="15" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.7"/><text x="36" y="55">ProjectEditorModal — <tspan fill="#991b1b">same 20 lines</tspan></text>
+                  <rect x="30" y="61" width="240" height="15" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.7"/><text x="36" y="72">TitleEditorModal — <tspan fill="#991b1b">same 20 lines</tspan></text>
+                  <rect x="30" y="78" width="240" height="15" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.7"/><text x="36" y="89">InfoEditorModal — <tspan fill="#991b1b">same 20 lines</tspan></text>
+                  <rect x="30" y="95" width="240" height="15" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.7"/><text x="36" y="106">FlowItemEditorModal — <tspan fill="#991b1b">same 20 lines</tspan></text>
+                  <rect x="30" y="112" width="240" height="15" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.7"/><text x="36" y="123">FlowEditorModal — <tspan fill="#991b1b">+ a 2nd confirm flow</tspan></text>
+                  <rect x="30" y="129" width="240" height="15" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.7"/><text x="36" y="140">StartFlowModal — <tspan fill="#991b1b">same 20 lines</tspan></text>
+                  <rect x="30" y="146" width="240" height="15" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.7"/><text x="36" y="157">ConvertToFlowModal — <tspan fill="#991b1b">same 20 lines</tspan></text>
+                  <rect x="30" y="168" width="240" height="20" fill="#fff" stroke="#dc2626" stroke-width="1.2"/><text x="150" y="181" text-anchor="middle" fill="#991b1b">EditorModal — 43 lines of chrome, owns nothing</text>
+                  <text x="150" y="203" text-anchor="middle" font-size="7.5" fill="#991b1b" font-weight="bold">~180 copied lines · no dirty tracking anywhere</text>
+                  <text x="150" y="214" text-anchor="middle" font-size="7" fill="#991b1b">empty title = silent no-op, nine times over</text>
+                </g>
+              </svg>
+            </div>
+            <div class="rounded border-2 border-slate-900 p-4">
+              <div class="lbl text-slate-900 mb-3">After — one band owns the lifecycle</div>
+              <svg viewBox="0 0 300 220" class="w-full" style="max-height:220px">
+                <g font-family="ui-monospace,monospace">
+                  <rect x="30" y="14" width="240" height="13" fill="#f1f5f9" stroke="#94a3b8" stroke-width="0.7"/><text x="150" y="24" text-anchor="middle" font-size="7" fill="#475569">nine modals — fields only</text>
+                  <line x1="30" y1="36" x2="270" y2="36" stroke="#64748b" stroke-width="1.5" class="seam"/>
+                  <text x="276" y="39" font-size="6.5" fill="#64748b" text-anchor="end">seam</text>
+                  <rect x="30" y="48" width="240" height="86" fill="#0f172a"/>
+                  <text x="150" y="70" text-anchor="middle" font-size="9" fill="#fff" font-weight="bold">useEditorForm()</text>
+                  <text x="150" y="88" text-anchor="middle" font-size="7" fill="#cbd5e1">values · dirty · canSave · isSaving</text>
+                  <text x="150" y="101" text-anchor="middle" font-size="7" fill="#cbd5e1">error · save · requestClose</text>
+                  <text x="150" y="120" text-anchor="middle" font-size="6.5" fill="#34d399">dirty-close guard · empty-title disable · one catch</text>
+                  <rect x="30" y="146" width="240" height="26" fill="#fff" stroke="#0f172a" stroke-width="1.5"/>
+                  <text x="150" y="162" text-anchor="middle" font-size="7.5" fill="#0f172a">EditorModal { heading, form }</text>
+                  <text x="150" y="196" text-anchor="middle" font-size="8" fill="#059669" font-weight="bold">5 untested modals inherit the coverage</text>
+                </g>
+              </svg>
+            </div>
+          </div>
+
+          <div class="mt-4 grid md:grid-cols-3 gap-4 text-sm">
+            <div><div class="lbl text-slate-400 mb-1">Problem</div><p><span class="font-mono text-xs">EditorModal</span> takes <span class="font-mono text-xs">isSaving</span>/<span class="font-mono text-xs">saveError</span>/<span class="font-mono text-xs">onSave</span> as inputs, so it renders the save lifecycle without owning it — and nine siblings each re-implement the state machine.</p></div>
+            <div><div class="lbl text-slate-400 mb-1">Solution</div><p>A <span class="font-mono text-xs">useEditorForm</span> handle passed as one prop; <span class="font-mono text-xs">FlowEditorModal</span>'s bespoke reconcile prompt becomes the <span class="font-mono text-xs">WarningConfirmModal</span> that already exists.</p></div>
+            <div><div class="lbl text-slate-400 mb-1">Deletion test</div><p class="text-emerald-800 font-medium">Concentrates.</p><p class="text-slate-600 text-xs mt-1">Removes ~180 lines and nine independent chances to mishandle partial failure or an empty title.</p></div>
+          </div>
+
+          <div class="mt-4">
+            <div class="lbl text-slate-400 mb-2">Wins</div>
+            <ul class="grid sm:grid-cols-2 gap-x-6 gap-y-1 text-sm list-disc list-inside marker:text-emerald-600">
+              <li>Dirty tracking exists at all</li>
+              <li>Empty title disables Save</li>
+              <li>~12 duplicated test cases collapse</li>
+              <li>One <span class="font-mono text-xs">NodePicker</span> retires 4 copies</li>
+            </ul>
+          </div>
+        </article>
+
+        <!-- ───────── 10 ───────── -->
+        <article id="c10" class="rounded-lg border border-slate-200 bg-white p-6">
+          <div class="flex items-start justify-between gap-4 flex-wrap">
+            <h3 class="font-serif text-2xl">10 · Let the backend own the Cycle Scope grid</h3>
+            <div class="flex gap-2 shrink-0">
+              <span class="rounded-full bg-amber-100 text-amber-800 px-3 py-1 text-xs font-medium">Worth exploring</span>
+              <span class="rounded-full bg-slate-100 text-slate-600 px-3 py-1 text-xs font-mono">ports &amp; adapters</span>
+            </div>
+          </div>
+
+          <div class="mt-3 font-mono text-sm text-slate-600 space-y-0.5">
+            <div>src/utils/flow-cycle.ts:276-373 <span class="text-slate-400">— encoder, nominal radices</span></div>
+            <div>src-tauri/src/flows/mod.rs:692-713 <span class="text-slate-400">— offset_scope, real calendar</span></div>
+          </div>
+
+          <div class="mt-5 grid md:grid-cols-2 gap-4">
+            <div class="rounded border border-red-200 bg-red-50/40 p-4">
+              <div class="lbl text-red-700 mb-3">Before — nominal grid vs real calendar</div>
+              <svg viewBox="0 0 320 200" class="w-full" style="max-height:200px">
+                <text x="10" y="16" font-size="8" font-family="ui-monospace,monospace" fill="#475569">UI offers (SUBDIVISIONS = [3,4,7,6]) — season → 3×4 = 12 weeks</text>
+                <g>
+                  <rect x="10" y="24" width="21" height="20" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.7"/>
+                  <rect x="34" y="24" width="21" height="20" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.7"/>
+                  <rect x="58" y="24" width="21" height="20" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.7"/>
+                  <rect x="82" y="24" width="21" height="20" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.7"/>
+                  <rect x="106" y="24" width="21" height="20" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.7"/>
+                  <rect x="130" y="24" width="21" height="20" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.7"/>
+                  <rect x="154" y="24" width="21" height="20" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.7"/>
+                  <rect x="178" y="24" width="21" height="20" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.7"/>
+                  <rect x="202" y="24" width="21" height="20" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.7"/>
+                  <rect x="226" y="24" width="21" height="20" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.7"/>
+                  <rect x="250" y="24" width="21" height="20" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.7"/>
+                  <rect x="274" y="24" width="21" height="20" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.7"/>
+                </g>
+                <text x="10" y="72" font-size="8" font-family="ui-monospace,monospace" fill="#475569">A season really spans ~13 weeks</text>
+                <g>
+                  <rect x="10" y="80" width="21" height="20" fill="#dcfce7" stroke="#16a34a" stroke-width="0.7"/>
+                  <rect x="34" y="80" width="21" height="20" fill="#dcfce7" stroke="#16a34a" stroke-width="0.7"/>
+                  <rect x="58" y="80" width="21" height="20" fill="#dcfce7" stroke="#16a34a" stroke-width="0.7"/>
+                  <rect x="82" y="80" width="21" height="20" fill="#dcfce7" stroke="#16a34a" stroke-width="0.7"/>
+                  <rect x="106" y="80" width="21" height="20" fill="#dcfce7" stroke="#16a34a" stroke-width="0.7"/>
+                  <rect x="130" y="80" width="21" height="20" fill="#dcfce7" stroke="#16a34a" stroke-width="0.7"/>
+                  <rect x="154" y="80" width="21" height="20" fill="#dcfce7" stroke="#16a34a" stroke-width="0.7"/>
+                  <rect x="178" y="80" width="21" height="20" fill="#dcfce7" stroke="#16a34a" stroke-width="0.7"/>
+                  <rect x="202" y="80" width="21" height="20" fill="#dcfce7" stroke="#16a34a" stroke-width="0.7"/>
+                  <rect x="226" y="80" width="21" height="20" fill="#dcfce7" stroke="#16a34a" stroke-width="0.7"/>
+                  <rect x="250" y="80" width="21" height="20" fill="#dcfce7" stroke="#16a34a" stroke-width="0.7"/>
+                  <rect x="274" y="80" width="21" height="20" fill="#dcfce7" stroke="#16a34a" stroke-width="0.7"/>
+                  <rect x="298" y="80" width="21" height="20" class="hatch" stroke="#dc2626" stroke-width="1.2"/>
+                </g>
+                <text x="308" y="115" font-size="7" fill="#dc2626" text-anchor="middle" font-weight="bold">unreachable</text>
+                <text x="10" y="146" font-size="8" font-family="ui-monospace,monospace" fill="#991b1b" font-weight="bold">month → week = 4, but a month spans 5–6 week cells</text>
+                <text x="10" y="162" font-size="8" font-family="ui-monospace,monospace" fill="#991b1b">Part-of-Day order lives in 5 places, in 2 conflicting orders</text>
+                <text x="10" y="178" font-size="8" font-family="ui-monospace,monospace" fill="#991b1b">flow-cycle.test.ts round-trips against itself — jointly wrong</text>
+              </svg>
+            </div>
+            <div class="rounded border-2 border-slate-900 p-4">
+              <div class="lbl text-slate-900 mb-3">After — one authority, real cells</div>
+              <svg viewBox="0 0 320 200" class="w-full" style="max-height:200px">
+                <rect x="45" y="20" width="230" height="34" rx="3" fill="#0f172a"/>
+                <text x="160" y="34" text-anchor="middle" font-size="9" font-family="ui-monospace,monospace" fill="#fff" font-weight="bold">cycle_grid(flow_id, target_kind)</text>
+                <text x="160" y="47" text-anchor="middle" font-size="7" font-family="ui-monospace,monospace" fill="#94a3b8">→ { kind, count, label }[]</text>
+                <line x1="160" y1="54" x2="160" y2="76" stroke="#64748b" stroke-width="2" class="seam"/>
+                <g>
+                  <rect x="22" y="82" width="21" height="20" fill="#dcfce7" stroke="#16a34a" stroke-width="0.7"/>
+                  <rect x="46" y="82" width="21" height="20" fill="#dcfce7" stroke="#16a34a" stroke-width="0.7"/>
+                  <rect x="70" y="82" width="21" height="20" fill="#dcfce7" stroke="#16a34a" stroke-width="0.7"/>
+                  <rect x="94" y="82" width="21" height="20" fill="#dcfce7" stroke="#16a34a" stroke-width="0.7"/>
+                  <rect x="118" y="82" width="21" height="20" fill="#dcfce7" stroke="#16a34a" stroke-width="0.7"/>
+                  <rect x="142" y="82" width="21" height="20" fill="#dcfce7" stroke="#16a34a" stroke-width="0.7"/>
+                  <rect x="166" y="82" width="21" height="20" fill="#dcfce7" stroke="#16a34a" stroke-width="0.7"/>
+                  <rect x="190" y="82" width="21" height="20" fill="#dcfce7" stroke="#16a34a" stroke-width="0.7"/>
+                  <rect x="214" y="82" width="21" height="20" fill="#dcfce7" stroke="#16a34a" stroke-width="0.7"/>
+                  <rect x="238" y="82" width="21" height="20" fill="#dcfce7" stroke="#16a34a" stroke-width="0.7"/>
+                  <rect x="262" y="82" width="21" height="20" fill="#dcfce7" stroke="#16a34a" stroke-width="0.7"/>
+                  <rect x="286" y="82" width="21" height="20" fill="#dcfce7" stroke="#16a34a" stroke-width="0.7"/>
+                </g>
+                <text x="160" y="120" text-anchor="middle" font-size="8" font-family="ui-monospace,monospace" fill="#059669" font-weight="bold">the picker renders what the resolver resolves</text>
+                <text x="160" y="146" text-anchor="middle" font-size="7.5" font-family="ui-monospace,monospace" fill="#475569">pathToIndex / indexToPath stay — pure UI navigation</text>
+                <text x="160" y="162" text-anchor="middle" font-size="7.5" font-family="ui-monospace,monospace" fill="#475569">over a server-supplied shape</text>
+                <text x="160" y="184" text-anchor="middle" font-size="7.5" font-family="ui-monospace,monospace" fill="#059669">one PartOfDay order, in Rust</text>
+              </svg>
+            </div>
+          </div>
+
+          <div class="mt-4 grid md:grid-cols-3 gap-4 text-sm">
+            <div><div class="lbl text-slate-400 mb-1">Problem</div><p>The frontend encodes a Cycle Scope as a mixed-radix index over <em>nominal</em> subdivisions while the backend decodes it as a <em>real</em> calendar advance — two models, no round-trip test, and cells the user can never reach.</p></div>
+            <div><div class="lbl text-slate-400 mb-1">Solution</div><p>A <span class="font-mono text-xs">cycle_grid</span> command returning the real level structure for a given flow window, so the nominal radices disappear.</p></div>
+            <div><div class="lbl text-slate-400 mb-1">Deletion test</div><p class="text-emerald-800 font-medium">Concentrates.</p><p class="text-slate-600 text-xs mt-1">One side must own the index↔(kind, offset) codec. Right now neither does.</p></div>
+          </div>
+
+          <div class="mt-4 rounded border border-amber-300 bg-amber-50 px-4 py-2 text-sm">
+            <span class="font-medium text-amber-900">ADR-0002</span> — touches "Cycle Scope/Plan pairs resolve on every start". The ADR puts resolution server-side; the UI quietly keeps a second, nominal model client-side. This restores the ADR's placement.
+          </div>
+        </article>
+
+        <!-- ───────── 11 ───────── -->
+        <article id="c11" class="rounded-lg border border-slate-200 bg-white p-6">
+          <div class="flex items-start justify-between gap-4 flex-wrap">
+            <h3 class="font-serif text-2xl">11 · Generate the Rust↔TS mirror</h3>
+            <div class="flex gap-2 shrink-0">
+              <span class="rounded-full bg-amber-100 text-amber-800 px-3 py-1 text-xs font-medium">Worth exploring</span>
+              <span class="rounded-full bg-slate-100 text-slate-600 px-3 py-1 text-xs font-mono">ports &amp; adapters</span>
+            </div>
+          </div>
+
+          <div class="mt-3 font-mono text-sm text-slate-600">src/types/ <span class="text-red-600">— contains one .d.ts file; there is no types layer</span></div>
+
+          <div class="mt-5 grid md:grid-cols-2 gap-4">
+            <div class="rounded border border-red-200 bg-red-50/40 p-4">
+              <div class="lbl text-red-700 mb-3">Before — 766 hand-kept lines</div>
+              <svg viewBox="0 0 300 200" class="w-full" style="max-height:200px">
+                <rect x="16" y="20" width="118" height="140" fill="#f1f5f9" stroke="#334155" stroke-width="1.2"/>
+                <text x="75" y="16" text-anchor="middle" font-size="8" font-family="ui-monospace,monospace" fill="#334155">Rust models</text>
+                <g font-size="7" font-family="ui-monospace,monospace" fill="#475569">
+                  <text x="75" y="44" text-anchor="middle">flows::model · 529</text>
+                  <text x="75" y="66" text-anchor="middle">tasks::model · 392</text>
+                  <text x="75" y="88" text-anchor="middle">scopes::model · 244</text>
+                  <text x="75" y="110" text-anchor="middle">domains::model · 160</text>
+                  <text x="75" y="140" text-anchor="middle" fill="#059669">enum WindowSpec</text>
+                  <text x="75" y="152" text-anchor="middle" fill="#059669">illegal states unrepresentable</text>
+                </g>
+                <g stroke="#dc2626" stroke-width="1" class="seam">
+                  <line x1="134" y1="60" x2="166" y2="60"/><line x1="134" y1="90" x2="166" y2="90"/><line x1="134" y1="120" x2="166" y2="120"/>
+                </g>
+                <text x="150" y="52" text-anchor="middle" font-size="6.5" fill="#dc2626">"mirrored from…"</text>
+                <rect x="166" y="20" width="118" height="140" fill="#fee2e2" stroke="#dc2626" stroke-width="1.2"/>
+                <text x="225" y="16" text-anchor="middle" font-size="8" font-family="ui-monospace,monospace" fill="#991b1b">TS mirrors in src/api/</text>
+                <g font-size="7" font-family="ui-monospace,monospace" fill="#991b1b">
+                  <text x="225" y="44" text-anchor="middle">~766 lines, by hand</text>
+                  <text x="225" y="66" text-anchor="middle">29 fields typed `string`</text>
+                  <text x="225" y="88" text-anchor="middle">where Rust has an enum</text>
+                  <text x="225" y="118" text-anchor="middle" font-weight="bold">4 "set iff" clusters</text>
+                  <text x="225" y="132" text-anchor="middle">as prose comments</text>
+                  <text x="225" y="150" text-anchor="middle">nothing fails on drift</text>
+                </g>
+                <text x="150" y="184" text-anchor="middle" font-size="8" fill="#991b1b" font-weight="bold">adding a column is a four-file edit</text>
+              </svg>
+            </div>
+            <div class="rounded border-2 border-slate-900 p-4">
+              <div class="lbl text-slate-900 mb-3">After — one authority, generated</div>
+              <svg viewBox="0 0 300 200" class="w-full" style="max-height:200px">
+                <rect x="60" y="20" width="180" height="56" fill="#0f172a"/>
+                <text x="150" y="42" text-anchor="middle" font-size="9" font-family="ui-monospace,monospace" fill="#fff" font-weight="bold">Rust models</text>
+                <text x="150" y="58" text-anchor="middle" font-size="7" font-family="ui-monospace,monospace" fill="#94a3b8">the single authority</text>
+                <line x1="150" y1="76" x2="150" y2="104" stroke="#0f172a" stroke-width="2"/>
+                <text x="205" y="94" font-size="7" font-family="ui-monospace,monospace" fill="#059669">ts-rs / specta</text>
+                <rect x="60" y="104" width="180" height="52" fill="none" stroke="#0f172a" stroke-width="2"/>
+                <text x="150" y="124" text-anchor="middle" font-size="8.5" font-family="ui-monospace,monospace" fill="#0f172a">src/types/ — generated</text>
+                <text x="150" y="140" text-anchor="middle" font-size="7" font-family="ui-monospace,monospace" fill="#475569">discriminated unions, not "set iff" prose</text>
+                <text x="150" y="180" text-anchor="middle" font-size="8" fill="#059669" font-weight="bold">427 tautological mirror-test lines delete</text>
+              </svg>
+            </div>
+          </div>
+
+          <div class="mt-4 grid md:grid-cols-3 gap-4 text-sm">
+            <div><div class="lbl text-slate-400 mb-1">Problem</div><p>The seam's only claimed leverage is types, yet the fields carrying domain meaning across it are <span class="font-mono text-xs">string</span> while Rust models them as closed enums — and four illegal-state clusters are representable in TS and unrepresentable in Rust.</p></div>
+            <div><div class="lbl text-slate-400 mb-1">Solution</div><p>Generate <span class="font-mono text-xs">src/types/</span> from the Rust models and promote every mirrored <span class="font-mono text-xs">string</span> to the generated union.</p></div>
+            <div><div class="lbl text-slate-400 mb-1">Deletion test</div><p class="text-slate-800 font-medium">Moves — but only just.</p><p class="text-slate-600 text-xs mt-1"><span class="font-mono text-xs">src/api/</span> earns its keep as a name registry and nothing more. Deepen it; don't delete it. The <em>hand-maintenance</em> is pure cost.</p></div>
+          </div>
+
+          <div class="mt-4 rounded border border-slate-300 bg-slate-50 px-4 py-3 text-sm">
+            <span class="font-medium">Counter to expectation:</span> <span class="font-mono text-xs">src/api/flows.ts</span> is <em>not</em> where the rot is. Of its 404 lines, ~355 are type declarations and doc comments — verbose and untested, but not complex. The complexity you would expect there accumulated one layer up, in <span class="font-mono text-xs">use-node-editor.ts</span> and <span class="font-mono text-xs">use-mindmap-data.ts</span>, precisely <em>because</em> <span class="font-mono text-xs">src/api/</span> offers no depth to hold it.
+          </div>
+        </article>
+
+      </section>
+
+      <!-- ═══════════════ TOP RECOMMENDATION ═══════════════ -->
+      <section id="top-recommendation" class="rounded-lg border-2 border-emerald-700 bg-emerald-50 p-7">
+        <div class="lbl text-emerald-800 mb-3">Top recommendation</div>
+        <h2 class="font-serif text-3xl">Start with <a href="#c1" class="underline decoration-emerald-600 decoration-2 underline-offset-4">#1 — <span class="font-mono text-2xl">retype_node</span></a>.</h2>
+        <p class="mt-4 text-slate-800 leading-relaxed">It is the only candidate that is simultaneously an architecture fix and a <strong>live data-loss bug</strong>: retyping a scoped, planned Task to a Goal silently discards its Time Scope and On-exit behavior today. It is small enough to land alone, it forces the transaction question (#2) into the open on one concrete operation rather than as a sweeping refactor, and it is the first place the legal-parent rule gets a single home instead of four.</p>
+        <p class="mt-3 text-slate-800 leading-relaxed">It also sets the pattern every later candidate follows: move one domain operation back across the seam, and let the TypeScript that was standing in for it delete rather than move.</p>
+        <div class="mt-5 pt-4 border-t border-emerald-200 text-sm text-slate-700">
+          <span class="lbl text-emerald-800">Then</span>
+          <span class="ml-2">#2 unit of work → #3 materialization → #6 split <span class="font-mono text-xs">FlowRepository</span>. The frontend candidates (#7, #8) get easier after #5, because a <span class="font-mono text-xs">load_mindmap</span> command removes most of what <span class="font-mono text-xs">use-mindmap-data.ts</span> is doing.</span>
+        </div>
+      </section>
+
+      <footer class="pt-6 pb-2 text-xs text-slate-400 border-t border-slate-200">
+        Generated in worktree <span class="font-mono">.claude/worktrees/architecture-review</span> against <span class="font-mono">2bfc55a</span> · no source files were modified · test suites were not run (node_modules absent in the worktree; the Rust figures come from the project's own convention-check hook)
+      </footer>
+
+    </main>
+  </body>
+</html>

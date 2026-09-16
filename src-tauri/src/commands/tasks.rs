@@ -3,256 +3,273 @@
 use tauri::State;
 
 use crate::{
-    database::DatabasePool,
+    database::session::SessionFactory,
+    error::WireError,
     tasks::{
-        derive_all_scope_lifecycles,
         lifecycle::ItemLifecycle,
         model::{
             CreateGoalRequest, CreateTaskRequest, Dependency, Goal, GoalId, Task,
             TaskDependencyEdge, TaskId, TaskWithBlockers, TimeScope, UpdateGoalRequest,
             UpdateTaskRequest,
         },
-        GoalRepository, ReparentConflicts, TaskRepository, ViolatingDescendant,
+        ReparentConflicts, ViolatingDescendant,
     },
 };
 
 /// Creates a new task.
 #[tauri::command]
 pub async fn create_task(
-    pool: State<'_, DatabasePool>,
+    factory: State<'_, SessionFactory>,
     request: CreateTaskRequest,
-) -> Result<Task, String> {
-    TaskRepository::new(&pool)
-        .create(request)
+) -> Result<Task, WireError> {
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    let task = crate::tasks::create_task(&mut db, request)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)?;
+    Ok(task)
 }
 
 /// Fetches a task by id with computed blockers.
 #[tauri::command]
 pub async fn get_task(
-    pool: State<'_, DatabasePool>,
+    factory: State<'_, SessionFactory>,
     id: i64,
-) -> Result<TaskWithBlockers, String> {
-    TaskRepository::new(&pool)
-        .get_with_blockers(TaskId(id))
+) -> Result<TaskWithBlockers, WireError> {
+    let mut db = factory.connect().await.map_err(WireError::from_error)?;
+    crate::tasks::get_task_with_blockers(&mut db, TaskId(id))
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Lists all tasks.
 #[tauri::command]
-pub async fn list_tasks(pool: State<'_, DatabasePool>) -> Result<Vec<Task>, String> {
-    TaskRepository::new(&pool)
-        .list()
-        .await
-        .map_err(|error| error.to_string())
+pub async fn list_tasks(factory: State<'_, SessionFactory>) -> Result<Vec<Task>, WireError> {
+    let mut db = factory.connect().await.map_err(WireError::from_error)?;
+    db.tasks().list().await.map_err(WireError::from_error)
 }
 
 /// Updates a task.
 #[tauri::command]
 pub async fn update_task(
-    pool: State<'_, DatabasePool>,
+    factory: State<'_, SessionFactory>,
     id: i64,
     request: UpdateTaskRequest,
-) -> Result<Task, String> {
-    TaskRepository::new(&pool)
-        .update(TaskId(id), request)
+) -> Result<Task, WireError> {
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    let task = crate::tasks::update_task(&mut db, TaskId(id), request)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)?;
+    Ok(task)
 }
 
 /// Returns the task/goal descendants of a node that a candidate Time Scope would orphan, for the
 /// frontend's clamp-or-cancel prompt before narrowing a scope or reparenting.
 #[tauri::command]
 pub async fn scope_containment_conflicts(
-    pool: State<'_, DatabasePool>,
+    factory: State<'_, SessionFactory>,
     node_type: String,
     node_id: i64,
     time_scope: TimeScope,
-) -> Result<Vec<ViolatingDescendant>, String> {
-    TaskRepository::new(&pool)
-        .scope_containment_conflicts(&node_type, node_id, &time_scope)
+) -> Result<Vec<ViolatingDescendant>, WireError> {
+    let mut db = factory.connect().await.map_err(WireError::from_error)?;
+    crate::tasks::conflicts_for_new_time_scope(&mut db, &node_type, node_id, &time_scope)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Returns the items a reparent of `node` under `new_parent` would orphan, plus the ancestor Time
 /// Scope to clamp them to — for a clamp-or-cancel prompt before the move.
 #[tauri::command]
 pub async fn reparent_scope_conflicts(
-    pool: State<'_, DatabasePool>,
+    factory: State<'_, SessionFactory>,
     node_type: String,
     node_id: i64,
     new_parent_type: String,
     new_parent_id: i64,
-) -> Result<ReparentConflicts, String> {
-    TaskRepository::new(&pool)
-        .reparent_scope_conflicts(&node_type, node_id, &new_parent_type, new_parent_id)
+) -> Result<ReparentConflicts, WireError> {
+    let mut db = factory.connect().await.map_err(WireError::from_error)?;
+    crate::tasks::reparent_conflicts(&mut db, &node_type, node_id, &new_parent_type, new_parent_id)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Deletes a task.
 #[tauri::command]
-pub async fn delete_task(pool: State<'_, DatabasePool>, id: i64) -> Result<(), String> {
-    TaskRepository::new(&pool)
-        .delete(TaskId(id))
+pub async fn delete_task(factory: State<'_, SessionFactory>, id: i64) -> Result<(), WireError> {
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    crate::tasks::delete_task(&mut db, TaskId(id))
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)
 }
 
 /// Adds a dependency to a task.
+///
+/// Transactional despite writing only once: the cycle check in front of the `INSERT` is a read the
+/// write depends on, and without a transaction two concurrent calls can each see no cycle and
+/// jointly create one. The transaction closes that window — SQLite refuses the second writer
+/// rather than letting both land.
 #[tauri::command]
 pub async fn add_task_dependency(
-    pool: State<'_, DatabasePool>,
+    factory: State<'_, SessionFactory>,
     task_id: i64,
     dependency: Dependency,
-) -> Result<(), String> {
-    TaskRepository::new(&pool)
-        .add_dependency(TaskId(task_id), dependency)
+) -> Result<(), WireError> {
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    crate::tasks::add_task_dependency(&mut db, TaskId(task_id), dependency)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)
 }
 
 /// Removes a dependency from a task.
 #[tauri::command]
 pub async fn remove_task_dependency(
-    pool: State<'_, DatabasePool>,
+    factory: State<'_, SessionFactory>,
     task_id: i64,
     dependency: Dependency,
-) -> Result<(), String> {
-    TaskRepository::new(&pool)
+) -> Result<(), WireError> {
+    let mut db = factory.connect().await.map_err(WireError::from_error)?;
+    db.tasks()
         .remove_dependency(TaskId(task_id), dependency)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Lists all dependencies for a task.
 #[tauri::command]
 pub async fn list_task_dependencies(
-    pool: State<'_, DatabasePool>,
+    factory: State<'_, SessionFactory>,
     task_id: i64,
-) -> Result<Vec<Dependency>, String> {
-    TaskRepository::new(&pool)
+) -> Result<Vec<Dependency>, WireError> {
+    let mut db = factory.connect().await.map_err(WireError::from_error)?;
+    db.tasks()
         .list_dependencies(TaskId(task_id))
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Lists every task-dependency edge (for the mindmap bulk load).
 #[tauri::command]
 pub async fn list_all_task_dependencies(
-    pool: State<'_, DatabasePool>,
-) -> Result<Vec<TaskDependencyEdge>, String> {
-    TaskRepository::new(&pool)
+    factory: State<'_, SessionFactory>,
+) -> Result<Vec<TaskDependencyEdge>, WireError> {
+    let mut db = factory.connect().await.map_err(WireError::from_error)?;
+    db.tasks()
         .list_all_dependencies()
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Creates a new goal.
 #[tauri::command]
 pub async fn create_goal(
-    pool: State<'_, DatabasePool>,
+    factory: State<'_, SessionFactory>,
     request: CreateGoalRequest,
-) -> Result<Goal, String> {
-    GoalRepository::new(&pool)
-        .create(request)
+) -> Result<Goal, WireError> {
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    let goal = crate::tasks::create_goal(&mut db, request)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)?;
+    Ok(goal)
 }
 
 /// Fetches a goal by id.
 #[tauri::command]
-pub async fn get_goal(pool: State<'_, DatabasePool>, id: i64) -> Result<Goal, String> {
-    GoalRepository::new(&pool)
-        .get(GoalId(id))
-        .await
-        .map_err(|error| error.to_string())
+pub async fn get_goal(factory: State<'_, SessionFactory>, id: i64) -> Result<Goal, WireError> {
+    let mut db = factory.connect().await.map_err(WireError::from_error)?;
+    db.goals().get(GoalId(id)).await.map_err(WireError::from_error)
 }
 
 /// Lists all goals.
 #[tauri::command]
-pub async fn list_goals(pool: State<'_, DatabasePool>) -> Result<Vec<Goal>, String> {
-    GoalRepository::new(&pool)
-        .list()
-        .await
-        .map_err(|error| error.to_string())
+pub async fn list_goals(factory: State<'_, SessionFactory>) -> Result<Vec<Goal>, WireError> {
+    let mut db = factory.connect().await.map_err(WireError::from_error)?;
+    db.goals().list().await.map_err(WireError::from_error)
 }
 
 /// Updates a goal.
 #[tauri::command]
 pub async fn update_goal(
-    pool: State<'_, DatabasePool>,
+    factory: State<'_, SessionFactory>,
     id: i64,
     request: UpdateGoalRequest,
-) -> Result<Goal, String> {
-    GoalRepository::new(&pool)
-        .update(GoalId(id), request)
+) -> Result<Goal, WireError> {
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    let goal = crate::tasks::update_goal(&mut db, GoalId(id), request)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)?;
+    Ok(goal)
 }
 
 /// Deletes a goal.
 #[tauri::command]
-pub async fn delete_goal(pool: State<'_, DatabasePool>, id: i64) -> Result<(), String> {
-    GoalRepository::new(&pool)
-        .delete(GoalId(id))
+pub async fn delete_goal(factory: State<'_, SessionFactory>, id: i64) -> Result<(), WireError> {
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    crate::tasks::delete_goal(&mut db, GoalId(id))
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)
 }
 
 /// Adds a tag to a task.
 #[tauri::command]
 pub async fn add_tag_to_task(
-    pool: State<'_, DatabasePool>,
+    factory: State<'_, SessionFactory>,
     task_id: i64,
     tag_id: i64,
-) -> Result<(), String> {
-    TaskRepository::new(&pool)
+) -> Result<(), WireError> {
+    let mut db = factory.connect().await.map_err(WireError::from_error)?;
+    db.tasks()
         .add_tag(TaskId(task_id), tag_id)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Removes a tag from a task.
 #[tauri::command]
 pub async fn remove_tag_from_task(
-    pool: State<'_, DatabasePool>,
+    factory: State<'_, SessionFactory>,
     task_id: i64,
     tag_id: i64,
-) -> Result<(), String> {
-    TaskRepository::new(&pool)
+) -> Result<(), WireError> {
+    let mut db = factory.connect().await.map_err(WireError::from_error)?;
+    db.tasks()
         .remove_tag(TaskId(task_id), tag_id)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Adds a tag to a goal.
 #[tauri::command]
 pub async fn add_tag_to_goal(
-    pool: State<'_, DatabasePool>,
+    factory: State<'_, SessionFactory>,
     goal_id: i64,
     tag_id: i64,
-) -> Result<(), String> {
-    GoalRepository::new(&pool)
+) -> Result<(), WireError> {
+    let mut db = factory.connect().await.map_err(WireError::from_error)?;
+    db.goals()
         .add_tag(GoalId(goal_id), tag_id)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Removes a tag from a goal.
 #[tauri::command]
 pub async fn remove_tag_from_goal(
-    pool: State<'_, DatabasePool>,
+    factory: State<'_, SessionFactory>,
     goal_id: i64,
     tag_id: i64,
-) -> Result<(), String> {
-    GoalRepository::new(&pool)
+) -> Result<(), WireError> {
+    let mut db = factory.connect().await.map_err(WireError::from_error)?;
+    db.goals()
         .remove_tag(GoalId(goal_id), tag_id)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }
 
 /// Derives the scope lifecycle (Active / Overdue / Lapsed) of every Task and Goal at `now`
@@ -260,10 +277,11 @@ pub async fn remove_tag_from_goal(
 /// and the reference instant.
 #[tauri::command]
 pub async fn derive_scope_lifecycles(
-    pool: State<'_, DatabasePool>,
+    factory: State<'_, SessionFactory>,
     now: chrono::NaiveDateTime,
-) -> Result<Vec<ItemLifecycle>, String> {
-    derive_all_scope_lifecycles(&pool, now)
+) -> Result<Vec<ItemLifecycle>, WireError> {
+    let mut db = factory.connect().await.map_err(WireError::from_error)?;
+    crate::tasks::derive_all_scope_lifecycles(&mut db, now)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(WireError::from_error)
 }

@@ -12,6 +12,15 @@ pub enum TaskError {
     /// Adding this dependency would create a circular dependency chain.
     #[error("adding this dependency would create a cycle")]
     CircularDependency,
+    /// The parent chain above an item loops back on itself, so no containment rule above it can
+    /// be evaluated. Corrupt persisted data rather than a bad request: nothing in the schema or
+    /// the write path currently prevents reparenting a node under its own descendant, and the
+    /// ancestry climb reports the loop instead of following it forever.
+    #[error("ancestor chain above node {node_id} contains a cycle")]
+    AncestorCycle {
+        /// The node the chain closed back onto.
+        node_id: i64,
+    },
     /// A write would break a scope-containment invariant (e.g. a Plan wider than its Time Scope).
     #[error("scope containment violation: {0}")]
     ScopeContainment(String),

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { getErrorMessage } from "@/api/errors";
 import EditorModal from "@/components/EditorModal/EditorModal";
 import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
 import { useInputCapture } from "@/hooks/use-input-capture";
@@ -42,7 +43,7 @@ export default function InfoEditorModal({ node, onSave, onClose }: Props) {
     try {
       await onSave({ body: body.trim(), details: details.trim() === "" ? null : details, isPrivate });
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : String(err));
+      setSaveError(getErrorMessage(err));
       setIsSaving(false);
     }
   }

@@ -1,18 +1,28 @@
 //! Tasks and Goals: action items and desired states.
+//!
+//! Single-resource SQL lives on [`TaskOperator`] and [`GoalOperator`]. Anything that also has to
+//! read scopes (containment validation), infos and block reasons (the subtree delete) or both
+//! tables at once is a **free function over a [`Db`] session** instead — [`create_task`],
+//! [`update_task`], [`delete_task`], [`get_task_with_blockers`] and their goal counterparts. See
+//! [`Db`]'s `# Where an operation lives`.
 
+mod ancestry;
 pub mod error;
 pub mod lifecycle;
 pub mod model;
+pub mod retype;
 mod scope_rules;
 
 use std::collections::{HashSet, VecDeque};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::database::DatabasePool;
+use crate::database::session::{Db, SessionMode, Transactional};
+use crate::infos::model::InfoId;
+use ancestry::{AncestryLink, NodeKind, NodeRef};
 use error::TaskError;
 pub use scope_rules::{
-    derive_all_scope_lifecycles, effective_window, time_scope_bounds, ReparentConflicts,
-    ViolatingDescendant,
+    conflicts_for_new_time_scope, derive_all_scope_lifecycles, nearest_scoped_ancestor_window,
+    reparent_conflicts, time_scope_window, ReparentConflicts, ViolatingDescendant,
 };
 use model::{
     CreateGoalRequest, CreateTaskRequest, Dependency, DurationSpec, Goal, GoalId, GoalStatus,
@@ -52,31 +62,27 @@ fn on_scope_exit_column(
     Some(requested.unwrap_or(OnScopeExit::Keep).as_str())
 }
 
+/// The millisecond timestamp a freshly inserted row takes as its sort position.
+fn insertion_position() -> i64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as i64
+}
+
 /// Deletes every info that hangs (directly or transitively) under `(parent_type, parent_id)`.
 /// Infos nest polymorphically with no foreign key, so the subtree is walked explicitly.
 async fn delete_infos_under(
-    pool: &DatabasePool,
+    db: &mut Db<Transactional>,
     parent_type: &str,
     parent_id: i64,
 ) -> Result<(), TaskError> {
-    let mut stack: Vec<i64> =
-        sqlx::query_scalar("SELECT id FROM infos WHERE parent_type = ? AND parent_id = ?")
-            .bind(parent_type)
-            .bind(parent_id)
-            .fetch_all(pool)
-            .await?;
+    let mut stack = db.infos().child_ids(parent_type, parent_id).await?;
     let mut all = Vec::new();
     while let Some(id) = stack.pop() {
         all.push(id);
-        let children: Vec<i64> =
-            sqlx::query_scalar("SELECT id FROM infos WHERE parent_type = 'info' AND parent_id = ?")
-                .bind(id)
-                .fetch_all(pool)
-                .await?;
+        let children = db.infos().child_ids("info", id).await?;
         stack.extend(children);
     }
     for id in all {
-        sqlx::query("DELETE FROM infos WHERE id = ?").bind(id).execute(pool).await?;
+        db.infos().delete(InfoId(id)).await?;
     }
     Ok(())
 }
@@ -84,8 +90,11 @@ async fn delete_infos_under(
 /// Cascade-deletes a task/goal subtree: the node, every descendant task/goal, and all infos under
 /// them. Dependencies and tags fall away via their `ON DELETE CASCADE` foreign keys; the polymorphic
 /// parent links do not, so descendants are collected explicitly to avoid orphaning them.
+///
+/// Takes a transactional session: a half-applied cascade leaves orphans behind, so ADR-0004 makes
+/// this one of the operations whose signature demands atomicity.
 async fn delete_task_goal_subtree(
-    pool: &DatabasePool,
+    db: &mut Db<Transactional>,
     root_type: &str,
     root_id: i64,
 ) -> Result<(), TaskError> {
@@ -93,28 +102,20 @@ async fn delete_task_goal_subtree(
     let mut nodes = Vec::new();
     while let Some((node_type, node_id)) = stack.pop() {
         nodes.push((node_type.clone(), node_id));
-        for table in ["tasks", "goals"] {
-            let children: Vec<i64> = sqlx::query_scalar(&format!(
-                "SELECT id FROM {table} WHERE parent_type = ? AND parent_id = ?"
-            ))
-            .bind(&node_type)
-            .bind(node_id)
-            .fetch_all(pool)
-            .await?;
-            let child_kind = if table == "tasks" { "task" } else { "goal" };
-            stack.extend(children.into_iter().map(|id| (child_kind.to_string(), id)));
-        }
+        let task_children = db.tasks().child_ids(&node_type, node_id).await?;
+        stack.extend(task_children.into_iter().map(|id| ("task".to_string(), id)));
+        let goal_children = db.goals().child_ids(&node_type, node_id).await?;
+        stack.extend(goal_children.into_iter().map(|id| ("goal".to_string(), id)));
     }
     for (node_type, node_id) in &nodes {
-        delete_infos_under(pool, node_type, *node_id).await?;
+        delete_infos_under(db, node_type, *node_id).await?;
         // Block reasons hang off a polymorphic owner link with no foreign key, like infos.
-        sqlx::query("DELETE FROM block_reasons WHERE owner_type = ? AND owner_id = ?")
-            .bind(node_type)
-            .bind(node_id)
-            .execute(pool)
-            .await?;
-        let table = if node_type == "goal" { "goals" } else { "tasks" };
-        sqlx::query(&format!("DELETE FROM {table} WHERE id = ?")).bind(node_id).execute(pool).await?;
+        db.block_reasons().delete_for(node_type, *node_id).await?;
+        if node_type == "goal" {
+            db.goals().delete_row(GoalId(*node_id)).await?;
+        } else {
+            db.tasks().delete_row(TaskId(*node_id)).await?;
+        }
     }
     Ok(())
 }
@@ -220,50 +221,222 @@ impl From<GoalRow> for Goal {
     }
 }
 
+/// The narrow task row one step of an ancestry climb reads.
+///
+/// Nine columns and no tag query, against the sixteen columns plus a join [`TaskRow`] costs.
+/// A climb reads one of these per level of the tree, so the difference is per-step.
+#[derive(sqlx::FromRow)]
+struct TaskAncestryRow {
+    parent_type: String,
+    parent_id: i64,
+    time_scope_start_id: Option<i64>,
+    time_scope_end_id: Option<i64>,
+    time_scope_duration_n: Option<i64>,
+    time_scope_duration_kind: Option<String>,
+    on_scope_exit: Option<String>,
+    plan_start_id: Option<i64>,
+    plan_end_id: Option<i64>,
+}
+
+/// The narrow goal row one step of an ancestry climb reads. Goals have no Plan column, so the
+/// link's `plan` is always absent.
+#[derive(sqlx::FromRow)]
+struct GoalAncestryRow {
+    parent_type: String,
+    parent_id: i64,
+    time_scope_start_id: Option<i64>,
+    time_scope_end_id: Option<i64>,
+    time_scope_duration_n: Option<i64>,
+    time_scope_duration_kind: Option<String>,
+    on_scope_exit: Option<String>,
+}
+
 async fn fetch_task_tag_ids(
-    pool: &DatabasePool,
+    connection: &mut sqlx::SqliteConnection,
     task_id: i64,
 ) -> Result<Vec<i64>, sqlx::Error> {
     sqlx::query_scalar::<_, i64>(
         "SELECT tag_id FROM tags_on_tasks WHERE task_id = ? ORDER BY tag_id",
     )
     .bind(task_id)
-    .fetch_all(pool)
+    .fetch_all(connection)
     .await
 }
 
 async fn fetch_goal_tag_ids(
-    pool: &DatabasePool,
+    connection: &mut sqlx::SqliteConnection,
     goal_id: i64,
 ) -> Result<Vec<i64>, sqlx::Error> {
     sqlx::query_scalar::<_, i64>(
         "SELECT tag_id FROM tags_on_goals WHERE goal_id = ? ORDER BY tag_id",
     )
     .bind(goal_id)
-    .fetch_all(pool)
+    .fetch_all(connection)
     .await
 }
 
-/// Repository for Goal CRUD operations.
-pub struct GoalRepository<'a> {
-    pool: &'a DatabasePool,
+/// The column values a goal update writes: the caller's request merged over the stored row.
+///
+/// Private, like `GoalOperator::update` which consumes it and `GoalWrite::merge` which is the only
+/// thing that builds one. Together those close the write path: [`update_goal`] — where the
+/// containment rules are checked — is the only way to change a goal. An unvalidated goal write is
+/// not expressible.
+struct GoalWrite {
+    /// The new parent, when the request asks for a move; `None` leaves the parent link alone.
+    reparent: Option<(String, i64)>,
+    /// The parent the merged Time Scope is validated against — the new one when reparenting.
+    parent_type: String,
+    /// Id of that same parent.
+    parent_id: i64,
+    /// Final title.
+    title: String,
+    /// Final status, as its database string.
+    status: String,
+    /// Final Time Scope, or `None` for unscoped.
+    time_scope: Option<TimeScope>,
+    /// Requested on-exit behavior; dropped by [`on_scope_exit_column`] when unscoped.
+    on_scope_exit: Option<OnScopeExit>,
+    /// Final sort position.
+    position: i64,
+    /// Final privacy flag.
+    is_private: bool,
 }
 
-impl<'a> GoalRepository<'a> {
-    /// Creates a new repository backed by `pool`.
-    pub fn new(pool: &'a DatabasePool) -> Self {
-        Self { pool }
+impl GoalWrite {
+    /// Merges `request` over the `stored` row. Pure — it reads nothing and writes nothing.
+    fn merge(stored: Goal, request: UpdateGoalRequest) -> Self {
+        let reparent = match (request.parent_type, request.parent_id) {
+            (Some(parent_type), Some(parent_id)) => Some((parent_type, parent_id)),
+            _ => None,
+        };
+        let (parent_type, parent_id) =
+            reparent.clone().unwrap_or((stored.parent_type, stored.parent_id));
+        let status = request
+            .status
+            .as_ref()
+            .map(|s| s.as_str())
+            .unwrap_or(&stored.status)
+            .to_string();
+        let time_scope = match request.time_scope {
+            Some(new_time_scope) => new_time_scope,
+            None => stored.time_scope,
+        };
+        Self {
+            reparent,
+            parent_type,
+            parent_id,
+            title: request.title.unwrap_or(stored.title),
+            status,
+            time_scope,
+            on_scope_exit: request.on_scope_exit.unwrap_or(stored.on_scope_exit),
+            position: request.position.unwrap_or(stored.position),
+            is_private: request.is_private.unwrap_or(stored.is_private),
+        }
+    }
+}
+
+/// The column values a task update writes: the caller's request merged over the stored row.
+///
+/// Private, for the same reason as [`GoalWrite`]: with the struct, its `merge` and the operator
+/// method that consumes it all module-private, [`update_task`] is the only way to change a task.
+struct TaskWrite {
+    /// The new parent, when the request asks for a move; `None` leaves the parent link alone.
+    reparent: Option<(String, i64)>,
+    /// The parent the merged Time Scope and Plan are validated against.
+    parent_type: String,
+    /// Id of that same parent.
+    parent_id: i64,
+    /// Final title.
+    title: String,
+    /// Final status, as its database string.
+    status: String,
+    /// Final delegate, or `None`.
+    delegate_to: Option<i64>,
+    /// Final Time Scope, or `None` for unscoped.
+    time_scope: Option<TimeScope>,
+    /// Requested on-exit behavior; dropped by [`on_scope_exit_column`] when unscoped.
+    on_scope_exit: Option<OnScopeExit>,
+    /// Final Plan window, or `None`.
+    plan: Option<TimeScope>,
+    /// Final sort position.
+    position: i64,
+    /// Final privacy flag.
+    is_private: bool,
+}
+
+impl TaskWrite {
+    /// Merges `request` over the `stored` row. Pure — it reads nothing and writes nothing.
+    fn merge(stored: Task, request: UpdateTaskRequest) -> Self {
+        let reparent = match (request.parent_type, request.parent_id) {
+            (Some(parent_type), Some(parent_id)) => Some((parent_type, parent_id)),
+            _ => None,
+        };
+        // Validate against the effective parent — the new one when reparenting.
+        let (parent_type, parent_id) =
+            reparent.clone().unwrap_or((stored.parent_type, stored.parent_id));
+        let status = request
+            .status
+            .as_ref()
+            .map(|s| s.as_str())
+            .unwrap_or(&stored.status)
+            .to_string();
+        let delegate_to = match request.delegate_to {
+            Some(new_delegate) => new_delegate,
+            None => stored.delegate_to,
+        };
+        let time_scope = match request.time_scope {
+            Some(new_time_scope) => new_time_scope,
+            None => stored.time_scope,
+        };
+        let plan = match request.plan {
+            Some(new_plan) => new_plan,
+            None => stored.plan,
+        };
+        Self {
+            reparent,
+            parent_type,
+            parent_id,
+            title: request.title.unwrap_or(stored.title),
+            status,
+            delegate_to,
+            time_scope,
+            on_scope_exit: request.on_scope_exit.unwrap_or(stored.on_scope_exit),
+            plan,
+            position: request.position.unwrap_or(stored.position),
+            is_private: request.is_private.unwrap_or(stored.is_private),
+        }
+    }
+}
+
+/// Reads and writes goals on a session's connection.
+///
+/// Obtained as `db.goals()` and used inline; see [`Db`] for
+/// the borrow rules and for where an operation belongs. Scope containment is **not** checked
+/// here — it reads scopes as well as goals, so it lives in [`create_goal`] and [`update_goal`].
+pub struct GoalOperator<'session> {
+    /// The session's connection, borrowed for the duration of this operator's life.
+    connection: &'session mut sqlx::SqliteConnection,
+}
+
+impl<'session> GoalOperator<'session> {
+    /// Wraps the connection a session is lending.
+    pub(crate) fn new(connection: &'session mut sqlx::SqliteConnection) -> Self {
+        Self { connection }
     }
 
-    /// Creates a new goal.
-    pub async fn create(&self, request: CreateGoalRequest) -> Result<Goal, TaskError> {
-        scope_rules::validate_goal_containment(
-            self.pool,
-            &request.parent_type,
-            request.parent_id,
-            &request.time_scope,
-        )
-        .await?;
+    /// Inserts a goal row and returns it, **without validating scope containment** — use
+    /// [`create_goal`], this method's only caller.
+    ///
+    /// **Module-private on purpose.** `db.goals().insert(request)` is the mechanically obvious way
+    /// to write a goal, it takes a request type whose every field is public, and it skips the
+    /// containment rules — so it must not be reachable from another module. Privacy is what makes
+    /// the unvalidated write unwritable; [`create_goal`] is the only entry point.
+    ///
+    /// Multi-statement (the `INSERT`, then the sort-position `UPDATE`) and so **not atomic on its
+    /// own**. It opens no transaction: per ADR-0004 only the outermost caller decides the
+    /// boundary, and a method that began its own could never join one. See [`create_goal`] for the
+    /// transactional shape.
+    async fn insert(&mut self, request: CreateGoalRequest) -> Result<Goal, TaskError> {
         let status = request.status.as_ref().map(|s| s.as_str()).unwrap_or("active");
         let (ts_start, ts_end, ts_n, ts_kind) = time_scope_columns(&request.time_scope);
         let on_exit = on_scope_exit_column(&request.time_scope, request.on_scope_exit);
@@ -283,191 +456,228 @@ impl<'a> GoalRepository<'a> {
         .bind(ts_n)
         .bind(&ts_kind)
         .bind(on_exit)
-        .execute(self.pool)
+        .execute(&mut *self.connection)
         .await?
         .last_insert_rowid();
-        let position = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as i64;
         sqlx::query("UPDATE goals SET position = ? WHERE id = ?")
-            .bind(position)
+            .bind(insertion_position())
             .bind(id)
-            .execute(self.pool)
+            .execute(&mut *self.connection)
             .await?;
         self.get(GoalId(id)).await
     }
 
     /// Fetches a goal by id.
-    pub async fn get(&self, id: GoalId) -> Result<Goal, TaskError> {
+    pub async fn get(&mut self, id: GoalId) -> Result<Goal, TaskError> {
         let row = sqlx::query_as::<_, GoalRow>("SELECT * FROM goals WHERE id = ?")
             .bind(id.0)
-            .fetch_optional(self.pool)
+            .fetch_optional(&mut *self.connection)
             .await?
             .ok_or(TaskError::GoalNotFound(id.0))?;
-        let tag_ids = fetch_goal_tag_ids(self.pool, id.0).await?;
+        let tag_ids = fetch_goal_tag_ids(&mut *self.connection, id.0).await?;
         Ok(Goal { tag_ids, ..row.into() })
     }
 
+    /// The six ancestry fields of a goal, as one step of an [`ancestry::climb`].
+    ///
+    /// Module-private: the climb is the only caller, and it is the only thing that should be
+    /// reading a half-row. Anything wanting a goal wants [`Self::get`].
+    async fn ancestry_link(&mut self, id: GoalId) -> Result<AncestryLink, TaskError> {
+        let row = sqlx::query_as::<_, GoalAncestryRow>(
+            "SELECT parent_type, parent_id, time_scope_start_id, time_scope_end_id,
+                    time_scope_duration_n, time_scope_duration_kind, on_scope_exit
+             FROM goals WHERE id = ?",
+        )
+        .bind(id.0)
+        .fetch_optional(&mut *self.connection)
+        .await?
+        .ok_or(TaskError::GoalNotFound(id.0))?;
+        Ok(AncestryLink {
+            kind: NodeKind::Goal,
+            id: id.0,
+            parent: NodeRef::new(row.parent_type, row.parent_id),
+            time_scope: time_scope_from_row(
+                row.time_scope_start_id,
+                row.time_scope_end_id,
+                row.time_scope_duration_n,
+                row.time_scope_duration_kind,
+            ),
+            plan: None,
+            on_scope_exit: row.on_scope_exit.as_deref().and_then(OnScopeExit::from_db),
+        })
+    }
+
+    /// The status and title of a goal, without its tags — the two columns a "blocked by goal"
+    /// summary needs.
+    pub async fn status_and_title(&mut self, id: GoalId) -> Result<(String, String), TaskError> {
+        sqlx::query_as("SELECT status, title FROM goals WHERE id = ?")
+            .bind(id.0)
+            .fetch_optional(&mut *self.connection)
+            .await?
+            .ok_or(TaskError::GoalNotFound(id.0))
+    }
+
     /// Lists all goals.
-    pub async fn list(&self) -> Result<Vec<Goal>, TaskError> {
+    pub async fn list(&mut self) -> Result<Vec<Goal>, TaskError> {
         let rows = sqlx::query_as::<_, GoalRow>("SELECT * FROM goals ORDER BY position ASC")
-            .fetch_all(self.pool)
+            .fetch_all(&mut *self.connection)
             .await?;
         let mut goals = Vec::with_capacity(rows.len());
         for row in rows {
-            let tag_ids = fetch_goal_tag_ids(self.pool, row.id).await?;
+            let tag_ids = fetch_goal_tag_ids(&mut *self.connection, row.id).await?;
             goals.push(Goal { tag_ids, ..row.into() });
         }
         Ok(goals)
     }
 
-    /// Updates a goal.
-    pub async fn update(&self, id: GoalId, request: UpdateGoalRequest) -> Result<Goal, TaskError> {
-        let goal = self.get(id).await?;
-        let title = request.title.unwrap_or(goal.title);
-        let status = request
-            .status
-            .as_ref()
-            .map(|s| s.as_str())
-            .unwrap_or(&goal.status)
-            .to_string();
-        let time_scope = match request.time_scope {
-            Some(new_time_scope) => new_time_scope,
-            None => goal.time_scope,
-        };
-        let (ts_start, ts_end, ts_n, ts_kind) = time_scope_columns(&time_scope);
-        let requested_on_exit = request.on_scope_exit.unwrap_or(goal.on_scope_exit);
-        let on_exit = on_scope_exit_column(&time_scope, requested_on_exit);
-        let (effective_parent_type, effective_parent_id) =
-            match (request.parent_type.as_deref(), request.parent_id) {
-                (Some(parent_type), Some(parent_id)) => (parent_type.to_string(), parent_id),
-                _ => (goal.parent_type.clone(), goal.parent_id),
-            };
-        scope_rules::validate_goal_containment(
-            self.pool,
-            &effective_parent_type,
-            effective_parent_id,
-            &time_scope,
+    /// Returns the ids of the goals parented directly by `(parent_type, parent_id)`.
+    ///
+    /// The parent link is polymorphic and has no foreign key, so subtree walks collect their
+    /// children a level at a time through this.
+    pub async fn child_ids(
+        &mut self,
+        parent_type: &str,
+        parent_id: i64,
+    ) -> Result<Vec<i64>, TaskError> {
+        Ok(
+            sqlx::query_scalar("SELECT id FROM goals WHERE parent_type = ? AND parent_id = ?")
+                .bind(parent_type)
+                .bind(parent_id)
+                .fetch_all(&mut *self.connection)
+                .await?,
         )
-        .await?;
+    }
 
-        if let (Some(new_parent_type), Some(new_parent_id)) =
-            (request.parent_type.as_deref(), request.parent_id)
-        {
+    /// Writes already-merged column values onto a goal and returns the stored row. **Validates
+    /// nothing** — see [`update_goal`], this method's only caller.
+    ///
+    /// Module-private for the same reason as [`Self::insert`]: it writes without checking the
+    /// containment rules. Doubly closed, in fact — [`GoalWrite`] is private too, so even inside
+    /// this module the argument can only come from `GoalWrite::merge`.
+    ///
+    /// Multi-statement when the write reparents (the parent link moves in its own `UPDATE`) and so
+    /// **not atomic on its own**; it opens no transaction, per ADR-0004. See [`update_goal`] for
+    /// the transactional shape.
+    async fn update(&mut self, id: GoalId, write: GoalWrite) -> Result<Goal, TaskError> {
+        let (ts_start, ts_end, ts_n, ts_kind) = time_scope_columns(&write.time_scope);
+        let on_exit = on_scope_exit_column(&write.time_scope, write.on_scope_exit);
+
+        if let Some((new_parent_type, new_parent_id)) = &write.reparent {
             sqlx::query(
                 "UPDATE goals SET parent_type = ?, parent_id = ? WHERE id = ?",
             )
             .bind(new_parent_type)
             .bind(new_parent_id)
             .bind(id.0)
-            .execute(self.pool)
+            .execute(&mut *self.connection)
             .await?;
         }
 
-        let position = request.position.unwrap_or(goal.position);
-        let is_private = request.is_private.unwrap_or(goal.is_private);
         sqlx::query(
             "UPDATE goals SET title=?, status=?,
                 time_scope_start_id=?, time_scope_end_id=?,
                 time_scope_duration_n=?, time_scope_duration_kind=?, on_scope_exit=?, position=?, is_private=? WHERE id=?",
         )
-        .bind(&title)
-        .bind(&status)
+        .bind(&write.title)
+        .bind(&write.status)
         .bind(ts_start)
         .bind(ts_end)
         .bind(ts_n)
         .bind(&ts_kind)
         .bind(on_exit)
-        .bind(position)
-        .bind(is_private)
+        .bind(write.position)
+        .bind(write.is_private)
         .bind(id.0)
-        .execute(self.pool)
+        .execute(&mut *self.connection)
         .await?;
         self.get(id).await
     }
 
-    /// Deletes a goal and its entire subtree (descendant tasks/goals and their infos).
-    pub async fn delete(&self, id: GoalId) -> Result<(), TaskError> {
-        self.get(id).await?;
-        delete_task_goal_subtree(self.pool, "goal", id.0).await
+    /// Deletes one goal row and nothing else. Descendants and the infos and block reasons hanging
+    /// off them are the subtree cascade's job — see [`delete_goal`].
+    ///
+    /// Module-private: called directly it orphans the whole subtree under the goal, since the
+    /// polymorphic parent links have no foreign key to cascade along.
+    async fn delete_row(&mut self, id: GoalId) -> Result<(), TaskError> {
+        sqlx::query("DELETE FROM goals WHERE id = ?")
+            .bind(id.0)
+            .execute(&mut *self.connection)
+            .await?;
+        Ok(())
     }
 
     /// Returns true if the goal with `id` has status `achieved`.
-    pub async fn is_achieved(&self, id: GoalId) -> Result<bool, TaskError> {
+    pub async fn is_achieved(&mut self, id: GoalId) -> Result<bool, TaskError> {
         let goal = self.get(id).await?;
         Ok(goal.status == GoalStatus::Achieved.as_str())
     }
 
+    /// Sets a goal's privacy flag.
+    ///
+    /// One statement over one column, so it needs no containment check and no transaction of its
+    /// own. `flows::start` uses it to propagate a flow's privacy onto the goal it materialises.
+    pub async fn set_private(&mut self, id: GoalId, is_private: bool) -> Result<(), TaskError> {
+        sqlx::query("UPDATE goals SET is_private = ? WHERE id = ?")
+            .bind(is_private)
+            .bind(id.0)
+            .execute(&mut *self.connection)
+            .await?;
+        Ok(())
+    }
+
     /// Attaches a tag to a goal.
-    pub async fn add_tag(&self, goal_id: GoalId, tag_id: i64) -> Result<(), TaskError> {
+    pub async fn add_tag(&mut self, goal_id: GoalId, tag_id: i64) -> Result<(), TaskError> {
         sqlx::query(
             "INSERT OR IGNORE INTO tags_on_goals (goal_id, tag_id) VALUES (?, ?)",
         )
         .bind(goal_id.0)
         .bind(tag_id)
-        .execute(self.pool)
+        .execute(&mut *self.connection)
         .await?;
         Ok(())
     }
 
     /// Removes a tag from a goal.
-    pub async fn remove_tag(&self, goal_id: GoalId, tag_id: i64) -> Result<(), TaskError> {
+    pub async fn remove_tag(&mut self, goal_id: GoalId, tag_id: i64) -> Result<(), TaskError> {
         sqlx::query("DELETE FROM tags_on_goals WHERE goal_id = ? AND tag_id = ?")
             .bind(goal_id.0)
             .bind(tag_id)
-            .execute(self.pool)
+            .execute(&mut *self.connection)
             .await?;
         Ok(())
     }
 }
 
-/// Repository for Task CRUD and dependency operations.
-pub struct TaskRepository<'a> {
-    pool: &'a DatabasePool,
+/// Reads and writes tasks on a session's connection.
+///
+/// Obtained as `db.tasks()` and used inline; see [`Db`] for
+/// the borrow rules and for where an operation belongs. Scope containment is **not** checked
+/// here — it reads scopes and goals as well as tasks, so it lives in [`create_task`] and
+/// [`update_task`].
+pub struct TaskOperator<'session> {
+    /// The session's connection, borrowed for the duration of this operator's life.
+    connection: &'session mut sqlx::SqliteConnection,
 }
 
-impl<'a> TaskRepository<'a> {
-    /// Creates a new repository backed by `pool`.
-    pub fn new(pool: &'a DatabasePool) -> Self {
-        Self { pool }
+impl<'session> TaskOperator<'session> {
+    /// Wraps the connection a session is lending.
+    pub(crate) fn new(connection: &'session mut sqlx::SqliteConnection) -> Self {
+        Self { connection }
     }
 
-    /// Returns the task/goal descendants of a node whose explicit Time Scope would fall outside
-    /// `time_scope` — the items that narrowing this node's scope (or reparenting under a tighter
-    /// window) would orphan. Drives the frontend's clamp-or-cancel prompt.
-    pub async fn scope_containment_conflicts(
-        &self,
-        node_type: &str,
-        node_id: i64,
-        time_scope: &TimeScope,
-    ) -> Result<Vec<ViolatingDescendant>, TaskError> {
-        scope_rules::conflicts_for_new_time_scope(self.pool, node_type, node_id, time_scope).await
-    }
-
-    /// Detects the items a reparent would orphan (the node and/or descendants that would fall
-    /// outside the new parent's binding scope), plus the ancestor Time Scope to clamp them to.
-    pub async fn reparent_scope_conflicts(
-        &self,
-        node_type: &str,
-        node_id: i64,
-        new_parent_type: &str,
-        new_parent_id: i64,
-    ) -> Result<ReparentConflicts, TaskError> {
-        scope_rules::reparent_conflicts(self.pool, node_type, node_id, new_parent_type, new_parent_id)
-            .await
-    }
-
-    /// Creates a new task.
-    pub async fn create(&self, request: CreateTaskRequest) -> Result<Task, TaskError> {
-        scope_rules::validate_task_containment(
-            self.pool,
-            &request.parent_type,
-            request.parent_id,
-            &request.time_scope,
-            &request.plan,
-        )
-        .await?;
+    /// Inserts a task row and returns it, **without validating scope containment** — use
+    /// [`create_task`], this method's only caller.
+    ///
+    /// **Module-private on purpose.** `db.tasks().insert(request)` is the mechanically obvious way
+    /// to write a task, it takes a request type whose every field is public, and it skips the
+    /// containment rules — so it must not be reachable from another module. Privacy is what makes
+    /// the unvalidated write unwritable; [`create_task`] is the only entry point.
+    ///
+    /// Multi-statement (the `INSERT`, then the sort-position `UPDATE`) and so **not atomic on its
+    /// own**. It opens no transaction: per ADR-0004 only the outermost caller decides the
+    /// boundary, and a method that began its own could never join one. See [`create_task`] for the
+    /// transactional shape.
+    async fn insert(&mut self, request: CreateTaskRequest) -> Result<Task, TaskError> {
         let status = request.status.as_ref().map(|s| s.as_str()).unwrap_or("todo");
         let (ts_start, ts_end, ts_n, ts_kind) = time_scope_columns(&request.time_scope);
         let on_exit = on_scope_exit_column(&request.time_scope, request.on_scope_exit);
@@ -490,149 +700,123 @@ impl<'a> TaskRepository<'a> {
         .bind(on_exit)
         .bind(plan_start)
         .bind(plan_end)
-        .execute(self.pool)
+        .execute(&mut *self.connection)
         .await?
         .last_insert_rowid();
-        let position = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as i64;
         sqlx::query("UPDATE tasks SET position = ? WHERE id = ?")
-            .bind(position)
+            .bind(insertion_position())
             .bind(id)
-            .execute(self.pool)
+            .execute(&mut *self.connection)
             .await?;
         self.get(TaskId(id)).await
     }
 
     /// Fetches a task by id.
-    pub async fn get(&self, id: TaskId) -> Result<Task, TaskError> {
+    pub async fn get(&mut self, id: TaskId) -> Result<Task, TaskError> {
         let row = sqlx::query_as::<_, TaskRow>("SELECT * FROM tasks WHERE id = ?")
             .bind(id.0)
-            .fetch_optional(self.pool)
+            .fetch_optional(&mut *self.connection)
             .await?
             .ok_or(TaskError::TaskNotFound(id.0))?;
-        let tag_ids = fetch_task_tag_ids(self.pool, id.0).await?;
+        let tag_ids = fetch_task_tag_ids(&mut *self.connection, id.0).await?;
         Ok(Task { tag_ids, ..row.into() })
     }
 
-    /// Fetches a task with its computed block reasons.
-    pub async fn get_with_blockers(&self, id: TaskId) -> Result<TaskWithBlockers, TaskError> {
-        let task = self.get(id).await?;
-        // Explicit reasons first (from the block_reasons table), then virtual ones from unmet dependencies.
-        let mut reasons = crate::block_reasons::BlockReasonRepository::new(self.pool)
-            .list_for("task", id.0)
-            .await?;
-
-        let dependencies = self.list_dependencies(id).await?;
-        for dependency in dependencies {
-            match dependency {
-                Dependency::Task { id: dependency_id } => {
-                    let dependency_task = self.get(TaskId(dependency_id)).await?;
-                    if dependency_task.status != TaskStatus::Done.as_str() {
-                        reasons.push(format!(
-                            "Blocked by task {} ({})",
-                            dependency_id, dependency_task.title
-                        ));
-                    }
-                }
-                Dependency::Goal { id: dependency_id } => {
-                    let (goal_status, goal_title): (String, String) =
-                        sqlx::query_as("SELECT status, title FROM goals WHERE id = ?")
-                            .bind(dependency_id)
-                            .fetch_optional(self.pool)
-                            .await?
-                            .ok_or(TaskError::GoalNotFound(dependency_id))?;
-                    if goal_status != GoalStatus::Achieved.as_str() {
-                        reasons.push(format!(
-                            "Blocked by goal {} ({})",
-                            dependency_id, goal_title
-                        ));
-                    }
-                }
-            }
-        }
-
-        Ok(TaskWithBlockers { task, block_reasons: reasons })
+    /// The six ancestry fields of a task, as one step of an [`ancestry::climb`].
+    ///
+    /// Module-private for the same reason as [`GoalOperator::ancestry_link`]: the climb is its
+    /// only caller, and anything else wanting a task wants [`Self::get`].
+    async fn ancestry_link(&mut self, id: TaskId) -> Result<AncestryLink, TaskError> {
+        let row = sqlx::query_as::<_, TaskAncestryRow>(
+            "SELECT parent_type, parent_id, time_scope_start_id, time_scope_end_id,
+                    time_scope_duration_n, time_scope_duration_kind, on_scope_exit,
+                    plan_start_id, plan_end_id
+             FROM tasks WHERE id = ?",
+        )
+        .bind(id.0)
+        .fetch_optional(&mut *self.connection)
+        .await?
+        .ok_or(TaskError::TaskNotFound(id.0))?;
+        Ok(AncestryLink {
+            kind: NodeKind::Task,
+            id: id.0,
+            parent: NodeRef::new(row.parent_type, row.parent_id),
+            time_scope: time_scope_from_row(
+                row.time_scope_start_id,
+                row.time_scope_end_id,
+                row.time_scope_duration_n,
+                row.time_scope_duration_kind,
+            ),
+            plan: time_scope_from_row(row.plan_start_id, row.plan_end_id, None, None),
+            on_scope_exit: row.on_scope_exit.as_deref().and_then(OnScopeExit::from_db),
+        })
     }
 
     /// Lists all tasks.
-    pub async fn list(&self) -> Result<Vec<Task>, TaskError> {
+    pub async fn list(&mut self) -> Result<Vec<Task>, TaskError> {
         let rows = sqlx::query_as::<_, TaskRow>("SELECT * FROM tasks ORDER BY position ASC")
-            .fetch_all(self.pool)
+            .fetch_all(&mut *self.connection)
             .await?;
         let mut tasks = Vec::with_capacity(rows.len());
         for row in rows {
-            let tag_ids = fetch_task_tag_ids(self.pool, row.id).await?;
+            let tag_ids = fetch_task_tag_ids(&mut *self.connection, row.id).await?;
             tasks.push(Task { tag_ids, ..row.into() });
         }
         Ok(tasks)
     }
 
-    /// Updates a task.
-    pub async fn update(&self, id: TaskId, request: UpdateTaskRequest) -> Result<Task, TaskError> {
-        let task = self.get(id).await?;
-        let title = request.title.unwrap_or(task.title);
-        let status = request
-            .status
-            .as_ref()
-            .map(|s| s.as_str())
-            .unwrap_or(&task.status)
-            .to_string();
-        let delegate_to = match request.delegate_to {
-            Some(new_delegate) => new_delegate,
-            None => task.delegate_to,
-        };
-        let time_scope = match request.time_scope {
-            Some(new_time_scope) => new_time_scope,
-            None => task.time_scope,
-        };
-        let (ts_start, ts_end, ts_n, ts_kind) = time_scope_columns(&time_scope);
-        let requested_on_exit = request.on_scope_exit.unwrap_or(task.on_scope_exit);
-        let on_exit = on_scope_exit_column(&time_scope, requested_on_exit);
-        let plan = match request.plan {
-            Some(new_plan) => new_plan,
-            None => task.plan,
-        };
-        let (plan_start, plan_end, _, _) = time_scope_columns(&plan);
-        // Validate against the effective parent — the new one when reparenting.
-        let (effective_parent_type, effective_parent_id) =
-            match (request.parent_type.as_deref(), request.parent_id) {
-                (Some(parent_type), Some(parent_id)) => (parent_type.to_string(), parent_id),
-                _ => (task.parent_type.clone(), task.parent_id),
-            };
-        scope_rules::validate_task_containment(
-            self.pool,
-            &effective_parent_type,
-            effective_parent_id,
-            &time_scope,
-            &plan,
+    /// Returns the ids of the tasks parented directly by `(parent_type, parent_id)`.
+    ///
+    /// The parent link is polymorphic and has no foreign key, so subtree walks collect their
+    /// children a level at a time through this.
+    pub async fn child_ids(
+        &mut self,
+        parent_type: &str,
+        parent_id: i64,
+    ) -> Result<Vec<i64>, TaskError> {
+        Ok(
+            sqlx::query_scalar("SELECT id FROM tasks WHERE parent_type = ? AND parent_id = ?")
+                .bind(parent_type)
+                .bind(parent_id)
+                .fetch_all(&mut *self.connection)
+                .await?,
         )
-        .await?;
+    }
 
-        if let (Some(new_parent_type), Some(new_parent_id)) =
-            (request.parent_type.as_deref(), request.parent_id)
-        {
+    /// Writes already-merged column values onto a task and returns the stored row. **Validates
+    /// nothing** — see [`update_task`], this method's only caller.
+    ///
+    /// Module-private for the same reason as [`Self::insert`]: it writes without checking the
+    /// containment rules. Doubly closed, in fact — [`TaskWrite`] is private too, so even inside
+    /// this module the argument can only come from `TaskWrite::merge`.
+    ///
+    /// Multi-statement when the write reparents (the parent link moves in its own `UPDATE`) and so
+    /// **not atomic on its own**; it opens no transaction, per ADR-0004. See [`update_task`] for
+    /// the transactional shape.
+    async fn update(&mut self, id: TaskId, write: TaskWrite) -> Result<Task, TaskError> {
+        let (ts_start, ts_end, ts_n, ts_kind) = time_scope_columns(&write.time_scope);
+        let on_exit = on_scope_exit_column(&write.time_scope, write.on_scope_exit);
+        let (plan_start, plan_end, _, _) = time_scope_columns(&write.plan);
+
+        if let Some((new_parent_type, new_parent_id)) = &write.reparent {
             sqlx::query(
                 "UPDATE tasks SET parent_type = ?, parent_id = ? WHERE id = ?",
             )
             .bind(new_parent_type)
             .bind(new_parent_id)
             .bind(id.0)
-            .execute(self.pool)
+            .execute(&mut *self.connection)
             .await?;
         }
 
-        let position = request.position.unwrap_or(task.position);
-        let is_private = request.is_private.unwrap_or(task.is_private);
         sqlx::query(
             "UPDATE tasks SET title=?, status=?, delegate_to=?,
                 time_scope_start_id=?, time_scope_end_id=?, time_scope_duration_n=?,
                 time_scope_duration_kind=?, on_scope_exit=?, plan_start_id=?, plan_end_id=?, position=?, is_private=? WHERE id=?",
         )
-        .bind(&title)
-        .bind(&status)
-        .bind(delegate_to)
+        .bind(&write.title)
+        .bind(&write.status)
+        .bind(write.delegate_to)
         .bind(ts_start)
         .bind(ts_end)
         .bind(ts_n)
@@ -640,23 +824,37 @@ impl<'a> TaskRepository<'a> {
         .bind(on_exit)
         .bind(plan_start)
         .bind(plan_end)
-        .bind(position)
-        .bind(is_private)
+        .bind(write.position)
+        .bind(write.is_private)
         .bind(id.0)
-        .execute(self.pool)
+        .execute(&mut *self.connection)
         .await?;
         self.get(id).await
     }
 
-    /// Deletes a task and its entire subtree (descendant tasks/goals and their infos).
-    pub async fn delete(&self, id: TaskId) -> Result<(), TaskError> {
-        self.get(id).await?;
-        delete_task_goal_subtree(self.pool, "task", id.0).await
+    /// Deletes one task row and nothing else. Descendants and the infos and block reasons hanging
+    /// off them are the subtree cascade's job — see [`delete_task`].
+    ///
+    /// Module-private: called directly it orphans the whole subtree under the task, since the
+    /// polymorphic parent links have no foreign key to cascade along.
+    async fn delete_row(&mut self, id: TaskId) -> Result<(), TaskError> {
+        sqlx::query("DELETE FROM tasks WHERE id = ?")
+            .bind(id.0)
+            .execute(&mut *self.connection)
+            .await?;
+        Ok(())
     }
 
     /// Adds a dependency to a task, rejecting circular chains.
-    pub async fn add_dependency(
-        &self,
+    ///
+    /// **Module-private.** One write, but a **check-then-write**: the cycle search reads the edges
+    /// the `INSERT` is validated against, and *nothing in the schema expresses acyclicity*, so a
+    /// lost race silently creates a cycle rather than raising a constraint error. That makes the
+    /// transaction part of the operation's contract, and an operator — wrapping a bare connection,
+    /// deliberately mode-agnostic — cannot demand one in its signature. [`add_task_dependency`] is
+    /// the entry point and this method's only caller outside the module.
+    async fn add_dependency(
+        &mut self,
         task_id: TaskId,
         dependency: Dependency,
     ) -> Result<(), TaskError> {
@@ -672,14 +870,14 @@ impl<'a> TaskRepository<'a> {
         .bind(task_id.0)
         .bind(dependency_type)
         .bind(dependency_id)
-        .execute(self.pool)
+        .execute(&mut *self.connection)
         .await?;
         Ok(())
     }
 
     /// Removes a dependency from a task.
     pub async fn remove_dependency(
-        &self,
+        &mut self,
         task_id: TaskId,
         dependency: Dependency,
     ) -> Result<(), TaskError> {
@@ -690,13 +888,13 @@ impl<'a> TaskRepository<'a> {
         .bind(task_id.0)
         .bind(dependency_type)
         .bind(dependency_id)
-        .execute(self.pool)
+        .execute(&mut *self.connection)
         .await?;
         Ok(())
     }
 
     /// Lists all dependencies for a task.
-    pub async fn list_dependencies(&self, task_id: TaskId) -> Result<Vec<Dependency>, TaskError> {
+    pub async fn list_dependencies(&mut self, task_id: TaskId) -> Result<Vec<Dependency>, TaskError> {
         #[derive(sqlx::FromRow)]
         struct DependencyRow {
             dependency_type: String,
@@ -706,7 +904,7 @@ impl<'a> TaskRepository<'a> {
             "SELECT dependency_type, dependency_id FROM task_dependencies WHERE task_id = ?",
         )
         .bind(task_id.0)
-        .fetch_all(self.pool)
+        .fetch_all(&mut *self.connection)
         .await?;
 
         let dependencies = rows
@@ -720,11 +918,11 @@ impl<'a> TaskRepository<'a> {
     }
 
     /// Lists every task-dependency edge across all tasks (for the mindmap bulk load).
-    pub async fn list_all_dependencies(&self) -> Result<Vec<TaskDependencyEdge>, TaskError> {
+    pub async fn list_all_dependencies(&mut self) -> Result<Vec<TaskDependencyEdge>, TaskError> {
         let rows: Vec<(i64, String, i64)> = sqlx::query_as(
             "SELECT task_id, dependency_type, dependency_id FROM task_dependencies",
         )
-        .fetch_all(self.pool)
+        .fetch_all(&mut *self.connection)
         .await?;
         Ok(rows
             .into_iter()
@@ -736,31 +934,117 @@ impl<'a> TaskRepository<'a> {
             .collect())
     }
 
+    /// Counts the dependency edges that point **at** `(node_type, node_id)` — the rows where it
+    /// is the thing depended on rather than the dependent.
+    ///
+    /// Module-private: only [`retype`] asks, and only because those rows carry no foreign key
+    /// (`task_dependencies.dependency_id` is polymorphic) and so nothing else would notice them
+    /// going stale.
+    async fn count_dependents(&mut self, node_type: &str, node_id: i64) -> Result<i64, TaskError> {
+        Ok(sqlx::query_scalar(
+            "SELECT COUNT(*) FROM task_dependencies WHERE dependency_type = ? AND dependency_id = ?",
+        )
+        .bind(node_type)
+        .bind(node_id)
+        .fetch_one(&mut *self.connection)
+        .await?)
+    }
+
+    /// Counts the dependency edges a task owns — the things it is waiting on.
+    ///
+    /// Module-private, for the same caller: they die with the task row's `ON DELETE CASCADE`, so
+    /// a retype away from `task` has to count them before it can say what it is about to drop.
+    async fn count_dependencies(&mut self, task_id: TaskId) -> Result<i64, TaskError> {
+        Ok(
+            sqlx::query_scalar("SELECT COUNT(*) FROM task_dependencies WHERE task_id = ?")
+                .bind(task_id.0)
+                .fetch_one(&mut *self.connection)
+                .await?,
+        )
+    }
+
+    /// Aims every inbound dependency edge at a different node.
+    ///
+    /// **Module-private, and only ever correct inside a retype's transaction.** The rows it moves
+    /// have no foreign key on `dependency_id`, and no table in this schema uses `AUTOINCREMENT`,
+    /// so SQLite hands a deleted row's id to the next insert: an edge left pointing at a deleted
+    /// node does not dangle harmlessly, it silently re-attaches to whatever unrelated task or
+    /// goal is created next. Repointing before the delete is what stops that.
+    async fn repoint_dependents(
+        &mut self,
+        from_type: &str,
+        from_id: i64,
+        to_type: &str,
+        to_id: i64,
+    ) -> Result<(), TaskError> {
+        // `OR IGNORE`: the primary key is (task_id, dependency_type, dependency_id), so a task
+        // already depending on the destination would collide. That edge is redundant, and the row
+        // it would have duplicated is dropped by the sweep just below.
+        sqlx::query(
+            "UPDATE OR IGNORE task_dependencies SET dependency_type = ?, dependency_id = ?
+             WHERE dependency_type = ? AND dependency_id = ?",
+        )
+        .bind(to_type)
+        .bind(to_id)
+        .bind(from_type)
+        .bind(from_id)
+        .execute(&mut *self.connection)
+        .await?;
+        self.drop_dependents(from_type, from_id).await
+    }
+
+    /// Deletes every inbound dependency edge aimed at a node.
+    ///
+    /// Module-private. The counterpart to [`Self::repoint_dependents`] for a retype whose target
+    /// cannot be depended on at all: only a task or a goal can, so becoming a domain, project or
+    /// tag ends those edges rather than moving them.
+    async fn drop_dependents(&mut self, node_type: &str, node_id: i64) -> Result<(), TaskError> {
+        sqlx::query("DELETE FROM task_dependencies WHERE dependency_type = ? AND dependency_id = ?")
+            .bind(node_type)
+            .bind(node_id)
+            .execute(&mut *self.connection)
+            .await?;
+        Ok(())
+    }
+
+    /// Sets a task's privacy flag.
+    ///
+    /// One statement over one column, so it needs no containment check and no transaction of its
+    /// own. `flows::start` uses it to propagate a flow's privacy onto the task it materialises.
+    pub async fn set_private(&mut self, id: TaskId, is_private: bool) -> Result<(), TaskError> {
+        sqlx::query("UPDATE tasks SET is_private = ? WHERE id = ?")
+            .bind(is_private)
+            .bind(id.0)
+            .execute(&mut *self.connection)
+            .await?;
+        Ok(())
+    }
+
     /// Attaches a tag to a task.
-    pub async fn add_tag(&self, task_id: TaskId, tag_id: i64) -> Result<(), TaskError> {
+    pub async fn add_tag(&mut self, task_id: TaskId, tag_id: i64) -> Result<(), TaskError> {
         sqlx::query(
             "INSERT OR IGNORE INTO tags_on_tasks (task_id, tag_id) VALUES (?, ?)",
         )
         .bind(task_id.0)
         .bind(tag_id)
-        .execute(self.pool)
+        .execute(&mut *self.connection)
         .await?;
         Ok(())
     }
 
     /// Removes a tag from a task.
-    pub async fn remove_tag(&self, task_id: TaskId, tag_id: i64) -> Result<(), TaskError> {
+    pub async fn remove_tag(&mut self, task_id: TaskId, tag_id: i64) -> Result<(), TaskError> {
         sqlx::query("DELETE FROM tags_on_tasks WHERE task_id = ? AND tag_id = ?")
             .bind(task_id.0)
             .bind(tag_id)
-            .execute(self.pool)
+            .execute(&mut *self.connection)
             .await?;
         Ok(())
     }
 
     /// Returns true if making `task_id` depend on `candidate_id` would create a cycle.
     async fn would_create_cycle(
-        &self,
+        &mut self,
         task_id: TaskId,
         candidate_id: TaskId,
     ) -> Result<bool, TaskError> {
@@ -784,7 +1068,7 @@ impl<'a> TaskRepository<'a> {
                 "SELECT dependency_id FROM task_dependencies WHERE task_id = ? AND dependency_type = 'task'",
             )
             .bind(current)
-            .fetch_all(self.pool)
+            .fetch_all(&mut *self.connection)
             .await?;
 
             for child in children {
@@ -793,6 +1077,241 @@ impl<'a> TaskRepository<'a> {
         }
         Ok(false)
     }
+}
+
+/// Creates a goal, rejecting it if its Time Scope escapes the parent's.
+///
+/// Validation reads scopes as well as goals, so this is a free function over the session rather
+/// than a `GoalOperator` method. It takes a transactional session because the insert writes twice
+/// (the row, then its sort position) and because validating inside the transaction is what stops
+/// the parent's scope changing between the check and the write.
+///
+/// This is the **only** way to write a goal row: the operator method underneath is module-private.
+///
+/// ```no_run
+/// # use arlesh_lib::database::session::SessionFactory;
+/// # use arlesh_lib::tasks::{create_goal, error::TaskError, model::CreateGoalRequest};
+/// # async fn add(factory: &SessionFactory) -> Result<(), TaskError> {
+/// let mut db = factory.begin().await?;
+/// create_goal(&mut db, CreateGoalRequest { title: "Ship it".into(), ..Default::default() })
+///     .await?;
+/// db.commit().await?;
+/// # Ok(())
+/// # }
+/// ```
+#[tracing::instrument(skip(db))]
+pub async fn create_goal(
+    db: &mut Db<Transactional>,
+    request: CreateGoalRequest,
+) -> Result<Goal, TaskError> {
+    scope_rules::validate_goal_containment(
+        db,
+        &request.parent_type,
+        request.parent_id,
+        &request.time_scope,
+    )
+    .await?;
+    db.goals().insert(request).await
+}
+
+/// Updates a goal, rejecting the write if the merged Time Scope escapes the effective parent's.
+///
+/// Reads the stored row, merges the request over it, validates, then writes — all on one
+/// transactional session, so the row cannot move underneath the check. This is the **only** way to
+/// change a goal row: the operator method underneath is module-private, and so is the merged
+/// `GoalWrite` value it takes.
+///
+/// ```no_run
+/// # use arlesh_lib::database::session::SessionFactory;
+/// # use arlesh_lib::tasks::{error::TaskError, model::{GoalId, UpdateGoalRequest}, update_goal};
+/// # async fn rename(factory: &SessionFactory) -> Result<(), TaskError> {
+/// let mut db = factory.begin().await?;
+/// update_goal(
+///     &mut db,
+///     GoalId(1),
+///     UpdateGoalRequest { title: Some("Renamed".into()), ..Default::default() },
+/// )
+/// .await?;
+/// db.commit().await?;
+/// # Ok(())
+/// # }
+/// ```
+#[tracing::instrument(skip(db))]
+pub async fn update_goal(
+    db: &mut Db<Transactional>,
+    id: GoalId,
+    request: UpdateGoalRequest,
+) -> Result<Goal, TaskError> {
+    let stored = db.goals().get(id).await?;
+    let write = GoalWrite::merge(stored, request);
+    scope_rules::validate_goal_containment(db, &write.parent_type, write.parent_id, &write.time_scope)
+        .await?;
+    db.goals().update(id, write).await
+}
+
+/// Deletes a goal and its entire subtree (descendant tasks/goals and their infos).
+#[tracing::instrument(skip(db))]
+pub async fn delete_goal(db: &mut Db<Transactional>, id: GoalId) -> Result<(), TaskError> {
+    db.goals().get(id).await?;
+    delete_task_goal_subtree(db, "goal", id.0).await
+}
+
+/// Creates a task, rejecting it if its Time Scope or Plan escapes the windows above it.
+///
+/// Validation reads scopes and goals as well as tasks, so this is a free function over the session
+/// rather than a `TaskOperator` method. It takes a transactional session because the insert writes
+/// twice (the row, then its sort position) and because validating inside the transaction is what
+/// stops an ancestor's scope changing between the check and the write.
+///
+/// This is the **only** way to write a task row: the operator method underneath is module-private.
+///
+/// ```no_run
+/// # use arlesh_lib::database::session::SessionFactory;
+/// # use arlesh_lib::tasks::{create_task, error::TaskError, model::CreateTaskRequest};
+/// # async fn add(factory: &SessionFactory) -> Result<(), TaskError> {
+/// let mut db = factory.begin().await?;
+/// create_task(&mut db, CreateTaskRequest { title: "Write it up".into(), ..Default::default() })
+///     .await?;
+/// db.commit().await?;
+/// # Ok(())
+/// # }
+/// ```
+#[tracing::instrument(skip(db))]
+pub async fn create_task(
+    db: &mut Db<Transactional>,
+    request: CreateTaskRequest,
+) -> Result<Task, TaskError> {
+    scope_rules::validate_task_containment(
+        db,
+        &request.parent_type,
+        request.parent_id,
+        &request.time_scope,
+        &request.plan,
+    )
+    .await?;
+    db.tasks().insert(request).await
+}
+
+/// Updates a task, rejecting the write if the merged Time Scope or Plan escapes the windows above
+/// the effective parent.
+///
+/// Reads the stored row, merges the request over it, validates, then writes — all on one
+/// transactional session, so the row cannot move underneath the check. This is the **only** way to
+/// change a task row: the operator method underneath is module-private, and so is the merged
+/// `TaskWrite` value it takes.
+///
+/// ```no_run
+/// # use arlesh_lib::database::session::SessionFactory;
+/// # use arlesh_lib::tasks::{error::TaskError, model::{TaskId, UpdateTaskRequest}, update_task};
+/// # async fn rename(factory: &SessionFactory) -> Result<(), TaskError> {
+/// let mut db = factory.begin().await?;
+/// update_task(
+///     &mut db,
+///     TaskId(1),
+///     UpdateTaskRequest { title: Some("Renamed".into()), ..Default::default() },
+/// )
+/// .await?;
+/// db.commit().await?;
+/// # Ok(())
+/// # }
+/// ```
+#[tracing::instrument(skip(db))]
+pub async fn update_task(
+    db: &mut Db<Transactional>,
+    id: TaskId,
+    request: UpdateTaskRequest,
+) -> Result<Task, TaskError> {
+    let stored = db.tasks().get(id).await?;
+    let write = TaskWrite::merge(stored, request);
+    scope_rules::validate_task_containment(
+        db,
+        &write.parent_type,
+        write.parent_id,
+        &write.time_scope,
+        &write.plan,
+    )
+    .await?;
+    db.tasks().update(id, write).await
+}
+
+/// Adds a dependency to a task, rejecting chains that would close a cycle.
+///
+/// A **check-then-write**, and so a free function over a transactional session rather than an
+/// operator method, even though it touches one resource and writes one statement. The cycle search
+/// reads the very edges the `INSERT` is validated against, and **no schema constraint expresses
+/// acyclicity**: two concurrent calls can each find no cycle and jointly create one, and the
+/// database would accept both. The transaction is what closes that window — SQLite refuses the
+/// second writer instead of letting both land — so it belongs in the signature.
+///
+/// (Contrast [`crate::scopes::ScopeOperator::get_or_create`], whose probe-then-insert stays an
+/// operator method because a unique index independently enforces what it checks.)
+///
+/// ```no_run
+/// # use arlesh_lib::database::session::SessionFactory;
+/// # use arlesh_lib::tasks::{add_task_dependency, error::TaskError, model::{Dependency, TaskId}};
+/// # async fn depend(factory: &SessionFactory) -> Result<(), TaskError> {
+/// let mut db = factory.begin().await?;
+/// add_task_dependency(&mut db, TaskId(1), Dependency::Task { id: 2 }).await?;
+/// db.commit().await?;
+/// # Ok(())
+/// # }
+/// ```
+#[tracing::instrument(skip(db))]
+pub async fn add_task_dependency(
+    db: &mut Db<Transactional>,
+    task_id: TaskId,
+    dependency: Dependency,
+) -> Result<(), TaskError> {
+    db.tasks().add_dependency(task_id, dependency).await
+}
+
+/// Deletes a task and its entire subtree (descendant tasks/goals and their infos).
+#[tracing::instrument(skip(db))]
+pub async fn delete_task(db: &mut Db<Transactional>, id: TaskId) -> Result<(), TaskError> {
+    db.tasks().get(id).await?;
+    delete_task_goal_subtree(db, "task", id.0).await
+}
+
+/// Fetches a task with its computed block reasons: the explicit ones plus one per unmet
+/// dependency.
+///
+/// Reads tasks, goals and block reasons, so it is a free function over the session. Nothing is
+/// written — a pooled session is enough.
+#[tracing::instrument(skip(db))]
+pub async fn get_task_with_blockers<M: SessionMode>(
+    db: &mut Db<M>,
+    id: TaskId,
+) -> Result<TaskWithBlockers, TaskError> {
+    let task = db.tasks().get(id).await?;
+    // Explicit reasons first (from the block_reasons table), then virtual ones from unmet dependencies.
+    let mut reasons = db.block_reasons().list_for("task", id.0).await?;
+
+    let dependencies = db.tasks().list_dependencies(id).await?;
+    for dependency in dependencies {
+        match dependency {
+            Dependency::Task { id: dependency_id } => {
+                let dependency_task = db.tasks().get(TaskId(dependency_id)).await?;
+                if dependency_task.status != TaskStatus::Done.as_str() {
+                    reasons.push(format!(
+                        "Blocked by task {} ({})",
+                        dependency_id, dependency_task.title
+                    ));
+                }
+            }
+            Dependency::Goal { id: dependency_id } => {
+                let (goal_status, goal_title) =
+                    db.goals().status_and_title(GoalId(dependency_id)).await?;
+                if goal_status != GoalStatus::Achieved.as_str() {
+                    reasons.push(format!(
+                        "Blocked by goal {} ({})",
+                        dependency_id, goal_title
+                    ));
+                }
+            }
+        }
+    }
+
+    Ok(TaskWithBlockers { task, block_reasons: reasons })
 }
 
 fn dependency_parts(dependency: &Dependency) -> (&'static str, i64) {
@@ -819,5 +1338,93 @@ mod tests {
         let (ty, id) = dependency_parts(&Dependency::Goal { id: 99 });
         assert_eq!(ty, "goal");
         assert_eq!(id, 99);
+    }
+
+    fn stored_task() -> Task {
+        Task {
+            id: 1,
+            title: "Stored".to_string(),
+            parent_type: "project".to_string(),
+            parent_id: 7,
+            status: TaskStatus::Todo.as_str().to_string(),
+            delegate_to: Some(3),
+            time_scope: Some(TimeScope { start_id: 10, end_id: 11, duration: None }),
+            on_scope_exit: Some(OnScopeExit::Keep),
+            plan: Some(TimeScope { start_id: 12, end_id: 12, duration: None }),
+            tag_ids: vec![],
+            position: 100,
+            is_private: false,
+        }
+    }
+
+    #[test]
+    fn an_empty_update_request_writes_the_stored_row_back_unchanged() {
+        let write = TaskWrite::merge(stored_task(), UpdateTaskRequest::default());
+        assert!(write.reparent.is_none());
+        assert_eq!(write.parent_type, "project");
+        assert_eq!(write.parent_id, 7);
+        assert_eq!(write.title, "Stored");
+        assert_eq!(write.delegate_to, Some(3));
+        assert_eq!(write.position, 100);
+        assert!(!write.is_private);
+    }
+
+    #[test]
+    fn clearing_the_time_scope_clears_it_rather_than_keeping_the_stored_one() {
+        let write = TaskWrite::merge(
+            stored_task(),
+            UpdateTaskRequest { time_scope: Some(None), ..Default::default() },
+        );
+        assert_eq!(write.time_scope, None);
+    }
+
+    #[test]
+    fn a_reparent_needs_both_halves_and_becomes_the_validated_parent() {
+        let half = TaskWrite::merge(
+            stored_task(),
+            UpdateTaskRequest { parent_type: Some("goal".into()), ..Default::default() },
+        );
+        assert!(half.reparent.is_none(), "a parent type without an id is not a move");
+        assert_eq!(half.parent_type, "project");
+
+        let full = TaskWrite::merge(
+            stored_task(),
+            UpdateTaskRequest {
+                parent_type: Some("goal".into()),
+                parent_id: Some(42),
+                ..Default::default()
+            },
+        );
+        assert_eq!(full.reparent, Some(("goal".to_string(), 42)));
+        assert_eq!(full.parent_type, "goal");
+        assert_eq!(full.parent_id, 42);
+    }
+
+    #[test]
+    fn a_goal_update_merges_its_request_over_the_stored_row() {
+        let stored = Goal {
+            id: 2,
+            title: "Stored".to_string(),
+            parent_type: "project".to_string(),
+            parent_id: 7,
+            status: GoalStatus::Active.as_str().to_string(),
+            time_scope: None,
+            on_scope_exit: None,
+            tag_ids: vec![],
+            position: 5,
+            is_private: true,
+        };
+        let write = GoalWrite::merge(
+            stored,
+            UpdateGoalRequest {
+                status: Some(GoalStatus::Achieved),
+                position: Some(9),
+                ..Default::default()
+            },
+        );
+        assert_eq!(write.title, "Stored");
+        assert_eq!(write.status, GoalStatus::Achieved.as_str());
+        assert_eq!(write.position, 9);
+        assert!(write.is_private);
     }
 }

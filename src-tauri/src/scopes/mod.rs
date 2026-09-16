@@ -6,7 +6,6 @@ pub mod resolve;
 
 use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime};
 
-use crate::database::DatabasePool;
 use error::ScopeError;
 use model::{PartOfDay, Scope, ScopeId, ScopeKind};
 use resolve::EXACT_DATETIME_FORMAT;
@@ -50,30 +49,60 @@ impl CanonicalKind {
     }
 }
 
-/// Repository for scope get-or-create and lookup operations.
-pub struct ScopeRepository<'a> {
-    pool: &'a DatabasePool,
+/// Reads and writes seasons, months, weeks and days on a session's connection.
+///
+/// Obtained as `db.scopes()` and used inline; see [`Db`](crate::database::session::Db) for
+/// the borrow rules and for where an operation belongs.
+pub struct ScopeOperator<'session> {
+    /// The session's connection, borrowed for the duration of this operator's life.
+    connection: &'session mut sqlx::SqliteConnection,
 }
 
-impl<'a> ScopeRepository<'a> {
-    /// Creates a new repository backed by `pool`.
-    pub fn new(pool: &'a DatabasePool) -> Self {
-        Self { pool }
+impl<'session> ScopeOperator<'session> {
+    /// Wraps the connection a session is lending.
+    pub(crate) fn new(connection: &'session mut sqlx::SqliteConnection) -> Self {
+        Self { connection }
     }
 
     /// Fetches a scope by id.
-    pub async fn get(&self, id: ScopeId) -> Result<Scope, ScopeError> {
+    pub async fn get(&mut self, id: ScopeId) -> Result<Scope, ScopeError> {
         sqlx::query_as::<_, Scope>("SELECT * FROM scopes WHERE id = ?")
             .bind(id.0)
-            .fetch_optional(self.pool)
+            .fetch_optional(&mut *self.connection)
             .await?
             .ok_or(ScopeError::NotFound(id.0))
     }
 
     /// Returns the scope for `date` at the given `kind`, creating it if it doesn't exist yet.
     /// Containment parents (week/month/season) are recursively created first.
+    ///
+    /// Multi-statement — a lookup, the recursive creation of any missing containment parents, and
+    /// an insert of the scope itself — and so **not atomic on its own**. It opens no transaction:
+    /// per ADR-0004 only the outermost caller decides the boundary.
+    ///
+    /// A check-then-write that nonetheless stays an **operator method**, which the rule allows
+    /// only when a schema constraint independently enforces the checked invariant. Here it does:
+    /// `scopes_canonical_uniq` (`migrations/0005_part_of_day_and_exact_scopes.sql`) is unique on
+    /// `(kind, start_date)` for the four canonical kinds, so a lost race between the probe and the
+    /// insert raises a constraint error rather than producing a duplicate scope. Contrast
+    /// [`crate::tasks::add_task_dependency`], whose acyclicity check has no such backstop and is
+    /// therefore a free function over a transactional session. Staying a method is also what lets
+    /// the five window helpers in `flows` hold only a `&mut ScopeOperator`, as ADR-0004 requires.
+    ///
+    /// ```no_run
+    /// # use arlesh_lib::database::session::SessionFactory;
+    /// # use arlesh_lib::scopes::error::ScopeError;
+    /// # use arlesh_lib::scopes::model::ScopeKind;
+    /// # use chrono::NaiveDate;
+    /// # async fn get_or_create(factory: &SessionFactory, date: NaiveDate) -> Result<(), ScopeError> {
+    /// let mut db = factory.begin().await?;
+    /// db.scopes().get_or_create(ScopeKind::Day, date).await?;
+    /// db.commit().await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn get_or_create(
-        &self,
+        &mut self,
         kind: ScopeKind,
         date: NaiveDate,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Scope, ScopeError>> + Send + '_>>
@@ -91,7 +120,7 @@ impl<'a> ScopeRepository<'a> {
             )
             .bind(canonical.as_str())
             .bind(&start_str)
-            .fetch_optional(self.pool)
+            .fetch_optional(&mut *self.connection)
             .await?
             {
                 return Ok(scope);
@@ -110,7 +139,7 @@ impl<'a> ScopeRepository<'a> {
             .bind(week_id)
             .bind(month_id)
             .bind(season_id)
-            .execute(self.pool)
+            .execute(&mut *self.connection)
             .await?
             .last_insert_rowid();
 
@@ -120,7 +149,7 @@ impl<'a> ScopeRepository<'a> {
 
     /// Computes the (week_id, month_id, season_id) for a scope, creating parents as needed.
     async fn containment_ids(
-        &self,
+        &mut self,
         kind: CanonicalKind,
         date: NaiveDate,
     ) -> Result<(Option<i64>, Option<i64>, Option<i64>), ScopeError> {
@@ -141,8 +170,29 @@ impl<'a> ScopeRepository<'a> {
 
     /// Returns the Part-of-Day scope for `date` + `part`, creating it (and its Day, Week,
     /// Month, Season parents) if absent. The scope inherits its Day's containment ids.
+    ///
+    /// Multi-statement — the recursive creation of the Day (and its own parents) plus an insert
+    /// of the part scope — and so **not atomic on its own**. It opens no transaction: per
+    /// ADR-0004 only the outermost caller decides the boundary.
+    ///
+    /// An operator method for the same reason as [`Self::get_or_create`]: `scopes_part_uniq` is
+    /// unique on `(start_date, part)` for `part_of_day` rows, so a lost race between the probe and
+    /// the insert is a constraint error, not a duplicate.
+    ///
+    /// ```no_run
+    /// # use arlesh_lib::database::session::SessionFactory;
+    /// # use arlesh_lib::scopes::error::ScopeError;
+    /// # use arlesh_lib::scopes::model::PartOfDay;
+    /// # use chrono::NaiveDate;
+    /// # async fn get_or_create_part(factory: &SessionFactory, date: NaiveDate) -> Result<(), ScopeError> {
+    /// let mut db = factory.begin().await?;
+    /// db.scopes().get_or_create_part(date, PartOfDay::Morning).await?;
+    /// db.commit().await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn get_or_create_part(
-        &self,
+        &mut self,
         date: NaiveDate,
         part: PartOfDay,
     ) -> Result<Scope, ScopeError> {
@@ -152,7 +202,7 @@ impl<'a> ScopeRepository<'a> {
         )
         .bind(&start_str)
         .bind(part.as_str())
-        .fetch_optional(self.pool)
+        .fetch_optional(&mut *self.connection)
         .await?
         {
             return Ok(scope);
@@ -180,7 +230,7 @@ impl<'a> ScopeRepository<'a> {
         .bind(day.season_id)
         .bind(day.id)
         .bind(part.as_str())
-        .execute(self.pool)
+        .execute(&mut *self.connection)
         .await?
         .last_insert_rowid();
 
@@ -189,8 +239,12 @@ impl<'a> ScopeRepository<'a> {
 
     /// Returns the Exact scope for the half-open `[start, end)` datetime window, creating it
     /// if absent. Exact scopes lie outside the canonical hierarchy and carry no containment ids.
+    ///
+    /// An operator method for the same reason as [`Self::get_or_create`]: `scopes_exact_uniq` is
+    /// unique on `(start_datetime, end_datetime)` for `exact` rows, so a lost race between the
+    /// probe and the insert is a constraint error, not a duplicate.
     pub async fn get_or_create_exact(
-        &self,
+        &mut self,
         start: NaiveDateTime,
         end: NaiveDateTime,
     ) -> Result<Scope, ScopeError> {
@@ -201,7 +255,7 @@ impl<'a> ScopeRepository<'a> {
         )
         .bind(&start_dt)
         .bind(&end_dt)
-        .fetch_optional(self.pool)
+        .fetch_optional(&mut *self.connection)
         .await?
         {
             return Ok(scope);
@@ -217,7 +271,7 @@ impl<'a> ScopeRepository<'a> {
         .bind(end.date().to_string())
         .bind(&start_dt)
         .bind(&end_dt)
-        .execute(self.pool)
+        .execute(&mut *self.connection)
         .await?
         .last_insert_rowid();
 

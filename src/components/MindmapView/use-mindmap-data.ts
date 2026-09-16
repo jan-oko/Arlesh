@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
-import { listDomains, createDomain, updateDomain, deleteDomain } from "@/api/domains";
-import { listTasks, createTask, updateTask, deleteTask, listAllTaskDependencies } from "@/api/tasks";
+import { createDomain, updateDomain, deleteDomain } from "@/api/domains";
+import { createTask, updateTask, deleteTask } from "@/api/tasks";
 import type { TaskDependencyEdge } from "@/api/tasks";
-import { listAllBlockReasons, setBlockReasons } from "@/api/block-reasons";
 import type { BlockReason } from "@/api/block-reasons";
-import { listGoals, createGoal, updateGoal, deleteGoal } from "@/api/goals";
-import { listInfos, createInfo, updateInfo, deleteInfo } from "@/api/infos";
+import { createGoal, updateGoal, deleteGoal } from "@/api/goals";
+import { createInfo, updateInfo, deleteInfo } from "@/api/infos";
+import { getErrorMessage } from "@/api/errors";
+import { asRetypeKind, retypeNode as backendRetype } from "@/api/retype";
+import type { StrandedChildren } from "@/api/retype";
+import { loadMindmap, habitIterations, habitStatuses } from "@/api/mindmap";
+import type { MindmapLoad } from "@/api/mindmap";
 import {
-  listFlows, createFlow, updateFlow, deleteFlow,
-  listAllFlowGoals, listAllFlowTasks, listAllFlowCycles, listAllFlowDependencies,
+  createFlow, updateFlow, deleteFlow,
   createFlowGoal, createFlowTask, updateFlowGoal, updateFlowTask, deleteFlowItem, convertFlowItem,
-  generateHabitIterations, listHabitItemStatuses, listFlowInstanceNodes,
 } from "@/api/flows";
 import { findNode } from "@/utils/mindmap-tree";
 import type { Domain } from "@/api/domains";
@@ -21,11 +23,9 @@ import type {
   Flow, CreateFlowRequest, UpdateFlowRequest,
   FlowGoal, FlowTask, FlowItemCycle, FlowDependency, FlowItemType, HabitIteration, HabitItemStatus, TargetRef,
 } from "@/api/flows";
-import { deriveScopeLifecycles } from "@/api/scope-lifecycle";
 import type { ItemLifecycle } from "@/api/scope-lifecycle";
 import type { MindmapNode, NodeKind, FlowCyclePair, FlowItemDep } from "@/utils/tree-layout";
 import { entityNodeId } from "@/utils/tree-layout";
-import { goalStatusToTaskStatus, taskStatusToGoalStatus } from "@/utils/status-mapping";
 import { formatScopeCore } from "@/utils/scope-format";
 import type { ScopeLabelFns } from "@/hooks/use-scope-labels";
 import { useScopeLabels } from "@/hooks/use-scope-labels";
@@ -192,23 +192,25 @@ export const GOAL_CHILDREN_ACTION = {
   REPARENT: "reparent",
 } as const;
 
-export const INFO_CHILDREN_ACTION = {
-  REMOVE: "remove",
-  REPARENT: "reparent",
-} as const;
-
 export type GoalChildrenAction = "remove" | "reparent";
-export type InfoChildrenAction = "remove" | "reparent";
 
 export interface RetypeOptions {
+  /** Flow-goal children of a flow item being converted to a flow-task. */
   goalChildrenAction?: GoalChildrenAction;
-  infoChildrenAction?: InfoChildrenAction;
+  /**
+   * Children the new kind cannot hold, for a retype `retype_node` owns — and, by being present
+   * at all, the caller's acknowledgement of everything else the backend said would be lost.
+   * Without it the command refuses rather than dropping anything quietly.
+   */
+  strandedChildren?: StrandedChildren;
 }
 
 interface MindmapData {
   tree: MindmapNode;
   isLoading: boolean;
   error: string | null;
+  /** Background load conditions from the most recent load — currently, Habit derivation failures. */
+  loadCondition: LoadCondition;
   createNode: (parentId: string, parentKind: NodeKind, childKind: NodeKind, title: string) => Promise<MindmapNode>;
   createChild: (parentId: string, parentKind: NodeKind, title: string) => Promise<MindmapNode>;
   renameNode: (id: string, kind: NodeKind, title: string) => Promise<void>;
@@ -592,86 +594,87 @@ export function buildTree(
   return root;
 }
 
+/** One flow whose Habit iterations failed to derive, as the banner needs it. */
+export interface FailedFlow {
+  id: number;
+  title: string;
+}
+
+/**
+ * A background load condition: something the current load's data got wrong that the user did
+ * not cause, about a node that may be anywhere on the tree. Distinct from `error` (the load
+ * failed entirely) and from a `PendingToast` (something the user just did, anchored on the node
+ * they did it to) — a failed Habit derivation means the tree is *currently showing wrong data*,
+ * which calls for a persistent banner rather than a toast that fades while the data stays wrong.
+ */
+export interface LoadCondition {
+  failedFlows: FailedFlow[];
+}
+
+const NO_FAILURES: LoadCondition = { failedFlows: [] };
+
+/**
+ * Collects every flow whose Habit iterations failed to derive this load.
+ *
+ * These used to be swallowed by a per-call `.catch(() => [])`, which made a failed derivation
+ * indistinguishable from a flow that genuinely has none. The envelope now carries the reason per
+ * flow. Every failure is listed — there is no "name the first, count the rest" compromise here;
+ * that compromise only ever existed because a single toast slot was the only vehicle for it.
+ */
+function collectFailedHabits(data: MindmapLoad): LoadCondition {
+  const failedFlows = data.habits
+    .filter((entry) => entry.result.outcome === "failed")
+    .map((entry) => ({ id: entry.flow_id, title: entry.flow_title }));
+  return failedFlows.length === 0 ? NO_FAILURES : { failedFlows };
+}
+
 export function useMindmapData(): MindmapData {
   const [tree, setTree] = useState<MindmapNode>(VIRTUAL_ROOT);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [loadCondition, setLoadCondition] = useState<LoadCondition>(NO_FAILURES);
   const scopeLabels = useScopeLabels();
 
-  const load = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const [domains, goals, tasks, infos, flows, flowGoals, flowTasks, flowCycles, flowDeps, blockReasons, taskDeps, flowInstanceRefs, lifecycles] = await Promise.all([
-        listDomains(),
-        listGoals(),
-        listTasks(),
-        listInfos(),
-        listFlows(),
-        listAllFlowGoals(),
-        listAllFlowTasks(),
-        listAllFlowCycles(),
-        listAllFlowDependencies(),
-        listAllBlockReasons(),
-        listAllTaskDependencies(),
-        listFlowInstanceNodes(),
-        deriveScopeLifecycles(localNowIso()),
-      ]);
-      const built = buildTree(domains, goals, tasks, infos, flows, flowGoals, flowTasks, flowCycles, flowDeps, blockReasons, taskDeps, flowInstanceRefs);
-      applyLifecycles(built, lifecycleMap(lifecycles));
-      // Derive each Habit's iterations (non-habits reject; treat as empty) and inject them as
-      // virtual, read-only child nodes under their targets.
-      const [iterationsByFlow, statusesByFlow] = await Promise.all([
-        Promise.all(flows.map((f) => generateHabitIterations(f.id, localNowIso()).catch(() => []))),
-        Promise.all(flows.map((f) => listHabitItemStatuses(f.id).catch(() => []))),
-      ]);
-      injectHabitInstances(built, flows, iterationsByFlow, scopeLabels, flowGoals, flowTasks, statusesByFlow);
-      setTree(built);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setIsLoading(false);
-    }
-  }, [scopeLabels]);
-
-  // Refreshes the tree in-place without the loading spinner — used for mutations
-  // so the canvas stays mounted and pan/zoom state is preserved.
-  const silentLoad = useCallback(async () => {
-    setError(null);
-    try {
-      const [domains, goals, tasks, infos, flows, flowGoals, flowTasks, flowCycles, flowDeps, blockReasons, taskDeps, flowInstanceRefs, lifecycles] = await Promise.all([
-        listDomains(),
-        listGoals(),
-        listTasks(),
-        listInfos(),
-        listFlows(),
-        listAllFlowGoals(),
-        listAllFlowTasks(),
-        listAllFlowCycles(),
-        listAllFlowDependencies(),
-        listAllBlockReasons(),
-        listAllTaskDependencies(),
-        listFlowInstanceNodes(),
-        deriveScopeLifecycles(localNowIso()),
-      ]);
-      const built = buildTree(domains, goals, tasks, infos, flows, flowGoals, flowTasks, flowCycles, flowDeps, blockReasons, taskDeps, flowInstanceRefs);
-      applyLifecycles(built, lifecycleMap(lifecycles));
-      // Derive each Habit's iterations (non-habits reject; treat as empty) and inject them as
-      // virtual, read-only child nodes under their targets.
-      const [iterationsByFlow, statusesByFlow] = await Promise.all([
-        Promise.all(flows.map((f) => generateHabitIterations(f.id, localNowIso()).catch(() => []))),
-        Promise.all(flows.map((f) => listHabitItemStatuses(f.id).catch(() => []))),
-      ]);
-      injectHabitInstances(built, flows, iterationsByFlow, scopeLabels, flowGoals, flowTasks, statusesByFlow);
-      setTree(built);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  }, [scopeLabels]);
+  /**
+   * Loads the whole mindmap and rebuilds the tree.
+   *
+   * `showSpinner` is the only thing separating the initial load from the refresh every mutation
+   * ends with: a mutation keeps the canvas mounted so pan/zoom survives. The fetch is one round
+   * trip either way — `load_mindmap` resolves the per-flow Habit wave backend-side.
+   */
+  const load = useCallback(
+    async (showSpinner: boolean) => {
+      if (showSpinner) setIsLoading(true);
+      setError(null);
+      try {
+        const data = await loadMindmap(localNowIso());
+        const built = buildTree(
+          data.domains, data.goals, data.tasks, data.infos, data.flows, data.flow_goals,
+          data.flow_tasks, data.flow_cycles, data.flow_dependencies, data.block_reasons,
+          data.task_dependencies, data.flow_instance_nodes,
+        );
+        applyLifecycles(built, lifecycleMap(data.lifecycles));
+        // Inject each Habit's iterations as virtual, read-only child nodes under their targets.
+        // A flow whose derivation failed contributes an empty list here and a load condition
+        // below — it is not silently indistinguishable from a flow that simply has no iterations.
+        injectHabitInstances(
+          built, data.flows, habitIterations(data.habits), scopeLabels,
+          data.flow_goals, data.flow_tasks, habitStatuses(data.habits),
+        );
+        setTree(built);
+        setLoadCondition(collectFailedHabits(data));
+      } catch (err) {
+        setError(getErrorMessage(err));
+      } finally {
+        if (showSpinner) setIsLoading(false);
+      }
+    },
+    [scopeLabels],
+  );
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load();
+    void load(true);
   }, [load]);
 
   const createNode = useCallback(
@@ -687,7 +690,7 @@ export function useMindmapData(): MindmapData {
           id: `domain-${domain.id}`, kind: childKind, title: domain.title,
           position: domain.position, tagIds: [], children: [],
         };
-        await silentLoad();
+        await load(false);
         return newNode;
       }
 
@@ -697,7 +700,7 @@ export function useMindmapData(): MindmapData {
           id: `goal-${goal.id}`, kind: "goal", title: goal.title,
           status: goal.status, position: goal.position, tagIds: [], children: [],
         };
-        await silentLoad();
+        await load(false);
         return newNode;
       }
 
@@ -707,7 +710,7 @@ export function useMindmapData(): MindmapData {
           id: `task-${task.id}`, kind: "task", title: task.title,
           status: task.status, position: task.position, tagIds: [], children: [],
         };
-        await silentLoad();
+        await load(false);
         return newNode;
       }
 
@@ -722,7 +725,7 @@ export function useMindmapData(): MindmapData {
           id: `info-${info.id}`, kind: "info", title: info.body,
           position: info.position, tagIds: [], children: [],
         };
-        await silentLoad();
+        await load(false);
         return newNode;
       }
 
@@ -739,13 +742,13 @@ export function useMindmapData(): MindmapData {
           kind: childKind, title: item.title,
           position: item.position, tagIds: [], children: [],
         };
-        await silentLoad();
+        await load(false);
         return newNode;
       }
 
       throw new Error(`Cannot create a node of kind "${childKind}"`);
     },
-    [silentLoad, tree],
+    [load, tree],
   );
 
   const createChild = useCallback(
@@ -785,9 +788,9 @@ export function useMindmapData(): MindmapData {
       } else {
         await import("@/api/domains").then(({ updateDomain }) => updateDomain(dbId, { title }));
       }
-      await silentLoad();
+      await load(false);
     },
-    [silentLoad],
+    [load],
   );
 
   const retypeNode = useCallback(
@@ -818,237 +821,32 @@ export function useMindmapData(): MindmapData {
         }
 
         const newId = await convertFlowItem(fromKind, dbId, toKind);
-        await silentLoad();
+        await load(false);
         return toKind === "flow_goal" ? `flowgoal-${newId}` : `flowtask-${newId}`;
       }
 
-      const domainTableKinds = new Set<NodeKind>(["domain", "project", "tag"]);
-
-      // Same-table conversion: node ID is unchanged.
-      if (domainTableKinds.has(fromKind) && domainTableKinds.has(toKind)) {
-        await updateDomain(dbId, { subtype: toKind });
-        await silentLoad();
-        return null;
-      }
-
-      // Cross-table conversions: create new entity, re-parent compatible children, delete old.
-      const node = findNodeInTree(tree, id);
-      const parent = findParentInTree(tree, id);
-      const title = node?.title ?? "";
-      const children = node?.children ?? [];
-      const oldPosition = node?.position;
-      const parentDbId = parent !== undefined && parent.id !== "root"
-        ? dbIdFromNodeId(parent.id)
-        : null;
-
-      if (domainTableKinds.has(fromKind) && (toKind === "goal" || toKind === "task")) {
-        if (parentDbId === null) return null; // aspects can't convert to goal/task
-        const parentType = kindToParentType(parent!.kind);
-
-        if (toKind === "goal") {
-          const newGoal = await createGoal({ title, parent_type: parentType, parent_id: parentDbId });
-          if (oldPosition !== undefined) await updateGoal(newGoal.id, { position: oldPosition });
-          for (const child of children) {
-            const childDbId = dbIdFromNodeId(child.id);
-            if (child.kind === "goal") {
-              await updateGoal(childDbId, { parent_type: "goal", parent_id: newGoal.id });
-            } else if (child.kind === "task") {
-              await updateTask(childDbId, { parent_type: "goal", parent_id: newGoal.id });
-            } else if (child.kind === "info") {
-              await updateInfo(childDbId, { parent_type: "goal", parent_id: newGoal.id });
-            } else if (child.kind === "flow") {
-              await updateFlow(childDbId, { parent_type: "goal", parent_id: newGoal.id });
-            } else {
-              console.warn(`[arlesh] retypeNode: ${child.kind} child "${child.title}" orphaned`);
-            }
-          }
-          await deleteDomain(dbId);
-          await silentLoad();
-          return `goal-${newGoal.id}`;
-        } else {
-          const newTask = await createTask({ title, parent_type: parentType, parent_id: parentDbId });
-          if (oldPosition !== undefined) await updateTask(newTask.id, { position: oldPosition });
-          for (const child of children) {
-            const childDbId = dbIdFromNodeId(child.id);
-            if (child.kind === "task") {
-              await updateTask(childDbId, { parent_type: "task", parent_id: newTask.id });
-            } else if (child.kind === "info") {
-              await updateInfo(childDbId, { parent_type: "task", parent_id: newTask.id });
-            } else {
-              console.warn(`[arlesh] retypeNode: ${child.kind} child "${child.title}" orphaned`);
-            }
-          }
-          await deleteDomain(dbId);
-          await silentLoad();
-          return `task-${newTask.id}`;
-        }
-      }
-
-      if ((fromKind === "goal" || fromKind === "task") && domainTableKinds.has(toKind)) {
-        if (parentDbId === null) return null;
-        const newDomain = await createDomain({
-          title, subtype: toKind, parent_id: parentDbId,
-          description: null, status: null, knowledge_base_directory: null,
-        });
-        if (oldPosition !== undefined) await updateDomain(newDomain.id, { position: oldPosition });
-        for (const child of children) {
-          const childDbId = dbIdFromNodeId(child.id);
-          if (child.kind === "goal") {
-            await updateGoal(childDbId, { parent_type: "project", parent_id: newDomain.id });
-          } else if (child.kind === "task") {
-            await updateTask(childDbId, { parent_type: "project", parent_id: newDomain.id });
-          } else if (child.kind === "info") {
-            await updateInfo(childDbId, { parent_type: toKind, parent_id: newDomain.id });
-          } else if (child.kind === "flow" && (toKind === "project" || toKind === "domain")) {
-            // A flow can be parented by a project/domain (but not a tag) — reparent onto the new node.
-            await updateFlow(childDbId, { parent_type: toKind, parent_id: newDomain.id });
-          }
-        }
-        if (fromKind === "goal") await deleteGoal(dbId);
-        else await deleteTask(dbId);
-        await silentLoad();
-        return `domain-${newDomain.id}`;
-      }
-
-      // goal↔task cross-table conversion with status mapping.
-      if (fromKind === "goal" && toKind === "task") {
-        if (parentDbId === null) return null;
-        const parentType = kindToParentType(parent!.kind);
-        const mappedStatus = goalStatusToTaskStatus(node?.status ?? "active");
-        const newTask = await createTask({ title, parent_type: parentType, parent_id: parentDbId, status: mappedStatus });
-        if (oldPosition !== undefined) await updateTask(newTask.id, { position: oldPosition });
-        // Carry the explicit block reasons across to the new owner (virtual dep-blockers regenerate).
-        if (node?.blockReasons !== undefined && node.blockReasons.length > 0) {
-          await setBlockReasons("task", newTask.id, node.blockReasons);
-        }
-        for (const child of children) {
-          const childDbId = dbIdFromNodeId(child.id);
-          if (child.kind === "task") {
-            await updateTask(childDbId, { parent_type: "task", parent_id: newTask.id });
-          } else if (child.kind === "goal") {
-            if (options?.goalChildrenAction === "reparent") {
-              await updateGoal(childDbId, { parent_type: parentType, parent_id: parentDbId });
-            } else {
-              await deleteGoal(childDbId);
-            }
-          } else if (child.kind === "info") {
-            // Reparent infos onto the new task, else the deleteGoal cascade below removes them.
-            await updateInfo(childDbId, { parent_type: "task", parent_id: newTask.id });
-          }
-        }
-        await deleteGoal(dbId);
-        await silentLoad();
-        return `task-${newTask.id}`;
-      }
-
-      if (fromKind === "task" && toKind === "goal") {
-        if (parentDbId === null) return null;
-        const parentType = kindToParentType(parent!.kind);
-        const mappedStatus = taskStatusToGoalStatus(node?.status ?? "todo");
-        const newGoal = await createGoal({ title, parent_type: parentType, parent_id: parentDbId, status: mappedStatus });
-        if (oldPosition !== undefined) await updateGoal(newGoal.id, { position: oldPosition });
-        if (node?.blockReasons !== undefined && node.blockReasons.length > 0) {
-          await setBlockReasons("goal", newGoal.id, node.blockReasons);
-        }
-        for (const child of children) {
-          const childDbId = dbIdFromNodeId(child.id);
-          if (child.kind === "task") {
-            await updateTask(childDbId, { parent_type: "goal", parent_id: newGoal.id });
-          } else if (child.kind === "goal") {
-            await updateGoal(childDbId, { parent_type: parentType, parent_id: parentDbId });
-          } else if (child.kind === "info") {
-            await updateInfo(childDbId, { parent_type: "goal", parent_id: newGoal.id });
-          }
-        }
-        await deleteTask(dbId);
-        await silentLoad();
-        return `goal-${newGoal.id}`;
-      }
-
-      // To info: create info entry, re-parent info children, handle non-info children.
-      if (toKind === "info") {
-        if (parentDbId === null) return null;
-        const parentInfoType = kindToInfoParentType(parent!.kind);
-        const newInfo = await createInfo({
-          body: title, parent_type: parentInfoType, parent_id: parentDbId,
-          position: oldPosition ?? 0,
-        });
-        for (const child of children) {
-          const childDbId = dbIdFromNodeId(child.id);
-          if (child.kind === "info") {
-            await updateInfo(childDbId, { parent_type: "info", parent_id: newInfo.id });
-          } else {
-            if (options?.infoChildrenAction === "reparent") {
-              if (child.kind === "goal") {
-                await updateGoal(childDbId, { parent_type: kindToParentType(parent!.kind), parent_id: parentDbId });
-              } else if (child.kind === "task") {
-                await updateTask(childDbId, { parent_type: kindToParentType(parent!.kind), parent_id: parentDbId });
-              } else {
-                await updateDomain(childDbId, { parent_id: parentDbId });
-              }
-            } else {
-              if (child.kind === "goal") await deleteGoal(childDbId);
-              else if (child.kind === "task") await deleteTask(childDbId);
-              else if (child.kind !== "aspect") await deleteDomain(childDbId);
-            }
-          }
-        }
-        if (fromKind === "goal") await deleteGoal(dbId);
-        else if (fromKind === "task") await deleteTask(dbId);
-        else if (fromKind !== "aspect") await deleteDomain(dbId);
-        await silentLoad();
-        return `info-${newInfo.id}`;
-      }
-
-      // From info: create new entity, re-parent info children, delete info entry.
-      if (fromKind === "info") {
-        if (parentDbId === null) return null;
-        if (toKind === "goal" || toKind === "task") {
-          const parentType = kindToParentType(parent!.kind);
-          if (toKind === "goal") {
-            const newGoal = await createGoal({ title, parent_type: parentType, parent_id: parentDbId });
-            if (oldPosition !== undefined) await updateGoal(newGoal.id, { position: oldPosition });
-            for (const child of children) {
-              if (child.kind === "info") {
-                await updateInfo(dbIdFromNodeId(child.id), { parent_type: "goal", parent_id: newGoal.id });
-              }
-            }
-            await deleteInfo(dbId);
-            await silentLoad();
-            return `goal-${newGoal.id}`;
-          } else {
-            const newTask = await createTask({ title, parent_type: parentType, parent_id: parentDbId });
-            if (oldPosition !== undefined) await updateTask(newTask.id, { position: oldPosition });
-            for (const child of children) {
-              if (child.kind === "info") {
-                await updateInfo(dbIdFromNodeId(child.id), { parent_type: "task", parent_id: newTask.id });
-              }
-            }
-            await deleteInfo(dbId);
-            await silentLoad();
-            return `task-${newTask.id}`;
-          }
-        }
-        if (domainTableKinds.has(toKind)) {
-          const newDomain = await createDomain({
-            title, subtype: toKind, parent_id: parentDbId,
-            description: null, status: null, knowledge_base_directory: null,
-          });
-          if (oldPosition !== undefined) await updateDomain(newDomain.id, { position: oldPosition });
-          for (const child of children) {
-            if (child.kind === "info") {
-              await updateInfo(dbIdFromNodeId(child.id), { parent_type: toKind, parent_id: newDomain.id });
-            }
-          }
-          await deleteInfo(dbId);
-          await silentLoad();
-          return `domain-${newDomain.id}`;
-        }
+      // Every retype between the goals, tasks, domains and infos tables is one atomic backend
+      // call. `retype_node` creates the new row with every field that carries, moves the tags and
+      // the block reasons, repoints the dependency edges aimed at the node, adopts the children the
+      // new kind can hold and settles the ones it cannot — or does none of it. It also refuses
+      // outright, with a payload naming what is at stake, rather than dropping anything quietly;
+      // `use-node-type-manager` is what puts that to the user and retries with the answer.
+      //
+      // Infos used to be orchestrated here instead, as a chain of separate calls: that dropped
+      // `details` and `is_private` unannounced, left a duplicate node behind when the final delete
+      // failed, and — because an info's parent link is polymorphic — could write a `parent_type`
+      // naming a table its `parent_id` did not point into.
+      const sourceKind = asRetypeKind(fromKind);
+      const targetKind = asRetypeKind(toKind);
+      if (sourceKind !== null && targetKind !== null) {
+        const retyped = await backendRetype(sourceKind, dbId, targetKind, options?.strandedChildren);
+        await load(false);
+        return entityNodeId(retyped.kind, retyped.id);
       }
 
       return null;
     },
-    [silentLoad, tree],
+    [load, tree],
   );
 
   const reorderNode = useCallback(
@@ -1085,9 +883,9 @@ export function useMindmapData(): MindmapData {
         setPos(nodeDbId, node.kind, neighborPos),
         setPos(neighborDbId, neighbor.kind, nodePos),
       ]);
-      await silentLoad();
+      await load(false);
     },
-    [silentLoad, tree],
+    [load, tree],
   );
 
   const moveNode = useCallback(
@@ -1110,9 +908,9 @@ export function useMindmapData(): MindmapData {
           updateDomain(dbId, { parent_id: dbParentId, position }),
         );
       }
-      await silentLoad();
+      await load(false);
     },
-    [silentLoad],
+    [load],
   );
 
   const removeNode = useCallback(
@@ -1127,32 +925,40 @@ export function useMindmapData(): MindmapData {
         else if (kind === "flow_task") await deleteFlowItem("flow_task", dbId);
         else if (kind !== "aspect") await deleteDomain(dbId);
       }
-      await silentLoad();
+      await load(false);
     },
-    [silentLoad],
+    [load],
   );
 
   const createFlowNode = useCallback(
     async (request: CreateFlowRequest): Promise<Flow> => {
       const flow = await createFlow(request);
-      await silentLoad();
+      await load(false);
       return flow;
     },
-    [silentLoad],
+    [load],
   );
 
   const updateFlowNode = useCallback(
     async (id: number, request: UpdateFlowRequest): Promise<void> => {
       await updateFlow(id, request);
-      await silentLoad();
+      await load(false);
     },
-    [silentLoad],
+    [load],
   );
+
+  // Refreshes the tree in place, WITHOUT the spinner — every caller is a post-mutation refresh
+  // (status toggles, edits, deletes, conversions). `MindmapView` early-returns a full-screen
+  // "Loading…" whenever `isLoading` is true, which unmounts the canvas and takes pan, zoom and
+  // focus with it, so raising the spinner here makes every mutation flash the whole view.
+  // Only the initial mount passes `true`.
+  const reload = useCallback(() => load(false), [load]);
 
   return {
     tree,
     isLoading,
     error,
+    loadCondition,
     createNode,
     createChild,
     renameNode,
@@ -1162,6 +968,6 @@ export function useMindmapData(): MindmapData {
     removeNode,
     createFlow: createFlowNode,
     updateFlow: updateFlowNode,
-    reload: silentLoad,
+    reload: reload,
   };
 }

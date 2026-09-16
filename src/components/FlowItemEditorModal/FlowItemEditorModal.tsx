@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { FlowCyclePair, FlowItemDep } from "@/utils/tree-layout";
 import type { FlowItemType } from "@/api/flows";
+import { getErrorMessage } from "@/api/errors";
 import EditorModal from "@/components/EditorModal/EditorModal";
 import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
 import FlowCycleField from "./FlowCycleField";
@@ -73,7 +74,7 @@ export default function FlowItemEditorModal({ node, availableDeps, onSave, onClo
       const removedDeps = initialDeps.filter((d) => !currentDeps.some((cd) => depEquals(cd, d)));
       await onSave({ title: title.trim(), cycles, addedDeps, removedDeps, isPrivate });
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : String(err));
+      setSaveError(getErrorMessage(err));
       setIsSaving(false);
     }
   }
