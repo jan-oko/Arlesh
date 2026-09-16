@@ -195,19 +195,11 @@ export const GOAL_CHILDREN_ACTION = {
   REPARENT: "reparent",
 } as const;
 
-export const INFO_CHILDREN_ACTION = {
-  REMOVE: "remove",
-  REPARENT: "reparent",
-} as const;
-
 export type GoalChildrenAction = "remove" | "reparent";
-export type InfoChildrenAction = "remove" | "reparent";
 
 export interface RetypeOptions {
   /** Flow-goal children of a flow item being converted to a flow-task. */
   goalChildrenAction?: GoalChildrenAction;
-  /** Non-info children of a node being converted to an info. */
-  infoChildrenAction?: InfoChildrenAction;
   /**
    * Children the new kind cannot hold, for a retype `retype_node` owns — and, by being present
    * at all, the caller's acknowledgement of everything else the backend said would be lost.
@@ -834,112 +826,23 @@ export function useMindmapData(): MindmapData {
         return toKind === "flow_goal" ? `flowgoal-${newId}` : `flowtask-${newId}`;
       }
 
-      const domainTableKinds = new Set<NodeKind>(["domain", "project", "tag"]);
-
-      // Everything between the goals, tasks and domains tables is one atomic backend call.
-      // `retype_node` creates the new row with every field that carries, moves the tags and the
-      // block reasons, repoints the dependency edges aimed at the node, adopts the children the
+      // Every retype between the goals, tasks, domains and infos tables is one atomic backend
+      // call. `retype_node` creates the new row with every field that carries, moves the tags and
+      // the block reasons, repoints the dependency edges aimed at the node, adopts the children the
       // new kind can hold and settles the ones it cannot — or does none of it. It also refuses
       // outright, with a payload naming what is at stake, rather than dropping anything quietly;
       // `use-node-type-manager` is what puts that to the user and retries with the answer.
+      //
+      // Infos used to be orchestrated here instead, as a chain of separate calls: that dropped
+      // `details` and `is_private` unannounced, left a duplicate node behind when the final delete
+      // failed, and — because an info's parent link is polymorphic — could write a `parent_type`
+      // naming a table its `parent_id` did not point into.
       const sourceKind = asRetypeKind(fromKind);
       const targetKind = asRetypeKind(toKind);
       if (sourceKind !== null && targetKind !== null) {
         const retyped = await backendRetype(sourceKind, dbId, targetKind, options?.strandedChildren);
         await load(false);
         return entityNodeId(retyped.kind, retyped.id);
-      }
-
-      // Info nodes still convert here: `retype_node` covers the goals, tasks and domains tables
-      // only, and an info's parent link is polymorphic across all of them plus itself.
-      const node = findNodeInTree(tree, id);
-      const parent = findParentInTree(tree, id);
-      const title = node?.title ?? "";
-      const children = node?.children ?? [];
-      const oldPosition = node?.position;
-      const parentDbId = parent !== undefined && parent.id !== "root"
-        ? dbIdFromNodeId(parent.id)
-        : null;
-
-      // To info: create info entry, re-parent info children, handle non-info children.
-      if (toKind === "info") {
-        if (parentDbId === null) return null;
-        const parentInfoType = kindToInfoParentType(parent!.kind);
-        const newInfo = await createInfo({
-          body: title, parent_type: parentInfoType, parent_id: parentDbId,
-          position: oldPosition ?? 0,
-        });
-        for (const child of children) {
-          const childDbId = dbIdFromNodeId(child.id);
-          if (child.kind === "info") {
-            await updateInfo(childDbId, { parent_type: "info", parent_id: newInfo.id });
-          } else {
-            if (options?.infoChildrenAction === "reparent") {
-              if (child.kind === "goal") {
-                await updateGoal(childDbId, { parent_type: kindToParentType(parent!.kind), parent_id: parentDbId });
-              } else if (child.kind === "task") {
-                await updateTask(childDbId, { parent_type: kindToParentType(parent!.kind), parent_id: parentDbId });
-              } else {
-                await updateDomain(childDbId, { parent_id: parentDbId });
-              }
-            } else {
-              if (child.kind === "goal") await deleteGoal(childDbId);
-              else if (child.kind === "task") await deleteTask(childDbId);
-              else if (child.kind !== "aspect") await deleteDomain(childDbId);
-            }
-          }
-        }
-        if (fromKind === "goal") await deleteGoal(dbId);
-        else if (fromKind === "task") await deleteTask(dbId);
-        else if (fromKind !== "aspect") await deleteDomain(dbId);
-        await load(false);
-        return `info-${newInfo.id}`;
-      }
-
-      // From info: create new entity, re-parent info children, delete info entry.
-      if (fromKind === "info") {
-        if (parentDbId === null) return null;
-        if (toKind === "goal" || toKind === "task") {
-          const parentType = kindToParentType(parent!.kind);
-          if (toKind === "goal") {
-            const newGoal = await createGoal({ title, parent_type: parentType, parent_id: parentDbId });
-            if (oldPosition !== undefined) await updateGoal(newGoal.id, { position: oldPosition });
-            for (const child of children) {
-              if (child.kind === "info") {
-                await updateInfo(dbIdFromNodeId(child.id), { parent_type: "goal", parent_id: newGoal.id });
-              }
-            }
-            await deleteInfo(dbId);
-            await load(false);
-            return `goal-${newGoal.id}`;
-          } else {
-            const newTask = await createTask({ title, parent_type: parentType, parent_id: parentDbId });
-            if (oldPosition !== undefined) await updateTask(newTask.id, { position: oldPosition });
-            for (const child of children) {
-              if (child.kind === "info") {
-                await updateInfo(dbIdFromNodeId(child.id), { parent_type: "task", parent_id: newTask.id });
-              }
-            }
-            await deleteInfo(dbId);
-            await load(false);
-            return `task-${newTask.id}`;
-          }
-        }
-        if (domainTableKinds.has(toKind)) {
-          const newDomain = await createDomain({
-            title, subtype: toKind, parent_id: parentDbId,
-            description: null, status: null, knowledge_base_directory: null,
-          });
-          if (oldPosition !== undefined) await updateDomain(newDomain.id, { position: oldPosition });
-          for (const child of children) {
-            if (child.kind === "info") {
-              await updateInfo(dbIdFromNodeId(child.id), { parent_type: toKind, parent_id: newDomain.id });
-            }
-          }
-          await deleteInfo(dbId);
-          await load(false);
-          return `domain-${newDomain.id}`;
-        }
       }
 
       return null;

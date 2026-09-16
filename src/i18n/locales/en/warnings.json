@@ -12,10 +12,6 @@
   "deleteConfirm": "Delete",
   "deleteFailed": "Delete failed: {{message}}",
   "deleteMultipleHeading": "Delete {{count}} nodes?",
-  "nonInfoChildrenUnderInfo_one": "{{count}} child cannot live under an info node — choose what happens to it",
-  "nonInfoChildrenUnderInfo_other": "{{count}} children cannot live under an info node — choose what happens to them",
-  "reparentNonInfoChildren": "Re-parent children",
-  "deleteNonInfoChildren": "Delete children",
   "scopeClampHeading_one": "Narrowing this scope moves {{count}} nested item out of range — choose what happens",
   "scopeClampHeading_other": "Narrowing this scope moves {{count}} nested items out of range — choose what happens",
   "scopeClampItem": "{{type}} #{{id}} would fall outside the new scope",
@@ -42,5 +38,6 @@
   "lostFieldFallback": "{{field}} will be lost ({{value}})",
   "retypeFailed": "Convert failed: {{message}}",
   "habitLoadFailed": "Habit iterations for \"{{title}}\" could not be loaded",
-  "habitLoadFailedMore": "Habit iterations for \"{{title}}\" and {{count}} other flows could not be loaded"
+  "habitLoadFailedMore": "Habit iterations for \"{{title}}\" and {{count}} other flows could not be loaded",
+  "parentClimb": "It cannot stay under “{{from}}”, so it will move up to “{{to}}”"
 }

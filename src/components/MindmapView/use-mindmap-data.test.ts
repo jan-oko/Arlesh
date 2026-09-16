@@ -813,52 +813,57 @@ describe("useMindmapData — mutations", () => {
       expect(newId).toBeNull();
     });
 
-    it("domain→info: creates info, deletes domain, returns info-id", async () => {
+    // Infos go through `retype_node` too. These three used to assert the hand-rolled
+    // create/reparent/delete sequence, which encoded three defects as expected behaviour: the
+    // `details` and `is_private` drop, the duplicate node left behind when the final delete
+    // failed, and the mislabelled `parent_type` written for a node nested under an info.
+    it("domain→info: one retype_node call, and no create/delete of its own", async () => {
       const PROJECT = mkDomain({ id: 2, subtype: "project", parent_id: 1, title: "Ops" });
-      const newInfo = mkInfo({ id: 10, body: "Ops", parent_type: "aspect", parent_id: 1, position: 0 });
-      setupInvoke({ list_domains: [ASPECT, PROJECT], create_info: newInfo, delete_domain: undefined });
+      setupInvoke({ list_domains: [ASPECT, PROJECT], retype_node: { kind: "info", id: 10 } });
       const { result } = await loadedHook();
 
       let newId: string | null | undefined;
       await act(async () => { newId = await result.current.retypeNode("domain-2", "project", "info"); });
 
-      // Parent of domain-2 is ASPECT (kind="aspect"), so parent_type is "aspect"
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith("create_info", {
-        request: expect.objectContaining({ body: "Ops", parent_type: "aspect", parent_id: 1 }),
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("retype_node", {
+        nodeType: "project", nodeId: 2, targetType: "info", strandedChildren: null,
       });
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith("delete_domain", { id: 2 });
+      expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("create_info", expect.anything());
+      expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("delete_domain", expect.anything());
       expect(newId).toBe("info-10");
     });
 
-    it("info→goal: creates goal, deletes info, returns goal-id", async () => {
+    it("info→goal: one call, and the new goal's node id comes back", async () => {
       const INFO = mkInfo({ id: 5, body: "My note", parent_type: "task", parent_id: 1 });
-      const newGoal = mkGoal({ id: 99, title: "My note", parent_type: "goal", parent_id: 1 });
-      setupInvoke({ list_infos: [INFO], create_goal: newGoal, delete_info: undefined, update_goal: newGoal });
+      setupInvoke({ list_infos: [INFO], retype_node: { kind: "goal", id: 99 } });
       const { result } = await loadedHook();
 
       let newId: string | null | undefined;
       await act(async () => { newId = await result.current.retypeNode("info-5", "info", "goal"); });
 
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith("create_goal", {
-        request: expect.objectContaining({ title: "My note" }),
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("retype_node", {
+        nodeType: "info", nodeId: 5, targetType: "goal", strandedChildren: null,
       });
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith("delete_info", { id: 5 });
+      expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("create_goal", expect.anything());
+      expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("delete_info", expect.anything());
       expect(newId).toBe("goal-99");
     });
 
-    it("info→domain: creates domain, deletes info, returns domain-id", async () => {
+    it("info→domain: one call, and no separate position update", async () => {
       const INFO = mkInfo({ id: 5, body: "My note", parent_type: "task", parent_id: 1 });
-      const newDomain = mkDomain({ id: 99, subtype: "domain", parent_id: 1, title: "My note" });
-      setupInvoke({ list_infos: [INFO], create_domain: newDomain, delete_info: undefined, update_domain: newDomain });
+      setupInvoke({ list_infos: [INFO], retype_node: { kind: "domain", id: 99 } });
       const { result } = await loadedHook();
 
       let newId: string | null | undefined;
       await act(async () => { newId = await result.current.retypeNode("info-5", "info", "domain"); });
 
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith("create_domain", {
-        request: expect.objectContaining({ title: "My note", subtype: "domain" }),
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("retype_node", {
+        nodeType: "info", nodeId: 5, targetType: "domain", strandedChildren: null,
       });
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith("delete_info", { id: 5 });
+      expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("create_domain", expect.anything());
+      // The old path set `position` in a second call, so a crash between the two left the node
+      // at position 0. There is no second call now.
+      expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("update_domain", expect.anything());
       expect(newId).toBe("domain-99");
     });
 
