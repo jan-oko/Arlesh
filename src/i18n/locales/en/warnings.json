@@ -27,6 +27,7 @@
     "delegate_to": "The delegate will be cleared",
     "description": "The description will be deleted: \"{{value}}\"",
     "knowledge_base_directory": "The Obsidian directory link ({{value}}) will be deleted",
+    "beads_id": "The issue link ({{value}}) will be cleared",
     "tags_one": "{{count}} tag will be detached",
     "tags_other": "{{count}} tags will be detached",
     "block_reasons": "The block reasons will be deleted: \"{{value}}\"",

@@ -872,3 +872,133 @@ async fn a_domain_table_retype_that_deletes_stranded_children_rolls_back_atomica
     assert_eq!(row.subtype, "domain", "the subtype update was rolled back");
     assert_eq!(count_where(&pool, "domains", "id", leaf_tag.id).await, 1, "the deleted leaf is back");
 }
+
+/// Reads a `beads_id` straight off the pool.
+async fn stored_beads_id(pool: &sqlx::SqlitePool, table: &str, id: i64) -> Option<String> {
+    sqlx::query_scalar(&format!("SELECT beads_id FROM {table} WHERE id = ?"))
+        .bind(id)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn retyping_a_tracked_task_to_a_goal_keeps_its_issue_link() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    let task = create_task(
+        &mut db,
+        CreateTaskRequest {
+            title: "Draft the spec".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    // Only the MCP server sets this in production; the operator setter is the same code path.
+    db.tasks()
+        .set_beads_id(TaskId(task.id), Some("Arlesh-3gk".into()))
+        .await
+        .unwrap();
+    db.commit().await.unwrap();
+
+    let app = helpers::command_host(&pool);
+    let retyped = retype_node(app.state(), "task".into(), task.id, "goal".into(), None)
+        .await
+        .unwrap();
+
+    // The retype rebuilds the node as a new row, so the link has to be written onto it
+    // explicitly — the create requests have no field for it, by design.
+    assert_eq!(
+        stored_beads_id(&pool, "goals", retyped.id).await,
+        Some("Arlesh-3gk".into()),
+        "the new goal should carry the issue link"
+    );
+    assert_eq!(
+        count_where(&pool, "tasks", "id", task.id).await,
+        0,
+        "the old task row should be gone"
+    );
+}
+
+#[tokio::test]
+async fn retyping_a_tracked_task_to_a_project_keeps_its_issue_link() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    let task = create_task(
+        &mut db,
+        CreateTaskRequest {
+            title: "Becomes a project".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    db.tasks()
+        .set_beads_id(TaskId(task.id), Some("Arlesh-e8d".into()))
+        .await
+        .unwrap();
+    db.commit().await.unwrap();
+
+    // Crossing tables — `tasks` to `domains` — is the case most likely to drop it.
+    let app = helpers::command_host(&pool);
+    let retyped = retype_node(app.state(), "task".into(), task.id, "project".into(), None)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        stored_beads_id(&pool, "domains", retyped.id).await,
+        Some("Arlesh-e8d".into())
+    );
+}
+
+#[tokio::test]
+async fn retyping_a_tracked_task_to_a_note_reports_the_link_as_lost_and_clears_it() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    let task = create_task(
+        &mut db,
+        CreateTaskRequest {
+            title: "Becomes a note".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    db.tasks()
+        .set_beads_id(TaskId(task.id), Some("Arlesh-32r".into()))
+        .await
+        .unwrap();
+    db.commit().await.unwrap();
+
+    // `infos` has no column for the link, so this is a real loss and the command must ask first.
+    let app = helpers::command_host(&pool);
+    let refused = retype_node(app.state(), "task".into(), task.id, "info".into(), None).await;
+    assert!(
+        refused.is_err(),
+        "losing an issue link must require acknowledgement"
+    );
+
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    let plan = plan_node_retype(&mut db, RetypeKind::Task, task.id, RetypeKind::Info)
+        .await
+        .unwrap();
+    drop(db);
+    let lost: Vec<&str> = plan.plan.lost_fields.iter().map(|lost| lost.field).collect();
+    assert!(
+        lost.contains(&"beads_id"),
+        "the prompt should name the issue link among what it drops, got {lost:?}"
+    );
+}

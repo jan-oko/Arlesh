@@ -224,6 +224,9 @@ pub struct SourceNode {
     pub dependents: usize,
     /// How many dependency edges this node owns — the things it waits on (tasks only).
     pub depends_on: usize,
+    /// The `bd` issue tracking this node, when one is linked. Only the MCP server ever sets it;
+    /// `infos` has no column for it, so it is always `None` for a note.
+    pub beads_id: Option<String>,
 }
 
 /// The field values that survive onto the new node, already translated into the target's
@@ -259,6 +262,13 @@ pub struct Carried {
     pub tag_ids: Vec<i64>,
     /// Explicit block reasons, when the target is a goal or a task.
     pub block_reasons: Vec<String>,
+    /// The `bd` issue link, for every target but a note.
+    ///
+    /// Tasks, goals and domains all have the column, so a Tag that carries a dormant link gets it
+    /// back on being made a Project again — the same reasoning
+    /// [`knowledge_base_directory`](Self::knowledge_base_directory) gets when a Project becomes a
+    /// Domain. Only `infos` has nowhere to put it.
+    pub beads_id: Option<String>,
 }
 
 /// A field of the source node the target kind has no counterpart for.
@@ -462,6 +472,16 @@ fn carry_fields(
         lost_fields,
     );
 
+    // Every kind but a note has the column — `tasks`, `goals` and `domains` all carry it — so a
+    // note is the only target that genuinely loses the link.
+    let beads_id = keep_if(
+        target != RetypeKind::Info,
+        source.beads_id.clone(),
+        "beads_id",
+        |value: &String| value.clone(),
+        lost_fields,
+    );
+
     Carried {
         title: source.title.clone(),
         position: source.position,
@@ -475,6 +495,7 @@ fn carry_fields(
         delegate_to,
         tag_ids,
         block_reasons,
+        beads_id,
     }
 }
 
@@ -493,6 +514,7 @@ fn everything(source: &SourceNode) -> Carried {
         delegate_to: source.delegate_to,
         tag_ids: source.tag_ids.clone(),
         block_reasons: source.block_reasons.clone(),
+        beads_id: source.beads_id.clone(),
     }
 }
 
@@ -920,6 +942,7 @@ pub async fn apply_retype(
     }
 
     let new_id = create_node(db, plan, parent).await?;
+    carry_issue_link(db, plan, new_id).await?;
     carry_attachments(db, source, plan, new_id).await?;
     move_references(db, source, target, new_id).await?;
     adopt_children(db, plan, new_id).await?;
@@ -930,6 +953,43 @@ pub async fn apply_retype(
         kind: target,
         id: new_id,
     })
+}
+
+/// Writes the carried `bd` issue link onto the new row.
+///
+/// Deliberately not part of [`create_node`]: the create requests have no `beads_id` field, and
+/// that absence is what stops a Tauri command ever writing one. The link goes on through the same
+/// dedicated setter the MCP server uses, inside this retype's transaction, so the rule that only
+/// MCP originates a link is not weakened by a node changing type.
+///
+/// A note is a no-op — `infos` has no column, and [`carry_fields`] has already reported the loss.
+async fn carry_issue_link(
+    db: &mut Db<Transactional>,
+    plan: &TransferPlan,
+    new_id: i64,
+) -> Result<(), AppError> {
+    let Some(beads_id) = plan.carried.beads_id.clone() else {
+        return Ok(());
+    };
+    match plan.target {
+        RetypeKind::Goal => {
+            db.goals()
+                .set_beads_id(GoalId(new_id), Some(beads_id))
+                .await?
+        }
+        RetypeKind::Task => {
+            db.tasks()
+                .set_beads_id(TaskId(new_id), Some(beads_id))
+                .await?
+        }
+        RetypeKind::Domain | RetypeKind::Project | RetypeKind::Tag => {
+            db.domains()
+                .set_beads_id(DomainId(new_id), Some(beads_id))
+                .await?
+        }
+        RetypeKind::Info => {}
+    }
+    Ok(())
 }
 
 /// Writes the new row, with every field the plan says carries, and returns its id.
@@ -1279,6 +1339,7 @@ async fn read_source<M: SessionMode>(
                     block_reasons,
                     dependents: dependents.max(0) as usize,
                     depends_on: 0,
+                    beads_id: goal.beads_id,
                 },
                 parent,
             ))
@@ -1310,6 +1371,7 @@ async fn read_source<M: SessionMode>(
                     block_reasons,
                     dependents: dependents.max(0) as usize,
                     depends_on: depends_on.max(0) as usize,
+                    beads_id: task.beads_id,
                 },
                 parent,
             ))
@@ -1338,6 +1400,8 @@ async fn read_source<M: SessionMode>(
                     block_reasons: vec![],
                     dependents: 0,
                     depends_on: 0,
+                    // `infos` has no beads_id column, so a note never carries a link out.
+                    beads_id: None,
                 },
                 parent,
             ))
@@ -1366,6 +1430,7 @@ async fn read_source<M: SessionMode>(
                     block_reasons: vec![],
                     dependents: 0,
                     depends_on: 0,
+                    beads_id: domain.beads_id,
                 },
                 Parent {
                     id: domain.parent_id,
@@ -1519,6 +1584,7 @@ mod tests {
             block_reasons: vec![],
             dependents: 0,
             depends_on: 0,
+            beads_id: None,
         }
     }
 
@@ -2140,4 +2206,87 @@ mod tests {
             assert_eq!(category_of(domains_table_kind), ParentCategory::DomainsTable);
         }
     }
+
+    /// A task carrying a `bd` issue link.
+    fn linked_task(id: i64) -> SourceNode {
+        SourceNode {
+            beads_id: Some("Arlesh-3gk".into()),
+            ..task(id)
+        }
+    }
+
+    #[test]
+    fn an_issue_link_carries_to_every_kind_with_a_column_for_it() {
+        // tasks, goals and domains all have the column, so a retype between them keeps the link.
+        // Domain and Tag do not display it, but the value survives and reappears if the node is
+        // made a Project again — the same reasoning knowledge_base_directory already gets.
+        for target in [
+            RetypeKind::Goal,
+            RetypeKind::Project,
+            RetypeKind::Domain,
+            RetypeKind::Tag,
+        ] {
+            let plan = plan_retype(&linked_task(1), &[], target);
+            assert_eq!(
+                plan.carried.beads_id.as_deref(),
+                Some("Arlesh-3gk"),
+                "{target:?} should carry the issue link"
+            );
+            assert!(
+                !lost_field_names(&plan).contains(&"beads_id"),
+                "{target:?} should not report the issue link as lost"
+            );
+        }
+    }
+
+    #[test]
+    fn an_issue_link_is_lost_when_the_node_becomes_a_note() {
+        // `infos` has no beads_id column, so this one is a real loss and has to be confirmed.
+        let plan = plan_retype(&linked_task(1), &[], RetypeKind::Info);
+
+        assert_eq!(plan.carried.beads_id, None);
+        assert!(lost_field_names(&plan).contains(&"beads_id"));
+        assert!(
+            plan.loses_anything(),
+            "losing an issue link must make the retype ask first"
+        );
+    }
+
+    #[test]
+    fn the_lost_issue_link_names_the_id_that_would_go() {
+        // The prompt says what is at stake, not merely which field.
+        let plan = plan_retype(&linked_task(1), &[], RetypeKind::Info);
+        let lost = plan
+            .lost_fields
+            .iter()
+            .find(|lost| lost.field == "beads_id")
+            .expect("beads_id should be reported lost");
+        assert_eq!(lost.value, "Arlesh-3gk");
+    }
+
+    #[test]
+    fn an_unlinked_node_never_reports_a_lost_issue_link() {
+        let plan = plan_retype(&task(1), &[], RetypeKind::Info);
+        assert_eq!(plan.carried.beads_id, None);
+        assert!(!lost_field_names(&plan).contains(&"beads_id"));
+    }
+
+    #[test]
+    fn an_issue_link_survives_a_retype_within_the_domains_table() {
+        // A domain-table retype is a subtype update on one row: nothing is deleted, so the link
+        // cannot be lost regardless of which subtype it lands on.
+        let linked_project = SourceNode {
+            beads_id: Some("Arlesh-e8d".into()),
+            ..project(1)
+        };
+        for target in [RetypeKind::Domain, RetypeKind::Tag, RetypeKind::Project] {
+            let plan = plan_retype(&linked_project, &[], target);
+            assert_eq!(
+                plan.carried.beads_id.as_deref(),
+                Some("Arlesh-e8d"),
+                "{target:?} within the domains table keeps the link"
+            );
+        }
+    }
+
 }
