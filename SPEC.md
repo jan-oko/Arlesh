@@ -344,7 +344,8 @@ On top of the shared filters, the List View adds its own filter dimensions — a
 
 Arlesh serves a [Model Context Protocol](https://modelcontextprotocol.io) endpoint while the app is
 running, so an agent — Claude Code, Claude Desktop — can read the board without being told its
-contents by hand. It is **read-only**: nothing an agent calls creates or changes a Task, Goal, Flow,
+contents by hand. It is read-only with one deliberate exception: an agent can set an item's `bd`
+issue link, and nothing else. It cannot create, rename, complete or delete a Task, Goal, Flow,
 Domain or knowledge-base entry.
 
 The endpoint is hosted by the app itself, not a separate process, so there is only ever one writer
@@ -360,7 +361,7 @@ endpoint rather than refusing to start.
 
 ### Tools
 
-Five tools rather than one per backend command, because an MCP client pays context for every tool
+Six tools rather than one per backend command, because an MCP client pays context for every tool
 definition it loads.
 
 | Tool | Operations |
@@ -370,8 +371,9 @@ definition it loads.
 | `arlesh_kb` | `list_people`, `get_person(id)`, `list_events`, `list_threads` |
 | `arlesh_tasks` | `get(id)`, `containment_conflicts(node, time_scope)` |
 | `arlesh_flows` | `get(id)`, `recurrence(flow_id)`, `completion_count(flow_id)`, `origins(nodes)` |
+| `arlesh_beads` | `set(node_type, node_id, beads_id)` — the one write; see below |
 
-`arlesh_snapshot.load` is the entry point and covers the common case in one call. The other four
+`arlesh_snapshot.load` is the entry point and covers the common case in one call. The other reads
 exist for what it does not carry: the knowledge base, scope resolution, a task's dependency-derived
 block reasons, and a Habit's stored recurrence configuration as opposed to its derived iterations.
 
@@ -379,7 +381,16 @@ Tasks and Goals carry `time_scope` and `plan` as boundary **scope ids**, not dat
 snapshot means resolving those ids — `arlesh_scopes.resolve_many` does a batch in one call against
 a single reference instant.
 
-### The one exception to read-only
+### Issue links
+
+A Task, Goal or Project can carry the id of the `bd` issue tracking it, and `arlesh_beads.set` is
+the **only** way that field is ever written: no Tauri command touches the column and the editor
+modals render it as text with no control. So an issue id shown in Arlesh always arrived over MCP.
+Passing `null` clears the link. Setting one on an item that does not exist is an error rather than
+a silent no-op, and only the `project` subtype of Domain accepts a link — an Aspect, Domain or Tag
+is refused.
+
+### Scope materialisation
 
 `arlesh_snapshot` is annotated as *not* read-only, and honestly so. Deriving a Habit's iterations
 materialises the canonical scope rows its windows land on — the same rows the Mindmap materialises
@@ -388,7 +399,8 @@ note, and changes nothing the user entered. Running it without committing would 
 read, but the iterations it returns reference the scope ids it mints, so the payload would name ids
 that no longer exist.
 
-Every other tool is annotated `read_only_hint = true` and writes nothing at all.
+Every tool other than `arlesh_snapshot` and `arlesh_beads` is annotated `read_only_hint = true`
+and writes nothing at all.
 
 ### What is deliberately absent
 

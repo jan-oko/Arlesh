@@ -183,6 +183,14 @@ registration if it does not — so each enum carries `#[schemars(extend("type" =
 added keyword is true of every variant; it is a gap in the generated schema, not a reshaping of the
 contract.
 
+**`arlesh_beads` was added after this design was approved**, to serve Arlesh-5fs: a Task, Goal or
+Project carries the id of the `bd` issue tracking it, settable *only* over MCP. That needs a write,
+which this iteration otherwise does not have. It is quarantined in its own tool rather than folded
+into `arlesh_tasks` so the five read tools keep an honest `read_only_hint = true` and the one write
+sits behind a name that says what it does. The alternative — flagging `arlesh_tasks` writable for a
+single operation — would have under-sold four pure reads. Writes arriving later can join it or take
+their own tool; the shape does not commit us either way.
+
 **`resolve_many` is new.** It is the only operation without a one-to-one backend counterpart: a
 loop over the scopes operator's `resolve`, added because `Task.time_scope` carries `start_id` /
 `end_id` rather than dates. Without it an agent holding a snapshot must make one round trip per

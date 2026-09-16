@@ -21,8 +21,9 @@ While the app is running it serves a read-only [MCP](https://modelcontextprotoco
 claude mcp add --transport http arlesh http://127.0.0.1:4747/mcp
 ```
 
-Five tools, of which `arlesh_snapshot` returns the whole planning graph in one call. Nothing an
-agent calls creates or changes a task, goal, flow or note. The port is overridable with
+Six tools, of which `arlesh_snapshot` returns the whole planning graph in one call. An agent
+cannot create, rename, complete or delete anything; the single thing it can write is an item's
+`bd` issue link, which is also the only way that link is ever set. The port is overridable with
 `ARLESH_MCP_PORT`; the endpoint binds loopback only and refuses requests from a browser. See the
 **MCP Server** section of [`SPEC.md`](SPEC.md).
 
