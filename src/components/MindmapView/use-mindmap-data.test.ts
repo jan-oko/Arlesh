@@ -368,7 +368,7 @@ describe("useMindmapData", () => {
     expect(vi.mocked(invoke).mock.calls.map((call) => call[0])).toEqual(["load_mindmap"]);
   });
 
-  it("toasts the flow whose habit iterations failed instead of silently emptying it", async () => {
+  it("surfaces the flow whose habit iterations failed as a load condition instead of silently emptying it", async () => {
     const flow = mkFlow({ id: 7, title: "Standup" });
     vi.mocked(invoke).mockImplementation((cmd: string) => {
       if (cmd === "load_mindmap") {
@@ -393,14 +393,14 @@ describe("useMindmapData", () => {
 
     // The load still succeeds — one bad flow does not blank the mindmap.
     expect(result.current.error).toBeNull();
-    const toast = useMindmapStore.getState().pendingToast;
-    // i18next is not initialised under test, so `t` echoes the key; the assertion is that the
-    // singular key was chosen and anchored on the node the missing iterations would hang under.
-    expect(toast?.message).toBe("habitLoadFailed");
-    expect(toast?.nodeId).toBe("flow-7");
+    // This is a load condition (background, node-agnostic), not a `pendingToast` (anchored,
+    // user-caused) — a failed derivation means the tree is currently showing wrong data, which
+    // calls for a persistent banner rather than a toast anchored on a node the user never touched.
+    expect(useMindmapStore.getState().pendingToast).toBeNull();
+    expect(result.current.loadCondition.failedFlows).toEqual([{ id: 7, title: "Standup" }]);
   });
 
-  it("names one flow and counts the rest when several fail", async () => {
+  it("lists every failed flow, not just the first, when several fail", async () => {
     const flows = [mkFlow({ id: 7, title: "Standup" }), mkFlow({ id: 8, title: "Retro" })];
     vi.mocked(invoke).mockImplementation((cmd: string) => {
       if (cmd === "load_mindmap") {
@@ -421,10 +421,13 @@ describe("useMindmapData", () => {
     const { result } = renderHook(() => useMindmapData());
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    expect(useMindmapStore.getState().pendingToast?.message).toBe("habitLoadFailedMore");
+    expect(result.current.loadCondition.failedFlows).toEqual([
+      { id: 7, title: "Standup" },
+      { id: 8, title: "Retro" },
+    ]);
   });
 
-  it("raises no toast when every flow loads", async () => {
+  it("reports no load condition when every flow loads", async () => {
     vi.mocked(invoke).mockImplementation((cmd: string) => {
       if (cmd === "load_mindmap") {
         return Promise.resolve(mindmapEnvelope({ flows: [mkFlow({ id: 7, title: "Standup" })] }));
@@ -435,7 +438,29 @@ describe("useMindmapData", () => {
     const { result } = renderHook(() => useMindmapData());
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    expect(useMindmapStore.getState().pendingToast).toBeNull();
+    expect(result.current.loadCondition.failedFlows).toEqual([]);
+  });
+
+  it("clears a previously reported load condition once a subsequent load has no failures", async () => {
+    const flow = mkFlow({ id: 7, title: "Standup" });
+    let habits: MindmapLoad["habits"] = [
+      { flow_id: 7, flow_title: "Standup", result: { outcome: "failed", message: "nope" } },
+    ];
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === "load_mindmap") return Promise.resolve(mindmapEnvelope({ flows: [flow], habits }));
+      return Promise.resolve(null);
+    });
+
+    const { result } = renderHook(() => useMindmapData());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.loadCondition.failedFlows).toEqual([{ id: 7, title: "Standup" }]);
+
+    habits = [{ flow_id: 7, flow_title: "Standup", result: { outcome: "loaded", iterations: [], statuses: [] } }];
+    await act(async () => {
+      await result.current.reload();
+    });
+
+    expect(result.current.loadCondition.failedFlows).toEqual([]);
   });
 });
 

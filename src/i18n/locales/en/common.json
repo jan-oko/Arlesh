@@ -12,5 +12,6 @@
   "searchNodesPlaceholder": "Search…",
   "noResults": "No results",
   "loading": "Loading…",
-  "error": "Error: {{message}}"
+  "error": "Error: {{message}}",
+  "dismiss": "Dismiss"
 }
