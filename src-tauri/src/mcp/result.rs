@@ -33,6 +33,14 @@ pub(super) fn respond<T: Serialize>(
     }
 }
 
+/// A tool result for a value that cannot have failed — a payload already in hand.
+///
+/// [`respond`] needs an error type to name even when the `Err` arm is unreachable, and a phantom
+/// `Ok::<_, SomeUnrelatedError>(value)` at the call site reads as though that error were possible.
+pub(super) fn ok(value: impl Serialize) -> Result<CallToolResult, ErrorData> {
+    Ok(CallToolResult::structured(structured(value)?))
+}
+
 /// A tool result for a failure that happened before any operation could run — opening the session.
 pub(super) fn failed(error: impl Into<AppError>) -> Result<CallToolResult, ErrorData> {
     Ok(CallToolResult::structured_error(structured(

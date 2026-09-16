@@ -57,7 +57,7 @@ impl ArleshMcp {
                         Err(error) => return result::failed(error),
                     }
                 }
-                result::respond(Ok::<_, crate::scopes::error::ScopeError>(resolved))
+                result::ok(resolved)
             }
         }
     }

@@ -7,7 +7,6 @@ use rmcp::{
 };
 
 use super::{params::SnapshotOperation, result, ArleshMcp};
-use crate::error::AppError;
 
 #[tool_router(router = snapshot_router, vis = "pub(super)")]
 impl ArleshMcp {
@@ -47,6 +46,6 @@ impl ArleshMcp {
             return result::failed(error);
         }
 
-        result::respond(Ok::<_, AppError>(load))
+        result::ok(load)
     }
 }

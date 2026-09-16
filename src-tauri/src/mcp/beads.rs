@@ -67,7 +67,7 @@ impl ArleshMcp {
                     Err(error) => return result::failed(error),
                 };
                 match db.tasks().set_beads_id(TaskId(node_id), beads_id).await {
-                    Ok(()) => result::respond(Ok::<_, DomainError>(link)),
+                    Ok(()) => result::ok(link),
                     Err(error) => result::failed(error),
                 }
             }
@@ -77,7 +77,7 @@ impl ArleshMcp {
                     Err(error) => return result::failed(error),
                 };
                 match db.goals().set_beads_id(GoalId(node_id), beads_id).await {
-                    Ok(()) => result::respond(Ok::<_, DomainError>(link)),
+                    Ok(()) => result::ok(link),
                     Err(error) => result::failed(error),
                 }
             }
@@ -117,7 +117,7 @@ impl ArleshMcp {
                     return result::failed(error);
                 }
 
-                result::respond(Ok::<_, DomainError>(link))
+                result::ok(link)
             }
         }
     }
