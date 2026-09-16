@@ -366,20 +366,44 @@ definition it loads.
 
 | Tool | Operations |
 | --- | --- |
-| `arlesh_snapshot` | `load(now)` — the whole planning graph: domains, goals, tasks, notes, flows, flow items, cycles, dependencies, block reasons, materialised instance nodes, every item's derived lifecycle, and each flow's habit iterations and statuses |
+| `arlesh_snapshot` | `load(now, sections?, cursor?)` — the whole planning graph: domains, goals, tasks, notes, flows, flow items, cycles, dependencies, block reasons, materialised instance nodes, every item's derived lifecycle, and each flow's habit iterations and statuses. Paged; see below |
 | `arlesh_scopes` | `get(id)`, `resolve(id)`, `resolve_many(ids)` |
 | `arlesh_kb` | `list_people`, `get_person(id)`, `list_events`, `list_threads` |
 | `arlesh_tasks` | `get(id)`, `containment_conflicts(node, time_scope)` |
 | `arlesh_flows` | `get(id)`, `recurrence(flow_id)`, `completion_count(flow_id)`, `origins(nodes)` |
 | `arlesh_beads` | `set(node_type, node_id, beads_id)` — the one write; see below |
 
-`arlesh_snapshot.load` is the entry point and covers the common case in one call. The other reads
+`arlesh_snapshot.load` is the entry point and covers the common case. The other reads
 exist for what it does not carry: the knowledge base, scope resolution, a task's dependency-derived
 block reasons, and a Habit's stored recurrence configuration as opposed to its derived iterations.
 
 Tasks and Goals carry `time_scope` and `plan` as boundary **scope ids**, not dates, so reading a
 snapshot means resolving those ids — `arlesh_scopes.resolve_many` does a batch in one call against
 a single reference instant.
+
+### Paging the snapshot
+
+A real board does not fit in one MCP tool result. A board of 141 tasks, 162 domains and 15 habits
+serialises to about 122,000 characters, which a client refuses outright — so following the
+instruction to "start with the snapshot" returned a truncation error rather than data.
+
+`load` therefore returns as much as fits — about 40,000 characters of items — plus a `next_cursor`.
+Call again with that cursor until it comes back null. The example board takes four pages.
+
+The payload's shape is unchanged: the same section names, the same item shapes, and an item is
+never split across a boundary, so nothing has to be reassembled from two responses.
+
+Two rules follow from paging, and an agent that gets them wrong misreads the board:
+
+- **A section missing from a page has not been reached yet.** An empty section is sent as `[]`, so
+  `[]` always means "none" and absence always means "not yet".
+- **`sections` narrows the request** — `["tasks", "lifecycles"]` answers a scheduling question
+  without paying for every flow cycle on the board.
+
+Pages are derived independently rather than from a cached payload, so a board edited mid-walk can
+produce a cursor that no longer lands anywhere; the server says so and the walk restarts. For one
+local user a few seconds apart, that is rarer than the cost of holding server-side state would be
+worth.
 
 ### Issue links
 

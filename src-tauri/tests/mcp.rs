@@ -248,17 +248,31 @@ async fn snapshot_returns_what_the_mindmap_command_returns() {
     seed(&app).await;
 
     let result = mcp
-        .snapshot(Parameters(params::SnapshotOperation::Load { now: now() }))
+        .snapshot(Parameters(params::SnapshotOperation::Load { now: now(), sections: None, cursor: None }))
         .await
         .unwrap();
+
+    // Paging adds an envelope field and changes nothing else. Comparing the sections against the
+    // command keeps the property the whole adapter rests on — the agent sees what the app sees —
+    // while letting the cursor ride alongside.
+    let mut sections = payload(&result).clone();
+    let cursor = sections
+        .as_object_mut()
+        .expect("the payload is an object")
+        .remove("next_cursor")
+        .expect("a paged response always says whether more remains");
 
     let expected = arlesh_lib::commands::mindmap::load_mindmap(app.state(), now())
         .await
         .unwrap();
     assert_eq!(
-        payload(&result),
-        &serde_json::to_value(&expected).unwrap(),
-        "snapshot.load"
+        sections,
+        serde_json::to_value(&expected).unwrap(),
+        "snapshot.load section-for-section"
+    );
+    assert!(
+        cursor.is_null(),
+        "a seeded board fits in one page, so nothing should remain: {cursor}"
     );
 }
 
@@ -279,7 +293,7 @@ async fn snapshot_commits_rather_than_rolling_back() {
         .unwrap();
 
     let result = mcp
-        .snapshot(Parameters(params::SnapshotOperation::Load { now: now() }))
+        .snapshot(Parameters(params::SnapshotOperation::Load { now: now(), sections: None, cursor: None }))
         .await
         .unwrap();
     assert_ne!(result.is_error, Some(true));
@@ -756,7 +770,7 @@ async fn the_snapshot_carries_a_beads_id_once_it_is_set() {
     // The whole point of the field: an agent sets the link and then sees it in the same payload it
     // reads everything else from, without a per-item lookup.
     let snapshot = mcp
-        .snapshot(Parameters(params::SnapshotOperation::Load { now: now() }))
+        .snapshot(Parameters(params::SnapshotOperation::Load { now: now(), sections: None, cursor: None }))
         .await
         .unwrap();
 
@@ -883,5 +897,197 @@ async fn a_duration_carries_through_to_the_domain_window() {
         payload(&result),
         &serde_json::to_value(&expected).unwrap(),
         "containment_conflicts with a duration window"
+    );
+}
+
+/// Loads one page.
+async fn page_of(
+    mcp: &ArleshMcp,
+    sections: Option<Vec<arlesh_lib::mcp::paging::Section>>,
+    cursor: Option<String>,
+) -> serde_json::Value {
+    let result = mcp
+        .snapshot(Parameters(params::SnapshotOperation::Load {
+            now: now(),
+            sections,
+            cursor,
+        }))
+        .await
+        .unwrap();
+    payload(&result).clone()
+}
+
+/// Seeds enough tasks that the payload cannot fit in a single page.
+async fn seed_many_tasks(app: &tauri::App<tauri::test::MockRuntime>, count: usize) {
+    use arlesh_lib::commands::tasks as task_commands;
+    use arlesh_lib::tasks::model::CreateTaskRequest;
+
+    let goal_id = 1;
+    for n in 0..count {
+        task_commands::create_task(
+            app.state(),
+            CreateTaskRequest {
+                // Padded so the budget is reached without needing thousands of rows.
+                title: format!("Task {n} {}", "x".repeat(300)),
+                parent_type: "goal".into(),
+                parent_id: goal_id,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    }
+}
+
+#[tokio::test]
+async fn a_board_too_big_for_one_page_is_handed_over_across_several() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    seed(&app).await;
+    seed_many_tasks(&app, 200).await;
+
+    // This is the bug the whole change exists for: one call used to return the entire board, and
+    // on a real one that overran the client's tool-result limit.
+    let mut cursor = None;
+    let mut tasks_seen: Vec<i64> = Vec::new();
+    let mut pages = 0;
+
+    loop {
+        let page = page_of(&mcp, None, cursor.clone()).await;
+        pages += 1;
+        assert!(pages < 100, "paging did not terminate");
+
+        if let Some(tasks) = page.get("tasks").and_then(|t| t.as_array()) {
+            tasks_seen.extend(tasks.iter().filter_map(|t| t.get("id")?.as_i64()));
+        }
+
+        match page.get("next_cursor").and_then(|c| c.as_str()) {
+            Some(next) => cursor = Some(next.to_string()),
+            None => break,
+        }
+    }
+
+    assert!(pages > 1, "200 padded tasks should not fit in one page");
+
+    let expected = arlesh_lib::commands::mindmap::load_mindmap(app.state(), now())
+        .await
+        .unwrap();
+    let expected_ids: Vec<i64> = expected.tasks.iter().map(|task| task.id).collect();
+    assert_eq!(
+        tasks_seen, expected_ids,
+        "paging must yield every task exactly once, in order"
+    );
+}
+
+#[tokio::test]
+async fn each_page_stays_under_the_budget() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    seed(&app).await;
+    seed_many_tasks(&app, 200).await;
+
+    // The budget is the whole point — a page that overruns it fails for the same reason the
+    // unpaged response did.
+    let mut cursor = None;
+    loop {
+        let page = page_of(&mcp, None, cursor.clone()).await;
+        let size = page.to_string().len();
+        assert!(
+            size < 60_000,
+            "a page came to {size} characters, which defeats the purpose"
+        );
+        match page.get("next_cursor").and_then(|c| c.as_str()) {
+            Some(next) => cursor = Some(next.to_string()),
+            None => break,
+        }
+    }
+}
+
+#[tokio::test]
+async fn sections_fetches_only_what_was_asked_for() {
+    use arlesh_lib::mcp::paging::Section;
+
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    seed(&app).await;
+
+    let page = page_of(&mcp, Some(vec![Section::Tasks, Section::Lifecycles]), None).await;
+
+    let keys: Vec<&str> = page
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .filter(|key| *key != "next_cursor")
+        .collect();
+    assert_eq!(
+        keys,
+        vec!["lifecycles", "tasks"],
+        "asking for two sections should not pay for the other twelve"
+    );
+}
+
+#[tokio::test]
+async fn an_empty_section_is_returned_as_empty_rather_than_omitted() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    seed(&app).await;
+
+    // Omitted means "not reached yet" and `[]` means "none". An agent that could not tell them
+    // apart would report a board has no flows when it has simply not paged that far.
+    let page = page_of(&mcp, None, None).await;
+
+    assert_eq!(
+        page.get("block_reasons"),
+        Some(&serde_json::json!([])),
+        "a genuinely empty section belongs in the page"
+    );
+}
+
+#[tokio::test]
+async fn a_cursor_the_server_never_issued_is_refused() {
+    let pool = helpers::test_pool().await;
+    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+
+    for bad in ["not-a-cursor", "nosuchsection:0", "tasks:oops"] {
+        let result = mcp
+            .snapshot(Parameters(params::SnapshotOperation::Load {
+                now: now(),
+                sections: None,
+                cursor: Some(bad.into()),
+            }))
+            .await
+            .unwrap();
+
+        assert_eq!(
+            error_payload(&result).get("kind").and_then(|k| k.as_str()),
+            Some("invalid_request"),
+            "cursor {bad:?} should be refused, not guessed at"
+        );
+    }
+}
+
+#[tokio::test]
+async fn an_empty_sections_list_is_refused_rather_than_returning_nothing() {
+    let pool = helpers::test_pool().await;
+    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+
+    // Silently returning an empty page would read as "your board is empty".
+    let result = mcp
+        .snapshot(Parameters(params::SnapshotOperation::Load {
+            now: now(),
+            sections: Some(vec![]),
+            cursor: None,
+        }))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        error_payload(&result).get("kind").and_then(|k| k.as_str()),
+        Some("invalid_request"),
     );
 }

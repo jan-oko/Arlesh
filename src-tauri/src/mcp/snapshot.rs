@@ -5,17 +5,29 @@ use rmcp::{
     model::{CallToolResult, ErrorData},
     tool, tool_router,
 };
+use serde_json::{Map, Value};
 
-use super::{params::SnapshotOperation, result, ArleshMcp};
+use super::{
+    paging::{self, Cursor, Section, SectionItems, PAGE_BUDGET, SECTIONS},
+    params::SnapshotOperation,
+    result, ArleshMcp,
+};
+use crate::mindmap::model::MindmapLoad;
 
 #[tool_router(router = snapshot_router, vis = "pub(super)")]
 impl ArleshMcp {
-    /// Arlesh's whole planning graph in one call: domains, goals, tasks, infos, flows, flow items,
-    /// cycles, dependencies, block reasons, materialised instance nodes, each item's derived
-    /// lifecycle, and each flow's habit iterations and statuses.
+    /// Arlesh's planning graph: domains, goals, tasks, infos, flows, flow items, cycles,
+    /// dependencies, block reasons, materialised instance nodes, each item's derived lifecycle,
+    /// and each flow's habit iterations and statuses.
     ///
     /// Start here. Tasks and goals carry `time_scope` and `plan` as boundary scope IDs rather than
     /// dates — resolve them with `arlesh_scopes.resolve_many`.
+    ///
+    /// **Paged.** A board of any size outgrows one tool result, so a response carries as much as
+    /// fits and a `next_cursor`. Pass that cursor back for the next page, and keep going until it
+    /// is null. Items are never split across pages, so nothing has to be reassembled — but a
+    /// section missing from a page is one you have not reached yet, which is why an empty section
+    /// is sent as `[]` rather than left out. Narrow with `sections` when you know what you need.
     ///
     /// Not read-only: deriving habit iterations materialises the scope rows their windows land on.
     /// It creates no tasks, goals or flows.
@@ -27,11 +39,28 @@ impl ArleshMcp {
         &self,
         Parameters(operation): Parameters<SnapshotOperation>,
     ) -> Result<CallToolResult, ErrorData> {
-        let SnapshotOperation::Load { now } = operation;
+        let SnapshotOperation::Load {
+            now,
+            sections,
+            cursor,
+        } = operation;
+
+        let wanted = sections.unwrap_or_else(|| SECTIONS.to_vec());
+        let Some(first) = Cursor::start(&wanted) else {
+            return result::refused("`sections` was empty, so there is nothing to return");
+        };
+        let cursor = match cursor.as_deref().map(Cursor::parse).transpose() {
+            Ok(parsed) => parsed.unwrap_or(first),
+            Err(error) => return result::refused(error.to_string()),
+        };
 
         // Transactional and committed, matching `commands::mindmap::load_mindmap`: without the
         // commit sqlx discards the derived scopes on drop and still returns a correct-looking
         // payload, whose habit iterations then name scope ids that no longer exist.
+        //
+        // Every page re-derives. Keeping a payload server-side between pages would buy a
+        // consistent read at the cost of state to expire and grow; for one local user, seconds
+        // apart, re-deriving is the better trade, and materialising a scope twice is a no-op.
         let mut db = match self.factory.begin().await {
             Ok(db) => db,
             Err(error) => return result::failed(error),
@@ -46,6 +75,71 @@ impl ArleshMcp {
             return result::failed(error);
         }
 
-        result::ok(load)
+        // No answer can be produced at all if the payload will not serialize, so this is a
+        // transport error rather than a tool result — the same call `result`'s own serialisation
+        // failures make.
+        let available = split_into_sections(&load, &wanted).map_err(|error| {
+            ErrorData::internal_error(format!("failed to serialise tool result: {error}"), None)
+        })?;
+
+        let page = match paging::take_page(&available, cursor, PAGE_BUDGET) {
+            Ok(page) => page,
+            Err(error) => return result::refused(error.to_string()),
+        };
+
+        let mut body = Map::new();
+        for (section, items) in page.sections {
+            body.insert(section.as_str().to_string(), Value::Array(items));
+        }
+        body.insert(
+            "next_cursor".to_string(),
+            match page.next {
+                Some(next) => Value::String(next.as_token()),
+                None => Value::Null,
+            },
+        );
+
+        result::ok(Value::Object(body))
     }
+}
+
+/// Re-reads the payload as the sections a page walks.
+///
+/// Going through `serde_json` rather than matching on fourteen differently-typed vectors keeps
+/// this honest: the names and item shapes are whatever the payload itself serializes to, so they
+/// cannot drift from what the unpaged response used to send.
+fn split_into_sections(
+    load: &MindmapLoad,
+    wanted: &[Section],
+) -> Result<Vec<SectionItems>, serde_json::Error> {
+    let mut payload = match serde_json::to_value(load)? {
+        Value::Object(payload) => payload,
+        // `MindmapLoad` is a struct, so this is unreachable short of a serde attribute that
+        // reshapes it — in which case every section name here is wrong too, and saying so beats
+        // returning an empty page.
+        other => {
+            return Err(serde::ser::Error::custom(format!(
+                "the snapshot payload serialized as {} rather than an object",
+                match other {
+                    Value::Array(_) => "an array",
+                    Value::Null => "null",
+                    _ => "a scalar",
+                }
+            )))
+        }
+    };
+
+    Ok(wanted
+        .iter()
+        .map(|&section| SectionItems {
+            section,
+            items: match payload.remove(section.as_str()) {
+                Some(Value::Array(items)) => items,
+                // A section the payload does not carry reads as empty rather than failing the
+                // whole call: the drift is already caught at compile time by the test that pins
+                // `SECTIONS` against the payload's own fields.
+                _ => Vec::new(),
+            },
+        })
+        .collect())
 }

@@ -85,6 +85,17 @@ pub enum SnapshotOperation {
     Load {
         /// The reference instant lifecycles and habit iterations are derived at.
         now: chrono::NaiveDateTime,
+        /// Only these sections, instead of all of them. Omit for everything.
+        ///
+        /// A question about scheduling needs `tasks` and `lifecycles`, not the knowledge of every
+        /// flow cycle on the board; asking for less is the cheapest way to make a page go further.
+        #[serde(default)]
+        sections: Option<Vec<super::paging::Section>>,
+        /// Where to resume, taken verbatim from the previous page's `next_cursor`.
+        ///
+        /// Omit for the first page. Never construct one by hand — its form is not a promise.
+        #[serde(default)]
+        cursor: Option<String>,
     },
 }
 

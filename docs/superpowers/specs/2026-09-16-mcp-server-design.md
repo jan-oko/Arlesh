@@ -191,6 +191,22 @@ sits behind a name that says what it does. The alternative — flagging `arlesh_
 single operation — would have under-sold four pure reads. Writes arriving later can join it or take
 their own tool; the shape does not commit us either way.
 
+**The snapshot is paged, which the approved design did not anticipate.** "The whole graph in one
+call" was measured against test fixtures of a few rows. On a real board — 141 tasks, 162 domains,
+15 habits — the payload is ~122,000 characters and the client refuses it, so the instruction to
+start with the snapshot produced a truncation error instead of data. Found by connecting a client
+to the running app; no unit test on a seeded fixture could have caught it.
+
+Paging keeps the payload's shape rather than reshaping it. The alternative considered was composing
+each node with its lifecycle, block reasons and dependencies so a page carried self-contained
+resources. Rejected: measured on the real board it came out ~2% *larger*, and it would have ended
+the equivalence between this tool and `load_mindmap` — the property that makes the adapter cheap to
+trust. Splitting the existing arrays keeps that intact; the only envelope change is `next_cursor`.
+
+Omitted sections are the subtle part. A section absent from a page means "not reached yet" and `[]`
+means "none"; collapsing the two would let an agent conclude a board has no tasks when it has
+merely not paged to them.
+
 **`resolve_many` is new.** It is the only operation without a one-to-one backend counterpart: a
 loop over the scopes operator's `resolve`, added because `Task.time_scope` carries `start_id` /
 `end_id` rather than dates. Without it an agent holding a snapshot must make one round trip per

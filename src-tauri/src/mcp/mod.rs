@@ -27,6 +27,7 @@
 //! See `docs/superpowers/specs/2026-09-16-mcp-server-design.md`.
 
 mod beads;
+pub mod paging;
 mod flows;
 mod kb;
 pub mod params;
@@ -95,12 +96,13 @@ impl ArleshMcp {
     }
 }
 
-// `instructions` is what an agent reads before it calls anything, so it points at the
-// snapshot and at the one thing the payload does not make obvious: windows are scope IDs.
+// `instructions` is what an agent reads before it calls anything, so it points at the snapshot,
+// says the snapshot is paged — an agent that stops after one page silently sees a fraction of the
+// board — and names the one thing the payload does not make obvious: windows are scope IDs.
 #[tool_handler(
     router = self.tool_router,
     name = "arlesh",
-    instructions = "Arlesh's task-management and knowledge-base data, read-only. Start with arlesh_snapshot.load, which returns the whole planning graph — tasks, goals, flows, domains, dependencies and derived lifecycles — in one call. Tasks and goals carry their windows as boundary scope IDs, not dates: resolve them with arlesh_scopes.resolve_many. The other tools cover what the snapshot omits."
+    instructions = "Arlesh's task-management and knowledge-base data. Read-only apart from arlesh_beads, which links an item to a bd issue. Start with arlesh_snapshot.load: the whole planning graph — tasks, goals, flows, domains, dependencies and derived lifecycles. It is PAGED: a response carries what fits plus next_cursor, and you must keep calling with that cursor until it is null or you will only have seen part of the board. A section missing from a page is one you have not reached yet; an empty section arrives as []. Narrow with `sections` when you know what you need. Tasks and goals carry their windows as boundary scope IDs, not dates: resolve them with arlesh_scopes.resolve_many. The other tools cover what the snapshot omits."
 )]
 impl ServerHandler for ArleshMcp {}
 
