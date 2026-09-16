@@ -94,6 +94,11 @@ pub struct Domain {
     pub position: i64,
     /// Whether this node is private (hidden unless Private Mode is on).
     pub is_private: bool,
+    /// The `bd` issue tracking this Project, if any (e.g. `"Arlesh-5fs"`). Written only by the
+    /// MCP server, through [`DomainOperator::set_beads_id`](crate::domains::DomainOperator::set_beads_id);
+    /// no update request carries it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub beads_id: Option<String>,
 }
 
 /// Request body for creating a new domain.

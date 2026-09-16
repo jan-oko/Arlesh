@@ -638,3 +638,170 @@ async fn a_domain_created_without_a_status_keeps_none() {
         assert_eq!(created.status, None, "{subtype:?} must not be given a status");
     }
 }
+
+// --- beads_id: the link to a `bd` issue -------------------------------------------------------
+//
+// Settable only through the MCP server, which reaches `DomainOperator::set_beads_id` directly.
+// No Tauri command writes it, and `UpdateDomainRequest` deliberately has no field for it — so
+// the tests below pin both halves: the operator writes and clears it, and a command round-trip
+// leaves whatever is stored exactly as it was.
+
+#[tokio::test]
+async fn set_beads_id_is_carried_by_every_domain_read() {
+    let pool = helpers::test_pool().await;
+    let aspect_id = green_aspect_id(&pool).await;
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
+
+    let project = db
+        .domains()
+        .create(CreateDomainRequest {
+            title: "Tracked Project".into(),
+            description: None,
+            subtype: DomainSubtype::Project,
+            parent_id: Some(aspect_id),
+            status: Some(ProjectStatus::Active),
+            knowledge_base_directory: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(project.beads_id, None, "a new project is linked to nothing");
+
+    db.domains()
+        .set_beads_id(project.id.into(), Some("Arlesh-5fs".into()))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        db.domains().get(project.id.into()).await.unwrap().beads_id.as_deref(),
+        Some("Arlesh-5fs")
+    );
+    let listed = db.domains().list(Some(DomainSubtype::Project)).await.unwrap();
+    assert_eq!(
+        listed.iter().find(|d| d.id == project.id).unwrap().beads_id.as_deref(),
+        Some("Arlesh-5fs"),
+        "a list read must carry the link too, not just a by-id read"
+    );
+}
+
+#[tokio::test]
+async fn set_beads_id_clears_a_domain_link_when_given_none() {
+    let pool = helpers::test_pool().await;
+    let aspect_id = green_aspect_id(&pool).await;
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
+
+    let project = db
+        .domains()
+        .create(CreateDomainRequest {
+            title: "Unlinked Project".into(),
+            description: None,
+            subtype: DomainSubtype::Project,
+            parent_id: Some(aspect_id),
+            status: Some(ProjectStatus::Active),
+            knowledge_base_directory: None,
+        })
+        .await
+        .unwrap();
+    db.domains()
+        .set_beads_id(project.id.into(), Some("Arlesh-5fs".into()))
+        .await
+        .unwrap();
+
+    db.domains().set_beads_id(project.id.into(), None).await.unwrap();
+
+    assert_eq!(db.domains().get(project.id.into()).await.unwrap().beads_id, None);
+}
+
+#[tokio::test]
+async fn set_beads_id_rejects_an_unknown_domain() {
+    let pool = helpers::test_pool().await;
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
+
+    let err = db
+        .domains()
+        .set_beads_id(999_999.into(), Some("Arlesh-5fs".into()))
+        .await
+        .unwrap_err();
+
+    assert!(
+        matches!(err, arlesh_lib::domains::error::DomainError::NotFound(999_999)),
+        "expected NotFound, got {err:?}"
+    );
+}
+
+/// The write-path constraint: `update_domain` is the only command that writes a domain, and it
+/// can neither set, change nor clear `beads_id`.
+#[tokio::test]
+async fn the_update_domain_command_cannot_touch_beads_id() {
+    let pool = helpers::test_pool().await;
+    let aspect_id = green_aspect_id(&pool).await;
+
+    let (linked_id, unlinked_id) = {
+        let mut db = helpers::session_factory(&pool).connect().await.unwrap();
+        let linked = db
+            .domains()
+            .create(CreateDomainRequest {
+                title: "Linked".into(),
+                description: None,
+                subtype: DomainSubtype::Project,
+                parent_id: Some(aspect_id),
+                status: Some(ProjectStatus::Active),
+                knowledge_base_directory: None,
+            })
+            .await
+            .unwrap();
+        let unlinked = db
+            .domains()
+            .create(CreateDomainRequest {
+                title: "Unlinked".into(),
+                description: None,
+                subtype: DomainSubtype::Project,
+                parent_id: Some(aspect_id),
+                status: Some(ProjectStatus::Active),
+                knowledge_base_directory: None,
+            })
+            .await
+            .unwrap();
+        db.domains()
+            .set_beads_id(linked.id.into(), Some("Arlesh-5fs".into()))
+            .await
+            .unwrap();
+        (linked.id, unlinked.id)
+    };
+
+    let app = helpers::command_host(&pool);
+    let updated = arlesh_lib::commands::domains::update_domain(
+        app.state(),
+        linked_id,
+        UpdateDomainRequest {
+            title: Some("Renamed".into()),
+            status: Some(ProjectStatus::Frozen),
+            knowledge_base_directory: Some("/vault".into()),
+            is_private: Some(true),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(updated.title, "Renamed", "the update itself must land");
+    assert_eq!(
+        updated.beads_id.as_deref(),
+        Some("Arlesh-5fs"),
+        "an update must neither change nor clear the beads link"
+    );
+
+    let untouched = arlesh_lib::commands::domains::update_domain(
+        app.state(),
+        unlinked_id,
+        UpdateDomainRequest { title: Some("Also renamed".into()), ..Default::default() },
+    )
+    .await
+    .unwrap();
+    assert_eq!(untouched.beads_id, None, "and it must not be able to set one");
+
+    let stored: Option<String> = sqlx::query_scalar("SELECT beads_id FROM domains WHERE id = ?")
+        .bind(linked_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(stored.as_deref(), Some("Arlesh-5fs"), "and the stored row must agree");
+}

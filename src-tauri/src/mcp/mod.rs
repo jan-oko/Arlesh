@@ -7,16 +7,18 @@
 //!
 //! # Shape of the surface
 //!
-//! Five tools rather than one per command. [`ArleshMcp::snapshot`] returns the whole planning
-//! graph in one payload, so the other four exist only for what it does not carry: scope
+//! Six tools rather than one per command. [`ArleshMcp::snapshot`] returns the whole planning
+//! graph in one payload, so the read tools beside it exist only for what it does not carry: scope
 //! resolution, the knowledge base, and the handful of per-item and what-if reads. An MCP client
 //! pays context for every tool definition it loads, which is why the surface is grouped rather
 //! than mirrored.
 //!
 //! # Reads and the one write
 //!
-//! Every tool here is annotated `read_only_hint = true` except [`ArleshMcp::snapshot`], which is
-//! not read-only and says so: deriving a Habit's iterations materialises the scope rows its
+//! [`ArleshMcp::beads`] is the one tool that writes something the user sees: it sets the `bd`
+//! issue id on a Task, Goal or Project, and is the only way that field can be set at all. Every
+//! other tool is annotated `read_only_hint = true` except [`ArleshMcp::snapshot`], which is not
+//! read-only and says so: deriving a Habit's iterations materialises the scope rows its
 //! windows land on, so the snapshot opens a transactional session and commits. Those writes create
 //! no user content — no task, goal or flow — and are the same rows the mindmap materialises on its
 //! next load. Running the snapshot uncommitted would make it a pure read, but its habit iterations
@@ -24,6 +26,7 @@
 //!
 //! See `docs/superpowers/specs/2026-09-16-mcp-server-design.md`.
 
+mod beads;
 mod flows;
 mod kb;
 pub mod params;
@@ -71,7 +74,8 @@ impl ArleshMcp {
                 + Self::scopes_router()
                 + Self::kb_router()
                 + Self::tasks_router()
-                + Self::flows_router(),
+                + Self::flows_router()
+                + Self::beads_router(),
         }
     }
 

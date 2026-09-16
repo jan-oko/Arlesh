@@ -179,3 +179,45 @@ pub enum FlowsOperation {
         nodes: Vec<NodeRef>,
     },
 }
+
+/// Which resource an issue link is being set on.
+#[derive(Debug, Clone, Copy, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum BeadsNode {
+    /// A Task.
+    Task,
+    /// A Goal.
+    Goal,
+    /// A Project — the `project` subtype of Domain. Aspects, Domains and Tags cannot be linked.
+    Project,
+}
+
+/// The one write on this server: linking an item to a `bd` issue.
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(tag = "operation", rename_all = "snake_case")]
+#[schemars(extend("type" = "object"))]
+pub enum BeadsOperation {
+    /// Links a Task, Goal or Project to a `bd` issue, or clears the link.
+    ///
+    /// This is the only way the link can be set: no Tauri command writes it and the UI renders it
+    /// read-only, so an issue id in Arlesh always came from here.
+    Set {
+        /// Which kind of resource to link.
+        node_type: BeadsNode,
+        /// The resource's id.
+        node_id: i64,
+        /// The `bd` issue id, e.g. `Arlesh-5fs`. `null` clears the link.
+        beads_id: Option<String>,
+    },
+}
+
+/// What [`BeadsOperation::Set`] echoes back, so a caller sees the link that now stands.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct BeadsLink {
+    /// The resource kind, as given.
+    pub node_type: String,
+    /// The resource id, as given.
+    pub node_id: i64,
+    /// The issue id now stored, or `null` if the link was cleared.
+    pub beads_id: Option<String>,
+}

@@ -157,6 +157,7 @@ struct TaskRow {
     plan_end_id: Option<i64>,
     position: i64,
     is_private: bool,
+    beads_id: Option<String>,
 }
 
 impl From<TaskRow> for Task {
@@ -179,6 +180,7 @@ impl From<TaskRow> for Task {
             tag_ids: vec![],
             position: row.position,
             is_private: row.is_private,
+            beads_id: row.beads_id,
         }
     }
 }
@@ -197,6 +199,7 @@ struct GoalRow {
     on_scope_exit: Option<String>,
     position: i64,
     is_private: bool,
+    beads_id: Option<String>,
 }
 
 impl From<GoalRow> for Goal {
@@ -217,6 +220,7 @@ impl From<GoalRow> for Goal {
             tag_ids: vec![],
             position: row.position,
             is_private: row.is_private,
+            beads_id: row.beads_id,
         }
     }
 }
@@ -625,6 +629,33 @@ impl<'session> GoalOperator<'session> {
         Ok(())
     }
 
+    /// Links a goal to the `bd` issue tracking it, or unlinks it when given `None`.
+    ///
+    /// **The only writer of `beads_id`, and reachable only from the MCP server.** No Tauri command
+    /// calls it and [`UpdateGoalRequest`] has no field for it, so the link cannot be set, changed
+    /// or cleared from the UI — which is the point: `bd` owns the issue, and the app only mirrors
+    /// which one a node belongs to.
+    ///
+    /// One statement over one column, so it needs no containment check and no transaction of its
+    /// own. Errors with [`TaskError::GoalNotFound`] when no goal has that id, rather than reporting
+    /// success for a write that landed nowhere.
+    pub async fn set_beads_id(
+        &mut self,
+        id: GoalId,
+        beads_id: Option<String>,
+    ) -> Result<(), TaskError> {
+        let affected = sqlx::query("UPDATE goals SET beads_id = ? WHERE id = ?")
+            .bind(&beads_id)
+            .bind(id.0)
+            .execute(&mut *self.connection)
+            .await?
+            .rows_affected();
+        if affected == 0 {
+            return Err(TaskError::GoalNotFound(id.0));
+        }
+        Ok(())
+    }
+
     /// Attaches a tag to a goal.
     pub async fn add_tag(&mut self, goal_id: GoalId, tag_id: i64) -> Result<(), TaskError> {
         sqlx::query(
@@ -1020,6 +1051,33 @@ impl<'session> TaskOperator<'session> {
         Ok(())
     }
 
+    /// Links a task to the `bd` issue tracking it, or unlinks it when given `None`.
+    ///
+    /// **The only writer of `beads_id`, and reachable only from the MCP server.** No Tauri command
+    /// calls it and [`UpdateTaskRequest`] has no field for it, so the link cannot be set, changed
+    /// or cleared from the UI — which is the point: `bd` owns the issue, and the app only mirrors
+    /// which one a node belongs to.
+    ///
+    /// One statement over one column, so it needs no containment check and no transaction of its
+    /// own. Errors with [`TaskError::TaskNotFound`] when no task has that id, rather than reporting
+    /// success for a write that landed nowhere.
+    pub async fn set_beads_id(
+        &mut self,
+        id: TaskId,
+        beads_id: Option<String>,
+    ) -> Result<(), TaskError> {
+        let affected = sqlx::query("UPDATE tasks SET beads_id = ? WHERE id = ?")
+            .bind(&beads_id)
+            .bind(id.0)
+            .execute(&mut *self.connection)
+            .await?
+            .rows_affected();
+        if affected == 0 {
+            return Err(TaskError::TaskNotFound(id.0));
+        }
+        Ok(())
+    }
+
     /// Attaches a tag to a task.
     pub async fn add_tag(&mut self, task_id: TaskId, tag_id: i64) -> Result<(), TaskError> {
         sqlx::query(
@@ -1354,6 +1412,9 @@ mod tests {
             tag_ids: vec![],
             position: 100,
             is_private: false,
+            // Tracked in `bd`. `TaskWrite` has no counterpart field, so the merge below cannot
+            // carry it either way — which is the write-path constraint, stated in the type.
+            beads_id: Some("Arlesh-5fs".to_string()),
         }
     }
 
@@ -1413,6 +1474,8 @@ mod tests {
             tag_ids: vec![],
             position: 5,
             is_private: true,
+            // As in `stored_task`: `GoalWrite` has no `beads_id`, so an update cannot reach it.
+            beads_id: Some("Arlesh-5fs".to_string()),
         };
         let write = GoalWrite::merge(
             stored,

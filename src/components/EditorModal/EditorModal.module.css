@@ -439,6 +439,15 @@
   margin-bottom: 2px;
 }
 
+/* A value this app cannot change (the bd issue a node is tracked as): raw text, in the monospace
+   face an identifier reads best in, with no input box so it doesn't read as editable. */
+.readOnlyValue {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  padding: 0 var(--space-1);
+}
+
 /* Immutable dependency-derived reasons: raw text (no input box, so they don't read as editable). */
 .virtualBlockerRow {
   color: var(--text-primary);

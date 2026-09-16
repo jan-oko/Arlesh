@@ -225,11 +225,12 @@ async fn every_tool_is_registered() {
     let pool = helpers::test_pool().await;
     let mcp = ArleshMcp::new(helpers::session_factory(&pool));
 
-    // `ArleshMcp::new` sums five routers. Drop one and nothing fails to compile — the tool simply
+    // `ArleshMcp::new` sums six routers. Drop one and nothing fails to compile — the tool simply
     // stops being served, which an agent would discover and this test does not let pass silently.
     assert_eq!(
         mcp.tool_names(),
         vec![
+            "arlesh_beads",
             "arlesh_flows",
             "arlesh_kb",
             "arlesh_scopes",
@@ -542,4 +543,233 @@ fn temp_env_var(key: &str, value: &str, body: impl FnOnce()) {
         Some(old) => unsafe { std::env::set_var(key, old) },
         None => unsafe { std::env::remove_var(key) },
     }
+}
+
+/// Reads a `beads_id` straight off the pool.
+///
+/// Read only after the tool's session has closed — the test pool has one connection.
+async fn stored_beads_id(pool: &sqlx::SqlitePool, table: &str, id: i64) -> Option<String> {
+    sqlx::query_scalar(&format!("SELECT beads_id FROM {table} WHERE id = ?"))
+        .bind(id)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn beads_set_links_a_task_and_then_clears_it() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    let task_id = seed(&app).await;
+
+    let result = mcp
+        .beads(Parameters(params::BeadsOperation::Set {
+            node_type: params::BeadsNode::Task,
+            node_id: task_id,
+            beads_id: Some("Arlesh-5fs".into()),
+        }))
+        .await
+        .unwrap();
+
+    // The tool echoes the link back so a caller sees what now stands without a second read.
+    assert_eq!(
+        payload(&result).get("beads_id").and_then(|v| v.as_str()),
+        Some("Arlesh-5fs")
+    );
+    assert_eq!(
+        stored_beads_id(&pool, "tasks", task_id).await,
+        Some("Arlesh-5fs".into())
+    );
+
+    let cleared = mcp
+        .beads(Parameters(params::BeadsOperation::Set {
+            node_type: params::BeadsNode::Task,
+            node_id: task_id,
+            beads_id: None,
+        }))
+        .await
+        .unwrap();
+    assert_ne!(cleared.is_error, Some(true));
+    assert_eq!(stored_beads_id(&pool, "tasks", task_id).await, None);
+}
+
+#[tokio::test]
+async fn beads_set_links_a_goal() {
+    use arlesh_lib::commands::tasks as task_commands;
+    use arlesh_lib::tasks::model::CreateGoalRequest;
+
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+
+    let goal = task_commands::create_goal(
+        app.state(),
+        CreateGoalRequest {
+            title: "Ship".into(),
+            parent_type: "domain".into(),
+            parent_id: 1,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    let result = mcp
+        .beads(Parameters(params::BeadsOperation::Set {
+            node_type: params::BeadsNode::Goal,
+            node_id: goal.id,
+            beads_id: Some("Arlesh-32r".into()),
+        }))
+        .await
+        .unwrap();
+    assert_ne!(result.is_error, Some(true));
+
+    assert_eq!(
+        stored_beads_id(&pool, "goals", goal.id).await,
+        Some("Arlesh-32r".into())
+    );
+}
+
+#[tokio::test]
+async fn beads_set_links_a_project() {
+    use arlesh_lib::commands::domains as domain_commands;
+    use arlesh_lib::domains::model::{CreateDomainRequest, DomainSubtype};
+
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+
+    let project = domain_commands::create_domain(
+        app.state(),
+        CreateDomainRequest {
+            title: "Ops".into(),
+            description: None,
+            subtype: DomainSubtype::Project,
+            parent_id: Some(1),
+            status: None,
+            knowledge_base_directory: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    let result = mcp
+        .beads(Parameters(params::BeadsOperation::Set {
+            node_type: params::BeadsNode::Project,
+            node_id: project.id,
+            beads_id: Some("Arlesh-e8d".into()),
+        }))
+        .await
+        .unwrap();
+    assert_ne!(result.is_error, Some(true));
+
+    assert_eq!(
+        stored_beads_id(&pool, "domains", project.id).await,
+        Some("Arlesh-e8d".into())
+    );
+}
+
+#[tokio::test]
+async fn beads_set_refuses_a_domain_that_is_not_a_project() {
+    use arlesh_lib::commands::domains as domain_commands;
+    use arlesh_lib::domains::model::{CreateDomainRequest, DomainSubtype};
+
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+
+    let plain_domain = domain_commands::create_domain(
+        app.state(),
+        CreateDomainRequest {
+            title: "Reference".into(),
+            description: None,
+            subtype: DomainSubtype::Domain,
+            parent_id: Some(1),
+            status: None,
+            knowledge_base_directory: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    // The operator's setter does not check the subtype — no schema constraint backs the
+    // invariant — so this tool is the only thing standing between an agent and an issue link on
+    // an Aspect, Domain or Tag.
+    let result = mcp
+        .beads(Parameters(params::BeadsOperation::Set {
+            node_type: params::BeadsNode::Project,
+            node_id: plain_domain.id,
+            beads_id: Some("Arlesh-5fs".into()),
+        }))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        error_payload(&result).get("kind").and_then(|k| k.as_str()),
+        Some("invalid_request"),
+    );
+    assert_eq!(
+        stored_beads_id(&pool, "domains", plain_domain.id).await,
+        None,
+        "the refused write must not have landed"
+    );
+}
+
+#[tokio::test]
+async fn beads_set_on_a_missing_item_reports_not_found() {
+    let pool = helpers::test_pool().await;
+    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+
+    // "Succeeded" for a write that landed nowhere is the wrong answer to hand an agent acting on
+    // an id it was given.
+    let result = mcp
+        .beads(Parameters(params::BeadsOperation::Set {
+            node_type: params::BeadsNode::Task,
+            node_id: 99_999,
+            beads_id: Some("Arlesh-5fs".into()),
+        }))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        error_payload(&result).get("kind").and_then(|k| k.as_str()),
+        Some("not_found"),
+    );
+}
+
+#[tokio::test]
+async fn the_snapshot_carries_a_beads_id_once_it_is_set() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    let task_id = seed(&app).await;
+
+    mcp.beads(Parameters(params::BeadsOperation::Set {
+        node_type: params::BeadsNode::Task,
+        node_id: task_id,
+        beads_id: Some("Arlesh-5fs".into()),
+    }))
+    .await
+    .unwrap();
+
+    // The whole point of the field: an agent sets the link and then sees it in the same payload it
+    // reads everything else from, without a per-item lookup.
+    let snapshot = mcp
+        .snapshot(Parameters(params::SnapshotOperation::Load { now: now() }))
+        .await
+        .unwrap();
+
+    let tasks = payload(&snapshot)
+        .get("tasks")
+        .and_then(|t| t.as_array())
+        .expect("snapshot carried no tasks");
+    let linked = tasks
+        .iter()
+        .find(|t| t.get("id").and_then(|i| i.as_i64()) == Some(task_id))
+        .expect("seeded task missing from snapshot");
+    assert_eq!(
+        linked.get("beads_id").and_then(|v| v.as_str()),
+        Some("Arlesh-5fs")
+    );
 }

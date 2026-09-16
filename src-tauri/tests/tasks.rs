@@ -2996,3 +2996,230 @@ async fn retyping_a_goal_to_a_project_ends_the_dependencies_it_announced_rather_
     );
     assert!(is_private, "and privacy still carries");
 }
+
+// --- beads_id: the link to a `bd` issue -------------------------------------------------------
+//
+// Settable only through the MCP server, which reaches `TaskOperator::set_beads_id` and
+// `GoalOperator::set_beads_id` directly. No Tauri command writes it, and neither
+// `UpdateTaskRequest` nor `UpdateGoalRequest` has a field for it — so the tests below pin both
+// halves: the operators write and clear it, and a command round-trip leaves it exactly as it was.
+
+/// A committed task under `project_id`, titled `title`.
+async fn seed_task(pool: &sqlx::SqlitePool, project_id: i64, title: &str) -> i64 {
+    let mut db = helpers::session_factory(pool).begin().await.unwrap();
+    let task = create_task(&mut db, CreateTaskRequest {
+        title: title.into(),
+        parent_type: "project".into(),
+        parent_id: project_id,
+        ..Default::default()
+    })
+    .await
+    .unwrap();
+    db.commit().await.unwrap();
+    task.id
+}
+
+/// A committed goal under `project_id`, titled `title`.
+async fn seed_goal(pool: &sqlx::SqlitePool, project_id: i64, title: &str) -> i64 {
+    let mut db = helpers::session_factory(pool).begin().await.unwrap();
+    let goal = create_goal(&mut db, CreateGoalRequest {
+        title: title.into(),
+        parent_type: "project".into(),
+        parent_id: project_id,
+        ..Default::default()
+    })
+    .await
+    .unwrap();
+    db.commit().await.unwrap();
+    goal.id
+}
+
+#[tokio::test]
+async fn set_beads_id_is_carried_by_every_task_read() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let task_id = seed_task(&pool, project_id, "Tracked").await;
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
+
+    assert_eq!(
+        db.tasks().get(task_id.into()).await.unwrap().beads_id,
+        None,
+        "a new task is linked to nothing"
+    );
+
+    db.tasks().set_beads_id(task_id.into(), Some("Arlesh-5fs".into())).await.unwrap();
+
+    assert_eq!(
+        db.tasks().get(task_id.into()).await.unwrap().beads_id.as_deref(),
+        Some("Arlesh-5fs")
+    );
+    let listed = db.tasks().list().await.unwrap();
+    assert_eq!(
+        listed.iter().find(|t| t.id == task_id).unwrap().beads_id.as_deref(),
+        Some("Arlesh-5fs"),
+        "a list read must carry the link too, not just a by-id read"
+    );
+}
+
+#[tokio::test]
+async fn set_beads_id_is_carried_by_every_goal_read() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let goal_id = seed_goal(&pool, project_id, "Tracked").await;
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
+
+    assert_eq!(
+        db.goals().get(goal_id.into()).await.unwrap().beads_id,
+        None,
+        "a new goal is linked to nothing"
+    );
+
+    db.goals().set_beads_id(goal_id.into(), Some("Arlesh-5fs".into())).await.unwrap();
+
+    assert_eq!(
+        db.goals().get(goal_id.into()).await.unwrap().beads_id.as_deref(),
+        Some("Arlesh-5fs")
+    );
+    let listed = db.goals().list().await.unwrap();
+    assert_eq!(
+        listed.iter().find(|g| g.id == goal_id).unwrap().beads_id.as_deref(),
+        Some("Arlesh-5fs"),
+        "a list read must carry the link too, not just a by-id read"
+    );
+}
+
+#[tokio::test]
+async fn set_beads_id_clears_a_task_or_goal_link_when_given_none() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let task_id = seed_task(&pool, project_id, "Unlinked").await;
+    let goal_id = seed_goal(&pool, project_id, "Unlinked").await;
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
+    db.tasks().set_beads_id(task_id.into(), Some("Arlesh-5fs".into())).await.unwrap();
+    db.goals().set_beads_id(goal_id.into(), Some("Arlesh-5fs".into())).await.unwrap();
+
+    db.tasks().set_beads_id(task_id.into(), None).await.unwrap();
+    db.goals().set_beads_id(goal_id.into(), None).await.unwrap();
+
+    assert_eq!(db.tasks().get(task_id.into()).await.unwrap().beads_id, None);
+    assert_eq!(db.goals().get(goal_id.into()).await.unwrap().beads_id, None);
+}
+
+#[tokio::test]
+async fn set_beads_id_rejects_an_unknown_task_or_goal() {
+    let pool = helpers::test_pool().await;
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
+
+    let task_err =
+        db.tasks().set_beads_id(999_999.into(), Some("Arlesh-5fs".into())).await.unwrap_err();
+    assert!(
+        matches!(task_err, arlesh_lib::tasks::error::TaskError::TaskNotFound(999_999)),
+        "expected TaskNotFound, got {task_err:?}"
+    );
+
+    let goal_err =
+        db.goals().set_beads_id(999_999.into(), Some("Arlesh-5fs".into())).await.unwrap_err();
+    assert!(
+        matches!(goal_err, arlesh_lib::tasks::error::TaskError::GoalNotFound(999_999)),
+        "expected GoalNotFound, got {goal_err:?}"
+    );
+}
+
+/// The write-path constraint: `update_task` is the only command that writes a task, and it can
+/// neither set, change nor clear `beads_id`.
+#[tokio::test]
+async fn the_update_task_command_cannot_touch_beads_id() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let linked_id = seed_task(&pool, project_id, "Linked").await;
+    let unlinked_id = seed_task(&pool, project_id, "Unlinked").await;
+    {
+        let mut db = helpers::session_factory(&pool).connect().await.unwrap();
+        db.tasks().set_beads_id(linked_id.into(), Some("Arlesh-5fs".into())).await.unwrap();
+    }
+
+    let app = helpers::command_host(&pool);
+    let updated = task_commands::update_task(
+        app.state(),
+        linked_id,
+        UpdateTaskRequest {
+            title: Some("Renamed".into()),
+            status: Some(TaskStatus::InProgress),
+            is_private: Some(true),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(updated.title, "Renamed", "the update itself must land");
+    assert_eq!(
+        updated.beads_id.as_deref(),
+        Some("Arlesh-5fs"),
+        "an update must neither change nor clear the beads link"
+    );
+
+    let untouched = task_commands::update_task(
+        app.state(),
+        unlinked_id,
+        UpdateTaskRequest { title: Some("Also renamed".into()), ..Default::default() },
+    )
+    .await
+    .unwrap();
+    assert_eq!(untouched.beads_id, None, "and it must not be able to set one");
+
+    let stored: Option<String> = sqlx::query_scalar("SELECT beads_id FROM tasks WHERE id = ?")
+        .bind(linked_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(stored.as_deref(), Some("Arlesh-5fs"), "and the stored row must agree");
+}
+
+/// The goal half of the same constraint.
+#[tokio::test]
+async fn the_update_goal_command_cannot_touch_beads_id() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let linked_id = seed_goal(&pool, project_id, "Linked").await;
+    let unlinked_id = seed_goal(&pool, project_id, "Unlinked").await;
+    {
+        let mut db = helpers::session_factory(&pool).connect().await.unwrap();
+        db.goals().set_beads_id(linked_id.into(), Some("Arlesh-5fs".into())).await.unwrap();
+    }
+
+    let app = helpers::command_host(&pool);
+    let updated = task_commands::update_goal(
+        app.state(),
+        linked_id,
+        UpdateGoalRequest {
+            title: Some("Renamed".into()),
+            status: Some(GoalStatus::Frozen),
+            is_private: Some(true),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(updated.title, "Renamed", "the update itself must land");
+    assert_eq!(
+        updated.beads_id.as_deref(),
+        Some("Arlesh-5fs"),
+        "an update must neither change nor clear the beads link"
+    );
+
+    let untouched = task_commands::update_goal(
+        app.state(),
+        unlinked_id,
+        UpdateGoalRequest { title: Some("Also renamed".into()), ..Default::default() },
+    )
+    .await
+    .unwrap();
+    assert_eq!(untouched.beads_id, None, "and it must not be able to set one");
+
+    let stored: Option<String> = sqlx::query_scalar("SELECT beads_id FROM goals WHERE id = ?")
+        .bind(linked_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(stored.as_deref(), Some("Arlesh-5fs"), "and the stored row must agree");
+}

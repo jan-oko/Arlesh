@@ -31,7 +31,7 @@ There are four domain subtypes:
 | Gray   | Gray       | Flow-state needs: finance, cleaning, bureaucracy                      |
 | Steel  | Light gray | Self-determination: introspection, goal-making, task management       |
 
-**Projects** — large domains (hobby, habit, workplace, etc.). Parent must be an Aspect or another Project. May be linked to a knowledge-base directory. Status: **Active / Achieved / Frozen / Archived**.
+**Projects** — large domains (hobby, habit, workplace, etc.). Parent must be an Aspect or another Project. May be linked to a knowledge-base directory. Status: **Active / Achieved / Frozen / Archived**. May carry a **beads id** (see *Beads id* below).
 
 **Domains** — general-purpose organizational containers. Can parent Goals, Tasks, Tags, or other Domains.
 
@@ -67,7 +67,7 @@ A scope is **active** when it contains the current datetime.
 
 ### Goals
 
-Goals represent desired states. Fields: title, parent (Project / Goal / Domain), tags (list), KB resource links (People, Events, Threads, Scopes), status, blockers.
+Goals represent desired states. Fields: title, parent (Project / Goal / Domain), tags (list), KB resource links (People, Events, Threads, Scopes), status, blockers, beads id.
 
 **Status:** Active / Achieved / Frozen / Archived
 
@@ -75,7 +75,7 @@ Goals are never List View *rows*, though they can optionally show as group heade
 
 ### Tasks
 
-Tasks represent action items. Fields: title, parent (Project / Goal / Domain / Task), tags (list), KB resource links, status, blockers, dependencies, delegation.
+Tasks represent action items. Fields: title, parent (Project / Goal / Domain / Task), tags (list), KB resource links, status, blockers, dependencies, delegation, beads id.
 
 **Status:** To Do / In Progress / Done
 
@@ -88,6 +88,16 @@ Tasks represent action items. Fields: title, parent (Project / Goal / Domain / T
 **Time Scope & Plan:** A Task carries a **Time Scope** (relevance window) and an optional **Plan** (a single scope it is scheduled into). Goals carry a Time Scope but no Plan. See *Time Scopes & Planning* below.
 
 A Task's **goal**, **project**, and **aspect** are resolved as the nearest ancestor of each type.
+
+### Beads id
+
+A Task, Goal or Project may carry an optional **beads id** — the identifier of the issue tracking it in `bd` (beads), e.g. `Arlesh-5fs`. It is a mirror of an id `bd` owns, not a value this app authors, and so is **write-restricted**:
+
+- The **MCP server is the only writer**. Each resource operator exposes a single setter (`set_beads_id`); no Tauri command calls it, and `UpdateTaskRequest` / `UpdateGoalRequest` / `UpdateDomainRequest` have no field for it. There is no way to set, change or clear a beads id from the UI.
+- Every read that returns a Task, Goal or Domain carries it.
+- The UI shows it **read-only, only where it is set** — as the **Issue** row in the Task, Goal and Project editors, directly under the title. A node with no beads id shows no row at all: no label, no placeholder.
+
+The column lives on `domains` for the Project case, but only the `project` subtype is given one and only a Project surfaces it; Aspects, Domains and Tags leave it null.
 
 ---
 

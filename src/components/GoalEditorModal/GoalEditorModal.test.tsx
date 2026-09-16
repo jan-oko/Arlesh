@@ -168,3 +168,15 @@ describe("GoalEditorModal — on-exit behavior", () => {
     );
   });
 });
+
+describe("GoalEditorModal — bd issue link", () => {
+  it("shows the issue a linked goal is tracked as", () => {
+    render(<GoalEditorModal {...defaultProps} node={mkNode({ beadsId: "Arlesh-5fs" })} />);
+    expect(screen.getByText("Arlesh-5fs")).toBeInTheDocument();
+  });
+
+  it("shows no issue row at all for an unlinked goal", () => {
+    render(<GoalEditorModal {...defaultProps} node={mkNode()} />);
+    expect(screen.queryByText("fieldBeadsId")).not.toBeInTheDocument();
+  });
+});

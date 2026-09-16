@@ -11,6 +11,7 @@ import { listTaskDependencies } from "@/api/tasks";
 import { getErrorMessage } from "@/api/errors";
 import EditorModal from "@/components/EditorModal/EditorModal";
 import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
+import BeadsIdField from "@/components/EditorModal/BeadsIdField";
 import TimeScopeField from "@/components/ScopePicker/TimeScopeField";
 import OnScopeExitField from "@/components/ScopePicker/OnScopeExitField";
 import PlanField from "@/components/ScopePicker/PlanField";
@@ -144,6 +145,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
         {t("fieldTitle")}
         <input ref={titleRef} className={styles.input} value={title} onChange={(e) => setTitle(e.target.value)} type="text" />
       </label>
+      <BeadsIdField beadsId={node.beadsId} />
       <div className={styles.label}>
         {t("fieldStatus")}
         <div className={styles.statusPills}>
