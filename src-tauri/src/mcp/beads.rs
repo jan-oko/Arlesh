@@ -16,7 +16,7 @@ use super::{
     result, ArleshMcp,
 };
 use crate::{
-    domains::{error::DomainError, model::DomainId},
+    domains::model::DomainId,
     tasks::model::{GoalId, TaskId},
 };
 
@@ -99,11 +99,11 @@ impl ArleshMcp {
                 // `Domain.subtype` is the stored lowercase string, compared as the rest of the
                 // domain module compares it (`domains/mod.rs:134`).
                 if domain.subtype != "project" {
-                    return result::failed(DomainError::InvalidParent(format!(
-                        "domain {node_id} is a {}, not a project; only Tasks, Goals and Projects \
-                         can carry an issue link",
+                    return result::refused(format!(
+                        "domain {node_id} has subtype \"{}\", not \"project\"; only Tasks, \
+                         Goals and Projects can carry an issue link",
                         domain.subtype
-                    )));
+                    ));
                 }
 
                 if let Err(error) = db

@@ -41,6 +41,17 @@ pub(super) fn ok(value: impl Serialize) -> Result<CallToolResult, ErrorData> {
     Ok(CallToolResult::structured(structured(value)?))
 }
 
+/// A tool result for a request the server understood but will not carry out.
+///
+/// Distinct from [`respond`]'s error arm, which reports a domain error. This is for a rule the MCP
+/// layer enforces itself and no domain error names — reaching for the nearest existing variant
+/// would put a misleading `kind` and a misleading message in front of the agent.
+pub(super) fn refused(message: impl Into<String>) -> Result<CallToolResult, ErrorData> {
+    Ok(CallToolResult::structured_error(structured(
+        WireError::invalid_request(message),
+    )?))
+}
+
 /// A tool result for a failure that happened before any operation could run — opening the session.
 pub(super) fn failed(error: impl Into<AppError>) -> Result<CallToolResult, ErrorData> {
     Ok(CallToolResult::structured_error(structured(
