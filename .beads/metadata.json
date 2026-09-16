@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "Arlesh",
+  "project_id": "327d4c65-f0f7-4b95-ae7c-adb6caee1f23"
+}

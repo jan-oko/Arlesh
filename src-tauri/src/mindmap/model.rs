@@ -62,7 +62,7 @@ pub struct FlowHabitEntry {
 /// Each field is exactly what the equivalent single-resource command returns; this type adds no
 /// derived or assembled data. Tree assembly stays in the frontend (see the Phase 6 scope note in
 /// `docs/superpowers/plans/2026-09-13-backend-architecture-foundations.md`).
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct MindmapLoad {
     /// Aspects, projects, domains and tags — as `list_domains(None)`.
     pub domains: Vec<Domain>,

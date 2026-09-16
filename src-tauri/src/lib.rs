@@ -12,6 +12,7 @@ pub mod error;
 pub mod flows;
 pub mod infos;
 pub mod knowledge_base;
+pub mod mcp;
 pub mod mindmap;
 pub mod scopes;
 pub mod tasks;
@@ -54,7 +55,14 @@ pub fn run() {
             // The factory is the sole owner of the pool: every command resolves
             // `State<SessionFactory>` and reaches the database only through a session it hands
             // out. Nothing managed here can acquire a connection behind a session's back.
-            app.manage(database::session::SessionFactory::new(pool));
+            let factory = database::session::SessionFactory::new(pool);
+
+            // The MCP endpoint shares the factory rather than the pool, so an agent's reads go
+            // through the same session layer the commands do. `serve` swallows a bind failure:
+            // an occupied port must not take the window down with it.
+            tauri::async_runtime::spawn(mcp::serve(factory.clone()));
+
+            app.manage(factory);
 
             if let Some(window) = app.get_webview_window("main") {
                 let icon = match app.default_window_icon().cloned() {

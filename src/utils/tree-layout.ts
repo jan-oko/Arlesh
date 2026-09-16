@@ -118,6 +118,9 @@ export interface MindmapNode {
   flowItem?: FlowItemData;
   /** Whether this node is marked private — hidden (with its subtree) outside Private Mode. */
   isPrivate?: boolean;
+  /** The `bd` issue this Task, Goal or Project is tracked as; absent when it is tracked as none.
+   * Read-only in this app — only the MCP server writes it. */
+  beadsId?: string;
   /** Whether this real Goal/Task was materialized by a started flow (drives the flow-instance badge). */
   fromFlow?: boolean;
   position: number;

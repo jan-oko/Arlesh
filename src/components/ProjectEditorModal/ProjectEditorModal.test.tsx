@@ -90,3 +90,15 @@ describe("ProjectEditorModal — cancel", () => {
     expect(defaultProps.onClose).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("ProjectEditorModal — bd issue link", () => {
+  it("shows the issue a linked project is tracked as", () => {
+    render(<ProjectEditorModal {...defaultProps} node={mkNode({ beadsId: "Arlesh-5fs" })} />);
+    expect(screen.getByText("Arlesh-5fs")).toBeInTheDocument();
+  });
+
+  it("shows no issue row at all for an unlinked project", () => {
+    render(<ProjectEditorModal {...defaultProps} node={mkNode()} />);
+    expect(screen.queryByText("fieldBeadsId")).not.toBeInTheDocument();
+  });
+});

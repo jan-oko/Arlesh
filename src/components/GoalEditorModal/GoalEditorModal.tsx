@@ -9,6 +9,7 @@ import type { OnScopeExit } from "@/api/scope-lifecycle";
 import { getErrorMessage } from "@/api/errors";
 import EditorModal from "@/components/EditorModal/EditorModal";
 import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
+import BeadsIdField from "@/components/EditorModal/BeadsIdField";
 import TimeScopeField from "@/components/ScopePicker/TimeScopeField";
 import OnScopeExitField from "@/components/ScopePicker/OnScopeExitField";
 import { useInputCapture } from "@/hooks/use-input-capture";
@@ -88,6 +89,7 @@ export default function GoalEditorModal({ node, allTags, domainNames, onSave, on
         {t("fieldTitle")}
         <input ref={titleRef} className={styles.input} value={title} onChange={(e) => setTitle(e.target.value)} type="text" />
       </label>
+      <BeadsIdField beadsId={node.beadsId} />
       <div className={styles.label}>
         {t("fieldStatus")}
         <div className={styles.statusPills}>

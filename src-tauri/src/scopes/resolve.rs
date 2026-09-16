@@ -2,6 +2,7 @@
 //! plus activeness and interval-containment checks. No database access.
 
 use chrono::{Duration, NaiveDate, NaiveDateTime, NaiveTime};
+use serde::Serialize;
 
 use super::error::ScopeError;
 use super::model::{PartOfDay, Scope, ScopeKind};
@@ -93,6 +94,31 @@ pub fn scope_bounds(scope: &Scope) -> Result<Bounds, ScopeError> {
 /// Returns true when `scope` contains `now` in its resolved interval.
 pub fn scope_is_active(scope: &Scope, now: NaiveDateTime) -> Result<bool, ScopeError> {
     Ok(is_active_at(scope_bounds(scope)?, now))
+}
+
+/// A scope resolved to its half-open `[start, end)` datetime window, with whether it is currently
+/// active (contains `now`). Datetimes are ISO 8601, second precision.
+///
+/// Lives here rather than beside a command because both adapters that expose scopes — the Tauri
+/// commands and the MCP server — return this same shape, and neither is below the other.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ResolvedScope {
+    /// Inclusive window start.
+    pub start: String,
+    /// Exclusive window end.
+    pub end: String,
+    /// Whether `now` falls within `[start, end)`.
+    pub active: bool,
+}
+
+/// Resolves a scope row against a given `now`. Pure: no database access, no clock read.
+pub fn resolve(scope: &Scope, now: NaiveDateTime) -> Result<ResolvedScope, ScopeError> {
+    let bounds = scope_bounds(scope)?;
+    Ok(ResolvedScope {
+        start: bounds.0.format(EXACT_DATETIME_FORMAT).to_string(),
+        end: bounds.1.format(EXACT_DATETIME_FORMAT).to_string(),
+        active: is_active_at(bounds, now),
+    })
 }
 
 #[cfg(test)]
