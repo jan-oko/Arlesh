@@ -111,7 +111,11 @@ db.tasks().get(TaskId(id)).await
 Reads use `connect()` (pooled). The one operation that writes — the snapshot — uses `begin()` and
 commits, exactly as `commands::mindmap::load_mindmap` does.
 
-`commands/` is not modified. The two adapters are peers over one session layer.
+The two adapters are peers over one session layer, and `commands/` keeps all its behaviour. It
+changes in one respect: `ResolvedScope` and the pure `resolve(scope, now)` that builds it moved
+down from `commands/scopes.rs` into `scopes::resolve`, because both adapters now return that shape
+and neither sits below the other. Nothing else referenced it, and the frontend keeps its own
+hand-written interface, so the move has no ripple.
 
 The crate's `#![deny(missing_docs)]` and `#![deny(clippy::all)]` apply, so every `pub` item in the
 module is documented. Per `.claude/rules/rust.md`, no `.unwrap()` or `.expect()` in this path.
@@ -129,9 +133,11 @@ operator inline, and returns.
 
 Two guards:
 
-- `StreamableHttpServerConfig`'s `allowed_hosts` and `allowed_origins` are restricted to localhost.
-  This is the SDK's DNS-rebinding protection and it matters concretely: without it a page in the
-  user's browser could POST to the port.
+- Origin validation is enabled with `StreamableHttpServerConfig::enforce_origin_validation()`.
+  `allowed_hosts` already defaults to loopback only, so it needs no change; `allowed_origins`
+  defaults to *empty*, which disables Origin validation rather than enforcing it. Enforcing with an
+  empty allowlist rejects any request carrying an Origin at all — which a browser page always sends
+  and an MCP client never does.
 - **A bind failure must not take down the app.** If the port is occupied, log at `warn` and let
   Arlesh run without MCP. The existing `setup` hook uses `.expect()` for database bootstrap; that
   precedent is deliberately not followed here, because an occupied port is an ordinary condition
@@ -152,7 +158,7 @@ the existing command signatures. All are annotated `read_only_hint = true` excep
 | `arlesh_scopes` | `get(id)`, `resolve(id)`, `resolve_many(ids)` | Turns the snapshot's scope ids into dates. |
 | `arlesh_kb` | `list_people`, `get_person(id)`, `list_events`, `list_threads` | The one domain the snapshot ignores entirely. |
 | `arlesh_tasks` | `get(id)`, `containment_conflicts(node_type, node_id, time_scope)` | `get` returns `TaskWithBlockers` — the task plus explicit *and* virtual block reasons. `containment_conflicts` is a what-if query. |
-| `arlesh_flows` | `get(id)`, `recurrence(flow_id)`, `completion_count(flow_id)`, `valid_targets(duration_n, duration_kind, anchor_date, candidates)`, `origins(nodes)` | The flow questions the snapshot does not answer: the stored recurrence config (as opposed to its derived iterations), and the two what-if queries. |
+| `arlesh_flows` | `get(id)`, `recurrence(flow_id)`, `completion_count(flow_id)`, `origins(nodes)` | The flow questions the snapshot does not answer: the stored recurrence config, as opposed to its derived iterations. |
 
 Everything absent from this table is absent because `arlesh_snapshot` already returns it:
 `list_tasks`, `list_goals`, `get_goal`, `list_domains`, `get_domain`, `list_infos`, `list_flows`,
@@ -162,6 +168,20 @@ Everything absent from this table is absent because `arlesh_snapshot` already re
 
 Every write command is excluded, including `retype_node`, `start_flow`, and the `get_or_create_*`
 scope commands.
+
+**`valid_targets` is excluded too, though it reads.** Like the snapshot it writes — resolving a
+concrete window mints the canonical scopes it names, which is why the command opens a transaction —
+and unlike the snapshot nothing here can act on its answer: it tells you where a flow *could* be
+started while `start_flow` remains a write and out of scope. Including it would flag all of
+`arlesh_flows` non-read-only to serve a question with no follow-up. It returns alongside
+`start_flow`.
+
+**Operation enums must declare their schema type.** The tools take an internally-tagged enum
+(`#[serde(tag = "operation")]`), for which `schemars` emits a root `oneOf` and no `"type"`. MCP
+requires every `inputSchema` to have root type `object`, and `rmcp` rejects the tool at
+registration if it does not — so each enum carries `#[schemars(extend("type" = "object"))]`. The
+added keyword is true of every variant; it is a gap in the generated schema, not a reshaping of the
+contract.
 
 **`resolve_many` is new.** It is the only operation without a one-to-one backend counterpart: a
 loop over the scopes operator's `resolve`, added because `Task.time_scope` carries `start_id` /

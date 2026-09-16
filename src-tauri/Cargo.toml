@@ -23,8 +23,11 @@ anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 chrono = { version = "0.4", features = ["serde"] }
-tokio = { version = "1", features = ["rt"] }
+tokio = { version = "1", features = ["net", "rt"] }
 png = "0.17"
+rmcp = { version = "3.4.0", features = ["server", "macros", "transport-streamable-http-server", "transport-streamable-http-server-session"] }
+axum = "0.8.9"
+schemars = "1.2.2"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt", "macros"] }

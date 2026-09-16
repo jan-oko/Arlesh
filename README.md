@@ -12,6 +12,20 @@ Two main views (`Alt+L` or the top-bar tabs switch between them):
 
 Both views are keyboard-driven; `Ctrl+Shift+/` opens a cheat-sheet listing every binding.
 
+## Agent access (MCP)
+
+While the app is running it serves a read-only [MCP](https://modelcontextprotocol.io) endpoint at
+`http://127.0.0.1:4747/mcp`, so an agent can read your board instead of being told what is on it:
+
+```
+claude mcp add --transport http arlesh http://127.0.0.1:4747/mcp
+```
+
+Five tools, of which `arlesh_snapshot` returns the whole planning graph in one call. Nothing an
+agent calls creates or changes a task, goal, flow or note. The port is overridable with
+`ARLESH_MCP_PORT`; the endpoint binds loopback only and refuses requests from a browser. See the
+**MCP Server** section of [`SPEC.md`](SPEC.md).
+
 ## Stack
 
 | Layer     | Choice                        |

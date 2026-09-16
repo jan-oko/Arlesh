@@ -1,40 +1,16 @@
 //! Tauri commands for scope operations.
 
 use chrono::{Local, NaiveDate, NaiveDateTime};
-use serde::Serialize;
 use tauri::State;
 
 use crate::{
     database::session::SessionFactory,
     error::WireError,
     scopes::{
-        error::ScopeError,
         model::{PartOfDay, Scope, ScopeId, ScopeKind},
-        resolve::{is_active_at, scope_bounds, EXACT_DATETIME_FORMAT},
+        resolve::{resolve, ResolvedScope, EXACT_DATETIME_FORMAT},
     },
 };
-
-/// A scope resolved to its half-open `[start, end)` datetime window, with whether it is currently
-/// active (contains the local wall-clock now). Datetimes are ISO 8601, second precision.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct ResolvedScope {
-    /// Inclusive window start.
-    pub start: String,
-    /// Exclusive window end.
-    pub end: String,
-    /// Whether `now` falls within `[start, end)`.
-    pub active: bool,
-}
-
-/// Pure core of [`resolve_scope`]: resolves a scope row against a given `now`.
-fn resolve(scope: &Scope, now: NaiveDateTime) -> Result<ResolvedScope, ScopeError> {
-    let bounds = scope_bounds(scope)?;
-    Ok(ResolvedScope {
-        start: bounds.0.format(EXACT_DATETIME_FORMAT).to_string(),
-        end: bounds.1.format(EXACT_DATETIME_FORMAT).to_string(),
-        active: is_active_at(bounds, now),
-    })
-}
 
 /// Gets or creates the scope for a date at a given granularity.
 ///
