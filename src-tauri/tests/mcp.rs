@@ -773,3 +773,115 @@ async fn the_snapshot_carries_a_beads_id_once_it_is_set() {
         Some("Arlesh-5fs")
     );
 }
+
+#[tokio::test]
+async fn scopes_resolve_matches_the_command() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+
+    let scope = arlesh_lib::commands::scopes::get_or_create_scope(
+        app.state(),
+        arlesh_lib::scopes::model::ScopeKind::Week,
+        "2026-02-02".into(),
+    )
+    .await
+    .unwrap();
+
+    let result = mcp
+        .scopes(Parameters(params::ScopesOperation::Resolve { id: scope.id }))
+        .await
+        .unwrap();
+
+    let expected = arlesh_lib::commands::scopes::resolve_scope(app.state(), scope.id)
+        .await
+        .unwrap();
+    assert_eq!(
+        payload(&result),
+        &serde_json::to_value(&expected).unwrap(),
+        "scopes.resolve"
+    );
+}
+
+#[tokio::test]
+async fn scopes_resolve_on_a_missing_id_reports_not_found() {
+    let pool = helpers::test_pool().await;
+    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+
+    let result = mcp
+        .scopes(Parameters(params::ScopesOperation::Resolve { id: 99_999 }))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        error_payload(&result).get("kind").and_then(|k| k.as_str()),
+        Some("not_found"),
+    );
+}
+
+#[tokio::test]
+async fn a_duration_carries_through_to_the_domain_window() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    let task_id = seed(&app).await;
+
+    let start = arlesh_lib::commands::scopes::get_or_create_scope(
+        app.state(),
+        arlesh_lib::scopes::model::ScopeKind::Week,
+        "2026-02-02".into(),
+    )
+    .await
+    .unwrap();
+    let end = arlesh_lib::commands::scopes::get_or_create_scope(
+        app.state(),
+        arlesh_lib::scopes::model::ScopeKind::Week,
+        "2026-02-09".into(),
+    )
+    .await
+    .unwrap();
+
+    // The MCP window types are a separate mirror of the domain ones, so the conversion between
+    // them is real code that can drift. A window in duration form is the shape that exercises it.
+    let mcp_window = params::TimeScope {
+        start_id: start.id,
+        end_id: end.id,
+        duration: Some(params::DurationSpec {
+            n: 2,
+            kind: "week".into(),
+        }),
+    };
+    let domain_window = arlesh_lib::tasks::model::TimeScope {
+        start_id: start.id,
+        end_id: end.id,
+        duration: Some(arlesh_lib::tasks::model::DurationSpec {
+            n: 2,
+            kind: "week".into(),
+        }),
+    };
+
+    let result = mcp
+        .tasks(Parameters(params::TasksOperation::ContainmentConflicts {
+            node: params::NodeRef {
+                node_type: "task".into(),
+                node_id: task_id,
+            },
+            time_scope: mcp_window,
+        }))
+        .await
+        .unwrap();
+
+    let expected = arlesh_lib::commands::tasks::scope_containment_conflicts(
+        app.state(),
+        "task".into(),
+        task_id,
+        domain_window,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        payload(&result),
+        &serde_json::to_value(&expected).unwrap(),
+        "containment_conflicts with a duration window"
+    );
+}
