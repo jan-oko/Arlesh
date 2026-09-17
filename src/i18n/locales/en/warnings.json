@@ -39,5 +39,11 @@
   "lostFieldFallback": "{{field}} will be lost ({{value}})",
   "retypeFailed": "Convert failed: {{message}}",
   "habitLoadFailedBanner": "Habit iterations could not be loaded for:",
-  "parentClimb": "It cannot stay under “{{from}}”, so it will move up to “{{to}}”"
+  "parentClimb": "It cannot stay under “{{from}}”, so it will move up to “{{to}}”",
+  "backlogHeading": "Put \"{{title}}\" in the backlog?",
+  "backlogHasPlan": "It is planned for {{plan}}. A task in the backlog is never also planned, so that plan will be cleared.",
+  "backlogHasPlanUnnamed": "It is planned. A task in the backlog is never also planned, so that plan will be cleared.",
+  "backlogClearPlanAction": "Clear the plan and backlog it",
+  "backlogFailed": "Backlog failed: {{message}}",
+  "backlogClearedByPlan": "Taken out of the backlog — it is planned now."
 }

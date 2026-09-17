@@ -101,3 +101,25 @@ describe("deriveStatusIndicators", () => {
     expect(types(busy)).toEqual(["scope", "archived", "planned", "flowInstance", "tags"]);
   });
 });
+
+describe("deriveStatusIndicators — Backlog", () => {
+  it("shows a backlog badge on a task that was set aside", () => {
+    expect(types(node("task", { status: "todo", backlogged: true }))).toEqual(["backlog"]);
+    expect(types(node("task", { status: "todo", backlogged: false }))).toEqual([]);
+  });
+
+  it("uses a badge of its own, never the Frozen snowflake", () => {
+    const badges = types(node("task", { status: "todo", backlogged: true }));
+    expect(badges).not.toContain("frozen");
+  });
+
+  it("shows both badges once a lapsed window has archived a backlogged task", () => {
+    // The conflict case: the stored Backlog still reads as set aside, and the forced Archived is
+    // flagged on top of it — the same pairing a manually-Frozen goal already gets.
+    const lapsed = node("task", {
+      status: "todo", backlogged: true,
+      timing: "lapsed", resolution: "missed", archived: true, archivalConflict: true,
+    });
+    expect(types(lapsed)).toEqual(["archived", "backlog"]);
+  });
+});

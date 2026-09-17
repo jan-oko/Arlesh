@@ -50,7 +50,7 @@ function mkGoal(overrides: Partial<Goal> = {}): Goal {
 function mkTask(overrides: Partial<Task> = {}): Task {
   return {
     id: 1, title: "Task", parent_type: "goal", parent_id: 1,
-    status: "todo", delegate_to: null, time_scope: null, on_scope_exit: null, plan: null, tag_ids: [], position: 0, is_private: false,
+    status: "todo", delegate_to: null, time_scope: null, on_scope_exit: null, plan: null, archival: "live", tag_ids: [], position: 0, is_private: false,
     ...overrides,
   };
 }
@@ -81,6 +81,16 @@ describe("buildTree", () => {
     expect(root.id).toBe("root");
     expect(root.title).toBe("Arlesh");
     expect(root.children).toHaveLength(0);
+  });
+
+  it("carries a task's stored Backlog state onto its node", () => {
+    const aspect = mkDomain({ id: 1, subtype: "aspect" });
+    const aside = mkTask({ id: 1, parent_type: "domain", parent_id: 1, archival: "backlog" });
+    const live = mkTask({ id: 2, parent_type: "domain", parent_id: 1, archival: "live" });
+    const root = buildTree([aspect], [], [aside, live], []);
+    const tasks = root.children[0]?.children ?? [];
+    expect(tasks.find((n) => n.id === "task-1")?.backlogged).toBe(true);
+    expect(tasks.find((n) => n.id === "task-2")?.backlogged).toBe(false);
   });
 
   it("places aspect-subtype domains as direct children of root", () => {

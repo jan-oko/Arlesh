@@ -153,8 +153,9 @@
   gap: var(--space-3);
 }
 
-/* Archived tri-state pill: cycles Inactive (neutral) → Include (accent) → Exclude (mode-exclude) */
-.archivedPill {
+/* Tri-state override pill (Archived, Backlog): cycles Inactive (neutral) → Include (accent) →
+   Exclude (mode-exclude). Shared, because the two behave identically. */
+.overridePill {
   align-self: flex-start;
   padding: 2px var(--space-3);
   border-radius: 999px;
@@ -166,13 +167,13 @@
   cursor: pointer;
 }
 
-.archivedPillInclude {
+.overridePillInclude {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--surface);
 }
 
-.archivedPillExclude {
+.overridePillExclude {
   background: var(--mode-exclude);
   border-color: var(--mode-exclude);
   color: var(--surface);

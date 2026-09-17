@@ -7,6 +7,7 @@ export type StatusIndicatorType =
   | "archived"
   | "planned"
   | "frozen"
+  | "backlog"
   | "info"
   | "flowInstance"
   | "tags";
@@ -58,6 +59,13 @@ export function deriveStatusIndicators(node: MindmapNode): StatusIndicator[] {
   }
   if (node.status === "frozen") {
     indicators.push({ type: "frozen" });
+  }
+  // Deliberately distinct from the Frozen snowflake: Backlog and Frozen are separate states, and a
+  // glance at the canvas should say which one a node is in. Read off the stored flag, so a
+  // backlogged task whose window has lapsed shows both this and the archive box — the same pairing
+  // a Frozen goal already gets under a forced Archived.
+  if (node.backlogged === true) {
+    indicators.push({ type: "backlog" });
   }
   if (hasInfoDetails(node)) {
     indicators.push({ type: "info" });

@@ -1039,6 +1039,10 @@ async fn create_node(
                     time_scope: carried.time_scope.clone(),
                     on_scope_exit: carried.on_scope_exit,
                     plan: carried.plan.clone(),
+                    // Backlog does not travel across a retype, in either direction: a Frozen Goal
+                    // becoming a Task arrives in play, and so does anything else. Frozen and
+                    // Backlog are separate concepts with no mapping between them.
+                    archival: None,
                 },
             )
             .await?;

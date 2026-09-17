@@ -1,6 +1,6 @@
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { FilterState, TagFilterMode } from "@/utils/filter-tree";
-import { typeHardHidden, passesTags, withArchivedOverride, isShelvedProject } from "@/utils/filter-tree";
+import { typeHardHidden, passesTags, withArchivedOverride, isShelvedProject, isHiddenBacklog } from "@/utils/filter-tree";
 import { TASK_STATUS, GOAL_STATUS, PROJECT_STATUS } from "@/utils/status-mapping";
 
 /** Same any/all/exclude semantics as a tag filter, reused across every List View filter dimension. */
@@ -32,7 +32,7 @@ export const PILL_DIMENSIONS: PillDimension[] = [
 
 /** List View's own preset selector: All/Plan/Start/Do write through to the shared status preset;
  * Unblock is List-View-only and does not touch it (see SPEC List View section). */
-export const LIST_PRESET_VALUES = ["all", "plan", "start", "do", "unblock"] as const;
+export const LIST_PRESET_VALUES = ["all", "plan", "start", "do", "backlog", "unblock"] as const;
 export type ListPreset = (typeof LIST_PRESET_VALUES)[number];
 
 export function isListPreset(value: string): value is ListPreset {
@@ -151,6 +151,9 @@ function passesListPreset(row: TaskListRow, f: FilterState): boolean {
   // A Frozen/Archived Project shelves its whole subtree in Plan/Start. The Mindmap drops it by
   // tree-pruning; a flat list needs the explicit ancestor walk (no-op under All/Do).
   if (row.ancestors.some((a) => isShelvedProject(a, f))) return false;
+  // Likewise a backlogged ancestor Task: the Mindmap prunes the subtree away, a flat list has to
+  // walk for it. (The row's own backlog is handled by `typeHardHidden`, before this runs.)
+  if (row.ancestors.some((a) => isHiddenBacklog(a, f))) return false;
   switch (f.statusMode) {
     case "all":
       return true;
@@ -167,6 +170,9 @@ function passesListPreset(row: TaskListRow, f: FilterState): boolean {
     }
     case "do":
       return row.node.status === "in_progress";
+    case "backlog":
+      // Everything set aside, plus everything beneath it — the Mindmap's subtree rule, flattened.
+      return row.node.backlogged === true || row.ancestors.some((a) => a.backlogged === true);
   }
 }
 

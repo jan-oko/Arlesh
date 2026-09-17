@@ -65,6 +65,53 @@ impl TaskStatus {
     }
 }
 
+/// A Task's own manually-set archival state — the stored half of the
+/// [`Archival`](super::lifecycle::Archival) axis, independent of [`TaskStatus`].
+///
+/// Two variants, not four. A Task is never manually **Archived** (a Task's effective Archival is
+/// forced by its scope Resolution alone), and **Frozen** is Goal/Project vocabulary. Giving the
+/// Task side its own type is what makes "Backlog is valid on Tasks only" a thing the compiler
+/// knows rather than a comment: nothing can hand a Goal a `Backlog`, or a Task a `Frozen`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskArchival {
+    /// In play, and filtered on its status alone. The default.
+    #[default]
+    Live,
+    /// Deliberately set aside: hidden from Plan and Start along with everything beneath it, still
+    /// listed under All, and browsable on its own through the Backlog preset.
+    Backlog,
+}
+
+impl TaskArchival {
+    /// Returns the database string representation.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Live => "live",
+            Self::Backlog => "backlog",
+        }
+    }
+
+    /// Parses the database string representation, if recognized.
+    pub fn from_db(value: &str) -> Option<Self> {
+        match value {
+            "live" => Some(Self::Live),
+            "backlog" => Some(Self::Backlog),
+            _ => None,
+        }
+    }
+
+    /// Whether a Task in this state may also carry a Plan.
+    ///
+    /// The stored invariant is `archival = Backlog ⇒ plan IS NULL`: a Task is never both set aside
+    /// and scheduled, because the two say opposite things about the same week. Enforced at write
+    /// time, in both directions — backlogging a planned Task is refused until the caller agrees to
+    /// clear the Plan, and setting a Plan on a backlogged Task takes it out of the backlog.
+    pub fn allows_plan(&self) -> bool {
+        matches!(self, Self::Live)
+    }
+}
+
 /// Goal lifecycle status.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -176,6 +223,10 @@ pub struct Task {
     pub on_scope_exit: Option<OnScopeExit>,
     /// Scheduling window this task is planned into (if any). Must be contained in `time_scope`.
     pub plan: Option<TimeScope>,
+    /// Manually-set archival state: `Live`, or `Backlog` when deliberately set aside. Never both
+    /// `Backlog` and planned — see [`TaskArchival::allows_plan`].
+    #[serde(default)]
+    pub archival: TaskArchival,
     /// Tag domain ids attached to this task.
     pub tag_ids: Vec<i64>,
     /// Sort position among siblings; defaults to id (insertion order).
@@ -276,6 +327,9 @@ pub struct CreateTaskRequest {
     /// Initial Plan (scheduling window).
     #[serde(default)]
     pub plan: Option<TimeScope>,
+    /// Initial archival state (defaults to Live). Rejected together with a `plan`.
+    #[serde(default)]
+    pub archival: Option<TaskArchival>,
 }
 
 /// Request body for updating a task.
@@ -294,6 +348,12 @@ pub struct UpdateTaskRequest {
     pub on_scope_exit: Option<Option<OnScopeExit>>,
     /// Plan window to set (None leaves unchanged, Some(None) clears it).
     pub plan: Option<Option<TimeScope>>,
+    /// Archival state to set (None leaves unchanged).
+    ///
+    /// Left unset, a request that *sets* a Plan on a backlogged task silently resolves the
+    /// conflict in the Plan's favour — see [`UpdateTaskRequest`]'s merge. Set to `Backlog` on a
+    /// task that keeps its Plan, the write is refused until the caller also clears the Plan.
+    pub archival: Option<TaskArchival>,
     /// New parent entity type for re-parenting (must be set together with parent_id).
     pub parent_type: Option<String>,
     /// New parent entity id for re-parenting (must be set together with parent_type).
@@ -344,6 +404,39 @@ mod tests {
     #[test]
     fn task_status_from_db_rejects_unrecognized_values() {
         assert_eq!(TaskStatus::from_db("bogus"), None);
+    }
+
+    #[test]
+    fn task_archival_as_str_covers_all_variants() {
+        assert_eq!(TaskArchival::Live.as_str(), "live");
+        assert_eq!(TaskArchival::Backlog.as_str(), "backlog");
+    }
+
+    #[test]
+    fn task_archival_from_db_roundtrips_every_variant() {
+        for archival in [TaskArchival::Live, TaskArchival::Backlog] {
+            assert_eq!(TaskArchival::from_db(archival.as_str()), Some(archival));
+        }
+    }
+
+    #[test]
+    fn task_archival_from_db_rejects_the_goal_side_vocabulary() {
+        // Frozen and Archived belong to Goals and Projects. A Task row spelling either is corrupt,
+        // and reading it as anything at all would quietly bless a state that cannot exist.
+        assert_eq!(TaskArchival::from_db("frozen"), None);
+        assert_eq!(TaskArchival::from_db("archived"), None);
+        assert_eq!(TaskArchival::from_db("bogus"), None);
+    }
+
+    #[test]
+    fn a_task_defaults_to_live() {
+        assert_eq!(TaskArchival::default(), TaskArchival::Live);
+    }
+
+    #[test]
+    fn only_a_live_task_may_carry_a_plan() {
+        assert!(TaskArchival::Live.allows_plan());
+        assert!(!TaskArchival::Backlog.allows_plan());
     }
 
     #[test]

@@ -10,19 +10,20 @@
 //!   its window lapsed), `Missed` (unresolved, Archive-on-exit), or `Overdue` (unresolved,
 //!   Keep-on-exit). The single-occurrence analogue of a Habit's Consumption root (Archive =
 //!   Destructive, Keep = Accumulating).
-//! - [`Archival`] — the item's effective archived/frozen/live state. Tasks have no manual archival
-//!   concept and are always fully derived from `Resolution`. Goals carry their own manually-set
-//!   Archival (via [`derive_archival`]'s `stored` parameter); a `Completed` or `Missed`
-//!   `Resolution` unconditionally forces `Archived` regardless of `stored`, flagging a conflict
-//!   when it silently overrides a manually-set `Frozen`.
+//! - [`Archival`] — the item's effective archived/frozen/live state. Every item may carry its own
+//!   manually-set Archival (via [`derive_archival`]'s `stored` parameter): a Goal or Project
+//!   through its status (`Frozen` / `Archived`), a Task through its **Backlog** column. A
+//!   `Completed` or `Missed` `Resolution` unconditionally forces `Archived` regardless of
+//!   `stored`, flagging a conflict when it silently overrides a manually-set `Frozen` **or**
+//!   `Backlog`.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use chrono::NaiveDateTime;
 
 use crate::scopes::resolve::Bounds;
 
-use super::model::OnScopeExit;
+use super::model::{OnScopeExit, TaskArchival};
 
 /// An item's window position relative to `now`. Unscoped items are always `Active`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -80,37 +81,95 @@ pub fn derive_resolution(timing: Timing, resolved: bool, on_exit: Option<OnScope
 }
 
 /// An item's effective archived/frozen/live state.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+///
+/// `Frozen` and `Backlog` are deliberately distinct variants rather than one state rendered under
+/// two names: the database and the wire say which state a node is in, instead of leaving it to be
+/// inferred from the node's kind. Neither translates into the other — a Frozen Goal retyped to a
+/// Task arrives as an ordinary Live one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Archival {
     /// Actively showing.
     Live,
     /// Manually paused (Goals/Projects only — never derived).
     Frozen,
+    /// Manually set aside (Tasks only — never derived). Hidden from Plan and Start together with
+    /// everything beneath it, shown under All, and still carrying its own status: a backlogged
+    /// task that was in progress says so when it is pulled back.
+    Backlog,
     /// Archived, either manually (Goals/Projects) or because scope Resolution forced it.
     Archived,
 }
 
+impl Archival {
+    /// The database string representation.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Live => "live",
+            Self::Frozen => "frozen",
+            Self::Backlog => "backlog",
+            Self::Archived => "archived",
+        }
+    }
+
+    /// Parses the database string representation, if recognized.
+    pub fn from_db(value: &str) -> Option<Self> {
+        match value {
+            "live" => Some(Self::Live),
+            "frozen" => Some(Self::Frozen),
+            "backlog" => Some(Self::Backlog),
+            "archived" => Some(Self::Archived),
+            _ => None,
+        }
+    }
+}
+
+impl From<TaskArchival> for Archival {
+    /// Widens a Task's two-variant stored state into the shared axis the derivation reads. Total
+    /// and lossless in this direction; there is deliberately no way back, since `Frozen` and
+    /// `Archived` have no Task-side meaning.
+    fn from(archival: TaskArchival) -> Self {
+        match archival {
+            TaskArchival::Live => Self::Live,
+            TaskArchival::Backlog => Self::Backlog,
+        }
+    }
+}
+
 /// The result of deriving an item's effective Archival: the value itself, and whether it silently
-/// overrode a manually-set `Frozen`.
+/// overrode a manually-set `Frozen` or `Backlog`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct ArchivalResult {
     /// The effective Archival state to display/filter on.
     pub effective: Archival,
-    /// True when a manually-set `Frozen` was overridden by a forced-Archived Resolution — worth
-    /// surfacing to the user, since it means their explicit choice no longer holds.
+    /// True when a manually-set `Frozen` or `Backlog` was overridden by a forced-Archived
+    /// Resolution — worth surfacing to the user, since it means their explicit choice no longer
+    /// holds.
     pub conflict: bool,
 }
 
+/// Whether `stored` is a state the user deliberately put the item into, and so one a forced
+/// `Archived` silently overrides. `Live` is the absence of a choice and `Archived` is already the
+/// outcome being forced, so neither conflicts with anything.
+fn is_deliberate(stored: Option<Archival>) -> bool {
+    matches!(stored, Some(Archival::Frozen) | Some(Archival::Backlog))
+}
+
 /// Derives an item's effective Archival. `stored` is the item's own manually-set Archival, if it
-/// has one (`None` for Tasks, which have no manual archival concept and are always fully derived).
-/// A `Completed` or `Missed` [`Resolution`] unconditionally forces `Archived`, regardless of
-/// `stored` — scope resolution always wins for a scoped, lapsed item. `Overdue` never forces
-/// anything: the item stays whatever `stored` says (or `Live` when nothing is stored).
+/// has one — `Frozen`/`Archived` for a Goal or Project, `Backlog` for a Task, `None` for anything
+/// with no archival column at all. A `Completed` or `Missed` [`Resolution`] unconditionally forces
+/// `Archived`, regardless of `stored` — scope resolution always wins for a scoped, lapsed item, so
+/// backlogging a scoped Task does **not** exempt it from lapsing Missed when its window closes
+/// unfinished. `Overdue` never forces anything: the item stays whatever `stored` says (or `Live`
+/// when nothing is stored).
+///
+/// `Backlog` loses to a forced `Archived` on exactly the terms `Frozen` does, conflict flag and
+/// all. That uniformity is a deliberate choice over letting Backlog win; inverting it later is a
+/// one-line change, localised here.
 pub fn derive_archival(stored: Option<Archival>, resolution: Option<Resolution>) -> ArchivalResult {
     let forced = matches!(resolution, Some(Resolution::Completed) | Some(Resolution::Missed));
     if forced {
-        ArchivalResult { effective: Archival::Archived, conflict: stored == Some(Archival::Frozen) }
+        ArchivalResult { effective: Archival::Archived, conflict: is_deliberate(stored) }
     } else {
         ArchivalResult { effective: stored.unwrap_or(Archival::Live), conflict: false }
     }
@@ -126,12 +185,12 @@ pub struct DerivedState {
     pub resolution: Option<Resolution>,
     /// Effective archived/frozen/live state.
     pub archival: Archival,
-    /// True when `archival` silently overrode a manually-set `Frozen`.
+    /// True when `archival` silently overrode a manually-set `Frozen` or `Backlog`.
     pub archival_conflict: bool,
 }
 
 /// Derives an item's full lifecycle state at `now`. See the module docs for what each axis means;
-/// `stored` is the item's own manually-set Archival (`None` for Tasks).
+/// `stored` is the item's own manually-set Archival (a Goal's Frozen/Archived, a Task's Backlog).
 pub fn derive_item_state(
     window: Option<Bounds>,
     on_exit: Option<OnScopeExit>,
@@ -159,7 +218,7 @@ pub struct ItemLifecycle {
     pub resolution: Option<Resolution>,
     /// Effective archived/frozen/live state.
     pub archival: Archival,
-    /// True when `archival` silently overrode a manually-set `Frozen`.
+    /// True when `archival` silently overrode a manually-set `Frozen` or `Backlog`.
     pub archival_conflict: bool,
 }
 
@@ -276,6 +335,97 @@ mod tests {
         assert!(!derive_archival(Some(Archival::Live), Some(Resolution::Completed)).conflict);
         assert!(!derive_archival(Some(Archival::Archived), Some(Resolution::Missed)).conflict);
         assert!(!derive_archival(None, Some(Resolution::Completed)).conflict);
+    }
+
+    // --- Backlog ---
+
+    #[test]
+    fn a_backlogged_task_reads_as_backlogged_while_nothing_forces_it() {
+        for resolution in [None, Some(Resolution::Overdue)] {
+            let result = derive_archival(Some(Archival::Backlog), resolution);
+            assert_eq!(result.effective, Archival::Backlog);
+            assert!(!result.conflict);
+        }
+    }
+
+    /// The whole point of the uniform rule: setting a scoped task aside does not exempt it from
+    /// its own window. Table-driven over every (stored, resolution) pair that forces Archived, so
+    /// Backlog is pinned to behave exactly as Frozen does.
+    #[test]
+    fn backlog_loses_to_a_forced_archived_exactly_as_frozen_does() {
+        let forcing = [Resolution::Completed, Resolution::Missed];
+        for resolution in forcing {
+            let backlogged = derive_archival(Some(Archival::Backlog), Some(resolution));
+            let frozen = derive_archival(Some(Archival::Frozen), Some(resolution));
+            assert_eq!(backlogged.effective, Archival::Archived);
+            assert!(backlogged.conflict, "a deliberate Backlog was silently overridden");
+            assert_eq!(backlogged, frozen, "Backlog and Frozen resolve identically");
+        }
+    }
+
+    #[test]
+    fn a_scoped_backlogged_task_that_lapses_unfinished_archives_as_missed_with_a_conflict() {
+        let state = derive_item_state(
+            Some(window()),
+            Some(OnScopeExit::Archive),
+            false,
+            Some(Archival::Backlog),
+            at("2026-01-20T00:00:00"),
+        );
+        assert_eq!(state.resolution, Some(Resolution::Missed));
+        assert_eq!(state.archival, Archival::Archived);
+        assert!(state.archival_conflict);
+    }
+
+    #[test]
+    fn a_backlogged_task_inside_its_window_is_simply_backlogged() {
+        let state = derive_item_state(
+            Some(window()),
+            Some(OnScopeExit::Archive),
+            false,
+            Some(Archival::Backlog),
+            at("2026-01-08T00:00:00"),
+        );
+        assert_eq!(state.timing, Timing::Active);
+        assert_eq!(state.archival, Archival::Backlog);
+        assert!(!state.archival_conflict);
+    }
+
+    #[test]
+    fn an_unscoped_backlogged_task_is_never_forced_into_anything() {
+        let state = derive_item_state(None, None, false, Some(Archival::Backlog), at("2030-01-01T00:00:00"));
+        assert_eq!(state.archival, Archival::Backlog);
+        assert!(!state.archival_conflict);
+    }
+
+    // --- Archival's database spellings ---
+
+    #[test]
+    fn a_tasks_stored_state_widens_onto_the_shared_axis() {
+        assert_eq!(Archival::from(TaskArchival::Live), Archival::Live);
+        assert_eq!(Archival::from(TaskArchival::Backlog), Archival::Backlog);
+    }
+
+    #[test]
+    fn archival_from_db_roundtrips_every_variant() {
+        for archival in [Archival::Live, Archival::Frozen, Archival::Backlog, Archival::Archived] {
+            assert_eq!(Archival::from_db(archival.as_str()), Some(archival));
+        }
+    }
+
+    #[test]
+    fn archival_from_db_rejects_unrecognized_values() {
+        assert_eq!(Archival::from_db("shelved"), None);
+    }
+
+    #[test]
+    fn archival_serialises_to_its_database_spelling() {
+        for archival in [Archival::Live, Archival::Frozen, Archival::Backlog, Archival::Archived] {
+            assert_eq!(
+                serde_json::to_value(archival).expect("serialise"),
+                serde_json::json!(archival.as_str()),
+            );
+        }
     }
 
     // --- derive_item_state (integration of all three axes) ---

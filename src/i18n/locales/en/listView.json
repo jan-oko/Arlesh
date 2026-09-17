@@ -4,7 +4,8 @@
     "plan": "Plan",
     "start": "Start",
     "do": "Do",
-    "unblock": "Unblock"
+    "unblock": "Unblock",
+    "backlog": "Backlog"
   },
   "showGoalHeaders": "Show goals",
   "statusPresetLabel": "Status preset",

@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { useMindmapStore } from "@/stores/use-mindmap-store";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { TaskSaveData } from "@/components/TaskEditorModal/TaskEditorModal";
 import type { GoalSaveData } from "@/components/GoalEditorModal/GoalEditorModal";
@@ -26,6 +28,7 @@ import {
   scopeContainmentConflicts,
 } from "@/api/tasks";
 import type { ViolatingDescendant } from "@/api/tasks";
+import { TASK_ARCHIVAL } from "@/api/tasks";
 import { addTagToGoal, removeTagFromGoal, updateGoal } from "@/api/goals";
 import type { TimeScope } from "@/api/time-scope";
 import { findNode } from "@/utils/mindmap-tree";
@@ -87,6 +90,8 @@ interface Result {
 }
 
 export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Result {
+  const { t } = useTranslation("warnings");
+  const showToast = useMindmapStore((s) => s.showToast);
   const [editorModal, setEditorModal] = useState<EditorModalState | null>(null);
   const [allTags, setAllTags] = useState<Domain[]>([]);
   const [domainNames, setDomainNames] = useState<Map<number, string>>(new Map());
@@ -166,8 +171,14 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
         time_scope: data.timeScope,
         on_scope_exit: data.onScopeExit,
         plan: data.plan,
+        archival: data.archival,
         is_private: data.isPrivate,
       });
+      // Scheduling a set-aside task puts it back in play. The editor already showed the switch go
+      // off, but the save is where it becomes true, so it is named rather than left to be noticed.
+      if (node.backlogged === true && data.archival === TASK_ARCHIVAL.LIVE && data.plan !== null) {
+        showToast({ nodeId, message: t("backlogClearedByPlan") });
+      }
       await setBlockReasons("task", dbId, data.blockReasons);
       const tagsAdded = data.tagIds.filter((id) => !node.tagIds.includes(id));
       const tagsRemoved = node.tagIds.filter((id) => !data.tagIds.includes(id));
@@ -178,7 +189,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
       await reload();
       setEditorModal(null);
     },
-    [editorModal, reload],
+    [editorModal, reload, showToast, t],
   );
 
   const onGoalSave = useCallback(

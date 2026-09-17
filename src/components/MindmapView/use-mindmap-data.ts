@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { createDomain, updateDomain, deleteDomain } from "@/api/domains";
-import { createTask, updateTask, deleteTask } from "@/api/tasks";
+import { createTask, updateTask, deleteTask, TASK_ARCHIVAL } from "@/api/tasks";
 import type { TaskDependencyEdge } from "@/api/tasks";
 import type { BlockReason } from "@/api/block-reasons";
 import { createGoal, updateGoal, deleteGoal } from "@/api/goals";
@@ -391,6 +391,7 @@ export function buildTree(
       timeScope: task.time_scope,
       onScopeExit: task.on_scope_exit,
       plan: task.plan,
+      backlogged: task.archival === TASK_ARCHIVAL.BACKLOG,
       position: task.position,
       isPrivate: task.is_private,
       ...(task.beads_id !== undefined ? { beadsId: task.beads_id } : {}),

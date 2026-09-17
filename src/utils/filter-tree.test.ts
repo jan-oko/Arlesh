@@ -460,3 +460,82 @@ describe("filterTree — a Frozen/Archived Project shelves its whole subtree", (
     expect(kept).toContain("task-todo");
   });
 });
+
+describe("filterTree — Backlog", () => {
+  // project → backlogged task → [sub-step, a note] ; plus an ordinary sibling task.
+  const tree = () =>
+    n("root", "domain", {}, [
+      n("project-1", "project", { status: "active" }, [
+        n("task-aside", "task", { status: "in_progress", backlogged: true }, [
+          n("task-substep", "task", { status: "todo" }),
+        ]),
+        n("task-live", "task", { status: "todo" }),
+      ]),
+    ]);
+
+  it("Plan hides a backlogged task together with its whole subtree", () => {
+    const kept = ids(filterTree(tree(), f({ statusMode: "plan" })));
+    expect(kept).not.toContain("task-aside");
+    expect(kept).not.toContain("task-substep");
+    expect(kept).toContain("task-live");
+  });
+
+  it("Start hides a backlogged task together with its whole subtree", () => {
+    const kept = ids(filterTree(tree(), f({ statusMode: "start" })));
+    expect(kept).not.toContain("task-aside");
+    expect(kept).not.toContain("task-substep");
+    expect(kept).toContain("task-live");
+  });
+
+  it("All shows a backlogged task — nothing set aside is ever actually lost", () => {
+    const kept = ids(filterTree(tree(), f({ statusMode: "all" })));
+    expect(kept).toContain("task-aside");
+    expect(kept).toContain("task-substep");
+  });
+
+  it("Do is unaffected: it already shows only in-progress tasks", () => {
+    expect(ids(filterTree(tree(), f({ statusMode: "do" })))).toContain("task-aside");
+  });
+
+  it("the Backlog preset shows only what was set aside, plus its subtree", () => {
+    const kept = ids(filterTree(tree(), f({ statusMode: "backlog" })));
+    expect(kept).toContain("task-aside");
+    expect(kept).toContain("task-substep");
+    expect(kept).not.toContain("task-live");
+  });
+
+  it("the Backlog preset keeps containers only as ancestors of a set-aside task", () => {
+    const empty = n("root", "domain", {}, [
+      n("project-empty", "project", { status: "active" }, [n("task-live", "task", { status: "todo" })]),
+    ]);
+    expect(ids(filterTree(empty, f({ statusMode: "backlog" })))).not.toContain("project-empty");
+    expect(ids(filterTree(tree(), f({ statusMode: "backlog" })))).toContain("project-1");
+  });
+
+  it("the Backlog pill's Include force-shows a backlogged task under Plan and Start", () => {
+    for (const statusMode of ["plan", "start"] as const) {
+      const kept = ids(filterTree(tree(), f({ statusMode, backlogMode: "include" })));
+      expect(kept).toContain("task-aside");
+      expect(kept).toContain("task-substep");
+    }
+  });
+
+  it("the Backlog pill's Exclude force-hides the subtree even under All", () => {
+    const kept = ids(filterTree(tree(), f({ statusMode: "all", backlogMode: "exclude" })));
+    expect(kept).not.toContain("task-aside");
+    expect(kept).not.toContain("task-substep");
+    expect(kept).toContain("task-live");
+  });
+
+  it("Inactive defers to the preset, exactly as the Archived pill does", () => {
+    expect(ids(filterTree(tree(), f({ statusMode: "all", backlogMode: "inactive" })))).toContain("task-aside");
+    expect(ids(filterTree(tree(), f({ statusMode: "plan", backlogMode: "inactive" })))).not.toContain("task-aside");
+  });
+
+  it("leaves a goal alone — Backlog is a Task-only state", () => {
+    const withGoal = n("root", "domain", {}, [
+      n("goal-1", "goal", { status: "active" }, [n("task-aside", "task", { status: "todo", backlogged: true })]),
+    ]);
+    expect(ids(filterTree(withGoal, f({ statusMode: "plan" })))).toContain("goal-1");
+  });
+});

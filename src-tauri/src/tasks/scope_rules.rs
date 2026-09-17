@@ -71,8 +71,8 @@ pub(super) async fn scope_governance<M: SessionMode>(
 
 /// Derives the full lifecycle state (Timing / Resolution / Archival — see `lifecycle`'s module
 /// docs) of every Task and Goal at `now`, using each item's effective governance. A Task is
-/// resolved once Done; a Goal once Achieved or Archived. Tasks have no manual Archival concept
-/// (always fully derived); Goals carry their own stored Archival via [`goal_stored_archival`].
+/// resolved once Done; a Goal once Achieved or Archived. Both carry a stored Archival: a Task its
+/// Backlog column, a Goal its status via [`goal_stored_archival`].
 ///
 /// Reads only — nothing is persisted, so a pooled session is enough.
 pub async fn derive_all_scope_lifecycles<M: SessionMode>(
@@ -86,7 +86,8 @@ pub async fn derive_all_scope_lifecycles<M: SessionMode>(
             None => (None, None),
         };
         let resolved = TaskStatus::from_db(&task.status) == Some(TaskStatus::Done);
-        let state = derive_item_state(window, on_exit, resolved, None, now);
+        let stored = Some(Archival::from(task.archival));
+        let state = derive_item_state(window, on_exit, resolved, stored, now);
         out.push(ItemLifecycle {
             node_type: "task".to_string(),
             node_id: task.id,

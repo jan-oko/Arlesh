@@ -1,18 +1,26 @@
 import type { MindmapNode } from "@/utils/tree-layout";
 import { isNodeBlocked } from "@/utils/tree-layout";
 
-/** Status preset a filter is in. `all` disables status filtering. */
-export type StatusMode = "all" | "plan" | "start" | "do";
+/** Status preset a filter is in. `all` disables status filtering; `backlog` inverts it, showing
+ * only what has been deliberately set aside. */
+export type StatusMode = "all" | "plan" | "start" | "do" | "backlog";
 
 /** How a single tag filter contributes to the combined tag predicate (SPEC Filtering Logic). */
 export type TagFilterMode = "any" | "all" | "exclude";
 
-/** Override for Archived-status/scope-Lapsed nodes, on top of whatever the status preset would
- * otherwise decide. `inactive` defers entirely to the preset (today's exact behavior). */
-export type ArchivedMode = "inactive" | "include" | "exclude";
+/** A tri-state pill's override, on top of whatever the status preset would otherwise decide.
+ * `inactive` defers entirely to the preset; `include` force-shows; `exclude` force-hides, gating
+ * the whole subtree. Shared by the Archived and Backlog pills, which behave identically. */
+export type OverrideMode = "inactive" | "include" | "exclude";
 
-/** The mode `archivedMode` advances to when its pill is clicked (Inactive → Include → Exclude → Inactive). */
-export const NEXT_ARCHIVED_MODE: Record<ArchivedMode, ArchivedMode> = {
+/** Override for Archived-status/scope-Lapsed nodes. */
+export type ArchivedMode = OverrideMode;
+
+/** Override for backlogged Tasks. */
+export type BacklogMode = OverrideMode;
+
+/** The mode a tri-state pill advances to when clicked (Inactive → Include → Exclude → Inactive). */
+export const NEXT_OVERRIDE_MODE: Record<OverrideMode, OverrideMode> = {
   inactive: "include",
   include: "exclude",
   exclude: "inactive",
@@ -37,6 +45,8 @@ export interface FilterState {
   privateMode: boolean;
   /** Override for Archived-status/scope-Lapsed nodes on top of the status preset. */
   archivedMode: ArchivedMode;
+  /** Override for backlogged Tasks on top of the status preset — the Archived pill's twin. */
+  backlogMode: BacklogMode;
 }
 
 /** The neutral, indicator-off filter — shows everything except nodes marked private. */
@@ -48,6 +58,7 @@ export const DEFAULT_FILTER: FilterState = {
   showFlow: true,
   privateMode: false,
   archivedMode: "inactive",
+  backlogMode: "inactive",
 };
 
 /** Goal statuses that read as resolved/inactive (hidden by Plan/Start). */
@@ -86,6 +97,29 @@ function isArchived(node: MindmapNode): boolean {
   return node.status === "archived" || node.archived === true;
 }
 
+/** A Task the user deliberately set aside. Read off the node's own stored flag, not the derived
+ * Archival, so a backlogged task whose window has since lapsed still reads as backlogged (it also
+ * reads as archived — the two badges are both true, exactly as they are for a Frozen goal). */
+function isBacklogged(node: MindmapNode): boolean {
+  return node.backlogged === true;
+}
+
+/**
+ * Whether `node` is a backlogged Task that the active filter hides along with everything beneath
+ * it. Setting a piece of work aside sets its sub-steps aside too, so it is dropped as a unit
+ * rather than kept on screen as the ancestor of live children.
+ *
+ * Plan and Start hide it; All and Do leave it alone; Backlog is the preset that exists to show it.
+ * The pill overrides all of that: `include` force-shows it under Plan/Start, `exclude` hides it
+ * everywhere, even under All.
+ */
+export function isHiddenBacklog(node: MindmapNode, f: FilterState): boolean {
+  if (!isBacklogged(node)) return false;
+  if (f.backlogMode === "exclude") return true;
+  if (f.backlogMode === "include") return false;
+  return f.statusMode === "plan" || f.statusMode === "start";
+}
+
 /**
  * Whether `node` is a Project that Plan/Start shelve along with everything inside it. The Mindmap gets
  * the subtree removal from tree-pruning; List View has no tree to prune, so it applies this to each
@@ -111,6 +145,9 @@ export function typeHardHidden(node: MindmapNode, f: FilterState): boolean {
   // Habit-instance goal with one still-undone (also-excluded) item and one already-`done` item would
   // stay visible anyway, kept as an ancestor of that unrelated, ordinarily-visible done sibling.
   if (f.archivedMode === "exclude" && isArchived(node)) return true;
+  // A backlogged Task gates its subtree the same way a shelved Project does — the work is
+  // deliberately not on the table, so nothing under it is plannable or startable either.
+  if (isHiddenBacklog(node, f)) return true;
   // A Frozen/Archived Project gates its subtree the same way: hide it outright rather than keeping it
   // as the ancestor of unresolved work that is, by its status, not on the table.
   if (isShelvedProject(node, f)) return true;
@@ -134,8 +171,16 @@ const UNSET_STATUS = "active";
  * status-bearing container ancestor's status, used only for containers of their own: a Domain/Aspect
  * can never be given a status (only a Project can), so judging one on its own status alone made every
  * Domain read as unresolved — keeping an achieved Project visible in Plan as their ancestor.
+ *
+ * `underBacklog` says whether some ancestor is a backlogged Task. It matters only to the Backlog
+ * preset, which shows a set-aside Task *and its whole subtree* — the sub-steps go with the step.
  */
-function passesStatus(node: MindmapNode, f: FilterState, inheritedStatus: string): boolean {
+function passesStatus(
+  node: MindmapNode,
+  f: FilterState,
+  inheritedStatus: string,
+  underBacklog: boolean,
+): boolean {
   // In any filtered mode, structural containers never match on their own — they show only when they
   // hold a content match (so empty/fully-resolved containers drop out). Exception: in Plan, an active
   // aspect/domain/project shows on its own — planning may mean adding items to an empty one. (Resolved
@@ -179,6 +224,10 @@ function passesStatus(node: MindmapNode, f: FilterState, inheritedStatus: string
       // Only in-progress tasks match; goals/structure appear solely as ancestors. archivedMode does
       // not apply here — Do's "in-progress tasks only" invariant isn't about archived/lapsed status.
       return node.kind === "task" && node.status === "in_progress";
+    case "backlog":
+      // The inverse of every other preset: only what was deliberately set aside, plus everything
+      // beneath it. Structural containers already dropped to ancestor-only above.
+      return underBacklog || isBacklogged(node);
   }
 }
 
@@ -194,8 +243,13 @@ export function passesTags(node: MindmapNode, f: FilterState): boolean {
   return true;
 }
 
-function selfMatches(node: MindmapNode, f: FilterState, inheritedStatus: string): boolean {
-  return passesStatus(node, f, inheritedStatus) && passesTags(node, f);
+function selfMatches(
+  node: MindmapNode,
+  f: FilterState,
+  inheritedStatus: string,
+  underBacklog: boolean,
+): boolean {
+  return passesStatus(node, f, inheritedStatus, underBacklog) && passesTags(node, f);
 }
 
 /**
@@ -205,25 +259,27 @@ function selfMatches(node: MindmapNode, f: FilterState, inheritedStatus: string)
  * root is always returned as a container (possibly empty) so the canvas has something to render.
  */
 export function filterTree(root: MindmapNode, f: FilterState): MindmapNode {
-  function prune(node: MindmapNode, inheritedStatus: string): MindmapNode | null {
+  function prune(node: MindmapNode, inheritedStatus: string, underBacklog: boolean): MindmapNode | null {
     if (typeHardHidden(node, f)) return null;
     // Only containers pass a status down — a Goal/Task always carries its own, and no container ever
     // sits beneath one, so their statuses must not leak into the chain.
     const inheritedForChildren = STRUCTURAL_KINDS.has(node.kind)
       ? node.status ?? inheritedStatus
       : inheritedStatus;
+    // Backlog, unlike status, does propagate: everything under a set-aside Task is set aside too.
+    const backlogForChildren = underBacklog || isBacklogged(node);
     const children: MindmapNode[] = [];
     let hasContentMatch = false;
     for (const child of node.children) {
-      const pruned = prune(child, inheritedForChildren);
+      const pruned = prune(child, inheritedForChildren, backlogForChildren);
       if (pruned === null) continue;
       children.push(pruned);
       if (child.kind !== "info") hasContentMatch = true;
     }
     // Info is carried by its parent's decision (visibility already handled by typeHardHidden above).
     if (node.kind === "info") return { ...node, children };
-    if (selfMatches(node, f, inheritedStatus) || hasContentMatch) return { ...node, children };
+    if (selfMatches(node, f, inheritedStatus, underBacklog) || hasContentMatch) return { ...node, children };
     return null;
   }
-  return prune(root, UNSET_STATUS) ?? { ...root, children: [] };
+  return prune(root, UNSET_STATUS, false) ?? { ...root, children: [] };
 }

@@ -10,12 +10,13 @@ export type Timing = "pending" | "active" | "lapsed";
 /** Only meaningful once `Timing` is "lapsed": how the item was resolved by then. */
 export type Resolution = "completed" | "missed" | "overdue";
 
-/** An item's effective archived/frozen/live state. */
-export type Archival = "live" | "frozen" | "archived";
+/** An item's effective archived/frozen/live state. "frozen" is Goal/Project-only and "backlog"
+ * Task-only; both lose to "archived" when a lapsed window forces it. */
+export type Archival = "live" | "frozen" | "backlog" | "archived";
 
 /** One Task/Goal's derived lifecycle state, keyed by node reference. `resolution` is present only
- * when `timing` is "lapsed". `archival_conflict` is true when a manually-set Frozen status was
- * overridden because `resolution` forced `archival` to "archived". */
+ * when `timing` is "lapsed". `archival_conflict` is true when a manually-set Frozen status, or a
+ * Task's stored Backlog, was overridden because `resolution` forced `archival` to "archived". */
 export interface ItemLifecycle {
   node_type: string;
   node_id: number;

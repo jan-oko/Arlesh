@@ -16,7 +16,7 @@ use arlesh_lib::{
         lifecycle::{Archival, Resolution, Timing},
         model::{
             CreateGoalRequest, CreateTaskRequest, Dependency, DurationSpec, GoalStatus, OnScopeExit,
-            TaskStatus, TimeScope, UpdateGoalRequest, UpdateTaskRequest,
+            TaskArchival, TaskStatus, TimeScope, UpdateGoalRequest, UpdateTaskRequest,
         },
         reparent_conflicts, update_goal, update_task,
     },
@@ -3222,4 +3222,287 @@ async fn the_update_goal_command_cannot_touch_beads_id() {
         .await
         .unwrap();
     assert_eq!(stored.as_deref(), Some("Arlesh-5fs"), "and the stored row must agree");
+}
+
+// --- Backlog: the write-time invariant, and the lifecycle it feeds ---------------------------
+//
+// A Task is never both backlogged and planned. The rule is asymmetric on purpose: backlogging a
+// planned Task is refused until the caller says to drop the Plan, while planning a backlogged one
+// simply takes it out of the backlog. Both directions are asserted on the stored row, not on the
+// absence of an error.
+
+/// A project, a week Time Scope and a day inside it — the setting for every test below.
+async fn backlog_fixture(pool: &sqlx::SqlitePool) -> (i64, TimeScope, TimeScope) {
+    let project_id = make_project(pool).await;
+    let week = helpers::session_factory(pool).connect().await.unwrap().scopes()
+        .get_or_create(ScopeKind::Week, NaiveDate::from_ymd_opt(2026, 7, 1).unwrap())
+        .await
+        .unwrap();
+    let day = helpers::session_factory(pool).connect().await.unwrap().scopes()
+        .get_or_create(ScopeKind::Day, NaiveDate::from_ymd_opt(2026, 7, 1).unwrap())
+        .await
+        .unwrap();
+    (project_id, single(week.id), single(day.id))
+}
+
+async fn new_task(pool: &sqlx::SqlitePool, request: CreateTaskRequest) -> arlesh_lib::tasks::model::Task {
+    let mut db = helpers::session_factory(pool).begin().await.unwrap();
+    let created = create_task(&mut db, request).await;
+    if created.is_ok() {
+        db.commit().await.unwrap();
+    }
+    created.unwrap()
+}
+
+async fn try_update(
+    pool: &sqlx::SqlitePool,
+    id: i64,
+    request: UpdateTaskRequest,
+) -> Result<arlesh_lib::tasks::model::Task, arlesh_lib::tasks::error::TaskError> {
+    let mut db = helpers::session_factory(pool).begin().await.unwrap();
+    let result = update_task(&mut db, id.into(), request).await;
+    if result.is_ok() {
+        db.commit().await.unwrap();
+    }
+    result
+}
+
+#[tokio::test]
+async fn a_task_starts_out_in_play() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let task = new_task(&pool, CreateTaskRequest {
+        title: "Ordinary".into(),
+        parent_type: "project".into(),
+        parent_id: project_id,
+        ..Default::default()
+    })
+    .await;
+    assert_eq!(task.archival, TaskArchival::Live);
+}
+
+#[tokio::test]
+async fn an_unplanned_task_can_be_put_in_the_backlog_and_taken_back_out() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let task = new_task(&pool, CreateTaskRequest {
+        title: "Not now".into(),
+        parent_type: "project".into(),
+        parent_id: project_id,
+        status: Some(TaskStatus::InProgress),
+        ..Default::default()
+    })
+    .await;
+
+    let aside = try_update(&pool, task.id, UpdateTaskRequest {
+        archival: Some(TaskArchival::Backlog),
+        ..Default::default()
+    })
+    .await
+    .expect("backlogging an unplanned task is allowed");
+    assert_eq!(aside.archival, TaskArchival::Backlog);
+    // Backlog is the other axis: the work still says where it stands.
+    assert_eq!(aside.status, TaskStatus::InProgress.as_str());
+
+    let back = try_update(&pool, task.id, UpdateTaskRequest {
+        archival: Some(TaskArchival::Live),
+        ..Default::default()
+    })
+    .await
+    .expect("taking it back out is allowed");
+    assert_eq!(back.archival, TaskArchival::Live);
+    assert_eq!(back.status, TaskStatus::InProgress.as_str());
+}
+
+#[tokio::test]
+async fn backlogging_a_planned_task_is_refused_pending_confirmation() {
+    let pool = helpers::test_pool().await;
+    let (project_id, week, day) = backlog_fixture(&pool).await;
+    let task = new_task(&pool, CreateTaskRequest {
+        title: "Scheduled".into(),
+        parent_type: "project".into(),
+        parent_id: project_id,
+        time_scope: Some(week),
+        plan: Some(day.clone()),
+        ..Default::default()
+    })
+    .await;
+
+    let refused = try_update(&pool, task.id, UpdateTaskRequest {
+        archival: Some(TaskArchival::Backlog),
+        ..Default::default()
+    })
+    .await;
+    assert!(
+        matches!(refused, Err(arlesh_lib::tasks::error::TaskError::BacklogWithPlan)),
+        "expected a refusal the caller can answer, got {refused:?}",
+    );
+
+    // The refusal is a refusal: nothing was written, so both halves stand exactly as they were.
+    let stored = helpers::session_factory(&pool).connect().await.unwrap()
+        .tasks()
+        .get(task.id.into())
+        .await
+        .unwrap();
+    assert_eq!(stored.archival, TaskArchival::Live);
+    assert_eq!(stored.plan.map(|p| p.start_id), Some(day.start_id));
+}
+
+#[tokio::test]
+async fn clearing_the_plan_and_backlogging_in_one_request_is_accepted() {
+    let pool = helpers::test_pool().await;
+    let (project_id, week, day) = backlog_fixture(&pool).await;
+    let task = new_task(&pool, CreateTaskRequest {
+        title: "Scheduled".into(),
+        parent_type: "project".into(),
+        parent_id: project_id,
+        time_scope: Some(week),
+        plan: Some(day),
+        ..Default::default()
+    })
+    .await;
+
+    let aside = try_update(&pool, task.id, UpdateTaskRequest {
+        archival: Some(TaskArchival::Backlog),
+        plan: Some(None),
+        ..Default::default()
+    })
+    .await
+    .expect("the acknowledged form of the same write goes through");
+    assert_eq!(aside.archival, TaskArchival::Backlog);
+    assert!(aside.plan.is_none());
+    // Setting it aside touches nothing else about it.
+    assert!(aside.time_scope.is_some(), "the Time Scope is not the Plan and must survive");
+}
+
+#[tokio::test]
+async fn planning_a_backlogged_task_takes_it_out_of_the_backlog() {
+    let pool = helpers::test_pool().await;
+    let (project_id, week, day) = backlog_fixture(&pool).await;
+    let task = new_task(&pool, CreateTaskRequest {
+        title: "Set aside".into(),
+        parent_type: "project".into(),
+        parent_id: project_id,
+        time_scope: Some(week),
+        archival: Some(TaskArchival::Backlog),
+        ..Default::default()
+    })
+    .await;
+    assert_eq!(task.archival, TaskArchival::Backlog);
+
+    // No prompt, no second call: scheduling something is all it takes to put it back in play.
+    let planned = try_update(&pool, task.id, UpdateTaskRequest {
+        plan: Some(Some(day.clone())),
+        ..Default::default()
+    })
+    .await
+    .expect("planning a backlogged task is never refused");
+    assert_eq!(planned.archival, TaskArchival::Live);
+    assert_eq!(planned.plan.map(|p| p.start_id), Some(day.start_id));
+}
+
+#[tokio::test]
+async fn editing_a_backlogged_task_leaves_it_in_the_backlog() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let task = new_task(&pool, CreateTaskRequest {
+        title: "Set aside".into(),
+        parent_type: "project".into(),
+        parent_id: project_id,
+        archival: Some(TaskArchival::Backlog),
+        ..Default::default()
+    })
+    .await;
+
+    let renamed = try_update(&pool, task.id, UpdateTaskRequest {
+        title: Some("Set aside, renamed".into()),
+        ..Default::default()
+    })
+    .await
+    .unwrap();
+    assert_eq!(renamed.archival, TaskArchival::Backlog);
+}
+
+#[tokio::test]
+async fn creating_a_task_both_backlogged_and_planned_is_refused() {
+    let pool = helpers::test_pool().await;
+    let (project_id, week, day) = backlog_fixture(&pool).await;
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    let refused = create_task(&mut db, CreateTaskRequest {
+        title: "Contradiction".into(),
+        parent_type: "project".into(),
+        parent_id: project_id,
+        time_scope: Some(week),
+        plan: Some(day),
+        archival: Some(TaskArchival::Backlog),
+        ..Default::default()
+    })
+    .await;
+    assert!(
+        matches!(refused, Err(arlesh_lib::tasks::error::TaskError::BacklogWithPlan)),
+        "the invariant holds on create too, got {refused:?}",
+    );
+}
+
+#[tokio::test]
+async fn a_backlogged_task_reports_backlog_through_the_lifecycle_derivation() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let task = new_task(&pool, CreateTaskRequest {
+        title: "Set aside".into(),
+        parent_type: "project".into(),
+        parent_id: project_id,
+        archival: Some(TaskArchival::Backlog),
+        ..Default::default()
+    })
+    .await;
+
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
+    let lifecycles = derive_all_scope_lifecycles(
+        &mut db,
+        NaiveDate::from_ymd_opt(2026, 7, 1).unwrap().and_hms_opt(12, 0, 0).unwrap(),
+    )
+    .await
+    .unwrap();
+    let entry = lifecycles
+        .iter()
+        .find(|l| l.node_type == "task" && l.node_id == task.id)
+        .expect("the task is in the derivation");
+    assert_eq!(entry.archival, Archival::Backlog);
+    assert!(!entry.archival_conflict);
+}
+
+#[tokio::test]
+async fn a_scoped_backlogged_task_still_lapses_missed_when_its_window_closes() {
+    let pool = helpers::test_pool().await;
+    let (project_id, week, _) = backlog_fixture(&pool).await;
+    let task = new_task(&pool, CreateTaskRequest {
+        title: "Set aside, and scoped".into(),
+        parent_type: "project".into(),
+        parent_id: project_id,
+        time_scope: Some(week),
+        on_scope_exit: Some(OnScopeExit::Archive),
+        archival: Some(TaskArchival::Backlog),
+        ..Default::default()
+    })
+    .await;
+
+    // Long after the week has closed, unfinished.
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
+    let lifecycles = derive_all_scope_lifecycles(
+        &mut db,
+        NaiveDate::from_ymd_opt(2026, 9, 1).unwrap().and_hms_opt(0, 0, 0).unwrap(),
+    )
+    .await
+    .unwrap();
+    let entry = lifecycles
+        .iter()
+        .find(|l| l.node_type == "task" && l.node_id == task.id)
+        .expect("the task is in the derivation");
+    assert_eq!(entry.timing, Timing::Lapsed);
+    assert_eq!(entry.resolution, Some(Resolution::Missed));
+    // Setting a scoped task aside does not protect it from its own window — and the override of a
+    // deliberate choice is flagged rather than performed quietly.
+    assert_eq!(entry.archival, Archival::Archived);
+    assert!(entry.archival_conflict);
 }

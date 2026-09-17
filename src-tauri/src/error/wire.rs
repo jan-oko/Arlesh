@@ -27,8 +27,9 @@ pub enum WireErrorKind {
     /// dependency cycle, a fixed Aspect edit, an unsupported scope kind).
     InvalidRequest,
     /// The operation is valid but ambiguous or destructive enough that the
-    /// caller must confirm before it proceeds. Nothing constructs this kind
-    /// yet; Phase 4's confirmation flow is what will.
+    /// caller must confirm before it proceeds. Raised by `retype_node` (with
+    /// a `details` payload naming what would be lost) and by `update_task`
+    /// when backlogging a task that still has a Plan.
     NeedsConfirmation,
     /// A database-level error occurred.
     Database,
@@ -150,6 +151,10 @@ fn task_kind(error: &TaskError) -> WireErrorKind {
     match error {
         TaskError::TaskNotFound(_) | TaskError::GoalNotFound(_) => WireErrorKind::NotFound,
         TaskError::CircularDependency => WireErrorKind::InvalidRequest,
+        // Not `InvalidRequest`: the request is well-formed and could be carried out. The backend
+        // is asking whether to throw the Plan away, and the caller answers by asking again with
+        // the Plan cleared.
+        TaskError::BacklogWithPlan => WireErrorKind::NeedsConfirmation,
         // Not `InvalidRequest`: the request was fine and the stored tree is not. Nothing the
         // caller can rephrase will fix it, which is what `Internal` means here.
         TaskError::AncestorCycle { .. } => WireErrorKind::Internal,
@@ -264,6 +269,14 @@ mod tests {
         assert_eq!(
             kind_of(TaskError::CircularDependency),
             WireErrorKind::InvalidRequest
+        );
+    }
+
+    #[test]
+    fn task_backlog_with_plan_maps_to_needs_confirmation() {
+        assert_eq!(
+            kind_of(TaskError::BacklogWithPlan),
+            WireErrorKind::NeedsConfirmation
         );
     }
 

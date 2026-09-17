@@ -103,8 +103,14 @@ export interface MindmapNode {
   /** Effective archived-ness (Task/Goal only) — true forces the archived badge/filter regardless of
    * `status`; may diverge from a manually-set Frozen `status` (see `archivalConflict`). */
   archived?: boolean;
-  /** True when `archived` is true because a scope Resolution overrode a manually-set Frozen status. */
+  /** True when `archived` is true because a scope Resolution overrode a manually-set Frozen status
+   * or a stored Backlog. */
   archivalConflict?: boolean;
+  /** The task's own **stored** Backlog state (Tasks only) — deliberately set aside, hidden from
+   * Plan and Start with its whole subtree, still listed under All. Stored rather than derived, so
+   * it keeps reading as backlogged even once a lapsed window has forced `archived` on top of it —
+   * exactly as a Frozen goal keeps its `status` under the same override. */
+  backlogged?: boolean;
   /** A derived, read-only node (e.g. a virtual Habit iteration) with no backing DB row. */
   virtual?: boolean;
   /**

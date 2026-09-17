@@ -13,6 +13,8 @@ export interface ListContext {
   onDeselect: () => void;
   onToggleFilter: () => void;
   onSetStatusMode: (mode: StatusMode) => void;
+  /** Puts the selected Task in the backlog, or takes it out. */
+  onToggleBacklog: (id: string) => void;
 }
 
 /** Alt+letter → status preset, matched on physical key so it works under any layout. */
@@ -21,6 +23,7 @@ const STATUS_PRESETS: ReadonlyArray<{ code: string; mode: StatusMode; labelKey: 
   { code: "KeyP", mode: "plan", labelKey: "statusPlan" },
   { code: "KeyS", mode: "start", labelKey: "statusStart" },
   { code: "KeyD", mode: "do", labelKey: "statusDo" },
+  { code: "KeyB", mode: "backlog", labelKey: "statusBacklog" },
 ];
 
 const statusBindings: readonly Binding<ListContext>[] = STATUS_PRESETS.map(({ code, mode, labelKey }) => ({
@@ -66,6 +69,12 @@ export const LIST_BINDINGS: readonly Binding<ListContext>[] = [
     labelKey: "rename",
     when: (c) => c.selectedTaskId !== null,
     run: (c) => { if (c.selectedTaskId !== null) c.onStartRename(c.selectedTaskId); },
+  },
+  {
+    id: "listView.toggleBacklog", section: "listView", chord: { code: "KeyB" },
+    labelKey: "toggleBacklog",
+    when: (c) => c.selectedTaskId !== null,
+    run: (c) => { if (c.selectedTaskId !== null) c.onToggleBacklog(c.selectedTaskId); },
   },
   {
     id: "listView.deselect", section: "listView", chord: { code: "Escape" },

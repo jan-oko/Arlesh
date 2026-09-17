@@ -37,6 +37,8 @@ import StartFlowModal, { type StartFlowData } from "@/components/StartFlowModal/
 import { startFlow, convertToFlow } from "@/api/flows";
 import ConvertToFlowModal from "@/components/ConvertToFlowModal/ConvertToFlowModal";
 import WarningConfirmModal from "@/components/WarningConfirmModal/WarningConfirmModal";
+import BacklogConfirmModal from "@/components/BacklogConfirmModal/BacklogConfirmModal";
+import { useTaskBacklog } from "@/hooks/use-task-backlog";
 import DeleteConfirmModal from "@/components/DeleteConfirmModal/DeleteConfirmModal";
 import styles from "./MindmapView.module.css";
 
@@ -287,6 +289,10 @@ export default function MindmapView() {
     tree, retypeNode, selectNode, showToast,
   });
 
+  const { toggleBacklog, planPrompt, confirmClearPlan, cancelPlanPrompt } = useTaskBacklog({
+    findNode: findNodeById, reload, showToast,
+  });
+
   const handleConfirmDelete = useCallback(() => {
     if (deleteTargets === null) return;
 
@@ -422,8 +428,9 @@ export default function MindmapView() {
 
   useKeyboardMindmap({
     isInputActive: isInputCaptured,
-    isWarningActive: warningModal !== null,
-    onDismissWarning: () => setWarningModal(null),
+    // Both prompts swallow the canvas keys; Escape dismisses whichever is open.
+    isWarningActive: warningModal !== null || planPrompt !== null,
+    onDismissWarning: () => { setWarningModal(null); cancelPlanPrompt(); },
     selectedNodeId,
     selectedNodeIds,
     subtreeRootId,
@@ -458,6 +465,7 @@ export default function MindmapView() {
     onCenterOnNode: onCenterOnSelected,
     onConvertToFlow: onConvertToFlowKey,
     onExtendSelection: extendSelection,
+    onToggleBacklog: toggleBacklog,
     findNodeById,
   });
   const targetPos = dragTargetId !== null ? positions.get(dragTargetId) : undefined;
@@ -565,6 +573,10 @@ export default function MindmapView() {
           actions={retypeActions}
           onCancel={() => setWarningModal(null)}
         />
+      )}
+
+      {planPrompt !== null && (
+        <BacklogConfirmModal prompt={planPrompt} onConfirm={confirmClearPlan} onCancel={cancelPlanPrompt} />
       )}
 
       {scopeClampRequest !== null && (

@@ -272,3 +272,42 @@ describe("filterTaskList — tasks inside a Frozen/Archived Project", () => {
     expect(filterTaskList([nested], sf({ statusMode: "plan" }), lf())).toEqual([]);
   });
 });
+
+describe("filterTaskList — Backlog", () => {
+  const aside = row({ node: n("task-aside", "task", { status: "todo", backlogged: true }) });
+  const live = row({ node: n("task-live", "task", { status: "todo" }) });
+  // A live sub-step under a set-aside parent: hidden with it, exactly as on the canvas.
+  const substep = row({
+    node: n("task-substep", "task", { status: "todo" }),
+    ancestors: [n("task-aside", "task", { status: "todo", backlogged: true })],
+  });
+  const rows = [aside, live, substep];
+  const kept = (shared: Partial<FilterState>, list: Partial<ListFilterState> = {}) =>
+    filterTaskList(rows, sf(shared), lf(list)).map((r) => r.node.id);
+
+  it("Plan hides a backlogged row and everything under it", () => {
+    expect(kept({ statusMode: "plan" })).toEqual(["task-live"]);
+  });
+
+  it("Start hides a backlogged row and everything under it", () => {
+    expect(kept({ statusMode: "start" })).toEqual(["task-live"]);
+  });
+
+  it("All lists a backlogged row", () => {
+    expect(kept({ statusMode: "all" })).toContain("task-aside");
+  });
+
+  it("the Backlog preset lists only what was set aside, plus what sits under it", () => {
+    expect(kept({ statusMode: "backlog" })).toEqual(["task-aside", "task-substep"]);
+  });
+
+  it("the Backlog pill's Include brings the rows back under Plan", () => {
+    expect(kept({ statusMode: "plan", backlogMode: "include" })).toEqual([
+      "task-aside", "task-live", "task-substep",
+    ]);
+  });
+
+  it("the Backlog pill's Exclude drops them even under All", () => {
+    expect(kept({ statusMode: "all", backlogMode: "exclude" })).toEqual(["task-live"]);
+  });
+});

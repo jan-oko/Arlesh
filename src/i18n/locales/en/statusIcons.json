@@ -9,5 +9,6 @@
   "habitInstance": "Habit instance",
   "tags": "Tags: {{value}}",
   "loading": "…",
-  "row": "Status"
+  "row": "Status",
+  "backlog": "In the backlog"
 }

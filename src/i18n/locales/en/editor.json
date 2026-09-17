@@ -82,5 +82,8 @@
   "fieldBeadsId": "Issue",
   "placeholderBlockReason": "Reason…",
   "placeholderKbDir": "/path/to/vault",
-  "placeholderDepSearch": "Search tasks or goals to add dependency…"
+  "placeholderDepSearch": "Search tasks or goals to add dependency…",
+  "fieldBacklog": "Backlog",
+  "backlogOn": "In the backlog",
+  "backlogOff": "In play"
 }

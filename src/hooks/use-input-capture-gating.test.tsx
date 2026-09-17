@@ -35,6 +35,7 @@ function View({ modalState, modalRenders }: { modalState: boolean; modalRenders:
     onDeselect: vi.fn(),
     onToggleFilter,
     onSetStatusMode: vi.fn(),
+    onToggleBacklog: vi.fn(),
   });
   return modalState && modalRenders ? <Modal /> : null;
 }

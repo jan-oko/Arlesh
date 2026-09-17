@@ -2034,6 +2034,9 @@ async fn write_plan(
                         time_scope: node.time_scope.clone(),
                         plan: node.plan.clone(),
                         on_scope_exit: None,
+                        // A materialized instance always arrives in play. Nothing enters the
+                        // backlog without the user putting it there.
+                        archival: None,
                     },
                 )
                 .await?;

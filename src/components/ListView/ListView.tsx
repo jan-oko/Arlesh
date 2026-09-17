@@ -1,6 +1,9 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useListData } from "@/hooks/use-list-data";
+import { useTaskBacklog } from "@/hooks/use-task-backlog";
+import { useMindmapStore } from "@/stores/use-mindmap-store";
+import { findNode } from "@/utils/mindmap-tree";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useListFilterStore } from "@/stores/use-list-filter-store";
 import { filterTaskList } from "@/utils/list-filter";
@@ -12,8 +15,14 @@ import TaskEditorModal from "@/components/TaskEditorModal/TaskEditorModal";
 import Switch from "@/components/Switch/Switch";
 import TaskRow from "./TaskRow";
 import GoalHeaderRow from "./GoalHeaderRow";
+import AnchoredToast from "@/components/AnchoredToast/AnchoredToast";
+import BacklogConfirmModal from "@/components/BacklogConfirmModal/BacklogConfirmModal";
+import type { Position } from "@/utils/tree-layout";
 import styles from "./ListView.module.css";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
+
+/** A flat list lays out no nodes, so every anchored notice falls back to its fixed spot. */
+const NO_POSITIONS: ReadonlyMap<string, Position> = new Map();
 
 export default function ListView() {
   const { t } = useTranslation(["common", "listView", "editor"]);
@@ -36,6 +45,15 @@ export default function ListView() {
 
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+
+  const pendingToast = useMindmapStore((s) => s.pendingToast);
+  const showToast = useMindmapStore((s) => s.showToast);
+  const clearToast = useMindmapStore((s) => s.clearToast);
+  const { toggleBacklog, planPrompt, confirmClearPlan, cancelPlanPrompt } = useTaskBacklog({
+    findNode: (id) => findNode(tree, id),
+    reload,
+    showToast,
+  });
 
   const filteredRows = useMemo(
     () => filterTaskList(rows, sharedFilter, listFilter),
@@ -79,7 +97,8 @@ export default function ListView() {
   }
 
   useKeyboardListView({
-    isInputActive: isInputCaptured,
+    // The prompt swallows the row keys while it is open, as the editor modal already does.
+    isInputActive: isInputCaptured || planPrompt !== null,
     selectedTaskId: activeSelectedId,
     isSelectedBlocked,
     onNavigate: handleNavigate,
@@ -89,6 +108,7 @@ export default function ListView() {
     onDeselect: () => setSelectedTaskId(null),
     onToggleFilter: toggleFilterPopover,
     onSetStatusMode: handleSetStatusPreset,
+    onToggleBacklog: toggleBacklog,
   });
 
   if (isLoading) return <div className={styles.centered}>{t("common:loading")}</div>;
@@ -96,6 +116,7 @@ export default function ListView() {
 
   return (
     <div className={styles.container}>
+      <AnchoredToast toast={pendingToast} positions={NO_POSITIONS} onDismiss={clearToast} />
       <div className={styles.toolbar}>
         <Switch checked={listFilter.showGoalHeaders} onChange={toggleShowGoalHeaders} label={t("listView:showGoalHeaders")} />
       </div>
@@ -136,6 +157,10 @@ export default function ListView() {
           onCheckScopeClamp={checkScopeClamp}
           onClose={() => setEditorModal(null)}
         />
+      )}
+
+      {planPrompt !== null && (
+        <BacklogConfirmModal prompt={planPrompt} onConfirm={confirmClearPlan} onCancel={cancelPlanPrompt} />
       )}
     </div>
   );

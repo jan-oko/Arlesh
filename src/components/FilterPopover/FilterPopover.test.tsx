@@ -191,3 +191,31 @@ describe("FilterPopover", () => {
     });
   });
 });
+
+describe("FilterPopover — Backlog pill", () => {
+  it("sits beside the Archived pill under the Advanced disclosure", () => {
+    render(<FilterPopover />);
+    expect(screen.queryByRole("button", { name: "backlogPill" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /advanced/ }));
+    expect(screen.getByRole("button", { name: "backlogPill" })).toBeInTheDocument();
+  });
+
+  it("auto-opens the Advanced disclosure when the backlog filter is already active", () => {
+    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, backlogMode: "include" } });
+    render(<FilterPopover />);
+    expect(screen.getByRole("button", { name: "backlogPill" })).toBeInTheDocument();
+  });
+
+  it("cycles Inactive → Include → Exclude → Inactive on click", () => {
+    render(<FilterPopover />);
+    fireEvent.click(screen.getByRole("button", { name: /advanced/ }));
+    const pill = screen.getByRole("button", { name: "backlogPill" });
+    expect(useFilterStore.getState().filter.backlogMode).toBe("inactive");
+    fireEvent.click(pill);
+    expect(useFilterStore.getState().filter.backlogMode).toBe("include");
+    fireEvent.click(pill);
+    expect(useFilterStore.getState().filter.backlogMode).toBe("exclude");
+    fireEvent.click(pill);
+    expect(useFilterStore.getState().filter.backlogMode).toBe("inactive");
+  });
+});

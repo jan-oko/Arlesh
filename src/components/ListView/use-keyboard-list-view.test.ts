@@ -24,6 +24,7 @@ function baseOptions(overrides: Partial<Parameters<typeof useKeyboardListView>[0
     onDeselect: vi.fn(),
     onToggleFilter: vi.fn(),
     onSetStatusMode: vi.fn(),
+    onToggleBacklog: vi.fn(),
     ...overrides,
   };
 }
@@ -61,11 +62,27 @@ describe("useKeyboardListView", () => {
     ["p", "plan"],
     ["s", "start"],
     ["d", "do"],
+    ["b", "backlog"],
   ] as const)("Alt+%s sets the %s status preset", (key, mode) => {
     const options = baseOptions();
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey(key, { altKey: true });
     expect(options.onSetStatusMode).toHaveBeenCalledWith(mode);
+  });
+
+  it("plain B toggles the selected row's backlog", () => {
+    const options = baseOptions();
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    fireKey("b");
+    expect(options.onToggleBacklog).toHaveBeenCalledWith("task-1");
+    expect(options.onSetStatusMode).not.toHaveBeenCalled();
+  });
+
+  it("plain B does nothing with no row selected", () => {
+    const options = baseOptions({ selectedTaskId: null });
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    fireKey("b");
+    expect(options.onToggleBacklog).not.toHaveBeenCalled();
   });
 
   it("ArrowDown/ArrowUp navigate the selection", () => {
