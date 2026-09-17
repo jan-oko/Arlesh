@@ -36,7 +36,8 @@ Two repairs were needed:
 
 | Bead | P | Effort | Worktree | Status |
 |---|---|---|---|---|
-| Arlesh-6gm — indent subtasks by visible depth | P1 | low | `listview-indent` | in flight — stacked on `worktree-listview-path-headers`, so its PR bases on that branch, not master |
+| Arlesh-6gm — indent subtasks by visible depth | P1 | low | `listview-indent` | **PR #6**, stacked on PR #4 |
+| Arlesh-je5 — copy-paste duplicates instead of moving | P1 | high | `duplicate-paste-v2` | in flight — stacked on `worktree-flow-move-fix` (PR #5) |
 
 **Rate limit, 2026-09-17 ~21:40.** All four in-flight agents died at once on the session API limit.
 `a4u` was mid-gate, `n66` mid-implementation, `6gm` had barely started; all work survived in the
@@ -65,15 +66,12 @@ nothing in flight.
 
 ### Queue (refill as slots free)
 
-1. Arlesh-je5 — copy-paste duplicate (P1, high) — **already implemented** on the stale
-   `worktree-mindmap-duplicate-paste` branch (commit 2620c61, branched before master).
-   Needs a rebase onto master + re-gate, not a fresh implementation.
-2. Arlesh-cyo — Commitments (P1, high)
-3. Arlesh-4yp — Tabs (P1, high)
-4. Arlesh-qf3 (P2 low), Arlesh-zem (P2 low), Arlesh-bwc (P2 medium),
+1. Arlesh-cyo — Commitments (P1, high)
+2. Arlesh-4yp — Tabs (P1, high)
+3. Arlesh-qf3 (P2 low), Arlesh-zem (P2 low), Arlesh-bwc (P2 medium),
    Arlesh-qcb (P2 medium), Arlesh-p2g (P2 medium, blocked by 817),
    Arlesh-aln (P2 high), Arlesh-fxo (P2 high, blocked by 4yp)
-5. P3: Arlesh-ba8 (medium), Arlesh-32r (high), Arlesh-y2l (high),
+4. P3: Arlesh-ba8 (medium), Arlesh-32r (high), Arlesh-y2l (high),
    Arlesh-tgf (high, blocked), Arlesh-3kh (medium, blocked by y2l)
 
 ## Open questions for the user
@@ -98,6 +96,13 @@ nothing in flight.
 | 3 | Arlesh-9qq — List View Ctrl+O | master |
 | 4 | Arlesh-817 — List View path headers | master |
 | 5 | Arlesh-a4u — flow move writes to the wrong table | master |
+| 6 | Arlesh-6gm — indent subtasks by visible depth | `worktree-listview-path-headers` (stacks on #4) |
+
+## Stacking
+
+Branches are stacked rather than all cut from master, so a dependent bead can start before its
+dependency merges. Each stacked PR's base is the branch beneath it, so it proposes only its own
+commit. **Merge bottom-up**: #4 → #6, and #5 → the `je5` PR.
 
 ## Standing risks
 
