@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import ListView from "./ListView";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useListFilterStore } from "@/stores/use-list-filter-store";
+import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { DEFAULT_FILTER } from "@/utils/filter-tree";
 import { DEFAULT_LIST_FILTER } from "@/utils/list-filter";
 import type { TaskListRow } from "@/utils/list-filter";
@@ -73,6 +74,7 @@ beforeEach(() => {
   useFilterStore.setState({ filter: { ...DEFAULT_FILTER } });
   useListFilterStore.setState({ filter: { ...DEFAULT_LIST_FILTER, pills: { ...DEFAULT_LIST_FILTER.pills } } });
   mockUseListData.mockReturnValue(listData());
+  useMindmapStore.setState({ subtreeRootId: null, subtreeNav: null });
 });
 
 describe("ListView", () => {
@@ -177,6 +179,117 @@ describe("ListView", () => {
         ],
       });
     }
+
+    /** Projects to find by name, one nested inside another so "up one level" and "back to the
+     * root" are different destinations. */
+    function searchable() {
+      return listData({
+        tree: n("root", "domain", {
+          children: [
+            n("project-1", "project", {
+              title: "ARLESH",
+              children: [n("project-2", "project", { title: "Deeper" })],
+            }),
+            n("project-3", "project", { title: "Elsewhere" }),
+          ],
+        }),
+        rows: [row({ node: n("task-a", "task", { status: "todo" }) })],
+      });
+    }
+
+    /** Presses the chord and types a query, returning the search input. */
+    function openSearch(query: string): HTMLElement {
+      fireEvent.keyDown(window, { key: "o", code: "KeyO", ctrlKey: true });
+      const input = screen.getByPlaceholderText("common:searchNodesPlaceholder");
+      fireEvent.change(input, { target: { value: query } });
+      return input;
+    }
+
+    it("Ctrl+O opens the node search over every node kind", () => {
+      mockUseListData.mockReturnValue(searchable());
+      render(<ListView />);
+      expect(screen.queryByPlaceholderText("common:searchNodesPlaceholder")).not.toBeInTheDocument();
+      openSearch("arlesh");
+      expect(screen.getByText("ARLESH")).toBeInTheDocument();
+    });
+
+    it("picking a search result enters that node's subtree", () => {
+      mockUseListData.mockReturnValue(searchable());
+      render(<ListView />);
+      openSearch("arlesh");
+      fireEvent.mouseDown(screen.getByText("ARLESH"));
+      expect(useMindmapStore.getState().subtreeRootId).toBe("project-1");
+      expect(screen.queryByPlaceholderText("common:searchNodesPlaceholder")).not.toBeInTheDocument();
+    });
+
+    it("picking a search result touches no filter at all", () => {
+      mockUseListData.mockReturnValue(searchable());
+      render(<ListView />);
+      openSearch("arlesh");
+      fireEvent.mouseDown(screen.getByText("ARLESH"));
+      expect(useListFilterStore.getState().filter).toEqual(DEFAULT_LIST_FILTER);
+      expect(useFilterStore.getState().filter.statusMode).toBe(DEFAULT_FILTER.statusMode);
+    });
+
+    it("entering a subtree publishes the back-nav descriptor the top bar's pills render from", () => {
+      mockUseListData.mockReturnValue(searchable());
+      render(<ListView />);
+      openSearch("arlesh");
+      fireEvent.mouseDown(screen.getByText("ARLESH"));
+      // The Mindmap is unmounted here, so the List View has to be the one publishing this.
+      expect(useMindmapStore.getState().subtreeNav).toEqual({
+        rootTitle: "root",
+        parentTitle: "root",
+        parentSubtreeId: null,
+      });
+
+      openSearch("deeper");
+      fireEvent.mouseDown(screen.getByText("Deeper"));
+      expect(useMindmapStore.getState().subtreeNav).toEqual({
+        rootTitle: "root",
+        parentTitle: "ARLESH",
+        parentSubtreeId: "project-1",
+      });
+    });
+
+    it("Shift+Escape goes up one level, not straight out", () => {
+      mockUseListData.mockReturnValue(searchable());
+      render(<ListView />);
+      openSearch("deeper");
+      fireEvent.mouseDown(screen.getByText("Deeper"));
+      fireEvent.keyDown(window, { key: "Escape", code: "Escape", shiftKey: true });
+      expect(useMindmapStore.getState().subtreeRootId).toBe("project-1");
+      fireEvent.keyDown(window, { key: "Escape", code: "Escape", shiftKey: true });
+      expect(useMindmapStore.getState().subtreeRootId).toBeNull();
+    });
+
+    it("Ctrl+Escape goes straight back to the root from any depth", () => {
+      mockUseListData.mockReturnValue(searchable());
+      render(<ListView />);
+      openSearch("deeper");
+      fireEvent.mouseDown(screen.getByText("Deeper"));
+      fireEvent.keyDown(window, { key: "Escape", code: "Escape", ctrlKey: true });
+      expect(useMindmapStore.getState().subtreeRootId).toBeNull();
+    });
+
+    it("bare Escape deselects without leaving the subtree", () => {
+      mockUseListData.mockReturnValue(searchable());
+      render(<ListView />);
+      openSearch("arlesh");
+      fireEvent.mouseDown(screen.getByText("ARLESH"));
+      fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
+      fireEvent.keyDown(window, { key: "Escape", code: "Escape" });
+      expect(useMindmapStore.getState().subtreeRootId).toBe("project-1");
+    });
+
+    it("Escape closes the node search without entering anything", () => {
+      mockUseListData.mockReturnValue(searchable());
+      render(<ListView />);
+      const input = openSearch("arlesh");
+      fireEvent.keyDown(input, { key: "Escape" });
+      expect(screen.queryByPlaceholderText("common:searchNodesPlaceholder")).not.toBeInTheDocument();
+      expect(useMindmapStore.getState().subtreeRootId).toBeNull();
+    });
 
     it("ArrowDown selects the first row when nothing is selected, then moves to the next", () => {
       mockUseListData.mockReturnValue(twoRows());
