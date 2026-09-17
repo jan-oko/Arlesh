@@ -37,8 +37,9 @@ Two repairs were needed:
 | Bead | P | Effort | Worktree | Status |
 |---|---|---|---|---|
 | Arlesh-6gm — indent subtasks by visible depth | P1 | low | `listview-indent` | **PR #6**, stacked on PR #4 |
-| Arlesh-je5 — copy-paste duplicates instead of moving | P1 | high | `duplicate-paste-v2` | in flight — stacked on `worktree-flow-move-fix` (PR #5) |
+| Arlesh-je5 — copy-paste duplicates instead of moving | P1 | high | `duplicate-paste-v2` | **PR #8**, stacked on PR #5 — coverage 90.96% |
 | Arlesh-cyo — Commitments | P1 | high | `commitments` | in flight — stacked on `worktree-task-backlog` (PR #7) |
+| Arlesh-zem — delete-dialog focus | P2 | low | `delete-focus` | in flight, from master |
 
 **Rate limit, 2026-09-17 ~21:40.** All four in-flight agents died at once on the session API limit.
 `a4u` was mid-gate, `n66` mid-implementation, `6gm` had barely started; all work survived in the
@@ -99,6 +100,10 @@ nothing in flight.
 | 5 | Arlesh-a4u — flow move writes to the wrong table | master |
 | 6 | Arlesh-6gm — indent subtasks by visible depth | `worktree-listview-path-headers` (stacks on #4) |
 | 7 | Arlesh-n66 — Task Backlog | master |
+| 8 | Arlesh-je5 — copy-paste duplicates | `worktree-flow-move-fix` (stacks on #5) |
+
+**6 of 8 used.** `zem` and `cyo` are the last two dispatches — when both land the cap is reached and
+the run stops until something merges.
 
 ## Stacking
 
@@ -113,6 +118,10 @@ Zustand stores to per-tab instances and would conflict with every open PR at onc
 - `Arlesh-6dm` (P2, low) — retype's loss prompt drops a Task's Backlog without naming it among the
   losses, where every neighbouring field is enumerated. Left out of `n66` for volume (~30 struct
   literals in `retype.rs`), not difficulty.
+- `Arlesh-a18` (P2, medium) — a Flow *underneath* a copied node is not copied and not counted.
+  `je5` correctly scoped Flow duplication out, and a directly-selected Flow is skipped with a toast,
+  but one hanging below a copied node just vanishes. The dropped `FlowRepository::duplicate_flow`
+  (+128 lines) is recoverable from `2620c61` if the richer fix is wanted.
 
 ## Standing risks
 
