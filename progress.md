@@ -109,12 +109,15 @@ nothing in flight.
 | 6 | Arlesh-6gm — indent subtasks by visible depth | `worktree-listview-path-headers` (stacks on #4) |
 | 7 | Arlesh-n66 — Task Backlog | master |
 | 8 | Arlesh-je5 — copy-paste duplicates | `worktree-flow-move-fix` (stacks on #5) |
-| 9 | Arlesh-zem — delete-dialog focus | master |
-
 | 10 | Arlesh-cyo — Commitments | `worktree-task-backlog` (stacks on #7) |
+| _new_ | Arlesh-xbi — trap focus in every modal | master (dispatched 2026-09-18) |
 
-**8 of 8 — CAP REACHED. The run is stopped.** Nothing further is dispatched until PRs merge.
-All eight beads are `in_progress`; none was closed, since each closes on merge.
+~~PR #9 (`Arlesh-zem`, delete-dialog focus)~~ **merged 2026-09-18** as `7395cf9`. The freed slot
+went to `Arlesh-xbi`, its own follow-up: `use-focus-trap.ts` landed in #9 adopted by exactly one
+modal, and Tab still escapes behind the other eleven. Back at **8 of 8 — cap reached.**
+
+Local `master` was rebased onto `origin/master` after the merge; the five orchestration commits
+that were ahead are still local and still unpushed.
 
 ## Stacking
 
@@ -125,6 +128,13 @@ commit. **Merge bottom-up**: #4 → #6 and #3; #5 → #8; #7 → the `cyo` PR.
 Zustand stores to per-tab instances and would conflict with every open PR at once.
 
 ## Corrections from the user
+
+- **The subtree indicator wears no pill and belongs in the middle.** Shipped first as a third
+  pill in the left-hand group, sharing the shape of the two exit buttons beside it — which made a
+  label look like a control. It is now centred in the bar with no border, background or padding.
+  The bar became a three-column grid (`minmax(0, 1fr) auto minmax(0, 1fr)`) so the centre is
+  centred on the *bar*, not on the gap the two sides happen to leave. Pushed to PR #3 as
+  `12af86b`; full suite green at 86 files / 1088 tests.
 
 - **Ctrl+O is not a filter at all.** After using it, the user rejected the whole conception:
   Ctrl+O now **enters a subtree**, shown in the TopBar exactly as the Mindmap's is, with
@@ -195,6 +205,41 @@ full gate. The three Rust beads each reported coverage above the 90% floor (90.8
 
 **Before merging anything**, see the two items under *Open questions for the user* — the unpushed
 master, and the migration in PR #10 that wants a second reader.
+
+## Bugs found while the user tested the instances
+
+### `Arlesh-odd` (P1) — "Habit iterations could not be loaded"
+
+Reported on the `listview-ctrl-o` instance, for `לאכול ארוחות נורמליות` and `Journal`. **Not a
+branch bug** — it reproduces on master and on the live board. Diagnosed to a real defect rather
+than guessed at:
+
+Reproduced by copying the live DB, deleting the 74 Day scopes nothing references (85 → 11), and
+running the binary with `RUST_LOG=warn`:
+
+```
+WARN arlesh_lib::mindmap: mindmap load: habit payload failed
+  error=scope error: database error: ... (code: 5) database is locked
+```
+
+Nine failures in one startup; 80 Day scopes existed afterwards, so most flows won the race and a
+few lost it. Three facts combine:
+
+1. **A mindmap load writes.** `habit_slots` mints a Day/Week/Month/Season scope per iteration
+   slot. The two failing flows are the only `day`-window Habits with no gap, so they need 78 and
+   75 new scopes — `load_mindmap` is a large write wearing a read's clothes.
+2. **The DB is in `journal_mode=delete`, not WAL** — verified on the live file and every instance
+   copy. `database/session.rs`'s module comment reasons explicitly about "sqlx's default WAL
+   journal, where a reader never blocks on a writer". The file does not satisfy that assumption.
+3. **`SessionFactory::begin` issues a deferred `BEGIN`.** A read-then-write transaction fails its
+   upgrade *immediately* with SQLITE_BUSY and no busy handler can retry it. `database::connect`
+   sets no `busy_timeout` either.
+
+It looks transient because a failed load still commits the scopes it managed to mint, so the next
+startup writes less and wins — until enough days pass to need a fresh batch.
+
+Filed P1, not P2: it is a silent data-correctness failure on startup, and the fix is in the
+session layer every other write goes through. **Queued, not dispatched** — the cap is full.
 
 ## New stack: undo/redo (specced, not started)
 
