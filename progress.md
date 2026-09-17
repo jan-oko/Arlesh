@@ -17,7 +17,7 @@ see Standing risks); at most 2 `effort:high` at once.
 | Bead | P | Effort | Worktree | Status |
 |---|---|---|---|---|
 | Arlesh-a4u — Moving a Flow reparents an unrelated Domain | P1 | low | `flow-move-fix` | resumed — edits in tree, uncommitted |
-| Arlesh-9qq — List View Ctrl+O | P1 | low | `listview-ctrl-o` | **PR #3** |
+| Arlesh-9qq — List View Ctrl+O | P1 | low | `listview-ctrl-o` | **PR #3** — amended: pill lands in `all` mode |
 | Arlesh-817 — List View path headers | P1 | medium | `listview-path-headers` | **PR #4** |
 | Arlesh-n66 — Task Backlog | P1 | medium | `task-backlog` | resumed — had not started editing |
 
@@ -95,7 +95,7 @@ nothing in flight.
 
 | # | Bead | Base |
 |---|---|---|
-| 3 | Arlesh-9qq — List View Ctrl+O | master |
+| 3 | Arlesh-9qq — List View Ctrl+O | master | (being amended in place, not a new PR) |
 | 4 | Arlesh-817 — List View path headers | master |
 | 5 | Arlesh-a4u — flow move writes to the wrong table | master |
 | 6 | Arlesh-6gm — indent subtasks by visible depth | `worktree-listview-path-headers` (stacks on #4) |
@@ -113,6 +113,15 @@ dependency merges. Each stacked PR's base is the branch beneath it, so it propos
 commit. **Merge bottom-up**: #4 → #6; #5 → the `je5` PR; #7 → the `cyo` PR.
 `Arlesh-4yp` (Tabs) is deliberately held back until this stack drains — it converts the singleton
 Zustand stores to per-tab instances and would conflict with every open PR at once.
+
+## Corrections from the user
+
+- **Ctrl+O adds its antecedent pill in `all` (∩) mode, not the default `any` (∪).** A union widens
+  the list when another antecedent pill is already present, which is the opposite of "narrows by
+  the one you pick". Picking a node that is already pilled in another mode switches that pill to
+  `all` rather than no-opping or duplicating; other nodes' pills are left alone. The user's word was
+  "exclusive", which matches none of the three mode names (`any`/`all`/`exclude`) — confirmed with
+  them that it meant intersect. Amends PR #3 in place; no new PR.
 
 ## Follow-ups filed from agent reports
 
