@@ -147,19 +147,25 @@ export default function TopBar() {
               <button className={styles.pill} type="button" onClick={() => exitSubtree(subtreeNav.parentSubtreeId)}>
                 <span aria-hidden="true">{BACK_ICON}</span>{subtreeNav.parentTitle}
               </button>
-              {/* Where you are. Static, not a button: its two neighbours are the ways out, and
-                  there is nowhere for "here" to navigate to. The label is spelled out for a
-                  screen reader, which would otherwise hear three bare titles in a row. */}
-              <span className={styles.currentPill}>
-                <SubtreeIcon />
-                <span className={styles.srOnly}>{t("common:insideSubtree")}</span>
-                {subtreeNav.currentTitle}
-              </span>
             </>
           )}
         </div>
 
-        <div className={styles.side}>
+        {/* Where you are — centred in the bar, and unadorned. It is not a control and not a way
+            out (its neighbours on the left are), so it carries no pill, border or background:
+            the glyph and the title alone say which subtree you are inside. The label is spelled
+            out for a screen reader, which would otherwise hear a third bare title. */}
+        <div className={styles.center}>
+          {subtreeRootId !== null && subtreeNav !== null && (
+            <span className={styles.current}>
+              <SubtreeIcon />
+              <span className={styles.srOnly}>{t("common:insideSubtree")}</span>
+              {subtreeNav.currentTitle}
+            </span>
+          )}
+        </div>
+
+        <div className={`${styles.side} ${styles.sideEnd}`}>
           <div className={styles.anchor}>
             <button className={styles.filterBtn} type="button" onClick={toggleFilterPopover}>
               <FunnelIcon />{t("common:filter")}

@@ -1,7 +1,10 @@
+/* Three columns rather than two, so the middle one is centred on the bar itself and not on
+   whatever the two sides happen to leave between them. `minmax(0, …)` lets a crowded side shrink
+   instead of shoving the centre off-centre. */
 .bar {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
   padding: 0 var(--space-4);
   height: 36px;
   flex-shrink: 0;
@@ -14,6 +17,11 @@
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
+}
+
+/* The right-hand column fills its share of the grid, so its content has to be pushed to the end. */
+.sideEnd {
+  justify-content: flex-end;
 }
 
 /* Wraps a button + its popover so the popover positions relative to the button. */
@@ -64,20 +72,24 @@
   border-color: var(--accent);
 }
 
-/* Where you are, not a way out of it: same pill shape as its two neighbours so the group reads as
-   one trail, but static — no pointer, no hover, and an accent tint to set it apart from them. */
-.currentPill {
+/* The middle column. Empty at the true root, which is why it is a slot rather than a sibling:
+   the centre stays put whether or not there is an indicator in it. */
+.center {
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+}
+
+/* Where you are, not a way out of it — so it is not shaped like the pills that are. No border,
+   no background, no pointer: a glyph and a title, weighted enough to read as a heading. */
+.current {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  max-width: 220px;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  padding: 2px var(--space-3);
-  border-radius: 20px;
-  border: 1px solid var(--accent);
-  background: var(--surface-raised);
   color: var(--text-primary);
   font-size: var(--text-sm);
   font-family: var(--font-sans);
