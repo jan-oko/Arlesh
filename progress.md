@@ -176,11 +176,40 @@ full gate. The three Rust beads each reported coverage above the 90% floor (90.8
 **Before merging anything**, see the two items under *Open questions for the user* — the unpushed
 master, and the migration in PR #10 that wants a second reader.
 
+## New stack: undo/redo (specced, not started)
+
+Three dependent beads, all P2, plus `docs/adr/0006-undo-via-a-trigger-written-row-journal.md` and
+the `Gesture` / `Undo Journal` / `Write source` / `Undo Stack` vocabulary in CONTEXT.md.
+
+| Bead | Effort | Depends on |
+|---|---|---|
+| `Arlesh-npt` — trigger-written row journal, gestures and sources | high | — |
+| `Arlesh-h2u` — apply the journal in reverse (undo/redo engine) | medium | `npt` |
+| `Arlesh-jga` — Ctrl+Z, gesture boundaries, the undone toast | medium | `h2u` |
+
+Decisions taken in the grilling: everything that **writes** is undoable and no view state is; one
+undo step is one **user gesture**, not one command; the stack is **session-scoped**; the before-state
+is captured by **SQL triggers**, not by inverse commands or operator instrumentation; the frontend
+opens and closes gestures explicitly; **one stack for the whole app**, not per tab; and an MCP write
+is journaled but never enters the stack.
+
+Grounding facts behind those: 83 mutating commands of which only 29 are transactional, no SQL
+triggers in the schema today, and sqlx's bundled SQLite has no session extension, so changesets —
+which would invert natively — are unavailable without vendoring the driver.
+
+The weak seam, acknowledged: the frontend gesture protocol. The user's note — *"should be cleaner
+after logic migrating to backend"* — is right, and `Arlesh-32r` / `Arlesh-tgf` make most gestures a
+single backend call, at which point the protocol is vestigial. Not a blocker, but a reason to keep
+the frontend side small and easy to delete.
+
 ## Follow-ups filed from agent reports
 
 - `Arlesh-6dm` (P2, low) — retype's loss prompt drops a Task's Backlog without naming it among the
   losses, where every neighbouring field is enumerated. Left out of `n66` for volume (~30 struct
   literals in `retype.rs`), not difficulty.
+- `Arlesh-xbi` (P2, medium) — **no modal in the app traps focus.** Tab escapes into the page behind
+  all twelve of them. `Arlesh-zem` wrote `src/hooks/use-focus-trap.ts` and adopted it in the delete
+  dialog only, to keep that PR scoped; adopting it elsewhere is close to one line each.
 - `Arlesh-lvc` (P2, low) — a Habit whose Instance Type is `commitment` has correct data but draws
   its virtual iterations with task/goal glyphs and completion controls instead of verdict controls.
   `buildIterationItems` never reads the flow's instance type. Rendering gap, not a model one.
