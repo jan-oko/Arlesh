@@ -38,7 +38,7 @@ Two repairs were needed:
 |---|---|---|---|---|
 | Arlesh-6gm — indent subtasks by visible depth | P1 | low | `listview-indent` | **PR #6**, stacked on PR #4 |
 | Arlesh-je5 — copy-paste duplicates instead of moving | P1 | high | `duplicate-paste-v2` | **PR #8**, stacked on PR #5 — coverage 90.96% |
-| Arlesh-cyo — Commitments | P1 | high | `commitments` | in flight — stacked on `worktree-task-backlog` (PR #7) |
+| Arlesh-cyo — Commitments | P1 | high | `commitments` | **PR #10**, stacked on PR #7 — coverage 90.79%, migration `0026` |
 | Arlesh-zem — delete-dialog focus | P2 | low | `delete-focus` | **PR #9**, from master |
 
 **Rate limit, 2026-09-17 ~21:40.** All four in-flight agents died at once on the session API limit.
@@ -81,6 +81,14 @@ nothing in flight.
   the spec commits from this session plus `progress.md`. Every agent branch is cut from local master,
   so each PR's GitHub diff shows all 13 plus the real change. `git push origin master` fixes every PR
   at once, but master is the shared mainline and pushing it is the user's call, not an agent's.
+- **PR #10's migration rewrites four CHECK constraints and can lose data if it is wrong.** The
+  agent's first attempt, using `PRAGMA legacy_alter_table` + RENAME, silently destroyed every tag,
+  dependency edge and knowledge-base link on a populated board — `legacy_alter_table` has no effect
+  while foreign keys are on, and they are on for every connection this app opens. The shipped
+  version copies each cascade-parented child table aside, rebuilds the parent, and restores them;
+  it was verified against a seeded database with identical row counts, empty `foreign_key_check`,
+  `integrity_check ok`, and a schema diff showing only the intended changes. It is still the one
+  change in this run that deserves a human reader.
 - `.claude/settings.local.json.bak` was committed to master in `0c78a8a`. `.gitignore` covers
   `.claude/settings.local.json` but not the `.bak`. Probably wants removing and ignoring.
 - ~~Unexplained cross-worktree writes.~~ **Explained: agents were spawning their own subagents into
@@ -103,8 +111,10 @@ nothing in flight.
 | 8 | Arlesh-je5 — copy-paste duplicates | `worktree-flow-move-fix` (stacks on #5) |
 | 9 | Arlesh-zem — delete-dialog focus | master |
 
-**7 of 8 used.** `cyo` is the last dispatch; when it lands the cap is reached and the run stops
-until something merges. Nothing new goes out before then.
+| 10 | Arlesh-cyo — Commitments | `worktree-task-backlog` (stacks on #7) |
+
+**8 of 8 — CAP REACHED. The run is stopped.** Nothing further is dispatched until PRs merge.
+All eight beads are `in_progress`; none was closed, since each closes on merge.
 
 ## Stacking
 
@@ -136,11 +146,25 @@ Zustand stores to per-tab instances and would conflict with every open PR at onc
   the removed ancestors counted in `visibleDepth` and over-indented every row; `groupRowsByPath`
   and `flattenTaskRows` stay completely subtree-unaware and the partition holds by construction.
 
+## STOPPED — 8 open PRs
+
+Eight beads shipped: `9qq`, `817`, `a4u`, `6gm`, `n66`, `je5`, `zem`, `cyo`. Every one passed the
+full gate. The three Rust beads each reported coverage above the 90% floor (90.83 / 90.96 / 90.79).
+
+**To resume the board, merge bottom-up**, then dispatch from the queue below:
+`#4 → #6 and #3` · `#5 → #8` · `#7 → #10` · `#9` is independent.
+
+**Before merging anything**, see the two items under *Open questions for the user* — the unpushed
+master, and the migration in PR #10 that wants a second reader.
+
 ## Follow-ups filed from agent reports
 
 - `Arlesh-6dm` (P2, low) — retype's loss prompt drops a Task's Backlog without naming it among the
   losses, where every neighbouring field is enumerated. Left out of `n66` for volume (~30 struct
   literals in `retype.rs`), not difficulty.
+- `Arlesh-lvc` (P2, low) — a Habit whose Instance Type is `commitment` has correct data but draws
+  its virtual iterations with task/goal glyphs and completion controls instead of verdict controls.
+  `buildIterationItems` never reads the flow's instance type. Rendering gap, not a model one.
 - `Arlesh-a18` (P2, medium) — a Flow *underneath* a copied node is not copied and not counted.
   `je5` correctly scoped Flow duplication out, and a directly-selected Flow is skipped with a toast,
   but one hanging below a copied node just vanishes. The dropped `FlowRepository::duplicate_flow`
