@@ -3,9 +3,14 @@
 # tried side by side without touching each other or the real database.
 #
 #   scripts/branch-instance.sh list
-#   scripts/branch-instance.sh build [name ...]      # default: every worktree
-#   scripts/branch-instance.sh run <name>
-#   scripts/branch-instance.sh clean [name ...]
+#   scripts/branch-instance.sh build [name ... | all]   # default: all
+#   scripts/branch-instance.sh run   <name | all>
+#   scripts/branch-instance.sh stop  [name ... | all]   # default: all
+#   scripts/branch-instance.sh clean [name ... | all]   # default: all
+#
+# `all` means every worktree. `run all` launches each built instance at once, detached, so the
+# branches can be compared side by side and survive the shell that started them; every other
+# command treats `all` sequentially.
 #
 # Space: every branch compiles into the ONE target directory the main checkout already has, so the
 # dependency tree is built once and shared. Only the per-branch binary is kept (the shared target's
@@ -37,6 +42,23 @@ require_space() {
 all_names() {
   [ -d "$WORKTREES" ] || return 0
   for d in "$WORKTREES"/*/; do [ -d "$d" ] && basename "$d"; done
+}
+
+built_names() {
+  while read -r name; do
+    [ -n "$name" ] && [ -x "$INSTANCES/$name/arlesh" ] && printf '%s\n' "$name"
+  done < <(all_names)
+}
+
+# Expands the argument list a command was given into concrete names: empty or `all` means every
+# worktree. Keeps `all` from ever being mistaken for a branch called "all".
+resolve_names() {
+  local -n out=$1; shift
+  if [ "$#" -eq 0 ] || { [ "$#" -eq 1 ] && [ "$1" = "all" ]; }; then
+    mapfile -t out < <(all_names)
+  else
+    out=("$@")
+  fi
 }
 
 worktree_path() {
@@ -92,8 +114,7 @@ cmd_list() {
 }
 
 cmd_build() {
-  local names=("$@")
-  [ "${#names[@]}" -gt 0 ] || mapfile -t names < <(all_names)
+  local names; resolve_names names "$@"
   [ "${#names[@]}" -gt 0 ] || die "No worktrees under $WORKTREES."
   # Sequential on purpose: cargo locks the shared target anyway, and this box has 15 GB of RAM —
   # parallel builds drive it into swap.
@@ -101,21 +122,66 @@ cmd_build() {
   printf '\nAll done. %sG free.\n' "$(free_gb)"
 }
 
-cmd_run() {
-  local name="${1:-}"
-  [ -n "$name" ] || die "Usage: $0 run <name>"
-  [ -x "$INSTANCES/$name/arlesh" ] || die "'$name' is not built. Run: $0 build $name"
-  printf 'Running %s with its own data at %s\n' "$name" "$INSTANCES/$name/data"
+# Detached in its own session, so an instance outlives the shell that started it — closing the
+# terminal mid-review should not take every window down with it.
+launch() {
+  local name="$1"
   XDG_DATA_HOME="$INSTANCES/$name/data" \
   XDG_CONFIG_HOME="$INSTANCES/$name/config" \
-    exec "$INSTANCES/$name/arlesh"
+    setsid "$INSTANCES/$name/arlesh" >"$INSTANCES/$name/run.log" 2>&1 < /dev/null &
+  local pid=$!
+  printf '%s' "$pid" > "$INSTANCES/$name/run.pid"
+  printf '  %-28s pid %-8s log %s\n' "$name" "$pid" "$INSTANCES/$name/run.log"
+}
+
+cmd_run() {
+  local name="${1:-}"
+  [ -n "$name" ] || die "Usage: $0 run <name|all>"
+
+  if [ "$name" != "all" ]; then
+    [ -x "$INSTANCES/$name/arlesh" ] || die "'$name' is not built. Run: $0 build $name"
+    printf 'Running %s with its own data at %s\n' "$name" "$INSTANCES/$name/data"
+    XDG_DATA_HOME="$INSTANCES/$name/data" \
+    XDG_CONFIG_HOME="$INSTANCES/$name/config" \
+      exec "$INSTANCES/$name/arlesh"
+  fi
+
+  local names; mapfile -t names < <(built_names)
+  [ "${#names[@]}" -gt 0 ] || die "Nothing is built yet. Run: $0 build all"
+
+  # Each window is a full WebKit process. On a 15 GB box a handful is fine and all of them is not,
+  # so say what this is about to cost rather than discovering it in swap.
+  local free_mb; free_mb="$(free -m | awk '/^Mem:/ {print $7}')"
+  printf 'Launching %d instances (%s MB available). Each is a separate WebKit process.\n' \
+    "${#names[@]}" "$free_mb"
+  if [ "${#names[@]}" -gt 4 ] && [ "$free_mb" -lt 6000 ]; then
+    printf 'Refusing: %d instances with only %s MB free will swap. Name the ones you want, or free memory.\n' \
+      "${#names[@]}" "$free_mb" >&2
+    exit 1
+  fi
+
+  for name in "${names[@]}"; do launch "$name"; done
+  printf 'Stop them with: %s stop all\n' "$0"
+}
+
+cmd_stop() {
+  local names; resolve_names names "$@"
+  for name in "${names[@]}"; do
+    local pidfile="$INSTANCES/$name/run.pid"
+    [ -f "$pidfile" ] || continue
+    local pid; pid="$(cat "$pidfile")"
+    if kill -0 "$pid" 2>/dev/null; then
+      kill "$pid" && printf 'stopped %s (pid %s)\n' "$name" "$pid"
+    fi
+    rm -f "$pidfile"
+  done
 }
 
 cmd_clean() {
-  local names=("$@")
-  [ "${#names[@]}" -gt 0 ] || mapfile -t names < <(all_names)
+  local names; resolve_names names "$@"
   for name in "${names[@]}"; do
-    # The binary is rebuildable; the database is not, so it is kept unless --all-data is given.
+    # Only the binary goes. An instance's database is the state you built up while testing that
+    # branch, and it is not rebuildable — delete those by hand if you really want them gone.
     rm -f "$INSTANCES/$name/arlesh"
     printf 'removed binary for %s (its data kept at %s)\n' "$name" "$INSTANCES/$name/data"
   done
@@ -126,6 +192,7 @@ case "${1:-list}" in
   list)  shift || true; cmd_list ;;
   build) shift; cmd_build "$@" ;;
   run)   shift; cmd_run "$@" ;;
+  stop)  shift; cmd_stop "$@" ;;
   clean) shift; cmd_clean "$@" ;;
-  *)     die "Usage: $0 {list|build [name...]|run <name>|clean [name...]}" ;;
+  *)     die "Usage: $0 {list | build [name...|all] | run <name|all> | stop [name...|all] | clean [name...|all]}" ;;
 esac

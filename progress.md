@@ -151,9 +151,14 @@ Zustand stores to per-tab instances and would conflict with every open PR at onc
 `scripts/branch-instance.sh` builds and runs one isolated app per branch worktree:
 
     scripts/branch-instance.sh list
-    scripts/branch-instance.sh build [name ...]     # default: every worktree, sequentially
-    scripts/branch-instance.sh run <name>
-    scripts/branch-instance.sh clean [name ...]     # drops binaries, keeps each instance's data
+    scripts/branch-instance.sh build [name ...|all]   # default: all, sequentially
+    scripts/branch-instance.sh run   <name|all>       # `all` launches every built one at once
+    scripts/branch-instance.sh stop  [name ...|all]
+    scripts/branch-instance.sh clean [name ...|all]   # drops binaries, keeps each instance's data
+
+`run <name>` execs in the foreground; `run all` detaches each instance with `setsid` so they
+outlive the shell that started them, records a pid file, and `stop` reads it back. It refuses to
+launch more than four at once with under 6 GB free — each window is a full WebKit process.
 
 Space: every branch compiles into the **one** target directory the main checkout already has
 (1.4 G), so the dependency tree is built once and shared; only the per-branch binary is copied out,
