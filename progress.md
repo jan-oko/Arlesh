@@ -17,7 +17,7 @@ see Standing risks); at most 2 `effort:high` at once.
 | Bead | P | Effort | Worktree | Status |
 |---|---|---|---|---|
 | Arlesh-a4u — Moving a Flow reparents an unrelated Domain | P1 | low | `flow-move-fix` | resumed — edits in tree, uncommitted |
-| Arlesh-9qq — List View Ctrl+O | P1 | low | `listview-ctrl-o` | **PR #3** — amended: pill lands in `all` mode |
+| Arlesh-9qq — List View Ctrl+O | P1 | low | `listview-ctrl-o` | **PR #3** — amended (`da9a2bf`): pill lands in `all` mode |
 | Arlesh-817 — List View path headers | P1 | medium | `listview-path-headers` | **PR #4** |
 | Arlesh-n66 — Task Backlog | P1 | medium | `task-backlog` | resumed — had not started editing |
 
