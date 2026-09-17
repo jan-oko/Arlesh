@@ -13,5 +13,6 @@
   "noResults": "No results",
   "loading": "Loading…",
   "error": "Error: {{message}}",
-  "dismiss": "Dismiss"
+  "dismiss": "Dismiss",
+  "insideSubtree": "Inside subtree:"
 }

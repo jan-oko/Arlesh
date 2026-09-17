@@ -20,6 +20,18 @@ const BACK_ICON = "←";
 /** Unblock only makes sense — and only appears as an option — while List View is active. */
 const MINDMAP_PRESETS: readonly ListPreset[] = LIST_PRESET_VALUES.filter((p) => p !== "unblock");
 
+/** A subtree glyph — a parent branching down to two children — for the "you are here" indicator. */
+function SubtreeIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="9" y="2" width="6" height="5" rx="1" />
+      <rect x="2" y="17" width="6" height="5" rx="1" />
+      <rect x="16" y="17" width="6" height="5" rx="1" />
+      <path d="M12 7v4M5 17v-2h14v2" />
+    </svg>
+  );
+}
+
 /** A small funnel (filter) glyph for the Filter button. */
 function FunnelIcon() {
   return (
@@ -135,6 +147,14 @@ export default function TopBar() {
               <button className={styles.pill} type="button" onClick={() => exitSubtree(subtreeNav.parentSubtreeId)}>
                 <span aria-hidden="true">{BACK_ICON}</span>{subtreeNav.parentTitle}
               </button>
+              {/* Where you are. Static, not a button: its two neighbours are the ways out, and
+                  there is nowhere for "here" to navigate to. The label is spelled out for a
+                  screen reader, which would otherwise hear three bare titles in a row. */}
+              <span className={styles.currentPill}>
+                <SubtreeIcon />
+                <span className={styles.srOnly}>{t("common:insideSubtree")}</span>
+                {subtreeNav.currentTitle}
+              </span>
             </>
           )}
         </div>

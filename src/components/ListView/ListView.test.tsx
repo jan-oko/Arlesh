@@ -238,6 +238,7 @@ describe("ListView", () => {
       fireEvent.mouseDown(screen.getByText("ARLESH"));
       // The Mindmap is unmounted here, so the List View has to be the one publishing this.
       expect(useMindmapStore.getState().subtreeNav).toEqual({
+        currentTitle: "ARLESH",
         rootTitle: "root",
         parentTitle: "root",
         parentSubtreeId: null,
@@ -246,6 +247,7 @@ describe("ListView", () => {
       openSearch("deeper");
       fireEvent.mouseDown(screen.getByText("Deeper"));
       expect(useMindmapStore.getState().subtreeNav).toEqual({
+        currentTitle: "Deeper",
         rootTitle: "root",
         parentTitle: "ARLESH",
         parentSubtreeId: "project-1",

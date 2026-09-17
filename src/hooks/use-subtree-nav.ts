@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from "react";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
-import { findParent } from "@/utils/mindmap-tree";
+import { findNode, findParent } from "@/utils/mindmap-tree";
 import type { MindmapNode } from "@/utils/tree-layout";
 
 interface SubtreeNavHandles {
@@ -15,8 +15,8 @@ interface SubtreeNavHandles {
 }
 
 /**
- * Resolves the current subtree's back-nav descriptor, publishes it for the top bar's pills, and
- * hands back the two "go up" actions.
+ * Resolves the current subtree's descriptor — where you are, and the two ways back out — publishes
+ * it for the top bar, and hands back the two "go up" actions.
  *
  * The top bar holds no tree, so whichever view is on screen has to name the subtree root's parent
  * for it. Both views call this, because `subtreeRootId` is one piece of shared state rather than
@@ -31,16 +31,18 @@ export function useSubtreeNav(tree: MindmapNode): SubtreeNavHandles {
   const exitSubtree = useMindmapStore((s) => s.exitSubtree);
   const onExitToRoot = useMindmapStore((s) => s.exitToRoot);
 
+  const current = subtreeRootId !== null ? findNode(tree, subtreeRootId) : undefined;
   const parent = subtreeRootId !== null ? findParent(tree, subtreeRootId) : null;
   const parentSubtreeId = parent !== null && parent.id !== "root" ? parent.id : null;
+  const currentTitle = current?.title ?? "";
 
   useEffect(() => {
     setSubtreeNav(
       subtreeRootId === null
         ? null
-        : { rootTitle: tree.title, parentTitle: parent?.title ?? tree.title, parentSubtreeId },
+        : { currentTitle, rootTitle: tree.title, parentTitle: parent?.title ?? tree.title, parentSubtreeId },
     );
-  }, [subtreeRootId, tree, parent, parentSubtreeId, setSubtreeNav]);
+  }, [subtreeRootId, tree, parent, parentSubtreeId, currentTitle, setSubtreeNav]);
 
   const onExitSubtree = useCallback(() => exitSubtree(parentSubtreeId), [exitSubtree, parentSubtreeId]);
 

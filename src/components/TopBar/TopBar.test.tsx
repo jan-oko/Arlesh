@@ -46,11 +46,43 @@ describe("TopBar", () => {
   it("shows back-nav pills from the store when inside a subtree", () => {
     useMindmapStore.setState({
       subtreeRootId: "goal-1",
-      subtreeNav: { rootTitle: "Arlesh", parentTitle: "Project X", parentSubtreeId: "domain-2" },
+      subtreeNav: { currentTitle: "CODE", rootTitle: "Arlesh", parentTitle: "Project X", parentSubtreeId: "domain-2" },
     });
     render(<TopBar />);
     expect(screen.getByText("Project X")).toBeInTheDocument(); // back one level
     expect(screen.getByText("Arlesh")).toBeInTheDocument(); // back to root (parentSubtreeId != null)
+  });
+
+  it("names the subtree you are currently inside", () => {
+    useMindmapStore.setState({
+      subtreeRootId: "goal-1",
+      subtreeNav: { currentTitle: "CODE", rootTitle: "Arlesh", parentTitle: "Project X", parentSubtreeId: "domain-2" },
+    });
+    render(<TopBar />);
+    expect(screen.getByText("CODE")).toBeInTheDocument();
+  });
+
+  it("gives the indicator a spoken label, so it is not a third bare title in a row", () => {
+    useMindmapStore.setState({
+      subtreeRootId: "goal-1",
+      subtreeNav: { currentTitle: "CODE", rootTitle: "Arlesh", parentTitle: "Project X", parentSubtreeId: "domain-2" },
+    });
+    render(<TopBar />);
+    expect(screen.getByText("common:insideSubtree")).toBeInTheDocument();
+  });
+
+  it("the indicator is not a button — the other two pills are the ways out, this one is where you are", () => {
+    useMindmapStore.setState({
+      subtreeRootId: "goal-1",
+      subtreeNav: { currentTitle: "CODE", rootTitle: "Arlesh", parentTitle: "Project X", parentSubtreeId: "domain-2" },
+    });
+    render(<TopBar />);
+    expect(screen.queryByRole("button", { name: /CODE/ })).not.toBeInTheDocument();
+  });
+
+  it("shows no subtree indicator at the true root", () => {
+    render(<TopBar />);
+    expect(screen.queryByText("common:insideSubtree")).not.toBeInTheDocument();
   });
 
   it("switches to List View when its tab is clicked", () => {

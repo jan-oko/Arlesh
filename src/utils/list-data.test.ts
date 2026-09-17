@@ -268,18 +268,45 @@ describe("flattening from a subtree root", () => {
   const subtreeRoot = tree.children[0]?.children[0];
   if (subtreeRoot === undefined) throw new Error("fixture: expected project-1");
 
-  it("starts a row's path at the subtree root and drops everything above it", () => {
+  it("starts a row's path *below* the subtree root, dropping it and everything above it", () => {
     expect(rendered(groupRowsByPath(flattenTaskRows(subtreeRoot, [])))).toEqual([
-      "path:project-1>goal-1",
+      "path:goal-1",
       "task:task-1@0",
       "task:task-2@0",
     ]);
   });
 
-  it("names the ancestors above the subtree root nowhere — the top bar's pills have them", () => {
-    const [header] = groupRowsByPath(flattenTaskRows(subtreeRoot, []));
-    if (header?.type !== "path") throw new Error("expected a path header first");
-    expect(header.segments.map((s) => s.id)).not.toContain("aspect-1");
+  it("puts the subtree root itself in no header — the top bar names where you are", () => {
+    for (const entry of groupRowsByPath(flattenTaskRows(subtreeRoot, []))) {
+      if (entry.type !== "path") continue;
+      expect(entry.segments.map((seg) => seg.id)).not.toContain("project-1");
+      expect(entry.segments.map((seg) => seg.id)).not.toContain("aspect-1");
+    }
+  });
+
+  it("emits no header at all for a row whose only ancestor was the subtree root", () => {
+    // Trimming the root can empty a path outright. That must render as nothing — the same case as
+    // a task with no ancestors at the true root — rather than a blank header leaving a gap.
+    const flat = n("root", "domain", {}, [
+      n("project-1", "project", { status: "active" }, [
+        n("task-1", "task", { status: "todo" }),
+        n("task-2", "task", { status: "todo" }),
+      ]),
+    ]);
+    const root = flat.children[0];
+    if (root === undefined) throw new Error("fixture: expected project-1");
+    const entries = groupRowsByPath(flattenTaskRows(root, []));
+    expect(entries.every((e) => e.type === "task")).toBe(true);
+    expect(rendered(entries)).toEqual(["task:task-1@0", "task:task-2@0"]);
+  });
+
+  it("never lists the subtree root as a row, even when it is itself a Task", () => {
+    const taskRooted = n("root", "domain", {}, [
+      n("task-outer", "task", { status: "todo" }, [n("task-inner", "task", { status: "todo" })]),
+    ]);
+    const root = taskRooted.children[0];
+    if (root === undefined) throw new Error("fixture: expected task-outer");
+    expect(rendered(groupRowsByPath(flattenTaskRows(root, [])))).toEqual(["task:task-inner@0"]);
   });
 
   it("keeps segments and visibleDepth partitioning each row's ancestors exactly", () => {
@@ -317,9 +344,10 @@ describe("flattening from a subtree root", () => {
     ]);
     const root = nestedTree.children[0];
     if (root === undefined) throw new Error("fixture: expected project-1");
-    // task-parent is a row, so it is depth, not path; project-1 is the subtree root, so it is path.
+    // project-1 is the subtree root, so it is gone from the path entirely — which leaves
+    // task-parent with no path at all. task-child still indents under it, because task-parent is
+    // a row and so counts as depth rather than as a segment.
     expect(rendered(groupRowsByPath(flattenTaskRows(root, [])))).toEqual([
-      "path:project-1",
       "task:task-parent@0",
       "task:task-child@1",
     ]);

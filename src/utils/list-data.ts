@@ -40,6 +40,9 @@ function buildRow(node: MindmapNode, ancestors: readonly MindmapNode[], depsByTa
  * Habit instances alike — Goals, Projects, and every other kind are never List View rows). Walks in
  * the same pre-order as the tree's own (position-sorted) children, so tasks under the same resolved
  * Goal/Project already come out contiguous — no separate grouping pass is needed.
+ *
+ * `root` itself is the frame, not content: it is never a row and never a path segment. Pass the
+ * true root for the whole board, or a subtree root to list just what is inside it.
  */
 export function flattenTaskRows(root: MindmapNode, taskDeps: readonly TaskDependencyEdge[]): TaskListRow[] {
   const depsByTask = new Map<number, string[]>();
@@ -52,8 +55,14 @@ export function flattenTaskRows(root: MindmapNode, taskDeps: readonly TaskDepend
 
   const rows: TaskListRow[] = [];
   function visit(node: MindmapNode, ancestors: readonly MindmapNode[]): void {
-    if (node.kind === "task") rows.push(buildRow(node, ancestors, depsByTask));
-    const nextAncestors = node.id === "root" ? ancestors : [...ancestors, node];
+    // The node we flatten from *frames* the list rather than appearing in it: it is neither a row
+    // nor a path segment. That is the true root, or — once you have entered one — the subtree root,
+    // which the top bar already names. Walking its children with no ancestors is what keeps the
+    // root out of every header without a trimming pass that `visibleDepth` could fall out of step
+    // with: a row's ancestors are simply the nodes stepped through to reach it.
+    const isFrame = node === root;
+    if (node.kind === "task" && !isFrame) rows.push(buildRow(node, ancestors, depsByTask));
+    const nextAncestors = isFrame ? ancestors : [...ancestors, node];
     for (const child of node.children) visit(child, nextAncestors);
   }
   visit(root, []);
