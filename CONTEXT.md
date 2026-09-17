@@ -50,6 +50,8 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 **Verdict Window** — How long past the end of a Commitment's Time Scope a Verdict may still be recorded. While it lasts the Commitment stays live; once it passes an `unresolved` Commitment is Archived, still unresolved. Expressed as a **Duration** — a count of N of any scope kind — in the same form a Habit's **Gap** and a Time Scope's Duration take, and independent of the Commitment's own scope kind: a monthly commitment may be answerable for two days. Set per Commitment and inherited down the tree like Time Scope; there is no global default.
 
+**Backlog** — A Task deliberately set aside: not in play now, kept for later. A stored **Archival** value on Tasks (`Archival::Backlog`), independent of the Task's status, which continues to say where the work stands. Hidden from the Plan and Start presets together with its whole subtree, shown under All, and browsable on its own via the **Backlog** preset. The Task-side counterpart of a Goal's or Project's **Frozen**, but a separate state: neither maps to the other on retype. A Task cannot be both backlogged and planned.
+
 **Blocker** — A condition that prevents a Task from being acted on. Either an explicit string reason or a virtual block from an unmet dependency.
 
 **Dependency** — A prerequisite relationship from a Task to another Task or Goal. Circular dependencies are rejected at write time.
@@ -57,6 +59,10 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 ---
 
 ## Status values
+
+**Task archival:** `live` (Live) · `backlog` (Backlog) — Tasks only; a Task is never manually Archived.
+
+**Goal / Project archival:** `live` (Live) · `frozen` (Frozen) · `archived` (Archived) — `backlog` is never valid here.
 
 **Commitment verdict:** `unresolved` (Unresolved) · `kept` (Kept) · `broken` (Broken)
 
@@ -108,6 +114,9 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 - Circular Task/Goal dependencies are always rejected.
 - Type cycling (Ctrl+Up/Down) follows the valid-type sequence for the node's parent context.
 - A Commitment must have an **effective** Time Scope — its own, or inherited from a scoped ancestor. A Commitment with no scoped ancestor at all is rejected; there is no Unscoped Commitment.
+- A backlogged Task hides with its whole subtree in Plan and Start, as a Frozen or Archived Project already does.
+- A Task is never both backlogged and planned. Backlogging a planned Task asks first and offers to clear the Plan; planning a backlogged Task takes it out of the Backlog.
+- A forced **Archived** Resolution overrides a stored **Frozen** *or* **Backlog**, flagging the conflict either way — setting an item aside does not exempt it from its own window.
 - A Commitment's Verdict is never derived. Neither its children nor the passing of its window ever sets it.
 - Scope containment is evaluated on **resolved datetime boundaries** (interval containment), so it holds uniformly across canonical, exact, and multi-scope-kind windows. Scope X is "within" scope F iff X's window ⊆ F's window.
 - A child item's explicit Time Scope must be **wholly contained** within its parent's Time Scope.
