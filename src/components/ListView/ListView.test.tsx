@@ -142,6 +142,69 @@ describe("ListView", () => {
       .toEqual(["aspect-1", "goal-1", "task-parent"]);
   });
 
+  describe("indentation", () => {
+    /** The depth each rendered card is indented to, in the order the cards appear. */
+    function renderedDepths(container: HTMLElement): string[] {
+      return Array.from(container.querySelectorAll<HTMLElement>("[class*='card']"))
+        .map((card) => card.style.getPropertyValue("--row-depth"));
+    }
+
+    /** A three-generation chain of task rows: only the eldest is to-do, so Do hides it. */
+    function nestedRows() {
+      const parent = n("task-parent", "task", { status: "todo" });
+      const child = n("task-child", "task", { status: "in_progress" });
+      const aspect = n("aspect-1", "aspect");
+      const goal = n("goal-1", "goal", { status: "active" });
+      return [
+        row({ node: parent }),
+        row({
+          node: child,
+          parentRef: "task-parent",
+          ancestorRefs: ["aspect-1", "goal-1", "task-parent"],
+          ancestors: [aspect, goal, parent],
+        }),
+        row({
+          node: n("task-grandchild", "task", { status: "in_progress" }),
+          parentRef: "task-child",
+          ancestorRefs: ["aspect-1", "goal-1", "task-parent", "task-child"],
+          ancestors: [aspect, goal, parent, child],
+        }),
+      ];
+    }
+
+    it("indents each row once per ancestor shown above it", () => {
+      mockUseListData.mockReturnValue(listData({ rows: nestedRows() }));
+      const { container } = render(<ListView />);
+      expect(renderedDepths(container)).toEqual(["0", "1", "2"]);
+    });
+
+    it("sits a subtask flush when the filter hides its parent, rather than indenting under nothing", () => {
+      useFilterStore.setState({ filter: { ...DEFAULT_FILTER, statusMode: "do" } });
+      mockUseListData.mockReturnValue(listData({ rows: nestedRows() }));
+      const { container } = render(<ListView />);
+      // Do drops the to-do eldest, so the child it leaves at the top of the run indents under nothing.
+      expect(renderedDepths(container)).toEqual(["0", "1"]);
+    });
+
+    it("leaves a flat list unindented, costing it no horizontal room", () => {
+      const { container } = render(<ListView />);
+      expect(renderedDepths(container)).toEqual(["0"]);
+    });
+
+    it("ArrowDown walks indented rows in the order they are drawn", () => {
+      mockUseListData.mockReturnValue(listData({ rows: nestedRows() }));
+      const { container } = render(<ListView />);
+      const selectedIndexes: number[] = [];
+      for (let step = 0; step < 3; step++) {
+        fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
+        const cards = Array.from(container.querySelectorAll("[class*='card']"));
+        selectedIndexes.push(cards.findIndex((card) => card.className.includes("cardSelected")));
+      }
+      // Visual order, not tree order: the indented rows are walked exactly as they are drawn.
+      expect(selectedIndexes).toEqual([0, 1, 2]);
+    });
+  });
+
   it("clicking a path segment adds an antecedent filter pill", () => {
     render(<ListView />);
     const [aspectSegment] = screen.getAllByTitle("filterByAntecedent");

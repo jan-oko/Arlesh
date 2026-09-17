@@ -106,6 +106,7 @@ export default function ListView() {
               <TaskRow
                 key={entry.row.node.id}
                 row={entry.row}
+                visibleDepth={entry.visibleDepth}
                 isSelected={entry.row.node.id === activeSelectedId}
                 isEditingTitle={entry.row.node.id === editingTaskId}
                 onSelect={setSelectedTaskId}
