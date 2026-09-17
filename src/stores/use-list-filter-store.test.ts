@@ -13,14 +13,6 @@ describe("setPreset", () => {
   });
 });
 
-describe("toggleShowGoalHeaders", () => {
-  it("flips the goal-header toggle, off by default", () => {
-    expect(useListFilterStore.getState().filter.showGoalHeaders).toBe(false);
-    useListFilterStore.getState().toggleShowGoalHeaders();
-    expect(useListFilterStore.getState().filter.showGoalHeaders).toBe(true);
-  });
-});
-
 describe("addPill / setPillMode / removePill", () => {
   it("adds a pill in 'any' mode by default, to the given dimension only", () => {
     useListFilterStore.getState().addPill("parent", "goal-1");

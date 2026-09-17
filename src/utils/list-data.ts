@@ -60,27 +60,39 @@ export function flattenTaskRows(root: MindmapNode, taskDeps: readonly TaskDepend
   return rows;
 }
 
+/** One rendered List View entry: a **path header** naming a run's location, or a task row carrying
+ * the depth it is indented to. The two halves partition a row's ancestors — the header names every
+ * ancestor *not* rendered as a row above it, the depth counts every ancestor that *is* — so the list
+ * never implies a parent that is not on screen. */
 export type ListRowEntry =
-  | { type: "goal"; node: MindmapNode }
-  | { type: "task"; row: TaskListRow };
+  | { type: "path"; pathKey: string; segments: MindmapNode[] }
+  | { type: "task"; row: TaskListRow; visibleDepth: number };
+
+/** Identity of a path: the ancestors it names, in order. Empty for a row with nothing above it. */
+function pathKeyOf(segments: readonly MindmapNode[]): string {
+  return segments.map((segment) => segment.id).join("\u0000");
+}
 
 /**
- * Inserts a Goal header entry immediately before the first row of each contiguous run sharing the
- * same resolved Goal (SPEC: "positioned immediately before their child tasks"). No-op when
- * `showGoalHeaders` is off — plain task rows in their filtered order.
+ * Inserts a path header immediately before the first row of each contiguous run sharing the same
+ * path. Rows arrive from flattenTaskRows in tree pre-order, so rows sharing a path are already
+ * contiguous — no sort or grouping pass is needed.
+ *
+ * A row's path is every ancestor the caller did not give us as a row: Goals, Projects, Domains and
+ * Aspects always (they are never List View rows), plus any ancestor Task the active filter hid. What
+ * the header leaves out is exactly what the indentation shows, so the two never repeat each other.
+ * A run with an empty path — a task with no ancestors — gets no header rather than a blank one.
  */
-export function groupRowsByGoal(rows: readonly TaskListRow[], showGoalHeaders: boolean): ListRowEntry[] {
-  if (!showGoalHeaders) return rows.map((row) => ({ type: "task", row }));
-
+export function groupRowsByPath(rows: readonly TaskListRow[]): ListRowEntry[] {
+  const rowIds = new Set(rows.map((row) => row.node.id));
   const entries: ListRowEntry[] = [];
-  let lastGoalRef: string | null = null;
+  let lastPathKey: string | null = null;
   for (const row of rows) {
-    if (row.goalRef !== null && row.goalRef !== lastGoalRef) {
-      const goalNode = row.ancestors.find((a) => a.id === row.goalRef);
-      if (goalNode !== undefined) entries.push({ type: "goal", node: goalNode });
-    }
-    lastGoalRef = row.goalRef;
-    entries.push({ type: "task", row });
+    const segments = row.ancestors.filter((ancestor) => !rowIds.has(ancestor.id));
+    const pathKey = pathKeyOf(segments);
+    if (segments.length > 0 && pathKey !== lastPathKey) entries.push({ type: "path", pathKey, segments });
+    lastPathKey = pathKey;
+    entries.push({ type: "task", row, visibleDepth: row.ancestors.length - segments.length });
   }
   return entries;
 }

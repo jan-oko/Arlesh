@@ -7,23 +7,20 @@ import { mergePersistedFilterSlice } from "@/stores/persist-merge";
 interface ListFilterStore {
   filter: ListFilterState;
   setPreset: (preset: ListPreset) => void;
-  toggleShowGoalHeaders: () => void;
   addPill: (dimension: PillDimension, value: string) => void;
   setPillMode: (dimension: PillDimension, value: string, mode: PillMode) => void;
   removePill: (dimension: PillDimension, value: string) => void;
   reset: () => void;
 }
 
-/** Persisted List View filter state: its own preset selector, goal-header toggle, and the eight
- * List-View-exclusive pill filters (parent/antecedent/dependency/statuses/scope/blocked). Status
- * preset, tag filters, and Info/Flow/Private toggles are shared with the Mindmap via useFilterStore. */
+/** Persisted List View filter state: its own preset selector and the eight List-View-exclusive pill
+ * filters (parent/antecedent/dependency/statuses/scope/blocked). Status preset, tag filters, and
+ * Info/Flow/Private toggles are shared with the Mindmap via useFilterStore. */
 export const useListFilterStore = create<ListFilterStore>()(
   persist(
     (set) => ({
       filter: DEFAULT_LIST_FILTER,
       setPreset: (preset) => set((s) => ({ filter: { ...s.filter, preset } })),
-      toggleShowGoalHeaders: () =>
-        set((s) => ({ filter: { ...s.filter, showGoalHeaders: !s.filter.showGoalHeaders } })),
       addPill: (dimension, value) =>
         set((s) => {
           const existing = s.filter.pills[dimension];

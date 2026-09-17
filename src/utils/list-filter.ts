@@ -73,14 +73,11 @@ export function isBlockedValue(value: string): value is BlockedValue {
 
 export interface ListFilterState {
   preset: ListPreset;
-  /** Goals shown as group-header rows immediately before their child tasks (hidden by default). */
-  showGoalHeaders: boolean;
   pills: Record<PillDimension, PillFilter[]>;
 }
 
 export const DEFAULT_LIST_FILTER: ListFilterState = {
   preset: "all",
-  showGoalHeaders: false,
   pills: {
     parent: [], antecedent: [], dependency: [],
     taskStatus: [], goalStatus: [], projectStatus: [],

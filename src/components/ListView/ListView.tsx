@@ -5,13 +5,12 @@ import { useFilterStore } from "@/stores/use-filter-store";
 import { useListFilterStore } from "@/stores/use-list-filter-store";
 import { filterTaskList } from "@/utils/list-filter";
 import type { StatusMode } from "@/utils/filter-tree";
-import { groupRowsByGoal } from "@/utils/list-data";
+import { groupRowsByPath } from "@/utils/list-data";
 import { useNodeEditor } from "@/components/MindmapView/use-node-editor";
 import { useKeyboardListView } from "./use-keyboard-list-view";
 import TaskEditorModal from "@/components/TaskEditorModal/TaskEditorModal";
-import Switch from "@/components/Switch/Switch";
 import TaskRow from "./TaskRow";
-import GoalHeaderRow from "./GoalHeaderRow";
+import PathHeaderRow from "./PathHeaderRow";
 import styles from "./ListView.module.css";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
 
@@ -27,7 +26,6 @@ export default function ListView() {
   const toggleFilterPopover = useFilterStore((s) => s.toggleFilterPopover);
 
   const listFilter = useListFilterStore((s) => s.filter);
-  const toggleShowGoalHeaders = useListFilterStore((s) => s.toggleShowGoalHeaders);
   const addPill = useListFilterStore((s) => s.addPill);
   const setListPreset = useListFilterStore((s) => s.setPreset);
 
@@ -41,10 +39,7 @@ export default function ListView() {
     () => filterTaskList(rows, sharedFilter, listFilter),
     [rows, sharedFilter, listFilter],
   );
-  const entries = useMemo(
-    () => groupRowsByGoal(filteredRows, listFilter.showGoalHeaders),
-    [filteredRows, listFilter.showGoalHeaders],
-  );
+  const entries = useMemo(() => groupRowsByPath(filteredRows), [filteredRows]);
   const taskIds = useMemo(
     () => entries.filter((entry) => entry.type === "task").map((entry) => entry.row.node.id),
     [entries],
@@ -96,17 +91,17 @@ export default function ListView() {
 
   return (
     <div className={styles.container}>
-      <div className={styles.toolbar}>
-        <Switch checked={listFilter.showGoalHeaders} onChange={toggleShowGoalHeaders} label={t("listView:showGoalHeaders")} />
-      </div>
-
       {entries.length === 0 ? (
         <div className={styles.centered}>{t("listView:empty")}</div>
       ) : (
         <div className={styles.rows}>
-          {entries.map((entry) =>
-            entry.type === "goal" ? (
-              <GoalHeaderRow key={`goal-${entry.node.id}`} node={entry.node} />
+          {entries.map((entry, index) =>
+            entry.type === "path" ? (
+              <PathHeaderRow
+                key={`path-${index}-${entry.pathKey}`}
+                segments={entry.segments}
+                onAddAntecedentFilter={(ref) => addPill("antecedent", ref)}
+              />
             ) : (
               <TaskRow
                 key={entry.row.node.id}

@@ -106,11 +106,53 @@ describe("ListView", () => {
     expect(screen.getByText("task-blocked")).toBeInTheDocument();
   });
 
-  it("shows a Goal header when the goal-headers toggle is on", () => {
+  it("names a run's whole chain in a path header above it", () => {
     render(<ListView />);
-    fireEvent.click(screen.getByText("listView:showGoalHeaders"));
-    // "goal-1" now appears twice: the new group header, and the task row's parent label.
+    expect(screen.getByText("aspect-1")).toBeInTheDocument();
+    // "goal-1" reads twice: the last path segment, and the task row's own parent label.
     expect(screen.getAllByText("goal-1")).toHaveLength(2);
+  });
+
+  it("renders no path header for a task with no ancestors", () => {
+    mockUseListData.mockReturnValue(listData({
+      rows: [row({ parentRef: "", ancestorRefs: [], ancestors: [], goalRef: null, goalStatus: null })],
+    }));
+    render(<ListView />);
+    expect(screen.getByText("task-1")).toBeInTheDocument();
+    expect(screen.queryByTitle("filterByAntecedent")).not.toBeInTheDocument();
+  });
+
+  it("names an ancestor task the active filter hides, so an orphaned subtask still reads in context", () => {
+    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, statusMode: "do" } });
+    const parent = n("task-parent", "task", { status: "todo" });
+    mockUseListData.mockReturnValue(listData({
+      rows: [
+        row({ node: parent }),
+        row({
+          node: n("task-child", "task", { status: "in_progress" }),
+          parentRef: "task-parent",
+          ancestorRefs: ["aspect-1", "goal-1", "task-parent"],
+          ancestors: [n("aspect-1", "aspect"), n("goal-1", "goal", { status: "active" }), parent],
+        }),
+      ],
+    }));
+    render(<ListView />);
+    // The Do preset filters the parent out as a row, so it moves into the header instead.
+    expect(screen.getAllByTitle("filterByAntecedent").map((segment) => segment.textContent))
+      .toEqual(["aspect-1", "goal-1", "task-parent"]);
+  });
+
+  it("clicking a path segment adds an antecedent filter pill", () => {
+    render(<ListView />);
+    const [aspectSegment] = screen.getAllByTitle("filterByAntecedent");
+    if (aspectSegment === undefined) throw new Error("expected a path header segment");
+    fireEvent.click(aspectSegment);
+    expect(useListFilterStore.getState().filter.pills.antecedent).toEqual([{ value: "aspect-1", mode: "any" }]);
+  });
+
+  it("no longer offers a Goal-visibility toggle", () => {
+    render(<ListView />);
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
   });
 
   it("clicking a task's parent label adds a parent filter pill", () => {
@@ -213,12 +255,11 @@ describe("ListView", () => {
       expect(useListFilterStore.getState().filter.preset).toBe("plan");
     });
 
-    it("navigation skips Goal header entries, selecting only task rows", () => {
-      useListFilterStore.setState({ filter: { ...DEFAULT_LIST_FILTER, showGoalHeaders: true } });
+    it("navigation skips path header entries, selecting only task rows", () => {
       mockUseListData.mockReturnValue(twoRows());
       const { container } = render(<ListView />);
       fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
-      // Goal headers aren't TaskRow cards at all, so the selection must land on the first task card.
+      // Path headers aren't TaskRow cards at all, so the selection must land on the first task card.
       const selected = container.querySelector("[class*='cardSelected']");
       expect(selected).not.toBeNull();
       expect(selected?.textContent).toContain("task-a");
