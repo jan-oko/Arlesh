@@ -38,6 +38,7 @@ Two repairs were needed:
 |---|---|---|---|---|
 | Arlesh-6gm — indent subtasks by visible depth | P1 | low | `listview-indent` | **PR #6**, stacked on PR #4 |
 | Arlesh-je5 — copy-paste duplicates instead of moving | P1 | high | `duplicate-paste-v2` | in flight — stacked on `worktree-flow-move-fix` (PR #5) |
+| Arlesh-cyo — Commitments | P1 | high | `commitments` | in flight — stacked on `worktree-task-backlog` (PR #7) |
 
 **Rate limit, 2026-09-17 ~21:40.** All four in-flight agents died at once on the session API limit.
 `a4u` was mid-gate, `n66` mid-implementation, `6gm` had barely started; all work survived in the
@@ -66,12 +67,11 @@ nothing in flight.
 
 ### Queue (refill as slots free)
 
-1. Arlesh-cyo — Commitments (P1, high)
-2. Arlesh-4yp — Tabs (P1, high)
-3. Arlesh-qf3 (P2 low), Arlesh-zem (P2 low), Arlesh-bwc (P2 medium),
+1. Arlesh-4yp — Tabs (P1, high)
+2. Arlesh-qf3 (P2 low), Arlesh-zem (P2 low), Arlesh-6dm (P2 low, new), Arlesh-bwc (P2 medium),
    Arlesh-qcb (P2 medium), Arlesh-p2g (P2 medium, blocked by 817),
    Arlesh-aln (P2 high), Arlesh-fxo (P2 high, blocked by 4yp)
-4. P3: Arlesh-ba8 (medium), Arlesh-32r (high), Arlesh-y2l (high),
+3. P3: Arlesh-ba8 (medium), Arlesh-32r (high), Arlesh-y2l (high),
    Arlesh-tgf (high, blocked), Arlesh-3kh (medium, blocked by y2l)
 
 ## Open questions for the user
@@ -82,12 +82,13 @@ nothing in flight.
   at once, but master is the shared mainline and pushing it is the user's call, not an agent's.
 - `.claude/settings.local.json.bak` was committed to master in `0c78a8a`. `.gitignore` covers
   `.claude/settings.local.json` but not the `.bak`. Probably wants removing and ignoring.
-- **Unexplained cross-worktree writes.** The Arlesh-817 agent found `ListView.test.tsx`, `SPEC.md`
-  and `CHANGELOG.md` appearing in its worktree mid-session, correct and in scope, that it did not
-  author. Both candidate sibling agents' own trees are clean and self-consistent. Note that
-  `/home/atai/Projects/CODE/Arlesh` is a **symlink to** `/home/atai/Green/CODE/Arlesh` — one repo
-  reachable by two paths, which is the kind of thing that makes a tool write somewhere unexpected.
-  Not conclusively explained; the content was reviewed before it was committed.
+- ~~Unexplained cross-worktree writes.~~ **Explained: agents were spawning their own subagents into
+  their worktree.** Both the `817` and `n66` agents reported a second writer producing correct,
+  in-scope files they had not authored; `n66`'s completion notice then said outright that it
+  "stopped with background work of its own still running". Two writers in one worktree is a real
+  corruption risk and muddies authorship, so every agent brief now says: **do not spawn subagents,
+  one agent per worktree.** (Unrelated but worth knowing: `/home/atai/Projects/CODE/Arlesh` is a
+  symlink to `/home/atai/Green/CODE/Arlesh` — one repo, two paths.)
 
 ## Open PRs (cap is 8)
 
@@ -97,12 +98,21 @@ nothing in flight.
 | 4 | Arlesh-817 — List View path headers | master |
 | 5 | Arlesh-a4u — flow move writes to the wrong table | master |
 | 6 | Arlesh-6gm — indent subtasks by visible depth | `worktree-listview-path-headers` (stacks on #4) |
+| 7 | Arlesh-n66 — Task Backlog | master |
 
 ## Stacking
 
 Branches are stacked rather than all cut from master, so a dependent bead can start before its
 dependency merges. Each stacked PR's base is the branch beneath it, so it proposes only its own
-commit. **Merge bottom-up**: #4 → #6, and #5 → the `je5` PR.
+commit. **Merge bottom-up**: #4 → #6; #5 → the `je5` PR; #7 → the `cyo` PR.
+`Arlesh-4yp` (Tabs) is deliberately held back until this stack drains — it converts the singleton
+Zustand stores to per-tab instances and would conflict with every open PR at once.
+
+## Follow-ups filed from agent reports
+
+- `Arlesh-6dm` (P2, low) — retype's loss prompt drops a Task's Backlog without naming it among the
+  losses, where every neighbouring field is enumerated. Left out of `n66` for volume (~30 struct
+  literals in `retype.rs`), not difficulty.
 
 ## Standing risks
 
