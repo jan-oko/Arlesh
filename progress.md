@@ -146,6 +146,25 @@ Zustand stores to per-tab instances and would conflict with every open PR at onc
   the removed ancestors counted in `visibleDepth` and over-indented every row; `groupRowsByPath`
   and `flattenTaskRows` stay completely subtree-unaware and the partition holds by construction.
 
+## Testing instances
+
+`scripts/branch-instance.sh` builds and runs one isolated app per branch worktree:
+
+    scripts/branch-instance.sh list
+    scripts/branch-instance.sh build [name ...]     # default: every worktree, sequentially
+    scripts/branch-instance.sh run <name>
+    scripts/branch-instance.sh clean [name ...]     # drops binaries, keeps each instance's data
+
+Space: every branch compiles into the **one** target directory the main checkout already has
+(1.4 G), so the dependency tree is built once and shared; only the per-branch binary is copied out,
+because the next build overwrites the shared one. Builds are sequential — cargo locks the target
+anyway, and parallel builds put this 15 GB box into swap. The script refuses to start under 5 G free.
+
+Isolation: the app resolves its database from Tauri's `app_data_dir`, i.e.
+`$XDG_DATA_HOME/com.atai.arlesh`. Pointing `XDG_DATA_HOME` at a per-instance directory isolates the
+database, the webview's localStorage and every persisted Zustand slice at once. Each instance is
+seeded with a copy of the real board (~240 KB) on first build and keeps its own state thereafter.
+
 ## STOPPED — 8 open PRs
 
 Eight beads shipped: `9qq`, `817`, `a4u`, `6gm`, `n66`, `je5`, `zem`, `cyo`. Every one passed the
@@ -169,6 +188,15 @@ master, and the migration in PR #10 that wants a second reader.
   `je5` correctly scoped Flow duplication out, and a directly-selected Flow is skipped with a toast,
   but one hanging below a copied node just vanishes. The dropped `FlowRepository::duplicate_flow`
   (+128 lines) is recoverable from `2620c61` if the richer fix is wanted.
+
+## Housekeeping
+
+- Two empty worktrees exist that no bead claims — `delete-modal-focus` and `type-cycle-filter`,
+  both at master's tip with no commits and no changes, 4.5 M each. Probably created by an agent
+  before it was handed its own. Remove once no agent is live in them (`git worktree remove`, after
+  checking `/proc/*/cwd`).
+- `mindmap-duplicate-paste` is the stale branch `Arlesh-je5` was ported *from*. Superseded by
+  `duplicate-paste-v2` (PR #8); keep the branch, the worktree can go.
 
 ## Standing risks
 
