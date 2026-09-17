@@ -16,8 +16,8 @@ Rules: highest priority / lowest effort first; at most 4 agents in flight; at mo
 | Bead | P | Effort | Worktree | Status |
 |---|---|---|---|---|
 | Arlesh-a4u — Moving a Flow reparents an unrelated Domain | P1 | low | `flow-move-fix` | resumed — edits in tree, uncommitted |
-| Arlesh-9qq — List View Ctrl+O | P1 | low | `listview-ctrl-o` | resumed — edits in tree, uncommitted |
-| Arlesh-817 — List View path headers | P1 | medium | `listview-path-headers` | resumed — edits + new PathHeaderRow, uncommitted |
+| Arlesh-9qq — List View Ctrl+O | P1 | low | `listview-ctrl-o` | **PR #3** |
+| Arlesh-817 — List View path headers | P1 | medium | `listview-path-headers` | **PR #4** |
 | Arlesh-n66 — Task Backlog | P1 | medium | `task-backlog` | resumed — had not started editing |
 
 **Interruption 2026-09-17:** the Claude Code process exited and killed all four agents mid-run.
@@ -36,6 +36,27 @@ Two repairs were needed:
 | Bead | P | Effort | Worktree | Status |
 |---|---|---|---|---|
 | Arlesh-6gm — indent subtasks by visible depth | P1 | low | `listview-indent` | dispatched, **stacked on `worktree-listview-path-headers`** (PR base is that branch, not master) |
+
+### Wave 2 — dispatched after 9qq and 817 landed PRs
+
+| Bead | P | Effort | Worktree | Status |
+|---|---|---|---|---|
+| Arlesh-qf3 — Type cycling offers hidden kinds | P2 | low | `type-cycle-filter` | dispatched |
+| Arlesh-zem — Delete-confirm focus | P2 | low | `delete-modal-focus` | dispatched |
+
+**Why P2 lows ahead of the P1 highs.** `je5` is next by priority, but its branch rewrites
+`moveNode` in `use-mindmap-data.ts` and `a4u` is rewriting the same function right now. Rebasing a
+27-file branch onto master twice is wasted work, so `je5` waits for `a4u`'s PR. `cyo` and `4yp`
+both collide with `n66` (lifecycle/filters) and with the List View work; `bwc` amends `SPEC.md`,
+which both `817` and `n66` also amend. `qf3` and `zem` are the largest pieces of work that touch
+nothing in flight.
+
+## PRs opened
+
+| PR | Bead | Branch |
+|---|---|---|
+| #3 | Arlesh-9qq | `worktree-listview-ctrl-o` |
+| #4 | Arlesh-817 | `worktree-listview-path-headers` |
 
 ### Queue (refill as slots free)
 
@@ -71,7 +92,15 @@ Two repairs were needed:
   they serialize on cargo's lock rather than each building their own 17G tree. Only agents
   touching Rust run tarpaulin.
 - `node_modules` in each worktree is a symlink to the main checkout's. Agents must not run
-  `npm install`. Git's `node_modules/` ignore rule has a trailing slash and so does not match a
+  `npm install`.
+- **CPU**: four concurrent vitest runs put the load average near **70 on 16 cores**. Unbounded
+  `npm test` then fails with 5-second timeouts in files unrelated to the change, and the worker
+  pool can fail to spawn at all. Every agent from wave 2 on is told to run
+  `npm test -- --maxWorkers=4 --testTimeout=30000` and to re-run any failing file in isolation
+  before drawing a conclusion from it.
+- Freed 5.6G by deleting the **main checkout's** `src-tauri/target` (a gitignored build artifact),
+  to give `n66`'s coverage run the headroom it needs. It costs the next local `cargo build` a
+  full rebuild. Git's `node_modules/` ignore rule has a trailing slash and so does not match a
   symlink — `node_modules` (no slash) was added to `.git/info/exclude`, which is shared by every
   worktree, so `git add -A` cannot swallow the link.
 - The test suite gives **false timeout failures under load** — 17 bogus `Test timed out in 5000ms`
