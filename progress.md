@@ -17,7 +17,7 @@ see Standing risks); at most 2 `effort:high` at once.
 | Bead | P | Effort | Worktree | Status |
 |---|---|---|---|---|
 | Arlesh-a4u — Moving a Flow reparents an unrelated Domain | P1 | low | `flow-move-fix` | resumed — edits in tree, uncommitted |
-| Arlesh-9qq — List View Ctrl+O | P1 | low | `listview-ctrl-o` | **PR #3** — being reworked into subtree entry; restacking onto `worktree-listview-path-headers` |
+| Arlesh-9qq — List View Ctrl+O | P1 | low | `listview-ctrl-o` | **PR #3** (`ad3c49b`) — subtree entry; restacked onto `worktree-listview-path-headers` |
 | Arlesh-817 — List View path headers | P1 | medium | `listview-path-headers` | **PR #4** |
 | Arlesh-n66 — Task Backlog | P1 | medium | `task-backlog` | resumed — had not started editing |
 
@@ -124,8 +124,17 @@ Zustand stores to per-tab instances and would conflict with every open PR at onc
   pills; and the Antecedent-pill behaviour is **removed**, along with the `addPill` mode widening,
   leaving a path-header segment click as the only route to that pill.
   Superseded en route: the earlier `any` → `all` (∩) mode correction, now moot.
-  Consequence: PR #3 restacks from master onto `worktree-listview-path-headers` (PR #4), because
+  Consequence: PR #3 restacked from master onto `worktree-listview-path-headers` (PR #4), because
   `groupRowsByPath` only exists there and the trimming is unimplementable without it.
+  Two findings from the rework worth keeping:
+  **(a)** Sharing the subtree state did *not* just work. `TopBar` reads the store directly and needed
+  no change, but the descriptor it renders was computed inside `MindmapView`, which `App.tsx`
+  unmounts whenever the List View is up — so the pills would have been absent. Extracted to
+  `src/hooks/use-subtree-nav.ts`, now called by both views.
+  **(b)** The header trimming was implemented by scoping the **walk** (`useListData` flattens from
+  the subtree node), not by trimming `segments` afterwards. Trimming after the fact would have left
+  the removed ancestors counted in `visibleDepth` and over-indented every row; `groupRowsByPath`
+  and `flattenTaskRows` stay completely subtree-unaware and the partition holds by construction.
 
 ## Follow-ups filed from agent reports
 
@@ -166,5 +175,11 @@ Zustand stores to per-tab instances and would conflict with every open PR at onc
   in untouched suites, and in one case a worker that never started at all. Measured fix:
   `--maxWorkers=2` took a run from ~200 s with scattered failures to **74 s fully green**.
   Known-good count on master is **85 files / 1046 tests** (measured with `npx vitest list`).
+- **`git stash` is shared across every worktree, and it can fail silently.** An agent ran
+  `git stash push -u`, got no stash (the ref was never created, `git stash list` empty), and its
+  follow-up `git checkout -- <files>` then clobbered four uncommitted test files. It restored them
+  and proved the restore faithful (1075 tests before and after), but the rule stands: **commit a WIP
+  commit instead of stashing.** Verified afterwards that the stash stack is empty and nothing of
+  another session's was disturbed.
 - Agents are resumable. If a session dies, send to the agent id rather than re-dispatching: the
   transcript is kept and the worktree holds the uncommitted work.
