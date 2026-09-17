@@ -156,9 +156,24 @@ Zustand stores to per-tab instances and would conflict with every open PR at onc
     scripts/branch-instance.sh stop  [name ...|all]
     scripts/branch-instance.sh clean [name ...|all]   # drops binaries, keeps each instance's data
 
-`run <name>` execs in the foreground; `run all` detaches each instance with `setsid` so they
-outlive the shell that started them, records a pid file, and `stop` reads it back. It refuses to
-launch more than four at once with under 6 GB free — each window is a full WebKit process.
+`run` starts each instance's **own Vite dev server** on its **own port** (from 14200) and waits for
+it to answer before launching the window. That is not incidental: a debug Tauri build resolves its
+frontend from `devUrl` rather than embedding it, so launching the binary before Vite answers gives
+the white *"Could not connect to localhost"* window. Release builds embed the frontend and would
+avoid the dev server entirely, but they need a second dependency tree in the release profile —
+about 4 G — which is not affordable here. A side benefit: an edit in a worktree hot-reloads into
+that worktree's window.
+
+Window titles are `Arlesh — <branch>`, so several open at once are distinguishable. Both the title
+and the port are compiled in, so the build edits the worktree's `tauri.conf.json` and restores it on
+an `EXIT` trap — the restore therefore survives a failed or interrupted build.
+
+Ports are **assigned once and persisted** per instance, never derived from list position: the port
+is compiled into the binary, so deriving it would silently break every built instance the moment a
+worktree was added or removed.
+
+Instances detach with `setsid` and outlive the shell that started them; `stop` kills the app and its
+Vite server by process group. `run all` refuses more than four at once with under 6 GB free.
 
 Space: every branch compiles into the **one** target directory the main checkout already has
 (1.4 G), so the dependency tree is built once and shared; only the per-branch binary is copied out,
