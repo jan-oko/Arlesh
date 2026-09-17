@@ -689,6 +689,124 @@ describe("useMindmapData — mutations", () => {
         id: 1, request: { parent_type: "goal", parent_id: 1, position: 0 },
       });
     });
+
+    it("info: calls update_info with the new parent and position", async () => {
+      const INFO = mkInfo({ id: 5, parent_type: "goal", parent_id: 1 });
+      setupInvoke({ list_infos: [INFO], update_info: INFO });
+      const { result } = await loadedHook();
+
+      await act(async () => {
+        await result.current.moveNode("info-5", "info", "task-1", "task", 1);
+      });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("update_info", {
+        id: 5, request: { parent_type: "task", parent_id: 1, position: 1 },
+      });
+    });
+
+    // Regression: a flow had no branch of its own, so its database id was handed to
+    // `update_domain` — reparenting whichever domain happened to share that id (here the
+    // aspect, which is also id 1) while the flow itself never moved.
+    it("flow: calls update_flow with the new parent and never touches a domain", async () => {
+      const FLOW = mkFlow({ id: 1, parent_type: "domain", parent_id: 1 });
+      setupInvoke({ list_flows: [FLOW], update_flow: FLOW });
+      const { result } = await loadedHook();
+
+      await act(async () => {
+        await result.current.moveNode("flow-1", "flow", "domain-1", "aspect", 2);
+      });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("update_flow", {
+        id: 1, request: { parent_type: "aspect", parent_id: 1, position: 2 },
+      });
+      expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("update_domain", expect.anything());
+    });
+
+    it("flow: records a goal parent as parent_type \"goal\"", async () => {
+      const FLOW = mkFlow({ id: 1, parent_type: "domain", parent_id: 1 });
+      setupInvoke({ list_flows: [FLOW], update_flow: FLOW });
+      const { result } = await loadedHook();
+
+      await act(async () => {
+        await result.current.moveNode("flow-1", "flow", "goal-1", "goal", 0);
+      });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("update_flow", {
+        id: 1, request: { parent_type: "goal", parent_id: 1, position: 0 },
+      });
+    });
+
+    it("flow: refuses a parent a flow may not hang from", async () => {
+      const FLOW = mkFlow({ id: 1, parent_type: "domain", parent_id: 1 });
+      setupInvoke({ list_flows: [FLOW] });
+      const { result } = await loadedHook();
+
+      await expect(
+        act(async () => {
+          await result.current.moveNode("flow-1", "flow", "task-1", "task", 0);
+        }),
+      ).rejects.toThrow('Flows cannot hang from a node of kind "task"');
+      expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("update_flow", expect.anything());
+    });
+
+    it("flow_goal: calls update_flow_goal with its in-flow parent", async () => {
+      const FLOW = mkFlow({ id: 5 });
+      const FLOW_GOAL: FlowGoal = { id: 3, flow_id: 5, title: "Milestone", parent_type: "flow", parent_id: 5, position: 0, is_private: false };
+      setupInvoke({ list_flows: [FLOW], list_all_flow_goals: [FLOW_GOAL], update_flow_goal: FLOW_GOAL });
+      const { result } = await loadedHook();
+
+      await act(async () => {
+        await result.current.moveNode("flowgoal-3", "flow_goal", "flow-5", "flow", 1);
+      });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("update_flow_goal", {
+        id: 3, request: { parent_type: "flow", parent_id: 5, position: 1 },
+      });
+    });
+
+    it("flow_task: calls update_flow_task with its in-flow parent", async () => {
+      const FLOW = mkFlow({ id: 5 });
+      const FLOW_GOAL: FlowGoal = { id: 3, flow_id: 5, title: "Milestone", parent_type: "flow", parent_id: 5, position: 0, is_private: false };
+      const FLOW_TASK: FlowTask = { id: 4, flow_id: 5, title: "Step", parent_type: "flow", parent_id: 5, position: 1, is_private: false };
+      setupInvoke({
+        list_flows: [FLOW], list_all_flow_goals: [FLOW_GOAL], list_all_flow_tasks: [FLOW_TASK],
+        update_flow_task: FLOW_TASK,
+      });
+      const { result } = await loadedHook();
+
+      await act(async () => {
+        await result.current.moveNode("flowtask-4", "flow_task", "flowgoal-3", "flow_goal", 0);
+      });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("update_flow_task", {
+        id: 4, request: { parent_type: "flow_goal", parent_id: 3, position: 0 },
+      });
+    });
+
+    it("tag: calls update_domain with the new parent and position", async () => {
+      const TAG = mkDomain({ id: 7, subtype: "tag", parent_id: 1, title: "urgent" });
+      setupInvoke({ list_domains: [ASPECT, TAG], update_domain: TAG });
+      const { result } = await loadedHook();
+
+      await act(async () => {
+        await result.current.moveNode("domain-7", "tag", "domain-1", "aspect", 4);
+      });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("update_domain", {
+        id: 7, request: { parent_id: 1, position: 4 },
+      });
+    });
+
+    it("aspect: refuses the move rather than silently giving the aspect a parent", async () => {
+      const { result } = await loadedHook();
+
+      await expect(
+        act(async () => {
+          await result.current.moveNode("domain-1", "aspect", "domain-1", "aspect", 0);
+        }),
+      ).rejects.toThrow("Aspects are top level and cannot be moved");
+      expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("update_domain", expect.anything());
+    });
   });
 
   describe("removeNode", () => {

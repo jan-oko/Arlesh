@@ -259,6 +259,19 @@ function kindToInfoParentType(kind: NodeKind): string {
   }
 }
 
+/**
+ * Maps a parent node kind to the `parent_type` a flow stores. A flow hangs from an Aspect,
+ * Domain, Project or Goal and from nothing else, so every other kind throws rather than
+ * writing a parent link the flows table would reject.
+ */
+function kindToFlowParentType(kind: NodeKind): string {
+  switch (kind) {
+    case "aspect": case "domain": case "project": case "goal": return kind;
+    case "task": case "tag": case "info": case "flow": case "flow_goal": case "flow_task":
+      throw new Error(`Flows cannot hang from a node of kind "${kind}"`);
+  }
+}
+
 function findNodeInTree(root: MindmapNode, id: string): MindmapNode | undefined {
   if (root.id === id) return root;
   for (const child of root.children) {
@@ -895,21 +908,47 @@ export function useMindmapData(): MindmapData {
     async (id: string, kind: NodeKind, newParentId: string, newParentKind: NodeKind, position: number): Promise<void> => {
       const dbId = dbIdFromNodeId(id);
       const dbParentId = dbIdFromNodeId(newParentId);
-      if (kind === "goal") {
-        await updateGoal(dbId, { parent_type: kindToParentType(newParentKind), parent_id: dbParentId, position });
-      } else if (kind === "task") {
-        await updateTask(dbId, { parent_type: kindToParentType(newParentKind), parent_id: dbParentId, position });
-      } else if (kind === "info") {
-        await updateInfo(dbId, { parent_type: kindToInfoParentType(newParentKind), parent_id: dbParentId, position });
-      } else if (kind === "flow_goal" || kind === "flow_task") {
-        // Flow items move only within their flow subtree; parent is the flow or another item.
-        const parentType = newParentKind === "flow" ? "flow" : newParentKind;
-        const update = kind === "flow_goal" ? updateFlowGoal : updateFlowTask;
-        await update(dbId, { parent_type: parentType, parent_id: dbParentId, position });
-      } else {
-        await import("@/api/domains").then(({ updateDomain }) =>
-          updateDomain(dbId, { parent_id: dbParentId, position }),
-        );
+      // Exhaustive over NodeKind on purpose. Node ids are polymorphic — a flow and a domain can
+      // share the number 5 — so a kind with no branch of its own must be a compile error, not a
+      // fall-through that hands the id to whichever table the default happens to name.
+      switch (kind) {
+        case "goal":
+          await updateGoal(dbId, { parent_type: kindToParentType(newParentKind), parent_id: dbParentId, position });
+          break;
+        case "task":
+          await updateTask(dbId, { parent_type: kindToParentType(newParentKind), parent_id: dbParentId, position });
+          break;
+        case "info":
+          await updateInfo(dbId, { parent_type: kindToInfoParentType(newParentKind), parent_id: dbParentId, position });
+          break;
+        case "flow":
+          await updateFlow(dbId, { parent_type: kindToFlowParentType(newParentKind), parent_id: dbParentId, position });
+          break;
+        case "flow_goal":
+        case "flow_task": {
+          // Flow items move only within their flow subtree; parent is the flow or another item.
+          const parentType = newParentKind === "flow" ? "flow" : newParentKind;
+          const update = kind === "flow_goal" ? updateFlowGoal : updateFlowTask;
+          await update(dbId, { parent_type: parentType, parent_id: dbParentId, position });
+          break;
+        }
+        case "domain":
+        case "project":
+        case "tag":
+          await updateDomain(dbId, { parent_id: dbParentId, position });
+          break;
+        case "aspect":
+          // Aspects are the roots of the board. `isValidDropTarget` refuses to drop one, so
+          // reaching here means a caller skipped that check — say so instead of quietly
+          // giving the aspect a parent and demoting it.
+          throw new Error("Aspects are top level and cannot be moved");
+        default: {
+          // `kind` is `never` here only while every NodeKind is handled above. Adding a kind
+          // without a branch fails this assignment at compile time — which is the whole point:
+          // the old `else` swallowed exactly that mistake and wrote it to the domains table.
+          const unhandled: never = kind;
+          throw new Error(`moveNode has no branch for node kind "${String(unhandled)}"`);
+        }
       }
       await load(false);
     },

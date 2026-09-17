@@ -262,6 +262,20 @@ describe("useNodeActions — onPaste", () => {
     await vi.waitFor(() => expect(opts.moveNode).toHaveBeenCalledWith("task-5", "task", "goal-2", "goal", 0));
     expect(opts.moveNode).toHaveBeenCalledTimes(1);
   });
+
+  // A flow and a domain can share a database id, so a paste that moves "flow-5" must name the
+  // flow — by id and by kind — and must move nothing else.
+  it("cuts and pastes a flow as the flow, moving no other node", async () => {
+    const flow = mkNode("flow-5", "flow");
+    const target = mkNode("goal-2", "goal");
+    const tree = mkNode("root", "domain", [mkNode("domain-5", "project", [flow]), target]);
+    const clipboard = { operation: CLIPBOARD_OP.CUT, nodeIds: ["flow-5"] };
+    const opts = makeOpts({ tree, clipboard });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onPaste("goal-2"); });
+    await vi.waitFor(() => expect(opts.moveNode).toHaveBeenCalledWith("flow-5", "flow", "goal-2", "goal", 0));
+    expect(opts.moveNode).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("useNodeActions — onInsertParent", () => {
