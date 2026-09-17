@@ -54,7 +54,7 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 **Instance Plan override** — A virtual Habit instance's own Plan, replacing the **Cycle Plan** for that iteration alone. A three-state divergence held in the **Modification** row: not overridden (inherit the Cycle Plan), overridden to a scope, or overridden to nothing (deliberately unplanned). Never propagates to the template; changing every occurrence is what editing the flow item's Cycle Plan is for.
 
-**Instance child** — A real node attached to one virtual Habit instance and no other, keyed by the same (instance, iteration scope) pair a **Modification** is. May be anything a Task can parent. Carries a **counts toward completion** flag (default on) deciding whether it gates its iteration's resolution. Archives with its occurrence as a unit, and counts as a divergence — so `delete instances and regenerate` removes it.
+**Instance child** — A real node attached to one virtual Habit instance and no other, keyed by the same (instance, iteration scope) pair a **Modification** is. May be anything a Task can parent. Never gates its iteration's resolution — marking the occurrence done while a child is unfinished asks for confirmation instead, and nothing about that is stored. Archives with its occurrence as a unit, and counts as a divergence — so `delete instances and regenerate` removes it.
 
 **Blocker** — A condition that prevents a Task from being acted on. Either an explicit string reason or a virtual block from an unmet dependency.
 
@@ -122,7 +122,7 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 - A Task is never both backlogged and planned. Backlogging a planned Task asks first and offers to clear the Plan; planning a backlogged Task takes it out of the Backlog.
 - A forced **Archived** Resolution overrides a stored **Frozen** *or* **Backlog**, flagging the conflict either way — setting an item aside does not exempt it from its own window.
 - A Habit instance is never materialized by being diverged from. A per-instance Plan or child is recorded against the virtual instance; the instance stays virtual (ADR 0002).
-- An iteration is resolved when every one of its non-tombstoned instances is done — including any **Instance child** whose counts-toward-completion flag is set.
+- An iteration is resolved when every one of its non-tombstoned instances is done. **Instance children** are not instances and never gate resolution; completing an occurrence over an unfinished child asks for confirmation instead.
 - A Commitment's Verdict is never derived. Neither its children nor the passing of its window ever sets it.
 - Scope containment is evaluated on **resolved datetime boundaries** (interval containment), so it holds uniformly across canonical, exact, and multi-scope-kind windows. Scope X is "within" scope F iff X's window ⊆ F's window.
 - A child item's explicit Time Scope must be **wholly contained** within its parent's Time Scope.
