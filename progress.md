@@ -51,4 +51,8 @@ Two repairs were needed:
   they serialize on cargo's lock rather than each building their own 17G tree. Only agents
   touching Rust run tarpaulin.
 - `node_modules` in each worktree is a symlink to the main checkout's. Agents must not run
-  `npm install`.
+  `npm install`. Git's `node_modules/` ignore rule has a trailing slash and so does not match a
+  symlink — `node_modules` (no slash) was added to `.git/info/exclude`, which is shared by every
+  worktree, so `git add -A` cannot swallow the link.
+- Agents are resumable. If a session dies, send to the agent id rather than re-dispatching: the
+  transcript is kept and the worktree holds the uncommitted work.
