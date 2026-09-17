@@ -269,3 +269,23 @@ the frontend side small and easy to delete.
   another session's was disturbed.
 - Agents are resumable. If a session dies, send to the agent id rather than re-dispatching: the
   transcript is kept and the worktree holds the uncommitted work.
+
+## Post-run cleanup (after the rate-limit interruption)
+
+The whole fleet died at once to a session rate limit; every agent's work had already been committed
+and pushed, so nothing was lost. On resuming, the board was already at the **8-PR cap**, so no new
+agent was dispatched. What was left to do was housekeeping:
+
+- **Freed 5.2G.** `/` had fallen to 9.8G (97%). Two worktrees whose PRs were already open still
+  carried a `src-tauri/target` — `delete-focus` (2.3G) and `listview-ctrl-o` (2.4G). Both removed;
+  back to 15G. The shared tarpaulin cache at `~/.cache/arlesh/tarpaulin` has grown to **20G** and is
+  now the single largest reclaimable item on the disk, but deleting it costs the next coverage run a
+  full cold rebuild, so it stays until someone decides otherwise.
+- **Removed two orphaned worktrees**, `type-cycle-filter` and `delete-modal-focus`, with their
+  branches. Both were cut for wave 2 and then superseded: `zem` shipped from `delete-focus`
+  (PR #9) on a differently-named branch, and `qf3` never started. Neither held a commit.
+- **`Arlesh-qf3` was marked `in_progress` with no work behind it** — its agent was killed during
+  its first tool call. Reset to `open` and unclaimed, so `bd ready` tells the truth.
+
+Local `master` is now 3 commits ahead of `origin/master`, not 13 — the mainline was pushed, so the
+open PRs' diffs no longer carry the spec commits.
