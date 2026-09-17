@@ -5,7 +5,8 @@ import { useListFilterStore } from "@/stores/use-list-filter-store";
 import { useViewStore } from "@/stores/use-view-store";
 import { useFilterDisplay } from "@/hooks/use-filter-display";
 import {
-  TASK_STATUS_VALUES, GOAL_STATUS_VALUES, PROJECT_STATUS_VALUES, SCOPE_STATE_VALUES, BLOCKED_VALUES,
+  TASK_STATUS_VALUES, GOAL_STATUS_VALUES, PROJECT_STATUS_VALUES, VERDICT_FILTER_VALUES,
+  SCOPE_STATE_VALUES, BLOCKED_VALUES,
 } from "@/utils/list-filter";
 import type { PillDimension } from "@/utils/list-filter";
 import type { OverrideMode } from "@/utils/filter-tree";
@@ -175,6 +176,9 @@ export default function FilterPopover() {
           </PillFilterSection>
           <PillFilterSection label={t("listView:projectStatusLabel")}>
             <FixedValueAdder values={PROJECT_STATUS_VALUES} added={addedSet("projectStatus")} labelFor={display.displayProjectStatus} onAdd={(v) => addPill("projectStatus", v)} />
+          </PillFilterSection>
+          <PillFilterSection label={t("listView:verdictLabel")}>
+            <FixedValueAdder values={VERDICT_FILTER_VALUES} added={addedSet("verdict")} labelFor={display.displayVerdict} onAdd={(v) => addPill("verdict", v)} />
           </PillFilterSection>
           <PillFilterSection label={t("listView:scopeStateLabel")}>
             <FixedValueAdder values={SCOPE_STATE_VALUES} added={addedSet("scopeState")} labelFor={display.displayScopeState} onAdd={(v) => addPill("scopeState", v)} />

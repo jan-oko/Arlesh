@@ -206,7 +206,7 @@ describe("buildTree", () => {
   it("stores goal status and its ordered block reasons on the node", () => {
     const aspect = mkDomain({ id: 1, subtype: "aspect" });
     const goal = mkGoal({ id: 1, status: "frozen", parent_type: "domain", parent_id: 1 });
-    const root = buildTree([aspect], [goal], [], [], [], [], [], [], [], [
+    const root = buildTree([aspect], [goal], [], [], [], [], [], [], [], [], [
       { owner_type: "goal", owner_id: 1, reason: "waiting on X", position: 0 },
       { owner_type: "goal", owner_id: 1, reason: "needs sign-off", position: 1 },
     ]);
@@ -219,7 +219,7 @@ describe("buildTree", () => {
     const aspect = mkDomain({ id: 1, subtype: "aspect" });
     const blocker = mkTask({ id: 2, title: "Dep", status: "in_progress", parent_type: "project", parent_id: 1 });
     const blocked = mkTask({ id: 3, title: "Waiter", parent_type: "project", parent_id: 1 });
-    const root = buildTree([aspect], [], [blocker, blocked], [], [], [], [], [], [], [], [
+    const root = buildTree([aspect], [], [blocker, blocked], [], [], [], [], [], [], [], [], [
       { task_id: 3, dependency_type: "task", dependency_id: 2 },
     ]);
     const node = root.children[0]?.children.find((c) => c.id === "task-3");
@@ -230,7 +230,7 @@ describe("buildTree", () => {
     const aspect = mkDomain({ id: 1, subtype: "aspect" });
     const blocker = mkTask({ id: 2, title: "Dep", status: "done", parent_type: "project", parent_id: 1 });
     const blocked = mkTask({ id: 3, title: "Waiter", parent_type: "project", parent_id: 1 });
-    const root = buildTree([aspect], [], [blocker, blocked], [], [], [], [], [], [], [], [
+    const root = buildTree([aspect], [], [blocker, blocked], [], [], [], [], [], [], [], [], [
       { task_id: 3, dependency_type: "task", dependency_id: 2 },
     ]);
     const node = root.children[0]?.children.find((c) => c.id === "task-3");
@@ -292,7 +292,7 @@ describe("buildTree", () => {
     const cycle = { id: 1, flow_id: 5, item_type: "flow_task" as const, item_id: 1, scope_kind: "day", scope_index: 3, plan_kind: null, plan_start: null, plan_end: null, position: 0 };
     const dep = { id: 1, flow_id: 5, dependent_type: "flow_task" as const, dependent_id: 2, depends_on_type: "flow_task" as const, depends_on_id: 1 };
 
-    const root = buildTree([aspect], [], [], [], [flow], [], [specify, implement], [cycle], [dep]);
+    const root = buildTree([aspect], [], [], [], [], [flow], [], [specify, implement], [cycle], [dep]);
     const flowNode = root.children[0]?.children[0];
     expect(flowNode?.kind).toBe("flow");
     const items = flowNode?.children ?? [];
@@ -318,7 +318,7 @@ describe("buildTree", () => {
 function mindmapEnvelope(overrides: Partial<MindmapLoad> = {}): MindmapLoad {
   const flows = overrides.flows ?? [];
   return {
-    domains: [], goals: [], tasks: [], infos: [], flows: [],
+    domains: [], goals: [], tasks: [], commitments: [], infos: [], flows: [],
     flow_goals: [], flow_tasks: [], flow_cycles: [], flow_dependencies: [],
     block_reasons: [], task_dependencies: [], flow_instance_nodes: [], lifecycles: [],
     habits: flows.map((flow) => ({

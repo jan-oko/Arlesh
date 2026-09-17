@@ -34,7 +34,9 @@
     "dependents_one": "{{count}} task waiting on this will stop waiting",
     "dependents_other": "{{count}} tasks waiting on this will stop waiting",
     "dependencies_one": "{{count}} thing this waits on will be forgotten",
-    "dependencies_other": "{{count}} things this waits on will be forgotten"
+    "dependencies_other": "{{count}} things this waits on will be forgotten",
+    "verdict": "Verdict",
+    "verdict_window": "Verdict window"
   },
   "lostFieldFallback": "{{field}} will be lost ({{value}})",
   "retypeFailed": "Convert failed: {{message}}",
@@ -45,5 +47,6 @@
   "backlogHasPlanUnnamed": "It is planned. A task in the backlog is never also planned, so that plan will be cleared.",
   "backlogClearPlanAction": "Clear the plan and backlog it",
   "backlogFailed": "Backlog failed: {{message}}",
-  "backlogClearedByPlan": "Taken out of the backlog — it is planned now."
+  "backlogClearedByPlan": "Taken out of the backlog — it is planned now.",
+  "verdictFailed": "Could not record the verdict: {{message}}"
 }

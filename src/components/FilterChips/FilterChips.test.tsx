@@ -24,6 +24,7 @@ const DISPLAY = {
   displayTaskStatus: (v: string) => `task.${v}`,
   displayGoalStatus: (v: string) => `goal.${v}`,
   displayProjectStatus: (v: string) => `project.${v}`,
+  displayVerdict: (v: string) => `verdict.${v}`,
   displayScopeState: (v: string) => `scope.${v}`,
   displayBlocked: (v: string) => `blocked.${v}`,
 };

@@ -10,5 +10,8 @@
   "tags": "Tags: {{value}}",
   "loading": "…",
   "row": "Status",
-  "backlog": "In the backlog"
+  "backlog": "In the backlog",
+  "kept": "Kept",
+  "broken": "Broken",
+  "unresolved": "No verdict recorded yet"
 }

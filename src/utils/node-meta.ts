@@ -82,6 +82,8 @@ export const NODE_ICON: Record<NodeKind, string> = {
   domain: "◻",
   goal: "◇",
   task: "✓",
+  // A handshake: a rule you hold to, not a box you tick.
+  commitment: "🤝",
   tag: "🏷",
   info: "ℹ",
   flow: "▶",
@@ -95,6 +97,7 @@ export const NODE_LABEL: Record<NodeKind, string> = {
   domain: "Domain",
   goal: "Goal",
   task: "Task",
+  commitment: "Commitment",
   tag: "Tag",
   info: "Info",
   flow: "Flow",
@@ -102,20 +105,26 @@ export const NODE_LABEL: Record<NodeKind, string> = {
   flow_task: "Task",
 };
 
-// All node types reachable from a domain-table parent (aspect/domain/project/tag).
-const DOMAIN_PARENT_CYCLE: NodeKind[] = ["domain", "project", "tag", "goal", "task", "info"];
+// All node types reachable from a domain-table parent (aspect/domain/project/tag). Commitment
+// sits immediately after Task, which is the position SPEC gives it in the Ctrl+Up/Down cycle.
+const DOMAIN_PARENT_CYCLE: NodeKind[] = [
+  "domain", "project", "tag", "goal", "task", "commitment", "info",
+];
 
 // Which direct-child kinds each kind may hold, from the backend's parent_type CHECK constraints
 // (goals: project|goal|domain, tasks: +task, flows: aspect|project|domain|goal, infos: anywhere;
 // projects need an aspect/project parent, tags can't nest). Used to hide a retype that would strand
 // an existing child under a type that can't hold it.
 const ALLOWED_CHILD_KINDS: Partial<Record<NodeKind, NodeKind[]>> = {
-  aspect: ["project", "domain", "tag", "goal", "task", "info", "flow"],
-  project: ["project", "domain", "tag", "goal", "task", "info", "flow"],
-  domain: ["domain", "tag", "goal", "task", "info", "flow"],
+  aspect: ["project", "domain", "tag", "goal", "task", "commitment", "info", "flow"],
+  project: ["project", "domain", "tag", "goal", "task", "commitment", "info", "flow"],
+  domain: ["domain", "tag", "goal", "task", "commitment", "info", "flow"],
   tag: ["info"], // a tag is a label — it holds only info notes, no structural children
-  goal: ["goal", "task", "info", "flow"],
-  task: ["task", "info"],
+  goal: ["goal", "task", "commitment", "info", "flow"],
+  task: ["task", "commitment", "info"],
+  // The supporting steps under a rule, and the finer-grained rules inside it. Not a Goal: a
+  // desired state is not something you hold to over a window.
+  commitment: ["task", "commitment", "info"],
   info: ["info"],
 };
 
@@ -165,11 +174,14 @@ export function validTypesForCycling(kind: NodeKind, parentKind: NodeKind | null
     });
   }
 
-  // Under a task: goal child is invalid, but info is valid.
-  if (parentKind === "task") return ["task", "info"];
+  // Under a task: goal child is invalid, but the rest are valid.
+  if (parentKind === "task") return ["task", "commitment", "info"];
 
-  // Under a goal: goal, task, and info are all valid children.
-  return ["goal", "task", "info"];
+  // Under a commitment: the same three. A commitment holds no goals.
+  if (parentKind === "commitment") return ["task", "commitment", "info"];
+
+  // Under a goal: goal, task, commitment and info are all valid children.
+  return ["goal", "task", "commitment", "info"];
 }
 
 /** Returns true if the type transition crosses the Goal↔Task boundary. */
@@ -182,9 +194,10 @@ export function crossesGoalTaskBoundary(from: NodeKind, to: NodeKind): boolean {
  * Returns true if `sourceKind` is a valid child of `targetKind`.
  *
  * Parent rules:
- *   aspect / domain / project  → domain, project, tag, goal, task, info children
- *   goal                       → goal, task, info children
- *   task                       → task, info children
+ *   aspect / domain / project  → domain, project, tag, goal, task, commitment, info children
+ *   goal                       → goal, task, commitment, info children
+ *   task                       → task, commitment, info children
+ *   commitment                 → task, commitment, info children
  *   info                       → info children only
  *   tag                        → no children (leaf)
  *   aspect                     → cannot be moved (immutable)
@@ -204,6 +217,10 @@ export function isValidDropTarget(sourceKind: NodeKind, targetKind: NodeKind): b
   if (targetKind === "tag") return false;
   if (targetKind === "info") return sourceKind === "info";
   if (sourceKind === "info") return true;
+  // A commitment lives anywhere a task can, plus inside another commitment; it holds only
+  // tasks and other commitments. (Tag and info targets were already refused above.)
+  if (targetKind === "commitment") return sourceKind === "task" || sourceKind === "commitment";
+  if (sourceKind === "commitment") return true;
   if (sourceKind === "project") return targetKind === "aspect" || targetKind === "project";
   if (sourceKind === "domain") return targetKind === "aspect" || targetKind === "domain" || targetKind === "project";
   if (sourceKind === "tag") return targetKind === "aspect" || targetKind === "domain" || targetKind === "project";

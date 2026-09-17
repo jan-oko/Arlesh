@@ -31,3 +31,24 @@
   color: var(--text-secondary);
   font-family: var(--font-sans);
 }
+
+/* The commitments band: its own section above the task rows, because today's commitments read as
+   a standing band rather than as work scattered through the list. SPEC's "List View rows are
+   Tasks only" stops holding here. */
+.commitments {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-bottom: var(--space-3);
+  margin-bottom: var(--space-3);
+  border-bottom: 1px solid var(--node-border);
+}
+
+.commitmentsHeading {
+  margin: 0;
+  font-size: var(--font-size-sm, 0.8rem);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary, var(--node-text-muted));
+}

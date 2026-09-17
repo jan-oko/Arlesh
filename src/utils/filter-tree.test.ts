@@ -539,3 +539,88 @@ describe("filterTree — Backlog", () => {
     expect(ids(filterTree(withGoal, f({ statusMode: "plan" })))).toContain("goal-1");
   });
 });
+
+describe("filterTree — commitments", () => {
+  /** A commitment under a project, with the verdict and window position a case needs. */
+  const tree = (extra: Partial<MindmapNode>) =>
+    n("root", "domain", {}, [
+      n("aspect-1", "aspect", {}, [
+        n("project-1", "project", {}, [n("commitment-1", "commitment", extra)]),
+      ]),
+    ]);
+
+  const shows = (extra: Partial<MindmapNode>, mode: FilterState["statusMode"]): boolean =>
+    ids(filterTree(tree(extra), f({ statusMode: mode }))).includes("commitment-1");
+
+  it("All shows every commitment, including ones already judged", () => {
+    // Looking back over what you kept and broke is the point of keeping the record.
+    for (const verdict of ["unresolved", "kept", "broken"] as const) {
+      expect(shows({ verdict, timing: "lapsed" }, "all")).toBe(true);
+    }
+  });
+
+  it("Plan, Start and Do all show what has yet to be judged", () => {
+    for (const mode of ["plan", "start", "do"] as const) {
+      expect(shows({ verdict: "unresolved", timing: "active" }, mode)).toBe(true);
+    }
+  });
+
+  it("a kept commitment drops out of Plan, Start and Do — it is settled", () => {
+    for (const mode of ["plan", "start", "do"] as const) {
+      expect(shows({ verdict: "kept", timing: "active" }, mode)).toBe(false);
+    }
+  });
+
+  it("Plan keeps a broken commitment while its window is still open", () => {
+    // The carve-out that mirrors no Task rule: a commitment you have already broken today is a
+    // live problem until midnight, where a kept one is settled.
+    expect(shows({ verdict: "broken", timing: "active" }, "plan")).toBe(true);
+    expect(shows({ verdict: "broken", timing: "pending" }, "plan")).toBe(true);
+  });
+
+  it("Plan drops a broken commitment once its window has closed", () => {
+    expect(shows({ verdict: "broken", timing: "lapsed" }, "plan")).toBe(false);
+  });
+
+  it("the broken-while-open carve-out belongs to Plan alone", () => {
+    // Start and Do are about what you are currently on, and a broken commitment is not something
+    // to start or to be doing — it is something to notice while planning.
+    for (const mode of ["start", "do"] as const) {
+      expect(shows({ verdict: "broken", timing: "active" }, mode)).toBe(false);
+    }
+  });
+
+  it("a commitment with no verdict field at all reads as unresolved", () => {
+    // Absent is not a fourth state: it is the one that means nobody has said.
+    expect(shows({ timing: "active" }, "plan")).toBe(true);
+    expect(shows({ timing: "active" }, "start")).toBe(true);
+  });
+
+  it("Backlog shows no commitments — a commitment has no backlog to be in", () => {
+    for (const verdict of ["unresolved", "kept", "broken"] as const) {
+      expect(shows({ verdict, timing: "active" }, "backlog")).toBe(false);
+    }
+  });
+
+  it("a commitment is hidden with its private subtree outside Private Mode", () => {
+    const t = tree({ verdict: "unresolved", isPrivate: true });
+    expect(ids(filterTree(t, f({ statusMode: "all" })))).not.toContain("commitment-1");
+    expect(ids(filterTree(t, f({ statusMode: "all", privateMode: true })))).toContain("commitment-1");
+  });
+
+  it("a commitment keeps its task children visible even once it is settled itself", () => {
+    // The commitment is kept as an ancestor of a content match, exactly as any other node is.
+    const t = n("root", "domain", {}, [
+      n("aspect-1", "aspect", {}, [
+        n("project-1", "project", {}, [
+          n("commitment-1", "commitment", { verdict: "kept", timing: "active" }, [
+            n("task-1", "task", { status: "todo" }),
+          ]),
+        ]),
+      ]),
+    ]);
+    const kept = ids(filterTree(t, f({ statusMode: "plan" })));
+    expect(kept).toContain("task-1");
+    expect(kept).toContain("commitment-1");
+  });
+});

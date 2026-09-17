@@ -23,7 +23,8 @@ const EMPTY_DISPLAY = {
   nodeLabel: (ref: string) => ref, nodeColor: () => null,
   parentPool: [], dependencyPool: [],
   displayTaskStatus: (v: string) => v, displayGoalStatus: (v: string) => v,
-  displayProjectStatus: (v: string) => v, displayScopeState: (v: string) => v, displayBlocked: (v: string) => v,
+  displayProjectStatus: (v: string) => v, displayVerdict: (v: string) => v,
+  displayScopeState: (v: string) => v, displayBlocked: (v: string) => v,
 };
 
 beforeEach(() => {

@@ -4,6 +4,7 @@ import { useMindmapStore } from "@/stores/use-mindmap-store";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { TaskSaveData } from "@/components/TaskEditorModal/TaskEditorModal";
 import type { GoalSaveData } from "@/components/GoalEditorModal/GoalEditorModal";
+import type { CommitmentSaveData } from "@/components/CommitmentEditorModal/CommitmentEditorModal";
 import type { ProjectSaveData } from "@/components/ProjectEditorModal/ProjectEditorModal";
 import type { InfoSaveData } from "@/components/InfoEditorModal/InfoEditorModal";
 import { updateInfo } from "@/api/infos";
@@ -30,6 +31,7 @@ import {
 import type { ViolatingDescendant } from "@/api/tasks";
 import { TASK_ARCHIVAL } from "@/api/tasks";
 import { addTagToGoal, removeTagFromGoal, updateGoal } from "@/api/goals";
+import { addTagToCommitment, removeTagFromCommitment, updateCommitment } from "@/api/commitments";
 import type { TimeScope } from "@/api/time-scope";
 import { findNode } from "@/utils/mindmap-tree";
 import { DOMAIN_SUBTYPE } from "@/api/domains";
@@ -76,6 +78,7 @@ interface Result {
   onDoubleClick: (nodeId: string) => void;
   onTaskSave: (data: TaskSaveData) => Promise<void>;
   onGoalSave: (data: GoalSaveData) => Promise<void>;
+  onCommitmentSave: (data: CommitmentSaveData) => Promise<void>;
   onSimpleSave: (title: string, isPrivate: boolean) => Promise<void>;
   onProjectSave: (data: ProjectSaveData) => Promise<void>;
   onInfoSave: (data: InfoSaveData) => Promise<void>;
@@ -219,6 +222,30 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
     [editorModal, reload],
   );
 
+  const onCommitmentSave = useCallback(
+    async (data: CommitmentSaveData) => {
+      if (editorModal === null) return;
+      const { nodeId, node } = editorModal;
+      const dbId = parseInt(nodeId.split("-").pop() ?? "0", 10);
+      // Any refusal — most likely clearing the last window above the commitment — propagates to
+      // the modal, which shows it rather than closing on a save that did not happen.
+      await updateCommitment(dbId, {
+        title: data.title,
+        verdict: data.verdict,
+        time_scope: data.timeScope,
+        verdict_window: data.verdictWindow,
+        is_private: data.isPrivate,
+      });
+      const tagsAdded = data.tagIds.filter((id) => !node.tagIds.includes(id));
+      const tagsRemoved = node.tagIds.filter((id) => !data.tagIds.includes(id));
+      for (const tagId of tagsAdded) await addTagToCommitment(dbId, tagId);
+      for (const tagId of tagsRemoved) await removeTagFromCommitment(dbId, tagId);
+      await reload();
+      setEditorModal(null);
+    },
+    [editorModal, reload],
+  );
+
   const onFlowSave = useCallback(
     async (data: FlowSaveData) => {
       if (editorModal === null) return;
@@ -353,7 +380,8 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
 
   return {
     editorModal, setEditorModal, allTags, domainNames, availableForDep, onDoubleClick,
-    onTaskSave, onGoalSave, onSimpleSave, onProjectSave, onInfoSave, onFlowSave, onFlowItemSave,
+    onTaskSave, onGoalSave, onCommitmentSave, onSimpleSave, onProjectSave, onInfoSave,
+    onFlowSave, onFlowItemSave,
     checkScopeClamp, confirmScopeClamp, scopeClampRequest, resolveScopeClamp,
   };
 }

@@ -39,5 +39,16 @@
   "blockedState": {
     "blocked": "Blocked",
     "not_blocked": "Not blocked"
+  },
+  "commitmentsHeading": "Commitments",
+  "commitmentsEmpty": "No commitments match the current filters.",
+  "markKept": "Mark kept",
+  "markBroken": "Mark broken",
+  "clearVerdict": "Clear the verdict",
+  "verdictLabel": "Verdict",
+  "verdictState": {
+    "unresolved": "Unresolved",
+    "kept": "Kept",
+    "broken": "Broken"
   }
 }

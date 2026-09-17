@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { createDomain, updateDomain, deleteDomain } from "@/api/domains";
 import { createTask, updateTask, deleteTask, TASK_ARCHIVAL } from "@/api/tasks";
+import { createCommitment, updateCommitment, deleteCommitment } from "@/api/commitments";
+import type { Commitment } from "@/api/commitments";
 import type { TaskDependencyEdge } from "@/api/tasks";
 import type { BlockReason } from "@/api/block-reasons";
 import { createGoal, updateGoal, deleteGoal } from "@/api/goals";
@@ -38,12 +40,17 @@ function localNowIso(): string {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
 }
 
-/** Stamps each Task/Goal node with its derived lifecycle (Timing/Resolution/effective Archival). */
+/** Stamps each Task/Goal/Commitment node with its derived lifecycle (Timing, then Resolution or
+ * Verdict, then effective Archival). */
 function applyLifecycles(node: MindmapNode, byId: Map<string, ItemLifecycle>): void {
   const entry = byId.get(node.id);
   if (entry !== undefined) {
     node.timing = entry.timing;
     if (entry.resolution !== undefined) node.resolution = entry.resolution;
+    // A Commitment's verdict comes back on the same envelope, in place of a Resolution. It is
+    // already on the node from its own row; re-stamping it keeps the two from disagreeing when
+    // a derivation and a row read land out of order.
+    if (entry.verdict !== undefined) node.verdict = entry.verdict;
     node.archived = entry.archival === "archived";
     node.archivalConflict = entry.archival_conflict;
   }
@@ -242,6 +249,7 @@ function dbIdFromNodeId(nodeId: string): number {
 function kindToParentType(kind: NodeKind): string {
   if (kind === "goal") return "goal";
   if (kind === "task") return "task";
+  if (kind === "commitment") return "commitment";
   return "project";
 }
 
@@ -254,6 +262,7 @@ function kindToInfoParentType(kind: NodeKind): string {
     case "project": return "project";
     case "domain": return "domain";
     case "tag": return "tag";
+    case "commitment": return "commitment";
     case "flow": throw new Error("Flow nodes cannot parent info nodes");
     case "flow_goal": case "flow_task": throw new Error("Flow items cannot parent info nodes");
   }
@@ -299,8 +308,19 @@ function propagateAspectColor(node: MindmapNode, inheritedColor: string | undefi
 function infoParentKey(info: Info): string {
   if (info.parent_type === "goal") return `goal-${info.parent_id}`;
   if (info.parent_type === "task") return `task-${info.parent_id}`;
+  if (info.parent_type === "commitment") return `commitment-${info.parent_id}`;
   if (info.parent_type === "info") return `info-${info.parent_id}`;
   return `domain-${info.parent_id}`;
+}
+
+/** The tree node id a content node's `(parent_type, parent_id)` pair names. The three content
+ * tables spell their parents `goal`, `task`, `commitment` or a domains-table kind, which the tree
+ * keys under the single `domain-` namespace. */
+function contentParentKey(parentType: string, parentId: number): string {
+  if (parentType === "goal") return `goal-${parentId}`;
+  if (parentType === "task") return `task-${parentId}`;
+  if (parentType === "commitment") return `commitment-${parentId}`;
+  return `domain-${parentId}`;
 }
 
 /** Node id for a flow item — `flowgoal-<id>` / `flowtask-<id>` (distinct from real goals/tasks). */
@@ -327,6 +347,7 @@ export function buildTree(
   goals: Goal[],
   tasks: Task[],
   infos: Info[],
+  commitments: Commitment[] = [],
   flows: Flow[] = [],
   flowGoals: FlowGoal[] = [],
   flowTasks: FlowTask[] = [],
@@ -396,6 +417,22 @@ export function buildTree(
       isPrivate: task.is_private,
       ...(task.beads_id !== undefined ? { beadsId: task.beads_id } : {}),
       tagIds: task.tag_ids,
+      children: [],
+    });
+  }
+
+  for (const commitment of commitments) {
+    nodeMap.set(`commitment-${commitment.id}`, {
+      id: `commitment-${commitment.id}`,
+      kind: "commitment",
+      title: commitment.title,
+      verdict: commitment.verdict,
+      verdictWindow: commitment.verdict_window ?? null,
+      timeScope: commitment.time_scope,
+      position: commitment.position,
+      isPrivate: commitment.is_private,
+      ...(commitment.beads_id !== undefined ? { beadsId: commitment.beads_id } : {}),
+      tagIds: commitment.tag_ids,
       children: [],
     });
   }
@@ -552,15 +589,19 @@ export function buildTree(
   for (const task of tasks) {
     const taskNode = nodeMap.get(`task-${task.id}`);
     if (taskNode === undefined) continue;
-    const parentKey =
-      task.parent_type === "task"
-        ? `task-${task.parent_id}`
-        : task.parent_type === "goal"
-          ? `goal-${task.parent_id}`
-          : `domain-${task.parent_id}`;
-    const parentNode = nodeMap.get(parentKey);
+    const parentNode = nodeMap.get(contentParentKey(task.parent_type, task.parent_id));
     if (parentNode !== undefined) {
       parentNode.children.push(taskNode);
+    }
+  }
+
+  // Wire commitments to their parents — the same four spellings a task's parent link can take.
+  for (const commitment of commitments) {
+    const node = nodeMap.get(`commitment-${commitment.id}`);
+    if (node === undefined) continue;
+    const parentNode = nodeMap.get(contentParentKey(commitment.parent_type, commitment.parent_id));
+    if (parentNode !== undefined) {
+      parentNode.children.push(node);
     }
   }
 
@@ -653,9 +694,9 @@ export function useMindmapData(): MindmapData {
       try {
         const data = await loadMindmap(localNowIso());
         const built = buildTree(
-          data.domains, data.goals, data.tasks, data.infos, data.flows, data.flow_goals,
-          data.flow_tasks, data.flow_cycles, data.flow_dependencies, data.block_reasons,
-          data.task_dependencies, data.flow_instance_nodes,
+          data.domains, data.goals, data.tasks, data.infos, data.commitments, data.flows,
+          data.flow_goals, data.flow_tasks, data.flow_cycles, data.flow_dependencies,
+          data.block_reasons, data.task_dependencies, data.flow_instance_nodes,
         );
         applyLifecycles(built, lifecycleMap(data.lifecycles));
         // Inject each Habit's iterations as virtual, read-only child nodes under their targets.
@@ -718,6 +759,21 @@ export function useMindmapData(): MindmapData {
         return newNode;
       }
 
+      if (childKind === "commitment") {
+        // No Time Scope is sent: a fresh commitment inherits the window above it, and the
+        // backend refuses it outright when there is none — a rule that can never come due is
+        // not something to create and fix up later.
+        const commitment = await createCommitment({
+          title, parent_type: kindToParentType(parentKind), parent_id: dbParentId,
+        });
+        const newNode: MindmapNode = {
+          id: `commitment-${commitment.id}`, kind: "commitment", title: commitment.title,
+          verdict: commitment.verdict, position: commitment.position, tagIds: [], children: [],
+        };
+        await load(false);
+        return newNode;
+      }
+
       if (childKind === "info") {
         const siblings = findNodeInTree(tree, parentId)?.children ?? [];
         const maxPos = siblings.reduce((m, c) => Math.max(m, c.position), -1);
@@ -765,6 +821,9 @@ export function useMindmapData(): MindmapData {
         : parentKind === "project" ? "project"
         : parentKind === "goal" ? "goal"
         : parentKind === "task" ? "task"
+        // A commitment's default child is another commitment: the common shape is a month
+        // holding each day's instance, not a month holding a chore.
+        : parentKind === "commitment" ? "commitment"
         : parentKind === "flow" ? flowRootChildKind()
         : parentKind === "flow_goal" ? "flow_goal"
         : parentKind === "flow_task" ? "flow_task"
@@ -781,6 +840,8 @@ export function useMindmapData(): MindmapData {
         await updateGoal(dbId, { title });
       } else if (kind === "task") {
         await updateTask(dbId, { title });
+      } else if (kind === "commitment") {
+        await updateCommitment(dbId, { title });
       } else if (kind === "info") {
         await updateInfo(dbId, { body: title });
       } else if (kind === "flow_goal") {
@@ -876,6 +937,7 @@ export function useMindmapData(): MindmapData {
       const setPos = async (nId: number, kind: NodeKind, pos: number): Promise<void> => {
         if (kind === "goal") await updateGoal(nId, { position: pos });
         else if (kind === "task") await updateTask(nId, { position: pos });
+        else if (kind === "commitment") await updateCommitment(nId, { position: pos });
         else if (kind === "info") await updateInfo(nId, { position: pos });
         else if (kind === "flow_goal") await updateFlowGoal(nId, { position: pos });
         else if (kind === "flow_task") await updateFlowTask(nId, { position: pos });
@@ -900,6 +962,8 @@ export function useMindmapData(): MindmapData {
         await updateGoal(dbId, { parent_type: kindToParentType(newParentKind), parent_id: dbParentId, position });
       } else if (kind === "task") {
         await updateTask(dbId, { parent_type: kindToParentType(newParentKind), parent_id: dbParentId, position });
+      } else if (kind === "commitment") {
+        await updateCommitment(dbId, { parent_type: kindToParentType(newParentKind), parent_id: dbParentId, position });
       } else if (kind === "info") {
         await updateInfo(dbId, { parent_type: kindToInfoParentType(newParentKind), parent_id: dbParentId, position });
       } else if (kind === "flow_goal" || kind === "flow_task") {
@@ -923,6 +987,7 @@ export function useMindmapData(): MindmapData {
         const dbId = dbIdFromNodeId(id);
         if (kind === "goal") await deleteGoal(dbId);
         else if (kind === "task") await deleteTask(dbId);
+        else if (kind === "commitment") await deleteCommitment(dbId);
         else if (kind === "info") await deleteInfo(dbId);
         else if (kind === "flow") await deleteFlow(dbId);
         else if (kind === "flow_goal") await deleteFlowItem("flow_goal", dbId);

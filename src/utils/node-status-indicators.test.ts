@@ -123,3 +123,34 @@ describe("deriveStatusIndicators — Backlog", () => {
     expect(types(lapsed)).toEqual(["archived", "backlog"]);
   });
 });
+
+describe("deriveStatusIndicators — a commitment's verdict", () => {
+  it("always shows a verdict badge, including when nothing has been judged", () => {
+    // "Not yet said" is the state most worth seeing, and a blank row would make it look like
+    // there was nothing to say.
+    expect(types(node("commitment"))).toEqual(["unresolved"]);
+    expect(types(node("commitment", { verdict: "unresolved" }))).toEqual(["unresolved"]);
+  });
+
+  it("shows kept and broken as their own badges", () => {
+    expect(types(node("commitment", { verdict: "kept" }))).toEqual(["kept"]);
+    expect(types(node("commitment", { verdict: "broken" }))).toEqual(["broken"]);
+  });
+
+  it("shows the verdict alongside the scope and archive badges", () => {
+    const archived = node("commitment", {
+      verdict: "unresolved",
+      timeScope: scope,
+      timing: "lapsed",
+      archived: true,
+    });
+    // An unjudged commitment whose Verdict Window ran out: archived, and still unresolved. The
+    // two badges sit together — archiving moved Archival and left the Verdict alone.
+    expect(types(archived)).toEqual(["scope", "archived", "unresolved"]);
+  });
+
+  it("gives no verdict badge to anything that is not a commitment", () => {
+    expect(types(node("task", { status: "todo", verdict: "kept" }))).toEqual([]);
+    expect(types(node("goal", { status: "active", verdict: "kept" }))).toEqual([]);
+  });
+});

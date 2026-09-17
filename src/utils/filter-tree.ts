@@ -1,5 +1,6 @@
 import type { MindmapNode } from "@/utils/tree-layout";
 import { isNodeBlocked } from "@/utils/tree-layout";
+import { VERDICT } from "@/api/commitments";
 
 /** Status preset a filter is in. `all` disables status filtering; `backlog` inverts it, showing
  * only what has been deliberately set aside. */
@@ -191,6 +192,9 @@ function passesStatus(
     }
     return false;
   }
+  if (node.kind === "commitment") {
+    return withArchivedOverride(node, f, passesCommitmentPreset(node, f));
+  }
   switch (f.statusMode) {
     case "all":
       // archivedMode `exclude` hides an archived/lapsed item under All too, but that's handled by
@@ -231,10 +235,41 @@ function passesStatus(
   }
 }
 
+/**
+ * Whether a Commitment shows under the given preset.
+ *
+ * Its own rule, not a translation of a Task's, because the two kinds resolve the opposite way
+ * round. Three presets — Plan, Start and Do — show what is **unresolved**: what you have yet to
+ * judge is what is still live. All shows everything, including past verdicts, because looking
+ * back over what you kept and broke is the point of keeping the record.
+ *
+ * Plan carries the one carve-out in the model that mirrors no Task rule: it **also** shows a
+ * `broken` commitment whose window is still open. A commitment you have already broken today is
+ * a live problem until midnight, where a kept one is settled — so Kept drops out of Plan and
+ * Broken does not, as long as there is still time for it to matter.
+ *
+ * Backlog shows none: a Commitment has no Backlog state to be in.
+ */
+export function passesCommitmentPreset(node: MindmapNode, f: FilterState): boolean {
+  const verdict = node.verdict ?? VERDICT.UNRESOLVED;
+  switch (f.statusMode) {
+    case "all":
+      return true;
+    case "plan":
+      if (verdict === VERDICT.UNRESOLVED) return true;
+      return verdict === VERDICT.BROKEN && node.timing !== "lapsed";
+    case "start":
+    case "do":
+      return verdict === VERDICT.UNRESOLVED;
+    case "backlog":
+      return false;
+  }
+}
+
 /** Combined tag predicate per SPEC: (∪Any) ∧ (∩All) ∧ ¬(∪Exclude). Only judges taggable nodes. */
 export function passesTags(node: MindmapNode, f: FilterState): boolean {
   if (f.tagFilters.length === 0) return true;
-  if (node.kind !== "task" && node.kind !== "goal") return true;
+  if (node.kind !== "task" && node.kind !== "goal" && node.kind !== "commitment") return true;
   const has = (id: number) => node.tagIds.includes(id);
   const any = f.tagFilters.filter((t) => t.mode === "any");
   if (any.length > 0 && !any.some((t) => has(t.tagId))) return false;

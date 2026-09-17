@@ -39,5 +39,7 @@
   "openEditor": "Open the editor",
   "openSearch": "Search for a node",
   "statusBacklog": "Status preset: Backlog",
-  "toggleBacklog": "Put in / take out of the backlog"
+  "toggleBacklog": "Put in / take out of the backlog",
+  "markKept": "Mark the selected commitment kept (again to clear it)",
+  "markBroken": "Mark the selected commitment broken (again to clear it)"
 }

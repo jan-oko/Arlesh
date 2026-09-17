@@ -13,6 +13,7 @@ import BacklogIcon from "@/components/StatusIcons/BacklogIcon";
 import ArchiveIcon from "@/components/StatusIcons/ArchiveIcon";
 import ExclamationIcon from "@/components/StatusIcons/ExclamationIcon";
 import EllipsisIcon from "@/components/StatusIcons/EllipsisIcon";
+import VerdictIcon from "@/components/StatusIcons/VerdictIcon";
 import styles from "./TaskRowBadges.module.css";
 
 const R = 6;
@@ -58,6 +59,21 @@ export default function TaskRowBadges({ node, indicators }: Props) {
         return { tooltip: t("frozen"), icon: <IceIcon cx={R} cy={R} r={R} color={MUTED} /> };
       case "backlog":
         return { tooltip: t("backlog"), icon: <BacklogIcon cx={R} cy={R} r={R} color={MUTED} /> };
+      case "kept":
+      case "broken":
+      case "unresolved":
+        return {
+          tooltip: t(indicator.type),
+          icon: (
+            <VerdictIcon
+              cx={R}
+              cy={R}
+              r={R}
+              color={indicator.type === "broken" ? DANGER : MUTED}
+              verdict={indicator.type}
+            />
+          ),
+        };
       case "info":
         return { tooltip: node.infoDetails ?? "", icon: <EllipsisIcon cx={R} cy={R} r={R} color={MUTED} /> };
       case "flowInstance": {

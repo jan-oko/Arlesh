@@ -2,13 +2,16 @@ import { hierarchy, tree } from "d3-hierarchy";
 import type { TimeScope } from "@/api/time-scope";
 import type { InstanceType, FlowItemType, HabitInstanceType } from "@/api/flows";
 import type { OnScopeExit, Timing, Resolution } from "@/api/scope-lifecycle";
+import type { Verdict } from "@/api/commitments";
+import type { DurationSpec } from "@/api/time-scope";
 
 export type NodeKind =
-  | "aspect" | "project" | "domain" | "goal" | "task" | "tag" | "info"
+  | "aspect" | "project" | "domain" | "goal" | "task" | "commitment" | "tag" | "info"
   | "flow" | "flow_goal" | "flow_task";
 
 const ALL_NODE_KINDS: NodeKind[] = [
-  "aspect", "project", "domain", "goal", "task", "tag", "info", "flow", "flow_goal", "flow_task",
+  "aspect", "project", "domain", "goal", "task", "commitment", "tag", "info",
+  "flow", "flow_goal", "flow_task",
 ];
 
 /** Type guard: whether a string is a `NodeKind`. */
@@ -111,6 +114,14 @@ export interface MindmapNode {
    * it keeps reading as backlogged even once a lapsed window has forced `archived` on top of it —
    * exactly as a Frozen goal keeps its `status` under the same override. */
   backlogged?: boolean;
+  /** A Commitment's recorded Verdict (Commitments only) — `unresolved` / `kept` / `broken`.
+   * Never derived from the window passing or from children completing: `unresolved` means the
+   * user has not said, which is information in its own right. */
+  verdict?: Verdict;
+  /** A Commitment's **own** Verdict Window, when it sets one (Commitments only). How long past
+   * the end of its window it stays answerable, as a count of any scope kind. Absent means it
+   * inherits the nearest ancestor Commitment's. */
+  verdictWindow?: DurationSpec | null;
   /** A derived, read-only node (e.g. a virtual Habit iteration) with no backing DB row. */
   virtual?: boolean;
   /**

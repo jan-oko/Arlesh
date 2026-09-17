@@ -129,6 +129,9 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 - An iteration is resolved when every one of its non-tombstoned instances is done. **Instance children** are not instances and never gate resolution; completing an occurrence over an unfinished child asks for confirmation instead.
 - A List View row's **Path header** and its **Visible depth** partition its ancestors: every ancestor is named in exactly one of the two, never both and never neither.
 - A Commitment's Verdict is never derived. Neither its children nor the passing of its window ever sets it.
+- A Commitment's **Verdict Window** is the only automatic state change in the kind, and it moves **Archival**, never the Verdict: an unresolved Commitment whose window has run out archives *still unresolved*.
+- **Plan** shows `broken` Commitments whose window is still open, and not `kept` ones — a commitment already broken today is a live problem until the window closes, where a kept one is settled. This mirrors no Task rule.
+- A Commitment takes no part in the dependency graph, in either direction, and has no Plan, no delegate and no block reasons.
 - Scope containment is evaluated on **resolved datetime boundaries** (interval containment), so it holds uniformly across canonical, exact, and multi-scope-kind windows. Scope X is "within" scope F iff X's window ⊆ F's window.
 - A child item's explicit Time Scope must be **wholly contained** within its parent's Time Scope.
 - A Task's Plan must be wholly contained within that task's Time Scope, and within its parent's Plan.

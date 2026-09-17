@@ -1,4 +1,6 @@
 import type { MindmapNode } from "@/utils/tree-layout";
+import type { Verdict } from "@/api/commitments";
+import { VERDICT } from "@/api/commitments";
 
 /** The status badges that can appear in a node's indicator row, in display order. */
 export type StatusIndicatorType =
@@ -8,6 +10,9 @@ export type StatusIndicatorType =
   | "planned"
   | "frozen"
   | "backlog"
+  | "kept"
+  | "broken"
+  | "unresolved"
   | "info"
   | "flowInstance"
   | "tags";
@@ -30,6 +35,14 @@ function isPastWindow(node: MindmapNode): boolean {
 
 function hasInfoDetails(node: MindmapNode): boolean {
   return node.kind === "info" && node.infoDetails != null && node.infoDetails !== "";
+}
+
+/** The badge a Commitment's verdict reads as. An absent verdict is `unresolved`, not nothing:
+ * the two would otherwise be indistinguishable on the canvas. */
+function verdictBadge(verdict: Verdict | undefined): "kept" | "broken" | "unresolved" {
+  if (verdict === VERDICT.KEPT) return "kept";
+  if (verdict === VERDICT.BROKEN) return "broken";
+  return "unresolved";
 }
 
 /** A node that came from a flow: a real Start-flow instance, or a virtual Habit instance. */
@@ -66,6 +79,12 @@ export function deriveStatusIndicators(node: MindmapNode): StatusIndicator[] {
   // a Frozen goal already gets under a forced Archived.
   if (node.backlogged === true) {
     indicators.push({ type: "backlog" });
+  }
+  // A Commitment always shows where its verdict stands, including when it stands nowhere: an
+  // unjudged commitment is the one thing the user most needs to see, and leaving the row blank
+  // would make "not yet said" look like "nothing to say".
+  if (node.kind === "commitment") {
+    indicators.push({ type: verdictBadge(node.verdict) });
   }
   if (hasInfoDetails(node)) {
     indicators.push({ type: "info" });

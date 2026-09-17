@@ -23,10 +23,11 @@ use arlesh_lib::{
     infos::model::CreateInfoRequest,
     scopes::model::ScopeKind,
     tasks::{
-        add_task_dependency, create_goal, create_task, update_goal, update_task,
+        add_task_dependency, create_commitment, create_goal, create_task, update_goal, update_task,
         model::{
-            CreateGoalRequest, CreateTaskRequest, Dependency, GoalId, GoalStatus, OnScopeExit,
-            TaskId, TaskStatus, TimeScope, UpdateGoalRequest, UpdateTaskRequest,
+            CommitmentId, CreateCommitmentRequest, CreateGoalRequest, CreateTaskRequest,
+            Dependency, DurationSpec, GoalId, GoalStatus, OnScopeExit, TaskId, TaskStatus,
+            TimeScope, UpdateGoalRequest, UpdateTaskRequest, Verdict,
         },
         retype::{apply_retype, plan_node_retype, RetypeKind, StrandedChildren},
     },
@@ -1001,4 +1002,499 @@ async fn retyping_a_tracked_task_to_a_note_reports_the_link_as_lost_and_clears_i
         lost.contains(&"beads_id"),
         "the prompt should name the issue link among what it drops, got {lost:?}"
     );
+}
+
+// ===========================================================================
+// Task ↔ Commitment
+// ===========================================================================
+
+/// A single-day Time Scope, so a retype to a Commitment has an effective window to satisfy.
+async fn one_day(pool: &sqlx::SqlitePool, day: u32) -> TimeScope {
+    let scope = helpers::session_factory(pool)
+        .connect()
+        .await
+        .unwrap()
+        .scopes()
+        .get_or_create(ScopeKind::Day, NaiveDate::from_ymd_opt(2026, 7, day).unwrap())
+        .await
+        .unwrap();
+    TimeScope { start_id: scope.id, end_id: scope.id, duration: None }
+}
+
+#[tokio::test]
+async fn a_scoped_task_becomes_a_commitment_carrying_its_window_tags_and_issue_link() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let project_id = make_project(&pool).await;
+    let tag_id = make_tag(&pool, Some(growth_aspect_id(&pool).await)).await;
+    let tonight = one_day(&pool, 1).await;
+
+    let task = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let task = create_task(
+            &mut db,
+            CreateTaskRequest {
+                title: "Asleep by 23:00".into(),
+                parent_type: "project".into(),
+                parent_id: project_id,
+                time_scope: Some(tonight.clone()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        db.tasks().add_tag(TaskId(task.id), tag_id).await.unwrap();
+        db.tasks().set_beads_id(TaskId(task.id), Some("Arlesh-cyo".into())).await.unwrap();
+        db.commit().await.unwrap();
+        task
+    };
+
+    let retyped = retype_node(app.state(), "task".into(), task.id, "commitment".into(), None)
+        .await
+        .expect("an unplanned, undelegated task loses nothing on the way in");
+
+    assert_eq!(retyped.kind, RetypeKind::Commitment);
+    let commitment = helpers::session_factory(&pool)
+        .connect()
+        .await
+        .unwrap()
+        .commitments()
+        .get(CommitmentId(retyped.id))
+        .await
+        .unwrap();
+    assert_eq!(commitment.title, "Asleep by 23:00");
+    assert_eq!(commitment.time_scope, Some(tonight));
+    assert_eq!(commitment.tag_ids, vec![tag_id]);
+    assert_eq!(commitment.beads_id, Some("Arlesh-cyo".to_string()), "a tracked node stays tracked");
+    assert_eq!(commitment.verdict, Verdict::Unresolved, "no status is translated into a verdict");
+
+    let gone: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tasks WHERE id = ?")
+        .bind(task.id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(gone, 0, "the old row went with the retype");
+}
+
+#[tokio::test]
+async fn a_planned_task_cannot_become_a_commitment_until_the_caller_has_been_told() {
+    // The window *is* the commitment, so a Plan has nowhere to go — and a scheduling decision is
+    // never discarded without being named first.
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let project_id = make_project(&pool).await;
+    let tonight = one_day(&pool, 1).await;
+
+    let task = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let task = create_task(
+            &mut db,
+            CreateTaskRequest {
+                title: "Asleep by 23:00".into(),
+                parent_type: "project".into(),
+                parent_id: project_id,
+                time_scope: Some(tonight.clone()),
+                plan: Some(tonight),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        db.commit().await.unwrap();
+        task
+    };
+
+    let refused = retype_node(app.state(), "task".into(), task.id, "commitment".into(), None).await;
+    assert!(refused.is_err(), "the Plan must be named before it is dropped");
+
+    let accepted = retype_node(
+        app.state(),
+        "task".into(),
+        task.id,
+        "commitment".into(),
+        Some(StrandedChildren::Reparent),
+    )
+    .await
+    .expect("acknowledged, it goes through");
+    assert_eq!(accepted.kind, RetypeKind::Commitment);
+}
+
+#[tokio::test]
+async fn an_unscoped_task_with_no_scoped_ancestor_cannot_become_a_commitment() {
+    // Loud rather than quiet: the effective-scope rule refuses the write, the transaction rolls
+    // back, and the task is still a task afterwards.
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let project_id = make_project(&pool).await;
+
+    let task = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let task = create_task(
+            &mut db,
+            CreateTaskRequest {
+                title: "Asleep by 23:00".into(),
+                parent_type: "project".into(),
+                parent_id: project_id,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        db.commit().await.unwrap();
+        task
+    };
+
+    let refused = retype_node(app.state(), "task".into(), task.id, "commitment".into(), None).await;
+    assert!(refused.is_err(), "a commitment that could never come due is not written");
+
+    let survivors: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tasks WHERE id = ?")
+        .bind(task.id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let commitments: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM commitments")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(survivors, 1, "the task is untouched");
+    assert_eq!(commitments, 0, "and no half-written commitment was left behind");
+}
+
+#[tokio::test]
+async fn a_judged_commitment_becoming_a_task_reports_the_verdict_it_would_lose() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let project_id = make_project(&pool).await;
+    let tonight = one_day(&pool, 1).await;
+
+    let commitment = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let commitment = create_commitment(
+            &mut db,
+            CreateCommitmentRequest {
+                title: "Asleep by 23:00".into(),
+                parent_type: "project".into(),
+                parent_id: project_id,
+                verdict: Some(Verdict::Broken),
+                time_scope: Some(tonight),
+                verdict_window: Some(DurationSpec { n: 2, kind: "day".into() }),
+            },
+        )
+        .await
+        .unwrap();
+        db.commit().await.unwrap();
+        commitment
+    };
+
+    let refused =
+        retype_node(app.state(), "commitment".into(), commitment.id, "task".into(), None).await;
+    assert!(refused.is_err(), "a recorded verdict is not discarded unasked");
+
+    let retyped = retype_node(
+        app.state(),
+        "commitment".into(),
+        commitment.id,
+        "task".into(),
+        Some(StrandedChildren::Reparent),
+    )
+    .await
+    .unwrap();
+    assert_eq!(retyped.kind, RetypeKind::Task);
+
+    let task = helpers::session_factory(&pool)
+        .connect()
+        .await
+        .unwrap()
+        .tasks()
+        .get(TaskId(retyped.id))
+        .await
+        .unwrap();
+    assert_eq!(task.status, "todo", "no verdict is translated into a status");
+    assert!(task.plan.is_none());
+}
+
+#[tokio::test]
+async fn a_commitments_task_children_move_with_it_and_its_goal_siblings_never_arrive() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let project_id = make_project(&pool).await;
+    let tonight = one_day(&pool, 1).await;
+
+    let commitment = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let commitment = create_commitment(
+            &mut db,
+            CreateCommitmentRequest {
+                title: "Asleep by 23:00".into(),
+                parent_type: "project".into(),
+                parent_id: project_id,
+                time_scope: Some(tonight),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        create_task(
+            &mut db,
+            CreateTaskRequest {
+                title: "Phone on charger".into(),
+                parent_type: "commitment".into(),
+                parent_id: commitment.id,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        db.commit().await.unwrap();
+        commitment
+    };
+
+    let retyped = retype_node(
+        app.state(),
+        "commitment".into(),
+        commitment.id,
+        "task".into(),
+        Some(StrandedChildren::Reparent),
+    )
+    .await
+    .unwrap();
+
+    let child_parent: (String, i64) =
+        sqlx::query_as("SELECT parent_type, parent_id FROM tasks WHERE title = 'Phone on charger'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(child_parent, ("task".to_string(), retyped.id), "a task child follows a task");
+}
+
+#[tokio::test]
+async fn a_commitment_becoming_a_tag_deletes_the_children_a_label_cannot_hold() {
+    // A Tag is a label: it holds notes and nothing else. Everything a commitment was holding is
+    // therefore stranded, and the caller's choice — here, delete — is what happens to it.
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let project_id = make_project(&pool).await;
+    let tonight = one_day(&pool, 1).await;
+
+    let commitment = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let commitment = create_commitment(
+            &mut db,
+            CreateCommitmentRequest {
+                title: "Evening rules".into(),
+                parent_type: "project".into(),
+                parent_id: project_id,
+                time_scope: Some(tonight.clone()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        create_commitment(
+            &mut db,
+            CreateCommitmentRequest {
+                title: "Asleep by 23:00".into(),
+                parent_type: "commitment".into(),
+                parent_id: commitment.id,
+                time_scope: Some(tonight),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        db.commit().await.unwrap();
+        commitment
+    };
+
+    let retyped = retype_node(
+        app.state(),
+        "commitment".into(),
+        commitment.id,
+        "tag".into(),
+        Some(StrandedChildren::Delete),
+    )
+    .await
+    .unwrap();
+    assert_eq!(retyped.kind, RetypeKind::Tag);
+
+    let left: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM commitments")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(left, 0, "the commitment became a label and its child went with the choice");
+}
+
+#[tokio::test]
+async fn a_stranded_child_commitment_moves_up_to_its_grandparent_when_the_caller_says_so() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let project_id = make_project(&pool).await;
+    let tonight = one_day(&pool, 1).await;
+
+    let commitment = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let commitment = create_commitment(
+            &mut db,
+            CreateCommitmentRequest {
+                title: "Evening rules".into(),
+                parent_type: "project".into(),
+                parent_id: project_id,
+                time_scope: Some(tonight.clone()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        create_commitment(
+            &mut db,
+            CreateCommitmentRequest {
+                title: "Asleep by 23:00".into(),
+                parent_type: "commitment".into(),
+                parent_id: commitment.id,
+                time_scope: Some(tonight),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        db.commit().await.unwrap();
+        commitment
+    };
+
+    retype_node(
+        app.state(),
+        "commitment".into(),
+        commitment.id,
+        "tag".into(),
+        Some(StrandedChildren::Reparent),
+    )
+    .await
+    .unwrap();
+
+    let parent: (String, i64) = sqlx::query_as(
+        "SELECT parent_type, parent_id FROM commitments WHERE title = 'Asleep by 23:00'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(parent, ("project".to_string(), project_id), "it moved up rather than vanishing");
+}
+
+#[tokio::test]
+async fn a_goal_holds_a_commitment_child_through_a_retype() {
+    // A Goal accepts a Commitment, so retyping its holder to a Goal adopts the child rather than
+    // stranding it — the counter-case that fixes where the boundary is.
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let project_id = make_project(&pool).await;
+    let tonight = one_day(&pool, 1).await;
+
+    let commitment = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let commitment = create_commitment(
+            &mut db,
+            CreateCommitmentRequest {
+                title: "Evening rules".into(),
+                parent_type: "project".into(),
+                parent_id: project_id,
+                time_scope: Some(tonight.clone()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        create_commitment(
+            &mut db,
+            CreateCommitmentRequest {
+                title: "Asleep by 23:00".into(),
+                parent_type: "commitment".into(),
+                parent_id: commitment.id,
+                time_scope: Some(tonight),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        db.commit().await.unwrap();
+        commitment
+    };
+
+    let retyped = retype_node(
+        app.state(),
+        "commitment".into(),
+        commitment.id,
+        "goal".into(),
+        Some(StrandedChildren::Reparent),
+    )
+    .await
+    .unwrap();
+
+    let parent: (String, i64) = sqlx::query_as(
+        "SELECT parent_type, parent_id FROM commitments WHERE title = 'Asleep by 23:00'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(parent, ("goal".to_string(), retyped.id), "the goal adopted it");
+}
+
+#[tokio::test]
+async fn a_task_under_a_commitment_climbs_past_it_when_it_becomes_a_goal() {
+    // `goals.parent_type` does not accept `commitment`, so the retype must move the node to the
+    // nearest ancestor a Goal can hang under — and say so first, rather than writing a parent
+    // link the CHECK would refuse.
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let project_id = make_project(&pool).await;
+    let tonight = one_day(&pool, 1).await;
+
+    let task = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let commitment = create_commitment(
+            &mut db,
+            CreateCommitmentRequest {
+                title: "Asleep by 23:00".into(),
+                parent_type: "project".into(),
+                parent_id: project_id,
+                time_scope: Some(tonight),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        let task = create_task(
+            &mut db,
+            CreateTaskRequest {
+                title: "Phone on charger".into(),
+                parent_type: "commitment".into(),
+                parent_id: commitment.id,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        db.commit().await.unwrap();
+        task
+    };
+
+    let refused = retype_node(app.state(), "task".into(), task.id, "goal".into(), None).await;
+    assert!(refused.is_err(), "a node leaving the parent it sits under is never silent");
+
+    let retyped = retype_node(
+        app.state(),
+        "task".into(),
+        task.id,
+        "goal".into(),
+        Some(StrandedChildren::Reparent),
+    )
+    .await
+    .unwrap();
+
+    let parent: (String, i64) =
+        sqlx::query_as("SELECT parent_type, parent_id FROM goals WHERE id = ?")
+            .bind(retyped.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(parent, ("project".to_string(), project_id), "it climbed past the commitment");
 }

@@ -13,9 +13,10 @@ function fireKey(key: string, modifiers: { altKey?: boolean; ctrlKey?: boolean; 
 }
 
 function baseOptions(overrides: Partial<Parameters<typeof useKeyboardListView>[0]> = {}) {
-  return {
+  const merged = {
     isInputActive: false,
     selectedTaskId: "task-1" as string | null,
+    selectedCommitmentId: null as string | null,
     isSelectedBlocked: false,
     onNavigate: vi.fn(),
     onCycleStatus: vi.fn(),
@@ -25,7 +26,16 @@ function baseOptions(overrides: Partial<Parameters<typeof useKeyboardListView>[0
     onToggleFilter: vi.fn(),
     onSetStatusMode: vi.fn(),
     onToggleBacklog: vi.fn(),
+    onMarkKept: vi.fn(),
+    onMarkBroken: vi.fn(),
     ...overrides,
+  };
+  // `selectedRowId` is whichever of the two kinds is selected, exactly as ListView derives it —
+  // computed here rather than defaulted, so a test that says "nothing is selected" is not
+  // silently contradicted by a stale row id.
+  return {
+    ...merged,
+    selectedRowId: overrides.selectedRowId ?? merged.selectedTaskId ?? merged.selectedCommitmentId,
   };
 }
 

@@ -7,8 +7,8 @@ import { setHabitItemStatus } from "@/api/flows";
 import { TASK_STATUS } from "@/utils/status-mapping";
 import { findNode, collectTasksAndGoals } from "@/utils/mindmap-tree";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
-import type { TaskListRow } from "@/utils/list-filter";
-import { flattenTaskRows } from "@/utils/list-data";
+import type { CommitmentListRow, TaskListRow } from "@/utils/list-filter";
+import { flattenCommitmentRows, flattenTaskRows } from "@/utils/list-data";
 
 function nextTaskStatus(current: string): string {
   if (current === TASK_STATUS.IN_PROGRESS) return TASK_STATUS.DONE;
@@ -20,6 +20,8 @@ interface ListData {
   tree: MindmapNode;
   /** Every Task row (real, flow-materialized, and virtual Habit instances), unfiltered. */
   rows: TaskListRow[];
+  /** Every Commitment row, unfiltered — the section that sits above the task rows. */
+  commitmentRows: CommitmentListRow[];
   /** Every Task/Goal node, for the shared task/goal editor plumbing (dependency picker, etc.). */
   allTasksAndGoals: MindmapNode[];
   isLoading: boolean;
@@ -42,6 +44,7 @@ export function useListData(): ListData {
   }, [tree]);
 
   const rows = useMemo(() => flattenTaskRows(tree, taskDeps), [tree, taskDeps]);
+  const commitmentRows = useMemo(() => flattenCommitmentRows(tree), [tree]);
   const allTasksAndGoals = useMemo(() => {
     const acc: MindmapNode[] = [];
     collectTasksAndGoals(tree, acc);
@@ -65,5 +68,8 @@ export function useListData(): ListData {
     [tree, reload],
   );
 
-  return { tree, rows, allTasksAndGoals, isLoading, error, reload, onCycleStatus, renameNode };
+  return {
+    tree, rows, commitmentRows, allTasksAndGoals, isLoading, error, reload, onCycleStatus,
+    renameNode,
+  };
 }

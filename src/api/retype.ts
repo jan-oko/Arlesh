@@ -1,12 +1,14 @@
 import { invoke } from "@tauri-apps/api/core";
 import { isWireError } from "@/api/errors";
 
-/** The node kinds `retype_node` can move between: the goals, tasks, domains tables, and infos. */
-export type RetypeKind = "goal" | "task" | "domain" | "project" | "tag" | "info";
+/** The node kinds `retype_node` can move between: the goals, tasks, commitments and domains
+ * tables, and infos. */
+export type RetypeKind = "goal" | "task" | "commitment" | "domain" | "project" | "tag" | "info";
 
 const RETYPE_KINDS: readonly string[] = [
   "goal",
   "task",
+  "commitment",
   "domain",
   "project",
   "tag",

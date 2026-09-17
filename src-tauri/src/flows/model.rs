@@ -25,6 +25,13 @@ pub enum InstanceType {
     Goal,
     /// Materializes as a Task subtree.
     Task,
+    /// Materializes as a Commitment.
+    ///
+    /// This is how a repeating rule — a nightly "asleep by 23:00" — recurs: through the Habit
+    /// machinery that already exists, rather than a second recurrence engine. Each iteration's
+    /// verdict is a Modification row keyed by (flow item, iteration scope), reusing the
+    /// overridden-status slot; see `docs/adr/0005-commitment-node-kind.md`.
+    Commitment,
 }
 
 impl InstanceType {
@@ -33,6 +40,20 @@ impl InstanceType {
         match self {
             Self::Goal => "goal",
             Self::Task => "task",
+            Self::Commitment => "commitment",
+        }
+    }
+
+    /// Parses the database string representation, defaulting to `Task`.
+    ///
+    /// A default rather than an `Option` because the column is CHECK-constrained and every
+    /// caller here is reading a stored row: `Task` is what the old two-way `== "goal"` test
+    /// already fell back to, kept so a corrupt row renders as something rather than nothing.
+    pub fn from_db(value: &str) -> Self {
+        match value {
+            "goal" => Self::Goal,
+            "commitment" => Self::Commitment,
+            _ => Self::Task,
         }
     }
 }
@@ -509,6 +530,21 @@ mod tests {
     fn instance_type_as_str_covers_all_variants() {
         assert_eq!(InstanceType::Goal.as_str(), "goal");
         assert_eq!(InstanceType::Task.as_str(), "task");
+        assert_eq!(InstanceType::Commitment.as_str(), "commitment");
+    }
+
+    #[test]
+    fn instance_type_from_db_roundtrips_every_variant() {
+        for instance_type in [InstanceType::Goal, InstanceType::Task, InstanceType::Commitment] {
+            assert_eq!(InstanceType::from_db(instance_type.as_str()), instance_type);
+        }
+    }
+
+    #[test]
+    fn an_unrecognised_instance_type_reads_as_a_task() {
+        // The CHECK constraint is what keeps this from arising; a row that got past it still
+        // renders as something rather than taking the flow off the canvas.
+        assert_eq!(InstanceType::from_db("bogus"), InstanceType::Task);
     }
 
     #[test]

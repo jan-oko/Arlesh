@@ -29,10 +29,11 @@ use crate::scopes::resolve::{interval_contains, scope_bounds};
 use crate::scopes::ScopeOperator;
 use habits::{classify_iterations, Catchup, Consumption, SlotWindow};
 use crate::tasks::model::{
-    CreateGoalRequest, CreateTaskRequest, Dependency, DurationSpec, GoalId, TaskId, TimeScope,
+    CommitmentId, CreateCommitmentRequest, CreateGoalRequest, CreateTaskRequest, Dependency,
+    DurationSpec, GoalId, TaskId, TimeScope,
 };
 use crate::tasks::{
-    add_task_dependency, create_goal, create_task, delete_goal, delete_task,
+    add_task_dependency, create_commitment, create_goal, create_task, delete_goal, delete_task,
     nearest_scoped_ancestor_window, time_scope_window,
 };
 use error::FlowError;
@@ -2042,6 +2043,28 @@ async fn write_plan(
                 .await?;
                 ("task".to_string(), task.id)
             }
+            InstanceType::Commitment => {
+                // A commitment Habit's root. Its window comes from the iteration the same way a
+                // task's does; it arrives Unresolved, because a materialised instance is
+                // something nobody has judged yet, and the whole point of the kind is that
+                // nothing infers a verdict on the user's behalf.
+                //
+                // `node.plan` is ignored rather than dropped silently: a Commitment has no Plan
+                // column, and a commitment flow has no Cycle Plan to set one from.
+                let commitment = create_commitment(
+                    db,
+                    CreateCommitmentRequest {
+                        title: node.title.clone(),
+                        parent_type: create_parent.0,
+                        parent_id: create_parent.1,
+                        verdict: None,
+                        time_scope: node.time_scope.clone(),
+                        verdict_window: None,
+                    },
+                )
+                .await?;
+                ("commitment".to_string(), commitment.id)
+            }
         };
 
         let instance_id = match opened {
@@ -2118,10 +2141,12 @@ async fn set_node_private(
     node_type: &str,
     node_id: i64,
 ) -> Result<(), FlowError> {
-    if node_type == "goal" {
-        db.goals().set_private(GoalId(node_id), true).await?;
-    } else {
-        db.tasks().set_private(TaskId(node_id), true).await?;
+    match node_type {
+        "goal" => db.goals().set_private(GoalId(node_id), true).await?,
+        "commitment" => {
+            db.commitments().set_private(CommitmentId(node_id), true).await?
+        }
+        _ => db.tasks().set_private(TaskId(node_id), true).await?,
     }
     Ok(())
 }

@@ -149,7 +149,9 @@ fn domain_kind(error: &DomainError) -> WireErrorKind {
 /// nested [`ScopeError`] rather than giving it its own kind.
 fn task_kind(error: &TaskError) -> WireErrorKind {
     match error {
-        TaskError::TaskNotFound(_) | TaskError::GoalNotFound(_) => WireErrorKind::NotFound,
+        TaskError::TaskNotFound(_)
+        | TaskError::GoalNotFound(_)
+        | TaskError::CommitmentNotFound(_) => WireErrorKind::NotFound,
         TaskError::CircularDependency => WireErrorKind::InvalidRequest,
         // Not `InvalidRequest`: the request is well-formed and could be carried out. The backend
         // is asking whether to throw the Plan away, and the caller answers by asking again with
@@ -159,6 +161,9 @@ fn task_kind(error: &TaskError) -> WireErrorKind {
         // caller can rephrase will fix it, which is what `Internal` means here.
         TaskError::AncestorCycle { .. } => WireErrorKind::Internal,
         TaskError::ScopeContainment(_) => WireErrorKind::ContainmentViolated,
+        // Not a containment violation: nothing escapes anything. The request asks for a
+        // commitment that could never come due, and no window anywhere is being breached.
+        TaskError::CommitmentUnscoped => WireErrorKind::InvalidRequest,
         TaskError::Scope(inner) => scope_kind(inner),
         TaskError::Database(_) => WireErrorKind::Database,
     }

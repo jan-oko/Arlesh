@@ -1,12 +1,17 @@
-//! Tasks and Goals: action items and desired states.
+//! Tasks, Goals and Commitments: action items, desired states, and rules held over a window.
 //!
-//! Single-resource SQL lives on [`TaskOperator`] and [`GoalOperator`]. Anything that also has to
-//! read scopes (containment validation), infos and block reasons (the subtree delete) or both
-//! tables at once is a **free function over a [`Db`] session** instead — [`create_task`],
-//! [`update_task`], [`delete_task`], [`get_task_with_blockers`] and their goal counterparts. See
-//! [`Db`]'s `# Where an operation lives`.
+//! The three share a scoped parent chain — a Task inherits its window from whichever of them sits
+//! nearest above it — which is why they share a module, an ancestry climb and one set of
+//! containment rules.
+//!
+//! Single-resource SQL lives on [`TaskOperator`], [`GoalOperator`] and [`CommitmentOperator`].
+//! Anything that also has to read scopes (containment validation), infos and block reasons (the
+//! subtree delete) or several tables at once is a **free function over a [`Db`] session**
+//! instead — [`create_task`], [`update_task`], [`delete_task`], [`get_task_with_blockers`] and
+//! their goal and commitment counterparts. See [`Db`]'s `# Where an operation lives`.
 
 mod ancestry;
+pub mod commitments;
 pub mod error;
 pub mod lifecycle;
 pub mod model;
@@ -19,7 +24,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::database::session::{Db, SessionMode, Transactional};
 use crate::infos::model::InfoId;
 use ancestry::{AncestryLink, NodeKind, NodeRef};
+pub use commitments::{
+    create_commitment, delete_commitment, update_commitment, CommitmentOperator,
+};
 use error::TaskError;
+use model::CommitmentId;
 pub use scope_rules::{
     conflicts_for_new_time_scope, derive_all_scope_lifecycles, nearest_scoped_ancestor_window,
     reparent_conflicts, time_scope_window, ReparentConflicts, ViolatingDescendant,
@@ -103,13 +112,14 @@ async fn delete_infos_under(
     Ok(())
 }
 
-/// Cascade-deletes a task/goal subtree: the node, every descendant task/goal, and all infos under
-/// them. Dependencies and tags fall away via their `ON DELETE CASCADE` foreign keys; the polymorphic
-/// parent links do not, so descendants are collected explicitly to avoid orphaning them.
+/// Cascade-deletes a content-node subtree: the node, every descendant task, goal and commitment,
+/// and all infos under them. Dependencies and tags fall away via their `ON DELETE CASCADE`
+/// foreign keys; the polymorphic parent links do not, so descendants are collected explicitly to
+/// avoid orphaning them.
 ///
 /// Takes a transactional session: a half-applied cascade leaves orphans behind, so ADR-0004 makes
 /// this one of the operations whose signature demands atomicity.
-async fn delete_task_goal_subtree(
+async fn delete_node_subtree(
     db: &mut Db<Transactional>,
     root_type: &str,
     root_id: i64,
@@ -122,15 +132,19 @@ async fn delete_task_goal_subtree(
         stack.extend(task_children.into_iter().map(|id| ("task".to_string(), id)));
         let goal_children = db.goals().child_ids(&node_type, node_id).await?;
         stack.extend(goal_children.into_iter().map(|id| ("goal".to_string(), id)));
+        let commitment_children = db.commitments().child_ids(&node_type, node_id).await?;
+        stack.extend(commitment_children.into_iter().map(|id| ("commitment".to_string(), id)));
     }
     for (node_type, node_id) in &nodes {
         delete_infos_under(db, node_type, *node_id).await?;
-        // Block reasons hang off a polymorphic owner link with no foreign key, like infos.
+        // Block reasons hang off a polymorphic owner link with no foreign key, like infos. A
+        // Commitment never has any, and asking for none costs one statement against the risk of
+        // leaving a stale row behind if that ever changes.
         db.block_reasons().delete_for(node_type, *node_id).await?;
-        if node_type == "goal" {
-            db.goals().delete_row(GoalId(*node_id)).await?;
-        } else {
-            db.tasks().delete_row(TaskId(*node_id)).await?;
+        match node_type.as_str() {
+            "goal" => db.goals().delete_row(GoalId(*node_id)).await?,
+            "commitment" => db.commitments().delete_row(CommitmentId(*node_id)).await?,
+            _ => db.tasks().delete_row(TaskId(*node_id)).await?,
         }
     }
     Ok(())
@@ -543,6 +557,8 @@ impl<'session> GoalOperator<'session> {
             ),
             plan: None,
             on_scope_exit: row.on_scope_exit.as_deref().and_then(OnScopeExit::from_db),
+            // Goals have no Verdict Window; only a Commitment does.
+            verdict_window: None,
         })
     }
 
@@ -817,6 +833,8 @@ impl<'session> TaskOperator<'session> {
             ),
             plan: time_scope_from_row(row.plan_start_id, row.plan_end_id, None, None),
             on_scope_exit: row.on_scope_exit.as_deref().and_then(OnScopeExit::from_db),
+            // Tasks have no Verdict Window; only a Commitment does.
+            verdict_window: None,
         })
     }
 
@@ -1250,7 +1268,7 @@ pub async fn update_goal(
 #[tracing::instrument(skip(db))]
 pub async fn delete_goal(db: &mut Db<Transactional>, id: GoalId) -> Result<(), TaskError> {
     db.goals().get(id).await?;
-    delete_task_goal_subtree(db, "goal", id.0).await
+    delete_node_subtree(db, "goal", id.0).await
 }
 
 /// Creates a task, rejecting it if its Time Scope or Plan escapes the windows above it.
@@ -1374,7 +1392,7 @@ pub async fn add_task_dependency(
 #[tracing::instrument(skip(db))]
 pub async fn delete_task(db: &mut Db<Transactional>, id: TaskId) -> Result<(), TaskError> {
     db.tasks().get(id).await?;
-    delete_task_goal_subtree(db, "task", id.0).await
+    delete_node_subtree(db, "task", id.0).await
 }
 
 /// Fetches a task with its computed block reasons: the explicit ones plus one per unmet
