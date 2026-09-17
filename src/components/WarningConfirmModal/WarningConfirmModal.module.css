@@ -81,3 +81,27 @@
   padding: var(--space-2) var(--space-4);
   cursor: pointer;
 }
+
+/*
+ * Focus rings for the trapped dialog. Cancel takes focus when the dialog opens and Tab now cycles
+ * between the buttons without leaving, so every stop has to be visible — a trapped dialog whose
+ * focused button looks like the others tells the user nothing about what Enter will do.
+ * `outline-offset` lifts the ring onto the modal surface, which keeps it legible against the
+ * filled primary and danger buttons in both themes.
+ */
+.cancelBtn:focus-visible,
+.primaryBtn:focus-visible,
+.dangerBtn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/*
+ * Cancel rings on plain :focus too. Its focus is programmatic — the dialog autofocuses it — and
+ * engines disagree about whether that counts as focus-visible; a ring drawn only sometimes is
+ * worse than none, because the point is that you can see what Enter will do.
+ */
+.cancelBtn:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

@@ -422,8 +422,6 @@ export default function MindmapView() {
 
   useKeyboardMindmap({
     isInputActive: isInputCaptured,
-    isWarningActive: warningModal !== null,
-    onDismissWarning: () => setWarningModal(null),
     selectedNodeId,
     selectedNodeIds,
     subtreeRootId,

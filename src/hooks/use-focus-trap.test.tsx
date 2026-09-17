@@ -71,3 +71,53 @@ describe("useFocusTrap", () => {
     expect(screen.getByTestId("outside")).toHaveFocus();
   });
 });
+
+interface PairProps {
+  showAbove?: boolean;
+}
+
+/** An editor with a confirmation opened over it — the case MindmapView puts on screen. */
+function TrappedPair({ showAbove = true }: PairProps) {
+  const below = useFocusTrap<HTMLDivElement>();
+  const above = useFocusTrap<HTMLDivElement>();
+  return (
+    <>
+      <div ref={below}>
+        <button data-testid="below-first" />
+        <button data-testid="below-second" />
+      </div>
+      {showAbove && (
+        <div ref={above}>
+          <button autoFocus data-testid="above-first" />
+          <button data-testid="above-second" />
+        </div>
+      )}
+    </>
+  );
+}
+
+describe("useFocusTrap — stacked dialogs", () => {
+  it("leaves focus to the dialog opened on top of it", async () => {
+    const user = userEvent.setup();
+    render(<Outside />);
+    render(<TrappedPair />);
+    expect(screen.getByTestId("above-first")).toHaveFocus();
+    await user.tab();
+    expect(screen.getByTestId("above-second")).toHaveFocus();
+    await user.tab();
+    expect(screen.getByTestId("above-first")).toHaveFocus();
+  });
+
+  it("takes the trap back once the dialog above it closes", async () => {
+    const user = userEvent.setup();
+    render(<Outside />);
+    const { rerender } = render(<TrappedPair />);
+    rerender(<TrappedPair showAbove={false} />);
+    await user.tab();
+    expect(screen.getByTestId("below-first")).toHaveFocus();
+    await user.tab();
+    expect(screen.getByTestId("below-second")).toHaveFocus();
+    await user.tab();
+    expect(screen.getByTestId("below-first")).toHaveFocus();
+  });
+});

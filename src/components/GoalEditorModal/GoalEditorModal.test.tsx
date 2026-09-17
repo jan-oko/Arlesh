@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import GoalEditorModal from "./GoalEditorModal";
+import { expectFocusTrapped, dialogIn } from "@/test/focus-trap";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { Domain } from "@/api/domains";
 
@@ -178,5 +179,13 @@ describe("GoalEditorModal — bd issue link", () => {
   it("shows no issue row at all for an unlinked goal", () => {
     render(<GoalEditorModal {...defaultProps} node={mkNode()} />);
     expect(screen.queryByText("fieldBeadsId")).not.toBeInTheDocument();
+  });
+});
+
+describe("GoalEditorModal — focus trap", () => {
+  it("keeps Tab and Shift+Tab inside the dialog, wrapping at both ends", async () => {
+    render(<button data-testid="behind-the-modal" />);
+    const { container } = render(<GoalEditorModal {...defaultProps} />);
+    await expectFocusTrapped(dialogIn(container));
   });
 });

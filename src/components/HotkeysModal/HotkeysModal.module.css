@@ -19,11 +19,35 @@
   padding: 20px 24px 24px;
 }
 
-.title {
+.titleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
   margin: 0 0 16px;
+}
+
+.title {
+  margin: 0;
   font-family: var(--font-sans);
   font-size: var(--text-lg);
   color: var(--text-primary);
+}
+
+.closeBtn {
+  background: none;
+  border: 1px solid var(--node-border);
+  border-radius: var(--node-radius);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+}
+
+.closeBtn:hover {
+  color: var(--text-primary);
+  border-color: var(--accent);
 }
 
 .sections {
@@ -78,4 +102,10 @@
   font-family: var(--font-sans);
   font-size: var(--text-sm);
   color: var(--text-primary);
+}
+
+/* Close is the sheet's only tab stop, so it is what the ring has to mark. */
+.closeBtn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }

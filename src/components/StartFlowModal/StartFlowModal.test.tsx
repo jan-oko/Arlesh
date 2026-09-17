@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import StartFlowModal from "./StartFlowModal";
+import { expectFocusTrapped, dialogIn } from "@/test/focus-trap";
 import type { MindmapNode } from "@/utils/tree-layout";
 
 vi.mock("react-i18next", () => ({
@@ -92,5 +93,13 @@ describe("StartFlowModal", () => {
     await waitFor(() =>
       expect(defaultProps.onStart).toHaveBeenCalledWith(expect.objectContaining({ targetType: "goal", targetId: 8 })),
     );
+  });
+});
+
+describe("StartFlowModal — focus trap", () => {
+  it("keeps Tab and Shift+Tab inside the dialog, wrapping at both ends", async () => {
+    render(<button data-testid="behind-the-modal" />);
+    const { container } = render(<StartFlowModal {...defaultProps} />);
+    await expectFocusTrapped(dialogIn(container));
   });
 });

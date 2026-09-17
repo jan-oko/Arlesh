@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import HotkeysModal from "./HotkeysModal";
+import { expectFocusTrapped, dialogIn } from "@/test/focus-trap";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -47,6 +48,13 @@ describe("HotkeysModal", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("when the close button is clicked, closes", () => {
+    const onClose = vi.fn();
+    render(<HotkeysModal onClose={onClose} />);
+    fireEvent.click(screen.getByRole("button", { name: "common:close" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("when the backdrop is clicked, closes", () => {
     const onClose = vi.fn();
     const { container } = render(<HotkeysModal onClose={onClose} />);
@@ -54,5 +62,13 @@ describe("HotkeysModal", () => {
     expect(overlay).not.toBeNull();
     if (overlay !== null) fireEvent.click(overlay);
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("HotkeysModal — focus trap", () => {
+  it("keeps Tab and Shift+Tab inside the dialog, wrapping at both ends", async () => {
+    render(<button data-testid="behind-the-modal" />);
+    const { container } = render(<HotkeysModal onClose={vi.fn()} />);
+    await expectFocusTrapped(dialogIn(container));
   });
 });

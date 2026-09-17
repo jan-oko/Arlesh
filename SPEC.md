@@ -338,6 +338,27 @@ On top of the shared filters, the List View adds its own filter dimensions — a
 | Scope | Unscoped / Active / Overdue / Lapsed / Planned / Unplanned — independent axes, so e.g. Unscoped + Planned can both apply to the same task |
 | Blocked | Blocked / Not blocked |
 
+### Modals
+
+Every dialog — the editors, the two confirmations, node search and the keyboard cheat-sheet —
+follows one keyboard contract, so it behaves the same however it was opened and from whichever
+view:
+
+- **Focus is trapped inside the dialog.** `Tab` past the last control wraps to the first,
+  `Shift+Tab` before the first wraps to the last, and a `Tab` pressed while focus has somehow
+  escaped pulls it back in. A dialog that holds no controls of its own carries a Close button, so
+  there is always something for the trap to hold.
+- **`Escape` dismisses the dialog, and the dialog itself handles it.** Not the view behind it: a
+  dialog reachable from more than one place cannot borrow one view's key handling without
+  behaving differently depending on where it was opened from. The cheat-sheet is the one dialog
+  that listens on the window rather than on itself, because it can open over any other dialog and
+  has to answer first.
+- **The view's own shortcuts are suspended** for as long as a dialog is open, so nothing behind
+  the overlay reacts to a key meant for the dialog.
+- **Every control that `Tab` can land on draws a focus ring** in the accent colour, so the thing
+  `Enter` will act on is always visible.
+
+
 ---
 
 ## MCP Server

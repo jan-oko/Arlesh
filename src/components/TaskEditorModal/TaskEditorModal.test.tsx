@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import TaskEditorModal from "./TaskEditorModal";
+import { expectFocusTrapped, dialogIn } from "@/test/focus-trap";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { Domain } from "@/api/domains";
 
@@ -227,5 +228,13 @@ describe("TaskEditorModal — bd issue link", () => {
   it("shows no issue row at all for an unlinked task", () => {
     render(<TaskEditorModal {...defaultProps} node={mkNode()} />);
     expect(screen.queryByText("fieldBeadsId")).not.toBeInTheDocument();
+  });
+});
+
+describe("TaskEditorModal — focus trap", () => {
+  it("keeps Tab and Shift+Tab inside the dialog, wrapping at both ends", async () => {
+    render(<button data-testid="behind-the-modal" />);
+    const { container } = render(<TaskEditorModal {...defaultProps} />);
+    await expectFocusTrapped(dialogIn(container));
   });
 });

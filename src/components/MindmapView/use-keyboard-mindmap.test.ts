@@ -33,8 +33,6 @@ function fireKey(key: string, modifiers: { shiftKey?: boolean; ctrlKey?: boolean
 function baseOptions(overrides: Partial<Parameters<typeof useKeyboardMindmap>[0]> = {}) {
   return {
     isInputActive: false,
-    isWarningActive: false,
-    onDismissWarning: vi.fn(),
     selectedNodeId: "task-1" as string | null,
     selectedNodeIds: new Set(["task-1"]) as ReadonlySet<string>,
     subtreeRootId: null as string | null,
@@ -100,7 +98,7 @@ describe("useKeyboardMindmap — start flow (s)", () => {
   });
 });
 
-describe("useKeyboardMindmap — blocked when input/warning active", () => {
+describe("useKeyboardMindmap — blocked while something else holds the keyboard", () => {
   it("ignores all keys when isInputActive is true", () => {
     const opts = baseOptions({ isInputActive: true });
     renderHook(() => useKeyboardMindmap(opts));
@@ -108,18 +106,13 @@ describe("useKeyboardMindmap — blocked when input/warning active", () => {
     expect(opts.onNavigate).not.toHaveBeenCalled();
   });
 
-  it("Escape calls onDismissWarning when isWarningActive", () => {
-    const opts = baseOptions({ isWarningActive: true });
+  it("leaves Escape alone when a modal holds the keyboard, so the modal can dismiss itself", () => {
+    const opts = baseOptions({ isInputActive: true });
     renderHook(() => useKeyboardMindmap(opts));
-    fireKey("Escape");
-    expect(opts.onDismissWarning).toHaveBeenCalledTimes(1);
-  });
-
-  it("other keys are ignored when isWarningActive", () => {
-    const opts = baseOptions({ isWarningActive: true });
-    renderHook(() => useKeyboardMindmap(opts));
-    fireKey("ArrowLeft");
-    expect(opts.onNavigate).not.toHaveBeenCalled();
+    const event = new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true, cancelable: true });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+    expect(opts.onDeselect).not.toHaveBeenCalled();
   });
 });
 

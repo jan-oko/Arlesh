@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import DeleteConfirmModal from "./DeleteConfirmModal";
+import { expectFocusTrapped, dialogIn } from "@/test/focus-trap";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -138,28 +139,18 @@ describe("DeleteConfirmModal — keyboard", () => {
     expect(screen.getByRole("button", { name: "common:cancel" })).toHaveFocus();
   });
 
-  it("keeps focus inside the modal however long you tab forward", async () => {
-    const user = userEvent.setup();
+  it("keeps Tab and Shift+Tab inside the dialog, wrapping at both ends", async () => {
     render(<button data-testid="behind-the-modal" />);
-    render(<DeleteConfirmModal {...defaultProps} />);
-    const cancel = screen.getByRole("button", { name: "common:cancel" });
-    const confirm = screen.getByRole("button", { name: "warnings:deleteConfirm" });
-    for (let press = 0; press < 4; press++) {
-      await user.tab();
-      expect([cancel, confirm]).toContain(document.activeElement);
-    }
+    const { container } = render(<DeleteConfirmModal {...defaultProps} />);
+    await expectFocusTrapped(dialogIn(container));
   });
 
-  it("keeps focus inside the modal however long you tab backward", async () => {
+  it("cancels when Escape is pressed", async () => {
     const user = userEvent.setup();
-    render(<button data-testid="behind-the-modal" />);
     render(<DeleteConfirmModal {...defaultProps} />);
-    const cancel = screen.getByRole("button", { name: "common:cancel" });
-    const confirm = screen.getByRole("button", { name: "warnings:deleteConfirm" });
-    for (let press = 0; press < 4; press++) {
-      await user.tab({ shift: true });
-      expect([cancel, confirm]).toContain(document.activeElement);
-    }
+    await user.keyboard("{Escape}");
+    expect(defaultProps.onCancel).toHaveBeenCalledTimes(1);
+    expect(defaultProps.onConfirm).not.toHaveBeenCalled();
   });
 
   it("ignores Enter while the delete is in flight", async () => {

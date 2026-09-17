@@ -5,6 +5,7 @@ import { formatChord } from "@/utils/hotkeys/chord";
 import { GLOBAL_BINDINGS } from "@/utils/hotkeys/global-bindings";
 import { MINDMAP_BINDINGS } from "@/utils/hotkeys/mindmap-bindings";
 import { LIST_BINDINGS } from "@/utils/hotkeys/list-bindings";
+import { useFocusTrap } from "@/hooks/use-focus-trap";
 import { useInputCapture } from "@/hooks/use-input-capture";
 import styles from "./HotkeysModal.module.css";
 
@@ -46,7 +47,8 @@ function rowsFor(section: Section): Row[] {
 /** Ctrl+Shift+/ cheat-sheet: every keyboard binding, grouped by the surface it applies to. */
 export default function HotkeysModal({ onClose }: Props) {
   useInputCapture();
-  const { t } = useTranslation(["hotkeys"]);
+  const modalRef = useFocusTrap<HTMLDivElement>();
+  const { t } = useTranslation(["hotkeys", "common"]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -61,8 +63,21 @@ export default function HotkeysModal({ onClose }: Props) {
 
   return (
     <div className={styles.overlay} onClick={onClose}>
-      <div className={styles.modal} onClick={(e) => e.stopPropagation()} role="dialog" aria-label={t("hotkeys:title")}>
-        <h2 className={styles.title}>{t("hotkeys:title")}</h2>
+      <div
+        ref={modalRef}
+        className={styles.modal}
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label={t("hotkeys:title")}
+      >
+        {/* The sheet was all text — nothing to tab to, so Tab walked straight out into the page
+            behind it, and the only way out was a key the sheet itself had to teach you. Close is
+            both the affordance and the tab stop the trap holds on to. */}
+        <div className={styles.titleRow}>
+          <h2 className={styles.title}>{t("hotkeys:title")}</h2>
+          <button type="button" className={styles.closeBtn} onClick={onClose}>{t("common:close")}</button>
+        </div>
         <div className={styles.sections}>
           {SECTIONS.map(({ section, titleKey }) => {
             const rows = rowsFor(section);

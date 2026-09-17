@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import WarningConfirmModal from "./WarningConfirmModal";
+import TitleEditorModal from "@/components/TitleEditorModal/TitleEditorModal";
+import { expectFocusTrapped, dialogIn } from "@/test/focus-trap";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -84,5 +87,51 @@ describe("WarningConfirmModal — focus", () => {
   it("puts focus on the cancel button when the modal opens, so the consequences get read", () => {
     render(<WarningConfirmModal {...defaultProps} />);
     expect(screen.getByRole("button", { name: "cancel" })).toHaveFocus();
+  });
+});
+
+describe("WarningConfirmModal — keyboard", () => {
+  it("puts focus on cancel when the dialog opens", () => {
+    render(<WarningConfirmModal {...defaultProps} />);
+    expect(screen.getByRole("button", { name: "cancel" })).toHaveFocus();
+  });
+
+  it("cancels when Escape is pressed, wherever the dialog was opened from", async () => {
+    const user = userEvent.setup();
+    render(<WarningConfirmModal {...defaultProps} />);
+    await user.keyboard("{Escape}");
+    expect(defaultProps.onCancel).toHaveBeenCalledTimes(1);
+    expect(primaryAction.onClick).not.toHaveBeenCalled();
+  });
+});
+
+describe("WarningConfirmModal — focus trap", () => {
+  it("keeps Tab and Shift+Tab inside the dialog, wrapping at both ends", async () => {
+    render(<button data-testid="behind-the-modal" />);
+    const { container } = render(<WarningConfirmModal {...defaultProps} />);
+    await expectFocusTrapped(dialogIn(container));
+  });
+});
+
+describe("WarningConfirmModal — opened over an editor", () => {
+  it("keeps Tab inside the prompt rather than the editor still on screen behind it", async () => {
+    // The scope-clamp prompt opens mid-save, while the editor that triggered it is still mounted.
+    render(
+      <TitleEditorModal heading="editTag" title="Deep work" isPrivate={false} onSave={vi.fn()} onClose={vi.fn()} />,
+    );
+    const { container } = render(<WarningConfirmModal {...defaultProps} />);
+    await expectFocusTrapped(dialogIn(container));
+  });
+
+  it("still moves between the prompt's own buttons, instead of being pinned to the first", async () => {
+    const user = userEvent.setup();
+    render(
+      <TitleEditorModal heading="editTag" title="Deep work" isPrivate={false} onSave={vi.fn()} onClose={vi.fn()} />,
+    );
+    const { container } = render(<WarningConfirmModal {...defaultProps} />);
+    const prompt = within(dialogIn(container));
+    expect(prompt.getByRole("button", { name: "cancel" })).toHaveFocus();
+    await user.tab();
+    expect(prompt.getByRole("button", { name: "Proceed" })).toHaveFocus();
   });
 });

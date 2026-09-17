@@ -455,3 +455,21 @@
   font-family: var(--font-sans);
   padding: 0 var(--space-1);
 }
+
+/*
+ * Focus rings for every button-shaped tab stop in the editors. Tab is now trapped inside the
+ * modal, so it is worth being able to see where each press landed — the text fields already
+ * answer that by recolouring their border on focus, but the buttons showed nothing at all.
+ * `outline-offset` lifts the ring clear of the control, which keeps it legible against the
+ * filled Save button and the active status pill in both themes.
+ */
+.cancelBtn:focus-visible,
+.saveBtn:focus-visible,
+.statusPill:focus-visible,
+.advancedToggle:focus-visible,
+.depRemoveBtn:focus-visible,
+.addBlockReason:focus-visible,
+.tagPillRemove:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

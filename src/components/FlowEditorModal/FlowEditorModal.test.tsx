@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import FlowEditorModal from "./FlowEditorModal";
+import { expectFocusTrapped, dialogIn } from "@/test/focus-trap";
 import type { MindmapNode } from "@/utils/tree-layout";
 
 vi.mock("react-i18next", () => ({
@@ -252,5 +253,13 @@ describe("FlowEditorModal — target display", () => {
     render(<FlowEditorModal {...defaultProps} node={mkFlow({ flow: flowWith("goal", 7) })} />);
     expect(screen.getByText("Backend Revamp")).toBeInTheDocument(); // the chip
     expect(screen.queryByPlaceholderText("placeholderTargetSearch")).not.toBeInTheDocument();
+  });
+});
+
+describe("FlowEditorModal — focus trap", () => {
+  it("keeps Tab and Shift+Tab inside the dialog, wrapping at both ends", async () => {
+    render(<button data-testid="behind-the-modal" />);
+    const { container } = render(<FlowEditorModal {...defaultProps} />);
+    await expectFocusTrapped(dialogIn(container));
   });
 });

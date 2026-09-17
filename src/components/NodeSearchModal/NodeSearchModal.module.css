@@ -94,3 +94,12 @@
   font-size: var(--text-sm);
   font-family: var(--font-sans);
 }
+
+/*
+ * The search field is the dialog's only tab stop, and the modal clips its own overflow, so the
+ * ring is drawn inside the field rather than around it.
+ */
+.input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}

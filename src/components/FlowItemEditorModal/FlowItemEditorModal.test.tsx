@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import FlowItemEditorModal from "./FlowItemEditorModal";
+import { expectFocusTrapped, dialogIn } from "@/test/focus-trap";
 import type { MindmapNode } from "@/utils/tree-layout";
 
 vi.mock("react-i18next", () => ({
@@ -89,5 +90,13 @@ describe("FlowItemEditorModal", () => {
   it("hides the cycle grid for an unscoped flow", () => {
     render(<FlowItemEditorModal {...defaultProps} node={mkItem({ flowItem: { itemType: "flow_task", flowId: 5, flowScopeN: null, flowScopeKind: null, cycles: [], dependsOn: [] } })} />);
     expect(screen.queryByRole("button", { name: "editor:cycleAddWhole" })).not.toBeInTheDocument();
+  });
+});
+
+describe("FlowItemEditorModal — focus trap", () => {
+  it("keeps Tab and Shift+Tab inside the dialog, wrapping at both ends", async () => {
+    render(<button data-testid="behind-the-modal" />);
+    const { container } = render(<FlowItemEditorModal {...defaultProps} />);
+    await expectFocusTrapped(dialogIn(container));
   });
 });

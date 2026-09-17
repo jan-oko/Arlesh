@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import ProjectEditorModal from "./ProjectEditorModal";
+import { expectFocusTrapped, dialogIn } from "@/test/focus-trap";
 import type { MindmapNode } from "@/utils/tree-layout";
 
 vi.mock("react-i18next", () => ({
@@ -100,5 +101,13 @@ describe("ProjectEditorModal — bd issue link", () => {
   it("shows no issue row at all for an unlinked project", () => {
     render(<ProjectEditorModal {...defaultProps} node={mkNode()} />);
     expect(screen.queryByText("fieldBeadsId")).not.toBeInTheDocument();
+  });
+});
+
+describe("ProjectEditorModal — focus trap", () => {
+  it("keeps Tab and Shift+Tab inside the dialog, wrapping at both ends", async () => {
+    render(<button data-testid="behind-the-modal" />);
+    const { container } = render(<ProjectEditorModal {...defaultProps} />);
+    await expectFocusTrapped(dialogIn(container));
   });
 });

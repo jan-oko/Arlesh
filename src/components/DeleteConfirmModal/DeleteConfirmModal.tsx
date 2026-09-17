@@ -22,7 +22,14 @@ export default function DeleteConfirmModal({ nodeTitle, nodeCount, descendantCou
     : t("warnings:deleteHeading", { title: nodeTitle });
   return (
     <div className={styles.overlay} onClick={onCancel}>
-      <div ref={modalRef} className={styles.modal} onClick={(e) => { e.stopPropagation(); }}>
+      {/* Escape is handled here, not by the view behind it: this dialog captures the keyboard, which
+          switches the view's own key handling off, so nothing out there is left to dismiss it. */}
+      <div
+        ref={modalRef}
+        className={styles.modal}
+        onClick={(e) => { e.stopPropagation(); }}
+        onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); onCancel(); } }}
+      >
         <h2 className={styles.heading}>{heading}</h2>
         {descendantCount > 0 && (
           <p className={styles.body}>{t("warnings:deleteWithChildren", { count: descendantCount })}</p>

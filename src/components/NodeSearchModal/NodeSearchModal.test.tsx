@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import NodeSearchModal from "./NodeSearchModal";
+import { expectFocusTrapped, dialogIn } from "@/test/focus-trap";
 import type { SearchableNode } from "@/utils/mindmap-tree";
 
 vi.mock("react-i18next", () => ({
@@ -96,5 +97,13 @@ describe("NodeSearchModal", () => {
     render(<NodeSearchModal nodes={NODES} onSelect={vi.fn()} onClose={vi.fn()} />);
     fireEvent.change(screen.getByPlaceholderText("common:searchNodesPlaceholder"), { target: { value: "zzz" } });
     expect(screen.getByText("common:noResults")).toBeInTheDocument();
+  });
+});
+
+describe("NodeSearchModal — focus trap", () => {
+  it("keeps Tab and Shift+Tab inside the dialog, wrapping at both ends", async () => {
+    render(<button data-testid="behind-the-modal" />);
+    const { container } = render(<NodeSearchModal nodes={NODES} onSelect={vi.fn()} onClose={vi.fn()} />);
+    await expectFocusTrapped(dialogIn(container));
   });
 });

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { useFocusTrap } from "@/hooks/use-focus-trap";
 import styles from "./EditorModal.module.css";
 
 interface Props {
@@ -14,9 +15,12 @@ interface Props {
 
 export default function EditorModal({ heading, onClose, onKeyDown, isSaving, onSave, saveError, children }: Props) {
   const { t } = useTranslation("common");
+  // Trapped on the shell, so every editor built on it inherits the trap rather than repeating it.
+  const modalRef = useFocusTrap<HTMLDivElement>();
   return (
     <div className={styles.overlay} onMouseDown={onClose}>
       <div
+        ref={modalRef}
         className={styles.modal}
         onMouseDown={(e) => e.stopPropagation()}
         onKeyDown={onKeyDown}

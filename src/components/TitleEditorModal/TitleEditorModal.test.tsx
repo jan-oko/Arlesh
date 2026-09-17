@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import TitleEditorModal from "./TitleEditorModal";
+import { expectFocusTrapped, dialogIn } from "@/test/focus-trap";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -66,5 +67,13 @@ describe("TitleEditorModal", () => {
     render(<TitleEditorModal {...defaultProps} onSave={onSave} />);
     fireEvent.click(screen.getByRole("button", { name: "save" }));
     await waitFor(() => expect(screen.getByText("Save failed")).toBeInTheDocument());
+  });
+});
+
+describe("TitleEditorModal — focus trap", () => {
+  it("keeps Tab and Shift+Tab inside the dialog, wrapping at both ends", async () => {
+    render(<button data-testid="behind-the-modal" />);
+    const { container } = render(<TitleEditorModal {...defaultProps} />);
+    await expectFocusTrapped(dialogIn(container));
   });
 });

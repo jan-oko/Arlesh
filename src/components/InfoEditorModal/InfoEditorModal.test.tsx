@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import InfoEditorModal from "./InfoEditorModal";
+import { expectFocusTrapped, dialogIn } from "@/test/focus-trap";
 import type { MindmapNode } from "@/utils/tree-layout";
 
 vi.mock("react-i18next", () => ({
@@ -36,5 +37,13 @@ describe("InfoEditorModal", () => {
     render(<InfoEditorModal {...defaultProps} />);
     fireEvent.click(screen.getByRole("button", { name: "save" }));
     await waitFor(() => expect(defaultProps.onSave).toHaveBeenCalledWith({ body: "Crash on save", details: null, isPrivate: false }));
+  });
+});
+
+describe("InfoEditorModal — focus trap", () => {
+  it("keeps Tab and Shift+Tab inside the dialog, wrapping at both ends", async () => {
+    render(<button data-testid="behind-the-modal" />);
+    const { container } = render(<InfoEditorModal {...defaultProps} />);
+    await expectFocusTrapped(dialogIn(container));
   });
 });
