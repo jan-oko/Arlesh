@@ -36,7 +36,7 @@ Two repairs were needed:
 
 | Bead | P | Effort | Worktree | Status |
 |---|---|---|---|---|
-| Arlesh-6gm — indent subtasks by visible depth | P1 | low | `listview-indent` | worktree ready, **held** — stacked on `worktree-listview-path-headers`, so its PR bases on that branch, not master |
+| Arlesh-6gm — indent subtasks by visible depth | P1 | low | `listview-indent` | in flight — stacked on `worktree-listview-path-headers`, so its PR bases on that branch, not master |
 
 **Rate limit, 2026-09-17 ~21:40.** All four in-flight agents died at once on the session API limit.
 `a4u` was mid-gate, `n66` mid-implementation, `6gm` had barely started; all work survived in the
@@ -91,6 +91,14 @@ nothing in flight.
   reachable by two paths, which is the kind of thing that makes a tool write somewhere unexpected.
   Not conclusively explained; the content was reviewed before it was committed.
 
+## Open PRs (cap is 8)
+
+| # | Bead | Base |
+|---|---|---|
+| 3 | Arlesh-9qq — List View Ctrl+O | master |
+| 4 | Arlesh-817 — List View path headers | master |
+| 5 | Arlesh-a4u — flow move writes to the wrong table | master |
+
 ## Standing risks
 
 - **Disk**: 16G free of 299G. `~/.cache/arlesh/tarpaulin` is 17G and is shared by every agent —
@@ -112,8 +120,9 @@ nothing in flight.
   concurrent vitest runs took it to zero free and 14 GB of swap (load average 87). Hence the drop to
   two agents, and every agent is now told to run `npx vitest run --maxWorkers=2 --testTimeout=30000
   --hookTimeout=30000`. Do not let a `cargo tarpaulin` run overlap a vitest pool.
-- The test suite gives **false timeout failures under load** — 17 bogus `Test timed out in 5000ms`
-  across untouched suites at load average 64 on 16 cores. Re-run with
-  `npx vitest run --testTimeout=60000 --hookTimeout=60000` and check the passing count matches.
+- The test suite gives **false timeout failures under memory pressure** — bare `Test timed out`
+  in untouched suites, and in one case a worker that never started at all. Measured fix:
+  `--maxWorkers=2` took a run from ~200 s with scattered failures to **74 s fully green**.
+  Known-good count on master is **85 files / 1055 tests**.
 - Agents are resumable. If a session dies, send to the agent id rather than re-dispatching: the
   transcript is kept and the worktree holds the uncommitted work.
