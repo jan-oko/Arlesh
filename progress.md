@@ -39,7 +39,7 @@ Two repairs were needed:
 | Arlesh-6gm — indent subtasks by visible depth | P1 | low | `listview-indent` | **PR #6**, stacked on PR #4 |
 | Arlesh-je5 — copy-paste duplicates instead of moving | P1 | high | `duplicate-paste-v2` | **PR #8**, stacked on PR #5 — coverage 90.96% |
 | Arlesh-cyo — Commitments | P1 | high | `commitments` | in flight — stacked on `worktree-task-backlog` (PR #7) |
-| Arlesh-zem — delete-dialog focus | P2 | low | `delete-focus` | in flight, from master |
+| Arlesh-zem — delete-dialog focus | P2 | low | `delete-focus` | **PR #9**, from master |
 
 **Rate limit, 2026-09-17 ~21:40.** All four in-flight agents died at once on the session API limit.
 `a4u` was mid-gate, `n66` mid-implementation, `6gm` had barely started; all work survived in the
@@ -101,9 +101,10 @@ nothing in flight.
 | 6 | Arlesh-6gm — indent subtasks by visible depth | `worktree-listview-path-headers` (stacks on #4) |
 | 7 | Arlesh-n66 — Task Backlog | master |
 | 8 | Arlesh-je5 — copy-paste duplicates | `worktree-flow-move-fix` (stacks on #5) |
+| 9 | Arlesh-zem — delete-dialog focus | master |
 
-**6 of 8 used.** `zem` and `cyo` are the last two dispatches — when both land the cap is reached and
-the run stops until something merges.
+**7 of 8 used.** `cyo` is the last dispatch; when it lands the cap is reached and the run stops
+until something merges. Nothing new goes out before then.
 
 ## Stacking
 
@@ -144,9 +145,13 @@ Zustand stores to per-tab instances and would conflict with every open PR at onc
   concurrent vitest runs took it to zero free and 14 GB of swap (load average 87). Hence the drop to
   two agents, and every agent is now told to run `npx vitest run --maxWorkers=2 --testTimeout=30000
   --hookTimeout=30000`. Do not let a `cargo tarpaulin` run overlap a vitest pool.
+- **Master's test baseline is 85 files / 1046 tests.** I briefed several agents with 1055, which was
+  wrong — 1055 was `a4u`'s branch total (1046 + 9) that I mistook for the base. Verified with
+  `npx vitest list` on master. One derived claim was wrong as a result: `Arlesh-817` is *not*
+  net-neutral on test count, it adds 9. Every branch total in this run reconciles against 1046.
 - The test suite gives **false timeout failures under memory pressure** — bare `Test timed out`
   in untouched suites, and in one case a worker that never started at all. Measured fix:
   `--maxWorkers=2` took a run from ~200 s with scattered failures to **74 s fully green**.
-  Known-good count on master is **85 files / 1055 tests**.
+  Known-good count on master is **85 files / 1046 tests** (measured with `npx vitest list`).
 - Agents are resumable. If a session dies, send to the agent id rather than re-dispatching: the
   transcript is kept and the worktree holds the uncommitted work.
