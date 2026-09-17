@@ -1,7 +1,8 @@
 # Board progress — parallel agent run
 
 Goal: finish the beads task board, or stop at 8 open PRs.
-Rules: highest priority / lowest effort first; at most 4 agents in flight; at most 2 `effort:high` at once.
+Rules: highest priority / lowest effort first; **at most 2 agents in flight** (revised down from 4 —
+see Standing risks); at most 2 `effort:high` at once.
 
 ## Gate (every agent runs it before opening a PR)
 
@@ -35,7 +36,11 @@ Two repairs were needed:
 
 | Bead | P | Effort | Worktree | Status |
 |---|---|---|---|---|
-| Arlesh-6gm — indent subtasks by visible depth | P1 | low | `listview-indent` | dispatched, **stacked on `worktree-listview-path-headers`** (PR base is that branch, not master) |
+| Arlesh-6gm — indent subtasks by visible depth | P1 | low | `listview-indent` | worktree ready, **held** — stacked on `worktree-listview-path-headers`, so its PR bases on that branch, not master |
+
+**Rate limit, 2026-09-17 ~21:40.** All four in-flight agents died at once on the session API limit.
+`a4u` was mid-gate, `n66` mid-implementation, `6gm` had barely started; all work survived in the
+worktrees. Resumed `a4u` and `n66` only; `6gm` is held until a slot frees.
 
 ### Wave 2 — dispatched after 9qq and 817 landed PRs
 
@@ -103,6 +108,10 @@ nothing in flight.
   full rebuild. Git's `node_modules/` ignore rule has a trailing slash and so does not match a
   symlink — `node_modules` (no slash) was added to `.git/info/exclude`, which is shared by every
   worktree, so `git add -A` cannot swallow the link.
+- **The box has 15 GB of RAM, and that — not its 16 cores — is what caps parallelism.** Four
+  concurrent vitest runs took it to zero free and 14 GB of swap (load average 87). Hence the drop to
+  two agents, and every agent is now told to run `npx vitest run --maxWorkers=2 --testTimeout=30000
+  --hookTimeout=30000`. Do not let a `cargo tarpaulin` run overlap a vitest pool.
 - The test suite gives **false timeout failures under load** — 17 bogus `Test timed out in 5000ms`
   across untouched suites at load average 64 on 16 cores. Re-run with
   `npx vitest run --testTimeout=60000 --hookTimeout=60000` and check the passing count matches.
