@@ -15,10 +15,21 @@ Rules: highest priority / lowest effort first; at most 4 agents in flight; at mo
 
 | Bead | P | Effort | Worktree | Status |
 |---|---|---|---|---|
-| Arlesh-a4u — Moving a Flow reparents an unrelated Domain | P1 | low | `flow-move-fix` | dispatched |
-| Arlesh-9qq — List View Ctrl+O | P1 | low | `listview-ctrl-o` | dispatched |
-| Arlesh-817 — List View path headers | P1 | medium | `listview-path-headers` | dispatched |
-| Arlesh-n66 — Task Backlog | P1 | medium | `task-backlog` | dispatched |
+| Arlesh-a4u — Moving a Flow reparents an unrelated Domain | P1 | low | `flow-move-fix` | resumed — edits in tree, uncommitted |
+| Arlesh-9qq — List View Ctrl+O | P1 | low | `listview-ctrl-o` | resumed — edits in tree, uncommitted |
+| Arlesh-817 — List View path headers | P1 | medium | `listview-path-headers` | resumed — edits + new PathHeaderRow, uncommitted |
+| Arlesh-n66 — Task Backlog | P1 | medium | `task-backlog` | resumed — had not started editing |
+
+**Interruption 2026-09-17:** the Claude Code process exited and killed all four agents mid-run.
+No commits, no pushes, no PRs were lost — none had been made. All four worktrees survived with
+their uncommitted work and all four agents were resumed from their saved transcripts.
+Two repairs were needed:
+
+- `PathHeaderRow.module.css` in `listview-path-headers` had been left as an interrupted atomic
+  write (`…css.tmp.1002256.9d1ac3f9133d`); renamed into place.
+- The `node_modules` symlink showed as untracked, because `.gitignore` has `node_modules/` with a
+  trailing slash and a symlink is not a directory to git. Added a slash-less `node_modules` to
+  `.git/info/exclude` (shared across worktrees) so no agent can stage it.
 
 ### Queue (refill as slots free)
 
