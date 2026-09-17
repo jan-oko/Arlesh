@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { useInputCapture } from "@/hooks/use-input-capture";
+import { useFocusTrap } from "@/hooks/use-focus-trap";
 import styles from "./DeleteConfirmModal.module.css";
 
 interface Props {
@@ -14,13 +15,14 @@ interface Props {
 
 export default function DeleteConfirmModal({ nodeTitle, nodeCount, descendantCount, isDeleting, error, onConfirm, onCancel }: Props) {
   useInputCapture();
+  const modalRef = useFocusTrap<HTMLDivElement>();
   const { t } = useTranslation(["warnings", "common"]);
   const heading = nodeCount > 1
     ? t("warnings:deleteMultipleHeading", { count: nodeCount })
     : t("warnings:deleteHeading", { title: nodeTitle });
   return (
     <div className={styles.overlay} onClick={onCancel}>
-      <div className={styles.modal} onClick={(e) => { e.stopPropagation(); }}>
+      <div ref={modalRef} className={styles.modal} onClick={(e) => { e.stopPropagation(); }}>
         <h2 className={styles.heading}>{heading}</h2>
         {descendantCount > 0 && (
           <p className={styles.body}>{t("warnings:deleteWithChildren", { count: descendantCount })}</p>
