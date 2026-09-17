@@ -17,7 +17,7 @@ see Standing risks); at most 2 `effort:high` at once.
 | Bead | P | Effort | Worktree | Status |
 |---|---|---|---|---|
 | Arlesh-a4u — Moving a Flow reparents an unrelated Domain | P1 | low | `flow-move-fix` | resumed — edits in tree, uncommitted |
-| Arlesh-9qq — List View Ctrl+O | P1 | low | `listview-ctrl-o` | **PR #3** — amended (`da9a2bf`): pill lands in `all` mode |
+| Arlesh-9qq — List View Ctrl+O | P1 | low | `listview-ctrl-o` | **PR #3** — being reworked into subtree entry; restacking onto `worktree-listview-path-headers` |
 | Arlesh-817 — List View path headers | P1 | medium | `listview-path-headers` | **PR #4** |
 | Arlesh-n66 — Task Backlog | P1 | medium | `task-backlog` | resumed — had not started editing |
 
@@ -95,7 +95,7 @@ nothing in flight.
 
 | # | Bead | Base |
 |---|---|---|
-| 3 | Arlesh-9qq — List View Ctrl+O | master | (being amended in place, not a new PR) |
+| 3 | Arlesh-9qq — List View Ctrl+O | `worktree-listview-path-headers` (restacking onto #4) |
 | 4 | Arlesh-817 — List View path headers | master |
 | 5 | Arlesh-a4u — flow move writes to the wrong table | master |
 | 6 | Arlesh-6gm — indent subtasks by visible depth | `worktree-listview-path-headers` (stacks on #4) |
@@ -110,18 +110,22 @@ until something merges. Nothing new goes out before then.
 
 Branches are stacked rather than all cut from master, so a dependent bead can start before its
 dependency merges. Each stacked PR's base is the branch beneath it, so it proposes only its own
-commit. **Merge bottom-up**: #4 → #6; #5 → the `je5` PR; #7 → the `cyo` PR.
+commit. **Merge bottom-up**: #4 → #6 and #3; #5 → #8; #7 → the `cyo` PR.
 `Arlesh-4yp` (Tabs) is deliberately held back until this stack drains — it converts the singleton
 Zustand stores to per-tab instances and would conflict with every open PR at once.
 
 ## Corrections from the user
 
-- **Ctrl+O adds its antecedent pill in `all` (∩) mode, not the default `any` (∪).** A union widens
-  the list when another antecedent pill is already present, which is the opposite of "narrows by
-  the one you pick". Picking a node that is already pilled in another mode switches that pill to
-  `all` rather than no-opping or duplicating; other nodes' pills are left alone. The user's word was
-  "exclusive", which matches none of the three mode names (`any`/`all`/`exclude`) — confirmed with
-  them that it meant intersect. Amends PR #3 in place; no new PR.
+- **Ctrl+O is not a filter at all.** After using it, the user rejected the whole conception:
+  Ctrl+O now **enters a subtree**, shown in the TopBar exactly as the Mindmap's is, with
+  `Ctrl+Esc` / `Shift+Esc` working as they do there. Three points settled by grilling:
+  the subtree state is **shared** with the Mindmap (one `subtreeRootId`, switching views keeps it);
+  path headers **trim to the subtree root**, since the ancestors above it are already in the TopBar
+  pills; and the Antecedent-pill behaviour is **removed**, along with the `addPill` mode widening,
+  leaving a path-header segment click as the only route to that pill.
+  Superseded en route: the earlier `any` → `all` (∩) mode correction, now moot.
+  Consequence: PR #3 restacks from master onto `worktree-listview-path-headers` (PR #4), because
+  `groupRowsByPath` only exists there and the trimming is unimplementable without it.
 
 ## Follow-ups filed from agent reports
 
