@@ -27,10 +27,13 @@ export default function DeleteConfirmModal({ nodeTitle, nodeCount, descendantCou
         )}
         {error !== null && <p className={styles.error}>{t("warnings:deleteFailed", { message: error })}</p>}
         <div className={styles.actions}>
-          <button autoFocus className={styles.cancelBtn} onClick={onCancel} disabled={isDeleting}>
+        {/* Delete, not Cancel, takes focus: the answer here is known before the modal opens, so
+            confirming stays one key. The focus ring keeps the consequence visible. Deliberately
+            unlike WarningConfirmModal, whose prompts exist to be read. */}
+          <button className={styles.cancelBtn} onClick={onCancel} disabled={isDeleting}>
             {t("common:cancel")}
           </button>
-          <button className={styles.deleteBtn} onClick={onConfirm} disabled={isDeleting}>
+          <button autoFocus className={styles.deleteBtn} onClick={onConfirm} disabled={isDeleting}>
             {t("warnings:deleteConfirm")}
           </button>
         </div>

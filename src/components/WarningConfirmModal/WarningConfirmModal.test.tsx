@@ -79,3 +79,10 @@ describe("WarningConfirmModal — action buttons", () => {
     expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
   });
 });
+
+describe("WarningConfirmModal — focus", () => {
+  it("puts focus on the cancel button when the modal opens, so the consequences get read", () => {
+    render(<WarningConfirmModal {...defaultProps} />);
+    expect(screen.getByRole("button", { name: "cancel" })).toHaveFocus();
+  });
+});

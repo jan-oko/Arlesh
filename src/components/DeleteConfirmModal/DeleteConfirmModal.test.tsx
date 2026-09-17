@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import DeleteConfirmModal from "./DeleteConfirmModal";
 
 vi.mock("react-i18next", () => ({
@@ -84,5 +85,64 @@ describe("DeleteConfirmModal — buttons", () => {
     const overlay = container.firstChild as HTMLElement;
     fireEvent.click(overlay);
     expect(defaultProps.onCancel).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("DeleteConfirmModal — keyboard", () => {
+  it("puts focus on the delete button when the modal opens", () => {
+    render(<DeleteConfirmModal {...defaultProps} />);
+    expect(screen.getByRole("button", { name: "warnings:deleteConfirm" })).toHaveFocus();
+  });
+
+  it("puts focus on the delete button when several nodes are being deleted", () => {
+    render(<DeleteConfirmModal {...defaultProps} nodeCount={3} />);
+    expect(screen.getByRole("button", { name: "warnings:deleteConfirm" })).toHaveFocus();
+  });
+
+  it("puts focus on the delete button when the delete takes descendants with it", () => {
+    render(<DeleteConfirmModal {...defaultProps} descendantCount={5} />);
+    expect(screen.getByRole("button", { name: "warnings:deleteConfirm" })).toHaveFocus();
+  });
+
+  it("confirms when Enter is pressed on the freshly opened modal", async () => {
+    const user = userEvent.setup();
+    render(<DeleteConfirmModal {...defaultProps} />);
+    await user.keyboard("{Enter}");
+    expect(defaultProps.onConfirm).toHaveBeenCalledTimes(1);
+    expect(defaultProps.onCancel).not.toHaveBeenCalled();
+  });
+
+  it("confirms when Space is pressed on the freshly opened modal", async () => {
+    const user = userEvent.setup();
+    render(<DeleteConfirmModal {...defaultProps} />);
+    await user.keyboard("{ }");
+    expect(defaultProps.onConfirm).toHaveBeenCalledTimes(1);
+    expect(defaultProps.onCancel).not.toHaveBeenCalled();
+  });
+
+  it("reaches the cancel button with Shift+Tab, where Enter cancels instead", async () => {
+    const user = userEvent.setup();
+    render(<DeleteConfirmModal {...defaultProps} />);
+    await user.tab({ shift: true });
+    expect(screen.getByRole("button", { name: "common:cancel" })).toHaveFocus();
+    await user.keyboard("{Enter}");
+    expect(defaultProps.onCancel).toHaveBeenCalledTimes(1);
+    expect(defaultProps.onConfirm).not.toHaveBeenCalled();
+  });
+
+  it("reaches the cancel button by tabbing forward round the modal", async () => {
+    const user = userEvent.setup();
+    render(<DeleteConfirmModal {...defaultProps} />);
+    // Delete is the last control, so tabbing forward leaves the modal and comes round to Cancel.
+    await user.tab();
+    await user.tab();
+    expect(screen.getByRole("button", { name: "common:cancel" })).toHaveFocus();
+  });
+
+  it("ignores Enter while the delete is in flight", async () => {
+    const user = userEvent.setup();
+    render(<DeleteConfirmModal {...defaultProps} isDeleting={true} />);
+    await user.keyboard("{Enter}");
+    expect(defaultProps.onConfirm).not.toHaveBeenCalled();
   });
 });
