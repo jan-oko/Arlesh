@@ -1,5 +1,7 @@
+import { readFileSync } from "node:fs";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import DeleteConfirmModal from "./DeleteConfirmModal";
 
 vi.mock("react-i18next", () => ({
@@ -85,4 +87,114 @@ describe("DeleteConfirmModal — buttons", () => {
     fireEvent.click(overlay);
     expect(defaultProps.onCancel).toHaveBeenCalledTimes(1);
   });
+});
+
+describe("DeleteConfirmModal — keyboard", () => {
+  it("puts focus on the delete button when the modal opens", () => {
+    render(<DeleteConfirmModal {...defaultProps} />);
+    expect(screen.getByRole("button", { name: "warnings:deleteConfirm" })).toHaveFocus();
+  });
+
+  it("puts focus on the delete button when several nodes are being deleted", () => {
+    render(<DeleteConfirmModal {...defaultProps} nodeCount={3} />);
+    expect(screen.getByRole("button", { name: "warnings:deleteConfirm" })).toHaveFocus();
+  });
+
+  it("puts focus on the delete button when the delete takes descendants with it", () => {
+    render(<DeleteConfirmModal {...defaultProps} descendantCount={5} />);
+    expect(screen.getByRole("button", { name: "warnings:deleteConfirm" })).toHaveFocus();
+  });
+
+  it("confirms when Enter is pressed on the freshly opened modal", async () => {
+    const user = userEvent.setup();
+    render(<DeleteConfirmModal {...defaultProps} />);
+    await user.keyboard("{Enter}");
+    expect(defaultProps.onConfirm).toHaveBeenCalledTimes(1);
+    expect(defaultProps.onCancel).not.toHaveBeenCalled();
+  });
+
+  it("confirms when Space is pressed on the freshly opened modal", async () => {
+    const user = userEvent.setup();
+    render(<DeleteConfirmModal {...defaultProps} />);
+    await user.keyboard("{ }");
+    expect(defaultProps.onConfirm).toHaveBeenCalledTimes(1);
+    expect(defaultProps.onCancel).not.toHaveBeenCalled();
+  });
+
+  it("reaches the cancel button with a single Tab, where Enter cancels instead", async () => {
+    const user = userEvent.setup();
+    render(<DeleteConfirmModal {...defaultProps} />);
+    await user.tab();
+    expect(screen.getByRole("button", { name: "common:cancel" })).toHaveFocus();
+    await user.keyboard("{Enter}");
+    expect(defaultProps.onCancel).toHaveBeenCalledTimes(1);
+    expect(defaultProps.onConfirm).not.toHaveBeenCalled();
+  });
+
+  it("reaches the cancel button with a single Shift+Tab", async () => {
+    const user = userEvent.setup();
+    render(<DeleteConfirmModal {...defaultProps} />);
+    await user.tab({ shift: true });
+    expect(screen.getByRole("button", { name: "common:cancel" })).toHaveFocus();
+  });
+
+  it("keeps focus inside the modal however long you tab forward", async () => {
+    const user = userEvent.setup();
+    render(<button data-testid="behind-the-modal" />);
+    render(<DeleteConfirmModal {...defaultProps} />);
+    const cancel = screen.getByRole("button", { name: "common:cancel" });
+    const confirm = screen.getByRole("button", { name: "warnings:deleteConfirm" });
+    for (let press = 0; press < 4; press++) {
+      await user.tab();
+      expect([cancel, confirm]).toContain(document.activeElement);
+    }
+  });
+
+  it("keeps focus inside the modal however long you tab backward", async () => {
+    const user = userEvent.setup();
+    render(<button data-testid="behind-the-modal" />);
+    render(<DeleteConfirmModal {...defaultProps} />);
+    const cancel = screen.getByRole("button", { name: "common:cancel" });
+    const confirm = screen.getByRole("button", { name: "warnings:deleteConfirm" });
+    for (let press = 0; press < 4; press++) {
+      await user.tab({ shift: true });
+      expect([cancel, confirm]).toContain(document.activeElement);
+    }
+  });
+
+  it("ignores Enter while the delete is in flight", async () => {
+    const user = userEvent.setup();
+    render(<DeleteConfirmModal {...defaultProps} isDeleting={true} />);
+    await user.keyboard("{Enter}");
+    expect(defaultProps.onConfirm).not.toHaveBeenCalled();
+  });
+});
+
+/*
+ * jsdom reports `:focus-visible` as false even for the element it has just focused, so the ring
+ * itself cannot be observed here. These read the stylesheet instead: the point is that the ring
+ * exists at all and is built from theme tokens, which is what makes it legible in both themes.
+ */
+describe("DeleteConfirmModal — focus ring", () => {
+  // Imported rather than read, the stylesheet arrives as the class-name map; the text is the point
+  // here, so read it off disk. Vitest runs from the project root.
+  const css = readFileSync("src/components/DeleteConfirmModal/DeleteConfirmModal.module.css", "utf8");
+
+  function declarationsFor(selector: string): string[] {
+    return css
+      .split("}")
+      .map((block) => block.split("{"))
+      .filter((parts): parts is [string, string] => parts.length === 2)
+      .filter(([selectors]) => selectors.split(",").some((s) => s.trim().endsWith(selector)))
+      .map(([, declarations]) => declarations);
+  }
+
+  it.each([".deleteBtn:focus", ".deleteBtn:focus-visible", ".cancelBtn:focus-visible"])(
+    "draws a token-coloured outline for %s",
+    (selector) => {
+      const declarations = declarationsFor(selector).join("\n");
+      expect(declarations).toMatch(/outline:[^;]*var\(--accent\)/);
+      expect(declarations).toContain("outline-offset");
+    },
+  );
 });
