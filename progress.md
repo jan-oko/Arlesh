@@ -110,11 +110,32 @@ nothing in flight.
 | 7 | Arlesh-n66 — Task Backlog | master |
 | 8 | Arlesh-je5 — copy-paste duplicates | `worktree-flow-move-fix` (stacks on #5) |
 | 10 | Arlesh-cyo — Commitments | `worktree-task-backlog` (stacks on #7) |
-| _new_ | Arlesh-xbi — trap focus in every modal | master (dispatched 2026-09-18) |
+| 11 | Arlesh-xbi — trap focus in every modal | master |
 
 ~~PR #9 (`Arlesh-zem`, delete-dialog focus)~~ **merged 2026-09-18** as `7395cf9`. The freed slot
 went to `Arlesh-xbi`, its own follow-up: `use-focus-trap.ts` landed in #9 adopted by exactly one
-modal, and Tab still escapes behind the other eleven. Back at **8 of 8 — cap reached.**
+modal, and Tab still escapes behind the other eleven. Shipped as **PR #11**, 87 files / 1088 tests,
+gate green. Back at **8 of 8 — cap reached.**
+
+Three things the agent found that the bead did not ask for, all verified before being believed:
+
+- The nine editor modals all render through one shared `EditorModal` shell, so the trap went on the
+  shell once rather than being pasted nine times. It also caught `NodeSearchModal`, which the
+  bead's list missed and which leaked the same way.
+- **Escape on the delete dialog did nothing at all.** The listener in `use-keyboard-mindmap` is
+  gated `if (isInputActive || !isWarningActive) return`, and the dialog calls `useInputCapture()` —
+  so it gated off the listener meant to dismiss it. And `isWarningActive` only ever meant the
+  *retype* warning, so Escape over the scope-clamp prompt fell through to `mindmap.deselect` and
+  silently deselected nodes behind the overlay. Both dialogs now own their own Escape, which is
+  also the only idiom that survives stacking.
+- **`use-focus-trap` needed a stack.** `checkScopeClamp` is awaited inside an editor's save, so the
+  clamp prompt opens while the editor is still mounted; two live traps fought and the one
+  underneath pinned focus to the prompt's first button. Only the topmost container acts now, with a
+  test that fails without the guard.
+
+**Merge-order note:** #11 touches `MindmapView.tsx`, which #3, #7, #8 and #10 also touch, and
+`TaskEditorModal.tsx`, which #7 and #10 touch. It is cut from master and independent, but it is the
+most conflict-prone PR in the set — merge it early rather than last.
 
 Local `master` was rebased onto `origin/master` after the merge; the five orchestration commits
 that were ahead are still local and still unpushed.
@@ -240,6 +261,16 @@ startup writes less and wins — until enough days pass to need a fresh batch.
 
 Filed P1, not P2: it is a silent data-correctness failure on startup, and the fix is in the
 session layer every other write goes through. **Queued, not dispatched** — the cap is full.
+
+## Follow-ups from PR #11
+
+- **`Arlesh-l25`** (P2) — editor dialogs take no focus when they open, so their new Escape handler
+  has nothing to fire from until you Tab or click in. Pre-existing and identical in both views, so
+  it is not the cross-view inconsistency `xbi` was about, but it is the one place the SPEC contract
+  #11 wrote down is not yet true.
+- **`Arlesh-ru8`** (P3) — `NodeSearchModal.tsx` line 41 uses a **literal NUL byte** as a `join()`
+  separator (`n.path.slice(0, k).join("\0")`). Confirmed on master with `cat -v`. Git prints
+  `Bin 4944 -> 5065 bytes` instead of a diff and the file is invisible to `grep`.
 
 ## New stack: undo/redo (specced, not started)
 
