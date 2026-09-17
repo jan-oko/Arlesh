@@ -56,6 +56,10 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 **Instance child** — A real node attached to one virtual Habit instance and no other, keyed by the same (instance, iteration scope) pair a **Modification** is. May be anything a Task can parent. Never gates its iteration's resolution — marking the occurrence done while a child is unfinished asks for confirmation instead, and nothing about that is stored. Archives with its occurrence as a unit, and counts as a divergence — so `delete instances and regenerate` removes it.
 
+**Path header** — A List View row's location, rendered once above the contiguous run of rows that share it (`Growth › CODE › ARLESH › Features`). Names every ancestor **not** rendered as a row above the task — always through to the Goal, and including any ancestor Task the active filter hides. Each segment adds itself as an **Antecedent** filter. Replaces the former Goal header and its visibility toggle.
+
+**Visible depth** — How far a List View row is indented: the number of its ancestor Tasks that are themselves visible rows under the active filter, not its depth in the tree. The counterpart of the **Path header**, by one rule — the header names every ancestor not rendered above the row, the indentation counts every ancestor that is — so the list never implies a parent that is not on screen.
+
 **Blocker** — A condition that prevents a Task from being acted on. Either an explicit string reason or a virtual block from an unmet dependency.
 
 **Dependency** — A prerequisite relationship from a Task to another Task or Goal. Circular dependencies are rejected at write time.
@@ -123,6 +127,7 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 - A forced **Archived** Resolution overrides a stored **Frozen** *or* **Backlog**, flagging the conflict either way — setting an item aside does not exempt it from its own window.
 - A Habit instance is never materialized by being diverged from. A per-instance Plan or child is recorded against the virtual instance; the instance stays virtual (ADR 0002).
 - An iteration is resolved when every one of its non-tombstoned instances is done. **Instance children** are not instances and never gate resolution; completing an occurrence over an unfinished child asks for confirmation instead.
+- A List View row's **Path header** and its **Visible depth** partition its ancestors: every ancestor is named in exactly one of the two, never both and never neither.
 - A Commitment's Verdict is never derived. Neither its children nor the passing of its window ever sets it.
 - Scope containment is evaluated on **resolved datetime boundaries** (interval containment), so it holds uniformly across canonical, exact, and multi-scope-kind windows. Scope X is "within" scope F iff X's window ⊆ F's window.
 - A child item's explicit Time Scope must be **wholly contained** within its parent's Time Scope.
