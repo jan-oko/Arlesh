@@ -24,7 +24,7 @@ import type {
   FlowGoal, FlowTask, FlowItemCycle, FlowDependency, FlowItemType, HabitIteration, HabitItemStatus, TargetRef,
 } from "@/api/flows";
 import type { ItemLifecycle } from "@/api/scope-lifecycle";
-import type { MindmapNode, NodeKind, FlowCyclePair, FlowItemDep } from "@/utils/tree-layout";
+import type { MindmapNode, NodeKind, FlowCyclePair, FlowItemDep, FlowData } from "@/utils/tree-layout";
 import { entityNodeId } from "@/utils/tree-layout";
 import { formatScopeCore } from "@/utils/scope-format";
 import type { ScopeLabelFns } from "@/hooks/use-scope-labels";
@@ -271,6 +271,30 @@ function kindToFlowParentType(kind: NodeKind): string {
     case "task": case "tag": case "info": case "flow": case "flow_goal": case "flow_task":
       throw new Error(`Flows cannot hang from a node of kind "${kind}"`);
   }
+}
+
+/**
+ * Whether a moving flow's Target Node is its own parent, and so should travel with it.
+ *
+ * Instances render under the **Target Node**, not under the flow, and the target is stored as a
+ * concrete node rather than as "wherever I hang" — so a move that rewrote only the parent would
+ * leave the flow's iterations behind at the old location. In practice every flow targets its own
+ * parent, because that is what `convert_to_flow` and the editor write at creation time.
+ *
+ * The comparison is on the **normalised node id**, not on `(type, id)`: domains, projects and tags
+ * share one table, so a flow can carry `parent_type: "project"` against a `target_type: "domain"`
+ * for the very same row, and comparing the types would call those two different nodes.
+ *
+ * A target pointed anywhere else was chosen deliberately, and a move leaves it alone.
+ *
+ * This is an inference, and a deliberate stopgap. `Arlesh-xw7` replaces it by making a *null*
+ * target mean "my parent", resolved on read — after which a move carries its instances by
+ * construction and this function should be **deleted**, not maintained.
+ */
+function flowTargetFollowsParent(flow: FlowData | undefined, oldParentId: string | undefined): boolean {
+  if (flow === undefined || oldParentId === undefined) return false;
+  if (flow.targetType === null || flow.targetId === null) return false;
+  return entityNodeId(flow.targetType, flow.targetId) === oldParentId;
 }
 
 function findNodeInTree(root: MindmapNode, id: string): MindmapNode | undefined {
@@ -922,9 +946,21 @@ export function useMindmapData(): MindmapData {
         case "info":
           await updateInfo(dbId, { parent_type: kindToInfoParentType(newParentKind), parent_id: dbParentId, position });
           break;
-        case "flow":
-          await updateFlow(dbId, { parent_type: kindToFlowParentType(newParentKind), parent_id: dbParentId, position });
+        case "flow": {
+          const request: UpdateFlowRequest = {
+            parent_type: kindToFlowParentType(newParentKind),
+            parent_id: dbParentId,
+            position,
+          };
+          // Carry the Target Node along when it was the flow's own parent, so the instances move
+          // with the template instead of staying behind. See `flowTargetFollowsParent`.
+          if (flowTargetFollowsParent(findNodeInTree(tree, id)?.flow, findParentInTree(tree, id)?.id)) {
+            request.target_type = newParentKind;
+            request.target_id = dbParentId;
+          }
+          await updateFlow(dbId, request);
           break;
+        }
         case "flow_goal":
         case "flow_task": {
           // Flow items move only within their flow subtree; parent is the flow or another item.
@@ -953,7 +989,7 @@ export function useMindmapData(): MindmapData {
       }
       await load(false);
     },
-    [load],
+    [load, tree],
   );
 
   /**
