@@ -175,6 +175,12 @@
   color: var(--text-primary);
 }
 
+/* The Target Node's derived value: the flow's parent, shown when no explicit target is set. */
+.depItemInherited {
+  border-style: dashed;
+  color: var(--text-secondary);
+}
+
 .depKind {
   color: var(--text-secondary);
   font-size: 0.72em;

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMindmapData } from "@/components/MindmapView/use-mindmap-data";
+import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { listAllTaskDependencies } from "@/api/tasks";
 import type { TaskDependencyEdge } from "@/api/tasks";
 import { updateTask } from "@/api/tasks";
@@ -35,13 +36,21 @@ interface ListData {
  * sync), plus the raw dependency edges the tree doesn't carry, flattened to one row per Task. */
 export function useListData(): ListData {
   const { tree, isLoading, error, reload, renameNode } = useMindmapData();
+  const subtreeRootId = useMindmapStore((s) => s.subtreeRootId);
   const [taskDeps, setTaskDeps] = useState<TaskDependencyEdge[]>([]);
 
   useEffect(() => {
     void listAllTaskDependencies().then(setTaskDeps);
   }, [tree]);
 
-  const rows = useMemo(() => flattenTaskRows(tree, taskDeps), [tree, taskDeps]);
+  // Entering a subtree re-roots the List View exactly as it re-roots the Mindmap — same shared
+  // `subtreeRootId`, so the two views are never in different places. Only the rows are scoped:
+  // `tree` stays whole, because Ctrl+O searches the entire board from wherever you happen to be.
+  const listRoot = useMemo(
+    () => (subtreeRootId !== null ? (findNode(tree, subtreeRootId) ?? tree) : tree),
+    [tree, subtreeRootId],
+  );
+  const rows = useMemo(() => flattenTaskRows(listRoot, taskDeps), [listRoot, taskDeps]);
   const allTasksAndGoals = useMemo(() => {
     const acc: MindmapNode[] = [];
     collectTasksAndGoals(tree, acc);

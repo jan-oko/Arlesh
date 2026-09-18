@@ -62,6 +62,15 @@ export async function deleteGoal(id: number): Promise<void> {
   return invoke<void>("delete_goal", { id });
 }
 
+export async function duplicateGoal(
+  id: number,
+  targetType: string,
+  targetId: number,
+  position: number,
+): Promise<Goal> {
+  return invoke<Goal>("duplicate_goal", { id, targetType, targetId, position });
+}
+
 export async function addTagToGoal(goalId: number, tagId: number): Promise<void> {
   return invoke<void>("add_tag_to_goal", { goalId, tagId });
 }

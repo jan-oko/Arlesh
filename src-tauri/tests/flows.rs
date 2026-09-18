@@ -1631,3 +1631,27 @@ async fn is_habit_flag_reflects_the_recurrence() {
     helpers::session_factory(&pool).connect().await.unwrap().flows().delete_recurrence(FlowId(flow.id)).await.unwrap();
     assert!(!helpers::session_factory(&pool).connect().await.unwrap().flows().get(FlowId(flow.id)).await.unwrap().is_habit);
 }
+
+/// An **explicitly null** Target Node in an `update_flow` payload must clear the stored target,
+/// not be read as "leave it alone".
+///
+/// A null target means "my parent", so clearing the field in the Flow editor is how you go back to
+/// the derived default — and the editor's payload spells that as a JSON `null`. `Option<Option<T>>`
+/// does not distinguish an absent key from a null one on its own: both deserialise to `None`, which
+/// `update_flow` reads as "unchanged", so the clear would be swallowed without a word.
+#[test]
+fn an_explicit_null_target_in_an_update_payload_clears_it() {
+    let absent: UpdateFlowRequest = serde_json::from_str(r#"{"title":"Renamed"}"#).unwrap();
+    assert_eq!(absent.target_type, None, "an absent key leaves the target alone");
+    assert_eq!(absent.target_id, None);
+
+    let nulled: UpdateFlowRequest =
+        serde_json::from_str(r#"{"target_type":null,"target_id":null}"#).unwrap();
+    assert_eq!(nulled.target_type, Some(None), "an explicit null clears the target");
+    assert_eq!(nulled.target_id, Some(None));
+
+    let set: UpdateFlowRequest =
+        serde_json::from_str(r#"{"target_type":"goal","target_id":5}"#).unwrap();
+    assert_eq!(set.target_type, Some(Some("goal".to_string())));
+    assert_eq!(set.target_id, Some(Some(5)));
+}

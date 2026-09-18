@@ -13,6 +13,14 @@ export interface ListContext {
   onDeselect: () => void;
   onToggleFilter: () => void;
   onSetStatusMode: (mode: StatusMode) => void;
+  /** Opens the node search; picking a result enters that node's subtree. */
+  onOpenSearch: () => void;
+  /** Whether the view is currently re-rooted at a subtree — gates the two exit chords. */
+  subtreeRootId: string | null;
+  /** Up one subtree level. */
+  onExitSubtree: () => void;
+  /** Straight back out to the true root. */
+  onExitToRoot: () => void;
   /** Puts the selected Task in the backlog, or takes it out. */
   onToggleBacklog: (id: string) => void;
 }
@@ -69,6 +77,26 @@ export const LIST_BINDINGS: readonly Binding<ListContext>[] = [
     labelKey: "rename",
     when: (c) => c.selectedTaskId !== null,
     run: (c) => { if (c.selectedTaskId !== null) c.onStartRename(c.selectedTaskId); },
+  },
+  {
+    id: "listView.openSearch", section: "listView", chord: { code: "KeyO", ctrl: true },
+    labelKey: "enterBySearch", run: (c) => c.onOpenSearch(),
+  },
+
+  // --- Subtree navigation, matching the Mindmap's exactly (the subtree root is shared state, so
+  // the two views have to agree on how you get back out of one). Listed before the bare-Escape
+  // deselect because all three share the Escape key and the most specific chord must win.
+  {
+    id: "listView.exitToRoot", section: "listView", chord: { code: "Escape", ctrl: true },
+    labelKey: "exitToRoot",
+    when: (c) => c.subtreeRootId !== null,
+    run: (c) => c.onExitToRoot(),
+  },
+  {
+    id: "listView.exitSubtree", section: "listView", chord: { code: "Escape", shift: true },
+    labelKey: "exitSubtree",
+    when: (c) => c.subtreeRootId !== null,
+    run: (c) => c.onExitSubtree(),
   },
   {
     id: "listView.toggleBacklog", section: "listView", chord: { code: "KeyB" },

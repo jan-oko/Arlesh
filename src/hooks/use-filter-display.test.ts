@@ -13,7 +13,7 @@ function mindmapData(tree: MindmapNode) {
   return {
     tree, isLoading: false, error: null, loadCondition: { failedFlows: [] },
     createNode: vi.fn(), createChild: vi.fn(), renameNode: vi.fn(), retypeNode: vi.fn(),
-    reorderNode: vi.fn(), moveNode: vi.fn(), removeNode: vi.fn(), createFlow: vi.fn(),
+    reorderNode: vi.fn(), moveNode: vi.fn(), duplicateNode: vi.fn(), removeNode: vi.fn(), createFlow: vi.fn(),
     updateFlow: vi.fn(), reload: vi.fn(),
   };
 }
@@ -48,7 +48,7 @@ describe("useFilterDisplay", () => {
     expect(result.current.tagName(999)).toBe("#999");
   });
 
-  it("resolves any tree node's label and color by ref, for parent/antecedent/dependency chips", () => {
+  it("resolves any tree node's label and color by ref, for parent/dependency chips", () => {
     mockUseMindmapData.mockReturnValue(mindmapData(TREE));
     const { result } = renderHook(() => useFilterDisplay());
     expect(result.current.nodeLabel("project-1")).toBe("Rocket");
