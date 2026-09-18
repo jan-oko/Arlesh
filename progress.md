@@ -363,6 +363,42 @@ filter dimensions" → seven). It never reached a release, so they were made to 
 rather than carrying a `Removed` note for something no user ever had. Agent also caught `README.md`,
 which my file map missed.
 
+## User-reported fixes, beaded (2026-09-18)
+
+From a testing pass. Five beads, all children of the feature they belong to so they merge with it
+rather than trailing behind:
+
+- **`Arlesh-n66.1`** (P2) — no way to move a Task to Backlog from its editor. A state you can enter
+  but cannot find is close to one that does not exist.
+- **`Arlesh-cyo.1`** (P2) — a Commitment with no scope drops out of the type cycle. The rule is real
+  (`CONTEXT.md`: there is no Unscoped Commitment) but silently removing the option makes it read as
+  a missing feature. Should offer it and resolve the scope on commit — prompt or cancel.
+- **`Arlesh-cyo.2`** (P2) — the Commitment glyph reads as a Task. Must stay legible at the three
+  sizes it is actually drawn at: mindmap node, List View row (`ICON_R = 10`), path header (7).
+- **`Arlesh-cyo.3`** (P2) — a Commitment has no editor. Note for whoever takes it:
+  `worktree-commitments` already carries `CommitmentEditorModal.tsx` and `VerdictWindowField.tsx`,
+  so **check whether this is a wiring gap before writing a component.**
+- **`Arlesh-cyo.4`** (P3) — kept / broken / live / past-window all draw the same glyph. Depends on
+  cyo.2; build on the new base glyph, not the old.
+
+Per the user, **`Arlesh-evu` goes under the existing commitments PR (#10)** rather than becoming its
+own. Consequence to handle: PR #13 is stacked on #10, so #10's branch moving means #13 needs its
+base merged in afterwards.
+
+`Arlesh-xbi` re-closed — the PR #11 closure was deliberate. User: *"low priority for review and it
+clutters against more interesting features. Will reopen later."* Deferred, not abandoned; the bead
+records how to revive it without re-implementing.
+
+## Disk: 99% → 98%, and the leak that caused it
+
+The instances were never the problem (33 MB all told). **Four worktrees had grown their own
+`src-tauri/target`** — 3.4G, 3.3G, 1.5G, 1.1G — because agents ran `cargo test` from their worktree
+without `CARGO_TARGET_DIR`, so only tarpaulin used the shared warm tree. Removed the two whose
+agents had finished: **2.9 GB free → 7.4 GB**. Also removed seven merged worktrees.
+
+**The fix is in the briefs**: agent instructions now say to run Rust from `src-tauri/` *and* point
+`CARGO_TARGET_DIR` at the shared tree for `cargo test`, not just for tarpaulin.
+
 ## PR #14 — the #8 recovery, and a coverage lesson
 
 Opened as **PR #14**. Gate: lint clean, tsc clean, vitest 86/1075, `cargo test --lib` 232,
