@@ -259,8 +259,21 @@ few lost it. Three facts combine:
 It looks transient because a failed load still commits the scopes it managed to mint, so the next
 startup writes less and wins — until enough days pass to need a fresh batch.
 
-Filed P1, not P2: it is a silent data-correctness failure on startup, and the fix is in the
-session layer every other write goes through. **Queued, not dispatched** — the cap is full.
+**What makes the loads concurrent (measured, not assumed).** Counting
+`SELECT * FROM domains ORDER BY position ASC` — exactly one per `load_mindmap` — in the same debug
+run: six inside 7 ms, then a seventh 240 ms later. `useMindmapData` is an ordinary hook with its
+own `useState`/`useEffect` and no shared cache, so **every call site loads the whole board on its
+own**. There are three: `MindmapView`, `use-filter-display` (→ `FilterChips`, mounted by `TopBar`,
+so always live) and `use-list-data` (→ `ListView`). In Mindmap view two are mounted, and
+`main.tsx` wraps the app in `<React.StrictMode>`, which double-invokes effects in a dev build —
+hence six. **Production is not exempt:** it is two rather than six, and two is enough.
+
+That adds a third candidate fix worth weighing: deduplicating the load so the board is fetched
+once per app rather than once per hook consumer removes the contention at its source, and stops
+the app fetching ~240 KB of board two to six times on every startup and after every mutation. It
+is a bigger change than WAL + an immediate `BEGIN`, and the two are not alternatives.
+
+Filed as P1 **pending the user's call** — see *Standing rules* below.
 
 ## Follow-ups from PR #11
 
@@ -322,6 +335,13 @@ the frontend side small and easy to delete.
   checking `/proc/*/cwd`).
 - `mindmap-duplicate-paste` is the stale branch `Arlesh-je5` was ported *from*. Superseded by
   `duplicate-paste-v2` (PR #8); keep the branch, the worktree can go.
+
+## Standing rules
+
+- **Priorities are the user's.** Any bead Claude or a dispatched agent files goes to the user for
+  its priority. File it with the full description and evidence, then name it with a *proposed*
+  priority and adjust on their answer. Agent briefs that end with "file beads for any follow-up you
+  left out" must say the same. Set 2026-09-18, after `Arlesh-odd` was filed P1 unilaterally.
 
 ## Standing risks
 
