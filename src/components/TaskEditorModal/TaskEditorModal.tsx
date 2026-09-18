@@ -177,17 +177,6 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
           ))}
         </div>
       </div>
-      {/* Directly under the status pills, because that is where someone looking for "not now"
-          looks first — but a switch rather than a fourth pill, since Backlog is a separate axis
-          from where the work stands, and a backlogged Task keeps whatever status it had. */}
-      <div className={styles.label}>
-        {t("fieldBacklog")}
-        <Switch
-          checked={isBacklogged}
-          onChange={setBacklogAndClearPlan}
-          label={isBacklogged ? t("backlogOn") : t("backlogOff")}
-        />
-      </div>
       <div className={styles.label}>
         {t("fieldTimeScope")}
         <TimeScopeField value={timeScope} onChange={setTimeScope} />
@@ -201,6 +190,14 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
       <div className={styles.label}>
         {t("fieldPlan")}
         <PlanField value={plan} timeScope={timeScope} onChange={setPlanAndClearBacklog} />
+      </div>
+      <div className={styles.label}>
+        {t("fieldBacklog")}
+        <Switch
+          checked={isBacklogged}
+          onChange={setBacklogAndClearPlan}
+          label={isBacklogged ? t("backlogOn") : t("backlogOff")}
+        />
       </div>
       <BlockReasonsField reasons={blockReasons} onChange={setBlockReasons} virtualBlockers={virtualBlockers} />
       <TagPicker allTags={allTags} domainNames={domainNames} selectedIds={tagIds} onChange={setTagIds} />
