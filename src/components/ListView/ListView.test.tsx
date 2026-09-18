@@ -39,7 +39,6 @@ function row(over: Partial<TaskListRow> = {}): TaskListRow {
   return {
     node: n("task-1", "task", { status: "todo" }),
     parentRef: "goal-1",
-    ancestorRefs: ["aspect-1", "goal-1"],
     ancestors: [n("aspect-1", "aspect"), n("goal-1", "goal", { status: "active" })],
     goalRef: "goal-1",
     goalStatus: "active",
@@ -117,11 +116,11 @@ describe("ListView", () => {
 
   it("renders no path header for a task with no ancestors", () => {
     mockUseListData.mockReturnValue(listData({
-      rows: [row({ parentRef: "", ancestorRefs: [], ancestors: [], goalRef: null, goalStatus: null })],
+      rows: [row({ parentRef: "", ancestors: [], goalRef: null, goalStatus: null })],
     }));
     render(<ListView />);
     expect(screen.getByText("task-1")).toBeInTheDocument();
-    expect(screen.queryByTitle("filterByAntecedent")).not.toBeInTheDocument();
+    expect(screen.queryByTitle("enterSubtree")).not.toBeInTheDocument();
   });
 
   it("names an ancestor task the active filter hides, so an orphaned subtask still reads in context", () => {
@@ -133,23 +132,49 @@ describe("ListView", () => {
         row({
           node: n("task-child", "task", { status: "in_progress" }),
           parentRef: "task-parent",
-          ancestorRefs: ["aspect-1", "goal-1", "task-parent"],
           ancestors: [n("aspect-1", "aspect"), n("goal-1", "goal", { status: "active" }), parent],
         }),
       ],
     }));
     render(<ListView />);
     // The Do preset filters the parent out as a row, so it moves into the header instead.
-    expect(screen.getAllByTitle("filterByAntecedent").map((segment) => segment.textContent))
+    expect(screen.getAllByTitle("enterSubtree").map((segment) => segment.textContent))
       .toEqual(["aspect-1", "goal-1", "task-parent"]);
   });
 
-  it("clicking a path segment adds an antecedent filter pill", () => {
+  /** A board whose tree really holds the path segments, so entering one resolves a descriptor. */
+  function withPathTree() {
+    return listData({
+      tree: n("root", "domain", {
+        children: [n("aspect-1", "aspect", { title: "Growth", children: [n("goal-1", "goal", { status: "active" })] })],
+      }),
+    });
+  }
+
+  it("clicking a path segment enters that segment's subtree, exactly as Ctrl+O does", () => {
+    mockUseListData.mockReturnValue(withPathTree());
     render(<ListView />);
-    const [aspectSegment] = screen.getAllByTitle("filterByAntecedent");
+    const [aspectSegment] = screen.getAllByTitle("enterSubtree");
     if (aspectSegment === undefined) throw new Error("expected a path header segment");
     fireEvent.click(aspectSegment);
-    expect(useListFilterStore.getState().filter.pills.antecedent).toEqual([{ value: "aspect-1", mode: "any" }]);
+    expect(useMindmapStore.getState().subtreeRootId).toBe("aspect-1");
+    // The same descriptor a search-result entry publishes, so the top bar names where you landed.
+    expect(useMindmapStore.getState().subtreeNav).toEqual({
+      currentTitle: "Growth",
+      rootTitle: "root",
+      parentTitle: "root",
+      parentSubtreeId: null,
+    });
+  });
+
+  it("clicking a path segment touches no filter at all", () => {
+    mockUseListData.mockReturnValue(withPathTree());
+    render(<ListView />);
+    const [aspectSegment] = screen.getAllByTitle("enterSubtree");
+    if (aspectSegment === undefined) throw new Error("expected a path header segment");
+    fireEvent.click(aspectSegment);
+    expect(useListFilterStore.getState().filter).toEqual(DEFAULT_LIST_FILTER);
+    expect(useFilterStore.getState().filter.statusMode).toBe(DEFAULT_FILTER.statusMode);
   });
 
   it("no longer offers a Goal-visibility toggle", () => {

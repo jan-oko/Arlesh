@@ -117,7 +117,7 @@ export default function ListView() {
               <PathHeaderRow
                 key={`path-${index}-${entry.pathKey}`}
                 segments={entry.segments}
-                onAddAntecedentFilter={(ref) => addPill("antecedent", ref)}
+                onEnterSubtree={enterSubtree}
               />
             ) : (
               <TaskRow

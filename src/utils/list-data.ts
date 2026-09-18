@@ -21,7 +21,6 @@ function buildRow(node: MindmapNode, ancestors: readonly MindmapNode[], depsByTa
   return {
     node,
     parentRef: parent?.id ?? "",
-    ancestorRefs: ancestors.map((a) => a.id),
     ancestors: [...ancestors],
     goalRef: goal?.id ?? null,
     goalStatus: goal?.status ?? null,

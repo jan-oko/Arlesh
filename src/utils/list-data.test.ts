@@ -39,7 +39,7 @@ describe("flattenTaskRows", () => {
     expect(row?.projectRef).toBe("project-1");
     expect(row?.projectStatus).toBe("frozen");
     expect(row?.parentRef).toBe("goal-1");
-    expect(row?.ancestorRefs).toEqual(["aspect-1", "project-1", "goal-1"]);
+    expect(row?.ancestors.map((a) => a.id)).toEqual(["aspect-1", "project-1", "goal-1"]);
   });
 
   it("a task directly under a project has no resolved goal", () => {
