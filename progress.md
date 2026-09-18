@@ -363,6 +363,48 @@ filter dimensions" → seven). It never reached a release, so they were made to 
 rather than carrying a `Removed` note for something no user ever had. Agent also caught `README.md`,
 which my file map missed.
 
+## PR #15 — `start`, and a bash trap worth remembering
+
+`scripts/branch-instance.sh start <name|all>` = build then run. Two findings from it are worth more
+than the feature:
+
+**`if ( … )` would have silently broken the harness.** Bash switches `set -e` **off for the entire
+dynamic extent of an `if` condition** — subshells and the functions they call included — and an
+explicit `set -e` inside does not restore it. The first version wrapped each build in
+`if ( trap restore_conf EXIT; build_one "$name" )`; with a stubbed failing cargo it sailed past the
+failure, past a failed `cp`, printed "ready" and launched a **stale binary**. The build is now a
+backgrounded subshell that is waited on (`( … ) & if wait "$!"`), which keeps errexit and still
+reports status. Found by testing the failure path, not by reading.
+
+**`start` twice on one branch** would have been `Text file busy` on the copy, and a second launch
+would have put two WebKit processes on one SQLite file. `build_one` now writes `arlesh.new` and
+`mv -f`s it in (the running process keeps its old inode), and `start` stops a running instance
+before relaunching, reusing Vite.
+
+Memory guard asked **twice** — once before building, so a refused `start all` is refused before nine
+compiles rather than after them, and again at launch, which is authoritative because a long build
+changes what is free. Partial build failure: build what can build, start what built, name what
+failed, exit non-zero.
+
+Pre-existing bug found and left alone, filed as **`Arlesh-63c`**: `stop` sometimes leaves Vite
+running. It records `$!` of a backgrounded `setsid npm run dev`, but `setsid` forks a new session
+leader when its caller is already a process-group leader, so the recorded pid can be a wrapper that
+has already exited — `kill -- -PID` then hits nothing while `stop` still reports success.
+
+Beads `Arlesh-rtu` and `Arlesh-63c` both landed at bd's default P2; the agent correctly declined to
+choose. **Both need the user's priority call** (it proposed P3 for `rtu`).
+
+## Disk, second round: the same mistake, mine
+
+Back to 99%. **Two active worktrees had regrown private target dirs** — 3.4 GB and 3.9 GB — because
+their briefs set `CARGO_TARGET_DIR` for tarpaulin but not for `cargo test`. That is the same leak as
+this morning and the same omission, in briefs I wrote after diagnosing it.
+
+Reclaimed the main checkout's idle `src-tauri/target` (5.2 GB) instead, since no build was running
+against it and it rebuilds on demand: **3.6 GB → 8.8 GB free.** Messaged both running agents to
+prefix `CARGO_TARGET_DIR` on remaining Rust commands and to remove their private target *after*
+their gate passes — not before, which would force a rebuild mid-gate.
+
 ## Fixes dispatched into their parent PRs (2026-09-18)
 
 Both dispatched to work **on the existing branch**, not on a stack above it — extending the user's
