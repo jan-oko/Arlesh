@@ -363,6 +363,45 @@ filter dimensions" → seven). It never reached a release, so they were made to 
 rather than carrying a `Removed` note for something no user ever had. Agent also caught `README.md`,
 which my file map missed.
 
+## PR #17 — and the biggest find of the run
+
+`Arlesh-xw7` shipped: a null Target Node now *means* "my parent", the eager default is gone from
+`convert_to_flow`, `flowTargetFollowsParent` and its `moveNode` call site are deleted, and migration
+`0025` nulls the targets that already resolved to their parent. Verified against a copy of the real
+board: **15 rows changed, 0 non-null left, all 15 flows resolve to the identical host node before and
+after**, `integrity_check` and `foreign_key_check` clean. Two corrections to the bead's own figures —
+the board has 15 flows, not 17, and **8** of them (not 7) carry `parent_type: "project"` against
+`target_type: "domain"`, which is exactly the set a `(type, id)` comparison would have stranded.
+
+### `Arlesh-atb` — clearing a nullable field over IPC silently does nothing
+
+Found outside the brief, and it is the most consequential thing today. `Option<Option<T>>` is how an
+update request spells *absent = unchanged, null = clear* — but **serde collapses an absent key and an
+explicit JSON `null` into the same outer `None`**, which every `update_*` reads as "unchanged". You
+clear a field, the save reports success, nothing changes.
+
+Verified independently rather than taken on report: **17 such fields across three model files**
+(`flows/model.rs` 10, `tasks/model.rs` 6, `infos/model.rs` 1) and **no `deserialize_with`, no
+double-option handling anywhere on master** — so serde's default applies to all of them. The exposed
+fields include `time_scope`, `plan`, `on_scope_exit`, `delegate_to` and an Info's `details`.
+
+PR #17 fixes it for the flow Target Node only, because clearing the target is the route back to the
+derived default and so was in scope. **The other sixteen fields are still broken.** The agent proved
+it with a test that failed `left: None, right: Some(None)` before the fix.
+
+It sits at bd's default P2; the agent declined to choose and proposed **P1**. I agree — it is a
+silent discard of user intent across the whole editing surface, which is the exact failure the
+no-silent-drop rule exists for. **The user's call.**
+
+### Two process notes
+
+The tarpaulin warning paid for itself: the agent's first run reported **74.62%** and failed the
+floor, with the shortfall concentrated in files it never touched. Re-run alone: **90.72%**. Because
+it had been warned, it did not "fix" coverage that was never broken.
+
+The agent used `dangerouslyDisableSandbox` for two network calls (`git push`, `gh pr create`) after
+the sandbox blocked DNS. Everything else ran sandboxed. Flagged for the user rather than buried.
+
 ## Conflict sweep against master (2026-09-18)
 
 Test-merged every open PR rather than waiting to find out at merge time. Three had real conflicts:
