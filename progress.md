@@ -273,7 +273,29 @@ once per app rather than once per hook consumer removes the contention at its so
 the app fetching ~240 KB of board two to six times on every startup and after every mutation. It
 is a bigger change than WAL + an immediate `BEGIN`, and the two are not alternatives.
 
-Filed as P1 **pending the user's call** — see *Standing rules* below.
+**Backlogged to P4** by the user on 2026-09-18. The failure is self-healing and the derivation is
+retried on every load, so nothing is permanently lost. `Arlesh-9o1` removes the cause; what does
+*not* evaporate with it — `journal_mode=delete` against a session layer that reasons about WAL, a
+deferred `BEGIN` for sessions that will write, and no `busy_timeout` — stays worth fixing on its
+own terms, so the two are deliberately **not** linked by a dependency.
+
+### `Arlesh-9o1` (P3) — derive Scopes instead of storing them
+
+Filed off the question "why do we need to keep scopes in the DB at all?". All 117 scope rows on the
+live board are a pure function of `(kind, start_date)` — `label`, `end_date` and the four
+containment ids are all computed — and part-of-day is no exception, its bands being constants in
+`scopes/model.rs`. The only kind carrying underivable data is `exact`, of which the board has none.
+
+So the table is a materialised calendar filled in as a side effect of rendering, and that side
+effect is what `odd` is made of. The plan: derive the canonical kinds and serve them from a backend
+**LRU**, which turns the 15 foreign-key columns that reference scopes into value keys — a
+cache-minted id cannot survive a restart, so it cannot be what a persisted column points at. Four
+questions are left open in the bead rather than pre-decided, including whether `exact` stays a row
+(and therefore whether the table survives at all) and whether the LRU earns its keep next to
+arithmetic this cheap.
+
+Wide migration — 15 columns across 7 tables, on top of `0024` — so it follows the `cyo` pattern
+for rebuilding a populated board.
 
 ## Follow-ups from PR #11
 
