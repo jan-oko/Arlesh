@@ -297,6 +297,36 @@ arithmetic this cheap.
 Wide migration — 15 columns across 7 tables, on top of `0024` — so it follows the `cyo` pattern
 for rebuilding a populated board.
 
+## Interim fix pushed to PR #5 (2026-09-18)
+
+At the user's call, the inference ships on #5 now rather than waiting for `Arlesh-xw7`:
+`flowTargetFollowsParent` re-points a flow's Target Node at the new parent when it was the old
+parent. The comparison is on the **normalised node id** (`entityNodeId`), not on `(type, id)` —
+7 of the 17 flows store `parent_type='project'` against `target_type='domain'` for the same
+`domains` row, and a type comparison would strand exactly those. Verified the two new
+"carries the target" tests fail with the inference disabled and pass with it. Gate green at
+85 files / 1059 tests (branch baseline 1055). Pushed as `f5c4a2f`.
+
+The bead now carries a **deletion** clause: when the derived default lands,
+`flowTargetFollowsParent` and its call site come out, because a null target will *mean* "my
+parent" and two mechanisms for one rule is worse than either.
+
+**Watch at merge time:** PR #8 is stacked on this branch and also edits `use-mindmap-data.ts`
+near `moveNode`. The new commit shifts line numbers there; #8 was not rebased, deliberately —
+rebasing a 24-file branch is exactly what the stacking exists to avoid.
+
+## Dispatched: segment click enters the subtree (PR #3)
+
+User: *"clicking on a path segment should enter the subtree instead of adding a filter. We can
+remove the antecedent filtering logic and UI from the normal filters, as this feature replaces
+them."* Agent working in `listview-ctrl-o`, pushing to the existing branch — no new PR, so the
+8-PR cap is untouched.
+
+Scoped before dispatch: the Antecedent dimension is self-contained, and **`ancestorRefs` on
+`TaskListRow` has no consumer but the antecedent match**, so it goes with it. The brief calls out
+the one failure a user would actually feel — a stale `antecedent` pill in `localStorage` surviving
+`mergePersistedFilterSlice` and narrowing the list invisibly — and asks for a test on it.
+
 ## Follow-up from testing PR #5 — `Arlesh-xw7` (P2)
 
 "Instances don't seem to move with it." Instances render under the **Target Node**, not under the
