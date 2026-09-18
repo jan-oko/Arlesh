@@ -1,33 +1,46 @@
-import type { Verdict } from "@/api/commitments";
-import { VERDICT } from "@/api/commitments";
+import type { CommitmentGlyphState } from "@/utils/commitment-glyph";
+import { COMMITMENT_GLYPH } from "@/utils/commitment-glyph";
 
-interface Props { cx: number; cy: number; r: number; color: string; opacity: number; verdict?: Verdict | undefined }
+interface Props { cx: number; cy: number; r: number; color: string; opacity: number; state: CommitmentGlyphState }
 
-/** Opacity of the white wash that lifts the verdict mark clear of the shield behind it. */
-const MARK_SHADE = 0.55;
+/** A corner, in units of the icon radius, relative to the icon centre. */
+type Corner = readonly [number, number];
 
-/** Half-width of the shield, as a fraction of the icon radius. */
+/** Half-width of the shield. */
 const HALF_WIDTH = 0.74;
-/** The shield's flat top edge, relative to the icon centre. */
+/** The shield's flat top edge. */
 const TOP = -0.86;
 /** Where the straight sides stop and the point begins. */
 const SHOULDER = 0.12;
 /** The bottom point. */
 const TIP = 0.96;
 
-/**
- * The outline of the shield, as an SVG path.
- *
- * A straight-edged pentagon rather than a curved heraldic shield: the node icon is drawn as small
- * as `r = 5` at depth 5 in the Mindmap, and at that size curvature is a rounding error while a
- * flat top and a hard point are still a silhouette.
- */
-function shieldPath(cx: number, cy: number, r: number): string {
-  const w = r * HALF_WIDTH;
-  const top = cy + r * TOP;
-  const shoulder = cy + r * SHOULDER;
-  const tip = cy + r * TIP;
-  return `M ${cx - w} ${top} L ${cx + w} ${top} L ${cx + w} ${shoulder} L ${cx} ${tip} L ${cx - w} ${shoulder} Z`;
+const TOP_LEFT: Corner = [-HALF_WIDTH, TOP];
+const TOP_RIGHT: Corner = [HALF_WIDTH, TOP];
+const RIGHT_SHOULDER: Corner = [HALF_WIDTH, SHOULDER];
+const BOTTOM_POINT: Corner = [0, TIP];
+const LEFT_SHOULDER: Corner = [-HALF_WIDTH, SHOULDER];
+
+const SHIELD: readonly Corner[] = [TOP_LEFT, TOP_RIGHT, RIGHT_SHOULDER, BOTTOM_POINT, LEFT_SHOULDER];
+
+// The jagged line a broken shield parts along: down from the top edge, back and forth, to the point.
+const CRACK_TOP: Corner = [0.12, TOP];
+const CRACK_LEFT: Corner = [-0.2, -0.28];
+const CRACK_RIGHT: Corner = [0.16, 0.3];
+
+const BROKEN_LEFT: readonly Corner[] =
+  [TOP_LEFT, CRACK_TOP, CRACK_LEFT, CRACK_RIGHT, BOTTOM_POINT, LEFT_SHOULDER];
+const BROKEN_RIGHT: readonly Corner[] =
+  [CRACK_TOP, TOP_RIGHT, RIGHT_SHOULDER, BOTTOM_POINT, CRACK_RIGHT, CRACK_LEFT];
+
+/** How far each half of a broken shield is pulled off the crack. */
+const CLEFT = 0.13;
+
+/** Renders unit-radius corners as an SVG `points` list around `(cx, cy)`, shifted sideways by `dx`. */
+function points(corners: readonly Corner[], cx: number, cy: number, r: number, dx = 0): string {
+  return corners
+    .map(([x, y]) => `${(cx + r * (x + dx)).toFixed(2)},${(cy + r * y).toFixed(2)}`)
+    .join(" ");
 }
 
 /**
@@ -40,31 +53,45 @@ function shieldPath(cx: number, cy: number, r: number): string {
  * Mindmap draws (`r = 5`), where an inner detail would have dissolved. A notched seal was tried
  * first and failed for exactly that reason: at the sizes the icon is drawn at, the notches
  * disappear and what is left is a circle — a Task.
+ *
+ * The four states vary the shield itself rather than putting a mark inside it, for the same
+ * reason. **Whether it is filled** says whether the commitment has been judged — hollow while the
+ * answer is still owed, solid once it is given — and that much reads at any size at all. A second
+ * mark separates the two states within each pair: the solid shield is **split by a cleft** when
+ * the commitment was broken, and the hollow one is **struck through** when its Verdict Window ran
+ * out unanswered. Kept and Broken are drawn in the node's own colour, never in red — they are
+ * equal outcomes, not a success and a failure.
  */
-export default function CommitmentIcon({ cx, cy, r, color, opacity, verdict }: Props) {
-  const mark = r * 0.42;
-  const stroke = {
-    fill: "none" as const,
-    strokeWidth: r * 0.17,
-    strokeLinecap: "round" as const,
-    strokeLinejoin: "round" as const,
-  };
-  const keptMark = `M ${cx - mark} ${cy} L ${cx - mark * 0.25} ${cy + mark * 0.7} L ${cx + mark} ${cy - mark * 0.75}`;
+export default function CommitmentIcon({ cx, cy, r, color, opacity, state }: Props) {
+  if (state === COMMITMENT_GLYPH.BROKEN) {
+    // Two pieces of one shield, each pulled clear of the crack. Solid rather than hollow, so the
+    // split reads as a bright line through a mass: a hairline between two outlines would close up
+    // at the sizes this is actually drawn at.
+    return (
+      <g opacity={opacity} fill={color} stroke={color} strokeWidth={r * 0.14} strokeLinejoin="round">
+        <polygon points={points(BROKEN_LEFT, cx, cy, r, -CLEFT)} />
+        <polygon points={points(BROKEN_RIGHT, cx, cy, r, CLEFT)} />
+      </g>
+    );
+  }
 
+  const strike = r * 0.95;
   return (
     <g opacity={opacity}>
-      <path d={shieldPath(cx, cy, r)} fill="none" stroke={color} strokeWidth={r * 0.2} strokeLinejoin="round" />
-      {verdict === VERDICT.KEPT && (
-        <>
-          <path {...stroke} stroke="#fff" strokeOpacity={MARK_SHADE} d={keptMark} />
-          <path {...stroke} stroke={color} d={keptMark} />
-        </>
-      )}
-      {verdict === VERDICT.BROKEN && (
-        <g {...stroke} stroke={color}>
-          <path d={`M ${cx - mark * 0.8} ${cy - mark * 0.8} L ${cx + mark * 0.8} ${cy + mark * 0.8}`} />
-          <path d={`M ${cx + mark * 0.8} ${cy - mark * 0.8} L ${cx - mark * 0.8} ${cy + mark * 0.8}`} />
-        </g>
+      <polygon
+        points={points(SHIELD, cx, cy, r)}
+        fill={state === COMMITMENT_GLYPH.KEPT ? color : "none"}
+        stroke={color}
+        strokeWidth={r * 0.2}
+        strokeLinejoin="round"
+      />
+      {state === COMMITMENT_GLYPH.EXPIRED && (
+        <path
+          d={`M ${cx - strike} ${cy + strike * 0.75} L ${cx + strike} ${cy - strike * 0.75}`}
+          stroke={color}
+          strokeWidth={r * 0.22}
+          strokeLinecap="round"
+        />
       )}
     </g>
   );
