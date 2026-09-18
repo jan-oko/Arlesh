@@ -20,12 +20,12 @@ export const NEXT_PILL_MODE: Record<PillMode, PillMode> = { any: "all", all: "ex
 
 /** The List-View-exclusive filter dimensions (status preset, tags, and type toggles stay in the shared FilterState). */
 export type PillDimension =
-  | "parent" | "antecedent" | "dependency"
+  | "parent" | "dependency"
   | "taskStatus" | "goalStatus" | "projectStatus"
   | "scopeState" | "blocked";
 
 export const PILL_DIMENSIONS: PillDimension[] = [
-  "parent", "antecedent", "dependency",
+  "parent", "dependency",
   "taskStatus", "goalStatus", "projectStatus",
   "scopeState", "blocked",
 ];
@@ -73,28 +73,53 @@ export function isBlockedValue(value: string): value is BlockedValue {
 
 export interface ListFilterState {
   preset: ListPreset;
-  /** Goals shown as group-header rows immediately before their child tasks (hidden by default). */
-  showGoalHeaders: boolean;
   pills: Record<PillDimension, PillFilter[]>;
 }
 
 export const DEFAULT_LIST_FILTER: ListFilterState = {
   preset: "all",
-  showGoalHeaders: false,
   pills: {
-    parent: [], antecedent: [], dependency: [],
+    parent: [], dependency: [],
     taskStatus: [], goalStatus: [], projectStatus: [],
     scopeState: [], blocked: [],
   },
 };
+
+/** True for a persisted pill that still has the shape the filters read. */
+function isPillFilter(value: unknown): value is PillFilter {
+  if (typeof value !== "object" || value === null) return false;
+  if (!("value" in value) || typeof value.value !== "string") return false;
+  if (!("mode" in value) || typeof value.mode !== "string") return false;
+  return Object.keys(PILL_MODE_SYMBOL).includes(value.mode);
+}
+
+/** A filter as it comes back out of storage: whatever shape the build that wrote it had, so its
+ * pill map is read as an untrusted map rather than as today's exact set of dimensions. */
+export interface PersistedListFilter {
+  preset: ListPreset;
+  pills: Record<string, unknown>;
+}
+
+/**
+ * Rebuilds a persisted filter's pill map so it holds exactly today's dimensions. A dimension added
+ * since it was written comes back empty rather than `undefined`, and one that has been retired —
+ * Antecedent, replaced by subtree entry — is dropped rather than carried forward as a filter that
+ * still narrows the list while no chip shows it and no control can clear it.
+ */
+export function withCurrentPillDimensions(filter: PersistedListFilter): ListFilterState {
+  const pills: Record<PillDimension, PillFilter[]> = { ...DEFAULT_LIST_FILTER.pills };
+  for (const dimension of PILL_DIMENSIONS) {
+    const persisted = filter.pills[dimension];
+    pills[dimension] = Array.isArray(persisted) ? persisted.filter(isPillFilter) : [];
+  }
+  return { preset: filter.preset, pills };
+}
 
 /** One flattened Task row, precomputed with everything the filters and UI need. */
 export interface TaskListRow {
   node: MindmapNode;
   /** Tree node id of the immediate parent (Project/Goal/Domain/Task). */
   parentRef: string;
-  /** Tree node ids of every ancestor, immediate parent to root aspect. */
-  ancestorRefs: string[];
   ancestors: MindmapNode[];
   /** Nearest ancestor Goal, if any (SPEC: a task's goal is its nearest Goal ancestor). */
   goalRef: string | null;
@@ -193,7 +218,6 @@ export function filterTaskList(
     }
     if (!passesTags(row.node, shared)) return false;
     if (!matchesPillGroup(listFilter.pills.parent, [row.parentRef])) return false;
-    if (!matchesPillGroup(listFilter.pills.antecedent, row.ancestorRefs)) return false;
     if (!matchesPillGroup(listFilter.pills.dependency, row.dependencyRefs)) return false;
     if (!matchesPillGroup(listFilter.pills.taskStatus, [row.node.status ?? ""])) return false;
     if (!matchesPillGroup(listFilter.pills.goalStatus, row.goalStatus !== null ? [row.goalStatus] : [])) return false;

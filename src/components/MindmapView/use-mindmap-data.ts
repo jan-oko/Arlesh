@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { createDomain, updateDomain, deleteDomain } from "@/api/domains";
-import { createTask, updateTask, deleteTask, TASK_ARCHIVAL } from "@/api/tasks";
+import { createDomain, updateDomain, deleteDomain, duplicateDomain } from "@/api/domains";
+import { createTask, updateTask, deleteTask, duplicateTask, TASK_ARCHIVAL } from "@/api/tasks";
 import type { TaskDependencyEdge } from "@/api/tasks";
 import type { BlockReason } from "@/api/block-reasons";
-import { createGoal, updateGoal, deleteGoal } from "@/api/goals";
-import { createInfo, updateInfo, deleteInfo } from "@/api/infos";
+import { createGoal, updateGoal, deleteGoal, duplicateGoal } from "@/api/goals";
+import { createInfo, updateInfo, deleteInfo, duplicateInfo } from "@/api/infos";
 import { getErrorMessage } from "@/api/errors";
 import { asRetypeKind, retypeNode as backendRetype } from "@/api/retype";
 import type { StrandedChildren } from "@/api/retype";
@@ -25,7 +25,7 @@ import type {
 } from "@/api/flows";
 import type { ItemLifecycle } from "@/api/scope-lifecycle";
 import type { MindmapNode, NodeKind, FlowCyclePair, FlowItemDep } from "@/utils/tree-layout";
-import { entityNodeId } from "@/utils/tree-layout";
+import { entityNodeId, flowTargetNodeId } from "@/utils/tree-layout";
 import { formatScopeCore } from "@/utils/scope-format";
 import type { ScopeLabelFns } from "@/hooks/use-scope-labels";
 import { useScopeLabels } from "@/hooks/use-scope-labels";
@@ -128,11 +128,12 @@ function buildIterationItems(
 }
 
 /**
- * Injects each Habit's derived iterations as **virtual**, read-only child nodes under its target
- * (or the flow node when it has no target). Each iteration root carries the flow's items as its own
- * virtual, per-item-completable instances. The `-virtual` id suffix keeps every injected node out of
- * DB-backed mutations (`dbIdFromNodeId` rejects a non-numeric tail). `iterationsByFlow[i]` /
- * `statusesByFlow[i]` correspond to `flows[i]` (empty for non-habits).
+ * Injects each Habit's derived iterations as **virtual**, read-only child nodes under its Target
+ * Node — its explicit one, or its parent when it has none (`flowTargetNodeId`). Each iteration root
+ * carries the flow's items as its own virtual, per-item-completable instances. The `-virtual` id
+ * suffix keeps every injected node out of DB-backed mutations (`dbIdFromNodeId` rejects a
+ * non-numeric tail). `iterationsByFlow[i]` / `statusesByFlow[i]` correspond to `flows[i]` (empty for
+ * non-habits).
  */
 export function injectHabitInstances(
   root: MindmapNode,
@@ -146,11 +147,9 @@ export function injectHabitInstances(
   flows.forEach((flow, i) => {
     const iterations = iterationsByFlow[i] ?? [];
     if (iterations.length === 0) return;
-    const hostId =
-      flow.target_type !== null && flow.target_id !== null
-        ? entityNodeId(flow.target_type, flow.target_id)
-        : `flow-${flow.id}`;
-    const host = findNode(root, hostId);
+    // The flow node itself is the last resort, not a meaning of null: a derived target whose parent
+    // is filtered out of the rendered tree still has somewhere to hang its iterations.
+    const host = findNode(root, flowTargetNodeId(flow)) ?? findNode(root, `flow-${flow.id}`);
     if (host === undefined) return;
     const items: Array<{ itemType: FlowItemType; item: FlowGoal | FlowTask }> = [
       ...flowGoals.filter((g) => g.flow_id === flow.id).map((item) => ({ itemType: "flow_goal" as const, item })),
@@ -217,6 +216,7 @@ interface MindmapData {
   retypeNode: (id: string, fromKind: NodeKind, toKind: NodeKind, options?: RetypeOptions) => Promise<string | null>;
   reorderNode: (id: string, direction: 1 | -1) => Promise<void>;
   moveNode: (id: string, kind: NodeKind, newParentId: string, newParentKind: NodeKind, position: number) => Promise<void>;
+  duplicateNode: (id: string, kind: NodeKind, targetId: string, targetKind: NodeKind, position: number) => Promise<void>;
   removeNode: (nodesToDelete: Array<{ id: string; kind: NodeKind }>) => Promise<void>;
   createFlow: (request: CreateFlowRequest) => Promise<Flow>;
   updateFlow: (id: number, request: UpdateFlowRequest) => Promise<void>;
@@ -256,6 +256,19 @@ function kindToInfoParentType(kind: NodeKind): string {
     case "tag": return "tag";
     case "flow": throw new Error("Flow nodes cannot parent info nodes");
     case "flow_goal": case "flow_task": throw new Error("Flow items cannot parent info nodes");
+  }
+}
+
+/**
+ * Maps a parent node kind to the `parent_type` a flow stores. A flow hangs from an Aspect,
+ * Domain, Project or Goal and from nothing else, so every other kind throws rather than
+ * writing a parent link the flows table would reject.
+ */
+function kindToFlowParentType(kind: NodeKind): string {
+  switch (kind) {
+    case "aspect": case "domain": case "project": case "goal": return kind;
+    case "task": case "tag": case "info": case "flow": case "flow_goal": case "flow_task":
+      throw new Error(`Flows cannot hang from a node of kind "${kind}"`);
   }
 }
 
@@ -896,21 +909,102 @@ export function useMindmapData(): MindmapData {
     async (id: string, kind: NodeKind, newParentId: string, newParentKind: NodeKind, position: number): Promise<void> => {
       const dbId = dbIdFromNodeId(id);
       const dbParentId = dbIdFromNodeId(newParentId);
-      if (kind === "goal") {
-        await updateGoal(dbId, { parent_type: kindToParentType(newParentKind), parent_id: dbParentId, position });
-      } else if (kind === "task") {
-        await updateTask(dbId, { parent_type: kindToParentType(newParentKind), parent_id: dbParentId, position });
-      } else if (kind === "info") {
-        await updateInfo(dbId, { parent_type: kindToInfoParentType(newParentKind), parent_id: dbParentId, position });
-      } else if (kind === "flow_goal" || kind === "flow_task") {
-        // Flow items move only within their flow subtree; parent is the flow or another item.
-        const parentType = newParentKind === "flow" ? "flow" : newParentKind;
-        const update = kind === "flow_goal" ? updateFlowGoal : updateFlowTask;
-        await update(dbId, { parent_type: parentType, parent_id: dbParentId, position });
-      } else {
-        await import("@/api/domains").then(({ updateDomain }) =>
-          updateDomain(dbId, { parent_id: dbParentId, position }),
-        );
+      // Exhaustive over NodeKind on purpose. Node ids are polymorphic — a flow and a domain can
+      // share the number 5 — so a kind with no branch of its own must be a compile error, not a
+      // fall-through that hands the id to whichever table the default happens to name.
+      switch (kind) {
+        case "goal":
+          await updateGoal(dbId, { parent_type: kindToParentType(newParentKind), parent_id: dbParentId, position });
+          break;
+        case "task":
+          await updateTask(dbId, { parent_type: kindToParentType(newParentKind), parent_id: dbParentId, position });
+          break;
+        case "info":
+          await updateInfo(dbId, { parent_type: kindToInfoParentType(newParentKind), parent_id: dbParentId, position });
+          break;
+        case "flow": {
+          const request: UpdateFlowRequest = {
+            parent_type: kindToFlowParentType(newParentKind),
+            parent_id: dbParentId,
+            position,
+          };
+          // The Target Node is not touched. A flow with no explicit target resolves to its parent
+          // on read, so the instances follow the move by construction; a target pointed elsewhere
+          // was chosen deliberately and stays where it was put.
+          await updateFlow(dbId, request);
+          break;
+        }
+        case "flow_goal":
+        case "flow_task": {
+          // Flow items move only within their flow subtree; parent is the flow or another item.
+          const parentType = newParentKind === "flow" ? "flow" : newParentKind;
+          const update = kind === "flow_goal" ? updateFlowGoal : updateFlowTask;
+          await update(dbId, { parent_type: parentType, parent_id: dbParentId, position });
+          break;
+        }
+        case "domain":
+        case "project":
+        case "tag":
+          await updateDomain(dbId, { parent_id: dbParentId, position });
+          break;
+        case "aspect":
+          // Aspects are the roots of the board. `isValidDropTarget` refuses to drop one, so
+          // reaching here means a caller skipped that check — say so instead of quietly
+          // giving the aspect a parent and demoting it.
+          throw new Error("Aspects are top level and cannot be moved");
+        default: {
+          // `kind` is `never` here only while every NodeKind is handled above. Adding a kind
+          // without a branch fails this assignment at compile time — which is the whole point:
+          // the old `else` swallowed exactly that mistake and wrote it to the domains table.
+          const unhandled: never = kind;
+          throw new Error(`moveNode has no branch for node kind "${String(unhandled)}"`);
+        }
+      }
+      await load(false);
+    },
+    [load],
+  );
+
+  /**
+   * Deep-clones `id`'s whole subtree under `(targetId, targetKind)`, placing the new root at
+   * `position` — the COPY counterpart to `moveNode`'s CUT. Flows and flow items aren't duplicable;
+   * callers filter those out before getting here (`onPaste` does, with a toast).
+   */
+  const duplicateNode = useCallback(
+    async (id: string, kind: NodeKind, targetId: string, targetKind: NodeKind, position: number): Promise<void> => {
+      const dbId = dbIdFromNodeId(id);
+      const dbTargetId = dbIdFromNodeId(targetId);
+      // Exhaustive over NodeKind, for the same reason `moveNode` is: node ids are polymorphic, so a
+      // kind with no branch of its own must be a compile error rather than a fall-through that
+      // hands the id to whichever table the default happens to name.
+      switch (kind) {
+        case "goal":
+          await duplicateGoal(dbId, kindToParentType(targetKind), dbTargetId, position);
+          break;
+        case "task":
+          await duplicateTask(dbId, kindToParentType(targetKind), dbTargetId, position);
+          break;
+        case "info":
+          await duplicateInfo(dbId, kindToInfoParentType(targetKind), dbTargetId, position);
+          break;
+        case "project":
+        case "domain":
+        case "tag":
+          await duplicateDomain(dbId, dbTargetId, position);
+          break;
+        case "aspect":
+          // Aspects are the fixed roots of the board — there is no second Green.
+          throw new Error("Aspects are fixed and cannot be duplicated");
+        case "flow":
+        case "flow_goal":
+        case "flow_task":
+          // Flows carry a Recurrence, instances and completion history; what a duplicate of one
+          // should inherit is its own question, and `fork_flow` is the operation that asks it.
+          throw new Error(`${kind} nodes cannot be duplicated`);
+        default: {
+          const unhandled: never = kind;
+          throw new Error(`duplicateNode has no branch for node kind "${String(unhandled)}"`);
+        }
       }
       await load(false);
     },
@@ -969,6 +1063,7 @@ export function useMindmapData(): MindmapData {
     retypeNode,
     reorderNode,
     moveNode,
+    duplicateNode,
     removeNode,
     createFlow: createFlowNode,
     updateFlow: updateFlowNode,

@@ -17,7 +17,6 @@ function row(over: Partial<TaskListRow> = {}): TaskListRow {
   return {
     node: n("task-1", "task", { status: "todo" }),
     parentRef: "goal-1",
-    ancestorRefs: ["goal-1"],
     ancestors: [n("goal-1", "goal", { title: "Ship it" })],
     goalRef: "goal-1",
     goalStatus: "active",
@@ -35,6 +34,7 @@ function row(over: Partial<TaskListRow> = {}): TaskListRow {
 function baseProps(overrides: Partial<ComponentProps<typeof TaskRow>> = {}) {
   return {
     row: row(),
+    visibleDepth: 0,
     isSelected: false,
     isEditingTitle: false,
     onSelect: vi.fn(),
@@ -98,6 +98,44 @@ describe("TaskRow", () => {
   it("shows a selected style when isSelected is true", () => {
     const { container } = render(<TaskRow {...baseProps({ isSelected: true })} />);
     expect(container.querySelector("[class*='cardSelected']")).not.toBeNull();
+  });
+
+  describe("indentation", () => {
+    function card(container: HTMLElement): HTMLElement {
+      const found = container.querySelector<HTMLElement>("[class*='card']");
+      if (found === null) throw new Error("expected a task card");
+      return found;
+    }
+
+    it("a row with no visible ancestor asks for no indentation", () => {
+      const { container } = render(<TaskRow {...baseProps({ visibleDepth: 0 })} />);
+      expect(card(container).style.getPropertyValue("--row-depth")).toBe("0");
+    });
+
+    it("a row two visible ancestors down is indented twice", () => {
+      const { container } = render(<TaskRow {...baseProps({ visibleDepth: 2 })} />);
+      expect(card(container).style.getPropertyValue("--row-depth")).toBe("2");
+    });
+
+    it("indents the whole card, so the status control and badges move with it", () => {
+      const { container } = render(<TaskRow {...baseProps({ visibleDepth: 1 })} />);
+      const indented = card(container);
+      expect(indented.style.getPropertyValue("--row-depth")).toBe("1");
+      // The control lives inside the card that carries the indent, not beside it.
+      expect(indented.querySelector("[class*='statusButton']")).not.toBeNull();
+    });
+
+    it("indents a left-to-right title from the start edge", () => {
+      const { container } = render(<TaskRow {...baseProps({ visibleDepth: 1 })} />);
+      expect(card(container).className).toMatch(/indentLtr/);
+    });
+
+    it("indents a right-to-left title from the other edge, so a Hebrew task steps in from where its text starts", () => {
+      const hebrew = row({ node: n("task-1", "task", { status: "todo", title: "\u05DE\u05E9\u05D9\u05DE\u05D4" }) });
+      const { container } = render(<TaskRow {...baseProps({ row: hebrew, visibleDepth: 1 })} />);
+      expect(card(container).className).toMatch(/indentRtl/);
+      expect(card(container).className).not.toMatch(/indentLtr/);
+    });
   });
 
   it("clicking the parent label adds a parent filter", () => {

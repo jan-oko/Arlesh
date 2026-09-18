@@ -4,6 +4,7 @@ use tauri::State;
 
 use crate::{
     database::session::SessionFactory,
+    duplicate::{duplicate_subtree, DuplicableKind},
     error::WireError,
     infos::model::{CreateInfoRequest, Info, InfoId, UpdateInfoRequest},
 };
@@ -59,4 +60,36 @@ pub async fn delete_info(factory: State<'_, SessionFactory>, id: i64) -> Result<
         .delete(InfoId(id))
         .await
         .map_err(WireError::from_error)
+}
+
+/// Deep-clones an info node and its whole subtree under `(target_type, target_id)`, putting the
+/// new root at `position`. Backs the Mindmap's Copy+Paste.
+///
+/// Transactional: the subtree lands whole or not at all.
+#[tauri::command]
+pub async fn duplicate_info(
+    factory: State<'_, SessionFactory>,
+    id: i64,
+    target_type: String,
+    target_id: i64,
+    position: i64,
+) -> Result<Info, WireError> {
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    let new_id = duplicate_subtree(
+        &mut db,
+        DuplicableKind::Info,
+        id,
+        &target_type,
+        target_id,
+        position,
+    )
+    .await
+    .map_err(WireError::from_error)?;
+    let info = db
+        .infos()
+        .get(InfoId(new_id))
+        .await
+        .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)?;
+    Ok(info)
 }
