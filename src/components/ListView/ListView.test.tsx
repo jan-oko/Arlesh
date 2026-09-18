@@ -123,6 +123,28 @@ describe("ListView", () => {
     expect(screen.queryByTitle("enterSubtree")).not.toBeInTheDocument();
   });
 
+  // The chain is read for where it ends, so the header is marked with the kind of its nearest
+  // ancestor — the node the rows below hang directly from — once, not once per step.
+  it("marks a path header with the node kind of the nearest ancestor", () => {
+    render(<ListView />);
+    const [firstSegment] = screen.getAllByTitle("enterSubtree");
+    const header = firstSegment?.parentElement;
+    if (header === null || header === undefined) throw new Error("expected a path header");
+    expect(header.querySelectorAll("svg")).toHaveLength(1);
+    expect([...header.querySelectorAll("button")].some((b) => b.querySelector("svg") !== null)).toBe(false);
+  });
+
+  it("marks no path header whose nearest ancestor is an Aspect, which carries no glyph anywhere", () => {
+    mockUseListData.mockReturnValue(listData({
+      rows: [row({ parentRef: "aspect-1", ancestors: [n("aspect-1", "aspect")], goalRef: null, goalStatus: null })],
+    }));
+    render(<ListView />);
+    const [firstSegment] = screen.getAllByTitle("enterSubtree");
+    const header = firstSegment?.parentElement;
+    if (header === null || header === undefined) throw new Error("expected a path header");
+    expect(header.querySelectorAll("svg")).toHaveLength(0);
+  });
+
   it("names an ancestor task the active filter hides, so an orphaned subtask still reads in context", () => {
     useFilterStore.setState({ filter: { ...DEFAULT_FILTER, statusMode: "do" } });
     const parent = n("task-parent", "task", { status: "todo" });
