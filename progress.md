@@ -363,6 +363,39 @@ filter dimensions" → seven). It never reached a release, so they were made to 
 rather than carrying a `Removed` note for something no user ever had. Agent also caught `README.md`,
 which my file map missed.
 
+## Backlog editor: the control existed, buried (PR #7, `1b4f35f`)
+
+The user's *"found no way to backlog a task from the editor"* was not a stale build and not a
+missing feature. **The switch had shipped in the original Backlog commit**, wired and tested — it
+just sat sixth, below Title, Status, Time Scope, On-scope-exit and Plan. Verified against
+`293ff1a`: `fieldBacklog` at line 195, the scheduling group above it. Someone opening a Task to set
+it aside reads the status row, sees To Do / In Progress / Done, and concludes it is not there.
+
+Moved directly under the status pills, and kept a `Switch` rather than becoming a fourth pill —
+SPEC is explicit that Backlog is a separate axis from status, so a backlogged Task that was In
+Progress still says so. A pill in that row would claim otherwise.
+
+**The Goal-editor worry was unfounded and is now pinned.** The status control is not shared:
+`TaskEditorModal` and `GoalEditorModal` each map their own list over shared CSS. Two new tests
+assert the Goal editor offers no Backlog control and saves no `archival` field.
+
+**The entry points agree on meaning and differ on ceremony, deliberately.** Backlogging a *planned*
+Task is refused by the backend (`TaskError::BacklogWithPlan`). The hotkey paths answer with a
+confirm modal because there is no preview; the editor never lets the refusal happen, clearing the
+Plan field in front of you. Same write, same invariant, different affordance. Left as is — it reads
+as correct rather than as drift.
+
+## `Arlesh-6dm`: finished but never shipped
+
+Its agent committed `9aa2175`, left a clean worktree — and then completed without pushing, without
+opening a PR, and without delivering a report. The bead was still `in_progress`. Nothing was lost;
+the failure was in the hand-off, not the work.
+
+Resumed rather than redone, with the three things it still owed: merge the base (which had moved
+under it via `1b4f35f`), re-run the gate on the merged result, push and open the PR. **Worth
+remembering as a failure mode**: a `completed` agent with no report is not the same as a finished
+task, and the branch state is the thing to check, not the status.
+
 ## PR #15 — `start`, and a bash trap worth remembering
 
 `scripts/branch-instance.sh start <name|all>` = build then run. Two findings from it are worth more
