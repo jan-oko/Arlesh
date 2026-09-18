@@ -736,44 +736,11 @@ describe("useMindmapData — mutations", () => {
       });
     });
 
-    // Instances render under the Target Node, not under the flow, so a move that rewrote only the
-    // parent left the iterations behind. The target is the flow's own parent on every flow a real
-    // board has, because that is what creation writes — so it travels with the move.
-    it("flow: carries a Target Node that was its own parent", async () => {
-      const FLOW = mkFlow({ id: 1, parent_type: "domain", parent_id: 1, target_type: "domain", target_id: 1 });
-      setupInvoke({ list_flows: [FLOW], update_flow: FLOW });
-      const { result } = await loadedHook();
-
-      await act(async () => {
-        await result.current.moveNode("flow-1", "flow", "goal-1", "goal", 0);
-      });
-
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith("update_flow", {
-        id: 1,
-        request: { parent_type: "goal", parent_id: 1, position: 0, target_type: "goal", target_id: 1 },
-      });
-    });
-
-    // Domains, projects and tags share one table, so a flow can name the same row "project" as a
-    // parent and "domain" as a target. Comparing the stored types would call those different
-    // nodes and strand the instances; the comparison is on the normalised node id.
-    it("flow: recognises its parent as the target through a domain-table type mismatch", async () => {
-      const FLOW = mkFlow({ id: 1, parent_type: "project", parent_id: 1, target_type: "domain", target_id: 1 });
-      setupInvoke({ list_flows: [FLOW], update_flow: FLOW });
-      const { result } = await loadedHook();
-
-      await act(async () => {
-        await result.current.moveNode("flow-1", "flow", "goal-1", "goal", 0);
-      });
-
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith("update_flow", {
-        id: 1,
-        request: { parent_type: "goal", parent_id: 1, position: 0, target_type: "goal", target_id: 1 },
-      });
-    });
-
-    it("flow: leaves a Target Node pointed somewhere other than its parent alone", async () => {
-      const FLOW = mkFlow({ id: 1, parent_type: "domain", parent_id: 1, target_type: "goal", target_id: 1 });
+    // Instances render under the Target Node, and a null target *means* "my parent", resolved when
+    // the iterations are placed. So a move rewrites the parent and nothing else: the instances come
+    // along by construction, with no inference in the move path.
+    it("flow: writes no Target Node for a flow whose target is the derived parent", async () => {
+      const FLOW = mkFlow({ id: 1, parent_type: "domain", parent_id: 1, target_type: null, target_id: null });
       setupInvoke({ list_flows: [FLOW], update_flow: FLOW });
       const { result } = await loadedHook();
 
@@ -786,8 +753,8 @@ describe("useMindmapData — mutations", () => {
       });
     });
 
-    it("flow: writes no target when it has none", async () => {
-      const FLOW = mkFlow({ id: 1, parent_type: "domain", parent_id: 1, target_type: null, target_id: null });
+    it("flow: leaves a Target Node pointed somewhere other than its parent alone", async () => {
+      const FLOW = mkFlow({ id: 1, parent_type: "domain", parent_id: 1, target_type: "goal", target_id: 1 });
       setupInvoke({ list_flows: [FLOW], update_flow: FLOW });
       const { result } = await loadedHook();
 
@@ -1226,6 +1193,91 @@ describe("injectHabitInstances", () => {
     expect(project?.children[0]?.color).toBe("#e74c3c"); // inherits the aspect colour like any node
   });
 
+  // A flow with no explicit Target Node renders its iterations under its parent, derived here
+  // rather than snapshotted into the row at creation — which is what makes a move carry them along.
+  it("falls back to the flow's own parent when it has no Target Node", () => {
+    const root = buildTree(
+      [
+        { id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false },
+        { id: 96, title: "LOOK", description: null, subtype: "domain", parent_id: 1, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false },
+      ],
+      [], [], [],
+    );
+    injectHabitInstances(
+      root,
+      [mkFlow({ parent_type: "domain", parent_id: 96, target_type: null, target_id: null })],
+      [[iter(0, "active")]],
+      LABELS,
+    );
+
+    const parent = root.children[0]?.children[0]; // aspect → domain 96
+    expect(parent?.id).toBe("domain-96");
+    expect(parent?.children).toHaveLength(1);
+    expect(parent?.children[0]?.virtual).toBe(true);
+  });
+
+  // Domains, projects and tags share one table, so a flow can carry `parent_type: "project"` for a
+  // row the tree keys `domain-<id>`. Building the id from the stored type would miss it entirely.
+  it("derives a domain-table parent through its normalised node id", () => {
+    const root = buildTree(
+      [
+        { id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false },
+        { id: 96, title: "LOOK", description: null, subtype: "domain", parent_id: 1, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false },
+      ],
+      [], [], [],
+    );
+    injectHabitInstances(
+      root,
+      [mkFlow({ parent_type: "project", parent_id: 96, target_type: null, target_id: null })],
+      [[iter(0, "active")]],
+      LABELS,
+    );
+
+    expect(root.children[0]?.children[0]?.children).toHaveLength(1);
+  });
+
+  // An explicit target is deliberate, so it wins over the parent — that is what "explicit" buys.
+  it("prefers an explicit Target Node over the flow's parent", () => {
+    const root = buildTree(
+      [
+        { id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false },
+        { id: 96, title: "LOOK", description: null, subtype: "domain", parent_id: 1, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false },
+      ],
+      [{ id: 5, title: "Fitness", parent_type: "domain", parent_id: 1, status: "active", time_scope: null, on_scope_exit: null, tag_ids: [], position: 0, is_private: false }],
+      [], [],
+    );
+    injectHabitInstances(
+      root,
+      [mkFlow({ parent_type: "domain", parent_id: 96, target_type: "goal", target_id: 5 })],
+      [[iter(0, "active")]],
+      LABELS,
+    );
+
+    expect(root.children[0]?.children.find((n) => n.id === "domain-96")?.children).toHaveLength(0);
+    expect(root.children[0]?.children.find((n) => n.id === "goal-5")?.children).toHaveLength(1);
+  });
+
+  // Last resort, not a meaning of null: the derived parent can be filtered out of the rendered tree,
+  // and the iterations then hang off the flow node itself rather than vanishing.
+  it("falls back to the flow node when the derived parent is not in the rendered tree", () => {
+    const root = buildTree(
+      [{ id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false }],
+      [], [], [],
+    );
+    const aspect = root.children[0];
+    aspect?.children.push({ id: "flow-3", kind: "flow", title: "Exercise", position: 0, tagIds: [], children: [] });
+
+    injectHabitInstances(
+      root,
+      [mkFlow({ parent_type: "domain", parent_id: 404, target_type: null, target_id: null })],
+      [[iter(0, "active")]],
+      LABELS,
+    );
+
+    expect(aspect?.children[0]?.children).toHaveLength(1);
+    expect(aspect?.children[0]?.children[0]?.virtual).toBe(true);
+  });
+
   it("renders the flow's items as per-item-completable children of each iteration", () => {
     const root = buildTree(
       [
@@ -1344,9 +1396,9 @@ describe("injectHabitInstances", () => {
     expect(goalInstance?.children[0]?.title).toBe("Push-ups"); // nested under its parent instance
   });
 
-  it("skips flows with no iterations and missing targets", () => {
+  it("skips flows with no iterations, and flows whose target, parent and flow node are all absent", () => {
     const root = buildTree([], [], [], []);
     injectHabitInstances(root, [mkFlow(), mkFlow({ id: 9, target_type: null, target_id: null })], [[], [iter(0, "active")]], LABELS);
-    expect(root.children).toHaveLength(0); // no target found; nothing injected
+    expect(root.children).toHaveLength(0); // nowhere to hang them; nothing injected
   });
 });

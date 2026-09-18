@@ -24,8 +24,8 @@ import type {
   FlowGoal, FlowTask, FlowItemCycle, FlowDependency, FlowItemType, HabitIteration, HabitItemStatus, TargetRef,
 } from "@/api/flows";
 import type { ItemLifecycle } from "@/api/scope-lifecycle";
-import type { MindmapNode, NodeKind, FlowCyclePair, FlowItemDep, FlowData } from "@/utils/tree-layout";
-import { entityNodeId } from "@/utils/tree-layout";
+import type { MindmapNode, NodeKind, FlowCyclePair, FlowItemDep } from "@/utils/tree-layout";
+import { entityNodeId, flowTargetNodeId } from "@/utils/tree-layout";
 import { formatScopeCore } from "@/utils/scope-format";
 import type { ScopeLabelFns } from "@/hooks/use-scope-labels";
 import { useScopeLabels } from "@/hooks/use-scope-labels";
@@ -128,11 +128,12 @@ function buildIterationItems(
 }
 
 /**
- * Injects each Habit's derived iterations as **virtual**, read-only child nodes under its target
- * (or the flow node when it has no target). Each iteration root carries the flow's items as its own
- * virtual, per-item-completable instances. The `-virtual` id suffix keeps every injected node out of
- * DB-backed mutations (`dbIdFromNodeId` rejects a non-numeric tail). `iterationsByFlow[i]` /
- * `statusesByFlow[i]` correspond to `flows[i]` (empty for non-habits).
+ * Injects each Habit's derived iterations as **virtual**, read-only child nodes under its Target
+ * Node — its explicit one, or its parent when it has none (`flowTargetNodeId`). Each iteration root
+ * carries the flow's items as its own virtual, per-item-completable instances. The `-virtual` id
+ * suffix keeps every injected node out of DB-backed mutations (`dbIdFromNodeId` rejects a
+ * non-numeric tail). `iterationsByFlow[i]` / `statusesByFlow[i]` correspond to `flows[i]` (empty for
+ * non-habits).
  */
 export function injectHabitInstances(
   root: MindmapNode,
@@ -146,11 +147,9 @@ export function injectHabitInstances(
   flows.forEach((flow, i) => {
     const iterations = iterationsByFlow[i] ?? [];
     if (iterations.length === 0) return;
-    const hostId =
-      flow.target_type !== null && flow.target_id !== null
-        ? entityNodeId(flow.target_type, flow.target_id)
-        : `flow-${flow.id}`;
-    const host = findNode(root, hostId);
+    // The flow node itself is the last resort, not a meaning of null: a derived target whose parent
+    // is filtered out of the rendered tree still has somewhere to hang its iterations.
+    const host = findNode(root, flowTargetNodeId(flow)) ?? findNode(root, `flow-${flow.id}`);
     if (host === undefined) return;
     const items: Array<{ itemType: FlowItemType; item: FlowGoal | FlowTask }> = [
       ...flowGoals.filter((g) => g.flow_id === flow.id).map((item) => ({ itemType: "flow_goal" as const, item })),
@@ -270,30 +269,6 @@ function kindToFlowParentType(kind: NodeKind): string {
     case "task": case "tag": case "info": case "flow": case "flow_goal": case "flow_task":
       throw new Error(`Flows cannot hang from a node of kind "${kind}"`);
   }
-}
-
-/**
- * Whether a moving flow's Target Node is its own parent, and so should travel with it.
- *
- * Instances render under the **Target Node**, not under the flow, and the target is stored as a
- * concrete node rather than as "wherever I hang" — so a move that rewrote only the parent would
- * leave the flow's iterations behind at the old location. In practice every flow targets its own
- * parent, because that is what `convert_to_flow` and the editor write at creation time.
- *
- * The comparison is on the **normalised node id**, not on `(type, id)`: domains, projects and tags
- * share one table, so a flow can carry `parent_type: "project"` against a `target_type: "domain"`
- * for the very same row, and comparing the types would call those two different nodes.
- *
- * A target pointed anywhere else was chosen deliberately, and a move leaves it alone.
- *
- * This is an inference, and a deliberate stopgap. `Arlesh-xw7` replaces it by making a *null*
- * target mean "my parent", resolved on read — after which a move carries its instances by
- * construction and this function should be **deleted**, not maintained.
- */
-function flowTargetFollowsParent(flow: FlowData | undefined, oldParentId: string | undefined): boolean {
-  if (flow === undefined || oldParentId === undefined) return false;
-  if (flow.targetType === null || flow.targetId === null) return false;
-  return entityNodeId(flow.targetType, flow.targetId) === oldParentId;
 }
 
 function findNodeInTree(root: MindmapNode, id: string): MindmapNode | undefined {
@@ -951,12 +926,9 @@ export function useMindmapData(): MindmapData {
             parent_id: dbParentId,
             position,
           };
-          // Carry the Target Node along when it was the flow's own parent, so the instances move
-          // with the template instead of staying behind. See `flowTargetFollowsParent`.
-          if (flowTargetFollowsParent(findNodeInTree(tree, id)?.flow, findParentInTree(tree, id)?.id)) {
-            request.target_type = newParentKind;
-            request.target_id = dbParentId;
-          }
+          // The Target Node is not touched. A flow with no explicit target resolves to its parent
+          // on read, so the instances follow the move by construction; a target pointed elsewhere
+          // was chosen deliberately and stays where it was put.
           await updateFlow(dbId, request);
           break;
         }
@@ -988,7 +960,7 @@ export function useMindmapData(): MindmapData {
       }
       await load(false);
     },
-    [load, tree],
+    [load],
   );
 
   const removeNode = useCallback(
