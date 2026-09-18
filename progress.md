@@ -363,6 +363,34 @@ filter dimensions" → seven). It never reached a release, so they were made to 
 rather than carrying a `Removed` note for something no user ever had. Agent also caught `README.md`,
 which my file map missed.
 
+## Priorities set by the user (2026-09-18)
+
+| Bead | | |
+|---|---|---|
+| `Arlesh-atb` | **P1** | clearing a nullable field over IPC is silently ignored — 16 fields still affected |
+| `Arlesh-9xk` | **P1** | nothing catches two migrations claiming the same number |
+| `Arlesh-63c` | **P2** | `stop` sometimes leaves Vite running |
+| `Arlesh-rtu` | **P3** | the `start` subcommand (shipped, PR #15) |
+| `Arlesh-evu` | — | **folded into PR #10** |
+| `Arlesh-mrq` | — | **folded into PR #10** |
+
+Two calls worth recording as precedent.
+
+**`9xk` at P1, above `63c`.** The stray Vite is an annoyance you kill by hand. The migration
+collision is a *missing control*: it survived a merge, a lint run and a typecheck, and was caught
+only because someone read a directory listing. It recurs every time two branches number a migration,
+and it is silent until it reaches a real database.
+
+**`evu` and `mrq` fold into the Commitments PR rather than trailing it** — the same ruling the user
+made for the four `cyo.*` fixes. The principle: Commitments has never shipped, so a feature should
+arrive complete rather than with a documented gap and a queue of "fixes" for something no user ever
+saw broken. `mrq` specifically closes the end that `lvc` left open — `lvc` made the invalid shape
+*loud*, this refuses it at the keystroke.
+
+`mrq` is also cheaper than when filed: PR #12 widened `validTypesForCycling` to take `hiddenKinds`
+and left its former body as a private `structurallyValidTypes`, so threading the Instance Type
+through is a second parameter on a function that has just been opened up.
+
 ## I broke PR #7 with that merge, and an agent caught it
 
 **The omission was mine and worth naming.** I resolved #7's merge with master, gated it with lint,
