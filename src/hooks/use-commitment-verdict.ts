@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { Verdict } from "@/api/commitments";
 import { VERDICT, updateCommitment, verdictAfterPressing } from "@/api/commitments";
+import { setHabitItemStatus } from "@/api/flows";
 import { getErrorMessage } from "@/api/errors";
 
 interface Options {
@@ -41,7 +42,22 @@ export function useCommitmentVerdict({ findNode, reload, showToast }: Options): 
       const node = findNode(nodeId);
       if (node === undefined || node.kind !== "commitment") return;
       const next = verdictAfterPressing(pressed, node.verdict ?? VERDICT.UNRESOLVED);
-      void updateCommitment(dbIdOf(nodeId), { verdict: next }).then(
+      // A commitment Habit's iteration is virtual: it has no row of its own, so its verdict is a
+      // per-iteration Modification, in the same slot an ordinary instance keeps its status in.
+      // Clearing one back to Unresolved removes the Modification, exactly as un-completing a task
+      // instance does — there is then nothing recorded, which is what "you have not said" is.
+      const write =
+        node.habitItem === undefined
+          ? updateCommitment(dbIdOf(nodeId), { verdict: next }).then(() => undefined)
+          : setHabitItemStatus(
+              node.habitItem.flowId,
+              node.habitItem.itemType,
+              node.habitItem.itemId,
+              node.habitItem.scopeId,
+              next === VERDICT.UNRESOLVED ? null : next,
+              Date.now(),
+            );
+      void write.then(
         () => reload(),
         (error: unknown) => {
           showToast({ nodeId, message: t("verdictFailed", { message: getErrorMessage(error) }) });

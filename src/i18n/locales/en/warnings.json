@@ -41,6 +41,7 @@
   "lostFieldFallback": "{{field}} will be lost ({{value}})",
   "retypeFailed": "Convert failed: {{message}}",
   "habitLoadFailedBanner": "Habit iterations could not be loaded for:",
+  "commitmentHabitHoldsGoalsBanner": "These Habits repeat a Commitment, but their templates hold Goals, which a Commitment cannot. No repetitions are shown for:",
   "parentClimb": "It cannot stay under “{{from}}”, so it will move up to “{{to}}”",
   "backlogHeading": "Put \"{{title}}\" in the backlog?",
   "backlogHasPlan": "It is planned for {{plan}}. A task in the backlog is never also planned, so that plan will be cleared.",

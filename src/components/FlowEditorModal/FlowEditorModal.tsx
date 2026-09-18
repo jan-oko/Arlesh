@@ -27,7 +27,8 @@ function isPhaseKind(kind: FlowScopeKind): boolean {
   return kind === "part" || kind === "exact";
 }
 
-const INSTANCE_TYPES: InstanceType[] = ["goal", "task"];
+// In the same order the type cycle puts the three kinds in, Commitment last.
+const INSTANCE_TYPES: InstanceType[] = ["goal", "task", "commitment"];
 
 const NODE_KINDS: NodeKind[] = ["aspect", "project", "domain", "goal", "task", "tag", "info", "flow"];
 

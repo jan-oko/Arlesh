@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { createDomain, updateDomain, deleteDomain } from "@/api/domains";
 import { createTask, updateTask, deleteTask, TASK_ARCHIVAL } from "@/api/tasks";
 import { createCommitment, updateCommitment, deleteCommitment } from "@/api/commitments";
-import type { Commitment } from "@/api/commitments";
+import type { Commitment, Verdict } from "@/api/commitments";
+import { VERDICT } from "@/api/commitments";
 import type { TaskDependencyEdge } from "@/api/tasks";
 import type { BlockReason } from "@/api/block-reasons";
 import { createGoal, updateGoal, deleteGoal } from "@/api/goals";
@@ -23,7 +24,8 @@ import type { Goal } from "@/api/goals";
 import type { Info } from "@/api/infos";
 import type {
   Flow, CreateFlowRequest, UpdateFlowRequest,
-  FlowGoal, FlowTask, FlowItemCycle, FlowDependency, FlowItemType, HabitIteration, HabitItemStatus, TargetRef,
+  FlowGoal, FlowTask, FlowItemCycle, FlowDependency, FlowItemType, HabitIteration, HabitItemStatus,
+  InstanceType, TargetRef,
 } from "@/api/flows";
 import type { ItemLifecycle } from "@/api/scope-lifecycle";
 import type { MindmapNode, NodeKind, FlowCyclePair, FlowItemDep } from "@/utils/tree-layout";
@@ -70,6 +72,57 @@ function instanceStatus(isGoal: boolean, raw: string | undefined): string {
   return raw ?? "todo";
 }
 
+/** What a Habit's iteration root draws as, from the flow's Instance Type. */
+function iterationRootKind(instanceType: InstanceType): NodeKind {
+  if (instanceType === "goal") return "goal";
+  if (instanceType === "commitment") return "commitment";
+  return "task";
+}
+
+/**
+ * The Verdict one iteration of a commitment Habit reads, from the Modification slot that holds
+ * it (the same `status` column an ordinary instance stores a task status in).
+ *
+ * Anything that is not one of the two verdicts — including nothing at all, and including a stale
+ * `done` left by a flow that used to materialize Tasks — reads as `unresolved`. `done` is not
+ * `kept`, and translating one into the other would invent a judgement nobody made.
+ */
+function instanceVerdict(raw: string | undefined): Verdict {
+  if (raw === VERDICT.KEPT) return VERDICT.KEPT;
+  if (raw === VERDICT.BROKEN) return VERDICT.BROKEN;
+  return VERDICT.UNRESOLVED;
+}
+
+/** The window/archival fields a virtual iteration carries; the rest of the node is built around it. */
+type IterationLifecycle = Pick<MindmapNode, "timing" | "resolution" | "archived">;
+
+/**
+ * A Task/Goal iteration's derived lifecycle: once its window has passed it is archived as a unit,
+ * and its Resolution says whether it was completed or missed.
+ */
+function workIterationLifecycle(past: boolean, done: boolean): IterationLifecycle {
+  if (!past) return { timing: "active" };
+  return { timing: "lapsed", resolution: done ? "completed" : "missed", archived: true };
+}
+
+/**
+ * A commitment iteration's derived lifecycle — deliberately not the Task/Goal mapping above.
+ *
+ * A Commitment has no Resolution: the Verdict stands in its place, and nothing derives it, least
+ * of all the window closing. So a past iteration nobody judged is **not** Missed and does not
+ * archive — the answer is still owed. Once a verdict is in and the window has passed, that
+ * iteration is settled, and archives.
+ *
+ * What this does not yet honour is the **Verdict Window**: a virtual iteration has no Commitment
+ * row to carry one, so an unjudged past iteration stays answerable indefinitely instead of
+ * archiving when the window to answer runs out.
+ */
+function commitmentIterationLifecycle(past: boolean, verdict: Verdict): IterationLifecycle {
+  if (!past) return { timing: "active" };
+  if (verdict === VERDICT.UNRESOLVED) return { timing: "lapsed" };
+  return { timing: "lapsed", archived: true };
+}
+
 function toCanonicalKind(kind: string | null): CanonicalKind | null {
   return kind === "day" || kind === "week" || kind === "month" || kind === "season" ? kind : null;
 }
@@ -111,9 +164,7 @@ function buildIterationItems(
       virtual: true,
       habitItem: { flowId: flow.id, itemType, itemId: item.id, scopeId },
       ...(color !== undefined ? { color } : {}),
-      ...(past
-        ? { timing: "lapsed" as const, resolution: done ? "completed" as const : "missed" as const, archived: true }
-        : { timing: "active" as const }),
+      ...workIterationLifecycle(past, done),
       isPrivate: item.is_private,
       position: item.position,
       tagIds: [],
@@ -135,11 +186,27 @@ function buildIterationItems(
 }
 
 /**
+ * Whether a flow's template holds items its own Instance Type cannot parent: goal items under a
+ * flow that materializes a Commitment, which holds Tasks and other Commitments but no Goals.
+ *
+ * Starting such a flow is refused outright by the `goals.parent_type` constraint, so its
+ * iterations are refused here on the same grounds rather than drawn as a subtree the model
+ * forbids. The condition is reported to the user by {@link collectLoadConditions}; it is never a
+ * quiet omission.
+ */
+export function holdsUnrenderableGoalItems(flow: Flow, flowGoals: readonly FlowGoal[]): boolean {
+  return flow.instance_type === "commitment" && flowGoals.some((goal) => goal.flow_id === flow.id);
+}
+
+/**
  * Injects each Habit's derived iterations as **virtual**, read-only child nodes under its target
  * (or the flow node when it has no target). Each iteration root carries the flow's items as its own
  * virtual, per-item-completable instances. The `-virtual` id suffix keeps every injected node out of
  * DB-backed mutations (`dbIdFromNodeId` rejects a non-numeric tail). `iterationsByFlow[i]` /
  * `statusesByFlow[i]` correspond to `flows[i]` (empty for non-habits).
+ *
+ * A flow whose template its Instance Type cannot hold contributes nothing — see
+ * {@link holdsUnrenderableGoalItems}.
  */
 export function injectHabitInstances(
   root: MindmapNode,
@@ -153,6 +220,7 @@ export function injectHabitInstances(
   flows.forEach((flow, i) => {
     const iterations = iterationsByFlow[i] ?? [];
     if (iterations.length === 0) return;
+    if (holdsUnrenderableGoalItems(flow, flowGoals)) return;
     const hostId =
       flow.target_type !== null && flow.target_id !== null
         ? entityNodeId(flow.target_type, flow.target_id)
@@ -172,19 +240,25 @@ export function injectHabitInstances(
       // The root is its own instance (`flow_root`, keyed by the flow id) with its own status.
       const rootRaw = statuses.get(`flow_root-${flow.id}-${scopeId}`);
       const rootDone = rootRaw === "done";
+      const isCommitment = flow.instance_type === "commitment";
+      const rootVerdict = instanceVerdict(rootRaw);
       host.children.push({
         id: `habit-${flow.id}-${iteration.index}-virtual`,
-        kind: flow.instance_type === "goal" ? "goal" : "task",
+        kind: iterationRootKind(flow.instance_type),
         title: `${flow.title} ${iterationAnchorLabel(flow, iteration, labels)}`,
-        status: instanceStatus(flow.instance_type === "goal", rootRaw),
+        // A commitment iteration carries a Verdict where the other two carry a status: it is kept
+        // or broken, never advanced, so there is no status for a control to cycle.
+        ...(isCommitment
+          ? { verdict: rootVerdict }
+          : { status: instanceStatus(flow.instance_type === "goal", rootRaw) }),
         virtual: true,
         habitItem: { flowId: flow.id, itemType: "flow_root", itemId: flow.id, scopeId },
         // Iterations are injected after buildTree's colour propagation, so inherit the host's
         // already-resolved aspect colour directly.
         ...(host.color !== undefined ? { color: host.color } : {}),
-        ...(past
-          ? { timing: "lapsed" as const, resolution: rootDone ? "completed" as const : "missed" as const, archived: true }
-          : { timing: "active" as const }),
+        ...(isCommitment
+          ? commitmentIterationLifecycle(past, rootVerdict)
+          : workIterationLifecycle(past, rootDone)),
         isPrivate: flow.is_private,
         position: iteration.index,
         tagIds: [],
@@ -654,30 +728,42 @@ export interface FailedFlow {
  */
 export interface LoadCondition {
   failedFlows: FailedFlow[];
+  /**
+   * Habits that materialize Commitments but whose template holds Goal items, so no iteration of
+   * them can be drawn (see {@link holdsUnrenderableGoalItems}).
+   */
+  unrenderableCommitmentFlows: FailedFlow[];
 }
 
-const NO_FAILURES: LoadCondition = { failedFlows: [] };
+const NO_CONDITIONS: LoadCondition = { failedFlows: [], unrenderableCommitmentFlows: [] };
 
 /**
- * Collects every flow whose Habit iterations failed to derive this load.
+ * Collects everything this load got wrong that the user did not cause: the flows whose Habit
+ * iterations failed to derive, and the commitment Habits whose template cannot be rendered.
  *
- * These used to be swallowed by a per-call `.catch(() => [])`, which made a failed derivation
- * indistinguishable from a flow that genuinely has none. The envelope now carries the reason per
- * flow. Every failure is listed — there is no "name the first, count the rest" compromise here;
- * that compromise only ever existed because a single toast slot was the only vehicle for it.
+ * Derivation failures used to be swallowed by a per-call `.catch(() => [])`, which made a failed
+ * derivation indistinguishable from a flow that genuinely has none. The envelope now carries the
+ * reason per flow. Every one is listed — there is no "name the first, count the rest" compromise
+ * here; that compromise only ever existed because a single toast slot was the only vehicle for it.
+ * The same holds for an unrenderable template: iterations that are not drawn are always said.
  */
-function collectFailedHabits(data: MindmapLoad): LoadCondition {
+function collectLoadConditions(data: MindmapLoad): LoadCondition {
   const failedFlows = data.habits
     .filter((entry) => entry.result.outcome === "failed")
     .map((entry) => ({ id: entry.flow_id, title: entry.flow_title }));
-  return failedFlows.length === 0 ? NO_FAILURES : { failedFlows };
+  const unrenderableCommitmentFlows = data.flows
+    .filter((flow) => flow.is_habit && holdsUnrenderableGoalItems(flow, data.flow_goals))
+    .map((flow) => ({ id: flow.id, title: flow.title }));
+  return failedFlows.length === 0 && unrenderableCommitmentFlows.length === 0
+    ? NO_CONDITIONS
+    : { failedFlows, unrenderableCommitmentFlows };
 }
 
 export function useMindmapData(): MindmapData {
   const [tree, setTree] = useState<MindmapNode>(VIRTUAL_ROOT);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [loadCondition, setLoadCondition] = useState<LoadCondition>(NO_FAILURES);
+  const [loadCondition, setLoadCondition] = useState<LoadCondition>(NO_CONDITIONS);
   const scopeLabels = useScopeLabels();
 
   /**
@@ -707,7 +793,7 @@ export function useMindmapData(): MindmapData {
           data.flow_goals, data.flow_tasks, habitStatuses(data.habits),
         );
         setTree(built);
-        setLoadCondition(collectFailedHabits(data));
+        setLoadCondition(collectLoadConditions(data));
       } catch (err) {
         setError(getErrorMessage(err));
       } finally {

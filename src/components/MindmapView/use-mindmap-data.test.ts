@@ -9,6 +9,7 @@ import type { Task } from "@/api/tasks";
 import type { Info } from "@/api/infos";
 import type { Flow, HabitIteration, FlowGoal, FlowTask } from "@/api/flows";
 import type { MindmapLoad } from "@/api/mindmap";
+import type { MindmapNode } from "@/utils/tree-layout";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -449,6 +450,27 @@ describe("useMindmapData", () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     expect(result.current.loadCondition.failedFlows).toEqual([]);
+  });
+
+  it("names a commitment habit whose template holds a goal item, whose iterations it cannot draw", async () => {
+    // Its derivation did not fail — the backend has nothing to object to until someone starts it.
+    // The frontend refuses to draw a Goal under a Commitment, so it says which habit went missing.
+    const nightly = mkFlow({ id: 7, title: "Asleep by 23:00", instance_type: "commitment", is_habit: true });
+    const milestone: FlowGoal = { id: 9, flow_id: 7, title: "Milestone", parent_type: "flow", parent_id: 7, position: 0, is_private: false };
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === "load_mindmap") {
+        return Promise.resolve(mindmapEnvelope({ flows: [nightly], flow_goals: [milestone] }));
+      }
+      return Promise.resolve(null);
+    });
+
+    const { result } = renderHook(() => useMindmapData());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.loadCondition.failedFlows).toEqual([]);
+    expect(result.current.loadCondition.unrenderableCommitmentFlows).toEqual([
+      { id: 7, title: "Asleep by 23:00" },
+    ]);
   });
 
   it("clears a previously reported load condition once a subsequent load has no failures", async () => {
@@ -1176,5 +1198,78 @@ describe("injectHabitInstances", () => {
     const root = buildTree([], [], [], []);
     injectHabitInstances(root, [mkFlow(), mkFlow({ id: 9, target_type: null, target_id: null })], [[], [iter(0, "active")]], LABELS);
     expect(root.children).toHaveLength(0); // no target found; nothing injected
+  });
+
+  describe("a commitment habit's iterations", () => {
+    function commitmentRoot(): MindmapNode {
+      return buildTree(
+        [
+          { id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false },
+          { id: 96, title: "Nights", description: null, subtype: "project", parent_id: 1, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false },
+        ],
+        [], [], [],
+      );
+    }
+    const NIGHTLY = mkFlow({ title: "Asleep by 23:00", instance_type: "commitment", target_type: "project", target_id: 96, flow_duration_kind: "day" });
+    function inject(
+      root: MindmapNode,
+      iterations: HabitIteration[],
+      statuses: Array<{ item_type: "flow_root" | "flow_goal" | "flow_task"; item_id: number; iteration_scope_id: number; status: string }> = [],
+      items: { goals?: FlowGoal[]; tasks?: FlowTask[] } = {},
+    ): MindmapNode | undefined {
+      injectHabitInstances(root, [NIGHTLY], [iterations], LABELS, items.goals ?? [], items.tasks ?? [], [statuses]);
+      return root.children[0]?.children[0]?.children[0];
+    }
+
+    it("draws the iteration root as a Commitment, not as a task or a goal", () => {
+      const iteration = inject(commitmentRoot(), [iter(0, "active")]);
+      expect(iteration?.kind).toBe("commitment");
+      // No status at all: a Commitment resolves to a Verdict, so there is nothing to cycle.
+      expect(iteration?.status).toBeUndefined();
+      expect(iteration?.verdict).toBe("unresolved");
+    });
+
+    it("reads this iteration's verdict off the slot its Modification stores it in", () => {
+      const kept = inject(commitmentRoot(), [iter(0, "active")], [{ item_type: "flow_root", item_id: 3, iteration_scope_id: 100, status: "kept" }]);
+      expect(kept?.verdict).toBe("kept");
+      const broken = inject(commitmentRoot(), [iter(0, "active")], [{ item_type: "flow_root", item_id: 3, iteration_scope_id: 100, status: "broken" }]);
+      expect(broken?.verdict).toBe("broken");
+    });
+
+    it("never reads a task status as a verdict", () => {
+      // `done` is not `kept`. A stale row from before the flow became a commitment habit reads as
+      // what it is — nothing said — rather than being translated into a judgement nobody made.
+      const iteration = inject(commitmentRoot(), [iter(0, "active")], [{ item_type: "flow_root", item_id: 3, iteration_scope_id: 100, status: "done" }]);
+      expect(iteration?.verdict).toBe("unresolved");
+    });
+
+    it("leaves a past unjudged iteration live and unmissed — nothing concludes a commitment was broken", () => {
+      const iteration = inject(commitmentRoot(), [iter(0, "lapsed")]);
+      expect(iteration?.timing).toBe("lapsed");
+      expect(iteration?.resolution).toBeUndefined(); // a Commitment has no Resolution to derive
+      expect(iteration?.archived).not.toBe(true); // the answer is still owed
+    });
+
+    it("archives a past iteration once its verdict is in — that one is settled", () => {
+      const iteration = inject(commitmentRoot(), [iter(0, "lapsed")], [{ item_type: "flow_root", item_id: 3, iteration_scope_id: 100, status: "broken" }]);
+      expect(iteration?.archived).toBe(true);
+      expect(iteration?.verdict).toBe("broken");
+    });
+
+    it("carries the flow's task items as ordinary tasks beneath it", () => {
+      const charger: FlowTask = { id: 4, flow_id: 3, title: "Phone on charger", parent_type: "flow", parent_id: 3, position: 0, is_private: false };
+      const iteration = inject(commitmentRoot(), [iter(0, "active")], [], { tasks: [charger] });
+      const item = iteration?.children[0];
+      expect(item?.kind).toBe("task"); // a Commitment holds Tasks — the supporting steps
+      expect(item?.status).toBe("todo");
+      expect(item?.verdict).toBeUndefined(); // only the commitment itself carries one
+    });
+
+    it("draws no iterations at all for a template holding a goal item, which a Commitment cannot hold", () => {
+      const milestone: FlowGoal = { id: 9, flow_id: 3, title: "Milestone", parent_type: "flow", parent_id: 3, position: 0, is_private: false };
+      const root = commitmentRoot();
+      injectHabitInstances(root, [NIGHTLY], [[iter(0, "active")]], LABELS, [milestone], [], [[]]);
+      expect(root.children[0]?.children[0]?.children).toHaveLength(0);
+    });
   });
 });

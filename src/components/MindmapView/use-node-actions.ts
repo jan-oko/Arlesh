@@ -56,7 +56,11 @@ export function useNodeActions({
       // A virtual Habit instance (an item, or the iteration root `flow_root`) advances just itself: a
       // goal toggles achieved; a task cycles todo → in_progress → done. `null` clears the Modification
       // (back to the base status). A goal's "achieved" is stored canonically as `done`.
-      if (node.habitItem !== undefined) {
+      //
+      // A commitment iteration is excluded: it is kept or broken, never advanced, and its two
+      // verdict controls live in List View beside every other commitment's. Like a real Commitment,
+      // it has no status control on the canvas at all.
+      if (node.habitItem !== undefined && node.kind !== "commitment") {
         const { flowId, itemType, itemId, scopeId } = node.habitItem;
         let next: string | null;
         if (node.kind === "goal") {

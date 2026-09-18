@@ -34,6 +34,11 @@ vi.mock("@/api/commitments", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/commitments")>()),
   updateCommitment: (id: number, request: unknown) => updateCommitment(id, request),
 }));
+const setHabitItemStatus = vi.fn((..._args: unknown[]) => Promise.resolve());
+vi.mock("@/api/flows", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/flows")>()),
+  setHabitItemStatus: (...args: unknown[]) => setHabitItemStatus(...args),
+}));
 vi.mock("@/hooks/use-tag-names", () => ({ useTagNames: () => new Map() }));
 vi.mock("@/hooks/use-scope-range-label", () => ({ useScopeRangeLabel: () => null }));
 
@@ -260,6 +265,7 @@ describe("ListView — the commitments section", () => {
 
   beforeEach(() => {
     updateCommitment.mockClear();
+    setHabitItemStatus.mockClear();
   });
 
   it("renders commitments as their own section above the task rows", () => {
@@ -331,6 +337,27 @@ describe("ListView — the commitments section", () => {
     updateCommitment.mockClear();
     fireEvent.keyDown(window, { key: "x", code: "KeyX" });
     expect(updateCommitment).toHaveBeenCalledWith(1, { verdict: "broken" });
+  });
+
+  it("gives a commitment Habit's iteration the same two verdict controls as any other commitment", () => {
+    // Its verdict has nowhere else to go: the iteration is virtual, so it is written as that
+    // iteration's Modification rather than against a commitments row it does not have.
+    const iteration = n("habit-3-0-virtual", "commitment", {
+      title: "Asleep by 23:00 Mon",
+      verdict: "unresolved",
+      virtual: true,
+      habitItem: { flowId: 3, itemType: "flow_root", itemId: 3, scopeId: 100 },
+    });
+    mockUseListData.mockReturnValue(listData({
+      commitmentRows: [commitmentRow({ node: iteration })],
+      rows: [],
+      tree: treeWith(iteration),
+    }));
+    render(<ListView />);
+
+    fireEvent.click(screen.getByRole("button", { name: "markBroken" }));
+    expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_root", 3, 100, "broken", expect.any(Number));
+    expect(updateCommitment).not.toHaveBeenCalled();
   });
 
   it("leaves Enter meaning 'cycle the status' when the selected row is a task", () => {

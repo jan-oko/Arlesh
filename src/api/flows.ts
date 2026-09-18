@@ -1,6 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 
-export type InstanceType = "goal" | "task";
+/**
+ * What a Flow's root materializes as. `commitment` is how a repeating rule — a nightly
+ * "asleep by 23:00" — recurs: through the Habit machinery that already exists rather than a
+ * second recurrence engine, with each iteration's Verdict held as a Modification row.
+ */
+export type InstanceType = "goal" | "task" | "commitment";
 
 /** A flow (template), mirrored from the Rust `flows::model::Flow`. */
 export interface Flow {

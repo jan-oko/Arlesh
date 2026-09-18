@@ -63,7 +63,8 @@ export default function MindmapView() {
   } = useMindmapStore();
 
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
-  const { visibleFailedFlows, dismiss: dismissHabitBanner } = useDismissableLoadCondition(loadCondition);
+  const { visibleFailedFlows, visibleUnrenderableCommitmentFlows, dismiss: dismissHabitBanner } =
+    useDismissableLoadCondition(loadCondition);
   const [nodeSearchOpen, setNodeSearchOpen] = useState(false);
   const [flowCreateParent, setFlowCreateParent] = useState<{ id: string; kind: NodeKind } | null>(null);
   const [startFlowNode, setStartFlowNode] = useState<MindmapNode | null>(null);
@@ -475,8 +476,12 @@ export default function MindmapView() {
 
   return (
     <div className={styles.container}>
-      {visibleFailedFlows.length > 0 && (
-        <HabitFailureBanner failedFlows={visibleFailedFlows} onDismiss={dismissHabitBanner} />
+      {(visibleFailedFlows.length > 0 || visibleUnrenderableCommitmentFlows.length > 0) && (
+        <HabitFailureBanner
+          failedFlows={visibleFailedFlows}
+          unrenderableCommitmentFlows={visibleUnrenderableCommitmentFlows}
+          onDismiss={dismissHabitBanner}
+        />
       )}
       <MindmapCanvas
         ref={canvasRef}
