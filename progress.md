@@ -363,6 +363,38 @@ filter dimensions" → seven). It never reached a release, so they were made to 
 rather than carrying a `Removed` note for something no user ever had. Agent also caught `README.md`,
 which my file map missed.
 
+## Conflict sweep, round two — PR #7 resolved (2026-09-18)
+
+Swept all six open PRs. Only **#7** conflicted, but it is the root of a chain
+(`master ← #7 ← #10 ← #13`, with 6dm's branch also on #7), so it blocked everything beneath it.
+Resolved in a **detached scratch worktree** rather than in #7 itself, because two agents were working
+in or under that branch and merging beneath them would have raced their own merges.
+
+Ten conflicted files. **Seven were additive** — this branch adds Backlog, master added subtree entry
+and node duplication, and they touch adjacent lines without disputing them. **Three needed real
+judgement**, and a blanket "keep both" would have been wrong on every one:
+
+- **ListView's toolbar.** Master *deleted* it with the Show-goals toggle in #4. Keeping both sides
+  would have resurrected deleted code. Only the backlog toast survives from this side.
+- **SPEC's List View keyboard list.** Master rewrote it (path headers, not Goal headers). Neither
+  side wins whole: master's wording, with `Alt+B` and the bare `B` put back into it.
+- **`GoalHeaderRow`** is gone in favour of master's `PathHeaderRow`.
+
+**Four places needed a brace or comma that neither side owned**, because the conflict sat *inside* a
+function body, an object literal or a JSON block — concatenating the halves produced code that parsed
+as nonsense: `duplicateTask`'s closing brace, the `withCurrentPillDimensions` describe, the
+`exitSubtree` binding object, and a trailing comma in two locale files. **Every one was caught by
+`tsc` or a `json.load`, none by reading the diff.** That is the lesson: after resolving, parse it.
+
+Gate green at 87 files / 1203 tests. Pushed as `49872b8`.
+
+**The cascade is expected, not a mistake**: #7 moving gave #10 seven conflicts of its own. Both
+agents were told to merge their base, with the three traps above named so they do not rediscover them.
+
+**A correction I owed one agent**: I had told the Commitments agent to "merge master". PR #10's base
+is `worktree-task-backlog`, not master — merging master directly would have given it a diff against
+the wrong thing. Corrected.
+
 ## Reverted: the Backlog switch's move (PR #7, `3a9a9fc`)
 
 User: *"Please move the backlog switch back down. Don't make UI changes based on my mistakes plus a
