@@ -327,6 +327,30 @@ Scoped before dispatch: the Antecedent dimension is self-contained, and **`ances
 the one failure a user would actually feel — a stale `antecedent` pill in `localStorage` surviving
 `mergePersistedFilterSlice` and narrowing the list invisibly — and asks for a test on it.
 
+**Landed** as `bf1a85e` on PR #3. Gate green, 86 files / 1093 tests (branch baseline 1088; net +5
+after deleting one antecedent test and replacing another with two). `ListView` now passes
+`enterSubtree` itself — the same function reference `NodeSearchModal`'s `onSelect` already calls —
+so there is one code path, not two, and `useSubtreeNav` publishes the descriptor off an effect so
+nothing extra was needed.
+
+**The stale-key hazard was worse than the brief supposed**, and this is the part worth remembering.
+`mergePersistedFilterSlice` does `{ ...defaults, ...filter }` — shallow. Its own doc comment says it
+exists precisely to stop a slice field rehydrating as `undefined`, but it does not recurse, so a
+persisted `pills` map **replaces the default one wholesale**. A retired key is therefore carried
+forward and re-persisted indefinitely, and — the real bite — **the next pill dimension anyone adds
+rehydrates as `undefined` and crashes `matchesPillGroup`** for every existing user. Fixed with
+`withCurrentPillDimensions`, which rebuilds the map from `PILL_DIMENSIONS` alone, typed to take
+`Record<string, unknown>` rather than pretending persisted input already conforms.
+
+Its home is `list-filter.ts`, List View's own vocabulary, not the shared `persist-merge.ts`. That
+is defensible, but it leaves `useFilterStore` (the Mindmap's) sharing the same shallow merge with
+the same latent hazard the moment it gains a nested map. Awaiting the user on whether to bead it.
+
+Also corrected: two other `[Unreleased]` entries advertised Antecedent as shipped ("eight new
+filter dimensions" → seven). It never reached a release, so they were made to describe reality
+rather than carrying a `Removed` note for something no user ever had. Agent also caught `README.md`,
+which my file map missed.
+
 ## Follow-up from testing PR #5 — `Arlesh-xw7` (P2)
 
 "Instances don't seem to move with it." Instances render under the **Target Node**, not under the
