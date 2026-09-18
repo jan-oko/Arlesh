@@ -363,6 +363,23 @@ filter dimensions" → seven). It never reached a release, so they were made to 
 rather than carrying a `Removed` note for something no user ever had. Agent also caught `README.md`,
 which my file map missed.
 
+## Conflict sweep against master (2026-09-18)
+
+Test-merged every open PR rather than waiting to find out at merge time. Three had real conflicts:
+
+| PR | Against master | Action |
+|---|---|---|
+| #12 `type-cycle-filter` | `MindmapView.tsx` | **resolved, pushed** — import collision only: master added `useSubtreeNav`, this branch added `hiddenNodeKinds` to the `filter-tree` import. Both needed. Green at 1168. |
+| #7 `task-backlog` | `SPEC.md`, `ListView.tsx`, `use-keyboard-list-view.test.ts` | **queued** — `worktree-backlog-loss-prompt` is stacked on it and mid-gate |
+| #10 `commitments` | same three files | **queued** — an agent is working in that worktree now |
+
+#13, #14, #15 and #16 are clean.
+
+**Why #7 and #10 wait**: merging master into a branch an agent is working in, or whose base another
+agent is mid-gate against, moves the ground under them. #7 and #10 share the same three conflicts,
+which says master's ListView/SPEC changes (the path-header and Ctrl+O work) landed after both
+branched — one resolution will inform the other.
+
 ## Tabs landed — PR #16, the largest change of the run
 
 58 files, **+2551 / −396**, one commit, 87 → 96 test files and 1144 → 1225 tests. Note the size: the
