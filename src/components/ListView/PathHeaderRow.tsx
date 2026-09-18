@@ -8,6 +8,8 @@ import styles from "./PathHeaderRow.module.css";
 interface Props {
   segments: readonly MindmapNode[];
   onEnterSubtree: (id: string) => void;
+  /** Whether to draw the leading kind glyph — the settings popover's **Path icons** switch. */
+  showKindIcon: boolean;
 }
 
 /** Sized against the header's `--text-sm`, not against a TaskRow card's larger status icon. */
@@ -22,15 +24,16 @@ const ICON_R = 7;
  * The header opens with one glyph for the **nearest** ancestor — the node the rows below hang
  * directly from — drawn with the same `NodeIcon` the Mindmap and the task rows use, so one
  * vocabulary covers all three. One glyph, not one per segment: the chain is read for where it ends,
- * and a marker beside every step would compete with the titles it exists to qualify. */
-export default function PathHeaderRow({ segments, onEnterSubtree }: Props) {
+ * and a marker beside every step would compete with the titles it exists to qualify. The glyph can
+ * be switched off from the settings popover, leaving the chain as bare titles. */
+export default function PathHeaderRow({ segments, onEnterSubtree, showKindIcon }: Props) {
   const { t } = useTranslation("listView");
   const parent = segments[segments.length - 1];
   return (
     <div className={styles.header}>
       {/* An Aspect carries no glyph anywhere in the app — `NodeIcon` returns null for one — so the
           wrapper is skipped rather than reserving an empty box before the chain. */}
-      {parent !== undefined && parent.kind !== "aspect" && (
+      {showKindIcon && parent !== undefined && parent.kind !== "aspect" && (
         <svg
           className={styles.icon}
           width={ICON_R * 2}

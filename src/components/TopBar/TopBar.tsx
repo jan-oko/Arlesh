@@ -57,6 +57,8 @@ export default function TopBar() {
   const setView = useViewStore((s) => s.setView);
   const mindmapOrientation = useViewStore((s) => s.mindmapOrientation);
   const toggleMindmapOrientation = useViewStore((s) => s.toggleMindmapOrientation);
+  const pathHeaderIcons = useViewStore((s) => s.pathHeaderIcons);
+  const togglePathHeaderIcons = useViewStore((s) => s.togglePathHeaderIcons);
   const listPreset = useListFilterStore((s) => s.filter.preset);
   const setListPreset = useListFilterStore((s) => s.setPreset);
   const theme = useThemeStore((s) => s.theme);
@@ -99,6 +101,18 @@ export default function TopBar() {
                         checked={mindmapOrientation === "vertical"}
                         onChange={toggleMindmapOrientation}
                         label={t("common:verticalLayout")}
+                      />
+                    </div>
+                  )}
+                  {/* Path headers exist only in List View, so their glyph switch is gated the same
+                      way the branch axis is gated to the mindmap — a control for something the
+                      current view cannot show is noise. */}
+                  {view === "list" && (
+                    <div className={styles.settingRow}>
+                      <Switch
+                        checked={pathHeaderIcons}
+                        onChange={togglePathHeaderIcons}
+                        label={t("common:pathIcons")}
                       />
                     </div>
                   )}

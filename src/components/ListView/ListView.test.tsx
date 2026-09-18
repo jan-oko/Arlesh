@@ -4,6 +4,7 @@ import ListView from "./ListView";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useListFilterStore } from "@/stores/use-list-filter-store";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
+import { useViewStore } from "@/stores/use-view-store";
 import { DEFAULT_FILTER } from "@/utils/filter-tree";
 import { DEFAULT_LIST_FILTER } from "@/utils/list-filter";
 import type { TaskListRow } from "@/utils/list-filter";
@@ -74,6 +75,7 @@ beforeEach(() => {
   useListFilterStore.setState({ filter: { ...DEFAULT_LIST_FILTER, pills: { ...DEFAULT_LIST_FILTER.pills } } });
   mockUseListData.mockReturnValue(listData());
   useMindmapStore.setState({ subtreeRootId: null, subtreeNav: null });
+  useViewStore.setState({ pathHeaderIcons: true });
 });
 
 describe("ListView", () => {
@@ -132,6 +134,18 @@ describe("ListView", () => {
     if (header === null || header === undefined) throw new Error("expected a path header");
     expect(header.querySelectorAll("svg")).toHaveLength(1);
     expect([...header.querySelectorAll("button")].some((b) => b.querySelector("svg") !== null)).toBe(false);
+  });
+
+  it("drops the glyph when the settings popover's Path icons switch is off, keeping the chain", () => {
+    useViewStore.setState({ pathHeaderIcons: false });
+    render(<ListView />);
+    const [firstSegment] = screen.getAllByTitle("enterSubtree");
+    const header = firstSegment?.parentElement;
+    if (header === null || header === undefined) throw new Error("expected a path header");
+    expect(header.querySelectorAll("svg")).toHaveLength(0);
+    // Only the glyph goes — the header still names where the run lives.
+    expect(screen.getByText("aspect-1")).toBeInTheDocument();
+    expect(screen.getAllByText("goal-1")).toHaveLength(2);
   });
 
   it("marks no path header whose nearest ancestor is an Aspect, which carries no glyph anywhere", () => {
