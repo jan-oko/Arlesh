@@ -736,6 +736,70 @@ describe("useMindmapData — mutations", () => {
       });
     });
 
+    // Instances render under the Target Node, not under the flow, so a move that rewrote only the
+    // parent left the iterations behind. The target is the flow's own parent on every flow a real
+    // board has, because that is what creation writes — so it travels with the move.
+    it("flow: carries a Target Node that was its own parent", async () => {
+      const FLOW = mkFlow({ id: 1, parent_type: "domain", parent_id: 1, target_type: "domain", target_id: 1 });
+      setupInvoke({ list_flows: [FLOW], update_flow: FLOW });
+      const { result } = await loadedHook();
+
+      await act(async () => {
+        await result.current.moveNode("flow-1", "flow", "goal-1", "goal", 0);
+      });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("update_flow", {
+        id: 1,
+        request: { parent_type: "goal", parent_id: 1, position: 0, target_type: "goal", target_id: 1 },
+      });
+    });
+
+    // Domains, projects and tags share one table, so a flow can name the same row "project" as a
+    // parent and "domain" as a target. Comparing the stored types would call those different
+    // nodes and strand the instances; the comparison is on the normalised node id.
+    it("flow: recognises its parent as the target through a domain-table type mismatch", async () => {
+      const FLOW = mkFlow({ id: 1, parent_type: "project", parent_id: 1, target_type: "domain", target_id: 1 });
+      setupInvoke({ list_flows: [FLOW], update_flow: FLOW });
+      const { result } = await loadedHook();
+
+      await act(async () => {
+        await result.current.moveNode("flow-1", "flow", "goal-1", "goal", 0);
+      });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("update_flow", {
+        id: 1,
+        request: { parent_type: "goal", parent_id: 1, position: 0, target_type: "goal", target_id: 1 },
+      });
+    });
+
+    it("flow: leaves a Target Node pointed somewhere other than its parent alone", async () => {
+      const FLOW = mkFlow({ id: 1, parent_type: "domain", parent_id: 1, target_type: "goal", target_id: 1 });
+      setupInvoke({ list_flows: [FLOW], update_flow: FLOW });
+      const { result } = await loadedHook();
+
+      await act(async () => {
+        await result.current.moveNode("flow-1", "flow", "goal-1", "goal", 0);
+      });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("update_flow", {
+        id: 1, request: { parent_type: "goal", parent_id: 1, position: 0 },
+      });
+    });
+
+    it("flow: writes no target when it has none", async () => {
+      const FLOW = mkFlow({ id: 1, parent_type: "domain", parent_id: 1, target_type: null, target_id: null });
+      setupInvoke({ list_flows: [FLOW], update_flow: FLOW });
+      const { result } = await loadedHook();
+
+      await act(async () => {
+        await result.current.moveNode("flow-1", "flow", "goal-1", "goal", 0);
+      });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("update_flow", {
+        id: 1, request: { parent_type: "goal", parent_id: 1, position: 0 },
+      });
+    });
+
     it("flow: refuses a parent a flow may not hang from", async () => {
       const FLOW = mkFlow({ id: 1, parent_type: "domain", parent_id: 1 });
       setupInvoke({ list_flows: [FLOW] });
