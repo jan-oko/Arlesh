@@ -351,6 +351,23 @@ filter dimensions" → seven). It never reached a release, so they were made to 
 rather than carrying a `Removed` note for something no user ever had. Agent also caught `README.md`,
 which my file map missed.
 
+## Path headers carry their parent's kind glyph (PR #3, `28c279a`)
+
+User: *"add an icon for the parent node type in the path headers"* — then, on seeing the first
+attempt, *"Not to each segment - to the whole header item."* I had read it as one glyph per
+segment; it is one glyph per header, for the **nearest** ancestor, the node the rows below hang
+directly from. Reverted and redone rather than patched over.
+
+Reuses `NodeIcon` — the same component the Mindmap's `NodeRect` and List View's own `TaskRow`
+already render — so there is one glyph vocabulary across all three rather than a fourth set of
+icons. `currentColor` plus `color: var(--text-primary)` on the wrapper gives it the emphasis the
+last segment already carries.
+
+An Aspect has no glyph anywhere in the app (`NodeIcon` returns `null` for one), so a header that
+ends at an Aspect opens with nothing rather than reserving an empty box. Tested both ways.
+
+Gate green: 86 files / 1095 tests.
+
 ## Follow-up from testing PR #5 — `Arlesh-xw7` (P2)
 
 "Instances don't seem to move with it." Instances render under the **Target Node**, not under the
