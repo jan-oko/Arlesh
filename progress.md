@@ -363,6 +363,36 @@ filter dimensions" → seven). It never reached a release, so they were made to 
 rather than carrying a `Removed` note for something no user ever had. Agent also caught `README.md`,
 which my file map missed.
 
+## Reverted: the Backlog switch's move (PR #7, `3a9a9fc`)
+
+User: *"Please move the backlog switch back down. Don't make UI changes based on my mistakes plus a
+guess."*
+
+**The failure was mine before it was the agent's.** I wrote `Arlesh-n66.1` as "no way to move a Task
+to Backlog from its editor" — stating a missing feature as fact, from a report that only established
+the user had looked and not seen it. The agent correctly found the control, correctly diagnosed my
+bead as wrong, and then filled the gap with a theory about *why* it was missed, and acted on it. It
+should not have; the bead invited it.
+
+`TaskEditorModal.tsx` is byte-identical to `293ff1a` again — diffed, not eyeballed. Suite green at
+1093.
+
+**Kept**, because it is independent of the guess: the tests (they assert behaviour, not DOM order,
+which is why they survive the revert) and the SPEC entry points, which were a genuine gap — SPEC
+documented neither the editor switch nor the Mindmap's bare `B`, only List View's. **Stripped**:
+every claim about placement, from SPEC and CHANGELOG.
+
+Written to memory as a standing rule: **a control the user missed is evidence they missed it, not
+evidence about where it belongs.** When a bead says a feature is missing and it is not, the finding
+*is* the deliverable — report where it actually is and stop. Now in the resume briefs for the
+Commitments cluster, since `cyo.2` and `cyo.3` are exactly where the same slip could recur.
+
+## Recovered work confirmed on master
+
+**PR #14 and #17 merged.** Verified on `origin/master`: `src-tauri/src/duplicate/mod.rs` present,
+all four `duplicate_*` commands registered, and `0025_flow_target_defaults_to_parent.sql` in place.
+The work stranded by #8's merge order is back, and the derived Target Node shipped with it.
+
 ## PR #17 — and the biggest find of the run
 
 `Arlesh-xw7` shipped: a null Target Node now *means* "my parent", the eager default is gone from
