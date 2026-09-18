@@ -363,6 +363,27 @@ filter dimensions" → seven). It never reached a release, so they were made to 
 rather than carrying a `Removed` note for something no user ever had. Agent also caught `README.md`,
 which my file map missed.
 
+## Fixes dispatched into their parent PRs (2026-09-18)
+
+Both dispatched to work **on the existing branch**, not on a stack above it — extending the user's
+ruling for `evu` to the whole set. Commitments and Backlog have never shipped, so five trailing
+"fixed" entries for features no user has seen would be fiction; each feature arrives complete
+instead.
+
+- **PR #10 (`worktree-commitments`)** — one agent taking `cyo.3` → `cyo.2` → `cyo.4` → `cyo.1` →
+  `evu`, in that order: the editor tells you what cyo.1 and evu must fit into, and the base glyph
+  must precede its resolution variants.
+- **PR #7 (`worktree-task-backlog`)** — `n66.1`, the editor route into Backlog. Brief asks for an
+  inventory of the *existing* entry points too, since three that disagree about when Backlog clears
+  would matter more than a missing fourth.
+
+**Six agents now running.** Past the two-agent ceiling this run established, at the user's call. The
+mitigation is that resumption from transcripts has worked twice today, so a rate limit costs time
+rather than work.
+
+**Two re-merges I owe, and told both agents not to touch:** PR #13 is stacked on #10, and
+`worktree-backlog-loss-prompt` is stacked on #7. Both bases are about to move.
+
 ## User-reported fixes, beaded (2026-09-18)
 
 From a testing pass. Five beads, all children of the feature they belong to so they merge with it
