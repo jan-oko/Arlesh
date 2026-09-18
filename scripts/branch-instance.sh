@@ -281,13 +281,14 @@ cmd_start() {
   local built=() failed=()
   for name in "${names[@]}"; do
     # Each build is a subshell, so one branch failing to compile does not abandon the branches
-    # queued behind it. Backgrounded and waited on rather than tested with `if ( ... )`, because
-    # bash switches `set -e` off for everything inside an `if` condition, subshells and the
-    # functions they call included: written that way, a failed cargo would sail on into the copy and
-    # hand `start` a stale binary to launch. A background subshell keeps errexit; `wait` reports
-    # what it did. The trap is re-armed inside it because a subshell does not inherit the parent's,
-    # and without it a failed build would leave that worktree's tauri.conf.json patched with a
-    # devUrl and a window title.
+    # queued behind it. Backgrounded and waited on rather than tested directly, because bash
+    # switches `set -e` off for the whole dynamic extent of any TESTED context — an `if`/`while`/
+    # `until` condition, a `!`, or the left-hand side of `&&`/`||` — subshells and the functions
+    # they call included. So `if ( build_one ... )` and `( build_one ... ) || failed=...` both sail
+    # on past a failed cargo, into the copy, and hand `start` a stale binary to launch. Only the
+    # backgrounded subshell keeps errexit, and `wait` then reports what it did. The trap is re-armed
+    # inside it because a subshell does not inherit the parent's, and without it a failed build
+    # would leave that worktree's tauri.conf.json patched with a devUrl and a window title.
     ( trap restore_conf EXIT; build_one "$name" ) &
     if wait "$!"; then
       built+=("$name")

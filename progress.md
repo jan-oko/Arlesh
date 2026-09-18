@@ -212,9 +212,10 @@ because it ends by naming the windows it brought up and the `stop` line for them
 question **before** the builds as well as at launch — refusing nine windows is only useful if it
 happens before the nine compiles. A branch that fails to build is named, skipped, and left out of
 the launch; the branches that did build still start, and the exit status is non-zero. Each build
-runs in a **backgrounded** subshell that is then waited on, not an `if ( ... )` — bash turns `set -e`
-off inside an `if` condition, so tested that way a failed cargo would carry on and launch a stale
-binary. A branch that was already running is stopped before its new binary is launched, so `start`
+runs in a **backgrounded** subshell that is then waited on, never one whose status is tested
+directly — bash turns `set -e` off for the whole dynamic extent of any tested context (`if`,
+`while`, `until`, `!`, and the left side of `&&`/`||`), so both `if ( build )` and `( build ) || ...`
+would carry on past a failed cargo and launch a stale binary. A branch that was already running is stopped before its new binary is launched, so `start`
 twice replaces that window instead of putting a second WebKit process on the same SQLite file.
 
 Space: every branch compiles into the **one** target directory the main checkout already has
