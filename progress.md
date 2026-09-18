@@ -351,6 +351,31 @@ filter dimensions" → seven). It never reached a release, so they were made to 
 rather than carrying a `Removed` note for something no user ever had. Agent also caught `README.md`,
 which my file map missed.
 
+## PR #14 — the #8 recovery, and a coverage lesson
+
+Opened as **PR #14**. Gate: lint clean, tsc clean, vitest 86/1075, `cargo test --lib` 232,
+`tests/duplicate.rs` 9, **tarpaulin 90.96%** — the exact figure #8's own branch reported, which is
+what a byte-identical commit onto an unchanged-Rust master should give.
+
+**Coverage lesson worth keeping.** The first run reported **83.17%** and failed the 90% floor. It
+was not a regression: two `cargo tarpaulin` runs were sharing `$HOME/.cache/arlesh/tarpaulin` at the
+same time — mine and an agent's — and **concurrent runs against one warm target dir produce garbage
+numbers in both**. Re-running alone on a quiet box gave 90.96%. Had I believed the first number I
+would have "fixed" coverage that was never broken. Every agent brief now carries this, along with
+`pgrep -x cargo-tarpaulin` (never `-f`, which matches its own command line and hangs forever).
+
+## Rate limit, second time
+
+All three agents died at once on the session limit — `xw7` at "All tests green. Now the coverage
+gate", `lvc` mid-gate, `4yp` mid-tests. Same recovery as before: **resumed from transcripts, not
+re-dispatched.** `lvc` reported it redid nothing and finished as **PR #13**.
+
+`lvc` also corrected its own brief: the bead is not frontend-only — its second acceptance criterion
+is a refusal at `flows::start`, i.e. Rust. Its Rust diff is one integration test, no `src/` change.
+It found the write genuinely broken, not just the glyph: `useCommitmentVerdict` parsed a commitment
+id out of the node id, which for `habit-3-0-virtual` is `NaN`. Two follow-up beads, `Arlesh-evu` and
+`Arlesh-mrq`, both **awaiting the user's priority call** (the agent proposed P2 and P3).
+
 ## Two stranded PRs — the stacked-merge hazard, twice (2026-09-18)
 
 The cap was never the risk. **Merge order was.**
