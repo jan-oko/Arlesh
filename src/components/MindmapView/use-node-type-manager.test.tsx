@@ -22,7 +22,7 @@ function setup(retypeNode = vi.fn().mockResolvedValue("flowtask-99")) {
   const selectNode = vi.fn();
   const showToast = vi.fn();
   const { result } = renderHook(() =>
-    useNodeTypeManager({ tree: makeTree(), retypeNode, selectNode, showToast }),
+    useNodeTypeManager({ tree: makeTree(), hiddenKinds: [], retypeNode, selectNode, showToast }),
   );
   return { result, retypeNode, selectNode };
 }
@@ -70,7 +70,7 @@ describe("useNodeTypeManager — flow item cycling", () => {
 describe("useNodeTypeManager — cycle wraps around", () => {
   function cycleHook(tree: MindmapNode, retypeNode = vi.fn().mockResolvedValue(null)) {
     const { result } = renderHook(() =>
-      useNodeTypeManager({ tree, retypeNode, selectNode: vi.fn(), showToast: vi.fn() }),
+      useNodeTypeManager({ tree, hiddenKinds: [], retypeNode, selectNode: vi.fn(), showToast: vi.fn() }),
     );
     return { result, retypeNode };
   }
@@ -101,6 +101,71 @@ describe("useNodeTypeManager — cycle wraps around", () => {
   });
 });
 
+describe("useNodeTypeManager — the cycle skips kinds the filter hides", () => {
+  function hiddenHook(tree: MindmapNode, hiddenKinds: NodeKind[]) {
+    const retypeNode = vi.fn().mockResolvedValue(null);
+    const selectNode = vi.fn();
+    const showToast = vi.fn();
+    const { result } = renderHook(() =>
+      useNodeTypeManager({ tree, hiddenKinds, retypeNode, selectNode, showToast }),
+    );
+    return { result, retypeNode, selectNode, showToast };
+  }
+
+  // root → aspect-1 → the node under test, so the full domain-parent ring is available.
+  function underAspect(node: MindmapNode): MindmapNode {
+    return n("root", "domain", [n("aspect-1", "aspect", [node])]);
+  }
+
+  it("wraps a task straight past a hidden Info back to domain on ctrl+down", () => {
+    const { result, retypeNode } = hiddenHook(underAspect(n("task-9", "task")), ["info"]);
+    act(() => { result.current.cycleType("task-9", 1); });
+    expect(retypeNode).toHaveBeenCalledWith("task-9", "task", "domain", undefined);
+  });
+
+  it("stops at task rather than Info when cycling up from a hidden Info's neighbour", () => {
+    const { result, retypeNode } = hiddenHook(underAspect(n("domain-9", "domain")), ["info"]);
+    act(() => { result.current.cycleType("domain-9", -1); });
+    expect(retypeNode).toHaveBeenCalledWith("domain-9", "domain", "task", undefined);
+  });
+
+  it("offers Info again the moment nothing is hidden", () => {
+    const { result, retypeNode } = hiddenHook(underAspect(n("task-9", "task")), []);
+    act(() => { result.current.cycleType("task-9", 1); });
+    expect(retypeNode).toHaveBeenCalledWith("task-9", "task", "info", undefined);
+  });
+
+  it("still cycles an existing Info node out of Info while Info is hidden", () => {
+    const { result, retypeNode } = hiddenHook(underAspect(n("info-9", "info")), ["info"]);
+    act(() => { result.current.cycleType("info-9", 1); });
+    expect(retypeNode).toHaveBeenCalledWith("info-9", "info", "domain", undefined);
+  });
+
+  it("keeps the node selected after a cycle that skipped a hidden kind", async () => {
+    const { result, selectNode } = hiddenHook(underAspect(n("task-9", "task")), ["info"]);
+    await act(async () => { result.current.cycleType("task-9", 1); });
+    expect(selectNode).toHaveBeenCalledWith("task-9");
+  });
+
+  it("does nothing at all — no retype, no toast — when the filter leaves only the node's own kind", () => {
+    const { result, retypeNode, showToast } = hiddenHook(
+      underAspect(n("task-9", "task")),
+      ["domain", "project", "tag", "goal", "info"],
+    );
+    act(() => { result.current.cycleType("task-9", 1); });
+    act(() => { result.current.cycleType("task-9", -1); });
+    expect(retypeNode).not.toHaveBeenCalled();
+    expect(showToast).not.toHaveBeenCalled();
+    expect(result.current.warningModal).toBeNull();
+  });
+
+  it("refuses setType to a hidden kind, so the submenu and the cycle agree", () => {
+    const { result, retypeNode } = hiddenHook(underAspect(n("goal-9", "goal")), ["info"]);
+    act(() => { result.current.setType("goal-9", "info"); });
+    expect(retypeNode).not.toHaveBeenCalled();
+  });
+});
+
 describe("useNodeTypeManager — the backend's refusal becomes the prompt", () => {
   function refusingHook(rejection: unknown) {
     const retypeNode = vi.fn().mockRejectedValueOnce(rejection).mockResolvedValue("task-99");
@@ -108,7 +173,7 @@ describe("useNodeTypeManager — the backend's refusal becomes the prompt", () =
     const showToast = vi.fn();
     const tree = n("root", "domain", [n("aspect-1", "aspect", [n("goal-9", "goal")])]);
     const { result } = renderHook(() =>
-      useNodeTypeManager({ tree, retypeNode, selectNode, showToast }),
+      useNodeTypeManager({ tree, hiddenKinds: [], retypeNode, selectNode, showToast }),
     );
     return { result, retypeNode, selectNode, showToast };
   }

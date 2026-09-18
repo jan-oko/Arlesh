@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import NodeContextMenu from "./NodeContextMenu";
+import { useFilterStore } from "@/stores/use-filter-store";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -19,7 +20,10 @@ const defaultProps = {
   onClose: vi.fn(),
 };
 
-beforeEach(() => { vi.clearAllMocks(); });
+beforeEach(() => {
+  vi.clearAllMocks();
+  useFilterStore.getState().reset();
+});
 
 describe("NodeContextMenu — always-visible items", () => {
   it("renders rename button for all node kinds", () => {
@@ -87,6 +91,18 @@ describe("NodeContextMenu — Set type submenu", () => {
   it("hides Set type for aspect nodes", () => {
     render(<NodeContextMenu {...defaultProps} nodeKind="aspect" />);
     expect(screen.queryByRole("button", { name: /setType/ })).not.toBeInTheDocument();
+  });
+
+  it("omits a kind the filter hides, which would convert the node and hide it at once", () => {
+    useFilterStore.setState((s) => ({ filter: { ...s.filter, showInfo: false } }));
+    render(<NodeContextMenu {...defaultProps} nodeKind="domain" parentKind="aspect" />);
+    expect(screen.queryByRole("button", { name: "nodeKinds:info" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "nodeKinds:task" })).toBeInTheDocument();
+  });
+
+  it("offers that kind again once the filter shows it", () => {
+    render(<NodeContextMenu {...defaultProps} nodeKind="domain" parentKind="aspect" />);
+    expect(screen.getByRole("button", { name: "nodeKinds:info" })).toBeInTheDocument();
   });
 
   it("omits target kinds that couldn't hold the node's children", () => {

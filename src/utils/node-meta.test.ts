@@ -219,6 +219,52 @@ describe("validTypesForCycling — info", () => {
   });
 });
 
+describe("validTypesForCycling — kinds the filter hides", () => {
+  it("drops Info from the ring under an aspect parent, leaving the other five in order", () => {
+    expect(validTypesForCycling("task", "aspect", ["info"])).toEqual(["domain", "project", "tag", "goal", "task"]);
+  });
+
+  it("drops Info under a goal parent, leaving goal and task", () => {
+    expect(validTypesForCycling("task", "goal", ["info"])).toEqual(["goal", "task"]);
+  });
+
+  it("restores Info once nothing is hidden", () => {
+    expect(validTypesForCycling("task", "goal", [])).toContain("info");
+    expect(validTypesForCycling("task", "goal")).toContain("info");
+  });
+
+  it("keeps an Info node's own kind in the ring so it can still be cycled out", () => {
+    const cycle = validTypesForCycling("info", "domain", ["info"]);
+    expect(cycle).toEqual(["domain", "tag", "goal", "task", "info"]);
+  });
+
+  it("leaves an Info node under an Info parent with nowhere to go rather than stranding it", () => {
+    expect(validTypesForCycling("info", "info", ["info"])).toEqual(["info"]);
+  });
+
+  it("narrows the ring to the node's own kind when every other kind is hidden", () => {
+    const everythingElse = ["domain", "project", "tag", "goal", "info"] as const;
+    expect(validTypesForCycling("task", "aspect", everythingElse)).toEqual(["task"]);
+  });
+
+  it("only narrows — hiding Info never re-offers a kind the parent forbids", () => {
+    const cycle = validTypesForCycling("domain", "tag", ["info"]);
+    expect(cycle).not.toContain("project");
+    expect(cycle).not.toContain("tag");
+    expect(cycle).not.toContain("info");
+  });
+
+  it("ignores a hidden kind that was never in the ring anyway", () => {
+    expect(validTypesForCycling("task", "goal", ["flow", "flow_goal", "flow_task"])).toEqual(
+      validTypesForCycling("task", "goal"),
+    );
+  });
+
+  it("leaves a flow item unable to retype while Flows are hidden", () => {
+    expect(validTypesForCycling("flow_goal", "flow", ["flow", "flow_goal", "flow_task"])).toEqual(["flow_goal"]);
+  });
+});
+
 describe("validTypesForCycling — flow items", () => {
   it("cycles a flow item between goal and task under a flow root", () => {
     expect(validTypesForCycling("flow_goal", "flow")).toEqual(["flow_goal", "flow_task"]);

@@ -126,14 +126,14 @@ export function typeAcceptsChildren(target: NodeKind, childKinds: readonly NodeK
 }
 
 /**
- * Returns which types Ctrl+Up/Down may cycle through for a given node.
+ * Returns which types the tree structure alone permits for a given node.
  *
  * Under a domain/project/aspect/tag parent the full cycle is available.
  * Under a goal parent only goal, task, and info are valid.
  * Under a task parent only task and info are valid.
  * Under an info parent only info is valid (info nodes can only have info children).
  */
-export function validTypesForCycling(kind: NodeKind, parentKind: NodeKind | null): NodeKind[] {
+function structurallyValidTypes(kind: NodeKind, parentKind: NodeKind | null): NodeKind[] {
   if (kind === "aspect") return [];
 
   // The flow node itself is not part of the type cycle.
@@ -170,6 +170,29 @@ export function validTypesForCycling(kind: NodeKind, parentKind: NodeKind | null
 
   // Under a goal: goal, task, and info are all valid children.
   return ["goal", "task", "info"];
+}
+
+/**
+ * Returns which types Ctrl+Up/Down may cycle through for a given node, and which the context
+ * menu's "Set type" submenu may offer.
+ *
+ * `hiddenKinds` are the kinds the active filter hides outright (see `hiddenNodeKinds`). They are
+ * removed as *destinations* only: converting a node into a kind the view cannot show makes it
+ * vanish mid-keystroke, unselected and with nothing said, so that step is simply not offered.
+ * The node's own kind is always kept, so an Info node stays cyclable while Info is hidden — the
+ * filter narrows the ring, it never strands a node outside it.
+ *
+ * Omitting `hiddenKinds` asks for the structurally valid set, which is also what the default
+ * filter (everything visible) yields.
+ */
+export function validTypesForCycling(
+  kind: NodeKind,
+  parentKind: NodeKind | null,
+  hiddenKinds: readonly NodeKind[] = [],
+): NodeKind[] {
+  const valid = structurallyValidTypes(kind, parentKind);
+  if (hiddenKinds.length === 0) return valid;
+  return valid.filter((candidate) => candidate === kind || !hiddenKinds.includes(candidate));
 }
 
 /** Returns true if the type transition crosses the Goal↔Task boundary. */

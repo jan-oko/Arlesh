@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { filterTree, DEFAULT_FILTER } from "./filter-tree";
+import { filterTree, hiddenNodeKinds, DEFAULT_FILTER } from "./filter-tree";
 import type { FilterState } from "./filter-tree";
 import type { MindmapNode, NodeKind } from "./tree-layout";
 
@@ -458,5 +458,33 @@ describe("filterTree — a Frozen/Archived Project shelves its whole subtree", (
     const kept = ids(filterTree(shelved("archived"), f({ statusMode: "plan", archivedMode: "include" })));
     expect(kept).toContain("project-shelved");
     expect(kept).toContain("task-todo");
+  });
+});
+
+describe("hiddenNodeKinds", () => {
+  it("hides nothing under the default filter", () => {
+    expect(hiddenNodeKinds(DEFAULT_FILTER)).toEqual([]);
+  });
+
+  it("names info when the Info toggle is off", () => {
+    expect(hiddenNodeKinds(f({ showInfo: false }))).toEqual(["info"]);
+  });
+
+  it("names the flow kinds when the Flow toggle is off", () => {
+    expect(hiddenNodeKinds(f({ showFlow: false }))).toEqual(["flow", "flow_goal", "flow_task"]);
+  });
+
+  it("names no kind for Private Mode, which hides particular nodes rather than a whole kind", () => {
+    expect(hiddenNodeKinds(f({ privateMode: false }))).toEqual([]);
+  });
+
+  it("names no kind for a status preset, which judges each node on its own status", () => {
+    for (const statusMode of ["plan", "start", "do"] as const) {
+      expect(hiddenNodeKinds(f({ statusMode }))).toEqual([]);
+    }
+  });
+
+  it("names no kind for the Archived tri-state, which judges each node's own archival", () => {
+    expect(hiddenNodeKinds(f({ archivedMode: "exclude" }))).toEqual([]);
   });
 });

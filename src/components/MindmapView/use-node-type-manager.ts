@@ -93,6 +93,12 @@ function describeLosses(losses: RetypeLosses, t: Tf): string[] {
 
 interface Options {
   tree: MindmapNode;
+  /**
+   * Kinds the active filter hides outright, which are therefore not offered as retype targets —
+   * cycling a node into one converts it and the filter hides it in the same breath. Passed in
+   * rather than read from the store so the cycle stays directly testable.
+   */
+  hiddenKinds: readonly NodeKind[];
   retypeNode: (id: string, from: NodeKind, to: NodeKind, options?: RetypeOptions) => Promise<string | null>;
   selectNode: (id: string | null) => void;
   showToast: (toast: { nodeId: string; message: string }) => void;
@@ -150,7 +156,7 @@ function buildRetypeActions(
   return [{ label: convertLabel, variant: WARNING_VARIANT.PRIMARY, onClick: () => { confirm(); } }];
 }
 
-export function useNodeTypeManager({ tree, retypeNode, selectNode, showToast }: Options): Result {
+export function useNodeTypeManager({ tree, hiddenKinds, retypeNode, selectNode, showToast }: Options): Result {
   const { t } = useTranslation(["warnings", "nodeKinds", "status"]);
   const [warningModal, setWarningModal] = useState<WarningModalState | null>(null);
 
@@ -252,7 +258,9 @@ export function useNodeTypeManager({ tree, retypeNode, selectNode, showToast }: 
       const node = findNode(tree, nodeId);
       if (node === undefined || node.kind === "aspect") return;
       const parent = findParent(tree, nodeId);
-      const validTypes = validTypesForCycling(node.kind, parent?.kind ?? null);
+      const validTypes = validTypesForCycling(node.kind, parent?.kind ?? null, hiddenKinds);
+      // The filter can narrow the ring to the node's own kind. Then the keystroke does nothing —
+      // the one outcome that cannot be mistaken for the node having been destroyed.
       if (validTypes.length <= 1) return;
       const currentIdx = validTypes.indexOf(node.kind);
       if (currentIdx === -1) return;
@@ -260,7 +268,7 @@ export function useNodeTypeManager({ tree, retypeNode, selectNode, showToast }: 
       if (newKind === undefined || newKind === node.kind) return;
       applyRetype(node, newKind);
     },
-    [tree, applyRetype],
+    [tree, hiddenKinds, applyRetype],
   );
 
   // Retypes a node directly to a chosen valid kind (from the context-menu "Set type" submenu).
@@ -269,10 +277,10 @@ export function useNodeTypeManager({ tree, retypeNode, selectNode, showToast }: 
       const node = findNode(tree, nodeId);
       if (node === undefined || node.kind === newKind) return;
       const parent = findParent(tree, nodeId);
-      if (!validTypesForCycling(node.kind, parent?.kind ?? null).includes(newKind)) return;
+      if (!validTypesForCycling(node.kind, parent?.kind ?? null, hiddenKinds).includes(newKind)) return;
       applyRetype(node, newKind);
     },
-    [tree, applyRetype],
+    [tree, hiddenKinds, applyRetype],
   );
 
   const retypeActions = warningModal !== null

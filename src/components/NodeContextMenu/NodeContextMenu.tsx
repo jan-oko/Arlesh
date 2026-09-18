@@ -1,8 +1,10 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import type { NodeKind } from "@/utils/tree-layout";
 import { validTypesForCycling, typeAcceptsChildren } from "@/utils/node-meta";
 import { canConvertNodeToFlow } from "@/utils/mindmap-tree";
+import { hiddenNodeKinds } from "@/utils/filter-tree";
+import { useFilterStore } from "@/stores/use-filter-store";
 import type { ContextMenuAction } from "./context-action";
 import styles from "./NodeContextMenu.module.css";
 
@@ -23,6 +25,8 @@ interface Props {
 export default function NodeContextMenu({ x, y, nodeKind, parentKind = null, childKinds = [], isCollapsed, hasClipboard, onAction, onClose }: Props) {
   const { t } = useTranslation(["contextMenu", "nodeKinds"]);
   const ref = useRef<HTMLDivElement>(null);
+  const filter = useFilterStore((s) => s.filter);
+  const hiddenKinds = useMemo(() => hiddenNodeKinds(filter), [filter]);
 
   useEffect(() => {
     const handler = (event: MouseEvent) => {
@@ -34,8 +38,9 @@ export default function NodeContextMenu({ x, y, nodeKind, parentKind = null, chi
 
   const canEnter = nodeKind !== "task" && nodeKind !== "goal" && nodeKind !== "tag";
   // The kinds this node can be set to: its valid cycle types (minus its current kind), excluding any
-  // that couldn't hold the node's existing children.
-  const typeOptions = validTypesForCycling(nodeKind, parentKind)
+  // that couldn't hold the node's existing children. A kind the filter hides outright is left out for
+  // the same reason the type cycle skips it — setting it would convert the node and hide it at once.
+  const typeOptions = validTypesForCycling(nodeKind, parentKind, hiddenKinds)
     .filter((k) => k !== nodeKind && typeAcceptsChildren(k, childKinds));
   // A Flow templates a Goal/Task subtree, so it may be created under any node that can hold one.
   const canCreateFlow = nodeKind === "aspect" || nodeKind === "domain" || nodeKind === "project" || nodeKind === "goal";

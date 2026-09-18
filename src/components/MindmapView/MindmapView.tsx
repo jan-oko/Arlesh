@@ -22,7 +22,7 @@ import DragPlaceholder from "@/components/DragPlaceholder/DragPlaceholder";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useViewStore } from "@/stores/use-view-store";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
-import { filterTree } from "@/utils/filter-tree";
+import { filterTree, hiddenNodeKinds } from "@/utils/filter-tree";
 import AnchoredToast from "@/components/AnchoredToast/AnchoredToast";
 import HabitFailureBanner from "@/components/HabitFailureBanner/HabitFailureBanner";
 import TaskEditorModal from "@/components/TaskEditorModal/TaskEditorModal";
@@ -283,8 +283,11 @@ export default function MindmapView() {
     if (pos !== undefined) canvasRef.current?.centerOnPoint(pos.x, pos.y);
   }, [mindmapOrientation, selectedNodeId, displayRoot, positions]);
 
+  // The kinds the filter hides outright: the type cycle refuses to convert a node into one, which
+  // would hide it the instant it changed.
+  const hiddenKinds = useMemo(() => hiddenNodeKinds(filter), [filter]);
   const { warningModal, setWarningModal, cycleType, setType, retypeActions } = useNodeTypeManager({
-    tree, retypeNode, selectNode, showToast,
+    tree, hiddenKinds, retypeNode, selectNode, showToast,
   });
 
   const handleConfirmDelete = useCallback(() => {

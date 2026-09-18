@@ -1,4 +1,4 @@
-import type { MindmapNode } from "@/utils/tree-layout";
+import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { isNodeBlocked } from "@/utils/tree-layout";
 
 /** Status preset a filter is in. `all` disables status filtering. */
@@ -97,6 +97,23 @@ export function isShelvedProject(node: MindmapNode, f: FilterState): boolean {
   if (!SHELVED_PROJECT.has(node.status ?? "")) return false;
   // The Archived pill's Include still wins for the Archived case, as it does everywhere else.
   return !(f.archivedMode === "include" && isArchived(node));
+}
+
+/**
+ * The kinds this filter hides for *every* node, whatever that node's own state — today the two
+ * node-type visibility toggles, Info and Flow.
+ *
+ * Only a whole-kind rule belongs here. Private Mode, the status preset, the Archived tri-state and
+ * the shelved-Project rule all hide a *particular* node on its own privacy, status or blocked-ness,
+ * so "would a node of kind K be visible?" has no answer independent of the node. Callers that need
+ * to know which kinds are unreachable — the type cycle, which must not convert a node into
+ * something the view cannot show — can only act on the whole-kind rules.
+ */
+export function hiddenNodeKinds(f: FilterState): NodeKind[] {
+  const hidden: NodeKind[] = [];
+  if (!f.showInfo) hidden.push("info");
+  if (!f.showFlow) hidden.push("flow", "flow_goal", "flow_task");
+  return hidden;
 }
 
 /** Kinds hidden outright (their subtree is removed, not kept as an ancestor). */

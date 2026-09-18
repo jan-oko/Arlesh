@@ -248,7 +248,7 @@ The root of the map is "Arlesh" (top level). Aspect cells are its direct childre
 - Arrow keys — move between cells; with **nothing selected**, they pan the canvas instead
 - `Shift+arrows` — extend the selection across siblings (on the sibling axis for the current orientation; on the branch axis they navigate as usual)
 - `Alt+↑` / `Alt+↓` — move the cell among its siblings
-- `Ctrl+↑` / `Ctrl+↓` — cycle the cell's type through: Domain → Project → Goal → Task
+- `Ctrl+↑` / `Ctrl+↓` — cycle the cell's type through: Domain → Project → Tag → Goal → Task → Info (only those the parent can hold; a kind the filter's node-type toggles hide is left out of the ring, so a cycle can never convert a cell into something the view would immediately hide — the cell's own kind always stays in the ring, so a hidden-kind cell can still be cycled out of it)
 - `Enter` — with a node selected: cycle a task's status / toggle a goal's achieved (double-tap enters a container as a subtree); **with nothing selected: focus the current display root**
 - `Shift+Enter` — create a sibling cell; `Ctrl+Enter` — insert a parent above
 - `F2` / `R` — rename the selected cell
