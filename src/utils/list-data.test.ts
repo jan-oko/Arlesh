@@ -169,6 +169,50 @@ describe("groupRowsByPath", () => {
     ]);
   });
 
+  it("indents each step of a chain whose every link is a row", () => {
+    const tree = n("root", "domain", {}, [
+      n("aspect-1", "aspect", {}, [
+        n("goal-1", "goal", { status: "active" }, [
+          n("task-a", "task", { status: "todo" }, [
+            n("task-b", "task", { status: "todo" }, [
+              n("task-c", "task", { status: "todo" }),
+            ]),
+          ]),
+        ]),
+      ]),
+    ]);
+    expect(rendered(groupRowsByPath(flattenTaskRows(tree, [])))).toEqual([
+      "path:aspect-1>goal-1",
+      "task:task-a@0",
+      "task:task-b@1",
+      "task:task-c@2",
+    ]);
+  });
+
+  it("counts only the ancestor tasks that are rows: two of three hidden leaves the row at depth 1", () => {
+    const tree = n("root", "domain", {}, [
+      n("aspect-1", "aspect", {}, [
+        n("goal-1", "goal", { status: "active" }, [
+          n("task-a", "task", { status: "todo" }, [
+            n("task-b", "task", { status: "in_progress" }, [
+              n("task-c", "task", { status: "todo" }, [
+                n("task-d", "task", { status: "in_progress" }),
+              ]),
+            ]),
+          ]),
+        ]),
+      ]),
+    ]);
+    // Stands in for the Do preset: of task-d's three ancestor tasks only task-b survives.
+    const visible = flattenTaskRows(tree, []).filter((r) => r.node.status === "in_progress");
+    expect(rendered(groupRowsByPath(visible))).toEqual([
+      "path:aspect-1>goal-1>task-a",
+      "task:task-b@0",
+      "path:aspect-1>goal-1>task-a>task-c",
+      "task:task-d@1",
+    ]);
+  });
+
   it("moves a parent task into the header when the active filter hides it", () => {
     const tree = n("root", "domain", {}, [
       n("aspect-1", "aspect", {}, [
