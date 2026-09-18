@@ -17,7 +17,6 @@ function row(over: Partial<TaskListRow> = {}): TaskListRow {
   return {
     node: n("task-1", "task", { status: "todo" }),
     parentRef: "goal-1",
-    ancestorRefs: ["goal-1"],
     ancestors: [n("goal-1", "goal", { title: "Ship it" })],
     goalRef: "goal-1",
     goalStatus: "active",

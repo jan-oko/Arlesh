@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { ListFilterState, ListPreset, PillDimension, PillMode } from "@/utils/list-filter";
-import { DEFAULT_LIST_FILTER } from "@/utils/list-filter";
+import { DEFAULT_LIST_FILTER, withCurrentPillDimensions } from "@/utils/list-filter";
 import { mergePersistedFilterSlice } from "@/stores/persist-merge";
 
 interface ListFilterStore {
@@ -13,9 +13,9 @@ interface ListFilterStore {
   reset: () => void;
 }
 
-/** Persisted List View filter state: its own preset selector and the eight List-View-exclusive pill
- * filters (parent/antecedent/dependency/statuses/scope/blocked). Status preset, tag filters, and
- * Info/Flow/Private toggles are shared with the Mindmap via useFilterStore. */
+/** Persisted List View filter state: its own preset selector and the seven List-View-exclusive pill
+ * filters (parent/dependency/statuses/scope/blocked). Status preset, tag filters, and Info/Flow/Private
+ * toggles are shared with the Mindmap via useFilterStore. */
 export const useListFilterStore = create<ListFilterStore>()(
   persist(
     (set) => ({
@@ -54,9 +54,12 @@ export const useListFilterStore = create<ListFilterStore>()(
     {
       name: "arlesh-list-filter",
       partialize: (state) => ({ filter: state.filter }),
+      // The persisted `pills` object replaces the default one wholesale, so it is also normalized
+      // back to today's dimensions — a stale one (Antecedent, now subtree entry) would otherwise
+      // keep narrowing the list with no chip to show it and no control to clear it.
       merge: (persistedState, currentState) => ({
         ...currentState,
-        filter: mergePersistedFilterSlice(persistedState, DEFAULT_LIST_FILTER),
+        filter: withCurrentPillDimensions(mergePersistedFilterSlice(persistedState, DEFAULT_LIST_FILTER)),
       }),
     },
   ),

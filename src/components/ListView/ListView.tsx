@@ -6,13 +6,18 @@ import { useListFilterStore } from "@/stores/use-list-filter-store";
 import { filterTaskList } from "@/utils/list-filter";
 import type { StatusMode } from "@/utils/filter-tree";
 import { groupRowsByPath } from "@/utils/list-data";
+import { collectSearchableNodes } from "@/utils/mindmap-tree";
 import { useNodeEditor } from "@/components/MindmapView/use-node-editor";
 import { useKeyboardListView } from "./use-keyboard-list-view";
 import TaskEditorModal from "@/components/TaskEditorModal/TaskEditorModal";
+import NodeSearchModal from "@/components/NodeSearchModal/NodeSearchModal";
 import TaskRow from "./TaskRow";
 import PathHeaderRow from "./PathHeaderRow";
 import styles from "./ListView.module.css";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
+import { useSubtreeNav } from "@/hooks/use-subtree-nav";
+import { useMindmapStore } from "@/stores/use-mindmap-store";
+import { useViewStore } from "@/stores/use-view-store";
 
 export default function ListView() {
   const { t } = useTranslation(["common", "listView", "editor"]);
@@ -25,6 +30,11 @@ export default function ListView() {
   const setStatusMode = useFilterStore((s) => s.setStatusMode);
   const toggleFilterPopover = useFilterStore((s) => s.toggleFilterPopover);
 
+  // Subtree entry is shared state, not a filter: the Mindmap and the List View re-root together.
+  const enterSubtree = useMindmapStore((s) => s.enterSubtree);
+  const pathHeaderIcons = useViewStore((s) => s.pathHeaderIcons);
+  const { subtreeRootId, onExitSubtree, onExitToRoot } = useSubtreeNav(tree);
+
   const listFilter = useListFilterStore((s) => s.filter);
   const addPill = useListFilterStore((s) => s.addPill);
   const setListPreset = useListFilterStore((s) => s.setPreset);
@@ -34,6 +44,11 @@ export default function ListView() {
 
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+
+  // Every node kind, exactly as the Mindmap's Ctrl+O searches them, and over the whole board
+  // rather than the subtree you are standing in — the point of the chord is to get somewhere else.
+  const searchableNodes = useMemo(() => collectSearchableNodes(tree), [tree]);
 
   const filteredRows = useMemo(
     () => filterTaskList(rows, sharedFilter, listFilter),
@@ -84,6 +99,10 @@ export default function ListView() {
     onDeselect: () => setSelectedTaskId(null),
     onToggleFilter: toggleFilterPopover,
     onSetStatusMode: handleSetStatusPreset,
+    onOpenSearch: () => setIsSearchOpen(true),
+    subtreeRootId,
+    onExitSubtree,
+    onExitToRoot,
   });
 
   if (isLoading) return <div className={styles.centered}>{t("common:loading")}</div>;
@@ -100,7 +119,8 @@ export default function ListView() {
               <PathHeaderRow
                 key={`path-${index}-${entry.pathKey}`}
                 segments={entry.segments}
-                onAddAntecedentFilter={(ref) => addPill("antecedent", ref)}
+                onEnterSubtree={enterSubtree}
+                showKindIcon={pathHeaderIcons}
               />
             ) : (
               <TaskRow
@@ -120,6 +140,14 @@ export default function ListView() {
             ),
           )}
         </div>
+      )}
+
+      {isSearchOpen && (
+        <NodeSearchModal
+          nodes={searchableNodes}
+          onSelect={(id) => { enterSubtree(id); setIsSearchOpen(false); }}
+          onClose={() => setIsSearchOpen(false)}
+        />
       )}
 
       {editorModal !== null && editorModal.node.kind === "task" && (

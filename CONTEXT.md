@@ -56,7 +56,7 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 **Instance child** — A real node attached to one virtual Habit instance and no other, keyed by the same (instance, iteration scope) pair a **Modification** is. May be anything a Task can parent. Never gates its iteration's resolution — marking the occurrence done while a child is unfinished asks for confirmation instead, and nothing about that is stored. Archives with its occurrence as a unit, and counts as a divergence — so `delete instances and regenerate` removes it.
 
-**Path header** — A List View row's location, rendered once above the contiguous run of rows that share it (`Growth › CODE › ARLESH › Features`). Names every ancestor **not** rendered as a row above the task — always through to the Goal, and including any ancestor Task the active filter hides. Each segment adds itself as an **Antecedent** filter. Replaces the former Goal header and its visibility toggle.
+**Path header** — A List View row's location, rendered once above the contiguous run of rows that share it (`Growth › CODE › ARLESH › Features`). Names every ancestor **not** rendered as a row above the task — always through to the Goal, and including any ancestor Task the active filter hides. Each segment is clickable and **enters** that node as the subtree, the same re-rooting `Ctrl+O` performs. Replaces the former Goal header and its visibility toggle.
 
 **Visible depth** — How far a List View row is indented: the number of its ancestor Tasks that are themselves visible rows under the active filter, not its depth in the tree. The counterpart of the **Path header**, by one rule — the header names every ancestor not rendered above the row, the indentation counts every ancestor that is — so the list never implies a parent that is not on screen.
 
@@ -65,6 +65,14 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 **Dependency** — A prerequisite relationship from a Task to another Task or Goal. Circular dependencies are rejected at write time.
 
 ---
+
+**Gesture** — One thing the user did, and the unit Ctrl+Z reverses. A gesture may span several backend commands: pasting five nodes is five commands and one gesture. Opened and closed explicitly, so a gesture that is never opened is simply one command's worth of undo rather than a broken one.
+
+**Undo Journal** — The record of every journaled row change, written by database triggers rather than by the commands themselves, so a command cannot fail to be covered. Each entry carries its gesture, the row before and after, and the **source** of the write.
+
+**Write source** — Who caused a write: the user, or the MCP server. Both are journaled; only the user's enter the Undo Stack.
+
+**Undo Stack / Redo Stack** — The gestures Ctrl+Z will reverse and Ctrl+Shift+Z will reapply. One pair for the whole app, not one per tab or window. Session-scoped: closing Arlesh empties both.
 
 ## Status values
 
@@ -134,3 +142,8 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 - A Task's Plan must be wholly contained within that task's Time Scope, and within its parent's Plan.
 - Filtering by a scope returns every item whose scope is wholly contained within it.
 - Flow/Habit instances (real copies and virtual instances) must satisfy containment against their **Target Node's** Time Scope. The target picker only offers scope-valid targets; editing the scope of an item that has flow children prompts the user to reconcile one side or the other.
+- A Gesture is the unit of undo, never a command. Two commands inside one gesture are undone together or not at all.
+- Only writes whose **source** is the user enter the Undo Stack. An MCP write is journaled and never undoable — Ctrl+Z reverses what the user did, never what an agent did.
+- Applying an undo or a redo is itself a write, and is never journaled. The stacks are the only record that it happened.
+- Derived and materialized rows are not journaled. Undoing a gesture must not fight the code that regenerates them.
+- There is one Undo Stack for the whole app. One board, one history of changes to it.

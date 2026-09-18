@@ -3,6 +3,8 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import ListView from "./ListView";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useListFilterStore } from "@/stores/use-list-filter-store";
+import { useMindmapStore } from "@/stores/use-mindmap-store";
+import { useViewStore } from "@/stores/use-view-store";
 import { DEFAULT_FILTER } from "@/utils/filter-tree";
 import { DEFAULT_LIST_FILTER } from "@/utils/list-filter";
 import type { TaskListRow } from "@/utils/list-filter";
@@ -38,7 +40,6 @@ function row(over: Partial<TaskListRow> = {}): TaskListRow {
   return {
     node: n("task-1", "task", { status: "todo" }),
     parentRef: "goal-1",
-    ancestorRefs: ["aspect-1", "goal-1"],
     ancestors: [n("aspect-1", "aspect"), n("goal-1", "goal", { status: "active" })],
     goalRef: "goal-1",
     goalStatus: "active",
@@ -73,6 +74,8 @@ beforeEach(() => {
   useFilterStore.setState({ filter: { ...DEFAULT_FILTER } });
   useListFilterStore.setState({ filter: { ...DEFAULT_LIST_FILTER, pills: { ...DEFAULT_LIST_FILTER.pills } } });
   mockUseListData.mockReturnValue(listData());
+  useMindmapStore.setState({ subtreeRootId: null, subtreeNav: null });
+  useViewStore.setState({ pathHeaderIcons: true });
 });
 
 describe("ListView", () => {
@@ -115,11 +118,45 @@ describe("ListView", () => {
 
   it("renders no path header for a task with no ancestors", () => {
     mockUseListData.mockReturnValue(listData({
-      rows: [row({ parentRef: "", ancestorRefs: [], ancestors: [], goalRef: null, goalStatus: null })],
+      rows: [row({ parentRef: "", ancestors: [], goalRef: null, goalStatus: null })],
     }));
     render(<ListView />);
     expect(screen.getByText("task-1")).toBeInTheDocument();
-    expect(screen.queryByTitle("filterByAntecedent")).not.toBeInTheDocument();
+    expect(screen.queryByTitle("enterSubtree")).not.toBeInTheDocument();
+  });
+
+  // The chain is read for where it ends, so the header is marked with the kind of its nearest
+  // ancestor — the node the rows below hang directly from — once, not once per step.
+  it("marks a path header with the node kind of the nearest ancestor", () => {
+    render(<ListView />);
+    const [firstSegment] = screen.getAllByTitle("enterSubtree");
+    const header = firstSegment?.parentElement;
+    if (header === null || header === undefined) throw new Error("expected a path header");
+    expect(header.querySelectorAll("svg")).toHaveLength(1);
+    expect([...header.querySelectorAll("button")].some((b) => b.querySelector("svg") !== null)).toBe(false);
+  });
+
+  it("drops the glyph when the settings popover's Path icons switch is off, keeping the chain", () => {
+    useViewStore.setState({ pathHeaderIcons: false });
+    render(<ListView />);
+    const [firstSegment] = screen.getAllByTitle("enterSubtree");
+    const header = firstSegment?.parentElement;
+    if (header === null || header === undefined) throw new Error("expected a path header");
+    expect(header.querySelectorAll("svg")).toHaveLength(0);
+    // Only the glyph goes — the header still names where the run lives.
+    expect(screen.getByText("aspect-1")).toBeInTheDocument();
+    expect(screen.getAllByText("goal-1")).toHaveLength(2);
+  });
+
+  it("marks no path header whose nearest ancestor is an Aspect, which carries no glyph anywhere", () => {
+    mockUseListData.mockReturnValue(listData({
+      rows: [row({ parentRef: "aspect-1", ancestors: [n("aspect-1", "aspect")], goalRef: null, goalStatus: null })],
+    }));
+    render(<ListView />);
+    const [firstSegment] = screen.getAllByTitle("enterSubtree");
+    const header = firstSegment?.parentElement;
+    if (header === null || header === undefined) throw new Error("expected a path header");
+    expect(header.querySelectorAll("svg")).toHaveLength(0);
   });
 
   it("names an ancestor task the active filter hides, so an orphaned subtask still reads in context", () => {
@@ -131,14 +168,13 @@ describe("ListView", () => {
         row({
           node: n("task-child", "task", { status: "in_progress" }),
           parentRef: "task-parent",
-          ancestorRefs: ["aspect-1", "goal-1", "task-parent"],
           ancestors: [n("aspect-1", "aspect"), n("goal-1", "goal", { status: "active" }), parent],
         }),
       ],
     }));
     render(<ListView />);
     // The Do preset filters the parent out as a row, so it moves into the header instead.
-    expect(screen.getAllByTitle("filterByAntecedent").map((segment) => segment.textContent))
+    expect(screen.getAllByTitle("enterSubtree").map((segment) => segment.textContent))
       .toEqual(["aspect-1", "goal-1", "task-parent"]);
   });
 
@@ -160,13 +196,11 @@ describe("ListView", () => {
         row({
           node: child,
           parentRef: "task-parent",
-          ancestorRefs: ["aspect-1", "goal-1", "task-parent"],
           ancestors: [aspect, goal, parent],
         }),
         row({
           node: n("task-grandchild", "task", { status: "in_progress" }),
           parentRef: "task-child",
-          ancestorRefs: ["aspect-1", "goal-1", "task-parent", "task-child"],
           ancestors: [aspect, goal, parent, child],
         }),
       ];
@@ -205,12 +239,39 @@ describe("ListView", () => {
     });
   });
 
-  it("clicking a path segment adds an antecedent filter pill", () => {
+  /** A board whose tree really holds the path segments, so entering one resolves a descriptor. */
+  function withPathTree() {
+    return listData({
+      tree: n("root", "domain", {
+        children: [n("aspect-1", "aspect", { title: "Growth", children: [n("goal-1", "goal", { status: "active" })] })],
+      }),
+    });
+  }
+
+  it("clicking a path segment enters that segment's subtree, exactly as Ctrl+O does", () => {
+    mockUseListData.mockReturnValue(withPathTree());
     render(<ListView />);
-    const [aspectSegment] = screen.getAllByTitle("filterByAntecedent");
+    const [aspectSegment] = screen.getAllByTitle("enterSubtree");
     if (aspectSegment === undefined) throw new Error("expected a path header segment");
     fireEvent.click(aspectSegment);
-    expect(useListFilterStore.getState().filter.pills.antecedent).toEqual([{ value: "aspect-1", mode: "any" }]);
+    expect(useMindmapStore.getState().subtreeRootId).toBe("aspect-1");
+    // The same descriptor a search-result entry publishes, so the top bar names where you landed.
+    expect(useMindmapStore.getState().subtreeNav).toEqual({
+      currentTitle: "Growth",
+      rootTitle: "root",
+      parentTitle: "root",
+      parentSubtreeId: null,
+    });
+  });
+
+  it("clicking a path segment touches no filter at all", () => {
+    mockUseListData.mockReturnValue(withPathTree());
+    render(<ListView />);
+    const [aspectSegment] = screen.getAllByTitle("enterSubtree");
+    if (aspectSegment === undefined) throw new Error("expected a path header segment");
+    fireEvent.click(aspectSegment);
+    expect(useListFilterStore.getState().filter).toEqual(DEFAULT_LIST_FILTER);
+    expect(useFilterStore.getState().filter.statusMode).toBe(DEFAULT_FILTER.statusMode);
   });
 
   it("no longer offers a Goal-visibility toggle", () => {
@@ -240,6 +301,119 @@ describe("ListView", () => {
         ],
       });
     }
+
+    /** Projects to find by name, one nested inside another so "up one level" and "back to the
+     * root" are different destinations. */
+    function searchable() {
+      return listData({
+        tree: n("root", "domain", {
+          children: [
+            n("project-1", "project", {
+              title: "ARLESH",
+              children: [n("project-2", "project", { title: "Deeper" })],
+            }),
+            n("project-3", "project", { title: "Elsewhere" }),
+          ],
+        }),
+        rows: [row({ node: n("task-a", "task", { status: "todo" }) })],
+      });
+    }
+
+    /** Presses the chord and types a query, returning the search input. */
+    function openSearch(query: string): HTMLElement {
+      fireEvent.keyDown(window, { key: "o", code: "KeyO", ctrlKey: true });
+      const input = screen.getByPlaceholderText("common:searchNodesPlaceholder");
+      fireEvent.change(input, { target: { value: query } });
+      return input;
+    }
+
+    it("Ctrl+O opens the node search over every node kind", () => {
+      mockUseListData.mockReturnValue(searchable());
+      render(<ListView />);
+      expect(screen.queryByPlaceholderText("common:searchNodesPlaceholder")).not.toBeInTheDocument();
+      openSearch("arlesh");
+      expect(screen.getByText("ARLESH")).toBeInTheDocument();
+    });
+
+    it("picking a search result enters that node's subtree", () => {
+      mockUseListData.mockReturnValue(searchable());
+      render(<ListView />);
+      openSearch("arlesh");
+      fireEvent.mouseDown(screen.getByText("ARLESH"));
+      expect(useMindmapStore.getState().subtreeRootId).toBe("project-1");
+      expect(screen.queryByPlaceholderText("common:searchNodesPlaceholder")).not.toBeInTheDocument();
+    });
+
+    it("picking a search result touches no filter at all", () => {
+      mockUseListData.mockReturnValue(searchable());
+      render(<ListView />);
+      openSearch("arlesh");
+      fireEvent.mouseDown(screen.getByText("ARLESH"));
+      expect(useListFilterStore.getState().filter).toEqual(DEFAULT_LIST_FILTER);
+      expect(useFilterStore.getState().filter.statusMode).toBe(DEFAULT_FILTER.statusMode);
+    });
+
+    it("entering a subtree publishes the back-nav descriptor the top bar's pills render from", () => {
+      mockUseListData.mockReturnValue(searchable());
+      render(<ListView />);
+      openSearch("arlesh");
+      fireEvent.mouseDown(screen.getByText("ARLESH"));
+      // The Mindmap is unmounted here, so the List View has to be the one publishing this.
+      expect(useMindmapStore.getState().subtreeNav).toEqual({
+        currentTitle: "ARLESH",
+        rootTitle: "root",
+        parentTitle: "root",
+        parentSubtreeId: null,
+      });
+
+      openSearch("deeper");
+      fireEvent.mouseDown(screen.getByText("Deeper"));
+      expect(useMindmapStore.getState().subtreeNav).toEqual({
+        currentTitle: "Deeper",
+        rootTitle: "root",
+        parentTitle: "ARLESH",
+        parentSubtreeId: "project-1",
+      });
+    });
+
+    it("Shift+Escape goes up one level, not straight out", () => {
+      mockUseListData.mockReturnValue(searchable());
+      render(<ListView />);
+      openSearch("deeper");
+      fireEvent.mouseDown(screen.getByText("Deeper"));
+      fireEvent.keyDown(window, { key: "Escape", code: "Escape", shiftKey: true });
+      expect(useMindmapStore.getState().subtreeRootId).toBe("project-1");
+      fireEvent.keyDown(window, { key: "Escape", code: "Escape", shiftKey: true });
+      expect(useMindmapStore.getState().subtreeRootId).toBeNull();
+    });
+
+    it("Ctrl+Escape goes straight back to the root from any depth", () => {
+      mockUseListData.mockReturnValue(searchable());
+      render(<ListView />);
+      openSearch("deeper");
+      fireEvent.mouseDown(screen.getByText("Deeper"));
+      fireEvent.keyDown(window, { key: "Escape", code: "Escape", ctrlKey: true });
+      expect(useMindmapStore.getState().subtreeRootId).toBeNull();
+    });
+
+    it("bare Escape deselects without leaving the subtree", () => {
+      mockUseListData.mockReturnValue(searchable());
+      render(<ListView />);
+      openSearch("arlesh");
+      fireEvent.mouseDown(screen.getByText("ARLESH"));
+      fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
+      fireEvent.keyDown(window, { key: "Escape", code: "Escape" });
+      expect(useMindmapStore.getState().subtreeRootId).toBe("project-1");
+    });
+
+    it("Escape closes the node search without entering anything", () => {
+      mockUseListData.mockReturnValue(searchable());
+      render(<ListView />);
+      const input = openSearch("arlesh");
+      fireEvent.keyDown(input, { key: "Escape" });
+      expect(screen.queryByPlaceholderText("common:searchNodesPlaceholder")).not.toBeInTheDocument();
+      expect(useMindmapStore.getState().subtreeRootId).toBeNull();
+    });
 
     it("ArrowDown selects the first row when nothing is selected, then moves to the next", () => {
       mockUseListData.mockReturnValue(twoRows());

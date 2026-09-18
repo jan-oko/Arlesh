@@ -37,5 +37,6 @@
   "centerOnNode": "Center the view on the selection",
   "convertToFlow": "Convert to a flow",
   "openEditor": "Open the editor",
-  "openSearch": "Search for a node"
+  "openSearch": "Search for a node",
+  "enterBySearch": "Search for a node and enter its subtree"
 }

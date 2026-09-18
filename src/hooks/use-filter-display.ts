@@ -6,7 +6,7 @@ import {
   isTaskStatusValue, isGoalStatusValue, isProjectStatusValue, isScopeStateValue, isBlockedValue,
 } from "@/utils/list-filter";
 
-/** Node kinds a Task/Goal/Project can be parented under — the pool for the Parent/Antecedent pickers. */
+/** Node kinds a Task/Goal/Project can be parented under — the pool for the Parent picker. */
 const PARENT_KINDS = new Set(["aspect", "domain", "project", "goal", "task"]);
 
 export interface EntityOption {
@@ -32,7 +32,7 @@ export interface FilterDisplay {
   tagOptions: TagOption[];
   tagName: (id: number) => string;
   tagColor: (id: number) => string | null;
-  /** Any tree node's title/color by id — resolves parent/antecedent/dependency chip and pill labels. */
+  /** Any tree node's title/color by id — resolves parent/dependency chip and pill labels. */
   nodeLabel: (ref: string) => string;
   nodeColor: (ref: string) => string | null;
   parentPool: EntityOption[];

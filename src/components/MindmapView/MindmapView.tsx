@@ -22,6 +22,7 @@ import DragPlaceholder from "@/components/DragPlaceholder/DragPlaceholder";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useViewStore } from "@/stores/use-view-store";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
+import { useSubtreeNav } from "@/hooks/use-subtree-nav";
 import { filterTree } from "@/utils/filter-tree";
 import AnchoredToast from "@/components/AnchoredToast/AnchoredToast";
 import HabitFailureBanner from "@/components/HabitFailureBanner/HabitFailureBanner";
@@ -56,9 +57,13 @@ export default function MindmapView() {
     useMindmapData();
   const {
     selectedNodeId, selectedNodeIds, subtreeRootId, clipboard, collapsedNodeIds, pendingToast,
-    selectNode, addToSelection, setSelection, enterSubtree, exitSubtree, exitToRoot,
-    setClipboard, toggleCollapsed, showToast, clearToast, setSubtreeNav,
+    selectNode, addToSelection, setSelection, enterSubtree,
+    setClipboard, toggleCollapsed, showToast, clearToast,
   } = useMindmapStore();
+
+  // Shared with the List View: one subtree root, one set of back-nav pills, both views publishing
+  // the same descriptor so whichever is on screen keeps the top bar right.
+  const { onExitSubtree, onExitToRoot } = useSubtreeNav(tree);
 
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const { visibleFailedFlows, dismiss: dismissHabitBanner } = useDismissableLoadCondition(loadCondition);
@@ -328,18 +333,6 @@ export default function MindmapView() {
       .finally(() => setIsDeleting(false));
   }, [deleteTargets, tree, removeNode, selectNode]);
 
-  const subtreeParent = subtreeRootId !== null ? findParent(tree, subtreeRootId) : null;
-  const subtreeParentId = subtreeParent !== null && subtreeParent.id !== "root" ? subtreeParent.id : null;
-
-  // Publish the back-nav descriptor to the store so the top bar can render the pills (it lacks the tree).
-  useEffect(() => {
-    setSubtreeNav(
-      subtreeRootId === null
-        ? null
-        : { rootTitle: tree.title, parentTitle: subtreeParent?.title ?? tree.title, parentSubtreeId: subtreeParentId },
-    );
-  }, [subtreeRootId, tree, subtreeParent, subtreeParentId, setSubtreeNav]);
-  const handleExitSubtree = useCallback(() => exitSubtree(subtreeParentId), [exitSubtree, subtreeParentId]);
 
   const { onStatusClick, onCommitEdit, onCreateChild, onCreateSibling, onInsertParent, onDelete, onPaste } = useNodeActions({
     tree, clipboard, moveNode, onRequestDelete: setDeleteTargets, reload, renameNode,
@@ -443,8 +436,8 @@ export default function MindmapView() {
     onToggleCollapsed: toggleCollapsed,
     onCycleStatus: onStatusClick,
     onDeselect: () => { selectNode(null); },
-    onExitSubtree: handleExitSubtree,
-    onExitToRoot: exitToRoot,
+    onExitSubtree,
+    onExitToRoot,
     onCut: (ids) => setClipboard({ operation: CLIPBOARD_OP.CUT, nodeIds: ids }),
     onCopy: (ids) => setClipboard({ operation: CLIPBOARD_OP.COPY, nodeIds: ids }),
     onPaste,
