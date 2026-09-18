@@ -363,6 +363,40 @@ filter dimensions" → seven). It never reached a release, so they were made to 
 rather than carrying a `Removed` note for something no user ever had. Agent also caught `README.md`,
 which my file map missed.
 
+## PR #19 — `Arlesh-6dm` landed at last
+
+Base `worktree-task-backlog`, five files, +199/−9. Gate green: lint, tsc, vitest 88/1210,
+**19 Rust binaries / 541 tests**, tarpaulin **91.01%**.
+
+**Four merge rounds**, which is the price of a stacked branch under an active base: the switch moved,
+the switch reverted, master merged in, and my fix to the break that surfaced. Rounds 1 and 2
+conflicted on the same single `SPEC.md` line; rounds 3 and 4 were conflict-free. Its own diff stayed
+exactly those five files throughout — a good sign that each resolution was right.
+
+Two things in the report worth keeping:
+
+**The −0.06% coverage is explained, not hand-waved.** The new `create_node` and `Carried` paths are
+only reachable on a Task→Task retype, which `apply_retype` short-circuits before any write. The agent
+kept them rather than hardcoding `None`, because `Carried` and `lost_fields` are documented as
+complements — *"nothing can fall between them unnoticed"* — and a `Carried` field that lied about
+what carries would undercut the exact invariant this bead exists to protect. Correct call: honest
+code over a prettier number.
+
+**The bead's "~30 struct literals" was wrong — 10.** About 33 of the test literals use struct-update
+syntax (`..goal(id)`) and inherited the new field for free. The agent added the field first and let
+`rustc` enumerate the rest in one pass rather than grepping, which is the right technique and worth
+stating in future briefs of this shape.
+
+**No other silently-dropped field.** Every column of `tasks`, `goals`, `domains` and `infos` —
+initial schema plus all migrations — audited against `SourceNode`; each is now either carried or in
+`lost_fields`. Two documented non-findings: `on_scope_exit` is NULL exactly when `time_scope` is and
+rides with it by design; `domains.color` is Aspect-only, written only by the seed insert, and
+unreachable by retype.
+
+**Standing caveat, self-reported:** before the `CARGO_TARGET_DIR` correction, this agent briefly
+started a `cargo test` in the shared tarpaulin dir while another agent's coverage run was mid-flight
+(~15:50–16:00). It stopped at "Compiling arlesh". Any coverage number from that window is suspect.
+
 ## Priorities set by the user (2026-09-18)
 
 | Bead | | |
