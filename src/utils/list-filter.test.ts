@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  matchesPillGroup, deriveScopeStateTokens, filterTaskList,
+  matchesPillGroup, deriveScopeStateTokens, filterTaskList, withCurrentPillDimensions,
   DEFAULT_LIST_FILTER,
 } from "./list-filter";
 import type { PillFilter, ListFilterState, TaskListRow } from "./list-filter";
@@ -16,7 +16,6 @@ function row(over: Partial<TaskListRow> = {}): TaskListRow {
   return {
     node: n("task-1", "task", { status: "todo" }),
     parentRef: "goal-1",
-    ancestorRefs: ["goal-1", "project-1", "aspect-1"],
     ancestors: [],
     goalRef: "goal-1",
     goalStatus: "active",
@@ -162,12 +161,6 @@ describe("filterTaskList", () => {
     expect(filterTaskList(rows, sf(), filter).map((r) => r.parentRef)).toEqual(["goal-1"]);
   });
 
-  it("antecedent filter matches any ancestor in the chain, not just the direct parent", () => {
-    const rows = [row({ ancestorRefs: ["goal-1", "project-1", "aspect-1"] })];
-    const filter = lf({ pills: { ...DEFAULT_LIST_FILTER.pills, antecedent: [{ value: "aspect-1", mode: "any" }] } });
-    expect(filterTaskList(rows, sf(), filter)).toHaveLength(1);
-  });
-
   it("dependency filter (exclude) drops a task depending on the excluded target", () => {
     const rows = [row({ dependencyRefs: ["task-9"] })];
     const filter = lf({ pills: { ...DEFAULT_LIST_FILTER.pills, dependency: [{ value: "task-9", mode: "exclude" }] } });
@@ -270,5 +263,32 @@ describe("filterTaskList — tasks inside a Frozen/Archived Project", () => {
       projectStatus: "active",
     });
     expect(filterTaskList([nested], sf({ statusMode: "plan" }), lf())).toEqual([]);
+  });
+});
+
+describe("withCurrentPillDimensions", () => {
+  it("drops a retired dimension, so a filter saved before it was removed stops narrowing the list", () => {
+    // A blob written while Antecedent was still a dimension, before subtree entry replaced it.
+    const restored = withCurrentPillDimensions({
+      preset: "all",
+      pills: { ...DEFAULT_LIST_FILTER.pills, antecedent: [{ value: "aspect-1", mode: "any" }] },
+    });
+    expect(restored.pills).toEqual(DEFAULT_LIST_FILTER.pills);
+    expect(filterTaskList([row()], sf(), restored)).toHaveLength(1);
+  });
+
+  it("fills in a dimension the saved filter never had, so nothing reads an undefined pill list", () => {
+    const restored = withCurrentPillDimensions({ preset: "do", pills: { parent: [{ value: "goal-1", mode: "any" }] } });
+    expect(restored.preset).toBe("do");
+    expect(restored.pills.parent).toEqual([{ value: "goal-1", mode: "any" }]);
+    expect(restored.pills.blocked).toEqual([]);
+  });
+
+  it("drops a saved pill that is not a pill at all", () => {
+    const restored = withCurrentPillDimensions({
+      preset: "all",
+      pills: { parent: ["goal-1", { value: "goal-2", mode: "nope" }, { value: "goal-3", mode: "all" }] },
+    });
+    expect(restored.pills.parent).toEqual([{ value: "goal-3", mode: "all" }]);
   });
 });

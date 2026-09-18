@@ -10,7 +10,7 @@ interface EntityAdderProps {
 }
 
 /** Searchable, portalled entity picker — the generic form of the tag TagAdder, for any pill dimension
- * whose values are node ids (parent / antecedent / dependency). */
+ * whose values are node ids (parent / dependency). */
 export function EntityAdder({ placeholder, available, onAdd }: EntityAdderProps) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);

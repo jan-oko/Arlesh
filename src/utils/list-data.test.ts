@@ -39,7 +39,7 @@ describe("flattenTaskRows", () => {
     expect(row?.projectRef).toBe("project-1");
     expect(row?.projectStatus).toBe("frozen");
     expect(row?.parentRef).toBe("goal-1");
-    expect(row?.ancestorRefs).toEqual(["aspect-1", "project-1", "goal-1"]);
+    expect(row?.ancestors.map((a) => a.id)).toEqual(["aspect-1", "project-1", "goal-1"]);
   });
 
   it("a task directly under a project has no resolved goal", () => {
@@ -245,5 +245,111 @@ describe("groupRowsByPath", () => {
     if (header?.type !== "path") throw new Error("expected a path header first");
     expect(header.segments.map((s) => s.title)).toEqual(["Growth", "Ship it"]);
     expect(header.segments.map((s) => s.id)).toEqual(["aspect-1", "goal-1"]);
+  });
+});
+
+/**
+ * Entering a subtree re-roots the List View, and it does so by flattening from the subtree's node
+ * instead of the true root. Nothing in the two functions is subtree-aware — that is the point: the
+ * ancestors a row reports are simply the ones walked to reach it, so scoping the walk is enough to
+ * scope the headers, and `segments` + `visibleDepth` keep partitioning them exactly.
+ */
+describe("flattening from a subtree root", () => {
+  const tree = n("root", "domain", {}, [
+    n("aspect-1", "aspect", {}, [
+      n("project-1", "project", { status: "active" }, [
+        n("goal-1", "goal", { status: "active" }, [
+          n("task-1", "task", { status: "todo" }),
+          n("task-2", "task", { status: "todo" }),
+        ]),
+      ]),
+    ]),
+  ]);
+  const subtreeRoot = tree.children[0]?.children[0];
+  if (subtreeRoot === undefined) throw new Error("fixture: expected project-1");
+
+  it("starts a row's path *below* the subtree root, dropping it and everything above it", () => {
+    expect(rendered(groupRowsByPath(flattenTaskRows(subtreeRoot, [])))).toEqual([
+      "path:goal-1",
+      "task:task-1@0",
+      "task:task-2@0",
+    ]);
+  });
+
+  it("puts the subtree root itself in no header — the top bar names where you are", () => {
+    for (const entry of groupRowsByPath(flattenTaskRows(subtreeRoot, []))) {
+      if (entry.type !== "path") continue;
+      expect(entry.segments.map((seg) => seg.id)).not.toContain("project-1");
+      expect(entry.segments.map((seg) => seg.id)).not.toContain("aspect-1");
+    }
+  });
+
+  it("emits no header at all for a row whose only ancestor was the subtree root", () => {
+    // Trimming the root can empty a path outright. That must render as nothing — the same case as
+    // a task with no ancestors at the true root — rather than a blank header leaving a gap.
+    const flat = n("root", "domain", {}, [
+      n("project-1", "project", { status: "active" }, [
+        n("task-1", "task", { status: "todo" }),
+        n("task-2", "task", { status: "todo" }),
+      ]),
+    ]);
+    const root = flat.children[0];
+    if (root === undefined) throw new Error("fixture: expected project-1");
+    const entries = groupRowsByPath(flattenTaskRows(root, []));
+    expect(entries.every((e) => e.type === "task")).toBe(true);
+    expect(rendered(entries)).toEqual(["task:task-1@0", "task:task-2@0"]);
+  });
+
+  it("never lists the subtree root as a row, even when it is itself a Task", () => {
+    const taskRooted = n("root", "domain", {}, [
+      n("task-outer", "task", { status: "todo" }, [n("task-inner", "task", { status: "todo" })]),
+    ]);
+    const root = taskRooted.children[0];
+    if (root === undefined) throw new Error("fixture: expected task-outer");
+    expect(rendered(groupRowsByPath(flattenTaskRows(root, [])))).toEqual(["task:task-inner@0"]);
+  });
+
+  it("keeps segments and visibleDepth partitioning each row's ancestors exactly", () => {
+    // The header above a row names the ancestors it does not indent past, and visibleDepth counts
+    // the ones it does; together they must account for every ancestor the row actually has, or the
+    // indentation and the header disagree about where the row sits.
+    const deepTree = n("root", "domain", {}, [
+      n("aspect-1", "aspect", {}, [
+        n("project-1", "project", { status: "active" }, [
+          n("goal-1", "goal", { status: "active" }, [
+            n("task-parent", "task", { status: "todo" }, [n("task-child", "task", { status: "todo" })]),
+          ]),
+          n("goal-2", "goal", { status: "active" }, [n("task-other", "task", { status: "todo" })]),
+        ]),
+      ]),
+    ]);
+    const root = deepTree.children[0]?.children[0];
+    if (root === undefined) throw new Error("fixture: expected project-1");
+
+    let currentSegments = 0;
+    let sawTask = false;
+    for (const entry of groupRowsByPath(flattenTaskRows(root, []))) {
+      if (entry.type === "path") { currentSegments = entry.segments.length; continue; }
+      sawTask = true;
+      expect(entry.visibleDepth + currentSegments).toBe(entry.row.ancestors.length);
+    }
+    expect(sawTask).toBe(true);
+  });
+
+  it("still indents under an ancestor Task that is itself a row inside the subtree", () => {
+    const nestedTree = n("root", "domain", {}, [
+      n("project-1", "project", { status: "active" }, [
+        n("task-parent", "task", { status: "todo" }, [n("task-child", "task", { status: "todo" })]),
+      ]),
+    ]);
+    const root = nestedTree.children[0];
+    if (root === undefined) throw new Error("fixture: expected project-1");
+    // project-1 is the subtree root, so it is gone from the path entirely — which leaves
+    // task-parent with no path at all. task-child still indents under it, because task-parent is
+    // a row and so counts as depth rather than as a segment.
+    expect(rendered(groupRowsByPath(flattenTaskRows(root, [])))).toEqual([
+      "task:task-parent@0",
+      "task:task-child@1",
+    ]);
   });
 });
