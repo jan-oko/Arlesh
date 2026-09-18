@@ -13,7 +13,7 @@ import HabitIcon from "./HabitIcon";
 interface Props {
   kind: NodeKind;
   status: string | undefined;
-  /** A Commitment's recorded verdict, drawn inside the seal. */
+  /** A Commitment's recorded verdict, drawn inside the shield. */
   verdict?: Verdict | undefined;
   isBlocked: boolean;
   isHabit: boolean;
