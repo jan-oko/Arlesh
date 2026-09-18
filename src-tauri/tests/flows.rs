@@ -1872,3 +1872,102 @@ async fn a_commitment_habits_iterations_stop_offering_a_verdict_once_the_window_
         arlesh_lib::flows::model::IterationStatus::Expired,
     );
 }
+
+#[tokio::test]
+async fn a_commitment_flow_refuses_a_goal_item() {
+    // The other end of the failure banner: such a template derives no iterations at all, because a
+    // Commitment cannot parent a Goal. Refused at creation rather than explained afterwards.
+    let pool = helpers::test_pool().await;
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
+    let commitment_flow = db.flows().create(commitment_flow_req("Asleep by 23:00")).await.unwrap();
+    let task_flow = db.flows().create(create_req("Exercise")).await.unwrap();
+
+    let goal_item = |flow_id: i64| CreateFlowItemRequest {
+        flow_id,
+        title: "Be rested".into(),
+        parent_type: "flow".into(),
+        parent_id: flow_id,
+    };
+
+    assert!(db.flows().create_goal(goal_item(commitment_flow.id)).await.is_err());
+    assert!(
+        db.flows().create_goal(goal_item(task_flow.id)).await.is_ok(),
+        "the rule is about the Commitment kind, not about flows",
+    );
+    assert!(
+        db.flows()
+            .create_task(CreateFlowItemRequest {
+                title: "Phone on charger".into(),
+                ..goal_item(commitment_flow.id)
+            })
+            .await
+            .is_ok(),
+        "a commitment flow still holds task items — those are the supporting steps",
+    );
+}
+
+#[tokio::test]
+async fn a_flow_holding_goal_items_cannot_become_a_commitment_flow() {
+    // Switching the Instance Type the other way round would create exactly the state above, only
+    // after the fact. Refused, and the message says how many items stand in the way.
+    let pool = helpers::test_pool().await;
+    let flow = helpers::session_factory(&pool)
+        .connect().await.unwrap()
+        .flows()
+        .create(create_req("Exercise"))
+        .await
+        .unwrap();
+    helpers::session_factory(&pool)
+        .connect().await.unwrap()
+        .flows()
+        .create_goal(CreateFlowItemRequest {
+            flow_id: flow.id,
+            title: "Be fit".into(),
+            parent_type: "flow".into(),
+            parent_id: flow.id,
+        })
+        .await
+        .unwrap();
+
+    let refused = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let result = update_flow(
+            &mut db,
+            FlowId(flow.id),
+            UpdateFlowRequest { instance_type: Some(InstanceType::Commitment), ..Default::default() },
+        )
+        .await;
+        if result.is_ok() { db.commit().await.unwrap(); }
+        result
+    };
+    assert!(refused.is_err());
+
+    let still_a_task_flow = helpers::session_factory(&pool)
+        .connect().await.unwrap()
+        .flows()
+        .get(FlowId(flow.id))
+        .await
+        .unwrap();
+    assert_eq!(still_a_task_flow.instance_type, "task", "the refused switch changed nothing");
+}
+
+#[tokio::test]
+async fn a_flow_with_no_goal_items_may_still_become_a_commitment_flow() {
+    let pool = helpers::test_pool().await;
+    let flow = helpers::session_factory(&pool)
+        .connect().await.unwrap()
+        .flows()
+        .create(create_req("Asleep by 23:00"))
+        .await
+        .unwrap();
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    let updated = update_flow(
+        &mut db,
+        FlowId(flow.id),
+        UpdateFlowRequest { instance_type: Some(InstanceType::Commitment), ..Default::default() },
+    )
+    .await
+    .unwrap();
+    db.commit().await.unwrap();
+    assert_eq!(updated.instance_type, "commitment");
+}

@@ -96,6 +96,10 @@ export interface FlowItemDep {
 export interface FlowItemData {
   itemType: FlowItemType;
   flowId: number;
+  /** The owning flow's Instance Type, denormalised onto the item the way its Duration already is:
+   * a flow item is retyped from the item's own node, which has no way back to the flow otherwise,
+   * and what a commitment flow may hold is decided from it. */
+  flowInstanceType: InstanceType;
   flowScopeN: number | null;
   flowScopeKind: string | null;
   cycles: FlowCyclePair[];

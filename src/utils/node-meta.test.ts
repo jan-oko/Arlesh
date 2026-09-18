@@ -219,6 +219,25 @@ describe("validTypesForCycling — info", () => {
   });
 });
 
+describe("validTypesForCycling — a commitment flow's items", () => {
+  it("does not offer a goal item on a commitment flow", () => {
+    // A Commitment holds Tasks and other Commitments and no Goals, so such an item could never
+    // materialise: the flow would derive no iterations at all. Not offered, rather than offered
+    // and explained afterwards by the Mindmap's failure banner.
+    expect(validTypesForCycling("flow_task", "flow", "commitment")).toEqual(["flow_task"]);
+    expect(validTypesForCycling("flow_goal", "flow", "commitment")).toEqual(["flow_task"]);
+  });
+
+  it("still offers both on a goal or task flow", () => {
+    expect(validTypesForCycling("flow_task", "flow", "task")).toEqual(["flow_goal", "flow_task"]);
+    expect(validTypesForCycling("flow_task", "flow", "goal")).toEqual(["flow_goal", "flow_task"]);
+  });
+
+  it("offers both when the instance type is not known, as before", () => {
+    expect(validTypesForCycling("flow_task", "flow")).toEqual(["flow_goal", "flow_task"]);
+  });
+});
+
 describe("validTypesForCycling — flow items", () => {
   it("cycles a flow item between goal and task under a flow root", () => {
     expect(validTypesForCycling("flow_goal", "flow")).toEqual(["flow_goal", "flow_task"]);

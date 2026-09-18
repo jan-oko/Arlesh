@@ -301,7 +301,8 @@ export function useNodeTypeManager({ tree, retypeNode, selectNode, showToast }: 
       const node = findNode(tree, nodeId);
       if (node === undefined || node.kind === "aspect") return;
       const parent = findParent(tree, nodeId);
-      const validTypes = validTypesForCycling(node.kind, parent?.kind ?? null);
+      const validTypes =
+        validTypesForCycling(node.kind, parent?.kind ?? null, node.flowItem?.flowInstanceType);
       if (validTypes.length <= 1) return;
       const currentIdx = validTypes.indexOf(node.kind);
       if (currentIdx === -1) return;
@@ -318,7 +319,8 @@ export function useNodeTypeManager({ tree, retypeNode, selectNode, showToast }: 
       const node = findNode(tree, nodeId);
       if (node === undefined || node.kind === newKind) return;
       const parent = findParent(tree, nodeId);
-      if (!validTypesForCycling(node.kind, parent?.kind ?? null).includes(newKind)) return;
+      const valid = validTypesForCycling(node.kind, parent?.kind ?? null, node.flowItem?.flowInstanceType);
+      if (!valid.includes(newKind)) return;
       applyRetype(node, newKind);
     },
     [tree, applyRetype],

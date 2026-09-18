@@ -557,6 +557,7 @@ export function buildTree(
       flowItem: {
         itemType,
         flowId: item.flow_id,
+        flowInstanceType: owningFlow?.instance_type ?? "task",
         flowScopeN: owningFlow?.flow_duration_n ?? null,
         flowScopeKind: owningFlow?.flow_duration_kind ?? null,
         cycles: cyclesByItem.get(id) ?? [],

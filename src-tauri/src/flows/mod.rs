@@ -499,6 +499,7 @@ impl<'session> FlowOperator<'session> {
     /// `&mut Db<Transactional>` and is this method's only caller.
     async fn update(&mut self, id: FlowId, request: UpdateFlowRequest) -> Result<Flow, FlowError> {
         let flow = self.get(id).await?;
+        let was_commitment = flow.instance_type == "commitment";
         let title = request.title.unwrap_or(flow.title);
         let instance_type = request
             .instance_type
@@ -523,6 +524,19 @@ impl<'session> FlowOperator<'session> {
         let parent_id = request.parent_id.unwrap_or(flow.parent_id);
         let position = request.position.unwrap_or(flow.position);
         let is_private = request.is_private.unwrap_or(flow.is_private);
+        // The same rule from the other direction: a flow that already holds goal items cannot
+        // become a commitment flow, because those items would have nowhere to materialise and the
+        // whole Habit would quietly stop deriving iterations. Refused by name, and the count is in
+        // the message so the caller knows what stands in the way.
+        if instance_type == "commitment" && !was_commitment {
+            let goal_items = self.list_goals(id).await?.len();
+            if goal_items > 0 {
+                return Err(FlowError::Invalid(format!(
+                    "this flow holds {goal_items} goal item(s), which a commitment flow cannot: \
+                     remove them before changing the instance type"
+                )));
+            }
+        }
         sqlx::query(
             "UPDATE flows SET title=?, instance_type=?, parent_type=?, parent_id=?,
                 target_type=?, target_id=?, flow_duration_n=?, flow_duration_kind=?,
@@ -571,7 +585,19 @@ impl<'session> FlowOperator<'session> {
     }
 
     /// Creates a flow-goal item.
+    ///
+    /// Refused on a **commitment** flow. A Commitment holds Tasks and other Commitments and no
+    /// Goals, so materialising such a template is refused by `goals.parent_type` and the whole
+    /// Habit derives no iterations at all — a state the app used to let you build in one keystroke
+    /// and only explain afterwards, through the Mindmap's failure banner. This is the other end of
+    /// that: the item is never created, so the banner condition never exists.
     pub async fn create_goal(&mut self, request: CreateFlowItemRequest) -> Result<FlowGoal, FlowError> {
+        if self.get(FlowId(request.flow_id)).await?.instance_type == "commitment" {
+            return Err(FlowError::Invalid(
+                "a commitment flow holds no goal items — a Commitment cannot parent a Goal"
+                    .to_string(),
+            ));
+        }
         let id = sqlx::query(
             "INSERT INTO flow_goals (flow_id, title, parent_type, parent_id, position)
              VALUES (?, ?, ?, ?, ?)",
