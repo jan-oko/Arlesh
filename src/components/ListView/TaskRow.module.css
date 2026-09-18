@@ -1,4 +1,7 @@
 .card {
+  /* One step per ancestor that is itself a row above this one. Capped, so a deep chain still leaves
+     the titles room; zero at depth 0, so a list with nothing nested is exactly as wide as before. */
+  --row-indent: calc(min(var(--row-depth, 0), 6) * var(--space-6));
   display: flex;
   align-items: flex-start;
   gap: var(--space-4);
@@ -11,6 +14,16 @@
   border: 1px solid var(--node-border);
   border-radius: 10px;
   transition: border-color 0.12s ease, box-shadow 0.12s ease, background-color 0.12s ease;
+}
+
+/* Physical sides rather than `margin-inline-start`: the indent follows the row title's own direction,
+   not the document's, so a Hebrew task indents from the right even in a left-to-right list. */
+.indentLtr {
+  margin-left: var(--row-indent);
+}
+
+.indentRtl {
+  margin-right: var(--row-indent);
 }
 
 .card:hover {

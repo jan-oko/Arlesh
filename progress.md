@@ -351,6 +351,48 @@ filter dimensions" → seven). It never reached a release, so they were made to 
 rather than carrying a `Removed` note for something no user ever had. Agent also caught `README.md`,
 which my file map missed.
 
+## Flow copying, beaded in two (2026-09-18)
+
+The "couldn't be pasted here" toast turned out to be two separate things wearing one string.
+
+**`Arlesh-p74`** (P3, quick fix) — the message. `onPaste` refuses for three unrelated reasons
+(invalid drop target, virtual node, Flow) and says the same sentence for all of them, one that
+blames the *destination*. Cost a real session checking whether PSYCHE was a legal parent; it was.
+Fix groups the skipped nodes by reason, keeps the no-silent-drop rule, and points at cut.
+
+**`Arlesh-nrb`** (P2, feature) — actually copying Flows. Grilled to two decisions:
+
+- **A copied Habit is a Habit.** Full Recurrence, original Start anchor and all. The user chose this
+  against re-anchoring to today, in their words: *"Copy flows are usually copy then modify, so I'm
+  fine with clutter until the node settles."* **The back-filled iterations are an accepted
+  consequence, not an oversight** — the bead says so explicitly, so nobody later "fixes" it.
+- **Flow items copy within their own template only.** A Cycle Scope is an offset into the flow
+  window; inside the same template that offset still means what it meant, and into a different flow
+  it would need the anchor resolution `start` already solves once. Not worth solving twice.
+
+Not copied: completion Modifications (history belongs to the original) and started `flow_instances`
+(real Goals/Tasks already materialised elsewhere).
+
+The technical trap is recorded: **`fork_flow` is the right shape and the wrong policy.** It already
+deep-clones a template, but deliberately drops the Recurrence and Modifications because it serves
+the habit editor's archive-&-new path. Reuse the cloning, not the omission, and leave archive-&-new
+behaving exactly as it does.
+
+`Arlesh-a18` (Flows beneath a copied node) now depends on `nrb` — same missing `duplicate_flow`
+seen from the other side, and it should be wiring rather than a second implementation.
+
+## Dispatched into the freed slot: `Arlesh-qf3`
+
+PR #3 merged — into `worktree-listview-path-headers` rather than master, so the stack collapsed
+*upward*: #4's branch now carries both, and #6 is still stacked beneath it. Seven open, so one slot,
+taken by `Arlesh-qf3` (P2, effort:low — type cycling offers kinds the filter hides, so the node
+converts and vanishes). Cut from master, worktree `type-cycle-filter`.
+
+The brief pushes on the part that is actually hard rather than the symptom: *which* filters should
+suppress a cycle target. A kind hidden outright for every node is not the same as a kind hidden
+because this particular node would fail a status test, and the two views may not even agree
+(`useFilterStore` vs `useListFilterStore`). Flagged that PR #10 likely touches `node-meta.ts` too.
+
 ## PR #8 pulled the inference in — and what the Journal move actually showed
 
 User: *"Should the flow target inference be in duplicate-paste-v2 branch? Tried to move Journal flow

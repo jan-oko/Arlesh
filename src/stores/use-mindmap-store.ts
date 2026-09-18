@@ -17,8 +17,11 @@ export interface PendingToast {
   message: string;
 }
 
-/** Data the top bar needs to render the back-nav pills (pushed by MindmapView, which holds the tree). */
+/** Data the top bar needs to render the subtree indicator and back-nav pills. Pushed by whichever
+ * view is mounted, via `use-subtree-nav` — the top bar holds no tree of its own. */
 export interface SubtreeNav {
+  /** The subtree you are currently inside. Named in the bar, since it is trimmed from the paths. */
+  currentTitle: string;
   rootTitle: string;
   parentTitle: string;
   /** Subtree id one level up (null = the parent is the true root). */

@@ -125,7 +125,6 @@ export default function FilterPopover() {
 
       {view === "list" && (() => {
         const parentCandidates = availableEntities("parent", display.parentPool);
-        const antecedentCandidates = availableEntities("antecedent", display.parentPool);
         const dependencyCandidates = availableEntities("dependency", display.dependencyPool);
         return (
           <div className={styles.cluster}>
@@ -133,11 +132,6 @@ export default function FilterPopover() {
             <PillFilterSection label={t("listView:parentLabel")}>
               {parentCandidates.length > 0 && (
                 <EntityAdder placeholder={t("listView:addParent")} available={parentCandidates} onAdd={(id) => addPill("parent", id)} />
-              )}
-            </PillFilterSection>
-            <PillFilterSection label={t("listView:antecedentLabel")}>
-              {antecedentCandidates.length > 0 && (
-                <EntityAdder placeholder={t("listView:addAntecedent")} available={antecedentCandidates} onAdd={(id) => addPill("antecedent", id)} />
               )}
             </PillFilterSection>
             <PillFilterSection label={t("listView:dependencyLabel")}>

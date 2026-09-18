@@ -1,0 +1,61 @@
+/* Structure, not work: no card chrome, no fill — lighter than the TaskRow cards it sits above. */
+.header {
+  display: flex;
+  /* Centred rather than baseline-aligned: the row opens with a glyph, and a baseline would hang it
+     off the bottom of the line of text beside it. */
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-1) 0;
+  min-width: 0;
+  /* A deep chain stays on one line rather than pushing the list apart. */
+  overflow: hidden;
+  white-space: nowrap;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+}
+
+.segment {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* Each title is user content that may run right-to-left; isolate it so one segment's direction
+     never reorders its neighbours or the separators between them. */
+  unicode-bidi: isolate;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text-secondary);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.segment:hover {
+  color: var(--text-primary);
+  text-decoration: underline;
+}
+
+/* The nearest named ancestor — the one the rows below hang directly from. */
+.segment:last-child {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* The parent's kind, stated once for the whole chain. Takes the emphasis the last segment carries,
+   since that is the node it stands for, and never shrinks when a long chain squeezes the row. */
+.icon {
+  flex: none;
+  color: var(--text-primary);
+}
+
+.separator {
+  flex: none;
+  color: var(--text-secondary);
+  opacity: 0.6;
+}
+
+.separator::before {
+  content: "\203A";
+}
