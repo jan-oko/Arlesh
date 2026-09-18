@@ -16,8 +16,8 @@
 use serde::{Deserialize, Serialize};
 
 use super::model::{
-    CreateGoalRequest, CreateTaskRequest, GoalId, GoalStatus, OnScopeExit, TaskId, TaskStatus,
-    TimeScope, UpdateGoalRequest, UpdateTaskRequest,
+    CreateGoalRequest, CreateTaskRequest, GoalId, GoalStatus, OnScopeExit, TaskArchival, TaskId,
+    TaskStatus, TimeScope, UpdateGoalRequest, UpdateTaskRequest,
 };
 use crate::database::session::{Db, SessionMode, Transactional};
 use crate::domains::error::DomainError;
@@ -213,6 +213,14 @@ pub struct SourceNode {
     pub on_scope_exit: Option<OnScopeExit>,
     /// Scheduling window (tasks only).
     pub plan: Option<TimeScope>,
+    /// Manually-set archival state (tasks only); `None` for every kind whose table has no such
+    /// column.
+    ///
+    /// **Backlog** is the Task side of the Archival axis and has no counterpart anywhere else —
+    /// SPEC rules out any mapping between it and a Goal's **Frozen** — so every target but a Task
+    /// takes a backlogged node out of the backlog. That is a stored state disappearing, and is
+    /// reported like any other.
+    pub archival: Option<TaskArchival>,
     /// Person this task is delegated to (tasks only).
     pub delegate_to: Option<i64>,
     /// Tag domain ids attached to the node (goals and tasks only).
@@ -256,6 +264,9 @@ pub struct Carried {
     pub on_scope_exit: Option<OnScopeExit>,
     /// Scheduling window, when the target is a task.
     pub plan: Option<TimeScope>,
+    /// Backlog, when the target is a task and the source was actually in it. `None` leaves the
+    /// new node **Live** — the state a Task is in when nobody has set it aside.
+    pub archival: Option<TaskArchival>,
     /// Delegate, when the target is a task.
     pub delegate_to: Option<i64>,
     /// Tag attachments, when the target is a goal or a task.
@@ -436,6 +447,20 @@ fn carry_fields(
         lost_fields,
     );
 
+    // Only `tasks` has an archival column, so every other target takes a backlogged node out of
+    // the backlog — there is no Frozen to land it in, and SPEC rules that mapping out. `Live` is
+    // what a Task is when nobody has set it aside, so, exactly as with a status still at its
+    // default, only a real Backlog is a loss worth naming.
+    let archival = keep_if(
+        target == RetypeKind::Task,
+        source
+            .archival
+            .filter(|archival| *archival == TaskArchival::Backlog),
+        "archival",
+        |archival: &TaskArchival| archival.as_str().to_string(),
+        lost_fields,
+    );
+
     let delegate_to = keep_if(
         target == RetypeKind::Task,
         source.delegate_to,
@@ -492,6 +517,7 @@ fn carry_fields(
         time_scope,
         on_scope_exit,
         plan,
+        archival,
         delegate_to,
         tag_ids,
         block_reasons,
@@ -511,6 +537,7 @@ fn everything(source: &SourceNode) -> Carried {
         time_scope: source.time_scope.clone(),
         on_scope_exit: source.on_scope_exit,
         plan: source.plan.clone(),
+        archival: source.archival,
         delegate_to: source.delegate_to,
         tag_ids: source.tag_ids.clone(),
         block_reasons: source.block_reasons.clone(),
@@ -1039,10 +1066,12 @@ async fn create_node(
                     time_scope: carried.time_scope.clone(),
                     on_scope_exit: carried.on_scope_exit,
                     plan: carried.plan.clone(),
-                    // Backlog does not travel across a retype, in either direction: a Frozen Goal
-                    // becoming a Task arrives in play, and so does anything else. Frozen and
-                    // Backlog are separate concepts with no mapping between them.
-                    archival: None,
+                    // Only a Task has a backlog and a Task→Task retype never reaches here, so
+                    // this is `None` in practice: a Frozen Goal becoming a Task arrives in play,
+                    // and so does everything else. Frozen and Backlog are separate concepts with
+                    // no mapping between them, and the backlog a Task loses on its way out is
+                    // named in the plan before any of this runs.
+                    archival: carried.archival,
                 },
             )
             .await?;
@@ -1338,6 +1367,7 @@ async fn read_source<M: SessionMode>(
                     time_scope: goal.time_scope,
                     on_scope_exit: goal.on_scope_exit,
                     plan: None,
+                    archival: None,
                     delegate_to: None,
                     tag_ids: goal.tag_ids,
                     block_reasons,
@@ -1370,6 +1400,7 @@ async fn read_source<M: SessionMode>(
                     time_scope: task.time_scope,
                     on_scope_exit: task.on_scope_exit,
                     plan: task.plan,
+                    archival: Some(task.archival),
                     delegate_to: task.delegate_to,
                     tag_ids: task.tag_ids,
                     block_reasons,
@@ -1399,6 +1430,7 @@ async fn read_source<M: SessionMode>(
                     time_scope: None,
                     on_scope_exit: None,
                     plan: None,
+                    archival: None,
                     delegate_to: None,
                     tag_ids: vec![],
                     block_reasons: vec![],
@@ -1429,6 +1461,7 @@ async fn read_source<M: SessionMode>(
                     time_scope: None,
                     on_scope_exit: None,
                     plan: None,
+                    archival: None,
                     delegate_to: None,
                     tag_ids: vec![],
                     block_reasons: vec![],
@@ -1583,6 +1616,7 @@ mod tests {
             time_scope: None,
             on_scope_exit: None,
             plan: None,
+            archival: None,
             delegate_to: None,
             tag_ids: vec![],
             block_reasons: vec![],
@@ -1596,7 +1630,17 @@ mod tests {
         SourceNode {
             kind: RetypeKind::Task,
             status: Some("todo".into()),
+            // Every stored Task has one; `Live` is the one nobody chose.
+            archival: Some(TaskArchival::Live),
             ..goal(id)
+        }
+    }
+
+    /// A Task somebody deliberately set aside.
+    fn backlogged_task(id: i64) -> SourceNode {
+        SourceNode {
+            archival: Some(TaskArchival::Backlog),
+            ..task(id)
         }
     }
 
@@ -2293,4 +2337,69 @@ mod tests {
         }
     }
 
+    // --- the backlog, a Task-only state ---
+
+    #[test]
+    fn a_backlogged_task_becoming_a_goal_names_the_backlog_among_its_losses() {
+        // A Goal has no backlog and SPEC rules out mapping it onto Frozen, so the state goes —
+        // and the prompt has to say so rather than let one stored state vanish quietly.
+        let plan = plan_retype(&backlogged_task(1), &[], RetypeKind::Goal);
+
+        assert_eq!(plan.carried.archival, None, "the new goal is simply in play");
+        assert_eq!(
+            plan.lost_fields,
+            vec![LostField {
+                field: "archival",
+                value: "backlog".into()
+            }]
+        );
+        assert!(
+            plan.loses_anything(),
+            "losing the backlog must make the retype ask first"
+        );
+    }
+
+    #[test]
+    fn a_backlogged_task_loses_its_backlog_to_every_kind_that_is_not_a_task() {
+        for target in [
+            RetypeKind::Goal,
+            RetypeKind::Project,
+            RetypeKind::Domain,
+            RetypeKind::Tag,
+            RetypeKind::Info,
+        ] {
+            let plan = plan_retype(&backlogged_task(1), &[], target);
+            assert!(
+                lost_field_names(&plan).contains(&"archival"),
+                "{target:?} has no backlog, so it should report one lost"
+            );
+            assert_eq!(plan.carried.archival, None, "{target:?} carries no backlog");
+        }
+    }
+
+    #[test]
+    fn a_task_nobody_set_aside_never_reports_a_lost_backlog() {
+        // `Live` is the state a Task is in when nobody chose anything, so — like a status still
+        // at its default — it is not a loss and must not drag up a prompt on its own.
+        let plan = plan_retype(&task(1), &[], RetypeKind::Goal);
+
+        assert!(!lost_field_names(&plan).contains(&"archival"));
+        assert!(!plan.loses_anything());
+    }
+
+    #[test]
+    fn a_node_with_no_archival_column_at_all_reports_nothing() {
+        // A goal has no archival state to begin with, so retyping it names none.
+        let plan = plan_retype(&goal(1), &[], RetypeKind::Task);
+        assert_eq!(plan.carried.archival, None);
+        assert!(!lost_field_names(&plan).contains(&"archival"));
+    }
+
+    #[test]
+    fn a_backlogged_task_retyped_to_a_task_keeps_its_backlog() {
+        // The same-kind plan carries everything; the command short-circuits it before any write.
+        let plan = plan_retype(&backlogged_task(1), &[], RetypeKind::Task);
+        assert_eq!(plan.carried.archival, Some(TaskArchival::Backlog));
+        assert!(!lost_field_names(&plan).contains(&"archival"));
+    }
 }

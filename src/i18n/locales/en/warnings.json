@@ -24,6 +24,7 @@
     "status": "Status \"{{value}}\" has no equivalent and will be cleared",
     "time_scope": "The Time Scope ({{value}}) and its on-exit behaviour will be dropped",
     "plan": "The Plan ({{value}}) will be dropped",
+    "archival": "The Backlog will be cleared — it comes back into play",
     "delegate_to": "The delegate will be cleared",
     "description": "The description will be deleted: \"{{value}}\"",
     "knowledge_base_directory": "The Obsidian directory link ({{value}}) will be deleted",
