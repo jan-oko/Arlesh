@@ -5,11 +5,19 @@
 #   scripts/branch-instance.sh list
 #   scripts/branch-instance.sh build [name ... | all]   # default: all
 #   scripts/branch-instance.sh run   <name | all>
+#   scripts/branch-instance.sh start <name | all>       # build, then run
 #   scripts/branch-instance.sh stop  [name ... | all]   # default: all
 #   scripts/branch-instance.sh clean [name ... | all]   # default: all
 #
 # `all` means every worktree. `run all` launches each built instance at once, detached, so the
 # branches can be compared side by side and survive the shell that started them.
+#
+# `start` is the two step done as one: build, then launch what was built. It takes run's single
+# <name | all> rather than build's list, because what it ends with — the windows that came up and
+# the `stop` line that takes them down — has to name one set of instances. A branch that fails to
+# compile is reported and skipped; the ones that did compile still start. A branch that was already
+# running is stopped first, so `start` twice replaces that window rather than adding a second one on
+# the same database.
 #
 # Each instance's window is titled "Arlesh — <branch>", so several open at once are distinguishable.
 #
@@ -138,7 +146,12 @@ SETCONF
   [ -x "$binary" ] || die "Expected a binary at $binary and found none."
 
   mkdir -p "$INSTANCES/$name/data/com.atai.arlesh"
-  cp "$binary" "$INSTANCES/$name/arlesh"
+  # Copied beside the old binary and moved over it, rather than written onto it: if that instance is
+  # running — which it is whenever `start` is used twice on a branch — copying into the file in
+  # place is "Text file busy". Replacing the directory entry instead leaves the running process on
+  # the inode it already has, and it keeps its window until it is stopped.
+  cp "$binary" "$INSTANCES/$name/arlesh.new"
+  mv -f "$INSTANCES/$name/arlesh.new" "$INSTANCES/$name/arlesh"
 
   # Seed once, then leave it alone: the point of an instance is that what you do in it persists
   # across runs and never reaches the real board.
@@ -208,6 +221,30 @@ launch() {
     "$name" "$pid" "$(port_for "$name")" "$INSTANCES/$name/"
 }
 
+# Each instance is a WebKit process plus a Vite server. On a 15 GB box a handful is fine and all of
+# them is not, so say what this is about to cost rather than discovering it in swap. `start` asks
+# this question before it builds as well, because refusing nine windows only helps if it happens
+# before the nine builds that would have preceded them.
+memory_guard() {
+  local count="$1" free_mb
+  free_mb="$(free -m | awk '/^Mem:/ {print $7}')"
+  printf '%d instance(s) to launch — each is a Vite server plus a WebKit window (%s MB available).\n' \
+    "$count" "$free_mb"
+  if [ "$count" -gt 4 ] && [ "$free_mb" -lt 6000 ]; then
+    printf 'Refusing: %d instances with only %s MB free will swap. Name the ones you want, or free memory.\n' \
+      "$count" "$free_mb" >&2
+    return 1
+  fi
+}
+
+# Brings the named instances up: each one's Vite server first, then its window. The guard is checked
+# here, at the moment of launching, whoever asked — `start` may have spent an hour building since it
+# last looked at how much memory was free.
+run_instances() {
+  memory_guard "$#" || exit 1
+  for n in "$@"; do start_vite "$n"; launch "$n"; done
+}
+
 cmd_run() {
   local name="${1:-}"
   [ -n "$name" ] || die "Usage: $0 run <name|all>"
@@ -221,19 +258,57 @@ cmd_run() {
     names=("$name")
   fi
 
-  # Each instance is a WebKit process plus a Vite server. On a 15 GB box a handful is fine and all
-  # of them is not, so say what this is about to cost rather than discovering it in swap.
-  local free_mb; free_mb="$(free -m | awk '/^Mem:/ {print $7}')"
-  printf 'Starting %d instance(s) — each is a Vite server plus a WebKit window (%s MB available).\n' \
-    "${#names[@]}" "$free_mb"
-  if [ "${#names[@]}" -gt 4 ] && [ "$free_mb" -lt 6000 ]; then
-    printf 'Refusing: %d instances with only %s MB free will swap. Name the ones you want, or free memory.\n' \
-      "${#names[@]}" "$free_mb" >&2
-    exit 1
+  run_instances "${names[@]}"
+  printf 'Stop them with: %s stop %s\n' "$0" "$name"
+}
+
+cmd_start() {
+  local target="${1:-}"
+  [ -n "$target" ] || die "Usage: $0 start <name|all>"
+  [ "$#" -eq 1 ] || die "Usage: $0 start <name|all> — one branch at a time, or all."
+
+  local names
+  if [ "$target" = "all" ]; then
+    mapfile -t names < <(all_names)
+    [ "${#names[@]}" -gt 0 ] || die "No worktrees under $WORKTREES."
+  else
+    worktree_path "$target" > /dev/null   # fail on a typo now, not after the first build
+    names=("$target")
   fi
 
-  for n in "${names[@]}"; do start_vite "$n"; launch "$n"; done
-  printf 'Stop them with: %s stop %s\n' "$0" "$name"
+  memory_guard "${#names[@]}" || exit 1
+
+  local built=() failed=()
+  for name in "${names[@]}"; do
+    # Each build is a subshell, so one branch failing to compile does not abandon the branches
+    # queued behind it. Backgrounded and waited on rather than tested with `if ( ... )`, because
+    # bash switches `set -e` off for everything inside an `if` condition, subshells and the
+    # functions they call included: written that way, a failed cargo would sail on into the copy and
+    # hand `start` a stale binary to launch. A background subshell keeps errexit; `wait` reports
+    # what it did. The trap is re-armed inside it because a subshell does not inherit the parent's,
+    # and without it a failed build would leave that worktree's tauri.conf.json patched with a
+    # devUrl and a window title.
+    ( trap restore_conf EXIT; build_one "$name" ) &
+    if wait "$!"; then
+      built+=("$name")
+    else
+      failed+=("$name")
+      printf '\n!!! %s: build failed — it will not be started. Its cargo output is above. !!!\n' "$name" >&2
+    fi
+  done
+
+  [ "${#built[@]}" -gt 0 ] || die "Nothing built, so nothing started."
+
+  # What was rebuilt replaces what was running, rather than joining it: two windows sharing one
+  # instance directory are two WebKit processes on one SQLite file, and `start` is the command you
+  # reach for twice in a row. The Vite server is left alone — start_vite reuses whatever already
+  # answers on the port.
+  printf '\n'
+  for name in "${built[@]}"; do kill_pidfile "$INSTANCES/$name/run.pid" app "$name"; done
+  run_instances "${built[@]}"
+  printf 'Stop them with: %s stop %s\n' "$0" "${built[*]}"
+  # Say plainly which branches are not up. A half-built `start all` must not read like a clean one.
+  [ "${#failed[@]}" -eq 0 ] || die "Not started, because the build failed: ${failed[*]}"
 }
 
 kill_pidfile() {
@@ -271,7 +346,8 @@ case "${1:-list}" in
   list)  shift || true; cmd_list ;;
   build) shift; cmd_build "$@" ;;
   run)   shift; cmd_run "$@" ;;
+  start) shift; cmd_start "$@" ;;
   stop)  shift; cmd_stop "$@" ;;
   clean) shift; cmd_clean "$@" ;;
-  *)     die "Usage: $0 {list | build [name...|all] | run <name|all> | stop [name...|all] | clean [name...|all]}" ;;
+  *)     die "Usage: $0 {list | build [name...|all] | run <name|all> | start <name|all> | stop [name...|all] | clean [name...|all]}" ;;
 esac

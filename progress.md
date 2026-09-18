@@ -184,6 +184,7 @@ Zustand stores to per-tab instances and would conflict with every open PR at onc
     scripts/branch-instance.sh list
     scripts/branch-instance.sh build [name ...|all]   # default: all, sequentially
     scripts/branch-instance.sh run   <name|all>       # `all` launches every built one at once
+    scripts/branch-instance.sh start <name|all>       # build, then run — the two steps as one
     scripts/branch-instance.sh stop  [name ...|all]
     scripts/branch-instance.sh clean [name ...|all]   # drops binaries, keeps each instance's data
 
@@ -205,6 +206,16 @@ worktree was added or removed.
 
 Instances detach with `setsid` and outlive the shell that started them; `stop` kills the app and its
 Vite server by process group. `run all` refuses more than four at once with under 6 GB free.
+
+`start` is `build` then `run`. It takes `run`'s single `<name|all>` rather than `build`'s list,
+because it ends by naming the windows it brought up and the `stop` line for them. It puts the memory
+question **before** the builds as well as at launch — refusing nine windows is only useful if it
+happens before the nine compiles. A branch that fails to build is named, skipped, and left out of
+the launch; the branches that did build still start, and the exit status is non-zero. Each build
+runs in a **backgrounded** subshell that is then waited on, not an `if ( ... )` — bash turns `set -e`
+off inside an `if` condition, so tested that way a failed cargo would carry on and launch a stale
+binary. A branch that was already running is stopped before its new binary is launched, so `start`
+twice replaces that window instead of putting a second WebKit process on the same SQLite file.
 
 Space: every branch compiles into the **one** target directory the main checkout already has
 (1.4 G), so the dependency tree is built once and shared; only the per-branch binary is copied out,
