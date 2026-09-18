@@ -3,12 +3,20 @@ import { render, screen, fireEvent, act } from "@testing-library/react";
 import App from "./App";
 import { useViewStore } from "@/stores/use-view-store";
 import { useThemeStore } from "@/stores/use-theme-store";
+import { reloadTabs, useTabsStore } from "@/stores/use-tabs-store";
+import { closeWindow } from "@/api/window";
 
 vi.mock("@/components/TopBar/TopBar", () => ({ default: () => <div data-testid="top-bar" /> }));
 vi.mock("@/components/MindmapView/MindmapView", () => ({ default: () => <div data-testid="mindmap-view" /> }));
 vi.mock("@/components/ListView/ListView", () => ({ default: () => <div data-testid="list-view" /> }));
+vi.mock("@/api/window", () => ({ closeWindow: vi.fn(() => Promise.resolve()) }));
+
+const mockCloseWindow = vi.mocked(closeWindow);
 
 beforeEach(() => {
+  localStorage.clear();
+  reloadTabs();
+  mockCloseWindow.mockClear();
   useViewStore.setState({ view: "mindmap" });
   useThemeStore.setState({ theme: "dark" });
   document.documentElement.removeAttribute("data-theme");
@@ -57,5 +65,71 @@ describe("App", () => {
     expect(document.documentElement.dataset.theme).toBe("dark");
     act(() => useThemeStore.setState({ theme: "light" }));
     expect(document.documentElement.dataset.theme).toBe("light");
+  });
+});
+
+/**
+ * The tab chords are declared in the registry like every other binding, and dispatched at the app
+ * level so they stay live regardless of which view — or modal — is on screen.
+ */
+describe("tab shortcuts", () => {
+  it("Ctrl+T opens a tab", () => {
+    render(<App />);
+    fireEvent.keyDown(window, { code: "KeyT", ctrlKey: true });
+    expect(useTabsStore.getState().tabs).toHaveLength(2);
+  });
+
+  it("Ctrl+T opens the tab at the current subtree root", () => {
+    render(<App />);
+    act(() => { useTabsStore.getState().tabs[0]?.stores.mindmap.getState().enterSubtree("project-1"); });
+    fireEvent.keyDown(window, { code: "KeyT", ctrlKey: true });
+    expect(useTabsStore.getState().tabs[1]?.stores.mindmap.getState().subtreeRootId).toBe("project-1");
+  });
+
+  it("Ctrl+W closes the active tab", () => {
+    render(<App />);
+    fireEvent.keyDown(window, { code: "KeyT", ctrlKey: true });
+    fireEvent.keyDown(window, { code: "KeyW", ctrlKey: true });
+    expect(useTabsStore.getState().tabs).toHaveLength(1);
+    expect(mockCloseWindow).not.toHaveBeenCalled();
+  });
+
+  it("Ctrl+W on the last tab closes the window instead of emptying the strip", () => {
+    render(<App />);
+    fireEvent.keyDown(window, { code: "KeyW", ctrlKey: true });
+    expect(useTabsStore.getState().tabs).toHaveLength(1);
+    expect(mockCloseWindow).toHaveBeenCalledOnce();
+  });
+
+  it("Ctrl+Tab and Ctrl+Shift+Tab cycle between tabs", () => {
+    render(<App />);
+    fireEvent.keyDown(window, { code: "KeyT", ctrlKey: true });
+    const ids = useTabsStore.getState().tabs.map((tab) => tab.id);
+
+    fireEvent.keyDown(window, { code: "Tab", ctrlKey: true });
+    expect(useTabsStore.getState().activeTabId).toBe(ids[0]);
+
+    fireEvent.keyDown(window, { code: "Tab", ctrlKey: true, shiftKey: true });
+    expect(useTabsStore.getState().activeTabId).toBe(ids[1]);
+  });
+
+  it("Ctrl+1 jumps to the first tab", () => {
+    render(<App />);
+    fireEvent.keyDown(window, { code: "KeyT", ctrlKey: true });
+    const ids = useTabsStore.getState().tabs.map((tab) => tab.id);
+
+    fireEvent.keyDown(window, { code: "Digit1", ctrlKey: true });
+
+    expect(useTabsStore.getState().activeTabId).toBe(ids[0]);
+  });
+
+  it("stays live while the cheat-sheet is open, unlike a view binding", () => {
+    render(<App />);
+    fireEvent.keyDown(window, { code: "Slash", ctrlKey: true, shiftKey: true });
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { code: "KeyT", ctrlKey: true });
+
+    expect(useTabsStore.getState().tabs).toHaveLength(2);
   });
 });

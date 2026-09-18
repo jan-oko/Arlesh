@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useNodeActions } from "./use-node-actions";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
-import { CLIPBOARD_OP } from "@/stores/use-mindmap-store";
+import { CLIPBOARD_OP } from "@/stores/use-clipboard-store";
 
 vi.mock("@/api/tasks", () => ({
   updateTask: vi.fn().mockResolvedValue({ id: 1, status: "in_progress" }),

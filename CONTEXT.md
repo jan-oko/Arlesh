@@ -74,6 +74,10 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 **Undo Stack / Redo Stack** — The gestures Ctrl+Z will reverse and Ctrl+Shift+Z will reapply. One pair for the whole app, not one per tab or window. Session-scoped: closing Arlesh empties both.
 
+**Tab** — One place in the board you are looking at, held open alongside others. A Tab **owns** everything about a view of the board: its **subtree root**, which View it shows (Mindmap or List), its branch orientation, its Mindmap filter set and its List View filter set, its selection, its collapsed nodes and its pan/zoom. Switching Tabs swaps all of it at once, and nothing a Tab owns is visible to, or changed by, another Tab. What is **app-wide** and shared across every Tab: the theme, the **Clipboard**, the Undo/Redo stacks, the path-glyph display preference, and the board itself. A Tab's root, view, orientation and both filter sets are restored on reopening; its selection, collapsed nodes and pan/zoom are not — those are working state.
+
+**Tab label** — What a Tab is called in the strip: the title of the subtree it is rooted at, or a fixed label for a Tab showing the whole tree. Stored with the Tab rather than looked up, since an inactive Tab has no view mounted to resolve a title; refreshed whenever that Tab is visited.
+
 ## Status values
 
 **Task archival:** `live` (Live) · `backlog` (Backlog) — Tasks only; a Task is never manually Archived.
@@ -147,3 +151,7 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 - Applying an undo or a redo is itself a write, and is never journaled. The stacks are the only record that it happened.
 - Derived and materialized rows are not journaled. Undoing a gesture must not fight the code that regenerates them.
 - There is one Undo Stack for the whole app. One board, one history of changes to it.
+- A Tab's state is reachable only through that Tab. No action in one Tab changes the subtree root, view, filters, selection, collapsed set or viewport of another.
+- The Clipboard and the theme are never per-Tab. Cutting in one Tab and pasting in another is the point of having two.
+- There is always at least one Tab. The gesture that would close the last one closes the window instead.
+- A restored subtree root whose node no longer exists falls back to the true root rather than leaving a Tab rooted at nothing.

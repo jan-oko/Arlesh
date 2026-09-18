@@ -15,5 +15,9 @@
   "loading": "Loading…",
   "error": "Error: {{message}}",
   "dismiss": "Dismiss",
-  "insideSubtree": "Inside subtree:"
+  "insideSubtree": "Inside subtree:",
+  "tabs": "Tabs",
+  "newTab": "New tab",
+  "closeTab": "Close tab",
+  "tabWholeTree": "All"
 }

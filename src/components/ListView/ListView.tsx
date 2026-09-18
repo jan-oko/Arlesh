@@ -17,7 +17,7 @@ import styles from "./ListView.module.css";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
 import { useSubtreeNav } from "@/hooks/use-subtree-nav";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
-import { useViewStore } from "@/stores/use-view-store";
+import { useDisplayStore } from "@/stores/use-display-store";
 
 export default function ListView() {
   const { t } = useTranslation(["common", "listView", "editor"]);
@@ -32,7 +32,7 @@ export default function ListView() {
 
   // Subtree entry is shared state, not a filter: the Mindmap and the List View re-root together.
   const enterSubtree = useMindmapStore((s) => s.enterSubtree);
-  const pathHeaderIcons = useViewStore((s) => s.pathHeaderIcons);
+  const pathHeaderIcons = useDisplayStore((s) => s.pathHeaderIcons);
   const { subtreeRootId, onExitSubtree, onExitToRoot } = useSubtreeNav(tree);
 
   const listFilter = useListFilterStore((s) => s.filter);

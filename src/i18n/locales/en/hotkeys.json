@@ -1,6 +1,7 @@
 {
   "title": "Keyboard shortcuts",
   "sectionGlobal": "Global",
+  "sectionTabs": "Tabs",
   "sectionMindmap": "Mindmap",
   "sectionListView": "List View",
   "toggleView": "Switch between Mindmap and List",
@@ -38,5 +39,10 @@
   "convertToFlow": "Convert to a flow",
   "openEditor": "Open the editor",
   "openSearch": "Search for a node",
-  "enterBySearch": "Search for a node and enter its subtree"
+  "enterBySearch": "Search for a node and enter its subtree",
+  "openTab": "Open a new tab at the current subtree",
+  "closeTab": "Close the tab (the last one closes the window)",
+  "nextTab": "Go to the next tab",
+  "previousTab": "Go to the previous tab",
+  "jumpToTab": "Jump to a tab by position (Ctrl+1 to Ctrl+9)"
 }
