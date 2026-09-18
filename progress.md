@@ -363,6 +363,78 @@ filter dimensions" → seven). It never reached a release, so they were made to 
 rather than carrying a `Removed` note for something no user ever had. Agent also caught `README.md`,
 which my file map missed.
 
+## PR #10 — Commitments complete, all six beads (2026-09-18)
+
+`5f279bc`. Gate green: vitest **92 files / 1280 tests**, 20 Rust suites, tarpaulin **91.03%**. The
+agent waited out another tarpaulin (~19 min) and claimed the slot with a wait-then-launch job, so no
+run overlapped — the serialisation discipline held.
+
+**`cyo.3` was a wiring gap, as suspected.** `CommitmentEditorModal.tsx` and `VerdictWindowField.tsx`
+both existed and were complete, `useNodeEditor` already returned `onCommitmentSave`, and **List View
+already rendered the modal**. `MindmapView` simply never imported it, so `E` and double-click set
+`editorModal` and matched no branch. One render site fixed both routes. It did not touch the
+contents — which is the rule from the Backlog revert, applied correctly.
+
+**`cyo.2` corrected the bead's premise.** I wrote that the glyph must survive `ICON_R = 7`. The
+Mindmap actually draws down to **`r = 5`** at depth 5. The old seal was a 12-notch circle with
+notches at 9% of `r` — below a pixel at that size, leaving a circle, i.e. TaskIcon. Replaced with a
+straight-edged **shield pentagon**: every other content glyph is round, so silhouette alone separates
+it, and silhouette is the one channel that survives at 10px. No curves on purpose.
+
+**`cyo.4` varies the shield, never a mark inside it.** Fill carries the first bit — hollow while the
+answer is owed, solid once given — which reads at any size. A jagged cleft splits the solid one when
+broken; a strike-through marks the hollow one when its window ran out. Both in the node's own colour,
+**never red**: kept and broken are equal outcomes, not success and failure.
+
+**`cyo.1`'s premise was also off, and the correction is better than the bead.** Commitment was
+already always in the cycle; the real behaviour was a retype that ran, was refused by
+`create_commitment`, and surfaced as "Convert failed:". "Focus lost" resolved to **the point the
+write is attempted** — a node retyped on the canvas has no editing session to lose focus from, so
+the prompt *is* that refusal surfaced as a question. That settles both worries for free: a node
+inheriting a scope is never asked, because the refusal only fires when the backend's own climb finds
+nothing; and cancel composes because nothing is written while either prompt is open.
+
+**`evu`: the Verdict Window lives on the flow** (`0028`), not inherited from the target — a virtual
+iteration has no `commitments` row, and a Target Node is normally a Project carrying none.
+`set_flow_recurrence` now refuses anything but Accumulating + Overlapping on a commitment flow; the
+SPEC mismatch turned out to be its own, not a separate bead.
+
+**`mrq` refuses rather than prompts**, because the transition is unreachable from the UI — which is
+also why `Arlesh-rhk` exists: the FlowEditorModal instance-type option and its Verdict Window field
+would be a control gated on a value nothing can produce.
+
+### It corrected me, and it was right
+
+**I told it PR #12's `hiddenKinds` refactor was on master. It is not** — #12 is still open. I
+verified after the fact: `origin/master:src/utils/node-meta.ts` has the two-parameter signature and
+no `structurallyValidTypes`. It checked instead of trusting me, added a third parameter, and flagged
+the reconciliation. Had it taken my word it would have built against a signature that does not exist.
+
+### sqlx and the duplicate migration — answered
+
+**It refuses outright**: `UNIQUE constraint failed: _sqlx_migrations.version`, which failed all 71
+tests in `tests/tasks.rs`. Loud at runtime, but *not* early — it survives merge, lint, tsc and the
+whole frontend gate. That reduces `Arlesh-9xk` to a single test over `migrations/`. Also established:
+the real board is at version **24**, so neither `0025` had ever been applied and renumbering was
+free — which will not be true next time.
+
+Final numbering: `0025` flow-target, `0026` task-backlog, `0027` commitments, `0028` verdict window.
+All four applied in order to a copy of the real board: `foreign_key_check` empty, `integrity_check`
+ok, **all 25 tables holding exactly the rows they held before**, through the `tasks` and `flows`
+rebuilds `0027` performs.
+
+## PR #13's merge is a design decision, not a resolution
+
+I started it and **aborted**. Four conflicts; two are mechanical, two are not. #13 refactored the
+iteration lifecycle into `workIterationLifecycle` / `commitmentIterationLifecycle`; `evu`
+independently added `IterationStatus::Expired` as a third branch inlined at the same site. Two
+designs for one thing, and how they compose is a decision — does `expired` become a case inside the
+commitment lifecycle, or sit outside and win? — not something to resolve by keeping both halves.
+
+Handed to the Commitments agent, which holds both sides. Told it explicitly that this is **not**
+`rhk`, and to stop and say so rather than pull that work forward if the two cannot be reconciled
+without it.
+
 ## PR #19 — `Arlesh-6dm` landed at last
 
 Base `worktree-task-backlog`, five files, +199/−9. Gate green: lint, tsc, vitest 88/1210,
