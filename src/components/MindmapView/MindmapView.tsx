@@ -32,7 +32,7 @@ import TitleEditorModal from "@/components/TitleEditorModal/TitleEditorModal";
 import ProjectEditorModal from "@/components/ProjectEditorModal/ProjectEditorModal";
 import InfoEditorModal from "@/components/InfoEditorModal/InfoEditorModal";
 import NodeSearchModal from "@/components/NodeSearchModal/NodeSearchModal";
-import FlowEditorModal, { type FlowSaveData } from "@/components/FlowEditorModal/FlowEditorModal";
+import FlowEditorModal, { type FlowSaveData, type TargetSelection } from "@/components/FlowEditorModal/FlowEditorModal";
 import FlowItemEditorModal from "@/components/FlowItemEditorModal/FlowItemEditorModal";
 import StartFlowModal, { type StartFlowData } from "@/components/StartFlowModal/StartFlowModal";
 import { startFlow, convertToFlow } from "@/api/flows";
@@ -43,6 +43,17 @@ import styles from "./MindmapView.module.css";
 
 /** Screen-px moved per arrow-key press when panning the canvas (nothing selected). */
 const KEYBOARD_PAN_STEP = 80;
+
+/**
+ * A tree node as a Flow Target Node value. Used to show a flow's parent as its **inherited** target
+ * — a flow with no explicit target renders its instances under its parent — so the editor and the
+ * start modal both offer the node the instances would actually land on.
+ */
+function targetSelectionFor(node: MindmapNode | null | undefined): TargetSelection | null {
+  if (node === null || node === undefined || node.id === "root") return null;
+  const id = parseInt(node.id.split("-").pop() ?? "", 10);
+  return Number.isNaN(id) ? null : { kind: node.kind, id, title: node.title };
+}
 
 // A pristine flow used to seed the create editor before the flow is persisted.
 const BLANK_FLOW_NODE: MindmapNode = {
@@ -127,6 +138,21 @@ export default function MindmapView() {
     walk(tree);
     return acc;
   }, [tree]);
+
+  // The parent a flow's instances fall back to when it carries no explicit Target Node: the node
+  // the editor shows as the inherited value, and the start modal pre-selects.
+  const editedFlowParent = useMemo(
+    () => (editorModal !== null && editorModal.node.kind === "flow" ? targetSelectionFor(findParent(tree, editorModal.node.id)) : null),
+    [editorModal, tree],
+  );
+  const newFlowParent = useMemo(
+    () => (flowCreateParent === null ? null : targetSelectionFor(findNode(tree, flowCreateParent.id))),
+    [flowCreateParent, tree],
+  );
+  const startedFlowParent = useMemo(
+    () => (startFlowNode === null ? null : targetSelectionFor(findParent(tree, startFlowNode.id))),
+    [startFlowNode, tree],
+  );
 
   // Opens a blank flow editor scoped to the chosen parent; the flow is persisted only on save.
   const onNewFlow = useCallback(
@@ -517,19 +543,21 @@ export default function MindmapView() {
         />
       )}
       {editorModal !== null && editorModal.node.kind === "flow" && (
-        <FlowEditorModal node={editorModal.node} availableTargets={flowTargets} onSave={onFlowSave} onClose={() => setEditorModal(null)} />
+        <FlowEditorModal node={editorModal.node} availableTargets={flowTargets} inheritedTarget={editedFlowParent} onSave={onFlowSave} onClose={() => setEditorModal(null)} />
       )}
       {flowCreateParent !== null && (
-        <FlowEditorModal node={BLANK_FLOW_NODE} availableTargets={flowTargets} heading={t("editor:newFlowTitle")} onSave={onCreateFlow} onClose={() => setFlowCreateParent(null)} />
+        <FlowEditorModal node={BLANK_FLOW_NODE} availableTargets={flowTargets} inheritedTarget={newFlowParent} heading={t("editor:newFlowTitle")} onSave={onCreateFlow} onClose={() => setFlowCreateParent(null)} />
       )}
+      {/* With no explicit Target Node the start picker opens on the flow's parent — where a flow
+          with a derived target puts its instances. */}
       {startFlowNode !== null && (
         <StartFlowModal
           flowTitle={startFlowNode.title}
           flowScoped={startFlowNode.flow?.durationKind != null}
           durationN={startFlowNode.flow?.durationN ?? null}
           durationKind={startFlowNode.flow?.durationKind ?? null}
-          defaultTargetType={startFlowNode.flow?.targetType ?? null}
-          defaultTargetId={startFlowNode.flow?.targetId ?? null}
+          defaultTargetType={startFlowNode.flow?.targetType ?? startedFlowParent?.kind ?? null}
+          defaultTargetId={startFlowNode.flow?.targetId ?? startedFlowParent?.id ?? null}
           availableTargets={flowTargets}
           onStart={onConfirmStartFlow}
           onClose={() => setStartFlowNode(null)}
