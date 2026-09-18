@@ -363,6 +363,44 @@ filter dimensions" → seven). It never reached a release, so they were made to 
 rather than carrying a `Removed` note for something no user ever had. Agent also caught `README.md`,
 which my file map missed.
 
+## I broke PR #7 with that merge, and an agent caught it
+
+**The omission was mine and worth naming.** I resolved #7's merge with master, gated it with lint,
+tsc and vitest, saw green, and pushed — on a branch whose entire subject is a *backend* state. I
+never ran `cargo test`. Master's node-duplication work builds `CreateTaskRequest` exhaustively;
+this branch had given that struct an `archival` field. Two sites, neither touched by the merge,
+neither compiling.
+
+The 6dm agent found it, **refused to fix it, and was right twice**: it is a product decision on
+someone else's feature, and it is not the one-liner it looks like — probing the obvious fix revealed
+the second site. It reverted its probe and reported instead of smuggling it in.
+
+It also caught what I would have shipped: **the merge left two migrations numbered `0025`**.
+
+### Fixed, in `cad212a`
+
+**A copy of a set-aside Task is set aside too** — a decision, stated as one. The clone already
+carries status, plan, privacy, delegate, tags, block reasons and the issue link; dropping only the
+Backlog would be the silent discard the confirmation prompts exist to prevent. The invariant
+`archival = Backlog => plan IS NULL` survives by construction, since both fields come from an
+original that satisfies it. Test asserts both halves. Reversible if the user prefers always-Live.
+
+**`0025_task_backlog.sql` → `0026`.** The flow-target `0025` is already on master, so that one keeps
+the number. Corrected to both agents: the next free number is **0027**, not 0026 as I had told the
+Commitments agent.
+
+Gate: lint clean, tsc clean, 19 Rust binaries ok, vitest 88/1210, tarpaulin **91.07% (+0.30%)**.
+
+**The rule this adds**, now in the Commitments agent's brief: *resolving a merge on a branch with
+Rust changes requires `cargo test`, not just the frontend gate.* A conflict-free merge and a green
+frontend say nothing about whether the crate compiles.
+
+Two corrections to the bead's own estimates, from the agent: **10 struct literals, not ~30** — most
+test fixtures use struct-update syntax and inherited the field free. And it audited every column of
+`tasks`, `goals`, `domains` and `infos` across all 25 migrations against `SourceNode`: **no other
+silently-dropped field**, with two documented non-findings (`on_scope_exit` rides with `time_scope`
+by design; `domains.color` is Aspect-only and unreachable by retype).
+
 ## Conflict sweep, round two — PR #7 resolved (2026-09-18)
 
 Swept all six open PRs. Only **#7** conflicted, but it is the root of a chain
