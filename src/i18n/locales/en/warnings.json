@@ -39,5 +39,7 @@
   "lostFieldFallback": "{{field}} will be lost ({{value}})",
   "retypeFailed": "Convert failed: {{message}}",
   "habitLoadFailedBanner": "Habit iterations could not be loaded for:",
-  "parentClimb": "It cannot stay under “{{from}}”, so it will move up to “{{to}}”"
+  "parentClimb": "It cannot stay under “{{from}}”, so it will move up to “{{to}}”",
+  "pasteSkipped_one": "{{count}} node couldn't be pasted here",
+  "pasteSkipped_other": "{{count}} nodes couldn't be pasted here"
 }

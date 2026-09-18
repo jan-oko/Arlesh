@@ -93,7 +93,8 @@ A Task's **goal**, **project**, and **aspect** are resolved as the nearest ances
 
 A Task, Goal or Project may carry an optional **beads id** — the identifier of the issue tracking it in `bd` (beads), e.g. `Arlesh-5fs`. It is a mirror of an id `bd` owns, not a value this app authors, and so is **write-restricted**:
 
-- The **MCP server is the only writer**. Each resource operator exposes a single setter (`set_beads_id`); no Tauri command calls it, and `UpdateTaskRequest` / `UpdateGoalRequest` / `UpdateDomainRequest` have no field for it. There is no way to set, change or clear a beads id from the UI.
+- The **MCP server is the only source**. Each resource operator exposes a single setter (`set_beads_id`); `UpdateTaskRequest` / `UpdateGoalRequest` / `UpdateDomainRequest` have no field for it, and no gesture can **author, edit or clear** a beads id from the UI.
+- **One named exception to "no Tauri command writes it": duplication.** Copy+Paste's `duplicate_*` commands *propagate* the id a node already carries onto its copy, so the column is written from the UI side — but only ever with a value `bd` issued and the source already had. A source with no link produces a copy with no link. The accepted consequence is that two nodes can show the same issue id, and `bd` holds no record of the second.
 - Every read that returns a Task, Goal or Domain carries it.
 - The UI shows it **read-only, only where it is set** — as the **Issue** row in the Task, Goal and Project editors, directly under the title. A node with no beads id shows no row at all: no label, no placeholder.
 
@@ -307,6 +308,27 @@ that fell out of giving Info the same treatment as the rest:
   backend climbs to the nearest ancestor it can accept rather than writing a mislabeled polymorphic
   reference. The climb is named in the same confirmation prompt as a stranded child or a dropped
   field, and is only carried out once acknowledged — never silently.
+
+**Copy+Paste duplication:** pasting a **Cut** selection moves it. Pasting a **Copy** deep-clones the
+whole selected subtree onto the target instead, leaving the original exactly where it was — copy and
+cut then differ only in whether the original survives, which is what the two gestures mean
+everywhere else. It is deep by default, with no prompt: the copy is a real, independent subtree, and
+editing one side never changes the other. The duplicate **keeps the original's title** (no
+`" (copy)"` suffix) and carries everything the original holds — status, tags, notes, Time Scope,
+on-exit behaviour, Plan, delegate, block reasons, privacy, position, its **beads id** (see *Beads
+id*), and its dependencies. Those dependencies point at the **same targets** the original's did, even
+when a target was itself inside the copied subtree: copying a subtree whose members depend on each
+other produces a copy whose members still wait on the originals. (That mirrors a plain reparent and
+is the conservative reading; Flow instances solve the same problem by remapping per instance, and
+that is the model to reach for if this proves wrong.)
+
+Projects, Domains, Tags, Goals, Tasks and Infos are duplicable. Aspects, Flows, flow items and
+virtual Habit instances are not — a Flow moves and forks through its own commands — and a Flow
+hanging under a copied node is therefore not copied with it. A paste whose selection includes any of
+these pastes the rest and reports how many it skipped in a toast. Otherwise a copy is refused exactly
+where a move would be, by the same drop-target rule; it lands at the end of the target's children; it
+is atomic, so a failure part-way leaves the tree untouched rather than half a subtree; and it leaves
+the clipboard intact, so the same subtree can be pasted into several places.
 
 ### List View
 

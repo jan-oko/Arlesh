@@ -56,3 +56,7 @@ export async function updateDomain(id: number, request: UpdateDomainRequest): Pr
 export async function deleteDomain(id: number): Promise<void> {
   return invoke<void>("delete_domain", { id });
 }
+
+export async function duplicateDomain(id: number, targetId: number, position: number): Promise<Domain> {
+  return invoke<Domain>("duplicate_domain", { id, targetId, position });
+}

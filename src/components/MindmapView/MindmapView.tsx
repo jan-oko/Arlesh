@@ -53,7 +53,7 @@ const BLANK_FLOW_NODE: MindmapNode = {
 
 export default function MindmapView() {
   const { t } = useTranslation(["common", "editor", "warnings", "nodeKinds"]);
-  const { tree, isLoading, error, loadCondition, createNode, createChild, renameNode, retypeNode, reorderNode, moveNode, removeNode, createFlow, reload } =
+  const { tree, isLoading, error, loadCondition, createNode, createChild, renameNode, retypeNode, reorderNode, moveNode, duplicateNode, removeNode, createFlow, reload } =
     useMindmapData();
   const {
     selectedNodeId, selectedNodeIds, subtreeRootId, clipboard, collapsedNodeIds, pendingToast,
@@ -335,8 +335,8 @@ export default function MindmapView() {
 
 
   const { onStatusClick, onCommitEdit, onCreateChild, onCreateSibling, onInsertParent, onDelete, onPaste } = useNodeActions({
-    tree, clipboard, moveNode, onRequestDelete: setDeleteTargets, reload, renameNode,
-    createNode, createChild, selectNode, setClipboard, setEditingNodeId,
+    tree, clipboard, moveNode, duplicateNode, onRequestDelete: setDeleteTargets, reload, renameNode,
+    createNode, createChild, selectNode, setClipboard, setEditingNodeId, showToast,
   });
 
   const { navigateArrow, extendSelection } = useNavigateArrow({ selectedNodeId, selectedNodeIds, positions, tree, orientation: mindmapOrientation, selectNode, setSelection });
