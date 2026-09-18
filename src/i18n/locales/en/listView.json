@@ -6,7 +6,6 @@
     "do": "Do",
     "unblock": "Unblock"
   },
-  "showGoalHeaders": "Show goals",
   "statusPresetLabel": "Status preset",
   "hierarchyClusterLabel": "Hierarchy",
   "statusScopeClusterLabel": "Status & Scope",
@@ -14,9 +13,9 @@
   "cycleStatus": "Cycle status",
   "filterByParent": "Filter by this parent",
   "filterByTag": "Filter by this tag",
+  "enterSubtree": "Enter this subtree",
   "filterSectionLabel": "List filters",
   "parentLabel": "Parent",
-  "antecedentLabel": "Antecedent",
   "dependencyLabel": "Dependency",
   "taskStatusLabel": "Task status",
   "goalStatusLabel": "Goal status",
@@ -24,7 +23,6 @@
   "scopeStateLabel": "Scope",
   "blockedLabel": "Blocked",
   "addParent": "Add parent filter…",
-  "addAntecedent": "Add antecedent filter…",
   "addDependency": "Add dependency filter…",
   "removePill": "Remove filter",
   "scopeState": {

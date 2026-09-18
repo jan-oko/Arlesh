@@ -3,6 +3,7 @@ import { useListFilterStore } from "./use-list-filter-store";
 import { DEFAULT_LIST_FILTER } from "@/utils/list-filter";
 
 beforeEach(() => {
+  localStorage.clear();
   useListFilterStore.setState({ filter: DEFAULT_LIST_FILTER });
 });
 
@@ -13,20 +14,12 @@ describe("setPreset", () => {
   });
 });
 
-describe("toggleShowGoalHeaders", () => {
-  it("flips the goal-header toggle, off by default", () => {
-    expect(useListFilterStore.getState().filter.showGoalHeaders).toBe(false);
-    useListFilterStore.getState().toggleShowGoalHeaders();
-    expect(useListFilterStore.getState().filter.showGoalHeaders).toBe(true);
-  });
-});
-
 describe("addPill / setPillMode / removePill", () => {
   it("adds a pill in 'any' mode by default, to the given dimension only", () => {
     useListFilterStore.getState().addPill("parent", "goal-1");
     const s = useListFilterStore.getState().filter;
     expect(s.pills.parent).toEqual([{ value: "goal-1", mode: "any" }]);
-    expect(s.pills.antecedent).toEqual([]);
+    expect(s.pills.dependency).toEqual([]);
   });
 
   it("does not add a duplicate value to the same dimension", () => {
@@ -56,5 +49,36 @@ describe("reset", () => {
     useListFilterStore.getState().addPill("parent", "goal-1");
     useListFilterStore.getState().reset();
     expect(useListFilterStore.getState().filter).toEqual(DEFAULT_LIST_FILTER);
+  });
+});
+
+describe("rehydrating a filter saved by an older build", () => {
+  /** Writes the blob the persist middleware reads back, under this store's storage key. */
+  function saveFilter(filter: unknown): void {
+    localStorage.setItem("arlesh-list-filter", JSON.stringify({ state: { filter }, version: 0 }));
+  }
+
+  it("drops an Antecedent pill saved before subtree entry replaced the dimension", async () => {
+    saveFilter({
+      preset: "all",
+      pills: {
+        parent: [], antecedent: [{ value: "aspect-1", mode: "any" }], dependency: [],
+        taskStatus: [], goalStatus: [], projectStatus: [], scopeState: [], blocked: [],
+      },
+    });
+    await useListFilterStore.persist.rehydrate();
+    // Not merely hidden: nothing is left to narrow the list that no chip could show and no control clear.
+    expect(useListFilterStore.getState().filter).toEqual(DEFAULT_LIST_FILTER);
+  });
+
+  it("keeps the pills that still exist while dropping the retired one", async () => {
+    saveFilter({
+      preset: "unblock",
+      pills: { parent: [{ value: "goal-1", mode: "any" }], antecedent: [{ value: "aspect-1", mode: "any" }] },
+    });
+    await useListFilterStore.persist.rehydrate();
+    const { filter } = useListFilterStore.getState();
+    expect(filter.preset).toBe("unblock");
+    expect(filter.pills).toEqual({ ...DEFAULT_LIST_FILTER.pills, parent: [{ value: "goal-1", mode: "any" }] });
   });
 });
