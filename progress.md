@@ -363,6 +363,46 @@ filter dimensions" → seven). It never reached a release, so they were made to 
 rather than carrying a `Removed` note for something no user ever had. Agent also caught `README.md`,
 which my file map missed.
 
+## Tabs landed — PR #16, the largest change of the run
+
+58 files, **+2551 / −396**, one commit, 87 → 96 test files and 1144 → 1225 tests. Note the size: the
+agent described it as "+485/−396 across 33 changed files plus 20 new ones", which is true of the
+*existing* files but understates the whole — the new files carry the rest.
+
+**The persistence migration is the part that could have hurt, and it was done properly.** Verified
+directly rather than taken on report: `tab-persistence.ts` reads the three legacy keys
+(`arlesh-view`, `arlesh-filter`, `arlesh-list-filter`) and folds them into a single tab, and it
+rebuilds rather than spreads — `mergeFilterDefaults` for the flat level, **`withCurrentPillDimensions`
+on top** for the nested pill map, which is exactly the second-level hazard that has bitten this repo
+twice. 16 rehydration tests, including the two that matter most: a blob written before `archivedMode`
+existed, and one still carrying a retired Antecedent pill. Plus corrupt blob, tab with no id, and an
+`activeTabId` naming a tab that is gone.
+
+**Two judgement calls beyond the bead**, both correct and both argued in a new ADR 0007:
+
+- The **clipboard** had to leave `use-mindmap-store`, or it would have become per-tab — which would
+  defeat copying in one tab and pasting in another, a stated requirement.
+- **`pathHeaderIcons`** lived in `use-view-store`, which the bead makes per-tab. Moved to a new
+  app-wide `use-display-store` rather than letting a *taste preference* silently reset per tab. The
+  branch axis stays per-tab because it is genuinely per-subtree.
+
+**Two follow-ons the conversion forced**, either of which would have shipped as a bug:
+
+- A restored subtree root may name a node that no longer exists — a view rooted at nothing shows
+  nothing, with no pill to escape by. Now exits to the true root, but only when the tree is
+  *loaded*: an empty tree is what a load in progress looks like.
+- `MindmapView` centred on every `subtreeRootId` change, which with per-tab roots fired on every tab
+  switch and discarded the pan/zoom that tab was holding. Now centres only for a root change within
+  the same tab.
+
+**Ctrl+W** is taken by the app: nothing bound it, no native accelerator is declared, and the capture-
+phase dispatcher `preventDefault`s so the webview never sees it. Closing the last tab is refused by
+the store and turned into `closeWindow()`.
+
+Flagged for review, not acted on: `src/test/setup.ts` now imports `use-tabs-store`, because the
+`getState()` accessors resolve through the active tab, so every suite needs one to exist — that is
+why ~12 existing test files needed no edit. And `reloadTabs()` is exported but only tests call it.
+
 ## Backlog editor: the control existed, buried (PR #7, `1b4f35f`)
 
 The user's *"found no way to backlog a task from the editor"* was not a stale build and not a
