@@ -33,6 +33,23 @@ pub enum DomainSubtype {
     Tag,
 }
 
+impl DomainSubtype {
+    /// Parses the `subtype` column's spelling, if it names a *writable* subtype.
+    ///
+    /// `"aspect"` returns `None` rather than [`Self::Aspect`], and that is the point: every
+    /// caller that parses a stored subtype is about to create or update a row, and an Aspect is
+    /// fixed. Refusing it here turns "the row said aspect" into a `None` the caller must handle,
+    /// instead of a value the write layer has to reject a step later.
+    pub fn from_db(value: &str) -> Option<Self> {
+        match value {
+            "project" => Some(Self::Project),
+            "domain" => Some(Self::Domain),
+            "tag" => Some(Self::Tag),
+            _ => None,
+        }
+    }
+}
+
 /// Project lifecycle status.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
 #[sqlx(rename_all = "lowercase")]
@@ -94,9 +111,9 @@ pub struct Domain {
     pub position: i64,
     /// Whether this node is private (hidden unless Private Mode is on).
     pub is_private: bool,
-    /// The `bd` issue tracking this Project, if any (e.g. `"Arlesh-5fs"`). Written only by the
+    /// The `bd` issue tracking this Project, if any (e.g. `"Arlesh-5fs"`). Sourced only from the
     /// MCP server, through [`DomainOperator::set_beads_id`](crate::domains::DomainOperator::set_beads_id);
-    /// no update request carries it.
+    /// no update request carries it. Duplicating a node propagates the id it already has.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub beads_id: Option<String>,
 }
@@ -156,6 +173,19 @@ mod tests {
         for status in [ProjectStatus::Active, ProjectStatus::Achieved, ProjectStatus::Frozen, ProjectStatus::Archived] {
             assert_eq!(ProjectStatus::from_db(status.as_str()), Some(status));
         }
+    }
+
+    #[test]
+    fn domain_subtype_from_db_parses_every_writable_subtype() {
+        assert_eq!(DomainSubtype::from_db("project"), Some(DomainSubtype::Project));
+        assert_eq!(DomainSubtype::from_db("domain"), Some(DomainSubtype::Domain));
+        assert_eq!(DomainSubtype::from_db("tag"), Some(DomainSubtype::Tag));
+    }
+
+    #[test]
+    fn domain_subtype_from_db_rejects_aspect_and_unrecognized_values() {
+        assert_eq!(DomainSubtype::from_db("aspect"), None);
+        assert_eq!(DomainSubtype::from_db("bogus"), None);
     }
 
     #[test]

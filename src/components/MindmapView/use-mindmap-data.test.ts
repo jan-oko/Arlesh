@@ -691,6 +691,85 @@ describe("useMindmapData — mutations", () => {
     });
   });
 
+  describe("duplicateNode", () => {
+    it("goal: calls duplicate_goal with the target and position", async () => {
+      setupInvoke({ duplicate_goal: GOAL });
+      const { result } = await loadedHook();
+
+      await act(async () => {
+        await result.current.duplicateNode("goal-1", "goal", "domain-1", "aspect", 3);
+      });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("duplicate_goal", {
+        id: 1, targetType: "project", targetId: 1, position: 3,
+      });
+    });
+
+    it("task: calls duplicate_task with the target and position", async () => {
+      setupInvoke({ duplicate_task: TASK });
+      const { result } = await loadedHook();
+
+      await act(async () => {
+        await result.current.duplicateNode("task-1", "task", "goal-1", "goal", 0);
+      });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("duplicate_task", {
+        id: 1, targetType: "goal", targetId: 1, position: 0,
+      });
+    });
+
+    it("info: calls duplicate_info with the target's own kind as parent type", async () => {
+      const INFO = mkInfo({ id: 5, parent_type: "goal", parent_id: 1 });
+      setupInvoke({ list_infos: [INFO], duplicate_info: INFO });
+      const { result } = await loadedHook();
+
+      await act(async () => {
+        await result.current.duplicateNode("info-5", "info", "task-1", "task", 1);
+      });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("duplicate_info", {
+        id: 5, targetType: "task", targetId: 1, position: 1,
+      });
+    });
+
+    it("project: calls duplicate_domain, which takes a target id and no target type", async () => {
+      const PROJECT = mkDomain({ id: 5, subtype: "project", parent_id: 1, title: "Ops" });
+      setupInvoke({ list_domains: [ASPECT, PROJECT], duplicate_domain: PROJECT });
+      const { result } = await loadedHook();
+
+      await act(async () => {
+        await result.current.duplicateNode("domain-5", "project", "domain-1", "aspect", 2);
+      });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("duplicate_domain", {
+        id: 5, targetId: 1, position: 2,
+      });
+    });
+
+    it("refuses an aspect rather than writing a second one", async () => {
+      setupInvoke({});
+      const { result } = await loadedHook();
+
+      await expect(
+        act(async () => {
+          await result.current.duplicateNode("domain-1", "aspect", "domain-1", "aspect", 0);
+        }),
+      ).rejects.toThrow("Aspects are fixed and cannot be duplicated");
+      expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("duplicate_domain", expect.anything());
+    });
+
+    it("refuses a flow — a Flow moves and forks through its own commands", async () => {
+      setupInvoke({});
+      const { result } = await loadedHook();
+
+      await expect(
+        act(async () => {
+          await result.current.duplicateNode("flow-1", "flow", "domain-1", "aspect", 0);
+        }),
+      ).rejects.toThrow("flow nodes cannot be duplicated");
+    });
+  });
+
   describe("removeNode", () => {
     it("goal: calls delete_goal with the db id", async () => {
       setupInvoke({ delete_goal: undefined });

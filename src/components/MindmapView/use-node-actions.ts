@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { findNode, findParent, collectAllNodeIds } from "@/utils/mindmap-tree";
 import { isValidDropTarget } from "@/utils/node-meta";
@@ -25,6 +26,7 @@ interface Options {
   tree: MindmapNode;
   clipboard: ClipboardEntry | null;
   moveNode: (id: string, kind: NodeKind, parentId: string, parentKind: NodeKind, position: number) => Promise<void>;
+  duplicateNode: (id: string, kind: NodeKind, targetId: string, targetKind: NodeKind, position: number) => Promise<void>;
   onRequestDelete: (nodeIds: string[]) => void;
   reload: () => Promise<void>;
   renameNode: (id: string, kind: NodeKind, title: string) => Promise<void>;
@@ -33,6 +35,7 @@ interface Options {
   selectNode: (id: string | null) => void;
   setClipboard: (entry: ClipboardEntry | null) => void;
   setEditingNodeId: (id: string | null) => void;
+  showToast: (toast: { nodeId: string; message: string }) => void;
 }
 
 interface Result {
@@ -46,9 +49,11 @@ interface Result {
 }
 
 export function useNodeActions({
-  tree, clipboard, moveNode, onRequestDelete, reload, renameNode,
-  createNode, createChild, selectNode, setClipboard, setEditingNodeId,
+  tree, clipboard, moveNode, duplicateNode, onRequestDelete, reload, renameNode,
+  createNode, createChild, selectNode, setClipboard, setEditingNodeId, showToast,
 }: Options): Result {
+  const { t } = useTranslation("warnings");
+
   const onStatusClick = useCallback(
     (nodeId: string) => {
       const node = findNode(tree, nodeId);
@@ -132,12 +137,23 @@ export function useNodeActions({
       if (clipboard === null) return;
       const targetNode = findNode(tree, targetId);
       if (targetNode === undefined) return;
+      const isCopy = clipboard.operation === CLIPBOARD_OP.COPY;
 
-      // Drop the same rules drag-and-drop enforces (e.g. aspects are fixed and can't be reparented).
+      // A node is pasteable here if drag-and-drop would allow the same reparent (e.g. aspects are
+      // fixed and can't be reparented) and it isn't a derived, DB-less virtual node. A COPY refuses
+      // a Flow or a flow item on top of that: those move through their own commands and have no
+      // duplicate of their own.
       const nodeIds = clipboard.nodeIds.filter((id) => {
         const node = findNode(tree, id);
-        return node !== undefined && isValidDropTarget(node.kind, targetNode.kind);
+        if (node === undefined || node.virtual === true) return false;
+        if (!isValidDropTarget(node.kind, targetNode.kind)) return false;
+        if (isCopy && (node.kind === "flow" || node.kind === "flow_goal" || node.kind === "flow_task")) return false;
+        return true;
       });
+      const skippedCount = clipboard.nodeIds.length - nodeIds.length;
+      if (skippedCount > 0) {
+        showToast({ nodeId: targetId, message: t("pasteSkipped", { count: skippedCount }) });
+      }
       if (nodeIds.length === 0) return;
       const selectedSet = new Set(nodeIds);
 
@@ -165,12 +181,16 @@ export function useNodeActions({
           const nodeId = topLevel[i]!;
           const sourceNode = findNode(tree, nodeId);
           if (sourceNode === undefined) continue;
-          await moveNode(nodeId, sourceNode.kind, targetId, targetNode.kind, basePosition + i);
+          if (isCopy) {
+            await duplicateNode(nodeId, sourceNode.kind, targetId, targetNode.kind, basePosition + i);
+          } else {
+            await moveNode(nodeId, sourceNode.kind, targetId, targetNode.kind, basePosition + i);
+          }
         }
-        if (clipboard.operation === CLIPBOARD_OP.CUT) setClipboard(null);
+        if (!isCopy) setClipboard(null);
       })();
     },
-    [clipboard, tree, moveNode, setClipboard],
+    [clipboard, tree, moveNode, duplicateNode, setClipboard, showToast, t],
   );
 
   const onCreateSibling = useCallback(
