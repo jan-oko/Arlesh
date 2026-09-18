@@ -99,6 +99,7 @@ function buildIterationItems(
   statuses: ReadonlyMap<string, string>,
   color: string | undefined,
   past: boolean,
+  expired: boolean,
 ): MindmapNode[] {
   const nodeByItem = new Map<string, MindmapNode>();
   for (const { itemType, item } of items) {
@@ -112,9 +113,13 @@ function buildIterationItems(
       virtual: true,
       habitItem: { flowId: flow.id, itemType, itemId: item.id, scopeId },
       ...(color !== undefined ? { color } : {}),
-      ...(past
-        ? { timing: "lapsed" as const, resolution: done ? "completed" as const : "missed" as const, archived: true }
-        : { timing: "active" as const }),
+      ...(expired
+        // Out of time under a commitment Habit's Verdict Window. Archived, and deliberately with
+        // no Resolution: the supporting steps under a rule nobody judged were not "missed" either.
+        ? { timing: "lapsed" as const, archived: true }
+        : past
+          ? { timing: "lapsed" as const, resolution: done ? "completed" as const : "missed" as const, archived: true }
+          : { timing: "active" as const }),
       isPrivate: item.is_private,
       position: item.position,
       tagIds: [],
@@ -169,6 +174,10 @@ export function injectHabitInstances(
     for (const iteration of iterations) {
       const scopeId = iteration.anchor_scope_id;
       const past = iteration.status === "lapsed" || iteration.status === "missed";
+      // A commitment Habit's iteration whose Verdict Window ran out unanswered. It archives — the
+      // chance to record a verdict has gone — but it is never given a Resolution, because nothing
+      // in this kind ever concludes an outcome the user did not state.
+      const expired = iteration.status === "expired";
       // The root is its own instance (`flow_root`, keyed by the flow id) with its own status.
       const rootRaw = statuses.get(`flow_root-${flow.id}-${scopeId}`);
       const rootDone = rootRaw === "done";
@@ -182,13 +191,15 @@ export function injectHabitInstances(
         // Iterations are injected after buildTree's colour propagation, so inherit the host's
         // already-resolved aspect colour directly.
         ...(host.color !== undefined ? { color: host.color } : {}),
-        ...(past
-          ? { timing: "lapsed" as const, resolution: rootDone ? "completed" as const : "missed" as const, archived: true }
-          : { timing: "active" as const }),
+        ...(expired
+          ? { timing: "lapsed" as const, archived: true }
+          : past
+            ? { timing: "lapsed" as const, resolution: rootDone ? "completed" as const : "missed" as const, archived: true }
+            : { timing: "active" as const }),
         isPrivate: flow.is_private,
         position: iteration.index,
         tagIds: [],
-        children: buildIterationItems(flow, scopeId, iteration.index, items, statuses, host.color, past),
+        children: buildIterationItems(flow, scopeId, iteration.index, items, statuses, host.color, past, expired),
       });
     }
   });

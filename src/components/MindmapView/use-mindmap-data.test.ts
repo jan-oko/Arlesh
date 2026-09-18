@@ -68,6 +68,7 @@ function mkFlow(overrides: Partial<Flow> = {}): Flow {
     target_type: null, target_id: null, flow_duration_n: 1, flow_duration_kind: "week",
     flow_window_part: null, flow_window_time_start: null, flow_window_time_end: null,
     is_habit: false, root_plan_kind: null, root_plan_start: null, root_plan_end: null,
+    verdict_window_n: null, verdict_window_kind: null,
     position: 0, is_private: false,
     ...overrides,
   };
@@ -286,7 +287,7 @@ describe("buildTree", () => {
 
   it("wires flow items under their flow with cycles, deps, and the flow's scope", () => {
     const aspect = mkDomain({ id: 1, subtype: "aspect" });
-    const flow = { id: 5, title: "Feature", instance_type: "task" as const, parent_type: "aspect", parent_id: 1, target_type: null, target_id: null, flow_duration_n: 2, flow_duration_kind: "week", flow_window_part: null, flow_window_time_start: null, flow_window_time_end: null, is_habit: false, root_plan_kind: null, root_plan_start: null, root_plan_end: null, position: 0, is_private: false };
+    const flow = { id: 5, title: "Feature", instance_type: "task" as const, parent_type: "aspect", parent_id: 1, target_type: null, target_id: null, flow_duration_n: 2, flow_duration_kind: "week", flow_window_part: null, flow_window_time_start: null, flow_window_time_end: null, is_habit: false, root_plan_kind: null, root_plan_start: null, root_plan_end: null, verdict_window_n: null, verdict_window_kind: null, position: 0, is_private: false };
     const specify = { id: 1, flow_id: 5, title: "Specify", parent_type: "flow", parent_id: 5, blocked_reason: null, position: 0, is_private: false };
     const implement = { id: 2, flow_id: 5, title: "Implement", parent_type: "flow", parent_id: 5, blocked_reason: null, position: 1, is_private: false };
     const cycle = { id: 1, flow_id: 5, item_type: "flow_task" as const, item_id: 1, scope_kind: "day", scope_index: 3, plan_kind: null, plan_start: null, plan_end: null, position: 0 };
@@ -1213,7 +1214,8 @@ describe("injectHabitInstances", () => {
       target_type: "goal", target_id: 5,
       flow_duration_n: 1, flow_duration_kind: "week",
       flow_window_part: null, flow_window_time_start: null, flow_window_time_end: null,
-      is_habit: false, root_plan_kind: null, root_plan_start: null, root_plan_end: null, position: 0, is_private: false, ...overrides,
+      is_habit: false, root_plan_kind: null, root_plan_start: null, root_plan_end: null,
+      verdict_window_n: null, verdict_window_kind: null, position: 0, is_private: false, ...overrides,
     };
   }
   function iter(index: number, status: HabitIteration["status"]): HabitIteration {
@@ -1252,6 +1254,30 @@ describe("injectHabitInstances", () => {
     expect(virtuals[2]?.resolution).toBe("missed");
     expect(virtuals[2]?.archived).toBe(true);
     expect(virtuals[2]?.id).toBe("habit-3-2-virtual"); // non-numeric tail keeps it out of mutations
+  });
+
+  it("archives a commitment Habit's expired iteration without ever calling it missed", () => {
+    // The Verdict Window ran out with no verdict recorded. The chance to say has gone, so the
+    // iteration archives — but nothing concludes an outcome, which is the whole point of the kind:
+    // an unjudged commitment may well have been kept.
+    const root = buildTree(
+      [{ id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false }],
+      [{ id: 5, title: "Fitness", parent_type: "domain", parent_id: 1, status: "active", time_scope: null, on_scope_exit: null, tag_ids: [], position: 0, is_private: false }],
+      [], [],
+    );
+    injectHabitInstances(
+      root,
+      [mkFlow({ instance_type: "commitment", verdict_window_n: 2, verdict_window_kind: "day" })],
+      [[iter(0, "expired"), iter(1, "active")]],
+      LABELS,
+    );
+
+    const virtuals = root.children[0]?.children[0]?.children ?? [];
+    expect(virtuals[0]?.archived).toBe(true);
+    expect(virtuals[0]?.timing).toBe("lapsed");
+    expect(virtuals[0]?.resolution).toBeUndefined();
+    expect(virtuals[1]?.timing).toBe("active");
+    expect(virtuals[1]?.archived).toBeUndefined();
   });
 
   it("falls back to the raw anchor date for a sub-day (Phase) window, which has no scope label", () => {

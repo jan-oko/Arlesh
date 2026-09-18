@@ -1655,3 +1655,220 @@ fn an_explicit_null_target_in_an_update_payload_clears_it() {
     assert_eq!(set.target_type, Some(Some("goal".to_string())));
     assert_eq!(set.target_id, Some(Some(5)));
 }
+
+// ===========================================================================
+// A commitment Habit's Verdict Window, and the Consumption it is not allowed to have
+// ===========================================================================
+
+/// A daily commitment Habit, the shape a nightly rule takes.
+fn commitment_flow_req(title: &str) -> CreateFlowRequest {
+    CreateFlowRequest {
+        title: title.into(),
+        instance_type: Some(InstanceType::Commitment),
+        parent_type: "aspect".into(),
+        parent_id: 1,
+        flow_duration_n: Some(1),
+        flow_duration_kind: Some("day".into()),
+        ..Default::default()
+    }
+}
+
+#[tokio::test]
+async fn a_commitment_habit_carries_a_verdict_window_of_its_own() {
+    // It has nowhere else to get one: a virtual iteration has no commitments row, and the flow's
+    // target is normally a Project or Domain, which carries none either.
+    let pool = helpers::test_pool().await;
+    let flow = helpers::session_factory(&pool)
+        .connect().await.unwrap()
+        .flows()
+        .create(CreateFlowRequest {
+            verdict_window_n: Some(2),
+            verdict_window_kind: Some("day".into()),
+            ..commitment_flow_req("Asleep by 23:00")
+        })
+        .await
+        .unwrap();
+    assert_eq!(flow.verdict_window_n, Some(2));
+    assert_eq!(flow.verdict_window_kind.as_deref(), Some("day"));
+
+    // And it can be cleared back to "answerable indefinitely".
+    let cleared = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let updated = update_flow(
+            &mut db,
+            FlowId(flow.id),
+            UpdateFlowRequest {
+                verdict_window_n: Some(None),
+                verdict_window_kind: Some(None),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        db.commit().await.unwrap();
+        updated
+    };
+    assert_eq!(cleared.verdict_window_n, None);
+    assert_eq!(cleared.verdict_window_kind, None);
+}
+
+#[tokio::test]
+async fn a_forked_commitment_habit_keeps_its_verdict_window() {
+    let pool = helpers::test_pool().await;
+    let flow = helpers::session_factory(&pool)
+        .connect().await.unwrap()
+        .flows()
+        .create(CreateFlowRequest {
+            verdict_window_n: Some(1),
+            verdict_window_kind: Some("week".into()),
+            ..commitment_flow_req("No social media")
+        })
+        .await
+        .unwrap();
+    let clone = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let clone = fork_flow(&mut db, FlowId(flow.id)).await.unwrap();
+        db.commit().await.unwrap();
+        clone
+    };
+    assert_eq!(clone.verdict_window_n, Some(1));
+    assert_eq!(clone.verdict_window_kind.as_deref(), Some("week"));
+}
+
+#[tokio::test]
+async fn a_commitment_habits_consumption_cannot_be_anything_but_accumulating_overlapping() {
+    // Under Destructive a past iteration classifies Lapsed — a derived "went unfinished", which is
+    // exactly the conclusion this kind forbids. Under Blocking, one unanswered night would withhold
+    // every night after it. The Verdict Window bounds the accumulation instead.
+    let pool = helpers::test_pool().await;
+    let flow = helpers::session_factory(&pool)
+        .connect().await.unwrap()
+        .flows()
+        .create(commitment_flow_req("Asleep by 23:00"))
+        .await
+        .unwrap();
+    let start = week_scope_id(&pool, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap()).await;
+
+    let refused = |request: SetRecurrenceRequest| {
+        let pool = pool.clone();
+        let flow_id = flow.id;
+        async move {
+            let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+            let result = set_flow_recurrence(&mut db, FlowId(flow_id), request).await;
+            if result.is_ok() { db.commit().await.unwrap(); }
+            result
+        }
+    };
+
+    assert!(refused(destructive_recurrence(start)).await.is_err(), "destructive");
+    assert!(
+        refused(SetRecurrenceRequest {
+            consumption_kind: ConsumptionKind::Accumulating,
+            blocking_mode: Some(BlockingMode::Blocking),
+            catchup_policy: Some(CatchupPolicy::Next),
+            ..destructive_recurrence(start)
+        })
+        .await
+        .is_err(),
+        "blocking",
+    );
+    assert!(
+        refused(SetRecurrenceRequest {
+            consumption_kind: ConsumptionKind::Accumulating,
+            blocking_mode: Some(BlockingMode::Overlapping),
+            ..destructive_recurrence(start)
+        })
+        .await
+        .is_ok(),
+        "accumulating + overlapping is the one shape it may take",
+    );
+}
+
+#[tokio::test]
+async fn a_task_habit_may_still_be_destructive() {
+    // The rule is about the Commitment kind, not about Habits: nothing here narrows what a
+    // repeating piece of *work* may do with its unfinished instances.
+    let pool = helpers::test_pool().await;
+    let flow = helpers::session_factory(&pool)
+        .connect().await.unwrap()
+        .flows()
+        .create(create_req("Exercise"))
+        .await
+        .unwrap();
+    let start = week_scope_id(&pool, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap()).await;
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    let result = set_flow_recurrence(&mut db, FlowId(flow.id), destructive_recurrence(start)).await;
+    assert!(result.is_ok());
+    db.commit().await.unwrap();
+}
+
+#[tokio::test]
+async fn a_commitment_habits_iterations_stop_offering_a_verdict_once_the_window_runs_out() {
+    // The boundary the whole bead is about: an unanswered iteration from a week ago is not
+    // "still active", and it is not Missed either — it is Expired, archived still unresolved.
+    let pool = helpers::test_pool().await;
+    let flow = helpers::session_factory(&pool)
+        .connect().await.unwrap()
+        .flows()
+        .create(CreateFlowRequest {
+            verdict_window_n: Some(2),
+            verdict_window_kind: Some("day".into()),
+            ..commitment_flow_req("Asleep by 23:00")
+        })
+        .await
+        .unwrap();
+    let start = helpers::session_factory(&pool)
+        .connect().await.unwrap()
+        .scopes()
+        .get_or_create(ScopeKind::Day, chrono::NaiveDate::from_ymd_opt(2026, 1, 5).unwrap())
+        .await
+        .unwrap()
+        .id;
+    {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        set_flow_recurrence(
+            &mut db,
+            FlowId(flow.id),
+            SetRecurrenceRequest {
+                consumption_kind: ConsumptionKind::Accumulating,
+                blocking_mode: Some(BlockingMode::Overlapping),
+                ..destructive_recurrence(start)
+            },
+        )
+        .await
+        .unwrap();
+        db.commit().await.unwrap();
+    }
+
+    let at = |iso: &str| chrono::NaiveDateTime::parse_from_str(iso, "%Y-%m-%dT%H:%M:%S").unwrap();
+    let statuses = |iterations: Vec<arlesh_lib::flows::model::HabitIteration>| {
+        iterations.into_iter().map(|it| it.status).collect::<Vec<_>>()
+    };
+
+    // The 7th: the 5th's window shut on the 6th and is answerable until the 8th.
+    let still_open = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let iterations =
+            generate_habit_iterations(&mut db, FlowId(flow.id), at("2026-01-07T09:00:00")).await.unwrap();
+        db.commit().await.unwrap();
+        iterations
+    };
+    assert_eq!(
+        statuses(still_open)[0],
+        arlesh_lib::flows::model::IterationStatus::Active,
+        "last night's verdict can still be recorded this morning",
+    );
+
+    // The 8th: out of time.
+    let run_out = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let iterations =
+            generate_habit_iterations(&mut db, FlowId(flow.id), at("2026-01-08T00:00:00")).await.unwrap();
+        db.commit().await.unwrap();
+        iterations
+    };
+    assert_eq!(
+        statuses(run_out)[0],
+        arlesh_lib::flows::model::IterationStatus::Expired,
+    );
+}

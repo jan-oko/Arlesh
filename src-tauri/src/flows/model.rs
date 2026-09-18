@@ -95,6 +95,13 @@ pub struct Flow {
     pub root_plan_start: Option<i64>,
     /// Root Cycle Plan end offset within the flow window.
     pub root_plan_end: Option<i64>,
+    /// **Verdict Window** count, for a commitment Habit: how long past the end of an iteration's
+    /// window that iteration's verdict may still be recorded. Travels with
+    /// [`Self::verdict_window_kind`]; `None` means iterations never stop being answerable.
+    pub verdict_window_n: Option<i64>,
+    /// Verdict Window kind (`day`/`week`/`month`/`season`), independent of the flow's own window
+    /// kind — a monthly commitment habit may stay answerable for two days.
+    pub verdict_window_kind: Option<String>,
     /// Whether this flow is a Habit (has a Recurrence) — derived, not stored on the flows row.
     #[sqlx(default)]
     pub is_habit: bool,
@@ -183,6 +190,12 @@ pub struct CreateFlowRequest {
     /// Root Cycle Plan end offset within the flow window.
     #[serde(default)]
     pub root_plan_end: Option<i64>,
+    /// Verdict Window count (commitment instance type only); set with `verdict_window_kind`.
+    #[serde(default)]
+    pub verdict_window_n: Option<i64>,
+    /// Verdict Window kind; set with `verdict_window_n`.
+    #[serde(default)]
+    pub verdict_window_kind: Option<String>,
 }
 
 /// Deserialises an explicitly-null JSON field into `Some(None)` rather than `None`.
@@ -228,6 +241,12 @@ pub struct UpdateFlowRequest {
     pub root_plan_start: Option<Option<i64>>,
     /// Root Cycle Plan end offset (Some(None) clears).
     pub root_plan_end: Option<Option<i64>>,
+    /// Verdict Window count (`Some(None)` clears it, leaving iterations answerable indefinitely).
+    #[serde(default, deserialize_with = "null_clears")]
+    pub verdict_window_n: Option<Option<i64>>,
+    /// Verdict Window kind (`Some(None)` clears).
+    #[serde(default, deserialize_with = "null_clears")]
+    pub verdict_window_kind: Option<Option<String>>,
     /// New parent type (with parent_id).
     pub parent_type: Option<String>,
     /// New parent id (with parent_type).
@@ -510,6 +529,13 @@ pub enum IterationStatus {
     Lapsed,
     /// Skipped by a Blocking `latest` catch-up.
     Missed,
+    /// A **commitment** Habit's iteration whose Verdict Window ran out with no verdict recorded.
+    ///
+    /// Not a fifth verdict and not a failure: the Verdict stays unresolved for good, and only the
+    /// Archival moves — the chance to say has gone. Distinct from [`Self::Lapsed`], which is a
+    /// Destructive habit's unfinished *work* passing its window; a Commitment's work is never
+    /// what passes, and nothing here ever concludes that one was broken.
+    Expired,
 }
 
 /// One derived Habit iteration: its ordinal, the scope anchoring its window, and current state.
