@@ -368,9 +368,22 @@ which my file map missed.
 `scripts/branch-instance.sh start <name|all>` = build then run. Two findings from it are worth more
 than the feature:
 
-**`if ( … )` would have silently broken the harness.** Bash switches `set -e` **off for the entire
-dynamic extent of an `if` condition** — subshells and the functions they call included — and an
-explicit `set -e` inside does not restore it. The first version wrapped each build in
+**A tested context would have silently broken the harness.** Bash switches `set -e` **off for the
+entire dynamic extent of any command whose status is tested** — `if`, `while`, `until`, `!`, and the
+left-hand side of `&&` / `||` — subshells and the functions they call included, and an explicit
+`set -e` inside does not restore it. The agent reported this as specific to `if`; I reproduced it
+and it is not:
+
+```
+A) ( inner ) && echo ok || echo failed   →  inner ran past `false`, subshell "succeeded"
+B) if ( inner ); then … fi               →  same
+C) ( inner ) & if wait "$!"; then … fi    →  inner stopped at `false`, status propagated
+```
+
+The general form is the one to remember, because `cmd_x && …` is the shape someone is far more
+likely to write by accident than `if ( … )`. Audited the rest of the script: only line 57,
+`[ "$free" -ge "$MIN_FREE_GB" ] ||`, has the shape, and it is a plain test with no function behind
+it — not exposed. The first version wrapped each build in
 `if ( trap restore_conf EXIT; build_one "$name" )`; with a stubbed failing cargo it sailed past the
 failure, past a failed `cp`, printed "ready" and launched a **stale binary**. The build is now a
 backgrounded subshell that is waited on (`( … ) & if wait "$!"`), which keeps errexit and still
