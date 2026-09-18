@@ -43,11 +43,16 @@
   "habitLoadFailedBanner": "Habit iterations could not be loaded for:",
   "commitmentHabitHoldsGoalsBanner": "These Habits repeat a Commitment, but their templates hold Goals, which a Commitment cannot. No repetitions are shown for:",
   "parentClimb": "It cannot stay under “{{from}}”, so it will move up to “{{to}}”",
+  "pasteSkipped_one": "{{count}} node couldn't be pasted here",
+  "pasteSkipped_other": "{{count}} nodes couldn't be pasted here",
   "backlogHeading": "Put \"{{title}}\" in the backlog?",
   "backlogHasPlan": "It is planned for {{plan}}. A task in the backlog is never also planned, so that plan will be cleared.",
   "backlogHasPlanUnnamed": "It is planned. A task in the backlog is never also planned, so that plan will be cleared.",
   "backlogClearPlanAction": "Clear the plan and backlog it",
   "backlogFailed": "Backlog failed: {{message}}",
   "backlogClearedByPlan": "Taken out of the backlog — it is planned now.",
-  "verdictFailed": "Could not record the verdict: {{message}}"
+  "verdictFailed": "Could not record the verdict: {{message}}",
+  "commitmentNeedsScopeHeading": "Over what window do you hold \"{{title}}\"?",
+  "commitmentNeedsScopeBody": "A commitment is a rule held over a window, and nothing above this one has one — so there is no window for it to inherit. Give it one here, or cancel and leave it exactly as it is.",
+  "commitmentNeedsScopeMissing": "Pick a window, or cancel."
 }

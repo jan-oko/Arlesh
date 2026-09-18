@@ -104,7 +104,7 @@ export default function MindmapNode({ node, parentKind, position, isSelected, is
         <StatusIconRow node={node} indicators={statusIndicators} top={activeHeight} />
       )}
       {contextMenu !== null && createPortal(
-        <NodeContextMenu x={contextMenu.x} y={contextMenu.y} nodeKind={node.kind} parentKind={parentKind} childKinds={[...new Set(node.children.map((c) => c.kind))]} isCollapsed={isCollapsed} hasClipboard={hasClipboard} onAction={(action) => onContextAction(node.id, action)} onClose={() => setContextMenu(null)} />,
+        <NodeContextMenu x={contextMenu.x} y={contextMenu.y} nodeKind={node.kind} parentKind={parentKind} childKinds={[...new Set(node.children.map((c) => c.kind))]} {...(node.flowItem !== undefined ? { flowInstanceType: node.flowItem.flowInstanceType } : {})} isCollapsed={isCollapsed} hasClipboard={hasClipboard} onAction={(action) => onContextAction(node.id, action)} onClose={() => setContextMenu(null)} />,
         document.body,
       )}
     </g>

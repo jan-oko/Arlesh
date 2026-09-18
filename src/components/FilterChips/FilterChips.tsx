@@ -31,7 +31,6 @@ function pillDisplay(
 ): { label: string; color: string | null } {
   switch (dimension) {
     case "parent":
-    case "antecedent":
     case "dependency":
       return { label: display.nodeLabel(value), color: display.nodeColor(value) };
     case "taskStatus":
@@ -52,7 +51,7 @@ function pillDisplay(
 /** The always-visible row of active-filter chips (moved out of the popover so what's filtered is
  * visible without opening anything). Click anywhere on a chip to cycle Any → All → Exclude; the
  * embedded × removes it. Chip color always encodes mode; the background additionally tints toward
- * the value's aspect color where one is resolvable (tags, parent, antecedent, dependency). */
+ * the value's aspect color where one is resolvable (tags, parent, dependency). */
 export default function FilterChips() {
   const { t } = useTranslation("filter");
   const filter = useFilterStore((s) => s.filter);

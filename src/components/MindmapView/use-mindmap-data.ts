@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
-import { createDomain, updateDomain, deleteDomain } from "@/api/domains";
-import { createTask, updateTask, deleteTask, TASK_ARCHIVAL } from "@/api/tasks";
+import { createDomain, updateDomain, deleteDomain, duplicateDomain } from "@/api/domains";
+import { createTask, updateTask, deleteTask, duplicateTask, TASK_ARCHIVAL } from "@/api/tasks";
 import { createCommitment, updateCommitment, deleteCommitment } from "@/api/commitments";
 import type { Commitment, Verdict } from "@/api/commitments";
 import { VERDICT } from "@/api/commitments";
 import type { TaskDependencyEdge } from "@/api/tasks";
 import type { BlockReason } from "@/api/block-reasons";
-import { createGoal, updateGoal, deleteGoal } from "@/api/goals";
-import { createInfo, updateInfo, deleteInfo } from "@/api/infos";
+import { createGoal, updateGoal, deleteGoal, duplicateGoal } from "@/api/goals";
+import { createInfo, updateInfo, deleteInfo, duplicateInfo } from "@/api/infos";
 import { getErrorMessage } from "@/api/errors";
 import { asRetypeKind, retypeNode as backendRetype } from "@/api/retype";
 import type { StrandedChildren } from "@/api/retype";
@@ -29,11 +29,12 @@ import type {
 } from "@/api/flows";
 import type { ItemLifecycle } from "@/api/scope-lifecycle";
 import type { MindmapNode, NodeKind, FlowCyclePair, FlowItemDep } from "@/utils/tree-layout";
-import { entityNodeId } from "@/utils/tree-layout";
+import { entityNodeId, flowTargetNodeId } from "@/utils/tree-layout";
 import { formatScopeCore } from "@/utils/scope-format";
 import type { ScopeLabelFns } from "@/hooks/use-scope-labels";
 import { useScopeLabels } from "@/hooks/use-scope-labels";
 import type { CanonicalKind } from "@/utils/scope-ref";
+import type { TimeScope } from "@/api/time-scope";
 
 /** Local wall-clock now as a `YYYY-MM-DDTHH:MM:SS` string for the scope-lifecycle derivation. */
 function localNowIso(): string {
@@ -97,8 +98,22 @@ function instanceVerdict(raw: string | undefined): Verdict {
 type IterationLifecycle = Pick<MindmapNode, "timing" | "resolution" | "archived">;
 
 /**
+ * An iteration whose **Verdict Window** ran out with no verdict recorded: archived, because the
+ * chance to say has gone, and with no Resolution at all, because nothing in the Commitment kind
+ * ever concludes an outcome the user did not state.
+ *
+ * Shared by the iteration root and the supporting steps under it — a step under a rule nobody
+ * judged in time was not "missed" either.
+ */
+const EXPIRED_LIFECYCLE: IterationLifecycle = { timing: "lapsed", archived: true };
+
+/**
  * A Task/Goal iteration's derived lifecycle: once its window has passed it is archived as a unit,
  * and its Resolution says whether it was completed or missed.
+ *
+ * It has no expiry case, and cannot: a Verdict Window belongs to the Commitment kind, so the
+ * backend derives `expired` only for a commitment Habit. A work iteration is Active until its
+ * window passes and settled after.
  */
 function workIterationLifecycle(past: boolean, done: boolean): IterationLifecycle {
   if (!past) return { timing: "active" };
@@ -113,11 +128,19 @@ function workIterationLifecycle(past: boolean, done: boolean): IterationLifecycl
  * archive — the answer is still owed. Once a verdict is in and the window has passed, that
  * iteration is settled, and archives.
  *
- * What this does not yet honour is the **Verdict Window**: a virtual iteration has no Commitment
- * row to carry one, so an unjudged past iteration stays answerable indefinitely instead of
- * archiving when the window to answer runs out.
+ * What ends "still owed" is the **Verdict Window**, which the Habit carries on the flow row and
+ * every one of its iterations resolves to. `expired` is the backend saying that window has run
+ * out with the verdict still unresolved, and it is checked **first**: an expired iteration is not
+ * `past` in the sense the other branches mean, because under the Accumulating + Overlapping
+ * Consumption a commitment Habit is fixed to, an unanswered iteration classifies Active rather
+ * than Lapsed right up until it expires.
  */
-function commitmentIterationLifecycle(past: boolean, verdict: Verdict): IterationLifecycle {
+function commitmentIterationLifecycle(
+  past: boolean,
+  expired: boolean,
+  verdict: Verdict,
+): IterationLifecycle {
+  if (expired) return EXPIRED_LIFECYCLE;
   if (!past) return { timing: "active" };
   if (verdict === VERDICT.UNRESOLVED) return { timing: "lapsed" };
   return { timing: "lapsed", archived: true };
@@ -151,6 +174,7 @@ function buildIterationItems(
   statuses: ReadonlyMap<string, string>,
   color: string | undefined,
   past: boolean,
+  expired: boolean,
 ): MindmapNode[] {
   const nodeByItem = new Map<string, MindmapNode>();
   for (const { itemType, item } of items) {
@@ -164,7 +188,7 @@ function buildIterationItems(
       virtual: true,
       habitItem: { flowId: flow.id, itemType, itemId: item.id, scopeId },
       ...(color !== undefined ? { color } : {}),
-      ...workIterationLifecycle(past, done),
+      ...(expired ? EXPIRED_LIFECYCLE : workIterationLifecycle(past, done)),
       isPrivate: item.is_private,
       position: item.position,
       tagIds: [],
@@ -199,11 +223,12 @@ export function holdsUnrenderableGoalItems(flow: Flow, flowGoals: readonly FlowG
 }
 
 /**
- * Injects each Habit's derived iterations as **virtual**, read-only child nodes under its target
- * (or the flow node when it has no target). Each iteration root carries the flow's items as its own
- * virtual, per-item-completable instances. The `-virtual` id suffix keeps every injected node out of
- * DB-backed mutations (`dbIdFromNodeId` rejects a non-numeric tail). `iterationsByFlow[i]` /
- * `statusesByFlow[i]` correspond to `flows[i]` (empty for non-habits).
+ * Injects each Habit's derived iterations as **virtual**, read-only child nodes under its Target
+ * Node — its explicit one, or its parent when it has none (`flowTargetNodeId`). Each iteration root
+ * carries the flow's items as its own virtual, per-item-completable instances. The `-virtual` id
+ * suffix keeps every injected node out of DB-backed mutations (`dbIdFromNodeId` rejects a
+ * non-numeric tail). `iterationsByFlow[i]` / `statusesByFlow[i]` correspond to `flows[i]` (empty for
+ * non-habits).
  *
  * A flow whose template its Instance Type cannot hold contributes nothing — see
  * {@link holdsUnrenderableGoalItems}.
@@ -221,11 +246,9 @@ export function injectHabitInstances(
     const iterations = iterationsByFlow[i] ?? [];
     if (iterations.length === 0) return;
     if (holdsUnrenderableGoalItems(flow, flowGoals)) return;
-    const hostId =
-      flow.target_type !== null && flow.target_id !== null
-        ? entityNodeId(flow.target_type, flow.target_id)
-        : `flow-${flow.id}`;
-    const host = findNode(root, hostId);
+    // The flow node itself is the last resort, not a meaning of null: a derived target whose parent
+    // is filtered out of the rendered tree still has somewhere to hang its iterations.
+    const host = findNode(root, flowTargetNodeId(flow)) ?? findNode(root, `flow-${flow.id}`);
     if (host === undefined) return;
     const items: Array<{ itemType: FlowItemType; item: FlowGoal | FlowTask }> = [
       ...flowGoals.filter((g) => g.flow_id === flow.id).map((item) => ({ itemType: "flow_goal" as const, item })),
@@ -237,6 +260,10 @@ export function injectHabitInstances(
     for (const iteration of iterations) {
       const scopeId = iteration.anchor_scope_id;
       const past = iteration.status === "lapsed" || iteration.status === "missed";
+      // A commitment Habit's iteration whose Verdict Window ran out unanswered. It archives — the
+      // chance to record a verdict has gone — but it is never given a Resolution, because nothing
+      // in this kind ever concludes an outcome the user did not state.
+      const expired = iteration.status === "expired";
       // The root is its own instance (`flow_root`, keyed by the flow id) with its own status.
       const rootRaw = statuses.get(`flow_root-${flow.id}-${scopeId}`);
       const rootDone = rootRaw === "done";
@@ -257,12 +284,12 @@ export function injectHabitInstances(
         // already-resolved aspect colour directly.
         ...(host.color !== undefined ? { color: host.color } : {}),
         ...(isCommitment
-          ? commitmentIterationLifecycle(past, rootVerdict)
+          ? commitmentIterationLifecycle(past, expired, rootVerdict)
           : workIterationLifecycle(past, rootDone)),
         isPrivate: flow.is_private,
         position: iteration.index,
         tagIds: [],
-        children: buildIterationItems(flow, scopeId, iteration.index, items, statuses, host.color, past),
+        children: buildIterationItems(flow, scopeId, iteration.index, items, statuses, host.color, past, expired),
       });
     }
   });
@@ -284,6 +311,12 @@ export interface RetypeOptions {
    * Without it the command refuses rather than dropping anything quietly.
    */
   strandedChildren?: StrandedChildren;
+  /**
+   * A window for a node becoming a Commitment that has none of its own and nothing above it to
+   * inherit one from. Supplied in answer to the backend's `needs_time_scope` refusal, and carried
+   * on the retype itself so the conversion stays a single atomic write.
+   */
+  timeScope?: TimeScope;
 }
 
 interface MindmapData {
@@ -298,6 +331,7 @@ interface MindmapData {
   retypeNode: (id: string, fromKind: NodeKind, toKind: NodeKind, options?: RetypeOptions) => Promise<string | null>;
   reorderNode: (id: string, direction: 1 | -1) => Promise<void>;
   moveNode: (id: string, kind: NodeKind, newParentId: string, newParentKind: NodeKind, position: number) => Promise<void>;
+  duplicateNode: (id: string, kind: NodeKind, targetId: string, targetKind: NodeKind, position: number) => Promise<void>;
   removeNode: (nodesToDelete: Array<{ id: string; kind: NodeKind }>) => Promise<void>;
   createFlow: (request: CreateFlowRequest) => Promise<Flow>;
   updateFlow: (id: number, request: UpdateFlowRequest) => Promise<void>;
@@ -339,6 +373,20 @@ function kindToInfoParentType(kind: NodeKind): string {
     case "commitment": return "commitment";
     case "flow": throw new Error("Flow nodes cannot parent info nodes");
     case "flow_goal": case "flow_task": throw new Error("Flow items cannot parent info nodes");
+  }
+}
+
+/**
+ * Maps a parent node kind to the `parent_type` a flow stores. A flow hangs from an Aspect,
+ * Domain, Project or Goal and from nothing else, so every other kind throws rather than
+ * writing a parent link the flows table would reject.
+ */
+function kindToFlowParentType(kind: NodeKind): string {
+  switch (kind) {
+    case "aspect": case "domain": case "project": case "goal": return kind;
+    case "task": case "commitment": case "tag": case "info":
+    case "flow": case "flow_goal": case "flow_task":
+      throw new Error(`Flows cannot hang from a node of kind "${kind}"`);
   }
 }
 
@@ -599,6 +647,7 @@ export function buildTree(
       flowItem: {
         itemType,
         flowId: item.flow_id,
+        flowInstanceType: owningFlow?.instance_type ?? "task",
         flowScopeN: owningFlow?.flow_duration_n ?? null,
         flowScopeKind: owningFlow?.flow_duration_kind ?? null,
         cycles: cyclesByItem.get(id) ?? [],
@@ -990,7 +1039,9 @@ export function useMindmapData(): MindmapData {
       const sourceKind = asRetypeKind(fromKind);
       const targetKind = asRetypeKind(toKind);
       if (sourceKind !== null && targetKind !== null) {
-        const retyped = await backendRetype(sourceKind, dbId, targetKind, options?.strandedChildren);
+        const retyped = await backendRetype(
+          sourceKind, dbId, targetKind, options?.strandedChildren, options?.timeScope,
+        );
         await load(false);
         return entityNodeId(retyped.kind, retyped.id);
       }
@@ -1044,23 +1095,110 @@ export function useMindmapData(): MindmapData {
     async (id: string, kind: NodeKind, newParentId: string, newParentKind: NodeKind, position: number): Promise<void> => {
       const dbId = dbIdFromNodeId(id);
       const dbParentId = dbIdFromNodeId(newParentId);
-      if (kind === "goal") {
-        await updateGoal(dbId, { parent_type: kindToParentType(newParentKind), parent_id: dbParentId, position });
-      } else if (kind === "task") {
-        await updateTask(dbId, { parent_type: kindToParentType(newParentKind), parent_id: dbParentId, position });
-      } else if (kind === "commitment") {
-        await updateCommitment(dbId, { parent_type: kindToParentType(newParentKind), parent_id: dbParentId, position });
-      } else if (kind === "info") {
-        await updateInfo(dbId, { parent_type: kindToInfoParentType(newParentKind), parent_id: dbParentId, position });
-      } else if (kind === "flow_goal" || kind === "flow_task") {
-        // Flow items move only within their flow subtree; parent is the flow or another item.
-        const parentType = newParentKind === "flow" ? "flow" : newParentKind;
-        const update = kind === "flow_goal" ? updateFlowGoal : updateFlowTask;
-        await update(dbId, { parent_type: parentType, parent_id: dbParentId, position });
-      } else {
-        await import("@/api/domains").then(({ updateDomain }) =>
-          updateDomain(dbId, { parent_id: dbParentId, position }),
-        );
+      // Exhaustive over NodeKind on purpose. Node ids are polymorphic — a flow and a domain can
+      // share the number 5 — so a kind with no branch of its own must be a compile error, not a
+      // fall-through that hands the id to whichever table the default happens to name.
+      switch (kind) {
+        case "goal":
+          await updateGoal(dbId, { parent_type: kindToParentType(newParentKind), parent_id: dbParentId, position });
+          break;
+        case "task":
+          await updateTask(dbId, { parent_type: kindToParentType(newParentKind), parent_id: dbParentId, position });
+          break;
+        case "commitment":
+          await updateCommitment(dbId, { parent_type: kindToParentType(newParentKind), parent_id: dbParentId, position });
+          break;
+        case "info":
+          await updateInfo(dbId, { parent_type: kindToInfoParentType(newParentKind), parent_id: dbParentId, position });
+          break;
+        case "flow": {
+          const request: UpdateFlowRequest = {
+            parent_type: kindToFlowParentType(newParentKind),
+            parent_id: dbParentId,
+            position,
+          };
+          // The Target Node is not touched. A flow with no explicit target resolves to its parent
+          // on read, so the instances follow the move by construction; a target pointed elsewhere
+          // was chosen deliberately and stays where it was put.
+          await updateFlow(dbId, request);
+          break;
+        }
+        case "flow_goal":
+        case "flow_task": {
+          // Flow items move only within their flow subtree; parent is the flow or another item.
+          const parentType = newParentKind === "flow" ? "flow" : newParentKind;
+          const update = kind === "flow_goal" ? updateFlowGoal : updateFlowTask;
+          await update(dbId, { parent_type: parentType, parent_id: dbParentId, position });
+          break;
+        }
+        case "domain":
+        case "project":
+        case "tag":
+          await updateDomain(dbId, { parent_id: dbParentId, position });
+          break;
+        case "aspect":
+          // Aspects are the roots of the board. `isValidDropTarget` refuses to drop one, so
+          // reaching here means a caller skipped that check — say so instead of quietly
+          // giving the aspect a parent and demoting it.
+          throw new Error("Aspects are top level and cannot be moved");
+        default: {
+          // `kind` is `never` here only while every NodeKind is handled above. Adding a kind
+          // without a branch fails this assignment at compile time — which is the whole point:
+          // the old `else` swallowed exactly that mistake and wrote it to the domains table.
+          const unhandled: never = kind;
+          throw new Error(`moveNode has no branch for node kind "${String(unhandled)}"`);
+        }
+      }
+      await load(false);
+    },
+    [load],
+  );
+
+  /**
+   * Deep-clones `id`'s whole subtree under `(targetId, targetKind)`, placing the new root at
+   * `position` — the COPY counterpart to `moveNode`'s CUT. Flows and flow items aren't duplicable;
+   * callers filter those out before getting here (`onPaste` does, with a toast).
+   */
+  const duplicateNode = useCallback(
+    async (id: string, kind: NodeKind, targetId: string, targetKind: NodeKind, position: number): Promise<void> => {
+      const dbId = dbIdFromNodeId(id);
+      const dbTargetId = dbIdFromNodeId(targetId);
+      // Exhaustive over NodeKind, for the same reason `moveNode` is: node ids are polymorphic, so a
+      // kind with no branch of its own must be a compile error rather than a fall-through that
+      // hands the id to whichever table the default happens to name.
+      switch (kind) {
+        case "goal":
+          await duplicateGoal(dbId, kindToParentType(targetKind), dbTargetId, position);
+          break;
+        case "task":
+          await duplicateTask(dbId, kindToParentType(targetKind), dbTargetId, position);
+          break;
+        case "commitment":
+          // A Commitment has no duplicate command of its own yet, and copying one would have to
+          // decide what a copy of a recorded Verdict means. Refused by name rather than routed
+          // into whichever table the fall-through happened to pick.
+          throw new Error("commitment nodes cannot be duplicated");
+        case "info":
+          await duplicateInfo(dbId, kindToInfoParentType(targetKind), dbTargetId, position);
+          break;
+        case "project":
+        case "domain":
+        case "tag":
+          await duplicateDomain(dbId, dbTargetId, position);
+          break;
+        case "aspect":
+          // Aspects are the fixed roots of the board — there is no second Green.
+          throw new Error("Aspects are fixed and cannot be duplicated");
+        case "flow":
+        case "flow_goal":
+        case "flow_task":
+          // Flows carry a Recurrence, instances and completion history; what a duplicate of one
+          // should inherit is its own question, and `fork_flow` is the operation that asks it.
+          throw new Error(`${kind} nodes cannot be duplicated`);
+        default: {
+          const unhandled: never = kind;
+          throw new Error(`duplicateNode has no branch for node kind "${String(unhandled)}"`);
+        }
       }
       await load(false);
     },
@@ -1120,6 +1258,7 @@ export function useMindmapData(): MindmapData {
     retypeNode,
     reorderNode,
     moveNode,
+    duplicateNode,
     removeNode,
     createFlow: createFlowNode,
     updateFlow: updateFlowNode,

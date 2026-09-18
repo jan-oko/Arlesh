@@ -10,6 +10,7 @@ export type WireErrorKind =
   | "containment_violated"
   | "invalid_request"
   | "needs_confirmation"
+  | "needs_time_scope"
   | "database"
   | "internal";
 
@@ -18,6 +19,7 @@ const WIRE_ERROR_KINDS: readonly string[] = [
   "containment_violated",
   "invalid_request",
   "needs_confirmation",
+  "needs_time_scope",
   "database",
   "internal",
 ] satisfies readonly WireErrorKind[];

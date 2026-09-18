@@ -28,7 +28,7 @@ export default function NodeRect({ node, width, height, iconWidth, iconCx, iconC
   return (
     <>
       <rect width={width} height={height} rx={6} fill={fillColor} fillOpacity={fillOpacity} stroke={strokeColor} strokeWidth={isSelected ? 2 : 1} />
-      <NodeIcon kind={node.kind} status={node.status} verdict={node.verdict} isBlocked={isBlocked} isHabit={node.flow?.isHabit === true} cx={iconCx} cy={iconCy} r={iconR} color={iconColor} opacity={iconOpacity} />
+      <NodeIcon kind={node.kind} status={node.status} verdict={node.verdict} isArchived={node.archived === true} isBlocked={isBlocked} isHabit={node.flow?.isHabit === true} cx={iconCx} cy={iconCy} r={iconR} color={iconColor} opacity={iconOpacity} />
       {canClickStatus && (
         <rect x={statusRectX} y={0} width={iconWidth} height={height} fill="transparent" cursor="pointer" onClick={onStatusIconClick} />
       )}

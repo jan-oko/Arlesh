@@ -29,6 +29,13 @@ export interface Flow {
   root_plan_kind: string | null;
   root_plan_start: number | null;
   root_plan_end: number | null;
+  // The Verdict Window a commitment Habit's iterations are bounded by: how long past the end of an
+  // iteration's own window its verdict may still be recorded, as the same (n, kind) Duration pair a
+  // Commitment carries. Null leaves iterations answerable indefinitely. A virtual iteration has no
+  // commitments row to carry one of its own, and the flow's target is usually a Project or Domain,
+  // which carries none either — so the Habit is where it lives.
+  verdict_window_n: number | null;
+  verdict_window_kind: string | null;
   // Whether this flow is a Habit (has a Recurrence) — derived on read.
   is_habit: boolean;
   position: number;
@@ -50,6 +57,8 @@ export interface CreateFlowRequest {
   root_plan_kind?: string | null;
   root_plan_start?: number | null;
   root_plan_end?: number | null;
+  verdict_window_n?: number | null;
+  verdict_window_kind?: string | null;
 }
 
 export interface UpdateFlowRequest {
@@ -66,6 +75,8 @@ export interface UpdateFlowRequest {
   root_plan_kind?: string | null;
   root_plan_start?: number | null;
   root_plan_end?: number | null;
+  verdict_window_n?: number | null;
+  verdict_window_kind?: string | null;
   parent_type?: string;
   parent_id?: number;
   position?: number;
@@ -196,7 +207,10 @@ export async function deleteFlowRecurrence(flowId: number): Promise<void> {
 
 // --- Habit instance generation (Phase 8.2) ---
 
-export type IterationStatus = "active" | "done" | "lapsed" | "missed";
+/** A derived Habit iteration's state. `expired` is a commitment Habit's only: its Verdict Window
+ * ran out with no verdict recorded, so it archives still unresolved — never "missed", which would
+ * be the app concluding an outcome nobody stated. */
+export type IterationStatus = "active" | "done" | "lapsed" | "missed" | "expired";
 
 /** A derived Habit iteration on a reference day (nothing is persisted per iteration). */
 export interface HabitIteration {

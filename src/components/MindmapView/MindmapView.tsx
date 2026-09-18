@@ -22,16 +22,19 @@ import DragPlaceholder from "@/components/DragPlaceholder/DragPlaceholder";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useViewStore } from "@/stores/use-view-store";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
+import { useSubtreeNav } from "@/hooks/use-subtree-nav";
 import { filterTree } from "@/utils/filter-tree";
 import AnchoredToast from "@/components/AnchoredToast/AnchoredToast";
 import HabitFailureBanner from "@/components/HabitFailureBanner/HabitFailureBanner";
 import TaskEditorModal from "@/components/TaskEditorModal/TaskEditorModal";
 import GoalEditorModal from "@/components/GoalEditorModal/GoalEditorModal";
+import CommitmentEditorModal from "@/components/CommitmentEditorModal/CommitmentEditorModal";
+import CommitmentScopePrompt from "@/components/CommitmentScopePrompt/CommitmentScopePrompt";
 import TitleEditorModal from "@/components/TitleEditorModal/TitleEditorModal";
 import ProjectEditorModal from "@/components/ProjectEditorModal/ProjectEditorModal";
 import InfoEditorModal from "@/components/InfoEditorModal/InfoEditorModal";
 import NodeSearchModal from "@/components/NodeSearchModal/NodeSearchModal";
-import FlowEditorModal, { type FlowSaveData } from "@/components/FlowEditorModal/FlowEditorModal";
+import FlowEditorModal, { type FlowSaveData, type TargetSelection } from "@/components/FlowEditorModal/FlowEditorModal";
 import FlowItemEditorModal from "@/components/FlowItemEditorModal/FlowItemEditorModal";
 import StartFlowModal, { type StartFlowData } from "@/components/StartFlowModal/StartFlowModal";
 import { startFlow, convertToFlow } from "@/api/flows";
@@ -45,6 +48,17 @@ import styles from "./MindmapView.module.css";
 /** Screen-px moved per arrow-key press when panning the canvas (nothing selected). */
 const KEYBOARD_PAN_STEP = 80;
 
+/**
+ * A tree node as a Flow Target Node value. Used to show a flow's parent as its **inherited** target
+ * — a flow with no explicit target renders its instances under its parent — so the editor and the
+ * start modal both offer the node the instances would actually land on.
+ */
+function targetSelectionFor(node: MindmapNode | null | undefined): TargetSelection | null {
+  if (node === null || node === undefined || node.id === "root") return null;
+  const id = parseInt(node.id.split("-").pop() ?? "", 10);
+  return Number.isNaN(id) ? null : { kind: node.kind, id, title: node.title };
+}
+
 // A pristine flow used to seed the create editor before the flow is persisted.
 const BLANK_FLOW_NODE: MindmapNode = {
   id: "flow-new", kind: "flow", title: "", position: 0,
@@ -54,13 +68,17 @@ const BLANK_FLOW_NODE: MindmapNode = {
 
 export default function MindmapView() {
   const { t } = useTranslation(["common", "editor", "warnings", "nodeKinds"]);
-  const { tree, isLoading, error, loadCondition, createNode, createChild, renameNode, retypeNode, reorderNode, moveNode, removeNode, createFlow, reload } =
+  const { tree, isLoading, error, loadCondition, createNode, createChild, renameNode, retypeNode, reorderNode, moveNode, duplicateNode, removeNode, createFlow, reload } =
     useMindmapData();
   const {
     selectedNodeId, selectedNodeIds, subtreeRootId, clipboard, collapsedNodeIds, pendingToast,
-    selectNode, addToSelection, setSelection, enterSubtree, exitSubtree, exitToRoot,
-    setClipboard, toggleCollapsed, showToast, clearToast, setSubtreeNav,
+    selectNode, addToSelection, setSelection, enterSubtree,
+    setClipboard, toggleCollapsed, showToast, clearToast,
   } = useMindmapStore();
+
+  // Shared with the List View: one subtree root, one set of back-nav pills, both views publishing
+  // the same descriptor so whichever is on screen keeps the top bar right.
+  const { onExitSubtree, onExitToRoot } = useSubtreeNav(tree);
 
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const { visibleFailedFlows, visibleUnrenderableCommitmentFlows, dismiss: dismissHabitBanner } =
@@ -98,7 +116,7 @@ export default function MindmapView() {
 
   const {
     editorModal, setEditorModal, allTags, domainNames, availableForDep, onDoubleClick,
-    onTaskSave, onGoalSave, onSimpleSave, onProjectSave, onInfoSave, onFlowSave, onFlowItemSave,
+    onTaskSave, onGoalSave, onCommitmentSave, onSimpleSave, onProjectSave, onInfoSave, onFlowSave, onFlowItemSave,
     checkScopeClamp, confirmScopeClamp, scopeClampRequest, resolveScopeClamp,
   } = useNodeEditor({ tree, allTasksAndGoals, reload });
 
@@ -125,6 +143,21 @@ export default function MindmapView() {
     walk(tree);
     return acc;
   }, [tree]);
+
+  // The parent a flow's instances fall back to when it carries no explicit Target Node: the node
+  // the editor shows as the inherited value, and the start modal pre-selects.
+  const editedFlowParent = useMemo(
+    () => (editorModal !== null && editorModal.node.kind === "flow" ? targetSelectionFor(findParent(tree, editorModal.node.id)) : null),
+    [editorModal, tree],
+  );
+  const newFlowParent = useMemo(
+    () => (flowCreateParent === null ? null : targetSelectionFor(findNode(tree, flowCreateParent.id))),
+    [flowCreateParent, tree],
+  );
+  const startedFlowParent = useMemo(
+    () => (startFlowNode === null ? null : targetSelectionFor(findParent(tree, startFlowNode.id))),
+    [startFlowNode, tree],
+  );
 
   // Opens a blank flow editor scoped to the chosen parent; the flow is persisted only on save.
   const onNewFlow = useCallback(
@@ -286,7 +319,10 @@ export default function MindmapView() {
     if (pos !== undefined) canvasRef.current?.centerOnPoint(pos.x, pos.y);
   }, [mindmapOrientation, selectedNodeId, displayRoot, positions]);
 
-  const { warningModal, setWarningModal, cycleType, setType, retypeActions } = useNodeTypeManager({
+  const {
+    warningModal, setWarningModal, cycleType, setType, retypeActions,
+    commitmentScopeRequest, resolveCommitmentScope,
+  } = useNodeTypeManager({
     tree, retypeNode, selectNode, showToast,
   });
 
@@ -335,22 +371,10 @@ export default function MindmapView() {
       .finally(() => setIsDeleting(false));
   }, [deleteTargets, tree, removeNode, selectNode]);
 
-  const subtreeParent = subtreeRootId !== null ? findParent(tree, subtreeRootId) : null;
-  const subtreeParentId = subtreeParent !== null && subtreeParent.id !== "root" ? subtreeParent.id : null;
-
-  // Publish the back-nav descriptor to the store so the top bar can render the pills (it lacks the tree).
-  useEffect(() => {
-    setSubtreeNav(
-      subtreeRootId === null
-        ? null
-        : { rootTitle: tree.title, parentTitle: subtreeParent?.title ?? tree.title, parentSubtreeId: subtreeParentId },
-    );
-  }, [subtreeRootId, tree, subtreeParent, subtreeParentId, setSubtreeNav]);
-  const handleExitSubtree = useCallback(() => exitSubtree(subtreeParentId), [exitSubtree, subtreeParentId]);
 
   const { onStatusClick, onCommitEdit, onCreateChild, onCreateSibling, onInsertParent, onDelete, onPaste } = useNodeActions({
-    tree, clipboard, moveNode, onRequestDelete: setDeleteTargets, reload, renameNode,
-    createNode, createChild, selectNode, setClipboard, setEditingNodeId,
+    tree, clipboard, moveNode, duplicateNode, onRequestDelete: setDeleteTargets, reload, renameNode,
+    createNode, createChild, selectNode, setClipboard, setEditingNodeId, showToast,
   });
 
   const { navigateArrow, extendSelection } = useNavigateArrow({ selectedNodeId, selectedNodeIds, positions, tree, orientation: mindmapOrientation, selectNode, setSelection });
@@ -451,8 +475,8 @@ export default function MindmapView() {
     onToggleCollapsed: toggleCollapsed,
     onCycleStatus: onStatusClick,
     onDeselect: () => { selectNode(null); },
-    onExitSubtree: handleExitSubtree,
-    onExitToRoot: exitToRoot,
+    onExitSubtree,
+    onExitToRoot,
     onCut: (ids) => setClipboard({ operation: CLIPBOARD_OP.CUT, nodeIds: ids }),
     onCopy: (ids) => setClipboard({ operation: CLIPBOARD_OP.COPY, nodeIds: ids }),
     onPaste,
@@ -517,6 +541,9 @@ export default function MindmapView() {
       {editorModal !== null && editorModal.node.kind === "goal" && (
         <GoalEditorModal node={editorModal.node} allTags={allTags} domainNames={domainNames} onSave={onGoalSave} onCheckScopeClamp={checkScopeClamp} onClose={() => setEditorModal(null)} />
       )}
+      {editorModal !== null && editorModal.node.kind === "commitment" && (
+        <CommitmentEditorModal node={editorModal.node} allTags={allTags} domainNames={domainNames} onSave={onCommitmentSave} onClose={() => setEditorModal(null)} />
+      )}
       {editorModal !== null && editorModal.node.kind === "domain" && (
         <TitleEditorModal heading={t("editor:editDomain")} title={editorModal.node.title} isPrivate={editorModal.node.isPrivate ?? false} onSave={onSimpleSave} onClose={() => setEditorModal(null)} />
       )}
@@ -537,19 +564,21 @@ export default function MindmapView() {
         />
       )}
       {editorModal !== null && editorModal.node.kind === "flow" && (
-        <FlowEditorModal node={editorModal.node} availableTargets={flowTargets} onSave={onFlowSave} onClose={() => setEditorModal(null)} />
+        <FlowEditorModal node={editorModal.node} availableTargets={flowTargets} inheritedTarget={editedFlowParent} onSave={onFlowSave} onClose={() => setEditorModal(null)} />
       )}
       {flowCreateParent !== null && (
-        <FlowEditorModal node={BLANK_FLOW_NODE} availableTargets={flowTargets} heading={t("editor:newFlowTitle")} onSave={onCreateFlow} onClose={() => setFlowCreateParent(null)} />
+        <FlowEditorModal node={BLANK_FLOW_NODE} availableTargets={flowTargets} inheritedTarget={newFlowParent} heading={t("editor:newFlowTitle")} onSave={onCreateFlow} onClose={() => setFlowCreateParent(null)} />
       )}
+      {/* With no explicit Target Node the start picker opens on the flow's parent — where a flow
+          with a derived target puts its instances. */}
       {startFlowNode !== null && (
         <StartFlowModal
           flowTitle={startFlowNode.title}
           flowScoped={startFlowNode.flow?.durationKind != null}
           durationN={startFlowNode.flow?.durationN ?? null}
           durationKind={startFlowNode.flow?.durationKind ?? null}
-          defaultTargetType={startFlowNode.flow?.targetType ?? null}
-          defaultTargetId={startFlowNode.flow?.targetId ?? null}
+          defaultTargetType={startFlowNode.flow?.targetType ?? startedFlowParent?.kind ?? null}
+          defaultTargetId={startFlowNode.flow?.targetId ?? startedFlowParent?.id ?? null}
           availableTargets={flowTargets}
           onStart={onConfirmStartFlow}
           onClose={() => setStartFlowNode(null)}
@@ -582,6 +611,13 @@ export default function MindmapView() {
 
       {planPrompt !== null && (
         <BacklogConfirmModal prompt={planPrompt} onConfirm={confirmClearPlan} onCancel={cancelPlanPrompt} />
+      )}
+
+      {commitmentScopeRequest !== null && (
+        <CommitmentScopePrompt
+          title={commitmentScopeRequest.title}
+          onResolve={resolveCommitmentScope}
+        />
       )}
 
       {scopeClampRequest !== null && (

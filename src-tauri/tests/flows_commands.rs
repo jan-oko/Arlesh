@@ -881,14 +881,17 @@ async fn starting_a_commitment_flow_holding_a_goal_item_is_refused_outright() {
     // A commitment flow whose template carries a goal item therefore has no materialisation, and
     // the refusal is the point: it fails loudly rather than dropping the item and building the
     // rest, which would quietly give the user a subtree that is not the template they wrote.
+    //
+    // Both ways of *reaching* this state are now shut — `create_flow_goal` refuses a commitment
+    // flow, and `update_flow` refuses the instance-type switch over goal items (tests/flows.rs) —
+    // so the fixture is built by writing the flows row directly, which is the only way it can
+    // still arise: a board that was already in it. This test is the backstop behind those two
+    // doors, not a duplicate of them.
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
     let flow = flow_commands::create_flow(
         app.state(),
-        CreateFlowRequest {
-            instance_type: Some(InstanceType::Commitment),
-            ..create_req("Asleep by 23:00")
-        },
+        CreateFlowRequest { instance_type: Some(InstanceType::Task), ..create_req("Asleep by 23:00") },
     )
     .await
     .unwrap();
@@ -903,6 +906,11 @@ async fn starting_a_commitment_flow_holding_a_goal_item_is_refused_outright() {
     )
     .await
     .unwrap();
+    sqlx::query("UPDATE flows SET instance_type = 'commitment' WHERE id = ?")
+        .bind(flow.id)
+        .execute(&pool)
+        .await
+        .unwrap();
 
     let refused = flow_commands::start_flow(
         app.state(),

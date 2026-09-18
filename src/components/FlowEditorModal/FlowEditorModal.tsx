@@ -37,7 +37,7 @@ function isNodeKind(value: string): value is NodeKind {
 }
 
 /** A chosen Target Node, retaining its display title for the summary chip. */
-interface TargetSelection {
+export interface TargetSelection {
   kind: NodeKind;
   id: number;
   title: string;
@@ -112,6 +112,11 @@ function targetFromNode(node: MindmapNode, candidates: MindmapNode[]): TargetSel
 interface Props {
   node: MindmapNode;
   availableTargets: MindmapNode[];
+  /**
+   * The flow's parent, shown as the Target Node's value while no explicit target is set — an empty
+   * target means "follow my parent", not "no target", so the field reads that way.
+   */
+  inheritedTarget?: TargetSelection | null;
   heading?: string;
   onSave: (data: FlowSaveData) => Promise<void>;
   onClose: () => void;
@@ -119,9 +124,9 @@ interface Props {
 
 /**
  * Edits a Flow template: its title, Instance Type (goal|task), Duration-form flow scope,
- * and default Target Node. Flow items and their cycle scopes are edited separately (Phase 7.3).
+ * and Target Node. Flow items and their cycle scopes are edited separately (Phase 7.3).
  */
-export default function FlowEditorModal({ node, availableTargets, heading, onSave, onClose }: Props) {
+export default function FlowEditorModal({ node, availableTargets, inheritedTarget = null, heading, onSave, onClose }: Props) {
   useInputCapture();
   const { t } = useTranslation(["editor", "nodeKinds", "scopes"]);
   const [title, setTitle] = useState(node.title);
@@ -397,6 +402,14 @@ export default function FlowEditorModal({ node, availableTargets, heading, onSav
             <div className={styles.depItem}>
               <span>{target.title}<span className={styles.depKind}>{t(`nodeKinds:${target.kind}`)}</span></span>
               <button type="button" className={styles.depRemoveBtn} onClick={() => setTarget(null)}>×</button>
+            </div>
+          </div>
+        )}
+        {target === null && inheritedTarget !== null && (
+          <div className={styles.depList}>
+            <div className={`${styles.depItem} ${styles.depItemInherited}`}>
+              <span>{inheritedTarget.title}<span className={styles.depKind}>{t(`nodeKinds:${inheritedTarget.kind}`)}</span></span>
+              <span className={styles.depKind}>{t("targetInherited")}</span>
             </div>
           </div>
         )}

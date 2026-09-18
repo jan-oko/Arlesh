@@ -38,6 +38,7 @@
   "convertToFlow": "Convert to a flow",
   "openEditor": "Open the editor",
   "openSearch": "Search for a node",
+  "enterBySearch": "Search for a node and enter its subtree",
   "statusBacklog": "Status preset: Backlog",
   "toggleBacklog": "Put in / take out of the backlog",
   "markKept": "Mark the selected commitment kept (again to clear it)",

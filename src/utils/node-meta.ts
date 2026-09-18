@@ -1,4 +1,5 @@
 import type { NodeKind } from "./tree-layout";
+import type { InstanceType } from "@/api/flows";
 
 export interface NodeSize {
   width: number;
@@ -141,8 +142,18 @@ export function typeAcceptsChildren(target: NodeKind, childKinds: readonly NodeK
  * Under a goal parent only goal, task, and info are valid.
  * Under a task parent only task and info are valid.
  * Under an info parent only info is valid (info nodes can only have info children).
+ *
+ * `flowInstanceType` is the owning flow's Instance Type, for a flow item. It matters for exactly
+ * one case: a **commitment** flow holds no goal items, because a Commitment cannot parent a Goal —
+ * so `flow_goal` is not offered there. The pair of kinds alone could not tell, which is how a flow
+ * task on a commitment flow used to be one keystroke from a state that derives no iterations at
+ * all and is only explained afterwards, by the Mindmap's failure banner.
  */
-export function validTypesForCycling(kind: NodeKind, parentKind: NodeKind | null): NodeKind[] {
+export function validTypesForCycling(
+  kind: NodeKind,
+  parentKind: NodeKind | null,
+  flowInstanceType?: InstanceType,
+): NodeKind[] {
   if (kind === "aspect") return [];
 
   // The flow node itself is not part of the type cycle.
@@ -151,7 +162,8 @@ export function validTypesForCycling(kind: NodeKind, parentKind: NodeKind | null
   // Flow items retype between goal and task, mirroring real nodes: a goal child is invalid
   // under a flow-task parent, so only flow-tasks may sit there.
   if (kind === "flow_goal" || kind === "flow_task") {
-    return parentKind === "flow_task" ? ["flow_task"] : ["flow_goal", "flow_task"];
+    if (parentKind === "flow_task" || flowInstanceType === "commitment") return ["flow_task"];
+    return ["flow_goal", "flow_task"];
   }
 
   // Info nodes can only have info children — no cycling out.

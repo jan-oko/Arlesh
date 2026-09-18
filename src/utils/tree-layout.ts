@@ -38,6 +38,25 @@ export function entityNodeId(type: string, id: number): string {
   return DOMAIN_TABLE_KINDS.has(type) ? `domain-${id}` : `${type}-${id}`;
 }
 
+/** The `(type, id)` reference a flow stores for its parent and (optionally) its Target Node. */
+export interface FlowPlacement {
+  parent_type: string;
+  parent_id: number;
+  target_type: string | null;
+  target_id: number | null;
+}
+
+/**
+ * The tree node id a flow's instances belong under: its **Target Node** when it has an explicit
+ * one, and otherwise its own parent — a null target means "my parent", derived here rather than
+ * snapshotted into the row at creation, so moving the flow moves its instances with it.
+ */
+export function flowTargetNodeId(flow: FlowPlacement): string {
+  return flow.target_type !== null && flow.target_id !== null
+    ? entityNodeId(flow.target_type, flow.target_id)
+    : entityNodeId(flow.parent_type, flow.parent_id);
+}
+
 /** Flow-template data carried by a `flow`-kind node. */
 export interface FlowData {
   instanceType: InstanceType;
@@ -77,6 +96,10 @@ export interface FlowItemDep {
 export interface FlowItemData {
   itemType: FlowItemType;
   flowId: number;
+  /** The owning flow's Instance Type, denormalised onto the item the way its Duration already is:
+   * a flow item is retyped from the item's own node, which has no way back to the flow otherwise,
+   * and what a commitment flow may hold is decided from it. */
+  flowInstanceType: InstanceType;
   flowScopeN: number | null;
   flowScopeKind: string | null;
   cycles: FlowCyclePair[];

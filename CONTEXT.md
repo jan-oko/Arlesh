@@ -18,13 +18,13 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 **Task** — An action item. Parented under a Project, Domain, Goal, or another Task.
 
-**Flow** — A template for a Goal/Task subtree, materialized on demand. A new node kind. Has a title, an **Instance Type** (goal or task), a **Target Node**, and a **Flow Window**. May be parented under an Aspect, Domain, Project, or Goal.
+**Flow** — A template for a Goal/Task subtree, materialized on demand. A new node kind. Has a title, an **Instance Type** (goal or task), an optional **Target Node**, and a **Flow Window**. May be parented under an Aspect, Domain, Project, or Goal.
 
 **Flow Window** — A Flow's own relevance window, resolved against the start anchor at materialization. Two forms: a **Span** — a coarse Duration of N of a scope kind (`day`/`week`/`month`/`season`), a relative *length* — or a **Phase** — a sub-day, fixed *time-of-day*: a part-of-day band (e.g. Evening) or an exact `HH:MM–HH:MM` clock range, carried date-free on the template and combined with the anchor's date on start. A Habit whose window is a Phase recurs at that fixed time-of-day, stepping whole days by its Gap ("10:00–12:00 daily", "Evening every 2 days").
 
 **Instance Type** — Whether a Flow materializes its root (and constrains its children) as a Goal, a Task, or a Commitment.
 
-**Target Node** — The default node under which a Flow's instances are created. Overridable when starting the Flow.
+**Target Node** — The node under which a Flow's instances are created. **Optional: unset means "my parent"**, resolved wherever the target is read rather than stored on the Flow — so moving a Flow moves its instances with it, and a stored Target Node is by definition a deliberate override that a move leaves where it was put. Overridable again when starting the Flow.
 
 **Flow instance** — The result of starting a plain (non-habit) Flow: a real, persistent, independent Goal/Task subtree copied under the target. Retains a stored link to its originating Flow used only as a UI indicator (no cascading edits). Habit instances differ — they are virtual (see Habit). Dependencies declared between flow items are **remapped per instance/iteration** (Implement waits on this instance's Specify, not the template's); cross-iteration dependencies are not auto-created.
 
@@ -48,7 +48,7 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 **Verdict** — A Commitment's resolution: `unresolved` · `kept` · `broken`. Always recorded explicitly — neither outcome is ever inferred, from the passage of the window or from the state of the Commitment's children. `unresolved` is the initial value and means only "you have not said".
 
-**Verdict Window** — How long past the end of a Commitment's Time Scope a Verdict may still be recorded. While it lasts the Commitment stays live; once it passes an `unresolved` Commitment is Archived, still unresolved. Expressed as a **Duration** — a count of N of any scope kind — in the same form a Habit's **Gap** and a Time Scope's Duration take, and independent of the Commitment's own scope kind: a monthly commitment may be answerable for two days. Set per Commitment and inherited down the tree like Time Scope; there is no global default.
+**Verdict Window** — How long past the end of a Commitment's Time Scope a Verdict may still be recorded. While it lasts the Commitment stays live; once it passes an `unresolved` Commitment is Archived, still unresolved. Expressed as a **Duration** — a count of N of any scope kind — in the same form a Habit's **Gap** and a Time Scope's Duration take, and independent of the Commitment's own scope kind: a monthly commitment may be answerable for two days. Set per Commitment and inherited down the tree like Time Scope; there is no global default. A **commitment Habit** carries one on the flow itself (`flows.verdict_window_n/kind`) and every one of its iterations resolves to that: a virtual iteration has no `commitments` row to carry one, and the flow's Target Node is normally a Project or Domain, which carries none either.
 
 **Backlog** — A Task deliberately set aside: not in play now, kept for later. A stored **Archival** value on Tasks (`Archival::Backlog`), independent of the Task's status, which continues to say where the work stands. Hidden from the Plan and Start presets together with its whole subtree, shown under All, and browsable on its own via the **Backlog** preset. The Task-side counterpart of a Goal's or Project's **Frozen**, but a separate state: neither maps to the other on retype. A Task cannot be both backlogged and planned.
 
@@ -56,7 +56,7 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 **Instance child** — A real node attached to one virtual Habit instance and no other, keyed by the same (instance, iteration scope) pair a **Modification** is. May be anything a Task can parent. Never gates its iteration's resolution — marking the occurrence done while a child is unfinished asks for confirmation instead, and nothing about that is stored. Archives with its occurrence as a unit, and counts as a divergence — so `delete instances and regenerate` removes it.
 
-**Path header** — A List View row's location, rendered once above the contiguous run of rows that share it (`Growth › CODE › ARLESH › Features`). Names every ancestor **not** rendered as a row above the task — always through to the Goal, and including any ancestor Task the active filter hides. Each segment adds itself as an **Antecedent** filter. Replaces the former Goal header and its visibility toggle.
+**Path header** — A List View row's location, rendered once above the contiguous run of rows that share it (`Growth › CODE › ARLESH › Features`). Names every ancestor **not** rendered as a row above the task — always through to the Goal, and including any ancestor Task the active filter hides. Each segment is clickable and **enters** that node as the subtree, the same re-rooting `Ctrl+O` performs. Replaces the former Goal header and its visibility toggle.
 
 **Visible depth** — How far a List View row is indented: the number of its ancestor Tasks that are themselves visible rows under the active filter, not its depth in the tree. The counterpart of the **Path header**, by one rule — the header names every ancestor not rendered above the row, the indentation counts every ancestor that is — so the list never implies a parent that is not on screen.
 
@@ -65,6 +65,14 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 **Dependency** — A prerequisite relationship from a Task to another Task or Goal. Circular dependencies are rejected at write time.
 
 ---
+
+**Gesture** — One thing the user did, and the unit Ctrl+Z reverses. A gesture may span several backend commands: pasting five nodes is five commands and one gesture. Opened and closed explicitly, so a gesture that is never opened is simply one command's worth of undo rather than a broken one.
+
+**Undo Journal** — The record of every journaled row change, written by database triggers rather than by the commands themselves, so a command cannot fail to be covered. Each entry carries its gesture, the row before and after, and the **source** of the write.
+
+**Write source** — Who caused a write: the user, or the MCP server. Both are journaled; only the user's enter the Undo Stack.
+
+**Undo Stack / Redo Stack** — The gestures Ctrl+Z will reverse and Ctrl+Shift+Z will reapply. One pair for the whole app, not one per tab or window. Session-scoped: closing Arlesh empties both.
 
 ## Status values
 
@@ -137,3 +145,8 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 - A Task's Plan must be wholly contained within that task's Time Scope, and within its parent's Plan.
 - Filtering by a scope returns every item whose scope is wholly contained within it.
 - Flow/Habit instances (real copies and virtual instances) must satisfy containment against their **Target Node's** Time Scope. The target picker only offers scope-valid targets; editing the scope of an item that has flow children prompts the user to reconcile one side or the other.
+- A Gesture is the unit of undo, never a command. Two commands inside one gesture are undone together or not at all.
+- Only writes whose **source** is the user enter the Undo Stack. An MCP write is journaled and never undoable — Ctrl+Z reverses what the user did, never what an agent did.
+- Applying an undo or a redo is itself a write, and is never journaled. The stacks are the only record that it happened.
+- Derived and materialized rows are not journaled. Undoing a gesture must not fight the code that regenerates them.
+- There is one Undo Stack for the whole app. One board, one history of changes to it.

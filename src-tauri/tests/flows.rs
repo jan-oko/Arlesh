@@ -1631,3 +1631,343 @@ async fn is_habit_flag_reflects_the_recurrence() {
     helpers::session_factory(&pool).connect().await.unwrap().flows().delete_recurrence(FlowId(flow.id)).await.unwrap();
     assert!(!helpers::session_factory(&pool).connect().await.unwrap().flows().get(FlowId(flow.id)).await.unwrap().is_habit);
 }
+
+/// An **explicitly null** Target Node in an `update_flow` payload must clear the stored target,
+/// not be read as "leave it alone".
+///
+/// A null target means "my parent", so clearing the field in the Flow editor is how you go back to
+/// the derived default — and the editor's payload spells that as a JSON `null`. `Option<Option<T>>`
+/// does not distinguish an absent key from a null one on its own: both deserialise to `None`, which
+/// `update_flow` reads as "unchanged", so the clear would be swallowed without a word.
+#[test]
+fn an_explicit_null_target_in_an_update_payload_clears_it() {
+    let absent: UpdateFlowRequest = serde_json::from_str(r#"{"title":"Renamed"}"#).unwrap();
+    assert_eq!(absent.target_type, None, "an absent key leaves the target alone");
+    assert_eq!(absent.target_id, None);
+
+    let nulled: UpdateFlowRequest =
+        serde_json::from_str(r#"{"target_type":null,"target_id":null}"#).unwrap();
+    assert_eq!(nulled.target_type, Some(None), "an explicit null clears the target");
+    assert_eq!(nulled.target_id, Some(None));
+
+    let set: UpdateFlowRequest =
+        serde_json::from_str(r#"{"target_type":"goal","target_id":5}"#).unwrap();
+    assert_eq!(set.target_type, Some(Some("goal".to_string())));
+    assert_eq!(set.target_id, Some(Some(5)));
+}
+
+// ===========================================================================
+// A commitment Habit's Verdict Window, and the Consumption it is not allowed to have
+// ===========================================================================
+
+/// A daily commitment Habit, the shape a nightly rule takes.
+fn commitment_flow_req(title: &str) -> CreateFlowRequest {
+    CreateFlowRequest {
+        title: title.into(),
+        instance_type: Some(InstanceType::Commitment),
+        parent_type: "aspect".into(),
+        parent_id: 1,
+        flow_duration_n: Some(1),
+        flow_duration_kind: Some("day".into()),
+        ..Default::default()
+    }
+}
+
+#[tokio::test]
+async fn a_commitment_habit_carries_a_verdict_window_of_its_own() {
+    // It has nowhere else to get one: a virtual iteration has no commitments row, and the flow's
+    // target is normally a Project or Domain, which carries none either.
+    let pool = helpers::test_pool().await;
+    let flow = helpers::session_factory(&pool)
+        .connect().await.unwrap()
+        .flows()
+        .create(CreateFlowRequest {
+            verdict_window_n: Some(2),
+            verdict_window_kind: Some("day".into()),
+            ..commitment_flow_req("Asleep by 23:00")
+        })
+        .await
+        .unwrap();
+    assert_eq!(flow.verdict_window_n, Some(2));
+    assert_eq!(flow.verdict_window_kind.as_deref(), Some("day"));
+
+    // And it can be cleared back to "answerable indefinitely".
+    let cleared = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let updated = update_flow(
+            &mut db,
+            FlowId(flow.id),
+            UpdateFlowRequest {
+                verdict_window_n: Some(None),
+                verdict_window_kind: Some(None),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        db.commit().await.unwrap();
+        updated
+    };
+    assert_eq!(cleared.verdict_window_n, None);
+    assert_eq!(cleared.verdict_window_kind, None);
+}
+
+#[tokio::test]
+async fn a_forked_commitment_habit_keeps_its_verdict_window() {
+    let pool = helpers::test_pool().await;
+    let flow = helpers::session_factory(&pool)
+        .connect().await.unwrap()
+        .flows()
+        .create(CreateFlowRequest {
+            verdict_window_n: Some(1),
+            verdict_window_kind: Some("week".into()),
+            ..commitment_flow_req("No social media")
+        })
+        .await
+        .unwrap();
+    let clone = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let clone = fork_flow(&mut db, FlowId(flow.id)).await.unwrap();
+        db.commit().await.unwrap();
+        clone
+    };
+    assert_eq!(clone.verdict_window_n, Some(1));
+    assert_eq!(clone.verdict_window_kind.as_deref(), Some("week"));
+}
+
+#[tokio::test]
+async fn a_commitment_habits_consumption_cannot_be_anything_but_accumulating_overlapping() {
+    // Under Destructive a past iteration classifies Lapsed — a derived "went unfinished", which is
+    // exactly the conclusion this kind forbids. Under Blocking, one unanswered night would withhold
+    // every night after it. The Verdict Window bounds the accumulation instead.
+    let pool = helpers::test_pool().await;
+    let flow = helpers::session_factory(&pool)
+        .connect().await.unwrap()
+        .flows()
+        .create(commitment_flow_req("Asleep by 23:00"))
+        .await
+        .unwrap();
+    let start = week_scope_id(&pool, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap()).await;
+
+    let refused = |request: SetRecurrenceRequest| {
+        let pool = pool.clone();
+        let flow_id = flow.id;
+        async move {
+            let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+            let result = set_flow_recurrence(&mut db, FlowId(flow_id), request).await;
+            if result.is_ok() { db.commit().await.unwrap(); }
+            result
+        }
+    };
+
+    assert!(refused(destructive_recurrence(start)).await.is_err(), "destructive");
+    assert!(
+        refused(SetRecurrenceRequest {
+            consumption_kind: ConsumptionKind::Accumulating,
+            blocking_mode: Some(BlockingMode::Blocking),
+            catchup_policy: Some(CatchupPolicy::Next),
+            ..destructive_recurrence(start)
+        })
+        .await
+        .is_err(),
+        "blocking",
+    );
+    assert!(
+        refused(SetRecurrenceRequest {
+            consumption_kind: ConsumptionKind::Accumulating,
+            blocking_mode: Some(BlockingMode::Overlapping),
+            ..destructive_recurrence(start)
+        })
+        .await
+        .is_ok(),
+        "accumulating + overlapping is the one shape it may take",
+    );
+}
+
+#[tokio::test]
+async fn a_task_habit_may_still_be_destructive() {
+    // The rule is about the Commitment kind, not about Habits: nothing here narrows what a
+    // repeating piece of *work* may do with its unfinished instances.
+    let pool = helpers::test_pool().await;
+    let flow = helpers::session_factory(&pool)
+        .connect().await.unwrap()
+        .flows()
+        .create(create_req("Exercise"))
+        .await
+        .unwrap();
+    let start = week_scope_id(&pool, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap()).await;
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    let result = set_flow_recurrence(&mut db, FlowId(flow.id), destructive_recurrence(start)).await;
+    assert!(result.is_ok());
+    db.commit().await.unwrap();
+}
+
+#[tokio::test]
+async fn a_commitment_habits_iterations_stop_offering_a_verdict_once_the_window_runs_out() {
+    // The boundary the whole bead is about: an unanswered iteration from a week ago is not
+    // "still active", and it is not Missed either — it is Expired, archived still unresolved.
+    let pool = helpers::test_pool().await;
+    let flow = helpers::session_factory(&pool)
+        .connect().await.unwrap()
+        .flows()
+        .create(CreateFlowRequest {
+            verdict_window_n: Some(2),
+            verdict_window_kind: Some("day".into()),
+            ..commitment_flow_req("Asleep by 23:00")
+        })
+        .await
+        .unwrap();
+    let start = helpers::session_factory(&pool)
+        .connect().await.unwrap()
+        .scopes()
+        .get_or_create(ScopeKind::Day, chrono::NaiveDate::from_ymd_opt(2026, 1, 5).unwrap())
+        .await
+        .unwrap()
+        .id;
+    {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        set_flow_recurrence(
+            &mut db,
+            FlowId(flow.id),
+            SetRecurrenceRequest {
+                consumption_kind: ConsumptionKind::Accumulating,
+                blocking_mode: Some(BlockingMode::Overlapping),
+                ..destructive_recurrence(start)
+            },
+        )
+        .await
+        .unwrap();
+        db.commit().await.unwrap();
+    }
+
+    let at = |iso: &str| chrono::NaiveDateTime::parse_from_str(iso, "%Y-%m-%dT%H:%M:%S").unwrap();
+    let statuses = |iterations: Vec<arlesh_lib::flows::model::HabitIteration>| {
+        iterations.into_iter().map(|it| it.status).collect::<Vec<_>>()
+    };
+
+    // The 7th: the 5th's window shut on the 6th and is answerable until the 8th.
+    let still_open = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let iterations =
+            generate_habit_iterations(&mut db, FlowId(flow.id), at("2026-01-07T09:00:00")).await.unwrap();
+        db.commit().await.unwrap();
+        iterations
+    };
+    assert_eq!(
+        statuses(still_open)[0],
+        arlesh_lib::flows::model::IterationStatus::Active,
+        "last night's verdict can still be recorded this morning",
+    );
+
+    // The 8th: out of time.
+    let run_out = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let iterations =
+            generate_habit_iterations(&mut db, FlowId(flow.id), at("2026-01-08T00:00:00")).await.unwrap();
+        db.commit().await.unwrap();
+        iterations
+    };
+    assert_eq!(
+        statuses(run_out)[0],
+        arlesh_lib::flows::model::IterationStatus::Expired,
+    );
+}
+
+#[tokio::test]
+async fn a_commitment_flow_refuses_a_goal_item() {
+    // The other end of the failure banner: such a template derives no iterations at all, because a
+    // Commitment cannot parent a Goal. Refused at creation rather than explained afterwards.
+    let pool = helpers::test_pool().await;
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
+    let commitment_flow = db.flows().create(commitment_flow_req("Asleep by 23:00")).await.unwrap();
+    let task_flow = db.flows().create(create_req("Exercise")).await.unwrap();
+
+    let goal_item = |flow_id: i64| CreateFlowItemRequest {
+        flow_id,
+        title: "Be rested".into(),
+        parent_type: "flow".into(),
+        parent_id: flow_id,
+    };
+
+    assert!(db.flows().create_goal(goal_item(commitment_flow.id)).await.is_err());
+    assert!(
+        db.flows().create_goal(goal_item(task_flow.id)).await.is_ok(),
+        "the rule is about the Commitment kind, not about flows",
+    );
+    assert!(
+        db.flows()
+            .create_task(CreateFlowItemRequest {
+                title: "Phone on charger".into(),
+                ..goal_item(commitment_flow.id)
+            })
+            .await
+            .is_ok(),
+        "a commitment flow still holds task items — those are the supporting steps",
+    );
+}
+
+#[tokio::test]
+async fn a_flow_holding_goal_items_cannot_become_a_commitment_flow() {
+    // Switching the Instance Type the other way round would create exactly the state above, only
+    // after the fact. Refused, and the message says how many items stand in the way.
+    let pool = helpers::test_pool().await;
+    let flow = helpers::session_factory(&pool)
+        .connect().await.unwrap()
+        .flows()
+        .create(create_req("Exercise"))
+        .await
+        .unwrap();
+    helpers::session_factory(&pool)
+        .connect().await.unwrap()
+        .flows()
+        .create_goal(CreateFlowItemRequest {
+            flow_id: flow.id,
+            title: "Be fit".into(),
+            parent_type: "flow".into(),
+            parent_id: flow.id,
+        })
+        .await
+        .unwrap();
+
+    let refused = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let result = update_flow(
+            &mut db,
+            FlowId(flow.id),
+            UpdateFlowRequest { instance_type: Some(InstanceType::Commitment), ..Default::default() },
+        )
+        .await;
+        if result.is_ok() { db.commit().await.unwrap(); }
+        result
+    };
+    assert!(refused.is_err());
+
+    let still_a_task_flow = helpers::session_factory(&pool)
+        .connect().await.unwrap()
+        .flows()
+        .get(FlowId(flow.id))
+        .await
+        .unwrap();
+    assert_eq!(still_a_task_flow.instance_type, "task", "the refused switch changed nothing");
+}
+
+#[tokio::test]
+async fn a_flow_with_no_goal_items_may_still_become_a_commitment_flow() {
+    let pool = helpers::test_pool().await;
+    let flow = helpers::session_factory(&pool)
+        .connect().await.unwrap()
+        .flows()
+        .create(create_req("Asleep by 23:00"))
+        .await
+        .unwrap();
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    let updated = update_flow(
+        &mut db,
+        FlowId(flow.id),
+        UpdateFlowRequest { instance_type: Some(InstanceType::Commitment), ..Default::default() },
+    )
+    .await
+    .unwrap();
+    db.commit().await.unwrap();
+    assert_eq!(updated.instance_type, "commitment");
+}
