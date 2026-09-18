@@ -297,6 +297,36 @@ arithmetic this cheap.
 Wide migration — 15 columns across 7 tables, on top of `0024` — so it follows the `cyo` pattern
 for rebuilding a populated board.
 
+## Follow-up from testing PR #5 — `Arlesh-xw7` (P2)
+
+"Instances don't seem to move with it." Instances render under the **Target Node**, not under the
+Flow, and `moveNode` sets `parent_*` while leaving `target_*` alone. #5 is not the cause — before
+it a move wrote to the `domains` table and the flow never moved at all, so this is simply the next
+thing visible once moving works.
+
+Grilled to the real question. The default target is **snapshotted at create** rather than derived:
+`convert_to_flow` says so in its own comment, and all 17 flows on the board carry a non-null target
+equal to their own parent. So the two fields drift the moment a flow moves, and nothing can
+distinguish a target that is the parent *by default* from one deliberately pointed at it.
+
+Settled: **null means "my parent", derived at read time.** A move then carries the instances by
+construction, with no inference in the move path; an explicit target is deliberate by definition
+and stays. A migration nulls the targets that already equal their parent — the same inference, made
+**once**, where it can be inspected, rather than on every move forever.
+
+One wrinkle recorded in the bead: null is already taken. `injectHabitInstances` falls back to the
+flow node when the target is null, so null currently means "render under the Flow". Nothing on the
+board is in that state; the fallback is demoted to the parent-not-in-tree case.
+
+Out of scope and stated so: the one started flow instance (7 real nodes) is ordinary Goals/Tasks
+and must never be dragged by moving a template.
+
+**Noticed alongside, not filed:** 7 flows carry `parent_type='project'` against a `domains` row
+whose `subtype` is `domain`. Flows reference nodes by `(type, id)` and domains/projects/tags share
+one table, so **retyping a node leaves every flow referencing it with a stale type label**.
+Rendering tolerates it — `FlowEditorModal` normalises the domain-table type back to `domain-<id>`
+for exactly this reason — but it is real. Awaiting the user on whether to bead it.
+
 ## Follow-ups from PR #11
 
 - **`Arlesh-l25`** (P2) — editor dialogs take no focus when they open, so their new Escape handler
