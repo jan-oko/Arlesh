@@ -32,6 +32,7 @@ import { formatScopeCore } from "@/utils/scope-format";
 import type { ScopeLabelFns } from "@/hooks/use-scope-labels";
 import { useScopeLabels } from "@/hooks/use-scope-labels";
 import type { CanonicalKind } from "@/utils/scope-ref";
+import type { TimeScope } from "@/api/time-scope";
 
 /** Local wall-clock now as a `YYYY-MM-DDTHH:MM:SS` string for the scope-lifecycle derivation. */
 function localNowIso(): string {
@@ -210,6 +211,12 @@ export interface RetypeOptions {
    * Without it the command refuses rather than dropping anything quietly.
    */
   strandedChildren?: StrandedChildren;
+  /**
+   * A window for a node becoming a Commitment that has none of its own and nothing above it to
+   * inherit one from. Supplied in answer to the backend's `needs_time_scope` refusal, and carried
+   * on the retype itself so the conversion stays a single atomic write.
+   */
+  timeScope?: TimeScope;
 }
 
 interface MindmapData {
@@ -904,7 +911,9 @@ export function useMindmapData(): MindmapData {
       const sourceKind = asRetypeKind(fromKind);
       const targetKind = asRetypeKind(toKind);
       if (sourceKind !== null && targetKind !== null) {
-        const retyped = await backendRetype(sourceKind, dbId, targetKind, options?.strandedChildren);
+        const retyped = await backendRetype(
+          sourceKind, dbId, targetKind, options?.strandedChildren, options?.timeScope,
+        );
         await load(false);
         return entityNodeId(retyped.kind, retyped.id);
       }

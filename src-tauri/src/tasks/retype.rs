@@ -353,6 +353,25 @@ impl TransferPlan {
         !self.lost_children.is_empty() || !self.lost_fields.is_empty() || self.parent_climb.is_some()
     }
 
+    /// Gives the retyped node a Time Scope of its own, chosen after the plan was made.
+    ///
+    /// The one caller is the Commitment path. A Commitment must resolve to a window — its own or
+    /// a scoped ancestor's — so retyping a node that has neither is refused with
+    /// [`TaskError::CommitmentUnscoped`](crate::tasks::error::TaskError::CommitmentUnscoped), and
+    /// the window the caller then supplies belongs to *this* plan rather than to a separate write
+    /// beforehand. Folding it in here keeps the retype one atomic call: cancelling leaves the node
+    /// untouched, and a later failure cannot leave a node scoped for a retype that never happened.
+    ///
+    /// Ignored for a target with no Time Scope column, which could not store it.
+    pub fn set_time_scope(&mut self, time_scope: TimeScope) {
+        if matches!(
+            self.target,
+            RetypeKind::Goal | RetypeKind::Task | RetypeKind::Commitment
+        ) {
+            self.carried.time_scope = Some(time_scope);
+        }
+    }
+
     /// The losses as the `details` payload of a `needs_confirmation` wire error.
     ///
     /// Shape: `{ "lost_children": [...], "lost_fields": [...], "parent_climb": {...} | null }`.
@@ -1826,6 +1845,37 @@ mod tests {
             id,
             title: format!("{} {id}", kind.as_str()),
         }
+    }
+
+    // --- A window supplied after the plan was made ---
+
+    #[test]
+    fn a_window_supplied_after_the_plan_is_what_the_new_commitment_is_written_with() {
+        // The answer to the unscoped refusal: the user picks a window, and it joins this plan
+        // rather than being written to the source node in a separate call beforehand.
+        let mut plan = plan_retype(&task(1), &[], RetypeKind::Commitment);
+        assert_eq!(plan.carried.time_scope, None);
+        plan.set_time_scope(window(4, 4));
+        assert_eq!(plan.carried.time_scope, Some(window(4, 4)));
+    }
+
+    #[test]
+    fn a_window_supplied_for_a_target_that_has_no_window_is_ignored() {
+        // A domain has no Time Scope column, so accepting one here would promise a write that
+        // cannot happen.
+        let mut plan = plan_retype(&task(1), &[], RetypeKind::Domain);
+        plan.set_time_scope(window(4, 4));
+        assert_eq!(plan.carried.time_scope, None);
+    }
+
+    #[test]
+    fn a_window_supplied_after_the_plan_replaces_the_one_the_node_already_had() {
+        let mut source = task(1);
+        source.time_scope = Some(window(1, 1));
+        let mut plan = plan_retype(&source, &[], RetypeKind::Commitment);
+        assert_eq!(plan.carried.time_scope, Some(window(1, 1)));
+        plan.set_time_scope(window(9, 9));
+        assert_eq!(plan.carried.time_scope, Some(window(9, 9)));
     }
 
     fn lost_field_names(plan: &TransferPlan) -> Vec<&'static str> {

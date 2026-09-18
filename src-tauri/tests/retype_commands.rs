@@ -263,7 +263,7 @@ async fn retyping_a_goal_to_a_domain_carries_only_identity_fields_and_drops_the_
         .unwrap();
 
     let app = helpers::command_host(&pool);
-    let refused = retype_node(app.state(), "goal".into(), goal.id, "domain".into(), None)
+    let refused = retype_node(app.state(), "goal".into(), goal.id, "domain".into(), None, None)
         .await
         .expect_err("a domain has no status, scope, tag or dependents column");
     let wire = serde_json::to_value(&refused).unwrap();
@@ -280,6 +280,7 @@ async fn retyping_a_goal_to_a_domain_carries_only_identity_fields_and_drops_the_
         goal.id,
         "domain".into(),
         Some(StrandedChildren::Reparent),
+        None,
     )
     .await
     .unwrap();
@@ -377,7 +378,7 @@ async fn retyping_a_task_to_a_project_drops_its_task_only_fields_and_ends_both_d
         .unwrap();
 
     let app = helpers::command_host(&pool);
-    let refused = retype_node(app.state(), "task".into(), task.id, "project".into(), None)
+    let refused = retype_node(app.state(), "task".into(), task.id, "project".into(), None, None)
         .await
         .expect_err("a project holds none of a task's scheduling machinery");
     let wire = serde_json::to_value(&refused).unwrap();
@@ -392,6 +393,7 @@ async fn retyping_a_task_to_a_project_drops_its_task_only_fields_and_ends_both_d
         task.id,
         "project".into(),
         Some(StrandedChildren::Reparent),
+        None,
     )
     .await
     .unwrap();
@@ -444,7 +446,7 @@ async fn a_domain_table_retype_rewrites_no_row_and_the_row_keeps_its_identity_th
 
     let app = helpers::command_host(&pool);
 
-    let hop1 = retype_node(app.state(), "project".into(), created.id, "tag".into(), None)
+    let hop1 = retype_node(app.state(), "project".into(), created.id, "tag".into(), None, None)
         .await
         .expect("a subtype-only move loses nothing, so no acknowledgement is asked for");
     assert_eq!(hop1.id, created.id, "the row keeps its identity — no row is rewritten");
@@ -459,13 +461,13 @@ async fn a_domain_table_retype_rewrites_no_row_and_the_row_keeps_its_identity_th
     assert_eq!(after1.is_private, before.is_private);
     assert_eq!(after1.position, before.position);
 
-    let hop2 = retype_node(app.state(), "tag".into(), created.id, "domain".into(), None).await.unwrap();
+    let hop2 = retype_node(app.state(), "tag".into(), created.id, "domain".into(), None, None).await.unwrap();
     assert_eq!(hop2.id, created.id);
     let after2 = domain_row(&pool, created.id).await;
     assert_eq!(after2.subtype, "domain");
     assert_eq!(after2.knowledge_base_directory, before.knowledge_base_directory);
 
-    let hop3 = retype_node(app.state(), "domain".into(), created.id, "project".into(), None).await.unwrap();
+    let hop3 = retype_node(app.state(), "domain".into(), created.id, "project".into(), None, None).await.unwrap();
     assert_eq!(hop3.id, created.id);
     let after3 = domain_row(&pool, created.id).await;
     assert_eq!(after3.subtype, "project");
@@ -527,7 +529,7 @@ async fn retyping_a_task_to_a_goal_carries_its_tags_and_reasons_and_repoints_wha
     db.commit().await.unwrap();
 
     let app = helpers::command_host(&pool);
-    let refused = retype_node(app.state(), "task".into(), task.id, "goal".into(), None)
+    let refused = retype_node(app.state(), "task".into(), task.id, "goal".into(), None, None)
         .await
         .expect_err("a goal has neither a Plan nor a delegate");
     let wire = serde_json::to_value(&refused).unwrap();
@@ -539,6 +541,7 @@ async fn retyping_a_task_to_a_goal_carries_its_tags_and_reasons_and_repoints_wha
         task.id,
         "goal".into(),
         Some(StrandedChildren::Reparent),
+        None,
     )
     .await
     .unwrap();
@@ -652,7 +655,7 @@ async fn the_retype_node_command_deletes_stranded_children_and_their_own_descend
     db.commit().await.unwrap();
 
     let app = helpers::command_host(&pool);
-    let refused = retype_node(app.state(), "goal".into(), goal.id, "task".into(), None)
+    let refused = retype_node(app.state(), "goal".into(), goal.id, "task".into(), None, None)
         .await
         .expect_err("a task cannot hold a sub-goal");
     let wire = serde_json::to_value(&refused).unwrap();
@@ -664,6 +667,7 @@ async fn the_retype_node_command_deletes_stranded_children_and_their_own_descend
         goal.id,
         "task".into(),
         Some(StrandedChildren::Delete),
+        None,
     )
     .await
     .unwrap();
@@ -755,7 +759,7 @@ async fn the_retype_node_command_reparents_every_kind_of_stranded_child_and_leav
     db.commit().await.unwrap();
 
     let app = helpers::command_host(&pool);
-    let refused = retype_node(app.state(), "goal".into(), goal.id, "task".into(), None)
+    let refused = retype_node(app.state(), "goal".into(), goal.id, "task".into(), None, None)
         .await
         .expect_err("a task can hold neither a sub-goal nor a flow");
     let wire = serde_json::to_value(&refused).unwrap();
@@ -770,6 +774,7 @@ async fn the_retype_node_command_reparents_every_kind_of_stranded_child_and_leav
         goal.id,
         "task".into(),
         Some(StrandedChildren::Reparent),
+        None,
     )
     .await
     .unwrap();
@@ -908,7 +913,7 @@ async fn retyping_a_tracked_task_to_a_goal_keeps_its_issue_link() {
     db.commit().await.unwrap();
 
     let app = helpers::command_host(&pool);
-    let retyped = retype_node(app.state(), "task".into(), task.id, "goal".into(), None)
+    let retyped = retype_node(app.state(), "task".into(), task.id, "goal".into(), None, None)
         .await
         .unwrap();
 
@@ -951,7 +956,7 @@ async fn retyping_a_tracked_task_to_a_project_keeps_its_issue_link() {
 
     // Crossing tables — `tasks` to `domains` — is the case most likely to drop it.
     let app = helpers::command_host(&pool);
-    let retyped = retype_node(app.state(), "task".into(), task.id, "project".into(), None)
+    let retyped = retype_node(app.state(), "task".into(), task.id, "project".into(), None, None)
         .await
         .unwrap();
 
@@ -986,7 +991,7 @@ async fn retyping_a_tracked_task_to_a_note_reports_the_link_as_lost_and_clears_i
 
     // `infos` has no column for the link, so this is a real loss and the command must ask first.
     let app = helpers::command_host(&pool);
-    let refused = retype_node(app.state(), "task".into(), task.id, "info".into(), None).await;
+    let refused = retype_node(app.state(), "task".into(), task.id, "info".into(), None, None).await;
     assert!(
         refused.is_err(),
         "losing an issue link must require acknowledgement"
@@ -1049,7 +1054,7 @@ async fn a_scoped_task_becomes_a_commitment_carrying_its_window_tags_and_issue_l
         task
     };
 
-    let retyped = retype_node(app.state(), "task".into(), task.id, "commitment".into(), None)
+    let retyped = retype_node(app.state(), "task".into(), task.id, "commitment".into(), None, None)
         .await
         .expect("an unplanned, undelegated task loses nothing on the way in");
 
@@ -1104,7 +1109,7 @@ async fn a_planned_task_cannot_become_a_commitment_until_the_caller_has_been_tol
         task
     };
 
-    let refused = retype_node(app.state(), "task".into(), task.id, "commitment".into(), None).await;
+    let refused = retype_node(app.state(), "task".into(), task.id, "commitment".into(), None, None).await;
     assert!(refused.is_err(), "the Plan must be named before it is dropped");
 
     let accepted = retype_node(
@@ -1113,6 +1118,7 @@ async fn a_planned_task_cannot_become_a_commitment_until_the_caller_has_been_tol
         task.id,
         "commitment".into(),
         Some(StrandedChildren::Reparent),
+        None,
     )
     .await
     .expect("acknowledged, it goes through");
@@ -1144,7 +1150,7 @@ async fn an_unscoped_task_with_no_scoped_ancestor_cannot_become_a_commitment() {
         task
     };
 
-    let refused = retype_node(app.state(), "task".into(), task.id, "commitment".into(), None).await;
+    let refused = retype_node(app.state(), "task".into(), task.id, "commitment".into(), None, None).await;
     assert!(refused.is_err(), "a commitment that could never come due is not written");
 
     let survivors: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tasks WHERE id = ?")
@@ -1158,6 +1164,119 @@ async fn an_unscoped_task_with_no_scoped_ancestor_cannot_become_a_commitment() {
         .unwrap();
     assert_eq!(survivors, 1, "the task is untouched");
     assert_eq!(commitments, 0, "and no half-written commitment was left behind");
+}
+
+#[tokio::test]
+async fn an_unscoped_task_becomes_a_commitment_when_the_caller_supplies_the_window() {
+    // The refusal above is a question, and this is its answer: the window the user picked rides
+    // on the retype itself rather than being written to the task first, so the whole thing is
+    // still one atomic write and a cancelled prompt leaves nothing behind.
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let project_id = make_project(&pool).await;
+    let tonight = one_day(&pool, 3).await;
+
+    let task = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let task = create_task(
+            &mut db,
+            CreateTaskRequest {
+                title: "No social media today".into(),
+                parent_type: "project".into(),
+                parent_id: project_id,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        db.commit().await.unwrap();
+        task
+    };
+
+    let retyped = retype_node(
+        app.state(),
+        "task".into(),
+        task.id,
+        "commitment".into(),
+        None,
+        Some(tonight.clone()),
+    )
+    .await
+    .expect("a window supplied with the retype is the window the commitment is written with");
+
+    let commitment = helpers::session_factory(&pool)
+        .connect()
+        .await
+        .unwrap()
+        .commitments()
+        .get(CommitmentId(retyped.id))
+        .await
+        .unwrap();
+    assert_eq!(commitment.time_scope, Some(tonight));
+    assert_eq!(commitment.title, "No social media today");
+
+    let survivors: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tasks WHERE id = ?")
+        .bind(task.id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(survivors, 0, "the task became the commitment rather than sitting beside it");
+}
+
+#[tokio::test]
+async fn a_task_under_a_scoped_goal_becomes_a_commitment_without_being_asked_for_a_window() {
+    // Nothing to ask: the effective window is the goal's, which is exactly what a Commitment
+    // inherits. Prompting here would be asking for something the node already has.
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let project_id = make_project(&pool).await;
+    let this_month = one_day(&pool, 5).await;
+
+    let task = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let goal = create_goal(
+            &mut db,
+            CreateGoalRequest {
+                title: "Sleep properly".into(),
+                parent_type: "project".into(),
+                parent_id: project_id,
+                time_scope: Some(this_month),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        let task = create_task(
+            &mut db,
+            CreateTaskRequest {
+                title: "Asleep by 23:00".into(),
+                parent_type: "goal".into(),
+                parent_id: goal.id,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        db.commit().await.unwrap();
+        task
+    };
+
+    let retyped = retype_node(app.state(), "task".into(), task.id, "commitment".into(), None, None)
+        .await
+        .expect("an inherited window is an effective window");
+
+    let commitment = helpers::session_factory(&pool)
+        .connect()
+        .await
+        .unwrap()
+        .commitments()
+        .get(CommitmentId(retyped.id))
+        .await
+        .unwrap();
+    assert_eq!(
+        commitment.time_scope, None,
+        "it inherits rather than being given a copy of its parent's window"
+    );
 }
 
 #[tokio::test]
@@ -1187,7 +1306,7 @@ async fn a_judged_commitment_becoming_a_task_reports_the_verdict_it_would_lose()
     };
 
     let refused =
-        retype_node(app.state(), "commitment".into(), commitment.id, "task".into(), None).await;
+        retype_node(app.state(), "commitment".into(), commitment.id, "task".into(), None, None).await;
     assert!(refused.is_err(), "a recorded verdict is not discarded unasked");
 
     let retyped = retype_node(
@@ -1196,6 +1315,7 @@ async fn a_judged_commitment_becoming_a_task_reports_the_verdict_it_would_lose()
         commitment.id,
         "task".into(),
         Some(StrandedChildren::Reparent),
+        None,
     )
     .await
     .unwrap();
@@ -1255,6 +1375,7 @@ async fn a_commitments_task_children_move_with_it_and_its_goal_siblings_never_ar
         commitment.id,
         "task".into(),
         Some(StrandedChildren::Reparent),
+        None,
     )
     .await
     .unwrap();
@@ -1312,6 +1433,7 @@ async fn a_commitment_becoming_a_tag_deletes_the_children_a_label_cannot_hold() 
         commitment.id,
         "tag".into(),
         Some(StrandedChildren::Delete),
+        None,
     )
     .await
     .unwrap();
@@ -1367,6 +1489,7 @@ async fn a_stranded_child_commitment_moves_up_to_its_grandparent_when_the_caller
         commitment.id,
         "tag".into(),
         Some(StrandedChildren::Reparent),
+        None,
     )
     .await
     .unwrap();
@@ -1425,6 +1548,7 @@ async fn a_goal_holds_a_commitment_child_through_a_retype() {
         commitment.id,
         "goal".into(),
         Some(StrandedChildren::Reparent),
+        None,
     )
     .await
     .unwrap();
@@ -1477,7 +1601,7 @@ async fn a_task_under_a_commitment_climbs_past_it_when_it_becomes_a_goal() {
         task
     };
 
-    let refused = retype_node(app.state(), "task".into(), task.id, "goal".into(), None).await;
+    let refused = retype_node(app.state(), "task".into(), task.id, "goal".into(), None, None).await;
     assert!(refused.is_err(), "a node leaving the parent it sits under is never silent");
 
     let retyped = retype_node(
@@ -1486,6 +1610,7 @@ async fn a_task_under_a_commitment_climbs_past_it_when_it_becomes_a_goal() {
         task.id,
         "goal".into(),
         Some(StrandedChildren::Reparent),
+        None,
     )
     .await
     .unwrap();

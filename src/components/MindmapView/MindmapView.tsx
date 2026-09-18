@@ -28,6 +28,7 @@ import HabitFailureBanner from "@/components/HabitFailureBanner/HabitFailureBann
 import TaskEditorModal from "@/components/TaskEditorModal/TaskEditorModal";
 import GoalEditorModal from "@/components/GoalEditorModal/GoalEditorModal";
 import CommitmentEditorModal from "@/components/CommitmentEditorModal/CommitmentEditorModal";
+import CommitmentScopePrompt from "@/components/CommitmentScopePrompt/CommitmentScopePrompt";
 import TitleEditorModal from "@/components/TitleEditorModal/TitleEditorModal";
 import ProjectEditorModal from "@/components/ProjectEditorModal/ProjectEditorModal";
 import InfoEditorModal from "@/components/InfoEditorModal/InfoEditorModal";
@@ -286,7 +287,10 @@ export default function MindmapView() {
     if (pos !== undefined) canvasRef.current?.centerOnPoint(pos.x, pos.y);
   }, [mindmapOrientation, selectedNodeId, displayRoot, positions]);
 
-  const { warningModal, setWarningModal, cycleType, setType, retypeActions } = useNodeTypeManager({
+  const {
+    warningModal, setWarningModal, cycleType, setType, retypeActions,
+    commitmentScopeRequest, resolveCommitmentScope,
+  } = useNodeTypeManager({
     tree, retypeNode, selectNode, showToast,
   });
 
@@ -581,6 +585,13 @@ export default function MindmapView() {
 
       {planPrompt !== null && (
         <BacklogConfirmModal prompt={planPrompt} onConfirm={confirmClearPlan} onCancel={cancelPlanPrompt} />
+      )}
+
+      {commitmentScopeRequest !== null && (
+        <CommitmentScopePrompt
+          title={commitmentScopeRequest.title}
+          onResolve={resolveCommitmentScope}
+        />
       )}
 
       {scopeClampRequest !== null && (

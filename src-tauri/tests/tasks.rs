@@ -2655,6 +2655,7 @@ async fn the_retype_node_command_carries_a_goals_scope_tags_and_inbound_dependen
         seeded.goal_id,
         "task".into(),
         None,
+        None,
     )
     .await
     .expect("a goal with only task and info children loses nothing");
@@ -2782,6 +2783,7 @@ async fn the_retype_node_command_refuses_until_the_caller_acknowledges_the_child
         seeded.goal_id,
         "task".into(),
         None,
+        None,
     )
     .await
     .expect_err("a task cannot hold a sub-goal, so the command must ask first");
@@ -2810,6 +2812,7 @@ async fn the_retype_node_command_refuses_until_the_caller_acknowledges_the_child
         seeded.goal_id,
         "task".into(),
         Some(arlesh_lib::tasks::retype::StrandedChildren::Reparent),
+        None,
     )
     .await
     .unwrap();
@@ -2951,6 +2954,7 @@ async fn retyping_a_goal_to_a_project_ends_the_dependencies_it_announced_rather_
         seeded.goal_id,
         "project".into(),
         None,
+        None,
     )
     .await
     .expect_err("a project holds none of this");
@@ -2973,6 +2977,7 @@ async fn retyping_a_goal_to_a_project_ends_the_dependencies_it_announced_rather_
         seeded.goal_id,
         "project".into(),
         Some(arlesh_lib::tasks::retype::StrandedChildren::Reparent),
+        None,
     )
     .await
     .unwrap();

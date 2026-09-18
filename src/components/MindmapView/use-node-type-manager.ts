@@ -5,7 +5,8 @@ import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import type { RetypeOptions } from "./use-mindmap-data";
 import { GOAL_CHILDREN_ACTION } from "./use-mindmap-data";
 import type { RetypeLosses } from "@/api/retype";
-import { retypeLosses, STRANDED_CHILDREN } from "@/api/retype";
+import { retypeLosses, needsTimeScope, STRANDED_CHILDREN } from "@/api/retype";
+import type { TimeScope } from "@/api/time-scope";
 import { getErrorMessage } from "@/api/errors";
 import type { WarningAction } from "@/components/WarningConfirmModal/warning-confirm";
 import { WARNING_VARIANT } from "@/components/WarningConfirmModal/warning-confirm";
@@ -43,6 +44,22 @@ export interface WarningModalState {
    * raises on its own: flow items, which convert through their own command.
    */
   losses: RetypeLosses | null;
+}
+
+/**
+ * A retype held open waiting for a window.
+ *
+ * Raised when the backend refuses a retype to Commitment because the node resolves to no window
+ * at all. Everything needed to run the retype again is kept, `options` included, so answering the
+ * question does not undo an answer already given to the loss prompt in front of it.
+ */
+export interface CommitmentScopeRequest {
+  nodeId: string;
+  /** The node's title, so the question names what it is about. */
+  title: string;
+  fromKind: NodeKind;
+  toKind: NodeKind;
+  options: RetypeOptions | undefined;
 }
 
 /** Every kind the backend can report as a stranded child. */
@@ -105,6 +122,10 @@ interface Result {
   cycleType: (nodeId: string, direction: 1 | -1) => void;
   setType: (nodeId: string, kind: NodeKind) => void;
   retypeActions: WarningAction[] | null;
+  /** The pending "over what window?" question, or `null` when nothing is waiting on one. */
+  commitmentScopeRequest: CommitmentScopeRequest | null;
+  /** Answers it: a window runs the retype again carrying it, `null` cancels and writes nothing. */
+  resolveCommitmentScope: (timeScope: TimeScope | null) => void;
 }
 
 function buildRetypeActions(
@@ -153,6 +174,8 @@ function buildRetypeActions(
 export function useNodeTypeManager({ tree, retypeNode, selectNode, showToast }: Options): Result {
   const { t } = useTranslation(["warnings", "nodeKinds", "status"]);
   const [warningModal, setWarningModal] = useState<WarningModalState | null>(null);
+  const [commitmentScopeRequest, setCommitmentScopeRequest] =
+    useState<CommitmentScopeRequest | null>(null);
 
   /**
    * Runs a retype and deals with however it comes back.
@@ -169,6 +192,21 @@ export function useNodeTypeManager({ tree, retypeNode, selectNode, showToast }: 
           selectNode(newId ?? nodeId);
         },
         (error: unknown) => {
+          // Not a failure and not a confirmation: a Commitment must be held over a window, and
+          // this node resolves to none. The backend is the only thing that knows that — it does
+          // the same effective-scope climb every other rule does — so the question is raised off
+          // its refusal rather than predicted here, which is why a node that already inherits a
+          // window is never asked. Nothing has been written, so cancelling is free.
+          if (needsTimeScope(error)) {
+            setCommitmentScopeRequest({
+              nodeId,
+              title: findNode(tree, nodeId)?.title ?? "",
+              fromKind,
+              toKind,
+              options,
+            });
+            return;
+          }
           const losses = retypeLosses(error);
           if (losses !== null) {
             setWarningModal({
@@ -184,7 +222,7 @@ export function useNodeTypeManager({ tree, retypeNode, selectNode, showToast }: 
         },
       );
     },
-    [retypeNode, selectNode, showToast, t],
+    [retypeNode, selectNode, showToast, t, tree],
   );
 
   const confirmRetype = useCallback(
@@ -195,6 +233,17 @@ export function useNodeTypeManager({ tree, retypeNode, selectNode, showToast }: 
       runRetype(nodeId, fromKind, toKind, options);
     },
     [warningModal, runRetype],
+  );
+
+  const resolveCommitmentScope = useCallback(
+    (timeScope: TimeScope | null) => {
+      if (commitmentScopeRequest === null) return;
+      const { nodeId, fromKind, toKind, options } = commitmentScopeRequest;
+      setCommitmentScopeRequest(null);
+      if (timeScope === null) return;
+      runRetype(nodeId, fromKind, toKind, { ...options, timeScope });
+    },
+    [commitmentScopeRequest, runRetype],
   );
 
   // Retypes `node` to `newKind`. Flow items come first — they convert through their own command,
@@ -285,5 +334,8 @@ export function useNodeTypeManager({ tree, retypeNode, selectNode, showToast }: 
       )
     : null;
 
-  return { warningModal, setWarningModal, confirmRetype, cycleType, setType, retypeActions };
+  return {
+    warningModal, setWarningModal, confirmRetype, cycleType, setType, retypeActions,
+    commitmentScopeRequest, resolveCommitmentScope,
+  };
 }
