@@ -180,3 +180,23 @@ describe("GoalEditorModal — bd issue link", () => {
     expect(screen.queryByText("fieldBeadsId")).not.toBeInTheDocument();
   });
 });
+
+describe("GoalEditorModal — no Backlog control", () => {
+  // Backlog is Tasks-only: a Goal is set aside by its own Frozen status, and offering both would
+  // be two controls for one idea. The Task editor's switch must not follow the shared field
+  // styling across into this modal.
+  it("offers no way to backlog a goal", () => {
+    render(<GoalEditorModal {...defaultProps} />);
+    expect(screen.queryByText("fieldBacklog")).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "backlogOff" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "backlogOn" })).not.toBeInTheDocument();
+  });
+
+  it("saves a goal without an archival field of its own", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<GoalEditorModal {...defaultProps} onSave={onSave} />);
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0]?.[0]).not.toHaveProperty("archival");
+  });
+});
