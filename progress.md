@@ -351,6 +351,34 @@ filter dimensions" → seven). It never reached a release, so they were made to 
 rather than carrying a `Removed` note for something no user ever had. Agent also caught `README.md`,
 which my file map missed.
 
+## PR #8 pulled the inference in — and what the Journal move actually showed
+
+User: *"Should the flow target inference be in duplicate-paste-v2 branch? Tried to move Journal flow
+from REFLECT to PSYCHE node, but the instance didn't move with it."*
+
+**Yes, and it wasn't.** `worktree-duplicate-paste-v2` sat on `e4aa88c`, the commit before the
+inference. Merged `worktree-flow-move-fix` in as `8df6ad9` — **clean auto-merge, no conflict**,
+which retires the merge-order hazard flagged earlier: the two `moveNode` edits do not collide. Gate
+green at 85 files / 1069 tests.
+
+**But that is not what the user saw.** In that instance's database Journal (flow 10) is still
+`parent_id = 9` (REFLECT) with `target_id = 9`, and no flow anywhere has PSYCHE (109) as a parent.
+**The move never happened at all** — nothing to do with the target lagging behind.
+
+The mechanism is #8's own, in `use-node-actions.ts`:
+
+```ts
+if (isCopy && (node.kind === "flow" || node.kind === "flow_goal" || node.kind === "flow_task")) return false;
+```
+
+A **copy**+paste of a Flow is deliberately refused, because `je5` scoped Flow duplication out. It
+raises `pasteSkipped` — *"1 node couldn't be pasted here"* — and moves nothing. **Cut**+paste and
+drag still move it. So a `Ctrl+C` would produce exactly the observed state.
+
+Worth its own bead if the user wants one: that toast reads as a *placement* problem ("couldn't be
+pasted **here**") when the real reason is that Flows have no duplicate. Two different messages, one
+string.
+
 ## Path headers carry their parent's kind glyph (PR #3, `28c279a`)
 
 User: *"add an icon for the parent node type in the path headers"* — then, on seeing the first
