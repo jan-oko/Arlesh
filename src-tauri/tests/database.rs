@@ -56,3 +56,52 @@ async fn aspects_have_expected_titles() {
         vec!["Body", "Connections", "Duty", "Flow", "Growth", "Self"]
     );
 }
+
+/// Migration `0025` clears the Target Node of every flow that already points at its own parent, so
+/// that the parent default lives in the read path instead of in a column a move would leave behind.
+///
+/// The comparison is on the **normalised node id**: aspects, projects, domains and tags share one
+/// `domains` table, so a flow can name the very same row `project` as a parent and `domain` as a
+/// target — 8 of the 15 flows on the author's board do. A flow pointed at anything else keeps the
+/// target it was given.
+#[tokio::test]
+async fn migration_0025_clears_a_target_that_is_already_the_parent() {
+    let pool = helpers::test_pool().await;
+    sqlx::query(
+        "INSERT INTO flows (id, title, instance_type, parent_type, parent_id, target_type, target_id) VALUES
+           (1, 'target is the parent',            'task', 'domain',  7, 'domain', 7),
+           (2, 'same row, different type labels', 'task', 'project', 7, 'domain', 7),
+           (3, 'target is another node kind',     'task', 'domain',  7, 'goal',   7),
+           (4, 'target is another domain',        'task', 'domain',  7, 'domain', 8),
+           (5, 'no target at all',                'task', 'domain',  7, NULL,     NULL),
+           (6, 'goal parent, goal target',        'task', 'goal',    3, 'goal',   3)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::query(include_str!(
+        "../migrations/0025_flow_target_defaults_to_parent.sql"
+    ))
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let rows: Vec<(i64, Option<String>, Option<i64>)> =
+        sqlx::query_as("SELECT id, target_type, target_id FROM flows ORDER BY id")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+
+    assert_eq!(
+        rows,
+        vec![
+            (1, None, None),
+            (2, None, None),
+            (3, Some("goal".to_string()), Some(7)),
+            (4, Some("domain".to_string()), Some(8)),
+            (5, None, None),
+            (6, None, None),
+        ]
+    );
+}

@@ -20,6 +20,18 @@ const BACK_ICON = "←";
 /** Unblock only makes sense — and only appears as an option — while List View is active. */
 const MINDMAP_PRESETS: readonly ListPreset[] = LIST_PRESET_VALUES.filter((p) => p !== "unblock");
 
+/** A subtree glyph — a parent branching down to two children — for the "you are here" indicator. */
+function SubtreeIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="9" y="2" width="6" height="5" rx="1" />
+      <rect x="2" y="17" width="6" height="5" rx="1" />
+      <rect x="16" y="17" width="6" height="5" rx="1" />
+      <path d="M12 7v4M5 17v-2h14v2" />
+    </svg>
+  );
+}
+
 /** A small funnel (filter) glyph for the Filter button. */
 function FunnelIcon() {
   return (
@@ -45,6 +57,8 @@ export default function TopBar() {
   const setView = useViewStore((s) => s.setView);
   const mindmapOrientation = useViewStore((s) => s.mindmapOrientation);
   const toggleMindmapOrientation = useViewStore((s) => s.toggleMindmapOrientation);
+  const pathHeaderIcons = useViewStore((s) => s.pathHeaderIcons);
+  const togglePathHeaderIcons = useViewStore((s) => s.togglePathHeaderIcons);
   const listPreset = useListFilterStore((s) => s.filter.preset);
   const setListPreset = useListFilterStore((s) => s.setPreset);
   const theme = useThemeStore((s) => s.theme);
@@ -87,6 +101,18 @@ export default function TopBar() {
                         checked={mindmapOrientation === "vertical"}
                         onChange={toggleMindmapOrientation}
                         label={t("common:verticalLayout")}
+                      />
+                    </div>
+                  )}
+                  {/* Path headers exist only in List View, so their glyph switch is gated the same
+                      way the branch axis is gated to the mindmap — a control for something the
+                      current view cannot show is noise. */}
+                  {view === "list" && (
+                    <div className={styles.settingRow}>
+                      <Switch
+                        checked={pathHeaderIcons}
+                        onChange={togglePathHeaderIcons}
+                        label={t("common:pathIcons")}
                       />
                     </div>
                   )}
@@ -139,7 +165,21 @@ export default function TopBar() {
           )}
         </div>
 
-        <div className={styles.side}>
+        {/* Where you are — centred in the bar, and unadorned. It is not a control and not a way
+            out (its neighbours on the left are), so it carries no pill, border or background:
+            the glyph and the title alone say which subtree you are inside. The label is spelled
+            out for a screen reader, which would otherwise hear a third bare title. */}
+        <div className={styles.center}>
+          {subtreeRootId !== null && subtreeNav !== null && (
+            <span className={styles.current}>
+              <SubtreeIcon />
+              <span className={styles.srOnly}>{t("common:insideSubtree")}</span>
+              {subtreeNav.currentTitle}
+            </span>
+          )}
+        </div>
+
+        <div className={`${styles.side} ${styles.sideEnd}`}>
           <div className={styles.anchor}>
             <button className={styles.filterBtn} type="button" onClick={toggleFilterPopover}>
               <FunnelIcon />{t("common:filter")}

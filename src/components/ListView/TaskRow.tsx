@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import type { TaskListRow } from "@/utils/list-filter";
 import { deriveStatusIndicators } from "@/utils/node-status-indicators";
 import { computeNodeAppearance } from "@/utils/node-visuals";
+import { isRtlText } from "@/utils/text-direction";
 import { useTagNames } from "@/hooks/use-tag-names";
 import { useInputCapture } from "@/hooks/use-input-capture";
 import TaskIcon from "@/components/NodeIcon/TaskIcon";
@@ -14,6 +15,7 @@ const ICON_R = 10;
 
 interface Props {
   row: TaskListRow;
+  visibleDepth: number;
   isSelected: boolean;
   isEditingTitle: boolean;
   onSelect: (nodeId: string) => void;
@@ -29,9 +31,14 @@ interface Props {
  * behavior), the title (or an inline rename input, keyboard "R"), its status-icon badges, and clickable
  * parent/tag labels (SPEC: clicking either inline adds it as a filter). Clicking anywhere on the card
  * selects it (for keyboard navigation/actions); double-clicking opens the Task editor, same as
- * double-clicking the node on the Mindmap. */
+ * double-clicking the node on the Mindmap.
+ *
+ * `visibleDepth` is how many of the task's ancestors are themselves rows above it, and the whole card
+ * steps in once per level — the status control, badges and tint move as one object rather than the
+ * title drifting away from them. Ancestors the filter hides are named in the path header instead, so
+ * a row never indents under something that is not on screen. */
 export default function TaskRow({
-  row, isSelected, isEditingTitle, onSelect, onCycleStatus, onOpenEditor, onCommitTitle, onCancelTitleEdit,
+  row, visibleDepth, isSelected, isEditingTitle, onSelect, onCycleStatus, onOpenEditor, onCommitTitle, onCancelTitleEdit,
   onAddParentFilter, onAddTagFilter,
 }: Props) {
   useInputCapture(isEditingTitle);
@@ -46,10 +53,14 @@ export default function TaskRow({
 
   // Same aspect-color derivation the Mindmap node uses, so a card's tint matches its node's fill there.
   const { fillColor, fillOpacity } = computeNodeAppearance(node, row.ancestors.length);
-  const cardStyle: CSSProperties & Record<`--card-tint${string}`, string | number> = {
+  const cardStyle: CSSProperties & Record<`--${string}`, string | number> = {
     "--card-tint": fillColor,
     "--card-tint-opacity": fillOpacity,
+    "--row-depth": visibleDepth,
   };
+  // The indent follows the title's own direction, the same way a Mindmap node's layout does: a Hebrew
+  // task in an otherwise left-to-right list steps in from the edge its text starts at.
+  const indentClass = isRtlText(node.title) ? styles.indentRtl : styles.indentLtr;
 
   useEffect(() => {
     if (!isEditingTitle) return;
@@ -59,7 +70,7 @@ export default function TaskRow({
 
   return (
     <div
-      className={`${styles.card}${isSelected ? ` ${styles.cardSelected}` : ""}`}
+      className={`${styles.card} ${indentClass}${isSelected ? ` ${styles.cardSelected}` : ""}`}
       style={cardStyle}
       onClick={() => onSelect(node.id)}
       onDoubleClick={() => onOpenEditor(node.id)}

@@ -80,3 +80,26 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/*
+ * The focus ring the dialog's keyboard behaviour depends on: Delete takes focus when the dialog
+ * opens, so what is focused has to be unmistakable. `outline-offset` lifts the ring clear of the
+ * button and onto the modal surface, which is what keeps it legible against the red Delete fill
+ * in both themes, and `--accent` carries the light-theme value with it.
+ */
+.cancelBtn:focus-visible,
+.deleteBtn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/*
+ * Delete rings on plain :focus as well. Its focus is programmatic — the dialog autofocuses it —
+ * and engines disagree about whether that counts as focus-visible; a ring that is only sometimes
+ * drawn is worse than none, because the whole point is that you can see what Enter will do.
+ * Clicking either button closes the dialog, so no ring outstays a mouse click.
+ */
+.deleteBtn:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

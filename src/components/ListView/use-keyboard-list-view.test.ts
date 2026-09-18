@@ -25,6 +25,10 @@ function baseOptions(overrides: Partial<Parameters<typeof useKeyboardListView>[0
     onDeselect: vi.fn(),
     onToggleFilter: vi.fn(),
     onSetStatusMode: vi.fn(),
+    onOpenSearch: vi.fn(),
+    subtreeRootId: null as string | null,
+    onExitSubtree: vi.fn(),
+    onExitToRoot: vi.fn(),
     onToggleBacklog: vi.fn(),
     onMarkKept: vi.fn(),
     onMarkBroken: vi.fn(),
@@ -139,6 +143,72 @@ describe("useKeyboardListView", () => {
     expect(options.onStartRename).toHaveBeenCalledWith("task-1");
   });
 
+  it("Ctrl+O opens the node search", () => {
+    const options = baseOptions();
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    fireKey("o", { ctrlKey: true });
+    expect(options.onOpenSearch).toHaveBeenCalledTimes(1);
+  });
+
+  it("Ctrl+O opens the node search with nothing selected", () => {
+    const options = baseOptions({ selectedTaskId: null });
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    fireKey("o", { ctrlKey: true });
+    expect(options.onOpenSearch).toHaveBeenCalledTimes(1);
+  });
+
+  it("Ctrl+O touches neither the selection nor the status preset", () => {
+    const options = baseOptions();
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    fireKey("o", { ctrlKey: true });
+    expect(options.onDeselect).not.toHaveBeenCalled();
+    expect(options.onNavigate).not.toHaveBeenCalled();
+    expect(options.onSetStatusMode).not.toHaveBeenCalled();
+  });
+
+  it("plain O does not open the node search", () => {
+    const options = baseOptions();
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    fireKey("o");
+    expect(options.onOpenSearch).not.toHaveBeenCalled();
+  });
+
+  it("Shift+Escape goes up one subtree level while inside a subtree", () => {
+    const options = baseOptions({ subtreeRootId: "project-1" });
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    fireKey("Escape", { shiftKey: true });
+    expect(options.onExitSubtree).toHaveBeenCalledTimes(1);
+    expect(options.onExitToRoot).not.toHaveBeenCalled();
+    expect(options.onDeselect).not.toHaveBeenCalled();
+  });
+
+  it("Ctrl+Escape goes straight back to the root while inside a subtree", () => {
+    const options = baseOptions({ subtreeRootId: "project-1" });
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    fireKey("Escape", { ctrlKey: true });
+    expect(options.onExitToRoot).toHaveBeenCalledTimes(1);
+    expect(options.onExitSubtree).not.toHaveBeenCalled();
+    expect(options.onDeselect).not.toHaveBeenCalled();
+  });
+
+  it("the subtree-exit chords do nothing at the true root", () => {
+    const options = baseOptions({ subtreeRootId: null });
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    fireKey("Escape", { shiftKey: true });
+    fireKey("Escape", { ctrlKey: true });
+    expect(options.onExitSubtree).not.toHaveBeenCalled();
+    expect(options.onExitToRoot).not.toHaveBeenCalled();
+  });
+
+  it("bare Escape still deselects rather than leaving the subtree", () => {
+    const options = baseOptions({ subtreeRootId: "project-1" });
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    fireKey("Escape");
+    expect(options.onDeselect).toHaveBeenCalledTimes(1);
+    expect(options.onExitSubtree).not.toHaveBeenCalled();
+    expect(options.onExitToRoot).not.toHaveBeenCalled();
+  });
+
   it("Escape deselects when something is selected", () => {
     const options = baseOptions();
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
@@ -160,10 +230,12 @@ describe("useKeyboardListView", () => {
     fireKey("r");
     fireKey("ArrowDown");
     fireKey("f", { altKey: true });
+    fireKey("o", { ctrlKey: true });
     expect(options.onOpenEditor).not.toHaveBeenCalled();
     expect(options.onStartRename).not.toHaveBeenCalled();
     expect(options.onNavigate).not.toHaveBeenCalled();
     expect(options.onToggleFilter).not.toHaveBeenCalled();
+    expect(options.onOpenSearch).not.toHaveBeenCalled();
   });
 
   it("E/R with no selection do nothing", () => {

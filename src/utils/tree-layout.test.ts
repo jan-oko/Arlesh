@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeLayout, computeSubtreeLayout, entityNodeId, HORIZONTAL_GAP } from "./tree-layout";
+import { computeLayout, computeSubtreeLayout, entityNodeId, flowTargetNodeId, HORIZONTAL_GAP } from "./tree-layout";
 import type { MindmapNode } from "./tree-layout";
 
 function node(id: string, children: MindmapNode[] = []): MindmapNode {
@@ -92,6 +92,29 @@ describe("entityNodeId", () => {
   it("keeps goal and task in their own namespaces", () => {
     expect(entityNodeId("goal", 5)).toBe("goal-5");
     expect(entityNodeId("task", 8)).toBe("task-8");
+  });
+});
+
+describe("flowTargetNodeId", () => {
+  it("uses the explicit Target Node when the flow has one", () => {
+    expect(flowTargetNodeId({ parent_type: "domain", parent_id: 1, target_type: "goal", target_id: 5 })).toBe("goal-5");
+  });
+
+  // A null target means "my parent", derived here rather than stored — which is what lets a move
+  // carry the flow's instances along without rewriting anything.
+  it("falls back to the flow's own parent when the target is null", () => {
+    expect(flowTargetNodeId({ parent_type: "goal", parent_id: 5, target_type: null, target_id: null })).toBe("goal-5");
+  });
+
+  it("normalises a domain-table parent into the shared domain-<id> namespace", () => {
+    expect(flowTargetNodeId({ parent_type: "project", parent_id: 96, target_type: null, target_id: null })).toBe("domain-96");
+  });
+
+  // Half a reference is no reference: both columns are written together, and a stray half must not
+  // resolve to a node that happens to share the id.
+  it("treats a half-set target as unset", () => {
+    expect(flowTargetNodeId({ parent_type: "domain", parent_id: 1, target_type: "goal", target_id: null })).toBe("domain-1");
+    expect(flowTargetNodeId({ parent_type: "domain", parent_id: 1, target_type: null, target_id: 5 })).toBe("domain-1");
   });
 });
 

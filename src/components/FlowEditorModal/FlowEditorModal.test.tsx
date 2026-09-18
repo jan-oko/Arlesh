@@ -253,4 +253,44 @@ describe("FlowEditorModal — target display", () => {
     expect(screen.getByText("Backend Revamp")).toBeInTheDocument(); // the chip
     expect(screen.queryByPlaceholderText("placeholderTargetSearch")).not.toBeInTheDocument();
   });
+
+  // An empty target is not "no target": it means "follow my parent", so the field shows the parent
+  // as its inherited value — and still offers the search, because it can be overridden.
+  it("shows the parent as the inherited target when none is set", () => {
+    render(
+      <FlowEditorModal
+        {...defaultProps}
+        inheritedTarget={{ kind: "domain", id: 4, title: "Health" }}
+      />,
+    );
+    expect(screen.getByText("Health")).toBeInTheDocument();
+    expect(screen.getByText("targetInherited")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("placeholderTargetSearch")).toBeInTheDocument();
+  });
+
+  it("shows the explicit target instead of the inherited parent", () => {
+    render(
+      <FlowEditorModal
+        {...defaultProps}
+        node={mkFlow({ flow: flowWith("goal", 7) })}
+        inheritedTarget={{ kind: "domain", id: 4, title: "Health" }}
+      />,
+    );
+    expect(screen.getByText("Backend Revamp")).toBeInTheDocument();
+    expect(screen.queryByText("Health")).not.toBeInTheDocument();
+    expect(screen.queryByText("targetInherited")).not.toBeInTheDocument();
+  });
+
+  it("falls back to the inherited parent when the explicit target is removed", () => {
+    render(
+      <FlowEditorModal
+        {...defaultProps}
+        node={mkFlow({ flow: flowWith("goal", 7) })}
+        inheritedTarget={{ kind: "domain", id: 4, title: "Health" }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "×" }));
+    expect(screen.getByText("Health")).toBeInTheDocument();
+    expect(screen.getByText("targetInherited")).toBeInTheDocument();
+  });
 });

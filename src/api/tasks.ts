@@ -78,6 +78,15 @@ export async function deleteTask(id: number): Promise<void> {
   return invoke<void>("delete_task", { id });
 }
 
+export async function duplicateTask(
+  id: number,
+  targetType: string,
+  targetId: number,
+  position: number,
+): Promise<Task> {
+  return invoke<Task>("duplicate_task", { id, targetType, targetId, position });
+}
+
 /**
  * Whether `error` is `update_task` refusing to backlog a task that still has a Plan.
  *

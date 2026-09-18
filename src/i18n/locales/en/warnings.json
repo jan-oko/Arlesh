@@ -42,6 +42,8 @@
   "retypeFailed": "Convert failed: {{message}}",
   "habitLoadFailedBanner": "Habit iterations could not be loaded for:",
   "parentClimb": "It cannot stay under “{{from}}”, so it will move up to “{{to}}”",
+  "pasteSkipped_one": "{{count}} node couldn't be pasted here",
+  "pasteSkipped_other": "{{count}} nodes couldn't be pasted here",
   "backlogHeading": "Put \"{{title}}\" in the backlog?",
   "backlogHasPlan": "It is planned for {{plan}}. A task in the backlog is never also planned, so that plan will be cleared.",
   "backlogHasPlanUnnamed": "It is planned. A task in the backlog is never also planned, so that plan will be cleared.",

@@ -699,6 +699,234 @@ describe("useMindmapData — mutations", () => {
         id: 1, request: { parent_type: "goal", parent_id: 1, position: 0 },
       });
     });
+
+    it("info: calls update_info with the new parent and position", async () => {
+      const INFO = mkInfo({ id: 5, parent_type: "goal", parent_id: 1 });
+      setupInvoke({ list_infos: [INFO], update_info: INFO });
+      const { result } = await loadedHook();
+
+      await act(async () => {
+        await result.current.moveNode("info-5", "info", "task-1", "task", 1);
+      });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("update_info", {
+        id: 5, request: { parent_type: "task", parent_id: 1, position: 1 },
+      });
+    });
+
+    // Regression: a flow had no branch of its own, so its database id was handed to
+    // `update_domain` — reparenting whichever domain happened to share that id (here the
+    // aspect, which is also id 1) while the flow itself never moved.
+    it("flow: calls update_flow with the new parent and never touches a domain", async () => {
+      const FLOW = mkFlow({ id: 1, parent_type: "domain", parent_id: 1 });
+      setupInvoke({ list_flows: [FLOW], update_flow: FLOW });
+      const { result } = await loadedHook();
+
+      await act(async () => {
+        await result.current.moveNode("flow-1", "flow", "domain-1", "aspect", 2);
+      });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("update_flow", {
+        id: 1, request: { parent_type: "aspect", parent_id: 1, position: 2 },
+      });
+      expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("update_domain", expect.anything());
+    });
+
+    it("flow: records a goal parent as parent_type \"goal\"", async () => {
+      const FLOW = mkFlow({ id: 1, parent_type: "domain", parent_id: 1 });
+      setupInvoke({ list_flows: [FLOW], update_flow: FLOW });
+      const { result } = await loadedHook();
+
+      await act(async () => {
+        await result.current.moveNode("flow-1", "flow", "goal-1", "goal", 0);
+      });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("update_flow", {
+        id: 1, request: { parent_type: "goal", parent_id: 1, position: 0 },
+      });
+    });
+
+    // Instances render under the Target Node, and a null target *means* "my parent", resolved when
+    // the iterations are placed. So a move rewrites the parent and nothing else: the instances come
+    // along by construction, with no inference in the move path.
+    it("flow: writes no Target Node for a flow whose target is the derived parent", async () => {
+      const FLOW = mkFlow({ id: 1, parent_type: "domain", parent_id: 1, target_type: null, target_id: null });
+      setupInvoke({ list_flows: [FLOW], update_flow: FLOW });
+      const { result } = await loadedHook();
+
+      await act(async () => {
+        await result.current.moveNode("flow-1", "flow", "goal-1", "goal", 0);
+      });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("update_flow", {
+        id: 1, request: { parent_type: "goal", parent_id: 1, position: 0 },
+      });
+    });
+
+    it("flow: leaves a Target Node pointed somewhere other than its parent alone", async () => {
+      const FLOW = mkFlow({ id: 1, parent_type: "domain", parent_id: 1, target_type: "goal", target_id: 1 });
+      setupInvoke({ list_flows: [FLOW], update_flow: FLOW });
+      const { result } = await loadedHook();
+
+      await act(async () => {
+        await result.current.moveNode("flow-1", "flow", "goal-1", "goal", 0);
+      });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("update_flow", {
+        id: 1, request: { parent_type: "goal", parent_id: 1, position: 0 },
+      });
+    });
+
+    it("flow: refuses a parent a flow may not hang from", async () => {
+      const FLOW = mkFlow({ id: 1, parent_type: "domain", parent_id: 1 });
+      setupInvoke({ list_flows: [FLOW] });
+      const { result } = await loadedHook();
+
+      await expect(
+        act(async () => {
+          await result.current.moveNode("flow-1", "flow", "task-1", "task", 0);
+        }),
+      ).rejects.toThrow('Flows cannot hang from a node of kind "task"');
+      expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("update_flow", expect.anything());
+    });
+
+    it("flow_goal: calls update_flow_goal with its in-flow parent", async () => {
+      const FLOW = mkFlow({ id: 5 });
+      const FLOW_GOAL: FlowGoal = { id: 3, flow_id: 5, title: "Milestone", parent_type: "flow", parent_id: 5, position: 0, is_private: false };
+      setupInvoke({ list_flows: [FLOW], list_all_flow_goals: [FLOW_GOAL], update_flow_goal: FLOW_GOAL });
+      const { result } = await loadedHook();
+
+      await act(async () => {
+        await result.current.moveNode("flowgoal-3", "flow_goal", "flow-5", "flow", 1);
+      });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("update_flow_goal", {
+        id: 3, request: { parent_type: "flow", parent_id: 5, position: 1 },
+      });
+    });
+
+    it("flow_task: calls update_flow_task with its in-flow parent", async () => {
+      const FLOW = mkFlow({ id: 5 });
+      const FLOW_GOAL: FlowGoal = { id: 3, flow_id: 5, title: "Milestone", parent_type: "flow", parent_id: 5, position: 0, is_private: false };
+      const FLOW_TASK: FlowTask = { id: 4, flow_id: 5, title: "Step", parent_type: "flow", parent_id: 5, position: 1, is_private: false };
+      setupInvoke({
+        list_flows: [FLOW], list_all_flow_goals: [FLOW_GOAL], list_all_flow_tasks: [FLOW_TASK],
+        update_flow_task: FLOW_TASK,
+      });
+      const { result } = await loadedHook();
+
+      await act(async () => {
+        await result.current.moveNode("flowtask-4", "flow_task", "flowgoal-3", "flow_goal", 0);
+      });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("update_flow_task", {
+        id: 4, request: { parent_type: "flow_goal", parent_id: 3, position: 0 },
+      });
+    });
+
+    it("tag: calls update_domain with the new parent and position", async () => {
+      const TAG = mkDomain({ id: 7, subtype: "tag", parent_id: 1, title: "urgent" });
+      setupInvoke({ list_domains: [ASPECT, TAG], update_domain: TAG });
+      const { result } = await loadedHook();
+
+      await act(async () => {
+        await result.current.moveNode("domain-7", "tag", "domain-1", "aspect", 4);
+      });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("update_domain", {
+        id: 7, request: { parent_id: 1, position: 4 },
+      });
+    });
+
+    it("aspect: refuses the move rather than silently giving the aspect a parent", async () => {
+      const { result } = await loadedHook();
+
+      await expect(
+        act(async () => {
+          await result.current.moveNode("domain-1", "aspect", "domain-1", "aspect", 0);
+        }),
+      ).rejects.toThrow("Aspects are top level and cannot be moved");
+      expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("update_domain", expect.anything());
+    });
+  });
+
+  describe("duplicateNode", () => {
+    it("goal: calls duplicate_goal with the target and position", async () => {
+      setupInvoke({ duplicate_goal: GOAL });
+      const { result } = await loadedHook();
+
+      await act(async () => {
+        await result.current.duplicateNode("goal-1", "goal", "domain-1", "aspect", 3);
+      });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("duplicate_goal", {
+        id: 1, targetType: "project", targetId: 1, position: 3,
+      });
+    });
+
+    it("task: calls duplicate_task with the target and position", async () => {
+      setupInvoke({ duplicate_task: TASK });
+      const { result } = await loadedHook();
+
+      await act(async () => {
+        await result.current.duplicateNode("task-1", "task", "goal-1", "goal", 0);
+      });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("duplicate_task", {
+        id: 1, targetType: "goal", targetId: 1, position: 0,
+      });
+    });
+
+    it("info: calls duplicate_info with the target's own kind as parent type", async () => {
+      const INFO = mkInfo({ id: 5, parent_type: "goal", parent_id: 1 });
+      setupInvoke({ list_infos: [INFO], duplicate_info: INFO });
+      const { result } = await loadedHook();
+
+      await act(async () => {
+        await result.current.duplicateNode("info-5", "info", "task-1", "task", 1);
+      });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("duplicate_info", {
+        id: 5, targetType: "task", targetId: 1, position: 1,
+      });
+    });
+
+    it("project: calls duplicate_domain, which takes a target id and no target type", async () => {
+      const PROJECT = mkDomain({ id: 5, subtype: "project", parent_id: 1, title: "Ops" });
+      setupInvoke({ list_domains: [ASPECT, PROJECT], duplicate_domain: PROJECT });
+      const { result } = await loadedHook();
+
+      await act(async () => {
+        await result.current.duplicateNode("domain-5", "project", "domain-1", "aspect", 2);
+      });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("duplicate_domain", {
+        id: 5, targetId: 1, position: 2,
+      });
+    });
+
+    it("refuses an aspect rather than writing a second one", async () => {
+      setupInvoke({});
+      const { result } = await loadedHook();
+
+      await expect(
+        act(async () => {
+          await result.current.duplicateNode("domain-1", "aspect", "domain-1", "aspect", 0);
+        }),
+      ).rejects.toThrow("Aspects are fixed and cannot be duplicated");
+      expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("duplicate_domain", expect.anything());
+    });
+
+    it("refuses a flow — a Flow moves and forks through its own commands", async () => {
+      setupInvoke({});
+      const { result } = await loadedHook();
+
+      await expect(
+        act(async () => {
+          await result.current.duplicateNode("flow-1", "flow", "domain-1", "aspect", 0);
+        }),
+      ).rejects.toThrow("flow nodes cannot be duplicated");
+    });
   });
 
   describe("removeNode", () => {
@@ -807,7 +1035,7 @@ describe("useMindmapData — mutations", () => {
       await act(async () => { newId = await result.current.retypeNode("goal-1", "goal", "task"); });
 
       expect(vi.mocked(invoke)).toHaveBeenCalledWith("retype_node", {
-        nodeType: "goal", nodeId: 1, targetType: "task", strandedChildren: null,
+        nodeType: "goal", nodeId: 1, targetType: "task", strandedChildren: null, timeScope: null,
       });
       expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("create_task", expect.anything());
       expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("delete_goal", expect.anything());
@@ -822,7 +1050,7 @@ describe("useMindmapData — mutations", () => {
       await act(async () => { newId = await result.current.retypeNode("task-1", "task", "goal"); });
 
       expect(vi.mocked(invoke)).toHaveBeenCalledWith("retype_node", {
-        nodeType: "task", nodeId: 1, targetType: "goal", strandedChildren: null,
+        nodeType: "task", nodeId: 1, targetType: "goal", strandedChildren: null, timeScope: null,
       });
       expect(newId).toBe("goal-99");
     });
@@ -836,7 +1064,7 @@ describe("useMindmapData — mutations", () => {
       await act(async () => { newId = await result.current.retypeNode("domain-2", "project", "domain"); });
 
       expect(vi.mocked(invoke)).toHaveBeenCalledWith("retype_node", {
-        nodeType: "project", nodeId: 2, targetType: "domain", strandedChildren: null,
+        nodeType: "project", nodeId: 2, targetType: "domain", strandedChildren: null, timeScope: null,
       });
       expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("update_domain", expect.anything());
       expect(newId).toBe("domain-2");
@@ -861,7 +1089,7 @@ describe("useMindmapData — mutations", () => {
       });
 
       expect(vi.mocked(invoke)).toHaveBeenCalledWith("retype_node", {
-        nodeType: "goal", nodeId: 1, targetType: "task", strandedChildren: "delete",
+        nodeType: "goal", nodeId: 1, targetType: "task", strandedChildren: "delete", timeScope: null,
       });
     });
 
@@ -903,7 +1131,7 @@ describe("useMindmapData — mutations", () => {
       await act(async () => { newId = await result.current.retypeNode("domain-2", "project", "info"); });
 
       expect(vi.mocked(invoke)).toHaveBeenCalledWith("retype_node", {
-        nodeType: "project", nodeId: 2, targetType: "info", strandedChildren: null,
+        nodeType: "project", nodeId: 2, targetType: "info", strandedChildren: null, timeScope: null,
       });
       expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("create_info", expect.anything());
       expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("delete_domain", expect.anything());
@@ -919,7 +1147,7 @@ describe("useMindmapData — mutations", () => {
       await act(async () => { newId = await result.current.retypeNode("info-5", "info", "goal"); });
 
       expect(vi.mocked(invoke)).toHaveBeenCalledWith("retype_node", {
-        nodeType: "info", nodeId: 5, targetType: "goal", strandedChildren: null,
+        nodeType: "info", nodeId: 5, targetType: "goal", strandedChildren: null, timeScope: null,
       });
       expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("create_goal", expect.anything());
       expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("delete_info", expect.anything());
@@ -935,7 +1163,7 @@ describe("useMindmapData — mutations", () => {
       await act(async () => { newId = await result.current.retypeNode("info-5", "info", "domain"); });
 
       expect(vi.mocked(invoke)).toHaveBeenCalledWith("retype_node", {
-        nodeType: "info", nodeId: 5, targetType: "domain", strandedChildren: null,
+        nodeType: "info", nodeId: 5, targetType: "domain", strandedChildren: null, timeScope: null,
       });
       expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("create_domain", expect.anything());
       // The old path set `position` in a second call, so a crash between the two left the node
@@ -1052,6 +1280,91 @@ describe("injectHabitInstances", () => {
     expect(project?.children).toHaveLength(1);
     expect(project?.children[0]?.virtual).toBe(true);
     expect(project?.children[0]?.color).toBe("#e74c3c"); // inherits the aspect colour like any node
+  });
+
+  // A flow with no explicit Target Node renders its iterations under its parent, derived here
+  // rather than snapshotted into the row at creation — which is what makes a move carry them along.
+  it("falls back to the flow's own parent when it has no Target Node", () => {
+    const root = buildTree(
+      [
+        { id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false },
+        { id: 96, title: "LOOK", description: null, subtype: "domain", parent_id: 1, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false },
+      ],
+      [], [], [],
+    );
+    injectHabitInstances(
+      root,
+      [mkFlow({ parent_type: "domain", parent_id: 96, target_type: null, target_id: null })],
+      [[iter(0, "active")]],
+      LABELS,
+    );
+
+    const parent = root.children[0]?.children[0]; // aspect → domain 96
+    expect(parent?.id).toBe("domain-96");
+    expect(parent?.children).toHaveLength(1);
+    expect(parent?.children[0]?.virtual).toBe(true);
+  });
+
+  // Domains, projects and tags share one table, so a flow can carry `parent_type: "project"` for a
+  // row the tree keys `domain-<id>`. Building the id from the stored type would miss it entirely.
+  it("derives a domain-table parent through its normalised node id", () => {
+    const root = buildTree(
+      [
+        { id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false },
+        { id: 96, title: "LOOK", description: null, subtype: "domain", parent_id: 1, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false },
+      ],
+      [], [], [],
+    );
+    injectHabitInstances(
+      root,
+      [mkFlow({ parent_type: "project", parent_id: 96, target_type: null, target_id: null })],
+      [[iter(0, "active")]],
+      LABELS,
+    );
+
+    expect(root.children[0]?.children[0]?.children).toHaveLength(1);
+  });
+
+  // An explicit target is deliberate, so it wins over the parent — that is what "explicit" buys.
+  it("prefers an explicit Target Node over the flow's parent", () => {
+    const root = buildTree(
+      [
+        { id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false },
+        { id: 96, title: "LOOK", description: null, subtype: "domain", parent_id: 1, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false },
+      ],
+      [{ id: 5, title: "Fitness", parent_type: "domain", parent_id: 1, status: "active", time_scope: null, on_scope_exit: null, tag_ids: [], position: 0, is_private: false }],
+      [], [],
+    );
+    injectHabitInstances(
+      root,
+      [mkFlow({ parent_type: "domain", parent_id: 96, target_type: "goal", target_id: 5 })],
+      [[iter(0, "active")]],
+      LABELS,
+    );
+
+    expect(root.children[0]?.children.find((n) => n.id === "domain-96")?.children).toHaveLength(0);
+    expect(root.children[0]?.children.find((n) => n.id === "goal-5")?.children).toHaveLength(1);
+  });
+
+  // Last resort, not a meaning of null: the derived parent can be filtered out of the rendered tree,
+  // and the iterations then hang off the flow node itself rather than vanishing.
+  it("falls back to the flow node when the derived parent is not in the rendered tree", () => {
+    const root = buildTree(
+      [{ id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false }],
+      [], [], [],
+    );
+    const aspect = root.children[0];
+    aspect?.children.push({ id: "flow-3", kind: "flow", title: "Exercise", position: 0, tagIds: [], children: [] });
+
+    injectHabitInstances(
+      root,
+      [mkFlow({ parent_type: "domain", parent_id: 404, target_type: null, target_id: null })],
+      [[iter(0, "active")]],
+      LABELS,
+    );
+
+    expect(aspect?.children[0]?.children).toHaveLength(1);
+    expect(aspect?.children[0]?.children[0]?.virtual).toBe(true);
   });
 
   it("renders the flow's items as per-item-completable children of each iteration", () => {
@@ -1172,9 +1485,9 @@ describe("injectHabitInstances", () => {
     expect(goalInstance?.children[0]?.title).toBe("Push-ups"); // nested under its parent instance
   });
 
-  it("skips flows with no iterations and missing targets", () => {
+  it("skips flows with no iterations, and flows whose target, parent and flow node are all absent", () => {
     const root = buildTree([], [], [], []);
     injectHabitInstances(root, [mkFlow(), mkFlow({ id: 9, target_type: null, target_id: null })], [[], [iter(0, "active")]], LABELS);
-    expect(root.children).toHaveLength(0); // no target found; nothing injected
+    expect(root.children).toHaveLength(0); // nowhere to hang them; nothing injected
   });
 });

@@ -682,10 +682,13 @@ impl<'session> GoalOperator<'session> {
 
     /// Links a goal to the `bd` issue tracking it, or unlinks it when given `None`.
     ///
-    /// **The only writer of `beads_id`, and reachable only from the MCP server.** No Tauri command
-    /// calls it and [`UpdateGoalRequest`] has no field for it, so the link cannot be set, changed
-    /// or cleared from the UI — which is the point: `bd` owns the issue, and the app only mirrors
-    /// which one a node belongs to.
+    /// **The only setter of `beads_id`, and the MCP server is its only *source*.**
+    /// [`UpdateGoalRequest`] has no field for it, so no gesture can author, edit or clear a link from the UI.
+    /// One command does reach this method: [`duplicate_subtree`](crate::duplicate::duplicate_subtree)
+    /// *propagates* an id a node already carries onto its copy — SPEC's named exception. It can
+    /// only ever pass on a value `bd` issued, never invent or change one.
+    ///
+    /// `bd` owns the issue; the app only mirrors which one a node belongs to.
     ///
     /// One statement over one column, so it needs no containment check and no transaction of its
     /// own. Errors with [`TaskError::GoalNotFound`] when no goal has that id, rather than reporting
@@ -1110,10 +1113,13 @@ impl<'session> TaskOperator<'session> {
 
     /// Links a task to the `bd` issue tracking it, or unlinks it when given `None`.
     ///
-    /// **The only writer of `beads_id`, and reachable only from the MCP server.** No Tauri command
-    /// calls it and [`UpdateTaskRequest`] has no field for it, so the link cannot be set, changed
-    /// or cleared from the UI — which is the point: `bd` owns the issue, and the app only mirrors
-    /// which one a node belongs to.
+    /// **The only setter of `beads_id`, and the MCP server is its only *source*.**
+    /// [`UpdateTaskRequest`] has no field for it, so no gesture can author, edit or clear a link from the UI.
+    /// One command does reach this method: [`duplicate_subtree`](crate::duplicate::duplicate_subtree)
+    /// *propagates* an id a node already carries onto its copy — SPEC's named exception. It can
+    /// only ever pass on a value `bd` issued, never invent or change one.
+    ///
+    /// `bd` owns the issue; the app only mirrors which one a node belongs to.
     ///
     /// One statement over one column, so it needs no containment check and no transaction of its
     /// own. Errors with [`TaskError::TaskNotFound`] when no task has that id, rather than reporting

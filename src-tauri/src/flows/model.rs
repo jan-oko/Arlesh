@@ -1,6 +1,6 @@
 //! Flow (template) resource models.
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 /// Identifies a flow row by its primary key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -71,9 +71,11 @@ pub struct Flow {
     pub parent_type: String,
     /// Parent entity id.
     pub parent_id: i64,
-    /// Default target node type for instances (if set).
+    /// Explicit Target Node type for instances. `None` means "my parent" — the default is
+    /// **derived** on read from `parent_type`/`parent_id`, never stored, so moving the flow moves
+    /// its instances with it.
     pub target_type: Option<String>,
-    /// Default target node id for instances (if set).
+    /// Explicit Target Node id for instances; `None` alongside `target_type` means "my parent".
     pub target_id: Option<i64>,
     /// Flow-scope duration count (relative; anchored on start). For a Phase window this is 1.
     pub flow_duration_n: Option<i64>,
@@ -151,10 +153,10 @@ pub struct CreateFlowRequest {
     pub parent_type: String,
     /// Parent entity id.
     pub parent_id: i64,
-    /// Default target node type.
+    /// Explicit Target Node type; omit (or `None`) to leave the target derived from the parent.
     #[serde(default)]
     pub target_type: Option<String>,
-    /// Default target node id.
+    /// Explicit Target Node id; omit (or `None`) to leave the target derived from the parent.
     #[serde(default)]
     pub target_id: Option<i64>,
     /// Flow-scope duration count.
@@ -183,6 +185,20 @@ pub struct CreateFlowRequest {
     pub root_plan_end: Option<i64>,
 }
 
+/// Deserialises an explicitly-null JSON field into `Some(None)` rather than `None`.
+///
+/// `Option<Option<T>>` is how an update request spells *absent = unchanged, null = clear*, but
+/// serde collapses both spellings to `None` on its own — so a clear sent from the UI would be read
+/// as "leave it alone" and swallowed without a word. Pair with `#[serde(default)]`, which restores
+/// the absent case.
+fn null_clears<'de, T, D>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    T: Deserialize<'de>,
+    D: Deserializer<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(Some)
+}
+
 /// Request body for updating a flow (fields left `None` are unchanged; `Some(None)` clears).
 #[derive(Debug, Default, Deserialize)]
 pub struct UpdateFlowRequest {
@@ -190,9 +206,11 @@ pub struct UpdateFlowRequest {
     pub title: Option<String>,
     /// New instance type.
     pub instance_type: Option<InstanceType>,
-    /// Target node type (Some(None) clears).
+    /// Target Node type (`Some(None)` clears it back to the derived parent default).
+    #[serde(default, deserialize_with = "null_clears")]
     pub target_type: Option<Option<String>>,
-    /// Target node id (Some(None) clears).
+    /// Target Node id (`Some(None)` clears it back to the derived parent default).
+    #[serde(default, deserialize_with = "null_clears")]
     pub target_id: Option<Option<i64>>,
     /// Flow-scope duration count (Some(None) clears).
     pub flow_duration_n: Option<Option<i64>>,

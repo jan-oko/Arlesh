@@ -31,7 +31,7 @@ beforeEach(() => {
   useFilterStore.setState({ filter: { ...DEFAULT_FILTER } });
   useListFilterStore.setState({ filter: { ...DEFAULT_LIST_FILTER, pills: { ...DEFAULT_LIST_FILTER.pills } } });
   useMindmapStore.setState({ subtreeRootId: null, subtreeNav: null });
-  useViewStore.setState({ view: "mindmap", mindmapOrientation: "horizontal" });
+  useViewStore.setState({ view: "mindmap", mindmapOrientation: "horizontal", pathHeaderIcons: true });
   useThemeStore.setState({ theme: "dark" });
   mockUseFilterDisplay.mockReturnValue(EMPTY_DISPLAY);
 });
@@ -47,11 +47,43 @@ describe("TopBar", () => {
   it("shows back-nav pills from the store when inside a subtree", () => {
     useMindmapStore.setState({
       subtreeRootId: "goal-1",
-      subtreeNav: { rootTitle: "Arlesh", parentTitle: "Project X", parentSubtreeId: "domain-2" },
+      subtreeNav: { currentTitle: "CODE", rootTitle: "Arlesh", parentTitle: "Project X", parentSubtreeId: "domain-2" },
     });
     render(<TopBar />);
     expect(screen.getByText("Project X")).toBeInTheDocument(); // back one level
     expect(screen.getByText("Arlesh")).toBeInTheDocument(); // back to root (parentSubtreeId != null)
+  });
+
+  it("names the subtree you are currently inside", () => {
+    useMindmapStore.setState({
+      subtreeRootId: "goal-1",
+      subtreeNav: { currentTitle: "CODE", rootTitle: "Arlesh", parentTitle: "Project X", parentSubtreeId: "domain-2" },
+    });
+    render(<TopBar />);
+    expect(screen.getByText("CODE")).toBeInTheDocument();
+  });
+
+  it("gives the indicator a spoken label, so it is not a third bare title in a row", () => {
+    useMindmapStore.setState({
+      subtreeRootId: "goal-1",
+      subtreeNav: { currentTitle: "CODE", rootTitle: "Arlesh", parentTitle: "Project X", parentSubtreeId: "domain-2" },
+    });
+    render(<TopBar />);
+    expect(screen.getByText("common:insideSubtree")).toBeInTheDocument();
+  });
+
+  it("the indicator is not a button — the other two pills are the ways out, this one is where you are", () => {
+    useMindmapStore.setState({
+      subtreeRootId: "goal-1",
+      subtreeNav: { currentTitle: "CODE", rootTitle: "Arlesh", parentTitle: "Project X", parentSubtreeId: "domain-2" },
+    });
+    render(<TopBar />);
+    expect(screen.queryByRole("button", { name: /CODE/ })).not.toBeInTheDocument();
+  });
+
+  it("shows no subtree indicator at the true root", () => {
+    render(<TopBar />);
+    expect(screen.queryByText("common:insideSubtree")).not.toBeInTheDocument();
   });
 
   it("switches to List View when its tab is clicked", () => {
@@ -150,6 +182,23 @@ describe("TopBar", () => {
       render(<TopBar />);
       fireEvent.click(screen.getByRole("button", { name: "common:settings" }));
       expect(screen.queryByRole("checkbox", { name: "common:verticalLayout" })).not.toBeInTheDocument();
+    });
+
+    it("turns path-header glyphs off from the Path icons switch, which starts on", () => {
+      useViewStore.setState({ view: "list" });
+      render(<TopBar />);
+      fireEvent.click(screen.getByRole("button", { name: "common:settings" }));
+      const iconSwitch = screen.getByRole("checkbox", { name: "common:pathIcons" });
+      expect(iconSwitch).toBeChecked();
+      fireEvent.click(iconSwitch);
+      expect(useViewStore.getState().pathHeaderIcons).toBe(false);
+      expect(iconSwitch).not.toBeChecked();
+    });
+
+    it("hides the Path icons switch on the Mindmap, which has no path headers", () => {
+      render(<TopBar />);
+      fireEvent.click(screen.getByRole("button", { name: "common:settings" }));
+      expect(screen.queryByRole("checkbox", { name: "common:pathIcons" })).not.toBeInTheDocument();
     });
   });
 

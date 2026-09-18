@@ -9,20 +9,23 @@ import { useFilterStore } from "@/stores/use-filter-store";
 import { useListFilterStore } from "@/stores/use-list-filter-store";
 import { filterCommitmentList, filterTaskList } from "@/utils/list-filter";
 import type { StatusMode } from "@/utils/filter-tree";
-import { groupRowsByGoal } from "@/utils/list-data";
+import { groupRowsByPath } from "@/utils/list-data";
+import { collectSearchableNodes } from "@/utils/mindmap-tree";
 import { useNodeEditor } from "@/components/MindmapView/use-node-editor";
 import { useKeyboardListView } from "./use-keyboard-list-view";
 import TaskEditorModal from "@/components/TaskEditorModal/TaskEditorModal";
 import CommitmentEditorModal from "@/components/CommitmentEditorModal/CommitmentEditorModal";
-import Switch from "@/components/Switch/Switch";
+import NodeSearchModal from "@/components/NodeSearchModal/NodeSearchModal";
 import TaskRow from "./TaskRow";
 import CommitmentRow from "./CommitmentRow";
-import GoalHeaderRow from "./GoalHeaderRow";
+import PathHeaderRow from "./PathHeaderRow";
 import AnchoredToast from "@/components/AnchoredToast/AnchoredToast";
 import BacklogConfirmModal from "@/components/BacklogConfirmModal/BacklogConfirmModal";
 import type { Position } from "@/utils/tree-layout";
 import styles from "./ListView.module.css";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
+import { useSubtreeNav } from "@/hooks/use-subtree-nav";
+import { useViewStore } from "@/stores/use-view-store";
 
 /** A flat list lays out no nodes, so every anchored notice falls back to its fixed spot. */
 const NO_POSITIONS: ReadonlyMap<string, Position> = new Map();
@@ -39,8 +42,12 @@ export default function ListView() {
   const setStatusMode = useFilterStore((s) => s.setStatusMode);
   const toggleFilterPopover = useFilterStore((s) => s.toggleFilterPopover);
 
+  // Subtree entry is shared state, not a filter: the Mindmap and the List View re-root together.
+  const enterSubtree = useMindmapStore((s) => s.enterSubtree);
+  const pathHeaderIcons = useViewStore((s) => s.pathHeaderIcons);
+  const { subtreeRootId, onExitSubtree, onExitToRoot } = useSubtreeNav(tree);
+
   const listFilter = useListFilterStore((s) => s.filter);
-  const toggleShowGoalHeaders = useListFilterStore((s) => s.toggleShowGoalHeaders);
   const addPill = useListFilterStore((s) => s.addPill);
   const setListPreset = useListFilterStore((s) => s.setPreset);
 
@@ -53,6 +60,7 @@ export default function ListView() {
   // what Enter does to it.
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
 
   const pendingToast = useMindmapStore((s) => s.pendingToast);
   const showToast = useMindmapStore((s) => s.showToast);
@@ -68,6 +76,10 @@ export default function ListView() {
     showToast,
   });
 
+  // Every node kind, exactly as the Mindmap's Ctrl+O searches them, and over the whole board
+  // rather than the subtree you are standing in — the point of the chord is to get somewhere else.
+  const searchableNodes = useMemo(() => collectSearchableNodes(tree), [tree]);
+
   const filteredRows = useMemo(
     () => filterTaskList(rows, sharedFilter, listFilter),
     [rows, sharedFilter, listFilter],
@@ -76,10 +88,7 @@ export default function ListView() {
     () => filterCommitmentList(commitmentRows, sharedFilter, listFilter),
     [commitmentRows, sharedFilter, listFilter],
   );
-  const entries = useMemo(
-    () => groupRowsByGoal(filteredRows, listFilter.showGoalHeaders),
-    [filteredRows, listFilter.showGoalHeaders],
-  );
+  const entries = useMemo(() => groupRowsByPath(filteredRows), [filteredRows]);
   const taskIds = useMemo(
     () => entries.filter((entry) => entry.type === "task").map((entry) => entry.row.node.id),
     [entries],
@@ -140,6 +149,10 @@ export default function ListView() {
     onToggleBacklog: toggleBacklog,
     onMarkKept: markKept,
     onMarkBroken: markBroken,
+    onOpenSearch: () => setIsSearchOpen(true),
+    subtreeRootId,
+    onExitSubtree,
+    onExitToRoot,
   });
 
   if (isLoading) return <div className={styles.centered}>{t("common:loading")}</div>;
@@ -148,9 +161,6 @@ export default function ListView() {
   return (
     <div className={styles.container}>
       <AnchoredToast toast={pendingToast} positions={NO_POSITIONS} onDismiss={clearToast} />
-      <div className={styles.toolbar}>
-        <Switch checked={listFilter.showGoalHeaders} onChange={toggleShowGoalHeaders} label={t("listView:showGoalHeaders")} />
-      </div>
 
       {filteredCommitments.length > 0 && (
         <section className={styles.commitments} aria-label={t("listView:commitmentsHeading")}>
@@ -177,13 +187,19 @@ export default function ListView() {
         <div className={styles.centered}>{t("listView:empty")}</div>
       ) : (
         <div className={styles.rows}>
-          {entries.map((entry) =>
-            entry.type === "goal" ? (
-              <GoalHeaderRow key={`goal-${entry.node.id}`} node={entry.node} />
+          {entries.map((entry, index) =>
+            entry.type === "path" ? (
+              <PathHeaderRow
+                key={`path-${index}-${entry.pathKey}`}
+                segments={entry.segments}
+                onEnterSubtree={enterSubtree}
+                showKindIcon={pathHeaderIcons}
+              />
             ) : (
               <TaskRow
                 key={entry.row.node.id}
                 row={entry.row}
+                visibleDepth={entry.visibleDepth}
                 isSelected={entry.row.node.id === activeSelectedId}
                 isEditingTitle={entry.row.node.id === editingTaskId}
                 onSelect={setSelectedRowId}
@@ -197,6 +213,14 @@ export default function ListView() {
             ),
           )}
         </div>
+      )}
+
+      {isSearchOpen && (
+        <NodeSearchModal
+          nodes={searchableNodes}
+          onSelect={(id) => { enterSubtree(id); setIsSearchOpen(false); }}
+          onClose={() => setIsSearchOpen(false)}
+        />
       )}
 
       {editorModal !== null && editorModal.node.kind === "task" && (

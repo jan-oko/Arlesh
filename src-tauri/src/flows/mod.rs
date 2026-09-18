@@ -1738,7 +1738,9 @@ pub async fn convert_to_flow(
         }
     }
 
-    // Create the flow, targeting the root's former parent (a scope-valid default).
+    // Create the flow with **no** Target Node: a null target means "my parent", resolved when the
+    // instances are placed, so the flow lands on the root's former parent without freezing that
+    // parent into a second column that a later move would leave behind.
     let flow_id = db
         .flows()
         .create(CreateFlowRequest {
@@ -1750,8 +1752,6 @@ pub async fn convert_to_flow(
             }),
             parent_type: parent_type.clone(),
             parent_id,
-            target_type: Some(parent_type.clone()),
-            target_id: Some(parent_id),
             flow_duration_n: win_n,
             flow_duration_kind: win_kind.clone(),
             flow_window_part: win_part.clone(),
