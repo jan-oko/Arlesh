@@ -396,6 +396,26 @@ ends at an Aspect opens with nothing rather than reserving an empty box. Tested 
 
 Gate green: 86 files / 1095 tests.
 
+**Then made switchable from the gear** (`1b7deb2`), on the user's follow-up. `pathHeaderIcons`
+lives in `useViewStore` beside `mindmapOrientation` — that store's domain is *how the app is
+displayed*, and the glyph toggle is the List View's exact counterpart to the Mindmap's branch axis,
+gated to its own view the same way. Default on; the switch turns it off.
+
+The persist question was the real one, since **adding a field to a persisted store is precisely the
+operation that trips the bug this branch just fixed**. It does not apply here, and the reasoning is
+now in the store's doc comment: `useViewStore` passes only `{ name: "arlesh-view" }` — no custom
+`merge`, no `partialize` — so zustand's default top-level spread operates at exactly the level its
+fields live at, and an older blob simply lacks the key and keeps the default. The filter stores need
+`mergePersistedFilterSlice` because they partialize to a nested `{ filter: … }` that the same spread
+replaces wholesale. Verified rather than assumed, with a test that rehydrates a real pre-toggle blob
+and asserts the other two fields *did* apply, so it cannot pass vacuously.
+
+Also caught: **`28c279a` never put the glyph in `SPEC.md`** — it touched only the component, tests
+and CHANGELOG. SPEC is the authoritative document per CLAUDE.md, so that was my omission; it now
+carries the single-glyph rule, the Aspect exception and the toggle.
+
+86 files / 1101 tests.
+
 ## Follow-up from testing PR #5 — `Arlesh-xw7` (P2)
 
 "Instances don't seem to move with it." Instances render under the **Target Node**, not under the
