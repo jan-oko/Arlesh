@@ -552,8 +552,10 @@ pub struct UpdateCommitmentRequest {
     pub verdict: Option<Verdict>,
     /// Relevance window to set (None leaves unchanged, Some(None) clears it — which is refused
     /// unless a scoped ancestor still supplies one).
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
     pub time_scope: Option<Option<TimeScope>>,
     /// Verdict Window to set (None leaves unchanged, Some(None) clears it back to inheriting).
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
     pub verdict_window: Option<Option<DurationSpec>>,
     /// New parent entity type for re-parenting (must be set together with parent_id).
     pub parent_type: Option<String>,
