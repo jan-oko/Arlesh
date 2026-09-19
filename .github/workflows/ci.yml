@@ -5,19 +5,36 @@ name: CI
 # Two lanes run in parallel on their own runners: `web` (lint, tsc, vitest) and
 # `rust` (tests AND coverage, in one command).
 #
-# Coverage used to be a second workflow. It is folded in here because tarpaulin
-# *runs the suite* — a separate `cargo test` job compiled the same 560-crate
+# Coverage used to be a second workflow. It is folded in here because the
+# coverage tool *runs the suite* — a separate `cargo test` job compiled the same 560-crate
 # tree a second time, on a second runner, into a second 500 MB cache entry, to
 # run the same tests. Merging deletes all three. The cost of folding it in is
 # that a frontend-only PR now pays the coverage lane too: ~1 extra billed
 # minute, against ~5 saved on every PR that touches Rust.
 #
-# Why ptrace and not something faster, measured on this tree (see progress.md):
-# `--engine llvm` reports 89.44% against ptrace's 91.01% on an identical commit,
-# and the gap is dropped profraw data, not strictness — it calls src/infos/mod.rs
-# 17/74 where ptrace watches 74/74 run and cargo-llvm-cov independently agrees on
-# 100%. `--no-dead-code` is worse: the binaries fail to load with corrupted
-# DT_NEEDED strings. Neither flag belongs here.
+# Coverage is LLVM source-based, via cargo-llvm-cov, on the pinned stable
+# toolchain. Two rejected alternatives, both measured on this tree — see
+# progress.md, and do not re-litigate either without new numbers:
+#
+#   cargo tarpaulin --engine ptrace   correct, but 4m53s of the 6m26s job was
+#                                     breakpoint machinery: an INT3 per coverable
+#                                     line, disabled and single-stepped on each
+#                                     first hit, across a 560-crate tree linked
+#                                     into every binary by -Clink-dead-code.
+#   cargo tarpaulin --engine llvm     fast and WRONG. Drops profraw data: calls
+#                                     src/infos/mod.rs 17/74 where ptrace watches
+#                                     74/74 run and cargo-llvm-cov says 100%, on
+#                                     an identical denominator. A floor set
+#                                     against it would stop protecting that file.
+#   ...--no-dead-code                 does not run at all. The binaries fail to
+#                                     load with corrupted DT_NEEDED strings.
+#
+# The floor is read off a measured run, not inherited. It moved from 90 when the
+# tool changed, because tarpaulin counts DWARF statement lines and LLVM counts
+# lines in coverage regions — different units, so the old number means nothing
+# here. Unit tests live in sibling `tests.rs` files rather than inline precisely
+# so this denominator is source only: inline, they were 2790 of 8715 lines and
+# 7735 of 13577 regions, all ~99% covered by construction and unable to regress.
 #
 # The repo is private, so every minute in here is billed. Keep it that way:
 # nothing expensive, and nothing that runs on a branch push nobody asked about.
@@ -47,7 +64,6 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
-  TARPAULIN_VERSION: '0.35.5'
 
 jobs:
   web:
@@ -83,7 +99,7 @@ jobs:
         run: npx vitest run --maxWorkers=2 --testTimeout=30000 --hookTimeout=30000
 
   rust:
-    name: cargo tarpaulin · tests + coverage
+    name: cargo llvm-cov · tests + coverage
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -109,22 +125,21 @@ jobs:
           rustc --version
           cargo --version
 
-      # A prebuilt binary from the release page — `cargo install cargo-tarpaulin`
-      # would compile it from source on every cache miss. Pinned deliberately:
-      # the reported percentage moves between releases, and a floor of 90 only
-      # means something if it is always computed the same way.
-      - name: Install cargo-tarpaulin
-        run: |
-          curl -fsSL \
-            "https://github.com/xd009642/tarpaulin/releases/download/${TARPAULIN_VERSION}/cargo-tarpaulin-x86_64-unknown-linux-musl.tar.gz" \
-            | tar -xz -C "$HOME/.cargo/bin"
-          cargo tarpaulin --version
+      # llvm-profdata and llvm-cov must come from the same toolchain that
+      # instruments the binaries; using the system LLVM is the usual way to get
+      # "malformed instrumentation profile data".
+      - name: Install llvm-tools-preview
+        run: rustup component add llvm-tools-preview
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
 
       # Caches ~/.cargo/{registry,git} and src-tauri/target, keyed on Cargo.lock,
       # the rustc version and this key. It prunes the intermediate artifacts that
       # make a warm Rust tree enormous, which is what keeps this inside GitHub's
       # 10 GB per-repo cache budget. One key now, where there used to be two:
-      # with `cargo test` folded into tarpaulin there is only one set of
+      # with `cargo test` folded into cargo-llvm-cov there is only one set of
       # RUSTFLAGS in play, so a single entry can no longer be invalidated by
       # whichever job wrote to it last.
       - uses: Swatinem/rust-cache@v2
@@ -143,35 +158,35 @@ jobs:
           mkdir -p dist
           printf '<!doctype html><title>arlesh ci</title>' > dist/index.html
 
-      # `--engine ptrace` attaches to the test binaries tarpaulin spawns. Yama's
-      # policy is printed first so that a future failure to attach can be told
-      # apart from a genuine coverage failure without guessing: 0 or 1 permit
-      # tracing a direct child, 2 and 3 do not. `ubuntu-latest` is 1.
-      - name: Show ptrace policy
-        run: echo "yama/ptrace_scope = $(cat /proc/sys/kernel/yama/ptrace_scope 2>/dev/null || echo 'not present')"
+      # Drops stale .profraw and this crate's own artifacts, leaving the cached
+      # dependency build alone. Without it a warm cache can merge counters from
+      # two different compilations of the same function.
+      - name: llvm-cov clean
+        working-directory: src-tauri
+        run: cargo llvm-cov clean --workspace
 
-      # This runs the whole test suite as well as measuring it. A failing test
-      # fails the job here exactly as `cargo test` did.
-      - name: cargo tarpaulin
+      # Runs the whole suite as well as measuring it — a failing test fails the
+      # job here exactly as `cargo test` did. --fail-under-lines is asserted to
+      # work in both directions (a floor of 99 exits 1, 94 exits 0), so this is
+      # a gate and not a decoration.
+      - name: cargo llvm-cov
         working-directory: src-tauri
         run: |
           set -o pipefail
-          cargo tarpaulin \
-            --engine ptrace \
-            --skip-clean \
-            --fail-under 90 \
-            --exclude-files 'src/commands/*' \
-            2>&1 | tee "$RUNNER_TEMP/tarpaulin.log"
+          cargo llvm-cov --locked \
+            --summary-only \
+            --ignore-filename-regex '(^|/)src/commands/' \
+            --fail-under-lines 94 \
+            2>&1 | tee "$RUNNER_TEMP/coverage.log"
 
       # Put the percentage where it can be read without opening the log, on a
       # failing run as well as a passing one.
       - name: Report coverage
         if: always()
         run: |
-          line="$(grep -E '[0-9.]+% coverage' "$RUNNER_TEMP/tarpaulin.log" | tail -1 || true)"
           {
             echo '### Coverage'
             echo '```'
-            echo "${line:-no coverage line in tarpaulin output}"
+            grep -E '^(Filename|TOTAL|-+$)' "$RUNNER_TEMP/coverage.log" 2>/dev/null || echo 'no coverage report'
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"

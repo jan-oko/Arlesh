@@ -18,14 +18,6 @@ name = "arlesh"
 path = "src/main.rs"
 test = false
 
-# `cargo-llvm-cov` sets these cfgs itself; declaring them here keeps the
-# `unexpected_cfgs` lint quiet on every other build, where they are never set.
-# The `coverage(off)` they gate is what keeps inline `#[cfg(test)] mod tests`
-# bodies out of the coverage denominator — without it roughly half the measured
-# lines are test code that is 100% covered by construction.
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage)', 'cfg(coverage_nightly)'] }
-
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
