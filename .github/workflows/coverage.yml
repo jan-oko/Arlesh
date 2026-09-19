@@ -1,0 +1,138 @@
+name: Coverage
+
+# The slow half of the gate: `cargo tarpaulin --engine ptrace --fail-under 90`.
+#
+# This is the step that made the laptop the bottleneck. It takes ~20 minutes
+# there, agents had to serialise on it by polling `pgrep -x cargo-tarpaulin`,
+# and two of them sharing one warm target directory produced numbers that were
+# simply wrong (83.17% and 74.62% against a true 90.96% and 90.72%). On a runner
+# each PR gets its own machine and its own target directory, so the numbers are
+# independent by construction and nobody waits for anybody.
+#
+# It is also, on a private repo, about ten times the cost of everything in
+# ci.yml. Hence the narrow trigger: a PR only pays for it when it actually
+# changes Rust.
+
+on:
+  pull_request:
+    branches: [master]
+    # Frontend-only PRs cannot move Rust line coverage, so they do not pay for
+    # this. `migrations/` and `Cargo.lock` are under src-tauri and so are already
+    # covered by the glob. The workflow file itself is listed so that a change to
+    # the coverage gate is always validated by the gate it changes.
+    paths:
+      - 'src-tauri/**'
+      - '.github/workflows/coverage.yml'
+  # Run it by hand against any branch once this is on master:
+  #   gh workflow run coverage.yml --ref <branch>
+  workflow_dispatch:
+  # Master backstop. Every PR that touches Rust is measured before it merges, but
+  # coverage is a whole-tree property: two PRs can each hold the line on their own
+  # and drop it once merged together — this repo runs eight stacked PRs at a time,
+  # so that is not hypothetical. One scheduled run a week catches it. If the bill
+  # matters more than the backstop, deleting this `schedule:` block is the single
+  # biggest saving available in either workflow.
+  schedule:
+    - cron: '17 4 * * 1'
+
+concurrency:
+  group: coverage-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  # Pinned deliberately. Tarpaulin's reported percentage moves between releases,
+  # and a floor of 90 is only meaningful if CI and a laptop compute it the same
+  # way. This matches the version the gate was calibrated on locally.
+  TARPAULIN_VERSION: '0.35.5'
+
+jobs:
+  tarpaulin:
+    name: cargo tarpaulin --fail-under 90
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+
+      # A warm Rust target directory for this project is ~22 GB on the laptop.
+      # rust-cache prunes most of that away, but a hosted runner starts with far
+      # less headroom than the box does, and a coverage run that dies on ENOSPC
+      # after twenty minutes costs twenty minutes. These two directories are the
+      # cheapest large reclaim on the image and nothing here uses either.
+      - name: Reclaim runner disk
+        run: |
+          df -h /
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet
+          df -h /
+
+      - name: Install Tauri's Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            librsvg2-dev \
+            libxdo-dev \
+            libayatana-appindicator3-dev \
+            libssl-dev
+
+      - name: Show toolchain
+        run: |
+          rustc --version
+          cargo --version
+
+      # A prebuilt binary from the tarpaulin release page. `cargo install
+      # cargo-tarpaulin` would compile it from source on every cache miss, which
+      # is several minutes of runner time for a tool that ships a static build.
+      - name: Install cargo-tarpaulin
+        run: |
+          curl -fsSL \
+            "https://github.com/xd009642/tarpaulin/releases/download/${TARPAULIN_VERSION}/cargo-tarpaulin-x86_64-unknown-linux-musl.tar.gz" \
+            | tar -xz -C "$HOME/.cargo/bin"
+          cargo tarpaulin --version
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          shared-key: tarpaulin
+
+      # See the same step in ci.yml: `generate_context!` will not compile without
+      # a frontendDist directory.
+      - name: Stub the frontend bundle
+        run: |
+          mkdir -p dist
+          printf '<!doctype html><title>arlesh ci</title>' > dist/index.html
+
+      # `--engine ptrace` needs to attach to the test binaries tarpaulin spawns.
+      # Yama's ptrace_scope is printed before the run so that a future failure to
+      # attach can be told apart from a genuine coverage failure without guessing:
+      # 0 or 1 both permit tracing a direct child, 2 or 3 do not.
+      - name: Show ptrace policy
+        run: |
+          echo "yama/ptrace_scope = $(cat /proc/sys/kernel/yama/ptrace_scope 2>/dev/null || echo 'not present')"
+
+      - name: cargo tarpaulin
+        working-directory: src-tauri
+        run: |
+          set -o pipefail
+          cargo tarpaulin \
+            --engine ptrace \
+            --skip-clean \
+            --fail-under 90 \
+            --exclude-files 'src/commands/*' \
+            2>&1 | tee "$RUNNER_TEMP/tarpaulin.log"
+
+      # Put the percentage where it can be read without opening the log, on a
+      # failing run as well as a passing one.
+      - name: Report coverage
+        if: always()
+        run: |
+          line="$(grep -E '[0-9.]+% coverage' "$RUNNER_TEMP/tarpaulin.log" | tail -1 || true)"
+          echo "### Coverage" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "${line:-no coverage line in tarpaulin output}" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

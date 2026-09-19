@@ -1,0 +1,115 @@
+name: CI
+
+# The fast half of the pre-PR gate, moved off the laptop.
+#
+# Two lanes run in parallel on their own runners: `web` (lint, tsc, vitest) and
+# `rust` (cargo test). Coverage is deliberately NOT here — tarpaulin costs an
+# order of magnitude more runner time than everything in this file put together,
+# so it lives in coverage.yml behind a narrower trigger.
+#
+# The repo is private, so every minute in here is billed. Keep it that way:
+# nothing expensive, and nothing that runs on a branch push nobody asked about.
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+# A second push to a PR supersedes the first: cancel the older run rather than
+# paying for both. Pushes to master are never cancelled — every master commit
+# gets its own verdict, and there is no later run to inherit it.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  web:
+    name: lint · tsc · vitest
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: npm run lint
+        run: npm run lint
+
+      - name: npx tsc --noEmit
+        run: npx tsc --noEmit
+
+      # --maxWorkers=2 is not a runner concession that can be relaxed later: the
+      # suite produces phantom `Test timed out` failures in untouched files under
+      # memory pressure, and a hosted runner has 2 cores and less RAM than the
+      # laptop this pin was measured on. The generous timeouts are from the same
+      # incident — see progress.md, "Standing risks".
+      - name: npx vitest run
+        run: npx vitest run --maxWorkers=2 --testTimeout=30000 --hookTimeout=30000
+
+  rust:
+    name: cargo test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      # `tauri` is in the dependency tree with its default features, so wry and
+      # webkit2gtk-sys compile even for `cargo test`, and they need the GTK/
+      # WebKit development headers to exist. The webkit2gtk crate at 2.0.2 binds
+      # the 4.1 API, which is what ubuntu-24.04 ships.
+      - name: Install Tauri's Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            librsvg2-dev \
+            libxdo-dev \
+            libayatana-appindicator3-dev \
+            libssl-dev
+
+      - name: Show toolchain
+        run: |
+          rustc --version
+          cargo --version
+
+      # Caches ~/.cargo/{registry,git} and src-tauri/target, keyed on Cargo.lock,
+      # the rustc version and the job name. It prunes the target directory of the
+      # intermediate artifacts that make a warm Rust tree enormous, which is what
+      # keeps this under GitHub's 10 GB per-repo cache budget. `shared-key` keeps
+      # this cache separate from the coverage job's: tarpaulin builds with its own
+      # RUSTFLAGS, so sharing one entry would make both of them miss every time.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          shared-key: cargo-test
+
+      # `tauri::generate_context!` (src-tauri/src/lib.rs) embeds the frontend
+      # bundle at compile time, so the lib — and therefore every integration test
+      # binary — will not build unless `frontendDist` exists. Locally this is a
+      # leftover `dist/` from `npm run build`; on a clean runner there is nothing.
+      # No Rust test loads an asset out of it, so a placeholder is enough and
+      # saves the job an npm install and a Vite build it has no other use for.
+      - name: Stub the frontend bundle
+        run: |
+          mkdir -p dist
+          printf '<!doctype html><title>arlesh ci</title>' > dist/index.html
+
+      - name: cargo test
+        working-directory: src-tauri
+        run: cargo test --locked
