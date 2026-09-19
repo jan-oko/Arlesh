@@ -28,6 +28,10 @@ point, the disk problem, *and* the source of two wrong coverage numbers.
 rather than in six. CI runs it on every PR either way. If you do run it,
 `rm -rf src-tauri/target` afterwards — disk is the constraint it always was.
 
+Verified 2026-09-19: the coverage lane is green on a hosted runner (`ptrace_scope = 1`,
+`90.96% coverage, 3442/3784 lines`), so the "do not run tarpaulin locally" rule above is proven
+rather than provisional.
+
 ## Waves
 
 ### Wave 1 — dispatched 2026-09-17
@@ -775,8 +779,36 @@ tarpaulin at all. The weekly `schedule:` on master is the one discretionary line
 whole-tree property and this board merges eight stacked PRs, so two branches can each hold 90%
 alone and drop below it together. Deleting that block is the largest single saving available.
 
-**Still unverified at the time of writing:** the first `coverage.yml` run was still executing.
-Every step before `cargo tarpaulin` passed — disk reclaim, apt, the prebuilt tarpaulin 0.35.5
-download, cache setup, the `dist/` stub, and the `ptrace_scope` probe — but the coverage number
-itself, and therefore the claim that `--engine ptrace` works on a hosted runner, had not landed.
-Until it does, treat "do not run tarpaulin locally" as the intent rather than the proven state.
+**The coverage lane is verified.** Run `35440634930`, `success`:
+
+```
+yama/ptrace_scope = 1
+cargo-tarpaulin-tarpaulin 0.35.5
+90.96% coverage, 3442/3784 lines covered
+```
+
+`ptrace_scope = 1` permits tracing a direct child, which is exactly what tarpaulin spawns, so
+`--engine ptrace` works on `ubuntu-latest` unmodified. The number is the point, though: **90.96%
+is precisely the figure a clean local run produced for `je5`** — the same tree that a *concurrent*
+local run reported as 83.17%. CI reproduces the trustworthy number and cannot reproduce the
+corrupt one, because there is nothing to share a target directory with. "Do not run tarpaulin
+locally" is now proven, not intended.
+
+Job total **20m40s** (21 billed minutes) on a cold tarpaulin cache: disk reclaim 3m40s, apt 24s,
+compile 7m09s, the instrumented run 8m00s, cache save 27s. The tarpaulin cache is 1020 MB against
+the `cargo test` job's 511 MB — `-Clink-dead-code` is why — and the repo's three cache entries
+total 1.5 GB of the 10 GB budget.
+
+**Where the coverage run's time actually goes**, measured per test binary from the run log:
+
+| | tests | test time | wall | fixed overhead |
+|---|---|---|---|---|
+| 18 binaries | 490 | **38.8s** | **480.2s** | **441.5s** |
+
+The overhead is **~24.5s per binary and flat** — independent of how many tests the binary holds.
+`arlesh_lib` runs 232 tests in 0.83s and costs 27.6s; the `arlesh` binary runs **zero** tests and
+costs 24.7s; `tests/helpers.rs`, which Cargo compiles as its own target although it contains no
+tests at all, costs 23.5s. So **92% of the instrumented run is per-binary ptrace setup, not test
+execution** — the cost tracks binary size, and `-Clink-dead-code` links the whole dependency tree
+into every one of the 18. Anything that speeds this up has to cut the number of binaries, shrink
+them, or stop using ptrace; making the tests faster would buy 38 seconds in total.
