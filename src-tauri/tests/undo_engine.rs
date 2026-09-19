@@ -12,12 +12,18 @@
 mod helpers;
 
 use arlesh_lib::commands::block_reasons as block_reason_commands;
+use arlesh_lib::commands::flows as flow_commands;
 use arlesh_lib::commands::tasks as task_commands;
 use arlesh_lib::commands::undo as undo_commands;
 use arlesh_lib::domains::model::{CreateDomainRequest, DomainSubtype, ProjectStatus};
+use arlesh_lib::flows::model::{
+    CreateFlowItemRequest, CreateFlowRequest, FlowCycleInput, FlowItemType, HabitInstanceRef,
+    InstanceType,
+};
 use arlesh_lib::mcp::{params, ArleshMcp};
+use arlesh_lib::scopes::model::ScopeKind;
 use arlesh_lib::tasks::model::{
-    CreateGoalRequest, CreateTaskRequest, Dependency, UpdateTaskRequest,
+    CreateGoalRequest, CreateTaskRequest, Dependency, TaskAgentic, UpdateTaskRequest,
 };
 use arlesh_lib::undo::model::GestureSummary;
 use arlesh_lib::undo::EXCLUDED_TABLES;
@@ -644,6 +650,184 @@ async fn neither_undo_nor_redo_writes_a_journal_entry() {
     assert!(
         close_gesture(&app).await.is_some(),
         "the journal must still be recording after a replay"
+    );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Every column comes back, including the ones added after the triggers were first written.
+// ---------------------------------------------------------------------------------------------
+//
+// `tests/undo_journal.rs` guards the triggers against the schema column by column; these two
+// tests are the behaviour that guard stands in for. A column missing from a row image is not an
+// error anywhere — the undo succeeds and the column silently keeps its post-change value — so the
+// only way to see it is to change such a column and read it back after the undo.
+
+/// The `agentic` flag as the database holds it: `Some(true)`, `Some(false)`, or `None` for a Task
+/// that inherits from its ancestors.
+async fn agentic(pool: &SqlitePool, task_id: i64) -> Option<bool> {
+    sqlx::query_scalar("SELECT agentic FROM tasks WHERE id = ?")
+        .bind(task_id)
+        .fetch_one(pool)
+        .await
+        .expect("read agentic")
+}
+
+#[tokio::test]
+async fn undoing_an_edit_that_cleared_agentic_puts_the_flag_back() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let project_id = make_project(&pool).await;
+    let task = task_commands::create_task(
+        app.state(),
+        CreateTaskRequest {
+            agentic: Some(TaskAgentic::Yes),
+            ..task_request("project", project_id, "hand this to an agent")
+        },
+    )
+    .await
+    .expect("create task");
+    assert_eq!(agentic(&pool, task.id).await, Some(true));
+
+    open_gesture(&app).await;
+    task_commands::update_task(
+        app.state(),
+        task.id,
+        UpdateTaskRequest { agentic: Some(TaskAgentic::Inherit), ..Default::default() },
+    )
+    .await
+    .expect("clear the flag back to inheriting");
+    close_gesture(&app).await;
+    assert_eq!(agentic(&pool, task.id).await, None);
+
+    undo(&app).await.expect("there is something to undo");
+    assert_eq!(
+        agentic(&pool, task.id).await,
+        Some(true),
+        "undo must put the flag back, not leave the Task inheriting a decision it had overridden"
+    );
+
+    redo(&app).await.expect("there is something to redo");
+    assert_eq!(agentic(&pool, task.id).await, None, "and redo must clear it again");
+}
+
+#[tokio::test]
+async fn undoing_a_cleared_habit_completion_brings_it_back_on_the_occurrence_it_belonged_to() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+
+    // A Habit whose one item has two cycle pairs: morning and evening, two separate things to
+    // complete on the same day, told apart only by `cycle_id`.
+    let flow = helpers::session_factory(&pool)
+        .connect()
+        .await
+        .expect("connect")
+        .flows()
+        .create(CreateFlowRequest {
+            title: "Routine".into(),
+            instance_type: Some(InstanceType::Task),
+            parent_type: "aspect".into(),
+            parent_id: 1,
+            flow_duration_n: Some(1),
+            flow_duration_kind: Some("day".into()),
+            ..Default::default()
+        })
+        .await
+        .expect("create flow");
+    let item = helpers::session_factory(&pool)
+        .connect()
+        .await
+        .expect("connect")
+        .flows()
+        .create_task(CreateFlowItemRequest {
+            flow_id: flow.id,
+            title: "Stretch".into(),
+            parent_type: "flow".into(),
+            parent_id: flow.id,
+        })
+        .await
+        .expect("create flow task");
+    let pair = |index: i64| FlowCycleInput {
+        scope_kind: Some("part_of_day".into()),
+        scope_index: Some(index),
+        ..Default::default()
+    };
+    helpers::session_factory(&pool)
+        .connect()
+        .await
+        .expect("connect")
+        .flows()
+        .set_cycles(flow.id, FlowItemType::FlowTask, item.id, &[pair(1), pair(4)])
+        .await
+        .expect("set cycles");
+    let pairs: Vec<i64> = sqlx::query_scalar(
+        "SELECT id FROM flow_item_cycles WHERE item_type = 'flow_task' AND item_id = ? \
+          ORDER BY position",
+    )
+    .bind(item.id)
+    .fetch_all(&pool)
+    .await
+    .expect("read the cycle pairs");
+    let evening = *pairs.last().expect("the item has two pairs");
+
+    let iteration_scope_id = helpers::session_factory(&pool)
+        .connect()
+        .await
+        .expect("connect")
+        .scopes()
+        .get_or_create(
+            ScopeKind::Day,
+            chrono::NaiveDate::from_ymd_opt(2026, 1, 5).expect("a real date"),
+        )
+        .await
+        .expect("the day scope")
+        .id;
+    let instance = || HabitInstanceRef {
+        item_type: "flow_task".into(),
+        item_id: item.id,
+        iteration_scope_id,
+        cycle_id: evening,
+    };
+
+    // The evening occurrence is completed...
+    flow_commands::set_habit_item_status(
+        app.state(),
+        flow.id,
+        instance(),
+        Some("done".into()),
+        1_767_600_000_000,
+    )
+    .await
+    .expect("mark the evening occurrence done");
+
+    // ...and then un-completed, which deletes the Modification row, inside a gesture.
+    open_gesture(&app).await;
+    flow_commands::set_habit_item_status(app.state(), flow.id, instance(), None, 0)
+        .await
+        .expect("clear the status");
+    close_gesture(&app).await;
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM habit_instance_modifications")
+            .fetch_one(&pool)
+            .await
+            .expect("count"),
+        0,
+        "clearing a status removes the Modification row"
+    );
+
+    undo(&app).await.expect("there is something to undo");
+    let restored: (i64, Option<String>) = sqlx::query_as(
+        "SELECT cycle_id, status FROM habit_instance_modifications WHERE item_id = ?",
+    )
+    .bind(item.id)
+    .fetch_one(&pool)
+    .await
+    .expect("the Modification is back");
+    assert_eq!(
+        restored,
+        (evening, Some("done".into())),
+        "the completion must come back on the evening occurrence, not on the no-pair sentinel: a \
+         restored cycle_id of 0 marks an occurrence the user never completed and leaves the one \
+         they did outstanding"
     );
 }
 
