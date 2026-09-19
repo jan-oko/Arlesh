@@ -1450,3 +1450,58 @@ agent was dispatched. What was left to do was housekeeping:
 
 Local `master` is now 3 commits ahead of `origin/master`, not 13 — the mainline was pushed, so the
 open PRs' diffs no longer carry the spec commits.
+
+## Spec + bead round, 2026-09-19
+
+Fourteen unbeaded tasks had accumulated on the Arlesh board — twelve added that day (ids 171–175,
+180–186) plus two older (168, 169). None carried a description; the board holds titles only. Each
+was grilled individually before anything was written, and the settled answers live in the bead
+descriptions rather than here.
+
+**Thirteen beads.** Two pairs collapsed into one bead each, because the user settled them as one
+change: #171 + #181 (collapse covers Destructive too, so "replaced on expiry" is a case of it, not
+a rule of its own) and #183 + #185 (Antecedent back, Parent out — the same edit to the same
+dimension list). #172 split the other way, into a P1 flag and a P3 model change.
+
+| Bead | P | Board tasks |
+|---|---|---|
+| `Arlesh-45d` | 1 | 175 — habit instances ignore their Cycle Scope |
+| `Arlesh-792` | 1 | 168 — focused node survives the filter |
+| `Arlesh-7z8` | 1 | 180 — Shift+initial typed child |
+| `Arlesh-2gm` | 1 | 172 — agentic flag |
+| `Arlesh-yuo` | 2 | 183 + 185 — Antecedent in, Parent out |
+| `Arlesh-mw2` | 2 | 174 — collapsing breadcrumb |
+| `Arlesh-dxm` | 2 | 182 — selection in view, j/k scroll |
+| `Arlesh-b0h` | 2 | 171 + 181 — scope-levelled habit history |
+| `Arlesh-5vp` | 2 | 184 — planning view |
+| `Arlesh-ncy` | 3 | 169 — clear a beads id |
+| `Arlesh-8ay` | 3 | 186 — asynchronous flag |
+| `Arlesh-8aw` | 3 | 173 — settable scope selector |
+| `Arlesh-8wh` | 3 | 172 — polymorphic delegate |
+
+Every board task is linked to its bead over MCP, including both halves of each merged pair.
+
+**What the grilling turned up that the titles did not:**
+
+- **`Arlesh-45d` has a confirmed root cause, not a hypothesis.** `buildIterationItems`
+  (`use-mindmap-data.ts`) hard-codes `timing: "active"` on every virtual instance and never resolves
+  the flow item's Cycle Scope, so an item's window is its *iteration's*. The bug is therefore not
+  sub-day-specific — a `day` cycle in a `week` habit is active all week — and the same function
+  emits one node per item where N cycle pairs should give N. Ruled out while diagnosing:
+  `classify_iterations`, `habit_slots` and the `"part"`/`"part_of_day"` spelling split are all
+  correct. The user's "it's a child cycle plan, not a past instance" is what redirected it.
+- **Two documented invariants have to change**, and both are recorded in their beads with the
+  reason: CONTEXT.md's *"Filtering by a scope returns every item whose scope is wholly contained
+  within it"* becomes a selectable Within/Overlapping rule (`8aw`), and SPEC's *"no gesture can
+  author, edit or clear a beads id from the UI"* gains a clearing-only carve-out (`ncy`).
+- **`Arlesh-792` and PR #12 both land.** The focus exemption would make #12's narrowed type cycle
+  unnecessary, but the user kept both deliberately. The exemption overrides *every* hiding rule,
+  Private Mode included — safe only because toggling a filter ends the exemption, so a private node
+  can never survive into a Private-Mode-off view.
+- **`Arlesh-8wh` is blocked by `Arlesh-atb` for a real reason**, not a guess: its one-click delegate
+  toggles Delegation *off* through `UpdateTaskRequest.delegate_to: Option<Option<i64>>`, which is
+  exactly the field shape `atb` reports as silently ignored.
+- **Year is not a Scope kind.** The habit-history tree caps at a year by grouping seasons for
+  display only — no Year row, no Year in the picker, nothing Year-scoped.
+
+Dependencies recorded: `8wh` → `2gm` + `atb`; `5vp` → `n66` (Backlog, PR #7) + `8aw`.
