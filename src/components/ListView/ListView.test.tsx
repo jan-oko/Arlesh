@@ -85,6 +85,12 @@ function row(over: Partial<TaskListRow> = {}): TaskListRow {
   };
 }
 
+/** A path header's **kind glyph**: the svg drawn straight into the row, as opposed to the one
+ * inside its `+` button. Counting every svg in the header would conflate the two. */
+function headerGlyphs(header: Element): Element[] {
+  return [...header.children].filter((el) => el.tagName.toLowerCase() === "svg");
+}
+
 function listData(overrides: Partial<ReturnType<typeof useListData>> = {}) {
   return {
     tree: n("root", "domain"),
@@ -96,6 +102,8 @@ function listData(overrides: Partial<ReturnType<typeof useListData>> = {}) {
     reload: vi.fn(),
     onCycleStatus: vi.fn(),
     renameNode: vi.fn(),
+    createTask: vi.fn(() => Promise.resolve(n("task-new", "task", { status: "todo" }))),
+    deleteTask: vi.fn(() => Promise.resolve()),
     ...overrides,
   };
 }
@@ -164,8 +172,8 @@ describe("ListView", () => {
     const [firstSegment] = screen.getAllByTitle("enterSubtree");
     const header = firstSegment?.parentElement;
     if (header === null || header === undefined) throw new Error("expected a path header");
-    expect(header.querySelectorAll("svg")).toHaveLength(1);
-    expect([...header.querySelectorAll("button")].some((b) => b.querySelector("svg") !== null)).toBe(false);
+    expect(headerGlyphs(header)).toHaveLength(1);
+    expect([...header.querySelectorAll("[title='enterSubtree']")].some((b) => b.querySelector("svg") !== null)).toBe(false);
   });
 
   it("drops the glyph when the settings popover's Path icons switch is off, keeping the chain", () => {
@@ -174,7 +182,7 @@ describe("ListView", () => {
     const [firstSegment] = screen.getAllByTitle("enterSubtree");
     const header = firstSegment?.parentElement;
     if (header === null || header === undefined) throw new Error("expected a path header");
-    expect(header.querySelectorAll("svg")).toHaveLength(0);
+    expect(headerGlyphs(header)).toHaveLength(0);
     // Only the glyph goes — the header still names where the run lives.
     expect(screen.getByText("aspect-1")).toBeInTheDocument();
     expect(screen.getAllByText("goal-1")).toHaveLength(2);
@@ -188,7 +196,7 @@ describe("ListView", () => {
     const [firstSegment] = screen.getAllByTitle("enterSubtree");
     const header = firstSegment?.parentElement;
     if (header === null || header === undefined) throw new Error("expected a path header");
-    expect(header.querySelectorAll("svg")).toHaveLength(0);
+    expect(headerGlyphs(header)).toHaveLength(0);
   });
 
   it("names an ancestor task the active filter hides, so an orphaned subtask still reads in context", () => {
@@ -812,5 +820,160 @@ describe("ListView — the commitments section", () => {
     fireEvent.keyDown(window, { key: "Enter", code: "Enter" });
     expect(data.onCycleStatus).toHaveBeenCalledWith("task-1");
     expect(updateCommitment).not.toHaveBeenCalled();
+  });
+});
+
+describe("ListView — creating tasks", () => {
+  /** The row a create is performed from: a live task under `aspect-1 › goal-1`. */
+  const anchor = () => row({ node: n("task-a", "task", { status: "in_progress" }) });
+  /** The row the reload brings back, as a child of `task-a`. */
+  const createdChild = (status: string) =>
+    row({
+      node: n("task-new", "task", { status }),
+      parentRef: "task-a",
+      ancestors: [n("aspect-1", "aspect"), n("goal-1", "goal", { status: "active" }), n("task-a", "task", { status: "in_progress" })],
+    });
+
+  function setup(overrides: Parameters<typeof listData>[0] = {}) {
+    const createTask = vi.fn(() => Promise.resolve(n("task-new", "task", { status: "todo" })));
+    const deleteTask = vi.fn(() => Promise.resolve());
+    const renameNode = vi.fn(() => Promise.resolve());
+    mockUseListData.mockReturnValue(listData({ rows: [anchor()], createTask, deleteTask, renameNode, ...overrides }));
+    return { createTask, deleteTask, renameNode };
+  }
+
+  /** Selects `task-a` and fires `chord`, settling the create it kicks off. */
+  async function gestureFromAnchor(code: "Tab" | "Enter", shiftKey = false) {
+    fireEvent.click(screen.getByText("task-a"));
+    await act(async () => {
+      fireEvent.keyDown(window, { key: code, code, shiftKey });
+    });
+  }
+
+  it("Tab creates a child of the selected row", async () => {
+    const { createTask } = setup();
+    render(<ListView />);
+    await gestureFromAnchor("Tab");
+    expect(createTask).toHaveBeenCalledWith("task-a", "task", undefined);
+  });
+
+  it("Shift+Enter creates a sibling, under whatever the selected row hangs from", async () => {
+    const { createTask } = setup();
+    render(<ListView />);
+    await gestureFromAnchor("Enter", true);
+    expect(createTask).toHaveBeenCalledWith("goal-1", "goal", "inherit");
+  });
+
+  // The Mindmap's Shift+Enter already does this; the same chord on the same Task must not mean two
+  // things depending on which view you happen to be in.
+  it("carries the source Task's own Agentic flag onto the sibling", async () => {
+    const { createTask } = setup({
+      rows: [row({ node: n("task-a", "task", { status: "in_progress", agentic: true }), isAgentic: true })],
+    });
+    render(<ListView />);
+    await gestureFromAnchor("Enter", true);
+    expect(createTask).toHaveBeenCalledWith("goal-1", "goal", "yes");
+  });
+
+  // Copying what the source *reads as* would freeze an inherited yes into an explicit one, cutting
+  // the sibling off from the ancestor that was deciding for it. An unset source stays unset.
+  it("leaves a sibling of an inheriting Task inheriting, rather than pinning it", async () => {
+    const { createTask } = setup({
+      rows: [row({ node: n("task-a", "task", { status: "in_progress" }), isAgentic: true })],
+    });
+    render(<ListView />);
+    await gestureFromAnchor("Enter", true);
+    expect(createTask).toHaveBeenCalledWith("goal-1", "goal", "inherit");
+  });
+
+  it("does nothing with no row selected — there is no parent to read", async () => {
+    const { createTask } = setup();
+    render(<ListView />);
+    await act(async () => { fireEvent.keyDown(window, { key: "Tab", code: "Tab" }); });
+    expect(createTask).not.toHaveBeenCalled();
+  });
+
+  // The answer to "nothing selected means no parent": the header already names where the run lives.
+  it("the path header's + creates under the chain's last node", () => {
+    const { createTask } = setup();
+    render(<ListView />);
+    fireEvent.click(screen.getByTitle("createTaskHere"));
+    expect(createTask).toHaveBeenCalledWith("goal-1", "goal", undefined);
+  });
+
+  it("offers no + where the chain ends somewhere a Task cannot live", () => {
+    setup({
+      rows: [row({ parentRef: "flow-1", ancestors: [n("flow-1", "flow")], goalRef: null, goalStatus: null })],
+    });
+    render(<ListView />);
+    expect(screen.queryByTitle("createTaskHere")).not.toBeInTheDocument();
+  });
+
+  it("opens the new row in inline rename, so the title can be typed straight away", async () => {
+    setup();
+    const view = render(<ListView />);
+    await gestureFromAnchor("Tab");
+    mockUseListData.mockReturnValue(listData({ rows: [anchor(), createdChild("todo")] }));
+    view.rerender(<ListView />);
+    expect(screen.getByDisplayValue("task-new")).toBeInTheDocument();
+  });
+
+  it("discards the new task entirely when that first rename is escaped", async () => {
+    const { deleteTask, createTask } = setup();
+    const view = render(<ListView />);
+    await gestureFromAnchor("Tab");
+    mockUseListData.mockReturnValue(listData({ rows: [anchor(), createdChild("todo")], createTask, deleteTask }));
+    view.rerender(<ListView />);
+
+    fireEvent.keyDown(screen.getByDisplayValue("task-new"), { key: "Escape", code: "Escape" });
+
+    expect(deleteTask).toHaveBeenCalledWith("task-new");
+  });
+
+  it("indents the new row under the row it was created from", async () => {
+    setup();
+    const view = render(<ListView />);
+    await gestureFromAnchor("Tab");
+    mockUseListData.mockReturnValue(listData({ rows: [anchor(), createdChild("todo")] }));
+    const { container } = view;
+    view.rerender(<ListView />);
+    const card = container.querySelector("[data-row-id='task-new']");
+    expect(card?.getAttribute("style")).toContain("--row-depth: 1");
+  });
+
+  describe("holding the new row visible", () => {
+    /** Creates a To Do child under the **Do** preset — the filter that wants it gone — and names it. */
+    async function createToDoUnderDo() {
+      useFilterStore.setState({ filter: { ...DEFAULT_FILTER, statusMode: "do" } });
+      useListFilterStore.setState({ filter: { ...DEFAULT_LIST_FILTER, preset: "do" } });
+      const handles = setup();
+      const view = render(<ListView />);
+      await gestureFromAnchor("Tab");
+      mockUseListData.mockReturnValue(listData({ rows: [anchor(), createdChild("todo")], ...handles }));
+      view.rerender(<ListView />);
+      fireEvent.keyDown(screen.getByDisplayValue("task-new"), { key: "Enter", code: "Enter" });
+      return { view, handles };
+    }
+
+    it("keeps a To Do row on screen under the Do preset, which would otherwise drop it", async () => {
+      await createToDoUnderDo();
+      expect(screen.getByText("task-new")).toBeInTheDocument();
+    });
+
+    it("keeps it when its status is cycled to one the filter also refuses", async () => {
+      const { view, handles } = await createToDoUnderDo();
+      mockUseListData.mockReturnValue(listData({ rows: [anchor(), createdChild("done")], ...handles }));
+      view.rerender(<ListView />);
+      expect(screen.getByText("task-new")).toBeInTheDocument();
+    });
+
+    it("lets the filter have it back as soon as the selection moves off", async () => {
+      const { view } = await createToDoUnderDo();
+      // The card, not the title text: the new row carries "task-a" as its parent label too.
+      const anchorCard = view.container.querySelector("[data-row-id='task-a']");
+      if (anchorCard === null) throw new Error("expected the anchor row");
+      fireEvent.click(anchorCard);
+      expect(screen.queryByText("task-new")).not.toBeInTheDocument();
+    });
   });
 });

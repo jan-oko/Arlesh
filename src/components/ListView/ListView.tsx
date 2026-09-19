@@ -6,10 +6,13 @@ import { useTaskAgentic } from "@/hooks/use-task-agentic";
 import { useCommitmentVerdict } from "@/hooks/use-commitment-verdict";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { findNode } from "@/utils/mindmap-tree";
+import { canParentNewTask } from "@/utils/node-meta";
+import { storedAgenticState } from "@/utils/agentic";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useListFilterStore } from "@/stores/use-list-filter-store";
 import { filterCommitmentList, filterTaskListWithFocus } from "@/utils/list-filter";
 import type { StatusMode } from "@/utils/filter-tree";
+import type { MindmapNode } from "@/utils/tree-layout";
 import { groupRowsByPath } from "@/utils/list-data";
 import { collectSearchableNodes } from "@/utils/mindmap-tree";
 import { useNodeEditor } from "@/components/MindmapView/use-node-editor";
@@ -25,6 +28,7 @@ import BacklogConfirmModal from "@/components/BacklogConfirmModal/BacklogConfirm
 import styles from "./ListView.module.css";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
 import { useFocusExemption } from "@/hooks/use-focus-exemption";
+import { useListCreate } from "@/hooks/use-list-create";
 import { useSubtreeNav } from "@/hooks/use-subtree-nav";
 import { useListScroll } from "@/hooks/use-list-scroll";
 import { useFullscreenStore } from "@/stores/use-fullscreen-store";
@@ -32,8 +36,8 @@ import { useDisplayStore } from "@/stores/use-display-store";
 
 export default function ListView() {
   const { t } = useTranslation(["common", "listView", "editor"]);
-  const { tree, rows, commitmentRows, allTasksAndGoals, isLoading, error, reload, onCycleStatus, renameNode } =
-    useListData();
+  const { tree, rows, commitmentRows, allTasksAndGoals, isLoading, error, reload, onCycleStatus, renameNode,
+    createTask, deleteTask } = useListData();
 
   const sharedFilter = useFilterStore((s) => s.filter);
   // The cheat-sheet overlay gates background shortcuts the same way an open modal does.
@@ -60,7 +64,6 @@ export default function ListView() {
   // One selection across both sections: a row is a Task or a Commitment, and which it is decides
   // what Enter does to it.
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
-  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
 
   const pendingToast = useMindmapStore((s) => s.pendingToast);
@@ -79,6 +82,16 @@ export default function ListView() {
   const { markKept, markBroken } = useCommitmentVerdict({
     findNode: (id) => findNode(tree, id),
     reload,
+    showToast,
+  });
+
+  // Creating a row and naming one are the same gesture here: a new Task arrives blank and opens
+  // straight into its own inline rename, so Escape during that first naming takes the Task back.
+  const { editingTaskId, startRename, createTaskUnder, commitTitle, cancelTitleEdit } = useListCreate({
+    createTask,
+    deleteTask,
+    renameTask: (id, title) => renameNode(id, "task", title),
+    selectRow: setSelectedRowId,
     showToast,
   });
 
@@ -135,11 +148,34 @@ export default function ListView() {
     setSelectedRowId(navigableIds[nextIndex] ?? null);
   }
 
-  function handleCommitTitle(id: string, title: string) {
-    setEditingTaskId(null);
-    const trimmed = title.trim();
-    if (trimmed === "") return;
-    void renameNode(id, "task", trimmed);
+  // The frame the list is drawn from — the subtree you have entered, or the whole board. It is the
+  // parent for a sibling of a row that has no ancestor inside the list to share one with.
+  const listRoot = useMemo(
+    () => (subtreeRootId !== null ? (findNode(tree, subtreeRootId) ?? tree) : tree),
+    [tree, subtreeRootId],
+  );
+
+  /** Shift+Enter: a sibling hangs from whatever the selected row hangs from, and carries over the
+   * source's **own stored** Agentic flag — exactly as the Mindmap's Shift+Enter does, so the same
+   * chord on the same Task cannot mean two things depending on which view you are in. */
+  function handleCreateSibling(id: string) {
+    const row = filteredRows.find((candidate) => candidate.node.id === id);
+    if (row === undefined) return;
+    createTaskUnder(row.ancestors[row.ancestors.length - 1] ?? listRoot, storedAgenticState(row.node.agentic));
+  }
+
+  /** Tab: a child hangs from the selected row itself. */
+  function handleCreateChild(id: string) {
+    const row = filteredRows.find((candidate) => candidate.node.id === id);
+    if (row === undefined) return;
+    createTaskUnder(row.node);
+  }
+
+  /** A path header's `+`, or `null` where the chain ends somewhere a Task cannot live. */
+  function headerCreateHandler(segments: readonly MindmapNode[]): (() => void) | null {
+    const parent = segments[segments.length - 1];
+    if (parent === undefined || !canParentNewTask(parent)) return null;
+    return () => createTaskUnder(parent);
   }
 
   function handleSetStatusPreset(mode: StatusMode) {
@@ -162,7 +198,9 @@ export default function ListView() {
     onScrollList: startScroll,
     onCycleStatus,
     onOpenEditor: onDoubleClick,
-    onStartRename: setEditingTaskId,
+    onStartRename: startRename,
+    onCreateSibling: handleCreateSibling,
+    onCreateChild: handleCreateChild,
     onDeselect: () => setSelectedRowId(null),
     onToggleFilter: toggleFilterPopover,
     onSetStatusMode: handleSetStatusPreset,
@@ -215,6 +253,7 @@ export default function ListView() {
                 segments={entry.segments}
                 onEnterSubtree={enterSubtree}
                 showKindIcon={pathHeaderIcons}
+                onCreateTask={headerCreateHandler(entry.segments)}
               />
             ) : (
               <TaskRow
@@ -227,8 +266,8 @@ export default function ListView() {
                 onSelect={setSelectedRowId}
                 onCycleStatus={onCycleStatus}
                 onOpenEditor={onDoubleClick}
-                onCommitTitle={handleCommitTitle}
-                onCancelTitleEdit={() => setEditingTaskId(null)}
+                onCommitTitle={commitTitle}
+                onCancelTitleEdit={cancelTitleEdit}
                 onAddParentFilter={(ref) => addPill("parent", ref)}
                 onAddTagFilter={addTagFilter}
               />

@@ -4,6 +4,7 @@ import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { listAllTaskDependencies } from "@/api/tasks";
 import type { TaskDependencyEdge } from "@/api/tasks";
 import { updateTask } from "@/api/tasks";
+import type { TaskAgentic } from "@/api/tasks";
 import { setHabitItemStatus } from "@/api/flows";
 import { TASK_STATUS } from "@/utils/status-mapping";
 import { findNode, collectTasksAndGoals } from "@/utils/mindmap-tree";
@@ -32,12 +33,18 @@ interface ListData {
   onCycleStatus: (nodeId: string) => void;
   /** Renames a task (inline rename, keyboard "R"). */
   renameNode: (id: string, kind: NodeKind, title: string) => Promise<void>;
+  /** Creates a blank To Do Task under a parent — List View's creation gestures make Tasks and
+   * nothing else, so the child kind is fixed here rather than asked for. `agentic` seeds the new
+   * Task's own flag; omitted, it starts in the Inherit every Task defaults to. */
+  createTask: (parentId: string, parentKind: NodeKind, agentic?: TaskAgentic) => Promise<MindmapNode>;
+  /** Deletes a Task by node id — how a create abandoned before it was named is taken back. */
+  deleteTask: (id: string) => Promise<void>;
 }
 
 /** List View's data source: reuses the Mindmap's own tree (so the two views never drift out of
  * sync), plus the raw dependency edges the tree doesn't carry, flattened to one row per Task. */
 export function useListData(): ListData {
-  const { tree, isLoading, error, reload, renameNode } = useMindmapData();
+  const { tree, isLoading, error, reload, renameNode, createNode, removeNode } = useMindmapData();
   const subtreeRootId = useMindmapStore((s) => s.subtreeRootId);
   const [taskDeps, setTaskDeps] = useState<TaskDependencyEdge[]>([]);
 
@@ -77,8 +84,19 @@ export function useListData(): ListData {
     [tree, reload],
   );
 
+  const createTask = useCallback(
+    (parentId: string, parentKind: NodeKind, agentic?: TaskAgentic): Promise<MindmapNode> =>
+      createNode(parentId, parentKind, "task", "", agentic),
+    [createNode],
+  );
+
+  const deleteTask = useCallback(
+    (id: string): Promise<void> => removeNode([{ id, kind: "task" }]),
+    [removeNode],
+  );
+
   return {
     tree, rows, commitmentRows, allTasksAndGoals, isLoading, error, reload, onCycleStatus,
-    renameNode,
+    renameNode, createTask, deleteTask,
   };
 }

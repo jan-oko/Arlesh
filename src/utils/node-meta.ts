@@ -1,4 +1,4 @@
-import type { NodeKind } from "./tree-layout";
+import type { MindmapNode, NodeKind } from "./tree-layout";
 import type { InstanceType } from "@/api/flows";
 
 export interface NodeSize {
@@ -264,4 +264,18 @@ const PARENT_CANDIDATES: readonly NodeKind[] = [
  */
 export function validParentKinds(childKind: NodeKind): NodeKind[] {
   return PARENT_CANDIDATES.filter((parentKind) => isValidDropTarget(childKind, parentKind));
+}
+
+/**
+ * Whether a **new Task** can be created under `node`.
+ *
+ * {@link isValidDropTarget} answers the question about kinds; this adds the two things a kind
+ * cannot tell you. A **virtual** node — a Habit repetition — has no database row to parent
+ * anything to, and neither has the synthetic root, whose id carries no `-<id>` suffix. Both would
+ * fail at the backend, and a gesture that can only fail is better answered before it is sent.
+ */
+export function canParentNewTask(node: MindmapNode): boolean {
+  if (node.virtual === true) return false;
+  if (!node.id.includes("-")) return false;
+  return isValidDropTarget("task", node.kind);
 }

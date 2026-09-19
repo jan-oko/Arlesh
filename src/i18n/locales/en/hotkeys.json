@@ -58,5 +58,7 @@
   "toggleBacklog": "Put in / take out of the backlog",
   "toggleAgentic": "Mark Agentic / Not agentic",
   "markKept": "Mark the selected commitment kept (again to clear it)",
-  "markBroken": "Mark the selected commitment broken (again to clear it)"
+  "markBroken": "Mark the selected commitment broken (again to clear it)",
+  "createChildRow": "Create a child of the selected row",
+  "createSiblingRow": "Create a sibling of the selected row"
 }
