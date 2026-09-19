@@ -179,6 +179,15 @@ jobs:
             --fail-under-lines 94 \
             2>&1 | tee "$RUNNER_TEMP/coverage.log"
 
+      # `cargo llvm-cov` does not run doctests — coverage for them is nightly-only,
+      # so it skips them entirely. Folding `cargo test` into the coverage command
+      # therefore dropped 14 doctests out of the gate without failing anything;
+      # CI reported 630 tests where `cargo test` locally reports 644. They run
+      # here instead. They are not measured for coverage, only executed.
+      - name: cargo test --doc
+        working-directory: src-tauri
+        run: cargo test --locked --doc
+
       # Put the percentage where it can be read without opening the log, on a
       # failing run as well as a passing one.
       - name: Report coverage
