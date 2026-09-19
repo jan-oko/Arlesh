@@ -1734,3 +1734,48 @@ agent's cargo replaced the test binary between build and exec; confirmed via `/p
 showing two live cargos in different worktrees. Transient and retryable, but it presents as a broken
 build. Both running agents were told to retry once rather than debug it. Future briefs should say so
 up front, or serialise `cargo test` behind a `flock`.
+
+### PR #25 — `Arlesh-45d`, habit instances get their own windows
+
+`worktree-habit-cycle-scope` → master, +1160/-163, migration **0029** as assigned (verified: 0029
+here, 0030 on #22, nothing else past 0028 on any branch). Gate green: 93 files / **1307 tests**,
+`cargo test` all green with 7 new in `tests/flows.rs`, `cargo clippy --all-targets` clean, tarpaulin
+**91.37%** (3969/4344, +0.20%). It waited ~4 minutes for another agent's coverage run to clear
+before starting its own, so that figure comes from a run that had the machine to itself.
+
+The user's call — resolve in the backend — was implemented as `resolve_cycle`, with `resolve_pair`
+reduced to a thin wrapper over it, so `start` and the Habit render path share **one** implementation
+of the offset arithmetic. `iteration_instance_keys` becomes the single definition of "every instance
+in an iteration", used by both `set_iteration_done` and `iteration_resolutions`. The frontend now
+stamps `timeScope`/`plan` like any other node and derives Timing from `instance.past`.
+
+**The per-instance key: `(item_type, item_id, iteration_scope_id, cycle_id)`**, keyed on the cycle
+*pair* id rather than the resolved *scope* id — the pair is the template identity, stable across
+iterations and immune to calendar resolution, and two pairs resolving to the same scope cannot
+collide. `NOT NULL` with a `0` sentinel rather than nullable, because SQLite counts NULLs as
+distinct in a UNIQUE index: a nullable column would let an unpaired item accumulate duplicate rows
+per iteration and would silently break every `ON CONFLICT` upsert writing them. Existing rows remap
+to the item's **first** pair, so a one-pair item — the common case — keeps every completion it had.
+
+**One consequence this PR creates, and it needs a decision before merge.** Verified on master:
+`FlowOperator::set_cycles` (`flows/mod.rs:934`) does `DELETE FROM flow_item_cycles WHERE item_type =
+? AND item_id = ?` and re-inserts, so **a pair's id changes on any edit**. With completions now keyed
+to that id, editing a cycle strands its history against a pair that no longer exists — silently,
+because nothing invokes the existing `clear_habit_modifications` / `fork_flow` reconciliation on a
+pair edit specifically. Either remap on edit or extend the reconciliation prompt to cover it. This
+is new surface area, not a pre-existing bug, which is why it is a merge question rather than a bead.
+
+**Two adjacent findings, neither touched:**
+
+- **"Mark the whole iteration done" ticks occurrences that have not opened.** `set_iteration_done`
+  writes a `done` row for every instance key, including this evening's at breakfast — yet the user
+  cannot click an unopened occurrence individually. Not a regression; it is an asymmetry that did not
+  exist when every item always rendered.
+- **A Cycle Scope can resolve outside its iteration's window.** `offset_scope` will advance to day 9
+  of a 7-day week, unbounded against the window length. Pre-existing — `start` has always done it —
+  but now visible in the render path, where such an occurrence appears under an iteration whose
+  window does not contain it.
+
+**Both new PRs merge clean into master** as they stand. They share four files — `CHANGELOG.md`,
+`SPEC.md`, `use-node-actions.ts` and its test — so whichever lands second needs its base merged
+again, which is the orchestrator's job and not the agent's.
