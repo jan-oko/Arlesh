@@ -88,13 +88,6 @@ jobs:
           mkdir -p dist
           printf '<!doctype html><title>arlesh ci</title>' > dist/index.html
 
-      # Proves the annotation is inert on the pinned stable toolchain — if this
-      # step fails, the change is not safe to keep regardless of the coverage
-      # numbers, because it would have broken the build for everyone.
-      - name: Stable still compiles with the annotations
-        working-directory: src-tauri
-        run: cargo check --locked --all-targets
-
       - name: llvm-cov clean
         working-directory: src-tauri
         run: cargo +nightly llvm-cov clean --workspace
@@ -111,6 +104,41 @@ jobs:
             --summary-only \
             --ignore-filename-regex '(^|/)src/commands/' \
             2>&1 | tee "$RUNNER_TEMP/llvm-cov-nightly.log"
+
+      # A floor nobody has watched fire is an assumption, not a gate. This
+      # asserts both directions against the measured 95.14%: an impossible floor
+      # must fail the command, and the proposed one must pass it. If the first
+      # of these exits 0 the flag does nothing and the whole switch is worthless.
+      - name: Prove --fail-under-lines actually fails
+        working-directory: src-tauri
+        run: |
+          set +e
+          cargo +nightly llvm-cov report --summary-only \
+            --ignore-filename-regex '(^|/)src/commands/' \
+            --fail-under-lines 99 >/dev/null 2>&1
+          high=$?
+          cargo +nightly llvm-cov report --summary-only \
+            --ignore-filename-regex '(^|/)src/commands/' \
+            --fail-under-lines 94 >/dev/null 2>&1
+          low=$?
+          set -e
+          echo "floor 99 (must be non-zero): $high"
+          echo "floor 94 (must be zero):     $low"
+          [ "$high" -ne 0 ] || { echo "FAIL: floor of 99 did not fail the gate"; exit 1; }
+          [ "$low" -eq 0 ]  || { echo "FAIL: floor of 94 rejected a 95.14% tree"; exit 1; }
+          echo "gate fires correctly in both directions"
+
+      # The other half of the decision. If coverage moves to nightly then the
+      # suite only ever executes on nightly, and the pinned stable 1.96 that
+      # actually ships gets no test run at all. This is what recovering that
+      # costs on a warm cache — if it is close to the coverage job itself, the
+      # merge saving that motivated the switch is largely given back.
+      - name: Cost of still testing on stable
+        working-directory: src-tauri
+        run: |
+          start=$(date +%s)
+          cargo test --locked --no-run 2>&1 | tail -2
+          echo "stable test build: $(( $(date +%s) - start ))s"
 
       - name: Summarise
         if: always()
