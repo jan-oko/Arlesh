@@ -376,9 +376,9 @@ export default function MindmapView() {
   }, [deleteTargets, tree, removeNode, selectNode]);
 
 
-  const { onStatusClick, onCommitEdit, onCreateChild, onCreateSibling, onInsertParent, onDelete, onPaste } = useNodeActions({
+  const { onStatusClick, onCommitEdit, onCreateChild, onCreateTypedChild, onCreateSibling, onInsertParent, onDelete, onPaste } = useNodeActions({
     tree, clipboard, moveNode, duplicateNode, onRequestDelete: setDeleteTargets, reload, renameNode,
-    createNode, createChild, selectNode, setClipboard, setEditingNodeId, showToast,
+    createNode, createChild, selectNode, setClipboard, setEditingNodeId, showToast, onNewFlow,
   });
 
   const { navigateArrow, extendSelection } = useNavigateArrow({ selectedNodeId, selectedNodeIds, positions, tree, orientation: mindmapOrientation, selectNode, setSelection });
@@ -471,6 +471,7 @@ export default function MindmapView() {
     onReorder: (id, dir) => { void reorderNode(id, dir); },
     onStartRename: setEditingNodeId,
     onCreateChild,
+    onCreateTypedChild,
     onCreateSibling,
     onInsertParent,
     onOpenEditor: onDoubleClick,

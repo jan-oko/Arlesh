@@ -273,7 +273,8 @@ pans the canvas to keep the selected node (or the display root) in view.
 The root of the map is "Arlesh" (top level). Aspect cells are its direct children.
 
 **Keyboard interactions:**
-- `Tab` / click — create a child cell
+- `Tab` / click — create a child cell, of the kind the parent implies
+- `Shift+D` / `Shift+P` / `Shift+G` / `Shift+T` / `Shift+I` / `Shift+F` — create a child of a **named** kind under the selection (Domain, Project, Goal, Task, Info, Flow), bypassing the inherit-the-parent default. `Shift+F` opens the Flow editor rather than creating a blank row, since a Flow is configured before it exists. A parent that cannot hold that kind **creates nothing and says why** in a toast naming the rule — deliberately not the retype behaviour of climbing to the nearest acceptable ancestor, because putting the node somewhere other than where you pointed is worse than not creating it, while silence would read as a broken key. With **nothing selected** they do nothing at all, not even a toast. The parenting rules are the same ones drag-and-drop and paste enforce, so the three can never disagree
 - Arrow keys — move between cells; with **nothing selected**, they pan the canvas instead
 - `Shift+arrows` — extend the selection across siblings (on the sibling axis for the current orientation; on the branch axis they navigate as usual)
 - `Alt+↑` / `Alt+↓` — move the cell among its siblings

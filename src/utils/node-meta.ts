@@ -240,3 +240,27 @@ export function isValidDropTarget(sourceKind: NodeKind, targetKind: NodeKind): b
   // task: valid under aspect, domain, project, goal, or task
   return true;
 }
+
+/**
+ * The node kinds a Shift+initial chord creates directly under the selection, bypassing Tab's
+ * inherit-the-parent default. Deliberately the six *named* kinds a user reaches for: Commitment
+ * has its own creation gesture, and flow items are spawned by Tab from inside their flow.
+ */
+export const TYPED_CHILD_KINDS = ["domain", "project", "goal", "task", "info", "flow"] as const;
+
+/** One of the kinds a Shift+initial chord can create. */
+export type TypedChildKind = (typeof TYPED_CHILD_KINDS)[number];
+
+/** Every real node kind, in the order a refusal message should read them out. */
+const PARENT_CANDIDATES: readonly NodeKind[] = [
+  "aspect", "domain", "project", "goal", "task", "commitment", "info", "tag",
+];
+
+/**
+ * The kinds that may hold `childKind` as a direct child — the parenting rule, stated positively,
+ * for a refusal message that says where the thing *can* go rather than only that it can't go here.
+ * Derived from `isValidDropTarget` so creating and reparenting can never disagree about the rule.
+ */
+export function validParentKinds(childKind: NodeKind): NodeKind[] {
+  return PARENT_CANDIDATES.filter((parentKind) => isValidDropTarget(childKind, parentKind));
+}

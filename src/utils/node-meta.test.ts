@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeNodeDimensions, estimateWrappedLineCount, getNodeSize, validTypesForCycling, typeAcceptsChildren, isValidDropTarget, computeEditHeight } from "./node-meta";
+import { computeNodeDimensions, estimateWrappedLineCount, getNodeSize, validTypesForCycling, typeAcceptsChildren, isValidDropTarget, computeEditHeight, validParentKinds, TYPED_CHILD_KINDS } from "./node-meta";
 
 describe("computeNodeDimensions", () => {
   it("matches getNodeSize height for a short single-word title", () => {
@@ -332,5 +332,41 @@ describe("commitments in the type cycle", () => {
     expect(isValidDropTarget("commitment", "commitment")).toBe(true);
     expect(isValidDropTarget("goal", "commitment")).toBe(false);
     expect(isValidDropTarget("info", "commitment")).toBe(true);
+  });
+});
+
+describe("validParentKinds", () => {
+  it("names the four kinds a Flow may hang from", () => {
+    expect(validParentKinds("flow")).toEqual(["aspect", "domain", "project", "goal"]);
+  });
+
+  it("names the four kinds a Goal may sit under — never a Task", () => {
+    expect(validParentKinds("goal")).toEqual(["aspect", "domain", "project", "goal"]);
+  });
+
+  it("restricts a Project to an Aspect or another Project", () => {
+    expect(validParentKinds("project")).toEqual(["aspect", "project"]);
+  });
+
+  it("restricts a Domain to an Aspect, Domain or Project", () => {
+    expect(validParentKinds("domain")).toEqual(["aspect", "domain", "project"]);
+  });
+
+  it("lets a Task sit under a Goal, a Task or a Commitment as well as the containers", () => {
+    expect(validParentKinds("task")).toEqual(["aspect", "domain", "project", "goal", "task", "commitment"]);
+  });
+
+  it("lets an Info sit under everything but a Tag", () => {
+    expect(validParentKinds("info")).toEqual(["aspect", "domain", "project", "goal", "task", "commitment", "info"]);
+  });
+
+  it("agrees with isValidDropTarget for every kind it lists and every kind it omits", () => {
+    const everyParent = ["aspect", "domain", "project", "goal", "task", "commitment", "info", "tag"] as const;
+    for (const child of TYPED_CHILD_KINDS) {
+      const listed = validParentKinds(child);
+      for (const parent of everyParent) {
+        expect(listed.includes(parent)).toBe(isValidDropTarget(child, parent));
+      }
+    }
   });
 });

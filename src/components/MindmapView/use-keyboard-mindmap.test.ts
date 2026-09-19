@@ -3,6 +3,7 @@ import { renderHook } from "@testing-library/react";
 import { useKeyboardMindmap } from "./use-keyboard-mindmap";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { StatusMode } from "@/utils/filter-tree";
+import type { TypedChildKind } from "@/utils/node-meta";
 
 function makeTask(id: string): MindmapNode {
   return { id, kind: "task", title: "Task", position: 0, tagIds: [], children: [] };
@@ -46,6 +47,7 @@ function baseOptions(overrides: Partial<Parameters<typeof useKeyboardMindmap>[0]
     onReorder: vi.fn(),
     onStartRename: vi.fn(),
     onCreateChild: vi.fn(),
+    onCreateTypedChild: vi.fn() as (id: string, kind: TypedChildKind) => void,
     onCreateSibling: vi.fn(),
     onInsertParent: vi.fn(),
     onOpenEditor: vi.fn(),
@@ -836,5 +838,74 @@ describe("shift+arrow selection axis follows the orientation", () => {
     fireKey("ArrowDown", { shiftKey: true });
     expect(opts.onExtendSelection).not.toHaveBeenCalled();
     expect(opts.onNavigate).toHaveBeenCalledWith("ArrowDown");
+  });
+});
+
+describe("useKeyboardMindmap — Shift+initial creates a typed child", () => {
+  const CHORDS: ReadonlyArray<[string, TypedChildKind]> = [
+    ["d", "domain"],
+    ["p", "project"],
+    ["g", "goal"],
+    ["t", "task"],
+    ["i", "info"],
+    ["f", "flow"],
+  ];
+
+  for (const [key, kind] of CHORDS) {
+    it(`Shift+${key.toUpperCase()} asks for a ${kind} child of the selection`, () => {
+      const opts = baseOptions();
+      renderHook(() => useKeyboardMindmap(opts));
+      fireKey(key, { shiftKey: true });
+      expect(opts.onCreateTypedChild).toHaveBeenCalledWith("task-1", kind);
+    });
+
+    it(`Shift+${key.toUpperCase()} does nothing at all with no selection`, () => {
+      const opts = baseOptions({ selectedNodeId: null, selectedNodeIds: new Set<string>() });
+      renderHook(() => useKeyboardMindmap(opts));
+      fireKey(key, { shiftKey: true });
+      expect(opts.onCreateTypedChild).not.toHaveBeenCalled();
+    });
+  }
+
+  it("leaves bare F converting the selection to a Flow", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("f");
+    expect(opts.onConvertToFlow).toHaveBeenCalledWith("task-1");
+    expect(opts.onCreateTypedChild).not.toHaveBeenCalled();
+  });
+
+  it("Shift+F creates a Flow child and does not convert the selection", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("f", { shiftKey: true });
+    expect(opts.onCreateTypedChild).toHaveBeenCalledWith("task-1", "flow");
+    expect(opts.onConvertToFlow).not.toHaveBeenCalled();
+  });
+
+  it("leaves Tab creating an inherit-the-parent child", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("Tab");
+    expect(opts.onCreateChild).toHaveBeenCalledWith("task-1");
+    expect(opts.onCreateTypedChild).not.toHaveBeenCalled();
+  });
+
+  it("does not fire on a plain letter — Shift is what distinguishes the chord", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("d");
+    fireKey("t", { ctrlKey: true });
+    fireKey("g", { altKey: true });
+    expect(opts.onCreateTypedChild).not.toHaveBeenCalled();
+  });
+
+  it("ignores a held-key repeat so one press never spawns two children", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    window.dispatchEvent(new KeyboardEvent("keydown", {
+      key: "t", code: "KeyT", shiftKey: true, repeat: true, bubbles: true, cancelable: true,
+    }));
+    expect(opts.onCreateTypedChild).not.toHaveBeenCalled();
   });
 });

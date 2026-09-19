@@ -1,6 +1,7 @@
 import type { MindmapNode, Orientation } from "@/utils/tree-layout";
 import { isNodeBlocked } from "@/utils/tree-layout";
 import type { StatusMode } from "@/utils/filter-tree";
+import type { TypedChildKind } from "@/utils/node-meta";
 import type { Binding, HotkeyLabelKey } from "./chord";
 
 export type ArrowKey = "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown";
@@ -27,6 +28,12 @@ export interface MindmapContext {
   onReorder: (id: string, dir: 1 | -1) => void;
   onStartRename: (id: string) => void;
   onCreateChild: (id: string) => void;
+  /**
+   * Creates a child of a *named* kind under `id` — the Shift+initial chords — instead of the kind
+   * Tab would inherit from the parent. A parent that cannot hold that kind is refused out loud,
+   * which is why this fires on any selection and decides inside rather than being guarded here.
+   */
+  onCreateTypedChild: (id: string, kind: TypedChildKind) => void;
   onCreateSibling: (id: string) => void;
   onInsertParent: (id: string) => void;
   onOpenEditor: (id: string) => void;
@@ -136,6 +143,40 @@ const statusBindings: readonly Binding<MindmapContext>[] = STATUS_PRESETS.map(({
   run: (c: MindmapContext) => c.onSetStatusMode(mode),
 }));
 
+/**
+ * Shift+initial, one per named kind. Shift is free for letters — every other Shift chord in the
+ * app sits on a non-letter key (Shift+arrows, Shift+Enter, Shift+Escape, Ctrl+Shift+/) — so these
+ * six take nothing away. Bare `F` still converts the selection to a Flow; Shift+F creates one
+ * under it.
+ */
+const TYPED_CHILD_CHORDS: ReadonlyArray<{ code: string; kind: TypedChildKind; labelKey: HotkeyLabelKey }> = [
+  { code: "KeyD", kind: "domain", labelKey: "createDomainChild" },
+  { code: "KeyP", kind: "project", labelKey: "createProjectChild" },
+  { code: "KeyG", kind: "goal", labelKey: "createGoalChild" },
+  { code: "KeyT", kind: "task", labelKey: "createTaskChild" },
+  { code: "KeyI", kind: "info", labelKey: "createInfoChild" },
+  { code: "KeyF", kind: "flow", labelKey: "createFlowChild" },
+];
+
+const typedChildBindings: readonly Binding<MindmapContext>[] = TYPED_CHILD_CHORDS.map(
+  ({ code, kind, labelKey }) => ({
+    id: `mindmap.createTypedChild.${kind}`,
+    section: "mindmap" as const,
+    chord: { code, shift: true },
+    labelKey,
+    // Creation is a round-trip to the database, and a held key repeats faster than the new node's
+    // inline editor mounts to swallow the rest — so a repeat would spawn duplicate siblings.
+    allowRepeat: false,
+    // Selection-scoped like every other Mindmap binding: with nothing selected these do nothing at
+    // all, not even a toast. A parent that can't hold the kind is a different matter — the binding
+    // still fires there, and the handler refuses it by name, because an inert key reads as broken.
+    when: hasSelection,
+    run: (c: MindmapContext) => {
+      if (c.selectedNodeId !== null) c.onCreateTypedChild(c.selectedNodeId, kind);
+    },
+  }),
+);
+
 export const MINDMAP_BINDINGS: readonly Binding<MindmapContext>[] = [
   // --- Filter and status presets -------------------------------------------------------------
   {
@@ -195,6 +236,10 @@ export const MINDMAP_BINDINGS: readonly Binding<MindmapContext>[] = [
     },
     run: (c) => { if (c.selectedNodeId !== null) c.onCreateChild(c.selectedNodeId); },
   },
+
+  // --- Typed children ------------------------------------------------------------------------
+  ...typedChildBindings,
+
   {
     id: "mindmap.createSibling", section: "mindmap", chord: { code: "Enter", shift: true },
     labelKey: "createSibling",
