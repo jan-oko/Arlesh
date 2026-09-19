@@ -168,14 +168,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # `--engine llvm` is deliberately NOT measured here: coverage-llvm.yml
+          # (also throwaway) already measures it, and alongside cargo-llvm-cov,
+          # with more care about keeping the denominator comparable. Measuring it
+          # twice would cost ~15 billed minutes to learn the same thing.
           - label: no-dead-code
             engine: ptrace
             extra: --no-dead-code
             component: ''
-          - label: llvm-engine
-            engine: llvm
-            extra: ''
-            component: llvm-tools-preview
     steps:
       - uses: actions/checkout@v5
 
