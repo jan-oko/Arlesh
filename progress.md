@@ -2030,3 +2030,67 @@ on its branch and will arrive unguarded when it merges**. They must be given
 `#[serde(default, deserialize_with = "crate::wire::null_clears")]` as part of merging #21, not
 afterwards. (`flows/model.rs` is the reverse case: master already guards 5 of 10 from an earlier PR,
 and #21 completes it to 10.)
+
+## The gate moved to CI — brief template replaced
+
+PR #20 merged as `cad5f44`. `.github/workflows/ci.yml` is on master, `pull_request` and `push` on
+master, plus a weekly backstop because coverage is a whole-tree property and two stacked PRs can
+each hold the floor alone and drop below it together.
+
+**The local gate an agent runs before pushing is now, in full:**
+
+```
+npm run lint
+npx tsc --noEmit
+npx vitest run --maxWorkers=2 --testTimeout=30000 --hookTimeout=30000
+```
+
+`cargo test` locally is optional — CI runs it on every PR. **`cargo tarpaulin` is gone**, not
+discouraged; there is no tarpaulin in CI at all. Which also retires the whole apparatus built around
+it: the `pgrep -x cargo-tarpaulin` wait, the concurrent-corruption warning, and the `flock` that was
+about to be added to make that wait exclusive. Coverage is no longer something a laptop races over.
+
+**The floor is 94, not 90, and it must not be "restored".** The unit changed: tarpaulin counted
+DWARF statement lines, `cargo llvm-cov` counts lines in coverage regions. 94 against a measured
+95.25% leaves ~72 lines of slack where 90 against 90.96% left ~52 — it is slightly *tighter*, not
+looser. CI runs tests and coverage as one command because the coverage tool runs the suite:
+`cargo test --locked` under `cargo llvm-cov show-env`, then `cargo llvm-cov report
+--fail-under-lines 94 --ignore-filename-regex '(^|/)src/commands/'`. 2m22s warm, 6m27s cold.
+
+**Two conventions every brief must now state, because an agent's reflex is the old form:**
+
+- **Unit tests live in sibling files.** `foo.rs` declares `#[cfg(test)] mod tests;` and `foo/tests.rs`
+  holds the body; a second suite takes a `*_tests` name. `.claude/rules/rust.md` is amended. A brief
+  that says "add a test" must say *where it goes*.
+- **Integration tests are four grouped targets plus `commitments.rs`** — `cargo test --test
+  flows|tasks|structure|operations`.
+
+**Verify by test count, not by exit status** — it caught the CI session out four times, every time
+behind a green tick. `cargo llvm-cov` skips doctests (630 against 644); `cargo test` already
+includes them, so adding `--doc` runs them twice (658); piping cargo through `| tail` reports
+*tail's* exit code, so a red suite reads green; and `rust-cache` reported "full match: true" while
+recompiling 384 crates, because its key did not encode which target directory the build wrote to.
+
+### Every open PR now conflicts with master, and that is #20's cost
+
+`workflow_dispatch` cannot reach any of them: none of the seven branches contains
+`.github/workflows/ci.yml`, and a ref without the workflow file cannot be dispatched to (HTTP 422).
+The only route to a check is merging master into each branch, which is also what brings the file.
+Done for **#24** as a canary — it merged clean and CI is running on it.
+
+The other six all conflict, and the cause is mostly #20's own test relocation landing while eight
+PRs were open:
+
+| PR | conflicts in | cause |
+|---|---|---|
+| #25 | `src/flows/habits.rs` | its 4 new inline unit tests against the move to `flows/habits/tests.rs` |
+| #26 | `src/tasks/{mod,model,retype}.rs` | same |
+| #21 | `tests/flows/flows.rs`, `tests/tasks/tasks.rs` | the integration regroup |
+| #22 | `src/database/session.rs`, `src/error/wire.rs`, `src/mcp/beads.rs` | source overlap |
+| #16 | `ListView.tsx`, `use-filter-store.ts` + test, `hotkeys.json`, CHANGELOG | older divergence, unrelated to #20 |
+| #23 | `filter-tree.ts` + test, `list-filter.ts` + test, `ListView.tsx`, SPEC | older divergence, unrelated to #20 |
+
+Six merge resolutions is not a thing to start unasked, and the conflict-resolution trap on this repo
+is documented: four separate times a resolution needed a brace or comma that **neither side owned**,
+caught by `tsc` and `json.load` and never by reading the diff. Surfaced for a decision rather than
+swept.
