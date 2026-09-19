@@ -1,4 +1,4 @@
-mod helpers;
+use crate::helpers;
 
 use arlesh_lib::database;
 
@@ -81,7 +81,7 @@ async fn migration_0025_clears_a_target_that_is_already_the_parent() {
     .unwrap();
 
     sqlx::query(include_str!(
-        "../migrations/0025_flow_target_defaults_to_parent.sql"
+        "../../migrations/0025_flow_target_defaults_to_parent.sql"
     ))
     .execute(&pool)
     .await

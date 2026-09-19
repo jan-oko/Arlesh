@@ -9,6 +9,15 @@ edition = "2021"
 name = "arlesh_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+# `main.rs` is six lines whose only statement is `arlesh_lib::run()`, but cargo still builds a test
+# harness for it, and tarpaulin then traces that harness for ~25 seconds to run zero tests. Opting
+# the binary out of `cargo test` skips it in both. The cost is that `cargo test` no longer
+# type-checks `main.rs`; `cargo build` and the Tauri bundle still do.
+[[bin]]
+name = "arlesh"
+path = "src/main.rs"
+test = false
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

@@ -1,4 +1,4 @@
-mod helpers;
+use crate::helpers;
 
 use arlesh_lib::{
     database::session::SessionFactory,
