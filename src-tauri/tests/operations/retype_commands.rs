@@ -14,7 +14,7 @@
 //! refuses the climbed-to parent — that behaviour is being changed concurrently to climb to the
 //! nearest acceptable parent instead of raising a raw database error.
 
-mod helpers;
+use crate::helpers;
 
 use arlesh_lib::{
     commands::retype::retype_node,
