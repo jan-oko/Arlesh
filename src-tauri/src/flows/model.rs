@@ -236,10 +236,10 @@ pub struct UpdateFlowRequest {
     #[serde(default, deserialize_with = "crate::wire::null_clears")]
     pub root_plan_end: Option<Option<i64>>,
     /// Verdict Window count (`Some(None)` clears it, leaving iterations answerable indefinitely).
-    #[serde(default, deserialize_with = "null_clears")]
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
     pub verdict_window_n: Option<Option<i64>>,
     /// Verdict Window kind (`Some(None)` clears).
-    #[serde(default, deserialize_with = "null_clears")]
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
     pub verdict_window_kind: Option<Option<String>>,
     /// New parent type (with parent_id).
     pub parent_type: Option<String>,

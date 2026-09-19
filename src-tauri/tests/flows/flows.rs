@@ -1970,6 +1970,7 @@ async fn a_flow_with_no_goal_items_may_still_become_a_commitment_flow() {
     .unwrap();
     db.commit().await.unwrap();
     assert_eq!(updated.instance_type, "commitment");
+}
 
 // --- Clearing the rest of a Flow's nullable fields (Arlesh-atb) ---
 //

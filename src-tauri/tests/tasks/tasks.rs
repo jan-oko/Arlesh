@@ -3510,6 +3510,7 @@ async fn a_scoped_backlogged_task_still_lapses_missed_when_its_window_closes() {
     // deliberate choice is flagged rather than performed quietly.
     assert_eq!(entry.archival, Archival::Archived);
     assert!(entry.archival_conflict);
+}
 
 // --- Clearing a Task's or Goal's nullable fields (Arlesh-atb) ---
 //
