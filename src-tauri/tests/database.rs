@@ -105,3 +105,60 @@ async fn migration_0025_clears_a_target_that_is_already_the_parent() {
         ]
     );
 }
+
+/// Two migrations claiming the same number is a merge hazard with no other guard: two branches
+/// each take what was the next free number, neither conflicts with the other (the filenames
+/// differ), and git, lint, `tsc` and the whole frontend gate are happy. sqlx refuses the duplicate
+/// outright — `UNIQUE constraint failed: _sqlx_migrations.version` — but only once something opens
+/// a database, so on a branch whose tests are all frontend the collision reaches a person before it
+/// reaches a gate. This catches it at the moment everything else is checked, and names both files
+/// so the fix is obvious from the failure alone.
+///
+/// The version is the text before the first `_`, parsed as a number, because that is what sqlx
+/// does with it: `0025_a.sql` and `25_b.sql` collide as surely as two `0025_`s.
+#[test]
+fn every_migration_claims_its_own_number() {
+    let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations");
+    let mut by_version: std::collections::BTreeMap<i64, Vec<String>> =
+        std::collections::BTreeMap::new();
+
+    for entry in std::fs::read_dir(&directory).unwrap() {
+        let name = entry.unwrap().file_name().to_string_lossy().into_owned();
+        if !name.ends_with(".sql") {
+            continue;
+        }
+        let version: i64 = name
+            .split('_')
+            .next()
+            .unwrap_or_default()
+            .parse()
+            .unwrap_or_else(|_| {
+                panic!("migration `{name}` must start with `<number>_`, which is the version sqlx reads it by")
+            });
+        by_version.entry(version).or_default().push(name);
+    }
+
+    assert!(
+        !by_version.is_empty(),
+        "no migrations found in {} — this test would pass vacuously",
+        directory.display()
+    );
+
+    let collisions: Vec<String> = by_version
+        .iter()
+        .filter(|(_, files)| files.len() > 1)
+        .map(|(version, files)| {
+            let mut files = files.clone();
+            files.sort();
+            format!("{version}: {}", files.join(" and "))
+        })
+        .collect();
+
+    assert!(
+        collisions.is_empty(),
+        "these migrations claim a number another one already claims, which sqlx refuses at \
+         runtime (UNIQUE constraint failed: _sqlx_migrations.version). Renumber the one that \
+         landed second to the next free number:\n  {}",
+        collisions.join("\n  ")
+    );
+}
