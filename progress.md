@@ -4,11 +4,29 @@ Goal: finish the beads task board, or stop at 8 open PRs.
 Rules: highest priority / lowest effort first; **at most 2 agents in flight** (revised down from 4 —
 see Standing risks); at most 2 `effort:high` at once.
 
-## Gate (every agent runs it before opening a PR)
+## Gate (CI runs it; agents run the fast half before pushing)
 
-- `npm run lint` · `npx tsc --noEmit` · `npm test`
-- Rust changes only: `CARGO_TARGET_DIR=~/.cache/arlesh/tarpaulin cargo tarpaulin --engine ptrace --skip-clean --fail-under 90 --exclude-files 'src/commands/*'`
-- Then `rm -rf src-tauri/target` in the worktree (disk is at 95%).
+The gate moved to GitHub Actions on 2026-09-19 — `Arlesh-qkr`, PR #20. See
+"The gate moved to CI" near the bottom for the measurements and the cost.
+
+| Workflow · job | Trigger | What it runs |
+|---|---|---|
+| `ci.yml` · `web` | every PR to master, every push to master | `npm run lint`, `npx tsc --noEmit`, `npx vitest run --maxWorkers=2 --testTimeout=30000 --hookTimeout=30000` |
+| `ci.yml` · `rust` | every PR to master, every push to master | `cargo test --locked` |
+| `coverage.yml` · `tarpaulin` | PRs touching `src-tauri/**`; weekly on master; `workflow_dispatch` | `cargo tarpaulin --engine ptrace --skip-clean --fail-under 90 --exclude-files 'src/commands/*'` |
+
+**Before pushing, an agent runs this and nothing more:**
+
+- `npm run lint` · `npx tsc --noEmit` · `npx vitest run --maxWorkers=2 --testTimeout=30000 --hookTimeout=30000`
+
+**Do not run `cargo tarpaulin` locally.** CI owns coverage. Do not poll `pgrep -x cargo-tarpaulin`,
+do not set `CARGO_TARGET_DIR=~/.cache/arlesh/tarpaulin`, and do not build a private
+`src-tauri/target` in your worktree. That whole protocol is retired — it was the serialisation
+point, the disk problem, *and* the source of two wrong coverage numbers.
+
+`cargo test` locally is optional: run it if you changed Rust and want the answer in one minute
+rather than in six. CI runs it on every PR either way. If you do run it,
+`rm -rf src-tauri/target` afterwards — disk is the constraint it always was.
 
 ## Waves
 
@@ -710,3 +728,55 @@ agent was dispatched. What was left to do was housekeeping:
 
 Local `master` is now 3 commits ahead of `origin/master`, not 13 — the mainline was pushed, so the
 open PRs' diffs no longer carry the spec commits.
+
+## The gate moved to CI (2026-09-19, `Arlesh-qkr`, PR #20)
+
+Two workflows, `.github/workflows/ci.yml` and `.github/workflows/coverage.yml`. No application
+code touched, so no CHANGELOG entry — developer tooling, matching the `Arlesh-rtu` precedent.
+
+**What it fixes.** Tarpaulin was ~20 minutes locally, agents serialised on it by polling
+`pgrep -x cargo-tarpaulin`, and — the part that actually mattered — two concurrent runs over the
+one warm `~/.cache/arlesh/tarpaulin` target directory reported **83.17% and 74.62% for trees that
+were really at 90.96% and 90.72%**. That is not a slow gate, it is a *wrong* one, and an agent
+nearly rewrote code to chase it. On a runner every PR gets its own machine and its own target
+directory, so the numbers are independent by construction and nothing queues behind anything.
+
+**First run, PR #20, cold caches** (run `35440253439`, both jobs green):
+
+| Job | Wall clock | Detail |
+|---|---|---|
+| `web` | **2m19s** | npm ci 8s · lint 16s · tsc 9s · vitest **98.03s**, 87 files / 1163 tests — identical to the local run |
+| `rust` | **6m01s** | apt 29s · `cargo test` **5m11s** from *no cache at all*, 504 tests passed |
+
+That is much cheaper than feared: a cold Rust build of 560 crates including webkit2gtk and axum is
+five minutes on a hosted runner, not the twenty-plus the laptop's numbers suggested.
+
+**Caching.** `Swatinem/rust-cache@v2` keyed on `Cargo.lock` + rustc version + job, with separate
+`shared-key`s (`cargo-test`, `tarpaulin`) — they build with different RUSTFLAGS, so one shared
+entry would be invalidated by whichever job wrote last and **both** would miss every time. Saved
+entries after the first run: **511 MB** Rust, **44 MB** npm — far inside GitHub's 10 GB per-repo
+budget, because rust-cache prunes the intermediate artifacts that make the local tree 22 GB.
+
+**Runner facts worth writing down.** `ubuntu-latest` ships **rustc 1.98.1** preinstalled, so no
+toolchain action is needed. Two things a clean runner lacks that every laptop already had:
+Tauri's GTK/WebKit headers (`libwebkit2gtk-4.1-dev` — the `webkit2gtk` 2.0.2 crate binds the
+**4.1** API), and a `dist/`. `src-tauri/src/lib.rs:177` calls `tauri::generate_context!`, which
+embeds `frontendDist` at compile time, so the lib and every integration-test binary fail to build
+without one. No Rust test reads the bundle, so both jobs write a placeholder `dist/index.html`
+rather than pay for an npm install and a Vite build. **This is also true of a fresh worktree** —
+`cargo test` in one with no `dist/` fails for a reason that has nothing to do with the change.
+
+**Cost, and why the triggers are shaped this way.** The repo is private, so minutes are billed
+(Linux 1x, $0.008/min) and **every job is rounded up to the whole minute**. Measured: `web` 3 min,
+`rust` 7 min billed. At this board's rate — 8 PRs/month, ~3 pushes each — that is ~240 min/month
+for `ci.yml`, plus coverage. `cancel-in-progress` on `pull_request` kills a superseded run instead
+of paying for it; the `paths:` filter on `coverage.yml` keeps frontend-only PRs from paying for
+tarpaulin at all. The weekly `schedule:` on master is the one discretionary line: coverage is a
+whole-tree property and this board merges eight stacked PRs, so two branches can each hold 90%
+alone and drop below it together. Deleting that block is the largest single saving available.
+
+**Still unverified at the time of writing:** the first `coverage.yml` run was still executing.
+Every step before `cargo tarpaulin` passed — disk reclaim, apt, the prebuilt tarpaulin 0.35.5
+download, cache setup, the `dist/` stub, and the `ptrace_scope` probe — but the coverage number
+itself, and therefore the claim that `--engine ptrace` works on a hosted runner, had not landed.
+Until it does, treat "do not run tarpaulin locally" as the intent rather than the proven state.
