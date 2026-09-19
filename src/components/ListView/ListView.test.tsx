@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import ListView from "./ListView";
 import { useFilterStore } from "@/stores/use-filter-store";
@@ -10,6 +10,7 @@ import { DEFAULT_LIST_FILTER } from "@/utils/list-filter";
 import type { CommitmentListRow, TaskListRow } from "@/utils/list-filter";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { useListData } from "@/hooks/use-list-data";
+import { LIST_SCROLL_STEP_PX } from "@/hooks/use-list-scroll";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -530,6 +531,113 @@ describe("ListView", () => {
       const selected = container.querySelector("[class*='cardSelected']");
       expect(selected).not.toBeNull();
       expect(selected?.textContent).toContain("task-a");
+    });
+  });
+
+  /**
+   * jsdom implements neither scrolling nor layout: `scrollIntoView` and `scrollBy` do not exist and
+   * every element measures zero. These stubs record what the view asked the viewport to do, which is
+   * what the bindings are responsible for. Whether a `nearest` alignment actually leaves an
+   * already-visible row alone is the browser's contract and is not exercised here.
+   */
+  describe("scrolling", () => {
+    let intoViewRows: Array<string | null> = [];
+    let scrollByCalls: ScrollToOptions[] = [];
+    const originalIntoView = Element.prototype.scrollIntoView;
+    const originalScrollBy = Element.prototype.scrollBy;
+
+    beforeEach(() => {
+      intoViewRows = [];
+      scrollByCalls = [];
+      Element.prototype.scrollIntoView = function () {
+        intoViewRows.push(this.getAttribute("data-row-id"));
+      };
+      Element.prototype.scrollBy = function (options?: ScrollToOptions | number) {
+        if (typeof options === "object") scrollByCalls.push(options);
+      };
+    });
+
+    afterEach(() => {
+      Element.prototype.scrollIntoView = originalIntoView;
+      Element.prototype.scrollBy = originalScrollBy;
+    });
+
+    function twoRows() {
+      return listData({
+        rows: [
+          row({ node: n("task-a", "task", { status: "todo" }) }),
+          row({ node: n("task-b", "task", { status: "todo" }) }),
+        ],
+      });
+    }
+
+    it("brings each newly selected row into view as the arrows move", () => {
+      mockUseListData.mockReturnValue(twoRows());
+      render(<ListView />);
+      fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
+      fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
+      expect(intoViewRows).toEqual(["task-a", "task-b"]);
+    });
+
+    it("brings a selected commitment into view the same way as a task row", () => {
+      mockUseListData.mockReturnValue(listData({
+        commitmentRows: [commitmentRow()],
+        rows: [row()],
+        tree: treeWith(n("commitment-1", "commitment", { verdict: "unresolved" })),
+      }));
+      render(<ListView />);
+      fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
+      expect(intoViewRows).toEqual(["commitment-1"]);
+    });
+
+    it("J scrolls down a fixed step and leaves the selection where it is", () => {
+      mockUseListData.mockReturnValue(twoRows());
+      const { container } = render(<ListView />);
+      fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
+      intoViewRows = [];
+
+      fireEvent.keyDown(window, { key: "j", code: "KeyJ" });
+
+      expect(scrollByCalls).toEqual([{ top: LIST_SCROLL_STEP_PX, behavior: "auto" }]);
+      expect(container.querySelector("[class*='cardSelected']")?.textContent).toContain("task-a");
+      // The selection did not move, so nothing pulled the viewport back to it.
+      expect(intoViewRows).toEqual([]);
+    });
+
+    it("K scrolls up by the same step", () => {
+      mockUseListData.mockReturnValue(twoRows());
+      render(<ListView />);
+      fireEvent.keyDown(window, { key: "k", code: "KeyK" });
+      expect(scrollByCalls).toEqual([{ top: -LIST_SCROLL_STEP_PX, behavior: "auto" }]);
+    });
+
+    it("keeps scrolling while the key is held", () => {
+      mockUseListData.mockReturnValue(twoRows());
+      render(<ListView />);
+      fireEvent.keyDown(window, { key: "j", code: "KeyJ" });
+      fireEvent.keyDown(window, { key: "j", code: "KeyJ", repeat: true });
+      fireEvent.keyDown(window, { key: "j", code: "KeyJ", repeat: true });
+      expect(scrollByCalls).toHaveLength(3);
+    });
+
+    it("scrolls with no selection at all", () => {
+      mockUseListData.mockReturnValue(twoRows());
+      const { container } = render(<ListView />);
+      fireEvent.keyDown(window, { key: "j", code: "KeyJ" });
+      expect(scrollByCalls).toHaveLength(1);
+      expect(container.querySelector("[class*='cardSelected']")).toBeNull();
+    });
+
+    it("re-anchors on the selection when the arrows move it after a J scroll", () => {
+      mockUseListData.mockReturnValue(twoRows());
+      render(<ListView />);
+      fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
+      fireEvent.keyDown(window, { key: "j", code: "KeyJ" });
+      intoViewRows = [];
+
+      fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
+
+      expect(intoViewRows).toEqual(["task-b"]);
     });
   });
   describe("focus exemption", () => {

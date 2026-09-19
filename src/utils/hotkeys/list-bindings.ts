@@ -13,6 +13,8 @@ export interface ListContext {
   /** Whether the selected row is currently blocked (and not a Habit instance) — gates Enter. */
   isSelectedBlocked: boolean;
   onNavigate: (direction: 1 | -1) => void;
+  /** Scrolls the list a fixed step down (1) or up (-1), leaving the selection where it is. */
+  onScrollList: (direction: 1 | -1) => void;
   onCycleStatus: (id: string) => void;
   onOpenEditor: (id: string) => void;
   onStartRename: (id: string) => void;
@@ -69,6 +71,18 @@ export const LIST_BINDINGS: readonly Binding<ListContext>[] = [
   {
     id: "listView.navigateDown", section: "listView", chord: { code: "ArrowDown" },
     labelKey: "navigateRows", run: (c) => c.onNavigate(1),
+  },
+  // Reading ahead without giving up your place: these move the viewport and nothing else, so the
+  // selection stays put even once it has scrolled out of sight. Auto-repeat is left on (the
+  // default) — holding the key is how you cover distance, unlike the creation bindings, where a
+  // held key would quietly make a pile of nodes.
+  {
+    id: "listView.scrollDown", section: "listView", chord: { code: "KeyJ" },
+    labelKey: "scrollList", run: (c) => c.onScrollList(1),
+  },
+  {
+    id: "listView.scrollUp", section: "listView", chord: { code: "KeyK" },
+    labelKey: "scrollList", run: (c) => c.onScrollList(-1),
   },
   {
     id: "listView.cycleStatus", section: "listView", chord: { code: "Enter" },

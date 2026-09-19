@@ -31,6 +31,7 @@ function View({ modalState, modalRenders }: { modalState: boolean; modalRenders:
     selectedRowId: "task-1",
     isSelectedBlocked: false,
     onNavigate: vi.fn(),
+    onScrollList: vi.fn(),
     onCycleStatus: vi.fn(),
     onOpenEditor: vi.fn(),
     onStartRename: vi.fn(),

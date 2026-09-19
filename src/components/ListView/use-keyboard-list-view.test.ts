@@ -19,6 +19,7 @@ function baseOptions(overrides: Partial<Parameters<typeof useKeyboardListView>[0
     selectedCommitmentId: null as string | null,
     isSelectedBlocked: false,
     onNavigate: vi.fn(),
+    onScrollList: vi.fn(),
     onCycleStatus: vi.fn(),
     onOpenEditor: vi.fn(),
     onStartRename: vi.fn(),
