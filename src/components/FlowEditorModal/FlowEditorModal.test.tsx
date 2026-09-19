@@ -36,7 +36,7 @@ function mkFlow(overrides: Partial<MindmapNode> = {}): MindmapNode {
     position: 0,
     tagIds: [],
     children: [],
-    flow: { instanceType: "task", targetType: null, targetId: null, durationN: 2, durationKind: "week", windowPart: null, windowTimeStart: null, windowTimeEnd: null, isHabit: false, rootPlanKind: null, rootPlanStart: null, rootPlanEnd: null },
+    flow: { instanceType: "task", targetType: null, targetId: null, durationN: 2, durationKind: "week", windowPart: null, windowTimeStart: null, windowTimeEnd: null, isHabit: false, rootPlanKind: null, rootPlanStart: null, rootPlanEnd: null, verdictWindowN: null, verdictWindowKind: null },
     ...overrides,
   };
 }
@@ -66,7 +66,7 @@ describe("FlowEditorModal — initial state", () => {
   });
 
   it("shows the existing target as a chip", () => {
-    render(<FlowEditorModal {...defaultProps} node={mkFlow({ flow: { instanceType: "task", targetType: "goal", targetId: 7, durationN: 1, durationKind: "week", windowPart: null, windowTimeStart: null, windowTimeEnd: null, isHabit: false, rootPlanKind: null, rootPlanStart: null, rootPlanEnd: null } })} />);
+    render(<FlowEditorModal {...defaultProps} node={mkFlow({ flow: { instanceType: "task", targetType: "goal", targetId: 7, durationN: 1, durationKind: "week", windowPart: null, windowTimeStart: null, windowTimeEnd: null, isHabit: false, rootPlanKind: null, rootPlanStart: null, rootPlanEnd: null, verdictWindowN: null, verdictWindowKind: null } })} />);
     expect(screen.getByText("Backend Revamp")).toBeInTheDocument();
   });
 });
@@ -88,7 +88,7 @@ describe("FlowEditorModal — save", () => {
         windowTimeEnd: null,
         rootPlanKind: null,
         rootPlanStart: null,
-        rootPlanEnd: null,
+        rootPlanEnd: null, verdictWindowN: null, verdictWindowKind: null,
         isPrivate: false,
         recurrence: null,
       }),
@@ -154,7 +154,7 @@ describe("FlowEditorModal — save", () => {
     fireEvent.click(screen.getByRole("button", { name: "save" }));
     await waitFor(() =>
       expect(defaultProps.onSave).toHaveBeenCalledWith(
-        expect.objectContaining({ rootPlanKind: "day", rootPlanStart: 3, rootPlanEnd: 3 }),
+        expect.objectContaining({ rootPlanKind: "day", rootPlanStart: 3, rootPlanEnd: 3, verdictWindowN: null, verdictWindowKind: null }),
       ),
     );
   });
@@ -167,7 +167,7 @@ describe("FlowEditorModal — save", () => {
     fireEvent.click(screen.getByRole("button", { name: "save" }));
     await waitFor(() =>
       expect(defaultProps.onSave).toHaveBeenCalledWith(
-        expect.objectContaining({ rootPlanKind: null, rootPlanStart: null, rootPlanEnd: null }),
+        expect.objectContaining({ rootPlanKind: null, rootPlanStart: null, rootPlanEnd: null, verdictWindowN: null, verdictWindowKind: null }),
       ),
     );
   });
@@ -208,7 +208,7 @@ describe("FlowEditorModal — save", () => {
   });
 
   it("treats a flow with no stored scope as unscoped", () => {
-    render(<FlowEditorModal {...defaultProps} node={mkFlow({ flow: { instanceType: "task", targetType: null, targetId: null, durationN: null, durationKind: null, windowPart: null, windowTimeStart: null, windowTimeEnd: null, isHabit: false, rootPlanKind: null, rootPlanStart: null, rootPlanEnd: null } })} />);
+    render(<FlowEditorModal {...defaultProps} node={mkFlow({ flow: { instanceType: "task", targetType: null, targetId: null, durationN: null, durationKind: null, windowPart: null, windowTimeStart: null, windowTimeEnd: null, isHabit: false, rootPlanKind: null, rootPlanStart: null, rootPlanEnd: null, verdictWindowN: null, verdictWindowKind: null } })} />);
     expect(screen.getByRole("checkbox", { name: "flowScoped" })).not.toBeChecked();
   });
 
@@ -230,7 +230,7 @@ describe("FlowEditorModal — keyboard", () => {
 describe("FlowEditorModal — target display", () => {
   const flowWith = (targetType: string, targetId: number) => ({
     instanceType: "task" as const, targetType, targetId,
-    durationN: 2, durationKind: "week", windowPart: null, windowTimeStart: null, windowTimeEnd: null, isHabit: false, rootPlanKind: null, rootPlanStart: null, rootPlanEnd: null,
+    durationN: 2, durationKind: "week", windowPart: null, windowTimeStart: null, windowTimeEnd: null, isHabit: false, rootPlanKind: null, rootPlanStart: null, rootPlanEnd: null, verdictWindowN: null, verdictWindowKind: null,
   });
 
   it("resolves a domain-table target (project) to its title, not #id", () => {
@@ -292,5 +292,86 @@ describe("FlowEditorModal — target display", () => {
     fireEvent.click(screen.getByRole("button", { name: "×" }));
     expect(screen.getByText("Health")).toBeInTheDocument();
     expect(screen.getByText("targetInherited")).toBeInTheDocument();
+  });
+});
+
+describe("FlowEditorModal — a commitment Habit's Verdict Window", () => {
+  /** A daily commitment flow, the shape a nightly rule takes. */
+  function mkCommitmentFlow(over: Partial<NonNullable<MindmapNode["flow"]>> = {}): MindmapNode {
+    return mkFlow({
+      title: "Asleep by 23:00",
+      flow: {
+        instanceType: "commitment", targetType: null, targetId: null,
+        durationN: 1, durationKind: "day",
+        windowPart: null, windowTimeStart: null, windowTimeEnd: null, isHabit: false,
+        rootPlanKind: null, rootPlanStart: null, rootPlanEnd: null,
+        verdictWindowN: null, verdictWindowKind: null,
+        ...over,
+      },
+    });
+  }
+
+  it("offers Commitment as an Instance Type, so a nightly rule can be made at all", () => {
+    render(<FlowEditorModal {...defaultProps} />);
+    expect(screen.getByRole("button", { name: "nodeKinds:commitment" })).toBeInTheDocument();
+  });
+
+  it("shows the Verdict Window only on a commitment flow — nothing else has a verdict to bound", () => {
+    const { unmount } = render(<FlowEditorModal {...defaultProps} />);
+    expect(screen.queryByText("fieldVerdictWindow")).not.toBeInTheDocument();
+    unmount();
+    render(<FlowEditorModal {...defaultProps} node={mkCommitmentFlow()} />);
+    expect(screen.getByText("fieldVerdictWindow")).toBeInTheDocument();
+  });
+
+  it("pre-fills the window the Habit already carries", () => {
+    render(
+      <FlowEditorModal
+        {...defaultProps}
+        node={mkCommitmentFlow({ verdictWindowN: 2, verdictWindowKind: "day" })}
+      />,
+    );
+    expect(screen.getByDisplayValue("2")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "kindDay" })).toHaveClass(/statusPillActive/);
+  });
+
+  it("saves a window set on a commitment flow", async () => {
+    render(<FlowEditorModal {...defaultProps} node={mkCommitmentFlow()} />);
+    fireEvent.change(screen.getByLabelText("fieldVerdictWindow"), { target: { value: "3" } });
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() =>
+      expect(defaultProps.onSave).toHaveBeenCalledWith(
+        expect.objectContaining({ verdictWindowN: 3, verdictWindowKind: "day" }),
+      ),
+    );
+  });
+
+  it("clears the window when the flow stops being a commitment one", async () => {
+    // Otherwise the row would keep a window nothing would ever read, and reading it back later
+    // would make a task Habit look like it had one.
+    render(
+      <FlowEditorModal
+        {...defaultProps}
+        node={mkCommitmentFlow({ verdictWindowN: 2, verdictWindowKind: "day" })}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "nodeKinds:task" }));
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() =>
+      expect(defaultProps.onSave).toHaveBeenCalledWith(
+        expect.objectContaining({ verdictWindowN: null, verdictWindowKind: null, instanceType: "task" }),
+      ),
+    );
+  });
+
+  it("offers no root Plan on a commitment flow — the window is the commitment", async () => {
+    render(<FlowEditorModal {...defaultProps} node={mkCommitmentFlow()} />);
+    expect(screen.queryByText("fieldRootPlan")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() =>
+      expect(defaultProps.onSave).toHaveBeenCalledWith(
+        expect.objectContaining({ rootPlanKind: null, rootPlanStart: null, rootPlanEnd: null }),
+      ),
+    );
   });
 });

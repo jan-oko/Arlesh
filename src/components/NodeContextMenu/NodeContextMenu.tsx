@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import type { NodeKind } from "@/utils/tree-layout";
+import type { InstanceType } from "@/api/flows";
 import { validTypesForCycling, typeAcceptsChildren } from "@/utils/node-meta";
 import { canConvertNodeToFlow } from "@/utils/mindmap-tree";
 import type { ContextMenuAction } from "./context-action";
@@ -14,13 +15,15 @@ interface Props {
   parentKind?: NodeKind | null;
   /** Distinct kinds of this node's direct children — a target type that can't hold one is not offered. */
   childKinds?: NodeKind[];
+  /** For a flow item, its flow's Instance Type: a commitment flow is not offered a goal item. */
+  flowInstanceType?: InstanceType;
   isCollapsed: boolean;
   hasClipboard: boolean;
   onAction: (action: ContextMenuAction) => void;
   onClose: () => void;
 }
 
-export default function NodeContextMenu({ x, y, nodeKind, parentKind = null, childKinds = [], isCollapsed, hasClipboard, onAction, onClose }: Props) {
+export default function NodeContextMenu({ x, y, nodeKind, parentKind = null, childKinds = [], flowInstanceType, isCollapsed, hasClipboard, onAction, onClose }: Props) {
   const { t } = useTranslation(["contextMenu", "nodeKinds"]);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -35,7 +38,7 @@ export default function NodeContextMenu({ x, y, nodeKind, parentKind = null, chi
   const canEnter = nodeKind !== "task" && nodeKind !== "goal" && nodeKind !== "tag";
   // The kinds this node can be set to: its valid cycle types (minus its current kind), excluding any
   // that couldn't hold the node's existing children.
-  const typeOptions = validTypesForCycling(nodeKind, parentKind)
+  const typeOptions = validTypesForCycling(nodeKind, parentKind, flowInstanceType)
     .filter((k) => k !== nodeKind && typeAcceptsChildren(k, childKinds));
   // A Flow templates a Goal/Task subtree, so it may be created under any node that can hold one.
   const canCreateFlow = nodeKind === "aspect" || nodeKind === "domain" || nodeKind === "project" || nodeKind === "goal";

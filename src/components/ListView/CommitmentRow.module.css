@@ -1,0 +1,38 @@
+/* A commitment row reuses the task card's shape, then differs where it should read differently:
+   two verdict controls instead of one status control, and a left edge that says at a glance
+   whether a verdict has been recorded. */
+.verdictControls {
+  flex-shrink: 0;
+  display: flex;
+  gap: var(--space-1, 2px);
+}
+
+.verdictButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  opacity: 0.45;
+  transition: opacity 0.12s ease, background-color 0.12s ease;
+}
+
+.verdictButton:hover {
+  background: var(--node-bg-hover);
+  opacity: 0.85;
+}
+
+/* The recorded verdict is the one at full strength. Kept and Broken are drawn at the same weight
+   — they are equal outcomes, not a success and a failure. */
+.verdictButtonActive {
+  opacity: 1;
+}
+
+.unjudged {
+  border-left: 3px solid var(--node-border-selected);
+}

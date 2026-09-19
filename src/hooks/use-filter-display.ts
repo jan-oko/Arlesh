@@ -4,6 +4,7 @@ import { useMindmapData } from "@/components/MindmapView/use-mindmap-data";
 import { collectSearchableNodes, flattenNodesById } from "@/utils/mindmap-tree";
 import {
   isTaskStatusValue, isGoalStatusValue, isProjectStatusValue, isScopeStateValue, isBlockedValue,
+  isVerdictValue,
 } from "@/utils/list-filter";
 
 /** Node kinds a Task/Goal/Project can be parented under — the pool for the Parent picker. */
@@ -40,6 +41,7 @@ export interface FilterDisplay {
   displayTaskStatus: (value: string) => string;
   displayGoalStatus: (value: string) => string;
   displayProjectStatus: (value: string) => string;
+  displayVerdict: (value: string) => string;
   displayScopeState: (value: string) => string;
   displayBlocked: (value: string) => string;
 }
@@ -88,6 +90,7 @@ export function useFilterDisplay(): FilterDisplay {
     displayTaskStatus: (value) => (isTaskStatusValue(value) ? t(`status:task.${value}`) : value),
     displayGoalStatus: (value) => (isGoalStatusValue(value) ? t(`status:goal.${value}`) : value),
     displayProjectStatus: (value) => (isProjectStatusValue(value) ? t(`status:project.${value}`) : value),
+    displayVerdict: (value) => (isVerdictValue(value) ? t(`status:commitment.${value}`) : value),
     displayScopeState: (value) => (isScopeStateValue(value) ? t(`listView:scopeState.${value}`) : value),
     displayBlocked: (value) => (isBlockedValue(value) ? t(`listView:blockedState.${value}`) : value),
   };

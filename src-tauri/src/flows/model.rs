@@ -25,6 +25,13 @@ pub enum InstanceType {
     Goal,
     /// Materializes as a Task subtree.
     Task,
+    /// Materializes as a Commitment.
+    ///
+    /// This is how a repeating rule — a nightly "asleep by 23:00" — recurs: through the Habit
+    /// machinery that already exists, rather than a second recurrence engine. Each iteration's
+    /// verdict is a Modification row keyed by (flow item, iteration scope), reusing the
+    /// overridden-status slot; see `docs/adr/0005-commitment-node-kind.md`.
+    Commitment,
 }
 
 impl InstanceType {
@@ -33,6 +40,20 @@ impl InstanceType {
         match self {
             Self::Goal => "goal",
             Self::Task => "task",
+            Self::Commitment => "commitment",
+        }
+    }
+
+    /// Parses the database string representation, defaulting to `Task`.
+    ///
+    /// A default rather than an `Option` because the column is CHECK-constrained and every
+    /// caller here is reading a stored row: `Task` is what the old two-way `== "goal"` test
+    /// already fell back to, kept so a corrupt row renders as something rather than nothing.
+    pub fn from_db(value: &str) -> Self {
+        match value {
+            "goal" => Self::Goal,
+            "commitment" => Self::Commitment,
+            _ => Self::Task,
         }
     }
 }
@@ -74,6 +95,13 @@ pub struct Flow {
     pub root_plan_start: Option<i64>,
     /// Root Cycle Plan end offset within the flow window.
     pub root_plan_end: Option<i64>,
+    /// **Verdict Window** count, for a commitment Habit: how long past the end of an iteration's
+    /// window that iteration's verdict may still be recorded. Travels with
+    /// [`Self::verdict_window_kind`]; `None` means iterations never stop being answerable.
+    pub verdict_window_n: Option<i64>,
+    /// Verdict Window kind (`day`/`week`/`month`/`season`), independent of the flow's own window
+    /// kind — a monthly commitment habit may stay answerable for two days.
+    pub verdict_window_kind: Option<String>,
     /// Whether this flow is a Habit (has a Recurrence) — derived, not stored on the flows row.
     #[sqlx(default)]
     pub is_habit: bool,
@@ -162,6 +190,12 @@ pub struct CreateFlowRequest {
     /// Root Cycle Plan end offset within the flow window.
     #[serde(default)]
     pub root_plan_end: Option<i64>,
+    /// Verdict Window count (commitment instance type only); set with `verdict_window_kind`.
+    #[serde(default)]
+    pub verdict_window_n: Option<i64>,
+    /// Verdict Window kind; set with `verdict_window_n`.
+    #[serde(default)]
+    pub verdict_window_kind: Option<String>,
 }
 
 /// Request body for updating a flow (fields left `None` are unchanged; `Some(None)` clears).
@@ -201,6 +235,12 @@ pub struct UpdateFlowRequest {
     /// Root Cycle Plan end offset (Some(None) clears).
     #[serde(default, deserialize_with = "crate::wire::null_clears")]
     pub root_plan_end: Option<Option<i64>>,
+    /// Verdict Window count (`Some(None)` clears it, leaving iterations answerable indefinitely).
+    #[serde(default, deserialize_with = "null_clears")]
+    pub verdict_window_n: Option<Option<i64>>,
+    /// Verdict Window kind (`Some(None)` clears).
+    #[serde(default, deserialize_with = "null_clears")]
+    pub verdict_window_kind: Option<Option<String>>,
     /// New parent type (with parent_id).
     pub parent_type: Option<String>,
     /// New parent id (with parent_type).
@@ -483,6 +523,13 @@ pub enum IterationStatus {
     Lapsed,
     /// Skipped by a Blocking `latest` catch-up.
     Missed,
+    /// A **commitment** Habit's iteration whose Verdict Window ran out with no verdict recorded.
+    ///
+    /// Not a fifth verdict and not a failure: the Verdict stays unresolved for good, and only the
+    /// Archival moves — the chance to say has gone. Distinct from [`Self::Lapsed`], which is a
+    /// Destructive habit's unfinished *work* passing its window; a Commitment's work is never
+    /// what passes, and nothing here ever concludes that one was broken.
+    Expired,
 }
 
 /// One derived Habit iteration: its ordinal, the scope anchoring its window, and current state.
@@ -514,28 +561,4 @@ pub struct HabitItemStatus {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn instance_type_as_str_covers_all_variants() {
-        assert_eq!(InstanceType::Goal.as_str(), "goal");
-        assert_eq!(InstanceType::Task.as_str(), "task");
-    }
-
-    #[test]
-    fn flow_id_roundtrip() {
-        assert_eq!(i64::from(FlowId::from(9_i64)), 9);
-    }
-
-    #[test]
-    fn consumption_enums_cover_all_variants() {
-        assert_eq!(ConsumptionKind::Destructive.as_str(), "destructive");
-        assert_eq!(ConsumptionKind::Accumulating.as_str(), "accumulating");
-        assert_eq!(BlockingMode::Overlapping.as_str(), "overlapping");
-        assert_eq!(BlockingMode::Blocking.as_str(), "blocking");
-        assert_eq!(CatchupPolicy::AllPending.as_str(), "all_pending");
-        assert_eq!(CatchupPolicy::Next.as_str(), "next");
-        assert_eq!(CatchupPolicy::Latest.as_str(), "latest");
-    }
-}
+mod tests;

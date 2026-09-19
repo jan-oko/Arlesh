@@ -229,3 +229,82 @@ describe("TaskEditorModal — bd issue link", () => {
     expect(screen.queryByText("fieldBeadsId")).not.toBeInTheDocument();
   });
 });
+
+describe("TaskEditorModal — Backlog control", () => {
+  const PLAN = { start_id: 4, end_id: 4 };
+
+  it("is off for an ordinary task and saves it as in play", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<TaskEditorModal {...defaultProps} onSave={onSave} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
+
+    expect(screen.getByRole("checkbox", { name: "backlogOff" })).not.toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ archival: "live" });
+  });
+
+  it("reads as on for a task already in the backlog", async () => {
+    render(<TaskEditorModal {...defaultProps} node={mkNode({ backlogged: true })} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
+    expect(screen.getByRole("checkbox", { name: "backlogOn" })).toBeChecked();
+  });
+
+  it("saves a task the switch was turned on for as backlogged", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<TaskEditorModal {...defaultProps} onSave={onSave} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "backlogOff" }));
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ archival: "backlog" });
+  });
+
+  it("takes a task back out of the backlog", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<TaskEditorModal {...defaultProps} node={mkNode({ backlogged: true })} onSave={onSave} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "backlogOn" }));
+    expect(screen.getByRole("checkbox", { name: "backlogOff" })).not.toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ archival: "live" });
+  });
+
+  it("puts a task in the backlog and takes it out again in one editing session", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<TaskEditorModal {...defaultProps} onSave={onSave} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "backlogOff" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "backlogOn" }));
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ archival: "live" });
+  });
+
+  it("clears the Plan in front of the user rather than letting the save be refused", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<TaskEditorModal {...defaultProps} node={mkNode({ plan: PLAN })} onSave={onSave} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "backlogOff" }));
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ archival: "backlog", plan: null });
+  });
+
+  it("leaves the status control usable on a backlogged task", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<TaskEditorModal {...defaultProps} node={mkNode({ backlogged: true })} onSave={onSave} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "status:task.done" }));
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    // Both axes independent: finished, and still set aside.
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ status: "done", archival: "backlog" });
+  });
+});

@@ -50,6 +50,9 @@ export interface MindmapContext {
   onCenterOnNode: (id: string) => void;
   onConvertToFlow: (id: string) => void;
   onExtendSelection: (key: ArrowKey) => void;
+  /** Puts the anchor Task in the backlog, or takes it out. Acts on the anchor, never the whole
+   * multi-selection — setting work aside is a judgement about one thing at a time. */
+  onToggleBacklog: (id: string) => void;
 }
 
 const DOUBLE_TAP_MS = 300;
@@ -122,6 +125,7 @@ const STATUS_PRESETS: ReadonlyArray<{ code: string; mode: StatusMode; labelKey: 
   { code: "KeyP", mode: "plan", labelKey: "statusPlan" },
   { code: "KeyS", mode: "start", labelKey: "statusStart" },
   { code: "KeyD", mode: "do", labelKey: "statusDo" },
+  { code: "KeyB", mode: "backlog", labelKey: "statusBacklog" },
 ];
 
 const statusBindings: readonly Binding<MindmapContext>[] = STATUS_PRESETS.map(({ code, mode, labelKey }) => ({
@@ -337,6 +341,17 @@ export const MINDMAP_BINDINGS: readonly Binding<MindmapContext>[] = [
     labelKey: "rename",
     when: selectedKindIsNot("aspect"),
     run: (c) => { if (c.selectedNodeId !== null) c.onStartRename(c.selectedNodeId); },
+  },
+  {
+    // Only a real Task has a backlog column. A virtual Habit instance is rendered from a template
+    // and has no row of its own to set aside, so it is excluded rather than silently no-oping.
+    id: "mindmap.toggleBacklog", section: "mindmap", chord: { code: "KeyB" },
+    labelKey: "toggleBacklog",
+    when: (c) => {
+      const node = selectedNode(c);
+      return node !== undefined && node.kind === "task" && node.habitItem === undefined;
+    },
+    run: (c) => { if (c.selectedNodeId !== null) c.onToggleBacklog(c.selectedNodeId); },
   },
   {
     id: "mindmap.openSearch", section: "mindmap", chord: { code: "KeyO", ctrl: true },

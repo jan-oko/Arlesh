@@ -219,6 +219,25 @@ describe("validTypesForCycling — info", () => {
   });
 });
 
+describe("validTypesForCycling — a commitment flow's items", () => {
+  it("does not offer a goal item on a commitment flow", () => {
+    // A Commitment holds Tasks and other Commitments and no Goals, so such an item could never
+    // materialise: the flow would derive no iterations at all. Not offered, rather than offered
+    // and explained afterwards by the Mindmap's failure banner.
+    expect(validTypesForCycling("flow_task", "flow", "commitment")).toEqual(["flow_task"]);
+    expect(validTypesForCycling("flow_goal", "flow", "commitment")).toEqual(["flow_task"]);
+  });
+
+  it("still offers both on a goal or task flow", () => {
+    expect(validTypesForCycling("flow_task", "flow", "task")).toEqual(["flow_goal", "flow_task"]);
+    expect(validTypesForCycling("flow_task", "flow", "goal")).toEqual(["flow_goal", "flow_task"]);
+  });
+
+  it("offers both when the instance type is not known, as before", () => {
+    expect(validTypesForCycling("flow_task", "flow")).toEqual(["flow_goal", "flow_task"]);
+  });
+});
+
 describe("validTypesForCycling — flow items", () => {
   it("cycles a flow item between goal and task under a flow root", () => {
     expect(validTypesForCycling("flow_goal", "flow")).toEqual(["flow_goal", "flow_task"]);
@@ -269,5 +288,49 @@ describe("isValidDropTarget — info", () => {
 
   it("domain cannot be dropped onto an info node", () => {
     expect(isValidDropTarget("domain", "info")).toBe(false);
+  });
+});
+
+describe("commitments in the type cycle", () => {
+  it("sits immediately after Task under a domain-table parent", () => {
+    const cycle = validTypesForCycling("task", "project");
+    expect(cycle).toContain("commitment");
+    expect(cycle.indexOf("commitment")).toBe(cycle.indexOf("task") + 1);
+  });
+
+  it("is reachable under a goal, a task and another commitment", () => {
+    for (const parent of ["goal", "task", "commitment"] as const) {
+      expect(validTypesForCycling("task", parent)).toContain("commitment");
+    }
+  });
+
+  it("is not reachable under an info parent, which holds only notes", () => {
+    expect(validTypesForCycling("info", "info")).toEqual(["info"]);
+  });
+
+  it("offers no Goal under a commitment: a desired state is not something you hold to", () => {
+    expect(validTypesForCycling("task", "commitment")).not.toContain("goal");
+    expect(typeAcceptsChildren("commitment", ["goal"])).toBe(false);
+  });
+
+  it("holds tasks, other commitments and notes", () => {
+    expect(typeAcceptsChildren("commitment", ["task", "commitment", "info"])).toBe(true);
+    expect(typeAcceptsChildren("commitment", ["flow"])).toBe(false);
+    expect(typeAcceptsChildren("commitment", ["project"])).toBe(false);
+  });
+
+  it("can be dropped wherever a task can, plus onto another commitment", () => {
+    for (const target of ["aspect", "domain", "project", "goal", "task", "commitment"] as const) {
+      expect(isValidDropTarget("commitment", target)).toBe(true);
+    }
+    expect(isValidDropTarget("commitment", "tag")).toBe(false);
+    expect(isValidDropTarget("commitment", "info")).toBe(false);
+  });
+
+  it("accepts only tasks and commitments as drop sources", () => {
+    expect(isValidDropTarget("task", "commitment")).toBe(true);
+    expect(isValidDropTarget("commitment", "commitment")).toBe(true);
+    expect(isValidDropTarget("goal", "commitment")).toBe(false);
+    expect(isValidDropTarget("info", "commitment")).toBe(true);
   });
 });
