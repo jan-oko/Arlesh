@@ -26,7 +26,7 @@ describe("a tab's label", () => {
 
     act(() => {
       useMindmapStore.setState({
-        subtreeNav: { currentTitle: "CODE", rootTitle: "Arlesh", parentTitle: "Arlesh", parentSubtreeId: null },
+        subtreeNav: { ancestors: [{ id: null, title: "Arlesh" }], currentTitle: "CODE" },
       });
     });
 
@@ -36,7 +36,7 @@ describe("a tab's label", () => {
   it("clears back to the whole-tree label on leaving the subtree", () => {
     useMindmapStore.setState({
       subtreeRootId: "project-1",
-      subtreeNav: { currentTitle: "CODE", rootTitle: "Arlesh", parentTitle: "Arlesh", parentSubtreeId: null },
+      subtreeNav: { ancestors: [{ id: null, title: "Arlesh" }], currentTitle: "CODE" },
     });
     renderHook(() => useTabTitle());
     expect(activeTitle()).toBe("CODE");
@@ -73,7 +73,7 @@ describe("a tab that has been given a name", () => {
 
     act(() => {
       useMindmapStore.setState({
-        subtreeNav: { currentTitle: "CODE", rootTitle: "Arlesh", parentTitle: "Arlesh", parentSubtreeId: null },
+        subtreeNav: { ancestors: [{ id: null, title: "Arlesh" }], currentTitle: "CODE" },
       });
     });
 

@@ -289,10 +289,8 @@ describe("ListView", () => {
     expect(useMindmapStore.getState().subtreeRootId).toBe("aspect-1");
     // The same descriptor a search-result entry publishes, so the top bar names where you landed.
     expect(useMindmapStore.getState().subtreeNav).toEqual({
+      ancestors: [{ id: null, title: "root" }],
       currentTitle: "Growth",
-      rootTitle: "root",
-      parentTitle: "root",
-      parentSubtreeId: null,
     });
   });
 
@@ -385,26 +383,22 @@ describe("ListView", () => {
       expect(useFilterStore.getState().filter.statusMode).toBe(DEFAULT_FILTER.statusMode);
     });
 
-    it("entering a subtree publishes the back-nav descriptor the top bar's pills render from", () => {
+    it("entering a subtree publishes the chain the top bar's breadcrumb renders from", () => {
       mockUseListData.mockReturnValue(searchable());
       render(<ListView />);
       openSearch("arlesh");
       fireEvent.mouseDown(screen.getByText("ARLESH"));
       // The Mindmap is unmounted here, so the List View has to be the one publishing this.
       expect(useMindmapStore.getState().subtreeNav).toEqual({
+        ancestors: [{ id: null, title: "root" }],
         currentTitle: "ARLESH",
-        rootTitle: "root",
-        parentTitle: "root",
-        parentSubtreeId: null,
       });
 
       openSearch("deeper");
       fireEvent.mouseDown(screen.getByText("Deeper"));
       expect(useMindmapStore.getState().subtreeNav).toEqual({
+        ancestors: [{ id: null, title: "root" }, { id: "project-1", title: "ARLESH" }],
         currentTitle: "Deeper",
-        rootTitle: "root",
-        parentTitle: "ARLESH",
-        parentSubtreeId: "project-1",
       });
     });
 

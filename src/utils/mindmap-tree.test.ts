@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { connectedNodeIds, nearestInDirection, collectAllNodeIds, computeShiftSelectRange, parentAndChildrenIds, siblingIds, gatherSubtreeItems, collectSubtreePostOrder, conversionNeedsConfirm, flattenNodesById, canConvertNodeToFlow } from "./mindmap-tree";
+import { connectedNodeIds, pathToNode, nearestInDirection, collectAllNodeIds, computeShiftSelectRange, parentAndChildrenIds, siblingIds, gatherSubtreeItems, collectSubtreePostOrder, conversionNeedsConfirm, flattenNodesById, canConvertNodeToFlow } from "./mindmap-tree";
 import type { MindmapNode } from "./tree-layout";
 import type { Position } from "./tree-layout";
 
@@ -82,6 +82,20 @@ const B2 = node("B2");
 const A = node("A", [A1, A2, A3]);
 const B = node("B", [B1, B2]);
 const DEEP_TREE = node("root", [A, B]);
+
+describe("pathToNode", () => {
+  it("names every step from the tree root down to the node itself", () => {
+    expect(pathToNode(TREE, "child-2").map((n) => n.id)).toEqual(["root", "aspect-a", "child-2"]);
+  });
+
+  it("is the root alone when the root is the node asked for", () => {
+    expect(pathToNode(TREE, "root").map((n) => n.id)).toEqual(["root"]);
+  });
+
+  it("is empty for a node that is not in the tree, which is how a deleted one reads", () => {
+    expect(pathToNode(TREE, "gone")).toEqual([]);
+  });
+});
 
 describe("collectAllNodeIds", () => {
   it("returns all node ids in depth-first pre-order", () => {

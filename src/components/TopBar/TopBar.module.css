@@ -1,9 +1,9 @@
-/* Three columns rather than two, so the middle one is centred on the bar itself and not on
-   whatever the two sides happen to leave between them. `minmax(0, …)` lets a crowded side shrink
-   instead of shoving the centre off-centre. */
+/* Three columns, with the middle one taking everything the two sides do not need: the breadcrumb
+   in it grows with the chain rather than being sized to one subtree's title. `minmax(0, …)` lets a
+   crowded side shrink instead of pushing the breadcrumb past the end of the bar. */
 .bar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto;
   align-items: center;
   padding: 0 var(--space-4);
   height: 36px;
@@ -19,7 +19,8 @@
   min-width: 0;
 }
 
-/* The right-hand column fills its share of the grid, so its content has to be pushed to the end. */
+/* The end-edge column is sized to its content now that the middle takes the bar's slack; the rule
+   keeps it against the end edge for as long as that stays true of only one of the two sides. */
 .sideEnd {
   justify-content: flex-end;
 }
@@ -50,62 +51,14 @@
   color: var(--text-primary);
 }
 
-.pill {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  max-width: 220px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  padding: 2px var(--space-3);
-  border-radius: 20px;
-  border: 1px solid var(--node-border);
-  background: var(--surface-raised);
-  color: var(--text-primary);
-  font-size: var(--text-sm);
-  font-family: var(--font-sans);
-  cursor: pointer;
-}
-
-.pill:hover {
-  border-color: var(--accent);
-}
-
-/* The middle column. Empty at the true root, which is why it is a slot rather than a sibling:
-   the centre stays put whether or not there is an indicator in it. */
+/* The middle column, held open whether or not the breadcrumb draws anything in it: at the true
+   root it draws nothing, and a collapsing cell would let the end-edge controls drift inwards. The
+   chain starts where the left-hand controls end and runs towards them, rather than being centred
+   on the bar — a path that re-centres itself on every step is harder to read back. */
 .center {
   display: flex;
-  justify-content: center;
   min-width: 0;
-}
-
-/* Where you are, not a way out of it — so it is not shaped like the pills that are. No border,
-   no background, no pointer: a glyph and a title, weighted enough to read as a heading. */
-.current {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text-primary);
-  font-size: var(--text-sm);
-  font-family: var(--font-sans);
-  font-weight: 600;
-}
-
-.srOnly {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  padding: 0;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-  border: 0;
+  padding-inline: var(--space-3);
 }
 
 .viewTabs {
