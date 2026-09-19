@@ -184,6 +184,7 @@ Zustand stores to per-tab instances and would conflict with every open PR at onc
     scripts/branch-instance.sh list
     scripts/branch-instance.sh build [name ...|all]   # default: all, sequentially
     scripts/branch-instance.sh run   <name|all>       # `all` launches every built one at once
+    scripts/branch-instance.sh start <name|all>       # build, then run — the two steps as one
     scripts/branch-instance.sh stop  [name ...|all]
     scripts/branch-instance.sh clean [name ...|all]   # drops binaries, keeps each instance's data
 
@@ -205,6 +206,17 @@ worktree was added or removed.
 
 Instances detach with `setsid` and outlive the shell that started them; `stop` kills the app and its
 Vite server by process group. `run all` refuses more than four at once with under 6 GB free.
+
+`start` is `build` then `run`. It takes `run`'s single `<name|all>` rather than `build`'s list,
+because it ends by naming the windows it brought up and the `stop` line for them. It puts the memory
+question **before** the builds as well as at launch — refusing nine windows is only useful if it
+happens before the nine compiles. A branch that fails to build is named, skipped, and left out of
+the launch; the branches that did build still start, and the exit status is non-zero. Each build
+runs in a **backgrounded** subshell that is then waited on, never one whose status is tested
+directly — bash turns `set -e` off for the whole dynamic extent of any tested context (`if`,
+`while`, `until`, `!`, and the left side of `&&`/`||`), so both `if ( build )` and `( build ) || ...`
+would carry on past a failed cargo and launch a stale binary. A branch that was already running is stopped before its new binary is launched, so `start`
+twice replaces that window instead of putting a second WebKit process on the same SQLite file.
 
 Space: every branch compiles into the **one** target directory the main checkout already has
 (1.4 G), so the dependency tree is built once and shared; only the per-branch binary is copied out,
@@ -350,6 +362,91 @@ Also corrected: two other `[Unreleased]` entries advertised Antecedent as shippe
 filter dimensions" → seven). It never reached a release, so they were made to describe reality
 rather than carrying a `Removed` note for something no user ever had. Agent also caught `README.md`,
 which my file map missed.
+
+## PR #14 — the #8 recovery, and a coverage lesson
+
+Opened as **PR #14**. Gate: lint clean, tsc clean, vitest 86/1075, `cargo test --lib` 232,
+`tests/duplicate.rs` 9, **tarpaulin 90.96%** — the exact figure #8's own branch reported, which is
+what a byte-identical commit onto an unchanged-Rust master should give.
+
+**Coverage lesson worth keeping.** The first run reported **83.17%** and failed the 90% floor. It
+was not a regression: two `cargo tarpaulin` runs were sharing `$HOME/.cache/arlesh/tarpaulin` at the
+same time — mine and an agent's — and **concurrent runs against one warm target dir produce garbage
+numbers in both**. Re-running alone on a quiet box gave 90.96%. Had I believed the first number I
+would have "fixed" coverage that was never broken. Every agent brief now carries this, along with
+`pgrep -x cargo-tarpaulin` (never `-f`, which matches its own command line and hangs forever).
+
+## Rate limit, second time
+
+All three agents died at once on the session limit — `xw7` at "All tests green. Now the coverage
+gate", `lvc` mid-gate, `4yp` mid-tests. Same recovery as before: **resumed from transcripts, not
+re-dispatched.** `lvc` reported it redid nothing and finished as **PR #13**.
+
+`lvc` also corrected its own brief: the bead is not frontend-only — its second acceptance criterion
+is a refusal at `flows::start`, i.e. Rust. Its Rust diff is one integration test, no `src/` change.
+It found the write genuinely broken, not just the glyph: `useCommitmentVerdict` parsed a commitment
+id out of the node id, which for `habit-3-0-virtual` is `NaN`. Two follow-up beads, `Arlesh-evu` and
+`Arlesh-mrq`, both **awaiting the user's priority call** (the agent proposed P2 and P3).
+
+## Two stranded PRs — the stacked-merge hazard, twice (2026-09-18)
+
+The cap was never the risk. **Merge order was.**
+
+### PR #8 — merged into a branch that had just been absorbed
+
+```
+PR #5  merged 09:30:04  →  master
+PR #8  merged 09:30:22  →  worktree-flow-move-fix
+```
+
+Eighteen seconds, wrong order. #8's base went to master first, so #8 merged into a branch nothing
+pointed at any more. Its PR reads `MERGED` and the work went nowhere. Verified on `origin/master`:
+`src-tauri/src/duplicate/` absent, all four `duplicate_*` commands absent from `lib.rs`.
+
+**Recovery:** `49fa540` turned out to be a clean single-parent squash holding exactly #8's 23 files,
+so it cherry-picked onto master as itself — no re-showing of #5's already-squashed content. Branch
+`worktree-copy-paste-duplicate`. Gate: lint clean, tsc clean, vitest 86/1075, `cargo test --lib`
+232 passed, `tests/duplicate.rs` 9 passed. Coverage running.
+
+### PR #11 — closed, not merged
+
+`gh pr view 11` → `merged: null`, closed 09:49:22. Only `DeleteConfirmModal` adopts
+`use-focus-trap` on master, which is PR #9's single adoption — so Tab still escapes behind eleven
+modals, and neither Escape fix landed. Bead `Arlesh-xbi` **reopened**, since the board should
+reflect master rather than the existence of a PR. Branch `worktree-modal-focus-trap` still holds
+`c75019a`, gate-green when written. **Awaiting the user on whether the closure was deliberate.**
+
+### The rule this run learned
+
+**Merge the child into the parent first, then the parent to master.** #3 → #4 → master worked
+exactly that way and all three landed clean; #6 → #4 → master likewise. #8 is the counterexample.
+
+## Conflicts resolved after master moved
+
+All three were the same shape — two branches each adding a first bullet to the same CHANGELOG
+section, neither claiming the other's slot:
+
+- **#4**: one file. Gate green 87/1120.
+- **#6**: two files, and the second was real — the indentation fixtures passed `ancestorRefs`, a
+  `TaskListRow` field deleted when the Antecedent dimension went, since that filter was its only
+  consumer. The fixtures assert on `ancestors` anyway. Gate green 87/1131.
+- **#12**: one file. Gate green 86/1102.
+
+## Session restart
+
+The Claude Code process exited mid-run, stopping the `xw7` and `lvc` agents with 15 and 17
+uncommitted files respectively. **Resumed from their transcripts rather than re-dispatched**, with
+instructions to `git status`/`git diff` first and not redo what was already there — the same
+recovery that worked when four agents were killed earlier in the run.
+
+`Arlesh-4yp` (Tabs, P1, high) dispatched at last: it was held all run because it converts singleton
+Zustand stores to per-tab state and would have conflicted with every open PR. With the board down to
+three, its moment arrived. The brief points it at the persist hazard specifically — turning flat
+per-app state into a nested per-tab structure is exactly the operation that walks into the shallow
+merge that has already bitten this repo twice.
+
+Holding at three agents rather than four while tarpaulin runs: four concurrent vitest runs on 15 GB
+is the configuration that took the whole fleet down earlier.
 
 ## Flow copying, beaded in two (2026-09-18)
 
