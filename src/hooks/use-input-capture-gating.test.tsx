@@ -39,6 +39,7 @@ function View({ modalState, modalRenders }: { modalState: boolean; modalRenders:
     selectedRowId: "task-1",
     isSelectedBlocked: false,
     onNavigate: vi.fn(),
+    onScrollList: vi.fn(),
     onCycleStatus: vi.fn(),
     onOpenEditor: vi.fn(),
     onStartRename: vi.fn(),
@@ -50,10 +51,12 @@ function View({ modalState, modalRenders }: { modalState: boolean; modalRenders:
     onExitSubtree: vi.fn(),
     onExitToRoot: vi.fn(),
     onToggleBacklog: vi.fn(),
+    onToggleAgentic: vi.fn(),
     onMarkKept: vi.fn(),
     onMarkBroken: vi.fn(),
     onUndo,
     onRedo,
+    onToggleFullscreen: vi.fn(),
   });
   return modalState && modalRenders ? <Modal /> : null;
 }

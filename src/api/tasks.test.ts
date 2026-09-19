@@ -13,7 +13,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 const mockTask: Task = {
   id: 1, title: "Write tests", parent_type: "domain", parent_id: 2,
-  status: "todo", delegate_to: null, time_scope: null, on_scope_exit: null, plan: null,
+  status: "todo", delegate_to: null, agentic: null, time_scope: null, on_scope_exit: null, plan: null,
   archival: "live", tag_ids: [], position: 0, is_private: false,
 };
 

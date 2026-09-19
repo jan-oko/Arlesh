@@ -1,6 +1,6 @@
 import type { MindmapNode } from "@/utils/tree-layout";
 import { isNodeBlocked } from "@/utils/tree-layout";
-import { VERDICT } from "@/api/commitments";
+import { VERDICT } from "@/api/verdict";
 
 /** Status preset a filter is in. `all` disables status filtering; `backlog` inverts it, showing
  * only what has been deliberately set aside. */
@@ -122,6 +122,35 @@ export function isHiddenBacklog(node: MindmapNode, f: FilterState): boolean {
 }
 
 /**
+ * Whether `node` is a **habit occurrence** whose window has not opened yet and the active preset
+ * therefore hides, together with everything beneath it.
+ *
+ * This is the Archived shape, not the Archived rule: the backend produces the occurrence and says
+ * where its window stands, and the preset decides. **All shows it** — that is All's whole contract,
+ * and a habit's later-today items are exactly what you look at All to see. Plan, Start and Do hide
+ * it: a daily routine would otherwise put its whole day's occurrences into every one of them at
+ * breakfast.
+ *
+ * Restricted to occurrences (`habitItem`) on purpose. `Pending` is derived for **any** scoped item
+ * whose window is still ahead, and a real task scheduled for next week has always shown under Plan
+ * — that is what planning is. Nothing here changes that; the rule is about the occurrences a Habit
+ * generates in bulk, which is where it was asked for.
+ *
+ * It gates the subtree rather than merely failing its own match, because children nest under their
+ * parent's first occurrence — keeping an unopened parent on screen as the ancestor of a child whose
+ * own window *has* opened would draw a row nobody asked for under a preset that just said it did
+ * not want it.
+ *
+ * Deliberately not routed through the Archived pill: an unopened window is not archived, has no
+ * Resolution, and the pill that force-shows what has finished should not force-show what has not
+ * started.
+ */
+export function isUnopenedOccurrence(node: MindmapNode, f: FilterState): boolean {
+  if (node.habitItem === undefined || node.timing !== "pending") return false;
+  return f.statusMode !== "all";
+}
+
+/**
  * Whether `node` is a Project that Plan/Start shelve along with everything inside it. The Mindmap gets
  * the subtree removal from tree-pruning; List View has no tree to prune, so it applies this to each
  * row's ancestors itself (as it already does for blocked/private ancestors).
@@ -152,6 +181,8 @@ export function typeHardHidden(node: MindmapNode, f: FilterState): boolean {
   // A Frozen/Archived Project gates its subtree the same way: hide it outright rather than keeping it
   // as the ancestor of unresolved work that is, by its status, not on the table.
   if (isShelvedProject(node, f)) return true;
+  // A habit occurrence whose window has not opened: hidden by every preset but All, subtree and all.
+  if (isUnopenedOccurrence(node, f)) return true;
   return flowHardHidden(node, f);
 }
 
@@ -287,6 +318,13 @@ function selfMatches(
   return passesStatus(node, f, inheritedStatus, underBacklog) && passesTags(node, f);
 }
 
+/** A pruned tree plus the ids that survived it **only** because they were focus-exempt — the nodes
+ * the filter itself would have dropped, which the views render dimmed. */
+export interface FocusFilteredTree {
+  root: MindmapNode;
+  exemptedIds: ReadonlySet<string>;
+}
+
 /**
  * Prunes `root` to the active filter: a node is kept if it matches or has a kept **content** descendant
  * (info nodes are attachments — they ride along with a kept node but never keep it, so an achieved goal
@@ -294,8 +332,31 @@ function selfMatches(
  * root is always returned as a container (possibly empty) so the canvas has something to render.
  */
 export function filterTree(root: MindmapNode, f: FilterState): MindmapNode {
+  return pruneTree(root, f, new Set<string>()).root;
+}
+
+/**
+ * The same pruning, with the **focus exemption** applied: every id in `exempt` — the focused node and
+ * the ancestor chain that reaches it — renders whatever the filter says about it, overriding every
+ * hiding rule, hard-hidden subtrees included. It is a render-time exemption only: `filterTree` and
+ * every other caller of the filter still get the unexempted answer, so nothing that counts, filters
+ * or exports sees the extra node.
+ *
+ * The exemption carries nothing but that chain. A node held on screen by it shows only the children
+ * the filter already kept plus the chain itself, so revealing (say) a private Project as an ancestor
+ * never spills the rest of its subtree into the view.
+ */
+export function filterTreeWithFocus(root: MindmapNode, f: FilterState, exempt: ReadonlySet<string>): FocusFilteredTree {
+  return pruneTree(root, f, exempt);
+}
+
+function pruneTree(root: MindmapNode, f: FilterState, exempt: ReadonlySet<string>): FocusFilteredTree {
+  const exemptedIds = new Set<string>();
+
   function prune(node: MindmapNode, inheritedStatus: string, underBacklog: boolean): MindmapNode | null {
-    if (typeHardHidden(node, f)) return null;
+    const isExempt = exempt.has(node.id);
+    const hardHidden = typeHardHidden(node, f);
+    if (hardHidden && !isExempt) return null;
     // Only containers pass a status down — a Goal/Task always carries its own, and no container ever
     // sits beneath one, so their statuses must not leak into the chain.
     const inheritedForChildren = STRUCTURAL_KINDS.has(node.kind)
@@ -306,15 +367,28 @@ export function filterTree(root: MindmapNode, f: FilterState): MindmapNode {
     const children: MindmapNode[] = [];
     let hasContentMatch = false;
     for (const child of node.children) {
+      // A hard-hidden node is on screen only to carry the focused node: nothing else beneath it returns.
+      if (hardHidden && !exempt.has(child.id)) continue;
       const pruned = prune(child, inheritedForChildren, backlogForChildren);
       if (pruned === null) continue;
       children.push(pruned);
-      if (child.kind !== "info") hasContentMatch = true;
+      // A child kept only by the exemption is not a match, so it must not keep its parent either —
+      // the chain above the focused node is held by the exemption, not by the node it carries.
+      if (child.kind !== "info" && !exemptedIds.has(child.id)) hasContentMatch = true;
+    }
+    if (hardHidden) {
+      exemptedIds.add(node.id);
+      return { ...node, children };
     }
     // Info is carried by its parent's decision (visibility already handled by typeHardHidden above).
     if (node.kind === "info") return { ...node, children };
     if (selfMatches(node, f, inheritedStatus, underBacklog) || hasContentMatch) return { ...node, children };
+    if (isExempt) {
+      exemptedIds.add(node.id);
+      return { ...node, children };
+    }
     return null;
   }
-  return prune(root, UNSET_STATUS, false) ?? { ...root, children: [] };
+
+  return { root: prune(root, UNSET_STATUS, false) ?? { ...root, children: [] }, exemptedIds };
 }

@@ -132,6 +132,7 @@ fn task_request(project_id: i64, title: &str) -> CreateTaskRequest {
         // Master added this field while this branch was open. A plain fixture task is not set
         // aside, and `archival: None` is what the stored invariant wants beside `plan: None`.
         archival: None,
+        agentic: None,
     }
 }
 

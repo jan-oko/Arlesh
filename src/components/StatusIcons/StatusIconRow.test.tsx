@@ -31,6 +31,10 @@ describe("StatusIconRow", () => {
     invalidateTagNames();
   });
 
+  it("gives the agentic badge its own tooltip", () => {
+    expect(renderRow(node("task", { status: "todo", agentic: true }))).toEqual(["agentic"]);
+  });
+
   it("renders a tooltip per indicator (keys resolve to i18n text at runtime)", () => {
     const scope = { start_id: 1, end_id: 2, duration: { n: 1, kind: "week" } };
     const titles = renderRow(node("task", { status: "todo", timeScope: scope, timing: "lapsed", resolution: "overdue" }));
@@ -47,7 +51,7 @@ describe("StatusIconRow", () => {
   });
 
   it("uses the habit tooltip for a virtual habit instance and the flow tooltip otherwise", () => {
-    const habit = node("task", { status: "todo", habitItem: { flowId: 1, itemType: "flow_root", itemId: 1, scopeId: 5 } });
+    const habit = node("task", { status: "todo", habitItem: { flowId: 1, itemType: "flow_root", itemId: 1, scopeId: 5, cycleId: 0 } });
     expect(renderRow(habit)).toEqual(["habitInstance"]);
 
     const started = node("task", { status: "todo", fromFlow: true });

@@ -2,11 +2,11 @@ import type { MindmapNode } from "@/utils/tree-layout";
 import type { FilterState, TagFilterMode } from "@/utils/filter-tree";
 import {
   typeHardHidden, passesTags, withArchivedOverride, isShelvedProject, isHiddenBacklog,
-  passesCommitmentPreset,
+  isUnopenedOccurrence, passesCommitmentPreset,
 } from "@/utils/filter-tree";
 import { TASK_STATUS, GOAL_STATUS, PROJECT_STATUS } from "@/utils/status-mapping";
-import type { Verdict } from "@/api/commitments";
-import { VERDICT, VERDICT_VALUES } from "@/api/commitments";
+import type { Verdict } from "@/api/verdict";
+import { VERDICT, VERDICT_VALUES } from "@/api/verdict";
 
 /** Same any/all/exclude semantics as a tag filter, reused across every List View filter dimension. */
 export type PillMode = TagFilterMode;
@@ -27,12 +27,12 @@ export const NEXT_PILL_MODE: Record<PillMode, PillMode> = { any: "all", all: "ex
 export type PillDimension =
   | "parent" | "dependency"
   | "taskStatus" | "goalStatus" | "projectStatus" | "verdict"
-  | "scopeState" | "blocked";
+  | "scopeState" | "blocked" | "agentic";
 
 export const PILL_DIMENSIONS: PillDimension[] = [
   "parent", "dependency",
   "taskStatus", "goalStatus", "projectStatus", "verdict",
-  "scopeState", "blocked",
+  "scopeState", "blocked", "agentic",
 ];
 
 /** List View's own preset selector: All/Plan/Start/Do write through to the shared status preset;
@@ -50,12 +50,16 @@ export const PROJECT_STATUS_VALUES = Object.values(PROJECT_STATUS);
 export const VERDICT_FILTER_VALUES = VERDICT_VALUES;
 export const SCOPE_STATE_VALUES = ["unscoped", "active", "overdue", "lapsed", "planned", "unplanned"] as const;
 export const BLOCKED_VALUES = ["blocked", "not_blocked"] as const;
+/** The Agentic dimension's two values. A task reads as one or the other and never neither: an
+ * unflagged task under an agentic one is agentic, and every other task is not. */
+export const AGENTIC_VALUES = ["agentic", "not_agentic"] as const;
 
 export type TaskStatusValue = (typeof TASK_STATUS_VALUES)[number];
 export type GoalStatusValue = (typeof GOAL_STATUS_VALUES)[number];
 export type ProjectStatusValue = (typeof PROJECT_STATUS_VALUES)[number];
 export type ScopeStateValue = (typeof SCOPE_STATE_VALUES)[number];
 export type BlockedValue = (typeof BLOCKED_VALUES)[number];
+export type AgenticValue = (typeof AGENTIC_VALUES)[number];
 
 export function isTaskStatusValue(value: string): value is TaskStatusValue {
   return (TASK_STATUS_VALUES as readonly string[]).includes(value);
@@ -81,6 +85,10 @@ export function isBlockedValue(value: string): value is BlockedValue {
   return (BLOCKED_VALUES as readonly string[]).includes(value);
 }
 
+export function isAgenticValue(value: string): value is AgenticValue {
+  return (AGENTIC_VALUES as readonly string[]).includes(value);
+}
+
 export interface ListFilterState {
   preset: ListPreset;
   pills: Record<PillDimension, PillFilter[]>;
@@ -91,7 +99,7 @@ export const DEFAULT_LIST_FILTER: ListFilterState = {
   pills: {
     parent: [], dependency: [],
     taskStatus: [], goalStatus: [], projectStatus: [], verdict: [],
-    scopeState: [], blocked: [],
+    scopeState: [], blocked: [], agentic: [],
   },
 };
 
@@ -141,6 +149,9 @@ export interface TaskListRow {
   dependencyRefs: string[];
   isBlocked: boolean;
   hasBlockedAncestor: boolean;
+  /** Whether the task reads as Agentic — its own flag, or the nearest flagged ancestor's. Resolved
+   * once when the row is built, the same way the row's blocked-ness is. */
+  isAgentic: boolean;
   /** Whether any ancestor (Project/Goal/Domain/Aspect) is marked private — outside Private Mode the
    * subtree is hidden as a unit even when the task itself isn't flagged (mirrors the Mindmap's
    * tree-pruning). */
@@ -206,6 +217,9 @@ function passesListPreset(row: TaskListRow, f: FilterState): boolean {
   // Likewise a backlogged ancestor Task: the Mindmap prunes the subtree away, a flat list has to
   // walk for it. (The row's own backlog is handled by `typeHardHidden`, before this runs.)
   if (row.ancestors.some((a) => isHiddenBacklog(a, f))) return false;
+  // And likewise a habit occurrence above this row whose window has not opened — its subtree goes
+  // with it on the canvas, so it must here too. (The row's own window: `typeHardHidden`.)
+  if (row.ancestors.some((a) => isUnopenedOccurrence(a, f))) return false;
   switch (f.statusMode) {
     case "all":
       return true;
@@ -226,6 +240,28 @@ function passesListPreset(row: TaskListRow, f: FilterState): boolean {
       // Everything set aside, plus everything beneath it — the Mindmap's subtree rule, flattened.
       return row.node.backlogged === true || row.ancestors.some((a) => a.backlogged === true);
   }
+}
+
+/** Whether one row survives the shared filter (status preset, tags, Info/Flow/Private) and the
+ * List-View-exclusive filters. Unblock overrides the status preset to "blocked tasks only". */
+function rowPassesFilters(row: TaskListRow, shared: FilterState, listFilter: ListFilterState): boolean {
+  if (typeHardHidden(row.node, shared)) return false;
+  if (!shared.privateMode && row.hasPrivateAncestor) return false;
+  if (listFilter.preset === "unblock") {
+    if (!row.isBlocked) return false;
+  } else if (!passesListPreset(row, shared)) {
+    return false;
+  }
+  if (!passesTags(row.node, shared)) return false;
+  if (!matchesPillGroup(listFilter.pills.parent, [row.parentRef])) return false;
+  if (!matchesPillGroup(listFilter.pills.dependency, row.dependencyRefs)) return false;
+  if (!matchesPillGroup(listFilter.pills.taskStatus, [row.node.status ?? ""])) return false;
+  if (!matchesPillGroup(listFilter.pills.goalStatus, row.goalStatus !== null ? [row.goalStatus] : [])) return false;
+  if (!matchesPillGroup(listFilter.pills.projectStatus, row.projectStatus !== null ? [row.projectStatus] : [])) return false;
+  if (!matchesPillGroup(listFilter.pills.scopeState, row.scopeTokens)) return false;
+  if (!matchesPillGroup(listFilter.pills.blocked, [row.isBlocked ? "blocked" : "not_blocked"])) return false;
+  if (!matchesPillGroup(listFilter.pills.agentic, [row.isAgentic ? "agentic" : "not_agentic"])) return false;
+  return true;
 }
 
 /**
@@ -275,22 +311,36 @@ export function filterTaskList(
   shared: FilterState,
   listFilter: ListFilterState,
 ): TaskListRow[] {
-  return rows.filter((row) => {
-    if (typeHardHidden(row.node, shared)) return false;
-    if (!shared.privateMode && row.hasPrivateAncestor) return false;
-    if (listFilter.preset === "unblock") {
-      if (!row.isBlocked) return false;
-    } else if (!passesListPreset(row, shared)) {
-      return false;
-    }
-    if (!passesTags(row.node, shared)) return false;
-    if (!matchesPillGroup(listFilter.pills.parent, [row.parentRef])) return false;
-    if (!matchesPillGroup(listFilter.pills.dependency, row.dependencyRefs)) return false;
-    if (!matchesPillGroup(listFilter.pills.taskStatus, [row.node.status ?? ""])) return false;
-    if (!matchesPillGroup(listFilter.pills.goalStatus, row.goalStatus !== null ? [row.goalStatus] : [])) return false;
-    if (!matchesPillGroup(listFilter.pills.projectStatus, row.projectStatus !== null ? [row.projectStatus] : [])) return false;
-    if (!matchesPillGroup(listFilter.pills.scopeState, row.scopeTokens)) return false;
-    if (!matchesPillGroup(listFilter.pills.blocked, [row.isBlocked ? "blocked" : "not_blocked"])) return false;
+  return rows.filter((row) => rowPassesFilters(row, shared, listFilter));
+}
+
+/** Filtered rows plus the ids kept **only** by the focus exemption — rendered dimmed. */
+export interface FocusFilteredRows {
+  rows: TaskListRow[];
+  exemptedIds: ReadonlySet<string>;
+}
+
+/**
+ * The same filtering, with the **focus exemption** applied: the focused row stays in the list, in its
+ * own place, whatever the filter says about it, for as long as it stays selected. A flat list has no
+ * chain to carry — a row's hidden ancestors are already named by its path header — so the exemption
+ * here is exactly one row.
+ *
+ * `filterTaskList` still answers as it always did, so nothing that counts or exports off the filter
+ * sees the extra row.
+ */
+export function filterTaskListWithFocus(
+  rows: readonly TaskListRow[],
+  shared: FilterState,
+  listFilter: ListFilterState,
+  focusedId: string | null,
+): FocusFilteredRows {
+  const exemptedIds = new Set<string>();
+  const kept = rows.filter((row) => {
+    if (rowPassesFilters(row, shared, listFilter)) return true;
+    if (focusedId === null || row.node.id !== focusedId) return false;
+    exemptedIds.add(row.node.id);
     return true;
   });
+  return { rows: kept, exemptedIds };
 }

@@ -172,6 +172,7 @@ fn task_request(parent_type: &str, parent_id: i64, title: &str) -> CreateTaskReq
         on_scope_exit: None,
         plan: None,
         archival: None,
+        agentic: None,
     }
 }
 

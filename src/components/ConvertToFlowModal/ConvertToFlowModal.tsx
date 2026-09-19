@@ -41,6 +41,7 @@ export default function ConvertToFlowModal({ title, onConvert, onClose }: Props)
       heading={t("convertToFlowHeading", { title })}
       onClose={onClose}
       onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}
+      focusOnOpen="cancel"
       isSaving={isSaving}
       onSave={() => void handleConvert()}
       saveError={saveError}

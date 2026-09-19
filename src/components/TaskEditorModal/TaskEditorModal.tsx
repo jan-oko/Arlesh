@@ -4,8 +4,9 @@ import BlockReasonsField from "@/components/BlockReasonsField/BlockReasonsField"
 import TagPicker from "@/components/TagPicker/TagPicker";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { Domain } from "@/api/domains";
-import type { Dependency, TaskArchival } from "@/api/tasks";
-import { TASK_ARCHIVAL } from "@/api/tasks";
+import type { Dependency, TaskAgentic, TaskArchival } from "@/api/tasks";
+import { TASK_AGENTIC, TASK_ARCHIVAL } from "@/api/tasks";
+import { storedAgenticState } from "@/utils/agentic";
 import type { TimeScope } from "@/api/time-scope";
 import type { OnScopeExit } from "@/api/scope-lifecycle";
 import { listTaskDependencies } from "@/api/tasks";
@@ -13,6 +14,7 @@ import { getErrorMessage } from "@/api/errors";
 import EditorModal from "@/components/EditorModal/EditorModal";
 import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
 import BeadsIdField from "@/components/EditorModal/BeadsIdField";
+import AgenticField from "./AgenticField";
 import TimeScopeField from "@/components/ScopePicker/TimeScopeField";
 import OnScopeExitField from "@/components/ScopePicker/OnScopeExitField";
 import PlanField from "@/components/ScopePicker/PlanField";
@@ -34,6 +36,9 @@ export interface TaskSaveData {
   /** `backlog` when deliberately set aside. Never `backlog` while `plan` is set — the form keeps
    * the two exclusive, so the save never has to be refused for it. */
   archival: TaskArchival;
+  /** The task's own Agentic state. `"inherit"` is a real instruction — it clears a stored flag
+   * and puts the task back to reading its ancestors — not an absent value. */
+  agentic: TaskAgentic;
   isPrivate: boolean;
 }
 
@@ -63,6 +68,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   const [onScopeExit, setOnScopeExit] = useState<OnScopeExit | null>(node.onScopeExit ?? null);
   const [plan, setPlan] = useState<TimeScope | null>(node.plan ?? null);
   const [isBacklogged, setIsBacklogged] = useState(node.backlogged === true);
+  const [agentic, setAgentic] = useState<TaskAgentic>(storedAgenticState(node.agentic));
   const [isPrivate, setIsPrivate] = useState(node.isPrivate ?? false);
   const [initialDeps, setInitialDeps] = useState<Dependency[]>([]);
   const [currentDeps, setCurrentDeps] = useState<Dependency[]>([]);
@@ -109,6 +115,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
         onScopeExit: timeScope !== null ? (onScopeExit ?? "keep") : null,
         plan,
         archival: isBacklogged ? TASK_ARCHIVAL.BACKLOG : TASK_ARCHIVAL.LIVE,
+        agentic,
         isPrivate,
       });
     } catch (err) {
@@ -227,7 +234,17 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
           )}
         </div>
       </div>
-      <EditorAdvanced isPrivate={isPrivate} onPrivateChange={setIsPrivate} />
+      <EditorAdvanced
+        isPrivate={isPrivate}
+        onPrivateChange={setIsPrivate}
+        startOpen={agentic !== TASK_AGENTIC.INHERIT}
+      >
+        <AgenticField
+          value={agentic}
+          inherited={node.inheritedAgentic === true}
+          onChange={setAgentic}
+        />
+      </EditorAdvanced>
     </EditorModal>
   );
 }

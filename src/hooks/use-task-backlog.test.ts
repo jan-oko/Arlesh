@@ -103,7 +103,7 @@ describe("useTaskBacklog", () => {
     const { result } = setup([
       { ...node("goal-1"), kind: "goal" },
       { ...node("project-1"), kind: "project" },
-      node("task-9", { habitItem: { flowId: 1, itemType: "flow_task", itemId: 2, scopeId: 3 } }),
+      node("task-9", { habitItem: { flowId: 1, itemType: "flow_task", itemId: 2, scopeId: 3, cycleId: 0 } }),
     ]);
 
     act(() => {

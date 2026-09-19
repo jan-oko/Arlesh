@@ -9,10 +9,22 @@ interface Props {
   isSaving: boolean;
   onSave: () => void;
   saveError: string | null;
+  /**
+   * Set to `"cancel"` to put opening focus on the Cancel button.
+   *
+   * Escape is handled by `onKeyDown` on the dialog below, which only fires while focus is already
+   * inside the dialog — so an editor that claims no focus when it opens cannot be dismissed until
+   * the user tabs or clicks into it first. Editors with a title field focus that field themselves
+   * and need nothing here. An editor built as a confirmation has no such field, and pointing
+   * opening focus at its own confirm would arm a destructive action on the first keypress, so it
+   * lands on Cancel instead — the same reasoning as `WarningConfirmModal`, whose prompt exists to
+   * be read before it is answered.
+   */
+  focusOnOpen?: "cancel";
   children: ReactNode;
 }
 
-export default function EditorModal({ heading, onClose, onKeyDown, isSaving, onSave, saveError, children }: Props) {
+export default function EditorModal({ heading, onClose, onKeyDown, isSaving, onSave, saveError, focusOnOpen, children }: Props) {
   const { t } = useTranslation("common");
   return (
     <div className={styles.overlay} onMouseDown={onClose}>
@@ -25,7 +37,13 @@ export default function EditorModal({ heading, onClose, onKeyDown, isSaving, onS
         {children}
         {saveError !== null && <p className={styles.errorMsg}>{saveError}</p>}
         <div className={styles.actions}>
-          <button className={styles.cancelBtn} type="button" onClick={onClose} disabled={isSaving}>
+          <button
+            autoFocus={focusOnOpen === "cancel"}
+            className={styles.cancelBtn}
+            type="button"
+            onClick={onClose}
+            disabled={isSaving}
+          >
             {t("cancel")}
           </button>
           <button

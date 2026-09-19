@@ -3,6 +3,7 @@ import { isNodeBlocked, entityNodeId } from "@/utils/tree-layout";
 import type { TaskDependencyEdge } from "@/api/tasks";
 import type { CommitmentListRow, TaskListRow } from "@/utils/list-filter";
 import { deriveScopeStateTokens } from "@/utils/list-filter";
+import { isAgentic } from "@/utils/agentic";
 
 /** The nearest (closest to `node`) ancestor of `kind`, searching from the immediate parent outward. */
 function nearestOfKind(ancestors: readonly MindmapNode[], kind: MindmapNode["kind"]): MindmapNode | undefined {
@@ -29,6 +30,7 @@ function buildRow(node: MindmapNode, ancestors: readonly MindmapNode[], depsByTa
     dependencyRefs: depsByTask.get(dbId) ?? [],
     isBlocked: isNodeBlocked(node),
     hasBlockedAncestor: ancestors.some(isNodeBlocked),
+    isAgentic: isAgentic(node),
     hasPrivateAncestor: ancestors.some((a) => a.isPrivate === true),
     scopeTokens: deriveScopeStateTokens(node),
   };

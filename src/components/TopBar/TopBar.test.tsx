@@ -5,6 +5,7 @@ import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useListFilterStore } from "@/stores/use-list-filter-store";
 import { useViewStore } from "@/stores/use-view-store";
+import { useDisplayStore } from "@/stores/use-display-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { DEFAULT_FILTER } from "@/utils/filter-tree";
 import { DEFAULT_LIST_FILTER } from "@/utils/list-filter";
@@ -25,13 +26,15 @@ const EMPTY_DISPLAY = {
   displayTaskStatus: (v: string) => v, displayGoalStatus: (v: string) => v,
   displayProjectStatus: (v: string) => v, displayVerdict: (v: string) => v,
   displayScopeState: (v: string) => v, displayBlocked: (v: string) => v,
+  displayAgentic: (v: string) => v,
 };
 
 beforeEach(() => {
   useFilterStore.setState({ filter: { ...DEFAULT_FILTER } });
   useListFilterStore.setState({ filter: { ...DEFAULT_LIST_FILTER, pills: { ...DEFAULT_LIST_FILTER.pills } } });
   useMindmapStore.setState({ subtreeRootId: null, subtreeNav: null });
-  useViewStore.setState({ view: "mindmap", mindmapOrientation: "horizontal", pathHeaderIcons: true });
+  useViewStore.setState({ view: "mindmap", mindmapOrientation: "horizontal" });
+  useDisplayStore.setState({ pathHeaderIcons: true });
   useThemeStore.setState({ theme: "dark" });
   mockUseFilterDisplay.mockReturnValue(EMPTY_DISPLAY);
 });
@@ -191,7 +194,7 @@ describe("TopBar", () => {
       const iconSwitch = screen.getByRole("checkbox", { name: "common:pathIcons" });
       expect(iconSwitch).toBeChecked();
       fireEvent.click(iconSwitch);
-      expect(useViewStore.getState().pathHeaderIcons).toBe(false);
+      expect(useDisplayStore.getState().pathHeaderIcons).toBe(false);
       expect(iconSwitch).not.toBeChecked();
     });
 

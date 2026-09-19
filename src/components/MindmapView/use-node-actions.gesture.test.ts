@@ -3,7 +3,7 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { useNodeActions } from "./use-node-actions";
 import { duplicateTask } from "@/api/tasks";
-import { CLIPBOARD_OP } from "@/stores/use-mindmap-store";
+import { CLIPBOARD_OP } from "@/stores/use-clipboard-store";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 
 /**
@@ -93,6 +93,8 @@ function renderPaste() {
       setClipboard: vi.fn(),
       setEditingNodeId: vi.fn(),
       showToast: vi.fn(),
+      onNewFlow: vi.fn(),
+      onNewCommitment: vi.fn(),
     }),
   );
 }

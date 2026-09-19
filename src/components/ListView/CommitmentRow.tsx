@@ -78,6 +78,9 @@ export default function CommitmentRow({
         `${taskStyles.card}${isSelected ? ` ${taskStyles.cardSelected}` : ""}` +
         (verdict === VERDICT.UNRESOLVED ? ` ${styles.unjudged}` : "")
       }
+      // Same marker the task rows carry: the commitments band scrolls in the same container, so a
+      // selected Commitment is brought into view by exactly the same code.
+      data-row-id={node.id}
       style={cardStyle}
       onClick={() => onSelect(node.id)}
       onDoubleClick={() => onOpenEditor(node.id)}

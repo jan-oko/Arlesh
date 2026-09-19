@@ -1,0 +1,15 @@
+-- Agentic: whether a Task is work that suits being handed to an agent.
+--
+-- Nullable on purpose. The flag has three states, not two: explicitly agentic, explicitly not
+-- agentic, and *no value of its own* — which reads the nearest flagged ancestor, the same
+-- override-downward rule Delegation already follows. NULL is that third state, so an existing
+-- Task keeps behaving exactly as it did and a whole branch is marked agentic with one edit.
+--
+-- Independent of `delegate_to`. Agentic says the work suits an agent; a delegate says who holds
+-- it. A Task may carry both, either, or neither, and neither column constrains the other.
+--
+-- Tasks only. An agent performs actions: a Goal is a desired state and a Commitment is kept
+-- rather than done, so neither table gets this column.
+--
+-- The CHECK is what keeps the column a boolean rather than an integer with opinions.
+ALTER TABLE tasks ADD COLUMN agentic INTEGER NULL CHECK (agentic IN (0, 1));

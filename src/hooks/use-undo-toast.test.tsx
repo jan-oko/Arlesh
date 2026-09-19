@@ -14,8 +14,6 @@ import { useUndo } from "./use-undo";
 
 vi.mock("@/api/gesture", () => ({ undo: vi.fn(), redo: vi.fn(), gestureName: vi.fn() }));
 
-const NO_POSITIONS: ReadonlyMap<string, { x: number; y: number; depth: number }> = new Map();
-
 function summary(over: Partial<GestureSummary> = {}): GestureSummary {
   return { gesture: "g1", rows: 1, inserted: 0, updated: 1, deleted: 0, tables: ["tasks"], ...over };
 }
@@ -29,7 +27,7 @@ function Board({ press }: { press: "undo" | "redo" }) {
   return (
     <div>
       <button data-testid="press" onClick={press === "undo" ? onUndo : onRedo} />
-      <AnchoredToast toast={pendingToast} positions={NO_POSITIONS} onDismiss={clearToast} />
+      <AnchoredToast toast={pendingToast} onDismiss={clearToast} />
     </div>
   );
 }

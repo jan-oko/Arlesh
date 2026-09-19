@@ -54,6 +54,7 @@ export function useCommitmentVerdict({ findNode, reload, showToast }: Options): 
               node.habitItem.itemType,
               node.habitItem.itemId,
               node.habitItem.scopeId,
+              node.habitItem.cycleId,
               next === VERDICT.UNRESOLVED ? null : next,
               Date.now(),
             );

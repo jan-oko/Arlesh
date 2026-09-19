@@ -23,6 +23,7 @@ const EMPTY_DISPLAY = {
   displayTaskStatus: (v: string) => v, displayGoalStatus: (v: string) => v,
   displayProjectStatus: (v: string) => v, displayVerdict: (v: string) => v,
   displayScopeState: (v: string) => v, displayBlocked: (v: string) => v,
+  displayAgentic: (v: string) => v,
 };
 
 beforeEach(() => {
@@ -142,6 +143,20 @@ describe("FilterPopover", () => {
       render(<FilterPopover />);
       expect(screen.getByText("listView:hierarchyClusterLabel")).toBeInTheDocument();
       expect(screen.getByText("listView:statusScopeClusterLabel")).toBeInTheDocument();
+    });
+
+    it("offers Agentic as a pill dimension of its own, alongside the rest", () => {
+      render(<FilterPopover />);
+      expect(screen.getByText("listView:agenticLabel")).toBeInTheDocument();
+      fireEvent.click(screen.getByText("agentic"));
+      expect(useListFilterStore.getState().filter.pills.agentic).toEqual([{ value: "agentic", mode: "any" }]);
+    });
+
+    it("leaves the Blocked dimension alone when an Agentic pill is added", () => {
+      // Agentic is independent of every other dimension, and of Delegation in particular.
+      render(<FilterPopover />);
+      fireEvent.click(screen.getByText("not_agentic"));
+      expect(useListFilterStore.getState().filter.pills.blocked).toEqual([]);
     });
 
     it("adds a fixed-option pill (task status) by clicking it", () => {

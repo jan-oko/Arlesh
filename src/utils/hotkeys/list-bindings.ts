@@ -10,9 +10,12 @@ export interface ListContext {
   selectedCommitmentId: string | null;
   /** Whichever of the two is set — for the bindings that do not care which kind it is. */
   selectedRowId: string | null;
+  onToggleFullscreen: () => void;
   /** Whether the selected row is currently blocked (and not a Habit instance) — gates Enter. */
   isSelectedBlocked: boolean;
   onNavigate: (direction: 1 | -1) => void;
+  /** Scrolls the list a fixed step down (1) or up (-1), leaving the selection where it is. */
+  onScrollList: (direction: 1 | -1) => void;
   onCycleStatus: (id: string) => void;
   onOpenEditor: (id: string) => void;
   onStartRename: (id: string) => void;
@@ -29,6 +32,8 @@ export interface ListContext {
   onExitToRoot: () => void;
   /** Puts the selected Task in the backlog, or takes it out. */
   onToggleBacklog: (id: string) => void;
+  /** Flips the selected Task between Agentic and Not agentic, whichever it currently reads as. */
+  onToggleAgentic: (id: string) => void;
   /** Records that the selected Commitment was held to, or clears an existing Kept. */
   onMarkKept: (id: string) => void;
   /** Records that it was not, or clears an existing Broken. */
@@ -38,6 +43,15 @@ export interface ListContext {
   /** Reapplies the most recently undone thing. */
   onRedo: () => void;
 }
+
+/**
+ * The physical keys that scroll the list. Exported because the viewport has to watch for their
+ * *release* as well: the scroll runs while the key is held, so the binding table and the hook that
+ * moves the viewport must name the same two keys rather than each spelling them out.
+ */
+export const SCROLL_DOWN_CODE = "KeyJ";
+/** See {@link SCROLL_DOWN_CODE}. */
+export const SCROLL_UP_CODE = "KeyK";
 
 /** Alt+letter → status preset, matched on physical key so it works under any layout. */
 const STATUS_PRESETS: ReadonlyArray<{ code: string; mode: StatusMode; labelKey: HotkeyLabelKey }> = [
@@ -65,6 +79,15 @@ export const LIST_BINDINGS: readonly Binding<ListContext>[] = [
     id: "listView.toggleFilter", section: "listView", chord: { code: "KeyF", alt: true },
     labelKey: "toggleFilter", run: (c) => c.onToggleFilter(),
   },
+  {
+    // Bare F shows the board alone, on the same rule as the Mindmap's: only with nothing selected.
+    // Nothing else claims F here, but matching the Mindmap matters more than the free key does —
+    // one gesture should not mean two things depending on which view you happen to be in.
+    id: "listView.toggleFullscreen", section: "listView", chord: { code: "KeyF" },
+    labelKey: "toggleFullscreen",
+    when: (c) => c.selectedRowId === null,
+    run: (c) => c.onToggleFullscreen(),
+  },
   ...statusBindings,
   {
     id: "listView.navigateUp", section: "listView", chord: { code: "ArrowUp" },
@@ -73,6 +96,19 @@ export const LIST_BINDINGS: readonly Binding<ListContext>[] = [
   {
     id: "listView.navigateDown", section: "listView", chord: { code: "ArrowDown" },
     labelKey: "navigateRows", run: (c) => c.onNavigate(1),
+  },
+  // Reading ahead without giving up your place: these move the viewport and nothing else, so the
+  // selection stays put even once it has scrolled out of sight. `allowRepeat: false` because the
+  // press only *starts* the motion — holding the key is then carried by an animation loop at a
+  // fixed speed (see use-list-scroll), and letting auto-repeat through as well would have the
+  // repeats restarting a scroll that is already running.
+  {
+    id: "listView.scrollDown", section: "listView", chord: { code: SCROLL_DOWN_CODE },
+    labelKey: "scrollList", allowRepeat: false, run: (c) => c.onScrollList(1),
+  },
+  {
+    id: "listView.scrollUp", section: "listView", chord: { code: SCROLL_UP_CODE },
+    labelKey: "scrollList", allowRepeat: false, run: (c) => c.onScrollList(-1),
   },
   {
     id: "listView.cycleStatus", section: "listView", chord: { code: "Enter" },
@@ -134,6 +170,15 @@ export const LIST_BINDINGS: readonly Binding<ListContext>[] = [
     labelKey: "toggleBacklog",
     when: (c) => c.selectedTaskId !== null,
     run: (c) => { if (c.selectedTaskId !== null) c.onToggleBacklog(c.selectedTaskId); },
+  },
+  {
+    // Bare A beside bare B, matching the Mindmap: a flag on the selected Task is a bare letter,
+    // Alt+letter is a status preset, and strict chord matching keeps A and Alt+A apart.
+    // Habit instances are turned away in the hook, exactly as Backlog turns them away.
+    id: "listView.toggleAgentic", section: "listView", chord: { code: "KeyA" },
+    labelKey: "toggleAgentic",
+    when: (c) => c.selectedTaskId !== null,
+    run: (c) => { if (c.selectedTaskId !== null) c.onToggleAgentic(c.selectedTaskId); },
   },
   {
     id: "listView.deselect", section: "listView", chord: { code: "Escape" },

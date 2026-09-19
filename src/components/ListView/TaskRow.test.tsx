@@ -24,6 +24,7 @@ function row(over: Partial<TaskListRow> = {}): TaskListRow {
     projectStatus: null,
     dependencyRefs: [],
     isBlocked: false,
+    isAgentic: false,
     hasBlockedAncestor: false,
     hasPrivateAncestor: false,
     scopeTokens: ["unscoped", "unplanned"],
@@ -36,6 +37,7 @@ function baseProps(overrides: Partial<ComponentProps<typeof TaskRow>> = {}) {
     row: row(),
     visibleDepth: 0,
     isSelected: false,
+    isFocusExempt: false,
     isEditingTitle: false,
     onSelect: vi.fn(),
     onCycleStatus: vi.fn(),
@@ -47,6 +49,23 @@ function baseProps(overrides: Partial<ComponentProps<typeof TaskRow>> = {}) {
     ...overrides,
   };
 }
+
+describe("TaskRow — Agentic badge", () => {
+  it("badges an agentic task in the list, as the canvas does", () => {
+    render(<TaskRow {...baseProps({ row: row({ node: n("task-1", "task", { status: "todo", agentic: true }) }) })} />);
+    expect(screen.getByTitle("agentic")).toBeInTheDocument();
+  });
+
+  it("badges a task that inherited the flag", () => {
+    render(<TaskRow {...baseProps({ row: row({ node: n("task-1", "task", { status: "todo", inheritedAgentic: true }) }) })} />);
+    expect(screen.getByTitle("agentic")).toBeInTheDocument();
+  });
+
+  it("leaves an unflagged task unbadged", () => {
+    render(<TaskRow {...baseProps()} />);
+    expect(screen.queryByTitle("agentic")).not.toBeInTheDocument();
+  });
+});
 
 describe("TaskRow", () => {
   it("clicking the status control cycles status when not blocked", () => {
@@ -63,7 +82,7 @@ describe("TaskRow", () => {
 
   it("still allows cycling a virtual Habit instance even though it reads as blocked-like", () => {
     const habitRow = row({
-      node: n("task-1", "task", { status: "todo", habitItem: { flowId: 1, itemType: "flow_task", itemId: 2, scopeId: 3 } }),
+      node: n("task-1", "task", { status: "todo", habitItem: { flowId: 1, itemType: "flow_task", itemId: 2, scopeId: 3, cycleId: 0 } }),
       isBlocked: true,
     });
     render(<TaskRow {...baseProps({ row: habitRow })} />);

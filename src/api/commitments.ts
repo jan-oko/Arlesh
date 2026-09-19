@@ -1,32 +1,10 @@
 import { invoke } from "./gesture";
+import type { Verdict } from "@/api/verdict";
+import { VERDICT } from "@/api/verdict";
 import type { TimeScope, DurationSpec } from "@/api/time-scope";
 
-/**
- * Whether a Commitment was held to — the Commitment kind's answer to a Task's status.
- *
- * Never derived. Not from the window passing, not from children completing: a Task untouched at
- * window close is Missed, but a Commitment untouched may well have been Kept, so there is no
- * honest default, and "unresolved" carries real information ("you have not said") that a
- * defaulted verdict would destroy.
- */
-export type Verdict = "unresolved" | "kept" | "broken";
-
-export const VERDICT = {
-  UNRESOLVED: "unresolved",
-  KEPT: "kept",
-  BROKEN: "broken",
-} as const;
-
-export const VERDICT_VALUES: readonly Verdict[] = [
-  VERDICT.UNRESOLVED,
-  VERDICT.KEPT,
-  VERDICT.BROKEN,
-];
-
-/** Whether a string names a Verdict. */
-export function isVerdict(value: string): value is Verdict {
-  return VERDICT_VALUES.some((verdict) => verdict === value);
-}
+export type { Verdict } from "@/api/verdict";
+export { VERDICT, VERDICT_VALUES, isVerdict } from "@/api/verdict";
 
 export interface Commitment {
   id: number;

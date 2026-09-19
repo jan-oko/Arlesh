@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import type { MindmapNode as MindmapNodeData, NodeKind, Position } from "@/utils/tree-layout";
 import { isRtlText } from "@/utils/text-direction";
 import { computeNodeDimensions, computeEditHeight } from "@/utils/node-meta";
-import { computeNodeAppearance } from "@/utils/node-visuals";
+import { computeNodeAppearance, DIMMED_OPACITY } from "@/utils/node-visuals";
 import { deriveStatusIndicators } from "@/utils/node-status-indicators";
 import NodeContextMenu from "@/components/NodeContextMenu/NodeContextMenu";
 import type { ContextMenuAction } from "@/components/NodeContextMenu/context-action";
@@ -17,6 +17,8 @@ interface Props {
   parentKind: NodeKind | null;
   position: Position;
   isSelected: boolean;
+  /** On screen only because it is focused: the filter would have dropped it, so it renders dimmed. */
+  isFocusExempt: boolean;
   isCollapsed: boolean;
   isDragTarget: boolean;
   isDragSource?: boolean;
@@ -33,7 +35,7 @@ interface Props {
   onStatusClick?: (id: string) => void;
 }
 
-export default function MindmapNode({ node, parentKind, position, isSelected, isCollapsed, isDragTarget, isDragSource, hasClipboard, isEditing, onSelect, onCtrlClick, onShiftClick, onDoubleClick, onCommitEdit, onCancelEdit, onContextAction, onDragStart, onStatusClick }: Props) {
+export default function MindmapNode({ node, parentKind, position, isSelected, isFocusExempt, isCollapsed, isDragTarget, isDragSource, hasClipboard, isEditing, onSelect, onCtrlClick, onShiftClick, onDoubleClick, onCommitEdit, onCancelEdit, onContextAction, onDragStart, onStatusClick }: Props) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
   const { width, height, fontSize, iconWidth, lineHeight, lineCount: displayLineCount } = computeNodeDimensions(position.depth, node.title);
@@ -51,6 +53,9 @@ export default function MindmapNode({ node, parentKind, position, isSelected, is
 
   const iconR = (iconWidth - 8) / 2;
   const { isBlocked, iconColor, iconOpacity, fillColor, fillOpacity, label, textFill, resolution, nodeOpacity } = computeNodeAppearance(node, position.depth);
+  // Held on screen by the focus exemption: dimmed like an archived node, so it reads as something the
+  // filter no longer wants rather than as an ordinary match. Its status badges already say why.
+  const opacity = isFocusExempt ? DIMMED_OPACITY : nodeOpacity;
   const isRtl = isRtlText(node.title);
   const iconCx = isRtl ? width - iconWidth / 2 : iconWidth / 2;
   const strokeColor = isSelected
@@ -96,7 +101,7 @@ export default function MindmapNode({ node, parentKind, position, isSelected, is
       onDoubleClick={handleDoubleClick}
       onContextMenu={handleContextMenu}
       onMouseDown={handleMouseDown}
-      style={{ cursor: "pointer", opacity: isDragSource === true ? 0 : (nodeOpacity === 1 ? undefined : nodeOpacity), pointerEvents: isDragSource === true ? "none" : undefined }}
+      style={{ cursor: "pointer", opacity: isDragSource === true ? 0 : (opacity === 1 ? undefined : opacity), pointerEvents: isDragSource === true ? "none" : undefined }}
     >
       <NodeRect node={node} width={width} height={activeHeight} iconWidth={iconWidth} iconCx={iconCx} iconCy={activeHeight / 2} iconR={iconR} fillColor={fillColor} fillOpacity={fillOpacity} strokeColor={strokeColor} isSelected={isSelected} isCollapsed={isCollapsed} iconColor={iconColor} iconOpacity={iconOpacity} isBlocked={isBlocked} canClickStatus={canClickStatus} isRtl={isRtl} onStatusIconClick={handleStatusIconClick} />
       <NodeLabel node={node} isEditing={isEditing} iconWidth={iconWidth} width={width} height={activeHeight} fontSize={fontSize} lineHeight={lineHeight} displayLineCount={displayLineCount} editLineCount={editLineCount} onEditLineCountChange={setEditLineCount} label={label} textFill={textFill} isRtl={isRtl} onCommitEdit={onCommitEdit} onCancelEdit={onCancelEdit} />

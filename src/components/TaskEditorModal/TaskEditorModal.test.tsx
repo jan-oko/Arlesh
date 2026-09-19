@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import TaskEditorModal from "./TaskEditorModal";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { Domain } from "@/api/domains";
@@ -306,5 +307,104 @@ describe("TaskEditorModal — Backlog control", () => {
     await waitFor(() => expect(onSave).toHaveBeenCalled());
     // Both axes independent: finished, and still set aside.
     expect(onSave.mock.calls[0]?.[0]).toMatchObject({ status: "done", archival: "backlog" });
+  });
+});
+
+describe("TaskEditorModal — Agentic", () => {
+  function openAdvanced() {
+    fireEvent.click(screen.getByRole("button", { name: "advanced" }));
+  }
+
+  it("saves an inheriting task as still inheriting when nothing is touched", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<TaskEditorModal {...defaultProps} onSave={onSave} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ agentic: "inherit" });
+  });
+
+  it("flags the task from the Advanced section", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<TaskEditorModal {...defaultProps} onSave={onSave} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
+
+    openAdvanced();
+    fireEvent.click(screen.getByRole("button", { name: "agenticYes" }));
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ agentic: "yes" });
+  });
+
+  it("takes one task back out of an agentic branch without touching the branch", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(
+      <TaskEditorModal
+        {...defaultProps}
+        node={mkNode({ inheritedAgentic: true })}
+        onSave={onSave}
+      />,
+    );
+    await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
+
+    openAdvanced();
+    fireEvent.click(screen.getByRole("button", { name: "agenticNo" }));
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ agentic: "no" });
+  });
+
+  it("puts an explicitly flagged task back to inheriting", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<TaskEditorModal {...defaultProps} node={mkNode({ agentic: true })} onSave={onSave} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
+
+    // Already flagged, so the section is open on arrival — an engaged setting is never hidden.
+    fireEvent.click(screen.getByRole("button", { name: "agenticInherit" }));
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ agentic: "inherit" });
+  });
+
+  it("says what Inherit currently resolves to, since Inherit and Not agentic look alike", async () => {
+    render(<TaskEditorModal {...defaultProps} node={mkNode({ inheritedAgentic: true })} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
+
+    openAdvanced();
+    expect(screen.getByText("agenticInheritedOn")).toBeInTheDocument();
+  });
+
+  it("keeps the flag and the delegate independent — setting one leaves the other alone", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<TaskEditorModal {...defaultProps} onSave={onSave} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
+
+    openAdvanced();
+    fireEvent.click(screen.getByRole("button", { name: "agenticYes" }));
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    // The save carries the flag and says nothing about delegation at all.
+    expect(onSave.mock.calls[0]?.[0]).not.toHaveProperty("delegateTo");
+  });
+});
+
+/*
+ * Escape is handled by a React `onKeyDown` on the dialog element, so it only fires while focus is
+ * already inside the dialog. These press it with no Tab and no click first — the state the modal is
+ * actually in the instant it opens — which is the one case a `fireEvent.keyDown` aimed at the input
+ * cannot show.
+ */
+describe("TaskEditorModal — focus on open", () => {
+  it("puts focus inside the dialog when it opens", () => {
+    render(<TaskEditorModal {...defaultProps} />);
+    expect(screen.getByLabelText("fieldTitle")).toHaveFocus();
+  });
+
+  it("closes on an Escape pressed the moment it opens, with no Tab or click first", async () => {
+    const user = userEvent.setup();
+    render(<TaskEditorModal {...defaultProps} />);
+    await user.keyboard("{Escape}");
+    expect(defaultProps.onClose).toHaveBeenCalledTimes(1);
   });
 });

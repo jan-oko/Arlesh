@@ -2,12 +2,13 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useListData } from "@/hooks/use-list-data";
 import { useTaskBacklog } from "@/hooks/use-task-backlog";
+import { useTaskAgentic } from "@/hooks/use-task-agentic";
 import { useCommitmentVerdict } from "@/hooks/use-commitment-verdict";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { findNode } from "@/utils/mindmap-tree";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useListFilterStore } from "@/stores/use-list-filter-store";
-import { filterCommitmentList, filterTaskList } from "@/utils/list-filter";
+import { filterCommitmentList, filterTaskListWithFocus } from "@/utils/list-filter";
 import type { StatusMode } from "@/utils/filter-tree";
 import { groupRowsByPath } from "@/utils/list-data";
 import { collectSearchableNodes } from "@/utils/mindmap-tree";
@@ -22,14 +23,13 @@ import CommitmentRow from "./CommitmentRow";
 import PathHeaderRow from "./PathHeaderRow";
 import AnchoredToast from "@/components/AnchoredToast/AnchoredToast";
 import BacklogConfirmModal from "@/components/BacklogConfirmModal/BacklogConfirmModal";
-import type { Position } from "@/utils/tree-layout";
 import styles from "./ListView.module.css";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
+import { useFocusExemption } from "@/hooks/use-focus-exemption";
 import { useSubtreeNav } from "@/hooks/use-subtree-nav";
-import { useViewStore } from "@/stores/use-view-store";
-
-/** A flat list lays out no nodes, so every anchored notice falls back to its fixed spot. */
-const NO_POSITIONS: ReadonlyMap<string, Position> = new Map();
+import { useListScroll } from "@/hooks/use-list-scroll";
+import { useFullscreenStore } from "@/stores/use-fullscreen-store";
+import { useDisplayStore } from "@/stores/use-display-store";
 
 export default function ListView() {
   const { t } = useTranslation(["common", "listView", "editor"]);
@@ -45,9 +45,10 @@ export default function ListView() {
 
   // Subtree entry is shared state, not a filter: the Mindmap and the List View re-root together.
   const enterSubtree = useMindmapStore((s) => s.enterSubtree);
-  const pathHeaderIcons = useViewStore((s) => s.pathHeaderIcons);
+  const pathHeaderIcons = useDisplayStore((s) => s.pathHeaderIcons);
   const { subtreeRootId, onExitSubtree, onExitToRoot } = useSubtreeNav(tree);
 
+  const toggleFullscreen = useFullscreenStore((s) => s.toggle);
   const listFilter = useListFilterStore((s) => s.filter);
   const addPill = useListFilterStore((s) => s.addPill);
   const setListPreset = useListFilterStore((s) => s.setPreset);
@@ -71,6 +72,11 @@ export default function ListView() {
     reload,
     showToast,
   });
+  const { toggleAgentic } = useTaskAgentic({
+    findNode: (id) => findNode(tree, id),
+    reload,
+    showToast,
+  });
   const { markKept, markBroken } = useCommitmentVerdict({
     findNode: (id) => findNode(tree, id),
     reload,
@@ -81,9 +87,18 @@ export default function ListView() {
   // rather than the subtree you are standing in — the point of the chord is to get somewhere else.
   const searchableNodes = useMemo(() => collectSearchableNodes(tree), [tree]);
 
-  const filteredRows = useMemo(
-    () => filterTaskList(rows, sharedFilter, listFilter),
-    [rows, sharedFilter, listFilter],
+  // The focus exemption: the selected row stays in the list even once your own edit stops it matching
+  // — cycling a task to Done under Plan no longer drops it out from under the cursor. It ends when the
+  // selection moves or any filter changes; see use-focus-exemption.
+  //
+  // Keyed on `selectedRowId`, the raw selection state, and deliberately not on `selectedTaskId`:
+  // since Commitments became selectable rows, `selectedTaskId` is derived from `filteredRows` and so
+  // is only non-null for a row the filter already kept. Feeding that back in would be circular and
+  // null in exactly the case the exemption exists for — the row your own edit just stopped matching.
+  const focusExemptTaskId = useFocusExemption(selectedRowId, [sharedFilter, listFilter, subtreeRootId]);
+  const { rows: filteredRows, exemptedIds: focusExemptIds } = useMemo(
+    () => filterTaskListWithFocus(rows, sharedFilter, listFilter, focusExemptTaskId),
+    [rows, sharedFilter, listFilter, focusExemptTaskId],
   );
   const filteredCommitments = useMemo(
     () => filterCommitmentList(commitmentRows, sharedFilter, listFilter),
@@ -134,6 +149,8 @@ export default function ListView() {
   }
 
   const { onUndo, onRedo } = useUndo({ reload, showToast });
+  // The viewport: it follows the selection, and j/k roam it without moving the selection.
+  const { containerRef, startScroll } = useListScroll(activeSelectedId);
 
   useKeyboardListView({
     // The prompt swallows the row keys while it is open, as the editor modal already does.
@@ -141,8 +158,10 @@ export default function ListView() {
     selectedTaskId,
     selectedCommitmentId,
     selectedRowId: activeSelectedId,
+    onToggleFullscreen: toggleFullscreen,
     isSelectedBlocked,
     onNavigate: handleNavigate,
+    onScrollList: startScroll,
     onCycleStatus,
     onOpenEditor: onDoubleClick,
     onStartRename: setEditingTaskId,
@@ -150,6 +169,7 @@ export default function ListView() {
     onToggleFilter: toggleFilterPopover,
     onSetStatusMode: handleSetStatusPreset,
     onToggleBacklog: toggleBacklog,
+    onToggleAgentic: toggleAgentic,
     onMarkKept: markKept,
     onMarkBroken: markBroken,
     onOpenSearch: () => setIsSearchOpen(true),
@@ -164,8 +184,8 @@ export default function ListView() {
   if (error !== null) return <div className={styles.centered}>{t("common:error", { message: error })}</div>;
 
   return (
-    <div className={styles.container}>
-      <AnchoredToast toast={pendingToast} positions={NO_POSITIONS} onDismiss={clearToast} />
+    <div className={styles.container} ref={containerRef}>
+      <AnchoredToast toast={pendingToast} onDismiss={clearToast} />
 
       {filteredCommitments.length > 0 && (
         <section className={styles.commitments} aria-label={t("listView:commitmentsHeading")}>
@@ -206,6 +226,7 @@ export default function ListView() {
                 row={entry.row}
                 visibleDepth={entry.visibleDepth}
                 isSelected={entry.row.node.id === activeSelectedId}
+                isFocusExempt={focusExemptIds.has(entry.row.node.id)}
                 isEditingTitle={entry.row.node.id === editingTaskId}
                 onSelect={setSelectedRowId}
                 onCycleStatus={onCycleStatus}

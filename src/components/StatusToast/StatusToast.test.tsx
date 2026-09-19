@@ -4,7 +4,6 @@ import StatusToast from "./StatusToast";
 
 const defaultProps = {
   message: "Status updated",
-  position: { x: 100, y: 200, depth: 1 },
   onDismiss: vi.fn(),
 };
 
@@ -21,6 +20,27 @@ describe("StatusToast", () => {
   it("renders the message", () => {
     render(<StatusToast {...defaultProps} />);
     expect(screen.getByText("Status updated")).toBeInTheDocument();
+  });
+
+  // The cut-off bug. The toast used to be placed with inline `left`/`top` taken from the anchor
+  // node's laid-out position — a d3 layout coordinate, with the display root at the origin and
+  // half the tree at a negative x, applied outside the canvas's pan/zoom transform. Any such
+  // anchor put the toast at or past the left edge, where the container's `overflow: hidden` cut
+  // it. jsdom computes no geometry, so what is pinned here is the property that makes being
+  // out of bounds impossible: there is no coordinate to be wrong. Placement is the stylesheet's
+  // job (fixed, centred, width-capped against the viewport).
+  it("carries no inline coordinate, so no anchor position can push it off screen", () => {
+    render(<StatusToast {...defaultProps} />);
+    const toast = screen.getByText("Status updated");
+    expect(toast.getAttribute("style")).toBeNull();
+  });
+
+  // The message that exposed the bug: a refusal names the kind, its parent and every parent the
+  // kind *would* have been legal under, which is far too long for the one line `nowrap` forced.
+  it("renders a long refusal message in full", () => {
+    const long = "Goal can't sit under Task — only under Aspect, Domain, Project, Goal";
+    render(<StatusToast message={long} onDismiss={vi.fn()} />);
+    expect(screen.getByText(long)).toBeInTheDocument();
   });
 
   it("does not call onDismiss before 3000ms", () => {

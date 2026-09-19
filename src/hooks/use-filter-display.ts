@@ -4,7 +4,7 @@ import { useMindmapData } from "@/components/MindmapView/use-mindmap-data";
 import { collectSearchableNodes, flattenNodesById } from "@/utils/mindmap-tree";
 import {
   isTaskStatusValue, isGoalStatusValue, isProjectStatusValue, isScopeStateValue, isBlockedValue,
-  isVerdictValue,
+  isVerdictValue, isAgenticValue,
 } from "@/utils/list-filter";
 
 /** Node kinds a Task/Goal/Project can be parented under — the pool for the Parent picker. */
@@ -44,6 +44,7 @@ export interface FilterDisplay {
   displayVerdict: (value: string) => string;
   displayScopeState: (value: string) => string;
   displayBlocked: (value: string) => string;
+  displayAgentic: (value: string) => string;
 }
 
 /**
@@ -93,5 +94,6 @@ export function useFilterDisplay(): FilterDisplay {
     displayVerdict: (value) => (isVerdictValue(value) ? t(`status:commitment.${value}`) : value),
     displayScopeState: (value) => (isScopeStateValue(value) ? t(`listView:scopeState.${value}`) : value),
     displayBlocked: (value) => (isBlockedValue(value) ? t(`listView:blockedState.${value}`) : value),
+    displayAgentic: (value) => (isAgenticValue(value) ? t(`listView:agenticState.${value}`) : value),
   };
 }

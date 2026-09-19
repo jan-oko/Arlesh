@@ -27,6 +27,7 @@ const DISPLAY = {
   displayVerdict: (v: string) => `verdict.${v}`,
   displayScopeState: (v: string) => `scope.${v}`,
   displayBlocked: (v: string) => `blocked.${v}`,
+  displayAgentic: (v: string) => `agentic.${v}`,
 };
 
 beforeEach(() => {

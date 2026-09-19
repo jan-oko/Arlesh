@@ -10,6 +10,7 @@ import ClockIcon from "@/components/StatusIcons/ClockIcon";
 import CalendarIcon from "@/components/StatusIcons/CalendarIcon";
 import IceIcon from "@/components/StatusIcons/IceIcon";
 import BacklogIcon from "@/components/StatusIcons/BacklogIcon";
+import AgenticIcon from "@/components/StatusIcons/AgenticIcon";
 import ArchiveIcon from "@/components/StatusIcons/ArchiveIcon";
 import ExclamationIcon from "@/components/StatusIcons/ExclamationIcon";
 import EllipsisIcon from "@/components/StatusIcons/EllipsisIcon";
@@ -58,6 +59,8 @@ export default function TaskRowBadges({ node, indicators }: Props) {
         return { tooltip: t("frozen"), icon: <IceIcon cx={R} cy={R} r={R} color={MUTED} /> };
       case "backlog":
         return { tooltip: t("backlog"), icon: <BacklogIcon cx={R} cy={R} r={R} color={MUTED} /> };
+      case "agentic":
+        return { tooltip: t("agentic"), icon: <AgenticIcon cx={R} cy={R} r={R} color={MUTED} /> };
       case "info":
         return { tooltip: node.infoDetails ?? "", icon: <EllipsisIcon cx={R} cy={R} r={R} color={MUTED} /> };
       case "flowInstance": {
