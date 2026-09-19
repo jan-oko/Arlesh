@@ -363,6 +363,53 @@ filter dimensions" → seven). It never reached a release, so they were made to 
 rather than carrying a `Removed` note for something no user ever had. Agent also caught `README.md`,
 which my file map missed.
 
+## PR #23 — the focus exemption
+
+`Arlesh-792`, one commit, bead closed. 87 → 89 test files, 1163 → **1202** tests, clean on the first
+run. Frontend only.
+
+**It closes `qf3`'s deferred case, and proved it rather than claiming it.**
+`useNodeTypeManager.runRetype` ends with `selectNode(newId ?? nodeId)`, so a cycled node is selected
+under its new id and the exemption arms immediately. Pinned by a test: under **Do**, `filterTree`
+drops an active Goal while `filterTreeWithFocus` with that goal focused keeps it, dimmed. Recorded on
+`qf3`. **Both PRs stand** — the user kept both after being shown the overlap, and they are
+complementary: `qf3` stops the cycle *offering* a hidden kind, #23 stops *any* hidden-making edit
+from erasing what you are on.
+
+**The isolation held.** `node-meta.ts` untouched, `filterTree`'s signature unchanged — verified
+independently, not taken on report. The correction I sent mid-flight ("do not treat the two as
+alternatives") was followed exactly.
+
+**Three decisions it made beyond the bead**, all in the direction of not stranding anything:
+
+1. A hard-hidden ancestor carries **the chain and nothing else** — revealing a private Project as an
+   ancestor does not spill its other children into view.
+2. Chain ancestors are dimmed, but **only the ones the filter would have dropped**; `hasContentMatch`
+   deliberately ignores exempt-only children so an exempt child cannot silently promote its parent
+   to "matching".
+3. The focused node's own hidden children stay hidden.
+
+**The no-leak guarantee is structural, not asserted.** `filterTree` and `filterTaskList` still exist
+with byte-identical behaviour; the exemption lives only in the new `…WithFocus` entry points, called
+from the two views and nowhere else. Two tests assert the unexempted functions still drop the node in
+the exact scenario the view keeps it. Consequence it flagged honestly: **`filterTree` now has no
+production caller**, and it kept it deliberately as the filter's canonical answer rather than
+deleting it.
+
+**One visible side effect it chose not to suppress and flagged anyway:** entering a filtered-out node
+via Ctrl+O now shows it dimmed instead of an empty frame. Strictly better than the old behaviour, and
+it clears on the next selection — but it is beyond the bead's acceptance list.
+
+**Merge note:** #23 and #12 conflict in `MindmapView.tsx` and `filter-tree.test.ts` — both *add* to
+the same view and the same test file. Additive, not a design collision, and only matters for
+whichever lands second.
+
+**Adjacent, reported not fixed:** List View keeps a local `selectedTaskId` while the Mindmap uses
+`useMindmapStore.selectedNodeId`, even though the two views deliberately share tree, filter and
+subtree root. So the exemption is per-view. That matches today's selection model exactly, so it was
+left alone — but shared selection would make the exemption follow across views for free. **No bead
+filed; awaiting the user** (agent suggested P2).
+
 ## Ownership consolidated, everything pushed (2026-09-19)
 
 Three sessions were working this repo — this one, a CI/CD fork, and a fork that specced and filed
