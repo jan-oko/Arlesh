@@ -13,6 +13,7 @@
   "statusDo": "Status preset: Do",
   "navigate": "Move between cells",
   "navigateRows": "Move between rows",
+  "scrollList": "Scroll the list (the selection stays put)",
   "panCanvas": "Pan the canvas (nothing selected)",
   "extendSelection": "Extend the selection across siblings",
   "cycleType": "Cycle the cell's type",
