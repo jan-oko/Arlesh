@@ -158,35 +158,37 @@ jobs:
           mkdir -p dist
           printf '<!doctype html><title>arlesh ci</title>' > dist/index.html
 
-      # Drops stale .profraw and this crate's own artifacts, leaving the cached
-      # dependency build alone. Without it a warm cache can merge counters from
-      # two different compilations of the same function.
-      - name: llvm-cov clean
-        working-directory: src-tauri
-        run: cargo llvm-cov clean --workspace
-
-      # Runs the whole suite as well as measuring it — a failing test fails the
-      # job here exactly as `cargo test` did. --fail-under-lines is asserted to
-      # work in both directions (a floor of 99 exits 1, 94 exits 0), so this is
-      # a gate and not a decoration.
-      - name: cargo llvm-cov
+      # One instrumented build, three consumers. `show-env` emits the RUSTFLAGS
+      # and profile paths cargo-llvm-cov would use, so the test run and the
+      # doctest run compile against the same fingerprint and share artifacts.
+      #
+      # Doing this the obvious way instead — `cargo llvm-cov` followed by a
+      # plain `cargo test --doc` — costs 4m07s for 14 doctests against 1m33s for
+      # the other 630 tests plus coverage, because the uninstrumented build is a
+      # different fingerprint and rebuilds all 560 crates. `cargo llvm-cov` will
+      # not run doctests itself; coverage for them is nightly-only.
+      #
+      # `clean` drops stale .profraw and this crate's own artifacts, leaving the
+      # cached dependency build alone — without it a warm cache can merge
+      # counters from two compilations of the same function.
+      #
+      # This runs the whole suite as well as measuring it: a failing test fails
+      # the job here exactly as `cargo test` did. --fail-under-lines is proven to
+      # fail as well as pass (a floor of 99 exits 1, 94 exits 0), so it gates
+      # rather than decorates.
+      - name: cargo llvm-cov · tests, doctests, coverage
         working-directory: src-tauri
         run: |
           set -o pipefail
-          cargo llvm-cov --locked \
+          source <(cargo llvm-cov show-env --export-prefix)
+          cargo llvm-cov clean --workspace
+          cargo test --locked
+          cargo test --locked --doc
+          cargo llvm-cov report \
             --summary-only \
             --ignore-filename-regex '(^|/)src/commands/' \
             --fail-under-lines 94 \
             2>&1 | tee "$RUNNER_TEMP/coverage.log"
-
-      # `cargo llvm-cov` does not run doctests — coverage for them is nightly-only,
-      # so it skips them entirely. Folding `cargo test` into the coverage command
-      # therefore dropped 14 doctests out of the gate without failing anything;
-      # CI reported 630 tests where `cargo test` locally reports 644. They run
-      # here instead. They are not measured for coverage, only executed.
-      - name: cargo test --doc
-        working-directory: src-tauri
-        run: cargo test --locked --doc
 
       # Put the percentage where it can be read without opening the log, on a
       # failing run as well as a passing one.
