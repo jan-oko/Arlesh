@@ -105,40 +105,37 @@ jobs:
             --ignore-filename-regex '(^|/)src/commands/' \
             2>&1 | tee "$RUNNER_TEMP/llvm-cov-nightly.log"
 
-      # A floor nobody has watched fire is an assumption, not a gate. This
-      # asserts both directions against the measured 95.14%: an impossible floor
-      # must fail the command, and the proposed one must pass it. If the first
-      # of these exits 0 the flag does nothing and the whole switch is worthless.
-      - name: Prove --fail-under-lines actually fails
+      # Answered already on this branch: the floor fires (99 -> exit 1, 94 -> exit 0)
+      # and the nightly toolchain costs 10s and no measurable build time.
+      #
+      # The one comparison never made cleanly is stable-vs-nightly on ONE commit.
+      # Every figure so far paired a toolchain with a different tree, so the
+      # test-body contribution to the denominator was inferred, not measured —
+      # and an earlier claim that it was "roughly half" came from comparing
+      # llvm-cov lines against tarpaulin lines, which are different units.
+      #
+      # The annotations are `cfg_attr(coverage_nightly, ...)`, so stable ignores
+      # them entirely. Running stable here, same commit, same everything, makes
+      # the difference between the two totals exactly the inline test bodies.
+      # That decides whether stable llvm-cov WITHOUT the tests.rs refactor is a
+      # merely weaker gate or an unusable one.
+      - name: Same commit on stable, annotations inert
         working-directory: src-tauri
         run: |
-          set +e
-          cargo +nightly llvm-cov report --summary-only \
+          set -o pipefail
+          cargo llvm-cov clean --workspace
+          cargo llvm-cov --locked --no-report
+          cargo llvm-cov report --summary-only \
             --ignore-filename-regex '(^|/)src/commands/' \
-            --fail-under-lines 99 >/dev/null 2>&1
-          high=$?
-          cargo +nightly llvm-cov report --summary-only \
-            --ignore-filename-regex '(^|/)src/commands/' \
-            --fail-under-lines 94 >/dev/null 2>&1
-          low=$?
-          set -e
-          echo "floor 99 (must be non-zero): $high"
-          echo "floor 94 (must be zero):     $low"
-          [ "$high" -ne 0 ] || { echo "FAIL: floor of 99 did not fail the gate"; exit 1; }
-          [ "$low" -eq 0 ]  || { echo "FAIL: floor of 94 rejected a 95.14% tree"; exit 1; }
-          echo "gate fires correctly in both directions"
+            2>&1 | tee "$RUNNER_TEMP/llvm-cov-stable.log"
 
-      # The other half of the decision. If coverage moves to nightly then the
-      # suite only ever executes on nightly, and the pinned stable 1.96 that
-      # actually ships gets no test run at all. This is what recovering that
-      # costs on a warm cache — if it is close to the coverage job itself, the
-      # merge saving that motivated the switch is largely given back.
-      - name: Cost of still testing on stable
-        working-directory: src-tauri
+      - name: Nightly vs stable, one tree
+        if: always()
         run: |
-          start=$(date +%s)
-          cargo test --locked --no-run 2>&1 | tail -2
-          echo "stable test build: $(( $(date +%s) - start ))s"
+          n=$(grep -aE '^TOTAL' "$RUNNER_TEMP/llvm-cov-nightly.log" | awk '{print $(NF-4)" lines, "$(NF-2)" cover"}')
+          s=$(grep -aE '^TOTAL' "$RUNNER_TEMP/llvm-cov-stable.log"  | awk '{print $(NF-4)" lines, "$(NF-2)" cover"}')
+          echo "nightly (test bodies excluded): $n"
+          echo "stable  (test bodies counted):  $s"
 
       - name: Summarise
         if: always()
@@ -148,7 +145,8 @@ jobs:
             echo '```'
             tail -6 "$RUNNER_TEMP/llvm-cov-nightly.log" 2>/dev/null || echo 'no report'
             echo '```'
-            echo 'For comparison, same commit:'
-            echo '- ptrace                  91.01%  3442/3782'
-            echo '- cargo llvm-cov, stable  96.29%     -/7281  (test bodies counted)'
+            echo '### Same commit on stable'
+            echo '```'
+            tail -3 "$RUNNER_TEMP/llvm-cov-stable.log" 2>/dev/null || echo 'no stable report'
+            echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
