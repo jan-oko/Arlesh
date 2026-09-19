@@ -41,7 +41,7 @@
   "enterBySearch": "Search for a node and enter its subtree",
   "statusBacklog": "Status preset: Backlog",
   "toggleBacklog": "Put in / take out of the backlog",
-  "cycleAgentic": "Cycle Agentic: Inherit → Agentic → Not agentic",
+  "toggleAgentic": "Mark Agentic / Not agentic",
   "markKept": "Mark the selected commitment kept (again to clear it)",
   "markBroken": "Mark the selected commitment broken (again to clear it)"
 }

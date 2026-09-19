@@ -66,7 +66,7 @@ function baseOptions(overrides: Partial<Parameters<typeof useKeyboardMindmap>[0]
     onToggleFilter: vi.fn(),
     onSetStatusMode: vi.fn() as (mode: StatusMode) => void,
     onToggleBacklog: vi.fn(),
-    onCycleAgentic: vi.fn(),
+    onToggleAgentic: vi.fn(),
     onFocusRoot: vi.fn(),
     onCenterOnNode: vi.fn(),
     onConvertToFlow: vi.fn(),
@@ -710,8 +710,8 @@ describe("useKeyboardMindmap — filter shortcuts (Alt)", () => {
     });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("a");
-    expect(opts.onCycleAgentic).toHaveBeenCalledTimes(1);
-    expect(opts.onCycleAgentic).toHaveBeenCalledWith("task-1");
+    expect(opts.onToggleAgentic).toHaveBeenCalledTimes(1);
+    expect(opts.onToggleAgentic).toHaveBeenCalledWith("task-1");
     expect(opts.onSetStatusMode).not.toHaveBeenCalled();
   });
 
@@ -720,7 +720,7 @@ describe("useKeyboardMindmap — filter shortcuts (Alt)", () => {
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("a", { altKey: true });
     expect(opts.onSetStatusMode).toHaveBeenCalledWith("all");
-    expect(opts.onCycleAgentic).not.toHaveBeenCalled();
+    expect(opts.onToggleAgentic).not.toHaveBeenCalled();
   });
 
   it("plain A does nothing on a goal — only a Task can be agentic", () => {
@@ -731,7 +731,7 @@ describe("useKeyboardMindmap — filter shortcuts (Alt)", () => {
     });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("a");
-    expect(opts.onCycleAgentic).not.toHaveBeenCalled();
+    expect(opts.onToggleAgentic).not.toHaveBeenCalled();
   });
 
   it("plain A does nothing on a virtual Habit instance — it has no task row to flag", () => {
@@ -746,7 +746,7 @@ describe("useKeyboardMindmap — filter shortcuts (Alt)", () => {
     });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("a");
-    expect(opts.onCycleAgentic).not.toHaveBeenCalled();
+    expect(opts.onToggleAgentic).not.toHaveBeenCalled();
   });
 
   it("Alt+S selects the Start mode without starting a flow", () => {

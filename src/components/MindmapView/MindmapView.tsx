@@ -335,7 +335,7 @@ export default function MindmapView() {
     findNode: findNodeById, reload, showToast,
   });
 
-  const { cycleAgentic } = useTaskAgentic({ findNode: findNodeById, reload, showToast });
+  const { toggleAgentic } = useTaskAgentic({ findNode: findNodeById, reload, showToast });
 
   const handleConfirmDelete = useCallback(() => {
     if (deleteTargets === null) return;
@@ -498,7 +498,7 @@ export default function MindmapView() {
     onConvertToFlow: onConvertToFlowKey,
     onExtendSelection: extendSelection,
     onToggleBacklog: toggleBacklog,
-    onCycleAgentic: cycleAgentic,
+    onToggleAgentic: toggleAgentic,
     findNodeById,
   });
   const targetPos = dragTargetId !== null ? positions.get(dragTargetId) : undefined;

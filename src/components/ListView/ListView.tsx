@@ -71,7 +71,7 @@ export default function ListView() {
     reload,
     showToast,
   });
-  const { cycleAgentic } = useTaskAgentic({
+  const { toggleAgentic } = useTaskAgentic({
     findNode: (id) => findNode(tree, id),
     reload,
     showToast,
@@ -153,7 +153,7 @@ export default function ListView() {
     onToggleFilter: toggleFilterPopover,
     onSetStatusMode: handleSetStatusPreset,
     onToggleBacklog: toggleBacklog,
-    onCycleAgentic: cycleAgentic,
+    onToggleAgentic: toggleAgentic,
     onMarkKept: markKept,
     onMarkBroken: markBroken,
     onOpenSearch: () => setIsSearchOpen(true),

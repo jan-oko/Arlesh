@@ -30,7 +30,7 @@ function baseOptions(overrides: Partial<Parameters<typeof useKeyboardListView>[0
     onExitSubtree: vi.fn(),
     onExitToRoot: vi.fn(),
     onToggleBacklog: vi.fn(),
-    onCycleAgentic: vi.fn(),
+    onToggleAgentic: vi.fn(),
     onMarkKept: vi.fn(),
     onMarkBroken: vi.fn(),
     ...overrides,
@@ -104,7 +104,7 @@ describe("useKeyboardListView", () => {
     const options = baseOptions();
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey("a");
-    expect(options.onCycleAgentic).toHaveBeenCalledWith("task-1");
+    expect(options.onToggleAgentic).toHaveBeenCalledWith("task-1");
     expect(options.onSetStatusMode).not.toHaveBeenCalled();
   });
 
@@ -113,14 +113,14 @@ describe("useKeyboardListView", () => {
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey("a", { altKey: true });
     expect(options.onSetStatusMode).toHaveBeenCalledWith("all");
-    expect(options.onCycleAgentic).not.toHaveBeenCalled();
+    expect(options.onToggleAgentic).not.toHaveBeenCalled();
   });
 
   it("plain A does nothing with no row selected", () => {
     const options = baseOptions({ selectedTaskId: null });
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey("a");
-    expect(options.onCycleAgentic).not.toHaveBeenCalled();
+    expect(options.onToggleAgentic).not.toHaveBeenCalled();
   });
 
   it("ArrowDown/ArrowUp navigate the selection", () => {

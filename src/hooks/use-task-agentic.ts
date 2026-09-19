@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { updateTask } from "@/api/tasks";
 import { getErrorMessage } from "@/api/errors";
-import { nextAgenticState, storedAgenticState } from "@/utils/agentic";
+import { toggledAgenticState } from "@/utils/agentic";
 
 interface Options {
   findNode: (id: string) => MindmapNode | undefined;
@@ -12,9 +12,9 @@ interface Options {
 }
 
 interface Result {
-  /** Advances the task one step around Inherit → Agentic → Not agentic. One node, never a
-   * multi-selection — the same scope the Backlog key acts at. */
-  cycleAgentic: (nodeId: string) => void;
+  /** Flips the task between Agentic and Not agentic. One node, never a multi-selection — the same
+   * scope the Backlog key acts at. */
+  toggleAgentic: (nodeId: string) => void;
 }
 
 function dbIdOf(nodeId: string): number {
@@ -22,28 +22,28 @@ function dbIdOf(nodeId: string): number {
 }
 
 /**
- * The Agentic cycle shared by both views: read the task's **own** stored flag, write the next one.
+ * The Agentic toggle shared by both views: read what the task **resolves to**, write the opposite.
  *
  * A plain update with no invariant to negotiate — unlike Backlog, which a Plan can refuse — so the
- * only interesting parts are which state comes next ({@link nextAgenticState}) and which nodes the
- * key declines to act on.
+ * only interesting parts are which state the press writes ({@link toggledAgenticState}) and which
+ * nodes the key declines to act on.
  *
- * The write is driven by `storedAgenticState(node.agentic)`, the task's own column, never by what
- * it resolves to. Cycling from what it *reads as* would turn a press on a task inheriting "yes"
- * into an explicit one, silently detaching it from the ancestor that was deciding for it.
+ * Driven by the resolved value, so every press changes what the badge shows. A task that was only
+ * inheriting "yes" is pinned to an explicit "no" by one press, which is the toggle doing its job:
+ * the alternative is a press that reads as nothing happening. Detaching a task from the ancestor
+ * deciding for it is now the editor's business, and so is putting it back.
  */
 export function useTaskAgentic({ findNode, reload, showToast }: Options): Result {
   const { t } = useTranslation("warnings");
 
-  const cycleAgentic = useCallback(
+  const toggleAgentic = useCallback(
     (nodeId: string) => {
       const node = findNode(nodeId);
       // Only a real Task has an agentic column: a virtual Habit instance is rendered from a
       // template and has no row of its own to flag — its id has no database id to address, so
       // this is a refusal to act rather than a write that would go nowhere.
       if (node === undefined || node.kind !== "task" || node.habitItem !== undefined) return;
-      const next = nextAgenticState(storedAgenticState(node.agentic));
-      void updateTask(dbIdOf(nodeId), { agentic: next }).then(
+      void updateTask(dbIdOf(nodeId), { agentic: toggledAgenticState(node) }).then(
         () => reload(),
         (error: unknown) => {
           showToast({ nodeId, message: t("agenticFailed", { message: getErrorMessage(error) }) });
@@ -53,5 +53,5 @@ export function useTaskAgentic({ findNode, reload, showToast }: Options): Result
     [findNode, reload, showToast, t],
   );
 
-  return { cycleAgentic };
+  return { toggleAgentic };
 }

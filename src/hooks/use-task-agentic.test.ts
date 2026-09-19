@@ -26,43 +26,67 @@ function setup(nodes: MindmapNode[]) {
 beforeEach(() => vi.clearAllMocks());
 
 describe("useTaskAgentic", () => {
-  it("marks an unset task agentic — the state every task starts in is one press from Yes", async () => {
+  it("marks an unset task agentic in one press — the state every task starts in", async () => {
     vi.mocked(updateTask).mockResolvedValue({} as never);
     const { result, reload } = setup([node("task-5")]);
 
-    act(() => { result.current.cycleAgentic("task-5"); });
+    act(() => { result.current.toggleAgentic("task-5"); });
 
     await waitFor(() => expect(updateTask).toHaveBeenCalledWith(5, { agentic: "yes" }));
     await waitFor(() => expect(reload).toHaveBeenCalled());
   });
 
-  it("moves an agentic task to explicitly not agentic", async () => {
+  it("turns an agentic task off in one press", async () => {
     vi.mocked(updateTask).mockResolvedValue({} as never);
     const { result } = setup([node("task-5", { agentic: true })]);
 
-    act(() => { result.current.cycleAgentic("task-5"); });
+    act(() => { result.current.toggleAgentic("task-5"); });
 
     await waitFor(() => expect(updateTask).toHaveBeenCalledWith(5, { agentic: "no" }));
   });
 
-  it("closes the cycle: a not-agentic task goes back to inheriting", async () => {
+  it("turns an explicit No back on in one press, not two", async () => {
     vi.mocked(updateTask).mockResolvedValue({} as never);
-    const { result } = setup([node("task-5", { agentic: false })]);
+    // Under a non-agentic parent this reads exactly like an unset task, so sending it to Inherit
+    // first would spend a press on a move nothing on screen could show.
+    const { result } = setup([node("task-5", { agentic: false, inheritedAgentic: false })]);
 
-    act(() => { result.current.cycleAgentic("task-5"); });
-
-    await waitFor(() => expect(updateTask).toHaveBeenCalledWith(5, { agentic: "inherit" }));
-  });
-
-  it("reads the task's own flag, not what it inherits — an inherited yes still cycles to yes", async () => {
-    vi.mocked(updateTask).mockResolvedValue({} as never);
-    // Reads as agentic on screen, but has given no answer of its own. Cycling what it *reads as*
-    // would jump it straight to "no" and detach it from the ancestor deciding for it.
-    const { result } = setup([node("task-5", { agentic: null, inheritedAgentic: true })]);
-
-    act(() => { result.current.cycleAgentic("task-5"); });
+    act(() => { result.current.toggleAgentic("task-5"); });
 
     await waitFor(() => expect(updateTask).toHaveBeenCalledWith(5, { agentic: "yes" }));
+  });
+
+  it("pins a task that was only inheriting Yes to an explicit No", async () => {
+    vi.mocked(updateTask).mockResolvedValue({} as never);
+    // Reads as agentic, so one press has to turn the badge off. That detaches it from the ancestor
+    // deciding for it, which is the toggle's price: the editor is where Inherit comes back.
+    const { result } = setup([node("task-5", { agentic: null, inheritedAgentic: true })]);
+
+    act(() => { result.current.toggleAgentic("task-5"); });
+
+    await waitFor(() => expect(updateTask).toHaveBeenCalledWith(5, { agentic: "no" }));
+  });
+
+  it("never writes Inherit — the key resolves through it rather than landing on it", async () => {
+    vi.mocked(updateTask).mockResolvedValue({} as never);
+    const { result } = setup([
+      node("task-1"),
+      node("task-2", { agentic: true }),
+      node("task-3", { agentic: false }),
+      node("task-4", { agentic: null, inheritedAgentic: true }),
+    ]);
+
+    act(() => {
+      result.current.toggleAgentic("task-1");
+      result.current.toggleAgentic("task-2");
+      result.current.toggleAgentic("task-3");
+      result.current.toggleAgentic("task-4");
+    });
+
+    await waitFor(() => expect(updateTask).toHaveBeenCalledTimes(4));
+    for (const call of vi.mocked(updateTask).mock.calls) {
+      expect(call[1]).not.toEqual({ agentic: "inherit" });
+    }
   });
 
   it("declines every node that has no agentic column of its own", () => {
@@ -74,9 +98,9 @@ describe("useTaskAgentic", () => {
     const { result } = setup([goal, habitInstance]);
 
     act(() => {
-      result.current.cycleAgentic("goal-1");
-      result.current.cycleAgentic("task-4-virtual");
-      result.current.cycleAgentic("task-missing");
+      result.current.toggleAgentic("goal-1");
+      result.current.toggleAgentic("task-4-virtual");
+      result.current.toggleAgentic("task-missing");
     });
 
     expect(updateTask).not.toHaveBeenCalled();
@@ -86,7 +110,7 @@ describe("useTaskAgentic", () => {
     vi.mocked(updateTask).mockRejectedValue(new Error("db is gone"));
     const { result, showToast } = setup([node("task-5")]);
 
-    act(() => { result.current.cycleAgentic("task-5"); });
+    act(() => { result.current.toggleAgentic("task-5"); });
 
     await waitFor(() => expect(showToast).toHaveBeenCalledWith(
       expect.objectContaining({ nodeId: "task-5" }),

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isAgentic, propagateAgentic, storedAgenticState, nextAgenticState } from "./agentic";
+import { isAgentic, propagateAgentic, storedAgenticState, toggledAgenticState } from "./agentic";
 import type { MindmapNode, NodeKind } from "./tree-layout";
 
 function n(id: string, kind: NodeKind, extra: Partial<MindmapNode> = {}): MindmapNode {
@@ -104,34 +104,45 @@ describe("storedAgenticState", () => {
   });
 });
 
-describe("nextAgenticState", () => {
-  it("puts Agentic one press from where every task starts", () => {
-    expect(nextAgenticState("inherit")).toBe("yes");
+describe("toggledAgenticState", () => {
+  it("marks an unflagged task agentic in one press — the state every task starts in", () => {
+    expect(toggledAgenticState(resolved(n("task-1", "task")))).toBe("yes");
   });
 
-  it("offers the explicit override next, for carving a task out of an agentic branch", () => {
-    expect(nextAgenticState("yes")).toBe("no");
+  it("marks a task explicitly not agentic in one press, so the toggle undoes itself", () => {
+    expect(toggledAgenticState(resolved(n("task-1", "task", { agentic: true })))).toBe("no");
   });
 
-  it("closes back to Inherit rather than dead-ending", () => {
-    expect(nextAgenticState("no")).toBe("inherit");
+  it("turns an explicit No back on in one press, not two", () => {
+    // The case that drove the toggle: under a non-agentic parent this task looks exactly like an
+    // unflagged one, so a cycle that sent it to Inherit first spent a press on an invisible move.
+    const root = resolved(
+      n("task-1", "task", { children: [n("task-2", "task", { agentic: false })] }),
+    );
+    expect(toggledAgenticState(byId(root, "task-2"))).toBe("yes");
   });
 
-  it("returns to the starting state in three presses, from any of them", () => {
-    const thrice = (from: Parameters<typeof nextAgenticState>[0]) =>
-      nextAgenticState(nextAgenticState(nextAgenticState(from)));
-    expect(thrice("inherit")).toBe("inherit");
-    expect(thrice("yes")).toBe("yes");
-    expect(thrice("no")).toBe("no");
+  it("pins a task that was only inheriting Yes to an explicit No", () => {
+    // Reads as agentic, so one press must turn the badge off. Detaching it from the ancestor that
+    // was deciding for it is the cost of that, and the editor is where Inherit comes back.
+    const root = resolved(
+      n("task-1", "task", { agentic: true, children: [n("task-2", "task")] }),
+    );
+    expect(toggledAgenticState(byId(root, "task-2"))).toBe("no");
   });
 
-  it("reaches all three states, so none is a trap the editor has to get you out of", () => {
-    const seen = new Set(["inherit"]);
-    let state: Parameters<typeof nextAgenticState>[0] = "inherit";
-    for (let i = 0; i < 3; i++) {
-      state = nextAgenticState(state);
-      seen.add(state);
-    }
-    expect(seen).toEqual(new Set(["inherit", "yes", "no"]));
+  it("never writes Inherit: it is a starting point the key resolves through, not a destination", () => {
+    const written = [
+      toggledAgenticState(resolved(n("task-1", "task"))),
+      toggledAgenticState(resolved(n("task-2", "task", { agentic: true }))),
+      toggledAgenticState(resolved(n("task-3", "task", { agentic: false }))),
+    ];
+    expect(written).not.toContain("inherit");
+  });
+
+  it("flips both ways, so two presses leave a task reading as it started", () => {
+    // Explicitly, now, rather than by inheritance — but the same picture on screen.
+    expect(toggledAgenticState(resolved(n("task-1", "task", { agentic: true })))).toBe("no");
+    expect(toggledAgenticState(resolved(n("task-1", "task", { agentic: false })))).toBe("yes");
   });
 });

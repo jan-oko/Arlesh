@@ -53,9 +53,9 @@ export interface MindmapContext {
   /** Puts the anchor Task in the backlog, or takes it out. Acts on the anchor, never the whole
    * multi-selection — setting work aside is a judgement about one thing at a time. */
   onToggleBacklog: (id: string) => void;
-  /** Advances the anchor Task one step around Inherit → Agentic → Not agentic. The anchor only,
-   * for the same reason Backlog acts on one node. */
-  onCycleAgentic: (id: string) => void;
+  /** Flips the anchor Task between Agentic and Not agentic, whichever it currently reads as. The
+   * anchor only, for the same reason Backlog acts on one node. */
+  onToggleAgentic: (id: string) => void;
 }
 
 const DOUBLE_TAP_MS = 300;
@@ -362,13 +362,13 @@ export const MINDMAP_BINDINGS: readonly Binding<MindmapContext>[] = [
     // strict about modifiers, exactly as it already is for B and Alt+B.
     //
     // Excluded for the same reason Backlog is: a virtual Habit instance has no task row to flag.
-    id: "mindmap.cycleAgentic", section: "mindmap", chord: { code: "KeyA" },
-    labelKey: "cycleAgentic",
+    id: "mindmap.toggleAgentic", section: "mindmap", chord: { code: "KeyA" },
+    labelKey: "toggleAgentic",
     when: (c) => {
       const node = selectedNode(c);
       return node !== undefined && node.kind === "task" && node.habitItem === undefined;
     },
-    run: (c) => { if (c.selectedNodeId !== null) c.onCycleAgentic(c.selectedNodeId); },
+    run: (c) => { if (c.selectedNodeId !== null) c.onToggleAgentic(c.selectedNodeId); },
   },
   {
     id: "mindmap.openSearch", section: "mindmap", chord: { code: "KeyO", ctrl: true },
