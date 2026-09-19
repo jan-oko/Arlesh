@@ -3,7 +3,8 @@ use crate::helpers;
 use arlesh_lib::flows::{
     model::{
         BlockingMode, CatchupPolicy, ConsumptionKind, CreateFlowItemRequest, CreateFlowRequest,
-        FlowCycleInput, FlowId, FlowItemType, InstanceType, SetRecurrenceRequest, StartFlowRequest,
+        FlowCycleInput, FlowId, FlowItemType, InstanceTiming, InstanceType, SetRecurrenceRequest,
+        StartFlowRequest,
         HabitInstanceRef, TargetRef, UpdateFlowItemRequest, UpdateFlowRequest, NO_CYCLE,
     },
     convert_flow_item, convert_to_flow, delete_flow, fork_flow, generate_habit_iterations,
@@ -2080,24 +2081,34 @@ async fn a_sub_day_cycle_is_active_only_during_its_band_under_a_destructive_habi
     )
     .await;
 
-    // Before the band opens: the iteration has begun (the day has), the occurrence has not.
+    // Before the band opens: the iteration has begun (the day has), the occurrence has not. It is
+    // still generated, carrying Pending — hiding it is a preset's job, not generation's.
     let dawn = iterations_at(&pool, flow_id, day.and_hms_opt(5, 0, 0).unwrap()).await;
     assert_eq!(format!("{:?}", dawn[0].status), "Active");
-    assert!(dawn[0].instances.is_empty(), "this morning's item does not appear before morning");
+    assert_eq!(dawn[0].instances.len(), 1, "this morning's item reaches the frontend before morning");
+    assert_eq!(
+        dawn[0].instances[0].timing,
+        InstanceTiming::Pending,
+        "not Active — its window has not opened",
+    );
 
     // Inside the band.
     let morning = iterations_at(&pool, flow_id, day.and_hms_opt(8, 0, 0).unwrap()).await;
     assert_eq!(morning[0].instances.len(), 1);
     let instance = &morning[0].instances[0];
     assert_eq!((instance.item_type.as_str(), instance.item_id), ("flow_task", item_id));
-    assert!(!instance.past, "a Morning item is Active during the morning");
+    assert_eq!(instance.timing, InstanceTiming::Active, "a Morning item is Active during the morning");
     let scope = instance.time_scope.as_ref().expect("a cycle-scoped occurrence carries its window");
     assert_eq!(scope_shape(&pool, scope.start_id).await, ("part_of_day".to_string(), Some("morning".to_string())));
 
     // After it — while the iteration's own day window is still wide open.
     let afternoon = iterations_at(&pool, flow_id, day.and_hms_opt(13, 0, 0).unwrap()).await;
     assert_eq!(format!("{:?}", afternoon[0].status), "Active", "the day has not passed");
-    assert!(afternoon[0].instances[0].past, "but the morning has: Destructive lapses it");
+    assert_eq!(
+        afternoon[0].instances[0].timing,
+        InstanceTiming::Lapsed,
+        "but the morning has: Destructive lapses it",
+    );
 }
 
 #[tokio::test]
@@ -2110,8 +2121,9 @@ async fn an_accumulating_habits_occurrence_survives_its_own_band() {
     .await;
 
     let afternoon = iterations_at(&pool, flow_id, day.and_hms_opt(13, 0, 0).unwrap()).await;
-    assert!(
-        !afternoon[0].instances[0].past,
+    assert_eq!(
+        afternoon[0].instances[0].timing,
+        InstanceTiming::Active,
         "a sub-day window obeys Consumption like every other size — Destructive is what makes it vanish",
     );
 }
@@ -2128,17 +2140,22 @@ async fn a_day_cycle_inside_a_week_habit_is_active_only_on_its_day() {
     .await;
 
     let mon = iterations_at(&pool, flow_id, monday.and_hms_opt(12, 0, 0).unwrap()).await;
-    assert!(mon[0].instances.is_empty(), "Tuesday's item does not appear on Monday");
+    assert_eq!(mon[0].instances.len(), 1);
+    assert_eq!(
+        mon[0].instances[0].timing,
+        InstanceTiming::Pending,
+        "Tuesday's item is Pending on Monday, not missing",
+    );
 
     let tue = iterations_at(&pool, flow_id, ymd(2026, 1, 6).and_hms_opt(12, 0, 0).unwrap()).await;
     assert_eq!(tue[0].instances.len(), 1);
-    assert!(!tue[0].instances[0].past);
+    assert_eq!(tue[0].instances[0].timing, InstanceTiming::Active);
     let scope = tue[0].instances[0].time_scope.as_ref().unwrap();
     assert_eq!(scope_shape(&pool, scope.start_id).await.0, "day");
 
     let wed = iterations_at(&pool, flow_id, ymd(2026, 1, 7).and_hms_opt(12, 0, 0).unwrap()).await;
     assert_eq!(format!("{:?}", wed[0].status), "Active", "the week has not passed");
-    assert!(wed[0].instances[0].past, "but Tuesday has");
+    assert_eq!(wed[0].instances[0].timing, InstanceTiming::Lapsed, "but Tuesday has");
 }
 
 #[tokio::test]
@@ -2172,9 +2189,16 @@ async fn an_item_with_three_cycle_pairs_renders_three_instances_each_with_its_ow
         night[0].instances.iter().map(|i| i.cycle_id).collect();
     assert_eq!(cycle_ids.len(), 3, "each instance is keyed by its own pair");
 
-    // Only the ones whose windows have opened show up.
+    // All three are generated all day; the ones whose windows have not opened carry Pending, and
+    // it is the preset — not generation — that decides whether they are drawn.
     let morning = iterations_at(&pool, flow_id, day.and_hms_opt(8, 0, 0).unwrap()).await;
-    assert_eq!(morning[0].instances.len(), 1, "noon and evening have not come yet");
+    assert_eq!(morning[0].instances.len(), 3);
+    let timings: Vec<InstanceTiming> = morning[0].instances.iter().map(|i| i.timing).collect();
+    assert_eq!(
+        timings,
+        vec![InstanceTiming::Active, InstanceTiming::Pending, InstanceTiming::Pending],
+        "noon and evening have not come yet, and say so rather than going missing",
+    );
 }
 
 #[tokio::test]
@@ -2190,13 +2214,13 @@ async fn a_phase_windowed_habit_resolves_its_items_cycles_too() {
     let evening = iterations_at(&pool, flow_id, day.and_hms_opt(19, 0, 0).unwrap()).await;
     assert_eq!(format!("{:?}", evening[0].status), "Active");
     assert_eq!(evening[0].instances.len(), 1);
-    assert!(!evening[0].instances[0].past);
+    assert_eq!(evening[0].instances[0].timing, InstanceTiming::Active);
     let scope = evening[0].instances[0].time_scope.as_ref().unwrap();
     assert_eq!(scope_shape(&pool, scope.start_id).await, ("part_of_day".to_string(), Some("evening".to_string())));
 
     // The band ends at 22:00, and so does the iteration around it.
     let late = iterations_at(&pool, flow_id, day.and_hms_opt(23, 0, 0).unwrap()).await;
-    assert!(late[0].instances[0].past);
+    assert_eq!(late[0].instances[0].timing, InstanceTiming::Lapsed);
 }
 
 #[tokio::test]
@@ -2212,7 +2236,7 @@ async fn an_unpaired_item_still_renders_once_with_no_window_of_its_own() {
     assert_eq!(instance.item_id, item_id);
     assert_eq!(instance.cycle_id, NO_CYCLE);
     assert!(instance.time_scope.is_none(), "no pair, no window — it inherits the iteration's");
-    assert!(!instance.past);
+    assert_eq!(instance.timing, InstanceTiming::Active);
 }
 
 #[tokio::test]

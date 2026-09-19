@@ -1250,7 +1250,7 @@ describe("injectHabitInstances", () => {
   ): HabitIteration {
     return { index, anchor_scope_id: 100 + index, anchor_date: `2026-01-0${index + 1}`, status, instances };
   }
-  /** One occurrence of a flow item, unpaired and open unless overridden. */
+  /** One occurrence of a flow item, unpaired and inside its window unless overridden. */
   function inst(
     itemType: FlowItemType,
     itemId: number,
@@ -1258,7 +1258,7 @@ describe("injectHabitInstances", () => {
   ): HabitInstance {
     return {
       item_type: itemType, item_id: itemId, cycle_id: NO_CYCLE,
-      time_scope: null, plan: null, past: false, ...overrides,
+      time_scope: null, plan: null, timing: "active", ...overrides,
     };
   }
   /** A stored status Modification for one occurrence. */
@@ -1492,8 +1492,8 @@ describe("injectHabitInstances", () => {
       [mkFlow({ target_type: "project", target_id: 96 })],
       // anchor_scope_id = 100 — the whole iteration's window has passed, and its occurrences with it
       [[iter(0, "lapsed", [
-        inst("flow_task", 4, { past: true }),
-        inst("flow_task", 5, { past: true }),
+        inst("flow_task", 4, { timing: "lapsed" }),
+        inst("flow_task", 5, { timing: "lapsed" }),
       ])]],
       LABELS,
       [],
@@ -1594,7 +1594,7 @@ describe("injectHabitInstances", () => {
     it("reads Lapsed once its own window has passed, while the iteration is still Active", () => {
       // The bug: `timing` was hard-coded from the iteration, so a Morning item read Active all day.
       const iteration = inject(iter(0, "active", [
-        inst("flow_task", 4, { cycle_id: 11, time_scope: { start_id: 70, end_id: 70 }, past: true }),
+        inst("flow_task", 4, { cycle_id: 11, time_scope: { start_id: 70, end_id: 70 }, timing: "lapsed" }),
       ]));
       expect(iteration?.timing).toBe("active"); // the day has not passed
       const item = iteration?.children[0];
@@ -1612,10 +1612,17 @@ describe("injectHabitInstances", () => {
       expect(item?.archived).not.toBe(true);
     });
 
-    it("does not render an occurrence whose window has not opened yet", () => {
-      const iteration = inject(iter(0, "active", []));
-      expect(iteration?.children).toHaveLength(0); // this evening's item appears this evening
+    it("stamps an occurrence whose window has not opened yet as Pending", () => {
+      // The bug: an unopened occurrence was dropped during generation, so no preset could show it
+      // — All included. It is drawn now, and Pending is what says its window has not come.
+      const iteration = inject(iter(0, "active", [
+        inst("flow_task", 4, { cycle_id: 11, time_scope: { start_id: 73, end_id: 73 }, timing: "pending" }),
+      ]));
       expect(iteration?.timing).toBe("active"); // the iteration itself is unaffected
+      const item = iteration?.children[0];
+      expect(item?.timing).toBe("pending");
+      expect(item?.resolution).toBeUndefined(); // nothing has happened to it yet
+      expect(item?.archived).not.toBe(true);
     });
 
     it("draws one node per cycle pair, each with its own window and its own status", () => {
@@ -1623,7 +1630,7 @@ describe("injectHabitInstances", () => {
       // obeyed and the virtual path did not.
       const iteration = inject(
         iter(0, "active", [
-          inst("flow_task", 4, { cycle_id: 11, time_scope: { start_id: 70, end_id: 70 }, past: true }),
+          inst("flow_task", 4, { cycle_id: 11, time_scope: { start_id: 70, end_id: 70 }, timing: "lapsed" }),
           inst("flow_task", 4, { cycle_id: 12, time_scope: { start_id: 73, end_id: 73 }, plan: { start_id: 90, end_id: 91 } }),
         ]),
         // Only the morning occurrence is done; the evening one is untouched.

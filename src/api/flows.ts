@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { TimeScope } from "@/api/time-scope";
+import type { Timing } from "@/api/scope-lifecycle";
 
 /**
  * What a Flow's root materializes as. `commitment` is how a repeating rule — a nightly
@@ -227,7 +228,9 @@ export const NO_CYCLE = 0;
  * The windows are resolved by the backend, which owns the same offset arithmetic `start` uses, so
  * a rendered occurrence and a started one cannot disagree about when "the 2nd day of week 3" is.
  *
- * An occurrence whose window has not opened yet is simply absent.
+ * An occurrence whose window has not opened yet is **present**, carrying `timing` "pending".
+ * Whether it is drawn is the status preset's decision — All shows it, Plan/Start/Do do not — which
+ * is a decision the frontend can only make about occurrences it has been given.
  */
 export interface HabitInstance {
   item_type: FlowItemType;
@@ -238,8 +241,12 @@ export interface HabitInstance {
   time_scope: TimeScope | null;
   /** The occurrence's Cycle Plan, when its pair carries one. */
   plan: TimeScope | null;
-  /** Whether its own window has passed, under the Habit's Consumption. */
-  past: boolean;
+  /**
+   * Where the occurrence sits relative to its own window: "pending" before it opens, "lapsed" once
+   * it has gone under the Habit's Consumption, "active" in between. One tri-state rather than two
+   * flags, because a window cannot both have not come and have gone.
+   */
+  timing: Timing;
 }
 
 /** A derived Habit iteration on a reference day (nothing is persisted per iteration). */

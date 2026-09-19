@@ -545,6 +545,29 @@ pub enum IterationStatus {
 /// of a UNIQUE key, and SQLite counts NULLs as distinct.
 pub const NO_CYCLE: i64 = 0;
 
+/// Where one occurrence sits relative to **its own** window at the reference instant.
+///
+/// One tri-state rather than a pair of booleans, because "its window has not come" and "its window
+/// has gone" cannot both be true and a struct with two flags could say they were. It is exactly the
+/// frontend's `Timing`, which it serializes to (`"pending"` / `"active"` / `"lapsed"`), so an
+/// occurrence node is stamped with the value the backend derived rather than one re-derived from a
+/// boolean on the other side of the wire.
+///
+/// `Pending` is not a statement about whether the occurrence is *actionable* — only about where the
+/// clock stands. What it makes possible is the All preset showing this evening's item this morning,
+/// which dropping the occurrence during generation made impossible for every preset at once.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum InstanceTiming {
+    /// Its window has not opened yet — this evening's item, seen at breakfast.
+    Pending,
+    /// Its window is open, or has passed without the Habit's Consumption closing it.
+    Active,
+    /// Its window has gone, under the Habit's Consumption — a Destructive Habit's Morning item is
+    /// Lapsed from noon, while the iteration around it is still open.
+    Lapsed,
+}
+
 /// One **virtual instance** of a flow item inside one Habit iteration: which item it draws, which
 /// of that item's cycle pairs produced it, and the concrete window that pair resolves to within
 /// this iteration.
@@ -558,8 +581,9 @@ pub const NO_CYCLE: i64 = 0;
 /// offset arithmetic would eventually disagree with this one about what "the 2nd day of week 3"
 /// means.
 ///
-/// An occurrence whose window has not opened yet is not in the list at all — the same rule one
-/// level down that withholds an iteration until its own window has begun.
+/// An occurrence whose window has not opened yet is produced like any other, carrying
+/// [`InstanceTiming::Pending`]: whether it is *visible* is a preset's decision, not generation's,
+/// and All shows everything.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct HabitInstance {
     /// Which flow-item table the instance draws (`flow_goal` / `flow_task`).
@@ -573,9 +597,8 @@ pub struct HabitInstance {
     pub time_scope: Option<TimeScope>,
     /// The occurrence's resolved Cycle Plan, when its pair carries one.
     pub plan: Option<TimeScope>,
-    /// Whether this occurrence's own window has passed, under the Habit's Consumption — a
-    /// Destructive Habit's Morning item is past from noon, while its iteration is still open.
-    pub past: bool,
+    /// Where the occurrence sits relative to its own window at the reference instant.
+    pub timing: InstanceTiming,
 }
 
 /// One derived Habit iteration: its ordinal, the scope anchoring its window, current state, and the

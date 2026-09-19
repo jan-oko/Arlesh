@@ -16,7 +16,7 @@ use std::collections::HashMap;
 
 use chrono::NaiveDateTime;
 
-use super::model::{HabitIteration, IterationStatus};
+use super::model::{HabitIteration, InstanceTiming, IterationStatus};
 
 /// A precomputed iteration window: its ordinal, anchoring scope, and half-open `[start, end)`
 /// datetime span. Supplied index-ordered from the Repetition Start.
@@ -71,29 +71,42 @@ fn iteration(slot: &SlotWindow, status: IterationStatus) -> HabitIteration {
     }
 }
 
-/// Whether one **occurrence** inside an iteration counts as past — the Consumption rule the
-/// iteration itself is classified by, applied one level down to the occurrence's own window.
+/// Where one **occurrence** inside an iteration sits relative to its own half-open
+/// `[start, end)` window — the Consumption rule the iteration itself is classified by, applied one
+/// level down, with the not-yet-opened case in front of it.
 ///
-/// A Cycle Scope gives an occurrence a window of its own, strictly inside the iteration's. Under
-/// **Destructive** that window is what bounds it: a Morning item is past from noon, hours before
-/// the day it sits in ends, which is the whole point of scoping it to the morning. Under
-/// **Accumulating** nothing lapses on the way past — an overlapping Habit's unfinished occurrence
-/// piles up exactly as its unfinished iteration does, and if a morning routine should vanish at
-/// noon, Destructive is what says so.
+/// A Cycle Scope gives an occurrence a window of its own, strictly inside the iteration's. Before
+/// that window opens the occurrence is **Pending**: this evening's item, seen at breakfast. It is
+/// still produced — which preset shows a Pending occurrence is a rendering decision, and All's
+/// contract is that it shows everything — where dropping it here would put it beyond every
+/// preset's reach.
 ///
-/// An iteration that is itself Lapsed or Missed carries everything in it with it, whatever its
-/// Consumption: a Blocking `latest` skip is not a window passing, and nothing under a skipped
-/// iteration is still open.
-pub fn instance_is_past(
+/// Once the window opens, **Destructive** is what bounds it: a Morning item is Lapsed from noon,
+/// hours before the day it sits in ends, which is the whole point of scoping it to the morning.
+/// Under **Accumulating** nothing lapses on the way past — an overlapping Habit's unfinished
+/// occurrence piles up exactly as its unfinished iteration does, and if a morning routine should
+/// vanish at noon, Destructive is what says so.
+///
+/// An iteration that is itself Lapsed or Missed carries every *started* occurrence in it with it,
+/// whatever its Consumption: a Blocking `latest` skip is not a window passing, and nothing under a
+/// skipped iteration is still open.
+pub fn instance_timing(
     consumption: Consumption,
     iteration_status: IterationStatus,
-    window_end: NaiveDateTime,
+    window: (NaiveDateTime, NaiveDateTime),
     now: NaiveDateTime,
-) -> bool {
-    if matches!(iteration_status, IterationStatus::Lapsed | IterationStatus::Missed) {
-        return true;
+) -> InstanceTiming {
+    let (start, end) = window;
+    if start > now {
+        return InstanceTiming::Pending;
     }
-    consumption == Consumption::Destructive && window_end <= now
+    if matches!(iteration_status, IterationStatus::Lapsed | IterationStatus::Missed) {
+        return InstanceTiming::Lapsed;
+    }
+    if consumption == Consumption::Destructive && end <= now {
+        return InstanceTiming::Lapsed;
+    }
+    InstanceTiming::Active
 }
 
 /// Classifies the started iterations of a Habit at `now`.

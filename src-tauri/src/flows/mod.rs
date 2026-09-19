@@ -28,7 +28,7 @@ use crate::scopes::model::{PartOfDay, Scope, ScopeId, ScopeKind};
 use crate::scopes::resolve::{interval_contains, scope_bounds};
 use crate::scopes::ScopeOperator;
 use habits::{
-    classify_iterations, expire_unanswered, instance_is_past, Catchup, Consumption, SlotWindow,
+    classify_iterations, expire_unanswered, instance_timing, Catchup, Consumption, SlotWindow,
 };
 use crate::tasks::model::{
     CommitmentId, CreateCommitmentRequest, CreateGoalRequest, CreateTaskRequest, Dependency,
@@ -1799,9 +1799,12 @@ struct HabitShape<'template> {
 /// Each pair is resolved against *this* iteration's window start, so the same template item lands
 /// on a different concrete morning every day it recurs.
 ///
-/// An occurrence whose window has not opened at `now` is **left out**, mirroring the rule one level
-/// up that withholds an iteration until its own window has begun: this evening's item appears this
-/// evening, rather than sitting Active since breakfast.
+/// An occurrence whose window has not opened at `now` is produced like any other, carrying
+/// [`InstanceTiming::Pending`](model::InstanceTiming::Pending). Generation says where the clock
+/// stands; the **preset** says what is on screen — All shows everything, Plan/Start/Do hide the
+/// not-yet-open, so this evening's item does not sit among the morning's work while still being
+/// reachable when you ask to see it all.
+/// Dropping it here instead put it beyond every preset at once, All included.
 ///
 /// **This writes.** Resolving a Cycle Scope mints the scope row it names, exactly as `start`'s
 /// gather does, which is why [`generate_habit_iterations`] is transactional.
@@ -1827,7 +1830,7 @@ async fn resolve_iteration_instances(
                 cycle_id: NO_CYCLE,
                 time_scope: None,
                 plan: None,
-                past: instance_is_past(shape.consumption, status, slot.end, now),
+                timing: instance_timing(shape.consumption, status, (slot.start, slot.end), now),
             });
             continue;
         }
@@ -1842,16 +1845,13 @@ async fn resolve_iteration_instances(
                     }
                     None => (None, None, slot.start, slot.end),
                 };
-            if start > now {
-                continue;
-            }
             instances.push(HabitInstance {
                 item_type: item_type.clone(),
                 item_id: *item_id,
                 cycle_id: pair.id,
                 time_scope,
                 plan,
-                past: instance_is_past(shape.consumption, status, end, now),
+                timing: instance_timing(shape.consumption, status, (start, end), now),
             });
         }
     }

@@ -28,7 +28,7 @@ import type {
   HabitItemStatus, InstanceType, TargetRef,
 } from "@/api/flows";
 import { NO_CYCLE } from "@/api/flows";
-import type { ItemLifecycle } from "@/api/scope-lifecycle";
+import type { ItemLifecycle, Timing } from "@/api/scope-lifecycle";
 import type { MindmapNode, NodeKind, FlowCyclePair, FlowItemDep } from "@/utils/tree-layout";
 import { entityNodeId, flowTargetNodeId } from "@/utils/tree-layout";
 import { formatScopeCore } from "@/utils/scope-format";
@@ -109,15 +109,22 @@ type IterationLifecycle = Pick<MindmapNode, "timing" | "resolution" | "archived"
 const EXPIRED_LIFECYCLE: IterationLifecycle = { timing: "lapsed", archived: true };
 
 /**
- * A Task/Goal iteration's derived lifecycle: once its window has passed it is archived as a unit,
- * and its Resolution says whether it was completed or missed.
+ * A Task/Goal iteration's — or one of its occurrences' — derived lifecycle, from where its window
+ * sits: once the window has passed it is archived as a unit, and its Resolution says whether it was
+ * completed or missed.
  *
- * It has no expiry case, and cannot: a Verdict Window belongs to the Commitment kind, so the
- * backend derives `expired` only for a commitment Habit. A work iteration is Active until its
- * window passes and settled after.
+ * "pending" reaches here only from an **occurrence**, whose Cycle Scope can open later than the
+ * iteration around it; an iteration root is never pending, because the backend generates only
+ * iterations whose own window has begun. A pending occurrence gets no Resolution and no Archival:
+ * nothing has happened to it yet, and calling it Missed before its window opens would be the app
+ * concluding an outcome from a clock that has not reached it.
+ *
+ * There is no expiry case, and cannot be: a Verdict Window belongs to the Commitment kind, so the
+ * backend derives `expired` only for a commitment Habit.
  */
-function workIterationLifecycle(past: boolean, done: boolean): IterationLifecycle {
-  if (!past) return { timing: "active" };
+function workIterationLifecycle(timing: Timing, done: boolean): IterationLifecycle {
+  if (timing === "pending") return { timing: "pending" };
+  if (timing === "active") return { timing: "active" };
   return { timing: "lapsed", resolution: done ? "completed" : "missed", archived: true };
 }
 
@@ -209,9 +216,9 @@ function templateHierarchy(items: ReadonlyMap<string, TemplateItem>): {
  * One occurrence of one template item, as a virtual node.
  *
  * The window is the backend's: `instance.time_scope` is the item's Cycle Scope resolved against
- * *this* iteration's window, and `instance.past` is whether that window has gone under the Habit's
+ * *this* iteration's window, and `instance.timing` is where that window stands under the Habit's
  * Consumption. Both are stamped like any other node's, which is what makes a Morning item read
- * Active in the morning and Lapsed in the afternoon instead of Active all day.
+ * Pending at dawn, Active in the morning and Lapsed in the afternoon instead of Active all day.
  */
 function occurrenceNode(
   flow: Flow,
@@ -238,7 +245,7 @@ function occurrenceNode(
     ...(color !== undefined ? { color } : {}),
     timeScope: instance.time_scope,
     plan: instance.plan,
-    ...(expired ? EXPIRED_LIFECYCLE : workIterationLifecycle(instance.past, done)),
+    ...(expired ? EXPIRED_LIFECYCLE : workIterationLifecycle(instance.timing, done)),
     isPrivate: item.is_private,
     position: item.position,
     tagIds: [],
@@ -251,13 +258,14 @@ function occurrenceNode(
  *
  * The iteration carries its own occurrence list, resolved backend-side: an item with N cycle pairs
  * appears N times — SPEC's "a flow item with N pairs produces N items", which starting the flow has
- * always obeyed — each with its own resolved window, and an occurrence whose window has not opened
- * yet is not in the list at all.
+ * always obeyed — each with its own resolved window, including the ones whose windows have not
+ * opened yet (those carry `timing` "pending"; the filter, not this builder, decides whether they
+ * are drawn).
  *
- * An item that contributes no occurrence therefore takes its **whole subtree** with it: children
- * nest under their parent's first occurrence (as they do when the flow is started), so with no
- * parent node there is nowhere for them to hang, and hoisting them to the iteration root would
- * redraw the hierarchy rather than defer it. They appear together when the parent's window opens.
+ * Every template item therefore contributes at least one occurrence, and a subtree always has a
+ * parent to hang under — children nest under their parent's first occurrence, as they do when the
+ * flow is started. The `continue` below is a guard against an instance list that names no item at
+ * all, not a window rule.
  *
  * Each occurrence is individually completable (`habitItem`), keyed by its cycle pair as well as its
  * item; its status comes from `statuses` (`"itemType-itemId-cycleId-scopeId"` → stored status).
@@ -294,7 +302,8 @@ function buildIterationItems(
     const key = itemKey(next.entry.itemType, next.entry.item.id);
     const drawn = occurrences.get(key) ?? [];
     const [first] = drawn;
-    // No occurrence: this item's window has not opened, and neither has its subtree's place.
+    // No occurrence at all — nothing in the iteration named this item, so there is nowhere for
+    // its subtree to hang either. Not a window rule: an unopened window still draws an occurrence.
     if (first === undefined) continue;
     next.host.push(...drawn);
     for (const child of childrenOf.get(key) ?? []) {
@@ -390,7 +399,7 @@ export function injectHabitInstances(
         ...(host.color !== undefined ? { color: host.color } : {}),
         ...(isCommitment
           ? commitmentIterationLifecycle(past, expired, rootVerdict)
-          : workIterationLifecycle(past, rootDone)),
+          : workIterationLifecycle(past ? "lapsed" : "active", rootDone)),
         isPrivate: flow.is_private,
         position: iteration.index,
         tagIds: [],

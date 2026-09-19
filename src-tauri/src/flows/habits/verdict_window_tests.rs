@@ -99,22 +99,55 @@ fn a_habit_with_no_verdict_window_leaves_every_iteration_answerable() {
     );
 }
 
+/// The Morning band of 2026-01-05: `[06:00, 12:00)`.
+const MORNING: (&str, &str) = ("2026-01-05T06:00:00", "2026-01-05T12:00:00");
+
+fn window(band: (&str, &str)) -> (NaiveDateTime, NaiveDateTime) {
+    (at(band.0), at(band.1))
+}
+
 #[test]
-fn a_destructive_occurrence_is_past_once_its_own_window_ends() {
+fn a_destructive_occurrence_is_lapsed_once_its_own_window_ends() {
     // A Morning band inside an open day: over at noon, hours before the iteration is.
-    let morning_end = at("2026-01-05T12:00:00");
-    assert!(!instance_is_past(
+    assert_eq!(
+        instance_timing(
+            Consumption::Destructive,
+            IterationStatus::Active,
+            window(MORNING),
+            at("2026-01-05T09:00:00"),
+        ),
+        InstanceTiming::Active,
+    );
+    assert_eq!(
+        instance_timing(
+            Consumption::Destructive,
+            IterationStatus::Active,
+            window(MORNING),
+            at("2026-01-05T13:00:00"),
+        ),
+        InstanceTiming::Lapsed,
+    );
+}
+
+#[test]
+fn an_occurrence_whose_window_has_not_opened_is_pending_under_every_consumption() {
+    // Dawn: the day the occurrence sits in has begun, the Morning band has not. It is neither
+    // Active nor Lapsed, and no Consumption changes that — a window that has not opened cannot
+    // have been consumed.
+    let dawn = at("2026-01-05T05:00:00");
+    for consumption in [
         Consumption::Destructive,
-        IterationStatus::Active,
-        morning_end,
-        at("2026-01-05T09:00:00"),
-    ));
-    assert!(instance_is_past(
-        Consumption::Destructive,
-        IterationStatus::Active,
-        morning_end,
-        at("2026-01-05T13:00:00"),
-    ));
+        Consumption::Overlapping,
+        Consumption::Blocking(Catchup::Next),
+    ] {
+        for status in [IterationStatus::Active, IterationStatus::Lapsed, IterationStatus::Missed] {
+            assert_eq!(
+                instance_timing(consumption, status, window(MORNING), dawn),
+                InstanceTiming::Pending,
+                "an unopened window is Pending, never folded into Active or Lapsed"
+            );
+        }
+    }
 }
 
 #[test]
@@ -122,13 +155,14 @@ fn an_accumulating_occurrence_survives_its_own_window() {
     for consumption in
         [Consumption::Overlapping, Consumption::Blocking(Catchup::Next)]
     {
-        assert!(
-            !instance_is_past(
+        assert_eq!(
+            instance_timing(
                 consumption,
                 IterationStatus::Active,
-                at("2026-01-05T12:00:00"),
+                window(MORNING),
                 at("2026-01-05T23:00:00"),
             ),
+            InstanceTiming::Active,
             "an accumulating habit's occurrence piles up like its iteration does"
         );
     }
@@ -137,18 +171,24 @@ fn an_accumulating_occurrence_survives_its_own_window() {
 #[test]
 fn a_lapsed_or_missed_iteration_carries_its_occurrences_with_it() {
     // Window still open by the clock, but the iteration around it is not.
-    let later = at("2026-01-09T00:00:00");
+    let started = (at("2026-01-05T00:00:00"), at("2026-01-09T00:00:00"));
     let now = at("2026-01-05T09:00:00");
     for status in [IterationStatus::Lapsed, IterationStatus::Missed] {
-        assert!(instance_is_past(Consumption::Overlapping, status, later, now));
+        assert_eq!(
+            instance_timing(Consumption::Overlapping, status, started, now),
+            InstanceTiming::Lapsed,
+        );
     }
 }
 
 #[test]
 fn an_active_or_done_iteration_leaves_an_unexpired_occurrence_open() {
-    let later = at("2026-01-09T00:00:00");
+    let started = (at("2026-01-05T00:00:00"), at("2026-01-09T00:00:00"));
     let now = at("2026-01-05T09:00:00");
     for status in [IterationStatus::Active, IterationStatus::Done, IterationStatus::Expired] {
-        assert!(!instance_is_past(Consumption::Destructive, status, later, now));
+        assert_eq!(
+            instance_timing(Consumption::Destructive, status, started, now),
+            InstanceTiming::Active,
+        );
     }
 }
