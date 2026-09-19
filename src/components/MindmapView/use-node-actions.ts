@@ -62,9 +62,11 @@ export function useNodeActions({
       // goal toggles achieved; a task cycles todo → in_progress → done. `null` clears the Modification
       // (back to the base status). A goal's "achieved" is stored canonically as `done`.
       //
-      // A commitment iteration is excluded: it is kept or broken, never advanced, and its two
-      // verdict controls live in List View beside every other commitment's. Like a real Commitment,
-      // it has no status control on the canvas at all.
+      // A commitment iteration is excluded: it is kept or broken, never advanced. Like a real
+      // Commitment it has no status control to click on the canvas — the tick and the cross are
+      // List View's — but the canvas is not silent about it either: Enter cycles its verdict and X
+      // records Broken, both through `useCommitmentVerdict`, which writes an iteration's verdict as
+      // its Modification exactly as this branch writes an ordinary instance's status.
       if (node.habitItem !== undefined && node.kind !== "commitment") {
         const { flowId, itemType, itemId, scopeId } = node.habitItem;
         let next: string | null;

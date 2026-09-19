@@ -21,7 +21,7 @@
   "createSibling": "Create a sibling cell",
   "insertParent": "Insert a parent above",
   "focusRoot": "Focus the current root (nothing selected)",
-  "cycleStatus": "Cycle status / toggle achieved (double-tap enters a subtree)",
+  "cycleStatus": "Cycle status / toggle achieved / cycle a commitment's verdict (double-tap enters a subtree)",
   "cycleRowStatus": "Cycle the selected row's status",
   "delete": "Delete",
   "toggleCollapsed": "Collapse or expand",

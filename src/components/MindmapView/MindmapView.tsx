@@ -44,6 +44,7 @@ import ConvertToFlowModal from "@/components/ConvertToFlowModal/ConvertToFlowMod
 import WarningConfirmModal from "@/components/WarningConfirmModal/WarningConfirmModal";
 import BacklogConfirmModal from "@/components/BacklogConfirmModal/BacklogConfirmModal";
 import { useTaskBacklog } from "@/hooks/use-task-backlog";
+import { useCommitmentVerdict } from "@/hooks/use-commitment-verdict";
 import DeleteConfirmModal from "@/components/DeleteConfirmModal/DeleteConfirmModal";
 import styles from "./MindmapView.module.css";
 
@@ -340,6 +341,12 @@ export default function MindmapView() {
     findNode: findNodeById, reload, showToast,
   });
 
+  // The same hook the List View's tick and cross go through, so the canvas grows no second write
+  // route: a real Commitment updates its row, a Habit iteration its Modification.
+  const { markBroken, cycleVerdict } = useCommitmentVerdict({
+    findNode: findNodeById, reload, showToast,
+  });
+
   const handleConfirmDelete = useCallback(() => {
     if (deleteTargets === null) return;
 
@@ -484,6 +491,8 @@ export default function MindmapView() {
     onDelete,
     onToggleCollapsed: toggleCollapsed,
     onCycleStatus: onStatusClick,
+    onCycleVerdict: cycleVerdict,
+    onMarkBroken: markBroken,
     onDeselect: () => { selectNode(null); },
     onExitSubtree,
     onExitToRoot,
