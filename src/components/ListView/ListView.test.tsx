@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import ListView from "./ListView";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useListFilterStore } from "@/stores/use-list-filter-store";
@@ -500,6 +500,56 @@ describe("ListView", () => {
       const selected = container.querySelector("[class*='cardSelected']");
       expect(selected).not.toBeNull();
       expect(selected?.textContent).toContain("task-a");
+    });
+  });
+  describe("focus exemption", () => {
+    const todo = () => row({ node: n("task-1", "task", { status: "todo" }) });
+    const done = () => row({ node: n("task-1", "task", { status: "done" }) });
+    const neighbour = () => row({ node: n("task-2", "task", { status: "todo" }) });
+
+    /** Selects task-1 under Plan, then completes it — the edit that used to make it vanish. */
+    function completeSelectedTaskUnderPlan() {
+      useFilterStore.setState({ filter: { ...DEFAULT_FILTER, statusMode: "plan" } });
+      mockUseListData.mockReturnValue(listData({ rows: [todo(), neighbour()] }));
+      const view = render(<ListView />);
+      fireEvent.click(screen.getByText("task-1"));
+      mockUseListData.mockReturnValue(listData({ rows: [done(), neighbour()] }));
+      view.rerender(<ListView />);
+      return view;
+    }
+
+    it("leaves a task you complete under Plan on screen", () => {
+      completeSelectedTaskUnderPlan();
+      expect(screen.getByText("task-1")).toBeInTheDocument();
+    });
+
+    it("dims it, so it reads as something the filter no longer wants", () => {
+      const { container } = completeSelectedTaskUnderPlan();
+      const dimmed = container.querySelector("[class*='cardFocusExempt']");
+      expect(dimmed?.textContent).toContain("task-1");
+    });
+
+    it("removes it as soon as the selection moves to another row", () => {
+      completeSelectedTaskUnderPlan();
+      fireEvent.click(screen.getByText("task-2"));
+      expect(screen.queryByText("task-1")).not.toBeInTheDocument();
+    });
+
+    it("removes it as soon as Escape clears the selection", () => {
+      completeSelectedTaskUnderPlan();
+      fireEvent.keyDown(window, { key: "Escape", code: "Escape" });
+      expect(screen.queryByText("task-1")).not.toBeInTheDocument();
+    });
+
+    it("removes it as soon as any filter is toggled", () => {
+      completeSelectedTaskUnderPlan();
+      act(() => { useFilterStore.getState().togglePrivateMode(); });
+      expect(screen.queryByText("task-1")).not.toBeInTheDocument();
+    });
+
+    it("leaves every other row exactly as the filter had it", () => {
+      completeSelectedTaskUnderPlan();
+      expect(screen.getByText("task-2")).toBeInTheDocument();
     });
   });
 });

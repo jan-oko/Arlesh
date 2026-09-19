@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  matchesPillGroup, deriveScopeStateTokens, filterTaskList, withCurrentPillDimensions,
+  matchesPillGroup, deriveScopeStateTokens, filterTaskList, filterTaskListWithFocus, withCurrentPillDimensions,
   DEFAULT_LIST_FILTER,
 } from "./list-filter";
 import type { PillFilter, ListFilterState, TaskListRow } from "./list-filter";
@@ -290,5 +290,42 @@ describe("withCurrentPillDimensions", () => {
       pills: { parent: ["goal-1", { value: "goal-2", mode: "nope" }, { value: "goal-3", mode: "all" }] },
     });
     expect(restored.pills.parent).toEqual([{ value: "goal-3", mode: "all" }]);
+  });
+});
+
+describe("filterTaskListWithFocus — the focus exemption", () => {
+  const done = row({ node: n("task-done", "task", { status: "done" }) });
+  const todo = row({ node: n("task-todo", "task", { status: "todo" }) });
+
+  it("keeps the row you just completed under Plan, for as long as it is focused", () => {
+    const { rows, exemptedIds } = filterTaskListWithFocus([done, todo], sf({ statusMode: "plan" }), lf(), "task-done");
+    expect(rows.map((r) => r.node.id)).toEqual(["task-done", "task-todo"]);
+    expect(exemptedIds.has("task-done")).toBe(true);
+  });
+
+  it("lets it go once focus moves to another row", () => {
+    const { rows } = filterTaskListWithFocus([done, todo], sf({ statusMode: "plan" }), lf(), "task-todo");
+    expect(rows.map((r) => r.node.id)).toEqual(["task-todo"]);
+  });
+
+  it("lets it go when nothing is focused", () => {
+    const { rows } = filterTaskListWithFocus([done, todo], sf({ statusMode: "plan" }), lf(), null);
+    expect(rows.map((r) => r.node.id)).toEqual(["task-todo"]);
+  });
+
+  it("does not leak into the filter's own answer — filterTaskList still drops it", () => {
+    expect(filterTaskList([done, todo], sf({ statusMode: "plan" }), lf()).map((r) => r.node.id)).toEqual(["task-todo"]);
+  });
+
+  it("overrides a List-View pill filter too, not just the status preset", () => {
+    const listFilter = lf({ pills: { ...DEFAULT_LIST_FILTER.pills, taskStatus: [{ value: "todo", mode: "any" }] } });
+    const { rows, exemptedIds } = filterTaskListWithFocus([done, todo], sf(), listFilter, "task-done");
+    expect(rows.map((r) => r.node.id)).toEqual(["task-done", "task-todo"]);
+    expect(exemptedIds.has("task-done")).toBe(true);
+  });
+
+  it("marks nothing exempt when the focused row matches on its own merits", () => {
+    const { exemptedIds } = filterTaskListWithFocus([done, todo], sf({ statusMode: "plan" }), lf(), "task-todo");
+    expect(exemptedIds.size).toBe(0);
   });
 });

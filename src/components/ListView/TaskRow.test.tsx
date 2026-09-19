@@ -36,6 +36,7 @@ function baseProps(overrides: Partial<ComponentProps<typeof TaskRow>> = {}) {
     row: row(),
     visibleDepth: 0,
     isSelected: false,
+    isFocusExempt: false,
     isEditingTitle: false,
     onSelect: vi.fn(),
     onCycleStatus: vi.fn(),

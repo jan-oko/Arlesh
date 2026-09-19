@@ -10,6 +10,8 @@ interface Props {
   orientation: Orientation;
   collapsedNodeIds: ReadonlySet<string>;
   selectedNodeIds: ReadonlySet<string>;
+  /** Nodes on screen only by the focus exemption — the filter would have dropped them, so they render dimmed. */
+  focusExemptIds: ReadonlySet<string>;
   editingNodeId: string | null;
   dragTargetId: string | null;
   dragSourceId: string | null;
@@ -25,7 +27,7 @@ interface Props {
   onStatusClick: (id: string) => void;
 }
 
-export default function MindmapTree({ root, orientation, collapsedNodeIds, selectedNodeIds, editingNodeId, dragTargetId, dragSourceId, hasClipboard, onSelect, onCtrlClick, onShiftClick, onDoubleClick, onCommitEdit, onCancelEdit, onContextAction, onDragStart, onStatusClick }: Props) {
+export default function MindmapTree({ root, orientation, collapsedNodeIds, selectedNodeIds, focusExemptIds, editingNodeId, dragTargetId, dragSourceId, hasClipboard, onSelect, onCtrlClick, onShiftClick, onDoubleClick, onCommitEdit, onCancelEdit, onContextAction, onDragStart, onStatusClick }: Props) {
   const positions = computeLayout(root, collapsedNodeIds, orientation);
 
   const edges: Array<{ from: Position; to: Position; fromHeight: number; toHeight: number; key: string }> = [];
@@ -73,6 +75,7 @@ export default function MindmapTree({ root, orientation, collapsedNodeIds, selec
             parentKind={parentKindById.get(node.id) ?? null}
             position={pos}
             isSelected={selectedNodeIds.has(node.id)}
+            isFocusExempt={focusExemptIds.has(node.id)}
             isCollapsed={collapsedNodeIds.has(node.id)}
             isDragTarget={dragTargetId === node.id}
             isDragSource={dragSourceId === node.id}
