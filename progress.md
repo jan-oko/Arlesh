@@ -1655,3 +1655,36 @@ would conflict with #21; using the broken shape would ship a flag that cannot be
 calls for a **named three-variant enum** inside a single `Option` instead — `Some(Inherit)` writes
 NULL. It needs nothing from #21, conflicts with nothing, and names the three states rather than
 nesting them.
+
+### Coverage engines: two flags that must never appear in a brief
+
+Measured by the CI session on PR #20 and recorded here because both look like free wins.
+
+**`cargo tarpaulin --engine llvm` silently loses coverage data. It is not stricter, it is wrong.**
+Same commit, same denominator:
+
+| file | `--engine ptrace` | `--engine llvm` | `cargo-llvm-cov` |
+|---|---|---|---|
+| `src/infos/mod.rs` | 74/74 (100%) | **17/74 (23%)** | 38/38 (100%) |
+| `src/block_reasons/mod.rs` | 40/41 | **10/41** | 32/32 (100%) |
+
+Neither file holds an inline `#[cfg(test)]` block, so no test-code accounting explains it — it is
+dropped profraw data, and tarpaulin's own README warns about fork and thread unsafety while we are
+`#[tokio::test]` throughout. It reports 89.44% against ptrace's 91.01% on an identical tree. Anyone
+proposing it with a floor of 89 "because it's stricter" would be turning coverage **off** for
+`infos/mod.rs` and calling it rigour.
+
+**`--no-dead-code` does not merely regress — the test binaries fail to load.** Corrupted
+`DT_NEEDED` strings (`libgdk_pixbuf?2.0.so.?`): without `-Clink-dead-code` the section layout
+shifts and the ptrace engine writes its `0xCC` breakpoints into `.dynstr` instead of `.text`.
+
+**Where the ~20 minutes went**, for anyone tempted to optimise the wrong half: ptrace machinery,
+not measurement. ~24.5s of flat setup per test binary against 38.8s of actual test execution —
+441s of a 480s run phase. It scales with the 560-crate dependency graph, not with our code, which
+is why binary consolidation cut the run phase to 159s.
+
+**Local coverage stays in agent briefs until PR #20 merges.** `git ls-tree -r origin/master --
+.github/` returns nothing — there is no CI on master, and `gh pr checks` on an open PR returns only
+GitGuardian, an external app. Until #20 lands, dropping the local step is not trading a slow gate
+for a fast one, it is trading a gate for none. It comes out of the brief template the hour #20
+merges.
