@@ -1779,3 +1779,52 @@ is new surface area, not a pre-existing bug, which is why it is a merge question
 **Both new PRs merge clean into master** as they stand. They share four files — `CHANGELOG.md`,
 `SPEC.md`, `use-node-actions.ts` and its test — so whichever lands second needs its base merged
 again, which is the orchestrator's job and not the agent's.
+
+### PR #26 — `Arlesh-2gm`, mark a Task agentic
+
+`worktree-task-agentic` → master, gate green: 94 files / **1337 tests**, `cargo test` 336 lib tests
+plus every integration suite, tarpaulin **91.14%** (3921/4302, −0.22%).
+
+The tri-state landed as briefed — a named enum in one `Option`, no `Option<Option<_>>`, no `wire.rs`:
+
+```rust
+pub enum TaskAgentic { Inherit, Yes, No }
+pub agentic: Option<TaskAgentic>,   // None = unchanged; Some(Inherit) writes NULL
+```
+
+Two tests pin the exact failure the brief was written to avoid: one deserializes `{}` against
+`{"agentic":"inherit"}` and asserts they differ, one asserts `Some(Inherit)` clears a stored `true`
+while an absent field keeps it. Persisted-filter survival went through the existing
+`withCurrentPillDimensions` helper rather than a custom merge, with a test that deletes `agentic`
+from a stored pills map and asserts it returns empty.
+
+**I caused a migration collision and it had to be fixed after the fact.** The brief I sent this
+agent said `0029`, and so did the brief I sent `habit-cycle-scope`. My report to the user said 0031
+for this one — that was the intent, but the intent is not what the agent received, and the agent did
+exactly what it was told. Both branches shipped an `0029`. Renumbered here to **0031** (0029 is
+#25's, 0030 is #22's): file contents untouched so the checksum is unchanged, the CHANGELOG sentence
+naming the migration number was dropped as an implementation detail rather than behaviour, and
+`cargo test` re-run afterwards — 336 lib tests plus every integration suite, 0 failed. Coverage was
+not re-run; renaming a `.sql` file cannot move it.
+
+The lesson from the last round was right and I applied half of it. Assigning numbers centrally is
+worthless if the assignment is not in the brief text itself — **the number in the brief is the only
+one that exists.**
+
+**The tarpaulin slot is raced by construction, confirmed by collision.** Every agent polls
+`pgrep -x cargo-tarpaulin` and starts the moment it is empty, so two waiters reliably fire together:
+this agent's run and habit-cycle-scope's launched **one second apart** (18:01:23 / 18:01:24,
+`/proc/<pid>/cwd` confirming different worktrees). It aborted its own run and **discarded those
+numbers rather than reporting them** — the 91.14% above is from a solo run started 18:14:29. Polling
+plus jitter only lowers the odds; a `flock` on a shared lockfile around the tarpaulin invocation is
+what makes the wait actually exclusive. That belongs in the brief template.
+
+**A merge-time reconciliation is owed on PR #21, and it is bigger than the agent's note.** Master's
+`tasks/model.rs` holds **eight** `Option<Option<_>>` fields and **none** of them is guarded, so
+clearing a delegate, a Time Scope, an on-scope-exit, a Plan or a Verdict Window from the UI is a
+silent no-op today. #21 guards six of them — but it was cut before the commitments stack landed, so
+`UpdateCommitmentRequest::time_scope` and `UpdateCommitmentRequest::verdict_window` **did not exist
+on its branch and will arrive unguarded when it merges**. They must be given
+`#[serde(default, deserialize_with = "crate::wire::null_clears")]` as part of merging #21, not
+afterwards. (`flows/model.rs` is the reverse case: master already guards 5 of 10 from an earlier PR,
+and #21 completes it to 10.)
