@@ -348,6 +348,15 @@ describe("validParentKinds", () => {
     expect(validParentKinds("project")).toEqual(["aspect", "project"]);
   });
 
+  it("lets a Commitment sit anywhere a Task can, plus inside another Commitment", () => {
+    expect(validParentKinds("commitment")).toEqual(["aspect", "domain", "project", "goal", "task", "commitment"]);
+  });
+
+  it("refuses a Commitment under a Tag or an Info, like every other real node", () => {
+    expect(validParentKinds("commitment")).not.toContain("tag");
+    expect(validParentKinds("commitment")).not.toContain("info");
+  });
+
   it("restricts a Domain to an Aspect, Domain or Project", () => {
     expect(validParentKinds("domain")).toEqual(["aspect", "domain", "project"]);
   });

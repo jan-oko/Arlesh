@@ -849,6 +849,7 @@ describe("useKeyboardMindmap — Shift+initial creates a typed child", () => {
     ["t", "task"],
     ["i", "info"],
     ["f", "flow"],
+    ["c", "commitment"],
   ];
 
   for (const [key, kind] of CHORDS) {
@@ -866,6 +867,21 @@ describe("useKeyboardMindmap — Shift+initial creates a typed child", () => {
       expect(opts.onCreateTypedChild).not.toHaveBeenCalled();
     });
   }
+
+  it("leaves bare C centering on the selection, not creating a commitment", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("c");
+    expect(opts.onCenterOnNode).toHaveBeenCalledWith("task-1");
+    expect(opts.onCreateTypedChild).not.toHaveBeenCalled();
+  });
+
+  it("leaves Ctrl+C copying, not creating a commitment", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("c", { ctrlKey: true });
+    expect(opts.onCreateTypedChild).not.toHaveBeenCalled();
+  });
 
   it("leaves bare F converting the selection to a Flow", () => {
     const opts = baseOptions();

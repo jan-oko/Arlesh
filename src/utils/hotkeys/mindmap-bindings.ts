@@ -154,6 +154,9 @@ const TYPED_CHILD_CHORDS: ReadonlyArray<{ code: string; kind: TypedChildKind; la
   { code: "KeyP", kind: "project", labelKey: "createProjectChild" },
   { code: "KeyG", kind: "goal", labelKey: "createGoalChild" },
   { code: "KeyT", kind: "task", labelKey: "createTaskChild" },
+  // Shift+C is free: bare C centres on the selection and Ctrl+C copies, and strict chord
+  // matching keeps all three apart.
+  { code: "KeyC", kind: "commitment", labelKey: "createCommitmentChild" },
   { code: "KeyI", kind: "info", labelKey: "createInfoChild" },
   { code: "KeyF", kind: "flow", labelKey: "createFlowChild" },
 ];

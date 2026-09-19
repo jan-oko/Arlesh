@@ -246,7 +246,7 @@ export function isValidDropTarget(sourceKind: NodeKind, targetKind: NodeKind): b
  * inherit-the-parent default. Deliberately the six *named* kinds a user reaches for: Commitment
  * has its own creation gesture, and flow items are spawned by Tab from inside their flow.
  */
-export const TYPED_CHILD_KINDS = ["domain", "project", "goal", "task", "info", "flow"] as const;
+export const TYPED_CHILD_KINDS = ["domain", "project", "goal", "task", "commitment", "info", "flow"] as const;
 
 /** One of the kinds a Shift+initial chord can create. */
 export type TypedChildKind = (typeof TYPED_CHILD_KINDS)[number];
