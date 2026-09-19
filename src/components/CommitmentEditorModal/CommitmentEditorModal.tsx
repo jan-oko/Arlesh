@@ -28,6 +28,8 @@ interface Props {
   node: MindmapNode;
   allTags: Domain[];
   domainNames: Map<number, string>;
+  /** Overrides the "Edit commitment" title — the create path opens the same fields on a blank node. */
+  heading?: string;
   onSave: (data: CommitmentSaveData) => Promise<void>;
   onClose: () => void;
 }
@@ -41,7 +43,7 @@ interface Props {
  * is a **Verdict** — three equal choices rather than a cycle, so Broken is never one stray press
  * away from Kept — and a **Verdict Window**.
  */
-export default function CommitmentEditorModal({ node, allTags, domainNames, onSave, onClose }: Props) {
+export default function CommitmentEditorModal({ node, allTags, domainNames, heading, onSave, onClose }: Props) {
   useInputCapture();
   const { t } = useTranslation(["editor", "status"]);
   const [title, setTitle] = useState(node.title);
@@ -63,9 +65,10 @@ export default function CommitmentEditorModal({ node, allTags, domainNames, onSa
     try {
       await onSave({ title: title.trim(), verdict, tagIds, timeScope, verdictWindow, isPrivate });
     } catch (err) {
-      // Clearing the last window above a commitment comes back refused, because a commitment
-      // that can never come due is not written. The message says so rather than the save
-      // silently doing nothing.
+      // A commitment that can never come due is not written — whether that is a new one saved
+      // with no window in reach, or an edit clearing the last window above an existing one. The
+      // message says so, in the editor holding the fields that would answer it, rather than the
+      // save silently doing nothing.
       setSaveError(getErrorMessage(err));
       setIsSaving(false);
     }
@@ -81,7 +84,7 @@ export default function CommitmentEditorModal({ node, allTags, domainNames, onSa
 
   return (
     <EditorModal
-      heading={t("editCommitment")}
+      heading={heading ?? t("editCommitment")}
       onClose={onClose}
       onKeyDown={handleKeyDown}
       isSaving={isSaving}

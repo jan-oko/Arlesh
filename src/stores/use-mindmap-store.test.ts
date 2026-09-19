@@ -6,7 +6,6 @@ beforeEach(() => {
     selectedNodeId: null,
     selectedNodeIds: new Set(),
     subtreeRootId: null,
-    clipboard: null,
     collapsedNodeIds: new Set(),
     pendingToast: null,
   });
@@ -124,19 +123,6 @@ describe("toggleCollapsed", () => {
     useMindmapStore.getState().toggleCollapsed("b");
     useMindmapStore.getState().toggleCollapsed("a");
     expect(useMindmapStore.getState().collapsedNodeIds.has("b")).toBe(true);
-  });
-});
-
-describe("setClipboard / clipboard", () => {
-  it("stores a clipboard entry", () => {
-    useMindmapStore.getState().setClipboard({ operation: "cut", nodeIds: ["node-1"] });
-    expect(useMindmapStore.getState().clipboard).toEqual({ operation: "cut", nodeIds: ["node-1"] });
-  });
-
-  it("clears clipboard when set to null", () => {
-    useMindmapStore.getState().setClipboard({ operation: "copy", nodeIds: ["x"] });
-    useMindmapStore.getState().setClipboard(null);
-    expect(useMindmapStore.getState().clipboard).toBeNull();
   });
 });
 

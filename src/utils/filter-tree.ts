@@ -318,6 +318,13 @@ function selfMatches(
   return passesStatus(node, f, inheritedStatus, underBacklog) && passesTags(node, f);
 }
 
+/** A pruned tree plus the ids that survived it **only** because they were focus-exempt — the nodes
+ * the filter itself would have dropped, which the views render dimmed. */
+export interface FocusFilteredTree {
+  root: MindmapNode;
+  exemptedIds: ReadonlySet<string>;
+}
+
 /**
  * Prunes `root` to the active filter: a node is kept if it matches or has a kept **content** descendant
  * (info nodes are attachments — they ride along with a kept node but never keep it, so an achieved goal
@@ -325,8 +332,31 @@ function selfMatches(
  * root is always returned as a container (possibly empty) so the canvas has something to render.
  */
 export function filterTree(root: MindmapNode, f: FilterState): MindmapNode {
+  return pruneTree(root, f, new Set<string>()).root;
+}
+
+/**
+ * The same pruning, with the **focus exemption** applied: every id in `exempt` — the focused node and
+ * the ancestor chain that reaches it — renders whatever the filter says about it, overriding every
+ * hiding rule, hard-hidden subtrees included. It is a render-time exemption only: `filterTree` and
+ * every other caller of the filter still get the unexempted answer, so nothing that counts, filters
+ * or exports sees the extra node.
+ *
+ * The exemption carries nothing but that chain. A node held on screen by it shows only the children
+ * the filter already kept plus the chain itself, so revealing (say) a private Project as an ancestor
+ * never spills the rest of its subtree into the view.
+ */
+export function filterTreeWithFocus(root: MindmapNode, f: FilterState, exempt: ReadonlySet<string>): FocusFilteredTree {
+  return pruneTree(root, f, exempt);
+}
+
+function pruneTree(root: MindmapNode, f: FilterState, exempt: ReadonlySet<string>): FocusFilteredTree {
+  const exemptedIds = new Set<string>();
+
   function prune(node: MindmapNode, inheritedStatus: string, underBacklog: boolean): MindmapNode | null {
-    if (typeHardHidden(node, f)) return null;
+    const isExempt = exempt.has(node.id);
+    const hardHidden = typeHardHidden(node, f);
+    if (hardHidden && !isExempt) return null;
     // Only containers pass a status down — a Goal/Task always carries its own, and no container ever
     // sits beneath one, so their statuses must not leak into the chain.
     const inheritedForChildren = STRUCTURAL_KINDS.has(node.kind)
@@ -337,15 +367,28 @@ export function filterTree(root: MindmapNode, f: FilterState): MindmapNode {
     const children: MindmapNode[] = [];
     let hasContentMatch = false;
     for (const child of node.children) {
+      // A hard-hidden node is on screen only to carry the focused node: nothing else beneath it returns.
+      if (hardHidden && !exempt.has(child.id)) continue;
       const pruned = prune(child, inheritedForChildren, backlogForChildren);
       if (pruned === null) continue;
       children.push(pruned);
-      if (child.kind !== "info") hasContentMatch = true;
+      // A child kept only by the exemption is not a match, so it must not keep its parent either —
+      // the chain above the focused node is held by the exemption, not by the node it carries.
+      if (child.kind !== "info" && !exemptedIds.has(child.id)) hasContentMatch = true;
+    }
+    if (hardHidden) {
+      exemptedIds.add(node.id);
+      return { ...node, children };
     }
     // Info is carried by its parent's decision (visibility already handled by typeHardHidden above).
     if (node.kind === "info") return { ...node, children };
     if (selfMatches(node, f, inheritedStatus, underBacklog) || hasContentMatch) return { ...node, children };
+    if (isExempt) {
+      exemptedIds.add(node.id);
+      return { ...node, children };
+    }
     return null;
   }
-  return prune(root, UNSET_STATUS, false) ?? { ...root, children: [] };
+
+  return { root: prune(root, UNSET_STATUS, false) ?? { ...root, children: [] }, exemptedIds };
 }

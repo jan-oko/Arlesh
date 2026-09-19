@@ -45,6 +45,7 @@ export default function CommitmentScopePrompt({ title, onResolve }: Props) {
       heading={t("commitmentNeedsScopeHeading", { title })}
       onClose={() => onResolve(null)}
       onKeyDown={(event) => { if (event.key === "Escape") onResolve(null); }}
+      focusOnOpen="cancel"
       isSaving={false}
       onSave={handleSave}
       saveError={missing ? t("commitmentNeedsScopeMissing") : null}

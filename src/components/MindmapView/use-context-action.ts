@@ -3,7 +3,7 @@ import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { isNodeKind } from "@/utils/tree-layout";
 import type { ContextMenuAction } from "@/components/NodeContextMenu/context-action";
 import { CONTEXT_ACTION, SET_TYPE_PREFIX } from "@/components/NodeContextMenu/context-action";
-import { CLIPBOARD_OP } from "@/stores/use-mindmap-store";
+import { CLIPBOARD_OP } from "@/stores/use-clipboard-store";
 
 interface ClipboardEntry {
   operation: "cut" | "copy";
