@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { BindingMeta, HotkeyLabelKey, Section } from "@/utils/hotkeys/chord";
 import { formatChord } from "@/utils/hotkeys/chord";
 import { GLOBAL_BINDINGS } from "@/utils/hotkeys/global-bindings";
+import { TAB_BINDINGS } from "@/utils/hotkeys/tab-bindings";
 import { MINDMAP_BINDINGS } from "@/utils/hotkeys/mindmap-bindings";
 import { LIST_BINDINGS } from "@/utils/hotkeys/list-bindings";
 import { useInputCapture } from "@/hooks/use-input-capture";
@@ -14,12 +15,13 @@ interface Props {
 
 const SECTIONS: ReadonlyArray<{ section: Section; titleKey: HotkeyLabelKey }> = [
   { section: "global", titleKey: "sectionGlobal" },
+  { section: "tabs", titleKey: "sectionTabs" },
   { section: "mindmap", titleKey: "sectionMindmap" },
   { section: "listView", titleKey: "sectionListView" },
 ];
 
 /** Every binding in the app, display-side only — the same tables the handlers dispatch from. */
-const ALL_BINDINGS: readonly BindingMeta[] = [...GLOBAL_BINDINGS, ...MINDMAP_BINDINGS, ...LIST_BINDINGS];
+const ALL_BINDINGS: readonly BindingMeta[] = [...GLOBAL_BINDINGS, ...TAB_BINDINGS, ...MINDMAP_BINDINGS, ...LIST_BINDINGS];
 
 interface Row {
   labelKey: HotkeyLabelKey;

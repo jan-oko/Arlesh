@@ -45,6 +45,7 @@ function View({ modalState, modalRenders }: { modalState: boolean; modalRenders:
     onToggleBacklog: vi.fn(),
     onMarkKept: vi.fn(),
     onMarkBroken: vi.fn(),
+    onToggleFullscreen: vi.fn(),
   });
   return modalState && modalRenders ? <Modal /> : null;
 }

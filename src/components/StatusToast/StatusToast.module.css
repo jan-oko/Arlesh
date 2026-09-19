@@ -1,5 +1,22 @@
+/*
+ * Placed against the browser viewport, not against a coordinate the caller supplies.
+ *
+ * It used to take `left`/`top` from the anchor node's laid-out position, but those are d3 *layout*
+ * coordinates — the display root sits at (0, 0) and half the tree has a negative x — while the
+ * toast renders outside the canvas's pan/zoom `<g>`. So the number was read as if it were a
+ * container pixel offset, and every root-or-left-half anchor put the toast at or past the left
+ * edge, where `overflow: hidden` cut it. `position: fixed` plus a centred, width-capped box makes
+ * "fully on screen" a property of the CSS rather than arithmetic that can be wrong.
+ */
 .toast {
-  position: absolute;
+  position: fixed;
+  left: 50%;
+  bottom: var(--space-6);
+  transform: translateX(-50%);
+  /* Bounded by the viewport itself, so the box can never reach either edge however long the
+     message is — the refusal messages name a kind and every parent it would have been legal
+     under, which is far too long for one line. */
+  max-width: min(480px, calc(100vw - 2 * var(--space-4)));
   background: var(--surface-raised);
   color: var(--text-secondary);
   border: 1px solid var(--node-border);
@@ -7,9 +24,11 @@
   padding: var(--space-1) var(--space-2);
   font-size: var(--text-sm);
   font-family: var(--font-sans);
+  text-align: center;
   pointer-events: none;
-  white-space: nowrap;
-  z-index: 10;
+  /* Wraps instead of running off: `nowrap` was what turned a long message into a cut one. */
+  overflow-wrap: anywhere;
+  z-index: 30;
   opacity: 1;
   animation: fadeout 0.4s ease 2.6s forwards;
 }

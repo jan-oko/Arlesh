@@ -21,16 +21,13 @@ import CommitmentRow from "./CommitmentRow";
 import PathHeaderRow from "./PathHeaderRow";
 import AnchoredToast from "@/components/AnchoredToast/AnchoredToast";
 import BacklogConfirmModal from "@/components/BacklogConfirmModal/BacklogConfirmModal";
-import type { Position } from "@/utils/tree-layout";
 import styles from "./ListView.module.css";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
 import { useFocusExemption } from "@/hooks/use-focus-exemption";
 import { useSubtreeNav } from "@/hooks/use-subtree-nav";
 import { useListScroll } from "@/hooks/use-list-scroll";
-import { useViewStore } from "@/stores/use-view-store";
-
-/** A flat list lays out no nodes, so every anchored notice falls back to its fixed spot. */
-const NO_POSITIONS: ReadonlyMap<string, Position> = new Map();
+import { useFullscreenStore } from "@/stores/use-fullscreen-store";
+import { useDisplayStore } from "@/stores/use-display-store";
 
 export default function ListView() {
   const { t } = useTranslation(["common", "listView", "editor"]);
@@ -46,9 +43,10 @@ export default function ListView() {
 
   // Subtree entry is shared state, not a filter: the Mindmap and the List View re-root together.
   const enterSubtree = useMindmapStore((s) => s.enterSubtree);
-  const pathHeaderIcons = useViewStore((s) => s.pathHeaderIcons);
+  const pathHeaderIcons = useDisplayStore((s) => s.pathHeaderIcons);
   const { subtreeRootId, onExitSubtree, onExitToRoot } = useSubtreeNav(tree);
 
+  const toggleFullscreen = useFullscreenStore((s) => s.toggle);
   const listFilter = useListFilterStore((s) => s.filter);
   const addPill = useListFilterStore((s) => s.addPill);
   const setListPreset = useListFilterStore((s) => s.setPreset);
@@ -152,6 +150,7 @@ export default function ListView() {
     selectedTaskId,
     selectedCommitmentId,
     selectedRowId: activeSelectedId,
+    onToggleFullscreen: toggleFullscreen,
     isSelectedBlocked,
     onNavigate: handleNavigate,
     onScrollList: startScroll,
@@ -175,7 +174,7 @@ export default function ListView() {
 
   return (
     <div className={styles.container} ref={containerRef}>
-      <AnchoredToast toast={pendingToast} positions={NO_POSITIONS} onDismiss={clearToast} />
+      <AnchoredToast toast={pendingToast} onDismiss={clearToast} />
 
       {filteredCommitments.length > 0 && (
         <section className={styles.commitments} aria-label={t("listView:commitmentsHeading")}>
