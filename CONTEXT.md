@@ -66,7 +66,7 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 ---
 
-**Gesture** — One thing the user did, and the unit Ctrl+Z reverses. A gesture may span several backend commands: pasting five nodes is five commands and one gesture. Opened and closed explicitly, so a gesture that is never opened is simply one command's worth of undo rather than a broken one.
+**Gesture** — One thing the user did, and the unit Ctrl+Z reverses. A gesture may span several backend commands: pasting five nodes is five commands and one gesture. Opened and closed explicitly by the caller, and opens **nest and join** — an open inside an open joins the gesture already running rather than starting a second one, so only the outermost close ends it. A gesture that is never opened is simply one command's worth of undo rather than a broken one.
 
 **Undo Journal** — The record of every journaled row change, written by database triggers rather than by the commands themselves, so a command cannot fail to be covered. Each entry carries its gesture, the row before and after, and the **source** of the write.
 
@@ -144,6 +144,7 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 - Flow/Habit instances (real copies and virtual instances) must satisfy containment against their **Target Node's** Time Scope. The target picker only offers scope-valid targets; editing the scope of an item that has flow children prompts the user to reconcile one side or the other.
 - A Gesture is the unit of undo, never a command. Two commands inside one gesture are undone together or not at all.
 - Only writes whose **source** is the user enter the Undo Stack. An MCP write is journaled and never undoable — Ctrl+Z reverses what the user did, never what an agent did.
+- A write made with no Gesture open is journaled **ungrouped** and is never offered as an undo step. Forgetting to open a Gesture makes a change un-undoable; it never makes Ctrl+Z reverse a different one.
 - Applying an undo or a redo is itself a write, and is never journaled. The stacks are the only record that it happened.
 - Derived and materialized rows are not journaled. Undoing a gesture must not fight the code that regenerates them.
 - There is one Undo Stack for the whole app. One board, one history of changes to it.

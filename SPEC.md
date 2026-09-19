@@ -473,6 +473,76 @@ frontend receives across the Tauri boundary, including its stable `kind` — `no
 `containment_violated`, `invalid_request`, `database`, `internal` — so an agent branches on the
 discriminant rather than parsing a message.
 
+## Undo
+
+Ctrl+Z reverses a **Gesture** — one thing the user did — and Ctrl+Shift+Z reapplies it. There is
+**one stack for the whole app**, not one per view or window: there is one board and one history of
+changes to it, and a per-view stack could undo past another view's newer edit. Both stacks are
+**session-scoped** and empty on launch.
+
+### The journal
+
+The record undo works from is a **row-level journal written by SQL triggers**, not by the commands.
+Three triggers per journaled table — insert, update, delete — write a `undo_journal` row carrying
+the changed row's **before image**, its **after image**, or both, as JSON. Rows are journaled, so
+undo speaks in rows: it restores what a row was, not what the user meant by changing it. That is
+why the toast names the gesture ("Undid: delete 4 items") rather than describing column changes.
+
+The alternative — an inverse per command — was rejected because there are 83 mutating commands and
+an inverse is an obligation met 83 times and again by every command written afterwards, while a
+trigger cannot be forgotten by a command that does not know it exists. ADR 0006 weighs that against
+whole-database snapshots and `sqlite3session` changesets, and says why neither is available here.
+
+**Not every table is journaled.** Derived and materialised rows are excluded, or undo would fight
+the code that regenerates them. The exclusion list is part of the design rather than an
+optimisation, and today it is exactly `scopes` — a scope row is the calendar, instantiated on
+demand and never deleted, so undoing its creation would delete a row the next read recreates and,
+where another item still references it, fail against the foreign keys — plus the journal's own two
+tables. Everything else on the board is journaled, including the link and dependency tables that a
+foreign-key cascade removes without any command naming them.
+
+A table added later is **not journaled until its triggers are written**, and that is the one
+obligation this design does not remove. It is guarded by a test that enumerates the schema from
+`sqlite_master`, fails when a table that is not on the exclusion list has no triggers, and fails
+again when a *column* of a journaled table is missing from its triggers —
+`scripts/generate-undo-triggers.sh` writes the replacements.
+
+### Gestures
+
+A Gesture is not a command: pasting five nodes issues five commands and is one Ctrl+Z. The boundary
+is therefore **opened by the caller**, through the `open_gesture` and `close_gesture` commands, and
+the frontend is the layer that knows which commands belong together. Opens **nest and join** — a
+nested open joins the gesture already running rather than starting a second, the same rule ADR 0004
+gives transactions — so the intended shape is a gesture around every invoked command plus an
+explicit outer gesture around the runs that belong together.
+
+This is the weak seam in the design, and it fails in one direction only:
+
+- a multi-command gesture that forgets its outer open **degrades to per-command undo**;
+- a write made with no gesture open at all is journaled **ungrouped** and is never offered as an
+  undo step.
+
+Nothing here can make Ctrl+Z reverse something the user did not ask about; the cost of forgetting
+is a change that undo declines to touch. The seam narrows on its own as command logic moves into
+Rust, after which most gestures are one backend call and the protocol is vestigial.
+
+### Sources, and not undoing undo
+
+Every entry carries the **source** of its write. An MCP write is journaled but never enters the
+user's stack: an agent setting a `beads_id` is not something the user did, and Ctrl+Z reversing it
+would be indefensible. The journal stays a faithful history; the stack is a history of *the user*.
+The source is an enum rather than a boolean and the column carries no CHECK constraint, so a third
+source later is a code change and not a migration.
+
+Applying an undo or a redo is itself a write, and would be caught by the same triggers. The journal
+therefore carries a **suppression** flag the undo path sets for the duration of its own
+transaction. Both the flag and the source live in a single ambient row every connection shares; what
+makes that safe is that setting either is a write, so the transaction that sets it holds SQLite's
+single writer lock until it commits.
+
+The journal is truncated at startup and capped at a fixed number of gestures, so a long session
+cannot grow it without bound. An ungrouped entry counts as one gesture for that cap.
+
 ## Implementation Phases
 
 1. **Data layer** — schema, migrations, Tauri commands, integration tests. No UI.
