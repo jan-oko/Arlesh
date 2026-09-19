@@ -5,7 +5,7 @@
 //! Each test earns its place against one of the three consequences the old frontend path had:
 //! silent field loss, no atomicity, and a mislabelled polymorphic `parent_type`.
 
-mod helpers;
+use crate::helpers;
 
 use arlesh_lib::{
     commands::retype::retype_node,

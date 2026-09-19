@@ -812,3 +812,41 @@ tests at all, costs 23.5s. So **92% of the instrumented run is per-binary ptrace
 execution** — the cost tracks binary size, and `-Clink-dead-code` links the whole dependency tree
 into every one of the 18. Anything that speeds this up has to cut the number of binaries, shrink
 them, or stop using ptrace; making the tests faster would buy 38 seconds in total.
+
+### Warm run, and what caching can and cannot reach
+
+Second coverage run, tarpaulin cache `full match: true`: job **13m05s** (14 billed minutes) against
+the cold 20m40s. The split is the point — **compile 7m09s → 2m29s, and the instrumented run
+8m00s → 8m36s, i.e. unchanged.** Caching cannot touch per-binary ptrace setup, so once the cache is
+warm the run phase *is* the cost. Coverage came back `90.96% coverage, 3442/3784 lines covered`,
+identical to the cold run: the measurement is reproducible on the runner.
+
+### Integration tests are grouped into four binaries
+
+Because the overhead is per binary, the 16 files under `src-tauri/tests/` were merged into **four**,
+chosen thematically so that `cargo test --test <name>` stays a useful filter:
+
+| Target | Tests | Covers |
+|---|---|---|
+| `cargo test --test tasks` | 70 | tasks, goals, dependencies, block reasons |
+| `cargo test --test flows` | 65 | flows, flow items, recurrence/habits, fan-in, flow commands |
+| `cargo test --test structure` | 62 | domains/projects/tags, scopes, knowledge base, infos |
+| `cargo test --test operations` | 61 | duplicate, retype, mindmap read path, MCP tools, database |
+
+Each group is a directory with a `main.rs` that declares its members; the old files are unchanged
+apart from `mod helpers;` becoming `use crate::helpers;`. `tests/helpers.rs` moved to
+`tests/helpers/mod.rs` so Cargo stops compiling it as a test target of its own — it holds no tests
+and cost 23.5s a run. `main.rs` is opted out of `cargo test` (`test = false`) for the same reason:
+its harness ran zero tests for 24.7s. The trade is that `cargo test` no longer type-checks
+`main.rs`, which is six lines whose only statement is `arlesh_lib::run()`.
+
+**Test count is unchanged: 490** (232 lib + 70 + 65 + 62 + 61), plus 14 doctests. The count is the
+check that the regrouping dropped nothing — if it moves, a module was not wired in.
+
+### Open: two candidate speed-ups that move the number
+
+A temporary `measure` job in `coverage.yml` runs `--no-dead-code` and `--engine llvm` against this
+same tree and prints each percentage beside the 90.96% baseline. Both are expected to change the
+reported figure — the first stops counting never-linked code as uncovered, the second swaps
+tarpaulin's line-table walk for LLVM's region counters — and neither delta is predictable, which is
+why it is measured rather than assumed. **That job is to be reverted before this PR merges.**

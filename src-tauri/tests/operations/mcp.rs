@@ -8,7 +8,7 @@
 //! The pool has **one** connection (see [`helpers::test_pool`]), so every assertion reads it only
 //! after the tool's session has closed.
 
-mod helpers;
+use crate::helpers;
 
 use arlesh_lib::mcp::{params, ArleshMcp};
 use rmcp::handler::server::wrapper::Parameters;

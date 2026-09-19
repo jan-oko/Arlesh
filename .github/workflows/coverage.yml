@@ -126,6 +126,16 @@ jobs:
             --exclude-files 'src/commands/*' \
             2>&1 | tee "$RUNNER_TEMP/tarpaulin.log"
 
+      # The "Reclaim runner disk" step above is insurance bought without evidence:
+      # the runner reports 14 G free before it and this is the number that says
+      # whether tarpaulin ever needed the other 16. Reclaim has cost 32s, 75s and
+      # 3m40s on three runs of the identical command, so it is not a cheap habit
+      # to keep. Once one run shows the headroom here is comfortable, delete the
+      # reclaim step.
+      - name: Disk after the coverage run
+        if: always()
+        run: df -h /
+
       # Put the percentage where it can be read without opening the log, on a
       # failing run as well as a passing one.
       - name: Report coverage
@@ -136,3 +146,96 @@ jobs:
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           echo "${line:-no coverage line in tarpaulin output}" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  # TEMPORARY — measurement only. REVERT THIS JOB BEFORE MERGING (Arlesh-qkr).
+  #
+  # Two candidate speed-ups both change the reported percentage, and neither
+  # delta is predictable from first principles: `--no-dead-code` stops linking
+  # unreachable code so it stops counting as uncovered, and `--engine llvm`
+  # swaps tarpaulin's line-table walk for LLVM's region counters. This job runs
+  # each against the same tree as the real job above, so the three numbers are
+  # directly comparable and the 90% floor can be re-baselined on evidence
+  # instead of on a guess. It never fails the build — it exists to produce a
+  # number, not a verdict.
+  # ---------------------------------------------------------------------------
+  measure:
+    name: measure ${{ matrix.label }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: no-dead-code
+            engine: ptrace
+            extra: --no-dead-code
+            component: ''
+          - label: llvm-engine
+            engine: llvm
+            extra: ''
+            component: llvm-tools-preview
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Reclaim runner disk
+        run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet
+
+      - name: Install Tauri's Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            librsvg2-dev \
+            libxdo-dev \
+            libayatana-appindicator3-dev \
+            libssl-dev
+
+      - name: Install rustup component
+        if: matrix.component != ''
+        run: rustup component add ${{ matrix.component }}
+
+      - name: Install cargo-tarpaulin
+        run: |
+          curl -fsSL \
+            "https://github.com/xd009642/tarpaulin/releases/download/${TARPAULIN_VERSION}/cargo-tarpaulin-x86_64-unknown-linux-musl.tar.gz" \
+            | tar -xz -C "$HOME/.cargo/bin"
+
+      # Its own cache key: each variant builds with different RUSTFLAGS again, so
+      # sharing one entry would make every variant miss.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          shared-key: measure-${{ matrix.label }}
+
+      - name: Stub the frontend bundle
+        run: |
+          mkdir -p dist
+          printf '<!doctype html><title>arlesh ci</title>' > dist/index.html
+
+      # No --fail-under: this is a measurement, and a variant coming in below 90
+      # is the result, not a failure.
+      - name: cargo tarpaulin (${{ matrix.label }})
+        working-directory: src-tauri
+        run: |
+          set -o pipefail
+          cargo tarpaulin \
+            --engine ${{ matrix.engine }} \
+            --skip-clean \
+            --exclude-files 'src/commands/*' \
+            ${{ matrix.extra }} \
+            2>&1 | tee "$RUNNER_TEMP/measure.log"
+
+      - name: Report ${{ matrix.label }} against the baseline
+        if: always()
+        run: |
+          line="$(grep -E '[0-9.]+% coverage' "$RUNNER_TEMP/measure.log" | tail -1 || true)"
+          {
+            echo "### ${{ matrix.label }}"
+            echo '```'
+            echo "baseline (ptrace, 18 binaries): 90.96% coverage, 3442/3784 lines covered"
+            echo "this variant:                   ${line:-no coverage line in output}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

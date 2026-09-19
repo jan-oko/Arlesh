@@ -10,7 +10,7 @@
 //! verifiable. They are deliberately in their own binary, leaving `tests/flows.rs` byte-identical
 //! as the refactor's frozen behavioural contract.
 
-mod helpers;
+use crate::helpers;
 
 use arlesh_lib::flows::{
     model::{

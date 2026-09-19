@@ -1,4 +1,4 @@
-mod helpers;
+use crate::helpers;
 
 // Aliased rather than imported by name: several command functions share a name with a test below
 // (`delete_task`, `delete_goal`), and the alias keeps the call sites saying which one they mean.

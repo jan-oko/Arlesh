@@ -10,7 +10,7 @@
 //! over the test pool so `app.state()` can hand a command its `State`. The pool has **one**
 //! connection, so every assertion here reads it only after the command's session has closed.
 
-mod helpers;
+use crate::helpers;
 
 use arlesh_lib::commands::flows as flow_commands;
 use arlesh_lib::flows::{

@@ -1,4 +1,4 @@
-mod helpers;
+use crate::helpers;
 
 use arlesh_lib::{
     commands::block_reasons::{list_all_block_reasons, set_block_reasons},

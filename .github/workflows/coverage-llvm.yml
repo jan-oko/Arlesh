@@ -122,3 +122,68 @@ jobs:
             df -h /
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  tarpaulin-llvm:
+    name: cargo tarpaulin --engine llvm (measurement)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Tauri's Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            librsvg2-dev \
+            libxdo-dev \
+            libayatana-appindicator3-dev \
+            libssl-dev
+
+      - name: Install llvm-tools-preview
+        run: rustup component add llvm-tools-preview
+
+      - name: Install cargo-tarpaulin
+        run: |
+          curl -fsSL \
+            "https://github.com/xd009642/tarpaulin/releases/download/0.35.5/cargo-tarpaulin-x86_64-unknown-linux-musl.tar.gz" \
+            | tar -xz -C "$HOME/.cargo/bin"
+          cargo tarpaulin --version
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          shared-key: tarpaulin-llvm
+
+      - name: Stub the frontend bundle
+        run: |
+          mkdir -p dist
+          printf '<!doctype html><title>arlesh ci</title>' > dist/index.html
+
+      # The point of this job. Same tool, same --ignore-tests default, same
+      # --exclude-files, same denominator as the 90.96%/3442-of-3784 run this PR
+      # already has — only the engine changes. If the percentage comes back at
+      # 90.96% the floor of 90 transfers untouched, which cargo-llvm-cov's
+      # 96.29% does not: llvm-cov counts inline `#[cfg(test)] mod tests` bodies
+      # as source, so its denominator is 7281 lines against tarpaulin's 3784 and
+      # roughly half of it is test code that is 100% covered by construction.
+      - name: cargo tarpaulin --engine llvm
+        working-directory: src-tauri
+        run: |
+          set -o pipefail
+          cargo tarpaulin \
+            --engine llvm \
+            --skip-clean \
+            --exclude-files 'src/commands/*' \
+            2>&1 | tee "$RUNNER_TEMP/tarpaulin-llvm.log"
+
+      - name: Summarise
+        if: always()
+        run: |
+          {
+            echo '### tarpaulin --engine llvm'
+            echo '```'
+            grep -E '[0-9.]+% coverage' "$RUNNER_TEMP/tarpaulin-llvm.log" | tail -1 || echo 'no coverage line'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
