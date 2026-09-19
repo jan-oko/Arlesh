@@ -1,7 +1,7 @@
 import type { MindmapNode } from "@/utils/tree-layout";
 import { isNodeBlocked, entityNodeId } from "@/utils/tree-layout";
 import type { TaskDependencyEdge } from "@/api/tasks";
-import type { TaskListRow } from "@/utils/list-filter";
+import type { CommitmentListRow, TaskListRow } from "@/utils/list-filter";
 import { deriveScopeStateTokens } from "@/utils/list-filter";
 
 /** The nearest (closest to `node`) ancestor of `kind`, searching from the immediate parent outward. */
@@ -36,7 +36,8 @@ function buildRow(node: MindmapNode, ancestors: readonly MindmapNode[], depsByTa
 
 /**
  * Flattens the mindmap tree to one row per Task node (real, materialized-from-flow, and virtual
- * Habit instances alike — Goals, Projects, and every other kind are never List View rows). Walks in
+ * Habit instances alike — Goals, Projects and Commitments never become task rows; a Commitment
+ * gets its own section instead, via {@link flattenCommitmentRows}). Walks in
  * the same pre-order as the tree's own (position-sorted) children, so tasks under the same resolved
  * Goal/Project already come out contiguous — no separate grouping pass is needed.
  *
@@ -62,6 +63,34 @@ export function flattenTaskRows(root: MindmapNode, taskDeps: readonly TaskDepend
     const isFrame = node === root;
     if (node.kind === "task" && !isFrame) rows.push(buildRow(node, ancestors, depsByTask));
     const nextAncestors = isFrame ? ancestors : [...ancestors, node];
+    for (const child of node.children) visit(child, nextAncestors);
+  }
+  visit(root, []);
+  return rows;
+}
+
+/**
+ * Flattens the mindmap tree to one row per Commitment node.
+ *
+ * A second walk rather than a second kind of row in {@link flattenTaskRows}, because the two
+ * feed different parts of the view: commitments render as their own section *above* the task
+ * rows, so interleaving them in one ordered list and separating them again afterwards would
+ * only destroy the ordering the section wants.
+ */
+export function flattenCommitmentRows(root: MindmapNode): CommitmentListRow[] {
+  const rows: CommitmentListRow[] = [];
+  function visit(node: MindmapNode, ancestors: readonly MindmapNode[]): void {
+    if (node.kind === "commitment") {
+      const parent = ancestors[ancestors.length - 1];
+      rows.push({
+        node,
+        parentRef: parent?.id ?? "",
+        ancestors: [...ancestors],
+        hasPrivateAncestor: ancestors.some((a) => a.isPrivate === true),
+        scopeTokens: deriveScopeStateTokens(node),
+      });
+    }
+    const nextAncestors = node.id === "root" ? ancestors : [...ancestors, node];
     for (const child of node.children) visit(child, nextAncestors);
   }
   visit(root, []);

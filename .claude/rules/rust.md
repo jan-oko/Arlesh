@@ -32,5 +32,17 @@
   ```
 
 ### Tests
-- Unit tests: inline `#[cfg(test)] mod tests { ... }` in the same file
+- Unit tests: `#[cfg(test)] mod tests;` in the file under test, with the body in a
+  sibling — `foo.rs` declares it and `foo/tests.rs` holds it; `mod.rs` uses
+  `<module>/tests.rs`. A second suite in one file takes a `*_tests` name
+  (`commitment_tests` -> `foo/commitment_tests.rs`).
 - Integration tests: `tests/` directory
+
+Unit tests were inline until 2026-09-19. They moved because the coverage gate
+measures with `cargo llvm-cov`, which excludes `tests.rs` and `*_tests.rs` by
+filename but cannot see an inline module — inline, test bodies were 2790 of 8715
+counted lines and 7735 of 13577 regions, all ~99% covered by construction, so a
+third of the line metric and over half the region metric could not regress. The
+alternative was `#[coverage(off)]`, which is still unstable with no target
+version, so it would have meant a permanent nightly toolchain. Tests still reach
+private items through `use super::*`.

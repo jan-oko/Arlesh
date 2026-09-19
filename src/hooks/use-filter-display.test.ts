@@ -11,7 +11,7 @@ const mockUseMindmapData = vi.mocked(useMindmapData);
 
 function mindmapData(tree: MindmapNode) {
   return {
-    tree, isLoading: false, error: null, loadCondition: { failedFlows: [] },
+    tree, isLoading: false, error: null, loadCondition: { failedFlows: [], unrenderableCommitmentFlows: [] },
     createNode: vi.fn(), createChild: vi.fn(), renameNode: vi.fn(), retypeNode: vi.fn(),
     reorderNode: vi.fn(), moveNode: vi.fn(), duplicateNode: vi.fn(), removeNode: vi.fn(), createFlow: vi.fn(),
     updateFlow: vi.fn(), reload: vi.fn(),

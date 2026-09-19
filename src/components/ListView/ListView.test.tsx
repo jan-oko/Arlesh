@@ -7,7 +7,7 @@ import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { useViewStore } from "@/stores/use-view-store";
 import { DEFAULT_FILTER } from "@/utils/filter-tree";
 import { DEFAULT_LIST_FILTER } from "@/utils/list-filter";
-import type { TaskListRow } from "@/utils/list-filter";
+import type { CommitmentListRow, TaskListRow } from "@/utils/list-filter";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { useListData } from "@/hooks/use-list-data";
 
@@ -25,15 +25,44 @@ vi.mock("@/components/MindmapView/use-node-editor", () => ({
     availableForDep: [],
     onDoubleClick: vi.fn(),
     onTaskSave: vi.fn(),
+    onCommitmentSave: vi.fn(),
     checkScopeClamp: vi.fn(),
   }),
 }));
 vi.mock("@/components/TaskEditorModal/TaskEditorModal", () => ({ default: () => <div data-testid="editor-modal" /> }));
+vi.mock("@/components/CommitmentEditorModal/CommitmentEditorModal", () => ({ default: () => <div data-testid="commitment-editor-modal" /> }));
+const updateCommitment = vi.fn((_id: number, _request: unknown) => Promise.resolve());
+vi.mock("@/api/commitments", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/commitments")>()),
+  updateCommitment: (id: number, request: unknown) => updateCommitment(id, request),
+}));
+const setHabitItemStatus = vi.fn((..._args: unknown[]) => Promise.resolve());
+vi.mock("@/api/flows", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/flows")>()),
+  setHabitItemStatus: (...args: unknown[]) => setHabitItemStatus(...args),
+}));
 vi.mock("@/hooks/use-tag-names", () => ({ useTagNames: () => new Map() }));
 vi.mock("@/hooks/use-scope-range-label", () => ({ useScopeRangeLabel: () => null }));
 
 function n(id: string, kind: NodeKind, extra: Partial<MindmapNode> = {}): MindmapNode {
   return { id, kind, title: id, position: 0, tagIds: [], children: [], ...extra };
+}
+
+/** A tree holding whatever rows a test supplies, since the verdict hook looks its node up in it
+ * before writing — a stub tree with nothing in it would make every write a silent no-op. */
+function treeWith(...nodes: MindmapNode[]): MindmapNode {
+  return { ...n("root", "domain"), children: nodes };
+}
+
+function commitmentRow(over: Partial<CommitmentListRow> = {}): CommitmentListRow {
+  return {
+    node: n("commitment-1", "commitment", { verdict: "unresolved", timing: "active" }),
+    parentRef: "project-1",
+    ancestors: [n("aspect-1", "aspect"), n("project-1", "project", { status: "active" })],
+    hasPrivateAncestor: false,
+    scopeTokens: ["active", "unplanned"],
+    ...over,
+  };
 }
 
 function row(over: Partial<TaskListRow> = {}): TaskListRow {
@@ -58,6 +87,7 @@ function listData(overrides: Partial<ReturnType<typeof useListData>> = {}) {
   return {
     tree: n("root", "domain"),
     rows: [row()],
+    commitmentRows: [],
     allTasksAndGoals: [],
     isLoading: false,
     error: null,
@@ -551,5 +581,120 @@ describe("ListView", () => {
       completeSelectedTaskUnderPlan();
       expect(screen.getByText("task-2")).toBeInTheDocument();
     });
+  });
+});
+
+describe("ListView — the commitments section", () => {
+  /** Every card on screen, in document order, by the title button each one carries. */
+  function cardTitles(): string[] {
+    return screen.getAllByRole("button").filter((el) => el.className.includes("title")).map((el) => el.textContent ?? "");
+  }
+
+  beforeEach(() => {
+    updateCommitment.mockClear();
+    setHabitItemStatus.mockClear();
+  });
+
+  it("renders commitments as their own section above the task rows", () => {
+    mockUseListData.mockReturnValue(listData({ commitmentRows: [commitmentRow()], rows: [row()], tree: treeWith(n("commitment-1", "commitment", { verdict: "unresolved" }), n("task-1", "task")) }));
+    render(<ListView />);
+
+    expect(screen.getByRole("region", { name: "listView:commitmentsHeading" })).toBeInTheDocument();
+    // The band reads first: a commitment is a standing rule, not work scattered through the list.
+    expect(cardTitles()).toEqual(["commitment-1", "task-1"]);
+  });
+
+  it("shows no section at all when no commitment matches", () => {
+    mockUseListData.mockReturnValue(listData({ commitmentRows: [], rows: [row()] }));
+    render(<ListView />);
+    expect(screen.queryByRole("region", { name: "listView:commitmentsHeading" })).not.toBeInTheDocument();
+  });
+
+  it("records Kept when the tick is clicked", () => {
+    mockUseListData.mockReturnValue(listData({ commitmentRows: [commitmentRow()], rows: [], tree: treeWith(n("commitment-1", "commitment", { verdict: "unresolved" })) }));
+    render(<ListView />);
+
+    fireEvent.click(screen.getByRole("button", { name: "markKept" }));
+    expect(updateCommitment).toHaveBeenCalledWith(1, { verdict: "kept" });
+  });
+
+  it("records Broken when the cross is clicked", () => {
+    mockUseListData.mockReturnValue(listData({ commitmentRows: [commitmentRow()], rows: [], tree: treeWith(n("commitment-1", "commitment", { verdict: "unresolved" })) }));
+    render(<ListView />);
+
+    fireEvent.click(screen.getByRole("button", { name: "markBroken" }));
+    expect(updateCommitment).toHaveBeenCalledWith(1, { verdict: "broken" });
+  });
+
+  it("clears the verdict when the control that already reads it is pressed again", () => {
+    // A misclick has to be recoverable, and the way back is the same control.
+    mockUseListData.mockReturnValue(listData({
+      commitmentRows: [commitmentRow({ node: n("commitment-1", "commitment", { verdict: "kept" }) })],
+      rows: [],
+      tree: treeWith(n("commitment-1", "commitment", { verdict: "kept" })),
+    }));
+    render(<ListView />);
+
+    fireEvent.click(screen.getByRole("button", { name: "clearVerdict" }));
+    expect(updateCommitment).toHaveBeenCalledWith(1, { verdict: "unresolved" });
+  });
+
+  it("never moves straight from one verdict to the other", () => {
+    // Pressing the cross on a kept commitment records Broken; it does not clear first, and
+    // nothing ever cycles Kept → Broken by repetition.
+    mockUseListData.mockReturnValue(listData({
+      commitmentRows: [commitmentRow({ node: n("commitment-1", "commitment", { verdict: "kept" }) })],
+      rows: [],
+      tree: treeWith(n("commitment-1", "commitment", { verdict: "kept" })),
+    }));
+    render(<ListView />);
+
+    fireEvent.click(screen.getByRole("button", { name: "markBroken" }));
+    expect(updateCommitment).toHaveBeenCalledWith(1, { verdict: "broken" });
+  });
+
+  it("marks the selected commitment kept on Enter and broken on X", () => {
+    mockUseListData.mockReturnValue(listData({ commitmentRows: [commitmentRow()], rows: [], tree: treeWith(n("commitment-1", "commitment", { verdict: "unresolved" })) }));
+    render(<ListView />);
+
+    fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
+    fireEvent.keyDown(window, { key: "Enter", code: "Enter" });
+    expect(updateCommitment).toHaveBeenCalledWith(1, { verdict: "kept" });
+
+    updateCommitment.mockClear();
+    fireEvent.keyDown(window, { key: "x", code: "KeyX" });
+    expect(updateCommitment).toHaveBeenCalledWith(1, { verdict: "broken" });
+  });
+
+  it("gives a commitment Habit's iteration the same two verdict controls as any other commitment", () => {
+    // Its verdict has nowhere else to go: the iteration is virtual, so it is written as that
+    // iteration's Modification rather than against a commitments row it does not have.
+    const iteration = n("habit-3-0-virtual", "commitment", {
+      title: "Asleep by 23:00 Mon",
+      verdict: "unresolved",
+      virtual: true,
+      habitItem: { flowId: 3, itemType: "flow_root", itemId: 3, scopeId: 100 },
+    });
+    mockUseListData.mockReturnValue(listData({
+      commitmentRows: [commitmentRow({ node: iteration })],
+      rows: [],
+      tree: treeWith(iteration),
+    }));
+    render(<ListView />);
+
+    fireEvent.click(screen.getByRole("button", { name: "markBroken" }));
+    expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_root", 3, 100, "broken", expect.any(Number));
+    expect(updateCommitment).not.toHaveBeenCalled();
+  });
+
+  it("leaves Enter meaning 'cycle the status' when the selected row is a task", () => {
+    const data = listData({ commitmentRows: [], rows: [row()] });
+    mockUseListData.mockReturnValue(data);
+    render(<ListView />);
+
+    fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
+    fireEvent.keyDown(window, { key: "Enter", code: "Enter" });
+    expect(data.onCycleStatus).toHaveBeenCalledWith("task-1");
+    expect(updateCommitment).not.toHaveBeenCalled();
   });
 });

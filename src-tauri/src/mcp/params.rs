@@ -199,6 +199,8 @@ pub enum BeadsNode {
     Task,
     /// A Goal.
     Goal,
+    /// A Commitment.
+    Commitment,
     /// A Project — the `project` subtype of Domain. Aspects, Domains and Tags cannot be linked.
     Project,
 }
@@ -208,7 +210,7 @@ pub enum BeadsNode {
 #[serde(tag = "operation", rename_all = "snake_case")]
 #[schemars(extend("type" = "object"))]
 pub enum BeadsOperation {
-    /// Links a Task, Goal or Project to a `bd` issue, or clears the link.
+    /// Links a Task, Goal, Commitment or Project to a `bd` issue, or clears the link.
     ///
     /// This is the only way the link can be set: no Tauri command writes it and the UI renders it
     /// read-only, so an issue id in Arlesh always came from here.

@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { FilterState, StatusMode, TagFilterMode } from "@/utils/filter-tree";
-import { DEFAULT_FILTER, NEXT_ARCHIVED_MODE } from "@/utils/filter-tree";
+import { DEFAULT_FILTER, NEXT_OVERRIDE_MODE } from "@/utils/filter-tree";
 import { mergePersistedFilterSlice } from "@/stores/persist-merge";
 
 interface FilterStore {
@@ -19,6 +19,7 @@ interface FilterStore {
   toggleShowFlow: () => void;
   togglePrivateMode: () => void;
   cycleArchivedMode: () => void;
+  cycleBacklogMode: () => void;
   reset: () => void;
 }
 
@@ -46,7 +47,9 @@ export const useFilterStore = create<FilterStore>()(
       toggleShowFlow: () => set((s) => ({ filter: { ...s.filter, showFlow: !s.filter.showFlow } })),
       togglePrivateMode: () => set((s) => ({ filter: { ...s.filter, privateMode: !s.filter.privateMode } })),
       cycleArchivedMode: () =>
-        set((s) => ({ filter: { ...s.filter, archivedMode: NEXT_ARCHIVED_MODE[s.filter.archivedMode] } })),
+        set((s) => ({ filter: { ...s.filter, archivedMode: NEXT_OVERRIDE_MODE[s.filter.archivedMode] } })),
+      cycleBacklogMode: () =>
+        set((s) => ({ filter: { ...s.filter, backlogMode: NEXT_OVERRIDE_MODE[s.filter.backlogMode] } })),
       reset: () => set({ filter: DEFAULT_FILTER }),
     }),
     {

@@ -83,5 +83,13 @@
   "fieldBeadsId": "Issue",
   "placeholderBlockReason": "Reason…",
   "placeholderKbDir": "/path/to/vault",
-  "placeholderDepSearch": "Search tasks or goals to add dependency…"
+  "placeholderDepSearch": "Search tasks or goals to add dependency…",
+  "fieldBacklog": "Backlog",
+  "backlogOn": "In the backlog",
+  "backlogOff": "In play",
+  "editCommitment": "Edit commitment",
+  "fieldVerdict": "Verdict",
+  "fieldVerdictWindow": "Verdict window",
+  "verdictWindowHint": "How long after the window closes you can still record a verdict. Left empty, it inherits the nearest commitment above it.",
+  "verdictWindowNone": "Inherited"
 }

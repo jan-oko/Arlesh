@@ -7,6 +7,7 @@ export type StatusIndicatorType =
   | "archived"
   | "planned"
   | "frozen"
+  | "backlog"
   | "info"
   | "flowInstance"
   | "tags";
@@ -59,6 +60,17 @@ export function deriveStatusIndicators(node: MindmapNode): StatusIndicator[] {
   if (node.status === "frozen") {
     indicators.push({ type: "frozen" });
   }
+  // Deliberately distinct from the Frozen snowflake: Backlog and Frozen are separate states, and a
+  // glance at the canvas should say which one a node is in. Read off the stored flag, so a
+  // backlogged task whose window has lapsed shows both this and the archive box — the same pairing
+  // a Frozen goal already gets under a forced Archived.
+  if (node.backlogged === true) {
+    indicators.push({ type: "backlog" });
+  }
+  // No verdict badge. A Commitment's glyph carries its Verdict itself — hollow while the answer
+  // is owed, solid once given, cleft when broken, struck through when the Verdict Window ran out
+  // — so a badge underneath would state the same fact a few pixels away. Every other indicator
+  // here says something the glyph does not.
   if (hasInfoDetails(node)) {
     indicators.push({ type: "info" });
   }

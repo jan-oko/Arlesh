@@ -199,8 +199,16 @@ start_vite() {
     printf '  %-28s vite already up on %s\n' "$name" "$port"
     return 0
   fi
-  ( cd "$wt" && setsid npm run dev -- --port "$port" --strictPort \
-      >"$INSTANCES/$name/vite.log" 2>&1 < /dev/null & printf '%s' "$!" > "$INSTANCES/$name/vite.pid" )
+  # The pid is written by the child itself rather than captured as $! in the parent. setsid puts the
+  # server in a NEW session whose leader is a different process from the job bash backgrounded, so
+  # $! recorded the session leader's *parent*, sitting in an unrelated process group — and `stop`
+  # then aimed `kill -- -$pid` at a group the server was not in, reported success, and removed the
+  # pidfile. Two servers survived that way, one of them for 26 hours. Having the child print its own
+  # $$ before exec'ing npm makes the recorded pid the session leader's by construction, whether or
+  # not setsid forks. The redirections are applied to setsid and survive the exec.
+  ( cd "$wt" && setsid sh -c 'printf "%s" "$$" > "$1"; shift; exec "$@"' \
+      _ "$INSTANCES/$name/vite.pid" npm run dev -- --port "$port" --strictPort \
+      >"$INSTANCES/$name/vite.log" 2>&1 < /dev/null & )
   for _ in $(seq 60); do
     curl -sf -o /dev/null "http://localhost:$port" 2>/dev/null && return 0
     sleep 1
@@ -313,12 +321,20 @@ cmd_start() {
 }
 
 kill_pidfile() {
-  local pidfile="$1" what="$2" name="$3" pid
+  local pidfile="$1" what="$2" name="$3" pid sid
   [ -f "$pidfile" ] || return 0
   pid="$(cat "$pidfile")"
   if kill -0 "$pid" 2>/dev/null; then
-    # Negative pid: these are setsid leaders, so the whole group goes, not just the parent shell.
-    kill -- "-$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
+    # Negative pid takes the whole group, not just the leader — but only when the recorded pid is
+    # genuinely a session leader. A pid that is not one is either a plain child or, after recycling,
+    # some unrelated process that inherited the number, and `kill -- -$pid` would then fire a signal
+    # into a process group that has nothing to do with this instance. Single-kill that instead.
+    sid="$(ps -o sid= -p "$pid" 2>/dev/null | tr -d ' ')"
+    if [ "$sid" = "$pid" ]; then
+      kill -- "-$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
+    else
+      kill "$pid" 2>/dev/null || true
+    fi
     printf 'stopped %s %s (pid %s)\n' "$name" "$what" "$pid"
   fi
   rm -f "$pidfile"
@@ -329,6 +345,20 @@ cmd_stop() {
   for name in "${names[@]}"; do
     kill_pidfile "$INSTANCES/$name/run.pid" app "$name"
     kill_pidfile "$INSTANCES/$name/vite.pid" vite "$name"
+    # A server that outlives its own stop is exactly the bug above, and the reason it went unnoticed
+    # for a day is that nothing ever said so. Check the port and complain at the moment it happens.
+    # Given a few seconds first: SIGTERM to node is not instant, and a false alarm here is noise.
+    local port still=no
+    port="$(cat "$INSTANCES/$name/port" 2>/dev/null || true)"
+    if [ -n "$port" ]; then
+      for _ in 1 2 3; do
+        curl -sf -o /dev/null "http://localhost:$port" 2>/dev/null || { still=no; break; }
+        still=yes
+        sleep 1
+      done
+    fi
+    [ "$still" = no ] || printf '!! %s: something is still serving port %s. Find it with: ss -lptn "sport = :%s"\n' \
+      "$name" "$port" "$port" >&2
   done
 }
 

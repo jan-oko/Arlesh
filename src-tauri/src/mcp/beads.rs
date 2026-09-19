@@ -1,6 +1,6 @@
 //! The issue-link tool — the only write on this server.
 //!
-//! A Task, Goal or Project can carry the id of the `bd` issue that tracks it. Nothing else can set
+//! A Task, Goal, Commitment or Project can carry the id of the `bd` issue that tracks it. Nothing else can set
 //! it: no Tauri command writes the column and the UI renders it read-only, so an issue id in
 //! Arlesh always arrived through here. That is the whole point of the field — it records a link an
 //! agent established, and the app displays it without pretending the user maintains it.
@@ -17,12 +17,13 @@ use super::{
 };
 use crate::{
     domains::model::DomainId,
-    tasks::model::{GoalId, TaskId},
+    tasks::model::{CommitmentId, GoalId, TaskId},
 };
 
 #[tool_router(router = beads_router, vis = "pub(super)")]
 impl ArleshMcp {
-    /// Links a Task, Goal or Project to a `bd` issue, or clears the link with a null `beads_id`.
+    /// Links a Task, Goal, Commitment or Project to a `bd` issue, or clears the link with a
+    /// null `beads_id`.
     ///
     /// The id is stored verbatim and never parsed or validated against a tracker — it is a label
     /// Arlesh displays, not a foreign key. Setting it on an item that does not exist is an error,
@@ -52,6 +53,7 @@ impl ArleshMcp {
             node_type: match node_type {
                 BeadsNode::Task => "task".into(),
                 BeadsNode::Goal => "goal".into(),
+                BeadsNode::Commitment => "commitment".into(),
                 BeadsNode::Project => "project".into(),
             },
             node_id,
@@ -77,6 +79,20 @@ impl ArleshMcp {
                     Err(error) => return result::failed(error),
                 };
                 match db.goals().set_beads_id(GoalId(node_id), beads_id).await {
+                    Ok(()) => result::ok(link),
+                    Err(error) => result::failed(error),
+                }
+            }
+            BeadsNode::Commitment => {
+                let mut db = match self.factory.connect().await {
+                    Ok(db) => db,
+                    Err(error) => return result::failed(error),
+                };
+                match db
+                    .commitments()
+                    .set_beads_id(CommitmentId(node_id), beads_id)
+                    .await
+                {
                     Ok(()) => result::ok(link),
                     Err(error) => result::failed(error),
                 }

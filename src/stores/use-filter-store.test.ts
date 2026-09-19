@@ -47,3 +47,21 @@ describe("rehydration from a persisted shape older than the archivedMode field (
     expect(useFilterStore.getState().filter.archivedMode).toBe("include"); // cycling now actually advances
   });
 });
+
+describe("cycleBacklogMode", () => {
+  it("cycles Inactive -> Include -> Exclude -> Inactive, exactly as the Archived pill does", () => {
+    expect(useFilterStore.getState().filter.backlogMode).toBe("inactive");
+    useFilterStore.getState().cycleBacklogMode();
+    expect(useFilterStore.getState().filter.backlogMode).toBe("include");
+    useFilterStore.getState().cycleBacklogMode();
+    expect(useFilterStore.getState().filter.backlogMode).toBe("exclude");
+    useFilterStore.getState().cycleBacklogMode();
+    expect(useFilterStore.getState().filter.backlogMode).toBe("inactive");
+  });
+
+  it("moves independently of the Archived pill", () => {
+    useFilterStore.getState().cycleBacklogMode();
+    expect(useFilterStore.getState().filter.backlogMode).toBe("include");
+    expect(useFilterStore.getState().filter.archivedMode).toBe("inactive");
+  });
+});
