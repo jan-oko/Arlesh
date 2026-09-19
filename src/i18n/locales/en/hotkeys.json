@@ -41,6 +41,6 @@
   "enterBySearch": "Search for a node and enter its subtree",
   "statusBacklog": "Status preset: Backlog",
   "toggleBacklog": "Put in / take out of the backlog",
-  "markKept": "Mark the selected commitment kept (again to clear it)",
+  "cycleVerdict": "Cycle the selected commitment's verdict (Unresolved \u2192 Kept \u2192 Broken)",
   "markBroken": "Mark the selected commitment broken (again to clear it)"
 }

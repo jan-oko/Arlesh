@@ -29,9 +29,9 @@ export interface ListContext {
   onExitToRoot: () => void;
   /** Puts the selected Task in the backlog, or takes it out. */
   onToggleBacklog: (id: string) => void;
-  /** Records that the selected Commitment was held to, or clears an existing Kept. */
-  onMarkKept: (id: string) => void;
-  /** Records that it was not, or clears an existing Broken. */
+  /** Advances the selected Commitment's verdict: Unresolved → Kept → Broken → Unresolved. */
+  onCycleVerdict: (id: string) => void;
+  /** Records that the selected Commitment was not held to, or clears an existing Broken. */
   onMarkBroken: (id: string) => void;
 }
 
@@ -78,16 +78,16 @@ export const LIST_BINDINGS: readonly Binding<ListContext>[] = [
   },
   {
     // Shares Enter with `listView.cycleStatus`, and the two cannot both fire: a selection is a
-    // Task or a Commitment, never both. The same key means "advance the work" on one and
-    // "I kept this" on the other, which is the same gesture read in each kind's own terms.
-    id: "listView.markKept", section: "listView", chord: { code: "Enter" },
-    labelKey: "markKept",
+    // Task or a Commitment, never both. The same key means "advance the status" on one and
+    // "advance the verdict" on the other, which is the same gesture read in each kind's own terms.
+    id: "listView.cycleVerdict", section: "listView", chord: { code: "Enter" },
+    labelKey: "cycleVerdict",
     when: (c) => c.selectedCommitmentId !== null,
-    run: (c) => { if (c.selectedCommitmentId !== null) c.onMarkKept(c.selectedCommitmentId); },
+    run: (c) => { if (c.selectedCommitmentId !== null) c.onCycleVerdict(c.selectedCommitmentId); },
   },
   {
-    // A separate key rather than a second press of Enter: the two outcomes are equal, and
-    // Broken must never be one keystroke past Kept on a cycle.
+    // Kept in its own right even though Enter now cycles past Broken: this is the one-press route
+    // to Broken, so recording a broken commitment never has to pass through saying you kept it.
     id: "listView.markBroken", section: "listView", chord: { code: "KeyX" },
     labelKey: "markBroken",
     when: (c) => c.selectedCommitmentId !== null,

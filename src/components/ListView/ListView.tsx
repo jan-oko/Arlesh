@@ -71,7 +71,7 @@ export default function ListView() {
     reload,
     showToast,
   });
-  const { markKept, markBroken } = useCommitmentVerdict({
+  const { markKept, markBroken, cycleVerdict } = useCommitmentVerdict({
     findNode: (id) => findNode(tree, id),
     reload,
     showToast,
@@ -157,7 +157,7 @@ export default function ListView() {
     onToggleFilter: toggleFilterPopover,
     onSetStatusMode: handleSetStatusPreset,
     onToggleBacklog: toggleBacklog,
-    onMarkKept: markKept,
+    onCycleVerdict: cycleVerdict,
     onMarkBroken: markBroken,
     onOpenSearch: () => setIsSearchOpen(true),
     subtreeRootId,

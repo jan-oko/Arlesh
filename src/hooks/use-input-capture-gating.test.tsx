@@ -42,7 +42,7 @@ function View({ modalState, modalRenders }: { modalState: boolean; modalRenders:
     onExitSubtree: vi.fn(),
     onExitToRoot: vi.fn(),
     onToggleBacklog: vi.fn(),
-    onMarkKept: vi.fn(),
+    onCycleVerdict: vi.fn(),
     onMarkBroken: vi.fn(),
   });
   return modalState && modalRenders ? <Modal /> : null;
