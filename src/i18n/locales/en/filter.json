@@ -20,5 +20,12 @@
     "include": "Archived: shown",
     "exclude": "Archived: hidden"
   },
-  "reset": "Reset"
+  "reset": "Reset",
+  "backlogLabel": "Backlog",
+  "backlogPill": "Backlog",
+  "backlogTooltip": {
+    "inactive": "Backlog: default",
+    "include": "Backlog: shown",
+    "exclude": "Backlog: hidden"
+  }
 }

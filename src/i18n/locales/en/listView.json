@@ -4,7 +4,8 @@
     "plan": "Plan",
     "start": "Start",
     "do": "Do",
-    "unblock": "Unblock"
+    "unblock": "Unblock",
+    "backlog": "Backlog"
   },
   "statusPresetLabel": "Status preset",
   "hierarchyClusterLabel": "Hierarchy",
@@ -36,5 +37,16 @@
   "blockedState": {
     "blocked": "Blocked",
     "not_blocked": "Not blocked"
+  },
+  "commitmentsHeading": "Commitments",
+  "commitmentsEmpty": "No commitments match the current filters.",
+  "markKept": "Mark kept",
+  "markBroken": "Mark broken",
+  "clearVerdict": "Clear the verdict",
+  "verdictLabel": "Verdict",
+  "verdictState": {
+    "unresolved": "Unresolved",
+    "kept": "Kept",
+    "broken": "Broken"
   }
 }

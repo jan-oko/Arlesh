@@ -27,4 +27,22 @@ describe("HabitFailureBanner", () => {
     screen.getByRole("button", { name: "common:dismiss" }).click();
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
+
+  it("names a commitment habit whose template holds goals, rather than leaving its repetitions quietly missing", () => {
+    render(
+      <HabitFailureBanner
+        failedFlows={[]}
+        unrenderableCommitmentFlows={[{ id: 11, title: "Asleep by 23:00" }]}
+        onDismiss={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Asleep by 23:00")).toBeInTheDocument();
+  });
+
+  it("renders nothing when neither condition holds", () => {
+    const { container } = render(
+      <HabitFailureBanner failedFlows={[]} unrenderableCommitmentFlows={[]} onDismiss={vi.fn()} />,
+    );
+    expect(container).toBeEmptyDOMElement();
+  });
 });

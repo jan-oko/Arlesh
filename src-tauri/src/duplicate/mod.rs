@@ -263,6 +263,12 @@ async fn clone_task(db: &mut Db<Transactional>, item: &PendingClone) -> Result<C
             time_scope: original.time_scope.clone(),
             on_scope_exit: original.on_scope_exit,
             plan: original.plan.clone(),
+            // A copy is set aside if the original was. The clone already carries status, plan,
+            // privacy, delegate, tags and block reasons — dropping only the Backlog would be the
+            // silent discard the confirmation prompts exist to prevent. Safe against the stored
+            // invariant `archival = Backlog => plan IS NULL`, because the original satisfies it
+            // and both fields are copied from it together.
+            archival: Some(original.archival),
         },
     )
     .await?;

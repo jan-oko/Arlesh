@@ -4,6 +4,7 @@
   "domain": "Domain",
   "goal": "Goal",
   "task": "Task",
+  "commitment": "Commitment",
   "tag": "Tag",
   "tags": "Tags",
   "info": "Info",

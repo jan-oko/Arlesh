@@ -4,6 +4,8 @@ import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { entityNodeId } from "@/utils/tree-layout";
 import type { InstanceType, ConsumptionKind, BlockingMode, CatchupPolicy } from "@/api/flows";
 import { getFlowRecurrence, habitCompletionCount } from "@/api/flows";
+import type { DurationSpec } from "@/api/time-scope";
+import VerdictWindowField from "@/components/CommitmentEditorModal/VerdictWindowField";
 import { getScope } from "@/api/scopes";
 import { getErrorMessage } from "@/api/errors";
 import EditorModal from "@/components/EditorModal/EditorModal";
@@ -27,7 +29,10 @@ function isPhaseKind(kind: FlowScopeKind): boolean {
   return kind === "part" || kind === "exact";
 }
 
-const INSTANCE_TYPES: InstanceType[] = ["goal", "task"];
+/** What a Flow's root materialises as. **Commitment** is how a nightly rule recurs: through the
+ * Habit machinery that already exists rather than a second recurrence engine. */
+// In the same order the type cycle puts the three kinds in, Commitment last.
+const INSTANCE_TYPES: InstanceType[] = ["goal", "task", "commitment"];
 
 const NODE_KINDS: NodeKind[] = ["aspect", "project", "domain", "goal", "task", "tag", "info", "flow"];
 
@@ -67,6 +72,11 @@ export interface FlowSaveData {
   rootPlanKind: string | null;
   rootPlanStart: number | null;
   rootPlanEnd: number | null;
+  /** The **Verdict Window** bounding this Habit's iterations (commitment instance type only); both
+   * null leaves them answerable indefinitely, and a flow that is not a commitment one clears them
+   * rather than keeping a window nothing would ever read. */
+  verdictWindowN: number | null;
+  verdictWindowKind: string | null;
   isPrivate: boolean;
   /** Absent = leave recurrence untouched; present (object or null) = set-or-clear it. */
   recurrence?: RecurrenceSave | null;
@@ -87,6 +97,15 @@ function planFields(plan: RootPlanValue | null): Pick<FlowSaveData, "rootPlanKin
   return plan === null
     ? { rootPlanKind: null, rootPlanStart: null, rootPlanEnd: null }
     : { rootPlanKind: plan.kind, rootPlanStart: plan.start, rootPlanEnd: plan.end };
+}
+
+/** Flattens the Verdict Window into its `FlowSaveData` fields (both null when there is none). */
+function verdictWindowFields(
+  window: DurationSpec | null,
+): Pick<FlowSaveData, "verdictWindowN" | "verdictWindowKind"> {
+  return window === null
+    ? { verdictWindowN: null, verdictWindowKind: null }
+    : { verdictWindowN: window.n, verdictWindowKind: window.kind };
 }
 
 /** Local wall-clock today as `YYYY-MM-DD`, the default Recurrence start. */
@@ -140,6 +159,11 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
   const [rootPlan, setRootPlan] = useState<RootPlanValue | null>(
     node.flow?.rootPlanKind != null && node.flow.rootPlanStart != null && node.flow.rootPlanEnd != null
       ? { kind: node.flow.rootPlanKind, start: node.flow.rootPlanStart, end: node.flow.rootPlanEnd }
+      : null,
+  );
+  const [verdictWindow, setVerdictWindow] = useState<DurationSpec | null>(
+    node.flow?.verdictWindowN != null && node.flow.verdictWindowKind != null
+      ? { n: node.flow.verdictWindowN, kind: node.flow.verdictWindowKind }
       : null,
   );
   const [target, setTarget] = useState<TargetSelection | null>(targetFromNode(node, availableTargets));
@@ -259,6 +283,8 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
         windowTimeEnd: scoped && durationKind === "exact" ? timeEnd : null,
         // The root Plan applies only to a task-instance flow with a Span window.
         ...planFields(instanceType === "task" && scoped && !phase ? rootPlan : null),
+        // And the Verdict Window only to a commitment one: nothing else has a verdict to bound.
+        ...verdictWindowFields(instanceType === "commitment" ? verdictWindow : null),
         isPrivate,
         ...(isEdit && scoped ? { recurrence: recurrenceSave } : {}),
         ...(reconcile !== undefined ? { reconcile } : {}),
@@ -382,6 +408,12 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
           <span className={styles.depKind}>{t("scopes:unscoped")}</span>
         )}
       </div>
+      {instanceType === "commitment" && (
+        <div className={styles.label}>
+          {t("fieldVerdictWindow")}
+          <VerdictWindowField value={verdictWindow} onChange={setVerdictWindow} />
+        </div>
+      )}
       {instanceType === "task" && scoped && !isPhaseKind(durationKind) && (
         <div className={styles.label}>
           {t("fieldPlan")}

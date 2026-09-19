@@ -2,6 +2,7 @@
 //! [`SessionFactory`](crate::database::session::SessionFactory) and delegate to a domain module.
 
 pub mod block_reasons;
+pub mod commitments;
 pub mod domains;
 pub mod flows;
 pub mod infos;

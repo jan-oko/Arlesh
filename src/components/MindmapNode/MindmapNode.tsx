@@ -60,8 +60,11 @@ export default function MindmapNode({ node, parentKind, position, isSelected, is
       : resolution === "overdue"
         ? "var(--overdue)"
         : "var(--node-border)";
+  // A Commitment — real or a virtual Habit iteration — has no status to cycle here: its verdict is
+  // recorded through the two controls in List View, never through one cycling click.
   const canClickStatus =
     onStatusClick !== undefined &&
+    node.kind !== "commitment" &&
     (node.habitItem !== undefined ||
       ((node.kind === "task" || node.kind === "goal") && !isBlocked && node.virtual !== true));
   // The status-icon row is hidden while editing, when the node grows to fit the textarea.
@@ -101,7 +104,7 @@ export default function MindmapNode({ node, parentKind, position, isSelected, is
         <StatusIconRow node={node} indicators={statusIndicators} top={activeHeight} />
       )}
       {contextMenu !== null && createPortal(
-        <NodeContextMenu x={contextMenu.x} y={contextMenu.y} nodeKind={node.kind} parentKind={parentKind} childKinds={[...new Set(node.children.map((c) => c.kind))]} isCollapsed={isCollapsed} hasClipboard={hasClipboard} onAction={(action) => onContextAction(node.id, action)} onClose={() => setContextMenu(null)} />,
+        <NodeContextMenu x={contextMenu.x} y={contextMenu.y} nodeKind={node.kind} parentKind={parentKind} childKinds={[...new Set(node.children.map((c) => c.kind))]} {...(node.flowItem !== undefined ? { flowInstanceType: node.flowItem.flowInstanceType } : {})} isCollapsed={isCollapsed} hasClipboard={hasClipboard} onAction={(action) => onContextAction(node.id, action)} onClose={() => setContextMenu(null)} />,
         document.body,
       )}
     </g>

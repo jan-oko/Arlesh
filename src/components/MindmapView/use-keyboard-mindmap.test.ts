@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook } from "@testing-library/react";
 import { useKeyboardMindmap } from "./use-keyboard-mindmap";
 import type { MindmapNode } from "@/utils/tree-layout";
+import type { StatusMode } from "@/utils/filter-tree";
 
 function makeTask(id: string): MindmapNode {
   return { id, kind: "task", title: "Task", position: 0, tagIds: [], children: [] };
@@ -63,7 +64,8 @@ function baseOptions(overrides: Partial<Parameters<typeof useKeyboardMindmap>[0]
     onZoomIn: vi.fn(),
     onZoomOut: vi.fn(),
     onToggleFilter: vi.fn(),
-    onSetStatusMode: vi.fn() as (mode: "all" | "plan" | "start" | "do") => void,
+    onSetStatusMode: vi.fn() as (mode: StatusMode) => void,
+    onToggleBacklog: vi.fn(),
     onFocusRoot: vi.fn(),
     onCenterOnNode: vi.fn(),
     onConvertToFlow: vi.fn(),
@@ -667,10 +669,36 @@ describe("useKeyboardMindmap — filter shortcuts (Alt)", () => {
     fireKey("p", { altKey: true });
     fireKey("s", { altKey: true });
     fireKey("d", { altKey: true });
+    fireKey("b", { altKey: true });
     expect(opts.onSetStatusMode).toHaveBeenNthCalledWith(1, "all");
     expect(opts.onSetStatusMode).toHaveBeenNthCalledWith(2, "plan");
     expect(opts.onSetStatusMode).toHaveBeenNthCalledWith(3, "start");
     expect(opts.onSetStatusMode).toHaveBeenNthCalledWith(4, "do");
+    expect(opts.onSetStatusMode).toHaveBeenNthCalledWith(5, "backlog");
+  });
+
+  it("plain B toggles the anchor task's backlog, leaving the rest of the selection alone", () => {
+    const opts = baseOptions({
+      selectedNodeId: "task-1",
+      selectedNodeIds: new Set(["task-1", "task-2"]),
+      findNodeById: (id: string) => (id === "task-1" ? makeTask("task-1") : undefined),
+    });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("b");
+    expect(opts.onToggleBacklog).toHaveBeenCalledTimes(1);
+    expect(opts.onToggleBacklog).toHaveBeenCalledWith("task-1");
+    expect(opts.onSetStatusMode).not.toHaveBeenCalled();
+  });
+
+  it("plain B does nothing on a goal — Backlog is a Task-only state", () => {
+    const goal: MindmapNode = { id: "goal-1", kind: "goal", title: "Goal", position: 0, tagIds: [], children: [] };
+    const opts = baseOptions({
+      selectedNodeId: "goal-1",
+      findNodeById: (id: string) => (id === "goal-1" ? goal : undefined),
+    });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("b");
+    expect(opts.onToggleBacklog).not.toHaveBeenCalled();
   });
 
   it("Alt+S selects the Start mode without starting a flow", () => {

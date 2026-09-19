@@ -239,11 +239,7 @@ pub(crate) fn render(
     template: &FlowTemplate,
     scopes: &ScopeTable,
 ) -> RenderedPlan {
-    let root_kind = if flow.instance_type == "goal" {
-        InstanceType::Goal
-    } else {
-        InstanceType::Task
-    };
+    let root_kind = InstanceType::from_db(&flow.instance_type);
     let mut nodes = vec![PlannedNode {
         parent: None,
         kind: root_kind,
@@ -347,6 +343,8 @@ mod tests {
             root_plan_kind: None,
             root_plan_start: None,
             root_plan_end: None,
+            verdict_window_n: None,
+            verdict_window_kind: None,
             is_habit: false,
             position: 0,
             is_private: false,

@@ -171,3 +171,74 @@ describe("useNodeTypeManager — the backend's refusal becomes the prompt", () =
     expect(showToast).toHaveBeenCalledWith({ nodeId: "goal-9", message: "warnings:retypeFailed" });
   });
 });
+
+describe("useNodeTypeManager — a Commitment with nowhere to get a window", () => {
+  const UNSCOPED = { kind: "needs_time_scope", message: "a commitment must have a time scope of its own or inherit one" };
+  const TONIGHT = { start_id: 7, end_id: 7 };
+
+  function unscopedHook(first: unknown = UNSCOPED) {
+    const retypeNode = vi.fn().mockRejectedValueOnce(first).mockResolvedValue("commitment-99");
+    const showToast = vi.fn();
+    const tree = n("root", "domain", [n("aspect-1", "aspect", [n("task-9", "task")])]);
+    const { result } = renderHook(() =>
+      useNodeTypeManager({ tree, retypeNode, selectNode: vi.fn(), showToast }),
+    );
+    return { result, retypeNode, showToast };
+  }
+
+  it("asks for a window instead of toasting a failure", async () => {
+    const { result, showToast } = unscopedHook();
+    await act(async () => { result.current.setType("task-9", "commitment"); });
+
+    expect(result.current.commitmentScopeRequest).toMatchObject({
+      nodeId: "task-9", toKind: "commitment", title: "task-9",
+    });
+    expect(showToast).not.toHaveBeenCalled();
+  });
+
+  it("runs the retype again carrying the window that was chosen", async () => {
+    const { result, retypeNode } = unscopedHook();
+    await act(async () => { result.current.setType("task-9", "commitment"); });
+    await act(async () => { result.current.resolveCommitmentScope(TONIGHT); });
+
+    expect(retypeNode).toHaveBeenLastCalledWith("task-9", "task", "commitment", { timeScope: TONIGHT });
+    expect(result.current.commitmentScopeRequest).toBeNull();
+  });
+
+  it("cancelling writes nothing at all, so the node is left exactly as it was", async () => {
+    const { result, retypeNode } = unscopedHook();
+    await act(async () => { result.current.setType("task-9", "commitment"); });
+    await act(async () => { result.current.resolveCommitmentScope(null); });
+
+    // One call: the refused one. Nothing was written, so there is no half-retyped node to undo.
+    expect(retypeNode).toHaveBeenCalledTimes(1);
+    expect(result.current.commitmentScopeRequest).toBeNull();
+  });
+
+  it("keeps the answer already given to the loss prompt in front of it", async () => {
+    // Two refusals in a row: first what the retype would lose, then the missing window. Answering
+    // the second must not throw away the acknowledgement that got past the first.
+    const retypeNode = vi
+      .fn()
+      .mockRejectedValueOnce({
+        kind: "needs_confirmation",
+        message: "would lose things",
+        details: { lost_children: [], lost_fields: [{ field: "plan", value: "12" }] },
+      })
+      .mockRejectedValueOnce(UNSCOPED)
+      .mockResolvedValue("commitment-99");
+    const tree = n("root", "domain", [n("aspect-1", "aspect", [n("task-9", "task")])]);
+    const { result } = renderHook(() =>
+      useNodeTypeManager({ tree, retypeNode, selectNode: vi.fn(), showToast: vi.fn() }),
+    );
+
+    await act(async () => { result.current.setType("task-9", "commitment"); });
+    await act(async () => { result.current.retypeActions?.[0]?.onClick(); });
+    await act(async () => { result.current.resolveCommitmentScope(TONIGHT); });
+
+    expect(retypeNode).toHaveBeenLastCalledWith("task-9", "task", "commitment", {
+      strandedChildren: "reparent",
+      timeScope: TONIGHT,
+    });
+  });
+});

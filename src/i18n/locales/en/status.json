@@ -15,5 +15,10 @@
     "achieved": "Achieved",
     "frozen": "Frozen",
     "archived": "Archived"
+  },
+  "commitment": {
+    "unresolved": "Unresolved",
+    "kept": "Kept",
+    "broken": "Broken"
   }
 }

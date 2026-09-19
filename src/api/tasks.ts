@@ -1,6 +1,16 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { TimeScope } from "@/api/time-scope";
 import type { OnScopeExit } from "@/api/scope-lifecycle";
+import { isWireError } from "@/api/errors";
+
+/** A Task's own stored archival state. Two values only: a Task is never manually Archived, and
+ * Frozen is Goal/Project vocabulary. */
+export type TaskArchival = "live" | "backlog";
+
+export const TASK_ARCHIVAL = {
+  LIVE: "live",
+  BACKLOG: "backlog",
+} as const;
 
 export interface Task {
   id: number;
@@ -13,6 +23,7 @@ export interface Task {
   // Present iff time_scope is (inherited with the window otherwise).
   on_scope_exit: OnScopeExit | null;
   plan: TimeScope | null;
+  archival: TaskArchival;
   tag_ids: number[];
   position: number;
   is_private: boolean;
@@ -30,6 +41,7 @@ export interface CreateTaskRequest {
   // Applied only when time_scope is set (defaults to "keep").
   on_scope_exit?: OnScopeExit;
   plan?: TimeScope;
+  archival?: TaskArchival;
 }
 
 export interface UpdateTaskRequest {
@@ -41,6 +53,9 @@ export interface UpdateTaskRequest {
   // Forced null when the scope is cleared; defaulted to "keep" when a scope is set without one.
   on_scope_exit?: OnScopeExit | null;
   plan?: TimeScope | null;
+  // Absent = leave unchanged. Backlogging a task that keeps its Plan is refused — see
+  // `backlogNeedsPlanCleared` — so the two are sent together to clear the plan and backlog at once.
+  archival?: TaskArchival;
   parent_type?: string;
   parent_id?: number;
   position?: number;
@@ -70,6 +85,21 @@ export async function duplicateTask(
   position: number,
 ): Promise<Task> {
   return invoke<Task>("duplicate_task", { id, targetType, targetId, position });
+}
+
+/**
+ * Whether `error` is `update_task` refusing to backlog a task that still has a Plan.
+ *
+ * A Task is never both set aside and scheduled, so the backend stops rather than throwing a
+ * scheduling decision away unasked. Answering means repeating the same call with the Plan cleared:
+ * `updateTask(id, { archival: "backlog", plan: null })`. Anything else is a real failure and must
+ * be surfaced as one.
+ *
+ * `update_task` raises no other confirmation, so the kind alone identifies it — unlike
+ * `retype_node`, whose refusal carries a payload naming what is at stake.
+ */
+export function backlogNeedsPlanCleared(error: unknown): boolean {
+  return isWireError(error) && error.kind === "needs_confirmation";
 }
 
 export interface ViolatingDescendant {
