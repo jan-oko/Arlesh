@@ -40,7 +40,7 @@ const taskNode: MindmapNode = {
 const virtualHabitItemNode: MindmapNode = {
   id: "habititem-flow_task-4-3-virtual", kind: "task", title: "Breakfast", tagIds: [], position: 0, children: [],
   virtual: true,
-  habitItem: { flowId: 4, itemType: "flow_task", itemId: 4, scopeId: 26 },
+  habitItem: { flowId: 4, itemType: "flow_task", itemId: 4, scopeId: 26, cycleId: 0 },
 };
 const root: MindmapNode = {
   id: "root", kind: "domain", title: "Arlesh", tagIds: [], position: 0,

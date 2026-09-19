@@ -116,6 +116,32 @@ describe("filterTaskList", () => {
     expect(filterTaskList(rows, sf({ statusMode: "start" }), lf())).toHaveLength(0);
   });
 
+  it("shows a not-yet-open occurrence under All and hides it under Plan/Start/Do", () => {
+    // Same rule the canvas applies, on the flat list: All is the preset that shows everything,
+    // including this evening's habit item at breakfast.
+    const evening = n("evening", "task", {
+      status: "todo",
+      timing: "pending",
+      habitItem: { flowId: 3, itemType: "flow_task", itemId: 4, scopeId: 100, cycleId: 12 },
+    });
+    const rows = [row({ node: evening })];
+    expect(filterTaskList(rows, sf({ statusMode: "all" }), lf())).toHaveLength(1);
+    for (const statusMode of ["plan", "start", "do"] as const) {
+      expect(filterTaskList(rows, sf({ statusMode }), lf()), statusMode).toHaveLength(0);
+    }
+  });
+
+  it("hides a row whose habit-occurrence ancestor has not opened yet", () => {
+    // The canvas prunes the subtree; a flat list has to walk for it.
+    const ancestor = n("evening", "task", {
+      timing: "pending",
+      habitItem: { flowId: 3, itemType: "flow_task", itemId: 4, scopeId: 100, cycleId: 12 },
+    });
+    const rows = [row({ ancestors: [ancestor] })];
+    expect(filterTaskList(rows, sf({ statusMode: "all" }), lf())).toHaveLength(1);
+    expect(filterTaskList(rows, sf({ statusMode: "plan" }), lf())).toHaveLength(0);
+  });
+
   it("do preset keeps only in-progress tasks", () => {
     const rows = [
       row({ node: n("task-ip", "task", { status: "in_progress" }) }),

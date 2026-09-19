@@ -154,9 +154,18 @@ export interface MindmapNode {
   /**
    * Present on any virtual Habit instance — a per-iteration flow-item instance, or the iteration
    * **root** itself (`itemType: "flow_root"`, `itemId` = the flow id). Carries the
-   * (flow, instance, iteration scope) its status click toggles.
+   * (flow, instance, iteration scope, cycle pair) its status click toggles. `cycleId` is what
+   * separates one occurrence of an item from another in the same iteration — an item with a
+   * morning and an evening cycle pair draws two nodes on the same day — and is `NO_CYCLE` for an
+   * item with no pairs, and for the root.
    */
-  habitItem?: { flowId: number; itemType: HabitInstanceType; itemId: number; scopeId: number };
+  habitItem?: {
+    flowId: number;
+    itemType: HabitInstanceType;
+    itemId: number;
+    scopeId: number;
+    cycleId: number;
+  };
   plan?: TimeScope | null;
   flow?: FlowData;
   flowItem?: FlowItemData;

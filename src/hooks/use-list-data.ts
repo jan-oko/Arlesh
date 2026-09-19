@@ -65,10 +65,10 @@ export function useListData(): ListData {
       const node = findNode(tree, nodeId);
       if (node === undefined || node.kind !== "task") return;
       if (node.habitItem !== undefined) {
-        const { flowId, itemType, itemId, scopeId } = node.habitItem;
+        const { flowId, itemType, itemId, scopeId, cycleId } = node.habitItem;
         const cycled = nextTaskStatus(node.status ?? TASK_STATUS.TODO);
         const next = cycled === TASK_STATUS.TODO ? null : cycled;
-        void setHabitItemStatus(flowId, itemType, itemId, scopeId, next, Date.now()).then(() => reload());
+        void setHabitItemStatus(flowId, itemType, itemId, scopeId, cycleId, next, Date.now()).then(() => reload());
         return;
       }
       const dbId = parseInt(nodeId.split("-").pop() ?? "", 10);

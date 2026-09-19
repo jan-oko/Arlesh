@@ -2,7 +2,7 @@ import type { MindmapNode } from "@/utils/tree-layout";
 import type { FilterState, TagFilterMode } from "@/utils/filter-tree";
 import {
   typeHardHidden, passesTags, withArchivedOverride, isShelvedProject, isHiddenBacklog,
-  passesCommitmentPreset,
+  isUnopenedOccurrence, passesCommitmentPreset,
 } from "@/utils/filter-tree";
 import { TASK_STATUS, GOAL_STATUS, PROJECT_STATUS } from "@/utils/status-mapping";
 import type { Verdict } from "@/api/commitments";
@@ -206,6 +206,9 @@ function passesListPreset(row: TaskListRow, f: FilterState): boolean {
   // Likewise a backlogged ancestor Task: the Mindmap prunes the subtree away, a flat list has to
   // walk for it. (The row's own backlog is handled by `typeHardHidden`, before this runs.)
   if (row.ancestors.some((a) => isHiddenBacklog(a, f))) return false;
+  // And likewise a habit occurrence above this row whose window has not opened — its subtree goes
+  // with it on the canvas, so it must here too. (The row's own window: `typeHardHidden`.)
+  if (row.ancestors.some((a) => isUnopenedOccurrence(a, f))) return false;
   switch (f.statusMode) {
     case "all":
       return true;

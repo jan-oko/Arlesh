@@ -64,7 +64,7 @@ describe("TaskRow", () => {
 
   it("still allows cycling a virtual Habit instance even though it reads as blocked-like", () => {
     const habitRow = row({
-      node: n("task-1", "task", { status: "todo", habitItem: { flowId: 1, itemType: "flow_task", itemId: 2, scopeId: 3 } }),
+      node: n("task-1", "task", { status: "todo", habitItem: { flowId: 1, itemType: "flow_task", itemId: 2, scopeId: 3, cycleId: 0 } }),
       isBlocked: true,
     });
     render(<TaskRow {...baseProps({ row: habitRow })} />);
