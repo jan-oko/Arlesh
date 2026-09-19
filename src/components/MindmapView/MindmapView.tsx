@@ -23,7 +23,9 @@ import { useFilterStore } from "@/stores/use-filter-store";
 import { useViewStore } from "@/stores/use-view-store";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
 import { useSubtreeNav } from "@/hooks/use-subtree-nav";
-import { filterTree } from "@/utils/filter-tree";
+import { filterTreeWithFocus } from "@/utils/filter-tree";
+import { focusExemptPath } from "@/utils/focus-exemption";
+import { useFocusExemption } from "@/hooks/use-focus-exemption";
 import AnchoredToast from "@/components/AnchoredToast/AnchoredToast";
 import HabitFailureBanner from "@/components/HabitFailureBanner/HabitFailureBanner";
 import TaskEditorModal from "@/components/TaskEditorModal/TaskEditorModal";
@@ -103,10 +105,14 @@ export default function MindmapView() {
   const filter = useFilterStore((s) => s.filter);
   const setStatusMode = useFilterStore((s) => s.setStatusMode);
   const toggleFilterPopover = useFilterStore((s) => s.toggleFilterPopover);
-  const displayRoot = useMemo<MindmapNode>(() => {
+  // The focus exemption: whatever is selected stays on screen even once your own edit stops it
+  // matching — completing a task under Plan no longer erases it out from under you. It ends when the
+  // selection moves or the filter/subtree changes; see use-focus-exemption.
+  const focusExemptNodeId = useFocusExemption(selectedNodeId, [filter, subtreeRootId]);
+  const { root: displayRoot, exemptedIds: focusExemptIds } = useMemo(() => {
     const base = subtreeRootId !== null ? (findNode(tree, subtreeRootId) ?? tree) : tree;
-    return filterTree(base, filter);
-  }, [subtreeRootId, tree, filter]);
+    return filterTreeWithFocus(base, filter, focusExemptPath(base, focusExemptNodeId));
+  }, [subtreeRootId, tree, filter, focusExemptNodeId]);
 
   const canvasRef = useRef<MindmapCanvasHandle>(null);
 
@@ -517,6 +523,7 @@ export default function MindmapView() {
         orientation={mindmapOrientation}
         collapsedNodeIds={effectiveCollapsedIds}
         selectedNodeIds={selectedNodeIds}
+        focusExemptIds={focusExemptIds}
         editingNodeId={editingNodeId}
         dragTargetId={dragTargetId}
         dragSourceId={dragSourceId}

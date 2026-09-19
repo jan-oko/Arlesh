@@ -27,6 +27,8 @@ interface Props {
   orientation: Orientation;
   collapsedNodeIds: ReadonlySet<string>;
   selectedNodeIds: ReadonlySet<string>;
+  /** Nodes on screen only by the focus exemption — the filter would have dropped them, so they render dimmed. */
+  focusExemptIds: ReadonlySet<string>;
   editingNodeId: string | null;
   dragTargetId: string | null;
   dragSourceId: string | null;
@@ -44,7 +46,7 @@ interface Props {
   onStatusClick: (id: string) => void;
 }
 
-const MindmapCanvas = forwardRef<MindmapCanvasHandle, Props>(function MindmapCanvas({ root, orientation, collapsedNodeIds, selectedNodeIds, editingNodeId, dragTargetId, dragSourceId, canvasOverlay, hasClipboard, onSelect, onCtrlClick, onShiftClick, onDoubleClick, onCommitEdit, onCancelEdit, onContextAction, onDragStart, onCanvasClick, onStatusClick }: Props, ref) {
+const MindmapCanvas = forwardRef<MindmapCanvasHandle, Props>(function MindmapCanvas({ root, orientation, collapsedNodeIds, selectedNodeIds, focusExemptIds, editingNodeId, dragTargetId, dragSourceId, canvasOverlay, hasClipboard, onSelect, onCtrlClick, onShiftClick, onDoubleClick, onCommitEdit, onCancelEdit, onContextAction, onDragStart, onCanvasClick, onStatusClick }: Props, ref) {
   const svgRef = useRef<SVGSVGElement>(null);
   const { springProps, onMouseDown, centerOnRoot, centerOnPoint, ensureVisible, panBy, zoomIn, zoomOut, getViewport } = usePanZoom(svgRef);
   useImperativeHandle(ref, () => ({ centerOnRoot, centerOnPoint, ensureVisible, panBy, zoomIn, zoomOut, getViewport }), [centerOnRoot, centerOnPoint, ensureVisible, panBy, zoomIn, zoomOut, getViewport]);
@@ -57,7 +59,7 @@ const MindmapCanvas = forwardRef<MindmapCanvasHandle, Props>(function MindmapCan
   return (
     <animated.svg ref={svgRef} className={styles.canvas} width="100%" height="100%" onMouseDown={onMouseDown} onClick={onCanvasClick}>
       <animated.g style={{ transform }}>
-        <MindmapTree root={root} orientation={orientation} collapsedNodeIds={collapsedNodeIds} selectedNodeIds={selectedNodeIds} editingNodeId={editingNodeId} dragTargetId={dragTargetId} dragSourceId={dragSourceId} hasClipboard={hasClipboard} onSelect={onSelect} {...(onCtrlClick !== undefined ? { onCtrlClick } : {})} {...(onShiftClick !== undefined ? { onShiftClick } : {})} onDoubleClick={onDoubleClick} onCommitEdit={onCommitEdit} onCancelEdit={onCancelEdit} onContextAction={onContextAction} onDragStart={onDragStart} onStatusClick={onStatusClick} />
+        <MindmapTree root={root} orientation={orientation} collapsedNodeIds={collapsedNodeIds} selectedNodeIds={selectedNodeIds} focusExemptIds={focusExemptIds} editingNodeId={editingNodeId} dragTargetId={dragTargetId} dragSourceId={dragSourceId} hasClipboard={hasClipboard} onSelect={onSelect} {...(onCtrlClick !== undefined ? { onCtrlClick } : {})} {...(onShiftClick !== undefined ? { onShiftClick } : {})} onDoubleClick={onDoubleClick} onCommitEdit={onCommitEdit} onCancelEdit={onCancelEdit} onContextAction={onContextAction} onDragStart={onDragStart} onStatusClick={onStatusClick} />
         {canvasOverlay}
       </animated.g>
     </animated.svg>
