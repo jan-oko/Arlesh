@@ -363,6 +363,46 @@ filter dimensions" → seven). It never reached a release, so they were made to 
 rather than carrying a `Removed` note for something no user ever had. Agent also caught `README.md`,
 which my file map missed.
 
+## Standing rule: fix in the open PR (2026-09-19)
+
+User: *"If a feature has a bug or missing behaviour don't open a PR to it, instead update the
+existing PR."*
+
+Now in memory and in every brief. The reasoning matches the ruling already made for `evu`, `mrq`,
+`rhk` and the four `cyo.*` fixes: the feature has not shipped, so a separate "fix" PR describes
+something no user ever saw broken, and it splits one reviewable change across two reviews.
+
+**How it is applied:** bead the fix as a child of the feature's bead, dispatch an agent to work *on
+that PR's branch* — commit and push there, no `gh pr create` — and fold the CHANGELOG into the
+feature's existing `[Unreleased]` entry rather than adding a `Fixed` line. The brief has to say this
+explicitly, because an agent's default is to branch and open a PR.
+
+**The consequence is the orchestrator's**: moving a base means anything stacked on it needs its base
+merged again. Agents are told to report that they pushed and leave the re-merge alone.
+
+A new PR is only right when the feature has already merged to master, or its PR is closed.
+
+**Immediately reclassified by this: `Arlesh-63c`** (`stop` sometimes leaves Vite running) is a bug in
+`branch-instance.sh`, which is PR #15 and still open. It folds into #15. Queued rather than
+dispatched — it consumes no PR slot, so it can wait for an agent to free.
+
+## Dispatched: `Arlesh-npt`, the undo journal — the 8th PR
+
+Part 1 of 3 of the undo stack, and the first bead this run from the spec work rather than from
+testing. Backend-only, cut fresh from `origin/master`, so it is isolated from the six open PRs and
+their frontend churn.
+
+The brief hands over the ADR's four rejected alternatives as settled and names what is actually the
+agent's: **which tables are journaled**, concretely — the ADR gives the principle, the agent produces
+the list and defends it. That is the main risk in either direction: a missed table is silently
+un-undoable, a derived table included will fight the code that regenerates it. Plus the guard ADR
+0006 asks for by name — a test that every non-excluded table has its three triggers — which is the
+one obligation this design does not remove.
+
+**Migration number `0030`, with a deliberate gap.** `0025` is master's highest, but PR #10 adds
+`0028` and `rhk` may add `0029`. Two branches taking the same number is the failure this repo hit
+today; leaving room is cheaper than renumbering.
+
 ## Dispatched to 8 (2026-09-19)
 
 **`Arlesh-atb` + `Arlesh-9xk`, one agent, one PR** — the user's call. Both P1, both in `src-tauri`,
