@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import TaskEditorModal from "./TaskEditorModal";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { Domain } from "@/api/domains";
@@ -306,5 +307,25 @@ describe("TaskEditorModal — Backlog control", () => {
     await waitFor(() => expect(onSave).toHaveBeenCalled());
     // Both axes independent: finished, and still set aside.
     expect(onSave.mock.calls[0]?.[0]).toMatchObject({ status: "done", archival: "backlog" });
+  });
+});
+
+/*
+ * Escape is handled by a React `onKeyDown` on the dialog element, so it only fires while focus is
+ * already inside the dialog. These press it with no Tab and no click first — the state the modal is
+ * actually in the instant it opens — which is the one case a `fireEvent.keyDown` aimed at the input
+ * cannot show.
+ */
+describe("TaskEditorModal — focus on open", () => {
+  it("puts focus inside the dialog when it opens", () => {
+    render(<TaskEditorModal {...defaultProps} />);
+    expect(screen.getByLabelText("fieldTitle")).toHaveFocus();
+  });
+
+  it("closes on an Escape pressed the moment it opens, with no Tab or click first", async () => {
+    const user = userEvent.setup();
+    render(<TaskEditorModal {...defaultProps} />);
+    await user.keyboard("{Escape}");
+    expect(defaultProps.onClose).toHaveBeenCalledTimes(1);
   });
 });

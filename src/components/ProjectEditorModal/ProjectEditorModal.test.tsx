@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import ProjectEditorModal from "./ProjectEditorModal";
 import type { MindmapNode } from "@/utils/tree-layout";
 
@@ -100,5 +101,25 @@ describe("ProjectEditorModal — bd issue link", () => {
   it("shows no issue row at all for an unlinked project", () => {
     render(<ProjectEditorModal {...defaultProps} node={mkNode()} />);
     expect(screen.queryByText("fieldBeadsId")).not.toBeInTheDocument();
+  });
+});
+
+/*
+ * Escape is handled by a React `onKeyDown` on the dialog element, so it only fires while focus is
+ * already inside the dialog. These press it with no Tab and no click first — the state the modal is
+ * actually in the instant it opens — which is the one case a `fireEvent.keyDown` aimed at the input
+ * cannot show.
+ */
+describe("ProjectEditorModal — focus on open", () => {
+  it("puts focus inside the dialog when it opens", () => {
+    render(<ProjectEditorModal {...defaultProps} />);
+    expect(screen.getByLabelText("fieldTitle")).toHaveFocus();
+  });
+
+  it("closes on an Escape pressed the moment it opens, with no Tab or click first", async () => {
+    const user = userEvent.setup();
+    render(<ProjectEditorModal {...defaultProps} />);
+    await user.keyboard("{Escape}");
+    expect(defaultProps.onClose).toHaveBeenCalledTimes(1);
   });
 });
