@@ -12,8 +12,10 @@ The gate moved to GitHub Actions on 2026-09-19 — `Arlesh-qkr`, PR #20. See
 | Workflow · job | Trigger | What it runs |
 |---|---|---|
 | `ci.yml` · `web` | every PR to master, every push to master | `npm run lint`, `npx tsc --noEmit`, `npx vitest run --maxWorkers=2 --testTimeout=30000 --hookTimeout=30000` |
-| `ci.yml` · `rust` | every PR to master, every push to master | `cargo test --locked` |
-| `coverage.yml` · `tarpaulin` | PRs touching `src-tauri/**`; weekly on master; `workflow_dispatch` | `cargo tarpaulin --engine ptrace --skip-clean --fail-under 90 --exclude-files 'src/commands/*'` |
+| `ci.yml` · `rust` | every PR to master, every push to master, weekly on master | `cargo test --locked` under `cargo llvm-cov show-env`, then `cargo llvm-cov report --fail-under-lines 94 --ignore-filename-regex '(^\|/)src/commands/'` |
+
+One Rust job, not two: the coverage tool runs the suite, so `cargo test` and coverage are the same
+build. `coverage.yml` is gone. **2m22s warm, 6m27s cold, 644 tests, 95.25%.**
 
 **Before pushing, an agent runs this and nothing more:**
 
@@ -1661,13 +1663,74 @@ its harness ran zero tests for 24.7s. The trade is that `cargo test` no longer t
 **Test count is unchanged: 490** (232 lib + 70 + 65 + 62 + 61), plus 14 doctests. The count is the
 check that the regrouping dropped nothing — if it moves, a module was not wired in.
 
-### Open: two candidate speed-ups that move the number
+### The engine, settled by measurement
 
-A temporary `measure` job in `coverage.yml` runs `--no-dead-code` and `--engine llvm` against this
-same tree and prints each percentage beside the 90.96% baseline. Both are expected to change the
-reported figure — the first stops counting never-linked code as uncovered, the second swaps
-tarpaulin's line-table walk for LLVM's region counters — and neither delta is predictable, which is
-why it is measured rather than assumed. **That job is to be reverted before this PR merges.**
+The gate went from **20m40s to 2m22s warm**. Two changes did it, and three plausible-looking
+shortcuts were measured and rejected. Do not re-litigate any of these without new numbers.
+
+**Where the 20 minutes went.** Not measurement — ptrace machinery. Tarpaulin's ptrace engine sets
+an INT3 breakpoint on every coverable line, then on each first hit disables it, single-steps and
+re-enables it. Tarpaulin defaults to `-Clink-dead-code`, so every test binary links the whole
+560-crate tree and the cost scales with the dependency graph rather than with this project: ~24.5s
+of flat setup per binary, **480.2s of run phase around 38.8s of actual test execution**. Caching
+never touched it (8m00s cold, 8m36s warm) — it only cut compile, 7m09s to 2m29s.
+
+**Fix one: fewer binaries.** 16 test files became 4 targets plus `commitments.rs`. Run phase
+480s → 159s, merged ptrace job 6m26s warm. Worth doing on its own.
+
+**Fix two: stop using ptrace.** `cargo llvm-cov`, LLVM source-based coverage, on the pinned stable
+toolchain. Warm job 2m22s against ptrace's 6m26s, with 1 crate recompiled instead of 384.
+
+| Engine, same tree | lines | % | verdict |
+|---|---|---|---|
+| tarpaulin `--engine ptrace` | 3442/3782 | 91.01 | correct, slow |
+| tarpaulin `--engine llvm` | 3083/3447 | 89.44 | **wrong** |
+| `cargo llvm-cov` | 5753 | 95.25 | correct, fast |
+
+**Rejected: `cargo tarpaulin --engine llvm`.** It looks like the obvious win and it silently drops
+profraw data. On `src/infos/mod.rs` it reports **17/74** where ptrace watches 74/74 run and
+cargo-llvm-cov independently says 100%, on an identical denominator; `src/block_reasons/mod.rs`
+10/41 against 40/41. Neither file holds an inline `#[cfg(test)]` block, so no test accounting is
+involved. Its README warns about fork and thread unsafety and the suite is `#[tokio::test]`
+throughout. **89.44% is not stricter than 91.01%, it is wrong** — a floor of 89 would have written
+the bug into the gate and stopped protecting those files entirely.
+
+**Rejected: `--no-dead-code`.** Does not run at all. The binaries fail to load with corrupted
+`DT_NEEDED` strings (`libgdk_pixbuf?2.0.so.?`): without link-dead-code the section layout shifts and
+the ptrace engine writes its `0xCC` breakpoints into `.dynstr` instead of `.text`.
+
+**Rejected: `#[coverage(off)]` on inline test modules.** Keeps tests inline but is still E0658 on
+1.96 — verified on this toolchain, not taken from the changelog. Stabilised in rust-lang/rust#130766,
+reverted in #134672 as a process mixup; the live tracking issue (#134749) has six open blockers
+including T-lang sign-off and **no target version**. That is a permanent nightly toolchain, not a
+stopgap, and nightly coverage also means the shipping toolchain never runs the suite — buying that
+back measured 237s in a job of its own.
+
+**So unit tests moved to sibling `tests.rs` files.** cargo-llvm-cov excludes `tests.rs` and
+`*_tests.rs` by filename on stable, with no annotations. Measured on one commit with only the
+toolchain varying, inline bodies were **2790 of 8715 lines and 7735 of 13577 regions**, ~99% covered
+by construction — a third of the line metric and over half the region metric could not regress.
+`.claude/rules/rust.md` is amended accordingly.
+
+**The floor moved 90 → 94 because the unit changed**, not because standards did: tarpaulin counts
+DWARF statement lines, LLVM counts lines in coverage regions. 94 against a measured 95.25% leaves
+~72 lines of slack, against ~52 under the old arrangement. `--fail-under-lines` is **proven to fail
+as well as pass** — a floor of 99 exits 1, 94 exits 0 — so it gates rather than decorates.
+
+**Four traps that stayed green while being wrong.** Each was caught by checking a number, never by
+the exit status:
+
+- `cargo llvm-cov` does not run doctests. It gated **630** tests where `cargo test` runs 644.
+- `cargo test` *already includes* doctests, so adding `cargo test --doc` ran them twice — **658**.
+- Piping `cargo test` through `| tail` reports **tail's** exit code. A red suite looks green.
+- rust-cache reported `full match: true` and **384 crates recompiled anyway**: driving `cargo
+  llvm-cov` directly builds into `target/llvm-cov-target`, driving `cargo test` under `show-env`
+  builds into `target/debug`, and rust-cache never overwrites an exact-key hit — so it could not
+  converge. The key is now `rust-llvm-cov-manual`; **change it if that command changes mode.**
+
+**The reclaim step is gone.** Runners start with 14 G free and the job never came close; it had cost
+32s, 75s and 3m40s across three runs of the identical command.
+
 ## Spec + bead round, 2026-09-19
 
 Fourteen unbeaded tasks had accumulated on the Arlesh board — twelve added that day (ids 171–175,
