@@ -4,7 +4,7 @@ import type { GlobalContext } from "./global-bindings";
 import { matchesChord } from "./chord";
 
 function makeContext(): GlobalContext {
-  return { onToggleView: vi.fn(), onToggleHotkeys: vi.fn() };
+  return { onToggleView: vi.fn(), onToggleHotkeys: vi.fn(), onToggleFullscreen: vi.fn() };
 }
 
 function runFor(code: string, modifiers: Partial<KeyboardEventInit>, ctx: GlobalContext): boolean {
@@ -26,6 +26,12 @@ describe("GLOBAL_BINDINGS", () => {
     const ctx = makeContext();
     expect(runFor("Slash", { ctrlKey: true, shiftKey: true }, ctx)).toBe(true);
     expect(ctx.onToggleHotkeys).toHaveBeenCalledTimes(1);
+  });
+
+  it("when F11 is pressed, shows the board alone", () => {
+    const ctx = makeContext();
+    expect(runFor("F11", {}, ctx)).toBe(true);
+    expect(ctx.onToggleFullscreen).toHaveBeenCalledTimes(1);
   });
 
   it("when Alt+Shift+L is pressed, matches nothing", () => {

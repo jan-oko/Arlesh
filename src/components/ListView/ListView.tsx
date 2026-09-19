@@ -25,7 +25,8 @@ import styles from "./ListView.module.css";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
 import { useFocusExemption } from "@/hooks/use-focus-exemption";
 import { useSubtreeNav } from "@/hooks/use-subtree-nav";
-import { useViewStore } from "@/stores/use-view-store";
+import { useFullscreenStore } from "@/stores/use-fullscreen-store";
+import { useDisplayStore } from "@/stores/use-display-store";
 
 export default function ListView() {
   const { t } = useTranslation(["common", "listView", "editor"]);
@@ -41,9 +42,10 @@ export default function ListView() {
 
   // Subtree entry is shared state, not a filter: the Mindmap and the List View re-root together.
   const enterSubtree = useMindmapStore((s) => s.enterSubtree);
-  const pathHeaderIcons = useViewStore((s) => s.pathHeaderIcons);
+  const pathHeaderIcons = useDisplayStore((s) => s.pathHeaderIcons);
   const { subtreeRootId, onExitSubtree, onExitToRoot } = useSubtreeNav(tree);
 
+  const toggleFullscreen = useFullscreenStore((s) => s.toggle);
   const listFilter = useListFilterStore((s) => s.filter);
   const addPill = useListFilterStore((s) => s.addPill);
   const setListPreset = useListFilterStore((s) => s.setPreset);
@@ -144,6 +146,7 @@ export default function ListView() {
     selectedTaskId,
     selectedCommitmentId,
     selectedRowId: activeSelectedId,
+    onToggleFullscreen: toggleFullscreen,
     isSelectedBlocked,
     onNavigate: handleNavigate,
     onCycleStatus,

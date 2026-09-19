@@ -8,7 +8,7 @@ import { updateTask } from "@/api/tasks";
 import { updateGoal } from "@/api/goals";
 import { setHabitItemStatus } from "@/api/flows";
 import { TASK_STATUS, GOAL_STATUS } from "@/utils/status-mapping";
-import { CLIPBOARD_OP } from "@/stores/use-mindmap-store";
+import { CLIPBOARD_OP } from "@/stores/use-clipboard-store";
 import { getErrorMessage } from "@/api/errors";
 
 const LOG_PREFIX = "[arlesh]";

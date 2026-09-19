@@ -4,6 +4,7 @@ import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useListFilterStore } from "@/stores/use-list-filter-store";
 import { useViewStore } from "@/stores/use-view-store";
+import { useDisplayStore } from "@/stores/use-display-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { useHotkeysStore } from "@/stores/use-hotkeys-store";
 import { LIST_PRESET_VALUES, isListPreset } from "@/utils/list-filter";
@@ -57,8 +58,8 @@ export default function TopBar() {
   const setView = useViewStore((s) => s.setView);
   const mindmapOrientation = useViewStore((s) => s.mindmapOrientation);
   const toggleMindmapOrientation = useViewStore((s) => s.toggleMindmapOrientation);
-  const pathHeaderIcons = useViewStore((s) => s.pathHeaderIcons);
-  const togglePathHeaderIcons = useViewStore((s) => s.togglePathHeaderIcons);
+  const pathHeaderIcons = useDisplayStore((s) => s.pathHeaderIcons);
+  const togglePathHeaderIcons = useDisplayStore((s) => s.togglePathHeaderIcons);
   const listPreset = useListFilterStore((s) => s.filter.preset);
   const setListPreset = useListFilterStore((s) => s.setPreset);
   const theme = useThemeStore((s) => s.theme);

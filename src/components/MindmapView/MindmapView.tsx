@@ -10,7 +10,9 @@ import { useNodeActions } from "./use-node-actions";
 import { useContextAction } from "./use-context-action";
 import { useNavigateArrow } from "./use-navigate-arrow";
 import { useKeyboardMindmap } from "./use-keyboard-mindmap";
-import { useMindmapStore, CLIPBOARD_OP } from "@/stores/use-mindmap-store";
+import { useMindmapStore } from "@/stores/use-mindmap-store";
+import { useClipboardStore, CLIPBOARD_OP } from "@/stores/use-clipboard-store";
+import { useTabsStore } from "@/stores/use-tabs-store";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { updateTask, reparentScopeConflicts } from "@/api/tasks";
 import { updateGoal } from "@/api/goals";
@@ -20,6 +22,7 @@ import MindmapCanvas, { type MindmapCanvasHandle } from "@/components/MindmapCan
 import DragGhost from "@/components/DragGhost/DragGhost";
 import DragPlaceholder from "@/components/DragPlaceholder/DragPlaceholder";
 import { useFilterStore } from "@/stores/use-filter-store";
+import { useFullscreenStore } from "@/stores/use-fullscreen-store";
 import { useViewStore } from "@/stores/use-view-store";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
 import { useSubtreeNav } from "@/hooks/use-subtree-nav";
@@ -79,10 +82,13 @@ export default function MindmapView() {
   const { tree, isLoading, error, loadCondition, createNode, createChild, renameNode, retypeNode, reorderNode, moveNode, duplicateNode, removeNode, createCommitment, createFlow, reload } =
     useMindmapData();
   const {
-    selectedNodeId, selectedNodeIds, subtreeRootId, clipboard, collapsedNodeIds, pendingToast,
+    selectedNodeId, selectedNodeIds, subtreeRootId, collapsedNodeIds, pendingToast,
     selectNode, addToSelection, setSelection, enterSubtree,
-    setClipboard, toggleCollapsed, showToast, clearToast,
-  } = useMindmapStore();
+    toggleCollapsed, showToast, clearToast,
+  } = useMindmapStore((s) => s);
+  // App-wide, so a subtree cut in one tab pastes in another.
+  const clipboard = useClipboardStore((s) => s.clipboard);
+  const setClipboard = useClipboardStore((s) => s.setClipboard);
 
   // Shared with the List View: one subtree root, one set of back-nav pills, both views publishing
   // the same descriptor so whichever is on screen keeps the top bar right.
@@ -110,6 +116,7 @@ export default function MindmapView() {
   // The cheat-sheet overlay gates background shortcuts the same way an open modal does.
   const isInputCaptured = useIsInputCaptured();
   const filter = useFilterStore((s) => s.filter);
+  const toggleFullscreen = useFullscreenStore((s) => s.toggle);
   const setStatusMode = useFilterStore((s) => s.setStatusMode);
   const toggleFilterPopover = useFilterStore((s) => s.toggleFilterPopover);
   // The focus exemption: whatever is selected stays on screen even once your own edit stops it
@@ -123,9 +130,18 @@ export default function MindmapView() {
 
   const canvasRef = useRef<MindmapCanvasHandle>(null);
 
+  // Entering a subtree recentres the canvas — but *arriving* in a tab must not, or switching to a
+  // tab rooted somewhere else would throw away the pan and zoom that tab was holding. Only a change
+  // of root within the same tab counts.
+  const activeTabId = useTabsStore((s) => s.activeTabId);
+  const lastCentered = useRef<{ tabId: string; subtreeRootId: string | null } | null>(null);
   useEffect(() => {
+    const previous = lastCentered.current;
+    lastCentered.current = { tabId: activeTabId, subtreeRootId };
+    if (previous === null || previous.tabId !== activeTabId) return;
+    if (previous.subtreeRootId === subtreeRootId) return;
     if (subtreeRootId !== null) canvasRef.current?.centerOnRoot();
-  }, [subtreeRootId]);
+  }, [subtreeRootId, activeTabId]);
 
   const {
     editorModal, setEditorModal, allTags, domainNames, availableForDep, onDoubleClick,
@@ -531,6 +547,7 @@ export default function MindmapView() {
     onFocusRoot: () => selectNode(subtreeRootId ?? tree.id),
     onCenterOnNode: onCenterOnSelected,
     onConvertToFlow: onConvertToFlowKey,
+    onToggleFullscreen: toggleFullscreen,
     onExtendSelection: extendSelection,
     onToggleBacklog: toggleBacklog,
     findNodeById,

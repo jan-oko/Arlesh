@@ -1,11 +1,9 @@
 import { useSpring, type SpringValues } from "@react-spring/web";
 import { useCallback, useEffect, useRef } from "react";
+import { useTabStores } from "@/stores/tab-stores-context";
+import type { PanZoomTransform } from "@/stores/use-pan-zoom-store";
 
-interface Transform {
-  x: number;
-  y: number;
-  scale: number;
-}
+type Transform = PanZoomTransform;
 
 /** The live transform plus the measured viewport size, for visibility maths. */
 export interface Viewport extends Transform {
@@ -43,6 +41,7 @@ export function usePanZoom(svgRef: React.RefObject<SVGSVGElement | null>): PanZo
   const transform = useRef<Transform>({ x: initialX, y: initialY, scale: 1 });
   const isPanning = useRef(false);
   const lastPos = useRef({ x: 0, y: 0 });
+  const panZoom = useTabStores().panZoom;
 
   const [springProps, api] = useSpring(() => ({
     x: initialX,
@@ -58,6 +57,21 @@ export function usePanZoom(svgRef: React.RefObject<SVGSVGElement | null>): PanZo
     },
     [api],
   );
+
+  /**
+   * Hands the canvas over between tabs: restore where this tab left it, and — when the tab
+   * underneath changes, or the canvas goes away — write back to the tab being left. The cleanup
+   * closes over the *previous* tab's store, which is what puts each half on the right side of the
+   * switch. Restoring is instant (`set`, not `start`): a tab switch is not a movement to animate.
+   */
+  useEffect(() => {
+    const saved = panZoom.getState().transform;
+    if (saved !== null) {
+      transform.current = saved;
+      api.set(saved);
+    }
+    return () => panZoom.getState().setTransform(transform.current);
+  }, [panZoom, api]);
 
   // The visible canvas size — the real container rect, falling back to the window.
   const size = useCallback(() => {
