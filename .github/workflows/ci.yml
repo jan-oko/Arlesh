@@ -105,6 +105,58 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # An inline `#[cfg(test)] mod tests { ... }` is the one mistake here that
+      # presents as success. It compiles, it runs, it passes — and llvm-cov
+      # counts the body as source, so the file's denominator inflates with lines
+      # that are ~99% covered by construction and cannot regress, its percentage
+      # climbs toward 100, and the floor below gets quietly easier for exactly
+      # the file that lost its real denominator. Nothing goes red, so nothing
+      # ever prompts anyone to look. A merge resolution restores one for free.
+      #
+      # It sits before the apt install on purpose: no toolchain, no build, no
+      # cache — two seconds, and a violation fails the lane immediately rather
+      # than after six minutes of compile it was never going to need.
+      #
+      # It fires on a line that OPENS a module body — `mod NAME {` — where the
+      # name is `tests` or `*_tests`, or where `#[cfg(test)]` sits on that line
+      # or the one above. It does not fire on the sibling declaration `mod
+      # tests;` (no brace), on an ordinary `pub mod foo {`, on `mod tests` in a
+      # comment, doc comment or string (the opener must start the line), on the
+      # contents of a `tests.rs` or `*_tests.rs` file (llvm-cov excludes those
+      # by filename, so grouping modules in there cost nothing), or on
+      # `src-tauri/tests/`, which is integration tests and a different thing.
+      - name: No inline test modules under src/
+        run: |
+          found=$(
+            find src-tauri/src -name '*.rs' ! -name 'tests.rs' ! -name '*_tests.rs' \
+            | sort \
+            | xargs awk '
+                /^[ \t]*#\[cfg\(test\)\][ \t]*$/ { armed = 1; next }
+                /^[ \t]*(#\[cfg\(test\)\][ \t]*)?(pub([ \t]*\([^)]*\))?[ \t]+)?mod[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*\{/ {
+                  match($0, /mod[ \t]+[A-Za-z_][A-Za-z0-9_]*/)
+                  name = substr($0, RSTART, RLENGTH); sub(/^mod[ \t]+/, "", name)
+                  if (armed || $0 ~ /^[ \t]*#\[cfg\(test\)\]/ || name == "tests" || name ~ /_tests$/)
+                    printf "  %s:%d: mod %s { ... }\n", FILENAME, FNR, name
+                  armed = 0; next
+                }
+                { armed = 0 }
+              '
+          )
+          if [ -n "$found" ]; then
+            echo "Inline test module body under src-tauri/src/:"
+            echo "$found"
+            echo
+            echo "Unit test bodies live in a sibling file, never inline:"
+            echo "  foo.rs        #[cfg(test)]"
+            echo "                mod tests;"
+            echo "  foo/tests.rs  the body (a second suite takes a *_tests name)"
+            echo
+            echo "Inline, cargo llvm-cov counts the body as source and the coverage"
+            echo "floor below stops protecting that file. See .claude/rules/rust.md."
+            exit 1
+          fi
+          echo "No inline test modules."
+
       # `tauri` is in the dependency tree with its default features, so wry and
       # webkit2gtk-sys compile even for `cargo test`, and they need the GTK/
       # WebKit development headers to exist. The webkit2gtk crate at 2.0.2 binds
