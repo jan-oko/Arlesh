@@ -56,3 +56,24 @@ describe("HotkeysModal", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("HotkeysModal — typed-child chords", () => {
+  const CHORDS: ReadonlyArray<[string, string]> = [
+    ["Shift+D", "hotkeys:createDomainChild"],
+    ["Shift+P", "hotkeys:createProjectChild"],
+    ["Shift+G", "hotkeys:createGoalChild"],
+    ["Shift+T", "hotkeys:createTaskChild"],
+    ["Shift+I", "hotkeys:createInfoChild"],
+    ["Shift+F", "hotkeys:createFlowChild"],
+  ];
+
+  it("lists all six Shift+initial chords, each on its own labelled row", () => {
+    render(<HotkeysModal onClose={vi.fn()} />);
+    for (const [chord, label] of CHORDS) {
+      const kbd = screen.getByText(chord);
+      const row = kbd.closest("div");
+      expect(row).not.toBeNull();
+      expect(row?.textContent).toContain(label);
+    }
+  });
+});
