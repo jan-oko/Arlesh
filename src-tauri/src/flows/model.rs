@@ -1,6 +1,6 @@
 //! Flow (template) resource models.
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 /// Identifies a flow row by its primary key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -25,6 +25,13 @@ pub enum InstanceType {
     Goal,
     /// Materializes as a Task subtree.
     Task,
+    /// Materializes as a Commitment.
+    ///
+    /// This is how a repeating rule — a nightly "asleep by 23:00" — recurs: through the Habit
+    /// machinery that already exists, rather than a second recurrence engine. Each iteration's
+    /// verdict is a Modification row keyed by (flow item, iteration scope), reusing the
+    /// overridden-status slot; see `docs/adr/0005-commitment-node-kind.md`.
+    Commitment,
 }
 
 impl InstanceType {
@@ -33,6 +40,20 @@ impl InstanceType {
         match self {
             Self::Goal => "goal",
             Self::Task => "task",
+            Self::Commitment => "commitment",
+        }
+    }
+
+    /// Parses the database string representation, defaulting to `Task`.
+    ///
+    /// A default rather than an `Option` because the column is CHECK-constrained and every
+    /// caller here is reading a stored row: `Task` is what the old two-way `== "goal"` test
+    /// already fell back to, kept so a corrupt row renders as something rather than nothing.
+    pub fn from_db(value: &str) -> Self {
+        match value {
+            "goal" => Self::Goal,
+            "commitment" => Self::Commitment,
+            _ => Self::Task,
         }
     }
 }
@@ -50,9 +71,11 @@ pub struct Flow {
     pub parent_type: String,
     /// Parent entity id.
     pub parent_id: i64,
-    /// Default target node type for instances (if set).
+    /// Explicit Target Node type for instances. `None` means "my parent" — the default is
+    /// **derived** on read from `parent_type`/`parent_id`, never stored, so moving the flow moves
+    /// its instances with it.
     pub target_type: Option<String>,
-    /// Default target node id for instances (if set).
+    /// Explicit Target Node id for instances; `None` alongside `target_type` means "my parent".
     pub target_id: Option<i64>,
     /// Flow-scope duration count (relative; anchored on start). For a Phase window this is 1.
     pub flow_duration_n: Option<i64>,
@@ -72,6 +95,13 @@ pub struct Flow {
     pub root_plan_start: Option<i64>,
     /// Root Cycle Plan end offset within the flow window.
     pub root_plan_end: Option<i64>,
+    /// **Verdict Window** count, for a commitment Habit: how long past the end of an iteration's
+    /// window that iteration's verdict may still be recorded. Travels with
+    /// [`Self::verdict_window_kind`]; `None` means iterations never stop being answerable.
+    pub verdict_window_n: Option<i64>,
+    /// Verdict Window kind (`day`/`week`/`month`/`season`), independent of the flow's own window
+    /// kind — a monthly commitment habit may stay answerable for two days.
+    pub verdict_window_kind: Option<String>,
     /// Whether this flow is a Habit (has a Recurrence) — derived, not stored on the flows row.
     #[sqlx(default)]
     pub is_habit: bool,
@@ -130,10 +160,10 @@ pub struct CreateFlowRequest {
     pub parent_type: String,
     /// Parent entity id.
     pub parent_id: i64,
-    /// Default target node type.
+    /// Explicit Target Node type; omit (or `None`) to leave the target derived from the parent.
     #[serde(default)]
     pub target_type: Option<String>,
-    /// Default target node id.
+    /// Explicit Target Node id; omit (or `None`) to leave the target derived from the parent.
     #[serde(default)]
     pub target_id: Option<i64>,
     /// Flow-scope duration count.
@@ -160,6 +190,26 @@ pub struct CreateFlowRequest {
     /// Root Cycle Plan end offset within the flow window.
     #[serde(default)]
     pub root_plan_end: Option<i64>,
+    /// Verdict Window count (commitment instance type only); set with `verdict_window_kind`.
+    #[serde(default)]
+    pub verdict_window_n: Option<i64>,
+    /// Verdict Window kind; set with `verdict_window_n`.
+    #[serde(default)]
+    pub verdict_window_kind: Option<String>,
+}
+
+/// Deserialises an explicitly-null JSON field into `Some(None)` rather than `None`.
+///
+/// `Option<Option<T>>` is how an update request spells *absent = unchanged, null = clear*, but
+/// serde collapses both spellings to `None` on its own — so a clear sent from the UI would be read
+/// as "leave it alone" and swallowed without a word. Pair with `#[serde(default)]`, which restores
+/// the absent case.
+fn null_clears<'de, T, D>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    T: Deserialize<'de>,
+    D: Deserializer<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(Some)
 }
 
 /// Request body for updating a flow (fields left `None` are unchanged; `Some(None)` clears).
@@ -169,9 +219,11 @@ pub struct UpdateFlowRequest {
     pub title: Option<String>,
     /// New instance type.
     pub instance_type: Option<InstanceType>,
-    /// Target node type (Some(None) clears).
+    /// Target Node type (`Some(None)` clears it back to the derived parent default).
+    #[serde(default, deserialize_with = "null_clears")]
     pub target_type: Option<Option<String>>,
-    /// Target node id (Some(None) clears).
+    /// Target Node id (`Some(None)` clears it back to the derived parent default).
+    #[serde(default, deserialize_with = "null_clears")]
     pub target_id: Option<Option<i64>>,
     /// Flow-scope duration count (Some(None) clears).
     pub flow_duration_n: Option<Option<i64>>,
@@ -189,6 +241,12 @@ pub struct UpdateFlowRequest {
     pub root_plan_start: Option<Option<i64>>,
     /// Root Cycle Plan end offset (Some(None) clears).
     pub root_plan_end: Option<Option<i64>>,
+    /// Verdict Window count (`Some(None)` clears it, leaving iterations answerable indefinitely).
+    #[serde(default, deserialize_with = "null_clears")]
+    pub verdict_window_n: Option<Option<i64>>,
+    /// Verdict Window kind (`Some(None)` clears).
+    #[serde(default, deserialize_with = "null_clears")]
+    pub verdict_window_kind: Option<Option<String>>,
     /// New parent type (with parent_id).
     pub parent_type: Option<String>,
     /// New parent id (with parent_type).
@@ -471,6 +529,13 @@ pub enum IterationStatus {
     Lapsed,
     /// Skipped by a Blocking `latest` catch-up.
     Missed,
+    /// A **commitment** Habit's iteration whose Verdict Window ran out with no verdict recorded.
+    ///
+    /// Not a fifth verdict and not a failure: the Verdict stays unresolved for good, and only the
+    /// Archival moves — the chance to say has gone. Distinct from [`Self::Lapsed`], which is a
+    /// Destructive habit's unfinished *work* passing its window; a Commitment's work is never
+    /// what passes, and nothing here ever concludes that one was broken.
+    Expired,
 }
 
 /// One derived Habit iteration: its ordinal, the scope anchoring its window, and current state.
@@ -502,28 +567,4 @@ pub struct HabitItemStatus {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn instance_type_as_str_covers_all_variants() {
-        assert_eq!(InstanceType::Goal.as_str(), "goal");
-        assert_eq!(InstanceType::Task.as_str(), "task");
-    }
-
-    #[test]
-    fn flow_id_roundtrip() {
-        assert_eq!(i64::from(FlowId::from(9_i64)), 9);
-    }
-
-    #[test]
-    fn consumption_enums_cover_all_variants() {
-        assert_eq!(ConsumptionKind::Destructive.as_str(), "destructive");
-        assert_eq!(ConsumptionKind::Accumulating.as_str(), "accumulating");
-        assert_eq!(BlockingMode::Overlapping.as_str(), "overlapping");
-        assert_eq!(BlockingMode::Blocking.as_str(), "blocking");
-        assert_eq!(CatchupPolicy::AllPending.as_str(), "all_pending");
-        assert_eq!(CatchupPolicy::Next.as_str(), "next");
-        assert_eq!(CatchupPolicy::Latest.as_str(), "latest");
-    }
-}
+mod tests;

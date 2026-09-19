@@ -2,13 +2,16 @@ import { hierarchy, tree } from "d3-hierarchy";
 import type { TimeScope } from "@/api/time-scope";
 import type { InstanceType, FlowItemType, HabitInstanceType } from "@/api/flows";
 import type { OnScopeExit, Timing, Resolution } from "@/api/scope-lifecycle";
+import type { Verdict } from "@/api/commitments";
+import type { DurationSpec } from "@/api/time-scope";
 
 export type NodeKind =
-  | "aspect" | "project" | "domain" | "goal" | "task" | "tag" | "info"
+  | "aspect" | "project" | "domain" | "goal" | "task" | "commitment" | "tag" | "info"
   | "flow" | "flow_goal" | "flow_task";
 
 const ALL_NODE_KINDS: NodeKind[] = [
-  "aspect", "project", "domain", "goal", "task", "tag", "info", "flow", "flow_goal", "flow_task",
+  "aspect", "project", "domain", "goal", "task", "commitment", "tag", "info",
+  "flow", "flow_goal", "flow_task",
 ];
 
 /** Type guard: whether a string is a `NodeKind`. */
@@ -35,6 +38,25 @@ export function entityNodeId(type: string, id: number): string {
   return DOMAIN_TABLE_KINDS.has(type) ? `domain-${id}` : `${type}-${id}`;
 }
 
+/** The `(type, id)` reference a flow stores for its parent and (optionally) its Target Node. */
+export interface FlowPlacement {
+  parent_type: string;
+  parent_id: number;
+  target_type: string | null;
+  target_id: number | null;
+}
+
+/**
+ * The tree node id a flow's instances belong under: its **Target Node** when it has an explicit
+ * one, and otherwise its own parent — a null target means "my parent", derived here rather than
+ * snapshotted into the row at creation, so moving the flow moves its instances with it.
+ */
+export function flowTargetNodeId(flow: FlowPlacement): string {
+  return flow.target_type !== null && flow.target_id !== null
+    ? entityNodeId(flow.target_type, flow.target_id)
+    : entityNodeId(flow.parent_type, flow.parent_id);
+}
+
 /** Flow-template data carried by a `flow`-kind node. */
 export interface FlowData {
   instanceType: InstanceType;
@@ -53,6 +75,10 @@ export interface FlowData {
   rootPlanKind: string | null;
   rootPlanStart: number | null;
   rootPlanEnd: number | null;
+  /** The **Verdict Window** a commitment Habit's iterations are bounded by, as the same `(n, kind)`
+   * Duration a Commitment carries. Both null means its iterations never stop being answerable. */
+  verdictWindowN: number | null;
+  verdictWindowKind: string | null;
 }
 
 /** A relative (Cycle Scope, Cycle Plan) pair on a flow item. */
@@ -74,6 +100,10 @@ export interface FlowItemDep {
 export interface FlowItemData {
   itemType: FlowItemType;
   flowId: number;
+  /** The owning flow's Instance Type, denormalised onto the item the way its Duration already is:
+   * a flow item is retyped from the item's own node, which has no way back to the flow otherwise,
+   * and what a commitment flow may hold is decided from it. */
+  flowInstanceType: InstanceType;
   flowScopeN: number | null;
   flowScopeKind: string | null;
   cycles: FlowCyclePair[];
@@ -103,8 +133,22 @@ export interface MindmapNode {
   /** Effective archived-ness (Task/Goal only) — true forces the archived badge/filter regardless of
    * `status`; may diverge from a manually-set Frozen `status` (see `archivalConflict`). */
   archived?: boolean;
-  /** True when `archived` is true because a scope Resolution overrode a manually-set Frozen status. */
+  /** True when `archived` is true because a scope Resolution overrode a manually-set Frozen status
+   * or a stored Backlog. */
   archivalConflict?: boolean;
+  /** The task's own **stored** Backlog state (Tasks only) — deliberately set aside, hidden from
+   * Plan and Start with its whole subtree, still listed under All. Stored rather than derived, so
+   * it keeps reading as backlogged even once a lapsed window has forced `archived` on top of it —
+   * exactly as a Frozen goal keeps its `status` under the same override. */
+  backlogged?: boolean;
+  /** A Commitment's recorded Verdict (Commitments only) — `unresolved` / `kept` / `broken`.
+   * Never derived from the window passing or from children completing: `unresolved` means the
+   * user has not said, which is information in its own right. */
+  verdict?: Verdict;
+  /** A Commitment's **own** Verdict Window, when it sets one (Commitments only). How long past
+   * the end of its window it stays answerable, as a count of any scope kind. Absent means it
+   * inherits the nearest ancestor Commitment's. */
+  verdictWindow?: DurationSpec | null;
   /** A derived, read-only node (e.g. a virtual Habit iteration) with no backing DB row. */
   virtual?: boolean;
   /**

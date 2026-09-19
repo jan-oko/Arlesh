@@ -18,13 +18,13 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 **Task** — An action item. Parented under a Project, Domain, Goal, or another Task.
 
-**Flow** — A template for a Goal/Task subtree, materialized on demand. A new node kind. Has a title, an **Instance Type** (goal or task), a **Target Node**, and a **Flow Window**. May be parented under an Aspect, Domain, Project, or Goal.
+**Flow** — A template for a Goal/Task subtree, materialized on demand. A new node kind. Has a title, an **Instance Type** (goal or task), an optional **Target Node**, and a **Flow Window**. May be parented under an Aspect, Domain, Project, or Goal.
 
 **Flow Window** — A Flow's own relevance window, resolved against the start anchor at materialization. Two forms: a **Span** — a coarse Duration of N of a scope kind (`day`/`week`/`month`/`season`), a relative *length* — or a **Phase** — a sub-day, fixed *time-of-day*: a part-of-day band (e.g. Evening) or an exact `HH:MM–HH:MM` clock range, carried date-free on the template and combined with the anchor's date on start. A Habit whose window is a Phase recurs at that fixed time-of-day, stepping whole days by its Gap ("10:00–12:00 daily", "Evening every 2 days").
 
 **Instance Type** — Whether a Flow materializes its root (and constrains its children) as a Goal, a Task, or a Commitment.
 
-**Target Node** — The default node under which a Flow's instances are created. Overridable when starting the Flow.
+**Target Node** — The node under which a Flow's instances are created. **Optional: unset means "my parent"**, resolved wherever the target is read rather than stored on the Flow — so moving a Flow moves its instances with it, and a stored Target Node is by definition a deliberate override that a move leaves where it was put. Overridable again when starting the Flow.
 
 **Flow instance** — The result of starting a plain (non-habit) Flow: a real, persistent, independent Goal/Task subtree copied under the target. Retains a stored link to its originating Flow used only as a UI indicator (no cascading edits). Habit instances differ — they are virtual (see Habit). Dependencies declared between flow items are **remapped per instance/iteration** (Implement waits on this instance's Specify, not the template's); cross-iteration dependencies are not auto-created.
 
@@ -48,7 +48,7 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 **Verdict** — A Commitment's resolution: `unresolved` · `kept` · `broken`. Always recorded explicitly — neither outcome is ever inferred, from the passage of the window or from the state of the Commitment's children. `unresolved` is the initial value and means only "you have not said".
 
-**Verdict Window** — How long past the end of a Commitment's Time Scope a Verdict may still be recorded. While it lasts the Commitment stays live; once it passes an `unresolved` Commitment is Archived, still unresolved. Expressed as a **Duration** — a count of N of any scope kind — in the same form a Habit's **Gap** and a Time Scope's Duration take, and independent of the Commitment's own scope kind: a monthly commitment may be answerable for two days. Set per Commitment and inherited down the tree like Time Scope; there is no global default.
+**Verdict Window** — How long past the end of a Commitment's Time Scope a Verdict may still be recorded. While it lasts the Commitment stays live; once it passes an `unresolved` Commitment is Archived, still unresolved. Expressed as a **Duration** — a count of N of any scope kind — in the same form a Habit's **Gap** and a Time Scope's Duration take, and independent of the Commitment's own scope kind: a monthly commitment may be answerable for two days. Set per Commitment and inherited down the tree like Time Scope; there is no global default. A **commitment Habit** carries one on the flow itself (`flows.verdict_window_n/kind`) and every one of its iterations resolves to that: a virtual iteration has no `commitments` row to carry one, and the flow's Target Node is normally a Project or Domain, which carries none either.
 
 **Backlog** — A Task deliberately set aside: not in play now, kept for later. A stored **Archival** value on Tasks (`Archival::Backlog`), independent of the Task's status, which continues to say where the work stands. Hidden from the Plan and Start presets together with its whole subtree, shown under All, and browsable on its own via the **Backlog** preset. The Task-side counterpart of a Goal's or Project's **Frozen**, but a separate state: neither maps to the other on retype. A Task cannot be both backlogged and planned.
 
@@ -141,6 +141,9 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 - An iteration is resolved when every one of its non-tombstoned instances is done. **Instance children** are not instances and never gate resolution; completing an occurrence over an unfinished child asks for confirmation instead.
 - A List View row's **Path header** and its **Visible depth** partition its ancestors: every ancestor is named in exactly one of the two, never both and never neither.
 - A Commitment's Verdict is never derived. Neither its children nor the passing of its window ever sets it.
+- A Commitment's **Verdict Window** is the only automatic state change in the kind, and it moves **Archival**, never the Verdict: an unresolved Commitment whose window has run out archives *still unresolved*.
+- **Plan** shows `broken` Commitments whose window is still open, and not `kept` ones — a commitment already broken today is a live problem until the window closes, where a kept one is settled. This mirrors no Task rule.
+- A Commitment takes no part in the dependency graph, in either direction, and has no Plan, no delegate and no block reasons.
 - Scope containment is evaluated on **resolved datetime boundaries** (interval containment), so it holds uniformly across canonical, exact, and multi-scope-kind windows. Scope X is "within" scope F iff X's window ⊆ F's window.
 - A child item's explicit Time Scope must be **wholly contained** within its parent's Time Scope.
 - A Task's Plan must be wholly contained within that task's Time Scope, and within its parent's Plan.

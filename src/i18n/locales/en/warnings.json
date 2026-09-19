@@ -24,6 +24,7 @@
     "status": "Status \"{{value}}\" has no equivalent and will be cleared",
     "time_scope": "The Time Scope ({{value}}) and its on-exit behaviour will be dropped",
     "plan": "The Plan ({{value}}) will be dropped",
+    "archival": "The Backlog will be cleared — it comes back into play",
     "delegate_to": "The delegate will be cleared",
     "description": "The description will be deleted: \"{{value}}\"",
     "knowledge_base_directory": "The Obsidian directory link ({{value}}) will be deleted",
@@ -34,10 +35,25 @@
     "dependents_one": "{{count}} task waiting on this will stop waiting",
     "dependents_other": "{{count}} tasks waiting on this will stop waiting",
     "dependencies_one": "{{count}} thing this waits on will be forgotten",
-    "dependencies_other": "{{count}} things this waits on will be forgotten"
+    "dependencies_other": "{{count}} things this waits on will be forgotten",
+    "verdict": "Verdict",
+    "verdict_window": "Verdict window"
   },
   "lostFieldFallback": "{{field}} will be lost ({{value}})",
   "retypeFailed": "Convert failed: {{message}}",
   "habitLoadFailedBanner": "Habit iterations could not be loaded for:",
-  "parentClimb": "It cannot stay under “{{from}}”, so it will move up to “{{to}}”"
+  "commitmentHabitHoldsGoalsBanner": "These Habits repeat a Commitment, but their templates hold Goals, which a Commitment cannot. No repetitions are shown for:",
+  "parentClimb": "It cannot stay under “{{from}}”, so it will move up to “{{to}}”",
+  "pasteSkipped_one": "{{count}} node couldn't be pasted here",
+  "pasteSkipped_other": "{{count}} nodes couldn't be pasted here",
+  "backlogHeading": "Put \"{{title}}\" in the backlog?",
+  "backlogHasPlan": "It is planned for {{plan}}. A task in the backlog is never also planned, so that plan will be cleared.",
+  "backlogHasPlanUnnamed": "It is planned. A task in the backlog is never also planned, so that plan will be cleared.",
+  "backlogClearPlanAction": "Clear the plan and backlog it",
+  "backlogFailed": "Backlog failed: {{message}}",
+  "backlogClearedByPlan": "Taken out of the backlog — it is planned now.",
+  "verdictFailed": "Could not record the verdict: {{message}}",
+  "commitmentNeedsScopeHeading": "Over what window do you hold \"{{title}}\"?",
+  "commitmentNeedsScopeBody": "A commitment is a rule held over a window, and nothing above this one has one — so there is no window for it to inherit. Give it one here, or cancel and leave it exactly as it is.",
+  "commitmentNeedsScopeMissing": "Pick a window, or cancel."
 }

@@ -24,7 +24,8 @@ const EMPTY_DISPLAY = {
   nodeLabel: (ref: string) => ref, nodeColor: () => null,
   parentPool: [], dependencyPool: [],
   displayTaskStatus: (v: string) => v, displayGoalStatus: (v: string) => v,
-  displayProjectStatus: (v: string) => v, displayScopeState: (v: string) => v, displayBlocked: (v: string) => v,
+  displayProjectStatus: (v: string) => v, displayVerdict: (v: string) => v,
+  displayScopeState: (v: string) => v, displayBlocked: (v: string) => v,
 };
 
 beforeEach(() => {
@@ -101,14 +102,26 @@ describe("TopBar", () => {
   });
 
   describe("status preset dropdown", () => {
-    it("offers only All/Plan/Start/Do in Mindmap view", () => {
+    it("offers every preset but Unblock in Mindmap view", () => {
       render(<TopBar />);
       fireEvent.click(screen.getByRole("button", { name: "listView:statusPresetLabel" }));
       const options = screen.getAllByRole("option").map((o) => o.textContent);
-      expect(options).toEqual(["listView:preset.all", "listView:preset.plan", "listView:preset.start", "listView:preset.do"]);
+      // Backlog is available in both views; only Unblock is List-View-only.
+      expect(options).toEqual([
+        "listView:preset.all", "listView:preset.plan", "listView:preset.start",
+        "listView:preset.do", "listView:preset.backlog",
+      ]);
     });
 
-    it("adds Unblock as a 5th option in List View", () => {
+    it("selecting Backlog writes through to the shared status mode", () => {
+      render(<TopBar />);
+      fireEvent.click(screen.getByRole("button", { name: "listView:statusPresetLabel" }));
+      fireEvent.click(screen.getByRole("option", { name: "listView:preset.backlog" }));
+      expect(useFilterStore.getState().filter.statusMode).toBe("backlog");
+      expect(useListFilterStore.getState().filter.preset).toBe("backlog");
+    });
+
+    it("adds Unblock as a further option in List View", () => {
       useViewStore.setState({ view: "list" });
       render(<TopBar />);
       fireEvent.click(screen.getByRole("button", { name: "listView:statusPresetLabel" }));

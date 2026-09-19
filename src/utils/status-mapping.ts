@@ -33,6 +33,5 @@ export function taskStatusToGoalStatus(
   taskStatus: string,
 ): "active" | "achieved" | "frozen" | "archived" {
   if (taskStatus === TASK_STATUS.DONE) return GOAL_STATUS.ACHIEVED;
-  if (taskStatus === "blocked") return GOAL_STATUS.FROZEN;
   return GOAL_STATUS.ACTIVE;
 }

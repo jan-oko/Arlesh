@@ -4,6 +4,8 @@ import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { entityNodeId } from "@/utils/tree-layout";
 import type { InstanceType, ConsumptionKind, BlockingMode, CatchupPolicy } from "@/api/flows";
 import { getFlowRecurrence, habitCompletionCount } from "@/api/flows";
+import type { DurationSpec } from "@/api/time-scope";
+import VerdictWindowField from "@/components/CommitmentEditorModal/VerdictWindowField";
 import { getScope } from "@/api/scopes";
 import { getErrorMessage } from "@/api/errors";
 import EditorModal from "@/components/EditorModal/EditorModal";
@@ -27,7 +29,10 @@ function isPhaseKind(kind: FlowScopeKind): boolean {
   return kind === "part" || kind === "exact";
 }
 
-const INSTANCE_TYPES: InstanceType[] = ["goal", "task"];
+/** What a Flow's root materialises as. **Commitment** is how a nightly rule recurs: through the
+ * Habit machinery that already exists rather than a second recurrence engine. */
+// In the same order the type cycle puts the three kinds in, Commitment last.
+const INSTANCE_TYPES: InstanceType[] = ["goal", "task", "commitment"];
 
 const NODE_KINDS: NodeKind[] = ["aspect", "project", "domain", "goal", "task", "tag", "info", "flow"];
 
@@ -36,7 +41,7 @@ function isNodeKind(value: string): value is NodeKind {
 }
 
 /** A chosen Target Node, retaining its display title for the summary chip. */
-interface TargetSelection {
+export interface TargetSelection {
   kind: NodeKind;
   id: number;
   title: string;
@@ -67,6 +72,11 @@ export interface FlowSaveData {
   rootPlanKind: string | null;
   rootPlanStart: number | null;
   rootPlanEnd: number | null;
+  /** The **Verdict Window** bounding this Habit's iterations (commitment instance type only); both
+   * null leaves them answerable indefinitely, and a flow that is not a commitment one clears them
+   * rather than keeping a window nothing would ever read. */
+  verdictWindowN: number | null;
+  verdictWindowKind: string | null;
   isPrivate: boolean;
   /** Absent = leave recurrence untouched; present (object or null) = set-or-clear it. */
   recurrence?: RecurrenceSave | null;
@@ -87,6 +97,15 @@ function planFields(plan: RootPlanValue | null): Pick<FlowSaveData, "rootPlanKin
   return plan === null
     ? { rootPlanKind: null, rootPlanStart: null, rootPlanEnd: null }
     : { rootPlanKind: plan.kind, rootPlanStart: plan.start, rootPlanEnd: plan.end };
+}
+
+/** Flattens the Verdict Window into its `FlowSaveData` fields (both null when there is none). */
+function verdictWindowFields(
+  window: DurationSpec | null,
+): Pick<FlowSaveData, "verdictWindowN" | "verdictWindowKind"> {
+  return window === null
+    ? { verdictWindowN: null, verdictWindowKind: null }
+    : { verdictWindowN: window.n, verdictWindowKind: window.kind };
 }
 
 /** Local wall-clock today as `YYYY-MM-DD`, the default Recurrence start. */
@@ -111,6 +130,11 @@ function targetFromNode(node: MindmapNode, candidates: MindmapNode[]): TargetSel
 interface Props {
   node: MindmapNode;
   availableTargets: MindmapNode[];
+  /**
+   * The flow's parent, shown as the Target Node's value while no explicit target is set — an empty
+   * target means "follow my parent", not "no target", so the field reads that way.
+   */
+  inheritedTarget?: TargetSelection | null;
   heading?: string;
   onSave: (data: FlowSaveData) => Promise<void>;
   onClose: () => void;
@@ -118,9 +142,9 @@ interface Props {
 
 /**
  * Edits a Flow template: its title, Instance Type (goal|task), Duration-form flow scope,
- * and default Target Node. Flow items and their cycle scopes are edited separately (Phase 7.3).
+ * and Target Node. Flow items and their cycle scopes are edited separately (Phase 7.3).
  */
-export default function FlowEditorModal({ node, availableTargets, heading, onSave, onClose }: Props) {
+export default function FlowEditorModal({ node, availableTargets, inheritedTarget = null, heading, onSave, onClose }: Props) {
   useInputCapture();
   const { t } = useTranslation(["editor", "nodeKinds", "scopes"]);
   const [title, setTitle] = useState(node.title);
@@ -135,6 +159,11 @@ export default function FlowEditorModal({ node, availableTargets, heading, onSav
   const [rootPlan, setRootPlan] = useState<RootPlanValue | null>(
     node.flow?.rootPlanKind != null && node.flow.rootPlanStart != null && node.flow.rootPlanEnd != null
       ? { kind: node.flow.rootPlanKind, start: node.flow.rootPlanStart, end: node.flow.rootPlanEnd }
+      : null,
+  );
+  const [verdictWindow, setVerdictWindow] = useState<DurationSpec | null>(
+    node.flow?.verdictWindowN != null && node.flow.verdictWindowKind != null
+      ? { n: node.flow.verdictWindowN, kind: node.flow.verdictWindowKind }
       : null,
   );
   const [target, setTarget] = useState<TargetSelection | null>(targetFromNode(node, availableTargets));
@@ -254,6 +283,8 @@ export default function FlowEditorModal({ node, availableTargets, heading, onSav
         windowTimeEnd: scoped && durationKind === "exact" ? timeEnd : null,
         // The root Plan applies only to a task-instance flow with a Span window.
         ...planFields(instanceType === "task" && scoped && !phase ? rootPlan : null),
+        // And the Verdict Window only to a commitment one: nothing else has a verdict to bound.
+        ...verdictWindowFields(instanceType === "commitment" ? verdictWindow : null),
         isPrivate,
         ...(isEdit && scoped ? { recurrence: recurrenceSave } : {}),
         ...(reconcile !== undefined ? { reconcile } : {}),
@@ -377,6 +408,12 @@ export default function FlowEditorModal({ node, availableTargets, heading, onSav
           <span className={styles.depKind}>{t("scopes:unscoped")}</span>
         )}
       </div>
+      {instanceType === "commitment" && (
+        <div className={styles.label}>
+          {t("fieldVerdictWindow")}
+          <VerdictWindowField value={verdictWindow} onChange={setVerdictWindow} />
+        </div>
+      )}
       {instanceType === "task" && scoped && !isPhaseKind(durationKind) && (
         <div className={styles.label}>
           {t("fieldPlan")}
@@ -396,6 +433,14 @@ export default function FlowEditorModal({ node, availableTargets, heading, onSav
             <div className={styles.depItem}>
               <span>{target.title}<span className={styles.depKind}>{t(`nodeKinds:${target.kind}`)}</span></span>
               <button type="button" className={styles.depRemoveBtn} onClick={() => setTarget(null)}>×</button>
+            </div>
+          </div>
+        )}
+        {target === null && inheritedTarget !== null && (
+          <div className={styles.depList}>
+            <div className={`${styles.depItem} ${styles.depItemInherited}`}>
+              <span>{inheritedTarget.title}<span className={styles.depKind}>{t(`nodeKinds:${inheritedTarget.kind}`)}</span></span>
+              <span className={styles.depKind}>{t("targetInherited")}</span>
             </div>
           </div>
         )}

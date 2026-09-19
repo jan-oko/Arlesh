@@ -8,6 +8,7 @@ pub mod block_reasons;
 pub mod commands;
 pub mod database;
 pub mod domains;
+pub mod duplicate;
 pub mod error;
 pub mod flows;
 pub mod infos;
@@ -91,11 +92,13 @@ pub fn run() {
             commands::infos::list_infos,
             commands::infos::update_info,
             commands::infos::delete_info,
+            commands::infos::duplicate_info,
             commands::domains::create_domain,
             commands::domains::get_domain,
             commands::domains::list_domains,
             commands::domains::update_domain,
             commands::domains::delete_domain,
+            commands::domains::duplicate_domain,
             commands::tasks::create_task,
             commands::tasks::get_task,
             commands::tasks::list_tasks,
@@ -103,6 +106,7 @@ pub fn run() {
             commands::tasks::scope_containment_conflicts,
             commands::tasks::reparent_scope_conflicts,
             commands::tasks::delete_task,
+            commands::tasks::duplicate_task,
             commands::tasks::add_task_dependency,
             commands::tasks::remove_task_dependency,
             commands::tasks::list_task_dependencies,
@@ -112,11 +116,19 @@ pub fn run() {
             commands::tasks::list_goals,
             commands::tasks::update_goal,
             commands::tasks::delete_goal,
+            commands::tasks::duplicate_goal,
             commands::tasks::add_tag_to_task,
             commands::tasks::remove_tag_from_task,
             commands::tasks::add_tag_to_goal,
             commands::tasks::remove_tag_from_goal,
             commands::tasks::derive_scope_lifecycles,
+            commands::commitments::create_commitment,
+            commands::commitments::get_commitment,
+            commands::commitments::list_commitments,
+            commands::commitments::update_commitment,
+            commands::commitments::delete_commitment,
+            commands::commitments::add_tag_to_commitment,
+            commands::commitments::remove_tag_from_commitment,
             commands::retype::retype_node,
             commands::scopes::get_or_create_scope,
             commands::scopes::get_or_create_part_scope,

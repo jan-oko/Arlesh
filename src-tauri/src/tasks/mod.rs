@@ -1,12 +1,17 @@
-//! Tasks and Goals: action items and desired states.
+//! Tasks, Goals and Commitments: action items, desired states, and rules held over a window.
 //!
-//! Single-resource SQL lives on [`TaskOperator`] and [`GoalOperator`]. Anything that also has to
-//! read scopes (containment validation), infos and block reasons (the subtree delete) or both
-//! tables at once is a **free function over a [`Db`] session** instead — [`create_task`],
-//! [`update_task`], [`delete_task`], [`get_task_with_blockers`] and their goal counterparts. See
-//! [`Db`]'s `# Where an operation lives`.
+//! The three share a scoped parent chain — a Task inherits its window from whichever of them sits
+//! nearest above it — which is why they share a module, an ancestry climb and one set of
+//! containment rules.
+//!
+//! Single-resource SQL lives on [`TaskOperator`], [`GoalOperator`] and [`CommitmentOperator`].
+//! Anything that also has to read scopes (containment validation), infos and block reasons (the
+//! subtree delete) or several tables at once is a **free function over a [`Db`] session**
+//! instead — [`create_task`], [`update_task`], [`delete_task`], [`get_task_with_blockers`] and
+//! their goal and commitment counterparts. See [`Db`]'s `# Where an operation lives`.
 
 mod ancestry;
+pub mod commitments;
 pub mod error;
 pub mod lifecycle;
 pub mod model;
@@ -19,15 +24,19 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::database::session::{Db, SessionMode, Transactional};
 use crate::infos::model::InfoId;
 use ancestry::{AncestryLink, NodeKind, NodeRef};
+pub use commitments::{
+    create_commitment, delete_commitment, update_commitment, CommitmentOperator,
+};
 use error::TaskError;
+use model::CommitmentId;
 pub use scope_rules::{
     conflicts_for_new_time_scope, derive_all_scope_lifecycles, nearest_scoped_ancestor_window,
     reparent_conflicts, time_scope_window, ReparentConflicts, ViolatingDescendant,
 };
 use model::{
     CreateGoalRequest, CreateTaskRequest, Dependency, DurationSpec, Goal, GoalId, GoalStatus,
-    OnScopeExit, Task, TaskDependencyEdge, TaskId, TaskStatus, TaskWithBlockers, TimeScope,
-    UpdateGoalRequest, UpdateTaskRequest,
+    OnScopeExit, Task, TaskArchival, TaskDependencyEdge, TaskId, TaskStatus, TaskWithBlockers,
+    TimeScope, UpdateGoalRequest, UpdateTaskRequest,
 };
 
 // Internal row types that map directly to database columns via sqlx::FromRow.
@@ -62,6 +71,22 @@ fn on_scope_exit_column(
     Some(requested.unwrap_or(OnScopeExit::Keep).as_str())
 }
 
+/// Refuses a write that would leave a Task both backlogged and planned.
+///
+/// The invariant is `archival = Backlog ⇒ plan IS NULL`, and this is the single place it is
+/// enforced, for creates and updates alike. It is deliberately not a schema CHECK: the frontend
+/// answers this refusal by asking again with the Plan cleared, which reads as a prompt rather than
+/// as corrupt input.
+fn reject_backlog_with_plan(
+    archival: TaskArchival,
+    plan: &Option<TimeScope>,
+) -> Result<(), TaskError> {
+    if plan.is_some() && !archival.allows_plan() {
+        return Err(TaskError::BacklogWithPlan);
+    }
+    Ok(())
+}
+
 /// The millisecond timestamp a freshly inserted row takes as its sort position.
 fn insertion_position() -> i64 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as i64
@@ -87,13 +112,14 @@ async fn delete_infos_under(
     Ok(())
 }
 
-/// Cascade-deletes a task/goal subtree: the node, every descendant task/goal, and all infos under
-/// them. Dependencies and tags fall away via their `ON DELETE CASCADE` foreign keys; the polymorphic
-/// parent links do not, so descendants are collected explicitly to avoid orphaning them.
+/// Cascade-deletes a content-node subtree: the node, every descendant task, goal and commitment,
+/// and all infos under them. Dependencies and tags fall away via their `ON DELETE CASCADE`
+/// foreign keys; the polymorphic parent links do not, so descendants are collected explicitly to
+/// avoid orphaning them.
 ///
 /// Takes a transactional session: a half-applied cascade leaves orphans behind, so ADR-0004 makes
 /// this one of the operations whose signature demands atomicity.
-async fn delete_task_goal_subtree(
+async fn delete_node_subtree(
     db: &mut Db<Transactional>,
     root_type: &str,
     root_id: i64,
@@ -106,15 +132,19 @@ async fn delete_task_goal_subtree(
         stack.extend(task_children.into_iter().map(|id| ("task".to_string(), id)));
         let goal_children = db.goals().child_ids(&node_type, node_id).await?;
         stack.extend(goal_children.into_iter().map(|id| ("goal".to_string(), id)));
+        let commitment_children = db.commitments().child_ids(&node_type, node_id).await?;
+        stack.extend(commitment_children.into_iter().map(|id| ("commitment".to_string(), id)));
     }
     for (node_type, node_id) in &nodes {
         delete_infos_under(db, node_type, *node_id).await?;
-        // Block reasons hang off a polymorphic owner link with no foreign key, like infos.
+        // Block reasons hang off a polymorphic owner link with no foreign key, like infos. A
+        // Commitment never has any, and asking for none costs one statement against the risk of
+        // leaving a stale row behind if that ever changes.
         db.block_reasons().delete_for(node_type, *node_id).await?;
-        if node_type == "goal" {
-            db.goals().delete_row(GoalId(*node_id)).await?;
-        } else {
-            db.tasks().delete_row(TaskId(*node_id)).await?;
+        match node_type.as_str() {
+            "goal" => db.goals().delete_row(GoalId(*node_id)).await?,
+            "commitment" => db.commitments().delete_row(CommitmentId(*node_id)).await?,
+            _ => db.tasks().delete_row(TaskId(*node_id)).await?,
         }
     }
     Ok(())
@@ -155,6 +185,7 @@ struct TaskRow {
     on_scope_exit: Option<String>,
     plan_start_id: Option<i64>,
     plan_end_id: Option<i64>,
+    archival: String,
     position: i64,
     is_private: bool,
     beads_id: Option<String>,
@@ -177,6 +208,9 @@ impl From<TaskRow> for Task {
             ),
             on_scope_exit: row.on_scope_exit.as_deref().and_then(OnScopeExit::from_db),
             plan: time_scope_from_row(row.plan_start_id, row.plan_end_id, None, None),
+            // An unrecognised spelling reads as Live — the least surprising fallback, and the one
+            // that never hides work. The CHECK constraint is what keeps it from arising.
+            archival: TaskArchival::from_db(&row.archival).unwrap_or_default(),
             tag_ids: vec![],
             position: row.position,
             is_private: row.is_private,
@@ -362,6 +396,9 @@ struct TaskWrite {
     on_scope_exit: Option<OnScopeExit>,
     /// Final Plan window, or `None`.
     plan: Option<TimeScope>,
+    /// Final archival state. Never `Backlog` alongside a `Some` `plan` — [`update_task`] refuses
+    /// that pair rather than writing it.
+    archival: TaskArchival,
     /// Final sort position.
     position: i64,
     /// Final privacy flag.
@@ -396,6 +433,17 @@ impl TaskWrite {
             Some(new_plan) => new_plan,
             None => stored.plan,
         };
+        // Scheduling a backlogged task takes it out of the backlog. The gesture is unambiguous —
+        // nobody plans a week for work they mean to leave aside — so it is done rather than asked
+        // about; the caller raises a toast, which is what keeps it from being silent. The reverse
+        // direction is the one that needs consent, and `update_task` refuses it.
+        let plans_a_backlogged_task =
+            request.archival.is_none() && !stored.archival.allows_plan() && plan.is_some();
+        let archival = if plans_a_backlogged_task {
+            TaskArchival::Live
+        } else {
+            request.archival.unwrap_or(stored.archival)
+        };
         Self {
             reparent,
             parent_type,
@@ -406,6 +454,7 @@ impl TaskWrite {
             time_scope,
             on_scope_exit: request.on_scope_exit.unwrap_or(stored.on_scope_exit),
             plan,
+            archival,
             position: request.position.unwrap_or(stored.position),
             is_private: request.is_private.unwrap_or(stored.is_private),
         }
@@ -508,6 +557,8 @@ impl<'session> GoalOperator<'session> {
             ),
             plan: None,
             on_scope_exit: row.on_scope_exit.as_deref().and_then(OnScopeExit::from_db),
+            // Goals have no Verdict Window; only a Commitment does.
+            verdict_window: None,
         })
     }
 
@@ -631,10 +682,13 @@ impl<'session> GoalOperator<'session> {
 
     /// Links a goal to the `bd` issue tracking it, or unlinks it when given `None`.
     ///
-    /// **The only writer of `beads_id`, and reachable only from the MCP server.** No Tauri command
-    /// calls it and [`UpdateGoalRequest`] has no field for it, so the link cannot be set, changed
-    /// or cleared from the UI — which is the point: `bd` owns the issue, and the app only mirrors
-    /// which one a node belongs to.
+    /// **The only setter of `beads_id`, and the MCP server is its only *source*.**
+    /// [`UpdateGoalRequest`] has no field for it, so no gesture can author, edit or clear a link from the UI.
+    /// One command does reach this method: [`duplicate_subtree`](crate::duplicate::duplicate_subtree)
+    /// *propagates* an id a node already carries onto its copy — SPEC's named exception. It can
+    /// only ever pass on a value `bd` issued, never invent or change one.
+    ///
+    /// `bd` owns the issue; the app only mirrors which one a node belongs to.
     ///
     /// One statement over one column, so it needs no containment check and no transaction of its
     /// own. Errors with [`TaskError::GoalNotFound`] when no goal has that id, rather than reporting
@@ -713,12 +767,13 @@ impl<'session> TaskOperator<'session> {
         let (ts_start, ts_end, ts_n, ts_kind) = time_scope_columns(&request.time_scope);
         let on_exit = on_scope_exit_column(&request.time_scope, request.on_scope_exit);
         let (plan_start, plan_end, _, _) = time_scope_columns(&request.plan);
+        let archival = request.archival.unwrap_or_default();
         let id = sqlx::query(
             "INSERT INTO tasks
                 (title, parent_type, parent_id, status,
                  time_scope_start_id, time_scope_end_id, time_scope_duration_n,
-                 time_scope_duration_kind, on_scope_exit, plan_start_id, plan_end_id)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                 time_scope_duration_kind, on_scope_exit, plan_start_id, plan_end_id, archival)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&request.title)
         .bind(&request.parent_type)
@@ -731,6 +786,7 @@ impl<'session> TaskOperator<'session> {
         .bind(on_exit)
         .bind(plan_start)
         .bind(plan_end)
+        .bind(archival.as_str())
         .execute(&mut *self.connection)
         .await?
         .last_insert_rowid();
@@ -780,6 +836,8 @@ impl<'session> TaskOperator<'session> {
             ),
             plan: time_scope_from_row(row.plan_start_id, row.plan_end_id, None, None),
             on_scope_exit: row.on_scope_exit.as_deref().and_then(OnScopeExit::from_db),
+            // Tasks have no Verdict Window; only a Commitment does.
+            verdict_window: None,
         })
     }
 
@@ -843,7 +901,8 @@ impl<'session> TaskOperator<'session> {
         sqlx::query(
             "UPDATE tasks SET title=?, status=?, delegate_to=?,
                 time_scope_start_id=?, time_scope_end_id=?, time_scope_duration_n=?,
-                time_scope_duration_kind=?, on_scope_exit=?, plan_start_id=?, plan_end_id=?, position=?, is_private=? WHERE id=?",
+                time_scope_duration_kind=?, on_scope_exit=?, plan_start_id=?, plan_end_id=?,
+                archival=?, position=?, is_private=? WHERE id=?",
         )
         .bind(&write.title)
         .bind(&write.status)
@@ -855,6 +914,7 @@ impl<'session> TaskOperator<'session> {
         .bind(on_exit)
         .bind(plan_start)
         .bind(plan_end)
+        .bind(write.archival.as_str())
         .bind(write.position)
         .bind(write.is_private)
         .bind(id.0)
@@ -1053,10 +1113,13 @@ impl<'session> TaskOperator<'session> {
 
     /// Links a task to the `bd` issue tracking it, or unlinks it when given `None`.
     ///
-    /// **The only writer of `beads_id`, and reachable only from the MCP server.** No Tauri command
-    /// calls it and [`UpdateTaskRequest`] has no field for it, so the link cannot be set, changed
-    /// or cleared from the UI — which is the point: `bd` owns the issue, and the app only mirrors
-    /// which one a node belongs to.
+    /// **The only setter of `beads_id`, and the MCP server is its only *source*.**
+    /// [`UpdateTaskRequest`] has no field for it, so no gesture can author, edit or clear a link from the UI.
+    /// One command does reach this method: [`duplicate_subtree`](crate::duplicate::duplicate_subtree)
+    /// *propagates* an id a node already carries onto its copy — SPEC's named exception. It can
+    /// only ever pass on a value `bd` issued, never invent or change one.
+    ///
+    /// `bd` owns the issue; the app only mirrors which one a node belongs to.
     ///
     /// One statement over one column, so it needs no containment check and no transaction of its
     /// own. Errors with [`TaskError::TaskNotFound`] when no task has that id, rather than reporting
@@ -1211,7 +1274,7 @@ pub async fn update_goal(
 #[tracing::instrument(skip(db))]
 pub async fn delete_goal(db: &mut Db<Transactional>, id: GoalId) -> Result<(), TaskError> {
     db.goals().get(id).await?;
-    delete_task_goal_subtree(db, "goal", id.0).await
+    delete_node_subtree(db, "goal", id.0).await
 }
 
 /// Creates a task, rejecting it if its Time Scope or Plan escapes the windows above it.
@@ -1239,6 +1302,7 @@ pub async fn create_task(
     db: &mut Db<Transactional>,
     request: CreateTaskRequest,
 ) -> Result<Task, TaskError> {
+    reject_backlog_with_plan(request.archival.unwrap_or_default(), &request.plan)?;
     scope_rules::validate_task_containment(
         db,
         &request.parent_type,
@@ -1251,7 +1315,13 @@ pub async fn create_task(
 }
 
 /// Updates a task, rejecting the write if the merged Time Scope or Plan escapes the windows above
-/// the effective parent.
+/// the effective parent, or if it would leave the task both backlogged and planned.
+///
+/// That second refusal is a question rather than a failure: it comes back as
+/// [`TaskError::BacklogWithPlan`], which the command boundary reports as **needs confirmation**,
+/// and the caller answers by asking again with `plan: Some(None)` alongside the backlog. The
+/// opposite order is not refused at all — a request that *sets* a Plan on a backlogged task takes
+/// it out of the backlog on its way through [`TaskWrite::merge`].
 ///
 /// Reads the stored row, merges the request over it, validates, then writes — all on one
 /// transactional session, so the row cannot move underneath the check. This is the **only** way to
@@ -1281,6 +1351,7 @@ pub async fn update_task(
 ) -> Result<Task, TaskError> {
     let stored = db.tasks().get(id).await?;
     let write = TaskWrite::merge(stored, request);
+    reject_backlog_with_plan(write.archival, &write.plan)?;
     scope_rules::validate_task_containment(
         db,
         &write.parent_type,
@@ -1327,7 +1398,7 @@ pub async fn add_task_dependency(
 #[tracing::instrument(skip(db))]
 pub async fn delete_task(db: &mut Db<Transactional>, id: TaskId) -> Result<(), TaskError> {
     db.tasks().get(id).await?;
-    delete_task_goal_subtree(db, "task", id.0).await
+    delete_node_subtree(db, "task", id.0).await
 }
 
 /// Fetches a task with its computed block reasons: the explicit ones plus one per unmet
@@ -1380,114 +1451,4 @@ fn dependency_parts(dependency: &Dependency) -> (&'static str, i64) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::tasks::model::Dependency;
-
-    #[test]
-    fn dependency_parts_task_variant() {
-        let (ty, id) = dependency_parts(&Dependency::Task { id: 42 });
-        assert_eq!(ty, "task");
-        assert_eq!(id, 42);
-    }
-
-    #[test]
-    fn dependency_parts_goal_variant() {
-        let (ty, id) = dependency_parts(&Dependency::Goal { id: 99 });
-        assert_eq!(ty, "goal");
-        assert_eq!(id, 99);
-    }
-
-    fn stored_task() -> Task {
-        Task {
-            id: 1,
-            title: "Stored".to_string(),
-            parent_type: "project".to_string(),
-            parent_id: 7,
-            status: TaskStatus::Todo.as_str().to_string(),
-            delegate_to: Some(3),
-            time_scope: Some(TimeScope { start_id: 10, end_id: 11, duration: None }),
-            on_scope_exit: Some(OnScopeExit::Keep),
-            plan: Some(TimeScope { start_id: 12, end_id: 12, duration: None }),
-            tag_ids: vec![],
-            position: 100,
-            is_private: false,
-            // Tracked in `bd`. `TaskWrite` has no counterpart field, so the merge below cannot
-            // carry it either way — which is the write-path constraint, stated in the type.
-            beads_id: Some("Arlesh-5fs".to_string()),
-        }
-    }
-
-    #[test]
-    fn an_empty_update_request_writes_the_stored_row_back_unchanged() {
-        let write = TaskWrite::merge(stored_task(), UpdateTaskRequest::default());
-        assert!(write.reparent.is_none());
-        assert_eq!(write.parent_type, "project");
-        assert_eq!(write.parent_id, 7);
-        assert_eq!(write.title, "Stored");
-        assert_eq!(write.delegate_to, Some(3));
-        assert_eq!(write.position, 100);
-        assert!(!write.is_private);
-    }
-
-    #[test]
-    fn clearing_the_time_scope_clears_it_rather_than_keeping_the_stored_one() {
-        let write = TaskWrite::merge(
-            stored_task(),
-            UpdateTaskRequest { time_scope: Some(None), ..Default::default() },
-        );
-        assert_eq!(write.time_scope, None);
-    }
-
-    #[test]
-    fn a_reparent_needs_both_halves_and_becomes_the_validated_parent() {
-        let half = TaskWrite::merge(
-            stored_task(),
-            UpdateTaskRequest { parent_type: Some("goal".into()), ..Default::default() },
-        );
-        assert!(half.reparent.is_none(), "a parent type without an id is not a move");
-        assert_eq!(half.parent_type, "project");
-
-        let full = TaskWrite::merge(
-            stored_task(),
-            UpdateTaskRequest {
-                parent_type: Some("goal".into()),
-                parent_id: Some(42),
-                ..Default::default()
-            },
-        );
-        assert_eq!(full.reparent, Some(("goal".to_string(), 42)));
-        assert_eq!(full.parent_type, "goal");
-        assert_eq!(full.parent_id, 42);
-    }
-
-    #[test]
-    fn a_goal_update_merges_its_request_over_the_stored_row() {
-        let stored = Goal {
-            id: 2,
-            title: "Stored".to_string(),
-            parent_type: "project".to_string(),
-            parent_id: 7,
-            status: GoalStatus::Active.as_str().to_string(),
-            time_scope: None,
-            on_scope_exit: None,
-            tag_ids: vec![],
-            position: 5,
-            is_private: true,
-            // As in `stored_task`: `GoalWrite` has no `beads_id`, so an update cannot reach it.
-            beads_id: Some("Arlesh-5fs".to_string()),
-        };
-        let write = GoalWrite::merge(
-            stored,
-            UpdateGoalRequest {
-                status: Some(GoalStatus::Achieved),
-                position: Some(9),
-                ..Default::default()
-            },
-        );
-        assert_eq!(write.title, "Stored");
-        assert_eq!(write.status, GoalStatus::Achieved.as_str());
-        assert_eq!(write.position, 9);
-        assert!(write.is_private);
-    }
-}
+mod tests;

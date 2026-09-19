@@ -1,12 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
 import { isWireError } from "@/api/errors";
+import type { TimeScope } from "@/api/time-scope";
 
-/** The node kinds `retype_node` can move between: the goals, tasks, domains tables, and infos. */
-export type RetypeKind = "goal" | "task" | "domain" | "project" | "tag" | "info";
+/** The node kinds `retype_node` can move between: the goals, tasks, commitments and domains
+ * tables, and infos. */
+export type RetypeKind = "goal" | "task" | "commitment" | "domain" | "project" | "tag" | "info";
 
 const RETYPE_KINDS: readonly string[] = [
   "goal",
   "task",
+  "commitment",
   "domain",
   "project",
   "tag",
@@ -140,23 +143,42 @@ export function retypeLosses(error: unknown): RetypeLosses | null {
 }
 
 /**
+ * Narrows a rejection to the refusal a retype to Commitment raises when the node has no window to
+ * be held over — neither its own nor a scoped ancestor's.
+ *
+ * Not a failure and not a confirmation: what is missing is information, and the answer is the
+ * same retype again carrying a `timeScope`. It has its own wire kind precisely so this can be
+ * told apart without reading the message.
+ */
+export function needsTimeScope(error: unknown): boolean {
+  return isWireError(error) && error.kind === "needs_time_scope";
+}
+
+/**
  * Retypes a node in one atomic backend call.
  *
  * Rejects with a `needs_confirmation` wire error — read it with {@link retypeLosses} — when the
  * retype would strand a child or drop a field and `strandedChildren` has not been supplied.
  * Passing `strandedChildren` is the acknowledgement, and chooses what happens to the children
  * the new kind cannot hold.
+ *
+ * Rejects with `needs_time_scope` — read it with {@link needsTimeScope} — when the target is a
+ * Commitment and nothing gives the node an effective window. `timeScope` is the answer, and rides
+ * on the retype itself so the whole thing stays one atomic write: a cancelled prompt leaves the
+ * node exactly as it was, rather than scoped for a retype that never happened.
  */
 export async function retypeNode(
   nodeType: RetypeKind,
   nodeId: number,
   targetType: RetypeKind,
   strandedChildren?: StrandedChildren,
+  timeScope?: TimeScope,
 ): Promise<RetypedNode> {
   return invoke<RetypedNode>("retype_node", {
     nodeType,
     nodeId,
     targetType,
     strandedChildren: strandedChildren ?? null,
+    timeScope: timeScope ?? null,
   });
 }

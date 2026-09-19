@@ -3,7 +3,13 @@ import type { Binding, HotkeyLabelKey } from "./chord";
 
 /** What the List View bindings act on — the hook's options minus its gating flag. */
 export interface ListContext {
+  /** The selected row when it is a Task; null when a Commitment is selected, or nothing is. */
   selectedTaskId: string | null;
+  /** The selected row when it is a Commitment. Never set at the same time as `selectedTaskId`:
+   * List View has one selection, and which kind it is decides what Enter means. */
+  selectedCommitmentId: string | null;
+  /** Whichever of the two is set — for the bindings that do not care which kind it is. */
+  selectedRowId: string | null;
   /** Whether the selected row is currently blocked (and not a Habit instance) — gates Enter. */
   isSelectedBlocked: boolean;
   onNavigate: (direction: 1 | -1) => void;
@@ -21,6 +27,12 @@ export interface ListContext {
   onExitSubtree: () => void;
   /** Straight back out to the true root. */
   onExitToRoot: () => void;
+  /** Puts the selected Task in the backlog, or takes it out. */
+  onToggleBacklog: (id: string) => void;
+  /** Records that the selected Commitment was held to, or clears an existing Kept. */
+  onMarkKept: (id: string) => void;
+  /** Records that it was not, or clears an existing Broken. */
+  onMarkBroken: (id: string) => void;
 }
 
 /** Alt+letter → status preset, matched on physical key so it works under any layout. */
@@ -29,6 +41,7 @@ const STATUS_PRESETS: ReadonlyArray<{ code: string; mode: StatusMode; labelKey: 
   { code: "KeyP", mode: "plan", labelKey: "statusPlan" },
   { code: "KeyS", mode: "start", labelKey: "statusStart" },
   { code: "KeyD", mode: "do", labelKey: "statusDo" },
+  { code: "KeyB", mode: "backlog", labelKey: "statusBacklog" },
 ];
 
 const statusBindings: readonly Binding<ListContext>[] = STATUS_PRESETS.map(({ code, mode, labelKey }) => ({
@@ -64,10 +77,27 @@ export const LIST_BINDINGS: readonly Binding<ListContext>[] = [
     run: (c) => { if (c.selectedTaskId !== null) c.onCycleStatus(c.selectedTaskId); },
   },
   {
+    // Shares Enter with `listView.cycleStatus`, and the two cannot both fire: a selection is a
+    // Task or a Commitment, never both. The same key means "advance the work" on one and
+    // "I kept this" on the other, which is the same gesture read in each kind's own terms.
+    id: "listView.markKept", section: "listView", chord: { code: "Enter" },
+    labelKey: "markKept",
+    when: (c) => c.selectedCommitmentId !== null,
+    run: (c) => { if (c.selectedCommitmentId !== null) c.onMarkKept(c.selectedCommitmentId); },
+  },
+  {
+    // A separate key rather than a second press of Enter: the two outcomes are equal, and
+    // Broken must never be one keystroke past Kept on a cycle.
+    id: "listView.markBroken", section: "listView", chord: { code: "KeyX" },
+    labelKey: "markBroken",
+    when: (c) => c.selectedCommitmentId !== null,
+    run: (c) => { if (c.selectedCommitmentId !== null) c.onMarkBroken(c.selectedCommitmentId); },
+  },
+  {
     id: "listView.openEditor", section: "listView", chord: { code: "KeyE" },
     labelKey: "openEditor",
-    when: (c) => c.selectedTaskId !== null,
-    run: (c) => { if (c.selectedTaskId !== null) c.onOpenEditor(c.selectedTaskId); },
+    when: (c) => c.selectedRowId !== null,
+    run: (c) => { if (c.selectedRowId !== null) c.onOpenEditor(c.selectedRowId); },
   },
   {
     id: "listView.rename", section: "listView", chord: { code: "KeyR" },
@@ -96,9 +126,15 @@ export const LIST_BINDINGS: readonly Binding<ListContext>[] = [
     run: (c) => c.onExitSubtree(),
   },
   {
+    id: "listView.toggleBacklog", section: "listView", chord: { code: "KeyB" },
+    labelKey: "toggleBacklog",
+    when: (c) => c.selectedTaskId !== null,
+    run: (c) => { if (c.selectedTaskId !== null) c.onToggleBacklog(c.selectedTaskId); },
+  },
+  {
     id: "listView.deselect", section: "listView", chord: { code: "Escape" },
     labelKey: "deselect",
-    when: (c) => c.selectedTaskId !== null,
+    when: (c) => c.selectedRowId !== null,
     run: (c) => c.onDeselect(),
   },
 ];

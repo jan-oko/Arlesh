@@ -4,11 +4,35 @@ Goal: finish the beads task board, or stop at 8 open PRs.
 Rules: highest priority / lowest effort first; **at most 2 agents in flight** (revised down from 4 —
 see Standing risks); at most 2 `effort:high` at once.
 
-## Gate (every agent runs it before opening a PR)
+## Gate (CI runs it; agents run the fast half before pushing)
 
-- `npm run lint` · `npx tsc --noEmit` · `npm test`
-- Rust changes only: `CARGO_TARGET_DIR=~/.cache/arlesh/tarpaulin cargo tarpaulin --engine ptrace --skip-clean --fail-under 90 --exclude-files 'src/commands/*'`
-- Then `rm -rf src-tauri/target` in the worktree (disk is at 95%).
+The gate moved to GitHub Actions on 2026-09-19 — `Arlesh-qkr`, PR #20. See
+"The gate moved to CI" near the bottom for the measurements and the cost.
+
+| Workflow · job | Trigger | What it runs |
+|---|---|---|
+| `ci.yml` · `web` | every PR to master, every push to master | `npm run lint`, `npx tsc --noEmit`, `npx vitest run --maxWorkers=2 --testTimeout=30000 --hookTimeout=30000` |
+| `ci.yml` · `rust` | every PR to master, every push to master, weekly on master | `cargo test --locked` under `cargo llvm-cov show-env`, then `cargo llvm-cov report --fail-under-lines 94 --ignore-filename-regex '(^\|/)src/commands/'` |
+
+One Rust job, not two: the coverage tool runs the suite, so `cargo test` and coverage are the same
+build. `coverage.yml` is gone. **2m22s warm, 6m27s cold, 644 tests, 95.25%.**
+
+**Before pushing, an agent runs this and nothing more:**
+
+- `npm run lint` · `npx tsc --noEmit` · `npx vitest run --maxWorkers=2 --testTimeout=30000 --hookTimeout=30000`
+
+**Do not run `cargo tarpaulin` locally.** CI owns coverage. Do not poll `pgrep -x cargo-tarpaulin`,
+do not set `CARGO_TARGET_DIR=~/.cache/arlesh/tarpaulin`, and do not build a private
+`src-tauri/target` in your worktree. That whole protocol is retired — it was the serialisation
+point, the disk problem, *and* the source of two wrong coverage numbers.
+
+`cargo test` locally is optional: run it if you changed Rust and want the answer in one minute
+rather than in six. CI runs it on every PR either way. If you do run it,
+`rm -rf src-tauri/target` afterwards — disk is the constraint it always was.
+
+Verified 2026-09-19: the coverage lane is green on a hosted runner (`ptrace_scope = 1`,
+`90.96% coverage, 3442/3784 lines`), so the "do not run tarpaulin locally" rule above is proven
+rather than provisional.
 
 ## Waves
 
@@ -184,6 +208,7 @@ Zustand stores to per-tab instances and would conflict with every open PR at onc
     scripts/branch-instance.sh list
     scripts/branch-instance.sh build [name ...|all]   # default: all, sequentially
     scripts/branch-instance.sh run   <name|all>       # `all` launches every built one at once
+    scripts/branch-instance.sh start <name|all>       # build, then run — the two steps as one
     scripts/branch-instance.sh stop  [name ...|all]
     scripts/branch-instance.sh clean [name ...|all]   # drops binaries, keeps each instance's data
 
@@ -205,6 +230,17 @@ worktree was added or removed.
 
 Instances detach with `setsid` and outlive the shell that started them; `stop` kills the app and its
 Vite server by process group. `run all` refuses more than four at once with under 6 GB free.
+
+`start` is `build` then `run`. It takes `run`'s single `<name|all>` rather than `build`'s list,
+because it ends by naming the windows it brought up and the `stop` line for them. It puts the memory
+question **before** the builds as well as at launch — refusing nine windows is only useful if it
+happens before the nine compiles. A branch that fails to build is named, skipped, and left out of
+the launch; the branches that did build still start, and the exit status is non-zero. Each build
+runs in a **backgrounded** subshell that is then waited on, never one whose status is tested
+directly — bash turns `set -e` off for the whole dynamic extent of any tested context (`if`,
+`while`, `until`, `!`, and the left side of `&&`/`||`), so both `if ( build )` and `( build ) || ...`
+would carry on past a failed cargo and launch a stale binary. A branch that was already running is stopped before its new binary is launched, so `start`
+twice replaces that window instead of putting a second WebKit process on the same SQLite file.
 
 Space: every branch compiles into the **one** target directory the main checkout already has
 (1.4 G), so the dependency tree is built once and shared; only the per-branch binary is copied out,
@@ -350,6 +386,909 @@ Also corrected: two other `[Unreleased]` entries advertised Antecedent as shippe
 filter dimensions" → seven). It never reached a release, so they were made to describe reality
 rather than carrying a `Removed` note for something no user ever had. Agent also caught `README.md`,
 which my file map missed.
+
+## PR #23 — the focus exemption
+
+`Arlesh-792`, one commit, bead closed. 87 → 89 test files, 1163 → **1202** tests, clean on the first
+run. Frontend only.
+
+**It closes `qf3`'s deferred case, and proved it rather than claiming it.**
+`useNodeTypeManager.runRetype` ends with `selectNode(newId ?? nodeId)`, so a cycled node is selected
+under its new id and the exemption arms immediately. Pinned by a test: under **Do**, `filterTree`
+drops an active Goal while `filterTreeWithFocus` with that goal focused keeps it, dimmed. Recorded on
+`qf3`. **Both PRs stand** — the user kept both after being shown the overlap, and they are
+complementary: `qf3` stops the cycle *offering* a hidden kind, #23 stops *any* hidden-making edit
+from erasing what you are on.
+
+**The isolation held.** `node-meta.ts` untouched, `filterTree`'s signature unchanged — verified
+independently, not taken on report. The correction I sent mid-flight ("do not treat the two as
+alternatives") was followed exactly.
+
+**Three decisions it made beyond the bead**, all in the direction of not stranding anything:
+
+1. A hard-hidden ancestor carries **the chain and nothing else** — revealing a private Project as an
+   ancestor does not spill its other children into view.
+2. Chain ancestors are dimmed, but **only the ones the filter would have dropped**; `hasContentMatch`
+   deliberately ignores exempt-only children so an exempt child cannot silently promote its parent
+   to "matching".
+3. The focused node's own hidden children stay hidden.
+
+**The no-leak guarantee is structural, not asserted.** `filterTree` and `filterTaskList` still exist
+with byte-identical behaviour; the exemption lives only in the new `…WithFocus` entry points, called
+from the two views and nowhere else. Two tests assert the unexempted functions still drop the node in
+the exact scenario the view keeps it. Consequence it flagged honestly: **`filterTree` now has no
+production caller**, and it kept it deliberately as the filter's canonical answer rather than
+deleting it.
+
+**One visible side effect it chose not to suppress and flagged anyway:** entering a filtered-out node
+via Ctrl+O now shows it dimmed instead of an empty frame. Strictly better than the old behaviour, and
+it clears on the next selection — but it is beyond the bead's acceptance list.
+
+**Merge note:** #23 and #12 conflict in `MindmapView.tsx` and `filter-tree.test.ts` — both *add* to
+the same view and the same test file. Additive, not a design collision, and only matters for
+whichever lands second.
+
+**Adjacent, reported not fixed:** List View keeps a local `selectedTaskId` while the Mindmap uses
+`useMindmapStore.selectedNodeId`, even though the two views deliberately share tree, filter and
+subtree root. So the exemption is per-view. That matches today's selection model exactly, so it was
+left alone — but shared selection would make the exemption follow across views for free. **No bead
+filed; awaiting the user** (agent suggested P2).
+
+## Ownership consolidated, everything pushed (2026-09-19)
+
+Three sessions were working this repo — this one, a CI/CD fork, and a fork that specced and filed
+beads. The user has consolidated: **CI/CD and PR #20 handed to that fork; everything else owned
+here**, including the bead session's unpushed work.
+
+**Pushed, all of it:**
+
+- **`master`** — 22 commits, `363cb5b..1021835`. Rebased onto origin first (it was 24 ahead and 5
+  behind, because this repo squash-merges and unpushed bookkeeping keeps local master diverged).
+  Verified before pushing that the diff touches **`progress.md` only** — 795 lines of record, no
+  code. That included the bead session's `47f27ba`, which was sitting unpushed in the shared
+  checkout.
+- **Beads to Dolt** — `bd dolt push`, complete. 65 issues: 32 open, 6 in progress, 6 blocked.
+
+**Nothing is stranded.** Three local branches have no remote and are not ancestors of master, and
+each is accounted for rather than assumed safe:
+
+| Branch | |
+|---|---|
+| `worktree-agent-a95bb8db…` | PR #2's MCP + `beads_id` work — squash-merged, so the content is on master (`0024_beads_id.sql`) while the commits are not ancestors |
+| `worktree-mindmap-duplicate-paste` | superseded by the PR #8 recovery that became PR #14 |
+| `worktree-agent-a058161b…` | a single commit *reporting* Phase 6 blocked — a note, not work |
+
+**The squash-merge trap, stated once for the record**, since it has now caused two near-misses: this
+repo squash-merges, so a merged branch's commits are never ancestors of master. `git merge-base
+--is-ancestor` therefore answers "is this branch merged?" with a confident **no** for work that is
+fully landed. Check for the *content* — a file, a symbol, a migration — not the commits. It is also
+why a local `master` carrying any unpushed commit silently diverges, and why a worktree must be cut
+from `origin/master` rather than `master`.
+
+## PR #22 — the undo journal
+
+Three commits, bead closed. Gate green: 87/1163 frontend, 251 Rust, tarpaulin **91.07%** — *above*
+the 90.96% trusted figure, because the new Rust is better covered than the crate average.
+
+**23 journaled tables, 69 triggers. `scopes` is the only domain table excluded, and the argument is
+the good one:** a scope row is not authored, it is the calendar — instantiated on demand by
+`get_or_create`, deduplicated by three unique indexes, and **nothing in the codebase ever deletes
+one** (checked, not assumed). Journalling it would have undo delete a row the next read recreates,
+and fail outright against the foreign keys when another item still references it. An item's own entry
+restores its *reference* to a scope; the scope needs no restoring.
+
+**It resisted the tempting exclusion in the other direction.** `flow_instances`,
+`flow_instance_nodes` and `habit_instance_modifications` *look* derived because they belong to
+instances. Nothing regenerates them — each is written once by a user action — so excluding them would
+have made "start this flow" and "mark this occurrence done" silently un-undoable. It also checked
+whether any background sweep writes lapse tombstones into `habit_instance_modifications`: none does,
+so no third `system` write source was needed.
+
+**`row_id` is the rowid, not a primary key** — six journaled tables have composite PKs and no id
+column. Verified before writing the migration rather than discovered by it.
+
+**The second guard test goes past what ADR 0006 asked for, and is the more valuable one.**
+`every_column_of_every_journaled_table_appears_in_its_triggers` reads `pragma_table_info` and asserts
+every column appears in every trigger. Trigger *existence* passes happily while a column added by a
+later migration is quietly missing from the image — which is exactly the "a new column silently stops
+being restored" failure the ADR rejects inverse-per-command to avoid. It also rejects BLOB-affinity
+columns, because `json_object()` refuses a BLOB and that would fail at write time on a real board
+rather than in CI.
+
+**The Gesture protocol fails in one direction only**, deliberately: a multi-command gesture that
+forgets its outer open degrades to per-command undo; a write with no gesture open is journaled
+ungrouped and never offered as an undo step. **Forgetting costs you an undo, never the wrong undo.**
+Now an invariant in `CONTEXT.md`.
+
+**Weakest point, named concretely:** `src/api/` has no shared `invoke` wrapper — all 18 files import
+from `@tauri-apps/api/core` directly, so "open a gesture per command" has nowhere to go yet. Until
+that choke point exists **nothing is undoable**, which is the safe direction. Noted onto
+`Arlesh-jga`, where the work belongs, and `Arlesh-h2u` got the journal's shape and suppression
+contract.
+
+**A detail that could have been a silent killer:** startup reset clears `undo_context`, not just the
+journal. A `suppressed = 1` left by a crash mid-undo would otherwise stop the triggers recording for
+an entire session — the quietest possible way for this feature to be broken.
+
+**Useful fact for everyone: `master` is not `cargo fmt --check` clean.** The agent ran a bare
+`cargo fmt` early, reformatted 41 files the repo had never formatted, and reverted all of them.
+Verified independently. Do not read a fmt diff on a branch as that branch's doing.
+
+## PR #21 — `atb` + `9xk`, and a premise that did not survive contact
+
+Both P1s, one commit each, both beads closed. Gate green: 87/1163 frontend, 506 Rust, tarpaulin
+**90.99%** against the trusted 90.96% — the same number.
+
+**I briefed it not to spray the attribute across all 17 fields, and to argue which deserved it. It
+argued the opposite and was right.** It went looking for fields no UI can clear, expecting to leave
+some, and found the premise does not hold on this tree: every editor modal builds its request from
+save-data typed `T | null` and passes it straight through — `TaskEditorModal`'s `timeScope`/`plan`,
+`GoalEditorModal`'s `timeScope`, `InfoEditorModal`'s `details`, and `FlowEditorModal`'s nine, spread
+wholesale by `onFlowSave`. So **16 of the 17 were live silent drops a user could hit today**, not
+hypothetical. The 17th (`delegate_to`) has no UI path at all; it included it anyway, on the grounds
+that one field of a four-field struct behaving unlike its own type and doc comment is a sharper trap
+than one more attribute.
+
+**It proved the red state rather than asserting it**: stripped every `deserialize_with` and re-ran,
+getting exactly 15 failures plus #17's own, each with its own field-naming message. Restored,
+re-verified green.
+
+**It also checked the inverse risk** — a caller relying on null meaning "unchanged". One looked
+dangerous (`MindmapView.tsx:266` passing a `TimeScope | null`) and turned out to be guarded, so no
+null reaches it.
+
+**One deliberate exception it found and kept:** `on_scope_exit` set to null while a Time Scope is
+still set does *not* write NULL — `on_scope_exit_column` defaults it back to `keep`, preserving the
+`CHECK`-backed invariant from migration `0015` that scoped ⟺ on-exit set. Correct, and the doc
+comment already said so.
+
+**`9xk`: it planted the collision rather than trusting my summary.** Added
+`0025_duplicate_probe.sql` beside the real `0025`, confirmed sqlx refuses with SQLite code 1555
+(`UNIQUE constraint failed: _sqlx_migrations.version`) failing 5 of 6 tests in `tests/database.rs`,
+then removed the probe. The test parses the version the way sqlx does — text before the first `_`,
+as `i64`, so `0025_a` and `25_b` collide too — and refuses a vacuous pass on an empty directory.
+
+**Discipline worth noting:** it queued its tarpaulin behind the `undo-journal` agent's 25-minute run
+rather than measuring concurrently, and its first vitest run showed the memory-pressure flake
+(85/1152 with two 5000 ms timeouts in untouched suites) which it correctly discarded in favour of a
+clean 87/1163.
+
+## Standing rule: no audits or sweeps without approval (2026-09-19)
+
+User: *"Let's focus on the commitments for now, no audits or sweeps without approval."*
+
+This constrains **briefs as much as my own work**. A brief that says "work out the full list rather
+than just removing X" is exactly the thing to avoid — that phrasing was mine, in the `cyo.5` brief,
+and it went out before the correction. Fix the named thing; report what else you noticed; let the
+user decide whether it becomes a bead.
+
+It also ends the unprompted repo-wide checks I had been running — the cross-PR conflict sweeps in
+particular. Those found real problems, but they were not asked for, and the same information is
+available on request. **Ask, or wait to be asked.**
+
+Not dispatching anything further while the focus is Commitments. The two agents already in flight
+(`atb`+`9xk`, and `npt`) were left running rather than killed, since stopping them discards work
+rather than saving any — but nothing new goes out.
+
+## `#13` was not the problem — `#10` was (2026-09-19)
+
+User could not merge #13. It is clean: mergeable against its base, mergeable against master, no
+branch protection, its one check green, and a strict fast-forward of #10 by two commits.
+
+**The block was #10, its base.** `worktree-task-backlog` moved when PR #19 merged into it, so #10
+went `CONFLICTING/DIRTY`, and GitHub surfaces a chain's state on the child. Three conflicts:
+`CHANGELOG.md`, `retype.rs`, `retype_commands.rs` — the last two substantive, since **#19 added
+`archival` to `SourceNode`, `Carried` and `lost_fields`** while #10 added Commitment as a retype
+kind. Both edit the same structures, and #19's invariant is that every column is either carried or
+named as lost, so a careless resolution there silently breaks the thing #19 exists to protect.
+
+Handed to the agent already in that worktree rather than resolved by me: it has 9 uncommitted files
+mid-`rhk`, and pushing underneath it would leave it reconciling a divergence with dirty state.
+
+**Worth remembering as a diagnostic**: a stacked PR reporting "unable to merge" is as likely to be
+its base as itself. Check the whole chain's `mergeable`/`mergeStateStatus`, not just the PR named.
+
+## `Arlesh-cyo.5` — the Verdict is stated twice
+
+User: *"no need for a status icon in the row below the node if the node icon itself indicates it."*
+
+`cyo.4` made the glyph carry the resolution; `StatusIconRow` still renders a `VerdictIcon` beneath
+it. The badge was correct when the glyph was a plain seal — **the agent's own `cyo.4` is what made it
+redundant**, which is the ordinary cost of finishing a feature in stages rather than a mistake.
+
+**I first beaded this as an audit — "check every indicator the row can show" — and the user cut it
+back**: *"no audits or sweeps without approval."* Narrowed to the fix asked for: the glyph carries
+the Verdict, so the row should not repeat it. If anything else turns out duplicated, the agent
+reports it and leaves it. Explicitly out of scope: revisiting the glyph, and touching any other node
+kind.
+
+One note in the bead worth keeping: **a badge carries hover text and a glyph does not.** If the row
+is the only place a Commitment's state is spelled out in words, that wording needs a home rather than
+a silent deletion.
+
+## Standing rule: fix in the open PR (2026-09-19)
+
+User: *"If a feature has a bug or missing behaviour don't open a PR to it, instead update the
+existing PR."*
+
+Now in memory and in every brief. The reasoning matches the ruling already made for `evu`, `mrq`,
+`rhk` and the four `cyo.*` fixes: the feature has not shipped, so a separate "fix" PR describes
+something no user ever saw broken, and it splits one reviewable change across two reviews.
+
+**How it is applied:** bead the fix as a child of the feature's bead, dispatch an agent to work *on
+that PR's branch* — commit and push there, no `gh pr create` — and fold the CHANGELOG into the
+feature's existing `[Unreleased]` entry rather than adding a `Fixed` line. The brief has to say this
+explicitly, because an agent's default is to branch and open a PR.
+
+**The consequence is the orchestrator's**: moving a base means anything stacked on it needs its base
+merged again. Agents are told to report that they pushed and leave the re-merge alone.
+
+A new PR is only right when the feature has already merged to master, or its PR is closed.
+
+**Immediately reclassified by this: `Arlesh-63c`** (`stop` sometimes leaves Vite running) is a bug in
+`branch-instance.sh`, which is PR #15 and still open. It folds into #15. Queued rather than
+dispatched — it consumes no PR slot, so it can wait for an agent to free.
+
+## Dispatched: `Arlesh-npt`, the undo journal — the 8th PR
+
+Part 1 of 3 of the undo stack, and the first bead this run from the spec work rather than from
+testing. Backend-only, cut fresh from `origin/master`, so it is isolated from the six open PRs and
+their frontend churn.
+
+The brief hands over the ADR's four rejected alternatives as settled and names what is actually the
+agent's: **which tables are journaled**, concretely — the ADR gives the principle, the agent produces
+the list and defends it. That is the main risk in either direction: a missed table is silently
+un-undoable, a derived table included will fight the code that regenerates it. Plus the guard ADR
+0006 asks for by name — a test that every non-excluded table has its three triggers — which is the
+one obligation this design does not remove.
+
+**Migration number `0030`, with a deliberate gap.** `0025` is master's highest, but PR #10 adds
+`0028` and `rhk` may add `0029`. Two branches taking the same number is the failure this repo hit
+today; leaving room is cheaper than renumbering.
+
+## Dispatched to 8 (2026-09-19)
+
+**`Arlesh-atb` + `Arlesh-9xk`, one agent, one PR** — the user's call. Both P1, both in `src-tauri`,
+neither touching any open branch, so they stack on nothing and risk no conflicts. One commit each so
+a reviewer can read them apart.
+
+The brief deliberately refuses to hand over the number: it says 17 fields are exposed but tells the
+agent to **argue which of them should actually get the fix** rather than spraying an attribute across
+all 17 because 17 is the figure I gave it. It also asks the harder question underneath — the
+deserializer only makes the *intent* reach the backend; whether each `update_*` then honours
+`Some(None)` correctly is a separate thing to check.
+
+**`Arlesh-rhk` folds into PR #10** — same ruling as `evu` and `mrq`. The agent was right that a
+Verdict Window field gated on an unreachable value is pointless; the answer is to make the kind
+reachable, not to leave both halves out. Accepted cost: #10 is clean and green right now, and #13 is
+stacked on it, so **#13 will need its base merged a second time** afterwards. Mine, not the agent's.
+
+### A stale base I nearly built on
+
+Creating the worktree, `git merge --ff-only origin/master` refused: local master was **17 ahead and
+2 behind**. The two behind were PRs #14 and #17 — squash-merged, so their commits are not ancestors
+of anything local. A worktree cut from local `master` would have been missing
+`src-tauri/src/duplicate/` and `0025_flow_target_defaults_to_parent.sql`, which are precisely what
+both new beads touch: `atb` edits update requests that #17 already fixed one of, and `9xk` counts the
+very migration #14/#17 added.
+
+Rebased local master onto origin and reset the worktree. **The general hazard**: this repo
+squash-merges, so a local `master` that has any unpushed commit will silently diverge from what is
+actually on the remote, and `git worktree add ... master` takes the local one. Cut from
+`origin/master` explicitly, or verify `behind=0` first.
+
+## All seven PRs clean — merge order (2026-09-19)
+
+First green sweep of the run. Every open PR merges into its base without conflict.
+
+```
+#7  task-backlog        -> master
+#10 commitments         -> #7
+#13 commitment-glyphs   -> #10
+#19 backlog-loss-prompt -> #7
+#12 type-cycle-filter   -> master   (independent)
+#15 instance-start      -> master   (independent)
+#16 tabs                -> master   (independent)
+```
+
+**Merge child into parent first, then parent to master.** That rule is not stylistic — it is what
+PR #8 was lost to, and #11 alongside it. Concretely:
+
+1. **`#13 → #10`** — deepest first.
+2. **`#10 → #7` and `#19 → #7`** — both children of #7.
+3. **`#7 → master`** — carries all four.
+4. **`#12`, `#15`, `#16` → master** in any order.
+
+Do not merge #7 before #10, #13 and #19, or they strand exactly as #8 did.
+
+**One reconciliation is owed after #12 and #10 both land.** They have diverged on
+`validTypesForCycling`: #12 added a `hiddenKinds` parameter and split the body into a private
+`structurallyValidTypes`; #10 added the owning flow's Instance Type as a third parameter. **The cause
+was mine** — I told the Commitments agent that #12's refactor was already on master. It was not, and
+the agent verified rather than trusting me, which is the only reason it compiled. Whichever lands
+second will need the other's parameter threading through.
+
+### PR #13's merge — the design decision, made well
+
+The Commitments agent folded expiry *into* the commitment lifecycle rather than beside it:
+
+```
+const EXPIRED_LIFECYCLE: IterationLifecycle = { timing: "lapsed", archived: true };
+
+function workIterationLifecycle(past, done)          // "no expiry case, and cannot"
+function commitmentIterationLifecycle(past, expired, verdict) {
+  if (expired) return EXPIRED_LIFECYCLE;
+  ...
+}
+```
+
+The comment on `workIterationLifecycle` is the part that matters: *a Verdict Window belongs to the
+Commitment kind, so the backend derives `expired` only for a commitment Habit.* That closes the
+question with a reason instead of a branch. Supporting steps under an expired root inherit
+`EXPIRED_LIFECYCLE` too — a step under a rule nobody judged was not "missed" either.
+
+Gate on the merged result: **93 files / 1298 tests**, 20 Rust binaries, tarpaulin **91.24%**. I ran
+`cargo test` despite the change looking frontend-only, because that assumption is what broke #7.
+
+## PR #10 — Commitments complete, all six beads (2026-09-18)
+
+`5f279bc`. Gate green: vitest **92 files / 1280 tests**, 20 Rust suites, tarpaulin **91.03%**. The
+agent waited out another tarpaulin (~19 min) and claimed the slot with a wait-then-launch job, so no
+run overlapped — the serialisation discipline held.
+
+**`cyo.3` was a wiring gap, as suspected.** `CommitmentEditorModal.tsx` and `VerdictWindowField.tsx`
+both existed and were complete, `useNodeEditor` already returned `onCommitmentSave`, and **List View
+already rendered the modal**. `MindmapView` simply never imported it, so `E` and double-click set
+`editorModal` and matched no branch. One render site fixed both routes. It did not touch the
+contents — which is the rule from the Backlog revert, applied correctly.
+
+**`cyo.2` corrected the bead's premise.** I wrote that the glyph must survive `ICON_R = 7`. The
+Mindmap actually draws down to **`r = 5`** at depth 5. The old seal was a 12-notch circle with
+notches at 9% of `r` — below a pixel at that size, leaving a circle, i.e. TaskIcon. Replaced with a
+straight-edged **shield pentagon**: every other content glyph is round, so silhouette alone separates
+it, and silhouette is the one channel that survives at 10px. No curves on purpose.
+
+**`cyo.4` varies the shield, never a mark inside it.** Fill carries the first bit — hollow while the
+answer is owed, solid once given — which reads at any size. A jagged cleft splits the solid one when
+broken; a strike-through marks the hollow one when its window ran out. Both in the node's own colour,
+**never red**: kept and broken are equal outcomes, not success and failure.
+
+**`cyo.1`'s premise was also off, and the correction is better than the bead.** Commitment was
+already always in the cycle; the real behaviour was a retype that ran, was refused by
+`create_commitment`, and surfaced as "Convert failed:". "Focus lost" resolved to **the point the
+write is attempted** — a node retyped on the canvas has no editing session to lose focus from, so
+the prompt *is* that refusal surfaced as a question. That settles both worries for free: a node
+inheriting a scope is never asked, because the refusal only fires when the backend's own climb finds
+nothing; and cancel composes because nothing is written while either prompt is open.
+
+**`evu`: the Verdict Window lives on the flow** (`0028`), not inherited from the target — a virtual
+iteration has no `commitments` row, and a Target Node is normally a Project carrying none.
+`set_flow_recurrence` now refuses anything but Accumulating + Overlapping on a commitment flow; the
+SPEC mismatch turned out to be its own, not a separate bead.
+
+**`mrq` refuses rather than prompts**, because the transition is unreachable from the UI — which is
+also why `Arlesh-rhk` exists: the FlowEditorModal instance-type option and its Verdict Window field
+would be a control gated on a value nothing can produce.
+
+### It corrected me, and it was right
+
+**I told it PR #12's `hiddenKinds` refactor was on master. It is not** — #12 is still open. I
+verified after the fact: `origin/master:src/utils/node-meta.ts` has the two-parameter signature and
+no `structurallyValidTypes`. It checked instead of trusting me, added a third parameter, and flagged
+the reconciliation. Had it taken my word it would have built against a signature that does not exist.
+
+### sqlx and the duplicate migration — answered
+
+**It refuses outright**: `UNIQUE constraint failed: _sqlx_migrations.version`, which failed all 71
+tests in `tests/tasks.rs`. Loud at runtime, but *not* early — it survives merge, lint, tsc and the
+whole frontend gate. That reduces `Arlesh-9xk` to a single test over `migrations/`. Also established:
+the real board is at version **24**, so neither `0025` had ever been applied and renumbering was
+free — which will not be true next time.
+
+Final numbering: `0025` flow-target, `0026` task-backlog, `0027` commitments, `0028` verdict window.
+All four applied in order to a copy of the real board: `foreign_key_check` empty, `integrity_check`
+ok, **all 25 tables holding exactly the rows they held before**, through the `tasks` and `flows`
+rebuilds `0027` performs.
+
+## PR #13's merge is a design decision, not a resolution
+
+I started it and **aborted**. Four conflicts; two are mechanical, two are not. #13 refactored the
+iteration lifecycle into `workIterationLifecycle` / `commitmentIterationLifecycle`; `evu`
+independently added `IterationStatus::Expired` as a third branch inlined at the same site. Two
+designs for one thing, and how they compose is a decision — does `expired` become a case inside the
+commitment lifecycle, or sit outside and win? — not something to resolve by keeping both halves.
+
+Handed to the Commitments agent, which holds both sides. Told it explicitly that this is **not**
+`rhk`, and to stop and say so rather than pull that work forward if the two cannot be reconciled
+without it.
+
+## PR #19 — `Arlesh-6dm` landed at last
+
+Base `worktree-task-backlog`, five files, +199/−9. Gate green: lint, tsc, vitest 88/1210,
+**19 Rust binaries / 541 tests**, tarpaulin **91.01%**.
+
+**Four merge rounds**, which is the price of a stacked branch under an active base: the switch moved,
+the switch reverted, master merged in, and my fix to the break that surfaced. Rounds 1 and 2
+conflicted on the same single `SPEC.md` line; rounds 3 and 4 were conflict-free. Its own diff stayed
+exactly those five files throughout — a good sign that each resolution was right.
+
+Two things in the report worth keeping:
+
+**The −0.06% coverage is explained, not hand-waved.** The new `create_node` and `Carried` paths are
+only reachable on a Task→Task retype, which `apply_retype` short-circuits before any write. The agent
+kept them rather than hardcoding `None`, because `Carried` and `lost_fields` are documented as
+complements — *"nothing can fall between them unnoticed"* — and a `Carried` field that lied about
+what carries would undercut the exact invariant this bead exists to protect. Correct call: honest
+code over a prettier number.
+
+**The bead's "~30 struct literals" was wrong — 10.** About 33 of the test literals use struct-update
+syntax (`..goal(id)`) and inherited the new field for free. The agent added the field first and let
+`rustc` enumerate the rest in one pass rather than grepping, which is the right technique and worth
+stating in future briefs of this shape.
+
+**No other silently-dropped field.** Every column of `tasks`, `goals`, `domains` and `infos` —
+initial schema plus all migrations — audited against `SourceNode`; each is now either carried or in
+`lost_fields`. Two documented non-findings: `on_scope_exit` is NULL exactly when `time_scope` is and
+rides with it by design; `domains.color` is Aspect-only, written only by the seed insert, and
+unreachable by retype.
+
+**Standing caveat, self-reported:** before the `CARGO_TARGET_DIR` correction, this agent briefly
+started a `cargo test` in the shared tarpaulin dir while another agent's coverage run was mid-flight
+(~15:50–16:00). It stopped at "Compiling arlesh". Any coverage number from that window is suspect.
+
+## Priorities set by the user (2026-09-18)
+
+| Bead | | |
+|---|---|---|
+| `Arlesh-atb` | **P1** | clearing a nullable field over IPC is silently ignored — 16 fields still affected |
+| `Arlesh-9xk` | **P1** | nothing catches two migrations claiming the same number |
+| `Arlesh-63c` | **P2** | `stop` sometimes leaves Vite running |
+| `Arlesh-rtu` | **P3** | the `start` subcommand (shipped, PR #15) |
+| `Arlesh-evu` | — | **folded into PR #10** |
+| `Arlesh-mrq` | — | **folded into PR #10** |
+
+Two calls worth recording as precedent.
+
+**`9xk` at P1, above `63c`.** The stray Vite is an annoyance you kill by hand. The migration
+collision is a *missing control*: it survived a merge, a lint run and a typecheck, and was caught
+only because someone read a directory listing. It recurs every time two branches number a migration,
+and it is silent until it reaches a real database.
+
+**`evu` and `mrq` fold into the Commitments PR rather than trailing it** — the same ruling the user
+made for the four `cyo.*` fixes. The principle: Commitments has never shipped, so a feature should
+arrive complete rather than with a documented gap and a queue of "fixes" for something no user ever
+saw broken. `mrq` specifically closes the end that `lvc` left open — `lvc` made the invalid shape
+*loud*, this refuses it at the keystroke.
+
+`mrq` is also cheaper than when filed: PR #12 widened `validTypesForCycling` to take `hiddenKinds`
+and left its former body as a private `structurallyValidTypes`, so threading the Instance Type
+through is a second parameter on a function that has just been opened up.
+
+## I broke PR #7 with that merge, and an agent caught it
+
+**The omission was mine and worth naming.** I resolved #7's merge with master, gated it with lint,
+tsc and vitest, saw green, and pushed — on a branch whose entire subject is a *backend* state. I
+never ran `cargo test`. Master's node-duplication work builds `CreateTaskRequest` exhaustively;
+this branch had given that struct an `archival` field. Two sites, neither touched by the merge,
+neither compiling.
+
+The 6dm agent found it, **refused to fix it, and was right twice**: it is a product decision on
+someone else's feature, and it is not the one-liner it looks like — probing the obvious fix revealed
+the second site. It reverted its probe and reported instead of smuggling it in.
+
+It also caught what I would have shipped: **the merge left two migrations numbered `0025`**.
+
+### Fixed, in `cad212a`
+
+**A copy of a set-aside Task is set aside too** — a decision, stated as one. The clone already
+carries status, plan, privacy, delegate, tags, block reasons and the issue link; dropping only the
+Backlog would be the silent discard the confirmation prompts exist to prevent. The invariant
+`archival = Backlog => plan IS NULL` survives by construction, since both fields come from an
+original that satisfies it. Test asserts both halves. Reversible if the user prefers always-Live.
+
+**`0025_task_backlog.sql` → `0026`.** The flow-target `0025` is already on master, so that one keeps
+the number. Corrected to both agents: the next free number is **0027**, not 0026 as I had told the
+Commitments agent.
+
+Gate: lint clean, tsc clean, 19 Rust binaries ok, vitest 88/1210, tarpaulin **91.07% (+0.30%)**.
+
+**The rule this adds**, now in the Commitments agent's brief: *resolving a merge on a branch with
+Rust changes requires `cargo test`, not just the frontend gate.* A conflict-free merge and a green
+frontend say nothing about whether the crate compiles.
+
+Two corrections to the bead's own estimates, from the agent: **10 struct literals, not ~30** — most
+test fixtures use struct-update syntax and inherited the field free. And it audited every column of
+`tasks`, `goals`, `domains` and `infos` across all 25 migrations against `SourceNode`: **no other
+silently-dropped field**, with two documented non-findings (`on_scope_exit` rides with `time_scope`
+by design; `domains.color` is Aspect-only and unreachable by retype).
+
+## Conflict sweep, round two — PR #7 resolved (2026-09-18)
+
+Swept all six open PRs. Only **#7** conflicted, but it is the root of a chain
+(`master ← #7 ← #10 ← #13`, with 6dm's branch also on #7), so it blocked everything beneath it.
+Resolved in a **detached scratch worktree** rather than in #7 itself, because two agents were working
+in or under that branch and merging beneath them would have raced their own merges.
+
+Ten conflicted files. **Seven were additive** — this branch adds Backlog, master added subtree entry
+and node duplication, and they touch adjacent lines without disputing them. **Three needed real
+judgement**, and a blanket "keep both" would have been wrong on every one:
+
+- **ListView's toolbar.** Master *deleted* it with the Show-goals toggle in #4. Keeping both sides
+  would have resurrected deleted code. Only the backlog toast survives from this side.
+- **SPEC's List View keyboard list.** Master rewrote it (path headers, not Goal headers). Neither
+  side wins whole: master's wording, with `Alt+B` and the bare `B` put back into it.
+- **`GoalHeaderRow`** is gone in favour of master's `PathHeaderRow`.
+
+**Four places needed a brace or comma that neither side owned**, because the conflict sat *inside* a
+function body, an object literal or a JSON block — concatenating the halves produced code that parsed
+as nonsense: `duplicateTask`'s closing brace, the `withCurrentPillDimensions` describe, the
+`exitSubtree` binding object, and a trailing comma in two locale files. **Every one was caught by
+`tsc` or a `json.load`, none by reading the diff.** That is the lesson: after resolving, parse it.
+
+Gate green at 87 files / 1203 tests. Pushed as `49872b8`.
+
+**The cascade is expected, not a mistake**: #7 moving gave #10 seven conflicts of its own. Both
+agents were told to merge their base, with the three traps above named so they do not rediscover them.
+
+**A correction I owed one agent**: I had told the Commitments agent to "merge master". PR #10's base
+is `worktree-task-backlog`, not master — merging master directly would have given it a diff against
+the wrong thing. Corrected.
+
+## Reverted: the Backlog switch's move (PR #7, `3a9a9fc`)
+
+User: *"Please move the backlog switch back down. Don't make UI changes based on my mistakes plus a
+guess."*
+
+**The failure was mine before it was the agent's.** I wrote `Arlesh-n66.1` as "no way to move a Task
+to Backlog from its editor" — stating a missing feature as fact, from a report that only established
+the user had looked and not seen it. The agent correctly found the control, correctly diagnosed my
+bead as wrong, and then filled the gap with a theory about *why* it was missed, and acted on it. It
+should not have; the bead invited it.
+
+`TaskEditorModal.tsx` is byte-identical to `293ff1a` again — diffed, not eyeballed. Suite green at
+1093.
+
+**Kept**, because it is independent of the guess: the tests (they assert behaviour, not DOM order,
+which is why they survive the revert) and the SPEC entry points, which were a genuine gap — SPEC
+documented neither the editor switch nor the Mindmap's bare `B`, only List View's. **Stripped**:
+every claim about placement, from SPEC and CHANGELOG.
+
+Written to memory as a standing rule: **a control the user missed is evidence they missed it, not
+evidence about where it belongs.** When a bead says a feature is missing and it is not, the finding
+*is* the deliverable — report where it actually is and stop. Now in the resume briefs for the
+Commitments cluster, since `cyo.2` and `cyo.3` are exactly where the same slip could recur.
+
+## Recovered work confirmed on master
+
+**PR #14 and #17 merged.** Verified on `origin/master`: `src-tauri/src/duplicate/mod.rs` present,
+all four `duplicate_*` commands registered, and `0025_flow_target_defaults_to_parent.sql` in place.
+The work stranded by #8's merge order is back, and the derived Target Node shipped with it.
+
+## PR #17 — and the biggest find of the run
+
+`Arlesh-xw7` shipped: a null Target Node now *means* "my parent", the eager default is gone from
+`convert_to_flow`, `flowTargetFollowsParent` and its `moveNode` call site are deleted, and migration
+`0025` nulls the targets that already resolved to their parent. Verified against a copy of the real
+board: **15 rows changed, 0 non-null left, all 15 flows resolve to the identical host node before and
+after**, `integrity_check` and `foreign_key_check` clean. Two corrections to the bead's own figures —
+the board has 15 flows, not 17, and **8** of them (not 7) carry `parent_type: "project"` against
+`target_type: "domain"`, which is exactly the set a `(type, id)` comparison would have stranded.
+
+### `Arlesh-atb` — clearing a nullable field over IPC silently does nothing
+
+Found outside the brief, and it is the most consequential thing today. `Option<Option<T>>` is how an
+update request spells *absent = unchanged, null = clear* — but **serde collapses an absent key and an
+explicit JSON `null` into the same outer `None`**, which every `update_*` reads as "unchanged". You
+clear a field, the save reports success, nothing changes.
+
+Verified independently rather than taken on report: **17 such fields across three model files**
+(`flows/model.rs` 10, `tasks/model.rs` 6, `infos/model.rs` 1) and **no `deserialize_with`, no
+double-option handling anywhere on master** — so serde's default applies to all of them. The exposed
+fields include `time_scope`, `plan`, `on_scope_exit`, `delegate_to` and an Info's `details`.
+
+PR #17 fixes it for the flow Target Node only, because clearing the target is the route back to the
+derived default and so was in scope. **The other sixteen fields are still broken.** The agent proved
+it with a test that failed `left: None, right: Some(None)` before the fix.
+
+It sits at bd's default P2; the agent declined to choose and proposed **P1**. I agree — it is a
+silent discard of user intent across the whole editing surface, which is the exact failure the
+no-silent-drop rule exists for. **The user's call.**
+
+### Two process notes
+
+The tarpaulin warning paid for itself: the agent's first run reported **74.62%** and failed the
+floor, with the shortfall concentrated in files it never touched. Re-run alone: **90.72%**. Because
+it had been warned, it did not "fix" coverage that was never broken.
+
+The agent used `dangerouslyDisableSandbox` for two network calls (`git push`, `gh pr create`) after
+the sandbox blocked DNS. Everything else ran sandboxed. Flagged for the user rather than buried.
+
+## Conflict sweep against master (2026-09-18)
+
+Test-merged every open PR rather than waiting to find out at merge time. Three had real conflicts:
+
+| PR | Against master | Action |
+|---|---|---|
+| #12 `type-cycle-filter` | `MindmapView.tsx` | **resolved, pushed** — import collision only: master added `useSubtreeNav`, this branch added `hiddenNodeKinds` to the `filter-tree` import. Both needed. Green at 1168. |
+| #7 `task-backlog` | `SPEC.md`, `ListView.tsx`, `use-keyboard-list-view.test.ts` | **queued** — `worktree-backlog-loss-prompt` is stacked on it and mid-gate |
+| #10 `commitments` | same three files | **queued** — an agent is working in that worktree now |
+
+#13, #14, #15 and #16 are clean.
+
+**Why #7 and #10 wait**: merging master into a branch an agent is working in, or whose base another
+agent is mid-gate against, moves the ground under them. #7 and #10 share the same three conflicts,
+which says master's ListView/SPEC changes (the path-header and Ctrl+O work) landed after both
+branched — one resolution will inform the other.
+
+## Tabs landed — PR #16, the largest change of the run
+
+58 files, **+2551 / −396**, one commit, 87 → 96 test files and 1144 → 1225 tests. Note the size: the
+agent described it as "+485/−396 across 33 changed files plus 20 new ones", which is true of the
+*existing* files but understates the whole — the new files carry the rest.
+
+**The persistence migration is the part that could have hurt, and it was done properly.** Verified
+directly rather than taken on report: `tab-persistence.ts` reads the three legacy keys
+(`arlesh-view`, `arlesh-filter`, `arlesh-list-filter`) and folds them into a single tab, and it
+rebuilds rather than spreads — `mergeFilterDefaults` for the flat level, **`withCurrentPillDimensions`
+on top** for the nested pill map, which is exactly the second-level hazard that has bitten this repo
+twice. 16 rehydration tests, including the two that matter most: a blob written before `archivedMode`
+existed, and one still carrying a retired Antecedent pill. Plus corrupt blob, tab with no id, and an
+`activeTabId` naming a tab that is gone.
+
+**Two judgement calls beyond the bead**, both correct and both argued in a new ADR 0007:
+
+- The **clipboard** had to leave `use-mindmap-store`, or it would have become per-tab — which would
+  defeat copying in one tab and pasting in another, a stated requirement.
+- **`pathHeaderIcons`** lived in `use-view-store`, which the bead makes per-tab. Moved to a new
+  app-wide `use-display-store` rather than letting a *taste preference* silently reset per tab. The
+  branch axis stays per-tab because it is genuinely per-subtree.
+
+**Two follow-ons the conversion forced**, either of which would have shipped as a bug:
+
+- A restored subtree root may name a node that no longer exists — a view rooted at nothing shows
+  nothing, with no pill to escape by. Now exits to the true root, but only when the tree is
+  *loaded*: an empty tree is what a load in progress looks like.
+- `MindmapView` centred on every `subtreeRootId` change, which with per-tab roots fired on every tab
+  switch and discarded the pan/zoom that tab was holding. Now centres only for a root change within
+  the same tab.
+
+**Ctrl+W** is taken by the app: nothing bound it, no native accelerator is declared, and the capture-
+phase dispatcher `preventDefault`s so the webview never sees it. Closing the last tab is refused by
+the store and turned into `closeWindow()`.
+
+Flagged for review, not acted on: `src/test/setup.ts` now imports `use-tabs-store`, because the
+`getState()` accessors resolve through the active tab, so every suite needs one to exist — that is
+why ~12 existing test files needed no edit. And `reloadTabs()` is exported but only tests call it.
+
+## Backlog editor: the control existed, buried (PR #7, `1b4f35f`)
+
+The user's *"found no way to backlog a task from the editor"* was not a stale build and not a
+missing feature. **The switch had shipped in the original Backlog commit**, wired and tested — it
+just sat sixth, below Title, Status, Time Scope, On-scope-exit and Plan. Verified against
+`293ff1a`: `fieldBacklog` at line 195, the scheduling group above it. Someone opening a Task to set
+it aside reads the status row, sees To Do / In Progress / Done, and concludes it is not there.
+
+Moved directly under the status pills, and kept a `Switch` rather than becoming a fourth pill —
+SPEC is explicit that Backlog is a separate axis from status, so a backlogged Task that was In
+Progress still says so. A pill in that row would claim otherwise.
+
+**The Goal-editor worry was unfounded and is now pinned.** The status control is not shared:
+`TaskEditorModal` and `GoalEditorModal` each map their own list over shared CSS. Two new tests
+assert the Goal editor offers no Backlog control and saves no `archival` field.
+
+**The entry points agree on meaning and differ on ceremony, deliberately.** Backlogging a *planned*
+Task is refused by the backend (`TaskError::BacklogWithPlan`). The hotkey paths answer with a
+confirm modal because there is no preview; the editor never lets the refusal happen, clearing the
+Plan field in front of you. Same write, same invariant, different affordance. Left as is — it reads
+as correct rather than as drift.
+
+## `Arlesh-6dm`: finished but never shipped
+
+Its agent committed `9aa2175`, left a clean worktree — and then completed without pushing, without
+opening a PR, and without delivering a report. The bead was still `in_progress`. Nothing was lost;
+the failure was in the hand-off, not the work.
+
+Resumed rather than redone, with the three things it still owed: merge the base (which had moved
+under it via `1b4f35f`), re-run the gate on the merged result, push and open the PR. **Worth
+remembering as a failure mode**: a `completed` agent with no report is not the same as a finished
+task, and the branch state is the thing to check, not the status.
+
+## PR #15 — `start`, and a bash trap worth remembering
+
+`scripts/branch-instance.sh start <name|all>` = build then run. Two findings from it are worth more
+than the feature:
+
+**A tested context would have silently broken the harness.** Bash switches `set -e` **off for the
+entire dynamic extent of any command whose status is tested** — `if`, `while`, `until`, `!`, and the
+left-hand side of `&&` / `||` — subshells and the functions they call included, and an explicit
+`set -e` inside does not restore it. The agent reported this as specific to `if`; I reproduced it
+and it is not:
+
+```
+A) ( inner ) && echo ok || echo failed   →  inner ran past `false`, subshell "succeeded"
+B) if ( inner ); then … fi               →  same
+C) ( inner ) & if wait "$!"; then … fi    →  inner stopped at `false`, status propagated
+```
+
+The general form is the one to remember, because `cmd_x && …` is the shape someone is far more
+likely to write by accident than `if ( … )`. Audited the rest of the script: only line 57,
+`[ "$free" -ge "$MIN_FREE_GB" ] ||`, has the shape, and it is a plain test with no function behind
+it — not exposed. The first version wrapped each build in
+`if ( trap restore_conf EXIT; build_one "$name" )`; with a stubbed failing cargo it sailed past the
+failure, past a failed `cp`, printed "ready" and launched a **stale binary**. The build is now a
+backgrounded subshell that is waited on (`( … ) & if wait "$!"`), which keeps errexit and still
+reports status. Found by testing the failure path, not by reading.
+
+**`start` twice on one branch** would have been `Text file busy` on the copy, and a second launch
+would have put two WebKit processes on one SQLite file. `build_one` now writes `arlesh.new` and
+`mv -f`s it in (the running process keeps its old inode), and `start` stops a running instance
+before relaunching, reusing Vite.
+
+Memory guard asked **twice** — once before building, so a refused `start all` is refused before nine
+compiles rather than after them, and again at launch, which is authoritative because a long build
+changes what is free. Partial build failure: build what can build, start what built, name what
+failed, exit non-zero.
+
+Pre-existing bug found and left alone, filed as **`Arlesh-63c`**: `stop` sometimes leaves Vite
+running. It records `$!` of a backgrounded `setsid npm run dev`, but `setsid` forks a new session
+leader when its caller is already a process-group leader, so the recorded pid can be a wrapper that
+has already exited — `kill -- -PID` then hits nothing while `stop` still reports success.
+
+Beads `Arlesh-rtu` and `Arlesh-63c` both landed at bd's default P2; the agent correctly declined to
+choose. **Both need the user's priority call** (it proposed P3 for `rtu`).
+
+## Disk, second round: the same mistake, mine
+
+Back to 99%. **Two active worktrees had regrown private target dirs** — 3.4 GB and 3.9 GB — because
+their briefs set `CARGO_TARGET_DIR` for tarpaulin but not for `cargo test`. That is the same leak as
+this morning and the same omission, in briefs I wrote after diagnosing it.
+
+Reclaimed the main checkout's idle `src-tauri/target` (5.2 GB) instead, since no build was running
+against it and it rebuilds on demand: **3.6 GB → 8.8 GB free.** Messaged both running agents to
+prefix `CARGO_TARGET_DIR` on remaining Rust commands and to remove their private target *after*
+their gate passes — not before, which would force a rebuild mid-gate.
+
+## Fixes dispatched into their parent PRs (2026-09-18)
+
+Both dispatched to work **on the existing branch**, not on a stack above it — extending the user's
+ruling for `evu` to the whole set. Commitments and Backlog have never shipped, so five trailing
+"fixed" entries for features no user has seen would be fiction; each feature arrives complete
+instead.
+
+- **PR #10 (`worktree-commitments`)** — one agent taking `cyo.3` → `cyo.2` → `cyo.4` → `cyo.1` →
+  `evu`, in that order: the editor tells you what cyo.1 and evu must fit into, and the base glyph
+  must precede its resolution variants.
+- **PR #7 (`worktree-task-backlog`)** — `n66.1`, the editor route into Backlog. Brief asks for an
+  inventory of the *existing* entry points too, since three that disagree about when Backlog clears
+  would matter more than a missing fourth.
+
+**Six agents now running.** Past the two-agent ceiling this run established, at the user's call. The
+mitigation is that resumption from transcripts has worked twice today, so a rate limit costs time
+rather than work.
+
+**Two re-merges I owe, and told both agents not to touch:** PR #13 is stacked on #10, and
+`worktree-backlog-loss-prompt` is stacked on #7. Both bases are about to move.
+
+## User-reported fixes, beaded (2026-09-18)
+
+From a testing pass. Five beads, all children of the feature they belong to so they merge with it
+rather than trailing behind:
+
+- **`Arlesh-n66.1`** (P2) — no way to move a Task to Backlog from its editor. A state you can enter
+  but cannot find is close to one that does not exist.
+- **`Arlesh-cyo.1`** (P2) — a Commitment with no scope drops out of the type cycle. The rule is real
+  (`CONTEXT.md`: there is no Unscoped Commitment) but silently removing the option makes it read as
+  a missing feature. Should offer it and resolve the scope on commit — prompt or cancel.
+- **`Arlesh-cyo.2`** (P2) — the Commitment glyph reads as a Task. Must stay legible at the three
+  sizes it is actually drawn at: mindmap node, List View row (`ICON_R = 10`), path header (7).
+- **`Arlesh-cyo.3`** (P2) — a Commitment has no editor. Note for whoever takes it:
+  `worktree-commitments` already carries `CommitmentEditorModal.tsx` and `VerdictWindowField.tsx`,
+  so **check whether this is a wiring gap before writing a component.**
+- **`Arlesh-cyo.4`** (P3) — kept / broken / live / past-window all draw the same glyph. Depends on
+  cyo.2; build on the new base glyph, not the old.
+
+Per the user, **`Arlesh-evu` goes under the existing commitments PR (#10)** rather than becoming its
+own. Consequence to handle: PR #13 is stacked on #10, so #10's branch moving means #13 needs its
+base merged in afterwards.
+
+`Arlesh-xbi` re-closed — the PR #11 closure was deliberate. User: *"low priority for review and it
+clutters against more interesting features. Will reopen later."* Deferred, not abandoned; the bead
+records how to revive it without re-implementing.
+
+## Disk: 99% → 98%, and the leak that caused it
+
+The instances were never the problem (33 MB all told). **Four worktrees had grown their own
+`src-tauri/target`** — 3.4G, 3.3G, 1.5G, 1.1G — because agents ran `cargo test` from their worktree
+without `CARGO_TARGET_DIR`, so only tarpaulin used the shared warm tree. Removed the two whose
+agents had finished: **2.9 GB free → 7.4 GB**. Also removed seven merged worktrees.
+
+**The fix is in the briefs**: agent instructions now say to run Rust from `src-tauri/` *and* point
+`CARGO_TARGET_DIR` at the shared tree for `cargo test`, not just for tarpaulin.
+
+## PR #14 — the #8 recovery, and a coverage lesson
+
+Opened as **PR #14**. Gate: lint clean, tsc clean, vitest 86/1075, `cargo test --lib` 232,
+`tests/duplicate.rs` 9, **tarpaulin 90.96%** — the exact figure #8's own branch reported, which is
+what a byte-identical commit onto an unchanged-Rust master should give.
+
+**Coverage lesson worth keeping.** The first run reported **83.17%** and failed the 90% floor. It
+was not a regression: two `cargo tarpaulin` runs were sharing `$HOME/.cache/arlesh/tarpaulin` at the
+same time — mine and an agent's — and **concurrent runs against one warm target dir produce garbage
+numbers in both**. Re-running alone on a quiet box gave 90.96%. Had I believed the first number I
+would have "fixed" coverage that was never broken. Every agent brief now carries this, along with
+`pgrep -x cargo-tarpaulin` (never `-f`, which matches its own command line and hangs forever).
+
+## Rate limit, second time
+
+All three agents died at once on the session limit — `xw7` at "All tests green. Now the coverage
+gate", `lvc` mid-gate, `4yp` mid-tests. Same recovery as before: **resumed from transcripts, not
+re-dispatched.** `lvc` reported it redid nothing and finished as **PR #13**.
+
+`lvc` also corrected its own brief: the bead is not frontend-only — its second acceptance criterion
+is a refusal at `flows::start`, i.e. Rust. Its Rust diff is one integration test, no `src/` change.
+It found the write genuinely broken, not just the glyph: `useCommitmentVerdict` parsed a commitment
+id out of the node id, which for `habit-3-0-virtual` is `NaN`. Two follow-up beads, `Arlesh-evu` and
+`Arlesh-mrq`, both **awaiting the user's priority call** (the agent proposed P2 and P3).
+
+## Two stranded PRs — the stacked-merge hazard, twice (2026-09-18)
+
+The cap was never the risk. **Merge order was.**
+
+### PR #8 — merged into a branch that had just been absorbed
+
+```
+PR #5  merged 09:30:04  →  master
+PR #8  merged 09:30:22  →  worktree-flow-move-fix
+```
+
+Eighteen seconds, wrong order. #8's base went to master first, so #8 merged into a branch nothing
+pointed at any more. Its PR reads `MERGED` and the work went nowhere. Verified on `origin/master`:
+`src-tauri/src/duplicate/` absent, all four `duplicate_*` commands absent from `lib.rs`.
+
+**Recovery:** `49fa540` turned out to be a clean single-parent squash holding exactly #8's 23 files,
+so it cherry-picked onto master as itself — no re-showing of #5's already-squashed content. Branch
+`worktree-copy-paste-duplicate`. Gate: lint clean, tsc clean, vitest 86/1075, `cargo test --lib`
+232 passed, `tests/duplicate.rs` 9 passed. Coverage running.
+
+### PR #11 — closed, not merged
+
+`gh pr view 11` → `merged: null`, closed 09:49:22. Only `DeleteConfirmModal` adopts
+`use-focus-trap` on master, which is PR #9's single adoption — so Tab still escapes behind eleven
+modals, and neither Escape fix landed. Bead `Arlesh-xbi` **reopened**, since the board should
+reflect master rather than the existence of a PR. Branch `worktree-modal-focus-trap` still holds
+`c75019a`, gate-green when written. **Awaiting the user on whether the closure was deliberate.**
+
+### The rule this run learned
+
+**Merge the child into the parent first, then the parent to master.** #3 → #4 → master worked
+exactly that way and all three landed clean; #6 → #4 → master likewise. #8 is the counterexample.
+
+## Conflicts resolved after master moved
+
+All three were the same shape — two branches each adding a first bullet to the same CHANGELOG
+section, neither claiming the other's slot:
+
+- **#4**: one file. Gate green 87/1120.
+- **#6**: two files, and the second was real — the indentation fixtures passed `ancestorRefs`, a
+  `TaskListRow` field deleted when the Antecedent dimension went, since that filter was its only
+  consumer. The fixtures assert on `ancestors` anyway. Gate green 87/1131.
+- **#12**: one file. Gate green 86/1102.
+
+## Session restart
+
+The Claude Code process exited mid-run, stopping the `xw7` and `lvc` agents with 15 and 17
+uncommitted files respectively. **Resumed from their transcripts rather than re-dispatched**, with
+instructions to `git status`/`git diff` first and not redo what was already there — the same
+recovery that worked when four agents were killed earlier in the run.
+
+`Arlesh-4yp` (Tabs, P1, high) dispatched at last: it was held all run because it converts singleton
+Zustand stores to per-tab state and would have conflicted with every open PR. With the board down to
+three, its moment arrived. The brief points it at the persist hazard specifically — turning flat
+per-app state into a nested per-tab structure is exactly the operation that walks into the shallow
+merge that has already bitten this repo twice.
+
+Holding at three agents rather than four while tarpaulin runs: four concurrent vitest runs on 15 GB
+is the configuration that took the whole fleet down earlier.
 
 ## Flow copying, beaded in two (2026-09-18)
 
@@ -613,3 +1552,545 @@ agent was dispatched. What was left to do was housekeeping:
 
 Local `master` is now 3 commits ahead of `origin/master`, not 13 — the mainline was pushed, so the
 open PRs' diffs no longer carry the spec commits.
+
+## The gate moved to CI (2026-09-19, `Arlesh-qkr`, PR #20)
+
+Two workflows, `.github/workflows/ci.yml` and `.github/workflows/coverage.yml`. No application
+code touched, so no CHANGELOG entry — developer tooling, matching the `Arlesh-rtu` precedent.
+
+**What it fixes.** Tarpaulin was ~20 minutes locally, agents serialised on it by polling
+`pgrep -x cargo-tarpaulin`, and — the part that actually mattered — two concurrent runs over the
+one warm `~/.cache/arlesh/tarpaulin` target directory reported **83.17% and 74.62% for trees that
+were really at 90.96% and 90.72%**. That is not a slow gate, it is a *wrong* one, and an agent
+nearly rewrote code to chase it. On a runner every PR gets its own machine and its own target
+directory, so the numbers are independent by construction and nothing queues behind anything.
+
+**First run, PR #20, cold caches** (run `35440253439`, both jobs green):
+
+| Job | Wall clock | Detail |
+|---|---|---|
+| `web` | **2m19s** | npm ci 8s · lint 16s · tsc 9s · vitest **98.03s**, 87 files / 1163 tests — identical to the local run |
+| `rust` | **6m01s** | apt 29s · `cargo test` **5m11s** from *no cache at all*, 504 tests passed |
+
+That is much cheaper than feared: a cold Rust build of 560 crates including webkit2gtk and axum is
+five minutes on a hosted runner, not the twenty-plus the laptop's numbers suggested.
+
+**Caching.** `Swatinem/rust-cache@v2` keyed on `Cargo.lock` + rustc version + job, with separate
+`shared-key`s (`cargo-test`, `tarpaulin`) — they build with different RUSTFLAGS, so one shared
+entry would be invalidated by whichever job wrote last and **both** would miss every time. Saved
+entries after the first run: **511 MB** Rust, **44 MB** npm — far inside GitHub's 10 GB per-repo
+budget, because rust-cache prunes the intermediate artifacts that make the local tree 22 GB.
+
+**Runner facts worth writing down.** `ubuntu-latest` ships **rustc 1.98.1** preinstalled, so no
+toolchain action is needed. Two things a clean runner lacks that every laptop already had:
+Tauri's GTK/WebKit headers (`libwebkit2gtk-4.1-dev` — the `webkit2gtk` 2.0.2 crate binds the
+**4.1** API), and a `dist/`. `src-tauri/src/lib.rs:177` calls `tauri::generate_context!`, which
+embeds `frontendDist` at compile time, so the lib and every integration-test binary fail to build
+without one. No Rust test reads the bundle, so both jobs write a placeholder `dist/index.html`
+rather than pay for an npm install and a Vite build. **This is also true of a fresh worktree** —
+`cargo test` in one with no `dist/` fails for a reason that has nothing to do with the change.
+
+**Cost, and why the triggers are shaped this way.** The repo is private, so minutes are billed
+(Linux 1x, $0.008/min) and **every job is rounded up to the whole minute**. Measured: `web` 3 min,
+`rust` 7 min billed. At this board's rate — 8 PRs/month, ~3 pushes each — that is ~240 min/month
+for `ci.yml`, plus coverage. `cancel-in-progress` on `pull_request` kills a superseded run instead
+of paying for it; the `paths:` filter on `coverage.yml` keeps frontend-only PRs from paying for
+tarpaulin at all. The weekly `schedule:` on master is the one discretionary line: coverage is a
+whole-tree property and this board merges eight stacked PRs, so two branches can each hold 90%
+alone and drop below it together. Deleting that block is the largest single saving available.
+
+**The coverage lane is verified.** Run `35440634930`, `success`:
+
+```
+yama/ptrace_scope = 1
+cargo-tarpaulin-tarpaulin 0.35.5
+90.96% coverage, 3442/3784 lines covered
+```
+
+`ptrace_scope = 1` permits tracing a direct child, which is exactly what tarpaulin spawns, so
+`--engine ptrace` works on `ubuntu-latest` unmodified. The number is the point, though: **90.96%
+is precisely the figure a clean local run produced for `je5`** — the same tree that a *concurrent*
+local run reported as 83.17%. CI reproduces the trustworthy number and cannot reproduce the
+corrupt one, because there is nothing to share a target directory with. "Do not run tarpaulin
+locally" is now proven, not intended.
+
+Job total **20m40s** (21 billed minutes) on a cold tarpaulin cache: disk reclaim 3m40s, apt 24s,
+compile 7m09s, the instrumented run 8m00s, cache save 27s. The tarpaulin cache is 1020 MB against
+the `cargo test` job's 511 MB — `-Clink-dead-code` is why — and the repo's three cache entries
+total 1.5 GB of the 10 GB budget.
+
+**Where the coverage run's time actually goes**, measured per test binary from the run log:
+
+| | tests | test time | wall | fixed overhead |
+|---|---|---|---|---|
+| 18 binaries | 490 | **38.8s** | **480.2s** | **441.5s** |
+
+The overhead is **~24.5s per binary and flat** — independent of how many tests the binary holds.
+`arlesh_lib` runs 232 tests in 0.83s and costs 27.6s; the `arlesh` binary runs **zero** tests and
+costs 24.7s; `tests/helpers.rs`, which Cargo compiles as its own target although it contains no
+tests at all, costs 23.5s. So **92% of the instrumented run is per-binary ptrace setup, not test
+execution** — the cost tracks binary size, and `-Clink-dead-code` links the whole dependency tree
+into every one of the 18. Anything that speeds this up has to cut the number of binaries, shrink
+them, or stop using ptrace; making the tests faster would buy 38 seconds in total.
+
+### Warm run, and what caching can and cannot reach
+
+Second coverage run, tarpaulin cache `full match: true`: job **13m05s** (14 billed minutes) against
+the cold 20m40s. The split is the point — **compile 7m09s → 2m29s, and the instrumented run
+8m00s → 8m36s, i.e. unchanged.** Caching cannot touch per-binary ptrace setup, so once the cache is
+warm the run phase *is* the cost. Coverage came back `90.96% coverage, 3442/3784 lines covered`,
+identical to the cold run: the measurement is reproducible on the runner.
+
+### Integration tests are grouped into four binaries
+
+Because the overhead is per binary, the 16 files under `src-tauri/tests/` were merged into **four**,
+chosen thematically so that `cargo test --test <name>` stays a useful filter:
+
+| Target | Tests | Covers |
+|---|---|---|
+| `cargo test --test tasks` | 70 | tasks, goals, dependencies, block reasons |
+| `cargo test --test flows` | 65 | flows, flow items, recurrence/habits, fan-in, flow commands |
+| `cargo test --test structure` | 62 | domains/projects/tags, scopes, knowledge base, infos |
+| `cargo test --test operations` | 61 | duplicate, retype, mindmap read path, MCP tools, database |
+
+Each group is a directory with a `main.rs` that declares its members; the old files are unchanged
+apart from `mod helpers;` becoming `use crate::helpers;`. `tests/helpers.rs` moved to
+`tests/helpers/mod.rs` so Cargo stops compiling it as a test target of its own — it holds no tests
+and cost 23.5s a run. `main.rs` is opted out of `cargo test` (`test = false`) for the same reason:
+its harness ran zero tests for 24.7s. The trade is that `cargo test` no longer type-checks
+`main.rs`, which is six lines whose only statement is `arlesh_lib::run()`.
+
+**Test count is unchanged: 490** (232 lib + 70 + 65 + 62 + 61), plus 14 doctests. The count is the
+check that the regrouping dropped nothing — if it moves, a module was not wired in.
+
+### The engine, settled by measurement
+
+The gate went from **20m40s to 2m22s warm**. Two changes did it, and three plausible-looking
+shortcuts were measured and rejected. Do not re-litigate any of these without new numbers.
+
+**Where the 20 minutes went.** Not measurement — ptrace machinery. Tarpaulin's ptrace engine sets
+an INT3 breakpoint on every coverable line, then on each first hit disables it, single-steps and
+re-enables it. Tarpaulin defaults to `-Clink-dead-code`, so every test binary links the whole
+560-crate tree and the cost scales with the dependency graph rather than with this project: ~24.5s
+of flat setup per binary, **480.2s of run phase around 38.8s of actual test execution**. Caching
+never touched it (8m00s cold, 8m36s warm) — it only cut compile, 7m09s to 2m29s.
+
+**Fix one: fewer binaries.** 16 test files became 4 targets plus `commitments.rs`. Run phase
+480s → 159s, merged ptrace job 6m26s warm. Worth doing on its own.
+
+**Fix two: stop using ptrace.** `cargo llvm-cov`, LLVM source-based coverage, on the pinned stable
+toolchain. Warm job 2m22s against ptrace's 6m26s, with 1 crate recompiled instead of 384.
+
+| Engine, same tree | lines | % | verdict |
+|---|---|---|---|
+| tarpaulin `--engine ptrace` | 3442/3782 | 91.01 | correct, slow |
+| tarpaulin `--engine llvm` | 3083/3447 | 89.44 | **wrong** |
+| `cargo llvm-cov` | 5753 | 95.25 | correct, fast |
+
+**Rejected: `cargo tarpaulin --engine llvm`.** It looks like the obvious win and it silently drops
+profraw data. On `src/infos/mod.rs` it reports **17/74** where ptrace watches 74/74 run and
+cargo-llvm-cov independently says 100%, on an identical denominator; `src/block_reasons/mod.rs`
+10/41 against 40/41. Neither file holds an inline `#[cfg(test)]` block, so no test accounting is
+involved. Its README warns about fork and thread unsafety and the suite is `#[tokio::test]`
+throughout. **89.44% is not stricter than 91.01%, it is wrong** — a floor of 89 would have written
+the bug into the gate and stopped protecting those files entirely.
+
+**Rejected: `--no-dead-code`.** Does not run at all. The binaries fail to load with corrupted
+`DT_NEEDED` strings (`libgdk_pixbuf?2.0.so.?`): without link-dead-code the section layout shifts and
+the ptrace engine writes its `0xCC` breakpoints into `.dynstr` instead of `.text`.
+
+**Rejected: `#[coverage(off)]` on inline test modules.** Keeps tests inline but is still E0658 on
+1.96 — verified on this toolchain, not taken from the changelog. Stabilised in rust-lang/rust#130766,
+reverted in #134672 as a process mixup; the live tracking issue (#134749) has six open blockers
+including T-lang sign-off and **no target version**. That is a permanent nightly toolchain, not a
+stopgap, and nightly coverage also means the shipping toolchain never runs the suite — buying that
+back measured 237s in a job of its own.
+
+**So unit tests moved to sibling `tests.rs` files.** cargo-llvm-cov excludes `tests.rs` and
+`*_tests.rs` by filename on stable, with no annotations. Measured on one commit with only the
+toolchain varying, inline bodies were **2790 of 8715 lines and 7735 of 13577 regions**, ~99% covered
+by construction — a third of the line metric and over half the region metric could not regress.
+`.claude/rules/rust.md` is amended accordingly.
+
+**The floor moved 90 → 94 because the unit changed**, not because standards did: tarpaulin counts
+DWARF statement lines, LLVM counts lines in coverage regions. 94 against a measured 95.25% leaves
+~72 lines of slack, against ~52 under the old arrangement. `--fail-under-lines` is **proven to fail
+as well as pass** — a floor of 99 exits 1, 94 exits 0 — so it gates rather than decorates.
+
+**Four traps that stayed green while being wrong.** Each was caught by checking a number, never by
+the exit status:
+
+- `cargo llvm-cov` does not run doctests. It gated **630** tests where `cargo test` runs 644.
+- `cargo test` *already includes* doctests, so adding `cargo test --doc` ran them twice — **658**.
+- Piping `cargo test` through `| tail` reports **tail's** exit code. A red suite looks green.
+- rust-cache reported `full match: true` and **384 crates recompiled anyway**: driving `cargo
+  llvm-cov` directly builds into `target/llvm-cov-target`, driving `cargo test` under `show-env`
+  builds into `target/debug`, and rust-cache never overwrites an exact-key hit — so it could not
+  converge. The key is now `rust-llvm-cov-manual`; **change it if that command changes mode.**
+
+**The reclaim step is gone.** Runners start with 14 G free and the job never came close; it had cost
+32s, 75s and 3m40s across three runs of the identical command.
+
+## Spec + bead round, 2026-09-19
+
+Fourteen unbeaded tasks had accumulated on the Arlesh board — twelve added that day (ids 171–175,
+180–186) plus two older (168, 169). None carried a description; the board holds titles only. Each
+was grilled individually before anything was written, and the settled answers live in the bead
+descriptions rather than here.
+
+**Thirteen beads.** Two pairs collapsed into one bead each, because the user settled them as one
+change: #171 + #181 (collapse covers Destructive too, so "replaced on expiry" is a case of it, not
+a rule of its own) and #183 + #185 (Antecedent back, Parent out — the same edit to the same
+dimension list). #172 split the other way, into a P1 flag and a P3 model change.
+
+| Bead | P | Board tasks |
+|---|---|---|
+| `Arlesh-45d` | 1 | 175 — habit instances ignore their Cycle Scope |
+| `Arlesh-792` | 1 | 168 — focused node survives the filter |
+| `Arlesh-7z8` | 1 | 180 — Shift+initial typed child |
+| `Arlesh-2gm` | 1 | 172 — agentic flag |
+| `Arlesh-yuo` | 2 | 183 + 185 — Antecedent in, Parent out |
+| `Arlesh-mw2` | 2 | 174 — collapsing breadcrumb |
+| `Arlesh-dxm` | 2 | 182 — selection in view, j/k scroll |
+| `Arlesh-b0h` | 2 | 171 + 181 — scope-levelled habit history |
+| `Arlesh-5vp` | 2 | 184 — planning view |
+| `Arlesh-ncy` | 3 | 169 — clear a beads id |
+| `Arlesh-8ay` | 3 | 186 — asynchronous flag |
+| `Arlesh-8aw` | 3 | 173 — settable scope selector |
+| `Arlesh-8wh` | 3 | 172 — polymorphic delegate |
+
+Every board task is linked to its bead over MCP, including both halves of each merged pair.
+
+**What the grilling turned up that the titles did not:**
+
+- **`Arlesh-45d` has a confirmed root cause, not a hypothesis.** `buildIterationItems`
+  (`use-mindmap-data.ts`) hard-codes `timing: "active"` on every virtual instance and never resolves
+  the flow item's Cycle Scope, so an item's window is its *iteration's*. The bug is therefore not
+  sub-day-specific — a `day` cycle in a `week` habit is active all week — and the same function
+  emits one node per item where N cycle pairs should give N. Ruled out while diagnosing:
+  `classify_iterations`, `habit_slots` and the `"part"`/`"part_of_day"` spelling split are all
+  correct. The user's "it's a child cycle plan, not a past instance" is what redirected it.
+- **Two documented invariants have to change**, and both are recorded in their beads with the
+  reason: CONTEXT.md's *"Filtering by a scope returns every item whose scope is wholly contained
+  within it"* becomes a selectable Within/Overlapping rule (`8aw`), and SPEC's *"no gesture can
+  author, edit or clear a beads id from the UI"* gains a clearing-only carve-out (`ncy`).
+- **`Arlesh-792` and PR #12 both land.** The focus exemption would make #12's narrowed type cycle
+  unnecessary, but the user kept both deliberately. The exemption overrides *every* hiding rule,
+  Private Mode included — safe only because toggling a filter ends the exemption, so a private node
+  can never survive into a Private-Mode-off view.
+- **`Arlesh-8wh` is blocked by `Arlesh-atb` for a real reason**, not a guess: its one-click delegate
+  toggles Delegation *off* through `UpdateTaskRequest.delegate_to: Option<Option<i64>>`, which is
+  exactly the field shape `atb` reports as silently ignored.
+- **Year is not a Scope kind.** The habit-history tree caps at a year by grouping seasons for
+  display only — no Year row, no Year in the picker, nothing Year-scoped.
+
+Dependencies recorded: `8wh` → `2gm` + `atb`; `5vp` → `n66` (Backlog, PR #7) + `8aw`.
+
+---
+
+## Round eight: three slots, three P1s
+
+The commitments stack landed as real merge commits rather than squashes — `#13 → #10 → #7`, in that
+order, children before parents, exactly as planned. Master is at `eb422fd` and migrations end at
+**0028**. Five PRs stayed open (#16, #20, #21, #22, #23), so three slots came free.
+
+### A running instance panicked, silently
+
+Before dispatching, the user reported that starting the `task-backlog` instance "seems to have no
+effect". It was not inert — it crashed at boot and said so only in a log nobody was reading:
+
+```
+bootstrap failed: migrations error=migration 25 was previously applied but has been modified
+```
+
+**The renumbering did it.** PR #7 first shipped its migration as `0025_task_backlog.sql`, the user
+ran that instance, and its database recorded *version 25 = "task backlog"*. Commit `cad212a` then
+un-collided the numbers with a pure `R100` rename to `0026`, handing slot 25 back to master's
+`flow_target_defaults_to_parent`. sqlx found version 25 applied under a checksum that no longer
+matched the file in that slot and refused to migrate.
+
+Repaired by renumbering the *record*, not by re-running anything: the rename was byte-identical, and
+the file's SHA-384 equals the checksum stored in the database exactly — checked, not assumed. After
+`UPDATE _sqlx_migrations SET version = 26 WHERE version = 25`, sqlx matched 26 and applied the
+now-missing 25 in its place. `sqlx-core`'s `run_direct` applies any source migration absent from the
+applied set with **no ordering check**, which was confirmed in the vendored source before relying on
+it. Backup kept at `arlesh.db.bak-pre-renumber`.
+
+Two findings left for the user to price:
+
+- **The `commitments` instance is broken the same way** (`25=task backlog, 26=commitments` against a
+  branch numbering them 26 and 27, and `0028` never applied). Same shift, descending to dodge a PK
+  collision.
+- **`launch()` in `branch-instance.sh` reports success without checking the process survived.** It
+  backgrounds the binary, records `$!` and prints `app pid … port … logs …` just as happily for a
+  process that died 30 ms later. That is the whole "no effect". A `kill -0` after a beat, printing
+  the last line of `run.log` when it is gone, would have shown the panic. The script is on master
+  now, so it is a fresh bead rather than an edit to an open PR — not filed, priority is the user's.
+
+### Disk, again
+
+13G free against a gate that wants ~15G. The worktrees were not the culprit this time — all fourteen
+are ~5 MB, so the earlier `CARGO_TARGET_DIR` discipline held. It was the coverage cache: 22G, of
+which `debug/incremental` was 3.3G of pure regenerable incremental state and another 3.1G was dep
+artifacts untouched for two days. Removing both took free space to **19G** without costing a rebuild
+of anything current.
+
+### Dispatched
+
+| Bead | P | Branch | Note |
+|---|---|---|---|
+| `Arlesh-45d` | 1 | `worktree-habit-cycle-scope` | migration slot **0029** if needed |
+| `Arlesh-7z8` | 1 | `worktree-typed-child-chords` | no migration |
+| `Arlesh-2gm` | 1 | `worktree-task-agentic` | migration slot **0031** |
+
+All three cut from `origin/master`, each opening its own PR against master, none stacked.
+
+**Migration numbers were assigned centrally this time**, which is the direct lesson of the panic
+above: `0029` to `45d`, `0030` already spoken for by PR #22, `0031` to `2gm`. Leaving a gap costs
+nothing; two agents independently reaching for the next free number costs a database.
+
+**`2gm` was steered off `Option<Option<bool>>` before it started.** Agentic is a tri-state — inherit,
+yes, no — and the natural Rust spelling for "leave unchanged vs set to NULL" is the exact field shape
+PR #21 exists to fix: serde reads an explicit JSON `null` as an absent field, so clearing silently
+does nothing. The fix lives in a new `src-tauri/src/wire.rs` on #21 and is not on master. Copying it
+would conflict with #21; using the broken shape would ship a flag that cannot be cleared. The brief
+calls for a **named three-variant enum** inside a single `Option` instead — `Some(Inherit)` writes
+NULL. It needs nothing from #21, conflicts with nothing, and names the three states rather than
+nesting them.
+
+### Coverage engines: two flags that must never appear in a brief
+
+Measured by the CI session on PR #20 and recorded here because both look like free wins.
+
+**`cargo tarpaulin --engine llvm` silently loses coverage data. It is not stricter, it is wrong.**
+Same commit, same denominator:
+
+| file | `--engine ptrace` | `--engine llvm` | `cargo-llvm-cov` |
+|---|---|---|---|
+| `src/infos/mod.rs` | 74/74 (100%) | **17/74 (23%)** | 38/38 (100%) |
+| `src/block_reasons/mod.rs` | 40/41 | **10/41** | 32/32 (100%) |
+
+Neither file holds an inline `#[cfg(test)]` block, so no test-code accounting explains it — it is
+dropped profraw data, and tarpaulin's own README warns about fork and thread unsafety while we are
+`#[tokio::test]` throughout. It reports 89.44% against ptrace's 91.01% on an identical tree. Anyone
+proposing it with a floor of 89 "because it's stricter" would be turning coverage **off** for
+`infos/mod.rs` and calling it rigour.
+
+**`--no-dead-code` does not merely regress — the test binaries fail to load.** Corrupted
+`DT_NEEDED` strings (`libgdk_pixbuf?2.0.so.?`): without `-Clink-dead-code` the section layout
+shifts and the ptrace engine writes its `0xCC` breakpoints into `.dynstr` instead of `.text`.
+
+**Where the ~20 minutes went**, for anyone tempted to optimise the wrong half: ptrace machinery,
+not measurement. ~24.5s of flat setup per test binary against 38.8s of actual test execution —
+441s of a 480s run phase. It scales with the 560-crate dependency graph, not with our code, which
+is why binary consolidation cut the run phase to 159s.
+
+**Local coverage stays in agent briefs until PR #20 merges.** `git ls-tree -r origin/master --
+.github/` returns nothing — there is no CI on master, and `gh pr checks` on an open PR returns only
+GitGuardian, an external app. Until #20 lands, dropping the local step is not trading a slow gate
+for a fast one, it is trading a gate for none. It comes out of the brief template the hour #20
+merges.
+
+### PR #24 — `Arlesh-7z8`, Shift+initial creates a typed child
+
+`worktree-typed-child-chords` → master, +393/-8, 27 new tests. Gate clean: 93 files / **1340 tests**,
+`cargo test` 644, tarpaulin **91.17%** (3892/4269, +0.21%), and it confirmed `pgrep -x
+cargo-tarpaulin` was empty before starting and that its run was the only one.
+
+**The design decision worth keeping:** `validParentKinds` is *derived* by filtering
+`isValidDropTarget` rather than written out again, so creation enforces the same predicate as
+drag-and-drop and paste and cannot drift from them. A test pins the two together across every kind
+pair. The refusal states the rule positively — "Goal can't sit under Task — only under Aspect,
+Domain, Project, Goal" — so the keystroke that refused also answers *then where?*.
+
+The Shift-is-free claim was checked harder than the bead asked: `shift: true` swept across master,
+every local branch and every remote branch. Every Shift chord anywhere is on a non-letter key.
+
+**Two pre-existing defects it found and correctly did not fix. Both verified independently against
+master before being recorded here.**
+
+1. **An Info cannot actually live under a Commitment — the database forbids it.**
+   `0004_info_nodes.sql` is the only place the `infos.parent_type` CHECK is written:
+   `IN ('aspect','project','domain','goal','task','tag','info')`. No `commitment`, and
+   `0027_commitments.sql` never mentions the `infos` table, so nothing widened it. Meanwhile
+   `node-meta.ts` claims the opposite in four places — `isValidDropTarget("info","commitment")`,
+   `ALLOWED_CHILD_KINDS.commitment`, `validTypesForCycling` under a commitment, and
+   `kindToInfoParentType`. **Retyping a child to Info under a Commitment, or dragging one there,
+   fails at the DB today**; PR #10 shipped with this. The new `Shift+I` is a fourth route to the
+   same wall, not the cause of it. Needs a migration, so it needs a centrally assigned number.
+
+2. **`ALLOWED_CHILD_KINDS` and `isValidDropTarget` disagree about Tag.** `tag: ["info"]` ("a tag
+   holds only info notes") against `if (targetKind === "tag") return false` ("tag → no children").
+   Two predicates, one question, two answers. The branch used `isValidDropTarget`, which matches
+   what Tab, drag-drop and paste actually do.
+
+**One line past the bead, kept deliberately:** a backend rejection now raises a toast as well as
+logging, where the three sibling creators (`onCreateChild`, `onCreateSibling`, `onInsertParent`)
+still only `console.error`. It is inconsistent with its siblings, and it is kept because a key that
+silently does nothing is the exact failure this bead exists to remove. Extending it to the other
+three would be a sweep, so it is not being done without being asked.
+
+**Infrastructure: the shared `CARGO_TARGET_DIR` is not concurrency-safe.** A `cargo test` died with
+`could not execute process .../deps/tasks-<hash> — No such file or directory` because another
+agent's cargo replaced the test binary between build and exec; confirmed via `/proc/<pid>/cwd`
+showing two live cargos in different worktrees. Transient and retryable, but it presents as a broken
+build. Both running agents were told to retry once rather than debug it. Future briefs should say so
+up front, or serialise `cargo test` behind a `flock`.
+
+### PR #25 — `Arlesh-45d`, habit instances get their own windows
+
+`worktree-habit-cycle-scope` → master, +1160/-163, migration **0029** as assigned (verified: 0029
+here, 0030 on #22, nothing else past 0028 on any branch). Gate green: 93 files / **1307 tests**,
+`cargo test` all green with 7 new in `tests/flows.rs`, `cargo clippy --all-targets` clean, tarpaulin
+**91.37%** (3969/4344, +0.20%). It waited ~4 minutes for another agent's coverage run to clear
+before starting its own, so that figure comes from a run that had the machine to itself.
+
+The user's call — resolve in the backend — was implemented as `resolve_cycle`, with `resolve_pair`
+reduced to a thin wrapper over it, so `start` and the Habit render path share **one** implementation
+of the offset arithmetic. `iteration_instance_keys` becomes the single definition of "every instance
+in an iteration", used by both `set_iteration_done` and `iteration_resolutions`. The frontend now
+stamps `timeScope`/`plan` like any other node and derives Timing from `instance.past`.
+
+**The per-instance key: `(item_type, item_id, iteration_scope_id, cycle_id)`**, keyed on the cycle
+*pair* id rather than the resolved *scope* id — the pair is the template identity, stable across
+iterations and immune to calendar resolution, and two pairs resolving to the same scope cannot
+collide. `NOT NULL` with a `0` sentinel rather than nullable, because SQLite counts NULLs as
+distinct in a UNIQUE index: a nullable column would let an unpaired item accumulate duplicate rows
+per iteration and would silently break every `ON CONFLICT` upsert writing them. Existing rows remap
+to the item's **first** pair, so a one-pair item — the common case — keeps every completion it had.
+
+**One consequence this PR creates, and it needs a decision before merge.** Verified on master:
+`FlowOperator::set_cycles` (`flows/mod.rs:934`) does `DELETE FROM flow_item_cycles WHERE item_type =
+? AND item_id = ?` and re-inserts, so **a pair's id changes on any edit**. With completions now keyed
+to that id, editing a cycle strands its history against a pair that no longer exists — silently,
+because nothing invokes the existing `clear_habit_modifications` / `fork_flow` reconciliation on a
+pair edit specifically. Either remap on edit or extend the reconciliation prompt to cover it. This
+is new surface area, not a pre-existing bug, which is why it is a merge question rather than a bead.
+
+**Two adjacent findings, neither touched:**
+
+- **"Mark the whole iteration done" ticks occurrences that have not opened.** `set_iteration_done`
+  writes a `done` row for every instance key, including this evening's at breakfast — yet the user
+  cannot click an unopened occurrence individually. Not a regression; it is an asymmetry that did not
+  exist when every item always rendered.
+- **A Cycle Scope can resolve outside its iteration's window.** `offset_scope` will advance to day 9
+  of a 7-day week, unbounded against the window length. Pre-existing — `start` has always done it —
+  but now visible in the render path, where such an occurrence appears under an iteration whose
+  window does not contain it.
+
+**Both new PRs merge clean into master** as they stand. They share four files — `CHANGELOG.md`,
+`SPEC.md`, `use-node-actions.ts` and its test — so whichever lands second needs its base merged
+again, which is the orchestrator's job and not the agent's.
+
+### PR #26 — `Arlesh-2gm`, mark a Task agentic
+
+`worktree-task-agentic` → master, gate green: 94 files / **1337 tests**, `cargo test` 336 lib tests
+plus every integration suite, tarpaulin **91.14%** (3921/4302, −0.22%).
+
+The tri-state landed as briefed — a named enum in one `Option`, no `Option<Option<_>>`, no `wire.rs`:
+
+```rust
+pub enum TaskAgentic { Inherit, Yes, No }
+pub agentic: Option<TaskAgentic>,   // None = unchanged; Some(Inherit) writes NULL
+```
+
+Two tests pin the exact failure the brief was written to avoid: one deserializes `{}` against
+`{"agentic":"inherit"}` and asserts they differ, one asserts `Some(Inherit)` clears a stored `true`
+while an absent field keeps it. Persisted-filter survival went through the existing
+`withCurrentPillDimensions` helper rather than a custom merge, with a test that deletes `agentic`
+from a stored pills map and asserts it returns empty.
+
+**I caused a migration collision and it had to be fixed after the fact.** The brief I sent this
+agent said `0029`, and so did the brief I sent `habit-cycle-scope`. My report to the user said 0031
+for this one — that was the intent, but the intent is not what the agent received, and the agent did
+exactly what it was told. Both branches shipped an `0029`. Renumbered here to **0031** (0029 is
+#25's, 0030 is #22's): file contents untouched so the checksum is unchanged, the CHANGELOG sentence
+naming the migration number was dropped as an implementation detail rather than behaviour, and
+`cargo test` re-run afterwards — 336 lib tests plus every integration suite, 0 failed. Coverage was
+not re-run; renaming a `.sql` file cannot move it.
+
+The lesson from the last round was right and I applied half of it. Assigning numbers centrally is
+worthless if the assignment is not in the brief text itself — **the number in the brief is the only
+one that exists.**
+
+**The tarpaulin slot is raced by construction, confirmed by collision.** Every agent polls
+`pgrep -x cargo-tarpaulin` and starts the moment it is empty, so two waiters reliably fire together:
+this agent's run and habit-cycle-scope's launched **one second apart** (18:01:23 / 18:01:24,
+`/proc/<pid>/cwd` confirming different worktrees). It aborted its own run and **discarded those
+numbers rather than reporting them** — the 91.14% above is from a solo run started 18:14:29. Polling
+plus jitter only lowers the odds; a `flock` on a shared lockfile around the tarpaulin invocation is
+what makes the wait actually exclusive. That belongs in the brief template.
+
+**A merge-time reconciliation is owed on PR #21, and it is bigger than the agent's note.** Master's
+`tasks/model.rs` holds **eight** `Option<Option<_>>` fields and **none** of them is guarded, so
+clearing a delegate, a Time Scope, an on-scope-exit, a Plan or a Verdict Window from the UI is a
+silent no-op today. #21 guards six of them — but it was cut before the commitments stack landed, so
+`UpdateCommitmentRequest::time_scope` and `UpdateCommitmentRequest::verdict_window` **did not exist
+on its branch and will arrive unguarded when it merges**. They must be given
+`#[serde(default, deserialize_with = "crate::wire::null_clears")]` as part of merging #21, not
+afterwards. (`flows/model.rs` is the reverse case: master already guards 5 of 10 from an earlier PR,
+and #21 completes it to 10.)
+
+## The gate moved to CI — brief template replaced
+
+PR #20 merged as `cad5f44`. `.github/workflows/ci.yml` is on master, `pull_request` and `push` on
+master, plus a weekly backstop because coverage is a whole-tree property and two stacked PRs can
+each hold the floor alone and drop below it together.
+
+**The local gate an agent runs before pushing is now, in full:**
+
+```
+npm run lint
+npx tsc --noEmit
+npx vitest run --maxWorkers=2 --testTimeout=30000 --hookTimeout=30000
+```
+
+`cargo test` locally is optional — CI runs it on every PR. **`cargo tarpaulin` is gone**, not
+discouraged; there is no tarpaulin in CI at all. Which also retires the whole apparatus built around
+it: the `pgrep -x cargo-tarpaulin` wait, the concurrent-corruption warning, and the `flock` that was
+about to be added to make that wait exclusive. Coverage is no longer something a laptop races over.
+
+**The floor is 94, not 90, and it must not be "restored".** The unit changed: tarpaulin counted
+DWARF statement lines, `cargo llvm-cov` counts lines in coverage regions. 94 against a measured
+95.25% leaves ~72 lines of slack where 90 against 90.96% left ~52 — it is slightly *tighter*, not
+looser. CI runs tests and coverage as one command because the coverage tool runs the suite:
+`cargo test --locked` under `cargo llvm-cov show-env`, then `cargo llvm-cov report
+--fail-under-lines 94 --ignore-filename-regex '(^|/)src/commands/'`. 2m22s warm, 6m27s cold.
+
+**Two conventions every brief must now state, because an agent's reflex is the old form:**
+
+- **Unit tests live in sibling files.** `foo.rs` declares `#[cfg(test)] mod tests;` and `foo/tests.rs`
+  holds the body; a second suite takes a `*_tests` name. `.claude/rules/rust.md` is amended. A brief
+  that says "add a test" must say *where it goes*.
+- **Integration tests are four grouped targets plus `commitments.rs`** — `cargo test --test
+  flows|tasks|structure|operations`.
+
+**Verify by test count, not by exit status** — it caught the CI session out four times, every time
+behind a green tick. `cargo llvm-cov` skips doctests (630 against 644); `cargo test` already
+includes them, so adding `--doc` runs them twice (658); piping cargo through `| tail` reports
+*tail's* exit code, so a red suite reads green; and `rust-cache` reported "full match: true" while
+recompiling 384 crates, because its key did not encode which target directory the build wrote to.
+
+### Every open PR now conflicts with master, and that is #20's cost
+
+`workflow_dispatch` cannot reach any of them: none of the seven branches contains
+`.github/workflows/ci.yml`, and a ref without the workflow file cannot be dispatched to (HTTP 422).
+The only route to a check is merging master into each branch, which is also what brings the file.
+Done for **#24** as a canary — it merged clean and CI is running on it.
+
+The other six all conflict, and the cause is mostly #20's own test relocation landing while eight
+PRs were open:
+
+| PR | conflicts in | cause |
+|---|---|---|
+| #25 | `src/flows/habits.rs` | its 4 new inline unit tests against the move to `flows/habits/tests.rs` |
+| #26 | `src/tasks/{mod,model,retype}.rs` | same |
+| #21 | `tests/flows/flows.rs`, `tests/tasks/tasks.rs` | the integration regroup |
+| #22 | `src/database/session.rs`, `src/error/wire.rs`, `src/mcp/beads.rs` | source overlap |
+| #16 | `ListView.tsx`, `use-filter-store.ts` + test, `hotkeys.json`, CHANGELOG | older divergence, unrelated to #20 |
+| #23 | `filter-tree.ts` + test, `list-filter.ts` + test, `ListView.tsx`, SPEC | older divergence, unrelated to #20 |
+
+Six merge resolutions is not a thing to start unasked, and the conflict-resolution trap on this repo
+is documented: four separate times a resolution needed a brace or comma that **neither side owned**,
+caught by `tsc` and `json.load` and never by reading the diff. Surfaced for a decision rather than
+swept.

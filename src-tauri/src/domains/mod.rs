@@ -121,6 +121,20 @@ impl<'session> DomainOperator<'session> {
         }
     }
 
+    /// Returns the ids of the domains parented directly by `parent_id`.
+    ///
+    /// The `domains` counterpart of [`GoalOperator::child_ids`](crate::tasks::GoalOperator::child_ids)
+    /// and its siblings: a subtree walk collects its children a level at a time, and this is the
+    /// one query that walk needs on this table.
+    pub async fn child_ids(&mut self, parent_id: DomainId) -> Result<Vec<i64>, DomainError> {
+        Ok(
+            sqlx::query_scalar("SELECT id FROM domains WHERE parent_id = ?")
+                .bind(parent_id.0)
+                .fetch_all(&mut *self.connection)
+                .await?,
+        )
+    }
+
     /// Updates an existing domain. Aspects cannot be updated.
     ///
     /// A single `UPDATE` statement (preceded and followed by reads), so it is atomic on its own —
@@ -191,10 +205,13 @@ impl<'session> DomainOperator<'session> {
 
     /// Links a domain to the `bd` issue tracking it, or unlinks it when given `None`.
     ///
-    /// **The only writer of `beads_id`, and reachable only from the MCP server.** No Tauri command
-    /// calls it and [`UpdateDomainRequest`] has no field for it, so the link cannot be set, changed
-    /// or cleared from the UI — which is the point: `bd` owns the issue, and the app only mirrors
-    /// which one a node belongs to.
+    /// **The only setter of `beads_id`, and the MCP server is its only *source*.**
+    /// [`UpdateDomainRequest`] has no field for it, so no gesture can author, edit or clear a link from the UI.
+    /// One command does reach this method: [`duplicate_subtree`](crate::duplicate::duplicate_subtree)
+    /// *propagates* an id a node already carries onto its copy — SPEC's named exception. It can
+    /// only ever pass on a value `bd` issued, never invent or change one.
+    ///
+    /// `bd` owns the issue; the app only mirrors which one a node belongs to.
     ///
     /// Only a Project is meant to carry one, and only a Project shows it; the subtype is not
     /// checked here, because a check-then-write on an operator would be exactly the shape ADR-0004

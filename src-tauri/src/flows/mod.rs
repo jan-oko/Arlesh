@@ -27,12 +27,14 @@ use crate::database::session::{Db, SessionMode, Transactional};
 use crate::scopes::model::{PartOfDay, Scope, ScopeId, ScopeKind};
 use crate::scopes::resolve::{interval_contains, scope_bounds};
 use crate::scopes::ScopeOperator;
-use habits::{classify_iterations, Catchup, Consumption, SlotWindow};
+use habits::{classify_iterations, expire_unanswered, Catchup, Consumption, SlotWindow};
 use crate::tasks::model::{
-    CreateGoalRequest, CreateTaskRequest, Dependency, DurationSpec, GoalId, TaskId, TimeScope,
+    CommitmentId, CreateCommitmentRequest, CreateGoalRequest, CreateTaskRequest, Dependency,
+    DurationSpec, GoalId, TaskId, TimeScope,
 };
+use crate::tasks::lifecycle::verdict_deadline;
 use crate::tasks::{
-    add_task_dependency, create_goal, create_task, delete_goal, delete_task,
+    add_task_dependency, create_commitment, create_goal, create_task, delete_goal, delete_task,
     nearest_scoped_ancestor_window, time_scope_window,
 };
 use error::FlowError;
@@ -440,8 +442,9 @@ impl<'session> FlowOperator<'session> {
                 (title, instance_type, parent_type, parent_id, target_type, target_id,
                  flow_duration_n, flow_duration_kind,
                  flow_window_part, flow_window_time_start, flow_window_time_end,
-                 root_plan_kind, root_plan_start, root_plan_end, position)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                 root_plan_kind, root_plan_start, root_plan_end,
+                 verdict_window_n, verdict_window_kind, position)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&request.title)
         .bind(instance_type)
@@ -457,6 +460,8 @@ impl<'session> FlowOperator<'session> {
         .bind(&request.root_plan_kind)
         .bind(request.root_plan_start)
         .bind(request.root_plan_end)
+        .bind(request.verdict_window_n)
+        .bind(&request.verdict_window_kind)
         .bind(now_position())
         .execute(&mut *self.connection)
         .await?
@@ -494,6 +499,7 @@ impl<'session> FlowOperator<'session> {
     /// `&mut Db<Transactional>` and is this method's only caller.
     async fn update(&mut self, id: FlowId, request: UpdateFlowRequest) -> Result<Flow, FlowError> {
         let flow = self.get(id).await?;
+        let was_commitment = flow.instance_type == "commitment";
         let title = request.title.unwrap_or(flow.title);
         let instance_type = request
             .instance_type
@@ -511,15 +517,32 @@ impl<'session> FlowOperator<'session> {
         let root_plan_kind = request.root_plan_kind.unwrap_or(flow.root_plan_kind);
         let root_plan_start = request.root_plan_start.unwrap_or(flow.root_plan_start);
         let root_plan_end = request.root_plan_end.unwrap_or(flow.root_plan_end);
+        let verdict_window_n = request.verdict_window_n.unwrap_or(flow.verdict_window_n);
+        let verdict_window_kind =
+            request.verdict_window_kind.unwrap_or(flow.verdict_window_kind);
         let parent_type = request.parent_type.unwrap_or(flow.parent_type);
         let parent_id = request.parent_id.unwrap_or(flow.parent_id);
         let position = request.position.unwrap_or(flow.position);
         let is_private = request.is_private.unwrap_or(flow.is_private);
+        // The same rule from the other direction: a flow that already holds goal items cannot
+        // become a commitment flow, because those items would have nowhere to materialise and the
+        // whole Habit would quietly stop deriving iterations. Refused by name, and the count is in
+        // the message so the caller knows what stands in the way.
+        if instance_type == "commitment" && !was_commitment {
+            let goal_items = self.list_goals(id).await?.len();
+            if goal_items > 0 {
+                return Err(FlowError::Invalid(format!(
+                    "this flow holds {goal_items} goal item(s), which a commitment flow cannot: \
+                     remove them before changing the instance type"
+                )));
+            }
+        }
         sqlx::query(
             "UPDATE flows SET title=?, instance_type=?, parent_type=?, parent_id=?,
                 target_type=?, target_id=?, flow_duration_n=?, flow_duration_kind=?,
                 flow_window_part=?, flow_window_time_start=?, flow_window_time_end=?,
-                root_plan_kind=?, root_plan_start=?, root_plan_end=?, position=?, is_private=?
+                root_plan_kind=?, root_plan_start=?, root_plan_end=?,
+                verdict_window_n=?, verdict_window_kind=?, position=?, is_private=?
              WHERE id=?",
         )
         .bind(&title)
@@ -536,6 +559,8 @@ impl<'session> FlowOperator<'session> {
         .bind(&root_plan_kind)
         .bind(root_plan_start)
         .bind(root_plan_end)
+        .bind(verdict_window_n)
+        .bind(&verdict_window_kind)
         .bind(position)
         .bind(is_private)
         .bind(id.0)
@@ -560,7 +585,19 @@ impl<'session> FlowOperator<'session> {
     }
 
     /// Creates a flow-goal item.
+    ///
+    /// Refused on a **commitment** flow. A Commitment holds Tasks and other Commitments and no
+    /// Goals, so materialising such a template is refused by `goals.parent_type` and the whole
+    /// Habit derives no iterations at all — a state the app used to let you build in one keystroke
+    /// and only explain afterwards, through the Mindmap's failure banner. This is the other end of
+    /// that: the item is never created, so the banner condition never exists.
     pub async fn create_goal(&mut self, request: CreateFlowItemRequest) -> Result<FlowGoal, FlowError> {
+        if self.get(FlowId(request.flow_id)).await?.instance_type == "commitment" {
+            return Err(FlowError::Invalid(
+                "a commitment flow holds no goal items — a Commitment cannot parent a Goal"
+                    .to_string(),
+            ));
+        }
         let id = sqlx::query(
             "INSERT INTO flow_goals (flow_id, title, parent_type, parent_id, position)
              VALUES (?, ?, ?, ?, ?)",
@@ -1043,6 +1080,24 @@ impl<'session> FlowOperator<'session> {
             }
         }
 
+        // A commitment Habit's Consumption is fixed, and this is where that becomes true rather
+        // than merely written down. Under Destructive a past iteration classifies Lapsed, which is
+        // a derived "this went unfinished" — a conclusion the kind forbids, since an unanswered
+        // commitment may well have been kept. Under Blocking, an unanswered night would withhold
+        // every night after it. Accumulating + Overlapping is the only shape that leaves an
+        // unanswered iteration alone, and the Verdict Window is what bounds it instead.
+        if flow.instance_type == "commitment"
+            && !matches!(
+                (request.consumption_kind, request.blocking_mode),
+                (ConsumptionKind::Accumulating, Some(BlockingMode::Overlapping))
+            )
+        {
+            return Err(FlowError::Invalid(
+                "a commitment habit's consumption is fixed to accumulating + overlapping"
+                    .to_string(),
+            ));
+        }
+
         let accumulating = matches!(request.consumption_kind, ConsumptionKind::Accumulating);
         if accumulating != request.blocking_mode.is_some() {
             return Err(FlowError::Invalid(
@@ -1263,8 +1318,9 @@ impl<'session> FlowOperator<'session> {
                 (title, instance_type, parent_type, parent_id, target_type, target_id,
                  flow_duration_n, flow_duration_kind,
                  flow_window_part, flow_window_time_start, flow_window_time_end,
-                 root_plan_kind, root_plan_start, root_plan_end, position)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                 root_plan_kind, root_plan_start, root_plan_end,
+                 verdict_window_n, verdict_window_kind, position)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&flow.title)
         .bind(&flow.instance_type)
@@ -1280,6 +1336,8 @@ impl<'session> FlowOperator<'session> {
         .bind(&flow.root_plan_kind)
         .bind(flow.root_plan_start)
         .bind(flow.root_plan_end)
+        .bind(flow.verdict_window_n)
+        .bind(&flow.verdict_window_kind)
         .bind(now_position())
         .execute(&mut *self.connection)
         .await?
@@ -1596,7 +1654,36 @@ pub async fn generate_habit_iterations(
     let slots =
         habit_slots(&mut db.scopes(), start_date, spec, gap.as_ref(), end_date, now).await?;
     let resolved = db.flows().iteration_resolutions(flow_id, &slots).await?;
-    Ok(classify_iterations(&slots, consumption, &resolved, now))
+    let iterations = classify_iterations(&slots, consumption, &resolved, now);
+    Ok(expire_unanswered(
+        iterations,
+        &verdict_deadlines(&flow, &slots),
+        now,
+    ))
+}
+
+/// The instant each iteration of a **commitment** Habit stops being answerable: the end of its own
+/// window plus the flow's Verdict Window.
+///
+/// Empty for anything else — a goal or task Habit has no verdict to record, and a commitment Habit
+/// with no Verdict Window set is answerable indefinitely, which is what the kind does whenever
+/// nothing sets one. The arithmetic is the same [`verdict_deadline`] a real Commitment's Archival
+/// is decided by, so a Habit's iterations and a hand-made Commitment expire by one rule.
+fn verdict_deadlines(flow: &Flow, slots: &[SlotWindow]) -> HashMap<i64, NaiveDateTime> {
+    if flow.instance_type != "commitment" {
+        return HashMap::new();
+    }
+    let Some((n, kind)) = flow.verdict_window_n.zip(flow.verdict_window_kind.clone()) else {
+        return HashMap::new();
+    };
+    let duration = DurationSpec { n, kind };
+    slots
+        .iter()
+        .filter_map(|slot| {
+            verdict_deadline(Some((slot.start, slot.end)), Some(&duration))
+                .map(|deadline| (slot.index, deadline))
+        })
+        .collect()
 }
 
 /// Filters `candidates` to the targets a flow of the given `duration` may materialise under.
@@ -1737,7 +1824,9 @@ pub async fn convert_to_flow(
         }
     }
 
-    // Create the flow, targeting the root's former parent (a scope-valid default).
+    // Create the flow with **no** Target Node: a null target means "my parent", resolved when the
+    // instances are placed, so the flow lands on the root's former parent without freezing that
+    // parent into a second column that a later move would leave behind.
     let flow_id = db
         .flows()
         .create(CreateFlowRequest {
@@ -1749,8 +1838,6 @@ pub async fn convert_to_flow(
             }),
             parent_type: parent_type.clone(),
             parent_id,
-            target_type: Some(parent_type.clone()),
-            target_id: Some(parent_id),
             flow_duration_n: win_n,
             flow_duration_kind: win_kind.clone(),
             flow_window_part: win_part.clone(),
@@ -2034,10 +2121,35 @@ async fn write_plan(
                         time_scope: node.time_scope.clone(),
                         plan: node.plan.clone(),
                         on_scope_exit: None,
+                        // A materialized instance always arrives in play. Nothing enters the
+                        // backlog without the user putting it there.
+                        archival: None,
                     },
                 )
                 .await?;
                 ("task".to_string(), task.id)
+            }
+            InstanceType::Commitment => {
+                // A commitment Habit's root. Its window comes from the iteration the same way a
+                // task's does; it arrives Unresolved, because a materialised instance is
+                // something nobody has judged yet, and the whole point of the kind is that
+                // nothing infers a verdict on the user's behalf.
+                //
+                // `node.plan` is ignored rather than dropped silently: a Commitment has no Plan
+                // column, and a commitment flow has no Cycle Plan to set one from.
+                let commitment = create_commitment(
+                    db,
+                    CreateCommitmentRequest {
+                        title: node.title.clone(),
+                        parent_type: create_parent.0,
+                        parent_id: create_parent.1,
+                        verdict: None,
+                        time_scope: node.time_scope.clone(),
+                        verdict_window: None,
+                    },
+                )
+                .await?;
+                ("commitment".to_string(), commitment.id)
             }
         };
 
@@ -2115,10 +2227,12 @@ async fn set_node_private(
     node_type: &str,
     node_id: i64,
 ) -> Result<(), FlowError> {
-    if node_type == "goal" {
-        db.goals().set_private(GoalId(node_id), true).await?;
-    } else {
-        db.tasks().set_private(TaskId(node_id), true).await?;
+    match node_type {
+        "goal" => db.goals().set_private(GoalId(node_id), true).await?,
+        "commitment" => {
+            db.commitments().set_private(CommitmentId(node_id), true).await?
+        }
+        _ => db.tasks().set_private(TaskId(node_id), true).await?,
     }
     Ok(())
 }

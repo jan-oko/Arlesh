@@ -1,6 +1,6 @@
 import { createStore, type StoreApi } from "zustand";
 import type { FilterState, StatusMode, TagFilterMode } from "@/utils/filter-tree";
-import { DEFAULT_FILTER, NEXT_ARCHIVED_MODE } from "@/utils/filter-tree";
+import { DEFAULT_FILTER, NEXT_OVERRIDE_MODE } from "@/utils/filter-tree";
 import { tabStoreHook } from "@/stores/tab-stores-context";
 
 export interface FilterStore {
@@ -18,6 +18,7 @@ export interface FilterStore {
   toggleShowFlow: () => void;
   togglePrivateMode: () => void;
   cycleArchivedMode: () => void;
+  cycleBacklogMode: () => void;
   reset: () => void;
 }
 
@@ -44,7 +45,9 @@ export function createFilterStore(seed: FilterState = DEFAULT_FILTER): StoreApi<
     toggleShowFlow: () => set((s) => ({ filter: { ...s.filter, showFlow: !s.filter.showFlow } })),
     togglePrivateMode: () => set((s) => ({ filter: { ...s.filter, privateMode: !s.filter.privateMode } })),
     cycleArchivedMode: () =>
-      set((s) => ({ filter: { ...s.filter, archivedMode: NEXT_ARCHIVED_MODE[s.filter.archivedMode] } })),
+      set((s) => ({ filter: { ...s.filter, archivedMode: NEXT_OVERRIDE_MODE[s.filter.archivedMode] } })),
+    cycleBacklogMode: () =>
+      set((s) => ({ filter: { ...s.filter, backlogMode: NEXT_OVERRIDE_MODE[s.filter.backlogMode] } })),
     reset: () => set({ filter: DEFAULT_FILTER }),
   }));
 }

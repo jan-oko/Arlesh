@@ -5,6 +5,7 @@ use tauri::State;
 use crate::{
     database::session::SessionFactory,
     domains::model::{CreateDomainRequest, Domain, DomainId, DomainSubtype, UpdateDomainRequest},
+    duplicate::{duplicate_subtree, DuplicableKind},
     error::WireError,
 };
 
@@ -76,4 +77,31 @@ pub async fn delete_domain(factory: State<'_, SessionFactory>, id: i64) -> Resul
         .delete(DomainId(id))
         .await
         .map_err(WireError::from_error)
+}
+
+/// Deep-clones a Project, Domain or Tag and its whole subtree under `target_id`, putting the new
+/// root at `position`. Backs the Mindmap's Copy+Paste.
+///
+/// The target is always another domains-table row, which that table names by `parent_id` alone —
+/// hence no target kind on the wire, unlike the goal, task and info duplicates.
+///
+/// Transactional: the subtree lands whole or not at all.
+#[tauri::command]
+pub async fn duplicate_domain(
+    factory: State<'_, SessionFactory>,
+    id: i64,
+    target_id: i64,
+    position: i64,
+) -> Result<Domain, WireError> {
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    let new_id = duplicate_subtree(&mut db, DuplicableKind::Domain, id, "", target_id, position)
+        .await
+        .map_err(WireError::from_error)?;
+    let domain = db
+        .domains()
+        .get(DomainId(new_id))
+        .await
+        .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)?;
+    Ok(domain)
 }

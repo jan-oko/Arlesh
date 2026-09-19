@@ -16,8 +16,9 @@
 use serde::{Deserialize, Serialize};
 
 use super::model::{
-    CreateGoalRequest, CreateTaskRequest, GoalId, GoalStatus, OnScopeExit, TaskId, TaskStatus,
-    TimeScope, UpdateGoalRequest, UpdateTaskRequest,
+    CommitmentId, CreateCommitmentRequest, CreateGoalRequest, CreateTaskRequest, DurationSpec,
+    GoalId, GoalStatus, OnScopeExit, TaskArchival, TaskId, TaskStatus, TimeScope,
+    UpdateCommitmentRequest, UpdateGoalRequest, UpdateTaskRequest, Verdict,
 };
 use crate::database::session::{Db, SessionMode, Transactional};
 use crate::domains::error::DomainError;
@@ -30,9 +31,9 @@ use crate::infos::model::{CreateInfoRequest, InfoId, UpdateInfoRequest};
 
 /// A kind a node can be retyped from, and to.
 ///
-/// The five kinds that live in the `goals`, `tasks` and `domains` tables, plus `Info`. A flow is
-/// still a child kind only — see [`ChildKind`] — since it has no field-transfer story of its own
-/// (Phase 5 gave it its own conversion, `convert_flow_item`).
+/// The kinds that live in the `goals`, `tasks`, `commitments` and `domains` tables, plus `Info`.
+/// A flow is still a child kind only — see [`ChildKind`] — since it has no field-transfer story
+/// of its own (Phase 5 gave it its own conversion, `convert_flow_item`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RetypeKind {
@@ -40,6 +41,8 @@ pub enum RetypeKind {
     Goal,
     /// An action item, in `tasks`.
     Task,
+    /// A rule held over a window, in `commitments`. Sits after Task in the `Ctrl+↑/↓` cycle.
+    Commitment,
     /// A general-purpose container, in `domains` with subtype `domain`.
     Domain,
     /// A large domain with an optional Obsidian directory, in `domains` with subtype `project`.
@@ -56,6 +59,7 @@ impl RetypeKind {
         match self {
             Self::Goal => "goal",
             Self::Task => "task",
+            Self::Commitment => "commitment",
             Self::Domain => "domain",
             Self::Project => "project",
             Self::Tag => "tag",
@@ -68,6 +72,7 @@ impl RetypeKind {
         match value {
             "goal" => Some(Self::Goal),
             "task" => Some(Self::Task),
+            "commitment" => Some(Self::Commitment),
             "domain" => Some(Self::Domain),
             "project" => Some(Self::Project),
             "tag" => Some(Self::Tag),
@@ -85,8 +90,9 @@ impl RetypeKind {
     /// Whether this kind can hold `child` as a direct child.
     ///
     /// Mirrors `ALLOWED_CHILD_KINDS` in `src/utils/node-meta.ts`, which in turn reads off the
-    /// `parent_type` CHECK constraints: goals take `project|goal|domain`, tasks add `task`, flows
-    /// take `aspect|project|domain|goal`, infos nest under anything, a Project needs an Aspect or
+    /// `parent_type` CHECK constraints: goals take `project|goal|domain`, tasks add `task`,
+    /// commitments take `task` and `commitment` and nothing else, flows take
+    /// `aspect|project|domain|goal`, infos nest under anything, a Project needs an Aspect or
     /// Project above it, and a Tag is a label that holds only notes.
     pub fn accepts_child(self, child: ChildKind) -> bool {
         match self {
@@ -95,9 +101,21 @@ impl RetypeKind {
             Self::Tag => child == ChildKind::Info,
             Self::Goal => matches!(
                 child,
-                ChildKind::Goal | ChildKind::Task | ChildKind::Info | ChildKind::Flow
+                ChildKind::Goal
+                    | ChildKind::Task
+                    | ChildKind::Commitment
+                    | ChildKind::Info
+                    | ChildKind::Flow
             ),
-            Self::Task => matches!(child, ChildKind::Task | ChildKind::Info),
+            Self::Task => {
+                matches!(child, ChildKind::Task | ChildKind::Commitment | ChildKind::Info)
+            }
+            // The supporting steps under a rule ("phone on charger"), and the finer-grained
+            // rules inside it ("no social media this month" holding each day's). Not a Goal:
+            // a desired state is not something you hold to over a window.
+            Self::Commitment => {
+                matches!(child, ChildKind::Task | ChildKind::Commitment | ChildKind::Info)
+            }
             // Mirrors `ALLOWED_CHILD_KINDS.info` in `src/utils/node-meta.ts`: an info nests only
             // under another info.
             Self::Info => child == ChildKind::Info,
@@ -109,7 +127,9 @@ impl RetypeKind {
         match self {
             Self::Goal | Self::Project => Some(StatusVocabulary::GoalLike),
             Self::Task => Some(StatusVocabulary::TaskLike),
-            Self::Domain | Self::Tag | Self::Info => None,
+            // A Commitment has no status. It has a Verdict, which is a third vocabulary and
+            // deliberately not translatable into either of these — see `carry_fields`.
+            Self::Commitment | Self::Domain | Self::Tag | Self::Info => None,
         }
     }
 }
@@ -123,6 +143,8 @@ pub enum ChildKind {
     Goal,
     /// A task child.
     Task,
+    /// A commitment child.
+    Commitment,
     /// A domain child.
     Domain,
     /// A project child.
@@ -141,6 +163,7 @@ impl ChildKind {
         match self {
             Self::Goal => "goal",
             Self::Task => "task",
+            Self::Commitment => "commitment",
             Self::Domain => "domain",
             Self::Project => "project",
             Self::Tag => "tag",
@@ -155,6 +178,7 @@ impl From<RetypeKind> for ChildKind {
         match kind {
             RetypeKind::Goal => Self::Goal,
             RetypeKind::Task => Self::Task,
+            RetypeKind::Commitment => Self::Commitment,
             RetypeKind::Domain => Self::Domain,
             RetypeKind::Project => Self::Project,
             RetypeKind::Tag => Self::Tag,
@@ -199,8 +223,13 @@ pub struct SourceNode {
     pub position: i64,
     /// Whether the node is hidden outside Private Mode.
     pub is_private: bool,
-    /// Raw status, in the source kind's vocabulary; `None` for kinds that have no status.
+    /// Raw status, in the source kind's vocabulary; `None` for kinds that have no status —
+    /// a Commitment among them, which answers with [`Self::verdict`] instead.
     pub status: Option<String>,
+    /// The recorded Verdict (commitments only).
+    pub verdict: Option<Verdict>,
+    /// The Verdict Window (commitments only).
+    pub verdict_window: Option<DurationSpec>,
     /// Longer description. `Domain.description` and `Info.details` are the same domain concept —
     /// the long-form body under a node's one-line title (see SPEC) — so this one field holds
     /// either, populated for domain-table kinds and for infos.
@@ -213,6 +242,14 @@ pub struct SourceNode {
     pub on_scope_exit: Option<OnScopeExit>,
     /// Scheduling window (tasks only).
     pub plan: Option<TimeScope>,
+    /// Manually-set archival state (tasks only); `None` for every kind whose table has no such
+    /// column.
+    ///
+    /// **Backlog** is the Task side of the Archival axis and has no counterpart anywhere else —
+    /// SPEC rules out any mapping between it and a Goal's **Frozen** — so every target but a Task
+    /// takes a backlogged node out of the backlog. That is a stored state disappearing, and is
+    /// reported like any other.
+    pub archival: Option<TaskArchival>,
     /// Person this task is delegated to (tasks only).
     pub delegate_to: Option<i64>,
     /// Tag domain ids attached to the node (goals and tasks only).
@@ -246,6 +283,12 @@ pub struct Carried {
     pub is_private: bool,
     /// Status in the **target's** vocabulary, when both kinds have one.
     pub status: Option<String>,
+    /// The Verdict, when the target is a Commitment. Never translated to or from a status: a
+    /// Task's `done` is not a `kept`, and inventing that equivalence is exactly the inference
+    /// the kind exists to avoid.
+    pub verdict: Option<Verdict>,
+    /// The Verdict Window, when the target is a Commitment.
+    pub verdict_window: Option<DurationSpec>,
     /// Description, when the target is a domain-table kind or an info (see [`SourceNode::description`]).
     pub description: Option<String>,
     /// Linked Obsidian directory, when the target is a project.
@@ -256,6 +299,9 @@ pub struct Carried {
     pub on_scope_exit: Option<OnScopeExit>,
     /// Scheduling window, when the target is a task.
     pub plan: Option<TimeScope>,
+    /// Backlog, when the target is a task and the source was actually in it. `None` leaves the
+    /// new node **Live** — the state a Task is in when nobody has set it aside.
+    pub archival: Option<TaskArchival>,
     /// Delegate, when the target is a task.
     pub delegate_to: Option<i64>,
     /// Tag attachments, when the target is a goal or a task.
@@ -318,6 +364,25 @@ impl TransferPlan {
         !self.lost_children.is_empty() || !self.lost_fields.is_empty() || self.parent_climb.is_some()
     }
 
+    /// Gives the retyped node a Time Scope of its own, chosen after the plan was made.
+    ///
+    /// The one caller is the Commitment path. A Commitment must resolve to a window — its own or
+    /// a scoped ancestor's — so retyping a node that has neither is refused with
+    /// [`TaskError::CommitmentUnscoped`](crate::tasks::error::TaskError::CommitmentUnscoped), and
+    /// the window the caller then supplies belongs to *this* plan rather than to a separate write
+    /// beforehand. Folding it in here keeps the retype one atomic call: cancelling leaves the node
+    /// untouched, and a later failure cannot leave a node scoped for a retype that never happened.
+    ///
+    /// Ignored for a target with no Time Scope column, which could not store it.
+    pub fn set_time_scope(&mut self, time_scope: TimeScope) {
+        if matches!(
+            self.target,
+            RetypeKind::Goal | RetypeKind::Task | RetypeKind::Commitment
+        ) {
+            self.carried.time_scope = Some(time_scope);
+        }
+    }
+
     /// The losses as the `details` payload of a `needs_confirmation` wire error.
     ///
     /// Shape: `{ "lost_children": [...], "lost_fields": [...], "parent_climb": {...} | null }`.
@@ -366,7 +431,11 @@ fn carry_fields(
     target: RetypeKind,
     lost_fields: &mut Vec<LostField>,
 ) -> Carried {
-    let scoped_target = matches!(target, RetypeKind::Goal | RetypeKind::Task);
+    // Three kinds carry a window, tags and a Time Scope; only two of them can be depended on or
+    // blocked, so the two flags are separate rather than one "content node" test.
+    let scoped_target =
+        matches!(target, RetypeKind::Goal | RetypeKind::Task | RetypeKind::Commitment);
+    let graph_target = matches!(target, RetypeKind::Goal | RetypeKind::Task);
     let domain_target = target.is_domain_table();
     // `Domain.description` and `Info.details` are the same domain concept, so both count as
     // "has somewhere for the long-form body to go" — an info is not a domain-table kind, but it
@@ -436,6 +505,20 @@ fn carry_fields(
         lost_fields,
     );
 
+    // Only `tasks` has an archival column, so every other target takes a backlogged node out of
+    // the backlog — there is no Frozen to land it in, and SPEC rules that mapping out. `Live` is
+    // what a Task is when nobody has set it aside, so, exactly as with a status still at its
+    // default, only a real Backlog is a loss worth naming.
+    let archival = keep_if(
+        target == RetypeKind::Task,
+        source
+            .archival
+            .filter(|archival| *archival == TaskArchival::Backlog),
+        "archival",
+        |archival: &TaskArchival| archival.as_str().to_string(),
+        lost_fields,
+    );
+
     let delegate_to = keep_if(
         target == RetypeKind::Task,
         source.delegate_to,
@@ -452,8 +535,9 @@ fn carry_fields(
         lost_fields,
     );
 
+    // A Commitment is never blocked: it is a rule held, not a unit of work waiting on anything.
     let block_reasons = keep_list(
-        scoped_target,
+        graph_target,
         &source.block_reasons,
         "block_reasons",
         |reasons| truncate(&reasons.join("; ")),
@@ -464,7 +548,7 @@ fn carry_fields(
     // can be depended on, and only a task can depend on anything, so a retype out of those kinds
     // ends the edges either way — inbound ones by deletion, outbound ones by the `task_id`
     // cascade. Both are counted so the prompt can say how many.
-    keep_count(scoped_target, source.dependents, "dependents", lost_fields);
+    keep_count(graph_target, source.dependents, "dependents", lost_fields);
     keep_count(
         target == RetypeKind::Task,
         source.depends_on,
@@ -472,8 +556,27 @@ fn carry_fields(
         lost_fields,
     );
 
-    // Every kind but a note has the column — `tasks`, `goals` and `domains` all carry it — so a
-    // note is the only target that genuinely loses the link.
+    // The Verdict and its Window have a home on exactly one kind. Going the other way they are
+    // reported as lost rather than mapped onto a status, because there is no honest mapping:
+    // `kept` is not `done`, and a task's `todo` is not an unresolved verdict. An *unresolved*
+    // verdict is not reported, for the same reason a default status is not — nobody said it.
+    let verdict = keep_if(
+        target == RetypeKind::Commitment,
+        source.verdict.filter(|verdict| verdict.is_resolved()),
+        "verdict",
+        |verdict: &Verdict| verdict.as_str().to_string(),
+        lost_fields,
+    );
+    let verdict_window = keep_if(
+        target == RetypeKind::Commitment,
+        source.verdict_window.clone(),
+        "verdict_window",
+        |duration: &DurationSpec| format!("{} {}", duration.n, duration.kind),
+        lost_fields,
+    );
+
+    // Every kind but a note has the column — `tasks`, `goals`, `commitments` and `domains` all
+    // carry it — so a note is the only target that genuinely loses the link.
     let beads_id = keep_if(
         target != RetypeKind::Info,
         source.beads_id.clone(),
@@ -487,11 +590,14 @@ fn carry_fields(
         position: source.position,
         is_private: source.is_private,
         status,
+        verdict,
+        verdict_window,
         description,
         knowledge_base_directory,
         time_scope,
         on_scope_exit,
         plan,
+        archival,
         delegate_to,
         tag_ids,
         block_reasons,
@@ -506,11 +612,14 @@ fn everything(source: &SourceNode) -> Carried {
         position: source.position,
         is_private: source.is_private,
         status: source.status.clone(),
+        verdict: source.verdict,
+        verdict_window: source.verdict_window.clone(),
         description: source.description.clone(),
         knowledge_base_directory: source.knowledge_base_directory.clone(),
         time_scope: source.time_scope.clone(),
         on_scope_exit: source.on_scope_exit,
         plan: source.plan.clone(),
+        archival: source.archival,
         delegate_to: source.delegate_to,
         tag_ids: source.tag_ids.clone(),
         block_reasons: source.block_reasons.clone(),
@@ -720,6 +829,8 @@ enum ParentCategory {
     Goal,
     /// A row in `tasks`.
     Task,
+    /// A row in `commitments`.
+    Commitment,
     /// A row in `infos`.
     Info,
 }
@@ -730,6 +841,7 @@ fn category_of(kind: &str) -> ParentCategory {
     match kind {
         "goal" => ParentCategory::Goal,
         "task" => ParentCategory::Task,
+        "commitment" => ParentCategory::Commitment,
         "info" => ParentCategory::Info,
         _ => ParentCategory::DomainsTable,
     }
@@ -741,7 +853,18 @@ fn accepts_category(target: RetypeKind, category: ParentCategory) -> bool {
         RetypeKind::Goal => matches!(category, ParentCategory::DomainsTable | ParentCategory::Goal),
         RetypeKind::Task => matches!(
             category,
-            ParentCategory::DomainsTable | ParentCategory::Goal | ParentCategory::Task
+            ParentCategory::DomainsTable
+                | ParentCategory::Goal
+                | ParentCategory::Task
+                | ParentCategory::Commitment
+        ),
+        // A Commitment lives anywhere a Task can, and inside another Commitment.
+        RetypeKind::Commitment => matches!(
+            category,
+            ParentCategory::DomainsTable
+                | ParentCategory::Goal
+                | ParentCategory::Task
+                | ParentCategory::Commitment
         ),
         // A domains-table target's `parent_id` is a real foreign key into `domains` — nothing
         // else will even insert.
@@ -833,6 +956,10 @@ async fn next_parent_of<M: SessionMode>(
             let task = db.tasks().get(TaskId(id)).await?;
             Some((task.parent_type, task.parent_id))
         }
+        "commitment" => {
+            let commitment = db.commitments().get(CommitmentId(id)).await?;
+            Some((commitment.parent_type, commitment.parent_id))
+        }
         "info" => {
             let info = db.infos().get(InfoId(id)).await?;
             Some((info.parent_type, info.parent_id))
@@ -846,6 +973,7 @@ async fn fetch_title<M: SessionMode>(db: &mut Db<M>, kind: &str, id: i64) -> Res
     Ok(match kind {
         "goal" => db.goals().get(GoalId(id)).await?.title,
         "task" => db.tasks().get(TaskId(id)).await?.title,
+        "commitment" => db.commitments().get(CommitmentId(id)).await?.title,
         "info" => db.infos().get(InfoId(id)).await?.body,
         _ => db.domains().get(DomainId(id)).await?.title,
     })
@@ -982,6 +1110,11 @@ async fn carry_issue_link(
                 .set_beads_id(TaskId(new_id), Some(beads_id))
                 .await?
         }
+        RetypeKind::Commitment => {
+            db.commitments()
+                .set_beads_id(CommitmentId(new_id), Some(beads_id))
+                .await?
+        }
         RetypeKind::Domain | RetypeKind::Project | RetypeKind::Tag => {
             db.domains()
                 .set_beads_id(DomainId(new_id), Some(beads_id))
@@ -1039,6 +1172,12 @@ async fn create_node(
                     time_scope: carried.time_scope.clone(),
                     on_scope_exit: carried.on_scope_exit,
                     plan: carried.plan.clone(),
+                    // Only a Task has a backlog and a Task→Task retype never reaches here, so
+                    // this is `None` in practice: a Frozen Goal becoming a Task arrives in play,
+                    // and so does everything else. Frozen and Backlog are separate concepts with
+                    // no mapping between them, and the backlog a Task loses on its way out is
+                    // named in the plan before any of this runs.
+                    archival: carried.archival,
                 },
             )
             .await?;
@@ -1054,6 +1193,35 @@ async fn create_node(
             )
             .await?;
             Ok(task.id)
+        }
+        RetypeKind::Commitment => {
+            // `create_commitment` is the one create here that can refuse: a Commitment must have
+            // an effective Time Scope. A task with no window and no scoped ancestor therefore
+            // cannot become one, and the refusal travels out of the retype rather than a
+            // commitment being written that no verdict could ever come due on.
+            let commitment = super::create_commitment(
+                db,
+                CreateCommitmentRequest {
+                    title: carried.title.clone(),
+                    parent_type: goal_task_parent_type(&parent.kind).to_string(),
+                    parent_id: parent_row_id(parent)?,
+                    verdict: carried.verdict,
+                    time_scope: carried.time_scope.clone(),
+                    verdict_window: carried.verdict_window.clone(),
+                },
+            )
+            .await?;
+            super::update_commitment(
+                db,
+                CommitmentId(commitment.id),
+                UpdateCommitmentRequest {
+                    position: Some(carried.position),
+                    is_private: Some(carried.is_private),
+                    ..Default::default()
+                },
+            )
+            .await?;
+            Ok(commitment.id)
         }
         RetypeKind::Info => {
             // Unlike `goal_task_parent_type`'s collapse, an info's own `parent_type` CHECK
@@ -1123,8 +1291,11 @@ async fn carry_attachments(
         match plan.target {
             RetypeKind::Goal => db.goals().add_tag(GoalId(new_id), *tag_id).await?,
             RetypeKind::Task => db.tasks().add_tag(TaskId(new_id), *tag_id).await?,
-            // Only goals and tasks have a tag join table, so the plan carries no tags to any
-            // other kind and this arm never runs.
+            RetypeKind::Commitment => {
+                db.commitments().add_tag(CommitmentId(new_id), *tag_id).await?
+            }
+            // Only the three content kinds have a tag join table, so the plan carries no tags to
+            // any other kind and this arm never runs.
             _ => {}
         }
     }
@@ -1159,8 +1330,9 @@ async fn move_references(
                 .repoint_dependents(from, source.id, target.as_str(), new_id)
                 .await?;
         }
-        // Only a task or a goal can be depended on, so there is nowhere to aim these. The plan
-        // has already reported them as lost and the caller has acknowledged it.
+        // Only a task or a goal can be depended on — a Commitment deliberately takes no part in
+        // the dependency graph — so there is nowhere to aim these. The plan has already reported
+        // them as lost and the caller has acknowledged it.
         _ => db.tasks().drop_dependents(from, source.id).await?,
     }
     Ok(())
@@ -1232,6 +1404,18 @@ async fn reparent(
             )
             .await?;
         }
+        ChildKind::Commitment => {
+            super::update_commitment(
+                db,
+                CommitmentId(child.id),
+                UpdateCommitmentRequest {
+                    parent_type: Some(goal_task_parent_type(&destination.kind).to_string()),
+                    parent_id: Some(parent_row_id(destination)?),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        }
         ChildKind::Info => {
             db.infos()
                 .update(
@@ -1276,6 +1460,7 @@ async fn delete_child(db: &mut Db<Transactional>, child: &ChildNode) -> Result<(
     match child.kind {
         ChildKind::Goal => super::delete_goal(db, GoalId(child.id)).await?,
         ChildKind::Task => super::delete_task(db, TaskId(child.id)).await?,
+        ChildKind::Commitment => super::delete_commitment(db, CommitmentId(child.id)).await?,
         ChildKind::Info => db.infos().delete(InfoId(child.id)).await?,
         ChildKind::Flow => crate::flows::delete_flow(db, FlowId(child.id)).await?,
         // `domains.parent_id` has no `ON DELETE`, so a domain that still has children of its own
@@ -1298,6 +1483,7 @@ async fn delete_old_row(db: &mut Db<Transactional>, source: &SourceNode) -> Resu
     match source.kind {
         RetypeKind::Goal => db.goals().delete_row(GoalId(source.id)).await?,
         RetypeKind::Task => db.tasks().delete_row(TaskId(source.id)).await?,
+        RetypeKind::Commitment => db.commitments().delete_row(CommitmentId(source.id)).await?,
         RetypeKind::Info => db.infos().delete(InfoId(source.id)).await?,
         RetypeKind::Domain | RetypeKind::Project | RetypeKind::Tag => {
             db.domains().delete(DomainId(source.id)).await?
@@ -1329,11 +1515,14 @@ async fn read_source<M: SessionMode>(
                     position: goal.position,
                     is_private: goal.is_private,
                     status: Some(goal.status),
+                    verdict: None,
+                    verdict_window: None,
                     description: None,
                     knowledge_base_directory: None,
                     time_scope: goal.time_scope,
                     on_scope_exit: goal.on_scope_exit,
                     plan: None,
+                    archival: None,
                     delegate_to: None,
                     tag_ids: goal.tag_ids,
                     block_reasons,
@@ -1361,17 +1550,59 @@ async fn read_source<M: SessionMode>(
                     position: task.position,
                     is_private: task.is_private,
                     status: Some(task.status),
+                    verdict: None,
+                    verdict_window: None,
                     description: None,
                     knowledge_base_directory: None,
                     time_scope: task.time_scope,
                     on_scope_exit: task.on_scope_exit,
                     plan: task.plan,
+                    archival: Some(task.archival),
                     delegate_to: task.delegate_to,
                     tag_ids: task.tag_ids,
                     block_reasons,
                     dependents: dependents.max(0) as usize,
                     depends_on: depends_on.max(0) as usize,
                     beads_id: task.beads_id,
+                },
+                parent,
+            ))
+        }
+        RetypeKind::Commitment => {
+            let commitment = db.commitments().get(CommitmentId(id)).await?;
+            let parent = Parent {
+                id: Some(commitment.parent_id),
+                kind: commitment.parent_type.clone(),
+            };
+            Ok((
+                SourceNode {
+                    kind,
+                    id,
+                    title: commitment.title,
+                    position: commitment.position,
+                    is_private: commitment.is_private,
+                    // No status column, and the Verdict is not one in disguise.
+                    status: None,
+                    verdict: Some(commitment.verdict),
+                    verdict_window: commitment.verdict_window,
+                    description: None,
+                    knowledge_base_directory: None,
+                    time_scope: commitment.time_scope,
+                    // A Commitment always Keeps and is never scheduled, so neither column
+                    // exists to carry.
+                    on_scope_exit: None,
+                    plan: None,
+                    // Nor is a Commitment ever set aside: the Backlog is a Task-only Archival,
+                    // and a Commitment's own Archival is derived from its Verdict Window.
+                    archival: None,
+                    delegate_to: None,
+                    tag_ids: commitment.tag_ids,
+                    // Never blocked, and never part of the dependency graph in either
+                    // direction, so all three are structurally empty rather than unread.
+                    block_reasons: vec![],
+                    dependents: 0,
+                    depends_on: 0,
+                    beads_id: commitment.beads_id,
                 },
                 parent,
             ))
@@ -1390,11 +1621,14 @@ async fn read_source<M: SessionMode>(
                     position: info.position,
                     is_private: info.is_private,
                     status: None,
+                    verdict: None,
+                    verdict_window: None,
                     description: info.details,
                     knowledge_base_directory: None,
                     time_scope: None,
                     on_scope_exit: None,
                     plan: None,
+                    archival: None,
                     delegate_to: None,
                     tag_ids: vec![],
                     block_reasons: vec![],
@@ -1420,11 +1654,14 @@ async fn read_source<M: SessionMode>(
                     position: domain.position,
                     is_private: domain.is_private,
                     status: domain.status,
+                    verdict: None,
+                    verdict_window: None,
                     description: domain.description,
                     knowledge_base_directory: domain.knowledge_base_directory,
                     time_scope: None,
                     on_scope_exit: None,
                     plan: None,
+                    archival: None,
                     delegate_to: None,
                     tag_ids: vec![],
                     block_reasons: vec![],
@@ -1452,9 +1689,9 @@ async fn read_children<M: SessionMode>(
 ) -> Result<Vec<ChildNode>, AppError> {
     let mut children = Vec::new();
 
-    // `goals.parent_type`/`tasks.parent_type` discriminate three cases, not five: `goal`, `task`,
-    // and "a row in the domains table" — which the frontend always writes as `project` but which
-    // older rows may spell `domain`. Both spellings have to be asked for.
+    // The content tables' `parent_type` columns discriminate four cases, not six: `goal`,
+    // `task`, `commitment`, and "a row in the domains table" — which the frontend always writes
+    // as `project` but which older rows may spell `domain`. Both spellings have to be asked for.
     for parent_type in goal_task_parent_spellings(kind) {
         for goal_id in db.goals().child_ids(parent_type, id).await? {
             let goal = db.goals().get(GoalId(goal_id)).await?;
@@ -1470,6 +1707,14 @@ async fn read_children<M: SessionMode>(
                 kind: ChildKind::Task,
                 id: task_id,
                 title: task.title,
+            });
+        }
+        for commitment_id in db.commitments().child_ids(parent_type, id).await? {
+            let commitment = db.commitments().get(CommitmentId(commitment_id)).await?;
+            children.push(ChildNode {
+                kind: ChildKind::Commitment,
+                id: commitment_id,
+                title: commitment.title,
             });
         }
     }
@@ -1520,6 +1765,7 @@ fn goal_task_parent_spellings(kind: RetypeKind) -> &'static [&'static str] {
     match kind {
         RetypeKind::Goal => &["goal"],
         RetypeKind::Task => &["task"],
+        RetypeKind::Commitment => &["commitment"],
         RetypeKind::Domain | RetypeKind::Project | RetypeKind::Tag => &["project", "domain"],
         // Neither CHECK allows `parent_type = 'info'`, so a goal or task can never actually be
         // parented on an info — there is nothing to look up.
@@ -1529,14 +1775,18 @@ fn goal_task_parent_spellings(kind: RetypeKind) -> &'static [&'static str] {
 
 /// The `parent_type` a goal or task takes under a parent of this kind.
 ///
-/// Three cases, not five: `goals.parent_type` and `tasks.parent_type` cannot say `tag` or
-/// `aspect` at all, and the tree resolves anything that is not `goal` or `task` by id against the
-/// `domains` table — so every domain-table parent is spelled `project`. Mirrors
+/// Four cases, not six: the three content tables' `parent_type` columns cannot say `tag` or
+/// `aspect` at all, and the tree resolves anything that is not `goal`, `task` or `commitment` by
+/// id against the `domains` table — so every domain-table parent is spelled `project`. Mirrors
 /// `kindToParentType` in `src/components/MindmapView/use-mindmap-data.ts`.
+///
+/// `commitment` only ever reaches a Task or another Commitment: `goals.parent_type` does not
+/// accept it, and `climb_to_acceptable_parent` has already moved a would-be Goal further up.
 fn goal_task_parent_type(parent_kind: &str) -> &'static str {
     match parent_kind {
         "goal" => "goal",
         "task" => "task",
+        "commitment" => "commitment",
         _ => "project",
     }
 }
@@ -1562,731 +1812,4 @@ fn domain_subtype(kind: RetypeKind) -> DomainSubtype {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::tasks::model::DurationSpec;
-
-    fn goal(id: i64) -> SourceNode {
-        SourceNode {
-            kind: RetypeKind::Goal,
-            id,
-            title: "Ship it".into(),
-            position: 17,
-            is_private: true,
-            status: Some("active".into()),
-            description: None,
-            knowledge_base_directory: None,
-            time_scope: None,
-            on_scope_exit: None,
-            plan: None,
-            delegate_to: None,
-            tag_ids: vec![],
-            block_reasons: vec![],
-            dependents: 0,
-            depends_on: 0,
-            beads_id: None,
-        }
-    }
-
-    fn task(id: i64) -> SourceNode {
-        SourceNode {
-            kind: RetypeKind::Task,
-            status: Some("todo".into()),
-            ..goal(id)
-        }
-    }
-
-    fn project(id: i64) -> SourceNode {
-        SourceNode {
-            kind: RetypeKind::Project,
-            status: Some("active".into()),
-            description: Some("The big one".into()),
-            ..goal(id)
-        }
-    }
-
-    fn window(start_id: i64, end_id: i64) -> TimeScope {
-        TimeScope {
-            start_id,
-            end_id,
-            duration: None,
-        }
-    }
-
-    fn child(kind: ChildKind, id: i64) -> ChildNode {
-        ChildNode {
-            kind,
-            id,
-            title: format!("{} {id}", kind.as_str()),
-        }
-    }
-
-    fn lost_field_names(plan: &TransferPlan) -> Vec<&'static str> {
-        plan.lost_fields.iter().map(|lost| lost.field).collect()
-    }
-
-    fn lost_child_kinds(plan: &TransferPlan) -> Vec<ChildKind> {
-        plan.lost_children.iter().map(|child| child.kind).collect()
-    }
-
-    // --- goal → task ---
-
-    #[test]
-    fn a_goal_becoming_a_task_carries_scope_exit_behaviour_tags_reasons_privacy_and_position() {
-        let source = SourceNode {
-            time_scope: Some(window(3, 5)),
-            on_scope_exit: Some(OnScopeExit::Archive),
-            tag_ids: vec![7, 9],
-            block_reasons: vec!["waiting on Ana".into()],
-            ..goal(1)
-        };
-
-        let plan = plan_retype(&source, &[], RetypeKind::Task);
-
-        assert_eq!(plan.carried.time_scope, Some(window(3, 5)));
-        assert_eq!(plan.carried.on_scope_exit, Some(OnScopeExit::Archive));
-        assert_eq!(plan.carried.tag_ids, vec![7, 9]);
-        assert_eq!(plan.carried.block_reasons, vec!["waiting on Ana".to_string()]);
-        assert!(plan.carried.is_private, "privacy carries");
-        assert_eq!(plan.carried.position, 17);
-        assert_eq!(plan.carried.title, "Ship it");
-        assert!(!plan.loses_anything(), "nothing on a goal is foreign to a task");
-    }
-
-    #[test]
-    fn a_goal_becoming_a_task_maps_achieved_to_done() {
-        let source = SourceNode {
-            status: Some("achieved".into()),
-            ..goal(1)
-        };
-        let plan = plan_retype(&source, &[], RetypeKind::Task);
-        assert_eq!(plan.carried.status, Some("done".to_string()));
-    }
-
-    #[test]
-    fn a_goal_becoming_a_task_maps_every_unachieved_status_to_todo() {
-        for status in ["active", "frozen", "archived"] {
-            let source = SourceNode {
-                status: Some(status.into()),
-                ..goal(1)
-            };
-            let plan = plan_retype(&source, &[], RetypeKind::Task);
-            assert_eq!(plan.carried.status, Some("todo".to_string()), "from {status}");
-        }
-    }
-
-    #[test]
-    fn a_goal_becoming_a_task_strands_its_goal_children_and_keeps_the_rest() {
-        let children = [
-            child(ChildKind::Goal, 2),
-            child(ChildKind::Task, 3),
-            child(ChildKind::Info, 4),
-            child(ChildKind::Flow, 5),
-        ];
-
-        let plan = plan_retype(&goal(1), &children, RetypeKind::Task);
-
-        assert_eq!(
-            lost_child_kinds(&plan),
-            vec![ChildKind::Goal, ChildKind::Flow],
-            "a task can hold neither a sub-goal nor a flow"
-        );
-        assert_eq!(
-            plan.moved_children.iter().map(|c| c.kind).collect::<Vec<_>>(),
-            vec![ChildKind::Task, ChildKind::Info]
-        );
-        assert!(plan.loses_anything());
-    }
-
-    // --- task → goal ---
-
-    #[test]
-    fn a_task_becoming_a_goal_maps_done_to_achieved() {
-        let source = SourceNode {
-            status: Some("done".into()),
-            ..task(1)
-        };
-        let plan = plan_retype(&source, &[], RetypeKind::Goal);
-        assert_eq!(plan.carried.status, Some("achieved".to_string()));
-    }
-
-    #[test]
-    fn a_task_becoming_a_goal_maps_todo_and_in_progress_to_active() {
-        for status in ["todo", "in_progress"] {
-            let source = SourceNode {
-                status: Some(status.into()),
-                ..task(1)
-            };
-            let plan = plan_retype(&source, &[], RetypeKind::Goal);
-            assert_eq!(plan.carried.status, Some("active".to_string()), "from {status}");
-        }
-    }
-
-    #[test]
-    fn a_task_becoming_a_goal_loses_its_plan_and_its_delegate() {
-        let source = SourceNode {
-            time_scope: Some(window(3, 5)),
-            on_scope_exit: Some(OnScopeExit::Keep),
-            plan: Some(window(4, 4)),
-            delegate_to: Some(12),
-            ..task(1)
-        };
-
-        let plan = plan_retype(&source, &[], RetypeKind::Goal);
-
-        assert_eq!(lost_field_names(&plan), vec!["plan", "delegate_to"]);
-        assert_eq!(plan.carried.plan, None);
-        assert_eq!(plan.carried.delegate_to, None);
-        assert_eq!(
-            plan.carried.time_scope,
-            Some(window(3, 5)),
-            "the Time Scope is not the Plan and does carry"
-        );
-        assert_eq!(plan.carried.on_scope_exit, Some(OnScopeExit::Keep));
-    }
-
-    #[test]
-    fn a_task_with_no_plan_and_no_delegate_becoming_a_goal_loses_nothing() {
-        let plan = plan_retype(&task(1), &[child(ChildKind::Task, 2)], RetypeKind::Goal);
-        assert!(!plan.loses_anything());
-        assert_eq!(plan.lost_fields, Vec::<LostField>::new());
-    }
-
-    #[test]
-    fn a_task_becoming_a_goal_keeps_a_flow_child_a_task_could_not_hold() {
-        let plan = plan_retype(&task(1), &[child(ChildKind::Flow, 2)], RetypeKind::Goal);
-        assert_eq!(lost_child_kinds(&plan), Vec::<ChildKind>::new());
-    }
-
-    // --- the domain-table pairs ---
-
-    #[test]
-    fn a_project_becoming_a_domain_keeps_every_field_because_no_row_is_rewritten() {
-        let source = SourceNode {
-            knowledge_base_directory: Some("Projects/Arlesh".into()),
-            ..project(1)
-        };
-
-        let plan = plan_retype(&source, &[], RetypeKind::Domain);
-
-        assert_eq!(
-            lost_field_names(&plan),
-            Vec::<&str>::new(),
-            "a subtype change deletes nothing; the directory column keeps its value"
-        );
-        assert_eq!(plan.carried.description, Some("The big one".to_string()));
-        assert_eq!(
-            plan.carried.knowledge_base_directory,
-            Some("Projects/Arlesh".to_string())
-        );
-    }
-
-    #[test]
-    fn a_project_becoming_a_goal_does_lose_its_obsidian_directory() {
-        let source = SourceNode {
-            knowledge_base_directory: Some("Projects/Arlesh".into()),
-            ..project(1)
-        };
-
-        let plan = plan_retype(&source, &[], RetypeKind::Goal);
-
-        assert_eq!(
-            lost_field_names(&plan),
-            vec!["description", "knowledge_base_directory"],
-            "here the domains row really is deleted"
-        );
-    }
-
-    #[test]
-    fn a_project_becoming_a_domain_strands_a_project_child() {
-        let children = [child(ChildKind::Project, 2), child(ChildKind::Domain, 3)];
-        let plan = plan_retype(&project(1), &children, RetypeKind::Domain);
-        assert_eq!(
-            lost_child_kinds(&plan),
-            vec![ChildKind::Project],
-            "a Project needs an Aspect or Project above it"
-        );
-    }
-
-    #[test]
-    fn a_domain_becoming_a_project_carries_its_description_and_loses_nothing() {
-        let source = SourceNode {
-            kind: RetypeKind::Domain,
-            status: None,
-            description: Some("Notes".into()),
-            ..goal(1)
-        };
-
-        let plan = plan_retype(&source, &[child(ChildKind::Tag, 2)], RetypeKind::Project);
-
-        assert_eq!(plan.carried.description, Some("Notes".to_string()));
-        assert!(!plan.loses_anything());
-    }
-
-    #[test]
-    fn a_domain_becoming_a_goal_loses_its_description_and_strands_its_domain_children() {
-        let source = SourceNode {
-            kind: RetypeKind::Domain,
-            status: None,
-            description: Some("Notes".into()),
-            ..goal(1)
-        };
-        let children = [
-            child(ChildKind::Domain, 2),
-            child(ChildKind::Tag, 3),
-            child(ChildKind::Goal, 4),
-        ];
-
-        let plan = plan_retype(&source, &children, RetypeKind::Goal);
-
-        assert_eq!(lost_field_names(&plan), vec!["description"]);
-        assert_eq!(
-            lost_child_kinds(&plan),
-            vec![ChildKind::Domain, ChildKind::Tag],
-            "the console.warn(… orphaned) case, now named instead of logged"
-        );
-    }
-
-    #[test]
-    fn a_goal_becoming_a_project_keeps_its_status_and_loses_scope_tags_and_reasons() {
-        let source = SourceNode {
-            status: Some("frozen".into()),
-            time_scope: Some(window(3, 5)),
-            on_scope_exit: Some(OnScopeExit::Keep),
-            tag_ids: vec![7],
-            block_reasons: vec!["waiting".into()],
-            ..goal(1)
-        };
-
-        let plan = plan_retype(&source, &[], RetypeKind::Project);
-
-        assert_eq!(
-            plan.carried.status,
-            Some("frozen".to_string()),
-            "a project speaks the same status vocabulary as a goal"
-        );
-        assert_eq!(
-            lost_field_names(&plan),
-            vec!["time_scope", "tags", "block_reasons"]
-        );
-        assert_eq!(plan.carried.on_scope_exit, None, "the exit behaviour goes with the window");
-    }
-
-    #[test]
-    fn a_goal_becoming_a_tag_strands_every_child_that_is_not_a_note() {
-        let children = [
-            child(ChildKind::Goal, 2),
-            child(ChildKind::Task, 3),
-            child(ChildKind::Info, 4),
-        ];
-
-        let plan = plan_retype(&goal(1), &children, RetypeKind::Tag);
-
-        assert_eq!(lost_child_kinds(&plan), vec![ChildKind::Goal, ChildKind::Task]);
-        assert_eq!(
-            plan.moved_children.iter().map(|c| c.kind).collect::<Vec<_>>(),
-            vec![ChildKind::Info]
-        );
-    }
-
-    #[test]
-    fn a_tag_becoming_a_domain_carries_its_description() {
-        let source = SourceNode {
-            kind: RetypeKind::Tag,
-            status: None,
-            description: Some("Reading".into()),
-            ..goal(1)
-        };
-        let plan = plan_retype(&source, &[], RetypeKind::Domain);
-        assert_eq!(plan.carried.description, Some("Reading".to_string()));
-        assert!(!plan.loses_anything());
-    }
-
-    // --- the loss rule itself ---
-
-    #[test]
-    fn a_status_still_at_its_default_is_not_reported_as_lost() {
-        let plan = plan_retype(&goal(1), &[], RetypeKind::Domain);
-        assert_eq!(lost_field_names(&plan), Vec::<&str>::new(), "an untouched `active` says nothing");
-
-        let chosen = SourceNode {
-            status: Some("archived".into()),
-            ..goal(1)
-        };
-        let plan = plan_retype(&chosen, &[], RetypeKind::Domain);
-        assert_eq!(lost_field_names(&plan), vec!["status"]);
-    }
-
-    #[test]
-    fn inbound_dependencies_are_lost_when_the_target_cannot_be_depended_on() {
-        let source = SourceNode {
-            dependents: 2,
-            ..goal(1)
-        };
-
-        assert_eq!(
-            lost_field_names(&plan_retype(&source, &[], RetypeKind::Task)),
-            Vec::<&str>::new(),
-            "a task can be depended on, so the edges move rather than end"
-        );
-        assert_eq!(
-            plan_retype(&source, &[], RetypeKind::Project).lost_fields,
-            vec![LostField {
-                field: "dependents",
-                value: "2".into()
-            }]
-        );
-    }
-
-    #[test]
-    fn outgoing_dependencies_are_lost_by_anything_that_is_not_a_task() {
-        let source = SourceNode {
-            depends_on: 3,
-            ..task(1)
-        };
-
-        assert_eq!(
-            lost_field_names(&plan_retype(&source, &[], RetypeKind::Goal)),
-            vec!["dependencies"],
-            "only a task can depend on things"
-        );
-        assert_eq!(
-            plan_retype(&source, &[], RetypeKind::Task).lost_fields,
-            Vec::<LostField>::new()
-        );
-    }
-
-    #[test]
-    fn an_empty_tag_list_is_not_reported_as_lost() {
-        let source = SourceNode {
-            tag_ids: vec![],
-            block_reasons: vec![],
-            ..goal(1)
-        };
-        let plan = plan_retype(&source, &[], RetypeKind::Domain);
-        assert!(!plan.loses_anything());
-    }
-
-    #[test]
-    fn the_details_payload_names_every_lost_child_and_field() {
-        let source = SourceNode {
-            plan: Some(window(4, 4)),
-            ..task(1)
-        };
-        let plan = plan_retype(&source, &[child(ChildKind::Info, 2)], RetypeKind::Goal);
-
-        assert_eq!(
-            plan.details(),
-            serde_json::json!({
-                "lost_children": [],
-                "lost_fields": [{ "field": "plan", "value": "4" }],
-                "parent_climb": null,
-            })
-        );
-    }
-
-    #[test]
-    fn a_duration_shaped_window_is_rendered_in_duration_form() {
-        let source = SourceNode {
-            plan: Some(TimeScope {
-                start_id: 4,
-                end_id: 6,
-                duration: Some(DurationSpec {
-                    n: 3,
-                    kind: "week".into(),
-                }),
-            }),
-            ..task(1)
-        };
-        let plan = plan_retype(&source, &[], RetypeKind::Goal);
-        assert_eq!(plan.lost_fields[0].value, "3 week");
-    }
-
-    #[test]
-    fn a_long_block_reason_list_is_clipped_for_the_prompt() {
-        let source = SourceNode {
-            block_reasons: vec!["a".repeat(60)],
-            ..goal(1)
-        };
-        let plan = plan_retype(&source, &[], RetypeKind::Domain);
-        assert_eq!(plan.lost_fields[0].value, format!("{}…", "a".repeat(40)));
-    }
-
-    #[test]
-    fn retyping_to_the_same_kind_carries_everything() {
-        let source = SourceNode {
-            time_scope: Some(window(3, 5)),
-            plan: Some(window(4, 4)),
-            delegate_to: Some(2),
-            tag_ids: vec![7],
-            ..task(1)
-        };
-        let plan = plan_retype(&source, &[child(ChildKind::Task, 2)], RetypeKind::Task);
-        assert!(!plan.loses_anything());
-    }
-
-    #[test]
-    fn every_kind_spelling_round_trips() {
-        for kind in [
-            RetypeKind::Goal,
-            RetypeKind::Task,
-            RetypeKind::Domain,
-            RetypeKind::Project,
-            RetypeKind::Tag,
-            RetypeKind::Info,
-        ] {
-            assert_eq!(RetypeKind::from_db(kind.as_str()), Some(kind));
-            assert_eq!(ChildKind::from(kind).as_str(), kind.as_str());
-        }
-        assert_eq!(RetypeKind::from_db("flow"), None);
-    }
-
-    // --- info, as a sixth retypeable kind ---
-
-    fn info(id: i64) -> SourceNode {
-        SourceNode {
-            kind: RetypeKind::Info,
-            status: None,
-            description: None,
-            ..goal(id)
-        }
-    }
-
-    #[test]
-    fn an_info_accepts_only_an_info_child() {
-        assert!(RetypeKind::Info.accepts_child(ChildKind::Info));
-        for other in [ChildKind::Goal, ChildKind::Task, ChildKind::Domain, ChildKind::Project, ChildKind::Tag, ChildKind::Flow] {
-            assert!(!RetypeKind::Info.accepts_child(other), "an info cannot hold a {other:?}");
-        }
-    }
-
-    #[test]
-    fn every_target_kind_accepts_an_info_child() {
-        for target in [
-            RetypeKind::Goal,
-            RetypeKind::Task,
-            RetypeKind::Domain,
-            RetypeKind::Project,
-            RetypeKind::Tag,
-            RetypeKind::Info,
-        ] {
-            assert!(target.accepts_child(ChildKind::Info), "{target:?} should accept an info child");
-        }
-    }
-
-    #[test]
-    fn an_info_target_has_no_status_vocabulary_so_a_non_default_status_is_lost() {
-        let source = SourceNode { status: Some("achieved".into()), ..task(1) };
-        let plan = plan_retype(&source, &[], RetypeKind::Info);
-        assert_eq!(
-            lost_field_names(&plan),
-            vec!["status"],
-            "a task's non-default status has nowhere to go on an info"
-        );
-    }
-
-    #[test]
-    fn an_info_source_carries_no_status_since_it_never_had_one() {
-        let plan = plan_retype(&info(1), &[], RetypeKind::Task);
-        assert_eq!(plan.carried.status, None);
-        assert!(!lost_field_names(&plan).contains(&"status"), "an info never had a status to lose");
-    }
-
-    #[test]
-    fn an_info_becoming_a_project_carries_its_details_into_description() {
-        let source = SourceNode {
-            description: Some("Longer text".into()),
-            ..info(1)
-        };
-        let plan = plan_retype(&source, &[], RetypeKind::Project);
-        assert_eq!(plan.carried.description, Some("Longer text".to_string()));
-        assert!(!plan.loses_anything());
-    }
-
-    #[test]
-    fn a_project_becoming_an_info_carries_its_description_into_details() {
-        let plan = plan_retype(&project(1), &[], RetypeKind::Info);
-        assert_eq!(plan.carried.description, Some("The big one".to_string()));
-    }
-
-    #[test]
-    fn an_info_becoming_a_task_loses_its_details_since_a_task_has_no_such_column() {
-        let source = SourceNode {
-            description: Some("Longer text".into()),
-            ..info(1)
-        };
-        let plan = plan_retype(&source, &[], RetypeKind::Task);
-        assert_eq!(lost_field_names(&plan), vec!["description"]);
-        assert_eq!(plan.carried.description, None);
-    }
-
-    #[test]
-    fn a_task_becoming_an_info_has_nothing_to_carry_into_details_and_loses_nothing_there() {
-        let plan = plan_retype(&task(1), &[], RetypeKind::Info);
-        assert!(
-            !lost_field_names(&plan).contains(&"description"),
-            "a task never had a description, so there is nothing to report losing"
-        );
-    }
-
-    #[test]
-    fn an_info_becoming_a_task_keeps_its_privacy_and_position() {
-        let source = SourceNode {
-            is_private: true,
-            position: 4,
-            ..info(1)
-        };
-        let plan = plan_retype(&source, &[], RetypeKind::Task);
-        assert!(plan.carried.is_private, "privacy carries from an info to a task");
-        assert_eq!(plan.carried.position, 4);
-    }
-
-    #[test]
-    fn a_pending_parent_climb_alone_still_requires_confirmation() {
-        let mut plan = plan_retype(&task(1), &[], RetypeKind::Goal);
-        assert!(!plan.loses_anything(), "no climb yet — plan_retype never sets one");
-
-        plan.parent_climb = Some(ParentClimb {
-            from: NamedParent { kind: "info".into(), id: 2, title: "Note".into() },
-            to: NamedParent { kind: "project".into(), id: 3, title: "Ops".into() },
-        });
-
-        assert!(plan.loses_anything(), "leaving the current parent needs the same consent as a loss");
-        assert_eq!(
-            plan.details()["parent_climb"],
-            serde_json::json!({
-                "from": { "kind": "info", "id": 2, "title": "Note" },
-                "to": { "kind": "project", "id": 3, "title": "Ops" },
-            })
-        );
-    }
-
-    #[test]
-    fn domains_table_parents_are_accepted_by_every_target() {
-        for target in [
-            RetypeKind::Goal,
-            RetypeKind::Task,
-            RetypeKind::Domain,
-            RetypeKind::Project,
-            RetypeKind::Tag,
-            RetypeKind::Info,
-        ] {
-            assert!(accepts_category(target, ParentCategory::DomainsTable));
-        }
-    }
-
-    #[test]
-    fn only_a_task_or_task_like_target_accepts_a_task_shaped_parent() {
-        assert!(!accepts_category(RetypeKind::Goal, ParentCategory::Task));
-        assert!(accepts_category(RetypeKind::Task, ParentCategory::Task));
-        assert!(!accepts_category(RetypeKind::Domain, ParentCategory::Task));
-        assert!(accepts_category(RetypeKind::Info, ParentCategory::Task));
-    }
-
-    #[test]
-    fn only_an_info_target_accepts_an_info_shaped_parent() {
-        for target in [
-            RetypeKind::Goal,
-            RetypeKind::Task,
-            RetypeKind::Domain,
-            RetypeKind::Project,
-            RetypeKind::Tag,
-        ] {
-            assert!(!accepts_category(target, ParentCategory::Info), "{target:?} CHECK never spells \"info\"");
-        }
-        assert!(accepts_category(RetypeKind::Info, ParentCategory::Info));
-    }
-
-    #[test]
-    fn category_of_reads_the_raw_kind_spelling() {
-        assert_eq!(category_of("goal"), ParentCategory::Goal);
-        assert_eq!(category_of("task"), ParentCategory::Task);
-        assert_eq!(category_of("info"), ParentCategory::Info);
-        for domains_table_kind in ["aspect", "project", "domain", "tag"] {
-            assert_eq!(category_of(domains_table_kind), ParentCategory::DomainsTable);
-        }
-    }
-
-    /// A task carrying a `bd` issue link.
-    fn linked_task(id: i64) -> SourceNode {
-        SourceNode {
-            beads_id: Some("Arlesh-3gk".into()),
-            ..task(id)
-        }
-    }
-
-    #[test]
-    fn an_issue_link_carries_to_every_kind_with_a_column_for_it() {
-        // tasks, goals and domains all have the column, so a retype between them keeps the link.
-        // Domain and Tag do not display it, but the value survives and reappears if the node is
-        // made a Project again — the same reasoning knowledge_base_directory already gets.
-        for target in [
-            RetypeKind::Goal,
-            RetypeKind::Project,
-            RetypeKind::Domain,
-            RetypeKind::Tag,
-        ] {
-            let plan = plan_retype(&linked_task(1), &[], target);
-            assert_eq!(
-                plan.carried.beads_id.as_deref(),
-                Some("Arlesh-3gk"),
-                "{target:?} should carry the issue link"
-            );
-            assert!(
-                !lost_field_names(&plan).contains(&"beads_id"),
-                "{target:?} should not report the issue link as lost"
-            );
-        }
-    }
-
-    #[test]
-    fn an_issue_link_is_lost_when_the_node_becomes_a_note() {
-        // `infos` has no beads_id column, so this one is a real loss and has to be confirmed.
-        let plan = plan_retype(&linked_task(1), &[], RetypeKind::Info);
-
-        assert_eq!(plan.carried.beads_id, None);
-        assert!(lost_field_names(&plan).contains(&"beads_id"));
-        assert!(
-            plan.loses_anything(),
-            "losing an issue link must make the retype ask first"
-        );
-    }
-
-    #[test]
-    fn the_lost_issue_link_names_the_id_that_would_go() {
-        // The prompt says what is at stake, not merely which field.
-        let plan = plan_retype(&linked_task(1), &[], RetypeKind::Info);
-        let lost = plan
-            .lost_fields
-            .iter()
-            .find(|lost| lost.field == "beads_id")
-            .expect("beads_id should be reported lost");
-        assert_eq!(lost.value, "Arlesh-3gk");
-    }
-
-    #[test]
-    fn an_unlinked_node_never_reports_a_lost_issue_link() {
-        let plan = plan_retype(&task(1), &[], RetypeKind::Info);
-        assert_eq!(plan.carried.beads_id, None);
-        assert!(!lost_field_names(&plan).contains(&"beads_id"));
-    }
-
-    #[test]
-    fn an_issue_link_survives_a_retype_within_the_domains_table() {
-        // A domain-table retype is a subtype update on one row: nothing is deleted, so the link
-        // cannot be lost regardless of which subtype it lands on.
-        let linked_project = SourceNode {
-            beads_id: Some("Arlesh-e8d".into()),
-            ..project(1)
-        };
-        for target in [RetypeKind::Domain, RetypeKind::Tag, RetypeKind::Project] {
-            let plan = plan_retype(&linked_project, &[], target);
-            assert_eq!(
-                plan.carried.beads_id.as_deref(),
-                Some("Arlesh-e8d"),
-                "{target:?} within the domains table keeps the link"
-            );
-        }
-    }
-
-}
+mod tests;

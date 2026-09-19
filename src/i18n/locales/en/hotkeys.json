@@ -44,5 +44,9 @@
   "closeTab": "Close the tab (the last one closes the window)",
   "nextTab": "Go to the next tab",
   "previousTab": "Go to the previous tab",
-  "jumpToTab": "Jump to a tab by position (Ctrl+1 to Ctrl+9)"
+  "jumpToTab": "Jump to a tab by position (Ctrl+1 to Ctrl+9)",
+  "statusBacklog": "Status preset: Backlog",
+  "toggleBacklog": "Put in / take out of the backlog",
+  "markKept": "Mark the selected commitment kept (again to clear it)",
+  "markBroken": "Mark the selected commitment broken (again to clear it)"
 }
