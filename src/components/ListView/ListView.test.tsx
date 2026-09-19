@@ -597,6 +597,7 @@ describe("ListView", () => {
       intoViewRows = [];
 
       fireEvent.keyDown(window, { key: "j", code: "KeyJ" });
+      fireEvent.keyUp(window, { key: "j", code: "KeyJ" });
 
       expect(scrollByCalls).toEqual([{ top: LIST_SCROLL_STEP_PX, behavior: "auto" }]);
       expect(container.querySelector("[class*='cardSelected']")?.textContent).toContain("task-a");
@@ -608,22 +609,27 @@ describe("ListView", () => {
       mockUseListData.mockReturnValue(twoRows());
       render(<ListView />);
       fireEvent.keyDown(window, { key: "k", code: "KeyK" });
+      fireEvent.keyUp(window, { key: "k", code: "KeyK" });
       expect(scrollByCalls).toEqual([{ top: -LIST_SCROLL_STEP_PX, behavior: "auto" }]);
     });
 
-    it("keeps scrolling while the key is held", () => {
+    it("leaves a held key to the animation loop rather than acting on auto-repeat", () => {
+      // The press starts a continuous scroll at a speed this app sets; if the repeats were acted on
+      // too they would restart it, and the pace would be the OS's key-repeat setting again.
       mockUseListData.mockReturnValue(twoRows());
       render(<ListView />);
       fireEvent.keyDown(window, { key: "j", code: "KeyJ" });
       fireEvent.keyDown(window, { key: "j", code: "KeyJ", repeat: true });
       fireEvent.keyDown(window, { key: "j", code: "KeyJ", repeat: true });
-      expect(scrollByCalls).toHaveLength(3);
+      expect(scrollByCalls).toEqual([{ top: LIST_SCROLL_STEP_PX, behavior: "auto" }]);
+      fireEvent.keyUp(window, { key: "j", code: "KeyJ" });
     });
 
     it("scrolls with no selection at all", () => {
       mockUseListData.mockReturnValue(twoRows());
       const { container } = render(<ListView />);
       fireEvent.keyDown(window, { key: "j", code: "KeyJ" });
+      fireEvent.keyUp(window, { key: "j", code: "KeyJ" });
       expect(scrollByCalls).toHaveLength(1);
       expect(container.querySelector("[class*='cardSelected']")).toBeNull();
     });
@@ -633,6 +639,7 @@ describe("ListView", () => {
       render(<ListView />);
       fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
       fireEvent.keyDown(window, { key: "j", code: "KeyJ" });
+      fireEvent.keyUp(window, { key: "j", code: "KeyJ" });
       intoViewRows = [];
 
       fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });

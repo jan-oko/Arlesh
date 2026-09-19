@@ -144,7 +144,7 @@ export default function ListView() {
   }
 
   // The viewport: it follows the selection, and j/k roam it without moving the selection.
-  const { containerRef, scrollByStep } = useListScroll(activeSelectedId);
+  const { containerRef, startScroll } = useListScroll(activeSelectedId);
 
   useKeyboardListView({
     // The prompt swallows the row keys while it is open, as the editor modal already does.
@@ -154,7 +154,7 @@ export default function ListView() {
     selectedRowId: activeSelectedId,
     isSelectedBlocked,
     onNavigate: handleNavigate,
-    onScrollList: scrollByStep,
+    onScrollList: startScroll,
     onCycleStatus,
     onOpenEditor: onDoubleClick,
     onStartRename: setEditingTaskId,

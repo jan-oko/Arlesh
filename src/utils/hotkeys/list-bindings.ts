@@ -37,6 +37,15 @@ export interface ListContext {
   onMarkBroken: (id: string) => void;
 }
 
+/**
+ * The physical keys that scroll the list. Exported because the viewport has to watch for their
+ * *release* as well: the scroll runs while the key is held, so the binding table and the hook that
+ * moves the viewport must name the same two keys rather than each spelling them out.
+ */
+export const SCROLL_DOWN_CODE = "KeyJ";
+/** See {@link SCROLL_DOWN_CODE}. */
+export const SCROLL_UP_CODE = "KeyK";
+
 /** Alt+letter → status preset, matched on physical key so it works under any layout. */
 const STATUS_PRESETS: ReadonlyArray<{ code: string; mode: StatusMode; labelKey: HotkeyLabelKey }> = [
   { code: "KeyA", mode: "all", labelKey: "statusAll" },
@@ -73,16 +82,17 @@ export const LIST_BINDINGS: readonly Binding<ListContext>[] = [
     labelKey: "navigateRows", run: (c) => c.onNavigate(1),
   },
   // Reading ahead without giving up your place: these move the viewport and nothing else, so the
-  // selection stays put even once it has scrolled out of sight. Auto-repeat is left on (the
-  // default) — holding the key is how you cover distance, unlike the creation bindings, where a
-  // held key would quietly make a pile of nodes.
+  // selection stays put even once it has scrolled out of sight. `allowRepeat: false` because the
+  // press only *starts* the motion — holding the key is then carried by an animation loop at a
+  // fixed speed (see use-list-scroll), and letting auto-repeat through as well would have the
+  // repeats restarting a scroll that is already running.
   {
-    id: "listView.scrollDown", section: "listView", chord: { code: "KeyJ" },
-    labelKey: "scrollList", run: (c) => c.onScrollList(1),
+    id: "listView.scrollDown", section: "listView", chord: { code: SCROLL_DOWN_CODE },
+    labelKey: "scrollList", allowRepeat: false, run: (c) => c.onScrollList(1),
   },
   {
-    id: "listView.scrollUp", section: "listView", chord: { code: "KeyK" },
-    labelKey: "scrollList", run: (c) => c.onScrollList(-1),
+    id: "listView.scrollUp", section: "listView", chord: { code: SCROLL_UP_CODE },
+    labelKey: "scrollList", allowRepeat: false, run: (c) => c.onScrollList(-1),
   },
   {
     id: "listView.cycleStatus", section: "listView", chord: { code: "Enter" },
