@@ -133,8 +133,24 @@ async fn person_linked_to_task_via_delegation() {
     .unwrap();
 
     let fetched = db.tasks().get(task.id.into()).await.unwrap();
-    db.commit().await.unwrap();
     assert_eq!(fetched.delegate_to, Some(person.id));
+
+    // `Some(None)` is what an explicit `null` on the wire now decodes to, and it has to reach the
+    // column: undelegating a task must remove the link rather than leave the old person on it.
+    update_task(
+        &mut db,
+        task.id.into(),
+        arlesh_lib::tasks::model::UpdateTaskRequest {
+            delegate_to: Some(None),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    let undelegated = db.tasks().get(task.id.into()).await.unwrap();
+    db.commit().await.unwrap();
+    assert_eq!(undelegated.delegate_to, None, "clearing the delegate must remove it");
 }
 
 #[tokio::test]

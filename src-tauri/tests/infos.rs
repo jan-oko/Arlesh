@@ -486,3 +486,17 @@ async fn the_update_info_command_commits_every_field_it_touches() {
         "the command must commit every field it touched, not roll them back"
     );
 }
+
+/// An Info's details are the one nullable field its editor can empty, and the editor sends the
+/// whole form on every save — so clearing the box puts a JSON `null` on the wire. `Option<Option<T>>`
+/// does not distinguish an absent key from a null one on its own: both deserialise to `None`, which
+/// `update` reads as "unchanged", so the clear would be swallowed without a word (Arlesh-atb).
+#[test]
+fn an_explicit_null_details_in_an_update_payload_clears_them() {
+    let absent: UpdateInfoRequest = serde_json::from_str(r#"{"body":"Renamed"}"#).unwrap();
+    assert_eq!(absent.details, None, "an absent key leaves the details alone");
+    let nulled: UpdateInfoRequest = serde_json::from_str(r#"{"details":null}"#).unwrap();
+    assert_eq!(nulled.details, Some(None), "an explicit null clears the details");
+    let set: UpdateInfoRequest = serde_json::from_str(r#"{"details":"More"}"#).unwrap();
+    assert_eq!(set.details, Some(Some("More".to_string())));
+}

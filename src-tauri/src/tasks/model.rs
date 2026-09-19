@@ -288,13 +288,17 @@ pub struct UpdateTaskRequest {
     /// New status (if provided).
     pub status: Option<TaskStatus>,
     /// Person to delegate to (None leaves unchanged, Some(None) clears it).
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
     pub delegate_to: Option<Option<i64>>,
     /// Relevance window to set (None leaves unchanged, Some(None) clears it).
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
     pub time_scope: Option<Option<TimeScope>>,
     /// On-exit behavior to set (None leaves unchanged); forced NULL when the scope is cleared,
     /// defaulted to Keep when a scope is set without one.
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
     pub on_scope_exit: Option<Option<OnScopeExit>>,
     /// Plan window to set (None leaves unchanged, Some(None) clears it).
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
     pub plan: Option<Option<TimeScope>>,
     /// New parent entity type for re-parenting (must be set together with parent_id).
     pub parent_type: Option<String>,
@@ -389,9 +393,11 @@ pub struct UpdateGoalRequest {
     /// New status (if provided).
     pub status: Option<GoalStatus>,
     /// Relevance window to set (None leaves unchanged, Some(None) clears it).
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
     pub time_scope: Option<Option<TimeScope>>,
     /// On-exit behavior to set (None leaves unchanged); forced NULL when the scope is cleared,
     /// defaulted to Keep when a scope is set without one.
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
     pub on_scope_exit: Option<Option<OnScopeExit>>,
     /// New parent entity type for re-parenting (must be set together with parent_id).
     pub parent_type: Option<String>,

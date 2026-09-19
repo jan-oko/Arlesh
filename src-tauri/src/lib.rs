@@ -17,6 +17,7 @@ pub mod mcp;
 pub mod mindmap;
 pub mod scopes;
 pub mod tasks;
+pub mod wire;
 
 use tauri::Manager;
 use tracing_subscriber::EnvFilter;

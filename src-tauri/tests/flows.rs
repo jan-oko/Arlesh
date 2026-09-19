@@ -1655,3 +1655,99 @@ fn an_explicit_null_target_in_an_update_payload_clears_it() {
     assert_eq!(set.target_type, Some(Some("goal".to_string())));
     assert_eq!(set.target_id, Some(Some(5)));
 }
+
+// --- Clearing the rest of a Flow's nullable fields (Arlesh-atb) ---
+//
+// The Target Node above was the first field taught to tell an absent key from an explicit null.
+// Every other `Option<Option<T>>` on `UpdateFlowRequest` had the same lying type: the Flow editor
+// sends the whole form on every save, so emptying the Duration, the Phase window or the root Cycle
+// Plan puts a JSON `null` on the wire — which serde collapsed to "leave it alone". One test per
+// field, because each carries its own `#[serde(default, deserialize_with = ...)]` and a missing
+// attribute on any one of them is its own silent drop.
+
+#[test]
+fn an_explicit_null_flow_duration_n_in_an_update_payload_clears_it() {
+    let absent: UpdateFlowRequest = serde_json::from_str(r#"{"title":"Renamed"}"#).unwrap();
+    assert_eq!(absent.flow_duration_n, None, "an absent key leaves the duration count alone");
+    let nulled: UpdateFlowRequest = serde_json::from_str(r#"{"flow_duration_n":null}"#).unwrap();
+    assert_eq!(nulled.flow_duration_n, Some(None), "an explicit null clears the duration count");
+    let set: UpdateFlowRequest = serde_json::from_str(r#"{"flow_duration_n":3}"#).unwrap();
+    assert_eq!(set.flow_duration_n, Some(Some(3)));
+}
+
+#[test]
+fn an_explicit_null_flow_duration_kind_in_an_update_payload_clears_it() {
+    let absent: UpdateFlowRequest = serde_json::from_str(r#"{"title":"Renamed"}"#).unwrap();
+    assert_eq!(absent.flow_duration_kind, None, "an absent key leaves the duration kind alone");
+    let nulled: UpdateFlowRequest = serde_json::from_str(r#"{"flow_duration_kind":null}"#).unwrap();
+    assert_eq!(nulled.flow_duration_kind, Some(None), "an explicit null clears the duration kind");
+    let set: UpdateFlowRequest = serde_json::from_str(r#"{"flow_duration_kind":"week"}"#).unwrap();
+    assert_eq!(set.flow_duration_kind, Some(Some("week".to_string())));
+}
+
+#[test]
+fn an_explicit_null_flow_window_part_in_an_update_payload_clears_it() {
+    let absent: UpdateFlowRequest = serde_json::from_str(r#"{"title":"Renamed"}"#).unwrap();
+    assert_eq!(absent.flow_window_part, None, "an absent key leaves the Phase band alone");
+    let nulled: UpdateFlowRequest = serde_json::from_str(r#"{"flow_window_part":null}"#).unwrap();
+    assert_eq!(nulled.flow_window_part, Some(None), "an explicit null clears the Phase band");
+    let set: UpdateFlowRequest = serde_json::from_str(r#"{"flow_window_part":"morning"}"#).unwrap();
+    assert_eq!(set.flow_window_part, Some(Some("morning".to_string())));
+}
+
+#[test]
+fn an_explicit_null_flow_window_time_start_in_an_update_payload_clears_it() {
+    let absent: UpdateFlowRequest = serde_json::from_str(r#"{"title":"Renamed"}"#).unwrap();
+    assert_eq!(absent.flow_window_time_start, None, "an absent key leaves the window start alone");
+    let nulled: UpdateFlowRequest =
+        serde_json::from_str(r#"{"flow_window_time_start":null}"#).unwrap();
+    assert_eq!(
+        nulled.flow_window_time_start,
+        Some(None),
+        "an explicit null clears the window start"
+    );
+    let set: UpdateFlowRequest =
+        serde_json::from_str(r#"{"flow_window_time_start":"09:00"}"#).unwrap();
+    assert_eq!(set.flow_window_time_start, Some(Some("09:00".to_string())));
+}
+
+#[test]
+fn an_explicit_null_flow_window_time_end_in_an_update_payload_clears_it() {
+    let absent: UpdateFlowRequest = serde_json::from_str(r#"{"title":"Renamed"}"#).unwrap();
+    assert_eq!(absent.flow_window_time_end, None, "an absent key leaves the window end alone");
+    let nulled: UpdateFlowRequest =
+        serde_json::from_str(r#"{"flow_window_time_end":null}"#).unwrap();
+    assert_eq!(nulled.flow_window_time_end, Some(None), "an explicit null clears the window end");
+    let set: UpdateFlowRequest = serde_json::from_str(r#"{"flow_window_time_end":"10:30"}"#).unwrap();
+    assert_eq!(set.flow_window_time_end, Some(Some("10:30".to_string())));
+}
+
+#[test]
+fn an_explicit_null_root_plan_kind_in_an_update_payload_clears_it() {
+    let absent: UpdateFlowRequest = serde_json::from_str(r#"{"title":"Renamed"}"#).unwrap();
+    assert_eq!(absent.root_plan_kind, None, "an absent key leaves the root Cycle Plan kind alone");
+    let nulled: UpdateFlowRequest = serde_json::from_str(r#"{"root_plan_kind":null}"#).unwrap();
+    assert_eq!(nulled.root_plan_kind, Some(None), "an explicit null clears the root Cycle Plan kind");
+    let set: UpdateFlowRequest = serde_json::from_str(r#"{"root_plan_kind":"day"}"#).unwrap();
+    assert_eq!(set.root_plan_kind, Some(Some("day".to_string())));
+}
+
+#[test]
+fn an_explicit_null_root_plan_start_in_an_update_payload_clears_it() {
+    let absent: UpdateFlowRequest = serde_json::from_str(r#"{"title":"Renamed"}"#).unwrap();
+    assert_eq!(absent.root_plan_start, None, "an absent key leaves the root Cycle Plan start alone");
+    let nulled: UpdateFlowRequest = serde_json::from_str(r#"{"root_plan_start":null}"#).unwrap();
+    assert_eq!(nulled.root_plan_start, Some(None), "an explicit null clears the root Cycle Plan start");
+    let set: UpdateFlowRequest = serde_json::from_str(r#"{"root_plan_start":0}"#).unwrap();
+    assert_eq!(set.root_plan_start, Some(Some(0)));
+}
+
+#[test]
+fn an_explicit_null_root_plan_end_in_an_update_payload_clears_it() {
+    let absent: UpdateFlowRequest = serde_json::from_str(r#"{"title":"Renamed"}"#).unwrap();
+    assert_eq!(absent.root_plan_end, None, "an absent key leaves the root Cycle Plan end alone");
+    let nulled: UpdateFlowRequest = serde_json::from_str(r#"{"root_plan_end":null}"#).unwrap();
+    assert_eq!(nulled.root_plan_end, Some(None), "an explicit null clears the root Cycle Plan end");
+    let set: UpdateFlowRequest = serde_json::from_str(r#"{"root_plan_end":2}"#).unwrap();
+    assert_eq!(set.root_plan_end, Some(Some(2)));
+}
