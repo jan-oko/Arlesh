@@ -1,3 +1,7 @@
+// Enables the `coverage(off)` attributes on the inline test modules. `coverage_nightly` is a cfg
+// cargo-llvm-cov sets only when it is driving a nightly toolchain, so on the pinned stable 1.96
+// this line and every attribute it gates compile away to nothing.
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 #![deny(clippy::all)]
 #![deny(missing_docs)]
 //! Arlesh — task management and knowledge-base desktop app.

@@ -1,11 +1,23 @@
 name: CI
 
-# The fast half of the pre-PR gate, moved off the laptop.
+# The whole pre-PR gate, moved off the laptop.
 #
 # Two lanes run in parallel on their own runners: `web` (lint, tsc, vitest) and
-# `rust` (cargo test). Coverage is deliberately NOT here — tarpaulin costs an
-# order of magnitude more runner time than everything in this file put together,
-# so it lives in coverage.yml behind a narrower trigger.
+# `rust` (tests AND coverage, in one command).
+#
+# Coverage used to be a second workflow. It is folded in here because tarpaulin
+# *runs the suite* — a separate `cargo test` job compiled the same 560-crate
+# tree a second time, on a second runner, into a second 500 MB cache entry, to
+# run the same tests. Merging deletes all three. The cost of folding it in is
+# that a frontend-only PR now pays the coverage lane too: ~1 extra billed
+# minute, against ~5 saved on every PR that touches Rust.
+#
+# Why ptrace and not something faster, measured on this tree (see progress.md):
+# `--engine llvm` reports 89.44% against ptrace's 91.01% on an identical commit,
+# and the gap is dropped profraw data, not strictness — it calls src/infos/mod.rs
+# 17/74 where ptrace watches 74/74 run and cargo-llvm-cov independently agrees on
+# 100%. `--no-dead-code` is worse: the binaries fail to load with corrupted
+# DT_NEEDED strings. Neither flag belongs here.
 #
 # The repo is private, so every minute in here is billed. Keep it that way:
 # nothing expensive, and nothing that runs on a branch push nobody asked about.
@@ -16,6 +28,11 @@ on:
   push:
     branches: [master]
   workflow_dispatch:
+  # Master backstop. Coverage is a whole-tree property: two stacked PRs can each
+  # hold the floor alone and drop below it once merged together, and this board
+  # runs eight at a time. One scheduled run a week catches that.
+  schedule:
+    - cron: '17 4 * * 1'
 
 # A second push to a PR supersedes the first: cancel the older run rather than
 # paying for both. Pushes to master are never cancelled — every master commit
@@ -30,12 +47,16 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  TARPAULIN_VERSION: '0.35.5'
 
 jobs:
   web:
     name: lint · tsc · vitest
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # The weekly run exists for coverage drift only; the web lane would just be
+    # re-running Monday what Friday already proved.
+    if: github.event_name != 'schedule'
     steps:
       - uses: actions/checkout@v5
 
@@ -62,9 +83,9 @@ jobs:
         run: npx vitest run --maxWorkers=2 --testTimeout=30000 --hookTimeout=30000
 
   rust:
-    name: cargo test
+    name: cargo tarpaulin · tests + coverage
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
 
@@ -88,16 +109,28 @@ jobs:
           rustc --version
           cargo --version
 
+      # A prebuilt binary from the release page — `cargo install cargo-tarpaulin`
+      # would compile it from source on every cache miss. Pinned deliberately:
+      # the reported percentage moves between releases, and a floor of 90 only
+      # means something if it is always computed the same way.
+      - name: Install cargo-tarpaulin
+        run: |
+          curl -fsSL \
+            "https://github.com/xd009642/tarpaulin/releases/download/${TARPAULIN_VERSION}/cargo-tarpaulin-x86_64-unknown-linux-musl.tar.gz" \
+            | tar -xz -C "$HOME/.cargo/bin"
+          cargo tarpaulin --version
+
       # Caches ~/.cargo/{registry,git} and src-tauri/target, keyed on Cargo.lock,
-      # the rustc version and the job name. It prunes the target directory of the
-      # intermediate artifacts that make a warm Rust tree enormous, which is what
-      # keeps this under GitHub's 10 GB per-repo cache budget. `shared-key` keeps
-      # this cache separate from the coverage job's: tarpaulin builds with its own
-      # RUSTFLAGS, so sharing one entry would make both of them miss every time.
+      # the rustc version and this key. It prunes the intermediate artifacts that
+      # make a warm Rust tree enormous, which is what keeps this inside GitHub's
+      # 10 GB per-repo cache budget. One key now, where there used to be two:
+      # with `cargo test` folded into tarpaulin there is only one set of
+      # RUSTFLAGS in play, so a single entry can no longer be invalidated by
+      # whichever job wrote to it last.
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-          shared-key: cargo-test
+          shared-key: rust
 
       # `tauri::generate_context!` (src-tauri/src/lib.rs) embeds the frontend
       # bundle at compile time, so the lib — and therefore every integration test
@@ -110,6 +143,35 @@ jobs:
           mkdir -p dist
           printf '<!doctype html><title>arlesh ci</title>' > dist/index.html
 
-      - name: cargo test
+      # `--engine ptrace` attaches to the test binaries tarpaulin spawns. Yama's
+      # policy is printed first so that a future failure to attach can be told
+      # apart from a genuine coverage failure without guessing: 0 or 1 permit
+      # tracing a direct child, 2 and 3 do not. `ubuntu-latest` is 1.
+      - name: Show ptrace policy
+        run: echo "yama/ptrace_scope = $(cat /proc/sys/kernel/yama/ptrace_scope 2>/dev/null || echo 'not present')"
+
+      # This runs the whole test suite as well as measuring it. A failing test
+      # fails the job here exactly as `cargo test` did.
+      - name: cargo tarpaulin
         working-directory: src-tauri
-        run: cargo test --locked
+        run: |
+          set -o pipefail
+          cargo tarpaulin \
+            --engine ptrace \
+            --skip-clean \
+            --fail-under 90 \
+            --exclude-files 'src/commands/*' \
+            2>&1 | tee "$RUNNER_TEMP/tarpaulin.log"
+
+      # Put the percentage where it can be read without opening the log, on a
+      # failing run as well as a passing one.
+      - name: Report coverage
+        if: always()
+        run: |
+          line="$(grep -E '[0-9.]+% coverage' "$RUNNER_TEMP/tarpaulin.log" | tail -1 || true)"
+          {
+            echo '### Coverage'
+            echo '```'
+            echo "${line:-no coverage line in tarpaulin output}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
