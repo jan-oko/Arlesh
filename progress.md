@@ -2094,3 +2094,63 @@ Six merge resolutions is not a thing to start unasked, and the conflict-resoluti
 is documented: four separate times a resolution needed a brace or comma that **neither side owned**,
 caught by `tsc` and `json.load` and never by reading the diff. Surfaced for a decision rather than
 swept.
+
+### Every open PR is current with master
+
+The split held: the CI session took the four relocation conflicts, I took #16 and #23. All seven now
+merge clean and carry `ci.yml`, so all seven get checks.
+
+| PR | merge | CI |
+|---|---|---|
+| #16 tabs | clean | green |
+| #21 ipc-clear | clean | green |
+| #22 undo-journal | clean | **red** — real gap, agent working it |
+| #23 focus-exemption | clean | running |
+| #24 typed-child-chords | clean | green |
+| #25 habit-cycle-scope | clean | green |
+| #26 task-agentic | clean | green |
+
+**The floor question is settled.** Master 95.25%, #25 95.41%, #26 95.29%, #21 95.25%, against a floor
+of **94**. Nothing written under the old tarpaulin-90 needs rework, and #25 is above master.
+
+**`git merge` raised conflicts for the easy cases and stayed silent on the ones that broke the
+build.** That is the through-line from every resolution today, in both languages:
+
+- #16: five conflicts resolved, no markers left — and `tsc` still found a duplicated
+  `useMindmapStore` import and a `FilterDisplay` mock missing a field master had added.
+- #23: `list-filter.ts` was an add/add where **both sides end mid-function** and the single closing
+  brace in the common suffix belongs to whichever lands last. Concatenating would have nested
+  `filterCommitmentList` inside `rowPassesFilters`. Fifth instance of that exact trap.
+- The CI session hit it twice from the other side: a file calling a `null_clears` that one branch had
+  deleted and another still called by its bare name — **merged with no conflict at all** — and test
+  bodies concatenated into the wrong scope.
+
+**The rule that follows, now in the brief template:** on a Rust branch,
+`cargo check --locked --all-targets` before pushing; on a TS branch, `tsc`. The absence of conflict
+markers is not evidence.
+
+**Two resolutions were semantic, not mechanical, and are worth reading as a pair.**
+
+`filter-tree.ts` — master threaded an `underBacklog` argument through the very recursion #23 had
+restructured into `pruneTree`/`exempt`. Kept the branch's shape, took master's parameter into it, so
+the exemption path and the canonical path evaluate the same backlog rule. `filterTree` still
+delegates with an empty exempt set, which makes every exemption branch dead for it — behaviour
+unchanged, as that PR promised.
+
+`ListView.tsx` — the one that only compiled after being understood. Master renamed the selection
+state to `selectedRowId` when Commitments became selectable rows, and turned `selectedTaskId` into a
+value **derived from `filteredRows`**. Feeding that into the focus exemption would be circular: it is
+non-null only for a row the filter already kept, and the exemption exists for the row your own edit
+just stopped matching. Keyed on the raw `selectedRowId`, with the reasoning in a comment so it is not
+"tidied" back.
+
+**Noticed, not built:** the Commitments band has no focus exemption. Marking a commitment Kept under
+Plan drops it out of the band under the cursor — the exact problem `Arlesh-792` was filed for, on a
+surface that did not exist when it was written. Left alone; it is the user's to price.
+
+**Instance startup, third failure of the day, same invisible cause.** `tabs` would not start:
+`migration 25 was previously applied but is missing in the resolved migrations`. Instances are seeded
+from the real board, which is at 25; the branch knew only 0024. The mirror image of this morning's
+`task-backlog` crash — that branch had *renumbered* a migration, this one had never *seen* one. Both
+were invisible because `launch()` reports success for a process that dies milliseconds later. Merging
+master into #16 fixed it; the instance has been up and clean since 19:42.
