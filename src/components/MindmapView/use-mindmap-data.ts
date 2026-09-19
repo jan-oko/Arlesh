@@ -4,7 +4,7 @@ import { createTask, updateTask, deleteTask, duplicateTask, TASK_ARCHIVAL } from
 import { createCommitment, updateCommitment, deleteCommitment } from "@/api/commitments";
 import type { Commitment, Verdict } from "@/api/commitments";
 import { VERDICT } from "@/api/commitments";
-import type { TaskDependencyEdge } from "@/api/tasks";
+import type { TaskAgentic, TaskDependencyEdge } from "@/api/tasks";
 import type { BlockReason } from "@/api/block-reasons";
 import { createGoal, updateGoal, deleteGoal, duplicateGoal } from "@/api/goals";
 import { createInfo, updateInfo, deleteInfo, duplicateInfo } from "@/api/infos";
@@ -326,7 +326,11 @@ interface MindmapData {
   error: string | null;
   /** Background load conditions from the most recent load — currently, Habit derivation failures. */
   loadCondition: LoadCondition;
-  createNode: (parentId: string, parentKind: NodeKind, childKind: NodeKind, title: string) => Promise<MindmapNode>;
+  /**
+   * `agentic` is the Agentic state a new **Task** is created carrying; omitted, it starts in the
+   * Inherit every Task defaults to. Ignored by every other kind, since only a Task has the flag.
+   */
+  createNode: (parentId: string, parentKind: NodeKind, childKind: NodeKind, title: string, agentic?: TaskAgentic) => Promise<MindmapNode>;
   createChild: (parentId: string, parentKind: NodeKind, title: string) => Promise<MindmapNode>;
   renameNode: (id: string, kind: NodeKind, title: string) => Promise<void>;
   retypeNode: (id: string, fromKind: NodeKind, toKind: NodeKind, options?: RetypeOptions) => Promise<string | null>;
@@ -865,7 +869,7 @@ export function useMindmapData(): MindmapData {
   }, [load]);
 
   const createNode = useCallback(
-    async (parentId: string, parentKind: NodeKind, childKind: NodeKind, title: string): Promise<MindmapNode> => {
+    async (parentId: string, parentKind: NodeKind, childKind: NodeKind, title: string, agentic?: TaskAgentic): Promise<MindmapNode> => {
       const dbParentId = dbIdFromNodeId(parentId);
 
       if (childKind === "domain" || childKind === "project" || childKind === "tag") {
@@ -892,7 +896,13 @@ export function useMindmapData(): MindmapData {
       }
 
       if (childKind === "task") {
-        const task = await createTask({ title, parent_type: kindToParentType(parentKind), parent_id: dbParentId });
+        // Spread rather than passed as `agentic: agentic`: under `exactOptionalPropertyTypes` an
+        // explicit `undefined` is not the same as an absent field, and absent is what "no opinion,
+        // take the default" has to send.
+        const task = await createTask({
+          title, parent_type: kindToParentType(parentKind), parent_id: dbParentId,
+          ...(agentic !== undefined ? { agentic } : {}),
+        });
         const newNode: MindmapNode = {
           id: `task-${task.id}`, kind: "task", title: task.title,
           status: task.status, position: task.position, tagIds: [], children: [],

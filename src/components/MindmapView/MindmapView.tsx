@@ -42,6 +42,7 @@ import ConvertToFlowModal from "@/components/ConvertToFlowModal/ConvertToFlowMod
 import WarningConfirmModal from "@/components/WarningConfirmModal/WarningConfirmModal";
 import BacklogConfirmModal from "@/components/BacklogConfirmModal/BacklogConfirmModal";
 import { useTaskBacklog } from "@/hooks/use-task-backlog";
+import { useTaskAgentic } from "@/hooks/use-task-agentic";
 import DeleteConfirmModal from "@/components/DeleteConfirmModal/DeleteConfirmModal";
 import styles from "./MindmapView.module.css";
 
@@ -334,6 +335,8 @@ export default function MindmapView() {
     findNode: findNodeById, reload, showToast,
   });
 
+  const { cycleAgentic } = useTaskAgentic({ findNode: findNodeById, reload, showToast });
+
   const handleConfirmDelete = useCallback(() => {
     if (deleteTargets === null) return;
 
@@ -495,6 +498,7 @@ export default function MindmapView() {
     onConvertToFlow: onConvertToFlowKey,
     onExtendSelection: extendSelection,
     onToggleBacklog: toggleBacklog,
+    onCycleAgentic: cycleAgentic,
     findNodeById,
   });
   const targetPos = dragTargetId !== null ? positions.get(dragTargetId) : undefined;

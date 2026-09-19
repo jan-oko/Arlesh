@@ -44,3 +44,21 @@ export function storedAgenticState(flag: boolean | null | undefined): TaskAgenti
   if (flag === null || flag === undefined) return TASK_AGENTIC.INHERIT;
   return flag ? TASK_AGENTIC.YES : TASK_AGENTIC.NO;
 }
+
+/**
+ * The state one press of the Agentic key moves to: **Inherit → Agentic → Not agentic → Inherit**.
+ *
+ * A cycle rather than a switch, because the flag has three states and the key has to reach all of
+ * them — the two-state Backlog toggle it is modelled on has nothing to choose here. The order puts
+ * *Agentic* one press from where every Task starts, since marking work agentic is the thing the key
+ * exists for; *Not agentic* follows because it is the rarer answer, wanted only to carve a single
+ * Task back out of an agentic branch.
+ *
+ * Closing the cycle is the point: every state is one to three presses from every other, so the key
+ * can always undo itself and no state it reaches needs the editor to leave.
+ */
+export function nextAgenticState(current: TaskAgentic): TaskAgentic {
+  if (current === TASK_AGENTIC.INHERIT) return TASK_AGENTIC.YES;
+  if (current === TASK_AGENTIC.YES) return TASK_AGENTIC.NO;
+  return TASK_AGENTIC.INHERIT;
+}

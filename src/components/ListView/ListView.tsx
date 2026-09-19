@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useListData } from "@/hooks/use-list-data";
 import { useTaskBacklog } from "@/hooks/use-task-backlog";
+import { useTaskAgentic } from "@/hooks/use-task-agentic";
 import { useCommitmentVerdict } from "@/hooks/use-commitment-verdict";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { findNode } from "@/utils/mindmap-tree";
@@ -66,6 +67,11 @@ export default function ListView() {
   const showToast = useMindmapStore((s) => s.showToast);
   const clearToast = useMindmapStore((s) => s.clearToast);
   const { toggleBacklog, planPrompt, confirmClearPlan, cancelPlanPrompt } = useTaskBacklog({
+    findNode: (id) => findNode(tree, id),
+    reload,
+    showToast,
+  });
+  const { cycleAgentic } = useTaskAgentic({
     findNode: (id) => findNode(tree, id),
     reload,
     showToast,
@@ -147,6 +153,7 @@ export default function ListView() {
     onToggleFilter: toggleFilterPopover,
     onSetStatusMode: handleSetStatusPreset,
     onToggleBacklog: toggleBacklog,
+    onCycleAgentic: cycleAgentic,
     onMarkKept: markKept,
     onMarkBroken: markBroken,
     onOpenSearch: () => setIsSearchOpen(true),

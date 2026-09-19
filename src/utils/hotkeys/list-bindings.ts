@@ -29,6 +29,8 @@ export interface ListContext {
   onExitToRoot: () => void;
   /** Puts the selected Task in the backlog, or takes it out. */
   onToggleBacklog: (id: string) => void;
+  /** Advances the selected Task one step around Inherit → Agentic → Not agentic. */
+  onCycleAgentic: (id: string) => void;
   /** Records that the selected Commitment was held to, or clears an existing Kept. */
   onMarkKept: (id: string) => void;
   /** Records that it was not, or clears an existing Broken. */
@@ -130,6 +132,15 @@ export const LIST_BINDINGS: readonly Binding<ListContext>[] = [
     labelKey: "toggleBacklog",
     when: (c) => c.selectedTaskId !== null,
     run: (c) => { if (c.selectedTaskId !== null) c.onToggleBacklog(c.selectedTaskId); },
+  },
+  {
+    // Bare A beside bare B, matching the Mindmap: a flag on the selected Task is a bare letter,
+    // Alt+letter is a status preset, and strict chord matching keeps A and Alt+A apart.
+    // Habit instances are turned away in the hook, exactly as Backlog turns them away.
+    id: "listView.cycleAgentic", section: "listView", chord: { code: "KeyA" },
+    labelKey: "cycleAgentic",
+    when: (c) => c.selectedTaskId !== null,
+    run: (c) => { if (c.selectedTaskId !== null) c.onCycleAgentic(c.selectedTaskId); },
   },
   {
     id: "listView.deselect", section: "listView", chord: { code: "Escape" },

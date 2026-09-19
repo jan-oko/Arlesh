@@ -53,6 +53,7 @@
   "backlogClearPlanAction": "Clear the plan and backlog it",
   "backlogFailed": "Backlog failed: {{message}}",
   "backlogClearedByPlan": "Taken out of the backlog — it is planned now.",
+  "agenticFailed": "Could not change the Agentic flag: {{message}}",
   "verdictFailed": "Could not record the verdict: {{message}}",
   "commitmentNeedsScopeHeading": "Over what window do you hold \"{{title}}\"?",
   "commitmentNeedsScopeBody": "A commitment is a rule held over a window, and nothing above this one has one — so there is no window for it to inherit. Give it one here, or cancel and leave it exactly as it is.",

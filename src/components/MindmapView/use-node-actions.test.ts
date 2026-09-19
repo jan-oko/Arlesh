@@ -7,6 +7,8 @@ import { CLIPBOARD_OP } from "@/stores/use-mindmap-store";
 vi.mock("@/api/tasks", () => ({
   updateTask: vi.fn().mockResolvedValue({ id: 1, status: "in_progress" }),
   TASK_STATUS: { TODO: "todo", IN_PROGRESS: "in_progress", DONE: "done" },
+  // Read through `storedAgenticState`, which onCreateSibling uses to seed the new sibling.
+  TASK_AGENTIC: { INHERIT: "inherit", YES: "yes", NO: "no" },
 }));
 
 vi.mock("@/api/goals", () => ({
@@ -51,11 +53,16 @@ const HABIT_GOAL_DONE = mkNode("habititem-flow_goal-9-0-virtual", "goal", [], {
 const HABIT_TASK_IP = mkNode("habititem-flow_task-7-0-virtual", "task", [], {
   status: "in_progress", virtual: true, habitItem: { flowId: 3, itemType: "flow_task", itemId: 7, scopeId: 100 },
 });
+// A task that answered the Agentic question itself, and one that only reads as agentic because an
+// ancestor does — the pair that tells "copy the stored column" apart from "copy what it resolves to".
+const TASK_AGENTIC_YES = mkNode("task-10", "task", [], { status: "todo", agentic: true });
+const TASK_AGENTIC_NO = mkNode("task-11", "task", [], { status: "todo", agentic: false });
+const TASK_INHERITS_YES = mkNode("task-12", "task", [], { status: "todo", agentic: null, inheritedAgentic: true });
 const COMMITMENT_NODE = mkNode("commitment-7", "commitment", [], { verdict: "kept" });
 const FLOW_TASK_NODE = mkNode("flowtask-4", "flow_task");
 const FLOW_NODE = mkNode("flow-1", "flow", [FLOW_TASK_NODE]);
 const FLOW_NODE_2 = mkNode("flow-2", "flow", []);
-const PROJECT = mkNode("domain-3", "project", [TASK_NODE, TASK_DONE, GOAL_NODE, GOAL_ACHIEVED, ASPECT, HABIT_ITER, HABIT_DONE, HABIT_ITEM, HABIT_GOAL_DONE, HABIT_TASK_IP, COMMITMENT_NODE, FLOW_NODE, FLOW_NODE_2]);
+const PROJECT = mkNode("domain-3", "project", [TASK_NODE, TASK_DONE, GOAL_NODE, GOAL_ACHIEVED, ASPECT, HABIT_ITER, HABIT_DONE, HABIT_ITEM, HABIT_GOAL_DONE, HABIT_TASK_IP, TASK_AGENTIC_YES, TASK_AGENTIC_NO, TASK_INHERITS_YES, COMMITMENT_NODE, FLOW_NODE, FLOW_NODE_2]);
 const ROOT = mkNode("root", "domain", [PROJECT]);
 
 function makeOpts(overrides: Partial<Parameters<typeof useNodeActions>[0]> = {}) {
@@ -413,8 +420,46 @@ describe("useNodeActions — onCreateSibling", () => {
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onCreateSibling("task-5"); });
     await vi.waitFor(() =>
-      expect(opts.createNode).toHaveBeenCalledWith("domain-3", "project", "task", ""),
+      expect(opts.createNode).toHaveBeenCalledWith("domain-3", "project", "task", "", "inherit"),
     );
     expect(opts.selectNode).toHaveBeenCalledWith("task-99");
+  });
+
+  it("carries the source task's own Agentic flag onto the sibling", async () => {
+    const opts = makeOpts({ createNode: vi.fn().mockResolvedValue(mkNode("task-99", "task")) });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onCreateSibling("task-10"); });
+    await vi.waitFor(() =>
+      expect(opts.createNode).toHaveBeenCalledWith("domain-3", "project", "task", "", "yes"),
+    );
+  });
+
+  it("carries an explicit Not agentic over too — it is an answer, not an absence", async () => {
+    const opts = makeOpts({ createNode: vi.fn().mockResolvedValue(mkNode("task-99", "task")) });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onCreateSibling("task-11"); });
+    await vi.waitFor(() =>
+      expect(opts.createNode).toHaveBeenCalledWith("domain-3", "project", "task", "", "no"),
+    );
+  });
+
+  it("copies the stored flag, not the resolved one: a source that merely inherits yes stays unset", async () => {
+    const opts = makeOpts({ createNode: vi.fn().mockResolvedValue(mkNode("task-99", "task")) });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onCreateSibling("task-12"); });
+    // "inherit", never "yes" — freezing the inherited value here would cut the sibling off from
+    // the ancestor deciding for it, and the ordinary downward rule already gives it that yes.
+    await vi.waitFor(() =>
+      expect(opts.createNode).toHaveBeenCalledWith("domain-3", "project", "task", "", "inherit"),
+    );
+  });
+
+  it("sends no Agentic seed for a kind that has no such flag", async () => {
+    const opts = makeOpts({ createNode: vi.fn().mockResolvedValue(mkNode("goal-99", "goal")) });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onCreateSibling("goal-2"); });
+    await vi.waitFor(() =>
+      expect(opts.createNode).toHaveBeenCalledWith("domain-3", "project", "goal", "", undefined),
+    );
   });
 });

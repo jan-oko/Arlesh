@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isAgentic, propagateAgentic, storedAgenticState } from "./agentic";
+import { isAgentic, propagateAgentic, storedAgenticState, nextAgenticState } from "./agentic";
 import type { MindmapNode, NodeKind } from "./tree-layout";
 
 function n(id: string, kind: NodeKind, extra: Partial<MindmapNode> = {}): MindmapNode {
@@ -101,5 +101,37 @@ describe("storedAgenticState", () => {
   it("reads the two stored answers as themselves", () => {
     expect(storedAgenticState(true)).toBe("yes");
     expect(storedAgenticState(false)).toBe("no");
+  });
+});
+
+describe("nextAgenticState", () => {
+  it("puts Agentic one press from where every task starts", () => {
+    expect(nextAgenticState("inherit")).toBe("yes");
+  });
+
+  it("offers the explicit override next, for carving a task out of an agentic branch", () => {
+    expect(nextAgenticState("yes")).toBe("no");
+  });
+
+  it("closes back to Inherit rather than dead-ending", () => {
+    expect(nextAgenticState("no")).toBe("inherit");
+  });
+
+  it("returns to the starting state in three presses, from any of them", () => {
+    const thrice = (from: Parameters<typeof nextAgenticState>[0]) =>
+      nextAgenticState(nextAgenticState(nextAgenticState(from)));
+    expect(thrice("inherit")).toBe("inherit");
+    expect(thrice("yes")).toBe("yes");
+    expect(thrice("no")).toBe("no");
+  });
+
+  it("reaches all three states, so none is a trap the editor has to get you out of", () => {
+    const seen = new Set(["inherit"]);
+    let state: Parameters<typeof nextAgenticState>[0] = "inherit";
+    for (let i = 0; i < 3; i++) {
+      state = nextAgenticState(state);
+      seen.add(state);
+    }
+    expect(seen).toEqual(new Set(["inherit", "yes", "no"]));
   });
 });

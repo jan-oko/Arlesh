@@ -4,6 +4,8 @@ import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { findNode, findParent, collectAllNodeIds } from "@/utils/mindmap-tree";
 import { isValidDropTarget } from "@/utils/node-meta";
 import { updateTask } from "@/api/tasks";
+import type { TaskAgentic } from "@/api/tasks";
+import { storedAgenticState } from "@/utils/agentic";
 import { updateGoal } from "@/api/goals";
 import { setHabitItemStatus } from "@/api/flows";
 import { TASK_STATUS, GOAL_STATUS } from "@/utils/status-mapping";
@@ -30,7 +32,8 @@ interface Options {
   onRequestDelete: (nodeIds: string[]) => void;
   reload: () => Promise<void>;
   renameNode: (id: string, kind: NodeKind, title: string) => Promise<void>;
-  createNode: (parentId: string, parentKind: NodeKind, childKind: NodeKind, title: string) => Promise<MindmapNode>;
+  /** `agentic` seeds a new Task's own flag; omitted, it starts in Inherit. */
+  createNode: (parentId: string, parentKind: NodeKind, childKind: NodeKind, title: string, agentic?: TaskAgentic) => Promise<MindmapNode>;
   createChild: (parentId: string, parentKind: NodeKind, title: string) => Promise<MindmapNode>;
   selectNode: (id: string | null) => void;
   setClipboard: (entry: ClipboardEntry | null) => void;
@@ -206,9 +209,18 @@ export function useNodeActions({
       if (node === undefined || node.kind === "aspect") return;
       const parent = findParent(tree, nodeId);
       if (parent === null || parent.id === "root") return;
+      // The sibling carries over the source Task's **own stored** Agentic flag. Sharing a parent
+      // already gives it whatever that parent has; what it would otherwise lose is the answer the
+      // source gave itself, so a Task you deliberately marked agentic used to produce a sibling
+      // that was not.
+      //
+      // The stored column, never `isAgentic`'s resolved value: copying what the source *reads as*
+      // would freeze an inherited "yes" into an explicit one on the sibling, quietly cutting it
+      // off from the ancestor that was deciding for it. An unset source stays unset here.
+      const agentic = node.kind === "task" ? storedAgenticState(node.agentic) : undefined;
       void (async () => {
         try {
-          const newNode = await createNode(parent.id, parent.kind, node.kind, "");
+          const newNode = await createNode(parent.id, parent.kind, node.kind, "", agentic);
           selectNode(newNode.id);
           setEditingNodeId(newNode.id);
         } catch (err) {

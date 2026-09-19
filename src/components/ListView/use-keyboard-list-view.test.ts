@@ -30,6 +30,7 @@ function baseOptions(overrides: Partial<Parameters<typeof useKeyboardListView>[0
     onExitSubtree: vi.fn(),
     onExitToRoot: vi.fn(),
     onToggleBacklog: vi.fn(),
+    onCycleAgentic: vi.fn(),
     onMarkKept: vi.fn(),
     onMarkBroken: vi.fn(),
     ...overrides,
@@ -97,6 +98,29 @@ describe("useKeyboardListView", () => {
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey("b");
     expect(options.onToggleBacklog).not.toHaveBeenCalled();
+  });
+
+  it("plain A cycles the selected row's Agentic flag without tripping the All preset", () => {
+    const options = baseOptions();
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    fireKey("a");
+    expect(options.onCycleAgentic).toHaveBeenCalledWith("task-1");
+    expect(options.onSetStatusMode).not.toHaveBeenCalled();
+  });
+
+  it("Alt+A still sets the All preset and leaves the Agentic flag alone", () => {
+    const options = baseOptions();
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    fireKey("a", { altKey: true });
+    expect(options.onSetStatusMode).toHaveBeenCalledWith("all");
+    expect(options.onCycleAgentic).not.toHaveBeenCalled();
+  });
+
+  it("plain A does nothing with no row selected", () => {
+    const options = baseOptions({ selectedTaskId: null });
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    fireKey("a");
+    expect(options.onCycleAgentic).not.toHaveBeenCalled();
   });
 
   it("ArrowDown/ArrowUp navigate the selection", () => {
