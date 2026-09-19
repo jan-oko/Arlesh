@@ -1,6 +1,8 @@
 {
   "undid": "Undid: {{gesture}}",
   "redid": "Redid: {{gesture}}",
+  "nothingToUndo": "Nothing to undo",
+  "nothingToRedo": "Nothing to redo",
   "undoFailed": "Couldn't undo: {{message}}",
   "redoFailed": "Couldn't redo: {{message}}",
   "changes": {

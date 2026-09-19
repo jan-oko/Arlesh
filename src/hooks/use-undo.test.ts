@@ -78,15 +78,34 @@ describe("useUndo", () => {
     });
   });
 
-  // Ctrl+Z with nothing to undo is not a mistake. A toast here would read like an error.
-  it("says nothing and redraws nothing when the stack is empty", async () => {
+  // Ctrl+Z with nothing to undo says so. It is a fact about the board, not a failure, so it is
+  // worded as one — but it does say something: a press that produces nothing at all reads as a
+  // dead key.
+  it("says there is nothing to undo when the stack is empty, and redraws nothing", async () => {
     vi.mocked(undo).mockResolvedValue(null);
 
     const { result } = renderUndo();
     act(() => result.current.onUndo());
 
-    await waitFor(() => expect(undo).toHaveBeenCalled());
-    expect(showToast).not.toHaveBeenCalled();
+    await waitFor(() => expect(showToast).toHaveBeenCalled());
+    expect(showToast).toHaveBeenCalledWith({
+      nodeId: UNDO_TOAST_ANCHOR,
+      message: "nothingToUndo",
+    });
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it("says there is nothing to redo when the redo stack is empty", async () => {
+    vi.mocked(redo).mockResolvedValue(null);
+
+    const { result } = renderUndo();
+    act(() => result.current.onRedo());
+
+    await waitFor(() => expect(showToast).toHaveBeenCalled());
+    expect(showToast).toHaveBeenCalledWith({
+      nodeId: UNDO_TOAST_ANCHOR,
+      message: "nothingToRedo",
+    });
     expect(reload).not.toHaveBeenCalled();
   });
 

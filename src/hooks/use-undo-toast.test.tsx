@@ -70,14 +70,22 @@ describe("the undo toast", () => {
     await waitFor(() => expect(screen.getByText("Redid: paste 5 nodes")).toBeInTheDocument());
   });
 
-  it("shows nothing at all when there was nothing to undo", async () => {
+  it("says there is nothing to undo when the stack is empty", async () => {
     vi.mocked(undo).mockResolvedValue(null);
 
     render(<Board press="undo" />);
     screen.getByTestId("press").click();
 
-    await waitFor(() => expect(undo).toHaveBeenCalled());
-    expect(useMindmapStore.getState().pendingToast).toBeNull();
+    await waitFor(() => expect(screen.getByText("Nothing to undo")).toBeInTheDocument());
+  });
+
+  it("says there is nothing to redo when the redo stack is empty", async () => {
+    vi.mocked(redo).mockResolvedValue(null);
+
+    render(<Board press="redo" />);
+    screen.getByTestId("press").click();
+
+    await waitFor(() => expect(screen.getByText("Nothing to redo")).toBeInTheDocument());
   });
 
   it("says the undo was refused when the gesture could not be applied", async () => {
@@ -89,5 +97,31 @@ describe("the undo toast", () => {
     await waitFor(() =>
       expect(screen.getByText("Couldn't undo: the row is gone")).toBeInTheDocument(),
     );
+  });
+
+  // Both an empty stack and a refused apply now raise a toast, and the toast has one class and one
+  // tone — so the words are the only thing left telling the user which happened. An empty stack is
+  // a fact about the board; a refusal means the gesture is still sitting on the stack, unapplied.
+  it("words an empty stack and a refused apply differently", async () => {
+    vi.mocked(undo).mockResolvedValue(null);
+    const { unmount } = render(<Board press="undo" />);
+    screen.getByTestId("press").click();
+    await waitFor(() => expect(useMindmapStore.getState().pendingToast).not.toBeNull());
+    const empty = useMindmapStore.getState().pendingToast?.message;
+    unmount();
+
+    useMindmapStore.getState().clearToast();
+    vi.mocked(undo).mockRejectedValue({ kind: "database", message: "the row is gone" });
+    render(<Board press="undo" />);
+    screen.getByTestId("press").click();
+    await waitFor(() => expect(useMindmapStore.getState().pendingToast).not.toBeNull());
+    const refused = useMindmapStore.getState().pendingToast?.message;
+
+    expect(empty).toBe("Nothing to undo");
+    expect(refused).toBe("Couldn't undo: the row is gone");
+    expect(empty).not.toBe(refused);
+    // The refusal names a reason and reports something went wrong; the empty stack states a fact.
+    expect(refused).toContain("Couldn't");
+    expect(empty).not.toContain("Couldn't");
   });
 });

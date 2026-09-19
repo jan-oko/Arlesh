@@ -51,8 +51,10 @@ function phraseGesture(summary: GestureSummary, t: TFunction<"undo">): string {
  * Three outcomes, and they must not look alike:
  *
  * - A Gesture came back — say what it was and reload.
- * - `null` came back — the stack was empty. Nothing happened, nothing is said. Pressing Ctrl+Z
- *   with nothing to undo is not a mistake and must not flash like one.
+ * - `null` came back — the stack was empty. Say so and reload nothing: there is nothing to draw.
+ *   "Nothing to undo" is a statement of fact about the board, not a failure, and its wording has to
+ *   stay clear of the refusal's below. The toast carries no severity of its own — one class, one
+ *   tone — so the words are the only thing keeping the two apart.
  * - It rejected — the Gesture could not be applied, the board is untouched and the Gesture is still
  *   on the stack. Say so, and do not reload: there is nothing new to draw.
  *
@@ -72,7 +74,13 @@ export function useUndo({ reload, showToast }: Options): UndoActions {
       const reverse = direction === "undo" ? undo : redo;
       void reverse()
         .then(async (summary: GestureSummary | null) => {
-          if (summary === null) return;
+          if (summary === null) {
+            showToast({
+              nodeId: UNDO_TOAST_ANCHOR,
+              message: direction === "undo" ? t("nothingToUndo") : t("nothingToRedo"),
+            });
+            return;
+          }
           const gesture = phraseGesture(summary, t);
           const message = direction === "undo" ? t("undid", { gesture }) : t("redid", { gesture });
           showToast({ nodeId: UNDO_TOAST_ANCHOR, message });

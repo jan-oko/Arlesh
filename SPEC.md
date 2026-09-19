@@ -588,18 +588,37 @@ when an undo returns that id.
 
 ### What the user sees
 
-An undo is never silent. A Gesture that comes back raises the app's existing anchored notice,
-naming what was reversed: **"Undid: paste 5 nodes"** from the name the Gesture was opened with, or
-**"Undid: update 1 item"** from the row counts when nobody named it. A redo says **"Redid: …"** of
-the same phrase — the toast names the Gesture, not the direction of travel. The board then reloads
-the way every other mutation already ends.
+**Every press says something.** A Gesture that comes back raises the app's existing anchored
+notice, naming what was reversed: **"Undid: paste 5 nodes"** from the name the Gesture was opened
+with, or **"Undid: update 1 item"** from the row counts when nobody named it. A redo says
+**"Redid: …"** of the same phrase — the toast names the Gesture, not the direction of travel. The
+board then reloads the way every other mutation already ends.
 
-The three outcomes must not look alike. An **empty stack** is silent: nothing happened, and Ctrl+Z
-with nothing to undo is not a mistake. A **refused apply** — the whole replay runs in one
-transaction, so the board is untouched and the Gesture is still on the stack — says **"Couldn't
-undo: …"** and reloads nothing. Only a Gesture that was actually applied redraws anything.
-`undo_status` exists to label and disable a control and is never consulted before a keystroke; the
-backend handles an empty stack itself, so asking first would buy nothing but a round trip.
+The other two outcomes also speak, and the three must not look alike:
+
+| outcome | undo | redo | reloads |
+|---|---|---|---|
+| applied | `Undid: paste 5 nodes` | `Redid: paste 5 nodes` | yes |
+| empty stack | `Nothing to undo` | `Nothing to redo` | no |
+| refused apply | `Couldn't undo: …` | `Couldn't redo: …` | no |
+
+An **empty stack** is not a failure: nothing was wrong, there was simply nothing there, and the
+message is a statement of fact about the board. A **refused apply** is a failure — the whole replay
+runs in one transaction, so the board is untouched and the Gesture is **still on the stack**, and
+the same press will work once whatever blocked it is gone. The anchored notice has one class and
+one tone, with no severity channel of its own, so the wording is the only thing holding those two
+apart: the refusal names a reason after a colon and says something could not be done, while the
+empty stack states a fact and carries no reason because there is none.
+
+Only a Gesture that was actually applied redraws anything. `undo_status` exists to label and
+disable a control and is never consulted before a keystroke; the backend handles an empty stack
+itself, so asking first would buy nothing but a round trip and a window for the answer to go stale.
+
+> An earlier draft of this design had the empty stack produce nothing at all, on the reasoning that
+> Ctrl+Z with nothing to undo is not a mistake and should not flash like one. That was revised in
+> review: a press that produces no response at all is indistinguishable from a dead key or a
+> shortcut that never registered, which is a worse failure than the one the silence avoided. The
+> distinction the silence was protecting is now carried by the wording instead.
 
 Both bindings are declared in the shared hotkey registry for **both views**, so the cheat-sheet
 lists them without being told twice, and they are suppressed exactly as every other view binding
