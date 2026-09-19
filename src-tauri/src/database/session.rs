@@ -27,6 +27,7 @@ use crate::infos::InfoOperator;
 use crate::knowledge_base::{EventOperator, PersonOperator, ThreadOperator};
 use crate::scopes::ScopeOperator;
 use crate::tasks::{GoalOperator, TaskOperator};
+use crate::undo::UndoOperator;
 
 /// Makes [`SessionMode`] sealed: only this module can name it, so only this module can add a
 /// session mode. There are two, and there is no third for anyone to invent.
@@ -196,6 +197,15 @@ impl<M: SessionMode> Db<M> {
     /// Knowledge-base threads.
     pub fn threads(&mut self) -> ThreadOperator<'_> {
         ThreadOperator::new(self.connection())
+    }
+
+    /// The Undo Journal's ambient context and lifecycle.
+    ///
+    /// Unlike its siblings this operator owns no board resource: the journal's *rows* are written
+    /// by triggers, and what is reachable here is the context those triggers read. See
+    /// [`crate::undo`].
+    pub fn undo(&mut self) -> UndoOperator<'_> {
+        UndoOperator::new(self.connection())
     }
 }
 

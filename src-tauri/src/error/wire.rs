@@ -6,6 +6,7 @@ use serde::Serialize;
 use crate::{
     domains::error::DomainError, error::AppError, flows::error::FlowError,
     knowledge_base::error::KnowledgeBaseError, scopes::error::ScopeError, tasks::error::TaskError,
+    undo::error::UndoError,
 };
 
 /// Stable, machine-readable classification of a [`WireError`].
@@ -128,8 +129,22 @@ fn kind_of(error: &AppError) -> WireErrorKind {
         AppError::Scope(inner) => scope_kind(inner),
         AppError::KnowledgeBase(inner) => knowledge_base_kind(inner),
         AppError::Flow(inner) => flow_kind(inner),
+        AppError::Undo(inner) => undo_kind(inner),
         AppError::Database(sqlx::Error::RowNotFound) => WireErrorKind::NotFound,
         AppError::Database(_) => WireErrorKind::Database,
+    }
+}
+
+/// Maps an [`UndoError`] variant to its [`WireErrorKind`].
+fn undo_kind(error: &UndoError) -> WireErrorKind {
+    match error {
+        // The request itself is malformed: a close with no matching open. The caller's gesture
+        // pairing is wrong, and it is the caller that can fix it.
+        UndoError::NoGestureOpen => WireErrorKind::InvalidRequest,
+        // A `source` no `WriteSource` names can only have been written from outside this crate,
+        // so it is persisted data the app cannot interpret rather than anything the caller sent.
+        UndoError::UnknownWriteSource(_) => WireErrorKind::Internal,
+        UndoError::Database(_) => WireErrorKind::Database,
     }
 }
 
@@ -525,5 +540,25 @@ mod tests {
             Some(&serde_json::json!("invalid date: bad input"))
         );
         assert!(!object.contains_key("details"));
+    }
+
+    #[test]
+    fn an_unmatched_gesture_close_is_an_invalid_request_and_an_unreadable_source_is_internal() {
+        use crate::undo::error::UndoError;
+
+        assert_eq!(
+            WireError::from_error(UndoError::NoGestureOpen).kind,
+            WireErrorKind::InvalidRequest,
+            "a close with no open is the caller's pairing, which the caller can fix"
+        );
+        assert_eq!(
+            WireError::from_error(UndoError::UnknownWriteSource("scheduler".into())).kind,
+            WireErrorKind::Internal,
+            "a source no WriteSource names is unreadable persisted data, not a bad request"
+        );
+        assert_eq!(
+            WireError::from_error(UndoError::Database(sqlx::Error::RowNotFound)).kind,
+            WireErrorKind::Database
+        );
     }
 }
