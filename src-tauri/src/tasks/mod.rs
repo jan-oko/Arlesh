@@ -1386,6 +1386,7 @@ fn dependency_parts(dependency: &Dependency) -> (&'static str, i64) {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
     use crate::tasks::model::Dependency;

@@ -213,6 +213,7 @@ fn classify_blocking_all_pending(
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
 

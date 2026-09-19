@@ -395,6 +395,7 @@ pub async fn conflicts_for_new_time_scope<M: SessionMode>(
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
     use chrono::NaiveDate;

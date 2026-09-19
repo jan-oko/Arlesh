@@ -1562,6 +1562,7 @@ fn domain_subtype(kind: RetypeKind) -> DomainSubtype {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
     use crate::tasks::model::DurationSpec;

@@ -2,26 +2,32 @@ name: Coverage (llvm measurement — THROWAWAY)
 
 # Temporary. Delete before PR #20 merges.
 #
-# Measures LLVM source-based coverage against the ptrace run this PR already
-# proved green (20m40s cold, 90.96%, 3442/3784 lines). Three things are being
-# measured, not one:
+# Third and last measurement. What the first two established, all on 4958811:
 #
-#   1. Wall time of the run phase. Tarpaulin's ptrace engine sets an INT3
-#      breakpoint on every coverable line, then on each first hit disables it,
-#      single-steps, and re-enables it. With `-Clink-dead-code` (tarpaulin's
-#      default) every test binary links the whole 560-crate tree, so that cost
-#      scales with the dependency graph, not with this project: 18 binaries x
-#      ~24.5s of flat setup = 441s of the 480s run phase, around 38.8s of which
-#      was actual test execution. Source-based instrumentation has no per-binary
-#      setup at all; the binary writes counters to a .profraw on exit.
-#   2. The percentage. It will NOT be 90.96%. LLVM counts regions and maps them
-#      back to lines, and cargo-llvm-cov ignores `tests/` by default. The floor
-#      of 90 is a policy number calibrated against one tool; moving tools means
-#      re-reading it off a known-good tree once, which is what this run is for.
-#   3. Whether "Reclaim runner disk" is load-bearing. It is deliberately absent
-#      here and `df -h /` is printed after the run instead. On three identical
-#      tarpaulin runs it cost 75s, 3m40s and 32s to protect against a shortfall
-#      that never came within 14 GB of happening.
+#   ptrace                 91.01%  3442/3782   run phase 159s   correct
+#   tarpaulin --engine llvm 89.44%  3083/3447   run phase  45s   WRONG
+#   cargo llvm-cov         96.29%     — /7281   run phase  20s   correct, inflated
+#
+# Tarpaulin's llvm engine is not a stricter ruler, it loses data: on
+# src/infos/mod.rs it reports 17/74 where ptrace watched 74/74 run and
+# cargo-llvm-cov independently says 100%, with an identical denominator. Same
+# for src/block_reasons/mod.rs at 10/41 against 40/41. Neither file contains a
+# single inline `#[cfg(test)]` block, so no test-code accounting is involved —
+# it is dropped profraw data, which its README warns about for fork and threads.
+# A floor of 89 would have written that bug into the gate.
+#
+# cargo-llvm-cov is correct but counts inline `#[cfg(test)] mod tests` bodies as
+# source: files with no inline tests come out SMALLER than tarpaulin
+# (infos/mod.rs 38 vs 74), files with large ones come out several times LARGER
+# (flows/render.rs 449 vs 65). Hence 7281 against 3782, roughly half of it test
+# code that is 100% covered by construction and cannot regress.
+#
+# This run applies the fix taiki-e/cargo-llvm-cov#123 recommends —
+# `#[cfg_attr(coverage_nightly, coverage(off))]` on all 17 test modules — and
+# reports the denominator and percentage that result. `#[coverage(off)]` is
+# still E0658 on rustc 1.96.0 (stabilised in rust-lang/rust#130766, reverted in
+# #134672), so the report needs nightly. The attribute compiles away on stable,
+# so `cargo test` and `cargo build` stay on 1.96 and are unaffected.
 
 on:
   pull_request:
@@ -42,15 +48,12 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
-  llvm-cov:
-    name: cargo llvm-cov (measurement)
+  llvm-cov-nightly:
+    name: cargo +nightly llvm-cov (measurement)
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
-
-      - name: Show starting disk
-        run: df -h /
 
       - name: Install Tauri's Linux system dependencies
         run: |
@@ -63,15 +66,13 @@ jobs:
             libayatana-appindicator3-dev \
             libssl-dev
 
-      # Source-based coverage needs llvm-profdata and llvm-cov, which ship in
-      # this rustup component and must match the compiler that instrumented the
-      # binaries. Using the system LLVM instead is the usual way to get a
-      # "malformed instrumentation profile data" failure.
-      - name: Install llvm-tools-preview
+      # Nightly is needed only to make `coverage(off)` legal. llvm-tools must
+      # come from the same toolchain that instruments the binaries, or the
+      # profiles fail to merge.
+      - name: Install nightly with llvm-tools
         run: |
-          rustup component add llvm-tools-preview
-          rustc --version
-          cargo --version
+          rustup toolchain install nightly --profile minimal --component llvm-tools-preview
+          rustup run nightly rustc --version
 
       - uses: taiki-e/install-action@v2
         with:
@@ -80,110 +81,46 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-          shared-key: llvm-cov
+          shared-key: llvm-cov-nightly
 
       - name: Stub the frontend bundle
         run: |
           mkdir -p dist
           printf '<!doctype html><title>arlesh ci</title>' > dist/index.html
 
-      # Drops stale .profraw and the workspace crate's own artifacts, leaving the
-      # cached dependency build alone. Without it a warm cache can mix counters
-      # from two different versions of the same function.
+      # Proves the annotation is inert on the pinned stable toolchain — if this
+      # step fails, the change is not safe to keep regardless of the coverage
+      # numbers, because it would have broken the build for everyone.
+      - name: Stable still compiles with the annotations
+        working-directory: src-tauri
+        run: cargo check --locked --all-targets
+
       - name: llvm-cov clean
         working-directory: src-tauri
-        run: cargo llvm-cov clean --workspace
+        run: cargo +nightly llvm-cov clean --workspace
 
-      # Split from the report so the build+test phase can be compared directly
-      # against tarpaulin's 480.2s run phase.
       - name: Build and run instrumented tests
         working-directory: src-tauri
-        run: cargo llvm-cov --locked --no-report
+        run: cargo +nightly llvm-cov --locked --no-report
 
       - name: Report
         working-directory: src-tauri
         run: |
           set -o pipefail
-          cargo llvm-cov report \
+          cargo +nightly llvm-cov report \
             --summary-only \
             --ignore-filename-regex '(^|/)src/commands/' \
-            2>&1 | tee "$RUNNER_TEMP/llvm-cov.log"
+            2>&1 | tee "$RUNNER_TEMP/llvm-cov-nightly.log"
 
       - name: Summarise
         if: always()
         run: |
           {
-            echo '### cargo llvm-cov'
+            echo '### cargo +nightly llvm-cov, test modules excluded'
             echo '```'
-            tail -20 "$RUNNER_TEMP/llvm-cov.log" 2>/dev/null || echo 'no report'
+            tail -6 "$RUNNER_TEMP/llvm-cov-nightly.log" 2>/dev/null || echo 'no report'
             echo '```'
-            echo '### Disk after the run (no reclaim step)'
-            echo '```'
-            df -h /
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-
-  tarpaulin-llvm:
-    name: cargo tarpaulin --engine llvm (measurement)
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Install Tauri's Linux system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libwebkit2gtk-4.1-dev \
-            libgtk-3-dev \
-            librsvg2-dev \
-            libxdo-dev \
-            libayatana-appindicator3-dev \
-            libssl-dev
-
-      - name: Install llvm-tools-preview
-        run: rustup component add llvm-tools-preview
-
-      - name: Install cargo-tarpaulin
-        run: |
-          curl -fsSL \
-            "https://github.com/xd009642/tarpaulin/releases/download/0.35.5/cargo-tarpaulin-x86_64-unknown-linux-musl.tar.gz" \
-            | tar -xz -C "$HOME/.cargo/bin"
-          cargo tarpaulin --version
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
-          shared-key: tarpaulin-llvm
-
-      - name: Stub the frontend bundle
-        run: |
-          mkdir -p dist
-          printf '<!doctype html><title>arlesh ci</title>' > dist/index.html
-
-      # The point of this job. Same tool, same --ignore-tests default, same
-      # --exclude-files, same denominator as the 90.96%/3442-of-3784 run this PR
-      # already has — only the engine changes. If the percentage comes back at
-      # 90.96% the floor of 90 transfers untouched, which cargo-llvm-cov's
-      # 96.29% does not: llvm-cov counts inline `#[cfg(test)] mod tests` bodies
-      # as source, so its denominator is 7281 lines against tarpaulin's 3784 and
-      # roughly half of it is test code that is 100% covered by construction.
-      - name: cargo tarpaulin --engine llvm
-        working-directory: src-tauri
-        run: |
-          set -o pipefail
-          cargo tarpaulin \
-            --engine llvm \
-            --skip-clean \
-            --exclude-files 'src/commands/*' \
-            2>&1 | tee "$RUNNER_TEMP/tarpaulin-llvm.log"
-
-      - name: Summarise
-        if: always()
-        run: |
-          {
-            echo '### tarpaulin --engine llvm'
-            echo '```'
-            grep -E '[0-9.]+% coverage' "$RUNNER_TEMP/tarpaulin-llvm.log" | tail -1 || echo 'no coverage line'
-            echo '```'
+            echo 'For comparison, same commit:'
+            echo '- ptrace                  91.01%  3442/3782'
+            echo '- cargo llvm-cov, stable  96.29%     -/7281  (test bodies counted)'
           } >> "$GITHUB_STEP_SUMMARY"

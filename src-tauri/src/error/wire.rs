@@ -196,6 +196,7 @@ fn flow_kind(error: &FlowError) -> WireErrorKind {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::{WireError, WireErrorKind};
     use crate::{

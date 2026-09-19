@@ -122,6 +122,7 @@ pub fn resolve(scope: &Scope, now: NaiveDateTime) -> Result<ResolvedScope, Scope
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
 

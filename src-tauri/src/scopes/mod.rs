@@ -363,6 +363,7 @@ fn season_start_month_and_year(date: NaiveDate) -> (u32, i32) {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
     use chrono::NaiveDate;

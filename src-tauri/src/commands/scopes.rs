@@ -108,6 +108,7 @@ pub async fn resolve_scope(
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
 
