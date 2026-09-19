@@ -363,6 +363,23 @@ filter dimensions" → seven). It never reached a release, so they were made to 
 rather than carrying a `Removed` note for something no user ever had. Agent also caught `README.md`,
 which my file map missed.
 
+## Standing rule: no audits or sweeps without approval (2026-09-19)
+
+User: *"Let's focus on the commitments for now, no audits or sweeps without approval."*
+
+This constrains **briefs as much as my own work**. A brief that says "work out the full list rather
+than just removing X" is exactly the thing to avoid — that phrasing was mine, in the `cyo.5` brief,
+and it went out before the correction. Fix the named thing; report what else you noticed; let the
+user decide whether it becomes a bead.
+
+It also ends the unprompted repo-wide checks I had been running — the cross-PR conflict sweeps in
+particular. Those found real problems, but they were not asked for, and the same information is
+available on request. **Ask, or wait to be asked.**
+
+Not dispatching anything further while the focus is Commitments. The two agents already in flight
+(`atb`+`9xk`, and `npt`) were left running rather than killed, since stopping them discards work
+rather than saving any — but nothing new goes out.
+
 ## `#13` was not the problem — `#10` was (2026-09-19)
 
 User could not merge #13. It is clean: mergeable against its base, mergeable against master, no
@@ -389,10 +406,11 @@ User: *"no need for a status icon in the row below the node if the node icon its
 it. The badge was correct when the glyph was a plain seal — **the agent's own `cyo.4` is what made it
 redundant**, which is the ordinary cost of finishing a feature in stages rather than a mistake.
 
-Beaded as an audit, not a deletion: the user's phrasing is a general rule, so every indicator the row
-can show for a Commitment gets checked against what the glyph now encodes. `archived` is the one to
-scrutinise — a Commitment archived because its window passed is exactly what the struck-through glyph
-means. Explicitly out of scope: revisiting the glyph, and touching any other node kind.
+**I first beaded this as an audit — "check every indicator the row can show" — and the user cut it
+back**: *"no audits or sweeps without approval."* Narrowed to the fix asked for: the glyph carries
+the Verdict, so the row should not repeat it. If anything else turns out duplicated, the agent
+reports it and leaves it. Explicitly out of scope: revisiting the glyph, and touching any other node
+kind.
 
 One note in the bead worth keeping: **a badge carries hover text and a glyph does not.** If the row
 is the only place a Commitment's state is spelled out in words, that wording needs a home rather than
