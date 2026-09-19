@@ -363,6 +363,59 @@ filter dimensions" → seven). It never reached a release, so they were made to 
 rather than carrying a `Removed` note for something no user ever had. Agent also caught `README.md`,
 which my file map missed.
 
+## All seven PRs clean — merge order (2026-09-19)
+
+First green sweep of the run. Every open PR merges into its base without conflict.
+
+```
+#7  task-backlog        -> master
+#10 commitments         -> #7
+#13 commitment-glyphs   -> #10
+#19 backlog-loss-prompt -> #7
+#12 type-cycle-filter   -> master   (independent)
+#15 instance-start      -> master   (independent)
+#16 tabs                -> master   (independent)
+```
+
+**Merge child into parent first, then parent to master.** That rule is not stylistic — it is what
+PR #8 was lost to, and #11 alongside it. Concretely:
+
+1. **`#13 → #10`** — deepest first.
+2. **`#10 → #7` and `#19 → #7`** — both children of #7.
+3. **`#7 → master`** — carries all four.
+4. **`#12`, `#15`, `#16` → master** in any order.
+
+Do not merge #7 before #10, #13 and #19, or they strand exactly as #8 did.
+
+**One reconciliation is owed after #12 and #10 both land.** They have diverged on
+`validTypesForCycling`: #12 added a `hiddenKinds` parameter and split the body into a private
+`structurallyValidTypes`; #10 added the owning flow's Instance Type as a third parameter. **The cause
+was mine** — I told the Commitments agent that #12's refactor was already on master. It was not, and
+the agent verified rather than trusting me, which is the only reason it compiled. Whichever lands
+second will need the other's parameter threading through.
+
+### PR #13's merge — the design decision, made well
+
+The Commitments agent folded expiry *into* the commitment lifecycle rather than beside it:
+
+```
+const EXPIRED_LIFECYCLE: IterationLifecycle = { timing: "lapsed", archived: true };
+
+function workIterationLifecycle(past, done)          // "no expiry case, and cannot"
+function commitmentIterationLifecycle(past, expired, verdict) {
+  if (expired) return EXPIRED_LIFECYCLE;
+  ...
+}
+```
+
+The comment on `workIterationLifecycle` is the part that matters: *a Verdict Window belongs to the
+Commitment kind, so the backend derives `expired` only for a commitment Habit.* That closes the
+question with a reason instead of a branch. Supporting steps under an expired root inherit
+`EXPIRED_LIFECYCLE` too — a step under a rule nobody judged was not "missed" either.
+
+Gate on the merged result: **93 files / 1298 tests**, 20 Rust binaries, tarpaulin **91.24%**. I ran
+`cargo test` despite the change looking frontend-only, because that assumption is what broke #7.
+
 ## PR #10 — Commitments complete, all six beads (2026-09-18)
 
 `5f279bc`. Gate green: vitest **92 files / 1280 tests**, 20 Rust suites, tarpaulin **91.03%**. The
