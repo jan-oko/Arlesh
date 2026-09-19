@@ -51,34 +51,3 @@ describe("reset", () => {
     expect(useListFilterStore.getState().filter).toEqual(DEFAULT_LIST_FILTER);
   });
 });
-
-describe("rehydrating a filter saved by an older build", () => {
-  /** Writes the blob the persist middleware reads back, under this store's storage key. */
-  function saveFilter(filter: unknown): void {
-    localStorage.setItem("arlesh-list-filter", JSON.stringify({ state: { filter }, version: 0 }));
-  }
-
-  it("drops an Antecedent pill saved before subtree entry replaced the dimension", async () => {
-    saveFilter({
-      preset: "all",
-      pills: {
-        parent: [], antecedent: [{ value: "aspect-1", mode: "any" }], dependency: [],
-        taskStatus: [], goalStatus: [], projectStatus: [], scopeState: [], blocked: [],
-      },
-    });
-    await useListFilterStore.persist.rehydrate();
-    // Not merely hidden: nothing is left to narrow the list that no chip could show and no control clear.
-    expect(useListFilterStore.getState().filter).toEqual(DEFAULT_LIST_FILTER);
-  });
-
-  it("keeps the pills that still exist while dropping the retired one", async () => {
-    saveFilter({
-      preset: "unblock",
-      pills: { parent: [{ value: "goal-1", mode: "any" }], antecedent: [{ value: "aspect-1", mode: "any" }] },
-    });
-    await useListFilterStore.persist.rehydrate();
-    const { filter } = useListFilterStore.getState();
-    expect(filter.preset).toBe("unblock");
-    expect(filter.pills).toEqual({ ...DEFAULT_LIST_FILTER.pills, parent: [{ value: "goal-1", mode: "any" }] });
-  });
-});

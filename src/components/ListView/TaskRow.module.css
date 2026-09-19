@@ -36,6 +36,12 @@
   box-shadow: 0 0 0 1px var(--node-border-selected);
 }
 
+/* Held in the list only because it is selected: dimmed, so it reads as something the filter no longer
+   wants rather than as an ordinary match. Its status badges already say why. */
+.cardFocusExempt {
+  opacity: 0.45;
+}
+
 .statusButton {
   flex-shrink: 0;
   display: flex;

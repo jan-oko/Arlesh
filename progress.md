@@ -1713,7 +1713,7 @@ by construction — a third of the line metric and over half the region metric c
 `.claude/rules/rust.md` is amended accordingly.
 
 **The floor moved 90 → 94 because the unit changed**, not because standards did: tarpaulin counts
-DWARF statement lines, LLVM counts lines in coverage regions. 94 against a measured 95.25% leaves
+DWARF statement lines, LLVM counts lines within coverage regions. 94 against a measured 95.25% leaves
 ~72 lines of slack, against ~52 under the old arrangement. `--fail-under-lines` is **proven to fail
 as well as pass** — a floor of 99 exits 1, 94 exits 0 — so it gates rather than decorates.
 
@@ -2051,7 +2051,7 @@ it: the `pgrep -x cargo-tarpaulin` wait, the concurrent-corruption warning, and 
 about to be added to make that wait exclusive. Coverage is no longer something a laptop races over.
 
 **The floor is 94, not 90, and it must not be "restored".** The unit changed: tarpaulin counted
-DWARF statement lines, `cargo llvm-cov` counts lines in coverage regions. 94 against a measured
+DWARF statement lines, `cargo llvm-cov` counts lines within coverage regions. 94 against a measured
 95.25% leaves ~72 lines of slack where 90 against 90.96% left ~52 — it is slightly *tighter*, not
 looser. CI runs tests and coverage as one command because the coverage tool runs the suite:
 `cargo test --locked` under `cargo llvm-cov show-env`, then `cargo llvm-cov report
@@ -2094,3 +2094,70 @@ Six merge resolutions is not a thing to start unasked, and the conflict-resoluti
 is documented: four separate times a resolution needed a brace or comma that **neither side owned**,
 caught by `tsc` and `json.load` and never by reading the diff. Surfaced for a decision rather than
 swept.
+
+### Every open PR is current with master
+
+The split held: the CI session took the four relocation conflicts, I took #16 and #23. All seven now
+merge clean and carry `ci.yml`, so all seven get checks.
+
+| PR | merge | CI |
+|---|---|---|
+| #16 tabs | clean | green |
+| #21 ipc-clear | clean | green |
+| #22 undo-journal | clean | **red** — real gap, agent working it |
+| #23 focus-exemption | clean | running |
+| #24 typed-child-chords | clean | green |
+| #25 habit-cycle-scope | clean | green |
+| #26 task-agentic | clean | green |
+
+**The floor question is settled.** Master 95.25%, #25 95.41%, #26 95.29%, #21 95.25%, against a floor
+of **94**. Nothing written under the old tarpaulin-90 needs rework, and #25 is above master.
+
+**`git merge` raised conflicts for the easy cases and stayed silent on the ones that broke the
+build.** That is the through-line from every resolution today, in both languages:
+
+- #16: five conflicts resolved, no markers left — and `tsc` still found a duplicated
+  `useMindmapStore` import and a `FilterDisplay` mock missing a field master had added.
+- #23: `list-filter.ts` was an add/add where **both sides end mid-function** and the single closing
+  brace in the common suffix belongs to whichever lands last. Concatenating would have nested
+  `filterCommitmentList` inside `rowPassesFilters`. Fifth instance of that exact trap.
+- The CI session hit it twice from the other side: a file calling a `null_clears` that one branch had
+  deleted and another still called by its bare name — **merged with no conflict at all** — and test
+  bodies concatenated into the wrong scope.
+
+**The rule that follows, now in the brief template:** on a Rust branch,
+`cargo check --locked --all-targets` before pushing; on a TS branch, `tsc`. The absence of conflict
+markers is not evidence.
+
+**Two resolutions were semantic, not mechanical, and are worth reading as a pair.**
+
+`filter-tree.ts` — master threaded an `underBacklog` argument through the very recursion #23 had
+restructured into `pruneTree`/`exempt`. Kept the branch's shape, took master's parameter into it, so
+the exemption path and the canonical path evaluate the same backlog rule. `filterTree` still
+delegates with an empty exempt set, which makes every exemption branch dead for it — behaviour
+unchanged, as that PR promised.
+
+`ListView.tsx` — the one that only compiled after being understood. Master renamed the selection
+state to `selectedRowId` when Commitments became selectable rows, and turned `selectedTaskId` into a
+value **derived from `filteredRows`**. Feeding that into the focus exemption would be circular: it is
+non-null only for a row the filter already kept, and the exemption exists for the row your own edit
+just stopped matching. Keyed on the raw `selectedRowId`, with the reasoning in a comment so it is not
+"tidied" back.
+
+**Noticed, not built:** the Commitments band has no focus exemption. Marking a commitment Kept under
+Plan drops it out of the band under the cursor — the exact problem `Arlesh-792` was filed for, on a
+surface that did not exist when it was written. Left alone; it is the user's to price.
+
+**Instance startup, third failure of the day, same invisible cause.** `tabs` would not start:
+`migration 25 was previously applied but is missing in the resolved migrations`. Instances are seeded
+from the real board, which is at 25; the branch knew only 0024. The mirror image of this morning's
+`task-backlog` crash — that branch had *renumbered* a migration, this one had never *seen* one. Both
+were invisible because `launch()` reports success for a process that dies milliseconds later. Merging
+master into #16 fixed it; the instance has been up and clean since 19:42.
+
+**Correction: the floor gates `--fail-under-lines 94` — lines, not regions.** This file had it
+right all along; the error was in three agent briefs and in what was reported upward, where "94 on
+LLVM regions" was used as shorthand. The number is right and nothing operational changes. Caught by
+the `Arlesh-l25` agent reading `ci.yml:202` rather than taking its brief's word, which is exactly
+the behaviour the briefs ask for — and the first draft of this very correction got it wrong again by
+claiming the file was at fault.
