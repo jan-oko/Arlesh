@@ -522,6 +522,8 @@ export function buildTree(
         rootPlanKind: flow.root_plan_kind,
         rootPlanStart: flow.root_plan_start,
         rootPlanEnd: flow.root_plan_end,
+        verdictWindowN: flow.verdict_window_n,
+        verdictWindowKind: flow.verdict_window_kind,
       },
       tagIds: [],
       children: [],

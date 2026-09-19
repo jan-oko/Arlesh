@@ -264,6 +264,8 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
         root_plan_kind: data.rootPlanKind,
         root_plan_start: data.rootPlanStart,
         root_plan_end: data.rootPlanEnd,
+        verdict_window_n: data.verdictWindowN,
+        verdict_window_kind: data.verdictWindowKind,
         isPrivate: data.isPrivate,
       };
       // Persist the Recurrence for `targetId` after its flow row, so gap validation sees the new kind.

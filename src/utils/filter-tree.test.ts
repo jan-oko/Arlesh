@@ -146,7 +146,7 @@ describe("filterTree — status modes", () => {
 describe("filterTree — flows & habits", () => {
   const withFlow = (isHabit: boolean) =>
     n("root", "domain", {}, [
-      n("flow-1", "flow", { flow: { instanceType: "task", targetType: null, targetId: null, durationN: 1, durationKind: "week", windowPart: null, windowTimeStart: null, windowTimeEnd: null, isHabit, rootPlanKind: null, rootPlanStart: null, rootPlanEnd: null } }, [
+      n("flow-1", "flow", { flow: { instanceType: "task", targetType: null, targetId: null, durationN: 1, durationKind: "week", windowPart: null, windowTimeStart: null, windowTimeEnd: null, isHabit, rootPlanKind: null, rootPlanStart: null, rootPlanEnd: null, verdictWindowN: null, verdictWindowKind: null } }, [
         n("flowtask-1", "flow_task", {}),
       ]),
       n("task-1", "task", { status: "todo" }),

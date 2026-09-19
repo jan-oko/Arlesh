@@ -62,7 +62,7 @@ function targetSelectionFor(node: MindmapNode | null | undefined): TargetSelecti
 // A pristine flow used to seed the create editor before the flow is persisted.
 const BLANK_FLOW_NODE: MindmapNode = {
   id: "flow-new", kind: "flow", title: "", position: 0,
-  flow: { instanceType: "task", targetType: null, targetId: null, durationN: 1, durationKind: "week", windowPart: null, windowTimeStart: null, windowTimeEnd: null, isHabit: false, rootPlanKind: null, rootPlanStart: null, rootPlanEnd: null },
+  flow: { instanceType: "task", targetType: null, targetId: null, durationN: 1, durationKind: "week", windowPart: null, windowTimeStart: null, windowTimeEnd: null, isHabit: false, rootPlanKind: null, rootPlanStart: null, rootPlanEnd: null, verdictWindowN: null, verdictWindowKind: null },
   tagIds: [], children: [],
 };
 
@@ -191,6 +191,8 @@ export default function MindmapView() {
           rootPlanKind: flow.root_plan_kind,
           rootPlanStart: flow.root_plan_start,
           rootPlanEnd: flow.root_plan_end,
+          verdictWindowN: flow.verdict_window_n,
+          verdictWindowKind: flow.verdict_window_kind,
         },
         position: flow.position,
         tagIds: [],
@@ -248,6 +250,8 @@ export default function MindmapView() {
         root_plan_kind: data.rootPlanKind,
         root_plan_start: data.rootPlanStart,
         root_plan_end: data.rootPlanEnd,
+        verdict_window_n: data.verdictWindowN,
+        verdict_window_kind: data.verdictWindowKind,
       });
       setFlowCreateParent(null);
     },
