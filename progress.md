@@ -363,6 +363,41 @@ filter dimensions" → seven). It never reached a release, so they were made to 
 rather than carrying a `Removed` note for something no user ever had. Agent also caught `README.md`,
 which my file map missed.
 
+## `#13` was not the problem — `#10` was (2026-09-19)
+
+User could not merge #13. It is clean: mergeable against its base, mergeable against master, no
+branch protection, its one check green, and a strict fast-forward of #10 by two commits.
+
+**The block was #10, its base.** `worktree-task-backlog` moved when PR #19 merged into it, so #10
+went `CONFLICTING/DIRTY`, and GitHub surfaces a chain's state on the child. Three conflicts:
+`CHANGELOG.md`, `retype.rs`, `retype_commands.rs` — the last two substantive, since **#19 added
+`archival` to `SourceNode`, `Carried` and `lost_fields`** while #10 added Commitment as a retype
+kind. Both edit the same structures, and #19's invariant is that every column is either carried or
+named as lost, so a careless resolution there silently breaks the thing #19 exists to protect.
+
+Handed to the agent already in that worktree rather than resolved by me: it has 9 uncommitted files
+mid-`rhk`, and pushing underneath it would leave it reconciling a divergence with dirty state.
+
+**Worth remembering as a diagnostic**: a stacked PR reporting "unable to merge" is as likely to be
+its base as itself. Check the whole chain's `mergeable`/`mergeStateStatus`, not just the PR named.
+
+## `Arlesh-cyo.5` — the Verdict is stated twice
+
+User: *"no need for a status icon in the row below the node if the node icon itself indicates it."*
+
+`cyo.4` made the glyph carry the resolution; `StatusIconRow` still renders a `VerdictIcon` beneath
+it. The badge was correct when the glyph was a plain seal — **the agent's own `cyo.4` is what made it
+redundant**, which is the ordinary cost of finishing a feature in stages rather than a mistake.
+
+Beaded as an audit, not a deletion: the user's phrasing is a general rule, so every indicator the row
+can show for a Commitment gets checked against what the glyph now encodes. `archived` is the one to
+scrutinise — a Commitment archived because its window passed is exactly what the struck-through glyph
+means. Explicitly out of scope: revisiting the glyph, and touching any other node kind.
+
+One note in the bead worth keeping: **a badge carries hover text and a glyph does not.** If the row
+is the only place a Commitment's state is spelled out in words, that wording needs a home rather than
+a silent deletion.
+
 ## Standing rule: fix in the open PR (2026-09-19)
 
 User: *"If a feature has a bug or missing behaviour don't open a PR to it, instead update the
