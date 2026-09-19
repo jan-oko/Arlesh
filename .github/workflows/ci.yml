@@ -186,6 +186,14 @@ jobs:
         run: |
           set -o pipefail
           source <(cargo llvm-cov show-env --export-prefix)
+          # show-env sets the RUSTFLAGS and profile paths but NOT the target
+          # directory, so `cargo test` would build into target/debug while every
+          # `cargo llvm-cov` invocation uses target/llvm-cov-target. That split
+          # recompiled 384 crates on a cache that reported "full match: true",
+          # and it would have repeated every run: rust-cache does not overwrite
+          # an exact-key hit, so the second tree never gets saved.
+          export CARGO_TARGET_DIR="${CARGO_LLVM_COV_TARGET_DIR:?show-env did not export a target dir}"
+          echo "building in $CARGO_TARGET_DIR"
           cargo llvm-cov clean --workspace
           cargo test --locked
           cargo llvm-cov report \
