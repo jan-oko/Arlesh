@@ -36,7 +36,7 @@ use crate::domains::model::{
 use crate::error::AppError;
 use crate::infos::model::{CreateInfoRequest, InfoId, UpdateInfoRequest};
 use crate::tasks::model::{
-    CreateGoalRequest, CreateTaskRequest, GoalId, GoalStatus, TaskId, TaskStatus,
+    CreateGoalRequest, CreateTaskRequest, GoalId, GoalStatus, TaskAgentic, TaskId, TaskStatus,
     UpdateGoalRequest, UpdateTaskRequest,
 };
 
@@ -269,6 +269,10 @@ async fn clone_task(db: &mut Db<Transactional>, item: &PendingClone) -> Result<C
             // invariant `archival = Backlog => plan IS NULL`, because the original satisfies it
             // and both fields are copied from it together.
             archival: Some(original.archival),
+            // A copy is agentic if the original was, explicitly not agentic if the original said
+            // so, and inheriting if the original inherited — all three states copy, because all
+            // three are things the user may have said.
+            agentic: Some(TaskAgentic::from_column(original.agentic)),
         },
     )
     .await?;

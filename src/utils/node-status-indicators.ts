@@ -1,4 +1,5 @@
 import type { MindmapNode } from "@/utils/tree-layout";
+import { isAgentic } from "@/utils/agentic";
 
 /** The status badges that can appear in a node's indicator row, in display order. */
 export type StatusIndicatorType =
@@ -8,6 +9,7 @@ export type StatusIndicatorType =
   | "planned"
   | "frozen"
   | "backlog"
+  | "agentic"
   | "info"
   | "flowInstance"
   | "tags";
@@ -66,6 +68,12 @@ export function deriveStatusIndicators(node: MindmapNode): StatusIndicator[] {
   // a Frozen goal already gets under a forced Archived.
   if (node.backlogged === true) {
     indicators.push({ type: "backlog" });
+  }
+  // Read through `isAgentic`, so a Task that inherited the flag from an ancestor is badged exactly
+  // like one that carries it itself — the flag says the work suits an agent either way, and a
+  // branch marked in one edit would otherwise look unmarked everywhere below the node it was set on.
+  if (isAgentic(node)) {
+    indicators.push({ type: "agentic" });
   }
   // No verdict badge. A Commitment's glyph carries its Verdict itself — hollow while the answer
   // is owed, solid once given, cleft when broken, struck through when the Verdict Window ran out

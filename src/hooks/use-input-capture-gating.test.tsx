@@ -43,6 +43,7 @@ function View({ modalState, modalRenders }: { modalState: boolean; modalRenders:
     onExitSubtree: vi.fn(),
     onExitToRoot: vi.fn(),
     onToggleBacklog: vi.fn(),
+    onToggleAgentic: vi.fn(),
     onMarkKept: vi.fn(),
     onMarkBroken: vi.fn(),
     onToggleFullscreen: vi.fn(),

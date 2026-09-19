@@ -92,5 +92,11 @@
   "fieldVerdict": "Verdict",
   "fieldVerdictWindow": "Verdict window",
   "verdictWindowHint": "How long after the window closes you can still record a verdict. Left empty, it inherits the nearest commitment above it.",
-  "verdictWindowNone": "Inherited"
+  "verdictWindowNone": "Inherited",
+  "fieldAgentic": "Agentic",
+  "agenticInherit": "Inherit",
+  "agenticYes": "Agentic",
+  "agenticNo": "Not agentic",
+  "agenticInheritedOn": "Inherited from an agentic parent",
+  "agenticInheritedOff": "Nothing above this task is agentic"
 }

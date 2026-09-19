@@ -48,5 +48,10 @@
     "unresolved": "Unresolved",
     "kept": "Kept",
     "broken": "Broken"
+  },
+  "agenticLabel": "Agentic",
+  "agenticState": {
+    "agentic": "Agentic",
+    "not_agentic": "Not agentic"
   }
 }

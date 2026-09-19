@@ -18,6 +18,7 @@ fn goal(id: i64) -> SourceNode {
         plan: None,
         archival: None,
         delegate_to: None,
+        agentic: None,
         tag_ids: vec![],
         block_reasons: vec![],
         dependents: 0,
@@ -32,8 +33,15 @@ fn task(id: i64) -> SourceNode {
         status: Some("todo".into()),
         // Every stored Task has one; `Live` is the one nobody chose.
         archival: Some(TaskArchival::Live),
+        // Likewise: every Task has an Agentic state, and `Inherit` is the unchosen one.
+        agentic: Some(TaskAgentic::Inherit),
         ..goal(id)
     }
+}
+
+/// A Task explicitly flagged as agent work.
+fn agentic_task(id: i64) -> SourceNode {
+    SourceNode { agentic: Some(TaskAgentic::Yes), ..task(id) }
 }
 
 /// An unresolved commitment with no Verdict Window — the shape a freshly created one has.
@@ -1013,6 +1021,92 @@ fn a_task_nobody_set_aside_never_reports_a_lost_backlog() {
 
     assert!(!lost_field_names(&plan).contains(&"archival"));
     assert!(!plan.loses_anything());
+}
+
+// --- Agentic, a Task-only flag ---
+
+#[test]
+fn an_agentic_task_becoming_a_goal_names_the_flag_among_its_losses() {
+    // Only a Task can be agentic — a Goal is a desired state, not an action — so the flag
+    // goes, and the prompt says so rather than dropping what the user said.
+    let plan = plan_retype(&agentic_task(1), &[], RetypeKind::Goal);
+
+    assert_eq!(plan.carried.agentic, None, "the new goal carries no flag");
+    assert_eq!(
+        plan.lost_fields,
+        vec![LostField {
+            field: "agentic",
+            value: "yes".into()
+        }]
+    );
+    assert!(plan.loses_anything());
+}
+
+#[test]
+fn an_explicitly_unagentic_task_loses_just_as_much_as_a_flagged_one() {
+    // "Not agentic" is a real answer — it overrides an agentic ancestor — so losing it is a
+    // loss, exactly like losing the flag itself.
+    let refused = SourceNode { agentic: Some(TaskAgentic::No), ..task(1) };
+    let plan = plan_retype(&refused, &[], RetypeKind::Goal);
+
+    assert_eq!(
+        plan.lost_fields,
+        vec![LostField {
+            field: "agentic",
+            value: "no".into()
+        }]
+    );
+}
+
+#[test]
+fn an_agentic_task_loses_the_flag_to_every_kind_that_is_not_a_task() {
+    for target in [
+        RetypeKind::Goal,
+        RetypeKind::Commitment,
+        RetypeKind::Project,
+        RetypeKind::Domain,
+        RetypeKind::Tag,
+        RetypeKind::Info,
+    ] {
+        let plan = plan_retype(&agentic_task(1), &[], target);
+        assert!(
+            lost_field_names(&plan).contains(&"agentic"),
+            "{target:?} cannot be agentic, so it should report the flag lost"
+        );
+        assert_eq!(plan.carried.agentic, None, "{target:?} carries no flag");
+    }
+}
+
+#[test]
+fn a_task_that_only_inherits_never_reports_a_lost_flag() {
+    // Inheriting is the state nobody chose, so — like a status still at its default — it is
+    // not a loss and must not drag up a prompt on its own.
+    let plan = plan_retype(&task(1), &[], RetypeKind::Goal);
+
+    assert!(!lost_field_names(&plan).contains(&"agentic"));
+    assert!(!plan.loses_anything());
+}
+
+#[test]
+fn a_kind_with_no_agentic_column_reports_nothing_in_either_direction() {
+    let to_task = plan_retype(&goal(1), &[], RetypeKind::Task);
+    assert_eq!(to_task.carried.agentic, None);
+    assert!(!lost_field_names(&to_task).contains(&"agentic"));
+
+    let to_goal = plan_retype(&goal(1), &[], RetypeKind::Goal);
+    assert!(!lost_field_names(&to_goal).contains(&"agentic"));
+}
+
+#[test]
+fn the_flag_and_the_delegate_are_lost_independently_of_each_other() {
+    // They are separate facts about the task: one says the work suits an agent, the other
+    // says who holds it. A retype that drops both names both.
+    let both = SourceNode { delegate_to: Some(12), ..agentic_task(1) };
+    let plan = plan_retype(&both, &[], RetypeKind::Goal);
+
+    let lost = lost_field_names(&plan);
+    assert!(lost.contains(&"agentic"));
+    assert!(lost.contains(&"delegate_to"));
 }
 
 #[test]

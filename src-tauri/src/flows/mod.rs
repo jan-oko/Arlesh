@@ -2320,6 +2320,9 @@ async fn write_plan(
                         // A materialized instance always arrives in play. Nothing enters the
                         // backlog without the user putting it there.
                         archival: None,
+                        // Likewise it arrives inheriting: a flow item has no Agentic column of
+                        // its own, so the instance reads whatever the branch it lands in says.
+                        agentic: None,
                     },
                 )
                 .await?;

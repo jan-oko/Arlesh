@@ -68,6 +68,7 @@ function baseOptions(overrides: Partial<Parameters<typeof useKeyboardMindmap>[0]
     onToggleFilter: vi.fn(),
     onSetStatusMode: vi.fn() as (mode: StatusMode) => void,
     onToggleBacklog: vi.fn(),
+    onToggleAgentic: vi.fn(),
     onToggleFullscreen: vi.fn(),
     onFocusRoot: vi.fn(),
     onCenterOnNode: vi.fn(),
@@ -702,6 +703,53 @@ describe("useKeyboardMindmap — filter shortcuts (Alt)", () => {
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("b");
     expect(opts.onToggleBacklog).not.toHaveBeenCalled();
+  });
+
+  it("plain A cycles the anchor task's Agentic flag, leaving the rest of the selection alone", () => {
+    const opts = baseOptions({
+      selectedNodeId: "task-1",
+      selectedNodeIds: new Set(["task-1", "task-2"]),
+      findNodeById: (id: string) => (id === "task-1" ? makeTask("task-1") : undefined),
+    });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("a");
+    expect(opts.onToggleAgentic).toHaveBeenCalledTimes(1);
+    expect(opts.onToggleAgentic).toHaveBeenCalledWith("task-1");
+    expect(opts.onSetStatusMode).not.toHaveBeenCalled();
+  });
+
+  it("Alt+A still selects the All mode without touching the Agentic flag", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("a", { altKey: true });
+    expect(opts.onSetStatusMode).toHaveBeenCalledWith("all");
+    expect(opts.onToggleAgentic).not.toHaveBeenCalled();
+  });
+
+  it("plain A does nothing on a goal — only a Task can be agentic", () => {
+    const goal: MindmapNode = { id: "goal-1", kind: "goal", title: "Goal", position: 0, tagIds: [], children: [] };
+    const opts = baseOptions({
+      selectedNodeId: "goal-1",
+      findNodeById: (id: string) => (id === "goal-1" ? goal : undefined),
+    });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("a");
+    expect(opts.onToggleAgentic).not.toHaveBeenCalled();
+  });
+
+  it("plain A does nothing on a virtual Habit instance — it has no task row to flag", () => {
+    const instance: MindmapNode = {
+      id: "task-4-virtual", kind: "task", title: "Instance", position: 0, tagIds: [], children: [],
+      virtual: true, habitItem: { flowId: 3, itemType: "flow_task", itemId: 4, scopeId: 100 },
+    };
+    const opts = baseOptions({
+      selectedNodeId: "task-4-virtual",
+      selectedNodeIds: new Set(["task-4-virtual"]),
+      findNodeById: (id: string) => (id === "task-4-virtual" ? instance : undefined),
+    });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("a");
+    expect(opts.onToggleAgentic).not.toHaveBeenCalled();
   });
 
   it("Alt+S selects the Start mode without starting a flow", () => {

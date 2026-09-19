@@ -13,5 +13,6 @@
   "backlog": "In the backlog",
   "kept": "Kept",
   "broken": "Broken",
-  "unresolved": "No verdict recorded yet"
+  "unresolved": "No verdict recorded yet",
+  "agentic": "Agentic — work an agent could take"
 }

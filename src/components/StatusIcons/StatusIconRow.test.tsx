@@ -31,6 +31,10 @@ describe("StatusIconRow", () => {
     invalidateTagNames();
   });
 
+  it("gives the agentic badge its own tooltip", () => {
+    expect(renderRow(node("task", { status: "todo", agentic: true }))).toEqual(["agentic"]);
+  });
+
   it("renders a tooltip per indicator (keys resolve to i18n text at runtime)", () => {
     const scope = { start_id: 1, end_id: 2, duration: { n: 1, kind: "week" } };
     const titles = renderRow(node("task", { status: "todo", timeScope: scope, timing: "lapsed", resolution: "overdue" }));

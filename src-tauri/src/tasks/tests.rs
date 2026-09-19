@@ -1,5 +1,5 @@
 use super::*;
-use crate::tasks::model::Dependency;
+use crate::tasks::model::{Dependency, TaskAgentic};
 
 #[test]
 fn dependency_parts_task_variant() {
@@ -23,6 +23,7 @@ fn stored_task() -> Task {
         parent_id: 7,
         status: TaskStatus::Todo.as_str().to_string(),
         delegate_to: Some(3),
+        agentic: None,
         time_scope: Some(TimeScope { start_id: 10, end_id: 11, duration: None }),
         on_scope_exit: Some(OnScopeExit::Keep),
         plan: Some(TimeScope { start_id: 12, end_id: 12, duration: None }),
@@ -96,6 +97,60 @@ fn the_invariant_refuses_backlog_with_a_plan_and_allows_every_other_pair() {
     assert!(reject_backlog_with_plan(TaskArchival::Live, &None).is_ok());
 }
 
+/// The stored row, explicitly flagged as agent work.
+fn agentic_task() -> Task {
+    Task { agentic: Some(true), ..stored_task() }
+}
+
+#[test]
+fn an_update_that_says_nothing_about_agentic_leaves_the_flag_alone() {
+    let write = TaskWrite::merge(agentic_task(), UpdateTaskRequest {
+        title: Some("Renamed".to_string()),
+        ..Default::default()
+    });
+    assert_eq!(write.agentic, Some(true));
+}
+
+#[test]
+fn each_explicit_agentic_state_writes_its_own_column_value() {
+    for (requested, column) in [
+        (TaskAgentic::Yes, Some(true)),
+        (TaskAgentic::No, Some(false)),
+        (TaskAgentic::Inherit, None),
+    ] {
+        let write = TaskWrite::merge(agentic_task(), UpdateTaskRequest {
+            agentic: Some(requested),
+            ..Default::default()
+        });
+        assert_eq!(write.agentic, column, "{requested:?} writes the wrong column value");
+    }
+}
+
+#[test]
+fn putting_a_task_back_to_inheriting_is_not_read_as_saying_nothing() {
+    // The whole reason the three states are named: `Inherit` must clear a stored `true`,
+    // where an absent field must keep it. If these two ever agree, clearing is a silent no-op.
+    let cleared = TaskWrite::merge(agentic_task(), UpdateTaskRequest {
+        agentic: Some(TaskAgentic::Inherit),
+        ..Default::default()
+    });
+    let untouched = TaskWrite::merge(agentic_task(), UpdateTaskRequest::default());
+    assert_eq!(cleared.agentic, None);
+    assert_eq!(untouched.agentic, Some(true));
+}
+
+#[test]
+fn agentic_and_the_delegate_are_merged_independently() {
+    // A task can be both: the flag says the work suits an agent, the delegate says who holds
+    // it. Setting one must never disturb the other.
+    let write = TaskWrite::merge(agentic_task(), UpdateTaskRequest {
+        delegate_to: Some(None),
+        ..Default::default()
+    });
+    assert_eq!(write.agentic, Some(true));
+    assert_eq!(write.delegate_to, None);
+}
+
 #[test]
 fn an_empty_update_request_writes_the_stored_row_back_unchanged() {
     let write = TaskWrite::merge(stored_task(), UpdateTaskRequest::default());
@@ -104,6 +159,7 @@ fn an_empty_update_request_writes_the_stored_row_back_unchanged() {
     assert_eq!(write.parent_id, 7);
     assert_eq!(write.title, "Stored");
     assert_eq!(write.delegate_to, Some(3));
+    assert_eq!(write.agentic, None);
     assert_eq!(write.position, 100);
     assert!(!write.is_private);
 }

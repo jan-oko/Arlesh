@@ -24,6 +24,7 @@ function row(over: Partial<TaskListRow> = {}): TaskListRow {
     projectStatus: null,
     dependencyRefs: [],
     isBlocked: false,
+    isAgentic: false,
     hasBlockedAncestor: false,
     hasPrivateAncestor: false,
     scopeTokens: ["unscoped", "unplanned"],
@@ -48,6 +49,23 @@ function baseProps(overrides: Partial<ComponentProps<typeof TaskRow>> = {}) {
     ...overrides,
   };
 }
+
+describe("TaskRow — Agentic badge", () => {
+  it("badges an agentic task in the list, as the canvas does", () => {
+    render(<TaskRow {...baseProps({ row: row({ node: n("task-1", "task", { status: "todo", agentic: true }) }) })} />);
+    expect(screen.getByTitle("agentic")).toBeInTheDocument();
+  });
+
+  it("badges a task that inherited the flag", () => {
+    render(<TaskRow {...baseProps({ row: row({ node: n("task-1", "task", { status: "todo", inheritedAgentic: true }) }) })} />);
+    expect(screen.getByTitle("agentic")).toBeInTheDocument();
+  });
+
+  it("leaves an unflagged task unbadged", () => {
+    render(<TaskRow {...baseProps()} />);
+    expect(screen.queryByTitle("agentic")).not.toBeInTheDocument();
+  });
+});
 
 describe("TaskRow", () => {
   it("clicking the status control cycles status when not blocked", () => {

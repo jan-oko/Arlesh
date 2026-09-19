@@ -54,7 +54,7 @@ function mkGoal(overrides: Partial<Goal> = {}): Goal {
 function mkTask(overrides: Partial<Task> = {}): Task {
   return {
     id: 1, title: "Task", parent_type: "goal", parent_id: 1,
-    status: "todo", delegate_to: null, time_scope: null, on_scope_exit: null, plan: null, archival: "live", tag_ids: [], position: 0, is_private: false,
+    status: "todo", delegate_to: null, agentic: null, time_scope: null, on_scope_exit: null, plan: null, archival: "live", tag_ids: [], position: 0, is_private: false,
     ...overrides,
   };
 }

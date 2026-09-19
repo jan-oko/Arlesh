@@ -23,7 +23,7 @@ const EMPTY_DISPLAY = {
   parentPool: [], dependencyPool: [],
   displayTaskStatus: (v: string) => v, displayGoalStatus: (v: string) => v,
   displayProjectStatus: (v: string) => v, displayVerdict: (v: string) => v,
-  displayScopeState: (v: string) => v, displayBlocked: (v: string) => v,
+  displayScopeState: (v: string) => v, displayAgentic: (v: string) => v, displayBlocked: (v: string) => v,
 };
 
 beforeEach(() => {
