@@ -18,6 +18,7 @@ fn goal(id: i64) -> SourceNode {
         plan: None,
         archival: None,
         delegate_to: None,
+        agentic: None,
         tag_ids: vec![],
         block_reasons: vec![],
         dependents: 0,
@@ -32,8 +33,15 @@ fn task(id: i64) -> SourceNode {
         status: Some("todo".into()),
         // Every stored Task has one; `Live` is the one nobody chose.
         archival: Some(TaskArchival::Live),
+        // Likewise: every Task has an Agentic state, and `Inherit` is the unchosen one.
+        agentic: Some(TaskAgentic::Inherit),
         ..goal(id)
     }
+}
+
+/// A Task explicitly flagged as agent work.
+fn agentic_task(id: i64) -> SourceNode {
+    SourceNode { agentic: Some(TaskAgentic::Yes), ..task(id) }
 }
 
 /// An unresolved commitment with no Verdict Window — the shape a freshly created one has.
@@ -1015,29 +1023,6 @@ fn a_task_nobody_set_aside_never_reports_a_lost_backlog() {
     assert!(!plan.loses_anything());
 }
 
-#[test]
-fn a_node_with_no_archival_column_at_all_reports_nothing() {
-    // A goal has no archival state to begin with, so retyping it names none.
-    let plan = plan_retype(&goal(1), &[], RetypeKind::Task);
-    assert_eq!(plan.carried.archival, None);
-    assert!(!lost_field_names(&plan).contains(&"archival"));
-}
-
-#[test]
-fn a_backlogged_task_retyped_to_a_task_keeps_its_backlog() {
-    // The same-kind plan carries everything; the command short-circuits it before any write.
-    let plan = plan_retype(&backlogged_task(1), &[], RetypeKind::Task);
-    assert_eq!(plan.carried.archival, Some(TaskArchival::Backlog));
-    assert!(!lost_field_names(&plan).contains(&"archival"));
-}
-        agentic: None,
-        // Likewise: every Task has an Agentic state, and `Inherit` is the unchosen one.
-        agentic: Some(TaskAgentic::Inherit),
-}
-
-/// A Task explicitly flagged as agent work.
-fn agentic_task(id: i64) -> SourceNode {
-    SourceNode { agentic: Some(TaskAgentic::Yes), ..task(id) }
 // --- Agentic, a Task-only flag ---
 
 #[test]
@@ -1122,4 +1107,20 @@ fn the_flag_and_the_delegate_are_lost_independently_of_each_other() {
     let lost = lost_field_names(&plan);
     assert!(lost.contains(&"agentic"));
     assert!(lost.contains(&"delegate_to"));
+}
+
+#[test]
+fn a_node_with_no_archival_column_at_all_reports_nothing() {
+    // A goal has no archival state to begin with, so retyping it names none.
+    let plan = plan_retype(&goal(1), &[], RetypeKind::Task);
+    assert_eq!(plan.carried.archival, None);
+    assert!(!lost_field_names(&plan).contains(&"archival"));
+}
+
+#[test]
+fn a_backlogged_task_retyped_to_a_task_keeps_its_backlog() {
+    // The same-kind plan carries everything; the command short-circuits it before any write.
+    let plan = plan_retype(&backlogged_task(1), &[], RetypeKind::Task);
+    assert_eq!(plan.carried.archival, Some(TaskArchival::Backlog));
+    assert!(!lost_field_names(&plan).contains(&"archival"));
 }

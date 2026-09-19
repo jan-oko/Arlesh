@@ -40,6 +40,7 @@ fn commitment_id_roundtrip() {
     let id = CommitmentId::from(21_i64);
     assert_eq!(i64::from(id), 21);
 }
+
 #[test]
 fn an_unflagged_task_inherits() {
     assert_eq!(TaskAgentic::default(), TaskAgentic::Inherit);
