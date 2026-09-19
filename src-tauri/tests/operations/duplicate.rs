@@ -26,7 +26,7 @@ use arlesh_lib::{
         add_task_dependency, create_goal, create_task,
         model::{
             CreateGoalRequest, CreateTaskRequest, Dependency, GoalId, GoalStatus, OnScopeExit,
-            TaskId, TaskStatus, TimeScope, UpdateGoalRequest, UpdateTaskRequest,
+            TaskArchival, TaskId, TaskStatus, TimeScope, UpdateGoalRequest, UpdateTaskRequest,
         },
         update_goal, update_task,
     },
@@ -297,6 +297,7 @@ async fn a_duplicated_task_carries_every_field_the_original_held() {
             time_scope: Some(at(week)),
             on_scope_exit: Some(OnScopeExit::Archive),
             plan: Some(at(week)),
+            archival: None,
         },
     )
     .await
@@ -349,6 +350,54 @@ async fn a_duplicated_task_carries_every_field_the_original_held() {
         .await
         .unwrap();
     assert_eq!(reasons, vec!["waiting on the foundry".to_string()]);
+}
+
+/// A copy of a Task that was set aside is set aside too. The clone carries status, plan, privacy,
+/// delegate, tags and block reasons; dropping only the Backlog would discard the one thing the user
+/// had deliberately said about this Task, silently. The stored invariant
+/// `archival = Backlog => plan IS NULL` survives because both fields are copied from an original
+/// that already satisfies it.
+#[tokio::test]
+async fn a_duplicated_task_is_set_aside_if_the_original_was() {
+    let pool = helpers::test_pool().await;
+    let aspect = growth_aspect_id(&pool).await;
+    let project = make_domain(&pool, "Rocket", DomainSubtype::Project, aspect).await;
+    let target = make_domain(&pool, "Landing", DomainSubtype::Domain, aspect).await;
+
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    let task = create_task(
+        &mut db,
+        CreateTaskRequest {
+            title: "Re-cast the bell".into(),
+            parent_type: "project".into(),
+            parent_id: project,
+            status: Some(TaskStatus::InProgress),
+            time_scope: None,
+            on_scope_exit: None,
+            plan: None,
+            archival: Some(TaskArchival::Backlog),
+        },
+    )
+    .await
+    .unwrap();
+    db.commit().await.unwrap();
+
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    let cloned = duplicate_subtree(&mut db, DuplicableKind::Task, task.id, "domain", target, 0)
+        .await
+        .unwrap();
+    db.commit().await.unwrap();
+
+    let copy = helpers::session_factory(&pool)
+        .connect()
+        .await
+        .unwrap()
+        .tasks()
+        .get(TaskId(cloned))
+        .await
+        .unwrap();
+    assert_eq!(copy.archival, TaskArchival::Backlog, "the copy is set aside, as the original was");
+    assert!(copy.plan.is_none(), "and still unplanned, so the invariant holds");
 }
 
 #[tokio::test]

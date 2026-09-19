@@ -12,7 +12,7 @@ use crate::{
     infos::model::Info,
     tasks::{
         lifecycle::ItemLifecycle,
-        model::{Goal, Task, TaskDependencyEdge},
+        model::{Commitment, Goal, Task, TaskDependencyEdge},
     },
 };
 
@@ -70,6 +70,8 @@ pub struct MindmapLoad {
     pub goals: Vec<Goal>,
     /// Every task — as `list_tasks`.
     pub tasks: Vec<Task>,
+    /// Every commitment — as `list_commitments`.
+    pub commitments: Vec<Commitment>,
     /// Every info node — as `list_infos`.
     pub infos: Vec<Info>,
     /// Every flow — as `list_flows`.
@@ -88,7 +90,8 @@ pub struct MindmapLoad {
     pub task_dependencies: Vec<TaskDependencyEdge>,
     /// Every real node materialised by a started flow — as `list_flow_instance_nodes`.
     pub flow_instance_nodes: Vec<TargetRef>,
-    /// Every task's and goal's derived lifecycle at `now` — as `derive_scope_lifecycles`.
+    /// Every task's, goal's and commitment's derived lifecycle at `now` — as
+    /// `derive_scope_lifecycles`.
     pub lifecycles: Vec<ItemLifecycle>,
     /// One entry per flow, in `flows` order — the dependent wave, resolved backend-side.
     pub habits: Vec<FlowHabitEntry>,

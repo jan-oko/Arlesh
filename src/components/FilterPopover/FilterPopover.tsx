@@ -5,10 +5,11 @@ import { useListFilterStore } from "@/stores/use-list-filter-store";
 import { useViewStore } from "@/stores/use-view-store";
 import { useFilterDisplay } from "@/hooks/use-filter-display";
 import {
-  TASK_STATUS_VALUES, GOAL_STATUS_VALUES, PROJECT_STATUS_VALUES, SCOPE_STATE_VALUES, BLOCKED_VALUES,
+  TASK_STATUS_VALUES, GOAL_STATUS_VALUES, PROJECT_STATUS_VALUES, VERDICT_FILTER_VALUES,
+  SCOPE_STATE_VALUES, BLOCKED_VALUES,
 } from "@/utils/list-filter";
 import type { PillDimension } from "@/utils/list-filter";
-import type { ArchivedMode } from "@/utils/filter-tree";
+import type { OverrideMode } from "@/utils/filter-tree";
 import Switch from "@/components/Switch/Switch";
 import PillFilterSection from "./PillFilterSection";
 import { EntityAdder, FixedValueAdder } from "./PillAdders";
@@ -17,10 +18,12 @@ import styles from "./FilterPopover.module.css";
 const CHEVRON_OPEN = "▾";
 const CHEVRON_CLOSED = "▸";
 
-function archivedPillClass(mode: ArchivedMode): string {
-  if (mode === "include") return `${styles.archivedPill} ${styles.archivedPillInclude}`;
-  if (mode === "exclude") return `${styles.archivedPill} ${styles.archivedPillExclude}`;
-  return `${styles.archivedPill}`;
+/** The tri-state pill's classes for a given mode. Shared by Archived and Backlog, which cycle and
+ * read identically — only what they select differs. */
+function overridePillClass(mode: OverrideMode): string {
+  if (mode === "include") return `${styles.overridePill} ${styles.overridePillInclude}`;
+  if (mode === "exclude") return `${styles.overridePill} ${styles.overridePillExclude}`;
+  return `${styles.overridePill}`;
 }
 
 /** The filter panel opened from the top-bar Filter button — a pure "add a filter" chooser (active
@@ -35,10 +38,13 @@ export default function FilterPopover() {
   const toggleShowFlow = useFilterStore((s) => s.toggleShowFlow);
   const togglePrivateMode = useFilterStore((s) => s.togglePrivateMode);
   const cycleArchivedMode = useFilterStore((s) => s.cycleArchivedMode);
+  const cycleBacklogMode = useFilterStore((s) => s.cycleBacklogMode);
   const reset = useFilterStore((s) => s.reset);
-  // Collapsed by default; auto-opens when the archived filter is already engaged, so an active
+  // Collapsed by default; auto-opens when either Advanced filter is already engaged, so an active
   // filter is never hidden behind an unopened disclosure.
-  const [advancedOpen, setAdvancedOpen] = useState(filter.archivedMode !== "inactive");
+  const [advancedOpen, setAdvancedOpen] = useState(
+    filter.archivedMode !== "inactive" || filter.backlogMode !== "inactive",
+  );
 
   const view = useViewStore((s) => s.view);
   const listFilter = useListFilterStore((s) => s.filter);
@@ -111,11 +117,21 @@ export default function FilterPopover() {
               <PillFilterSection label={t("archivedLabel")}>
                 <button
                   type="button"
-                  className={archivedPillClass(filter.archivedMode)}
+                  className={overridePillClass(filter.archivedMode)}
                   onClick={cycleArchivedMode}
                   title={t(`archivedTooltip.${filter.archivedMode}`)}
                 >
                   {t("archivedPill")}
+                </button>
+              </PillFilterSection>
+              <PillFilterSection label={t("backlogLabel")}>
+                <button
+                  type="button"
+                  className={overridePillClass(filter.backlogMode)}
+                  onClick={cycleBacklogMode}
+                  title={t(`backlogTooltip.${filter.backlogMode}`)}
+                >
+                  {t("backlogPill")}
                 </button>
               </PillFilterSection>
             </div>
@@ -154,6 +170,9 @@ export default function FilterPopover() {
           </PillFilterSection>
           <PillFilterSection label={t("listView:projectStatusLabel")}>
             <FixedValueAdder values={PROJECT_STATUS_VALUES} added={addedSet("projectStatus")} labelFor={display.displayProjectStatus} onAdd={(v) => addPill("projectStatus", v)} />
+          </PillFilterSection>
+          <PillFilterSection label={t("listView:verdictLabel")}>
+            <FixedValueAdder values={VERDICT_FILTER_VALUES} added={addedSet("verdict")} labelFor={display.displayVerdict} onAdd={(v) => addPill("verdict", v)} />
           </PillFilterSection>
           <PillFilterSection label={t("listView:scopeStateLabel")}>
             <FixedValueAdder values={SCOPE_STATE_VALUES} added={addedSet("scopeState")} labelFor={display.displayScopeState} onAdd={(v) => addPill("scopeState", v)} />

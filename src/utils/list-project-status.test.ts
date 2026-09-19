@@ -27,7 +27,7 @@ const PROJECT: Domain = {
 const TASK: Task = {
   id: 25, title: "talk to M", parent_type: "project", parent_id: 25,
   status: "todo", delegate_to: null, time_scope: null, on_scope_exit: null,
-  plan: null, tag_ids: [], position: 0, is_private: false,
+  plan: null, archival: "live", tag_ids: [], position: 0, is_private: false,
 };
 
 const ACTIVE_PILL = {

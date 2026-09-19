@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { useNodeEditor } from "./use-node-editor";
 import type { MindmapNode } from "@/utils/tree-layout";
+import type { TaskSaveData } from "@/components/TaskEditorModal/TaskEditorModal";
 import { updateTask, scopeContainmentConflicts } from "@/api/tasks";
 import { updateGoal } from "@/api/goals";
 import { flowOrigins } from "@/api/flows";
@@ -55,10 +56,10 @@ function setup() {
   return result;
 }
 
-const saveData = {
+const saveData: TaskSaveData = {
   title: "Task", status: "todo", blockReasons: [], tagIds: [],
   addedDeps: [], removedDeps: [], timeScope: { start_id: 1, end_id: 1 },
-  onScopeExit: null, plan: null, isPrivate: false,
+  onScopeExit: null, plan: null, archival: "live", isPrivate: false,
 };
 
 beforeEach(() => vi.clearAllMocks());

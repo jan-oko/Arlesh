@@ -44,6 +44,8 @@ export default function PathHeaderRow({ segments, onEnterSubtree, showKindIcon }
           <NodeIcon
             kind={parent.kind}
             status={parent.status}
+            verdict={parent.verdict}
+            isArchived={parent.archived === true}
             isBlocked={isNodeBlocked(parent)}
             isHabit={parent.flow?.isHabit === true}
             cx={ICON_R}

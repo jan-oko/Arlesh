@@ -39,6 +39,8 @@ function pillDisplay(
       return { label: display.displayGoalStatus(value), color: null };
     case "projectStatus":
       return { label: display.displayProjectStatus(value), color: null };
+    case "verdict":
+      return { label: display.displayVerdict(value), color: null };
     case "scopeState":
       return { label: display.displayScopeState(value), color: null };
     case "blocked":

@@ -21,15 +21,17 @@ use std::collections::HashSet;
 use crate::database::session::{Db, SessionMode};
 
 use super::error::TaskError;
-use super::model::{GoalId, OnScopeExit, TaskId, TimeScope};
+use super::model::{CommitmentId, DurationSpec, GoalId, OnScopeExit, TaskId, TimeScope};
 
-/// Which of the two scoped tables a chain link came from.
+/// Which of the three scoped tables a chain link came from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(super) enum NodeKind {
     /// A row in `tasks`.
     Task,
     /// A row in `goals`.
     Goal,
+    /// A row in `commitments`.
+    Commitment,
 }
 
 impl NodeKind {
@@ -39,6 +41,7 @@ impl NodeKind {
         match value {
             "task" => Some(Self::Task),
             "goal" => Some(Self::Goal),
+            "commitment" => Some(Self::Commitment),
             _ => None,
         }
     }
@@ -77,8 +80,14 @@ pub(super) struct AncestryLink {
     pub(super) time_scope: Option<TimeScope>,
     /// The link's Plan, if it has one. Always `None` for a goal: goals have no Plan column.
     pub(super) plan: Option<TimeScope>,
-    /// The link's on-exit behaviour. Present iff `time_scope` is.
+    /// The link's on-exit behaviour. Present iff `time_scope` is — except on a Commitment,
+    /// which has no such column and always reads as [`OnScopeExit::Keep`]: it stays until its
+    /// Verdict Window ends it, and nothing else archives it on the way out.
     pub(super) on_scope_exit: Option<OnScopeExit>,
+    /// The link's **Verdict Window**, if it is a Commitment that sets one. Always `None` for a
+    /// task or a goal: neither has the column, and neither is ever asked for one — the search
+    /// stops at the first Commitment either way.
+    pub(super) verdict_window: Option<DurationSpec>,
 }
 
 /// Why a climb stopped short of the root.
@@ -184,6 +193,7 @@ impl<T> Search<T> {
                 BreakCause::Missing => match kind {
                     NodeKind::Task => TaskError::TaskNotFound(id),
                     NodeKind::Goal => TaskError::GoalNotFound(id),
+                    NodeKind::Commitment => TaskError::CommitmentNotFound(id),
                 },
                 // A cycle has no precedent: the old walks hung instead of returning.
                 BreakCause::Cycle => TaskError::AncestorCycle { node_id: id },
@@ -216,6 +226,29 @@ impl AncestryChain {
             }
         }
         self.exhausted()
+    }
+
+    /// The nearest link carrying an explicit **Verdict Window**.
+    ///
+    /// **Traverses commitments only: anything else ends the search**, and ends it definitively.
+    /// Only a Commitment has the column, and a Commitment's parent chain leaves the kind as soon
+    /// as it reaches a task, a goal or a container — so a broken reference above that point is
+    /// never consulted, exactly as [`Self::nearest_planned`] ignores one above a goal.
+    ///
+    /// Pure. No database, no `async`.
+    pub(super) fn nearest_verdict_window(&self) -> Search<&DurationSpec> {
+        for link in &self.links {
+            if link.kind != NodeKind::Commitment {
+                return Search::Unconstrained;
+            }
+            if let Some(window) = &link.verdict_window {
+                return Search::Found(window);
+            }
+        }
+        match self.end {
+            ChainEnd::Broken { kind: NodeKind::Commitment, .. } => self.exhausted(),
+            ChainEnd::Broken { .. } | ChainEnd::Root => Search::Unconstrained,
+        }
     }
 
     /// The nearest link carrying a Plan.
@@ -276,12 +309,19 @@ pub(super) async fn climb<M: SessionMode>(
         let read = match kind {
             NodeKind::Task => db.tasks().ancestry_link(TaskId(next.node_id)).await,
             NodeKind::Goal => db.goals().ancestry_link(GoalId(next.node_id)).await,
+            NodeKind::Commitment => {
+                db.commitments().ancestry_link(CommitmentId(next.node_id)).await
+            }
         };
         let link = match read {
             Ok(link) => link,
             // A dangling reference — the referenced row was deleted — breaks the chain. Every
             // other database failure is a real failure and propagates.
-            Err(TaskError::TaskNotFound(_) | TaskError::GoalNotFound(_)) => {
+            Err(
+                TaskError::TaskNotFound(_)
+                | TaskError::GoalNotFound(_)
+                | TaskError::CommitmentNotFound(_),
+            ) => {
                 let end = ChainEnd::Broken { kind, id: next.node_id, cause: BreakCause::Missing };
                 return Ok(AncestryChain { links, end });
             }
@@ -367,6 +407,7 @@ mod tests {
             time_scope: None,
             plan: None,
             on_scope_exit: None,
+            verdict_window: None,
         }
     }
 
@@ -379,6 +420,20 @@ mod tests {
             time_scope: None,
             plan: None,
             on_scope_exit: None,
+            verdict_window: None,
+        }
+    }
+
+    /// An unscoped commitment link with no Verdict Window, parented by the next id up.
+    fn commitment_link(id: i64) -> AncestryLink {
+        AncestryLink {
+            kind: NodeKind::Commitment,
+            id,
+            parent: NodeRef::new("commitment", id + 1),
+            time_scope: None,
+            plan: None,
+            on_scope_exit: Some(OnScopeExit::Keep),
+            verdict_window: None,
         }
     }
 
@@ -615,4 +670,109 @@ mod tests {
         assert!(chain.links.is_empty());
         assert_eq!(chain.end, ChainEnd::Root);
     }
+
+    // --- nearest_verdict_window ---
+
+    #[test]
+    fn the_nearest_commitment_that_sets_a_verdict_window_wins() {
+        let chain = rooted(vec![
+            commitment_link(1),
+            AncestryLink {
+                verdict_window: Some(DurationSpec { n: 2, kind: "day".into() }),
+                ..commitment_link(2)
+            },
+            AncestryLink {
+                verdict_window: Some(DurationSpec { n: 1, kind: "week".into() }),
+                ..commitment_link(3)
+            },
+        ]);
+        assert_eq!(
+            chain.nearest_verdict_window(),
+            Search::Found(&DurationSpec { n: 2, kind: "day".to_string() }),
+        );
+    }
+
+    #[test]
+    fn a_commitment_that_sets_its_own_verdict_window_needs_no_ancestor() {
+        // The chain starts at the node itself, so its own value is the first link examined.
+        let chain = rooted(vec![AncestryLink {
+            verdict_window: Some(DurationSpec { n: 3, kind: "day".into() }),
+            ..commitment_link(1)
+        }]);
+        assert_eq!(
+            chain.nearest_verdict_window(),
+            Search::Found(&DurationSpec { n: 3, kind: "day".to_string() }),
+        );
+    }
+
+    #[test]
+    fn a_chain_of_commitments_none_of_which_sets_one_is_unbounded() {
+        let chain = rooted(vec![commitment_link(1), commitment_link(2)]);
+        assert_eq!(chain.nearest_verdict_window(), Search::Unconstrained);
+    }
+
+    #[test]
+    fn the_search_stops_at_the_first_link_that_is_not_a_commitment() {
+        // Only a Commitment has the column, so a task or goal above one ends the chain for this
+        // question — exactly as a goal ends the plan chain.
+        let chain = rooted(vec![commitment_link(1), task_link(2), goal_link(3)]);
+        assert_eq!(chain.nearest_verdict_window(), Search::Unconstrained);
+    }
+
+    #[test]
+    fn a_chain_broken_above_a_non_commitment_still_answers_unbounded() {
+        // The break is past where the search would have stopped anyway, so it cannot make the
+        // question unanswerable.
+        let chain = AncestryChain {
+            links: vec![commitment_link(1), task_link(2)],
+            end: ChainEnd::Broken { kind: NodeKind::Task, id: 3, cause: BreakCause::Missing },
+        };
+        assert_eq!(chain.nearest_verdict_window(), Search::Unconstrained);
+    }
+
+    #[test]
+    fn a_commitment_chain_that_breaks_before_answering_is_undetermined() {
+        let chain = AncestryChain {
+            links: vec![commitment_link(1)],
+            end: ChainEnd::Broken { kind: NodeKind::Commitment, id: 2, cause: BreakCause::Missing },
+        };
+        assert_eq!(
+            chain.nearest_verdict_window(),
+            Search::Undetermined { kind: NodeKind::Commitment, id: 2, cause: BreakCause::Missing },
+        );
+    }
+
+    #[test]
+    fn a_commitments_window_governs_the_tasks_beneath_it_and_they_keep_rather_than_archive() {
+        // A Commitment has no On-exit column and always Keeps, so a task inheriting its window
+        // lapses Overdue rather than Missed. Stated here because nothing else reads that column
+        // for a commitment link.
+        let chain = rooted(vec![
+            task_link(1),
+            AncestryLink { time_scope: Some(scope(70)), ..commitment_link(2) },
+        ]);
+        assert_eq!(
+            chain.nearest_scoped(),
+            Search::Found((&scope(70), OnScopeExit::Keep)),
+        );
+    }
+
+    #[test]
+    fn a_missing_commitment_reference_rejects_a_write_by_name() {
+        let undetermined: Search<()> = Search::Undetermined {
+            kind: NodeKind::Commitment,
+            id: 5,
+            cause: BreakCause::Missing,
+        };
+        assert!(matches!(
+            undetermined.or_reject(),
+            Err(TaskError::CommitmentNotFound(5)),
+        ));
+    }
+
+    #[test]
+    fn a_commitment_parent_type_names_the_commitments_table() {
+        assert_eq!(NodeKind::from_db("commitment"), Some(NodeKind::Commitment));
+    }
+
 }

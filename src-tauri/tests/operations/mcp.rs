@@ -1091,3 +1091,78 @@ async fn an_empty_sections_list_is_refused_rather_than_returning_nothing() {
         Some("invalid_request"),
     );
 }
+
+#[tokio::test]
+async fn beads_set_links_a_commitment_and_then_clears_it() {
+    use arlesh_lib::commands::commitments as commitment_commands;
+    use arlesh_lib::scopes::model::ScopeKind;
+    use arlesh_lib::tasks::model::{CreateCommitmentRequest, TimeScope};
+
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+
+    let scope = helpers::session_factory(&pool)
+        .connect()
+        .await
+        .unwrap()
+        .scopes()
+        .get_or_create(ScopeKind::Day, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap())
+        .await
+        .unwrap();
+
+    let commitment = commitment_commands::create_commitment(
+        app.state(),
+        CreateCommitmentRequest {
+            title: "Asleep by 23:00".into(),
+            parent_type: "domain".into(),
+            parent_id: 1,
+            time_scope: Some(TimeScope { start_id: scope.id, end_id: scope.id, duration: None }),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    let result = mcp
+        .beads(Parameters(params::BeadsOperation::Set {
+            node_type: params::BeadsNode::Commitment,
+            node_id: commitment.id,
+            beads_id: Some("Arlesh-cyo".into()),
+        }))
+        .await
+        .unwrap();
+    assert_eq!(
+        payload(&result).get("node_type").and_then(|v| v.as_str()),
+        Some("commitment"),
+    );
+    assert_eq!(
+        stored_beads_id(&pool, "commitments", commitment.id).await,
+        Some("Arlesh-cyo".into())
+    );
+
+    mcp.beads(Parameters(params::BeadsOperation::Set {
+        node_type: params::BeadsNode::Commitment,
+        node_id: commitment.id,
+        beads_id: None,
+    }))
+    .await
+    .unwrap();
+    assert_eq!(stored_beads_id(&pool, "commitments", commitment.id).await, None);
+}
+
+#[tokio::test]
+async fn beads_set_on_a_commitment_that_does_not_exist_is_an_error() {
+    let pool = helpers::test_pool().await;
+    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+
+    let result = mcp
+        .beads(Parameters(params::BeadsOperation::Set {
+            node_type: params::BeadsNode::Commitment,
+            node_id: 9999,
+            beads_id: Some("Arlesh-cyo".into()),
+        }))
+        .await
+        .unwrap();
+    assert_eq!(result.is_error, Some(true), "a write that landed nowhere is not a success");
+}

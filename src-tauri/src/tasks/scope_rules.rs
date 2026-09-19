@@ -23,9 +23,12 @@ use crate::scopes::model::ScopeId;
 use crate::scopes::resolve::{self, Bounds};
 
 use super::ancestry;
+use super::commitments;
 use super::error::TaskError;
-use super::lifecycle::{derive_item_state, Archival, ItemLifecycle};
-use super::model::{GoalId, GoalStatus, OnScopeExit, TaskId, TaskStatus, TimeScope};
+use super::lifecycle::{derive_commitment_state, derive_item_state, Archival, ItemLifecycle};
+use super::model::{
+    CommitmentId, GoalId, GoalStatus, OnScopeExit, TaskId, TaskStatus, TimeScope,
+};
 
 /// Maps a Goal's stored status to its baseline Archival value, for [`derive_item_state`]'s `stored`
 /// parameter. `Achieved` intentionally maps to `Live`, not `Archived` — achievement is a separate,
@@ -70,9 +73,14 @@ pub(super) async fn scope_governance<M: SessionMode>(
 }
 
 /// Derives the full lifecycle state (Timing / Resolution / Archival — see `lifecycle`'s module
-/// docs) of every Task and Goal at `now`, using each item's effective governance. A Task is
-/// resolved once Done; a Goal once Achieved or Archived. Tasks have no manual Archival concept
-/// (always fully derived); Goals carry their own stored Archival via [`goal_stored_archival`].
+/// docs) of every Task, Goal and Commitment at `now`, using each item's effective governance. A
+/// Task is resolved once Done; a Goal once Achieved or Archived. Both carry a stored Archival: a
+/// Task its Backlog column, a Goal its status via [`goal_stored_archival`].
+///
+/// A Commitment takes the third branch, and it is not a special case of the first two: its
+/// Resolution axis is replaced by a recorded Verdict that nothing here derives, and its Archival
+/// comes from the Verdict Window rather than from On-exit behavior. See
+/// [`derive_commitment_state`].
 ///
 /// Reads only — nothing is persisted, so a pooled session is enough.
 pub async fn derive_all_scope_lifecycles<M: SessionMode>(
@@ -86,12 +94,14 @@ pub async fn derive_all_scope_lifecycles<M: SessionMode>(
             None => (None, None),
         };
         let resolved = TaskStatus::from_db(&task.status) == Some(TaskStatus::Done);
-        let state = derive_item_state(window, on_exit, resolved, None, now);
+        let stored = Some(Archival::from(task.archival));
+        let state = derive_item_state(window, on_exit, resolved, stored, now);
         out.push(ItemLifecycle {
             node_type: "task".to_string(),
             node_id: task.id,
             timing: state.timing,
             resolution: state.resolution,
+            verdict: None,
             archival: state.archival,
             archival_conflict: state.archival_conflict,
         });
@@ -110,8 +120,30 @@ pub async fn derive_all_scope_lifecycles<M: SessionMode>(
             node_id: goal.id,
             timing: state.timing,
             resolution: state.resolution,
+            verdict: None,
             archival: state.archival,
             archival_conflict: state.archival_conflict,
+        });
+    }
+    for commitment in db.commitments().list().await? {
+        let window = scope_governance(db, "commitment", commitment.id)
+            .await?
+            .map(|(window, _)| window);
+        let verdict_window =
+            commitments::effective_verdict_window(db, CommitmentId(commitment.id)).await?;
+        let state =
+            derive_commitment_state(window, commitment.verdict, verdict_window.as_ref(), now);
+        out.push(ItemLifecycle {
+            node_type: "commitment".to_string(),
+            node_id: commitment.id,
+            timing: state.timing,
+            // Resolution is the Task/Goal axis; a Commitment answers with its Verdict instead,
+            // and sending both would invite a consumer to read one as a fallback for the other.
+            resolution: None,
+            verdict: Some(state.verdict),
+            archival: state.archival,
+            // Nothing on a Commitment is manually archived, so nothing can be overridden.
+            archival_conflict: false,
         });
     }
     Ok(out)
@@ -291,7 +323,42 @@ pub(super) async fn validate_goal_containment<M: SessionMode>(
     check_containment(ContainmentWindows { own_scope, ancestor_scope, ..Default::default() })
 }
 
-/// Returns the direct task and goal children of a node, as `(node_type, node_id)` pairs.
+/// Rejects a commitment write that leaves it with no **effective** window, or with one that
+/// escapes its nearest scoped ancestor's.
+///
+/// The first half is this kind's own rule and has no counterpart anywhere else in the model.
+/// Every other node may be Unscoped, which simply means always-active; a Commitment with no
+/// window has nothing to be kept or broken *over*, and no verdict could ever come due on it. So
+/// it is refused with [`TaskError::CommitmentUnscoped`] rather than written. An inherited window
+/// satisfies the rule — what is required is an effective one, not an own one.
+///
+/// The second half is the ordinary containment check, reduced (as a goal's is) to rule two
+/// alone: a Commitment has no Plan, so two of [`ContainmentWindows`]' four fields are
+/// structurally absent.
+pub(super) async fn validate_commitment_scope<M: SessionMode>(
+    db: &mut Db<M>,
+    parent_type: &str,
+    parent_id: i64,
+    time_scope: &Option<TimeScope>,
+) -> Result<(), TaskError> {
+    let chain = ancestry::climb(db, parent_type, parent_id).await?;
+    let ancestor = chain.nearest_scoped().or_reject()?.map(|(scope, _)| scope);
+
+    let Some(own) = time_scope else {
+        // Nothing of its own, so the ancestor chain is the only thing that can supply a window.
+        return match ancestor {
+            Some(_) => Ok(()),
+            None => Err(TaskError::CommitmentUnscoped),
+        };
+    };
+
+    let own_scope = Some(time_scope_window(db, own).await?);
+    let ancestor_scope = resolve_optional(db, ancestor).await?;
+    check_containment(ContainmentWindows { own_scope, ancestor_scope, ..Default::default() })
+}
+
+/// Returns the direct task, goal and commitment children of a node, as `(node_type, node_id)`
+/// pairs.
 async fn child_items<M: SessionMode>(
     db: &mut Db<M>,
     node_type: &str,
@@ -302,6 +369,8 @@ async fn child_items<M: SessionMode>(
     children.extend(task_ids.into_iter().map(|id| ("task".to_string(), id)));
     let goal_ids = db.goals().child_ids(node_type, node_id).await?;
     children.extend(goal_ids.into_iter().map(|id| ("goal".to_string(), id)));
+    let commitment_ids = db.commitments().child_ids(node_type, node_id).await?;
+    children.extend(commitment_ids.into_iter().map(|id| ("commitment".to_string(), id)));
     Ok(children)
 }
 
@@ -313,6 +382,7 @@ async fn item_time_scope<M: SessionMode>(
     match node_type {
         "task" => Ok(db.tasks().get(TaskId(node_id)).await?.time_scope),
         "goal" => Ok(db.goals().get(GoalId(node_id)).await?.time_scope),
+        "commitment" => Ok(db.commitments().get(CommitmentId(node_id)).await?.time_scope),
         _ => Ok(None),
     }
 }

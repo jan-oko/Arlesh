@@ -26,7 +26,7 @@ use crate::flows::FlowOperator;
 use crate::infos::InfoOperator;
 use crate::knowledge_base::{EventOperator, PersonOperator, ThreadOperator};
 use crate::scopes::ScopeOperator;
-use crate::tasks::{GoalOperator, TaskOperator};
+use crate::tasks::{CommitmentOperator, GoalOperator, TaskOperator};
 
 /// Makes [`SessionMode`] sealed: only this module can name it, so only this module can add a
 /// session mode. There are two, and there is no third for anyone to invent.
@@ -151,6 +151,11 @@ impl<M: SessionMode> Db<M> {
     /// Block reasons — the reasons a task or goal is blocked.
     pub fn block_reasons(&mut self) -> BlockReasonOperator<'_> {
         BlockReasonOperator::new(self.connection())
+    }
+
+    /// Commitments — rules held over a window, kept or broken.
+    pub fn commitments(&mut self) -> CommitmentOperator<'_> {
+        CommitmentOperator::new(self.connection())
     }
 
     /// Aspects, projects, domains and tags.

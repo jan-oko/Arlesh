@@ -4,7 +4,8 @@ import BlockReasonsField from "@/components/BlockReasonsField/BlockReasonsField"
 import TagPicker from "@/components/TagPicker/TagPicker";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { Domain } from "@/api/domains";
-import type { Dependency } from "@/api/tasks";
+import type { Dependency, TaskArchival } from "@/api/tasks";
+import { TASK_ARCHIVAL } from "@/api/tasks";
 import type { TimeScope } from "@/api/time-scope";
 import type { OnScopeExit } from "@/api/scope-lifecycle";
 import { listTaskDependencies } from "@/api/tasks";
@@ -16,6 +17,7 @@ import TimeScopeField from "@/components/ScopePicker/TimeScopeField";
 import OnScopeExitField from "@/components/ScopePicker/OnScopeExitField";
 import PlanField from "@/components/ScopePicker/PlanField";
 import { useInputCapture } from "@/hooks/use-input-capture";
+import Switch from "@/components/Switch/Switch";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 import { TASK_STATUS } from "@/utils/status-mapping";
 
@@ -29,6 +31,9 @@ export interface TaskSaveData {
   timeScope: TimeScope | null;
   onScopeExit: OnScopeExit | null;
   plan: TimeScope | null;
+  /** `backlog` when deliberately set aside. Never `backlog` while `plan` is set — the form keeps
+   * the two exclusive, so the save never has to be refused for it. */
+  archival: TaskArchival;
   isPrivate: boolean;
 }
 
@@ -57,6 +62,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   const [timeScope, setTimeScope] = useState<TimeScope | null>(node.timeScope ?? null);
   const [onScopeExit, setOnScopeExit] = useState<OnScopeExit | null>(node.onScopeExit ?? null);
   const [plan, setPlan] = useState<TimeScope | null>(node.plan ?? null);
+  const [isBacklogged, setIsBacklogged] = useState(node.backlogged === true);
   const [isPrivate, setIsPrivate] = useState(node.isPrivate ?? false);
   const [initialDeps, setInitialDeps] = useState<Dependency[]>([]);
   const [currentDeps, setCurrentDeps] = useState<Dependency[]>([]);
@@ -101,12 +107,27 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
         title: title.trim(), status, blockReasons: blockReasons.map((r) => r.trim()).filter((r) => r !== ""),
         tagIds, addedDeps, removedDeps, timeScope,
         onScopeExit: timeScope !== null ? (onScopeExit ?? "keep") : null,
-        plan, isPrivate,
+        plan,
+        archival: isBacklogged ? TASK_ARCHIVAL.BACKLOG : TASK_ARCHIVAL.LIVE,
+        isPrivate,
       });
     } catch (err) {
       setSaveError(getErrorMessage(err));
       setIsSaving(false);
     }
+  }
+
+  // The two are mutually exclusive, and the form resolves that rather than letting the save be
+  // refused for it. Each direction clears the other *in front of the user*, in the same panel, so
+  // the change is seen as it happens instead of arriving as a surprise after saving.
+  function setBacklogAndClearPlan(next: boolean) {
+    setIsBacklogged(next);
+    if (next) setPlan(null);
+  }
+
+  function setPlanAndClearBacklog(next: TimeScope | null) {
+    setPlan(next);
+    if (next !== null) setIsBacklogged(false);
   }
 
   function handleKeyDown(event: React.KeyboardEvent) {
@@ -168,7 +189,15 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
       )}
       <div className={styles.label}>
         {t("fieldPlan")}
-        <PlanField value={plan} timeScope={timeScope} onChange={setPlan} />
+        <PlanField value={plan} timeScope={timeScope} onChange={setPlanAndClearBacklog} />
+      </div>
+      <div className={styles.label}>
+        {t("fieldBacklog")}
+        <Switch
+          checked={isBacklogged}
+          onChange={setBacklogAndClearPlan}
+          label={isBacklogged ? t("backlogOn") : t("backlogOff")}
+        />
       </div>
       <BlockReasonsField reasons={blockReasons} onChange={setBlockReasons} virtualBlockers={virtualBlockers} />
       <TagPicker allTags={allTags} domainNames={domainNames} selectedIds={tagIds} onChange={setTagIds} />

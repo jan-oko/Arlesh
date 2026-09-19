@@ -51,10 +51,11 @@ const HABIT_GOAL_DONE = mkNode("habititem-flow_goal-9-0-virtual", "goal", [], {
 const HABIT_TASK_IP = mkNode("habititem-flow_task-7-0-virtual", "task", [], {
   status: "in_progress", virtual: true, habitItem: { flowId: 3, itemType: "flow_task", itemId: 7, scopeId: 100 },
 });
+const COMMITMENT_NODE = mkNode("commitment-7", "commitment", [], { verdict: "kept" });
 const FLOW_TASK_NODE = mkNode("flowtask-4", "flow_task");
 const FLOW_NODE = mkNode("flow-1", "flow", [FLOW_TASK_NODE]);
 const FLOW_NODE_2 = mkNode("flow-2", "flow", []);
-const PROJECT = mkNode("domain-3", "project", [TASK_NODE, TASK_DONE, GOAL_NODE, GOAL_ACHIEVED, ASPECT, HABIT_ITER, HABIT_DONE, HABIT_ITEM, HABIT_GOAL_DONE, HABIT_TASK_IP, FLOW_NODE, FLOW_NODE_2]);
+const PROJECT = mkNode("domain-3", "project", [TASK_NODE, TASK_DONE, GOAL_NODE, GOAL_ACHIEVED, ASPECT, HABIT_ITER, HABIT_DONE, HABIT_ITEM, HABIT_GOAL_DONE, HABIT_TASK_IP, COMMITMENT_NODE, FLOW_NODE, FLOW_NODE_2]);
 const ROOT = mkNode("root", "domain", [PROJECT]);
 
 function makeOpts(overrides: Partial<Parameters<typeof useNodeActions>[0]> = {}) {
@@ -79,7 +80,7 @@ function makeOpts(overrides: Partial<Parameters<typeof useNodeActions>[0]> = {})
 describe("useNodeActions — onStatusClick", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(updateTask).mockResolvedValue({ id: 5, title: "task-5", parent_type: "project", parent_id: 3, status: "in_progress", delegate_to: null, time_scope: null, on_scope_exit: null, plan: null, tag_ids: [], position: 0, is_private: false });
+    vi.mocked(updateTask).mockResolvedValue({ id: 5, title: "task-5", parent_type: "project", parent_id: 3, status: "in_progress", delegate_to: null, time_scope: null, on_scope_exit: null, plan: null, archival: "live", tag_ids: [], position: 0, is_private: false });
   });
 
   it("cycles todo → in_progress for a task node", async () => {
@@ -90,7 +91,7 @@ describe("useNodeActions — onStatusClick", () => {
   });
 
   it("cycles done → todo for a task node", async () => {
-    vi.mocked(updateTask).mockResolvedValue({ id: 6, title: "task-6", parent_type: "project", parent_id: 3, status: "todo", delegate_to: null, time_scope: null, on_scope_exit: null, plan: null, tag_ids: [], position: 0, is_private: false });
+    vi.mocked(updateTask).mockResolvedValue({ id: 6, title: "task-6", parent_type: "project", parent_id: 3, status: "todo", delegate_to: null, time_scope: null, on_scope_exit: null, plan: null, archival: "live", tag_ids: [], position: 0, is_private: false });
     const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("task-6"); });
@@ -222,6 +223,27 @@ describe("useNodeActions — onDelete", () => {
 });
 
 describe("useNodeActions — onPaste", () => {
+  it("says so rather than failing quietly when a COPY of a Commitment is skipped", async () => {
+    // There is no duplicate command for a Commitment — what a copy of a recorded Verdict means is
+    // an open question — so the paste drops it. It is named, not swallowed.
+    const clipboard = { operation: CLIPBOARD_OP.COPY, nodeIds: ["commitment-7"] };
+    const opts = makeOpts({ clipboard });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onPaste("goal-2"); });
+    expect(opts.showToast).toHaveBeenCalledWith({ nodeId: "goal-2", message: expect.any(String) });
+    expect(opts.duplicateNode).not.toHaveBeenCalled();
+  });
+
+  it("a CUT of a Commitment still moves it — only copying has no command", async () => {
+    const clipboard = { operation: CLIPBOARD_OP.CUT, nodeIds: ["commitment-7"] };
+    const opts = makeOpts({ clipboard });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onPaste("goal-2"); });
+    await vi.waitFor(() =>
+      expect(opts.moveNode).toHaveBeenCalledWith("commitment-7", "commitment", "goal-2", "goal", 0),
+    );
+  });
+
   it("does nothing when clipboard is null", () => {
     const opts = makeOpts({ clipboard: null });
     const { result } = renderHook(() => useNodeActions(opts));

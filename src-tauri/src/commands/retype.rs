@@ -11,8 +11,12 @@ use tauri::State;
 use crate::{
     database::session::SessionFactory,
     error::WireError,
-    tasks::retype::{
-        apply_retype, plan_node_retype, PlannedRetype, RetypeKind, RetypedNode, StrandedChildren,
+    tasks::{
+        model::TimeScope,
+        retype::{
+            apply_retype, plan_node_retype, PlannedRetype, RetypeKind, RetypedNode,
+            StrandedChildren,
+        },
     },
 };
 
@@ -29,6 +33,12 @@ use crate::{
 /// noise is deliberate, and the fallback if it is judged too high is an asymmetric rule (consent
 /// for children, notification for fields) rather than a silent drop.
 ///
+/// `time_scope` answers the other refusal this command can raise. A Commitment must resolve to a
+/// window, so retyping a node that has neither its own nor a scoped ancestor's comes back
+/// [`NeedsTimeScope`](crate::error::WireErrorKind::NeedsTimeScope); the caller asks again with the
+/// window it then obtained. It rides on this call rather than being written to the source node
+/// first, so the retype stays a single atomic write and a cancelled prompt leaves nothing behind.
+///
 /// Both halves run on one transactional session, so the plan cannot go stale between being shown
 /// to the caller and being carried out — and a failure anywhere leaves the tree exactly as it
 /// was.
@@ -39,14 +49,18 @@ pub async fn retype_node(
     node_id: i64,
     target_type: String,
     stranded_children: Option<StrandedChildren>,
+    time_scope: Option<TimeScope>,
 ) -> Result<RetypedNode, WireError> {
     let source_kind = parse_kind(&node_type)?;
     let target = parse_kind(&target_type)?;
 
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let planned = plan_node_retype(&mut db, source_kind, node_id, target)
+    let mut planned = plan_node_retype(&mut db, source_kind, node_id, target)
         .await
         .map_err(WireError::from_error)?;
+    if let Some(time_scope) = time_scope {
+        planned.plan.set_time_scope(time_scope);
+    }
 
     let Some(stranded) = stranded_children else {
         if planned.plan.loses_anything() {

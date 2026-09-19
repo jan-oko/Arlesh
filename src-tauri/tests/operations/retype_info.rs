@@ -186,7 +186,7 @@ async fn retyping_an_info_nested_under_an_info_to_a_goal_climbs_to_the_project_a
 
     // First call: no acknowledgement yet, so the command must refuse and name the climb —
     // the corruption this whole design exists to prevent must never happen silently.
-    let refused = retype_node(app.state(), "info".into(), inner_info, "goal".into(), None)
+    let refused = retype_node(app.state(), "info".into(), inner_info, "goal".into(), None, None)
         .await
         .expect_err("a goal cannot hang under an info, so the command must ask before climbing");
 
@@ -216,6 +216,7 @@ async fn retyping_an_info_nested_under_an_info_to_a_goal_climbs_to_the_project_a
         inner_info,
         "goal".into(),
         Some(StrandedChildren::Reparent),
+        None,
     )
     .await
     .expect("confirmed, so the climb is now carried out");
@@ -265,6 +266,7 @@ async fn a_stranded_childs_delete_failing_rolls_back_the_whole_retype() {
         project,
         "info".into(),
         Some(StrandedChildren::Delete),
+        None,
     )
     .await;
 

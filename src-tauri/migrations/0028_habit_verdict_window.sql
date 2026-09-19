@@ -1,0 +1,23 @@
+-- A commitment Habit's Verdict Window.
+--
+-- A Commitment carries its own `(n, kind)` Verdict Window and inherits from the nearest ancestor
+-- Commitment when it has none. A **virtual Habit iteration** has neither: it has no `commitments`
+-- row of its own to carry one, and the flow's Target Node — the thing it hangs under — is usually
+-- a Project or a Domain, which carries no Verdict Window either. Inheriting from the target's
+-- nearest ancestor Commitment would be a choice, not a default, and on a real board it resolves to
+-- nothing at all.
+--
+-- So the Habit itself carries it, in the same `(n, kind)` Duration pair the commitments table and
+-- a Habit's Gap already use, and every one of its iterations resolves to that one value. Null
+-- means no Verdict Window: iterations stay answerable indefinitely, which is what the kind has
+-- always done when nothing above sets one.
+--
+-- Two plain ADD COLUMNs. `flows` is referenced with ON DELETE CASCADE by seven tables, so it is
+-- never rebuilt for anything that does not strictly require it: dropping and recreating it fires
+-- those cascades and takes the whole habit history with them. Nothing here alters a constraint, so
+-- nothing has to be rebuilt. The pairing rule ("both or neither") is enforced in
+-- `flows::set_verdict_window` rather than as a CHECK, for the same reason the `flow_duration_n` /
+-- `flow_duration_kind` pair beside it has no CHECK: adding one to an existing table in SQLite
+-- means exactly the rebuild this note exists to avoid.
+ALTER TABLE flows ADD COLUMN verdict_window_n INTEGER;
+ALTER TABLE flows ADD COLUMN verdict_window_kind TEXT;

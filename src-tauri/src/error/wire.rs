@@ -27,9 +27,18 @@ pub enum WireErrorKind {
     /// dependency cycle, a fixed Aspect edit, an unsupported scope kind).
     InvalidRequest,
     /// The operation is valid but ambiguous or destructive enough that the
-    /// caller must confirm before it proceeds. Nothing constructs this kind
-    /// yet; Phase 4's confirmation flow is what will.
+    /// caller must confirm before it proceeds. Raised by `retype_node` (with
+    /// a `details` payload naming what would be lost) and by `update_task`
+    /// when backlogging a task that still has a Plan.
     NeedsConfirmation,
+    /// The request cannot be carried out until the caller supplies a **Time Scope**.
+    ///
+    /// Raised only by a write that would produce a Commitment with no effective window — its own
+    /// or a scoped ancestor's. Like [`NeedsConfirmation`](Self::NeedsConfirmation) this is not a
+    /// failure: the request is well-formed, and the answer is the same request again carrying a
+    /// window. Distinct from it because what is missing is information, not consent, and the
+    /// frontend answers the two with different prompts.
+    NeedsTimeScope,
     /// A database-level error occurred.
     Database,
     /// An unexpected or unmapped internal error occurred (e.g. corrupted
@@ -148,12 +157,23 @@ fn domain_kind(error: &DomainError) -> WireErrorKind {
 /// nested [`ScopeError`] rather than giving it its own kind.
 fn task_kind(error: &TaskError) -> WireErrorKind {
     match error {
-        TaskError::TaskNotFound(_) | TaskError::GoalNotFound(_) => WireErrorKind::NotFound,
+        TaskError::TaskNotFound(_)
+        | TaskError::GoalNotFound(_)
+        | TaskError::CommitmentNotFound(_) => WireErrorKind::NotFound,
         TaskError::CircularDependency => WireErrorKind::InvalidRequest,
+        // Not `InvalidRequest`: the request is well-formed and could be carried out. The backend
+        // is asking whether to throw the Plan away, and the caller answers by asking again with
+        // the Plan cleared.
+        TaskError::BacklogWithPlan => WireErrorKind::NeedsConfirmation,
         // Not `InvalidRequest`: the request was fine and the stored tree is not. Nothing the
         // caller can rephrase will fix it, which is what `Internal` means here.
         TaskError::AncestorCycle { .. } => WireErrorKind::Internal,
         TaskError::ScopeContainment(_) => WireErrorKind::ContainmentViolated,
+        // Not a containment violation: nothing escapes anything, and not an invalid request
+        // either — the caller asked for something reachable, it just has to say over what window.
+        // The frontend turns this into the prompt that asks, so it needs its own kind rather than
+        // a message to match on.
+        TaskError::CommitmentUnscoped => WireErrorKind::NeedsTimeScope,
         TaskError::Scope(inner) => scope_kind(inner),
         TaskError::Database(_) => WireErrorKind::Database,
     }
@@ -265,6 +285,22 @@ mod tests {
         assert_eq!(
             kind_of(TaskError::CircularDependency),
             WireErrorKind::InvalidRequest
+        );
+    }
+
+    #[test]
+    fn task_backlog_with_plan_maps_to_needs_confirmation() {
+        assert_eq!(
+            kind_of(TaskError::BacklogWithPlan),
+            WireErrorKind::NeedsConfirmation
+        );
+    }
+
+    #[test]
+    fn task_commitment_unscoped_asks_for_a_window_rather_than_refusing_the_request() {
+        assert_eq!(
+            kind_of(TaskError::CommitmentUnscoped),
+            WireErrorKind::NeedsTimeScope
         );
     }
 
@@ -431,6 +467,7 @@ mod tests {
             WireErrorKind::ContainmentViolated => "containment_violated",
             WireErrorKind::InvalidRequest => "invalid_request",
             WireErrorKind::NeedsConfirmation => "needs_confirmation",
+            WireErrorKind::NeedsTimeScope => "needs_time_scope",
             WireErrorKind::Database => "database",
             WireErrorKind::Internal => "internal",
         }
@@ -443,6 +480,7 @@ mod tests {
             WireErrorKind::ContainmentViolated,
             WireErrorKind::InvalidRequest,
             WireErrorKind::NeedsConfirmation,
+            WireErrorKind::NeedsTimeScope,
             WireErrorKind::Database,
             WireErrorKind::Internal,
         ];

@@ -18,14 +18,14 @@ function mkItem(overrides: Partial<MindmapNode> = {}): MindmapNode {
     position: 1,
     tagIds: [],
     children: [],
-    flowItem: { itemType: "flow_task", flowId: 5, flowScopeN: 2, flowScopeKind: "week", cycles: [], dependsOn: [] },
+    flowItem: { itemType: "flow_task", flowId: 5, flowInstanceType: "task" as const, flowScopeN: 2, flowScopeKind: "week", cycles: [], dependsOn: [] },
     ...overrides,
   };
 }
 
 const SPECIFY: MindmapNode = {
   id: "flowtask-1", kind: "flow_task", title: "Specify", position: 0, tagIds: [], children: [],
-  flowItem: { itemType: "flow_task", flowId: 5, flowScopeN: 2, flowScopeKind: "week", cycles: [], dependsOn: [] },
+  flowItem: { itemType: "flow_task", flowId: 5, flowInstanceType: "task" as const, flowScopeN: 2, flowScopeKind: "week", cycles: [], dependsOn: [] },
 };
 
 const defaultProps = {
@@ -87,7 +87,7 @@ describe("FlowItemEditorModal", () => {
   });
 
   it("hides the cycle grid for an unscoped flow", () => {
-    render(<FlowItemEditorModal {...defaultProps} node={mkItem({ flowItem: { itemType: "flow_task", flowId: 5, flowScopeN: null, flowScopeKind: null, cycles: [], dependsOn: [] } })} />);
+    render(<FlowItemEditorModal {...defaultProps} node={mkItem({ flowItem: { itemType: "flow_task", flowId: 5, flowInstanceType: "task" as const, flowScopeN: null, flowScopeKind: null, cycles: [], dependsOn: [] } })} />);
     expect(screen.queryByRole("button", { name: "editor:cycleAddWhole" })).not.toBeInTheDocument();
   });
 });
