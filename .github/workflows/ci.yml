@@ -162,11 +162,16 @@ jobs:
       # and profile paths cargo-llvm-cov would use, so the test run and the
       # doctest run compile against the same fingerprint and share artifacts.
       #
-      # Doing this the obvious way instead — `cargo llvm-cov` followed by a
-      # plain `cargo test --doc` — costs 4m07s for 14 doctests against 1m33s for
-      # the other 630 tests plus coverage, because the uninstrumented build is a
-      # different fingerprint and rebuilds all 560 crates. `cargo llvm-cov` will
-      # not run doctests itself; coverage for them is nightly-only.
+      # `cargo llvm-cov` does not run doctests — coverage for them is
+      # nightly-only — so driving it directly gated 630 tests where `cargo test`
+      # runs 644, losing 14 doctests silently while staying green. `cargo test`
+      # includes doctests already, so it is the only runner needed here; adding
+      # a separate `--doc` invocation just ran them twice (658 reported).
+      #
+      # It has to run under these flags, though. A plain `cargo test --doc`
+      # alongside `cargo llvm-cov` cost 4m07s for those 14 doctests against
+      # 1m33s for everything else, because an uninstrumented build is a
+      # different fingerprint and rebuilds all 560 crates.
       #
       # `clean` drops stale .profraw and this crate's own artifacts, leaving the
       # cached dependency build alone — without it a warm cache can merge
@@ -183,7 +188,6 @@ jobs:
           source <(cargo llvm-cov show-env --export-prefix)
           cargo llvm-cov clean --workspace
           cargo test --locked
-          cargo test --locked --doc
           cargo llvm-cov report \
             --summary-only \
             --ignore-filename-regex '(^|/)src/commands/' \
