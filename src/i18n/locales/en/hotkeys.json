@@ -24,7 +24,7 @@
   "createTaskChild": "Create a Task child",
   "createInfoChild": "Create an Info child",
   "createFlowChild": "Create a Flow child",
-  "createCommitmentChild": "New commitment under the selection",
+  "createCommitmentChild": "Create a Commitment child",
   "createSibling": "Create a sibling cell",
   "insertParent": "Insert a parent above",
   "focusRoot": "Focus the current root (nothing selected)",

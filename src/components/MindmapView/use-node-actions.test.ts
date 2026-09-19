@@ -74,6 +74,7 @@ function makeOpts(overrides: Partial<Parameters<typeof useNodeActions>[0]> = {})
     setEditingNodeId: vi.fn(),
     showToast: vi.fn(),
     onNewFlow: vi.fn(),
+    onNewCommitment: vi.fn(),
     ...overrides,
   };
 }
@@ -514,6 +515,29 @@ describe("useNodeActions — onCreateTypedChild", () => {
     expect(opts.onNewFlow).toHaveBeenCalledWith("domain-3");
     expect(opts.createNode).not.toHaveBeenCalled();
     expect(opts.showToast).not.toHaveBeenCalled();
+  });
+
+  // Shift+C used to post a bare commitment with no Time Scope, which the backend refuses when
+  // nothing above the parent is scoped — a chord whose only outcome was a refusal toast. It now
+  // opens the editor, where the window can be set before anything is written.
+  it("opens the Commitment editor rather than creating a windowless Commitment row", () => {
+    const opts = typedOpts();
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onCreateTypedChild("domain-3", "commitment"); });
+    expect(opts.onNewCommitment).toHaveBeenCalledWith("domain-3");
+    expect(opts.createNode).not.toHaveBeenCalled();
+    expect(opts.showToast).not.toHaveBeenCalled();
+  });
+
+  // The parent check still runs first: the editor is not opened on a parent that could never hold
+  // a commitment, because the refusal is about placement, not about the window.
+  it("refuses a Commitment under a Tag without opening the editor", () => {
+    const opts = typedOpts();
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onCreateTypedChild("domain-20", "commitment"); });
+    expect(opts.onNewCommitment).not.toHaveBeenCalled();
+    expect(opts.createNode).not.toHaveBeenCalled();
+    expect(opts.showToast).toHaveBeenCalledTimes(1);
   });
 
   it("says so when the backend refuses the creation, instead of failing where nobody is looking", async () => {

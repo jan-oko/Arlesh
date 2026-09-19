@@ -243,8 +243,9 @@ export function isValidDropTarget(sourceKind: NodeKind, targetKind: NodeKind): b
 
 /**
  * The node kinds a Shift+initial chord creates directly under the selection, bypassing Tab's
- * inherit-the-parent default. Deliberately the six *named* kinds a user reaches for: Commitment
- * has its own creation gesture, and flow items are spawned by Tab from inside their flow.
+ * inherit-the-parent default. Deliberately the seven *named* kinds a user reaches for; flow items
+ * are left out because they are spawned by Tab from inside their flow. Two of the seven open an
+ * editor rather than a blank row — see `onCreateTypedChild`.
  */
 export const TYPED_CHILD_KINDS = ["domain", "project", "goal", "task", "commitment", "info", "flow"] as const;
 

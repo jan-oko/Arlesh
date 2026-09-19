@@ -21,14 +21,10 @@ import CommitmentRow from "./CommitmentRow";
 import PathHeaderRow from "./PathHeaderRow";
 import AnchoredToast from "@/components/AnchoredToast/AnchoredToast";
 import BacklogConfirmModal from "@/components/BacklogConfirmModal/BacklogConfirmModal";
-import type { Position } from "@/utils/tree-layout";
 import styles from "./ListView.module.css";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
 import { useSubtreeNav } from "@/hooks/use-subtree-nav";
 import { useViewStore } from "@/stores/use-view-store";
-
-/** A flat list lays out no nodes, so every anchored notice falls back to its fixed spot. */
-const NO_POSITIONS: ReadonlyMap<string, Position> = new Map();
 
 export default function ListView() {
   const { t } = useTranslation(["common", "listView", "editor"]);
@@ -160,7 +156,7 @@ export default function ListView() {
 
   return (
     <div className={styles.container}>
-      <AnchoredToast toast={pendingToast} positions={NO_POSITIONS} onDismiss={clearToast} />
+      <AnchoredToast toast={pendingToast} onDismiss={clearToast} />
 
       {filteredCommitments.length > 0 && (
         <section className={styles.commitments} aria-label={t("listView:commitmentsHeading")}>

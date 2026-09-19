@@ -43,6 +43,12 @@ interface Options {
    * type, window, duration — so Shift+F opens that editor instead of creating a row to rename.
    */
   onNewFlow: (parentId: string) => void;
+  /**
+   * Opens the Commitment editor on a blank commitment under `parentId`. A Commitment is invalid
+   * without a window of its own or one above it, so Shift+C asks for the window first rather than
+   * posting a bare row for the backend to refuse.
+   */
+  onNewCommitment: (parentId: string) => void;
 }
 
 interface Result {
@@ -58,7 +64,7 @@ interface Result {
 
 export function useNodeActions({
   tree, clipboard, moveNode, duplicateNode, onRequestDelete, reload, renameNode,
-  createNode, createChild, selectNode, setClipboard, setEditingNodeId, showToast, onNewFlow,
+  createNode, createChild, selectNode, setClipboard, setEditingNodeId, showToast, onNewFlow, onNewCommitment,
 }: Options): Result {
   const { t } = useTranslation(["warnings", "nodeKinds"]);
 
@@ -154,7 +160,11 @@ export function useNodeActions({
         return;
       }
 
+      // Two kinds are configured before they exist rather than named and filled in after. A Flow
+      // because that is what a Flow is; a Commitment because it is not valid without a window, so
+      // posting a bare row first would only earn a refusal and leave the user at a dead end.
       if (childKind === "flow") { onNewFlow(nodeId); return; }
+      if (childKind === "commitment") { onNewCommitment(nodeId); return; }
 
       void (async () => {
         try {
@@ -169,7 +179,7 @@ export function useNodeActions({
         }
       })();
     },
-    [tree, createNode, onNewFlow, selectNode, setEditingNodeId, showToast, t],
+    [tree, createNode, onNewFlow, onNewCommitment, selectNode, setEditingNodeId, showToast, t],
   );
 
   const onDelete = useCallback(
