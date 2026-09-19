@@ -2155,7 +2155,9 @@ from the real board, which is at 25; the branch knew only 0024. The mirror image
 were invisible because `launch()` reports success for a process that dies milliseconds later. Merging
 master into #16 fixed it; the instance has been up and clean since 19:42.
 
-**Correction: the floor gates `--fail-under-lines 94` — lines, not regions.** I wrote "regions"
-repeatedly, in progress.md and in three agent briefs. The number is right and nothing operational
-changes; the unit was wrong and is now fixed above. Caught by the `Arlesh-l25` agent reading
-`ci.yml:202` rather than taking the brief's word, which is the behaviour the briefs ask for.
+**Correction: the floor gates `--fail-under-lines 94` — lines, not regions.** This file had it
+right all along; the error was in three agent briefs and in what was reported upward, where "94 on
+LLVM regions" was used as shorthand. The number is right and nothing operational changes. Caught by
+the `Arlesh-l25` agent reading `ci.yml:202` rather than taking its brief's word, which is exactly
+the behaviour the briefs ask for — and the first draft of this very correction got it wrong again by
+claiming the file was at fault.
