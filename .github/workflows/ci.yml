@@ -142,10 +142,17 @@ jobs:
       # with `cargo test` folded into cargo-llvm-cov there is only one set of
       # RUSTFLAGS in play, so a single entry can no longer be invalidated by
       # whichever job wrote to it last.
+      # The key is tied to the coverage MODE, not just the toolchain. Driving
+      # `cargo llvm-cov` directly builds into target/llvm-cov-target; driving
+      # `cargo test` under `show-env` builds into target/debug. An entry written
+      # by one is useless to the other, and rust-cache never overwrites an
+      # exact-key hit — so a stale entry recompiled 384 crates on a cache that
+      # reported "full match: true", and would have done so on every run rather
+      # than converging. Change this key if the command below changes mode.
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-          shared-key: rust
+          shared-key: rust-llvm-cov-manual
 
       # `tauri::generate_context!` (src-tauri/src/lib.rs) embeds the frontend
       # bundle at compile time, so the lib — and therefore every integration test
@@ -186,14 +193,7 @@ jobs:
         run: |
           set -o pipefail
           source <(cargo llvm-cov show-env --export-prefix)
-          # show-env sets the RUSTFLAGS and profile paths but NOT the target
-          # directory, so `cargo test` would build into target/debug while every
-          # `cargo llvm-cov` invocation uses target/llvm-cov-target. That split
-          # recompiled 384 crates on a cache that reported "full match: true",
-          # and it would have repeated every run: rust-cache does not overwrite
-          # an exact-key hit, so the second tree never gets saved.
-          export CARGO_TARGET_DIR="${CARGO_LLVM_COV_TARGET_DIR:?show-env did not export a target dir}"
-          echo "building in $CARGO_TARGET_DIR"
+          echo "building in ${CARGO_TARGET_DIR:-src-tauri/target}"
           cargo llvm-cov clean --workspace
           cargo test --locked
           cargo llvm-cov report \
