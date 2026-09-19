@@ -1,7 +1,12 @@
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { FilterState, TagFilterMode } from "@/utils/filter-tree";
-import { typeHardHidden, passesTags, withArchivedOverride, isShelvedProject } from "@/utils/filter-tree";
+import {
+  typeHardHidden, passesTags, withArchivedOverride, isShelvedProject, isHiddenBacklog,
+  passesCommitmentPreset,
+} from "@/utils/filter-tree";
 import { TASK_STATUS, GOAL_STATUS, PROJECT_STATUS } from "@/utils/status-mapping";
+import type { Verdict } from "@/api/commitments";
+import { VERDICT, VERDICT_VALUES } from "@/api/commitments";
 
 /** Same any/all/exclude semantics as a tag filter, reused across every List View filter dimension. */
 export type PillMode = TagFilterMode;
@@ -21,18 +26,18 @@ export const NEXT_PILL_MODE: Record<PillMode, PillMode> = { any: "all", all: "ex
 /** The List-View-exclusive filter dimensions (status preset, tags, and type toggles stay in the shared FilterState). */
 export type PillDimension =
   | "parent" | "dependency"
-  | "taskStatus" | "goalStatus" | "projectStatus"
+  | "taskStatus" | "goalStatus" | "projectStatus" | "verdict"
   | "scopeState" | "blocked";
 
 export const PILL_DIMENSIONS: PillDimension[] = [
   "parent", "dependency",
-  "taskStatus", "goalStatus", "projectStatus",
+  "taskStatus", "goalStatus", "projectStatus", "verdict",
   "scopeState", "blocked",
 ];
 
 /** List View's own preset selector: All/Plan/Start/Do write through to the shared status preset;
  * Unblock is List-View-only and does not touch it (see SPEC List View section). */
-export const LIST_PRESET_VALUES = ["all", "plan", "start", "do", "unblock"] as const;
+export const LIST_PRESET_VALUES = ["all", "plan", "start", "do", "backlog", "unblock"] as const;
 export type ListPreset = (typeof LIST_PRESET_VALUES)[number];
 
 export function isListPreset(value: string): value is ListPreset {
@@ -42,6 +47,7 @@ export function isListPreset(value: string): value is ListPreset {
 export const TASK_STATUS_VALUES = Object.values(TASK_STATUS);
 export const GOAL_STATUS_VALUES = Object.values(GOAL_STATUS);
 export const PROJECT_STATUS_VALUES = Object.values(PROJECT_STATUS);
+export const VERDICT_FILTER_VALUES = VERDICT_VALUES;
 export const SCOPE_STATE_VALUES = ["unscoped", "active", "overdue", "lapsed", "planned", "unplanned"] as const;
 export const BLOCKED_VALUES = ["blocked", "not_blocked"] as const;
 
@@ -63,6 +69,10 @@ export function isProjectStatusValue(value: string): value is ProjectStatusValue
   return (PROJECT_STATUS_VALUES as readonly string[]).includes(value);
 }
 
+export function isVerdictValue(value: string): value is Verdict {
+  return VERDICT_FILTER_VALUES.some((verdict) => verdict === value);
+}
+
 export function isScopeStateValue(value: string): value is ScopeStateValue {
   return (SCOPE_STATE_VALUES as readonly string[]).includes(value);
 }
@@ -80,7 +90,7 @@ export const DEFAULT_LIST_FILTER: ListFilterState = {
   preset: "all",
   pills: {
     parent: [], dependency: [],
-    taskStatus: [], goalStatus: [], projectStatus: [],
+    taskStatus: [], goalStatus: [], projectStatus: [], verdict: [],
     scopeState: [], blocked: [],
   },
 };
@@ -138,6 +148,23 @@ export interface TaskListRow {
   scopeTokens: string[];
 }
 
+/** One flattened Commitment row, for the section that sits above the task rows.
+ *
+ * Deliberately thinner than a {@link TaskListRow}: a Commitment has no dependencies, no blockers,
+ * no Plan and no Goal/Project status of its own to filter on, so the fields that would carry
+ * those are not merely empty — they are absent, and the filter cannot ask about them by mistake.
+ */
+export interface CommitmentListRow {
+  node: MindmapNode;
+  /** Tree node id of the immediate parent. */
+  parentRef: string;
+  /** Tree node ids of every ancestor, immediate parent to root aspect. */
+  ancestors: MindmapNode[];
+  /** Whether any ancestor is marked private — the subtree hides as a unit outside Private Mode. */
+  hasPrivateAncestor: boolean;
+  scopeTokens: string[];
+}
+
 /** Combined pill predicate per SPEC Filtering Logic: (∪Any) ∧ (∩All) ∧ ¬(∪Exclude). */
 export function matchesPillGroup(filters: readonly PillFilter[], rowValues: readonly string[]): boolean {
   if (filters.length === 0) return true;
@@ -176,6 +203,9 @@ function passesListPreset(row: TaskListRow, f: FilterState): boolean {
   // A Frozen/Archived Project shelves its whole subtree in Plan/Start. The Mindmap drops it by
   // tree-pruning; a flat list needs the explicit ancestor walk (no-op under All/Do).
   if (row.ancestors.some((a) => isShelvedProject(a, f))) return false;
+  // Likewise a backlogged ancestor Task: the Mindmap prunes the subtree away, a flat list has to
+  // walk for it. (The row's own backlog is handled by `typeHardHidden`, before this runs.)
+  if (row.ancestors.some((a) => isHiddenBacklog(a, f))) return false;
   switch (f.statusMode) {
     case "all":
       return true;
@@ -192,7 +222,50 @@ function passesListPreset(row: TaskListRow, f: FilterState): boolean {
     }
     case "do":
       return row.node.status === "in_progress";
+    case "backlog":
+      // Everything set aside, plus everything beneath it — the Mindmap's subtree rule, flattened.
+      return row.node.backlogged === true || row.ancestors.some((a) => a.backlogged === true);
   }
+}
+
+/**
+ * Filters the flattened Commitment rows for the section above the task rows.
+ *
+ * The preset rules are the Commitment ones — All shows everything including past verdicts,
+ * Plan shows unresolved plus broken-while-the-window-is-still-open, Start and Do show
+ * unresolved — and they come from the same {@link passesCommitmentPreset} the Mindmap uses, so
+ * the two surfaces cannot drift.
+ *
+ * Only the pill dimensions a Commitment actually has are consulted: parent, scope state and
+ * verdict. A task-status or blocked pill is not "failed" by a commitment, it simply
+ * does not apply to one — filtering the whole section away because the user asked to see
+ * in-progress tasks would be answering a question nobody asked.
+ *
+ * Two presets are special. **Unblock** is about blocked tasks and a Commitment is never blocked,
+ * so the section is empty there. **Backlog** is a Task-only state, so it is empty there too.
+ */
+export function filterCommitmentList(
+  rows: readonly CommitmentListRow[],
+  shared: FilterState,
+  listFilter: ListFilterState,
+): CommitmentListRow[] {
+  if (listFilter.preset === "unblock" || listFilter.preset === "backlog") return [];
+  return rows.filter((row) => {
+    if (typeHardHidden(row.node, shared)) return false;
+    if (!shared.privateMode && row.hasPrivateAncestor) return false;
+    if (row.ancestors.some((a) => isShelvedProject(a, shared))) return false;
+    if (row.ancestors.some((a) => isHiddenBacklog(a, shared))) return false;
+    if (!withArchivedOverride(row.node, shared, passesCommitmentPreset(row.node, shared))) {
+      return false;
+    }
+    if (!passesTags(row.node, shared)) return false;
+    if (!matchesPillGroup(listFilter.pills.parent, [row.parentRef])) return false;
+    if (!matchesPillGroup(listFilter.pills.scopeState, row.scopeTokens)) return false;
+    if (!matchesPillGroup(listFilter.pills.verdict, [row.node.verdict ?? VERDICT.UNRESOLVED])) {
+      return false;
+    }
+    return true;
+  });
 }
 
 /** Filters the flattened task rows per the shared filter (status preset, tags, Info/Flow/Private) and

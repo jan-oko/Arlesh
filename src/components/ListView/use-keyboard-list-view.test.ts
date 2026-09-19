@@ -13,9 +13,10 @@ function fireKey(key: string, modifiers: { altKey?: boolean; ctrlKey?: boolean; 
 }
 
 function baseOptions(overrides: Partial<Parameters<typeof useKeyboardListView>[0]> = {}) {
-  return {
+  const merged = {
     isInputActive: false,
     selectedTaskId: "task-1" as string | null,
+    selectedCommitmentId: null as string | null,
     isSelectedBlocked: false,
     onNavigate: vi.fn(),
     onCycleStatus: vi.fn(),
@@ -28,7 +29,17 @@ function baseOptions(overrides: Partial<Parameters<typeof useKeyboardListView>[0
     subtreeRootId: null as string | null,
     onExitSubtree: vi.fn(),
     onExitToRoot: vi.fn(),
+    onToggleBacklog: vi.fn(),
+    onMarkKept: vi.fn(),
+    onMarkBroken: vi.fn(),
     ...overrides,
+  };
+  // `selectedRowId` is whichever of the two kinds is selected, exactly as ListView derives it —
+  // computed here rather than defaulted, so a test that says "nothing is selected" is not
+  // silently contradicted by a stale row id.
+  return {
+    ...merged,
+    selectedRowId: overrides.selectedRowId ?? merged.selectedTaskId ?? merged.selectedCommitmentId,
   };
 }
 
@@ -65,11 +76,27 @@ describe("useKeyboardListView", () => {
     ["p", "plan"],
     ["s", "start"],
     ["d", "do"],
+    ["b", "backlog"],
   ] as const)("Alt+%s sets the %s status preset", (key, mode) => {
     const options = baseOptions();
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey(key, { altKey: true });
     expect(options.onSetStatusMode).toHaveBeenCalledWith(mode);
+  });
+
+  it("plain B toggles the selected row's backlog", () => {
+    const options = baseOptions();
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    fireKey("b");
+    expect(options.onToggleBacklog).toHaveBeenCalledWith("task-1");
+    expect(options.onSetStatusMode).not.toHaveBeenCalled();
+  });
+
+  it("plain B does nothing with no row selected", () => {
+    const options = baseOptions({ selectedTaskId: null });
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    fireKey("b");
+    expect(options.onToggleBacklog).not.toHaveBeenCalled();
   });
 
   it("ArrowDown/ArrowUp navigate the selection", () => {

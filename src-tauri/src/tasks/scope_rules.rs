@@ -23,9 +23,12 @@ use crate::scopes::model::ScopeId;
 use crate::scopes::resolve::{self, Bounds};
 
 use super::ancestry;
+use super::commitments;
 use super::error::TaskError;
-use super::lifecycle::{derive_item_state, Archival, ItemLifecycle};
-use super::model::{GoalId, GoalStatus, OnScopeExit, TaskId, TaskStatus, TimeScope};
+use super::lifecycle::{derive_commitment_state, derive_item_state, Archival, ItemLifecycle};
+use super::model::{
+    CommitmentId, GoalId, GoalStatus, OnScopeExit, TaskId, TaskStatus, TimeScope,
+};
 
 /// Maps a Goal's stored status to its baseline Archival value, for [`derive_item_state`]'s `stored`
 /// parameter. `Achieved` intentionally maps to `Live`, not `Archived` — achievement is a separate,
@@ -70,9 +73,14 @@ pub(super) async fn scope_governance<M: SessionMode>(
 }
 
 /// Derives the full lifecycle state (Timing / Resolution / Archival — see `lifecycle`'s module
-/// docs) of every Task and Goal at `now`, using each item's effective governance. A Task is
-/// resolved once Done; a Goal once Achieved or Archived. Tasks have no manual Archival concept
-/// (always fully derived); Goals carry their own stored Archival via [`goal_stored_archival`].
+/// docs) of every Task, Goal and Commitment at `now`, using each item's effective governance. A
+/// Task is resolved once Done; a Goal once Achieved or Archived. Both carry a stored Archival: a
+/// Task its Backlog column, a Goal its status via [`goal_stored_archival`].
+///
+/// A Commitment takes the third branch, and it is not a special case of the first two: its
+/// Resolution axis is replaced by a recorded Verdict that nothing here derives, and its Archival
+/// comes from the Verdict Window rather than from On-exit behavior. See
+/// [`derive_commitment_state`].
 ///
 /// Reads only — nothing is persisted, so a pooled session is enough.
 pub async fn derive_all_scope_lifecycles<M: SessionMode>(
@@ -86,12 +94,14 @@ pub async fn derive_all_scope_lifecycles<M: SessionMode>(
             None => (None, None),
         };
         let resolved = TaskStatus::from_db(&task.status) == Some(TaskStatus::Done);
-        let state = derive_item_state(window, on_exit, resolved, None, now);
+        let stored = Some(Archival::from(task.archival));
+        let state = derive_item_state(window, on_exit, resolved, stored, now);
         out.push(ItemLifecycle {
             node_type: "task".to_string(),
             node_id: task.id,
             timing: state.timing,
             resolution: state.resolution,
+            verdict: None,
             archival: state.archival,
             archival_conflict: state.archival_conflict,
         });
@@ -110,8 +120,30 @@ pub async fn derive_all_scope_lifecycles<M: SessionMode>(
             node_id: goal.id,
             timing: state.timing,
             resolution: state.resolution,
+            verdict: None,
             archival: state.archival,
             archival_conflict: state.archival_conflict,
+        });
+    }
+    for commitment in db.commitments().list().await? {
+        let window = scope_governance(db, "commitment", commitment.id)
+            .await?
+            .map(|(window, _)| window);
+        let verdict_window =
+            commitments::effective_verdict_window(db, CommitmentId(commitment.id)).await?;
+        let state =
+            derive_commitment_state(window, commitment.verdict, verdict_window.as_ref(), now);
+        out.push(ItemLifecycle {
+            node_type: "commitment".to_string(),
+            node_id: commitment.id,
+            timing: state.timing,
+            // Resolution is the Task/Goal axis; a Commitment answers with its Verdict instead,
+            // and sending both would invite a consumer to read one as a fallback for the other.
+            resolution: None,
+            verdict: Some(state.verdict),
+            archival: state.archival,
+            // Nothing on a Commitment is manually archived, so nothing can be overridden.
+            archival_conflict: false,
         });
     }
     Ok(out)
@@ -291,7 +323,42 @@ pub(super) async fn validate_goal_containment<M: SessionMode>(
     check_containment(ContainmentWindows { own_scope, ancestor_scope, ..Default::default() })
 }
 
-/// Returns the direct task and goal children of a node, as `(node_type, node_id)` pairs.
+/// Rejects a commitment write that leaves it with no **effective** window, or with one that
+/// escapes its nearest scoped ancestor's.
+///
+/// The first half is this kind's own rule and has no counterpart anywhere else in the model.
+/// Every other node may be Unscoped, which simply means always-active; a Commitment with no
+/// window has nothing to be kept or broken *over*, and no verdict could ever come due on it. So
+/// it is refused with [`TaskError::CommitmentUnscoped`] rather than written. An inherited window
+/// satisfies the rule — what is required is an effective one, not an own one.
+///
+/// The second half is the ordinary containment check, reduced (as a goal's is) to rule two
+/// alone: a Commitment has no Plan, so two of [`ContainmentWindows`]' four fields are
+/// structurally absent.
+pub(super) async fn validate_commitment_scope<M: SessionMode>(
+    db: &mut Db<M>,
+    parent_type: &str,
+    parent_id: i64,
+    time_scope: &Option<TimeScope>,
+) -> Result<(), TaskError> {
+    let chain = ancestry::climb(db, parent_type, parent_id).await?;
+    let ancestor = chain.nearest_scoped().or_reject()?.map(|(scope, _)| scope);
+
+    let Some(own) = time_scope else {
+        // Nothing of its own, so the ancestor chain is the only thing that can supply a window.
+        return match ancestor {
+            Some(_) => Ok(()),
+            None => Err(TaskError::CommitmentUnscoped),
+        };
+    };
+
+    let own_scope = Some(time_scope_window(db, own).await?);
+    let ancestor_scope = resolve_optional(db, ancestor).await?;
+    check_containment(ContainmentWindows { own_scope, ancestor_scope, ..Default::default() })
+}
+
+/// Returns the direct task, goal and commitment children of a node, as `(node_type, node_id)`
+/// pairs.
 async fn child_items<M: SessionMode>(
     db: &mut Db<M>,
     node_type: &str,
@@ -302,6 +369,8 @@ async fn child_items<M: SessionMode>(
     children.extend(task_ids.into_iter().map(|id| ("task".to_string(), id)));
     let goal_ids = db.goals().child_ids(node_type, node_id).await?;
     children.extend(goal_ids.into_iter().map(|id| ("goal".to_string(), id)));
+    let commitment_ids = db.commitments().child_ids(node_type, node_id).await?;
+    children.extend(commitment_ids.into_iter().map(|id| ("commitment".to_string(), id)));
     Ok(children)
 }
 
@@ -313,6 +382,7 @@ async fn item_time_scope<M: SessionMode>(
     match node_type {
         "task" => Ok(db.tasks().get(TaskId(node_id)).await?.time_scope),
         "goal" => Ok(db.goals().get(GoalId(node_id)).await?.time_scope),
+        "commitment" => Ok(db.commitments().get(CommitmentId(node_id)).await?.time_scope),
         _ => Ok(None),
     }
 }
@@ -395,141 +465,4 @@ pub async fn conflicts_for_new_time_scope<M: SessionMode>(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use chrono::NaiveDate;
-
-    /// A window spanning `[from, to)` in July 2026, by day-of-month. Pure test data: nothing
-    /// here resolves a scope, because [`check_containment`] never does.
-    fn july(from: u32, to: u32) -> Bounds {
-        let at = |day| {
-            NaiveDate::from_ymd_opt(2026, 7, day)
-                .expect("July has this day")
-                .and_hms_opt(0, 0, 0)
-                .expect("midnight is a time")
-        };
-        (at(from), at(to))
-    }
-
-    /// The `ScopeContainment` message, or a panic naming what came back instead.
-    fn violation(result: Result<(), TaskError>) -> String {
-        match result {
-            Err(TaskError::ScopeContainment(message)) => message,
-            other => panic!("expected a containment violation, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn a_task_nested_inside_every_window_above_it_is_accepted() {
-        let windows = ContainmentWindows {
-            own_scope: Some(july(10, 20)),
-            plan: Some(july(12, 14)),
-            ancestor_scope: Some(july(1, 31)),
-            ancestor_plan: Some(july(11, 15)),
-        };
-
-        assert!(check_containment(windows).is_ok());
-    }
-
-    #[test]
-    fn a_plan_escaping_its_own_time_scope_is_rejected() {
-        let windows = ContainmentWindows {
-            own_scope: Some(july(10, 20)),
-            plan: Some(july(18, 25)),
-            ..Default::default()
-        };
-
-        assert_eq!(
-            violation(check_containment(windows)),
-            "plan is not within the task's time scope"
-        );
-    }
-
-    #[test]
-    fn a_time_scope_escaping_the_nearest_scoped_ancestor_is_rejected() {
-        let windows = ContainmentWindows {
-            own_scope: Some(july(10, 20)),
-            ancestor_scope: Some(july(12, 18)),
-            ..Default::default()
-        };
-
-        assert_eq!(
-            violation(check_containment(windows)),
-            "time scope is not within the parent's time scope"
-        );
-    }
-
-    #[test]
-    fn a_plan_escaping_the_nearest_planned_ancestor_is_rejected() {
-        let windows = ContainmentWindows {
-            plan: Some(july(10, 20)),
-            ancestor_plan: Some(july(12, 18)),
-            ..Default::default()
-        };
-
-        assert_eq!(
-            violation(check_containment(windows)),
-            "plan is not within the parent task's plan"
-        );
-    }
-
-    #[test]
-    fn the_first_violation_is_the_only_one_reported() {
-        // Every rule is broken at once. Collecting all three is a deliberate non-goal, so the
-        // message must be rule one's and the check must stop there.
-        let windows = ContainmentWindows {
-            own_scope: Some(july(10, 20)),
-            plan: Some(july(1, 31)),
-            ancestor_scope: Some(july(12, 18)),
-            ancestor_plan: Some(july(13, 14)),
-        };
-
-        assert_eq!(
-            violation(check_containment(windows)),
-            "plan is not within the task's time scope"
-        );
-    }
-
-    #[test]
-    fn a_rule_whose_windows_are_not_both_present_is_skipped() {
-        // Unconstrained above and unplanned: only rule one has both its inputs, and it holds.
-        let unconstrained = ContainmentWindows {
-            own_scope: Some(july(10, 20)),
-            plan: Some(july(12, 14)),
-            ..Default::default()
-        };
-        assert!(check_containment(unconstrained).is_ok());
-
-        // A plan escaping every window above it, on an item that has no plan of its own: two
-        // rules go quiet rather than firing on a window that is not there.
-        let unplanned = ContainmentWindows {
-            own_scope: Some(july(10, 20)),
-            ancestor_scope: Some(july(1, 31)),
-            ancestor_plan: Some(july(13, 14)),
-            ..Default::default()
-        };
-        assert!(check_containment(unplanned).is_ok());
-    }
-
-    #[test]
-    fn a_goal_shaped_check_reduces_to_the_ancestor_rule_alone() {
-        // A goal has no Plan, so `plan` and `ancestor_plan` are structurally absent and rules
-        // one and three cannot fire. That is the whole of `validate_goal_containment`.
-        let inside = ContainmentWindows {
-            own_scope: Some(july(10, 20)),
-            ancestor_scope: Some(july(1, 31)),
-            ..Default::default()
-        };
-        assert!(check_containment(inside).is_ok());
-
-        let outside = ContainmentWindows {
-            own_scope: Some(july(10, 20)),
-            ancestor_scope: Some(july(12, 18)),
-            ..Default::default()
-        };
-        assert_eq!(
-            violation(check_containment(outside)),
-            "time scope is not within the parent's time scope"
-        );
-    }
-}
+mod tests;

@@ -4,10 +4,10 @@ import { useDismissableLoadCondition } from "./use-dismissable-load-condition";
 import type { LoadCondition } from "./use-mindmap-data";
 
 function condition(...ids: number[]): LoadCondition {
-  return { failedFlows: ids.map((id) => ({ id, title: `Flow ${id}` })) };
+  return { failedFlows: ids.map((id) => ({ id, title: `Flow ${id}` })), unrenderableCommitmentFlows: [] };
 }
 
-const CLEAN: LoadCondition = { failedFlows: [] };
+const CLEAN: LoadCondition = { failedFlows: [], unrenderableCommitmentFlows: [] };
 
 describe("useDismissableLoadCondition", () => {
   it("shows the current failures when nothing has been dismissed", () => {
@@ -81,8 +81,23 @@ describe("useDismissableLoadCondition", () => {
           { id: 8, title: "Flow 8" },
           { id: 7, title: "Flow 7" },
         ],
+        unrenderableCommitmentFlows: [],
       },
     });
     expect(result.current.visibleFailedFlows).toEqual([]);
+  });
+
+  it("shows an unrenderable commitment habit under the same dismissal as a failed derivation", () => {
+    const condition: LoadCondition = {
+      failedFlows: [],
+      unrenderableCommitmentFlows: [{ id: 11, title: "Asleep by 23:00" }],
+    };
+    const { result, rerender } = renderHook(({ c }) => useDismissableLoadCondition(c), {
+      initialProps: { c: condition },
+    });
+    expect(result.current.visibleUnrenderableCommitmentFlows).toEqual([{ id: 11, title: "Asleep by 23:00" }]);
+    act(() => result.current.dismiss());
+    rerender({ c: { failedFlows: [], unrenderableCommitmentFlows: [{ id: 11, title: "Asleep by 23:00" }] } });
+    expect(result.current.visibleUnrenderableCommitmentFlows).toEqual([]);
   });
 });

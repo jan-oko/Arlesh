@@ -1,9 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
-  matchesPillGroup, deriveScopeStateTokens, filterTaskList, withCurrentPillDimensions,
+  matchesPillGroup, deriveScopeStateTokens, filterTaskList, filterCommitmentList,
+  withCurrentPillDimensions,
   DEFAULT_LIST_FILTER,
 } from "./list-filter";
-import type { PillFilter, ListFilterState, TaskListRow } from "./list-filter";
+import type { PillFilter, ListFilterState, TaskListRow, CommitmentListRow } from "./list-filter";
 import { DEFAULT_FILTER } from "./filter-tree";
 import type { FilterState } from "./filter-tree";
 import type { MindmapNode, NodeKind } from "./tree-layout";
@@ -290,5 +291,133 @@ describe("withCurrentPillDimensions", () => {
       pills: { parent: ["goal-1", { value: "goal-2", mode: "nope" }, { value: "goal-3", mode: "all" }] },
     });
     expect(restored.pills.parent).toEqual([{ value: "goal-3", mode: "all" }]);
+  });
+});
+
+describe("filterTaskList — Backlog", () => {
+  const aside = row({ node: n("task-aside", "task", { status: "todo", backlogged: true }) });
+  const live = row({ node: n("task-live", "task", { status: "todo" }) });
+  // A live sub-step under a set-aside parent: hidden with it, exactly as on the canvas.
+  const substep = row({
+    node: n("task-substep", "task", { status: "todo" }),
+    ancestors: [n("task-aside", "task", { status: "todo", backlogged: true })],
+  });
+  const rows = [aside, live, substep];
+  const kept = (shared: Partial<FilterState>, list: Partial<ListFilterState> = {}) =>
+    filterTaskList(rows, sf(shared), lf(list)).map((r) => r.node.id);
+
+  it("Plan hides a backlogged row and everything under it", () => {
+    expect(kept({ statusMode: "plan" })).toEqual(["task-live"]);
+  });
+
+  it("Start hides a backlogged row and everything under it", () => {
+    expect(kept({ statusMode: "start" })).toEqual(["task-live"]);
+  });
+
+  it("All lists a backlogged row", () => {
+    expect(kept({ statusMode: "all" })).toContain("task-aside");
+  });
+
+  it("the Backlog preset lists only what was set aside, plus what sits under it", () => {
+    expect(kept({ statusMode: "backlog" })).toEqual(["task-aside", "task-substep"]);
+  });
+
+  it("the Backlog pill's Include brings the rows back under Plan", () => {
+    expect(kept({ statusMode: "plan", backlogMode: "include" })).toEqual([
+      "task-aside", "task-live", "task-substep",
+    ]);
+  });
+
+  it("the Backlog pill's Exclude drops them even under All", () => {
+    expect(kept({ statusMode: "all", backlogMode: "exclude" })).toEqual(["task-live"]);
+  });
+});
+
+describe("filterCommitmentList", () => {
+  function commitmentRow(over: Partial<CommitmentListRow> = {}): CommitmentListRow {
+    return {
+      node: n("commitment-1", "commitment", { verdict: "unresolved", timing: "active" }),
+      parentRef: "project-1",
+      ancestors: [],
+      hasPrivateAncestor: false,
+      scopeTokens: ["active", "unplanned"],
+      ...over,
+    };
+  }
+
+  const kept = (rows: CommitmentListRow[], shared = sf(), list = lf()): string[] =>
+    filterCommitmentList(rows, shared, list).map((r) => r.node.id);
+
+  it("reads the same preset rules the Mindmap does", () => {
+    const unresolved = commitmentRow();
+    const settled = commitmentRow({
+      node: n("commitment-2", "commitment", { verdict: "kept", timing: "active" }),
+    });
+    const brokenOpen = commitmentRow({
+      node: n("commitment-3", "commitment", { verdict: "broken", timing: "active" }),
+    });
+    const brokenShut = commitmentRow({
+      node: n("commitment-4", "commitment", { verdict: "broken", timing: "lapsed" }),
+    });
+    const rows = [unresolved, settled, brokenOpen, brokenShut];
+
+    expect(kept(rows, sf({ statusMode: "all" }))).toEqual([
+      "commitment-1", "commitment-2", "commitment-3", "commitment-4",
+    ]);
+    expect(kept(rows, sf({ statusMode: "plan" }))).toEqual(["commitment-1", "commitment-3"]);
+    expect(kept(rows, sf({ statusMode: "start" }))).toEqual(["commitment-1"]);
+    expect(kept(rows, sf({ statusMode: "do" }))).toEqual(["commitment-1"]);
+  });
+
+  it("is empty under Unblock and Backlog, which are about states a commitment cannot be in", () => {
+    const rows = [commitmentRow()];
+    expect(kept(rows, sf(), lf({ preset: "unblock" }))).toEqual([]);
+    expect(kept(rows, sf(), lf({ preset: "backlog" }))).toEqual([]);
+  });
+
+  it("filters by verdict", () => {
+    const rows = [
+      commitmentRow(),
+      commitmentRow({ node: n("commitment-2", "commitment", { verdict: "broken", timing: "active" }) }),
+      commitmentRow({ node: n("commitment-3", "commitment", { verdict: "kept", timing: "active" }) }),
+    ];
+    const brokenOnly = lf({ pills: { ...DEFAULT_LIST_FILTER.pills, verdict: [{ value: "broken", mode: "any" }] } });
+    expect(kept(rows, sf({ statusMode: "all" }), brokenOnly)).toEqual(["commitment-2"]);
+  });
+
+  it("ignores the pill dimensions a commitment does not have", () => {
+    // Asking to see in-progress tasks is not a reason to empty the commitments band: the
+    // dimension does not apply, so it is not a test the row can fail.
+    const withTaskPill = lf({
+      pills: {
+        ...DEFAULT_LIST_FILTER.pills,
+        taskStatus: [{ value: "in_progress", mode: "any" }],
+        blocked: [{ value: "blocked", mode: "any" }],
+        dependency: [{ value: "task-9", mode: "any" }],
+      },
+    });
+    expect(kept([commitmentRow()], sf(), withTaskPill)).toEqual(["commitment-1"]);
+  });
+
+  it("applies the parent pill", () => {
+    const rows = [commitmentRow()];
+    const matching = lf({ pills: { ...DEFAULT_LIST_FILTER.pills, parent: [{ value: "project-1", mode: "any" }] } });
+    const other = lf({ pills: { ...DEFAULT_LIST_FILTER.pills, parent: [{ value: "project-2", mode: "any" }] } });
+    expect(kept(rows, sf(), matching)).toEqual(["commitment-1"]);
+    expect(kept(rows, sf(), other)).toEqual([]);
+  });
+
+  it("hides a commitment under a private ancestor outside Private Mode", () => {
+    const rows = [commitmentRow({ hasPrivateAncestor: true })];
+    expect(kept(rows)).toEqual([]);
+    expect(kept(rows, sf({ privateMode: true }))).toEqual(["commitment-1"]);
+  });
+
+  it("hides a commitment under a shelved project in Plan", () => {
+    const rows = [
+      commitmentRow({ ancestors: [n("project-1", "project", { status: "frozen" })] }),
+    ];
+    expect(kept(rows, sf({ statusMode: "plan" }))).toEqual([]);
+    expect(kept(rows, sf({ statusMode: "all" }))).toEqual(["commitment-1"]);
   });
 });

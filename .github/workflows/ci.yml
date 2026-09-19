@@ -1,0 +1,215 @@
+name: CI
+
+# The whole pre-PR gate, moved off the laptop.
+#
+# Two lanes run in parallel on their own runners: `web` (lint, tsc, vitest) and
+# `rust` (tests AND coverage, in one command).
+#
+# Coverage used to be a second workflow. It is folded in here because the
+# coverage tool *runs the suite* — a separate `cargo test` job compiled the same 560-crate
+# tree a second time, on a second runner, into a second 500 MB cache entry, to
+# run the same tests. Merging deletes all three. The cost of folding it in is
+# that a frontend-only PR now pays the coverage lane too: ~1 extra billed
+# minute, against ~5 saved on every PR that touches Rust.
+#
+# Coverage is LLVM source-based, via cargo-llvm-cov, on the pinned stable
+# toolchain. Two rejected alternatives, both measured on this tree — see
+# progress.md, and do not re-litigate either without new numbers:
+#
+#   cargo tarpaulin --engine ptrace   correct, but 4m53s of the 6m26s job was
+#                                     breakpoint machinery: an INT3 per coverable
+#                                     line, disabled and single-stepped on each
+#                                     first hit, across a 560-crate tree linked
+#                                     into every binary by -Clink-dead-code.
+#   cargo tarpaulin --engine llvm     fast and WRONG. Drops profraw data: calls
+#                                     src/infos/mod.rs 17/74 where ptrace watches
+#                                     74/74 run and cargo-llvm-cov says 100%, on
+#                                     an identical denominator. A floor set
+#                                     against it would stop protecting that file.
+#   ...--no-dead-code                 does not run at all. The binaries fail to
+#                                     load with corrupted DT_NEEDED strings.
+#
+# The floor is read off a measured run, not inherited. It moved from 90 when the
+# tool changed, because tarpaulin counts DWARF statement lines and LLVM counts
+# lines in coverage regions — different units, so the old number means nothing
+# here. Unit tests live in sibling `tests.rs` files rather than inline precisely
+# so this denominator is source only: inline, they were 2790 of 8715 lines and
+# 7735 of 13577 regions, all ~99% covered by construction and unable to regress.
+#
+# The repo is private, so every minute in here is billed. Keep it that way:
+# nothing expensive, and nothing that runs on a branch push nobody asked about.
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+  workflow_dispatch:
+  # Master backstop. Coverage is a whole-tree property: two stacked PRs can each
+  # hold the floor alone and drop below it once merged together, and this board
+  # runs eight at a time. One scheduled run a week catches that.
+  schedule:
+    - cron: '17 4 * * 1'
+
+# A second push to a PR supersedes the first: cancel the older run rather than
+# paying for both. Pushes to master are never cancelled — every master commit
+# gets its own verdict, and there is no later run to inherit it.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  web:
+    name: lint · tsc · vitest
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # The weekly run exists for coverage drift only; the web lane would just be
+    # re-running Monday what Friday already proved.
+    if: github.event_name != 'schedule'
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: npm run lint
+        run: npm run lint
+
+      - name: npx tsc --noEmit
+        run: npx tsc --noEmit
+
+      # --maxWorkers=2 is not a runner concession that can be relaxed later: the
+      # suite produces phantom `Test timed out` failures in untouched files under
+      # memory pressure, and a hosted runner has 2 cores and less RAM than the
+      # laptop this pin was measured on. The generous timeouts are from the same
+      # incident — see progress.md, "Standing risks".
+      - name: npx vitest run
+        run: npx vitest run --maxWorkers=2 --testTimeout=30000 --hookTimeout=30000
+
+  rust:
+    name: cargo llvm-cov · tests + coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+
+      # `tauri` is in the dependency tree with its default features, so wry and
+      # webkit2gtk-sys compile even for `cargo test`, and they need the GTK/
+      # WebKit development headers to exist. The webkit2gtk crate at 2.0.2 binds
+      # the 4.1 API, which is what ubuntu-24.04 ships.
+      - name: Install Tauri's Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            librsvg2-dev \
+            libxdo-dev \
+            libayatana-appindicator3-dev \
+            libssl-dev
+
+      - name: Show toolchain
+        run: |
+          rustc --version
+          cargo --version
+
+      # llvm-profdata and llvm-cov must come from the same toolchain that
+      # instruments the binaries; using the system LLVM is the usual way to get
+      # "malformed instrumentation profile data".
+      - name: Install llvm-tools-preview
+        run: rustup component add llvm-tools-preview
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+
+      # Caches ~/.cargo/{registry,git} and src-tauri/target, keyed on Cargo.lock,
+      # the rustc version and this key. It prunes the intermediate artifacts that
+      # make a warm Rust tree enormous, which is what keeps this inside GitHub's
+      # 10 GB per-repo cache budget. One key now, where there used to be two:
+      # with `cargo test` folded into cargo-llvm-cov there is only one set of
+      # RUSTFLAGS in play, so a single entry can no longer be invalidated by
+      # whichever job wrote to it last.
+      # The key is tied to the coverage MODE, not just the toolchain. Driving
+      # `cargo llvm-cov` directly builds into target/llvm-cov-target; driving
+      # `cargo test` under `show-env` builds into target/debug. An entry written
+      # by one is useless to the other, and rust-cache never overwrites an
+      # exact-key hit — so a stale entry recompiled 384 crates on a cache that
+      # reported "full match: true", and would have done so on every run rather
+      # than converging. Change this key if the command below changes mode.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          shared-key: rust-llvm-cov-manual
+
+      # `tauri::generate_context!` (src-tauri/src/lib.rs) embeds the frontend
+      # bundle at compile time, so the lib — and therefore every integration test
+      # binary — will not build unless `frontendDist` exists. Locally this is a
+      # leftover `dist/` from `npm run build`; on a clean runner there is nothing.
+      # No Rust test loads an asset out of it, so a placeholder is enough and
+      # saves the job an npm install and a Vite build it has no other use for.
+      - name: Stub the frontend bundle
+        run: |
+          mkdir -p dist
+          printf '<!doctype html><title>arlesh ci</title>' > dist/index.html
+
+      # One instrumented build, three consumers. `show-env` emits the RUSTFLAGS
+      # and profile paths cargo-llvm-cov would use, so the test run and the
+      # doctest run compile against the same fingerprint and share artifacts.
+      #
+      # `cargo llvm-cov` does not run doctests — coverage for them is
+      # nightly-only — so driving it directly gated 630 tests where `cargo test`
+      # runs 644, losing 14 doctests silently while staying green. `cargo test`
+      # includes doctests already, so it is the only runner needed here; adding
+      # a separate `--doc` invocation just ran them twice (658 reported).
+      #
+      # It has to run under these flags, though. A plain `cargo test --doc`
+      # alongside `cargo llvm-cov` cost 4m07s for those 14 doctests against
+      # 1m33s for everything else, because an uninstrumented build is a
+      # different fingerprint and rebuilds all 560 crates.
+      #
+      # `clean` drops stale .profraw and this crate's own artifacts, leaving the
+      # cached dependency build alone — without it a warm cache can merge
+      # counters from two compilations of the same function.
+      #
+      # This runs the whole suite as well as measuring it: a failing test fails
+      # the job here exactly as `cargo test` did. --fail-under-lines is proven to
+      # fail as well as pass (a floor of 99 exits 1, 94 exits 0), so it gates
+      # rather than decorates.
+      - name: cargo llvm-cov · tests, doctests, coverage
+        working-directory: src-tauri
+        run: |
+          set -o pipefail
+          source <(cargo llvm-cov show-env --export-prefix)
+          echo "building in ${CARGO_TARGET_DIR:-src-tauri/target}"
+          cargo llvm-cov clean --workspace
+          cargo test --locked
+          cargo llvm-cov report \
+            --summary-only \
+            --ignore-filename-regex '(^|/)src/commands/' \
+            --fail-under-lines 94 \
+            2>&1 | tee "$RUNNER_TEMP/coverage.log"
+
+      # Put the percentage where it can be read without opening the log, on a
+      # failing run as well as a passing one.
+      - name: Report coverage
+        if: always()
+        run: |
+          {
+            echo '### Coverage'
+            echo '```'
+            grep -E '^(Filename|TOTAL|-+$)' "$RUNNER_TEMP/coverage.log" 2>/dev/null || echo 'no coverage report'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

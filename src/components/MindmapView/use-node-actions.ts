@@ -61,7 +61,11 @@ export function useNodeActions({
       // A virtual Habit instance (an item, or the iteration root `flow_root`) advances just itself: a
       // goal toggles achieved; a task cycles todo → in_progress → done. `null` clears the Modification
       // (back to the base status). A goal's "achieved" is stored canonically as `done`.
-      if (node.habitItem !== undefined) {
+      //
+      // A commitment iteration is excluded: it is kept or broken, never advanced, and its two
+      // verdict controls live in List View beside every other commitment's. Like a real Commitment,
+      // it has no status control on the canvas at all.
+      if (node.habitItem !== undefined && node.kind !== "commitment") {
         const { flowId, itemType, itemId, scopeId } = node.habitItem;
         let next: string | null;
         if (node.kind === "goal") {
@@ -141,13 +145,16 @@ export function useNodeActions({
 
       // A node is pasteable here if drag-and-drop would allow the same reparent (e.g. aspects are
       // fixed and can't be reparented) and it isn't a derived, DB-less virtual node. A COPY refuses
-      // a Flow or a flow item on top of that: those move through their own commands and have no
-      // duplicate of their own.
+      // a Flow, a flow item or a Commitment on top of that: none of them has a duplicate command.
+      // A Commitment's would have to decide what a copy of a recorded Verdict means, which nobody
+      // has. Refused here rather than in `duplicateNode` so it is *said* — the skipped-paste toast
+      // names the count, instead of the copy failing where nothing is watching.
       const nodeIds = clipboard.nodeIds.filter((id) => {
         const node = findNode(tree, id);
         if (node === undefined || node.virtual === true) return false;
         if (!isValidDropTarget(node.kind, targetNode.kind)) return false;
         if (isCopy && (node.kind === "flow" || node.kind === "flow_goal" || node.kind === "flow_task")) return false;
+        if (isCopy && node.kind === "commitment") return false;
         return true;
       });
       const skippedCount = clipboard.nodeIds.length - nodeIds.length;

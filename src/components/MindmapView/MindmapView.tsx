@@ -28,6 +28,8 @@ import AnchoredToast from "@/components/AnchoredToast/AnchoredToast";
 import HabitFailureBanner from "@/components/HabitFailureBanner/HabitFailureBanner";
 import TaskEditorModal from "@/components/TaskEditorModal/TaskEditorModal";
 import GoalEditorModal from "@/components/GoalEditorModal/GoalEditorModal";
+import CommitmentEditorModal from "@/components/CommitmentEditorModal/CommitmentEditorModal";
+import CommitmentScopePrompt from "@/components/CommitmentScopePrompt/CommitmentScopePrompt";
 import TitleEditorModal from "@/components/TitleEditorModal/TitleEditorModal";
 import ProjectEditorModal from "@/components/ProjectEditorModal/ProjectEditorModal";
 import InfoEditorModal from "@/components/InfoEditorModal/InfoEditorModal";
@@ -38,6 +40,8 @@ import StartFlowModal, { type StartFlowData } from "@/components/StartFlowModal/
 import { startFlow, convertToFlow } from "@/api/flows";
 import ConvertToFlowModal from "@/components/ConvertToFlowModal/ConvertToFlowModal";
 import WarningConfirmModal from "@/components/WarningConfirmModal/WarningConfirmModal";
+import BacklogConfirmModal from "@/components/BacklogConfirmModal/BacklogConfirmModal";
+import { useTaskBacklog } from "@/hooks/use-task-backlog";
 import DeleteConfirmModal from "@/components/DeleteConfirmModal/DeleteConfirmModal";
 import styles from "./MindmapView.module.css";
 
@@ -58,7 +62,7 @@ function targetSelectionFor(node: MindmapNode | null | undefined): TargetSelecti
 // A pristine flow used to seed the create editor before the flow is persisted.
 const BLANK_FLOW_NODE: MindmapNode = {
   id: "flow-new", kind: "flow", title: "", position: 0,
-  flow: { instanceType: "task", targetType: null, targetId: null, durationN: 1, durationKind: "week", windowPart: null, windowTimeStart: null, windowTimeEnd: null, isHabit: false, rootPlanKind: null, rootPlanStart: null, rootPlanEnd: null },
+  flow: { instanceType: "task", targetType: null, targetId: null, durationN: 1, durationKind: "week", windowPart: null, windowTimeStart: null, windowTimeEnd: null, isHabit: false, rootPlanKind: null, rootPlanStart: null, rootPlanEnd: null, verdictWindowN: null, verdictWindowKind: null },
   tagIds: [], children: [],
 };
 
@@ -77,7 +81,8 @@ export default function MindmapView() {
   const { onExitSubtree, onExitToRoot } = useSubtreeNav(tree);
 
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
-  const { visibleFailedFlows, dismiss: dismissHabitBanner } = useDismissableLoadCondition(loadCondition);
+  const { visibleFailedFlows, visibleUnrenderableCommitmentFlows, dismiss: dismissHabitBanner } =
+    useDismissableLoadCondition(loadCondition);
   const [nodeSearchOpen, setNodeSearchOpen] = useState(false);
   const [flowCreateParent, setFlowCreateParent] = useState<{ id: string; kind: NodeKind } | null>(null);
   const [startFlowNode, setStartFlowNode] = useState<MindmapNode | null>(null);
@@ -111,7 +116,7 @@ export default function MindmapView() {
 
   const {
     editorModal, setEditorModal, allTags, domainNames, availableForDep, onDoubleClick,
-    onTaskSave, onGoalSave, onSimpleSave, onProjectSave, onInfoSave, onFlowSave, onFlowItemSave,
+    onTaskSave, onGoalSave, onCommitmentSave, onSimpleSave, onProjectSave, onInfoSave, onFlowSave, onFlowItemSave,
     checkScopeClamp, confirmScopeClamp, scopeClampRequest, resolveScopeClamp,
   } = useNodeEditor({ tree, allTasksAndGoals, reload });
 
@@ -187,6 +192,8 @@ export default function MindmapView() {
           rootPlanKind: flow.root_plan_kind,
           rootPlanStart: flow.root_plan_start,
           rootPlanEnd: flow.root_plan_end,
+          verdictWindowN: flow.verdict_window_n,
+          verdictWindowKind: flow.verdict_window_kind,
         },
         position: flow.position,
         tagIds: [],
@@ -244,6 +251,8 @@ export default function MindmapView() {
         root_plan_kind: data.rootPlanKind,
         root_plan_start: data.rootPlanStart,
         root_plan_end: data.rootPlanEnd,
+        verdict_window_n: data.verdictWindowN,
+        verdict_window_kind: data.verdictWindowKind,
       });
       setFlowCreateParent(null);
     },
@@ -314,8 +323,15 @@ export default function MindmapView() {
     if (pos !== undefined) canvasRef.current?.centerOnPoint(pos.x, pos.y);
   }, [mindmapOrientation, selectedNodeId, displayRoot, positions]);
 
-  const { warningModal, setWarningModal, cycleType, setType, retypeActions } = useNodeTypeManager({
+  const {
+    warningModal, setWarningModal, cycleType, setType, retypeActions,
+    commitmentScopeRequest, resolveCommitmentScope,
+  } = useNodeTypeManager({
     tree, retypeNode, selectNode, showToast,
+  });
+
+  const { toggleBacklog, planPrompt, confirmClearPlan, cancelPlanPrompt } = useTaskBacklog({
+    findNode: findNodeById, reload, showToast,
   });
 
   const handleConfirmDelete = useCallback(() => {
@@ -441,8 +457,9 @@ export default function MindmapView() {
 
   useKeyboardMindmap({
     isInputActive: isInputCaptured,
-    isWarningActive: warningModal !== null,
-    onDismissWarning: () => setWarningModal(null),
+    // Both prompts swallow the canvas keys; Escape dismisses whichever is open.
+    isWarningActive: warningModal !== null || planPrompt !== null,
+    onDismissWarning: () => { setWarningModal(null); cancelPlanPrompt(); },
     selectedNodeId,
     selectedNodeIds,
     subtreeRootId,
@@ -477,6 +494,7 @@ export default function MindmapView() {
     onCenterOnNode: onCenterOnSelected,
     onConvertToFlow: onConvertToFlowKey,
     onExtendSelection: extendSelection,
+    onToggleBacklog: toggleBacklog,
     findNodeById,
   });
   const targetPos = dragTargetId !== null ? positions.get(dragTargetId) : undefined;
@@ -486,8 +504,12 @@ export default function MindmapView() {
 
   return (
     <div className={styles.container}>
-      {visibleFailedFlows.length > 0 && (
-        <HabitFailureBanner failedFlows={visibleFailedFlows} onDismiss={dismissHabitBanner} />
+      {(visibleFailedFlows.length > 0 || visibleUnrenderableCommitmentFlows.length > 0) && (
+        <HabitFailureBanner
+          failedFlows={visibleFailedFlows}
+          unrenderableCommitmentFlows={visibleUnrenderableCommitmentFlows}
+          onDismiss={dismissHabitBanner}
+        />
       )}
       <MindmapCanvas
         ref={canvasRef}
@@ -522,6 +544,9 @@ export default function MindmapView() {
       )}
       {editorModal !== null && editorModal.node.kind === "goal" && (
         <GoalEditorModal node={editorModal.node} allTags={allTags} domainNames={domainNames} onSave={onGoalSave} onCheckScopeClamp={checkScopeClamp} onClose={() => setEditorModal(null)} />
+      )}
+      {editorModal !== null && editorModal.node.kind === "commitment" && (
+        <CommitmentEditorModal node={editorModal.node} allTags={allTags} domainNames={domainNames} onSave={onCommitmentSave} onClose={() => setEditorModal(null)} />
       )}
       {editorModal !== null && editorModal.node.kind === "domain" && (
         <TitleEditorModal heading={t("editor:editDomain")} title={editorModal.node.title} isPrivate={editorModal.node.isPrivate ?? false} onSave={onSimpleSave} onClose={() => setEditorModal(null)} />
@@ -585,6 +610,17 @@ export default function MindmapView() {
           consequences={warningModal.consequences}
           actions={retypeActions}
           onCancel={() => setWarningModal(null)}
+        />
+      )}
+
+      {planPrompt !== null && (
+        <BacklogConfirmModal prompt={planPrompt} onConfirm={confirmClearPlan} onCancel={cancelPlanPrompt} />
+      )}
+
+      {commitmentScopeRequest !== null && (
+        <CommitmentScopePrompt
+          title={commitmentScopeRequest.title}
+          onResolve={resolveCommitmentScope}
         />
       )}
 

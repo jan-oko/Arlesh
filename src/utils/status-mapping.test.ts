@@ -32,7 +32,11 @@ describe("taskStatusToGoalStatus", () => {
     expect(taskStatusToGoalStatus("done")).toBe("achieved");
   });
 
-  it("maps blocked to frozen", () => {
-    expect(taskStatusToGoalStatus("blocked")).toBe("frozen");
+  // "blocked" was removed as a Task status long ago; blocking is its own axis now. The mapping
+  // used to keep a dead arm for it, which quietly turned an unrecognised status into a Frozen
+  // Goal. Anything the mapping does not know reads as Active.
+  it("maps an unrecognised task status to active", () => {
+    expect(taskStatusToGoalStatus("blocked")).toBe("active");
+    expect(taskStatusToGoalStatus("nonsense")).toBe("active");
   });
 });

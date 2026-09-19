@@ -27,6 +27,8 @@ function View({ modalState, modalRenders }: { modalState: boolean; modalRenders:
   useKeyboardListView({
     isInputActive: isInputCaptured,
     selectedTaskId: "task-1",
+    selectedCommitmentId: null,
+    selectedRowId: "task-1",
     isSelectedBlocked: false,
     onNavigate: vi.fn(),
     onCycleStatus: vi.fn(),
@@ -39,6 +41,9 @@ function View({ modalState, modalRenders }: { modalState: boolean; modalRenders:
     subtreeRootId: null,
     onExitSubtree: vi.fn(),
     onExitToRoot: vi.fn(),
+    onToggleBacklog: vi.fn(),
+    onMarkKept: vi.fn(),
+    onMarkBroken: vi.fn(),
   });
   return modalState && modalRenders ? <Modal /> : null;
 }

@@ -16,12 +16,16 @@ use crate::mindmap::model::MindmapLoad;
 
 #[tool_router(router = snapshot_router, vis = "pub(super)")]
 impl ArleshMcp {
-    /// Arlesh's planning graph: domains, goals, tasks, infos, flows, flow items, cycles,
-    /// dependencies, block reasons, materialised instance nodes, each item's derived lifecycle,
-    /// and each flow's habit iterations and statuses.
+    /// Arlesh's planning graph: domains, goals, tasks, commitments, infos, flows, flow items,
+    /// cycles, dependencies, block reasons, materialised instance nodes, each item's derived
+    /// lifecycle, and each flow's habit iterations and statuses.
     ///
-    /// Start here. Tasks and goals carry `time_scope` and `plan` as boundary scope IDs rather than
-    /// dates — resolve them with `arlesh_scopes.resolve_many`.
+    /// Start here. Tasks, goals and commitments carry `time_scope` and `plan` as boundary scope
+    /// IDs rather than dates — resolve them with `arlesh_scopes.resolve_many`.
+    ///
+    /// A commitment is a rule held over a window rather than a piece of work: it carries a
+    /// `verdict` of `unresolved`/`kept`/`broken` that is recorded, never inferred. `unresolved`
+    /// means the user has not said, and is not a synonym for "not done".
     ///
     /// **Paged.** A board of any size outgrows one tool result, so a response carries as much as
     /// fits and a `next_cursor`. Pass that cursor back for the next page, and keep going until it
