@@ -584,6 +584,43 @@ single writer lock until it commits.
 The journal is truncated at startup and capped at a fixed number of gestures, so a long session
 cannot grow it without bound. An ungrouped entry counts as one gesture for that cap.
 
+### The two stacks
+
+The Undo Stack and the Redo Stack live in **backend memory**, one pair for the whole application,
+beside the session factory — not in the frontend, which has several views onto one board and would
+give each of them a private history, and not in the database, which would outlive the session they
+are scoped to. Launching Arlesh is an empty history; nothing has to clear them.
+
+A Gesture reaches the Undo Stack when `close_gesture` ends it, carrying **only its `user` journal
+entries**. The filter is per entry rather than per Gesture, because the ambient context is one row
+for the whole application: an agent writing while the user's Gesture happens to be open is
+journaled under that Gesture's id, and the `source` column is what tells the two apart. A Gesture
+that wrote nothing the user can undo never reaches a stack at all, so a press is never spent on a
+step with no effect.
+
+**Undo** takes the Gesture on top of the Undo Stack and applies the inverse of each of its entries
+in reverse order — the inverse of an insert is a delete of that row, of a delete an insert of the
+before image at its **original rowid**, and of an update a write of the before image back over
+every column — then moves the Gesture to the Redo Stack. **Redo** does the same in the other
+direction. Restoring by rowid is why the feature is row-level rather than command-level: a deleted
+goal that comes back at a new id comes back as an orphan, with its children, tags, dependencies and
+block reasons pointing at nothing.
+
+It is **one transaction**, with journalling suppressed and foreign keys deferred to the commit. The
+deferral is what lets a subtree be rebuilt in whatever order it was taken apart — what has to hold
+is the end state, not every step towards it — and a violation that is real still fails at the
+commit and rolls the whole thing back. There are exactly two outcomes: the Gesture is applied
+whole, or nothing changed and the user is told which Gesture could not be applied, with it still on
+the stack to try again.
+
+**A new user Gesture empties the Redo Stack**, so redo can never reapply rows onto a board that has
+moved on. An MCP write does not, because it never enters either stack.
+
+Undo with an empty stack is a **silent no-op**, not an error: a keystroke with nothing to act on is
+not a mistake the user made. `undo` and `redo` return what they applied, or nothing; `undo_status`
+reports what each press would do so a control can be labelled and disabled, and is never a
+precondition for calling them.
+
 ## Implementation Phases
 
 1. **Data layer** — schema, migrations, Tauri commands, integration tests. No UI.

@@ -1,8 +1,11 @@
-//! The vocabulary of the Undo Journal: gestures, write sources, and the ambient context.
+//! The vocabulary of the Undo Journal: gestures, write sources, the ambient context, and the row
+//! changes the engine replays.
 
+use std::collections::BTreeSet;
 use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 
 use super::error::UndoError;
 
@@ -83,31 +86,212 @@ pub struct UndoContext {
     pub suppressed: bool,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
 
-    #[test]
-    fn a_write_source_round_trips_through_its_stored_string() {
-        for source in [WriteSource::User, WriteSource::Mcp] {
-            assert_eq!(
-                WriteSource::from_str(source.as_str()).expect("stored form must parse back"),
-                source
-            );
+/// What a journal entry says happened to one row.
+///
+/// The three cases are the whole of what the journal records, and each has exactly one inverse:
+/// the inverse of an insert is a delete, of a delete an insert of the before image, and of an
+/// update a write of the before image back over the row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RowOperation {
+    /// A row came into existence.
+    Insert,
+    /// A row's columns changed.
+    Update,
+    /// A row ceased to exist.
+    Delete,
+}
+
+impl RowOperation {
+    /// The value stored in `undo_journal.operation`.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Insert => "insert",
+            Self::Update => "update",
+            Self::Delete => "delete",
+        }
+    }
+}
+
+impl FromStr for RowOperation {
+    type Err = UndoError;
+
+    fn from_str(operation: &str) -> Result<Self, Self::Err> {
+        match operation {
+            "insert" => Ok(Self::Insert),
+            "update" => Ok(Self::Update),
+            "delete" => Ok(Self::Delete),
+            other => Err(UndoError::UnknownRowOperation(other.to_string())),
+        }
+    }
+}
+
+/// One row exactly as the journal recorded it: every column of its table, by name.
+///
+/// The triggers build it with `json_object(...)` over `pragma_table_info`, so a column is present
+/// even when it is NULL — which is what makes restoring a row put every column back rather than
+/// leaving the ones that happened to be empty at their current values.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RowImage {
+    /// The row's columns, keyed by column name.
+    columns: Map<String, Value>,
+}
+
+impl RowImage {
+    /// Reads an image out of the JSON the trigger wrote.
+    ///
+    /// Fails when the text is not a JSON object: the engine builds SQL from these column names, so
+    /// an image it cannot read is a reason to stop rather than to restore a partial row.
+    pub fn parse(json: &str) -> Result<Self, UndoError> {
+        let value: Value = serde_json::from_str(json)
+            .map_err(|error| UndoError::MalformedImage(error.to_string()))?;
+        match value {
+            Value::Object(columns) => Ok(Self { columns }),
+            other => Err(UndoError::MalformedImage(format!(
+                "expected a JSON object of columns, found {other}"
+            ))),
         }
     }
 
-    #[test]
-    fn parsing_a_source_the_enum_does_not_name_reports_the_value_it_saw() {
-        let error = WriteSource::from_str("scheduler").expect_err("must not parse");
-        assert!(
-            matches!(&error, UndoError::UnknownWriteSource(seen) if seen == "scheduler"),
-            "expected the unparsed value to be carried, got {error}"
-        );
+    /// The row's columns, in name order.
+    pub fn columns(&self) -> impl Iterator<Item = (&str, &Value)> {
+        self.columns.iter().map(|(name, value)| (name.as_str(), value))
     }
 
-    #[test]
-    fn a_gesture_id_displays_as_the_bare_identifier() {
-        assert_eq!(GestureId("abc123".into()).to_string(), "abc123");
+    /// Whether the image names a column.
+    pub fn has_column(&self, name: &str) -> bool {
+        self.columns.contains_key(name)
+    }
+
+    /// How many columns the image carries.
+    pub fn len(&self) -> usize {
+        self.columns.len()
+    }
+
+    /// Whether the image carries no columns at all.
+    pub fn is_empty(&self) -> bool {
+        self.columns.is_empty()
     }
 }
+
+/// One row change, read back out of `undo_journal` for replaying.
+///
+/// `row_id` is the SQLite rowid rather than a primary key, because six journaled tables have a
+/// composite primary key and no id column at all. Restoring a deleted row by its original rowid is
+/// what makes a deleted subtree come back whole: everything that referenced it still does.
+#[derive(Debug, Clone, PartialEq)]
+pub struct JournalEntry {
+    /// The journal's total order, and the order a Gesture's entries are replayed in.
+    pub seq: i64,
+    /// The table the row belongs to.
+    pub table: String,
+    /// The row's SQLite rowid at the time of the change.
+    pub row_id: i64,
+    /// What happened to the row.
+    pub operation: RowOperation,
+    /// The row as it was, absent for an insert.
+    pub before: Option<RowImage>,
+    /// The row as it became, absent for a delete.
+    pub after: Option<RowImage>,
+}
+
+/// One Gesture sitting on a stack, with the row changes that make it up.
+///
+/// The entries are **copies** taken out of the journal when the Gesture closed, not a reference
+/// into it: the journal stays the faithful history ADR 0006 describes and is pruned on its own
+/// schedule, while the stacks are a history of *the user* that outlives that pruning for as long
+/// as the session does.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StackedGesture {
+    /// Which Gesture this is.
+    gesture: GestureId,
+    /// Its row changes, oldest first. Never empty.
+    entries: Vec<JournalEntry>,
+}
+
+impl StackedGesture {
+    /// Holds `entries` as `gesture`, or returns `None` when there is nothing to reverse.
+    ///
+    /// A Gesture that wrote nothing the user can undo — one that only read, or one whose writes
+    /// were all an agent's — never reaches a stack at all. That is what keeps Ctrl+Z from
+    /// consuming a press on a step with no effect, and what keeps an MCP write from clearing the
+    /// Redo Stack.
+    pub fn new(gesture: GestureId, entries: Vec<JournalEntry>) -> Option<Self> {
+        if entries.is_empty() {
+            return None;
+        }
+        Some(Self { gesture, entries })
+    }
+
+    /// Which Gesture this is.
+    pub fn gesture(&self) -> &GestureId {
+        &self.gesture
+    }
+
+    /// Its row changes, oldest first.
+    pub fn entries(&self) -> &[JournalEntry] {
+        &self.entries
+    }
+
+    /// What the UI needs to name this Gesture and decide whether to offer it.
+    pub fn summary(&self) -> GestureSummary {
+        let mut summary = GestureSummary {
+            gesture: self.gesture.clone(),
+            rows: self.entries.len(),
+            inserted: 0,
+            updated: 0,
+            deleted: 0,
+            tables: Vec::new(),
+        };
+        let mut tables = BTreeSet::new();
+        for entry in &self.entries {
+            match entry.operation {
+                RowOperation::Insert => summary.inserted += 1,
+                RowOperation::Update => summary.updated += 1,
+                RowOperation::Delete => summary.deleted += 1,
+            }
+            tables.insert(entry.table.clone());
+        }
+        summary.tables = tables.into_iter().collect();
+        summary
+    }
+}
+
+/// What one Gesture on a stack amounts to, for a caller that has to label it.
+///
+/// Deliberately **counts and table names rather than a sentence**: the phrasing belongs to the
+/// frontend, which is where the app's translations live, and undo speaks in rows anyway — it
+/// restores what a row was, not what the user meant by changing it. A caller wanting "Undid:
+/// delete 4 items" reads `deleted` and `tables`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GestureSummary {
+    /// Which Gesture is being described.
+    pub gesture: GestureId,
+    /// How many rows it changed in total.
+    pub rows: usize,
+    /// How many rows it created.
+    pub inserted: usize,
+    /// How many rows it rewrote.
+    pub updated: usize,
+    /// How many rows it removed.
+    pub deleted: usize,
+    /// The tables it touched, in name order and without repetition.
+    pub tables: Vec<String>,
+}
+
+/// Whether there is anything to undo or redo, and what each one is.
+///
+/// `None` means the stack is empty and the caller should disable its control; Ctrl+Z on an empty
+/// stack is a silent no-op rather than an error, so this exists to label and disable, not to
+/// prevent.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UndoStatus {
+    /// The Gesture the next undo would reverse.
+    pub undo: Option<GestureSummary>,
+    /// The Gesture the next redo would reapply.
+    pub redo: Option<GestureSummary>,
+}
+
+#[cfg(test)]
+mod tests;

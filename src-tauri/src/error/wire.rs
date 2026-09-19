@@ -152,7 +152,18 @@ fn undo_kind(error: &UndoError) -> WireErrorKind {
         UndoError::NoGestureOpen => WireErrorKind::InvalidRequest,
         // A `source` no `WriteSource` names can only have been written from outside this crate,
         // so it is persisted data the app cannot interpret rather than anything the caller sent.
-        UndoError::UnknownWriteSource(_) => WireErrorKind::Internal,
+        // Likewise persisted data the app cannot interpret: the journal's own CHECK constraint
+        // admits exactly three operations, and the triggers write every image with `json_object`
+        // over the table's columns, so none of these three can come from a caller.
+        UndoError::UnknownWriteSource(_)
+        | UndoError::UnknownRowOperation(_)
+        | UndoError::MalformedImage(_)
+        | UndoError::MalformedEntry { .. }
+        | UndoError::UnsafeIdentifier(_) => WireErrorKind::Internal,
+        // A Gesture that would not go back on is almost always a constraint the board has since
+        // acquired — a row the undo would reinstate whose parent is gone — which is a database
+        // failure the caller can neither rephrase nor be blamed for.
+        UndoError::ApplyFailed { .. } => WireErrorKind::Database,
         UndoError::Database(_) => WireErrorKind::Database,
     }
 }

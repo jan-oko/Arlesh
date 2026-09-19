@@ -72,6 +72,11 @@ pub fn run() {
 
             app.manage(factory);
 
+            // The Undo and Redo Stacks: one pair for the whole app, in memory beside the factory.
+            // Constructing them here is the whole of "session-scoped" — a restart is an empty
+            // history, and nothing has to clear them.
+            app.manage(undo::stacks::UndoStacks::new());
+
             if let Some(window) = app.get_webview_window("main") {
                 let icon = match app.default_window_icon().cloned() {
                     Some(icon) => icon,
@@ -95,6 +100,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::undo::open_gesture,
             commands::undo::close_gesture,
+            commands::undo::undo,
+            commands::undo::redo,
+            commands::undo::undo_status,
             commands::block_reasons::list_all_block_reasons,
             commands::block_reasons::set_block_reasons,
             commands::infos::create_info,
