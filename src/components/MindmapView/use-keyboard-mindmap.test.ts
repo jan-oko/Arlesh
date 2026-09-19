@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook } from "@testing-library/react";
 import { useKeyboardMindmap } from "./use-keyboard-mindmap";
+import { NO_CYCLE } from "@/api/flows";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { StatusMode } from "@/utils/filter-tree";
 import type { TypedChildKind } from "@/utils/node-meta";
@@ -740,7 +741,7 @@ describe("useKeyboardMindmap — filter shortcuts (Alt)", () => {
   it("plain A does nothing on a virtual Habit instance — it has no task row to flag", () => {
     const instance: MindmapNode = {
       id: "task-4-virtual", kind: "task", title: "Instance", position: 0, tagIds: [], children: [],
-      virtual: true, habitItem: { flowId: 3, itemType: "flow_task", itemId: 4, scopeId: 100 },
+      virtual: true, habitItem: { flowId: 3, itemType: "flow_task", itemId: 4, scopeId: 100, cycleId: NO_CYCLE },
     };
     const opts = baseOptions({
       selectedNodeId: "task-4-virtual",
