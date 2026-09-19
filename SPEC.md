@@ -75,7 +75,7 @@ Goals are never List View *rows*; they appear instead as a segment of a row's **
 
 ### Tasks
 
-Tasks represent action items. Fields: title, parent (Project / Goal / Domain / Task), tags (list), KB resource links, status, blockers, dependencies, delegation, beads id.
+Tasks represent action items. Fields: title, parent (Project / Goal / Domain / Task), tags (list), KB resource links, status, blockers, dependencies, delegation, agentic, beads id.
 
 **Status:** To Do / In Progress / Done
 
@@ -84,6 +84,10 @@ Tasks represent action items. Fields: title, parent (Project / Goal / Domain / T
 **Dependencies:** Tasks can depend on other Tasks or Goals. Circular dependencies are rejected at write time.
 
 **Delegation:** A Task can be delegated to a Person.
+
+**Agentic:** A Task can be marked **Agentic** — work that suits being handed to an agent. It is a stored three-state flag (`agentic` — NULL / true / false), not a boolean, because it **inherits downward and is overridable**, exactly as Delegation does: a Task with no value of its own reads its nearest flagged ancestor, so marking a whole branch is one edit, and an explicit value replaces what would have been inherited — including an explicit **not agentic**, which is how one Task comes back out of an agentic branch. The value inherits *through* Goals, Projects and Domains, which carry no flag of their own.
+
+It is **Tasks only**: an agent performs actions, where a Goal is a desired state and a Commitment is kept rather than done. It is also **independent of Delegation** — the flag says the work suits an agent, a delegate says who holds it, so a Task may be both, either or neither, and the delegated/undelegated filter is untouched by it. Set from the **Advanced** section of the Task editor (Inherit / Agentic / Not agentic, with the Advanced section opening on arrival when the Task carries an explicit value); shown as its own **status-row badge** in both views, on a Task that reads as agentic whether it said so itself or inherited it; and filterable as its own List View pill dimension. Retyping a Task to any other kind drops an explicit flag and names it in the confirmation prompt alongside every other lost field; duplicating a Task copies it, all three states alike. A one-click **delegate** button belongs beside the flag once Delegation can point at an Agent rather than only a Person; the slot is left for it and nothing about this dispatches anything.
 
 **Time Scope & Plan:** A Task carries a **Time Scope** (relevance window) and an optional **Plan** (a single scope it is scheduled into). Goals carry a Time Scope but no Plan. See *Time Scopes & Planning* below.
 
@@ -235,6 +239,7 @@ Inheritance behavior per link type:
 | Time Scope (relevance) | A null child Time Scope inherits the nearest scoped ancestor's window. An explicit child Time Scope must be wholly contained within the parent's (interval containment); it narrows relevance but the parent window still contains it. |
 | Plan (scheduling)      | Task-only. Must be wholly contained within the task's Time Scope and within the parent's Plan. |
 | Delegation             | Override — child's explicit delegation replaces the inherited one |
+| Agentic (Tasks)        | Override — child's explicit value (agentic *or* not agentic) replaces the inherited one; inherits through unflagged kinds |
 
 Inherited links are computed on read (ancestor traversal). To be revisited if performance becomes an issue.
 
@@ -250,7 +255,7 @@ Filters apply to task/goal lists. Any number of filters can be active simultaneo
 
 Combined logic: `(union of Any-filters) AND (intersection of All-filters) AND NOT (union of Exclusion-filters)`
 
-Filterable fields: parent domain/task, dependency, status, delegate-to, delegated/undelegated, Person/Event/Thread/Scope, planned scope, Project, Aspect, Goal, Tag.
+Filterable fields: parent domain/task, dependency, status, delegate-to, delegated/undelegated, agentic, Person/Event/Thread/Scope, planned scope, Project, Aspect, Goal, Tag.
 
 ---
 
@@ -303,7 +308,7 @@ The subtree root is **shared between the Mindmap and the List View**, not per-vi
 
 Because the top bar holds no tree of its own, whichever view is mounted resolves the descriptor for it (`src/hooks/use-subtree-nav.ts`) — so the indicator and the pills are correct in both views, rather than only in the one that happens to own the subtree logic.
 
-**Status-icon row:** below each node sits a compact row of status badges (aligned to the node's left edge), each with a hover tooltip. A **clock** marks a Time Scope (tooltip = the window; crossed out once the window has passed); a red **exclamation** flags an **Overdue** item and an **archive box** any item whose *effective* Archival is **Archived** — an explicitly-Archived Goal/Project, or any scoped Task/Goal whose Resolution is **Completed** or **Missed** — tinted as a warning when it's a **conflict** (a manually-Frozen item that scope forced into Archived); a **calendar** marks a Plan (tooltip = the plan window); a **snowflake** a Frozen goal/project and a **tray** (three stacked lines) a Task in the **Backlog** — a badge of its own, since Backlog and Frozen are distinct states, and one that can appear alongside the archive box when a lapsed window has forced Archived over it; **no badge carries a Commitment's Verdict** — the node glyph itself does (see *Commitments* above: hollow while the answer is owed, solid once given, cleft when broken, struck through once the Verdict Window has run out), so the row would be restating it a few pixels below; every badge here says something the glyph does not; an **ellipsis** an Info node carrying a Details description (tooltip = the text); a **wave** a real Start-flow instance and the **cyclical habit glyph** a virtual Habit iteration; and a **tag** icon a node with tags (tooltip = their names). Badges appear only when relevant, so most nodes show few or none. The set of badges is a pure function of the node; scope/plan/tag tooltips resolve their labels on demand.
+**Status-icon row:** below each node sits a compact row of status badges (aligned to the node's left edge), each with a hover tooltip. A **clock** marks a Time Scope (tooltip = the window; crossed out once the window has passed); a red **exclamation** flags an **Overdue** item and an **archive box** any item whose *effective* Archival is **Archived** — an explicitly-Archived Goal/Project, or any scoped Task/Goal whose Resolution is **Completed** or **Missed** — tinted as a warning when it's a **conflict** (a manually-Frozen item that scope forced into Archived); a **calendar** marks a Plan (tooltip = the plan window); a **snowflake** a Frozen goal/project and a **tray** (three stacked lines) a Task in the **Backlog** — a badge of its own, since Backlog and Frozen are distinct states, and one that can appear alongside the archive box when a lapsed window has forced Archived over it; a small **bot head** marks a Task that reads as **Agentic** (see *Tasks* above) — its own flag or an ancestor's, since a branch marked in one edit must look marked all the way down; **no badge carries a Commitment's Verdict** — the node glyph itself does (see *Commitments* above: hollow while the answer is owed, solid once given, cleft when broken, struck through once the Verdict Window has run out), so the row would be restating it a few pixels below; every badge here says something the glyph does not; an **ellipsis** an Info node carrying a Details description (tooltip = the text); a **wave** a real Start-flow instance and the **cyclical habit glyph** a virtual Habit iteration; and a **tag** icon a node with tags (tooltip = their names). Badges appear only when relevant, so most nodes show few or none. The set of badges is a pure function of the node; scope/plan/tag tooltips resolve their labels on demand.
 
 **Top bar:** a settings **gear** (popover with a **Light mode** switch, a **Keyboard shortcuts** entry, and the two view-scoped display switches — **Vertical layout** on the Mindmap, **Path icons** in the List View — each shown only while its own view is active — persisted, defaults to dark, applies app-wide via a `data-theme` attribute and matching `tokens.css` overrides) at the start edge; a **Mindmap/List** view tab pair (also toggled by `Alt+L`); a **status-preset dropdown** (All/Plan/Start/Do, plus a 5th **Unblock** option while List View is active — see List View below) — a dropdown rather than a segmented control so it stays compact next to the tabs, built as a themed `Select` (listbox popover styled from the app's own tokens, with arrow-key/Enter/Escape keyboard support) rather than a native `<select>`, whose open option list ignores CSS and renders with plain OS chrome; the subtree **back-nav pills** and the **current-subtree indicator** (all shown only inside a subtree — the two pills are the ways out, `↑` to the root and `←` up one level, while the indicator is a static, non-interactive pill carrying a subtree glyph and the title of the subtree you are in, since "here" has nowhere to navigate to; its glyph is `aria-hidden` like the others, so it carries a visually-hidden "Inside subtree:" label to keep a screen reader from hearing three bare titles in a row); and, at the end edge, a **Filter** button (funnel) that opens the filter popover. Below the bar, a wrapping row of **active-filter chips** renders whenever any filter is engaged (empty and takes no space otherwise) — every active tag filter and, while List View is active, every active List-View-exclusive pill filter (see below). A chip shows a mode symbol (∪/∩/∅) and the filter's name; clicking the chip body cycles Any → All → Exclude, and an embedded **×** removes it. A chip's border/symbol color is a muted accent for its mode — a fixed, low-key hue per mode shared across every dimension, blended most of the way toward the neutral border rather than shown at full strength; its background additionally tints toward the value's resolved aspect color where one exists (tags, Parent, Dependency).
 
@@ -403,6 +408,7 @@ On top of the shared filters, the List View adds its own filter dimensions — a
 | Verdict | Unresolved / Kept / Broken — applies to the commitments section only |
 | Scope | Unscoped / Active / Overdue / Lapsed / Planned / Unplanned — independent axes, so e.g. Unscoped + Planned can both apply to the same task |
 | Blocked | Blocked / Not blocked |
+| Agentic | Agentic / Not agentic — the flag as the task *reads* it, its own or inherited (see *Tasks* above). Independent of the delegated/undelegated question |
 
 ---
 

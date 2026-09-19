@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use super::model::{
     CommitmentId, CreateCommitmentRequest, CreateGoalRequest, CreateTaskRequest, DurationSpec,
-    GoalId, GoalStatus, OnScopeExit, TaskArchival, TaskId, TaskStatus, TimeScope,
+    GoalId, GoalStatus, OnScopeExit, TaskAgentic, TaskArchival, TaskId, TaskStatus, TimeScope,
     UpdateCommitmentRequest, UpdateGoalRequest, UpdateTaskRequest, Verdict,
 };
 use crate::database::session::{Db, SessionMode, Transactional};
@@ -252,6 +252,12 @@ pub struct SourceNode {
     pub archival: Option<TaskArchival>,
     /// Person this task is delegated to (tasks only).
     pub delegate_to: Option<i64>,
+    /// The Agentic state (tasks only); `None` for every kind whose table has no such column.
+    ///
+    /// Only `tasks` can be Agentic — an agent performs actions, where a Goal is a desired state
+    /// and a Commitment is kept rather than done — so every other target drops an explicit flag,
+    /// and it is reported like any other loss.
+    pub agentic: Option<TaskAgentic>,
     /// Tag domain ids attached to the node (goals and tasks only).
     pub tag_ids: Vec<i64>,
     /// Explicit block reasons (goals and tasks only).
@@ -304,6 +310,9 @@ pub struct Carried {
     pub archival: Option<TaskArchival>,
     /// Delegate, when the target is a task.
     pub delegate_to: Option<i64>,
+    /// The Agentic state, when the target is a task and the source carried an explicit one.
+    /// `None` leaves the new node inheriting — the state a Task is in when nobody has said.
+    pub agentic: Option<TaskAgentic>,
     /// Tag attachments, when the target is a goal or a task.
     pub tag_ids: Vec<i64>,
     /// Explicit block reasons, when the target is a goal or a task.
@@ -527,6 +536,18 @@ fn carry_fields(
         lost_fields,
     );
 
+    // Inherit is what a Task is in when nobody has said anything, so — exactly as with a status
+    // still at its default — only an explicit Yes or No is a loss worth naming.
+    let agentic = keep_if(
+        target == RetypeKind::Task,
+        source
+            .agentic
+            .filter(|agentic| *agentic != TaskAgentic::Inherit),
+        "agentic",
+        |agentic: &TaskAgentic| agentic.as_str().to_string(),
+        lost_fields,
+    );
+
     let tag_ids = keep_list(
         scoped_target,
         &source.tag_ids,
@@ -599,6 +620,7 @@ fn carry_fields(
         plan,
         archival,
         delegate_to,
+        agentic,
         tag_ids,
         block_reasons,
         beads_id,
@@ -621,6 +643,7 @@ fn everything(source: &SourceNode) -> Carried {
         plan: source.plan.clone(),
         archival: source.archival,
         delegate_to: source.delegate_to,
+        agentic: source.agentic,
         tag_ids: source.tag_ids.clone(),
         block_reasons: source.block_reasons.clone(),
         beads_id: source.beads_id.clone(),
@@ -1178,6 +1201,11 @@ async fn create_node(
                     // no mapping between them, and the backlog a Task loses on its way out is
                     // named in the plan before any of this runs.
                     archival: carried.archival,
+                    // Only a Task has the column and a Task→Task retype never reaches here, so
+                    // this is `None` in practice: everything arriving from another kind starts
+                    // out inheriting, and an explicit flag lost on the way out is named in the
+                    // plan before any of this runs.
+                    agentic: carried.agentic,
                 },
             )
             .await?;
@@ -1524,6 +1552,7 @@ async fn read_source<M: SessionMode>(
                     plan: None,
                     archival: None,
                     delegate_to: None,
+                    agentic: None,
                     tag_ids: goal.tag_ids,
                     block_reasons,
                     dependents: dependents.max(0) as usize,
@@ -1559,6 +1588,7 @@ async fn read_source<M: SessionMode>(
                     plan: task.plan,
                     archival: Some(task.archival),
                     delegate_to: task.delegate_to,
+                    agentic: Some(TaskAgentic::from_column(task.agentic)),
                     tag_ids: task.tag_ids,
                     block_reasons,
                     dependents: dependents.max(0) as usize,
@@ -1596,6 +1626,7 @@ async fn read_source<M: SessionMode>(
                     // and a Commitment's own Archival is derived from its Verdict Window.
                     archival: None,
                     delegate_to: None,
+                    agentic: None,
                     tag_ids: commitment.tag_ids,
                     // Never blocked, and never part of the dependency graph in either
                     // direction, so all three are structurally empty rather than unread.
@@ -1630,6 +1661,7 @@ async fn read_source<M: SessionMode>(
                     plan: None,
                     archival: None,
                     delegate_to: None,
+                    agentic: None,
                     tag_ids: vec![],
                     block_reasons: vec![],
                     dependents: 0,
@@ -1663,6 +1695,7 @@ async fn read_source<M: SessionMode>(
                     plan: None,
                     archival: None,
                     delegate_to: None,
+                    agentic: None,
                     tag_ids: vec![],
                     block_reasons: vec![],
                     dependents: 0,
@@ -1833,6 +1866,7 @@ mod tests {
             plan: None,
             archival: None,
             delegate_to: None,
+            agentic: None,
             tag_ids: vec![],
             block_reasons: vec![],
             dependents: 0,
@@ -1847,8 +1881,15 @@ mod tests {
             status: Some("todo".into()),
             // Every stored Task has one; `Live` is the one nobody chose.
             archival: Some(TaskArchival::Live),
+            // Likewise: every Task has an Agentic state, and `Inherit` is the unchosen one.
+            agentic: Some(TaskAgentic::Inherit),
             ..goal(id)
         }
+    }
+
+    /// A Task explicitly flagged as agent work.
+    fn agentic_task(id: i64) -> SourceNode {
+        SourceNode { agentic: Some(TaskAgentic::Yes), ..task(id) }
     }
 
     /// An unresolved commitment with no Verdict Window — the shape a freshly created one has.
@@ -2828,6 +2869,92 @@ mod tests {
 
         assert!(!lost_field_names(&plan).contains(&"archival"));
         assert!(!plan.loses_anything());
+    }
+
+    // --- Agentic, a Task-only flag ---
+
+    #[test]
+    fn an_agentic_task_becoming_a_goal_names_the_flag_among_its_losses() {
+        // Only a Task can be agentic — a Goal is a desired state, not an action — so the flag
+        // goes, and the prompt says so rather than dropping what the user said.
+        let plan = plan_retype(&agentic_task(1), &[], RetypeKind::Goal);
+
+        assert_eq!(plan.carried.agentic, None, "the new goal carries no flag");
+        assert_eq!(
+            plan.lost_fields,
+            vec![LostField {
+                field: "agentic",
+                value: "yes".into()
+            }]
+        );
+        assert!(plan.loses_anything());
+    }
+
+    #[test]
+    fn an_explicitly_unagentic_task_loses_just_as_much_as_a_flagged_one() {
+        // "Not agentic" is a real answer — it overrides an agentic ancestor — so losing it is a
+        // loss, exactly like losing the flag itself.
+        let refused = SourceNode { agentic: Some(TaskAgentic::No), ..task(1) };
+        let plan = plan_retype(&refused, &[], RetypeKind::Goal);
+
+        assert_eq!(
+            plan.lost_fields,
+            vec![LostField {
+                field: "agentic",
+                value: "no".into()
+            }]
+        );
+    }
+
+    #[test]
+    fn an_agentic_task_loses_the_flag_to_every_kind_that_is_not_a_task() {
+        for target in [
+            RetypeKind::Goal,
+            RetypeKind::Commitment,
+            RetypeKind::Project,
+            RetypeKind::Domain,
+            RetypeKind::Tag,
+            RetypeKind::Info,
+        ] {
+            let plan = plan_retype(&agentic_task(1), &[], target);
+            assert!(
+                lost_field_names(&plan).contains(&"agentic"),
+                "{target:?} cannot be agentic, so it should report the flag lost"
+            );
+            assert_eq!(plan.carried.agentic, None, "{target:?} carries no flag");
+        }
+    }
+
+    #[test]
+    fn a_task_that_only_inherits_never_reports_a_lost_flag() {
+        // Inheriting is the state nobody chose, so — like a status still at its default — it is
+        // not a loss and must not drag up a prompt on its own.
+        let plan = plan_retype(&task(1), &[], RetypeKind::Goal);
+
+        assert!(!lost_field_names(&plan).contains(&"agentic"));
+        assert!(!plan.loses_anything());
+    }
+
+    #[test]
+    fn a_kind_with_no_agentic_column_reports_nothing_in_either_direction() {
+        let to_task = plan_retype(&goal(1), &[], RetypeKind::Task);
+        assert_eq!(to_task.carried.agentic, None);
+        assert!(!lost_field_names(&to_task).contains(&"agentic"));
+
+        let to_goal = plan_retype(&goal(1), &[], RetypeKind::Goal);
+        assert!(!lost_field_names(&to_goal).contains(&"agentic"));
+    }
+
+    #[test]
+    fn the_flag_and_the_delegate_are_lost_independently_of_each_other() {
+        // They are separate facts about the task: one says the work suits an agent, the other
+        // says who holds it. A retype that drops both names both.
+        let both = SourceNode { delegate_to: Some(12), ..agentic_task(1) };
+        let plan = plan_retype(&both, &[], RetypeKind::Goal);
+
+        let lost = lost_field_names(&plan);
+        assert!(lost.contains(&"agentic"));
+        assert!(lost.contains(&"delegate_to"));
     }
 
     #[test]

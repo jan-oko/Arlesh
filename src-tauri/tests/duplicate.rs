@@ -26,7 +26,8 @@ use arlesh_lib::{
         add_task_dependency, create_goal, create_task,
         model::{
             CreateGoalRequest, CreateTaskRequest, Dependency, GoalId, GoalStatus, OnScopeExit,
-            TaskArchival, TaskId, TaskStatus, TimeScope, UpdateGoalRequest, UpdateTaskRequest,
+            TaskAgentic, TaskArchival, TaskId, TaskStatus, TimeScope, UpdateGoalRequest,
+            UpdateTaskRequest,
         },
         update_goal, update_task,
     },
@@ -298,6 +299,7 @@ async fn a_duplicated_task_carries_every_field_the_original_held() {
             on_scope_exit: Some(OnScopeExit::Archive),
             plan: Some(at(week)),
             archival: None,
+            agentic: Some(TaskAgentic::Yes),
         },
     )
     .await
@@ -333,6 +335,11 @@ async fn a_duplicated_task_carries_every_field_the_original_held() {
     assert_eq!(copy.on_scope_exit, Some(OnScopeExit::Archive));
     assert_eq!(copy.plan, Some(at(week)));
     assert_eq!(copy.delegate_to, Some(person));
+    assert_eq!(
+        copy.agentic,
+        Some(true),
+        "the Agentic flag carries, and carries independently of the delegate"
+    );
     assert!(copy.is_private);
     assert_eq!(copy.tag_ids, vec![tag], "the copy keeps the original's tags, not copies of them");
     assert_eq!(
@@ -376,6 +383,7 @@ async fn a_duplicated_task_is_set_aside_if_the_original_was() {
             on_scope_exit: None,
             plan: None,
             archival: Some(TaskArchival::Backlog),
+            agentic: None,
         },
     )
     .await

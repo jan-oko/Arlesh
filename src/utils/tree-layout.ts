@@ -141,6 +141,14 @@ export interface MindmapNode {
    * it keeps reading as backlogged even once a lapsed window has forced `archived` on top of it —
    * exactly as a Frozen goal keeps its `status` under the same override. */
   backlogged?: boolean;
+  /** The task's **own** Agentic flag (Tasks only): work that suits being handed to an agent.
+   * `null`/absent means it has none of its own and reads its nearest flagged ancestor's instead
+   * (see `inheritedAgentic`). Independent of the delegate: a Task can be both. */
+  agentic?: boolean | null;
+  /** What this node's ancestors say about Agentic — resolved on load by `propagateAgentic`, never
+   * persisted. Read together with `agentic` through `isAgentic`, never on its own: an explicit
+   * `agentic: false` overrides an agentic ancestor. */
+  inheritedAgentic?: boolean;
   /** A Commitment's recorded Verdict (Commitments only) — `unresolved` / `kept` / `broken`.
    * Never derived from the window passing or from children completing: `unresolved` means the
    * user has not said, which is information in its own right. */

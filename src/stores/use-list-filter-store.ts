@@ -13,8 +13,8 @@ interface ListFilterStore {
   reset: () => void;
 }
 
-/** Persisted List View filter state: its own preset selector and the seven List-View-exclusive pill
- * filters (parent/dependency/statuses/scope/blocked). Status preset, tag filters, and Info/Flow/Private
+/** Persisted List View filter state: its own preset selector and the List-View-exclusive pill
+ * filters (parent/dependency/statuses/scope/blocked/agentic). Status preset, tag filters, and Info/Flow/Private
  * toggles are shared with the Mindmap via useFilterStore. */
 export const useListFilterStore = create<ListFilterStore>()(
   persist(

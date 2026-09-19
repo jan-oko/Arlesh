@@ -27,12 +27,12 @@ export const NEXT_PILL_MODE: Record<PillMode, PillMode> = { any: "all", all: "ex
 export type PillDimension =
   | "parent" | "dependency"
   | "taskStatus" | "goalStatus" | "projectStatus" | "verdict"
-  | "scopeState" | "blocked";
+  | "scopeState" | "blocked" | "agentic";
 
 export const PILL_DIMENSIONS: PillDimension[] = [
   "parent", "dependency",
   "taskStatus", "goalStatus", "projectStatus", "verdict",
-  "scopeState", "blocked",
+  "scopeState", "blocked", "agentic",
 ];
 
 /** List View's own preset selector: All/Plan/Start/Do write through to the shared status preset;
@@ -50,12 +50,16 @@ export const PROJECT_STATUS_VALUES = Object.values(PROJECT_STATUS);
 export const VERDICT_FILTER_VALUES = VERDICT_VALUES;
 export const SCOPE_STATE_VALUES = ["unscoped", "active", "overdue", "lapsed", "planned", "unplanned"] as const;
 export const BLOCKED_VALUES = ["blocked", "not_blocked"] as const;
+/** The Agentic dimension's two values. A task reads as one or the other and never neither: an
+ * unflagged task under an agentic one is agentic, and every other task is not. */
+export const AGENTIC_VALUES = ["agentic", "not_agentic"] as const;
 
 export type TaskStatusValue = (typeof TASK_STATUS_VALUES)[number];
 export type GoalStatusValue = (typeof GOAL_STATUS_VALUES)[number];
 export type ProjectStatusValue = (typeof PROJECT_STATUS_VALUES)[number];
 export type ScopeStateValue = (typeof SCOPE_STATE_VALUES)[number];
 export type BlockedValue = (typeof BLOCKED_VALUES)[number];
+export type AgenticValue = (typeof AGENTIC_VALUES)[number];
 
 export function isTaskStatusValue(value: string): value is TaskStatusValue {
   return (TASK_STATUS_VALUES as readonly string[]).includes(value);
@@ -81,6 +85,10 @@ export function isBlockedValue(value: string): value is BlockedValue {
   return (BLOCKED_VALUES as readonly string[]).includes(value);
 }
 
+export function isAgenticValue(value: string): value is AgenticValue {
+  return (AGENTIC_VALUES as readonly string[]).includes(value);
+}
+
 export interface ListFilterState {
   preset: ListPreset;
   pills: Record<PillDimension, PillFilter[]>;
@@ -91,7 +99,7 @@ export const DEFAULT_LIST_FILTER: ListFilterState = {
   pills: {
     parent: [], dependency: [],
     taskStatus: [], goalStatus: [], projectStatus: [], verdict: [],
-    scopeState: [], blocked: [],
+    scopeState: [], blocked: [], agentic: [],
   },
 };
 
@@ -141,6 +149,9 @@ export interface TaskListRow {
   dependencyRefs: string[];
   isBlocked: boolean;
   hasBlockedAncestor: boolean;
+  /** Whether the task reads as Agentic — its own flag, or the nearest flagged ancestor's. Resolved
+   * once when the row is built, the same way the row's blocked-ness is. */
+  isAgentic: boolean;
   /** Whether any ancestor (Project/Goal/Domain/Aspect) is marked private — outside Private Mode the
    * subtree is hidden as a unit even when the task itself isn't flagged (mirrors the Mindmap's
    * tree-pruning). */
@@ -291,6 +302,7 @@ export function filterTaskList(
     if (!matchesPillGroup(listFilter.pills.projectStatus, row.projectStatus !== null ? [row.projectStatus] : [])) return false;
     if (!matchesPillGroup(listFilter.pills.scopeState, row.scopeTokens)) return false;
     if (!matchesPillGroup(listFilter.pills.blocked, [row.isBlocked ? "blocked" : "not_blocked"])) return false;
+    if (!matchesPillGroup(listFilter.pills.agentic, [row.isAgentic ? "agentic" : "not_agentic"])) return false;
     return true;
   });
 }

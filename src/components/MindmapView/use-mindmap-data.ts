@@ -18,6 +18,7 @@ import {
   createFlowGoal, createFlowTask, updateFlowGoal, updateFlowTask, deleteFlowItem, convertFlowItem,
 } from "@/api/flows";
 import { findNode } from "@/utils/mindmap-tree";
+import { propagateAgentic } from "@/utils/agentic";
 import type { Domain } from "@/api/domains";
 import type { Task } from "@/api/tasks";
 import type { Goal } from "@/api/goals";
@@ -535,6 +536,7 @@ export function buildTree(
       onScopeExit: task.on_scope_exit,
       plan: task.plan,
       backlogged: task.archival === TASK_ARCHIVAL.BACKLOG,
+      agentic: task.agentic,
       position: task.position,
       isPrivate: task.is_private,
       ...(task.beads_id !== undefined ? { beadsId: task.beads_id } : {}),
@@ -761,6 +763,9 @@ export function buildTree(
 
   const root = { ...VIRTUAL_ROOT, children: aspectNodes };
   propagateAspectColor(root, undefined);
+  // Agentic inherits downward and is overridable, exactly as a delegate does, so the value a node
+  // reads is resolved here once rather than by an ancestor walk at every badge and filter.
+  propagateAgentic(root, false);
   return root;
 }
 
