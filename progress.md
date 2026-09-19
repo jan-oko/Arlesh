@@ -363,6 +363,45 @@ filter dimensions" → seven). It never reached a release, so they were made to 
 rather than carrying a `Removed` note for something no user ever had. Agent also caught `README.md`,
 which my file map missed.
 
+## PR #21 — `atb` + `9xk`, and a premise that did not survive contact
+
+Both P1s, one commit each, both beads closed. Gate green: 87/1163 frontend, 506 Rust, tarpaulin
+**90.99%** against the trusted 90.96% — the same number.
+
+**I briefed it not to spray the attribute across all 17 fields, and to argue which deserved it. It
+argued the opposite and was right.** It went looking for fields no UI can clear, expecting to leave
+some, and found the premise does not hold on this tree: every editor modal builds its request from
+save-data typed `T | null` and passes it straight through — `TaskEditorModal`'s `timeScope`/`plan`,
+`GoalEditorModal`'s `timeScope`, `InfoEditorModal`'s `details`, and `FlowEditorModal`'s nine, spread
+wholesale by `onFlowSave`. So **16 of the 17 were live silent drops a user could hit today**, not
+hypothetical. The 17th (`delegate_to`) has no UI path at all; it included it anyway, on the grounds
+that one field of a four-field struct behaving unlike its own type and doc comment is a sharper trap
+than one more attribute.
+
+**It proved the red state rather than asserting it**: stripped every `deserialize_with` and re-ran,
+getting exactly 15 failures plus #17's own, each with its own field-naming message. Restored,
+re-verified green.
+
+**It also checked the inverse risk** — a caller relying on null meaning "unchanged". One looked
+dangerous (`MindmapView.tsx:266` passing a `TimeScope | null`) and turned out to be guarded, so no
+null reaches it.
+
+**One deliberate exception it found and kept:** `on_scope_exit` set to null while a Time Scope is
+still set does *not* write NULL — `on_scope_exit_column` defaults it back to `keep`, preserving the
+`CHECK`-backed invariant from migration `0015` that scoped ⟺ on-exit set. Correct, and the doc
+comment already said so.
+
+**`9xk`: it planted the collision rather than trusting my summary.** Added
+`0025_duplicate_probe.sql` beside the real `0025`, confirmed sqlx refuses with SQLite code 1555
+(`UNIQUE constraint failed: _sqlx_migrations.version`) failing 5 of 6 tests in `tests/database.rs`,
+then removed the probe. The test parses the version the way sqlx does — text before the first `_`,
+as `i64`, so `0025_a` and `25_b` collide too — and refuses a vacuous pass on an empty directory.
+
+**Discipline worth noting:** it queued its tarpaulin behind the `undo-journal` agent's 25-minute run
+rather than measuring concurrently, and its first vitest run showed the memory-pressure flake
+(85/1152 with two 5000 ms timeouts in untouched suites) which it correctly discarded in favour of a
+clean 87/1163.
+
 ## Standing rule: no audits or sweeps without approval (2026-09-19)
 
 User: *"Let's focus on the commitments for now, no audits or sweeps without approval."*
