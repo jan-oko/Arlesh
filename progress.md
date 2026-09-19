@@ -363,6 +363,37 @@ filter dimensions" → seven). It never reached a release, so they were made to 
 rather than carrying a `Removed` note for something no user ever had. Agent also caught `README.md`,
 which my file map missed.
 
+## Dispatched to 8 (2026-09-19)
+
+**`Arlesh-atb` + `Arlesh-9xk`, one agent, one PR** — the user's call. Both P1, both in `src-tauri`,
+neither touching any open branch, so they stack on nothing and risk no conflicts. One commit each so
+a reviewer can read them apart.
+
+The brief deliberately refuses to hand over the number: it says 17 fields are exposed but tells the
+agent to **argue which of them should actually get the fix** rather than spraying an attribute across
+all 17 because 17 is the figure I gave it. It also asks the harder question underneath — the
+deserializer only makes the *intent* reach the backend; whether each `update_*` then honours
+`Some(None)` correctly is a separate thing to check.
+
+**`Arlesh-rhk` folds into PR #10** — same ruling as `evu` and `mrq`. The agent was right that a
+Verdict Window field gated on an unreachable value is pointless; the answer is to make the kind
+reachable, not to leave both halves out. Accepted cost: #10 is clean and green right now, and #13 is
+stacked on it, so **#13 will need its base merged a second time** afterwards. Mine, not the agent's.
+
+### A stale base I nearly built on
+
+Creating the worktree, `git merge --ff-only origin/master` refused: local master was **17 ahead and
+2 behind**. The two behind were PRs #14 and #17 — squash-merged, so their commits are not ancestors
+of anything local. A worktree cut from local `master` would have been missing
+`src-tauri/src/duplicate/` and `0025_flow_target_defaults_to_parent.sql`, which are precisely what
+both new beads touch: `atb` edits update requests that #17 already fixed one of, and `9xk` counts the
+very migration #14/#17 added.
+
+Rebased local master onto origin and reset the worktree. **The general hazard**: this repo
+squash-merges, so a local `master` that has any unpushed commit will silently diverge from what is
+actually on the remote, and `git worktree add ... master` takes the local one. Cut from
+`origin/master` explicitly, or verify `behind=0` first.
+
 ## All seven PRs clean — merge order (2026-09-19)
 
 First green sweep of the run. Every open PR merges into its base without conflict.
