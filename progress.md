@@ -363,6 +363,37 @@ filter dimensions" → seven). It never reached a release, so they were made to 
 rather than carrying a `Removed` note for something no user ever had. Agent also caught `README.md`,
 which my file map missed.
 
+## Ownership consolidated, everything pushed (2026-09-19)
+
+Three sessions were working this repo — this one, a CI/CD fork, and a fork that specced and filed
+beads. The user has consolidated: **CI/CD and PR #20 handed to that fork; everything else owned
+here**, including the bead session's unpushed work.
+
+**Pushed, all of it:**
+
+- **`master`** — 22 commits, `363cb5b..1021835`. Rebased onto origin first (it was 24 ahead and 5
+  behind, because this repo squash-merges and unpushed bookkeeping keeps local master diverged).
+  Verified before pushing that the diff touches **`progress.md` only** — 795 lines of record, no
+  code. That included the bead session's `47f27ba`, which was sitting unpushed in the shared
+  checkout.
+- **Beads to Dolt** — `bd dolt push`, complete. 65 issues: 32 open, 6 in progress, 6 blocked.
+
+**Nothing is stranded.** Three local branches have no remote and are not ancestors of master, and
+each is accounted for rather than assumed safe:
+
+| Branch | |
+|---|---|
+| `worktree-agent-a95bb8db…` | PR #2's MCP + `beads_id` work — squash-merged, so the content is on master (`0024_beads_id.sql`) while the commits are not ancestors |
+| `worktree-mindmap-duplicate-paste` | superseded by the PR #8 recovery that became PR #14 |
+| `worktree-agent-a058161b…` | a single commit *reporting* Phase 6 blocked — a note, not work |
+
+**The squash-merge trap, stated once for the record**, since it has now caused two near-misses: this
+repo squash-merges, so a merged branch's commits are never ancestors of master. `git merge-base
+--is-ancestor` therefore answers "is this branch merged?" with a confident **no** for work that is
+fully landed. Check for the *content* — a file, a symbol, a migration — not the commits. It is also
+why a local `master` carrying any unpushed commit silently diverges, and why a worktree must be cut
+from `origin/master` rather than `master`.
+
 ## PR #22 — the undo journal
 
 Three commits, bead closed. Gate green: 87/1163 frontend, 251 Rust, tarpaulin **91.07%** — *above*
