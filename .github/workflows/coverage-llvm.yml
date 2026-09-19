@@ -1,0 +1,124 @@
+name: Coverage (llvm measurement — THROWAWAY)
+
+# Temporary. Delete before PR #20 merges.
+#
+# Measures LLVM source-based coverage against the ptrace run this PR already
+# proved green (20m40s cold, 90.96%, 3442/3784 lines). Three things are being
+# measured, not one:
+#
+#   1. Wall time of the run phase. Tarpaulin's ptrace engine sets an INT3
+#      breakpoint on every coverable line, then on each first hit disables it,
+#      single-steps, and re-enables it. With `-Clink-dead-code` (tarpaulin's
+#      default) every test binary links the whole 560-crate tree, so that cost
+#      scales with the dependency graph, not with this project: 18 binaries x
+#      ~24.5s of flat setup = 441s of the 480s run phase, around 38.8s of which
+#      was actual test execution. Source-based instrumentation has no per-binary
+#      setup at all; the binary writes counters to a .profraw on exit.
+#   2. The percentage. It will NOT be 90.96%. LLVM counts regions and maps them
+#      back to lines, and cargo-llvm-cov ignores `tests/` by default. The floor
+#      of 90 is a policy number calibrated against one tool; moving tools means
+#      re-reading it off a known-good tree once, which is what this run is for.
+#   3. Whether "Reclaim runner disk" is load-bearing. It is deliberately absent
+#      here and `df -h /` is printed after the run instead. On three identical
+#      tarpaulin runs it cost 75s, 3m40s and 32s to protect against a shortfall
+#      that never came within 14 GB of happening.
+
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - '.github/workflows/coverage-llvm.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: coverage-llvm-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  llvm-cov:
+    name: cargo llvm-cov (measurement)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Show starting disk
+        run: df -h /
+
+      - name: Install Tauri's Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            librsvg2-dev \
+            libxdo-dev \
+            libayatana-appindicator3-dev \
+            libssl-dev
+
+      # Source-based coverage needs llvm-profdata and llvm-cov, which ship in
+      # this rustup component and must match the compiler that instrumented the
+      # binaries. Using the system LLVM instead is the usual way to get a
+      # "malformed instrumentation profile data" failure.
+      - name: Install llvm-tools-preview
+        run: |
+          rustup component add llvm-tools-preview
+          rustc --version
+          cargo --version
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          shared-key: llvm-cov
+
+      - name: Stub the frontend bundle
+        run: |
+          mkdir -p dist
+          printf '<!doctype html><title>arlesh ci</title>' > dist/index.html
+
+      # Drops stale .profraw and the workspace crate's own artifacts, leaving the
+      # cached dependency build alone. Without it a warm cache can mix counters
+      # from two different versions of the same function.
+      - name: llvm-cov clean
+        working-directory: src-tauri
+        run: cargo llvm-cov clean --workspace
+
+      # Split from the report so the build+test phase can be compared directly
+      # against tarpaulin's 480.2s run phase.
+      - name: Build and run instrumented tests
+        working-directory: src-tauri
+        run: cargo llvm-cov --locked --no-report
+
+      - name: Report
+        working-directory: src-tauri
+        run: |
+          set -o pipefail
+          cargo llvm-cov report \
+            --summary-only \
+            --ignore-filename-regex '(^|/)src/commands/' \
+            2>&1 | tee "$RUNNER_TEMP/llvm-cov.log"
+
+      - name: Summarise
+        if: always()
+        run: |
+          {
+            echo '### cargo llvm-cov'
+            echo '```'
+            tail -20 "$RUNNER_TEMP/llvm-cov.log" 2>/dev/null || echo 'no report'
+            echo '```'
+            echo '### Disk after the run (no reclaim step)'
+            echo '```'
+            df -h /
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
