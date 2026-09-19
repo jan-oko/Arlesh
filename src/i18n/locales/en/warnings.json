@@ -45,6 +45,8 @@
   "habitLoadFailedBanner": "Habit iterations could not be loaded for:",
   "commitmentHabitHoldsGoalsBanner": "These Habits repeat a Commitment, but their templates hold Goals, which a Commitment cannot. No repetitions are shown for:",
   "parentClimb": "It cannot stay under “{{from}}”, so it will move up to “{{to}}”",
+  "createFailed": "Couldn't create it: {{message}}",
+  "typedChildRefused": "{{child}} can't sit under {{parent}} — only under {{parents}}.",
   "pasteSkipped_one": "{{count}} node couldn't be pasted here",
   "pasteSkipped_other": "{{count}} nodes couldn't be pasted here",
   "backlogHeading": "Put \"{{title}}\" in the backlog?",

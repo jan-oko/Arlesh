@@ -19,11 +19,12 @@ interface SubtreeNavHandles {
  * it for the top bar, and hands back the two "go up" actions.
  *
  * The top bar holds no tree, so whichever view is on screen has to name the subtree root's parent
- * for it. Both views call this, because `subtreeRootId` is one piece of shared state rather than
- * per-view: enter a subtree in the List View and switch to the Mindmap and you are still inside it,
- * and the pills read correctly either way round. Only the Mindmap used to compute the descriptor,
- * so without this the pills would simply vanish whenever the List View was the view on screen —
- * the Mindmap is unmounted then, and the descriptor it last published would go stale.
+ * for it. Both views call this, because `subtreeRootId` is one piece of state **per tab** rather
+ * than per view: enter a subtree in the List View and switch to the Mindmap and you are still
+ * inside it, and the pills read correctly either way round — while another tab stays exactly where
+ * it was, since it holds its own store. Only the Mindmap used to compute the descriptor, so
+ * without this the pills would simply vanish whenever the List View was the view on screen — the
+ * Mindmap is unmounted then, and the descriptor it last published would go stale.
  */
 export function useSubtreeNav(tree: MindmapNode): SubtreeNavHandles {
   const subtreeRootId = useMindmapStore((s) => s.subtreeRootId);
@@ -35,6 +36,20 @@ export function useSubtreeNav(tree: MindmapNode): SubtreeNavHandles {
   const parent = subtreeRootId !== null ? findParent(tree, subtreeRootId) : null;
   const parentSubtreeId = parent !== null && parent.id !== "root" ? parent.id : null;
   const currentTitle = current?.title ?? "";
+
+  /**
+   * A subtree root that is no longer on the board sends the view back to the true root.
+   *
+   * A tab's root is restored from storage, so the node it names may have been deleted in between —
+   * and a view rooted at a node that does not exist shows nothing, with no indicator and no pill to
+   * escape by. An empty tree is not evidence of that: it is what a load in progress looks like, so
+   * the check waits for a tree with something in it.
+   */
+  useEffect(() => {
+    if (subtreeRootId === null || tree.children.length === 0) return;
+    if (findNode(tree, subtreeRootId) !== undefined) return;
+    onExitToRoot();
+  }, [subtreeRootId, tree, onExitToRoot]);
 
   useEffect(() => {
     setSubtreeNav(

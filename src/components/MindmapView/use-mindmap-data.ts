@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { createDomain, updateDomain, deleteDomain, duplicateDomain } from "@/api/domains";
 import { createTask, updateTask, deleteTask, duplicateTask, TASK_ARCHIVAL } from "@/api/tasks";
-import { createCommitment, updateCommitment, deleteCommitment } from "@/api/commitments";
+import { createCommitment, updateCommitment, deleteCommitment, addTagToCommitment } from "@/api/commitments";
+import type { CommitmentSaveData } from "@/components/CommitmentEditorModal/CommitmentEditorModal";
 import type { Commitment, Verdict } from "@/api/commitments";
 import { VERDICT } from "@/api/commitments";
 import type { TaskAgentic, TaskDependencyEdge } from "@/api/tasks";
@@ -338,6 +339,8 @@ interface MindmapData {
   moveNode: (id: string, kind: NodeKind, newParentId: string, newParentKind: NodeKind, position: number) => Promise<void>;
   duplicateNode: (id: string, kind: NodeKind, targetId: string, targetKind: NodeKind, position: number) => Promise<void>;
   removeNode: (nodesToDelete: Array<{ id: string; kind: NodeKind }>) => Promise<void>;
+  /** Writes a commitment configured in the new-commitment editor, window and all, under a parent. */
+  createCommitment: (parentId: string, parentKind: NodeKind, data: CommitmentSaveData) => Promise<void>;
   createFlow: (request: CreateFlowRequest) => Promise<Flow>;
   updateFlow: (id: number, request: UpdateFlowRequest) => Promise<void>;
   reload: () => Promise<void>;
@@ -1240,6 +1243,33 @@ export function useMindmapData(): MindmapData {
     [load],
   );
 
+  /**
+   * Writes a commitment configured in the new-commitment editor, under `parentId`.
+   *
+   * Separate from `createNode`'s commitment branch, which posts a bare title: a commitment is
+   * invalid without a window, so the one Shift+C opens carries the window the user just set.
+   * `is_private` and tags are not fields of the create request, so they follow it — before the
+   * reload, so the new row appears once, configured, rather than twice, half-configured first.
+   * Any refusal propagates to the editor, which keeps itself open and shows it.
+   */
+  const createCommitmentNode = useCallback(
+    async (parentId: string, parentKind: NodeKind, data: CommitmentSaveData): Promise<void> => {
+      const dbParentId = parseInt(parentId.split("-").pop() ?? "0", 10);
+      const commitment = await createCommitment({
+        title: data.title,
+        parent_type: kindToParentType(parentKind),
+        parent_id: dbParentId,
+        verdict: data.verdict,
+        ...(data.timeScope !== null ? { time_scope: data.timeScope } : {}),
+        ...(data.verdictWindow !== null ? { verdict_window: data.verdictWindow } : {}),
+      });
+      if (data.isPrivate) await updateCommitment(commitment.id, { is_private: true });
+      for (const tagId of data.tagIds) await addTagToCommitment(commitment.id, tagId);
+      await load(false);
+    },
+    [load],
+  );
+
   const createFlowNode = useCallback(
     async (request: CreateFlowRequest): Promise<Flow> => {
       const flow = await createFlow(request);
@@ -1277,6 +1307,7 @@ export function useMindmapData(): MindmapData {
     moveNode,
     duplicateNode,
     removeNode,
+    createCommitment: createCommitmentNode,
     createFlow: createFlowNode,
     updateFlow: updateFlowNode,
     reload: reload,

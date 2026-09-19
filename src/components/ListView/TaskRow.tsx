@@ -17,6 +17,8 @@ interface Props {
   row: TaskListRow;
   visibleDepth: number;
   isSelected: boolean;
+  /** In the list only because it is selected: the filter would have dropped it, so it renders dimmed. */
+  isFocusExempt: boolean;
   isEditingTitle: boolean;
   onSelect: (nodeId: string) => void;
   onCycleStatus: (nodeId: string) => void;
@@ -38,7 +40,7 @@ interface Props {
  * title drifting away from them. Ancestors the filter hides are named in the path header instead, so
  * a row never indents under something that is not on screen. */
 export default function TaskRow({
-  row, visibleDepth, isSelected, isEditingTitle, onSelect, onCycleStatus, onOpenEditor, onCommitTitle, onCancelTitleEdit,
+  row, visibleDepth, isSelected, isFocusExempt, isEditingTitle, onSelect, onCycleStatus, onOpenEditor, onCommitTitle, onCancelTitleEdit,
   onAddParentFilter, onAddTagFilter,
 }: Props) {
   useInputCapture(isEditingTitle);
@@ -70,7 +72,7 @@ export default function TaskRow({
 
   return (
     <div
-      className={`${styles.card} ${indentClass}${isSelected ? ` ${styles.cardSelected}` : ""}`}
+      className={`${styles.card} ${indentClass}${isSelected ? ` ${styles.cardSelected}` : ""}${isFocusExempt ? ` ${styles.cardFocusExempt}` : ""}`}
       style={cardStyle}
       onClick={() => onSelect(node.id)}
       onDoubleClick={() => onOpenEditor(node.id)}

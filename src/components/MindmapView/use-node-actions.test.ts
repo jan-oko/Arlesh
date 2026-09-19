@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useNodeActions } from "./use-node-actions";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
-import { CLIPBOARD_OP } from "@/stores/use-mindmap-store";
+import { CLIPBOARD_OP } from "@/stores/use-clipboard-store";
 
 vi.mock("@/api/tasks", () => ({
   updateTask: vi.fn().mockResolvedValue({ id: 1, status: "in_progress" }),
@@ -80,6 +80,8 @@ function makeOpts(overrides: Partial<Parameters<typeof useNodeActions>[0]> = {})
     setClipboard: vi.fn(),
     setEditingNodeId: vi.fn(),
     showToast: vi.fn(),
+    onNewFlow: vi.fn(),
+    onNewCommitment: vi.fn(),
     ...overrides,
   };
 }
@@ -461,5 +463,154 @@ describe("useNodeActions — onCreateSibling", () => {
     await vi.waitFor(() =>
       expect(opts.createNode).toHaveBeenCalledWith("domain-3", "project", "goal", "", undefined),
     );
+  });
+});
+
+describe("useNodeActions — onCreateTypedChild", () => {
+  const TAG = mkNode("domain-20", "tag");
+  const DOMAIN = mkNode("domain-21", "domain");
+  const INFO = mkNode("info-1", "info");
+  const CONTAINER = mkNode("domain-3", "project", [TASK_NODE, GOAL_NODE, COMMITMENT_NODE, TAG, DOMAIN, INFO, FLOW_NODE]);
+  const TREE = mkNode("root", "domain", [CONTAINER]);
+
+  function typedOpts(overrides: Partial<Parameters<typeof useNodeActions>[0]> = {}) {
+    return makeOpts({ tree: TREE, ...overrides });
+  }
+
+  it("creates a Goal under a Project and puts the new node straight into rename", async () => {
+    const opts = typedOpts({ createNode: vi.fn().mockResolvedValue(mkNode("goal-99", "goal")) });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onCreateTypedChild("domain-3", "goal"); });
+    await vi.waitFor(() => expect(opts.createNode).toHaveBeenCalledWith("domain-3", "project", "goal", ""));
+    expect(opts.selectNode).toHaveBeenCalledWith("goal-99");
+    expect(opts.setEditingNodeId).toHaveBeenCalledWith("goal-99");
+    expect(opts.showToast).not.toHaveBeenCalled();
+  });
+
+  it("creates a Task under a Commitment", async () => {
+    const opts = typedOpts({ createNode: vi.fn().mockResolvedValue(mkNode("task-99", "task")) });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onCreateTypedChild("commitment-7", "task"); });
+    await vi.waitFor(() => expect(opts.createNode).toHaveBeenCalledWith("commitment-7", "commitment", "task", ""));
+  });
+
+  it("creates an Info under a Task", async () => {
+    const opts = typedOpts({ createNode: vi.fn().mockResolvedValue(mkNode("info-99", "info")) });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onCreateTypedChild("task-5", "info"); });
+    await vi.waitFor(() => expect(opts.createNode).toHaveBeenCalledWith("task-5", "task", "info", ""));
+  });
+
+  it("refuses a Goal under a Task with a toast naming the rule, and creates nothing", () => {
+    const opts = typedOpts();
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onCreateTypedChild("task-5", "goal"); });
+    expect(opts.createNode).not.toHaveBeenCalled();
+    expect(opts.showToast).toHaveBeenCalledWith({
+      nodeId: "task-5",
+      message: expect.stringContaining("typedChildRefused"),
+    });
+  });
+
+  it("refuses a Flow under a Task — a Flow hangs from an Aspect, Domain, Project or Goal", () => {
+    const opts = typedOpts();
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onCreateTypedChild("task-5", "flow"); });
+    expect(opts.onNewFlow).not.toHaveBeenCalled();
+    expect(opts.createNode).not.toHaveBeenCalled();
+    expect(opts.showToast).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses a Domain under a Task", () => {
+    const opts = typedOpts();
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onCreateTypedChild("task-5", "domain"); });
+    expect(opts.createNode).not.toHaveBeenCalled();
+    expect(opts.showToast).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses a Project under a Domain — a Project needs an Aspect or a Project", () => {
+    const opts = typedOpts();
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onCreateTypedChild("domain-21", "project"); });
+    expect(opts.createNode).not.toHaveBeenCalled();
+    expect(opts.showToast).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses every kind under a Tag, which is a leaf", () => {
+    const opts = typedOpts();
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onCreateTypedChild("domain-20", "info"); });
+    expect(opts.createNode).not.toHaveBeenCalled();
+    expect(opts.showToast).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses a real node under a Flow, whose children are its own items", () => {
+    const opts = typedOpts();
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onCreateTypedChild("flow-1", "task"); });
+    expect(opts.createNode).not.toHaveBeenCalled();
+    expect(opts.showToast).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens the Flow editor rather than creating a blank Flow row", () => {
+    const opts = typedOpts();
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onCreateTypedChild("domain-3", "flow"); });
+    expect(opts.onNewFlow).toHaveBeenCalledWith("domain-3");
+    expect(opts.createNode).not.toHaveBeenCalled();
+    expect(opts.showToast).not.toHaveBeenCalled();
+  });
+
+  // Shift+C used to post a bare commitment with no Time Scope, which the backend refuses when
+  // nothing above the parent is scoped — a chord whose only outcome was a refusal toast. It now
+  // opens the editor, where the window can be set before anything is written.
+  it("opens the Commitment editor rather than creating a windowless Commitment row", () => {
+    const opts = typedOpts();
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onCreateTypedChild("domain-3", "commitment"); });
+    expect(opts.onNewCommitment).toHaveBeenCalledWith("domain-3");
+    expect(opts.createNode).not.toHaveBeenCalled();
+    expect(opts.showToast).not.toHaveBeenCalled();
+  });
+
+  // The parent check still runs first: the editor is not opened on a parent that could never hold
+  // a commitment, because the refusal is about placement, not about the window.
+  it("refuses a Commitment under a Tag without opening the editor", () => {
+    const opts = typedOpts();
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onCreateTypedChild("domain-20", "commitment"); });
+    expect(opts.onNewCommitment).not.toHaveBeenCalled();
+    expect(opts.createNode).not.toHaveBeenCalled();
+    expect(opts.showToast).toHaveBeenCalledTimes(1);
+  });
+
+  it("says so when the backend refuses the creation, instead of failing where nobody is looking", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const opts = typedOpts({ createNode: vi.fn().mockRejectedValue(new Error("CHECK constraint failed")) });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onCreateTypedChild("task-5", "info"); });
+    await vi.waitFor(() => expect(opts.showToast).toHaveBeenCalledWith({
+      nodeId: "task-5",
+      message: expect.stringContaining("createFailed"),
+    }));
+    expect(opts.selectNode).not.toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
+
+  it("does nothing for a node that is not in the tree", () => {
+    const opts = typedOpts();
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onCreateTypedChild("task-404", "task"); });
+    expect(opts.createNode).not.toHaveBeenCalled();
+    expect(opts.showToast).not.toHaveBeenCalled();
+  });
+
+  it("does nothing on the synthetic root, which has no row behind it", () => {
+    const opts = typedOpts();
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onCreateTypedChild("root", "domain"); });
+    expect(opts.createNode).not.toHaveBeenCalled();
+    expect(opts.showToast).not.toHaveBeenCalled();
   });
 });

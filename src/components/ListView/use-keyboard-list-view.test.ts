@@ -33,6 +33,7 @@ function baseOptions(overrides: Partial<Parameters<typeof useKeyboardListView>[0
     onToggleAgentic: vi.fn(),
     onMarkKept: vi.fn(),
     onMarkBroken: vi.fn(),
+    onToggleFullscreen: vi.fn(),
     ...overrides,
   };
   // `selectedRowId` is whichever of the two kinds is selected, exactly as ListView derives it —
@@ -269,5 +270,29 @@ describe("useKeyboardListView", () => {
     fireKey("r");
     expect(options.onOpenEditor).not.toHaveBeenCalled();
     expect(options.onStartRename).not.toHaveBeenCalled();
+  });
+});
+
+describe("useKeyboardListView — f shows the board alone", () => {
+  it("with no row selected, f hides the chrome", () => {
+    const opts = baseOptions({ selectedTaskId: null, selectedCommitmentId: null, selectedRowId: null });
+    renderHook(() => useKeyboardListView(opts));
+    fireKey("f");
+    expect(opts.onToggleFullscreen).toHaveBeenCalledTimes(1);
+  });
+
+  it("with a row selected, f does nothing — the same rule the Mindmap uses", () => {
+    const opts = baseOptions({ selectedTaskId: "task-1" });
+    renderHook(() => useKeyboardListView(opts));
+    fireKey("f");
+    expect(opts.onToggleFullscreen).not.toHaveBeenCalled();
+  });
+
+  it("Alt+F still reaches the filter, not the board-alone mode", () => {
+    const opts = baseOptions({ selectedTaskId: null, selectedCommitmentId: null, selectedRowId: null });
+    renderHook(() => useKeyboardListView(opts));
+    fireKey("f", { altKey: true });
+    expect(opts.onToggleFilter).toHaveBeenCalledTimes(1);
+    expect(opts.onToggleFullscreen).not.toHaveBeenCalled();
   });
 });

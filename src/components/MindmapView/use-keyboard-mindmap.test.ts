@@ -3,6 +3,7 @@ import { renderHook } from "@testing-library/react";
 import { useKeyboardMindmap } from "./use-keyboard-mindmap";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { StatusMode } from "@/utils/filter-tree";
+import type { TypedChildKind } from "@/utils/node-meta";
 
 function makeTask(id: string): MindmapNode {
   return { id, kind: "task", title: "Task", position: 0, tagIds: [], children: [] };
@@ -46,6 +47,7 @@ function baseOptions(overrides: Partial<Parameters<typeof useKeyboardMindmap>[0]
     onReorder: vi.fn(),
     onStartRename: vi.fn(),
     onCreateChild: vi.fn(),
+    onCreateTypedChild: vi.fn() as (id: string, kind: TypedChildKind) => void,
     onCreateSibling: vi.fn(),
     onInsertParent: vi.fn(),
     onOpenEditor: vi.fn(),
@@ -67,6 +69,7 @@ function baseOptions(overrides: Partial<Parameters<typeof useKeyboardMindmap>[0]
     onSetStatusMode: vi.fn() as (mode: StatusMode) => void,
     onToggleBacklog: vi.fn(),
     onToggleAgentic: vi.fn(),
+    onToggleFullscreen: vi.fn(),
     onFocusRoot: vi.fn(),
     onCenterOnNode: vi.fn(),
     onConvertToFlow: vi.fn(),
@@ -821,11 +824,19 @@ describe("useKeyboardMindmap — f converts an applicable node to a flow", () =>
     expect(opts.onConvertToFlow).toHaveBeenCalledWith("task-1");
   });
 
-  it("does nothing when no node is selected", () => {
+  it("shows the board alone when no node is selected, since there is nothing to convert", () => {
     const opts = baseOptions({ selectedNodeId: null });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("f");
     expect(opts.onConvertToFlow).not.toHaveBeenCalled();
+    expect(opts.onToggleFullscreen).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not show the board alone when a node IS selected — the conversion wins the key", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("f");
+    expect(opts.onToggleFullscreen).not.toHaveBeenCalled();
   });
 
   it("Alt+F still toggles the filter menu and does not convert", () => {
@@ -834,6 +845,7 @@ describe("useKeyboardMindmap — f converts an applicable node to a flow", () =>
     fireKey("f", { altKey: true });
     expect(opts.onToggleFilter).toHaveBeenCalledTimes(1);
     expect(opts.onConvertToFlow).not.toHaveBeenCalled();
+    expect(opts.onToggleFullscreen).not.toHaveBeenCalled();
   });
 });
 
@@ -884,5 +896,90 @@ describe("shift+arrow selection axis follows the orientation", () => {
     fireKey("ArrowDown", { shiftKey: true });
     expect(opts.onExtendSelection).not.toHaveBeenCalled();
     expect(opts.onNavigate).toHaveBeenCalledWith("ArrowDown");
+  });
+});
+
+describe("useKeyboardMindmap — Shift+initial creates a typed child", () => {
+  const CHORDS: ReadonlyArray<[string, TypedChildKind]> = [
+    ["d", "domain"],
+    ["p", "project"],
+    ["g", "goal"],
+    ["t", "task"],
+    ["i", "info"],
+    ["f", "flow"],
+    ["c", "commitment"],
+  ];
+
+  for (const [key, kind] of CHORDS) {
+    it(`Shift+${key.toUpperCase()} asks for a ${kind} child of the selection`, () => {
+      const opts = baseOptions();
+      renderHook(() => useKeyboardMindmap(opts));
+      fireKey(key, { shiftKey: true });
+      expect(opts.onCreateTypedChild).toHaveBeenCalledWith("task-1", kind);
+    });
+
+    it(`Shift+${key.toUpperCase()} does nothing at all with no selection`, () => {
+      const opts = baseOptions({ selectedNodeId: null, selectedNodeIds: new Set<string>() });
+      renderHook(() => useKeyboardMindmap(opts));
+      fireKey(key, { shiftKey: true });
+      expect(opts.onCreateTypedChild).not.toHaveBeenCalled();
+    });
+  }
+
+  it("leaves bare C centering on the selection, not creating a commitment", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("c");
+    expect(opts.onCenterOnNode).toHaveBeenCalledWith("task-1");
+    expect(opts.onCreateTypedChild).not.toHaveBeenCalled();
+  });
+
+  it("leaves Ctrl+C copying, not creating a commitment", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("c", { ctrlKey: true });
+    expect(opts.onCreateTypedChild).not.toHaveBeenCalled();
+  });
+
+  it("leaves bare F converting the selection to a Flow", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("f");
+    expect(opts.onConvertToFlow).toHaveBeenCalledWith("task-1");
+    expect(opts.onCreateTypedChild).not.toHaveBeenCalled();
+  });
+
+  it("Shift+F creates a Flow child and does not convert the selection", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("f", { shiftKey: true });
+    expect(opts.onCreateTypedChild).toHaveBeenCalledWith("task-1", "flow");
+    expect(opts.onConvertToFlow).not.toHaveBeenCalled();
+  });
+
+  it("leaves Tab creating an inherit-the-parent child", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("Tab");
+    expect(opts.onCreateChild).toHaveBeenCalledWith("task-1");
+    expect(opts.onCreateTypedChild).not.toHaveBeenCalled();
+  });
+
+  it("does not fire on a plain letter — Shift is what distinguishes the chord", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("d");
+    fireKey("t", { ctrlKey: true });
+    fireKey("g", { altKey: true });
+    expect(opts.onCreateTypedChild).not.toHaveBeenCalled();
+  });
+
+  it("ignores a held-key repeat so one press never spawns two children", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    window.dispatchEvent(new KeyboardEvent("keydown", {
+      key: "t", code: "KeyT", shiftKey: true, repeat: true, bubbles: true, cancelable: true,
+    }));
+    expect(opts.onCreateTypedChild).not.toHaveBeenCalled();
   });
 });

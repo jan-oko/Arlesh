@@ -2,6 +2,10 @@ import type { MindmapNode } from "@/utils/tree-layout";
 import { isNodeBlocked } from "@/utils/tree-layout";
 import type { Resolution } from "@/api/scope-lifecycle";
 
+/** Opacity for a node the view is showing but the filter is not asking for: an archived item, or one
+ * held on screen only by the focus exemption. Dim enough to read as dropped, legible enough to act on. */
+export const DIMMED_OPACITY = 0.45;
+
 export interface NodeAppearance {
   isBlocked: boolean;
   iconColor: string;
@@ -35,7 +39,7 @@ export function computeNodeAppearance(node: MindmapNode, depth: number): NodeApp
 
   const textFill = node.kind === "aspect" ? "rgba(255,255,255,0.9)" : "var(--node-text)";
 
-  const nodeOpacity = node.archived === true ? 0.45 : 1;
+  const nodeOpacity = node.archived === true ? DIMMED_OPACITY : 1;
 
   return {
     isBlocked, iconColor, iconOpacity, fillColor, fillOpacity, label, textFill,

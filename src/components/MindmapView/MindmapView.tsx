@@ -10,7 +10,9 @@ import { useNodeActions } from "./use-node-actions";
 import { useContextAction } from "./use-context-action";
 import { useNavigateArrow } from "./use-navigate-arrow";
 import { useKeyboardMindmap } from "./use-keyboard-mindmap";
-import { useMindmapStore, CLIPBOARD_OP } from "@/stores/use-mindmap-store";
+import { useMindmapStore } from "@/stores/use-mindmap-store";
+import { useClipboardStore, CLIPBOARD_OP } from "@/stores/use-clipboard-store";
+import { useTabsStore } from "@/stores/use-tabs-store";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { updateTask, reparentScopeConflicts } from "@/api/tasks";
 import { updateGoal } from "@/api/goals";
@@ -20,15 +22,18 @@ import MindmapCanvas, { type MindmapCanvasHandle } from "@/components/MindmapCan
 import DragGhost from "@/components/DragGhost/DragGhost";
 import DragPlaceholder from "@/components/DragPlaceholder/DragPlaceholder";
 import { useFilterStore } from "@/stores/use-filter-store";
+import { useFullscreenStore } from "@/stores/use-fullscreen-store";
 import { useViewStore } from "@/stores/use-view-store";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
 import { useSubtreeNav } from "@/hooks/use-subtree-nav";
-import { filterTree } from "@/utils/filter-tree";
+import { filterTreeWithFocus } from "@/utils/filter-tree";
+import { focusExemptPath } from "@/utils/focus-exemption";
+import { useFocusExemption } from "@/hooks/use-focus-exemption";
 import AnchoredToast from "@/components/AnchoredToast/AnchoredToast";
 import HabitFailureBanner from "@/components/HabitFailureBanner/HabitFailureBanner";
 import TaskEditorModal from "@/components/TaskEditorModal/TaskEditorModal";
 import GoalEditorModal from "@/components/GoalEditorModal/GoalEditorModal";
-import CommitmentEditorModal from "@/components/CommitmentEditorModal/CommitmentEditorModal";
+import CommitmentEditorModal, { type CommitmentSaveData } from "@/components/CommitmentEditorModal/CommitmentEditorModal";
 import CommitmentScopePrompt from "@/components/CommitmentScopePrompt/CommitmentScopePrompt";
 import TitleEditorModal from "@/components/TitleEditorModal/TitleEditorModal";
 import ProjectEditorModal from "@/components/ProjectEditorModal/ProjectEditorModal";
@@ -67,15 +72,24 @@ const BLANK_FLOW_NODE: MindmapNode = {
   tagIds: [], children: [],
 };
 
+// A pristine commitment used to seed the create editor before the commitment is persisted. It
+// carries no Time Scope on purpose: an empty window field is the question Shift+C asks.
+const BLANK_COMMITMENT_NODE: MindmapNode = {
+  id: "commitment-new", kind: "commitment", title: "", position: 0, tagIds: [], children: [],
+};
+
 export default function MindmapView() {
   const { t } = useTranslation(["common", "editor", "warnings", "nodeKinds"]);
-  const { tree, isLoading, error, loadCondition, createNode, createChild, renameNode, retypeNode, reorderNode, moveNode, duplicateNode, removeNode, createFlow, reload } =
+  const { tree, isLoading, error, loadCondition, createNode, createChild, renameNode, retypeNode, reorderNode, moveNode, duplicateNode, removeNode, createCommitment, createFlow, reload } =
     useMindmapData();
   const {
-    selectedNodeId, selectedNodeIds, subtreeRootId, clipboard, collapsedNodeIds, pendingToast,
+    selectedNodeId, selectedNodeIds, subtreeRootId, collapsedNodeIds, pendingToast,
     selectNode, addToSelection, setSelection, enterSubtree,
-    setClipboard, toggleCollapsed, showToast, clearToast,
-  } = useMindmapStore();
+    toggleCollapsed, showToast, clearToast,
+  } = useMindmapStore((s) => s);
+  // App-wide, so a subtree cut in one tab pastes in another.
+  const clipboard = useClipboardStore((s) => s.clipboard);
+  const setClipboard = useClipboardStore((s) => s.setClipboard);
 
   // Shared with the List View: one subtree root, one set of back-nav pills, both views publishing
   // the same descriptor so whichever is on screen keeps the top bar right.
@@ -86,6 +100,7 @@ export default function MindmapView() {
     useDismissableLoadCondition(loadCondition);
   const [nodeSearchOpen, setNodeSearchOpen] = useState(false);
   const [flowCreateParent, setFlowCreateParent] = useState<{ id: string; kind: NodeKind } | null>(null);
+  const [commitmentCreateParent, setCommitmentCreateParent] = useState<{ id: string; kind: NodeKind } | null>(null);
   const [startFlowNode, setStartFlowNode] = useState<MindmapNode | null>(null);
   const [convertNode, setConvertNode] = useState<MindmapNode | null>(null);
   const [deleteTargets, setDeleteTargets] = useState<string[] | null>(null);
@@ -102,18 +117,32 @@ export default function MindmapView() {
   // The cheat-sheet overlay gates background shortcuts the same way an open modal does.
   const isInputCaptured = useIsInputCaptured();
   const filter = useFilterStore((s) => s.filter);
+  const toggleFullscreen = useFullscreenStore((s) => s.toggle);
   const setStatusMode = useFilterStore((s) => s.setStatusMode);
   const toggleFilterPopover = useFilterStore((s) => s.toggleFilterPopover);
-  const displayRoot = useMemo<MindmapNode>(() => {
+  // The focus exemption: whatever is selected stays on screen even once your own edit stops it
+  // matching — completing a task under Plan no longer erases it out from under you. It ends when the
+  // selection moves or the filter/subtree changes; see use-focus-exemption.
+  const focusExemptNodeId = useFocusExemption(selectedNodeId, [filter, subtreeRootId]);
+  const { root: displayRoot, exemptedIds: focusExemptIds } = useMemo(() => {
     const base = subtreeRootId !== null ? (findNode(tree, subtreeRootId) ?? tree) : tree;
-    return filterTree(base, filter);
-  }, [subtreeRootId, tree, filter]);
+    return filterTreeWithFocus(base, filter, focusExemptPath(base, focusExemptNodeId));
+  }, [subtreeRootId, tree, filter, focusExemptNodeId]);
 
   const canvasRef = useRef<MindmapCanvasHandle>(null);
 
+  // Entering a subtree recentres the canvas — but *arriving* in a tab must not, or switching to a
+  // tab rooted somewhere else would throw away the pan and zoom that tab was holding. Only a change
+  // of root within the same tab counts.
+  const activeTabId = useTabsStore((s) => s.activeTabId);
+  const lastCentered = useRef<{ tabId: string; subtreeRootId: string | null } | null>(null);
   useEffect(() => {
+    const previous = lastCentered.current;
+    lastCentered.current = { tabId: activeTabId, subtreeRootId };
+    if (previous === null || previous.tabId !== activeTabId) return;
+    if (previous.subtreeRootId === subtreeRootId) return;
     if (subtreeRootId !== null) canvasRef.current?.centerOnRoot();
-  }, [subtreeRootId]);
+  }, [subtreeRootId, activeTabId]);
 
   const {
     editorModal, setEditorModal, allTags, domainNames, availableForDep, onDoubleClick,
@@ -166,6 +195,18 @@ export default function MindmapView() {
       const parent = findNode(tree, parentId);
       if (parent === undefined) return;
       setFlowCreateParent({ id: parentId, kind: parent.kind });
+    },
+    [tree],
+  );
+
+  // Opens a blank commitment editor scoped to the chosen parent; the commitment is persisted only
+  // on save. Like a Flow, and for a sharper reason: a Commitment is not valid without a window, so
+  // there is nothing to create first and configure afterwards.
+  const onNewCommitment = useCallback(
+    (parentId: string) => {
+      const parent = findNode(tree, parentId);
+      if (parent === undefined) return;
+      setCommitmentCreateParent({ id: parentId, kind: parent.kind });
     },
     [tree],
   );
@@ -258,6 +299,18 @@ export default function MindmapView() {
       setFlowCreateParent(null);
     },
     [flowCreateParent, createFlow],
+  );
+
+  // Persists a brand-new commitment under the pending parent, then closes the create editor. A
+  // refusal — a commitment with no window of its own and none above it — is left to propagate, so
+  // the editor shows it and stays open on the fields that would answer it.
+  const onCreateCommitment = useCallback(
+    async (data: CommitmentSaveData) => {
+      if (commitmentCreateParent === null) return;
+      await createCommitment(commitmentCreateParent.id, commitmentCreateParent.kind, data);
+      setCommitmentCreateParent(null);
+    },
+    [commitmentCreateParent, createCommitment],
   );
 
   // Wraps moveNode so a drag reparent that would orphan scoped items prompts to clamp them first.
@@ -379,9 +432,9 @@ export default function MindmapView() {
   }, [deleteTargets, tree, removeNode, selectNode]);
 
 
-  const { onStatusClick, onCommitEdit, onCreateChild, onCreateSibling, onInsertParent, onDelete, onPaste } = useNodeActions({
+  const { onStatusClick, onCommitEdit, onCreateChild, onCreateTypedChild, onCreateSibling, onInsertParent, onDelete, onPaste } = useNodeActions({
     tree, clipboard, moveNode, duplicateNode, onRequestDelete: setDeleteTargets, reload, renameNode,
-    createNode, createChild, selectNode, setClipboard, setEditingNodeId, showToast,
+    createNode, createChild, selectNode, setClipboard, setEditingNodeId, showToast, onNewFlow, onNewCommitment,
   });
 
   const { navigateArrow, extendSelection } = useNavigateArrow({ selectedNodeId, selectedNodeIds, positions, tree, orientation: mindmapOrientation, selectNode, setSelection });
@@ -474,6 +527,7 @@ export default function MindmapView() {
     onReorder: (id, dir) => { void reorderNode(id, dir); },
     onStartRename: setEditingNodeId,
     onCreateChild,
+    onCreateTypedChild,
     onCreateSibling,
     onInsertParent,
     onOpenEditor: onDoubleClick,
@@ -496,6 +550,7 @@ export default function MindmapView() {
     onFocusRoot: () => selectNode(subtreeRootId ?? tree.id),
     onCenterOnNode: onCenterOnSelected,
     onConvertToFlow: onConvertToFlowKey,
+    onToggleFullscreen: toggleFullscreen,
     onExtendSelection: extendSelection,
     onToggleBacklog: toggleBacklog,
     onToggleAgentic: toggleAgentic,
@@ -521,6 +576,7 @@ export default function MindmapView() {
         orientation={mindmapOrientation}
         collapsedNodeIds={effectiveCollapsedIds}
         selectedNodeIds={selectedNodeIds}
+        focusExemptIds={focusExemptIds}
         editingNodeId={editingNodeId}
         dragTargetId={dragTargetId}
         dragSourceId={dragSourceId}
@@ -541,7 +597,7 @@ export default function MindmapView() {
       />
 
 
-      <AnchoredToast toast={pendingToast} positions={positions} onDismiss={clearToast} />
+      <AnchoredToast toast={pendingToast} onDismiss={clearToast} />
 
       {editorModal !== null && editorModal.node.kind === "task" && (
         <TaskEditorModal node={editorModal.node} allTags={allTags} domainNames={domainNames} availableForDep={availableForDep} onSave={onTaskSave} onCheckScopeClamp={checkScopeClamp} onClose={() => setEditorModal(null)} />
@@ -573,6 +629,9 @@ export default function MindmapView() {
       )}
       {editorModal !== null && editorModal.node.kind === "flow" && (
         <FlowEditorModal node={editorModal.node} availableTargets={flowTargets} inheritedTarget={editedFlowParent} onSave={onFlowSave} onClose={() => setEditorModal(null)} />
+      )}
+      {commitmentCreateParent !== null && (
+        <CommitmentEditorModal node={BLANK_COMMITMENT_NODE} allTags={allTags} domainNames={domainNames} heading={t("editor:newCommitmentTitle")} onSave={onCreateCommitment} onClose={() => setCommitmentCreateParent(null)} />
       )}
       {flowCreateParent !== null && (
         <FlowEditorModal node={BLANK_FLOW_NODE} availableTargets={flowTargets} inheritedTarget={newFlowParent} heading={t("editor:newFlowTitle")} onSave={onCreateFlow} onClose={() => setFlowCreateParent(null)} />

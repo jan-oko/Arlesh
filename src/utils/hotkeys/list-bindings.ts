@@ -10,6 +10,7 @@ export interface ListContext {
   selectedCommitmentId: string | null;
   /** Whichever of the two is set — for the bindings that do not care which kind it is. */
   selectedRowId: string | null;
+  onToggleFullscreen: () => void;
   /** Whether the selected row is currently blocked (and not a Habit instance) — gates Enter. */
   isSelectedBlocked: boolean;
   onNavigate: (direction: 1 | -1) => void;
@@ -62,6 +63,15 @@ export const LIST_BINDINGS: readonly Binding<ListContext>[] = [
   {
     id: "listView.toggleFilter", section: "listView", chord: { code: "KeyF", alt: true },
     labelKey: "toggleFilter", run: (c) => c.onToggleFilter(),
+  },
+  {
+    // Bare F shows the board alone, on the same rule as the Mindmap's: only with nothing selected.
+    // Nothing else claims F here, but matching the Mindmap matters more than the free key does —
+    // one gesture should not mean two things depending on which view you happen to be in.
+    id: "listView.toggleFullscreen", section: "listView", chord: { code: "KeyF" },
+    labelKey: "toggleFullscreen",
+    when: (c) => c.selectedRowId === null,
+    run: (c) => c.onToggleFullscreen(),
   },
   ...statusBindings,
   {

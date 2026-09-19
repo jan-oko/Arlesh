@@ -10,6 +10,7 @@
   "markPrivate": "Private",
   "editFlow": "Edit Flow",
   "newFlowTitle": "New Flow",
+  "newCommitmentTitle": "New Commitment",
   "startFlowHeading": "Start Flow",
   "fieldAnchor": "Start on",
   "fieldInstanceType": "Instance type",

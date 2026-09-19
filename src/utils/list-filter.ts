@@ -239,6 +239,28 @@ function passesListPreset(row: TaskListRow, f: FilterState): boolean {
   }
 }
 
+/** Whether one row survives the shared filter (status preset, tags, Info/Flow/Private) and the
+ * List-View-exclusive filters. Unblock overrides the status preset to "blocked tasks only". */
+function rowPassesFilters(row: TaskListRow, shared: FilterState, listFilter: ListFilterState): boolean {
+  if (typeHardHidden(row.node, shared)) return false;
+  if (!shared.privateMode && row.hasPrivateAncestor) return false;
+  if (listFilter.preset === "unblock") {
+    if (!row.isBlocked) return false;
+  } else if (!passesListPreset(row, shared)) {
+    return false;
+  }
+  if (!passesTags(row.node, shared)) return false;
+  if (!matchesPillGroup(listFilter.pills.parent, [row.parentRef])) return false;
+  if (!matchesPillGroup(listFilter.pills.dependency, row.dependencyRefs)) return false;
+  if (!matchesPillGroup(listFilter.pills.taskStatus, [row.node.status ?? ""])) return false;
+  if (!matchesPillGroup(listFilter.pills.goalStatus, row.goalStatus !== null ? [row.goalStatus] : [])) return false;
+  if (!matchesPillGroup(listFilter.pills.projectStatus, row.projectStatus !== null ? [row.projectStatus] : [])) return false;
+  if (!matchesPillGroup(listFilter.pills.scopeState, row.scopeTokens)) return false;
+  if (!matchesPillGroup(listFilter.pills.blocked, [row.isBlocked ? "blocked" : "not_blocked"])) return false;
+  if (!matchesPillGroup(listFilter.pills.agentic, [row.isAgentic ? "agentic" : "not_agentic"])) return false;
+  return true;
+}
+
 /**
  * Filters the flattened Commitment rows for the section above the task rows.
  *
@@ -286,23 +308,36 @@ export function filterTaskList(
   shared: FilterState,
   listFilter: ListFilterState,
 ): TaskListRow[] {
-  return rows.filter((row) => {
-    if (typeHardHidden(row.node, shared)) return false;
-    if (!shared.privateMode && row.hasPrivateAncestor) return false;
-    if (listFilter.preset === "unblock") {
-      if (!row.isBlocked) return false;
-    } else if (!passesListPreset(row, shared)) {
-      return false;
-    }
-    if (!passesTags(row.node, shared)) return false;
-    if (!matchesPillGroup(listFilter.pills.parent, [row.parentRef])) return false;
-    if (!matchesPillGroup(listFilter.pills.dependency, row.dependencyRefs)) return false;
-    if (!matchesPillGroup(listFilter.pills.taskStatus, [row.node.status ?? ""])) return false;
-    if (!matchesPillGroup(listFilter.pills.goalStatus, row.goalStatus !== null ? [row.goalStatus] : [])) return false;
-    if (!matchesPillGroup(listFilter.pills.projectStatus, row.projectStatus !== null ? [row.projectStatus] : [])) return false;
-    if (!matchesPillGroup(listFilter.pills.scopeState, row.scopeTokens)) return false;
-    if (!matchesPillGroup(listFilter.pills.blocked, [row.isBlocked ? "blocked" : "not_blocked"])) return false;
-    if (!matchesPillGroup(listFilter.pills.agentic, [row.isAgentic ? "agentic" : "not_agentic"])) return false;
+  return rows.filter((row) => rowPassesFilters(row, shared, listFilter));
+}
+
+/** Filtered rows plus the ids kept **only** by the focus exemption — rendered dimmed. */
+export interface FocusFilteredRows {
+  rows: TaskListRow[];
+  exemptedIds: ReadonlySet<string>;
+}
+
+/**
+ * The same filtering, with the **focus exemption** applied: the focused row stays in the list, in its
+ * own place, whatever the filter says about it, for as long as it stays selected. A flat list has no
+ * chain to carry — a row's hidden ancestors are already named by its path header — so the exemption
+ * here is exactly one row.
+ *
+ * `filterTaskList` still answers as it always did, so nothing that counts or exports off the filter
+ * sees the extra row.
+ */
+export function filterTaskListWithFocus(
+  rows: readonly TaskListRow[],
+  shared: FilterState,
+  listFilter: ListFilterState,
+  focusedId: string | null,
+): FocusFilteredRows {
+  const exemptedIds = new Set<string>();
+  const kept = rows.filter((row) => {
+    if (rowPassesFilters(row, shared, listFilter)) return true;
+    if (focusedId === null || row.node.id !== focusedId) return false;
+    exemptedIds.add(row.node.id);
     return true;
   });
+  return { rows: kept, exemptedIds };
 }

@@ -48,6 +48,31 @@ beforeEach(() => {
   mockUseFilterDisplay.mockReturnValue(EMPTY_DISPLAY);
 });
 
+/**
+ * A tab's subtree root comes back from storage, so the node it names may have been deleted in the
+ * meantime. A view rooted at a node that is not there shows nothing, with no indicator and no pill
+ * to escape by — so it falls back to the true root instead.
+ */
+describe("a subtree root that is no longer on the board", () => {
+  it("falls back to the true root", () => {
+    useMindmapStore.setState({ subtreeRootId: "deleted-node" });
+    renderHook(() => useSubtreeNav(TREE));
+    expect(useMindmapStore.getState().subtreeRootId).toBeNull();
+  });
+
+  it("leaves a root that does exist alone", () => {
+    useMindmapStore.setState({ subtreeRootId: "project-2" });
+    renderHook(() => useSubtreeNav(TREE));
+    expect(useMindmapStore.getState().subtreeRootId).toBe("project-2");
+  });
+
+  it("waits for a loaded tree rather than reading an empty one as a deletion", () => {
+    useMindmapStore.setState({ subtreeRootId: "project-2" });
+    renderHook(() => useSubtreeNav(n("root", "domain", { title: "Arlesh" })));
+    expect(useMindmapStore.getState().subtreeRootId).toBe("project-2");
+  });
+});
+
 describe("useSubtreeNav", () => {
   it("publishes nothing at the true root", () => {
     renderHook(() => useSubtreeNav(TREE));

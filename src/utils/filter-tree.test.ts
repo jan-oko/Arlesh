@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { filterTree, DEFAULT_FILTER } from "./filter-tree";
+import { filterTree, filterTreeWithFocus, DEFAULT_FILTER } from "./filter-tree";
+import { focusExemptPath } from "./focus-exemption";
 import type { FilterState } from "./filter-tree";
 import type { MindmapNode, NodeKind } from "./tree-layout";
 
@@ -622,5 +623,116 @@ describe("filterTree — commitments", () => {
     const kept = ids(filterTree(t, f({ statusMode: "plan" })));
     expect(kept).toContain("task-1");
     expect(kept).toContain("commitment-1");
+  });
+});
+
+describe("filterTreeWithFocus — the focus exemption", () => {
+  // aspect → project → goal → { task-done, task-todo }, plus a second aspect holding a private project.
+  const tree = () =>
+    n("root", "domain", {}, [
+      n("aspect-1", "aspect", {}, [
+        n("project-1", "project", { status: "active" }, [
+          n("goal-1", "goal", { status: "active" }, [
+            n("task-done", "task", { status: "done" }),
+            n("task-todo", "task", { status: "todo" }),
+          ]),
+        ]),
+      ]),
+    ]);
+
+  const exempt = (root: MindmapNode, id: string | null) => focusExemptPath(root, id);
+
+  it("keeps a task you just completed under Plan, for as long as it is focused", () => {
+    const t = tree();
+    const { root } = filterTreeWithFocus(t, f({ statusMode: "plan" }), exempt(t, "task-done"));
+    expect(ids(root)).toContain("task-done");
+  });
+
+  it("marks it exempt, so it renders dimmed rather than as an ordinary match", () => {
+    const t = tree();
+    const { exemptedIds } = filterTreeWithFocus(t, f({ statusMode: "plan" }), exempt(t, "task-done"));
+    expect(exemptedIds.has("task-done")).toBe(true);
+    expect(exemptedIds.has("task-todo")).toBe(false);
+  });
+
+  it("lets the node go once focus moves elsewhere", () => {
+    const t = tree();
+    const { root } = filterTreeWithFocus(t, f({ statusMode: "plan" }), exempt(t, "task-todo"));
+    expect(ids(root)).not.toContain("task-done");
+  });
+
+  it("lets the node go when nothing is focused", () => {
+    const t = tree();
+    expect(ids(filterTreeWithFocus(t, f({ statusMode: "plan" }), exempt(t, null)).root)).not.toContain("task-done");
+  });
+
+  it("does not leak into the filter's own answer — filterTree still drops it", () => {
+    expect(ids(filterTree(tree(), f({ statusMode: "plan" })))).not.toContain("task-done");
+  });
+
+  it("renders the focused node's ancestors with it, so it is never drawn detached", () => {
+    const t = n("root", "domain", {}, [
+      n("aspect-1", "aspect", {}, [
+        n("project-1", "project", { status: "active" }, [
+          n("goal-achieved", "goal", { status: "achieved" }, [n("task-done", "task", { status: "done" })]),
+        ]),
+      ]),
+    ]);
+    const kept = ids(filterTreeWithFocus(t, f({ statusMode: "plan" }), exempt(t, "task-done")).root);
+    expect(kept).toEqual(expect.arrayContaining(["root", "aspect-1", "project-1", "goal-achieved", "task-done"]));
+  });
+
+  it("dims an ancestor the filter would have dropped, but not one it was keeping anyway", () => {
+    const t = n("root", "domain", {}, [
+      n("aspect-1", "aspect", {}, [
+        n("goal-achieved", "goal", { status: "achieved" }, [n("task-done", "task", { status: "done" })]),
+        n("task-other", "task", { status: "todo" }),
+      ]),
+    ]);
+    const { exemptedIds } = filterTreeWithFocus(t, f({ statusMode: "plan" }), exempt(t, "task-done"));
+    expect(exemptedIds.has("goal-achieved")).toBe(true);
+    expect(exemptedIds.has("aspect-1")).toBe(false); // still holds task-other on its own merits
+  });
+
+  it("overrides a hard hiding rule: a node you just marked private stays while you are on it", () => {
+    const t = n("root", "domain", {}, [n("aspect-1", "aspect", {}, [n("task-secret", "task", { status: "todo", isPrivate: true })])]);
+    const { root, exemptedIds } = filterTreeWithFocus(t, f(), exempt(t, "task-secret"));
+    expect(ids(root)).toContain("task-secret");
+    expect(exemptedIds.has("task-secret")).toBe(true);
+  });
+
+  it("carries a hard-hidden ancestor without spilling the rest of its subtree", () => {
+    const t = n("root", "domain", {}, [
+      n("project-private", "project", { status: "active", isPrivate: true }, [
+        n("task-focused", "task", { status: "todo" }),
+        n("task-sibling", "task", { status: "todo" }),
+      ]),
+    ]);
+    const kept = ids(filterTreeWithFocus(t, f(), exempt(t, "task-focused")).root);
+    expect(kept).toContain("project-private");
+    expect(kept).toContain("task-focused");
+    expect(kept).not.toContain("task-sibling");
+  });
+
+  it("does not reveal the focused node's own hidden children", () => {
+    const t = n("root", "domain", {}, [
+      n("aspect-1", "aspect", {}, [
+        n("task-done", "task", { status: "done" }, [n("task-child-done", "task", { status: "done" })]),
+      ]),
+    ]);
+    const kept = ids(filterTreeWithFocus(t, f({ statusMode: "plan" }), exempt(t, "task-done")).root);
+    expect(kept).toContain("task-done");
+    expect(kept).not.toContain("task-child-done");
+  });
+
+  it("keeps a Task you just cycled to a Goal under Do, where Do shows in-progress tasks only", () => {
+    const t = n("root", "domain", {}, [
+      n("aspect-1", "aspect", {}, [n("goal-1", "goal", { status: "active" })]),
+    ]);
+    const before = ids(filterTree(t, f({ statusMode: "do" })));
+    expect(before).not.toContain("goal-1");
+    const { root, exemptedIds } = filterTreeWithFocus(t, f({ statusMode: "do" }), exempt(t, "goal-1"));
+    expect(ids(root)).toContain("goal-1");
+    expect(exemptedIds.has("goal-1")).toBe(true);
   });
 });
