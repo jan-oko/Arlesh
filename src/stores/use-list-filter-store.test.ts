@@ -16,9 +16,9 @@ describe("setPreset", () => {
 
 describe("addPill / setPillMode / removePill", () => {
   it("adds a pill in 'any' mode by default, to the given dimension only", () => {
-    useListFilterStore.getState().addPill("parent", "goal-1");
+    useListFilterStore.getState().addPill("antecedent", "goal-1");
     const s = useListFilterStore.getState().filter;
-    expect(s.pills.parent).toEqual([{ value: "goal-1", mode: "any" }]);
+    expect(s.pills.antecedent).toEqual([{ value: "goal-1", mode: "any" }]);
     expect(s.pills.dependency).toEqual([]);
   });
 
@@ -46,7 +46,7 @@ describe("addPill / setPillMode / removePill", () => {
 describe("reset", () => {
   it("restores the neutral filter", () => {
     useListFilterStore.getState().setPreset("do");
-    useListFilterStore.getState().addPill("parent", "goal-1");
+    useListFilterStore.getState().addPill("antecedent", "goal-1");
     useListFilterStore.getState().reset();
     expect(useListFilterStore.getState().filter).toEqual(DEFAULT_LIST_FILTER);
   });

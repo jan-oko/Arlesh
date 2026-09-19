@@ -58,7 +58,6 @@ function treeWith(...nodes: MindmapNode[]): MindmapNode {
 function commitmentRow(over: Partial<CommitmentListRow> = {}): CommitmentListRow {
   return {
     node: n("commitment-1", "commitment", { verdict: "unresolved", timing: "active" }),
-    parentRef: "project-1",
     ancestors: [n("aspect-1", "aspect"), n("project-1", "project", { status: "active" })],
     hasPrivateAncestor: false,
     scopeTokens: ["active", "unplanned"],
@@ -69,7 +68,6 @@ function commitmentRow(over: Partial<CommitmentListRow> = {}): CommitmentListRow
 function row(over: Partial<TaskListRow> = {}): TaskListRow {
   return {
     node: n("task-1", "task", { status: "todo" }),
-    parentRef: "goal-1",
     ancestors: [n("aspect-1", "aspect"), n("goal-1", "goal", { status: "active" })],
     goalRef: "goal-1",
     goalStatus: "active",
@@ -144,13 +142,13 @@ describe("ListView", () => {
   it("names a run's whole chain in a path header above it", () => {
     render(<ListView />);
     expect(screen.getByText("aspect-1")).toBeInTheDocument();
-    // "goal-1" reads twice: the last path segment, and the task row's own parent label.
-    expect(screen.getAllByText("goal-1")).toHaveLength(2);
+    // "goal-1" reads once, as the last path segment: the row card carries no parent label.
+    expect(screen.getAllByText("goal-1")).toHaveLength(1);
   });
 
   it("renders no path header for a task with no ancestors", () => {
     mockUseListData.mockReturnValue(listData({
-      rows: [row({ parentRef: "", ancestors: [], goalRef: null, goalStatus: null })],
+      rows: [row({ ancestors: [], goalRef: null, goalStatus: null })],
     }));
     render(<ListView />);
     expect(screen.getByText("task-1")).toBeInTheDocument();
@@ -177,12 +175,12 @@ describe("ListView", () => {
     expect(header.querySelectorAll("svg")).toHaveLength(0);
     // Only the glyph goes — the header still names where the run lives.
     expect(screen.getByText("aspect-1")).toBeInTheDocument();
-    expect(screen.getAllByText("goal-1")).toHaveLength(2);
+    expect(screen.getAllByText("goal-1")).toHaveLength(1);
   });
 
   it("marks no path header whose nearest ancestor is an Aspect, which carries no glyph anywhere", () => {
     mockUseListData.mockReturnValue(listData({
-      rows: [row({ parentRef: "aspect-1", ancestors: [n("aspect-1", "aspect")], goalRef: null, goalStatus: null })],
+      rows: [row({ ancestors: [n("aspect-1", "aspect")], goalRef: null, goalStatus: null })],
     }));
     render(<ListView />);
     const [firstSegment] = screen.getAllByTitle("enterSubtree");
@@ -199,7 +197,6 @@ describe("ListView", () => {
         row({ node: parent }),
         row({
           node: n("task-child", "task", { status: "in_progress" }),
-          parentRef: "task-parent",
           ancestors: [n("aspect-1", "aspect"), n("goal-1", "goal", { status: "active" }), parent],
         }),
       ],
@@ -227,12 +224,10 @@ describe("ListView", () => {
         row({ node: parent }),
         row({
           node: child,
-          parentRef: "task-parent",
           ancestors: [aspect, goal, parent],
         }),
         row({
           node: n("task-grandchild", "task", { status: "in_progress" }),
-          parentRef: "task-child",
           ancestors: [aspect, goal, parent, child],
         }),
       ];
@@ -311,10 +306,11 @@ describe("ListView", () => {
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
   });
 
-  it("clicking a task's parent label adds a parent filter pill", () => {
+  // Parent was retired as a pill dimension: the path header above the run already names a row's
+  // parent, so a label on the card restated what was on screen a line above it.
+  it("shows no parent label on a task card", () => {
     render(<ListView />);
-    fireEvent.click(screen.getByTitle("filterByParent"));
-    expect(useListFilterStore.getState().filter.pills.parent).toEqual([{ value: "goal-1", mode: "any" }]);
+    expect(screen.queryByTitle("filterByParent")).not.toBeInTheDocument();
   });
 
   it("clicking a task's tag pill adds a shared tag filter", () => {

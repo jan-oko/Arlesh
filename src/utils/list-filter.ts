@@ -25,12 +25,12 @@ export const NEXT_PILL_MODE: Record<PillMode, PillMode> = { any: "all", all: "ex
 
 /** The List-View-exclusive filter dimensions (status preset, tags, and type toggles stay in the shared FilterState). */
 export type PillDimension =
-  | "parent" | "dependency"
+  | "antecedent" | "dependency"
   | "taskStatus" | "goalStatus" | "projectStatus" | "verdict"
   | "scopeState" | "blocked" | "agentic";
 
 export const PILL_DIMENSIONS: PillDimension[] = [
-  "parent", "dependency",
+  "antecedent", "dependency",
   "taskStatus", "goalStatus", "projectStatus", "verdict",
   "scopeState", "blocked", "agentic",
 ];
@@ -97,7 +97,7 @@ export interface ListFilterState {
 export const DEFAULT_LIST_FILTER: ListFilterState = {
   preset: "all",
   pills: {
-    parent: [], dependency: [],
+    antecedent: [], dependency: [],
     taskStatus: [], goalStatus: [], projectStatus: [], verdict: [],
     scopeState: [], blocked: [], agentic: [],
   },
@@ -121,8 +121,10 @@ export interface PersistedListFilter {
 /**
  * Rebuilds a persisted filter's pill map so it holds exactly today's dimensions. A dimension added
  * since it was written comes back empty rather than `undefined`, and one that has been retired —
- * Antecedent, replaced by subtree entry — is dropped rather than carried forward as a filter that
- * still narrows the list while no chip shows it and no control can clear it.
+ * Parent, subsumed by Antecedent and already named in every row's path header — is dropped rather
+ * than carried forward as a filter that still narrows the list while no chip shows it and no
+ * control can clear it. Only the keys in {@link PILL_DIMENSIONS} are read, so a retired key is
+ * simply never looked at, whatever it holds.
  */
 export function withCurrentPillDimensions(filter: PersistedListFilter): ListFilterState {
   const pills: Record<PillDimension, PillFilter[]> = { ...DEFAULT_LIST_FILTER.pills };
@@ -136,8 +138,8 @@ export function withCurrentPillDimensions(filter: PersistedListFilter): ListFilt
 /** One flattened Task row, precomputed with everything the filters and UI need. */
 export interface TaskListRow {
   node: MindmapNode;
-  /** Tree node id of the immediate parent (Project/Goal/Domain/Task). */
-  parentRef: string;
+  /** Every ancestor, root Aspect first and immediate parent last. The Antecedent filter matches
+   * against this whole chain, and the row's path header names the part of it that is off screen. */
   ancestors: MindmapNode[];
   /** Nearest ancestor Goal, if any (SPEC: a task's goal is its nearest Goal ancestor). */
   goalRef: string | null;
@@ -167,13 +169,30 @@ export interface TaskListRow {
  */
 export interface CommitmentListRow {
   node: MindmapNode;
-  /** Tree node id of the immediate parent. */
-  parentRef: string;
-  /** Tree node ids of every ancestor, immediate parent to root aspect. */
+  /** Every ancestor, root Aspect first and immediate parent last — what the Antecedent filter
+   * matches against. */
   ancestors: MindmapNode[];
   /** Whether any ancestor is marked private — the subtree hides as a unit outside Private Mode. */
   hasPrivateAncestor: boolean;
   scopeTokens: string[];
+}
+
+/**
+ * The values an **Antecedent** pill is matched against: every node on the row's ancestor chain, at
+ * any depth and of any kind (Aspect, Domain, Project, Goal, Task).
+ *
+ * This is deliberately *not* what entering a subtree does, and it did not stop being needed when
+ * `Ctrl+O` landed. Subtree entry **re-roots** the list: everything outside the chosen branch is
+ * gone, and the branch becomes the whole board. An Antecedent pill keeps the board and narrows it —
+ * the rest of the tree is still there to be un-narrowed by clearing one chip — and it carries the
+ * Any/All/**Exclude** modes, so "everything except what is under ARLESH" is expressible at all.
+ * "Show me only what is under ARLESH" and "highlight the ARLESH work among everything else" are
+ * different questions, and only the first is subtree entry.
+ *
+ * Shared by the task rows and the commitment rows so the two cannot answer the chain differently.
+ */
+function ancestorRefs(ancestors: readonly MindmapNode[]): string[] {
+  return ancestors.map((ancestor) => ancestor.id);
 }
 
 /** Combined pill predicate per SPEC Filtering Logic: (∪Any) ∧ (∩All) ∧ ¬(∪Exclude). */
@@ -253,7 +272,7 @@ function rowPassesFilters(row: TaskListRow, shared: FilterState, listFilter: Lis
     return false;
   }
   if (!passesTags(row.node, shared)) return false;
-  if (!matchesPillGroup(listFilter.pills.parent, [row.parentRef])) return false;
+  if (!matchesPillGroup(listFilter.pills.antecedent, ancestorRefs(row.ancestors))) return false;
   if (!matchesPillGroup(listFilter.pills.dependency, row.dependencyRefs)) return false;
   if (!matchesPillGroup(listFilter.pills.taskStatus, [row.node.status ?? ""])) return false;
   if (!matchesPillGroup(listFilter.pills.goalStatus, row.goalStatus !== null ? [row.goalStatus] : [])) return false;
@@ -272,10 +291,13 @@ function rowPassesFilters(row: TaskListRow, shared: FilterState, listFilter: Lis
  * unresolved — and they come from the same {@link passesCommitmentPreset} the Mindmap uses, so
  * the two surfaces cannot drift.
  *
- * Only the pill dimensions a Commitment actually has are consulted: parent, scope state and
- * verdict. A task-status or blocked pill is not "failed" by a commitment, it simply
- * does not apply to one — filtering the whole section away because the user asked to see
- * in-progress tasks would be answering a question nobody asked.
+ * Only the pill dimensions a Commitment actually has are consulted: antecedent, scope state and
+ * verdict. A Commitment hangs off the same tree as everything else, so it has a full ancestor
+ * chain and answers an Antecedent pill exactly as a task row does — narrowing to a branch would be
+ * a lie if the band above the rows kept showing commitments from outside it. A task-status or
+ * blocked pill, by contrast, is not "failed" by a commitment, it simply does not apply to one —
+ * filtering the whole section away because the user asked to see in-progress tasks would be
+ * answering a question nobody asked.
  *
  * Two presets are special. **Unblock** is about blocked tasks and a Commitment is never blocked,
  * so the section is empty there. **Backlog** is a Task-only state, so it is empty there too.
@@ -295,7 +317,7 @@ export function filterCommitmentList(
       return false;
     }
     if (!passesTags(row.node, shared)) return false;
-    if (!matchesPillGroup(listFilter.pills.parent, [row.parentRef])) return false;
+    if (!matchesPillGroup(listFilter.pills.antecedent, ancestorRefs(row.ancestors))) return false;
     if (!matchesPillGroup(listFilter.pills.scopeState, row.scopeTokens)) return false;
     if (!matchesPillGroup(listFilter.pills.verdict, [row.node.verdict ?? VERDICT.UNRESOLVED])) {
       return false;

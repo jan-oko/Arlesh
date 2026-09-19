@@ -49,7 +49,6 @@ export default function ListView() {
 
   const toggleFullscreen = useFullscreenStore((s) => s.toggle);
   const listFilter = useListFilterStore((s) => s.filter);
-  const addPill = useListFilterStore((s) => s.addPill);
   const setListPreset = useListFilterStore((s) => s.setPreset);
 
   const {
@@ -196,7 +195,6 @@ export default function ListView() {
                 onMarkKept={markKept}
                 onMarkBroken={markBroken}
                 onOpenEditor={onDoubleClick}
-                onAddParentFilter={(ref) => addPill("parent", ref)}
                 onAddTagFilter={addTagFilter}
               />
             ))}
@@ -229,7 +227,6 @@ export default function ListView() {
                 onOpenEditor={onDoubleClick}
                 onCommitTitle={handleCommitTitle}
                 onCancelTitleEdit={() => setEditingTaskId(null)}
-                onAddParentFilter={(ref) => addPill("parent", ref)}
                 onAddTagFilter={addTagFilter}
               />
             ),
