@@ -1713,7 +1713,7 @@ by construction — a third of the line metric and over half the region metric c
 `.claude/rules/rust.md` is amended accordingly.
 
 **The floor moved 90 → 94 because the unit changed**, not because standards did: tarpaulin counts
-DWARF statement lines, LLVM counts lines in coverage regions. 94 against a measured 95.25% leaves
+DWARF statement lines, LLVM counts lines within coverage regions. 94 against a measured 95.25% leaves
 ~72 lines of slack, against ~52 under the old arrangement. `--fail-under-lines` is **proven to fail
 as well as pass** — a floor of 99 exits 1, 94 exits 0 — so it gates rather than decorates.
 
@@ -2051,7 +2051,7 @@ it: the `pgrep -x cargo-tarpaulin` wait, the concurrent-corruption warning, and 
 about to be added to make that wait exclusive. Coverage is no longer something a laptop races over.
 
 **The floor is 94, not 90, and it must not be "restored".** The unit changed: tarpaulin counted
-DWARF statement lines, `cargo llvm-cov` counts lines in coverage regions. 94 against a measured
+DWARF statement lines, `cargo llvm-cov` counts lines within coverage regions. 94 against a measured
 95.25% leaves ~72 lines of slack where 90 against 90.96% left ~52 — it is slightly *tighter*, not
 looser. CI runs tests and coverage as one command because the coverage tool runs the suite:
 `cargo test --locked` under `cargo llvm-cov show-env`, then `cargo llvm-cov report
@@ -2154,3 +2154,8 @@ from the real board, which is at 25; the branch knew only 0024. The mirror image
 `task-backlog` crash — that branch had *renumbered* a migration, this one had never *seen* one. Both
 were invisible because `launch()` reports success for a process that dies milliseconds later. Merging
 master into #16 fixed it; the instance has been up and clean since 19:42.
+
+**Correction: the floor gates `--fail-under-lines 94` — lines, not regions.** I wrote "regions"
+repeatedly, in progress.md and in three agent briefs. The number is right and nothing operational
+changes; the unit was wrong and is now fixed above. Caught by the `Arlesh-l25` agent reading
+`ci.yml:202` rather than taking the brief's word, which is the behaviour the briefs ask for.
