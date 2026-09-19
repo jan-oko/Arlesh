@@ -345,6 +345,7 @@ fn invalid_request_builds_an_invalid_request_kind_with_the_given_message_and_no_
     );
     assert!(!object.contains_key("details"));
 }
+
 #[test]
 fn an_unmatched_gesture_close_is_an_invalid_request_and_an_unreadable_source_is_internal() {
     use crate::undo::error::UndoError;
