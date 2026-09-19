@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./gesture";
 import type { TimeScope, DurationSpec } from "@/api/time-scope";
 
 /**

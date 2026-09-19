@@ -85,4 +85,25 @@ export default tseslint.config(
       ],
     },
   },
+  // Every Tauri command goes through `src/api/gesture.ts`, which opens a Gesture around it so
+  // Ctrl+Z can reverse it. A file that imports `invoke` straight from Tauri writes to the board
+  // outside the undo stack, invisibly — hence a lint error rather than a convention.
+  {
+    files: ["**/*.{ts,tsx}"],
+    ignores: ["src/api/gesture.ts", "src/test/**", "**/*.test.ts", "**/*.test.tsx"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "@tauri-apps/api/core",
+              importNames: ["invoke"],
+              message: "Import `invoke` from `@/api/gesture`, so the command runs inside a Gesture and Ctrl+Z can undo it.",
+            },
+          ],
+        },
+      ],
+    },
+  },
 );

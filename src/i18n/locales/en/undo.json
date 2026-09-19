@@ -1,0 +1,25 @@
+{
+  "undid": "Undid: {{gesture}}",
+  "redid": "Redid: {{gesture}}",
+  "undoFailed": "Couldn't undo: {{message}}",
+  "redoFailed": "Couldn't redo: {{message}}",
+  "changes": {
+    "create_one": "create 1 item",
+    "create_other": "create {{count}} items",
+    "update_one": "update 1 item",
+    "update_other": "update {{count}} items",
+    "delete_one": "delete 1 item",
+    "delete_other": "delete {{count}} items",
+    "change_one": "change 1 item",
+    "change_other": "change {{count}} items"
+  },
+  "gestures": {
+    "paste_one": "paste 1 node",
+    "paste_other": "paste {{count}} nodes",
+    "move_one": "move 1 node",
+    "move_other": "move {{count}} nodes",
+    "delete_one": "delete 1 node",
+    "delete_other": "delete {{count}} nodes",
+    "insertParent": "insert a parent"
+  }
+}

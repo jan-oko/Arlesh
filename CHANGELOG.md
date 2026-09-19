@@ -10,6 +10,18 @@ Arlesh is a personal app in live preview with no release cycle, so new entries c
 ## [Unreleased]
 
 ### Added
+- **Ctrl+Z now works.** Nothing in Arlesh was undoable. A delete cascaded through a subtree, a paste wrote one, a drag reparented a branch — and every one of them was final. The only recovery was doing it back by hand, if you could still remember what "it" had been.
+
+  **Ctrl+Z** reverses the last thing you did to the board, and **Ctrl+Shift+Z** (or **Ctrl+Y**) puts it back, in both the Mindmap and the List View. Both appear in the cheat-sheet with everything else.
+
+  What it reverses is **one thing you did**, not one thing the app did. Pasting five nodes is one press, not five. So is deleting a multi-selection, deleting a node that took a subtree with it, inserting a parent above something, and dragging a branch somewhere that narrowed its descendants' windows on the way. Anything that isn't one of those is still a step of its own — editing a title, toggling a status, moving one node — so there is no action the stack quietly declines to hold.
+
+  **The board tells you what it just did.** After an undo a notice names it — "Undid: paste 5 nodes", "Undid: delete 4 items" — and after a redo, "Redid: …" of the same. An undo that redrew half the board without saying why would be worse than no undo. Pressing Ctrl+Z with nothing left to undo does **nothing at all**: no error, no flash. And if a reversal can't be applied, it says so and changes nothing — the board is left exactly as it was, and the same press will work again once whatever blocked it is gone.
+
+  **Ctrl+Z means what it usually means while you're typing.** Inside a title, an editor field or any text box it's the field's own undo, not the board's, and behind an open modal or the cheat-sheet it does nothing — the same rule every other shortcut in the app already follows.
+
+  Two things it deliberately doesn't do. It does not undo **what you're looking at**: filters, presets, the subtree you've entered and your selection are how you're reading the board, not changes to it, and Ctrl+Z is not a back button. And it never reverses **an agent's** writes — anything Claude changed through the MCP endpoint is recorded but stays out of your stack, because Ctrl+Z is for undoing what *you* did. The stack is per session and starts empty each time the app opens.
+
 - **Commitments: a place for the things you *keep* rather than *do*.** "Asleep by 23:00." "No social media today." Filed as a Task these were wrong in both directions — a Task is finished by doing something, so an untouched one whose window passed read as **Missed**, while an untouched "no social media today" may well have been kept perfectly. Filed as a Goal they were wrong too: a Goal can be Achieved but never *Broken*, so there was no way to record having failed one. The daily thing most worth a record of was the one thing the app could not represent.
 
   A **Commitment** is a new kind of node, sitting beside Goal and Task. It lives anywhere a Task can, holds Tasks (the supporting steps — "phone on charger", "set alarm") and other Commitments ("no social media this month" holding each day's), and carries a window like everything else. Instead of a status it carries a **Verdict**: **Unresolved**, **Kept** or **Broken**. Reach one with **Ctrl+↑/↓**, which now cycles Domain → Project → Goal → Task → **Commitment**.

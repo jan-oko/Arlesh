@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
+import { mockCommandOnce, mockGestureProtocol } from "@/test/command-mock";
 import {
   listTasks, createTask, updateTask, deleteTask,
   getTask, listTaskDependencies, addTaskDependency, removeTaskDependency,
@@ -18,11 +19,12 @@ const mockTask: Task = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockGestureProtocol();
 });
 
 describe("listTasks", () => {
   it("calls invoke with list_tasks and returns the task array", async () => {
-    vi.mocked(invoke).mockResolvedValueOnce([mockTask]);
+    mockCommandOnce([mockTask]);
     const result = await listTasks();
     expect(invoke).toHaveBeenCalledWith("list_tasks");
     expect(result).toEqual([mockTask]);
@@ -31,7 +33,7 @@ describe("listTasks", () => {
 
 describe("createTask", () => {
   it("calls invoke with create_task and wraps the request", async () => {
-    vi.mocked(invoke).mockResolvedValueOnce(mockTask);
+    mockCommandOnce(mockTask);
     const req: CreateTaskRequest = { title: "Write tests", parent_type: "domain", parent_id: 2 };
     const result = await createTask(req);
     expect(invoke).toHaveBeenCalledWith("create_task", { request: req });
@@ -42,7 +44,7 @@ describe("createTask", () => {
 describe("updateTask", () => {
   it("calls invoke with update_task, the id, and the partial request", async () => {
     const updated = { ...mockTask, status: "done" };
-    vi.mocked(invoke).mockResolvedValueOnce(updated);
+    mockCommandOnce(updated);
     const result = await updateTask(1, { status: "done" });
     expect(invoke).toHaveBeenCalledWith("update_task", { id: 1, request: { status: "done" } });
     expect(result.status).toBe("done");
@@ -51,7 +53,7 @@ describe("updateTask", () => {
 
 describe("deleteTask", () => {
   it("calls invoke with delete_task and the id", async () => {
-    vi.mocked(invoke).mockResolvedValueOnce(undefined);
+    mockCommandOnce(undefined);
     await deleteTask(3);
     expect(invoke).toHaveBeenCalledWith("delete_task", { id: 3 });
   });
@@ -60,7 +62,7 @@ describe("deleteTask", () => {
 describe("getTask", () => {
   it("calls invoke with get_task and the id", async () => {
     const withBlockers: TaskWithBlockers = { task: mockTask, block_reasons: [] };
-    vi.mocked(invoke).mockResolvedValueOnce(withBlockers);
+    mockCommandOnce(withBlockers);
     const result = await getTask(1);
     expect(invoke).toHaveBeenCalledWith("get_task", { id: 1 });
     expect(result).toEqual(withBlockers);
@@ -70,7 +72,7 @@ describe("getTask", () => {
 describe("listTaskDependencies", () => {
   it("calls invoke with list_task_dependencies and the taskId", async () => {
     const deps: Dependency[] = [{ type: "goal", id: 5 }];
-    vi.mocked(invoke).mockResolvedValueOnce(deps);
+    mockCommandOnce(deps);
     const result = await listTaskDependencies(1);
     expect(invoke).toHaveBeenCalledWith("list_task_dependencies", { taskId: 1 });
     expect(result).toEqual(deps);
@@ -79,7 +81,7 @@ describe("listTaskDependencies", () => {
 
 describe("addTaskDependency", () => {
   it("calls invoke with add_task_dependency, taskId, and dependency", async () => {
-    vi.mocked(invoke).mockResolvedValueOnce(undefined);
+    mockCommandOnce(undefined);
     const dep: Dependency = { type: "task", id: 2 };
     await addTaskDependency(1, dep);
     expect(invoke).toHaveBeenCalledWith("add_task_dependency", { taskId: 1, dependency: dep });
@@ -88,7 +90,7 @@ describe("addTaskDependency", () => {
 
 describe("removeTaskDependency", () => {
   it("calls invoke with remove_task_dependency, taskId, and dependency", async () => {
-    vi.mocked(invoke).mockResolvedValueOnce(undefined);
+    mockCommandOnce(undefined);
     const dep: Dependency = { type: "task", id: 2 };
     await removeTaskDependency(1, dep);
     expect(invoke).toHaveBeenCalledWith("remove_task_dependency", { taskId: 1, dependency: dep });
@@ -97,7 +99,7 @@ describe("removeTaskDependency", () => {
 
 describe("addTagToTask", () => {
   it("calls invoke with add_tag_to_task, taskId, and tagId", async () => {
-    vi.mocked(invoke).mockResolvedValueOnce(undefined);
+    mockCommandOnce(undefined);
     await addTagToTask(1, 99);
     expect(invoke).toHaveBeenCalledWith("add_tag_to_task", { taskId: 1, tagId: 99 });
   });
@@ -105,7 +107,7 @@ describe("addTagToTask", () => {
 
 describe("removeTagFromTask", () => {
   it("calls invoke with remove_tag_from_task, taskId, and tagId", async () => {
-    vi.mocked(invoke).mockResolvedValueOnce(undefined);
+    mockCommandOnce(undefined);
     await removeTagFromTask(1, 99);
     expect(invoke).toHaveBeenCalledWith("remove_tag_from_task", { taskId: 1, tagId: 99 });
   });
@@ -117,7 +119,7 @@ describe("reparentScopeConflicts", () => {
       ancestor_time_scope: { start_id: 3, end_id: 3 },
       conflicts: [{ node_type: "task", node_id: 8 }],
     };
-    vi.mocked(invoke).mockResolvedValueOnce(result);
+    mockCommandOnce(result);
     const out = await reparentScopeConflicts("task", 8, "goal", 4);
     expect(invoke).toHaveBeenCalledWith("reparent_scope_conflicts", {
       nodeType: "task",
@@ -132,7 +134,7 @@ describe("reparentScopeConflicts", () => {
 describe("scopeContainmentConflicts", () => {
   it("calls invoke with scope_containment_conflicts and the node + candidate scope", async () => {
     const conflicts: ViolatingDescendant[] = [{ node_type: "task", node_id: 7 }];
-    vi.mocked(invoke).mockResolvedValueOnce(conflicts);
+    mockCommandOnce(conflicts);
     const timeScope: TimeScope = { start_id: 3, end_id: 3 };
     const result = await scopeContainmentConflicts("goal", 5, timeScope);
     expect(invoke).toHaveBeenCalledWith("scope_containment_conflicts", {

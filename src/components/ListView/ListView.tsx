@@ -13,6 +13,7 @@ import { groupRowsByPath } from "@/utils/list-data";
 import { collectSearchableNodes } from "@/utils/mindmap-tree";
 import { useNodeEditor } from "@/components/MindmapView/use-node-editor";
 import { useKeyboardListView } from "./use-keyboard-list-view";
+import { useUndo } from "@/hooks/use-undo";
 import TaskEditorModal from "@/components/TaskEditorModal/TaskEditorModal";
 import CommitmentEditorModal from "@/components/CommitmentEditorModal/CommitmentEditorModal";
 import NodeSearchModal from "@/components/NodeSearchModal/NodeSearchModal";
@@ -132,6 +133,8 @@ export default function ListView() {
     setListPreset(mode);
   }
 
+  const { onUndo, onRedo } = useUndo({ reload, showToast });
+
   useKeyboardListView({
     // The prompt swallows the row keys while it is open, as the editor modal already does.
     isInputActive: isInputCaptured || planPrompt !== null,
@@ -153,6 +156,8 @@ export default function ListView() {
     subtreeRootId,
     onExitSubtree,
     onExitToRoot,
+    onUndo,
+    onRedo,
   });
 
   if (isLoading) return <div className={styles.centered}>{t("common:loading")}</div>;

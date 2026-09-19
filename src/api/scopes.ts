@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./gesture";
 
 /** Scope granularity, mirrored from the Rust `ScopeKind` (serde snake_case). */
 export type ScopeKind = "season" | "month" | "week" | "day" | "part_of_day" | "exact";

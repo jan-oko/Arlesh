@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./gesture";
 
 /**
  * What a Flow's root materializes as. `commitment` is how a repeating rule — a nightly

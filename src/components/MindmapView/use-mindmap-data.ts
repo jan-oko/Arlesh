@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { createDomain, updateDomain, deleteDomain, duplicateDomain } from "@/api/domains";
 import { createTask, updateTask, deleteTask, duplicateTask, TASK_ARCHIVAL } from "@/api/tasks";
 import { createCommitment, updateCommitment, deleteCommitment } from "@/api/commitments";
@@ -12,6 +13,7 @@ import { getErrorMessage } from "@/api/errors";
 import { asRetypeKind, retypeNode as backendRetype } from "@/api/retype";
 import type { StrandedChildren } from "@/api/retype";
 import { loadMindmap, habitIterations, habitStatuses } from "@/api/mindmap";
+import { withGesture } from "@/api/gesture";
 import type { MindmapLoad } from "@/api/mindmap";
 import {
   createFlow, updateFlow, deleteFlow,
@@ -811,6 +813,7 @@ function collectLoadConditions(data: MindmapLoad): LoadCondition {
 }
 
 export function useMindmapData(): MindmapData {
+  const { t } = useTranslation("undo");
   const [tree, setTree] = useState<MindmapNode>(VIRTUAL_ROOT);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1209,20 +1212,24 @@ export function useMindmapData(): MindmapData {
 
   const removeNode = useCallback(
     async (nodesToDelete: Array<{ id: string; kind: NodeKind }>): Promise<void> => {
-      for (const { id, kind } of nodesToDelete) {
-        const dbId = dbIdFromNodeId(id);
-        if (kind === "goal") await deleteGoal(dbId);
-        else if (kind === "task") await deleteTask(dbId);
-        else if (kind === "commitment") await deleteCommitment(dbId);
-        else if (kind === "info") await deleteInfo(dbId);
-        else if (kind === "flow") await deleteFlow(dbId);
-        else if (kind === "flow_goal") await deleteFlowItem("flow_goal", dbId);
-        else if (kind === "flow_task") await deleteFlowItem("flow_task", dbId);
-        else if (kind !== "aspect") await deleteDomain(dbId);
-      }
+      // One delete per node, so one Gesture around the lot: a multi-selection, or the subtree the
+      // confirm dialog expanded into its nodes, has to come back in a single press.
+      await withGesture(t("gestures.delete", { count: nodesToDelete.length }), async () => {
+        for (const { id, kind } of nodesToDelete) {
+          const dbId = dbIdFromNodeId(id);
+          if (kind === "goal") await deleteGoal(dbId);
+          else if (kind === "task") await deleteTask(dbId);
+          else if (kind === "commitment") await deleteCommitment(dbId);
+          else if (kind === "info") await deleteInfo(dbId);
+          else if (kind === "flow") await deleteFlow(dbId);
+          else if (kind === "flow_goal") await deleteFlowItem("flow_goal", dbId);
+          else if (kind === "flow_task") await deleteFlowItem("flow_task", dbId);
+          else if (kind !== "aspect") await deleteDomain(dbId);
+        }
+      });
       await load(false);
     },
-    [load],
+    [load, t],
   );
 
   const createFlowNode = useCallback(

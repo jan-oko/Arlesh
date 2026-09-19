@@ -291,6 +291,7 @@ The root of the map is "Arlesh" (top level). Aspect cells are its direct childre
 - `Ctrl+O` — search for a node by title
 - `Alt+F` — toggle the filter menu; `Alt+A` / `Alt+P` / `Alt+S` / `Alt+D` / `Alt+B` — jump to the **All / Plan / Start / Do / Backlog** status preset (matched by physical key)
 - `Escape` — deselect; `Shift+Escape` — go back one level when inside a subtree; `Ctrl+Escape` — go back to the root
+- `Ctrl+Z` — undo the last thing you did to the board; `Ctrl+Shift+Z` (or `Ctrl+Y`) — redo it
 - `Alt+L` — switch between Mindmap and List View; `Ctrl+Shift+/` — open the keyboard cheat-sheet
 - `Right-click` — context menu (enter subtree, change type, delete, etc.)
 - Back button / back-to-top button available in the UI
@@ -379,6 +380,7 @@ A compact-card task list, reached via a Mindmap/List tab in the top bar or the `
 - `Ctrl+O` — search for a node by title, over **every** node kind (not just the Tasks the list shows), and **enter** the one you pick: the list re-roots at it and shows only the Tasks beneath it, with that root trimmed from the path headers and named in the top bar instead. This is subtree entry, not a filter — the filter chips, the status preset and the selection are all untouched, and the subtree composes with whatever filtering is already active
 - `Shift+Escape` — up one subtree level; `Ctrl+Escape` — straight back to the true root. Same semantics as the Mindmap's, and gated the same way (they do nothing at the true root, where bare `Escape` still deselects)
 - `Escape` — deselect
+- `Ctrl+Z` — undo the last thing you did to the board; `Ctrl+Shift+Z` (or `Ctrl+Y`) — redo it
 - `Alt+L` — switch back to the Mindmap; `Ctrl+Shift+/` — open the keyboard cheat-sheet
 
 A shortcut requires exactly the modifiers listed — `Ctrl+E` does not open the editor, only a bare `E` does.
@@ -566,6 +568,44 @@ This is the weak seam in the design, and it fails in one direction only:
 Nothing here can make Ctrl+Z reverse something the user did not ask about; the cost of forgetting
 is a change that undo declines to touch. The seam narrows on its own as command logic moves into
 Rust, after which most gestures are one backend call and the protocol is vestigial.
+
+On the frontend, that shape is one module: `src/api/gesture.ts` is the only file that imports
+Tauri's `invoke`, and everything in `src/api/` goes through its wrapper, which opens a Gesture
+around **every** command. A lone command is therefore its own undo step without anyone remembering
+to ask for it — the same argument the trigger journal makes against per-command obligations — and
+a lint rule refuses a direct import so a new api file cannot quietly fall outside the stack. Runs
+that belong together are wrapped once more, by `withGesture(name, run)`, which opens the outer
+Gesture the per-command opens then join: a paste, a multi-select delete, an insert-parent (a create
+and a move), and a drag reparent that clamps scoped descendants before moving. Both wrappers close
+their Gesture in a `finally`, because a command that throws having already written something must
+still be a step the user can reverse.
+
+`withGesture`'s `name` is the human name of the Gesture, and it is set when the Gesture opens
+because only the frontend knows the user called it "paste 5 nodes". The backend has nowhere to put
+it — a Gesture id is minted by the database and the summary it returns carries counts and table
+names, not a sentence — so the names are held frontend-side, keyed by Gesture id, and read back
+when an undo returns that id.
+
+### What the user sees
+
+An undo is never silent. A Gesture that comes back raises the app's existing anchored notice,
+naming what was reversed: **"Undid: paste 5 nodes"** from the name the Gesture was opened with, or
+**"Undid: update 1 item"** from the row counts when nobody named it. A redo says **"Redid: …"** of
+the same phrase — the toast names the Gesture, not the direction of travel. The board then reloads
+the way every other mutation already ends.
+
+The three outcomes must not look alike. An **empty stack** is silent: nothing happened, and Ctrl+Z
+with nothing to undo is not a mistake. A **refused apply** — the whole replay runs in one
+transaction, so the board is untouched and the Gesture is still on the stack — says **"Couldn't
+undo: …"** and reloads nothing. Only a Gesture that was actually applied redraws anything.
+`undo_status` exists to label and disable a control and is never consulted before a keystroke; the
+backend handles an empty stack itself, so asking first would buy nothing but a round trip.
+
+Both bindings are declared in the shared hotkey registry for **both views**, so the cheat-sheet
+lists them without being told twice, and they are suppressed exactly as every other view binding
+is — inside a text field, where Ctrl+Z means the field undo the browser already gives, and behind
+any modal or inline editor, through the same input-capture registry. `Ctrl+Y` is a hidden alias of
+the redo binding: dispatchable, but not a second cheat-sheet row.
 
 ### Sources, and not undoing undo
 

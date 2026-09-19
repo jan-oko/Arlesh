@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
+import { invokedCommands } from "@/test/command-mock";
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { buildTree, useMindmapData, injectHabitInstances } from "./use-mindmap-data";
 import { useScopeLabels } from "@/hooks/use-scope-labels";
@@ -377,7 +378,8 @@ describe("useMindmapData", () => {
   it("fetches the whole mindmap in a single round trip", async () => {
     const { result } = renderHook(() => useMindmapData());
     await waitFor(() => expect(result.current.isLoading).toBe(false));
-    expect(vi.mocked(invoke).mock.calls.map((call) => call[0])).toEqual(["load_mindmap"]);
+    // The Gesture the wrapper opens around it is protocol, not a round trip for data.
+    expect(invokedCommands()).toEqual(["load_mindmap"]);
   });
 
   it("surfaces the flow whose habit iterations failed as a load condition instead of silently emptying it", async () => {

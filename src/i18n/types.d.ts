@@ -10,6 +10,7 @@ import type en_filter from "./locales/en/filter.json";
 import type en_statusIcons from "./locales/en/statusIcons.json";
 import type en_listView from "./locales/en/listView.json";
 import type en_hotkeys from "./locales/en/hotkeys.json";
+import type en_undo from "./locales/en/undo.json";
 
 declare module "i18next" {
   interface CustomTypeOptions {
@@ -27,6 +28,7 @@ declare module "i18next" {
       statusIcons: typeof en_statusIcons;
       listView: typeof en_listView;
       hotkeys: typeof en_hotkeys;
+      undo: typeof en_undo;
     };
   }
 }
