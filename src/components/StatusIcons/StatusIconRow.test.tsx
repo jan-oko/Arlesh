@@ -47,7 +47,7 @@ describe("StatusIconRow", () => {
   });
 
   it("uses the habit tooltip for a virtual habit instance and the flow tooltip otherwise", () => {
-    const habit = node("task", { status: "todo", habitItem: { flowId: 1, itemType: "flow_root", itemId: 1, scopeId: 5 } });
+    const habit = node("task", { status: "todo", habitItem: { flowId: 1, itemType: "flow_root", itemId: 1, scopeId: 5, cycleId: 0 } });
     expect(renderRow(habit)).toEqual(["habitInstance"]);
 
     const started = node("task", { status: "todo", fromFlow: true });

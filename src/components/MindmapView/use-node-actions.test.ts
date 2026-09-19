@@ -37,19 +37,19 @@ const GOAL_NODE = mkNode("goal-2", "goal", [], { status: "active" });
 const GOAL_ACHIEVED = mkNode("goal-8", "goal", [], { status: "achieved" });
 const ASPECT = mkNode("aspect-1", "aspect");
 const HABIT_ITER = mkNode("habit-3-0-virtual", "task", [], {
-  status: "todo", virtual: true, habitItem: { flowId: 3, itemType: "flow_root", itemId: 3, scopeId: 100 },
+  status: "todo", virtual: true, habitItem: { flowId: 3, itemType: "flow_root", itemId: 3, scopeId: 100, cycleId: 0 },
 });
 const HABIT_DONE = mkNode("habit-3-1-virtual", "task", [], {
-  status: "done", virtual: true, habitItem: { flowId: 3, itemType: "flow_root", itemId: 3, scopeId: 101 },
+  status: "done", virtual: true, habitItem: { flowId: 3, itemType: "flow_root", itemId: 3, scopeId: 101, cycleId: 0 },
 });
 const HABIT_ITEM = mkNode("habititem-flow_task-4-0-virtual", "task", [], {
-  status: "todo", virtual: true, habitItem: { flowId: 3, itemType: "flow_task", itemId: 4, scopeId: 100 },
+  status: "todo", virtual: true, habitItem: { flowId: 3, itemType: "flow_task", itemId: 4, scopeId: 100, cycleId: 0 },
 });
 const HABIT_GOAL_DONE = mkNode("habititem-flow_goal-9-0-virtual", "goal", [], {
-  status: "achieved", virtual: true, habitItem: { flowId: 3, itemType: "flow_goal", itemId: 9, scopeId: 100 },
+  status: "achieved", virtual: true, habitItem: { flowId: 3, itemType: "flow_goal", itemId: 9, scopeId: 100, cycleId: 0 },
 });
 const HABIT_TASK_IP = mkNode("habititem-flow_task-7-0-virtual", "task", [], {
-  status: "in_progress", virtual: true, habitItem: { flowId: 3, itemType: "flow_task", itemId: 7, scopeId: 100 },
+  status: "in_progress", virtual: true, habitItem: { flowId: 3, itemType: "flow_task", itemId: 7, scopeId: 100, cycleId: 0 },
 });
 const COMMITMENT_NODE = mkNode("commitment-7", "commitment", [], { verdict: "kept" });
 const FLOW_TASK_NODE = mkNode("flowtask-4", "flow_task");
@@ -125,7 +125,7 @@ describe("useNodeActions — onStatusClick", () => {
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("habit-3-0-virtual"); });
     await vi.waitFor(() =>
-      expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_root", 3, 100, "in_progress", expect.any(Number)),
+      expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_root", 3, 100, 0, "in_progress", expect.any(Number)),
     );
     expect(updateTask).not.toHaveBeenCalled();
   });
@@ -135,7 +135,7 @@ describe("useNodeActions — onStatusClick", () => {
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("habit-3-1-virtual"); });
     await vi.waitFor(() =>
-      expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_root", 3, 101, null, expect.any(Number)),
+      expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_root", 3, 101, 0, null, expect.any(Number)),
     );
   });
 
@@ -144,7 +144,7 @@ describe("useNodeActions — onStatusClick", () => {
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("habititem-flow_task-7-0-virtual"); });
     await vi.waitFor(() =>
-      expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_task", 7, 100, "done", expect.any(Number)),
+      expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_task", 7, 100, 0, "done", expect.any(Number)),
     );
   });
 
@@ -153,7 +153,7 @@ describe("useNodeActions — onStatusClick", () => {
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("habititem-flow_goal-9-0-virtual"); });
     await vi.waitFor(() =>
-      expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_goal", 9, 100, null, expect.any(Number)),
+      expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_goal", 9, 100, 0, null, expect.any(Number)),
     );
   });
 
@@ -162,7 +162,7 @@ describe("useNodeActions — onStatusClick", () => {
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("habititem-flow_task-4-0-virtual"); });
     await vi.waitFor(() =>
-      expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_task", 4, 100, "in_progress", expect.any(Number)),
+      expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_task", 4, 100, 0, "in_progress", expect.any(Number)),
     );
     expect(updateTask).not.toHaveBeenCalled();
   });

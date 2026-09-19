@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { TimeScope } from "@/api/time-scope";
 
 /**
  * What a Flow's root materializes as. `commitment` is how a repeating rule — a nightly
@@ -212,6 +213,35 @@ export async function deleteFlowRecurrence(flowId: number): Promise<void> {
  * be the app concluding an outcome nobody stated. */
 export type IterationStatus = "active" | "done" | "lapsed" | "missed" | "expired";
 
+/**
+ * The `cycle_id` of an occurrence that came from no cycle pair — an item that declares none, and
+ * the flow root, which never has any.
+ */
+export const NO_CYCLE = 0;
+
+/**
+ * One virtual instance of a flow item inside one Habit iteration: which item it draws, which of
+ * that item's cycle pairs produced it, and the window that pair resolves to in this iteration.
+ *
+ * An item with N pairs contributes N of these, matching what starting the flow would materialize.
+ * The windows are resolved by the backend, which owns the same offset arithmetic `start` uses, so
+ * a rendered occurrence and a started one cannot disagree about when "the 2nd day of week 3" is.
+ *
+ * An occurrence whose window has not opened yet is simply absent.
+ */
+export interface HabitInstance {
+  item_type: FlowItemType;
+  item_id: number;
+  /** The cycle pair behind this occurrence, or {@link NO_CYCLE} when the item declares none. */
+  cycle_id: number;
+  /** The occurrence's Cycle Scope; `null` when it has no pair (it inherits the iteration's). */
+  time_scope: TimeScope | null;
+  /** The occurrence's Cycle Plan, when its pair carries one. */
+  plan: TimeScope | null;
+  /** Whether its own window has passed, under the Habit's Consumption. */
+  past: boolean;
+}
+
 /** A derived Habit iteration on a reference day (nothing is persisted per iteration). */
 export interface HabitIteration {
   index: number;
@@ -219,6 +249,8 @@ export interface HabitIteration {
   /** The window's first day, ISO `YYYY-MM-DD`. */
   anchor_date: string;
   status: IterationStatus;
+  /** Every occurrence this iteration renders, in item order and then pair order. */
+  instances: HabitInstance[];
 }
 
 /**
@@ -240,6 +272,8 @@ export interface HabitItemStatus {
   item_type: HabitInstanceType;
   item_id: number;
   iteration_scope_id: number;
+  /** Which occurrence of the item, since one item can draw several in a single iteration. */
+  cycle_id: number;
   status: string;
 }
 
@@ -250,19 +284,25 @@ export async function listHabitItemStatuses(flowId: number): Promise<HabitItemSt
 
 /**
  * Sets a single instance's status (a flow item, or the `flow_root` — with `itemId` = the flow id) at
- * one iteration scope. `status` `null` clears it (back to the base status: task `todo` / goal
- * `active`); `resolvedAtMs` is recorded for a `done` status. The iteration reads Done once the root
- * and every item are `done`.
+ * one iteration scope. `cycleId` picks which occurrence of that item ({@link NO_CYCLE} when it has
+ * no cycle pairs, and always for the root): an item with a morning and an evening pair draws two
+ * nodes on the same day, and completing one leaves the other to do. `status` `null` clears it (back
+ * to the base status: task `todo` / goal `active`); `resolvedAtMs` is recorded for a `done` status.
+ * The iteration reads Done once the root and every occurrence are `done`.
  */
 export async function setHabitItemStatus(
   flowId: number,
   itemType: HabitInstanceType,
   itemId: number,
   iterationScopeId: number,
+  cycleId: number,
   status: string | null,
   resolvedAtMs: number,
 ): Promise<void> {
-  return invoke<void>("set_habit_item_status", { flowId, itemType, itemId, iterationScopeId, status, resolvedAtMs });
+  const instance = {
+    item_type: itemType, item_id: itemId, iteration_scope_id: iterationScopeId, cycle_id: cycleId,
+  };
+  return invoke<void>("set_habit_item_status", { flowId, instance, status, resolvedAtMs });
 }
 
 /** Number of distinct completed iterations of a Habit (divergence check for reconciliation). */

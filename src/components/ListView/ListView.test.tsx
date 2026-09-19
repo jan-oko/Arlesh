@@ -623,7 +623,7 @@ describe("ListView — the commitments section", () => {
       title: "Asleep by 23:00 Mon",
       verdict: "unresolved",
       virtual: true,
-      habitItem: { flowId: 3, itemType: "flow_root", itemId: 3, scopeId: 100 },
+      habitItem: { flowId: 3, itemType: "flow_root", itemId: 3, scopeId: 100, cycleId: 0 },
     });
     mockUseListData.mockReturnValue(listData({
       commitmentRows: [commitmentRow({ node: iteration })],
@@ -633,7 +633,7 @@ describe("ListView — the commitments section", () => {
     render(<ListView />);
 
     fireEvent.click(screen.getByRole("button", { name: "markBroken" }));
-    expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_root", 3, 100, "broken", expect.any(Number));
+    expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_root", 3, 100, 0, "broken", expect.any(Number));
     expect(updateCommitment).not.toHaveBeenCalled();
   });
 

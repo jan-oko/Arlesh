@@ -27,7 +27,9 @@ use crate::database::session::{Db, SessionMode, Transactional};
 use crate::scopes::model::{PartOfDay, Scope, ScopeId, ScopeKind};
 use crate::scopes::resolve::{interval_contains, scope_bounds};
 use crate::scopes::ScopeOperator;
-use habits::{classify_iterations, expire_unanswered, Catchup, Consumption, SlotWindow};
+use habits::{
+    classify_iterations, expire_unanswered, instance_is_past, Catchup, Consumption, SlotWindow,
+};
 use crate::tasks::model::{
     CommitmentId, CreateCommitmentRequest, CreateGoalRequest, CreateTaskRequest, Dependency,
     DurationSpec, GoalId, TaskId, TimeScope,
@@ -45,8 +47,10 @@ use render::{
 use model::{
     BlockingMode, ConsumptionKind, CreateFlowItemRequest, CreateFlowRequest, Flow, FlowCycleInput,
     FlowDependency, FlowGoal, FlowId, FlowItemCycle, FlowItemType, FlowOrigin, FlowRecurrence,
-    FlowTask, HabitIteration, HabitItemStatus, InstanceType, MaterializedFlow,
-    SetRecurrenceRequest, StartFlowRequest, TargetRef, UpdateFlowItemRequest, UpdateFlowRequest,
+    FlowTask, HabitInstance, HabitInstanceRef, HabitIteration, HabitItemStatus, InstanceType,
+    IterationStatus,
+    MaterializedFlow, SetRecurrenceRequest, StartFlowRequest, TargetRef, UpdateFlowItemRequest,
+    UpdateFlowRequest, NO_CYCLE,
 };
 
 /// Sentinel `item_type` for the flow **root** instance in `habit_instance_modifications`. The root is
@@ -243,21 +247,37 @@ async fn offset_scope(
     }
 }
 
-/// Resolves a cycle pair into a concrete (Time Scope, Plan) against the window start.
-/// A null-scope pair (or an unscoped flow) yields `(None, None)` — the item inherits the root.
-async fn resolve_pair(
+/// A cycle pair resolved against a window start.
+struct ResolvedCycle {
+    /// The scope row the Cycle Scope landed on — kept for its `[start, end)` datetime bounds,
+    /// which are what a virtual occurrence's Timing is read from.
+    scope: Scope,
+    /// That same scope as a single-scope Time Scope, ready to stamp on a node.
+    time_scope: TimeScope,
+    /// The Cycle Plan within it, when the pair carries one.
+    plan: Option<TimeScope>,
+}
+
+/// Resolves a cycle pair against the window start, into the concrete scope it lands on plus its
+/// Cycle Scope and Cycle Plan. `None` for a null-scope pair, an item with no pair, or an unscoped
+/// flow — all three mean "inherit the root", which has no window of its own to report.
+///
+/// The single implementation of the Cycle Scope offset. [`start`] takes it through
+/// [`resolve_pair`] and [`generate_habit_iterations`] takes it directly, so the window a Habit
+/// *renders* and the window a started flow *writes* cannot drift apart.
+async fn resolve_cycle(
     scopes: &mut ScopeOperator<'_>,
     pair: Option<&FlowItemCycle>,
     window_start: Option<NaiveDate>,
-) -> Result<(Option<TimeScope>, Option<TimeScope>), FlowError> {
-    let (Some(pair), Some(base)) = (pair, window_start) else { return Ok((None, None)) };
+) -> Result<Option<ResolvedCycle>, FlowError> {
+    let (Some(pair), Some(base)) = (pair, window_start) else { return Ok(None) };
     let (Some(kind), Some(index)) = (pair.scope_kind.as_deref(), pair.scope_index) else {
-        return Ok((None, None));
+        return Ok(None);
     };
     let scope = offset_scope(scopes, base, index, kind).await?;
     let cycle_start = NaiveDate::parse_from_str(&scope.start_date, "%Y-%m-%d")
         .map_err(|e| FlowError::Invalid(e.to_string()))?;
-    let time_scope = Some(TimeScope { start_id: scope.id, end_id: scope.id, duration: None });
+    let time_scope = TimeScope { start_id: scope.id, end_id: scope.id, duration: None };
 
     let plan = match (pair.plan_kind.as_deref(), pair.plan_start, pair.plan_end) {
         (Some(pk), Some(ps), Some(pe)) => {
@@ -267,7 +287,20 @@ async fn resolve_pair(
         }
         _ => None,
     };
-    Ok((time_scope, plan))
+    Ok(Some(ResolvedCycle { scope, time_scope, plan }))
+}
+
+/// Resolves a cycle pair into a concrete (Time Scope, Plan) against the window start.
+/// A null-scope pair (or an unscoped flow) yields `(None, None)` — the item inherits the root.
+async fn resolve_pair(
+    scopes: &mut ScopeOperator<'_>,
+    pair: Option<&FlowItemCycle>,
+    window_start: Option<NaiveDate>,
+) -> Result<(Option<TimeScope>, Option<TimeScope>), FlowError> {
+    Ok(match resolve_cycle(scopes, pair, window_start).await? {
+        Some(resolved) => (Some(resolved.time_scope), resolved.plan),
+        None => (None, None),
+    })
 }
 
 /// Resolves the concrete flow window `[anchor, anchor + (n-1) periods]` of `kind`, returning
@@ -656,6 +689,40 @@ impl<'session> FlowOperator<'session> {
                 .fetch_all(&mut *self.connection)
                 .await?,
         )
+    }
+
+    /// A flow's items as `(item_type, item_id)` in render order — goal items then task items, each
+    /// block in position order — the order a Habit iteration lists its occurrences in.
+    pub async fn instance_items(
+        &mut self,
+        flow_id: FlowId,
+    ) -> Result<Vec<(String, i64)>, FlowError> {
+        let goals = self.list_goals(flow_id).await?;
+        let tasks = self.list_tasks(flow_id).await?;
+        Ok(goals
+            .iter()
+            .map(|goal| ("flow_goal".to_string(), goal.id))
+            .chain(tasks.iter().map(|task| ("flow_task".to_string(), task.id)))
+            .collect())
+    }
+
+    /// A flow's cycle pairs grouped by the item that owns them, each group in position order. An
+    /// item with no pairs is absent from the map rather than present with an empty list.
+    pub async fn cycles_by_item(
+        &mut self,
+        flow_id: FlowId,
+    ) -> Result<HashMap<(String, i64), Vec<FlowItemCycle>>, FlowError> {
+        let rows = sqlx::query_as::<_, FlowItemCycle>(
+            "SELECT * FROM flow_item_cycles WHERE flow_id = ? ORDER BY item_type, item_id, position ASC",
+        )
+        .bind(flow_id.0)
+        .fetch_all(&mut *self.connection)
+        .await?;
+        let mut grouped: HashMap<(String, i64), Vec<FlowItemCycle>> = HashMap::new();
+        for cycle in rows {
+            grouped.entry((cycle.item_type.clone(), cycle.item_id)).or_default().push(cycle);
+        }
+        Ok(grouped)
     }
 
     /// Lists every flow's goal items (for the mindmap load).
@@ -1187,29 +1254,50 @@ impl<'session> FlowOperator<'session> {
             .await?;
             return Ok(());
         }
-        let goals = self.list_goals(flow_id).await?;
-        let tasks = self.list_tasks(flow_id).await?;
-        // The root is an instance too — keyed `(flow_root, flow_id)` so it stays unique per flow.
-        let items = std::iter::once((ROOT_INSTANCE_TYPE, flow_id.0))
-            .chain(goals.iter().map(|g| ("flow_goal", g.id)))
-            .chain(tasks.iter().map(|t| ("flow_task", t.id)));
-        for (item_type, item_id) in items {
+        for (item_type, item_id, cycle_id) in self.iteration_instance_keys(flow_id).await? {
             sqlx::query(
                 "INSERT INTO habit_instance_modifications
-                    (flow_id, item_type, item_id, iteration_scope_id, status, resolved_at)
-                 VALUES (?, ?, ?, ?, 'done', ?)
-                 ON CONFLICT(item_type, item_id, iteration_scope_id)
+                    (flow_id, item_type, item_id, iteration_scope_id, cycle_id, status, resolved_at)
+                 VALUES (?, ?, ?, ?, ?, 'done', ?)
+                 ON CONFLICT(item_type, item_id, iteration_scope_id, cycle_id)
                  DO UPDATE SET status = 'done', resolved_at = excluded.resolved_at, tombstone_kind = NULL",
             )
             .bind(flow_id.0)
-            .bind(item_type)
+            .bind(&item_type)
             .bind(item_id)
             .bind(iteration_scope_id)
+            .bind(cycle_id)
             .bind(resolved_at_ms)
             .execute(&mut *self.connection)
             .await?;
         }
         Ok(())
+    }
+
+    /// Every instance one iteration of this Habit holds, as the `(item_type, item_id, cycle_id)`
+    /// its Modification row is keyed by: the flow root, then each item once per cycle pair it
+    /// declares (once with [`NO_CYCLE`] when it declares none).
+    ///
+    /// This is the same count SPEC means by "an iteration is resolved when every one of its
+    /// instances is done" — and since a flow item with N pairs now draws N nodes, N of them.
+    async fn iteration_instance_keys(
+        &mut self,
+        flow_id: FlowId,
+    ) -> Result<Vec<(String, i64, i64)>, FlowError> {
+        let items = self.instance_items(flow_id).await?;
+        let cycles = self.cycles_by_item(flow_id).await?;
+        // The root is an instance too — keyed `(flow_root, flow_id)` so it stays unique per flow,
+        // and never has a cycle pair of its own.
+        let mut keys = vec![(ROOT_INSTANCE_TYPE.to_string(), flow_id.0, NO_CYCLE)];
+        for (item_type, item_id) in items {
+            match cycles.get(&(item_type.clone(), item_id)) {
+                Some(pairs) if !pairs.is_empty() => keys.extend(
+                    pairs.iter().map(|pair| (item_type.clone(), item_id, pair.id)),
+                ),
+                _ => keys.push((item_type, item_id, NO_CYCLE)),
+            }
+        }
+        Ok(keys)
     }
 
     /// Lists every instance with a divergent (non-tombstoned) status Modification for this flow, and
@@ -1220,7 +1308,7 @@ impl<'session> FlowOperator<'session> {
         flow_id: FlowId,
     ) -> Result<Vec<HabitItemStatus>, FlowError> {
         Ok(sqlx::query_as::<_, HabitItemStatus>(
-            "SELECT item_type, item_id, iteration_scope_id, status
+            "SELECT item_type, item_id, iteration_scope_id, cycle_id, status
              FROM habit_instance_modifications
              WHERE flow_id = ? AND status IS NOT NULL AND tombstone_kind IS NULL",
         )
@@ -1234,29 +1322,34 @@ impl<'session> FlowOperator<'session> {
     /// `resolved_at_ms` is recorded only for a `done` status (the completion instant that makes
     /// Blocking catch-up reproducible). Unlike `set_iteration_done` (every instance at once), this
     /// toggles one — so a Habit iteration can be advanced instance by instance.
+    ///
+    /// `instance` names the occurrence down to its cycle pair, because an item with several pairs
+    /// draws one node per pair in the same iteration: completing the morning one leaves the
+    /// evening one to do. [`NO_CYCLE`] is the occurrence of an item that declares no pairs, and
+    /// the flow root's.
     pub async fn set_item_status(
         &mut self,
         flow_id: FlowId,
-        item_type: &str,
-        item_id: i64,
-        iteration_scope_id: i64,
+        instance: &HabitInstanceRef,
         status: Option<&str>,
         resolved_at_ms: i64,
     ) -> Result<(), FlowError> {
+        let HabitInstanceRef { item_type, item_id, iteration_scope_id, cycle_id } = instance;
         match status {
             Some(status) => {
                 let resolved_at = if status == "done" { Some(resolved_at_ms) } else { None };
                 sqlx::query(
                     "INSERT INTO habit_instance_modifications
-                        (flow_id, item_type, item_id, iteration_scope_id, status, resolved_at)
-                     VALUES (?, ?, ?, ?, ?, ?)
-                     ON CONFLICT(item_type, item_id, iteration_scope_id)
+                        (flow_id, item_type, item_id, iteration_scope_id, cycle_id, status, resolved_at)
+                     VALUES (?, ?, ?, ?, ?, ?, ?)
+                     ON CONFLICT(item_type, item_id, iteration_scope_id, cycle_id)
                      DO UPDATE SET status = excluded.status, resolved_at = excluded.resolved_at, tombstone_kind = NULL",
                 )
                 .bind(flow_id.0)
                 .bind(item_type)
                 .bind(item_id)
                 .bind(iteration_scope_id)
+                .bind(cycle_id)
                 .bind(status)
                 .bind(resolved_at)
                 .execute(&mut *self.connection)
@@ -1266,12 +1359,13 @@ impl<'session> FlowOperator<'session> {
                 sqlx::query(
                     "DELETE FROM habit_instance_modifications
                      WHERE flow_id = ? AND item_type = ? AND item_id = ? AND iteration_scope_id = ?
-                       AND tombstone_kind IS NULL",
+                       AND cycle_id = ? AND tombstone_kind IS NULL",
                 )
                 .bind(flow_id.0)
                 .bind(item_type)
                 .bind(item_id)
                 .bind(iteration_scope_id)
+                .bind(cycle_id)
                 .execute(&mut *self.connection)
                 .await?;
             }
@@ -1415,15 +1509,16 @@ impl<'session> FlowOperator<'session> {
     }
 
     /// Maps each slot index to the day its iteration was completed — present only when **every**
-    /// instance (the flow root plus every flow item) has a `done` Modification (not tombstoned) for
-    /// that iteration scope. An item-less flow still has one instance: its root.
+    /// instance (the flow root plus every occurrence of every flow item) has a `done` Modification
+    /// (not tombstoned) for that iteration scope. An item-less flow still has one instance: its
+    /// root.
     async fn iteration_resolutions(
         &mut self,
         flow_id: FlowId,
         slots: &[SlotWindow],
     ) -> Result<HashMap<i64, NaiveDateTime>, FlowError> {
-        // Instances = the flow root + each flow item.
-        let instance_count = 1 + self.list_goals(flow_id).await?.len() + self.list_tasks(flow_id).await?.len();
+        // Instances = the flow root + each flow item once per cycle pair (once when it has none).
+        let instance_count = self.iteration_instance_keys(flow_id).await?.len();
         let rows: Vec<(i64, i64, Option<i64>)> = sqlx::query_as(
             "SELECT iteration_scope_id, COUNT(*), MAX(resolved_at)
              FROM habit_instance_modifications
@@ -1655,11 +1750,112 @@ pub async fn generate_habit_iterations(
         habit_slots(&mut db.scopes(), start_date, spec, gap.as_ref(), end_date, now).await?;
     let resolved = db.flows().iteration_resolutions(flow_id, &slots).await?;
     let iterations = classify_iterations(&slots, consumption, &resolved, now);
-    Ok(expire_unanswered(
-        iterations,
-        &verdict_deadlines(&flow, &slots),
-        now,
-    ))
+    let iterations = expire_unanswered(iterations, &verdict_deadlines(&flow, &slots), now);
+
+    // Each iteration's occurrences: the same items, resolved against that iteration's own window.
+    let items = db.flows().instance_items(flow_id).await?;
+    let cycles = db.flows().cycles_by_item(flow_id).await?;
+    let shape = HabitShape { items: &items, cycles: &cycles, consumption };
+    let by_index: HashMap<i64, &SlotWindow> =
+        slots.iter().map(|slot| (slot.index, slot)).collect();
+    let mut resolved_iterations = Vec::with_capacity(iterations.len());
+    for iteration in iterations {
+        // Every classified iteration came from a slot, so the lookup always hits; an iteration
+        // that somehow had no slot would simply render no occurrences rather than fail the load.
+        let instances = match by_index.get(&iteration.index) {
+            Some(slot) => {
+                resolve_iteration_instances(
+                    &mut db.scopes(),
+                    &shape,
+                    slot,
+                    iteration.status,
+                    now,
+                )
+                .await?
+            }
+            None => Vec::new(),
+        };
+        resolved_iterations.push(HabitIteration { instances, ..iteration });
+    }
+    Ok(resolved_iterations)
+}
+
+/// What resolving one iteration's occurrences needs about the Habit as a whole, as opposed to
+/// about the single iteration being resolved.
+struct HabitShape<'template> {
+    /// Every flow item, in render order: goals then tasks, each in position order.
+    items: &'template [(String, i64)],
+    /// Each item's cycle pairs in position order, keyed `(item_type, item_id)`. An item missing
+    /// from the map declares none.
+    cycles: &'template HashMap<(String, i64), Vec<FlowItemCycle>>,
+    /// The Habit's Consumption, which decides when an occurrence's passed window makes it past.
+    consumption: Consumption,
+}
+
+/// Resolves the occurrences one Habit iteration renders: every flow item, **once per cycle pair it
+/// declares** — SPEC's "a flow item with N pairs produces N items", which `start` has always obeyed
+/// and the virtual render path did not — and once, unscoped, when it declares none.
+///
+/// Each pair is resolved against *this* iteration's window start, so the same template item lands
+/// on a different concrete morning every day it recurs.
+///
+/// An occurrence whose window has not opened at `now` is **left out**, mirroring the rule one level
+/// up that withholds an iteration until its own window has begun: this evening's item appears this
+/// evening, rather than sitting Active since breakfast.
+///
+/// **This writes.** Resolving a Cycle Scope mints the scope row it names, exactly as `start`'s
+/// gather does, which is why [`generate_habit_iterations`] is transactional.
+async fn resolve_iteration_instances(
+    scopes: &mut ScopeOperator<'_>,
+    shape: &HabitShape<'_>,
+    slot: &SlotWindow,
+    status: IterationStatus,
+    now: NaiveDateTime,
+) -> Result<Vec<HabitInstance>, FlowError> {
+    let no_pairs: Vec<FlowItemCycle> = Vec::new();
+    let window_start = slot.start.date();
+    let mut instances = Vec::new();
+    for (item_type, item_id) in shape.items {
+        let pairs =
+            shape.cycles.get(&(item_type.clone(), *item_id)).unwrap_or(&no_pairs);
+        // An item with no pairs is one occurrence with no window of its own: it is relevant for
+        // exactly as long as the iteration around it is, which is what it has always been.
+        if pairs.is_empty() {
+            instances.push(HabitInstance {
+                item_type: item_type.clone(),
+                item_id: *item_id,
+                cycle_id: NO_CYCLE,
+                time_scope: None,
+                plan: None,
+                past: instance_is_past(shape.consumption, status, slot.end, now),
+            });
+            continue;
+        }
+        for pair in pairs {
+            // A pair whose Cycle Scope is null is a pair that names no window; it falls back to
+            // the iteration's, like an item with no pair at all.
+            let (time_scope, plan, start, end) =
+                match resolve_cycle(scopes, Some(pair), Some(window_start)).await? {
+                    Some(resolved) => {
+                        let (start, end) = scope_bounds(&resolved.scope)?;
+                        (Some(resolved.time_scope), resolved.plan, start, end)
+                    }
+                    None => (None, None, slot.start, slot.end),
+                };
+            if start > now {
+                continue;
+            }
+            instances.push(HabitInstance {
+                item_type: item_type.clone(),
+                item_id: *item_id,
+                cycle_id: pair.id,
+                time_scope,
+                plan,
+                past: instance_is_past(shape.consumption, status, end, now),
+            });
+        }
+    }
+    Ok(instances)
 }
 
 /// The instant each iteration of a **commitment** Habit stops being answerable: the end of its own

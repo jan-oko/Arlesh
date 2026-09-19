@@ -4,7 +4,7 @@ use arlesh_lib::flows::{
     model::{
         BlockingMode, CatchupPolicy, ConsumptionKind, CreateFlowItemRequest, CreateFlowRequest,
         FlowCycleInput, FlowId, FlowItemType, InstanceType, SetRecurrenceRequest, StartFlowRequest,
-        TargetRef, UpdateFlowItemRequest, UpdateFlowRequest,
+        HabitInstanceRef, TargetRef, UpdateFlowItemRequest, UpdateFlowRequest, NO_CYCLE,
     },
     convert_flow_item, convert_to_flow, delete_flow, fork_flow, generate_habit_iterations,
     set_flow_recurrence, set_iteration_done, start, update_flow, update_flow_goal,
@@ -1257,8 +1257,8 @@ async fn iteration_resolves_only_when_the_root_and_every_item_are_done() {
     }.unwrap()[0].anchor_scope_id;
 
     // Every item done but NOT the root → still open (the root is its own instance).
-    helpers::session_factory(&pool).connect().await.unwrap().flows().set_item_status(FlowId(flow.id), "flow_task", breakfast.id, scope, Some("done"), 1_767_600_000_000).await.unwrap();
-    helpers::session_factory(&pool).connect().await.unwrap().flows().set_item_status(FlowId(flow.id), "flow_task", dinner.id, scope, Some("done"), 1_767_600_000_000).await.unwrap();
+    helpers::session_factory(&pool).connect().await.unwrap().flows().set_item_status(FlowId(flow.id), &HabitInstanceRef { item_type: "flow_task".into(), item_id: breakfast.id, iteration_scope_id: scope, cycle_id: NO_CYCLE }, Some("done"), 1_767_600_000_000).await.unwrap();
+    helpers::session_factory(&pool).connect().await.unwrap().flows().set_item_status(FlowId(flow.id), &HabitInstanceRef { item_type: "flow_task".into(), item_id: dinner.id, iteration_scope_id: scope, cycle_id: NO_CYCLE }, Some("done"), 1_767_600_000_000).await.unwrap();
     assert_ne!(format!("{:?}", {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = generate_habit_iterations(&mut db, FlowId(flow.id), now).await;
@@ -1267,7 +1267,7 @@ async fn iteration_resolves_only_when_the_root_and_every_item_are_done() {
     }.unwrap()[0].status), "Done");
 
     // Completing the root instance too resolves the iteration.
-    helpers::session_factory(&pool).connect().await.unwrap().flows().set_item_status(FlowId(flow.id), "flow_root", flow.id, scope, Some("done"), 1_767_600_000_000).await.unwrap();
+    helpers::session_factory(&pool).connect().await.unwrap().flows().set_item_status(FlowId(flow.id), &HabitInstanceRef { item_type: "flow_root".into(), item_id: flow.id, iteration_scope_id: scope, cycle_id: NO_CYCLE }, Some("done"), 1_767_600_000_000).await.unwrap();
     let completions = helpers::session_factory(&pool).connect().await.unwrap().flows().list_item_statuses(FlowId(flow.id)).await.unwrap();
     assert_eq!(completions.len(), 3); // breakfast, dinner, root
     assert!(completions.iter().any(|c| c.item_type == "flow_root" && c.item_id == flow.id));
@@ -1279,7 +1279,7 @@ async fn iteration_resolves_only_when_the_root_and_every_item_are_done() {
     }.unwrap()[0].status), "Done");
 
     // Un-checking the root alone reverts it.
-    helpers::session_factory(&pool).connect().await.unwrap().flows().set_item_status(FlowId(flow.id), "flow_root", flow.id, scope, None, 0).await.unwrap();
+    helpers::session_factory(&pool).connect().await.unwrap().flows().set_item_status(FlowId(flow.id), &HabitInstanceRef { item_type: "flow_root".into(), item_id: flow.id, iteration_scope_id: scope, cycle_id: NO_CYCLE }, None, 0).await.unwrap();
     assert_ne!(format!("{:?}", {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = generate_habit_iterations(&mut db, FlowId(flow.id), now).await;
@@ -1311,7 +1311,7 @@ async fn an_in_progress_instance_is_listed_but_does_not_resolve_the_iteration() 
     }.unwrap()[0].anchor_scope_id;
 
     // in_progress is surfaced but is not a completion — the iteration stays open.
-    helpers::session_factory(&pool).connect().await.unwrap().flows().set_item_status(FlowId(flow.id), "flow_task", step.id, scope, Some("in_progress"), 0).await.unwrap();
+    helpers::session_factory(&pool).connect().await.unwrap().flows().set_item_status(FlowId(flow.id), &HabitInstanceRef { item_type: "flow_task".into(), item_id: step.id, iteration_scope_id: scope, cycle_id: NO_CYCLE }, Some("in_progress"), 0).await.unwrap();
     let statuses = helpers::session_factory(&pool).connect().await.unwrap().flows().list_item_statuses(FlowId(flow.id)).await.unwrap();
     assert_eq!(statuses.len(), 1);
     assert_eq!(statuses[0].status, "in_progress");
@@ -1323,7 +1323,7 @@ async fn an_in_progress_instance_is_listed_but_does_not_resolve_the_iteration() 
     }.unwrap()[0].status), "Done");
 
     // Clearing it (back to todo) removes the row entirely.
-    helpers::session_factory(&pool).connect().await.unwrap().flows().set_item_status(FlowId(flow.id), "flow_task", step.id, scope, None, 0).await.unwrap();
+    helpers::session_factory(&pool).connect().await.unwrap().flows().set_item_status(FlowId(flow.id), &HabitInstanceRef { item_type: "flow_task".into(), item_id: step.id, iteration_scope_id: scope, cycle_id: NO_CYCLE }, None, 0).await.unwrap();
     assert!(helpers::session_factory(&pool).connect().await.unwrap().flows().list_item_statuses(FlowId(flow.id)).await.unwrap().is_empty());
 }
 
@@ -1353,7 +1353,7 @@ async fn an_item_less_habit_resolves_by_completing_its_root() {
         __r
     }.unwrap()[0].status), "Done");
 
-    helpers::session_factory(&pool).connect().await.unwrap().flows().set_item_status(FlowId(flow.id), "flow_root", flow.id, scope, Some("done"), 1_767_600_000_000).await.unwrap();
+    helpers::session_factory(&pool).connect().await.unwrap().flows().set_item_status(FlowId(flow.id), &HabitInstanceRef { item_type: "flow_root".into(), item_id: flow.id, iteration_scope_id: scope, cycle_id: NO_CYCLE }, Some("done"), 1_767_600_000_000).await.unwrap();
     assert_eq!(format!("{:?}", {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = generate_habit_iterations(&mut db, FlowId(flow.id), now).await;
@@ -1970,4 +1970,306 @@ async fn a_flow_with_no_goal_items_may_still_become_a_commitment_flow() {
     .unwrap();
     db.commit().await.unwrap();
     assert_eq!(updated.instance_type, "commitment");
+}
+
+// --- Cycle Scope on a Habit's virtual instances (Arlesh-45d) ---
+//
+// SPEC: "a flow item with N pairs produces N items", and each item's Cycle Scope is its own
+// window. `start` has always obeyed both; the virtual render path obeyed neither — every iteration
+// drew one node per item, hard-coded Active for as long as its iteration was. These cover the
+// resolution that fixes it, on a Span-windowed Habit and on a Phase-windowed one.
+
+/// Creates the canonical scope of `kind` covering `date` and returns its id.
+async fn scope_id(pool: &sqlx::SqlitePool, kind: ScopeKind, date: chrono::NaiveDate) -> i64 {
+    helpers::session_factory(pool).connect().await.unwrap().scopes().get_or_create(kind, date).await.unwrap().id
+}
+
+/// A `(subkind, index)` Cycle Scope with no Plan.
+fn cycle(kind: &str, index: i64) -> FlowCycleInput {
+    FlowCycleInput { scope_kind: Some(kind.into()), scope_index: Some(index), ..Default::default() }
+}
+
+/// A one-`kind`-period Habit under aspect 1, with one task item carrying `cycles`, recurring from
+/// `start` under `consumption`. Returns `(flow id, item id)`.
+async fn habit_with_cycles(
+    pool: &sqlx::SqlitePool,
+    duration_kind: &str,
+    window_part: Option<&str>,
+    cycles: &[FlowCycleInput],
+    start: chrono::NaiveDate,
+    consumption: ConsumptionKind,
+) -> (i64, i64) {
+    let flow = helpers::session_factory(pool).connect().await.unwrap().flows().create(CreateFlowRequest {
+        title: "Routine".into(),
+        instance_type: Some(InstanceType::Task),
+        parent_type: "aspect".into(),
+        parent_id: 1,
+        flow_duration_n: Some(1),
+        flow_duration_kind: Some(duration_kind.into()),
+        flow_window_part: window_part.map(str::to_string),
+        ..Default::default()
+    })
+    .await
+    .unwrap();
+    let item = helpers::session_factory(pool).connect().await.unwrap().flows().create_task(CreateFlowItemRequest {
+        flow_id: flow.id,
+        title: "Stretch".into(),
+        parent_type: "flow".into(),
+        parent_id: flow.id,
+    })
+    .await
+    .unwrap();
+    helpers::session_factory(pool).connect().await.unwrap().flows().set_cycles(flow.id, FlowItemType::FlowTask, item.id, cycles).await.unwrap();
+    // A Phase window recurs day by day, so its Repetition anchors on a day scope either way.
+    let start_scope = scope_id(pool, ScopeKind::Day, start).await;
+    let start_scope = if duration_kind == "week" {
+        week_scope_id(pool, start).await
+    } else {
+        start_scope
+    };
+    {
+        let mut db = helpers::session_factory(pool).begin().await.unwrap();
+        let __r = set_flow_recurrence(&mut db, FlowId(flow.id), SetRecurrenceRequest {
+            start_scope_id: start_scope,
+            gap_n: None,
+            gap_kind: None,
+            end_scope_id: None,
+            consumption_kind: consumption,
+            blocking_mode: match consumption {
+                ConsumptionKind::Accumulating => Some(BlockingMode::Overlapping),
+                ConsumptionKind::Destructive => None,
+            },
+            catchup_policy: None,
+        })
+        .await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
+    .unwrap();
+    (flow.id, item.id)
+}
+
+/// The Habit's iterations at `at`.
+async fn iterations_at(
+    pool: &sqlx::SqlitePool,
+    flow_id: i64,
+    at: chrono::NaiveDateTime,
+) -> Vec<arlesh_lib::flows::model::HabitIteration> {
+    let mut db = helpers::session_factory(pool).begin().await.unwrap();
+    let result = generate_habit_iterations(&mut db, FlowId(flow_id), at).await;
+    if result.is_ok() { db.commit().await.unwrap(); }
+    result.unwrap()
+}
+
+/// The `(kind, part)` of the scope a resolved Cycle Scope names.
+async fn scope_shape(pool: &sqlx::SqlitePool, scope_id: i64) -> (String, Option<String>) {
+    sqlx::query_as("SELECT kind, part FROM scopes WHERE id = ?")
+        .bind(scope_id)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn a_sub_day_cycle_is_active_only_during_its_band_under_a_destructive_habit() {
+    let pool = helpers::test_pool().await;
+    let day = ymd(2026, 1, 5);
+    // A daily Habit whose one item is scoped to the Morning band (06:00–12:00).
+    let (flow_id, item_id) = habit_with_cycles(
+        &pool, "day", None, &[cycle("part_of_day", 1)], day, ConsumptionKind::Destructive,
+    )
+    .await;
+
+    // Before the band opens: the iteration has begun (the day has), the occurrence has not.
+    let dawn = iterations_at(&pool, flow_id, day.and_hms_opt(5, 0, 0).unwrap()).await;
+    assert_eq!(format!("{:?}", dawn[0].status), "Active");
+    assert!(dawn[0].instances.is_empty(), "this morning's item does not appear before morning");
+
+    // Inside the band.
+    let morning = iterations_at(&pool, flow_id, day.and_hms_opt(8, 0, 0).unwrap()).await;
+    assert_eq!(morning[0].instances.len(), 1);
+    let instance = &morning[0].instances[0];
+    assert_eq!((instance.item_type.as_str(), instance.item_id), ("flow_task", item_id));
+    assert!(!instance.past, "a Morning item is Active during the morning");
+    let scope = instance.time_scope.as_ref().expect("a cycle-scoped occurrence carries its window");
+    assert_eq!(scope_shape(&pool, scope.start_id).await, ("part_of_day".to_string(), Some("morning".to_string())));
+
+    // After it — while the iteration's own day window is still wide open.
+    let afternoon = iterations_at(&pool, flow_id, day.and_hms_opt(13, 0, 0).unwrap()).await;
+    assert_eq!(format!("{:?}", afternoon[0].status), "Active", "the day has not passed");
+    assert!(afternoon[0].instances[0].past, "but the morning has: Destructive lapses it");
+}
+
+#[tokio::test]
+async fn an_accumulating_habits_occurrence_survives_its_own_band() {
+    let pool = helpers::test_pool().await;
+    let day = ymd(2026, 1, 5);
+    let (flow_id, _) = habit_with_cycles(
+        &pool, "day", None, &[cycle("part_of_day", 1)], day, ConsumptionKind::Accumulating,
+    )
+    .await;
+
+    let afternoon = iterations_at(&pool, flow_id, day.and_hms_opt(13, 0, 0).unwrap()).await;
+    assert!(
+        !afternoon[0].instances[0].past,
+        "a sub-day window obeys Consumption like every other size — Destructive is what makes it vanish",
+    );
+}
+
+#[tokio::test]
+async fn a_day_cycle_inside_a_week_habit_is_active_only_on_its_day() {
+    let pool = helpers::test_pool().await;
+    let monday = ymd(2026, 1, 5);
+    // A weekly Habit whose one item is scoped to a single day inside the window. Weeks here start
+    // on Sunday, so the window that Monday falls in opens 2026-01-04 and its third day is Tuesday.
+    let (flow_id, _) = habit_with_cycles(
+        &pool, "week", None, &[cycle("day", 3)], monday, ConsumptionKind::Destructive,
+    )
+    .await;
+
+    let mon = iterations_at(&pool, flow_id, monday.and_hms_opt(12, 0, 0).unwrap()).await;
+    assert!(mon[0].instances.is_empty(), "Tuesday's item does not appear on Monday");
+
+    let tue = iterations_at(&pool, flow_id, ymd(2026, 1, 6).and_hms_opt(12, 0, 0).unwrap()).await;
+    assert_eq!(tue[0].instances.len(), 1);
+    assert!(!tue[0].instances[0].past);
+    let scope = tue[0].instances[0].time_scope.as_ref().unwrap();
+    assert_eq!(scope_shape(&pool, scope.start_id).await.0, "day");
+
+    let wed = iterations_at(&pool, flow_id, ymd(2026, 1, 7).and_hms_opt(12, 0, 0).unwrap()).await;
+    assert_eq!(format!("{:?}", wed[0].status), "Active", "the week has not passed");
+    assert!(wed[0].instances[0].past, "but Tuesday has");
+}
+
+#[tokio::test]
+async fn an_item_with_three_cycle_pairs_renders_three_instances_each_with_its_own_window() {
+    let pool = helpers::test_pool().await;
+    let day = ymd(2026, 1, 5);
+    // Morning, Noon and Evening of the same day: three things to do, not one.
+    let (flow_id, _) = habit_with_cycles(
+        &pool,
+        "day",
+        None,
+        &[cycle("part_of_day", 1), cycle("part_of_day", 2), cycle("part_of_day", 4)],
+        day,
+        ConsumptionKind::Destructive,
+    )
+    .await;
+
+    let night = iterations_at(&pool, flow_id, day.and_hms_opt(23, 0, 0).unwrap()).await;
+    assert_eq!(night[0].instances.len(), 3, "three pairs, three instances");
+    let mut bands = Vec::new();
+    for instance in &night[0].instances {
+        let scope = instance.time_scope.as_ref().unwrap();
+        bands.push(scope_shape(&pool, scope.start_id).await.1);
+    }
+    assert_eq!(
+        bands,
+        vec![Some("morning".into()), Some("noon".into()), Some("evening".into())],
+        "each instance carries its own pair's window",
+    );
+    let cycle_ids: std::collections::HashSet<i64> =
+        night[0].instances.iter().map(|i| i.cycle_id).collect();
+    assert_eq!(cycle_ids.len(), 3, "each instance is keyed by its own pair");
+
+    // Only the ones whose windows have opened show up.
+    let morning = iterations_at(&pool, flow_id, day.and_hms_opt(8, 0, 0).unwrap()).await;
+    assert_eq!(morning[0].instances.len(), 1, "noon and evening have not come yet");
+}
+
+#[tokio::test]
+async fn a_phase_windowed_habit_resolves_its_items_cycles_too() {
+    let pool = helpers::test_pool().await;
+    let day = ymd(2026, 1, 5);
+    // An Evening-band Habit (18:00–22:00), recurring daily, with an Evening-scoped item.
+    let (flow_id, _) = habit_with_cycles(
+        &pool, "part", Some("evening"), &[cycle("part_of_day", 4)], day, ConsumptionKind::Destructive,
+    )
+    .await;
+
+    let evening = iterations_at(&pool, flow_id, day.and_hms_opt(19, 0, 0).unwrap()).await;
+    assert_eq!(format!("{:?}", evening[0].status), "Active");
+    assert_eq!(evening[0].instances.len(), 1);
+    assert!(!evening[0].instances[0].past);
+    let scope = evening[0].instances[0].time_scope.as_ref().unwrap();
+    assert_eq!(scope_shape(&pool, scope.start_id).await, ("part_of_day".to_string(), Some("evening".to_string())));
+
+    // The band ends at 22:00, and so does the iteration around it.
+    let late = iterations_at(&pool, flow_id, day.and_hms_opt(23, 0, 0).unwrap()).await;
+    assert!(late[0].instances[0].past);
+}
+
+#[tokio::test]
+async fn an_unpaired_item_still_renders_once_with_no_window_of_its_own() {
+    let pool = helpers::test_pool().await;
+    let day = ymd(2026, 1, 5);
+    let (flow_id, item_id) =
+        habit_with_cycles(&pool, "day", None, &[], day, ConsumptionKind::Destructive).await;
+
+    let noon = iterations_at(&pool, flow_id, day.and_hms_opt(12, 0, 0).unwrap()).await;
+    assert_eq!(noon[0].instances.len(), 1);
+    let instance = &noon[0].instances[0];
+    assert_eq!(instance.item_id, item_id);
+    assert_eq!(instance.cycle_id, NO_CYCLE);
+    assert!(instance.time_scope.is_none(), "no pair, no window — it inherits the iteration's");
+    assert!(!instance.past);
+}
+
+#[tokio::test]
+async fn each_occurrence_of_an_item_is_completed_separately() {
+    let pool = helpers::test_pool().await;
+    let day = ymd(2026, 1, 5);
+    let (flow_id, item_id) = habit_with_cycles(
+        &pool,
+        "day",
+        None,
+        &[cycle("part_of_day", 1), cycle("part_of_day", 4)],
+        day,
+        ConsumptionKind::Accumulating,
+    )
+    .await;
+
+    let now = day.and_hms_opt(23, 0, 0).unwrap();
+    let iterations = iterations_at(&pool, flow_id, now).await;
+    let scope = iterations[0].anchor_scope_id;
+    let pairs: Vec<i64> = iterations[0].instances.iter().map(|i| i.cycle_id).collect();
+    assert_eq!(pairs.len(), 2);
+
+    // The root plus both occurrences: completing only the first leaves the iteration open.
+    let mark = |cycle_id: i64, item_type: &'static str, id: i64| {
+        let pool = pool.clone();
+        async move {
+            helpers::session_factory(&pool).connect().await.unwrap().flows()
+                .set_item_status(
+                    FlowId(flow_id),
+                    &HabitInstanceRef {
+                        item_type: item_type.to_string(),
+                        item_id: id,
+                        iteration_scope_id: scope,
+                        cycle_id,
+                    },
+                    Some("done"),
+                    1_767_600_000_000,
+                )
+                .await
+                .unwrap();
+        }
+    };
+    mark(NO_CYCLE, "flow_root", flow_id).await;
+    mark(pairs[0], "flow_task", item_id).await;
+    assert_ne!(
+        format!("{:?}", iterations_at(&pool, flow_id, now).await[0].status),
+        "Done",
+        "the evening occurrence is still outstanding",
+    );
+
+    mark(pairs[1], "flow_task", item_id).await;
+    assert_eq!(format!("{:?}", iterations_at(&pool, flow_id, now).await[0].status), "Done");
+
+    let statuses = helpers::session_factory(&pool).connect().await.unwrap().flows().list_item_statuses(FlowId(flow_id)).await.unwrap();
+    assert_eq!(statuses.len(), 3, "root plus one row per occurrence");
+    let keyed: std::collections::HashSet<(String, i64, i64)> =
+        statuses.iter().map(|s| (s.item_type.clone(), s.item_id, s.cycle_id)).collect();
+    assert!(keyed.contains(&("flow_task".to_string(), item_id, pairs[0])));
+    assert!(keyed.contains(&("flow_task".to_string(), item_id, pairs[1])));
 }

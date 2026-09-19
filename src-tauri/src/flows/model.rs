@@ -2,6 +2,8 @@
 
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::tasks::model::TimeScope;
+
 /// Identifies a flow row by its primary key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FlowId(pub i64);
@@ -538,7 +540,46 @@ pub enum IterationStatus {
     Expired,
 }
 
-/// One derived Habit iteration: its ordinal, the scope anchoring its window, and current state.
+/// Sentinel `cycle_id` for an occurrence that came from no cycle pair — an item that declares
+/// none, and the flow root, which never has any. Zero rather than `NULL` because the value is part
+/// of a UNIQUE key, and SQLite counts NULLs as distinct.
+pub const NO_CYCLE: i64 = 0;
+
+/// One **virtual instance** of a flow item inside one Habit iteration: which item it draws, which
+/// of that item's cycle pairs produced it, and the concrete window that pair resolves to within
+/// this iteration.
+///
+/// An item with N pairs contributes N of these, exactly as `start` materialises N real nodes from
+/// it. An item with no pairs contributes one, with `cycle_id` = [`NO_CYCLE`] and no window of its
+/// own — it is relevant for as long as the iteration is.
+///
+/// The windows are resolved **here**, not in the frontend, because `start` resolves them here too
+/// (`resolve_pair` / `offset_scope`, over the scope table) and a second implementation of the same
+/// offset arithmetic would eventually disagree with this one about what "the 2nd day of week 3"
+/// means.
+///
+/// An occurrence whose window has not opened yet is not in the list at all — the same rule one
+/// level down that withholds an iteration until its own window has begun.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HabitInstance {
+    /// Which flow-item table the instance draws (`flow_goal` / `flow_task`).
+    pub item_type: String,
+    /// The flow item's id.
+    pub item_id: i64,
+    /// The cycle pair that produced this occurrence, or [`NO_CYCLE`] when the item declares none.
+    pub cycle_id: i64,
+    /// The occurrence's resolved Cycle Scope, or `None` when it has no pair (it then inherits the
+    /// iteration's own window).
+    pub time_scope: Option<TimeScope>,
+    /// The occurrence's resolved Cycle Plan, when its pair carries one.
+    pub plan: Option<TimeScope>,
+    /// Whether this occurrence's own window has passed, under the Habit's Consumption — a
+    /// Destructive Habit's Morning item is past from noon, while its iteration is still open.
+    pub past: bool,
+}
+
+/// One derived Habit iteration: its ordinal, the scope anchoring its window, current state, and the
+/// instances it renders.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct HabitIteration {
     /// Zero-based ordinal from the Repetition Start.
@@ -549,6 +590,29 @@ pub struct HabitIteration {
     pub anchor_date: String,
     /// Derived state on the reference day.
     pub status: IterationStatus,
+    /// Every occurrence this iteration renders, in item order and then pair order. Empty from the
+    /// pure classifier, which has no calendar; filled by [`generate_habit_iterations`].
+    ///
+    /// [`generate_habit_iterations`]: crate::flows::generate_habit_iterations
+    pub instances: Vec<HabitInstance>,
+}
+
+/// Names one virtual Habit instance, as its Modification row is keyed: which item (or the
+/// `flow_root` sentinel), which iteration, and which of the item's cycle pairs drew it.
+///
+/// The four travel together because they are one identity — an item with a morning and an evening
+/// pair has two instances in the same iteration, and three of the four fields would name both.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct HabitInstanceRef {
+    /// `flow_goal`, `flow_task`, or the `flow_root` sentinel.
+    pub item_type: String,
+    /// The flow item's id, or the flow id for the root.
+    pub item_id: i64,
+    /// The scope anchoring the iteration this instance belongs to.
+    pub iteration_scope_id: i64,
+    /// The cycle pair that drew it, or [`NO_CYCLE`] when the item declares none.
+    #[serde(default)]
+    pub cycle_id: i64,
 }
 
 /// One instance's divergent **status** for a Habit iteration — a non-tombstoned Modification (e.g.
@@ -562,6 +626,10 @@ pub struct HabitItemStatus {
     pub item_id: i64,
     /// The iteration scope the status applies to.
     pub iteration_scope_id: i64,
+    /// Which of the item's cycle pairs the status belongs to, or [`NO_CYCLE`] for an item with
+    /// none (and for the root). Two pairs on one item are two things to complete on the same day,
+    /// so the iteration scope alone no longer identifies one instance.
+    pub cycle_id: i64,
     /// The stored status (e.g. `in_progress`, `done`).
     pub status: String,
 }

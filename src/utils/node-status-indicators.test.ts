@@ -77,7 +77,7 @@ describe("deriveStatusIndicators", () => {
 
   it("shows a flow-instance mark for a materialized (fromFlow) node and a virtual habit instance", () => {
     expect(types(node("task", { status: "todo", fromFlow: true }))).toEqual(["flowInstance"]);
-    const habit = node("task", { status: "todo", habitItem: { flowId: 1, itemType: "flow_root", itemId: 1, scopeId: 5 } });
+    const habit = node("task", { status: "todo", habitItem: { flowId: 1, itemType: "flow_root", itemId: 1, scopeId: 5, cycleId: 0 } });
     expect(types(habit)).toEqual(["flowInstance"]);
   });
 

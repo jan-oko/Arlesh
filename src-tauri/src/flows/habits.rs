@@ -65,7 +65,35 @@ fn iteration(slot: &SlotWindow, status: IterationStatus) -> HabitIteration {
         anchor_scope_id: slot.scope_id,
         anchor_date: slot.start.format("%Y-%m-%d").to_string(),
         status,
+        // Empty here by construction: resolving an occurrence's window is calendar work, and this
+        // module deliberately has none. The repository fills it after classification.
+        instances: Vec::new(),
     }
+}
+
+/// Whether one **occurrence** inside an iteration counts as past — the Consumption rule the
+/// iteration itself is classified by, applied one level down to the occurrence's own window.
+///
+/// A Cycle Scope gives an occurrence a window of its own, strictly inside the iteration's. Under
+/// **Destructive** that window is what bounds it: a Morning item is past from noon, hours before
+/// the day it sits in ends, which is the whole point of scoping it to the morning. Under
+/// **Accumulating** nothing lapses on the way past — an overlapping Habit's unfinished occurrence
+/// piles up exactly as its unfinished iteration does, and if a morning routine should vanish at
+/// noon, Destructive is what says so.
+///
+/// An iteration that is itself Lapsed or Missed carries everything in it with it, whatever its
+/// Consumption: a Blocking `latest` skip is not a window passing, and nothing under a skipped
+/// iteration is still open.
+pub fn instance_is_past(
+    consumption: Consumption,
+    iteration_status: IterationStatus,
+    window_end: NaiveDateTime,
+    now: NaiveDateTime,
+) -> bool {
+    if matches!(iteration_status, IterationStatus::Lapsed | IterationStatus::Missed) {
+        return true;
+    }
+    consumption == Consumption::Destructive && window_end <= now
 }
 
 /// Classifies the started iterations of a Habit at `now`.
@@ -467,5 +495,59 @@ mod verdict_window_tests {
             statuses(&iterations),
             "nothing setting a Verdict Window means nothing bounds it, as for a real Commitment"
         );
+    }
+
+    #[test]
+    fn a_destructive_occurrence_is_past_once_its_own_window_ends() {
+        // A Morning band inside an open day: over at noon, hours before the iteration is.
+        let morning_end = at("2026-01-05T12:00:00");
+        assert!(!instance_is_past(
+            Consumption::Destructive,
+            IterationStatus::Active,
+            morning_end,
+            at("2026-01-05T09:00:00"),
+        ));
+        assert!(instance_is_past(
+            Consumption::Destructive,
+            IterationStatus::Active,
+            morning_end,
+            at("2026-01-05T13:00:00"),
+        ));
+    }
+
+    #[test]
+    fn an_accumulating_occurrence_survives_its_own_window() {
+        for consumption in
+            [Consumption::Overlapping, Consumption::Blocking(Catchup::Next)]
+        {
+            assert!(
+                !instance_is_past(
+                    consumption,
+                    IterationStatus::Active,
+                    at("2026-01-05T12:00:00"),
+                    at("2026-01-05T23:00:00"),
+                ),
+                "an accumulating habit's occurrence piles up like its iteration does"
+            );
+        }
+    }
+
+    #[test]
+    fn a_lapsed_or_missed_iteration_carries_its_occurrences_with_it() {
+        // Window still open by the clock, but the iteration around it is not.
+        let later = at("2026-01-09T00:00:00");
+        let now = at("2026-01-05T09:00:00");
+        for status in [IterationStatus::Lapsed, IterationStatus::Missed] {
+            assert!(instance_is_past(Consumption::Overlapping, status, later, now));
+        }
+    }
+
+    #[test]
+    fn an_active_or_done_iteration_leaves_an_unexpired_occurrence_open() {
+        let later = at("2026-01-09T00:00:00");
+        let now = at("2026-01-05T09:00:00");
+        for status in [IterationStatus::Active, IterationStatus::Done, IterationStatus::Expired] {
+            assert!(!instance_is_past(Consumption::Destructive, status, later, now));
+        }
     }
 }

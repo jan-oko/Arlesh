@@ -66,7 +66,7 @@ export function useNodeActions({
       // verdict controls live in List View beside every other commitment's. Like a real Commitment,
       // it has no status control on the canvas at all.
       if (node.habitItem !== undefined && node.kind !== "commitment") {
-        const { flowId, itemType, itemId, scopeId } = node.habitItem;
+        const { flowId, itemType, itemId, scopeId, cycleId } = node.habitItem;
         let next: string | null;
         if (node.kind === "goal") {
           next = node.status === GOAL_STATUS.ACHIEVED ? null : TASK_STATUS.DONE;
@@ -74,7 +74,7 @@ export function useNodeActions({
           const cycled = nextTaskStatus(node.status ?? TASK_STATUS.TODO);
           next = cycled === TASK_STATUS.TODO ? null : cycled;
         }
-        void setHabitItemStatus(flowId, itemType, itemId, scopeId, next, Date.now())
+        void setHabitItemStatus(flowId, itemType, itemId, scopeId, cycleId, next, Date.now())
           .then(() => reload())
           .catch((err: unknown) => console.error(`${LOG_PREFIX} habit item status failed:`, err));
         return;

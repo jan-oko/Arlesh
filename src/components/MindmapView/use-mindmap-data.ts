@@ -24,9 +24,10 @@ import type { Goal } from "@/api/goals";
 import type { Info } from "@/api/infos";
 import type {
   Flow, CreateFlowRequest, UpdateFlowRequest,
-  FlowGoal, FlowTask, FlowItemCycle, FlowDependency, FlowItemType, HabitIteration, HabitItemStatus,
-  InstanceType, TargetRef,
+  FlowGoal, FlowTask, FlowItemCycle, FlowDependency, FlowItemType, HabitInstance, HabitIteration,
+  HabitItemStatus, InstanceType, TargetRef,
 } from "@/api/flows";
+import { NO_CYCLE } from "@/api/flows";
 import type { ItemLifecycle } from "@/api/scope-lifecycle";
 import type { MindmapNode, NodeKind, FlowCyclePair, FlowItemDep } from "@/utils/tree-layout";
 import { entityNodeId, flowTargetNodeId } from "@/utils/tree-layout";
@@ -160,53 +161,147 @@ function iterationAnchorLabel(flow: Flow, iteration: HabitIteration, labels: Sco
   return kind === null ? iteration.anchor_date : formatScopeCore(kind, iteration.anchor_date, labels);
 }
 
+/** One flow item as the iteration builder reads it, with the flow-item table it came from. */
+interface TemplateItem {
+  itemType: FlowItemType;
+  item: FlowGoal | FlowTask;
+}
+
+/** An item's key in the template map and in the status overlay: `"flow_task-12"`. */
+function itemKey(itemType: string, itemId: number): string {
+  return `${itemType}-${itemId}`;
+}
+
+/** The in-flow parent key of a template item, or `null` when it hangs directly on the flow. */
+function parentKey(item: FlowGoal | FlowTask): string | null {
+  return item.parent_type === "flow_goal" || item.parent_type === "flow_task"
+    ? itemKey(item.parent_type, item.parent_id)
+    : null;
+}
+
 /**
- * Builds the flow's template items as **virtual**, per-iteration instances under one iteration root,
- * mirroring the template's parent hierarchy. Each item is individually completable (`habitItem`); its
- * status comes from `statuses` (`"itemType-itemId-scopeId"` → stored status). Returns the items
- * parented on the flow (the iteration root's direct children); nested items attach under their parent.
+ * The template's hierarchy: the items that hang directly on the flow (in template order), and each
+ * item's children by parent key.
+ *
+ * An item whose named parent is not in this flow's template is treated as a root rather than
+ * dropped — the same last resort the iteration root itself gets when its host is filtered out.
+ */
+function templateHierarchy(items: ReadonlyMap<string, TemplateItem>): {
+  roots: TemplateItem[];
+  childrenOf: Map<string, TemplateItem[]>;
+} {
+  const roots: TemplateItem[] = [];
+  const childrenOf = new Map<string, TemplateItem[]>();
+  for (const entry of items.values()) {
+    const parent = parentKey(entry.item);
+    if (parent === null || !items.has(parent)) {
+      roots.push(entry);
+      continue;
+    }
+    const siblings = childrenOf.get(parent);
+    if (siblings === undefined) childrenOf.set(parent, [entry]);
+    else siblings.push(entry);
+  }
+  return { roots, childrenOf };
+}
+
+/**
+ * One occurrence of one template item, as a virtual node.
+ *
+ * The window is the backend's: `instance.time_scope` is the item's Cycle Scope resolved against
+ * *this* iteration's window, and `instance.past` is whether that window has gone under the Habit's
+ * Consumption. Both are stamped like any other node's, which is what makes a Morning item read
+ * Active in the morning and Lapsed in the afternoon instead of Active all day.
+ */
+function occurrenceNode(
+  flow: Flow,
+  iteration: HabitIteration,
+  entry: TemplateItem,
+  instance: HabitInstance,
+  statuses: ReadonlyMap<string, string>,
+  color: string | undefined,
+  expired: boolean,
+): MindmapNode {
+  const { itemType, item } = entry;
+  const scopeId = iteration.anchor_scope_id;
+  const raw = statuses.get(`${itemKey(itemType, item.id)}-${instance.cycle_id}-${scopeId}`);
+  const done = raw === "done";
+  return {
+    id: `habititem-${itemType}-${item.id}-${instance.cycle_id}-${iteration.index}-virtual`,
+    kind: itemType === "flow_goal" ? "goal" : "task",
+    title: item.title,
+    status: instanceStatus(itemType === "flow_goal", raw),
+    virtual: true,
+    habitItem: {
+      flowId: flow.id, itemType, itemId: item.id, scopeId, cycleId: instance.cycle_id,
+    },
+    ...(color !== undefined ? { color } : {}),
+    timeScope: instance.time_scope,
+    plan: instance.plan,
+    ...(expired ? EXPIRED_LIFECYCLE : workIterationLifecycle(instance.past, done)),
+    isPrivate: item.is_private,
+    position: item.position,
+    tagIds: [],
+    children: [],
+  };
+}
+
+/**
+ * Builds one iteration's **virtual** instances under its root, mirroring the template's hierarchy.
+ *
+ * The iteration carries its own occurrence list, resolved backend-side: an item with N cycle pairs
+ * appears N times — SPEC's "a flow item with N pairs produces N items", which starting the flow has
+ * always obeyed — each with its own resolved window, and an occurrence whose window has not opened
+ * yet is not in the list at all.
+ *
+ * An item that contributes no occurrence therefore takes its **whole subtree** with it: children
+ * nest under their parent's first occurrence (as they do when the flow is started), so with no
+ * parent node there is nowhere for them to hang, and hoisting them to the iteration root would
+ * redraw the hierarchy rather than defer it. They appear together when the parent's window opens.
+ *
+ * Each occurrence is individually completable (`habitItem`), keyed by its cycle pair as well as its
+ * item; its status comes from `statuses` (`"itemType-itemId-cycleId-scopeId"` → stored status).
+ * Returns the occurrences parented on the flow — the iteration root's direct children.
  */
 function buildIterationItems(
   flow: Flow,
-  scopeId: number,
-  index: number,
-  items: Array<{ itemType: FlowItemType; item: FlowGoal | FlowTask }>,
+  iteration: HabitIteration,
+  items: ReadonlyMap<string, TemplateItem>,
   statuses: ReadonlyMap<string, string>,
   color: string | undefined,
-  past: boolean,
   expired: boolean,
 ): MindmapNode[] {
-  const nodeByItem = new Map<string, MindmapNode>();
-  for (const { itemType, item } of items) {
-    const raw = statuses.get(`${itemType}-${item.id}-${scopeId}`);
-    const done = raw === "done";
-    nodeByItem.set(`${itemType}-${item.id}`, {
-      id: `habititem-${itemType}-${item.id}-${index}-virtual`,
-      kind: itemType === "flow_goal" ? "goal" : "task",
-      title: item.title,
-      status: instanceStatus(itemType === "flow_goal", raw),
-      virtual: true,
-      habitItem: { flowId: flow.id, itemType, itemId: item.id, scopeId },
-      ...(color !== undefined ? { color } : {}),
-      ...(expired ? EXPIRED_LIFECYCLE : workIterationLifecycle(past, done)),
-      isPrivate: item.is_private,
-      position: item.position,
-      tagIds: [],
-      children: [],
-    });
+  const occurrences = new Map<string, MindmapNode[]>();
+  for (const instance of iteration.instances) {
+    const key = itemKey(instance.item_type, instance.item_id);
+    const entry = items.get(key);
+    if (entry === undefined) continue;
+    const node = occurrenceNode(flow, iteration, entry, instance, statuses, color, expired);
+    const drawn = occurrences.get(key);
+    if (drawn === undefined) occurrences.set(key, [node]);
+    else drawn.push(node);
   }
-  const roots: MindmapNode[] = [];
-  for (const { itemType, item } of items) {
-    const node = nodeByItem.get(`${itemType}-${item.id}`);
-    if (node === undefined) continue;
-    const parent =
-      item.parent_type === "flow_goal" || item.parent_type === "flow_task"
-        ? nodeByItem.get(`${item.parent_type}-${item.parent_id}`)
-        : undefined;
-    if (parent !== undefined) parent.children.push(node);
-    else roots.push(node);
+
+  const { roots, childrenOf } = templateHierarchy(items);
+  const attached: MindmapNode[] = [];
+  const pending: Array<{ entry: TemplateItem; host: MindmapNode[] }> = roots.map((entry) => ({
+    entry,
+    host: attached,
+  }));
+  for (let cursor = 0; cursor < pending.length; cursor += 1) {
+    const next = pending[cursor];
+    if (next === undefined) continue;
+    const key = itemKey(next.entry.itemType, next.entry.item.id);
+    const drawn = occurrences.get(key) ?? [];
+    const [first] = drawn;
+    // No occurrence: this item's window has not opened, and neither has its subtree's place.
+    if (first === undefined) continue;
+    next.host.push(...drawn);
+    for (const child of childrenOf.get(key) ?? []) {
+      pending.push({ entry: child, host: first.children });
+    }
   }
-  return roots;
+  return attached;
 }
 
 /**
@@ -250,12 +345,20 @@ export function injectHabitInstances(
     // is filtered out of the rendered tree still has somewhere to hang its iterations.
     const host = findNode(root, flowTargetNodeId(flow)) ?? findNode(root, `flow-${flow.id}`);
     if (host === undefined) return;
-    const items: Array<{ itemType: FlowItemType; item: FlowGoal | FlowTask }> = [
+    const templateItems: TemplateItem[] = [
       ...flowGoals.filter((g) => g.flow_id === flow.id).map((item) => ({ itemType: "flow_goal" as const, item })),
       ...flowTasks.filter((t) => t.flow_id === flow.id).map((item) => ({ itemType: "flow_task" as const, item })),
     ];
+    const items = new Map(
+      templateItems.map((entry) => [itemKey(entry.itemType, entry.item.id), entry]),
+    );
+    // Keyed by the cycle pair too: one item can draw several occurrences in a single iteration, and
+    // completing the morning one must not tick the evening one off with it.
     const statuses = new Map(
-      (statusesByFlow[i] ?? []).map((s) => [`${s.item_type}-${s.item_id}-${s.iteration_scope_id}`, s.status]),
+      (statusesByFlow[i] ?? []).map((s) => [
+        `${itemKey(s.item_type, s.item_id)}-${s.cycle_id}-${s.iteration_scope_id}`,
+        s.status,
+      ]),
     );
     for (const iteration of iterations) {
       const scopeId = iteration.anchor_scope_id;
@@ -265,7 +368,7 @@ export function injectHabitInstances(
       // in this kind ever concludes an outcome the user did not state.
       const expired = iteration.status === "expired";
       // The root is its own instance (`flow_root`, keyed by the flow id) with its own status.
-      const rootRaw = statuses.get(`flow_root-${flow.id}-${scopeId}`);
+      const rootRaw = statuses.get(`${itemKey("flow_root", flow.id)}-${NO_CYCLE}-${scopeId}`);
       const rootDone = rootRaw === "done";
       const isCommitment = flow.instance_type === "commitment";
       const rootVerdict = instanceVerdict(rootRaw);
@@ -279,7 +382,9 @@ export function injectHabitInstances(
           ? { verdict: rootVerdict }
           : { status: instanceStatus(flow.instance_type === "goal", rootRaw) }),
         virtual: true,
-        habitItem: { flowId: flow.id, itemType: "flow_root", itemId: flow.id, scopeId },
+        habitItem: {
+          flowId: flow.id, itemType: "flow_root", itemId: flow.id, scopeId, cycleId: NO_CYCLE,
+        },
         // Iterations are injected after buildTree's colour propagation, so inherit the host's
         // already-resolved aspect colour directly.
         ...(host.color !== undefined ? { color: host.color } : {}),
@@ -289,7 +394,7 @@ export function injectHabitInstances(
         isPrivate: flow.is_private,
         position: iteration.index,
         tagIds: [],
-        children: buildIterationItems(flow, scopeId, iteration.index, items, statuses, host.color, past, expired),
+        children: buildIterationItems(flow, iteration, items, statuses, host.color, expired),
       });
     }
   });
