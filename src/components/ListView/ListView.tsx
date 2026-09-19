@@ -25,6 +25,7 @@ import type { Position } from "@/utils/tree-layout";
 import styles from "./ListView.module.css";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
 import { useSubtreeNav } from "@/hooks/use-subtree-nav";
+import { useFullscreenStore } from "@/stores/use-fullscreen-store";
 import { useDisplayStore } from "@/stores/use-display-store";
 
 /** A flat list lays out no nodes, so every anchored notice falls back to its fixed spot. */
@@ -47,6 +48,7 @@ export default function ListView() {
   const pathHeaderIcons = useDisplayStore((s) => s.pathHeaderIcons);
   const { subtreeRootId, onExitSubtree, onExitToRoot } = useSubtreeNav(tree);
 
+  const toggleFullscreen = useFullscreenStore((s) => s.toggle);
   const listFilter = useListFilterStore((s) => s.filter);
   const addPill = useListFilterStore((s) => s.addPill);
   const setListPreset = useListFilterStore((s) => s.setPreset);
@@ -138,6 +140,7 @@ export default function ListView() {
     selectedTaskId,
     selectedCommitmentId,
     selectedRowId: activeSelectedId,
+    onToggleFullscreen: toggleFullscreen,
     isSelectedBlocked,
     onNavigate: handleNavigate,
     onCycleStatus,

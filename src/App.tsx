@@ -5,6 +5,7 @@ import ActiveTab from "@/components/ActiveTab/ActiveTab";
 import HotkeysModal from "@/components/HotkeysModal/HotkeysModal";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { useHotkeysStore } from "@/stores/use-hotkeys-store";
+import { useFullscreenStore } from "@/stores/use-fullscreen-store";
 import { useTabsStore } from "@/stores/use-tabs-store";
 import { TabStoresContext } from "@/stores/tab-stores-context";
 import { useHotkeys } from "@/hooks/use-hotkeys";
@@ -15,6 +16,7 @@ import styles from "./App.module.css";
 export default function App() {
   const theme = useThemeStore((s) => s.theme);
   const hotkeysOpen = useHotkeysStore((s) => s.isOpen);
+  const isFullscreen = useFullscreenStore((s) => s.isFullscreen);
   const closeHotkeys = useHotkeysStore((s) => s.close);
   const tabs = useTabsStore((s) => s.tabs);
   const activeTabId = useTabsStore((s) => s.activeTabId);
@@ -36,7 +38,7 @@ export default function App() {
 
   return (
     <div className={styles.shell}>
-      <TabStrip />
+      {!isFullscreen && <TabStrip />}
       {active !== undefined && (
         <TabStoresContext.Provider value={active.stores}>
           <ActiveTab />

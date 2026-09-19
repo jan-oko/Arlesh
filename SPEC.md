@@ -294,6 +294,21 @@ These are **global** bindings: unlike the view-level ones they stay live while a
 cheat-sheet is open, because switching tabs is never ambiguous about what it would act on. They are
 still suppressed inside a text input, like every other binding.
 
+**The board alone.** `F11` hides the tab strip and the top bar, leaving the view filling the window;
+`F11` again brings them back. Bare `F` does the same, but **only when nothing is selected** — with a
+selection, `F` keeps its existing meaning of converting that node to a Flow, and in List View the
+same rule holds so one gesture does not mean two things depending on which view you are in. The two
+`F` bindings carry complementary guards, so exactly one is ever eligible and the order between them
+cannot matter.
+
+This hides *Arlesh's own* chrome and leaves the OS window alone, so it works windowed as well as
+maximised. The mode is **app-wide, not per tab** — it is a way of looking at the app for a while
+rather than a property of the place you are looking at, and hiding the strip in one tab while
+another kept it would make switching tabs resize the board. It is deliberately **not persisted**:
+reopening Arlesh with no chrome and no visible way back is a bad first second, and re-entering costs
+one keystroke. Every tab shortcut stays live while the strip is hidden — the bindings never depended
+on it being drawn.
+
 **Persistence.** The tab list, its order, which tab was active, and each tab's subtree root, view,
 orientation and both filter sets are restored on reopening. Selection, collapsed nodes and pan/zoom
 are **not**: they are working state, and coming back to a stale selection is worse than coming back

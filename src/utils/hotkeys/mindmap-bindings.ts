@@ -49,6 +49,7 @@ export interface MindmapContext {
   onFocusRoot: () => void;
   onCenterOnNode: (id: string) => void;
   onConvertToFlow: (id: string) => void;
+  onToggleFullscreen: () => void;
   onExtendSelection: (key: ArrowKey) => void;
   /** Puts the anchor Task in the backlog, or takes it out. Acts on the anchor, never the whole
    * multi-selection — setting work aside is a judgement about one thing at a time. */
@@ -329,6 +330,17 @@ export const MINDMAP_BINDINGS: readonly Binding<MindmapContext>[] = [
     labelKey: "convertToFlow",
     when: hasSelection,
     run: (c) => { if (c.selectedNodeId !== null) c.onConvertToFlow(c.selectedNodeId); },
+  },
+  {
+    // The same key, with the complementary guard: F converts the selection to a Flow, and with
+    // nothing selected there is nothing to convert, so it shows the board alone instead. The
+    // dispatcher takes the first entry whose chord matches *and* whose guard passes, so the two
+    // never contend — but they are declared adjacent because that is the only reason order here
+    // could ever matter.
+    id: "mindmap.toggleFullscreen", section: "mindmap", chord: { code: "KeyF" },
+    labelKey: "toggleFullscreen",
+    when: (c) => c.selectedNodeId === null,
+    run: (c) => c.onToggleFullscreen(),
   },
   {
     id: "mindmap.openEditor", section: "mindmap", chord: { code: "KeyE" },

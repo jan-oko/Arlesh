@@ -22,6 +22,7 @@ import MindmapCanvas, { type MindmapCanvasHandle } from "@/components/MindmapCan
 import DragGhost from "@/components/DragGhost/DragGhost";
 import DragPlaceholder from "@/components/DragPlaceholder/DragPlaceholder";
 import { useFilterStore } from "@/stores/use-filter-store";
+import { useFullscreenStore } from "@/stores/use-fullscreen-store";
 import { useViewStore } from "@/stores/use-view-store";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
 import { useSubtreeNav } from "@/hooks/use-subtree-nav";
@@ -106,6 +107,7 @@ export default function MindmapView() {
   // The cheat-sheet overlay gates background shortcuts the same way an open modal does.
   const isInputCaptured = useIsInputCaptured();
   const filter = useFilterStore((s) => s.filter);
+  const toggleFullscreen = useFullscreenStore((s) => s.toggle);
   const setStatusMode = useFilterStore((s) => s.setStatusMode);
   const toggleFilterPopover = useFilterStore((s) => s.toggleFilterPopover);
   const displayRoot = useMemo<MindmapNode>(() => {
@@ -507,6 +509,7 @@ export default function MindmapView() {
     onFocusRoot: () => selectNode(subtreeRootId ?? tree.id),
     onCenterOnNode: onCenterOnSelected,
     onConvertToFlow: onConvertToFlowKey,
+    onToggleFullscreen: toggleFullscreen,
     onExtendSelection: extendSelection,
     onToggleBacklog: toggleBacklog,
     findNodeById,

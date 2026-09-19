@@ -66,6 +66,7 @@ function baseOptions(overrides: Partial<Parameters<typeof useKeyboardMindmap>[0]
     onToggleFilter: vi.fn(),
     onSetStatusMode: vi.fn() as (mode: StatusMode) => void,
     onToggleBacklog: vi.fn(),
+    onToggleFullscreen: vi.fn(),
     onFocusRoot: vi.fn(),
     onCenterOnNode: vi.fn(),
     onConvertToFlow: vi.fn(),
@@ -773,11 +774,19 @@ describe("useKeyboardMindmap — f converts an applicable node to a flow", () =>
     expect(opts.onConvertToFlow).toHaveBeenCalledWith("task-1");
   });
 
-  it("does nothing when no node is selected", () => {
+  it("shows the board alone when no node is selected, since there is nothing to convert", () => {
     const opts = baseOptions({ selectedNodeId: null });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("f");
     expect(opts.onConvertToFlow).not.toHaveBeenCalled();
+    expect(opts.onToggleFullscreen).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not show the board alone when a node IS selected — the conversion wins the key", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("f");
+    expect(opts.onToggleFullscreen).not.toHaveBeenCalled();
   });
 
   it("Alt+F still toggles the filter menu and does not convert", () => {
@@ -786,6 +795,7 @@ describe("useKeyboardMindmap — f converts an applicable node to a flow", () =>
     fireKey("f", { altKey: true });
     expect(opts.onToggleFilter).toHaveBeenCalledTimes(1);
     expect(opts.onConvertToFlow).not.toHaveBeenCalled();
+    expect(opts.onToggleFullscreen).not.toHaveBeenCalled();
   });
 });
 

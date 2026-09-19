@@ -3,6 +3,7 @@ import MindmapView from "@/components/MindmapView/MindmapView";
 import ListView from "@/components/ListView/ListView";
 import { useViewStore } from "@/stores/use-view-store";
 import { useHotkeysStore } from "@/stores/use-hotkeys-store";
+import { useFullscreenStore } from "@/stores/use-fullscreen-store";
 import { useHotkeys } from "@/hooks/use-hotkeys";
 import { useTabTitle } from "@/hooks/use-tab-title";
 import { GLOBAL_BINDINGS } from "@/utils/hotkeys/global-bindings";
@@ -19,13 +20,19 @@ export default function ActiveTab() {
   const view = useViewStore((s) => s.view);
   const toggleView = useViewStore((s) => s.toggleView);
   const toggleHotkeys = useHotkeysStore((s) => s.toggle);
+  const isFullscreen = useFullscreenStore((s) => s.isFullscreen);
+  const toggleFullscreen = useFullscreenStore((s) => s.toggle);
 
   useTabTitle();
-  useHotkeys(GLOBAL_BINDINGS, { onToggleView: toggleView, onToggleHotkeys: toggleHotkeys }, true);
+  useHotkeys(
+    GLOBAL_BINDINGS,
+    { onToggleView: toggleView, onToggleHotkeys: toggleHotkeys, onToggleFullscreen: toggleFullscreen },
+    true,
+  );
 
   return (
     <>
-      <TopBar />
+      {!isFullscreen && <TopBar />}
       {view === "mindmap" ? <MindmapView /> : <ListView />}
     </>
   );

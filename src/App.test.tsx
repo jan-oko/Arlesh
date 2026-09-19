@@ -5,6 +5,7 @@ import { useViewStore } from "@/stores/use-view-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { reloadTabs, useTabsStore } from "@/stores/use-tabs-store";
 import { closeWindow } from "@/api/window";
+import { useFullscreenStore } from "@/stores/use-fullscreen-store";
 
 vi.mock("@/components/TopBar/TopBar", () => ({ default: () => <div data-testid="top-bar" /> }));
 vi.mock("@/components/MindmapView/MindmapView", () => ({ default: () => <div data-testid="mindmap-view" /> }));
@@ -19,6 +20,7 @@ beforeEach(() => {
   mockCloseWindow.mockClear();
   useViewStore.setState({ view: "mindmap" });
   useThemeStore.setState({ theme: "dark" });
+  useFullscreenStore.setState({ isFullscreen: false });
   document.documentElement.removeAttribute("data-theme");
 });
 
@@ -131,5 +133,50 @@ describe("tab shortcuts", () => {
     fireEvent.keyDown(window, { code: "KeyT", ctrlKey: true });
 
     expect(useTabsStore.getState().tabs).toHaveLength(2);
+  });
+});
+
+describe("the board alone (fullscreen)", () => {
+  it("normally shows both rows of chrome above the board", () => {
+    render(<App />);
+    expect(screen.getByRole("tablist")).toBeInTheDocument();
+    expect(screen.getByTestId("top-bar")).toBeInTheDocument();
+  });
+
+  it("F11 hides the tab strip and the top bar, leaving the view", () => {
+    render(<App />);
+    fireEvent.keyDown(window, { code: "F11" });
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("top-bar")).not.toBeInTheDocument();
+    expect(screen.getByTestId("mindmap-view")).toBeInTheDocument();
+  });
+
+  it("F11 again brings both back", () => {
+    render(<App />);
+    fireEvent.keyDown(window, { code: "F11" });
+    fireEvent.keyDown(window, { code: "F11" });
+    expect(screen.getByRole("tablist")).toBeInTheDocument();
+    expect(screen.getByTestId("top-bar")).toBeInTheDocument();
+  });
+
+  it("tab shortcuts stay live with the strip hidden — the bindings never depended on it", () => {
+    render(<App />);
+    fireEvent.keyDown(window, { code: "F11" });
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+    const before = useTabsStore.getState().tabs.length;
+    fireEvent.keyDown(window, { code: "KeyT", ctrlKey: true });
+    expect(useTabsStore.getState().tabs).toHaveLength(before + 1);
+  });
+
+  it("is not remembered: a fresh mount comes back with the chrome showing", () => {
+    const first = render(<App />);
+    fireEvent.keyDown(window, { code: "F11" });
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+    first.unmount();
+
+    // What a restart actually restores: whatever was persisted. The mode deliberately is not.
+    useFullscreenStore.setState({ isFullscreen: false });
+    render(<App />);
+    expect(screen.getByRole("tablist")).toBeInTheDocument();
   });
 });

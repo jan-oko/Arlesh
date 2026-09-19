@@ -45,6 +45,7 @@
   "nextTab": "Go to the next tab",
   "previousTab": "Go to the previous tab",
   "jumpToTab": "Jump to a tab by position (Ctrl+1 to Ctrl+9)",
+  "toggleFullscreen": "Show the board alone (hide the tabs and top bar)",
   "statusBacklog": "Status preset: Backlog",
   "toggleBacklog": "Put in / take out of the backlog",
   "markKept": "Mark the selected commitment kept (again to clear it)",
