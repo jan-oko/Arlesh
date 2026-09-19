@@ -56,3 +56,28 @@ describe("a tab's label", () => {
     expect(activeTitle()).toBe("CODE");
   });
 });
+
+describe("a tab that has been given a name", () => {
+  function activeCustomTitle(): string | null {
+    const { tabs, activeTabId } = useTabsStore.getState();
+    return tabs.find((tab) => tab.id === activeTabId)?.customTitle ?? null;
+  }
+
+  it("keeps it while the derived label goes on tracking where the tab is", () => {
+    // The two are separate fields precisely so this effect — which runs on every navigation — can
+    // keep writing the label without ever touching the name.
+    const active = useTabsStore.getState().activeTabId;
+    useTabsStore.getState().renameTab(active, "Today");
+    useMindmapStore.setState({ subtreeRootId: "project-1" });
+    renderHook(() => useTabTitle());
+
+    act(() => {
+      useMindmapStore.setState({
+        subtreeNav: { currentTitle: "CODE", rootTitle: "Arlesh", parentTitle: "Arlesh", parentSubtreeId: null },
+      });
+    });
+
+    expect(activeCustomTitle()).toBe("Today");
+    expect(activeTitle()).toBe("CODE");
+  });
+});

@@ -197,3 +197,41 @@ describe("a strip written by this build", () => {
     expect(restored?.stores.panZoom.getState().transform).toBeNull();
   });
 });
+
+describe("a tab's name in storage", () => {
+  it("comes back with the tab", () => {
+    const id = useTabsStore.getState().tabs[0]?.id ?? "";
+    useTabsStore.getState().setTabTitle(id, "CODE");
+    useTabsStore.getState().renameTab(id, "Today");
+
+    reloadTabs();
+
+    expect(useTabsStore.getState().tabs[0]?.customTitle).toBe("Today");
+    expect(useTabsStore.getState().tabs[0]?.title).toBe("CODE");
+  });
+
+  it("reads a strip written before tabs could be named as tabs with no names", () => {
+    // Exactly the shape the key held before `customTitle` existed. Left unhandled it rehydrates as
+    // `undefined`, which is neither a name nor the absence of one.
+    localStorage.setItem(TABS_STORAGE_KEY, JSON.stringify({
+      activeTabId: "tab-1",
+      tabs: [{ id: "tab-1", title: "CODE", state: { subtreeRootId: "project-1" } }],
+    }));
+
+    const stored = readPersistedTabs();
+
+    expect(stored?.tabs[0]?.customTitle).toBeNull();
+    expect(stored?.tabs[0]?.title).toBe("CODE");
+  });
+
+  it("gives a tab restored from that older strip its derived label", () => {
+    localStorage.setItem(TABS_STORAGE_KEY, JSON.stringify({
+      activeTabId: "tab-1",
+      tabs: [{ id: "tab-1", title: "CODE", state: { subtreeRootId: "project-1" } }],
+    }));
+
+    reloadTabs();
+
+    expect(useTabsStore.getState().tabs[0]?.customTitle).toBeNull();
+  });
+});

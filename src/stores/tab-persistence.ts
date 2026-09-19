@@ -15,11 +15,13 @@ const LEGACY_VIEW_KEY = "arlesh-view";
 const LEGACY_FILTER_KEY = "arlesh-filter";
 const LEGACY_LIST_FILTER_KEY = "arlesh-list-filter";
 
-/** One tab as it is written down: its identity, its label, and the state worth restoring. */
+/** One tab as it is written down: its identity, its two labels, and the state worth restoring. */
 export interface PersistedTab {
   id: string;
   /** The subtree root's title when it was last on screen; `null` for the whole-tree tab. */
   title: string | null;
+  /** The name the user gave the tab, or `null` — including for a tab stored before names existed. */
+  customTitle: string | null;
   state: TabState;
 }
 
@@ -95,7 +97,14 @@ function readTab(value: unknown): PersistedTab | null {
   if (!isRecord(value)) return null;
   const id = readString(value["id"]);
   if (id === null) return null;
-  return { id, title: readString(value["title"]), state: parseTabState(value["state"]) };
+  // `customTitle` post-dates the first stored strips, so a blob written without it must read as an
+  // unnamed tab rather than letting `undefined` through to a label that would render as nothing.
+  return {
+    id,
+    title: readString(value["title"]),
+    customTitle: readString(value["customTitle"]),
+    state: parseTabState(value["state"]),
+  };
 }
 
 /** The pre-tabs path-icon preference, so turning tabs on does not silently reset it. */

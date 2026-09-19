@@ -279,6 +279,27 @@ have to know that tabs exist. Each tab is labelled by the subtree it is rooted a
 whole tree is labelled **All** rather than left nameless. The strip offers a **+**, an **×** per
 tab, **middle-click** to close, and **drag** to reorder.
 
+**Naming a tab.** A tab can be given a name of its own — right-click it for a small menu of
+**Rename tab** and **Close tab** (the second doing exactly what the × does, last tab included).
+Rename turns the label into a text field in place: **Enter** commits, **Escape** cancels and leaves
+the name as it was, clicking away commits what was typed, and the field opens focused and selected.
+The strip truncates as it always did, so a long name reads in the tab's tooltip.
+
+The name is a **separate field beside the derived label**, not a value written into it. The label is
+rewritten from the subtree descriptor every time a tab is navigated, so a name stored there would
+survive exactly until the next navigation and then vanish with nothing said. Held beside it, the
+name simply wins while it is set while the label carries on being maintained underneath — which is
+also what makes clearing it safe: **committing an empty name takes the name off**, and the label
+that reappears is already the one for where the tab is now, not the one it had when it was named. An
+empty field shows that label as its placeholder, so what clearing would give back is on screen
+before you commit it. There is deliberately no second "reset" entry in the menu: emptying the field
+is the one way back, and a menu item that only sometimes applies is worse than a field that always
+does. A tab's name is never derived from anything, so nothing but the user ever changes it.
+
+The menu is its own component rather than the Mindmap's node menu generalised: every branch in that
+one asks a question about a node — its kind, its parent's kind, what it already contains, what is on
+the clipboard — and none of them can be asked of a tab.
+
 **Shortcuts** follow the browser conventions, and are declared in the same registry every other
 binding is (`src/utils/hotkeys/`), so the cheat-sheet lists them with the rest:
 
@@ -309,8 +330,9 @@ reopening Arlesh with no chrome and no visible way back is a bad first second, a
 one keystroke. Every tab shortcut stays live while the strip is hidden — the bindings never depended
 on it being drawn.
 
-**Persistence.** The tab list, its order, which tab was active, and each tab's subtree root, view,
-orientation and both filter sets are restored on reopening. Selection, collapsed nodes and pan/zoom
+**Persistence.** The tab list, its order, which tab was active, any name a tab was given, and each
+tab's subtree root, view, orientation and both filter sets are restored on reopening. A strip
+written down before tabs could be named comes back as tabs with no names, labelled as they were. Selection, collapsed nodes and pan/zoom
 are **not**: they are working state, and coming back to a stale selection is worse than coming back
 to none. A restored subtree root whose node no longer exists falls back to the true root rather than
 leaving a tab rooted at nothing. A session saved before tabs existed comes back as a single tab

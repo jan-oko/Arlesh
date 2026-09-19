@@ -19,5 +19,8 @@
   "tabs": "Tabs",
   "newTab": "New tab",
   "closeTab": "Close tab",
-  "tabWholeTree": "All"
+  "tabWholeTree": "All",
+  "renameTab": "Rename tab",
+  "tabName": "Tab name",
+  "tabActions": "Tab actions"
 }

@@ -60,6 +60,20 @@
   cursor: pointer;
 }
 
+/* The rename field stands exactly where the label does, so the tab neither resizes nor jumps when
+   an edit opens: same box, same type, only an editable one. */
+.rename {
+  min-width: 0;
+  width: 100%;
+  padding: 0;
+  border: none;
+  border-bottom: 1px solid var(--accent);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  outline: none;
+}
+
 .close {
   display: flex;
   align-items: center;

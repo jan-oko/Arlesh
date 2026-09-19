@@ -2,15 +2,19 @@ import { create } from "zustand";
 import type { TabState, TabStores } from "@/stores/tab-stores";
 import { createTabStores, readTabState } from "@/stores/tab-stores";
 import { setActiveTabStores } from "@/stores/tab-stores-context";
+import type { PersistedTab } from "@/stores/tab-persistence";
 import {
   freshTabState, legacyTabState, readPersistedTabs, writePersistedTabs,
 } from "@/stores/tab-persistence";
 
-/** One open tab: an identity, the label the strip shows, and its own stores. */
+/** One open tab: an identity, the two labels it may carry, and its own stores. */
 export interface Tab {
   id: string;
-  /** The subtree root's title, or `null` for a tab showing the whole tree. */
+  /** The subtree root's title, or `null` for a tab showing the whole tree. Derived, and rewritten
+   * from the subtree descriptor every time the tab is navigated — never a place to put a name. */
   title: string | null;
+  /** The name the user gave this tab, which wins over `title` while it is set; `null` when none. */
+  customTitle: string | null;
   stores: TabStores;
 }
 
@@ -29,6 +33,8 @@ interface TabsStore {
   /** Reorders the strip by dropping the tab at `fromIndex` at `toIndex`. */
   moveTab: (fromIndex: number, toIndex: number) => void;
   setTabTitle: (id: string, title: string | null) => void;
+  /** Names a tab, or — given a blank name — takes the name off and hands it back to `title`. */
+  renameTab: (id: string, name: string) => void;
 }
 
 function newTabId(): string {
@@ -43,7 +49,9 @@ function saveTabs(): void {
   const { tabs, activeTabId } = useTabsStore.getState();
   writePersistedTabs({
     activeTabId,
-    tabs: tabs.map((tab) => ({ id: tab.id, title: tab.title, state: readTabState(tab.stores) })),
+    tabs: tabs.map((tab) => ({
+      id: tab.id, title: tab.title, customTitle: tab.customTitle, state: readTabState(tab.stores),
+    })),
   });
 }
 
@@ -53,13 +61,13 @@ function saveTabs(): void {
  * Only a change that is actually persisted triggers a write — a selection or a collapsed node is
  * per-tab working state and would otherwise write the strip down on every arrow key.
  */
-function makeTab(id: string, title: string | null, state: TabState): Tab {
+function makeTab({ id, title, customTitle, state }: PersistedTab): Tab {
   const stores = createTabStores(state);
   stores.view.subscribe(saveTabs);
   stores.filter.subscribe((s, previous) => { if (s.filter !== previous.filter) saveTabs(); });
   stores.listFilter.subscribe((s, previous) => { if (s.filter !== previous.filter) saveTabs(); });
   stores.mindmap.subscribe((s, previous) => { if (s.subtreeRootId !== previous.subtreeRootId) saveTabs(); });
-  return { id, title, stores };
+  return { id, title, customTitle, stores };
 }
 
 /**
@@ -71,12 +79,13 @@ function initialTabs(): { tabs: Tab[]; activeTabId: string } {
   const persisted = readPersistedTabs();
   if (persisted !== null) {
     return {
-      tabs: persisted.tabs.map((tab) => makeTab(tab.id, tab.title, tab.state)),
+      tabs: persisted.tabs.map((tab) => makeTab(tab)),
       activeTabId: persisted.activeTabId,
     };
   }
   const id = newTabId();
-  return { tabs: [makeTab(id, null, legacyTabState() ?? freshTabState())], activeTabId: id };
+  const state = legacyTabState() ?? freshTabState();
+  return { tabs: [makeTab({ id, title: null, customTitle: null, state })], activeTabId: id };
 }
 
 /**
@@ -95,7 +104,7 @@ export const useTabsStore = create<TabsStore>()((set, get) => ({
     set((s) => {
       const at = s.tabs.findIndex((tab) => tab.id === s.activeTabId);
       const tabs = [...s.tabs];
-      tabs.splice(at + 1, 0, makeTab(id, null, state));
+      tabs.splice(at + 1, 0, makeTab({ id, title: null, customTitle: null, state }));
       return { tabs, activeTabId: id };
     });
     return id;
@@ -147,6 +156,19 @@ export const useTabsStore = create<TabsStore>()((set, get) => ({
     const tab = current.find((candidate) => candidate.id === id);
     if (tab === undefined || tab.title === title) return;
     set({ tabs: current.map((candidate) => (candidate.id === id ? { ...candidate, title } : candidate)) });
+  },
+
+  // A name lives *beside* the derived label rather than in it: `setTabTitle` keeps writing `title`
+  // on every navigation, so a name written there would vanish the next time the tab moved. Blanking
+  // the name is how you get the derived label back — and it is correct the moment it reappears,
+  // because it was maintained all along.
+  renameTab: (id, name) => {
+    const trimmed = name.trim();
+    const customTitle = trimmed === "" ? null : trimmed;
+    const current = get().tabs;
+    const tab = current.find((candidate) => candidate.id === id);
+    if (tab === undefined || tab.customTitle === customTitle) return;
+    set({ tabs: current.map((candidate) => (candidate.id === id ? { ...candidate, customTitle } : candidate)) });
   },
 }));
 

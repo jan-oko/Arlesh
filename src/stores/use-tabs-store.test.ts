@@ -152,3 +152,61 @@ describe("setTabTitle", () => {
     expect(useTabsStore.getState().tabs).toBe(before);
   });
 });
+
+describe("renameTab", () => {
+  it("gives a tab a name of its own", () => {
+    const only = useTabsStore.getState().tabs[0];
+    useTabsStore.getState().renameTab(only?.id ?? "", "Today");
+    expect(useTabsStore.getState().tabs[0]?.customTitle).toBe("Today");
+  });
+
+  it("trims what was typed, so a stray space is not a different name", () => {
+    const only = useTabsStore.getState().tabs[0];
+    useTabsStore.getState().renameTab(only?.id ?? "", "  Today  ");
+    expect(useTabsStore.getState().tabs[0]?.customTitle).toBe("Today");
+  });
+
+  it("takes the name off when given a blank one, which is the way back to the derived label", () => {
+    const id = useTabsStore.getState().tabs[0]?.id ?? "";
+    useTabsStore.getState().renameTab(id, "Today");
+
+    useTabsStore.getState().renameTab(id, "   ");
+
+    expect(useTabsStore.getState().tabs[0]?.customTitle).toBeNull();
+  });
+
+  it("leaves the strip alone when the name has not changed", () => {
+    const id = useTabsStore.getState().tabs[0]?.id ?? "";
+    useTabsStore.getState().renameTab(id, "Today");
+    const before = useTabsStore.getState().tabs;
+
+    useTabsStore.getState().renameTab(id, "Today");
+
+    expect(useTabsStore.getState().tabs).toBe(before);
+  });
+
+  it("keeps the name when navigating republishes the derived label", () => {
+    // The trap: the label is rewritten from the subtree descriptor on every navigation, so a name
+    // stored *in* it would be wiped the next time the tab moved — silently, and only then.
+    const id = useTabsStore.getState().tabs[0]?.id ?? "";
+    useTabsStore.getState().setTabTitle(id, "CODE");
+    useTabsStore.getState().renameTab(id, "Today");
+
+    useTabsStore.getState().setTabTitle(id, "Bugfixes");
+
+    expect(useTabsStore.getState().tabs[0]?.customTitle).toBe("Today");
+    expect(useTabsStore.getState().tabs[0]?.title).toBe("Bugfixes");
+  });
+
+  it("reveals the label the tab has navigated to, not the one it had when it was named", () => {
+    const id = useTabsStore.getState().tabs[0]?.id ?? "";
+    useTabsStore.getState().setTabTitle(id, "CODE");
+    useTabsStore.getState().renameTab(id, "Today");
+    useTabsStore.getState().setTabTitle(id, "Bugfixes");
+
+    useTabsStore.getState().renameTab(id, "");
+
+    expect(useTabsStore.getState().tabs[0]?.customTitle).toBeNull();
+    expect(useTabsStore.getState().tabs[0]?.title).toBe("Bugfixes");
+  });
+});
