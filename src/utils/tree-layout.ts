@@ -75,6 +75,10 @@ export interface FlowData {
   rootPlanKind: string | null;
   rootPlanStart: number | null;
   rootPlanEnd: number | null;
+  /** The **Verdict Window** a commitment Habit's iterations are bounded by, as the same `(n, kind)`
+   * Duration a Commitment carries. Both null means its iterations never stop being answerable. */
+  verdictWindowN: number | null;
+  verdictWindowKind: string | null;
 }
 
 /** A relative (Cycle Scope, Cycle Plan) pair on a flow item. */

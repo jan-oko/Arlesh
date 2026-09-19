@@ -26,8 +26,8 @@ use arlesh_lib::{
         add_task_dependency, create_commitment, create_goal, create_task, update_goal, update_task,
         model::{
             CommitmentId, CreateCommitmentRequest, CreateGoalRequest, CreateTaskRequest,
-            Dependency, DurationSpec, GoalId, GoalStatus, OnScopeExit, TaskId, TaskStatus,
-            TimeScope, UpdateGoalRequest, UpdateTaskRequest, Verdict,
+            Dependency, DurationSpec, GoalId, GoalStatus, OnScopeExit, TaskArchival, TaskId,
+            TaskStatus, TimeScope, UpdateGoalRequest, UpdateTaskRequest, Verdict,
         },
         retype::{apply_retype, plan_node_retype, RetypeKind, StrandedChildren},
     },
@@ -1622,4 +1622,138 @@ async fn a_task_under_a_commitment_climbs_past_it_when_it_becomes_a_goal() {
             .await
             .unwrap();
     assert_eq!(parent, ("project".to_string(), project_id), "it climbed past the commitment");
+}
+
+// ===========================================================================
+// 6. The backlog: a stored state only a Task has
+// ===========================================================================
+
+#[tokio::test]
+async fn retyping_a_backlogged_task_to_a_goal_names_the_backlog_as_lost_and_then_drops_it() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    let task = create_task(
+        &mut db,
+        CreateTaskRequest {
+            title: "Set aside for now".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            archival: Some(TaskArchival::Backlog),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    db.commit().await.unwrap();
+
+    // A goal has no backlog, and Frozen is not where a backlog lands, so the state goes. The
+    // command must name it before it does that.
+    let app = helpers::command_host(&pool);
+    let refused = retype_node(app.state(), "task".into(), task.id, "goal".into(), None, None)
+        .await
+        .expect_err("dropping the backlog must require acknowledgement");
+    let wire = serde_json::to_value(&refused).unwrap();
+    assert_eq!(lost_field_names(&wire), vec!["archival"]);
+    assert_eq!(
+        wire["details"]["lost_fields"][0]["value"].as_str(),
+        Some("backlog"),
+        "the prompt says which state goes, not merely which field"
+    );
+
+    let retyped = retype_node(
+        app.state(),
+        "task".into(),
+        task.id,
+        "goal".into(),
+        Some(StrandedChildren::Reparent),
+        None,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(retyped.kind, RetypeKind::Goal);
+    assert_eq!(count_where(&pool, "tasks", "id", task.id).await, 0);
+}
+
+#[tokio::test]
+async fn retyping_a_task_nobody_set_aside_says_nothing_about_the_backlog() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    let task = create_task(
+        &mut db,
+        CreateTaskRequest {
+            title: "In play".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    db.commit().await.unwrap();
+
+    // `Live` is nobody's decision, so it is not a loss and must not raise a prompt of its own.
+    let app = helpers::command_host(&pool);
+    let retyped = retype_node(app.state(), "task".into(), task.id, "goal".into(), None, None)
+        .await
+        .expect("a live task becoming a goal loses nothing");
+
+    assert_eq!(retyped.kind, RetypeKind::Goal);
+}
+
+#[tokio::test]
+async fn retyping_a_backlogged_task_to_a_commitment_names_the_backlog_as_lost() {
+    // The intersection of two rules that arrived from different branches: a Commitment is not a
+    // Task, so it has no Backlog to land in, and every column is either carried or named. Neither
+    // branch could have written this test on its own.
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let project_id = make_project(&pool).await;
+    let tonight = one_day(&pool, 9).await;
+
+    let task = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let task = create_task(
+            &mut db,
+            CreateTaskRequest {
+                title: "No social media today".into(),
+                parent_type: "project".into(),
+                parent_id: project_id,
+                time_scope: Some(tonight),
+                archival: Some(TaskArchival::Backlog),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        db.commit().await.unwrap();
+        task
+    };
+
+    let refused = retype_node(app.state(), "task".into(), task.id, "commitment".into(), None, None)
+        .await
+        .expect_err("a dropped Backlog is named before it is dropped");
+    let wire = serde_json::to_value(&refused).unwrap();
+    assert_eq!(lost_field_names(&wire), vec!["archival"]);
+    assert_eq!(
+        wire["details"]["lost_fields"][0]["value"].as_str(),
+        Some("backlog"),
+        "the prompt says which state goes, not merely which field"
+    );
+
+    let retyped = retype_node(
+        app.state(),
+        "task".into(),
+        task.id,
+        "commitment".into(),
+        Some(StrandedChildren::Reparent),
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(retyped.kind, RetypeKind::Commitment);
 }

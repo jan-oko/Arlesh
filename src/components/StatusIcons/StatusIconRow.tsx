@@ -13,7 +13,6 @@ import BacklogIcon from "./BacklogIcon";
 import ArchiveIcon from "./ArchiveIcon";
 import ExclamationIcon from "./ExclamationIcon";
 import EllipsisIcon from "./EllipsisIcon";
-import VerdictIcon from "./VerdictIcon";
 
 const ICON_R = 6;
 const ICON_SPACING = 16;
@@ -68,23 +67,6 @@ export default function StatusIconRow({ node, indicators, top }: Props) {
         return { tooltip: t("frozen"), icon: <IceIcon cx={cx} cy={rowY} r={ICON_R} color={MUTED} /> };
       case "backlog":
         return { tooltip: t("backlog"), icon: <BacklogIcon cx={cx} cy={rowY} r={ICON_R} color={MUTED} /> };
-      case "kept":
-      case "broken":
-      case "unresolved":
-        return {
-          tooltip: t(indicator.type),
-          // Broken is drawn in the danger colour and Kept is not, but neither is smaller or
-          // fainter than the other: they are equal outcomes, one of which needs noticing.
-          icon: (
-            <VerdictIcon
-              cx={cx}
-              cy={rowY}
-              r={ICON_R}
-              color={indicator.type === "broken" ? DANGER : MUTED}
-              verdict={indicator.type}
-            />
-          ),
-        };
       case "info":
         return { tooltip: node.infoDetails ?? "", icon: <EllipsisIcon cx={cx} cy={rowY} r={ICON_R} color={MUTED} /> };
       case "flowInstance": {
