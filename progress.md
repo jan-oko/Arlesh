@@ -4,11 +4,35 @@ Goal: finish the beads task board, or stop at 8 open PRs.
 Rules: highest priority / lowest effort first; **at most 2 agents in flight** (revised down from 4 —
 see Standing risks); at most 2 `effort:high` at once.
 
-## Gate (every agent runs it before opening a PR)
+## Gate (CI runs it; agents run the fast half before pushing)
 
-- `npm run lint` · `npx tsc --noEmit` · `npm test`
-- Rust changes only: `CARGO_TARGET_DIR=~/.cache/arlesh/tarpaulin cargo tarpaulin --engine ptrace --skip-clean --fail-under 90 --exclude-files 'src/commands/*'`
-- Then `rm -rf src-tauri/target` in the worktree (disk is at 95%).
+The gate moved to GitHub Actions on 2026-09-19 — `Arlesh-qkr`, PR #20. See
+"The gate moved to CI" near the bottom for the measurements and the cost.
+
+| Workflow · job | Trigger | What it runs |
+|---|---|---|
+| `ci.yml` · `web` | every PR to master, every push to master | `npm run lint`, `npx tsc --noEmit`, `npx vitest run --maxWorkers=2 --testTimeout=30000 --hookTimeout=30000` |
+| `ci.yml` · `rust` | every PR to master, every push to master, weekly on master | `cargo test --locked` under `cargo llvm-cov show-env`, then `cargo llvm-cov report --fail-under-lines 94 --ignore-filename-regex '(^\|/)src/commands/'` |
+
+One Rust job, not two: the coverage tool runs the suite, so `cargo test` and coverage are the same
+build. `coverage.yml` is gone. **2m22s warm, 6m27s cold, 644 tests, 95.25%.**
+
+**Before pushing, an agent runs this and nothing more:**
+
+- `npm run lint` · `npx tsc --noEmit` · `npx vitest run --maxWorkers=2 --testTimeout=30000 --hookTimeout=30000`
+
+**Do not run `cargo tarpaulin` locally.** CI owns coverage. Do not poll `pgrep -x cargo-tarpaulin`,
+do not set `CARGO_TARGET_DIR=~/.cache/arlesh/tarpaulin`, and do not build a private
+`src-tauri/target` in your worktree. That whole protocol is retired — it was the serialisation
+point, the disk problem, *and* the source of two wrong coverage numbers.
+
+`cargo test` locally is optional: run it if you changed Rust and want the answer in one minute
+rather than in six. CI runs it on every PR either way. If you do run it,
+`rm -rf src-tauri/target` afterwards — disk is the constraint it always was.
+
+Verified 2026-09-19: the coverage lane is green on a hosted runner (`ptrace_scope = 1`,
+`90.96% coverage, 3442/3784 lines`), so the "do not run tarpaulin locally" rule above is proven
+rather than provisional.
 
 ## Waves
 
@@ -1528,6 +1552,184 @@ agent was dispatched. What was left to do was housekeeping:
 
 Local `master` is now 3 commits ahead of `origin/master`, not 13 — the mainline was pushed, so the
 open PRs' diffs no longer carry the spec commits.
+
+## The gate moved to CI (2026-09-19, `Arlesh-qkr`, PR #20)
+
+Two workflows, `.github/workflows/ci.yml` and `.github/workflows/coverage.yml`. No application
+code touched, so no CHANGELOG entry — developer tooling, matching the `Arlesh-rtu` precedent.
+
+**What it fixes.** Tarpaulin was ~20 minutes locally, agents serialised on it by polling
+`pgrep -x cargo-tarpaulin`, and — the part that actually mattered — two concurrent runs over the
+one warm `~/.cache/arlesh/tarpaulin` target directory reported **83.17% and 74.62% for trees that
+were really at 90.96% and 90.72%**. That is not a slow gate, it is a *wrong* one, and an agent
+nearly rewrote code to chase it. On a runner every PR gets its own machine and its own target
+directory, so the numbers are independent by construction and nothing queues behind anything.
+
+**First run, PR #20, cold caches** (run `35440253439`, both jobs green):
+
+| Job | Wall clock | Detail |
+|---|---|---|
+| `web` | **2m19s** | npm ci 8s · lint 16s · tsc 9s · vitest **98.03s**, 87 files / 1163 tests — identical to the local run |
+| `rust` | **6m01s** | apt 29s · `cargo test` **5m11s** from *no cache at all*, 504 tests passed |
+
+That is much cheaper than feared: a cold Rust build of 560 crates including webkit2gtk and axum is
+five minutes on a hosted runner, not the twenty-plus the laptop's numbers suggested.
+
+**Caching.** `Swatinem/rust-cache@v2` keyed on `Cargo.lock` + rustc version + job, with separate
+`shared-key`s (`cargo-test`, `tarpaulin`) — they build with different RUSTFLAGS, so one shared
+entry would be invalidated by whichever job wrote last and **both** would miss every time. Saved
+entries after the first run: **511 MB** Rust, **44 MB** npm — far inside GitHub's 10 GB per-repo
+budget, because rust-cache prunes the intermediate artifacts that make the local tree 22 GB.
+
+**Runner facts worth writing down.** `ubuntu-latest` ships **rustc 1.98.1** preinstalled, so no
+toolchain action is needed. Two things a clean runner lacks that every laptop already had:
+Tauri's GTK/WebKit headers (`libwebkit2gtk-4.1-dev` — the `webkit2gtk` 2.0.2 crate binds the
+**4.1** API), and a `dist/`. `src-tauri/src/lib.rs:177` calls `tauri::generate_context!`, which
+embeds `frontendDist` at compile time, so the lib and every integration-test binary fail to build
+without one. No Rust test reads the bundle, so both jobs write a placeholder `dist/index.html`
+rather than pay for an npm install and a Vite build. **This is also true of a fresh worktree** —
+`cargo test` in one with no `dist/` fails for a reason that has nothing to do with the change.
+
+**Cost, and why the triggers are shaped this way.** The repo is private, so minutes are billed
+(Linux 1x, $0.008/min) and **every job is rounded up to the whole minute**. Measured: `web` 3 min,
+`rust` 7 min billed. At this board's rate — 8 PRs/month, ~3 pushes each — that is ~240 min/month
+for `ci.yml`, plus coverage. `cancel-in-progress` on `pull_request` kills a superseded run instead
+of paying for it; the `paths:` filter on `coverage.yml` keeps frontend-only PRs from paying for
+tarpaulin at all. The weekly `schedule:` on master is the one discretionary line: coverage is a
+whole-tree property and this board merges eight stacked PRs, so two branches can each hold 90%
+alone and drop below it together. Deleting that block is the largest single saving available.
+
+**The coverage lane is verified.** Run `35440634930`, `success`:
+
+```
+yama/ptrace_scope = 1
+cargo-tarpaulin-tarpaulin 0.35.5
+90.96% coverage, 3442/3784 lines covered
+```
+
+`ptrace_scope = 1` permits tracing a direct child, which is exactly what tarpaulin spawns, so
+`--engine ptrace` works on `ubuntu-latest` unmodified. The number is the point, though: **90.96%
+is precisely the figure a clean local run produced for `je5`** — the same tree that a *concurrent*
+local run reported as 83.17%. CI reproduces the trustworthy number and cannot reproduce the
+corrupt one, because there is nothing to share a target directory with. "Do not run tarpaulin
+locally" is now proven, not intended.
+
+Job total **20m40s** (21 billed minutes) on a cold tarpaulin cache: disk reclaim 3m40s, apt 24s,
+compile 7m09s, the instrumented run 8m00s, cache save 27s. The tarpaulin cache is 1020 MB against
+the `cargo test` job's 511 MB — `-Clink-dead-code` is why — and the repo's three cache entries
+total 1.5 GB of the 10 GB budget.
+
+**Where the coverage run's time actually goes**, measured per test binary from the run log:
+
+| | tests | test time | wall | fixed overhead |
+|---|---|---|---|---|
+| 18 binaries | 490 | **38.8s** | **480.2s** | **441.5s** |
+
+The overhead is **~24.5s per binary and flat** — independent of how many tests the binary holds.
+`arlesh_lib` runs 232 tests in 0.83s and costs 27.6s; the `arlesh` binary runs **zero** tests and
+costs 24.7s; `tests/helpers.rs`, which Cargo compiles as its own target although it contains no
+tests at all, costs 23.5s. So **92% of the instrumented run is per-binary ptrace setup, not test
+execution** — the cost tracks binary size, and `-Clink-dead-code` links the whole dependency tree
+into every one of the 18. Anything that speeds this up has to cut the number of binaries, shrink
+them, or stop using ptrace; making the tests faster would buy 38 seconds in total.
+
+### Warm run, and what caching can and cannot reach
+
+Second coverage run, tarpaulin cache `full match: true`: job **13m05s** (14 billed minutes) against
+the cold 20m40s. The split is the point — **compile 7m09s → 2m29s, and the instrumented run
+8m00s → 8m36s, i.e. unchanged.** Caching cannot touch per-binary ptrace setup, so once the cache is
+warm the run phase *is* the cost. Coverage came back `90.96% coverage, 3442/3784 lines covered`,
+identical to the cold run: the measurement is reproducible on the runner.
+
+### Integration tests are grouped into four binaries
+
+Because the overhead is per binary, the 16 files under `src-tauri/tests/` were merged into **four**,
+chosen thematically so that `cargo test --test <name>` stays a useful filter:
+
+| Target | Tests | Covers |
+|---|---|---|
+| `cargo test --test tasks` | 70 | tasks, goals, dependencies, block reasons |
+| `cargo test --test flows` | 65 | flows, flow items, recurrence/habits, fan-in, flow commands |
+| `cargo test --test structure` | 62 | domains/projects/tags, scopes, knowledge base, infos |
+| `cargo test --test operations` | 61 | duplicate, retype, mindmap read path, MCP tools, database |
+
+Each group is a directory with a `main.rs` that declares its members; the old files are unchanged
+apart from `mod helpers;` becoming `use crate::helpers;`. `tests/helpers.rs` moved to
+`tests/helpers/mod.rs` so Cargo stops compiling it as a test target of its own — it holds no tests
+and cost 23.5s a run. `main.rs` is opted out of `cargo test` (`test = false`) for the same reason:
+its harness ran zero tests for 24.7s. The trade is that `cargo test` no longer type-checks
+`main.rs`, which is six lines whose only statement is `arlesh_lib::run()`.
+
+**Test count is unchanged: 490** (232 lib + 70 + 65 + 62 + 61), plus 14 doctests. The count is the
+check that the regrouping dropped nothing — if it moves, a module was not wired in.
+
+### The engine, settled by measurement
+
+The gate went from **20m40s to 2m22s warm**. Two changes did it, and three plausible-looking
+shortcuts were measured and rejected. Do not re-litigate any of these without new numbers.
+
+**Where the 20 minutes went.** Not measurement — ptrace machinery. Tarpaulin's ptrace engine sets
+an INT3 breakpoint on every coverable line, then on each first hit disables it, single-steps and
+re-enables it. Tarpaulin defaults to `-Clink-dead-code`, so every test binary links the whole
+560-crate tree and the cost scales with the dependency graph rather than with this project: ~24.5s
+of flat setup per binary, **480.2s of run phase around 38.8s of actual test execution**. Caching
+never touched it (8m00s cold, 8m36s warm) — it only cut compile, 7m09s to 2m29s.
+
+**Fix one: fewer binaries.** 16 test files became 4 targets plus `commitments.rs`. Run phase
+480s → 159s, merged ptrace job 6m26s warm. Worth doing on its own.
+
+**Fix two: stop using ptrace.** `cargo llvm-cov`, LLVM source-based coverage, on the pinned stable
+toolchain. Warm job 2m22s against ptrace's 6m26s, with 1 crate recompiled instead of 384.
+
+| Engine, same tree | lines | % | verdict |
+|---|---|---|---|
+| tarpaulin `--engine ptrace` | 3442/3782 | 91.01 | correct, slow |
+| tarpaulin `--engine llvm` | 3083/3447 | 89.44 | **wrong** |
+| `cargo llvm-cov` | 5753 | 95.25 | correct, fast |
+
+**Rejected: `cargo tarpaulin --engine llvm`.** It looks like the obvious win and it silently drops
+profraw data. On `src/infos/mod.rs` it reports **17/74** where ptrace watches 74/74 run and
+cargo-llvm-cov independently says 100%, on an identical denominator; `src/block_reasons/mod.rs`
+10/41 against 40/41. Neither file holds an inline `#[cfg(test)]` block, so no test accounting is
+involved. Its README warns about fork and thread unsafety and the suite is `#[tokio::test]`
+throughout. **89.44% is not stricter than 91.01%, it is wrong** — a floor of 89 would have written
+the bug into the gate and stopped protecting those files entirely.
+
+**Rejected: `--no-dead-code`.** Does not run at all. The binaries fail to load with corrupted
+`DT_NEEDED` strings (`libgdk_pixbuf?2.0.so.?`): without link-dead-code the section layout shifts and
+the ptrace engine writes its `0xCC` breakpoints into `.dynstr` instead of `.text`.
+
+**Rejected: `#[coverage(off)]` on inline test modules.** Keeps tests inline but is still E0658 on
+1.96 — verified on this toolchain, not taken from the changelog. Stabilised in rust-lang/rust#130766,
+reverted in #134672 as a process mixup; the live tracking issue (#134749) has six open blockers
+including T-lang sign-off and **no target version**. That is a permanent nightly toolchain, not a
+stopgap, and nightly coverage also means the shipping toolchain never runs the suite — buying that
+back measured 237s in a job of its own.
+
+**So unit tests moved to sibling `tests.rs` files.** cargo-llvm-cov excludes `tests.rs` and
+`*_tests.rs` by filename on stable, with no annotations. Measured on one commit with only the
+toolchain varying, inline bodies were **2790 of 8715 lines and 7735 of 13577 regions**, ~99% covered
+by construction — a third of the line metric and over half the region metric could not regress.
+`.claude/rules/rust.md` is amended accordingly.
+
+**The floor moved 90 → 94 because the unit changed**, not because standards did: tarpaulin counts
+DWARF statement lines, LLVM counts lines in coverage regions. 94 against a measured 95.25% leaves
+~72 lines of slack, against ~52 under the old arrangement. `--fail-under-lines` is **proven to fail
+as well as pass** — a floor of 99 exits 1, 94 exits 0 — so it gates rather than decorates.
+
+**Four traps that stayed green while being wrong.** Each was caught by checking a number, never by
+the exit status:
+
+- `cargo llvm-cov` does not run doctests. It gated **630** tests where `cargo test` runs 644.
+- `cargo test` *already includes* doctests, so adding `cargo test --doc` ran them twice — **658**.
+- Piping `cargo test` through `| tail` reports **tail's** exit code. A red suite looks green.
+- rust-cache reported `full match: true` and **384 crates recompiled anyway**: driving `cargo
+  llvm-cov` directly builds into `target/llvm-cov-target`, driving `cargo test` under `show-env`
+  builds into `target/debug`, and rust-cache never overwrites an exact-key hit — so it could not
+  converge. The key is now `rust-llvm-cov-manual`; **change it if that command changes mode.**
+
+**The reclaim step is gone.** Runners start with 14 G free and the job never came close; it had cost
+32s, 75s and 3m40s across three runs of the identical command.
 
 ## Spec + bead round, 2026-09-19
 
