@@ -1583,3 +1583,75 @@ Every board task is linked to its bead over MCP, including both halves of each m
   display only — no Year row, no Year in the picker, nothing Year-scoped.
 
 Dependencies recorded: `8wh` → `2gm` + `atb`; `5vp` → `n66` (Backlog, PR #7) + `8aw`.
+
+---
+
+## Round eight: three slots, three P1s
+
+The commitments stack landed as real merge commits rather than squashes — `#13 → #10 → #7`, in that
+order, children before parents, exactly as planned. Master is at `eb422fd` and migrations end at
+**0028**. Five PRs stayed open (#16, #20, #21, #22, #23), so three slots came free.
+
+### A running instance panicked, silently
+
+Before dispatching, the user reported that starting the `task-backlog` instance "seems to have no
+effect". It was not inert — it crashed at boot and said so only in a log nobody was reading:
+
+```
+bootstrap failed: migrations error=migration 25 was previously applied but has been modified
+```
+
+**The renumbering did it.** PR #7 first shipped its migration as `0025_task_backlog.sql`, the user
+ran that instance, and its database recorded *version 25 = "task backlog"*. Commit `cad212a` then
+un-collided the numbers with a pure `R100` rename to `0026`, handing slot 25 back to master's
+`flow_target_defaults_to_parent`. sqlx found version 25 applied under a checksum that no longer
+matched the file in that slot and refused to migrate.
+
+Repaired by renumbering the *record*, not by re-running anything: the rename was byte-identical, and
+the file's SHA-384 equals the checksum stored in the database exactly — checked, not assumed. After
+`UPDATE _sqlx_migrations SET version = 26 WHERE version = 25`, sqlx matched 26 and applied the
+now-missing 25 in its place. `sqlx-core`'s `run_direct` applies any source migration absent from the
+applied set with **no ordering check**, which was confirmed in the vendored source before relying on
+it. Backup kept at `arlesh.db.bak-pre-renumber`.
+
+Two findings left for the user to price:
+
+- **The `commitments` instance is broken the same way** (`25=task backlog, 26=commitments` against a
+  branch numbering them 26 and 27, and `0028` never applied). Same shift, descending to dodge a PK
+  collision.
+- **`launch()` in `branch-instance.sh` reports success without checking the process survived.** It
+  backgrounds the binary, records `$!` and prints `app pid … port … logs …` just as happily for a
+  process that died 30 ms later. That is the whole "no effect". A `kill -0` after a beat, printing
+  the last line of `run.log` when it is gone, would have shown the panic. The script is on master
+  now, so it is a fresh bead rather than an edit to an open PR — not filed, priority is the user's.
+
+### Disk, again
+
+13G free against a gate that wants ~15G. The worktrees were not the culprit this time — all fourteen
+are ~5 MB, so the earlier `CARGO_TARGET_DIR` discipline held. It was the coverage cache: 22G, of
+which `debug/incremental` was 3.3G of pure regenerable incremental state and another 3.1G was dep
+artifacts untouched for two days. Removing both took free space to **19G** without costing a rebuild
+of anything current.
+
+### Dispatched
+
+| Bead | P | Branch | Note |
+|---|---|---|---|
+| `Arlesh-45d` | 1 | `worktree-habit-cycle-scope` | migration slot **0029** if needed |
+| `Arlesh-7z8` | 1 | `worktree-typed-child-chords` | no migration |
+| `Arlesh-2gm` | 1 | `worktree-task-agentic` | migration slot **0031** |
+
+All three cut from `origin/master`, each opening its own PR against master, none stacked.
+
+**Migration numbers were assigned centrally this time**, which is the direct lesson of the panic
+above: `0029` to `45d`, `0030` already spoken for by PR #22, `0031` to `2gm`. Leaving a gap costs
+nothing; two agents independently reaching for the next free number costs a database.
+
+**`2gm` was steered off `Option<Option<bool>>` before it started.** Agentic is a tri-state — inherit,
+yes, no — and the natural Rust spelling for "leave unchanged vs set to NULL" is the exact field shape
+PR #21 exists to fix: serde reads an explicit JSON `null` as an absent field, so clearing silently
+does nothing. The fix lives in a new `src-tauri/src/wire.rs` on #21 and is not on master. Copying it
+would conflict with #21; using the broken shape would ship a flag that cannot be cleared. The brief
+calls for a **named three-variant enum** inside a single `Option` instead — `Some(Inherit)` writes
+NULL. It needs nothing from #21, conflicts with nothing, and names the three states rather than
+nesting them.
