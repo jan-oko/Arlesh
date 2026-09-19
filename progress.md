@@ -4,11 +4,35 @@ Goal: finish the beads task board, or stop at 8 open PRs.
 Rules: highest priority / lowest effort first; **at most 2 agents in flight** (revised down from 4 —
 see Standing risks); at most 2 `effort:high` at once.
 
-## Gate (every agent runs it before opening a PR)
+## Gate (CI runs it; agents run the fast half before pushing)
 
-- `npm run lint` · `npx tsc --noEmit` · `npm test`
-- Rust changes only: `CARGO_TARGET_DIR=~/.cache/arlesh/tarpaulin cargo tarpaulin --engine ptrace --skip-clean --fail-under 90 --exclude-files 'src/commands/*'`
-- Then `rm -rf src-tauri/target` in the worktree (disk is at 95%).
+The gate moved to GitHub Actions on 2026-09-19 — `Arlesh-qkr`, PR #20. See
+"The gate moved to CI" near the bottom for the measurements and the cost.
+
+| Workflow · job | Trigger | What it runs |
+|---|---|---|
+| `ci.yml` · `web` | every PR to master, every push to master | `npm run lint`, `npx tsc --noEmit`, `npx vitest run --maxWorkers=2 --testTimeout=30000 --hookTimeout=30000` |
+| `ci.yml` · `rust` | every PR to master, every push to master, weekly on master | `cargo test --locked` under `cargo llvm-cov show-env`, then `cargo llvm-cov report --fail-under-lines 94 --ignore-filename-regex '(^\|/)src/commands/'` |
+
+One Rust job, not two: the coverage tool runs the suite, so `cargo test` and coverage are the same
+build. `coverage.yml` is gone. **2m22s warm, 6m27s cold, 644 tests, 95.25%.**
+
+**Before pushing, an agent runs this and nothing more:**
+
+- `npm run lint` · `npx tsc --noEmit` · `npx vitest run --maxWorkers=2 --testTimeout=30000 --hookTimeout=30000`
+
+**Do not run `cargo tarpaulin` locally.** CI owns coverage. Do not poll `pgrep -x cargo-tarpaulin`,
+do not set `CARGO_TARGET_DIR=~/.cache/arlesh/tarpaulin`, and do not build a private
+`src-tauri/target` in your worktree. That whole protocol is retired — it was the serialisation
+point, the disk problem, *and* the source of two wrong coverage numbers.
+
+`cargo test` locally is optional: run it if you changed Rust and want the answer in one minute
+rather than in six. CI runs it on every PR either way. If you do run it,
+`rm -rf src-tauri/target` afterwards — disk is the constraint it always was.
+
+Verified 2026-09-19: the coverage lane is green on a hosted runner (`ptrace_scope = 1`,
+`90.96% coverage, 3442/3784 lines`), so the "do not run tarpaulin locally" rule above is proven
+rather than provisional.
 
 ## Waves
 
@@ -1529,6 +1553,184 @@ agent was dispatched. What was left to do was housekeeping:
 Local `master` is now 3 commits ahead of `origin/master`, not 13 — the mainline was pushed, so the
 open PRs' diffs no longer carry the spec commits.
 
+## The gate moved to CI (2026-09-19, `Arlesh-qkr`, PR #20)
+
+Two workflows, `.github/workflows/ci.yml` and `.github/workflows/coverage.yml`. No application
+code touched, so no CHANGELOG entry — developer tooling, matching the `Arlesh-rtu` precedent.
+
+**What it fixes.** Tarpaulin was ~20 minutes locally, agents serialised on it by polling
+`pgrep -x cargo-tarpaulin`, and — the part that actually mattered — two concurrent runs over the
+one warm `~/.cache/arlesh/tarpaulin` target directory reported **83.17% and 74.62% for trees that
+were really at 90.96% and 90.72%**. That is not a slow gate, it is a *wrong* one, and an agent
+nearly rewrote code to chase it. On a runner every PR gets its own machine and its own target
+directory, so the numbers are independent by construction and nothing queues behind anything.
+
+**First run, PR #20, cold caches** (run `35440253439`, both jobs green):
+
+| Job | Wall clock | Detail |
+|---|---|---|
+| `web` | **2m19s** | npm ci 8s · lint 16s · tsc 9s · vitest **98.03s**, 87 files / 1163 tests — identical to the local run |
+| `rust` | **6m01s** | apt 29s · `cargo test` **5m11s** from *no cache at all*, 504 tests passed |
+
+That is much cheaper than feared: a cold Rust build of 560 crates including webkit2gtk and axum is
+five minutes on a hosted runner, not the twenty-plus the laptop's numbers suggested.
+
+**Caching.** `Swatinem/rust-cache@v2` keyed on `Cargo.lock` + rustc version + job, with separate
+`shared-key`s (`cargo-test`, `tarpaulin`) — they build with different RUSTFLAGS, so one shared
+entry would be invalidated by whichever job wrote last and **both** would miss every time. Saved
+entries after the first run: **511 MB** Rust, **44 MB** npm — far inside GitHub's 10 GB per-repo
+budget, because rust-cache prunes the intermediate artifacts that make the local tree 22 GB.
+
+**Runner facts worth writing down.** `ubuntu-latest` ships **rustc 1.98.1** preinstalled, so no
+toolchain action is needed. Two things a clean runner lacks that every laptop already had:
+Tauri's GTK/WebKit headers (`libwebkit2gtk-4.1-dev` — the `webkit2gtk` 2.0.2 crate binds the
+**4.1** API), and a `dist/`. `src-tauri/src/lib.rs:177` calls `tauri::generate_context!`, which
+embeds `frontendDist` at compile time, so the lib and every integration-test binary fail to build
+without one. No Rust test reads the bundle, so both jobs write a placeholder `dist/index.html`
+rather than pay for an npm install and a Vite build. **This is also true of a fresh worktree** —
+`cargo test` in one with no `dist/` fails for a reason that has nothing to do with the change.
+
+**Cost, and why the triggers are shaped this way.** The repo is private, so minutes are billed
+(Linux 1x, $0.008/min) and **every job is rounded up to the whole minute**. Measured: `web` 3 min,
+`rust` 7 min billed. At this board's rate — 8 PRs/month, ~3 pushes each — that is ~240 min/month
+for `ci.yml`, plus coverage. `cancel-in-progress` on `pull_request` kills a superseded run instead
+of paying for it; the `paths:` filter on `coverage.yml` keeps frontend-only PRs from paying for
+tarpaulin at all. The weekly `schedule:` on master is the one discretionary line: coverage is a
+whole-tree property and this board merges eight stacked PRs, so two branches can each hold 90%
+alone and drop below it together. Deleting that block is the largest single saving available.
+
+**The coverage lane is verified.** Run `35440634930`, `success`:
+
+```
+yama/ptrace_scope = 1
+cargo-tarpaulin-tarpaulin 0.35.5
+90.96% coverage, 3442/3784 lines covered
+```
+
+`ptrace_scope = 1` permits tracing a direct child, which is exactly what tarpaulin spawns, so
+`--engine ptrace` works on `ubuntu-latest` unmodified. The number is the point, though: **90.96%
+is precisely the figure a clean local run produced for `je5`** — the same tree that a *concurrent*
+local run reported as 83.17%. CI reproduces the trustworthy number and cannot reproduce the
+corrupt one, because there is nothing to share a target directory with. "Do not run tarpaulin
+locally" is now proven, not intended.
+
+Job total **20m40s** (21 billed minutes) on a cold tarpaulin cache: disk reclaim 3m40s, apt 24s,
+compile 7m09s, the instrumented run 8m00s, cache save 27s. The tarpaulin cache is 1020 MB against
+the `cargo test` job's 511 MB — `-Clink-dead-code` is why — and the repo's three cache entries
+total 1.5 GB of the 10 GB budget.
+
+**Where the coverage run's time actually goes**, measured per test binary from the run log:
+
+| | tests | test time | wall | fixed overhead |
+|---|---|---|---|---|
+| 18 binaries | 490 | **38.8s** | **480.2s** | **441.5s** |
+
+The overhead is **~24.5s per binary and flat** — independent of how many tests the binary holds.
+`arlesh_lib` runs 232 tests in 0.83s and costs 27.6s; the `arlesh` binary runs **zero** tests and
+costs 24.7s; `tests/helpers.rs`, which Cargo compiles as its own target although it contains no
+tests at all, costs 23.5s. So **92% of the instrumented run is per-binary ptrace setup, not test
+execution** — the cost tracks binary size, and `-Clink-dead-code` links the whole dependency tree
+into every one of the 18. Anything that speeds this up has to cut the number of binaries, shrink
+them, or stop using ptrace; making the tests faster would buy 38 seconds in total.
+
+### Warm run, and what caching can and cannot reach
+
+Second coverage run, tarpaulin cache `full match: true`: job **13m05s** (14 billed minutes) against
+the cold 20m40s. The split is the point — **compile 7m09s → 2m29s, and the instrumented run
+8m00s → 8m36s, i.e. unchanged.** Caching cannot touch per-binary ptrace setup, so once the cache is
+warm the run phase *is* the cost. Coverage came back `90.96% coverage, 3442/3784 lines covered`,
+identical to the cold run: the measurement is reproducible on the runner.
+
+### Integration tests are grouped into four binaries
+
+Because the overhead is per binary, the 16 files under `src-tauri/tests/` were merged into **four**,
+chosen thematically so that `cargo test --test <name>` stays a useful filter:
+
+| Target | Tests | Covers |
+|---|---|---|
+| `cargo test --test tasks` | 70 | tasks, goals, dependencies, block reasons |
+| `cargo test --test flows` | 65 | flows, flow items, recurrence/habits, fan-in, flow commands |
+| `cargo test --test structure` | 62 | domains/projects/tags, scopes, knowledge base, infos |
+| `cargo test --test operations` | 61 | duplicate, retype, mindmap read path, MCP tools, database |
+
+Each group is a directory with a `main.rs` that declares its members; the old files are unchanged
+apart from `mod helpers;` becoming `use crate::helpers;`. `tests/helpers.rs` moved to
+`tests/helpers/mod.rs` so Cargo stops compiling it as a test target of its own — it holds no tests
+and cost 23.5s a run. `main.rs` is opted out of `cargo test` (`test = false`) for the same reason:
+its harness ran zero tests for 24.7s. The trade is that `cargo test` no longer type-checks
+`main.rs`, which is six lines whose only statement is `arlesh_lib::run()`.
+
+**Test count is unchanged: 490** (232 lib + 70 + 65 + 62 + 61), plus 14 doctests. The count is the
+check that the regrouping dropped nothing — if it moves, a module was not wired in.
+
+### The engine, settled by measurement
+
+The gate went from **20m40s to 2m22s warm**. Two changes did it, and three plausible-looking
+shortcuts were measured and rejected. Do not re-litigate any of these without new numbers.
+
+**Where the 20 minutes went.** Not measurement — ptrace machinery. Tarpaulin's ptrace engine sets
+an INT3 breakpoint on every coverable line, then on each first hit disables it, single-steps and
+re-enables it. Tarpaulin defaults to `-Clink-dead-code`, so every test binary links the whole
+560-crate tree and the cost scales with the dependency graph rather than with this project: ~24.5s
+of flat setup per binary, **480.2s of run phase around 38.8s of actual test execution**. Caching
+never touched it (8m00s cold, 8m36s warm) — it only cut compile, 7m09s to 2m29s.
+
+**Fix one: fewer binaries.** 16 test files became 4 targets plus `commitments.rs`. Run phase
+480s → 159s, merged ptrace job 6m26s warm. Worth doing on its own.
+
+**Fix two: stop using ptrace.** `cargo llvm-cov`, LLVM source-based coverage, on the pinned stable
+toolchain. Warm job 2m22s against ptrace's 6m26s, with 1 crate recompiled instead of 384.
+
+| Engine, same tree | lines | % | verdict |
+|---|---|---|---|
+| tarpaulin `--engine ptrace` | 3442/3782 | 91.01 | correct, slow |
+| tarpaulin `--engine llvm` | 3083/3447 | 89.44 | **wrong** |
+| `cargo llvm-cov` | 5753 | 95.25 | correct, fast |
+
+**Rejected: `cargo tarpaulin --engine llvm`.** It looks like the obvious win and it silently drops
+profraw data. On `src/infos/mod.rs` it reports **17/74** where ptrace watches 74/74 run and
+cargo-llvm-cov independently says 100%, on an identical denominator; `src/block_reasons/mod.rs`
+10/41 against 40/41. Neither file holds an inline `#[cfg(test)]` block, so no test accounting is
+involved. Its README warns about fork and thread unsafety and the suite is `#[tokio::test]`
+throughout. **89.44% is not stricter than 91.01%, it is wrong** — a floor of 89 would have written
+the bug into the gate and stopped protecting those files entirely.
+
+**Rejected: `--no-dead-code`.** Does not run at all. The binaries fail to load with corrupted
+`DT_NEEDED` strings (`libgdk_pixbuf?2.0.so.?`): without link-dead-code the section layout shifts and
+the ptrace engine writes its `0xCC` breakpoints into `.dynstr` instead of `.text`.
+
+**Rejected: `#[coverage(off)]` on inline test modules.** Keeps tests inline but is still E0658 on
+1.96 — verified on this toolchain, not taken from the changelog. Stabilised in rust-lang/rust#130766,
+reverted in #134672 as a process mixup; the live tracking issue (#134749) has six open blockers
+including T-lang sign-off and **no target version**. That is a permanent nightly toolchain, not a
+stopgap, and nightly coverage also means the shipping toolchain never runs the suite — buying that
+back measured 237s in a job of its own.
+
+**So unit tests moved to sibling `tests.rs` files.** cargo-llvm-cov excludes `tests.rs` and
+`*_tests.rs` by filename on stable, with no annotations. Measured on one commit with only the
+toolchain varying, inline bodies were **2790 of 8715 lines and 7735 of 13577 regions**, ~99% covered
+by construction — a third of the line metric and over half the region metric could not regress.
+`.claude/rules/rust.md` is amended accordingly.
+
+**The floor moved 90 → 94 because the unit changed**, not because standards did: tarpaulin counts
+DWARF statement lines, LLVM counts lines in coverage regions. 94 against a measured 95.25% leaves
+~72 lines of slack, against ~52 under the old arrangement. `--fail-under-lines` is **proven to fail
+as well as pass** — a floor of 99 exits 1, 94 exits 0 — so it gates rather than decorates.
+
+**Four traps that stayed green while being wrong.** Each was caught by checking a number, never by
+the exit status:
+
+- `cargo llvm-cov` does not run doctests. It gated **630** tests where `cargo test` runs 644.
+- `cargo test` *already includes* doctests, so adding `cargo test --doc` ran them twice — **658**.
+- Piping `cargo test` through `| tail` reports **tail's** exit code. A red suite looks green.
+- rust-cache reported `full match: true` and **384 crates recompiled anyway**: driving `cargo
+  llvm-cov` directly builds into `target/llvm-cov-target`, driving `cargo test` under `show-env`
+  builds into `target/debug`, and rust-cache never overwrites an exact-key hit — so it could not
+  converge. The key is now `rust-llvm-cov-manual`; **change it if that command changes mode.**
+
+**The reclaim step is gone.** Runners start with 14 G free and the job never came close; it had cost
+32s, 75s and 3m40s across three runs of the identical command.
+
 ## Spec + bead round, 2026-09-19
 
 Fourteen unbeaded tasks had accumulated on the Arlesh board — twelve added that day (ids 171–175,
@@ -1583,3 +1785,312 @@ Every board task is linked to its bead over MCP, including both halves of each m
   display only — no Year row, no Year in the picker, nothing Year-scoped.
 
 Dependencies recorded: `8wh` → `2gm` + `atb`; `5vp` → `n66` (Backlog, PR #7) + `8aw`.
+
+---
+
+## Round eight: three slots, three P1s
+
+The commitments stack landed as real merge commits rather than squashes — `#13 → #10 → #7`, in that
+order, children before parents, exactly as planned. Master is at `eb422fd` and migrations end at
+**0028**. Five PRs stayed open (#16, #20, #21, #22, #23), so three slots came free.
+
+### A running instance panicked, silently
+
+Before dispatching, the user reported that starting the `task-backlog` instance "seems to have no
+effect". It was not inert — it crashed at boot and said so only in a log nobody was reading:
+
+```
+bootstrap failed: migrations error=migration 25 was previously applied but has been modified
+```
+
+**The renumbering did it.** PR #7 first shipped its migration as `0025_task_backlog.sql`, the user
+ran that instance, and its database recorded *version 25 = "task backlog"*. Commit `cad212a` then
+un-collided the numbers with a pure `R100` rename to `0026`, handing slot 25 back to master's
+`flow_target_defaults_to_parent`. sqlx found version 25 applied under a checksum that no longer
+matched the file in that slot and refused to migrate.
+
+Repaired by renumbering the *record*, not by re-running anything: the rename was byte-identical, and
+the file's SHA-384 equals the checksum stored in the database exactly — checked, not assumed. After
+`UPDATE _sqlx_migrations SET version = 26 WHERE version = 25`, sqlx matched 26 and applied the
+now-missing 25 in its place. `sqlx-core`'s `run_direct` applies any source migration absent from the
+applied set with **no ordering check**, which was confirmed in the vendored source before relying on
+it. Backup kept at `arlesh.db.bak-pre-renumber`.
+
+Two findings left for the user to price:
+
+- **The `commitments` instance is broken the same way** (`25=task backlog, 26=commitments` against a
+  branch numbering them 26 and 27, and `0028` never applied). Same shift, descending to dodge a PK
+  collision.
+- **`launch()` in `branch-instance.sh` reports success without checking the process survived.** It
+  backgrounds the binary, records `$!` and prints `app pid … port … logs …` just as happily for a
+  process that died 30 ms later. That is the whole "no effect". A `kill -0` after a beat, printing
+  the last line of `run.log` when it is gone, would have shown the panic. The script is on master
+  now, so it is a fresh bead rather than an edit to an open PR — not filed, priority is the user's.
+
+### Disk, again
+
+13G free against a gate that wants ~15G. The worktrees were not the culprit this time — all fourteen
+are ~5 MB, so the earlier `CARGO_TARGET_DIR` discipline held. It was the coverage cache: 22G, of
+which `debug/incremental` was 3.3G of pure regenerable incremental state and another 3.1G was dep
+artifacts untouched for two days. Removing both took free space to **19G** without costing a rebuild
+of anything current.
+
+### Dispatched
+
+| Bead | P | Branch | Note |
+|---|---|---|---|
+| `Arlesh-45d` | 1 | `worktree-habit-cycle-scope` | migration slot **0029** if needed |
+| `Arlesh-7z8` | 1 | `worktree-typed-child-chords` | no migration |
+| `Arlesh-2gm` | 1 | `worktree-task-agentic` | migration slot **0031** |
+
+All three cut from `origin/master`, each opening its own PR against master, none stacked.
+
+**Migration numbers were assigned centrally this time**, which is the direct lesson of the panic
+above: `0029` to `45d`, `0030` already spoken for by PR #22, `0031` to `2gm`. Leaving a gap costs
+nothing; two agents independently reaching for the next free number costs a database.
+
+**`2gm` was steered off `Option<Option<bool>>` before it started.** Agentic is a tri-state — inherit,
+yes, no — and the natural Rust spelling for "leave unchanged vs set to NULL" is the exact field shape
+PR #21 exists to fix: serde reads an explicit JSON `null` as an absent field, so clearing silently
+does nothing. The fix lives in a new `src-tauri/src/wire.rs` on #21 and is not on master. Copying it
+would conflict with #21; using the broken shape would ship a flag that cannot be cleared. The brief
+calls for a **named three-variant enum** inside a single `Option` instead — `Some(Inherit)` writes
+NULL. It needs nothing from #21, conflicts with nothing, and names the three states rather than
+nesting them.
+
+### Coverage engines: two flags that must never appear in a brief
+
+Measured by the CI session on PR #20 and recorded here because both look like free wins.
+
+**`cargo tarpaulin --engine llvm` silently loses coverage data. It is not stricter, it is wrong.**
+Same commit, same denominator:
+
+| file | `--engine ptrace` | `--engine llvm` | `cargo-llvm-cov` |
+|---|---|---|---|
+| `src/infos/mod.rs` | 74/74 (100%) | **17/74 (23%)** | 38/38 (100%) |
+| `src/block_reasons/mod.rs` | 40/41 | **10/41** | 32/32 (100%) |
+
+Neither file holds an inline `#[cfg(test)]` block, so no test-code accounting explains it — it is
+dropped profraw data, and tarpaulin's own README warns about fork and thread unsafety while we are
+`#[tokio::test]` throughout. It reports 89.44% against ptrace's 91.01% on an identical tree. Anyone
+proposing it with a floor of 89 "because it's stricter" would be turning coverage **off** for
+`infos/mod.rs` and calling it rigour.
+
+**`--no-dead-code` does not merely regress — the test binaries fail to load.** Corrupted
+`DT_NEEDED` strings (`libgdk_pixbuf?2.0.so.?`): without `-Clink-dead-code` the section layout
+shifts and the ptrace engine writes its `0xCC` breakpoints into `.dynstr` instead of `.text`.
+
+**Where the ~20 minutes went**, for anyone tempted to optimise the wrong half: ptrace machinery,
+not measurement. ~24.5s of flat setup per test binary against 38.8s of actual test execution —
+441s of a 480s run phase. It scales with the 560-crate dependency graph, not with our code, which
+is why binary consolidation cut the run phase to 159s.
+
+**Local coverage stays in agent briefs until PR #20 merges.** `git ls-tree -r origin/master --
+.github/` returns nothing — there is no CI on master, and `gh pr checks` on an open PR returns only
+GitGuardian, an external app. Until #20 lands, dropping the local step is not trading a slow gate
+for a fast one, it is trading a gate for none. It comes out of the brief template the hour #20
+merges.
+
+### PR #24 — `Arlesh-7z8`, Shift+initial creates a typed child
+
+`worktree-typed-child-chords` → master, +393/-8, 27 new tests. Gate clean: 93 files / **1340 tests**,
+`cargo test` 644, tarpaulin **91.17%** (3892/4269, +0.21%), and it confirmed `pgrep -x
+cargo-tarpaulin` was empty before starting and that its run was the only one.
+
+**The design decision worth keeping:** `validParentKinds` is *derived* by filtering
+`isValidDropTarget` rather than written out again, so creation enforces the same predicate as
+drag-and-drop and paste and cannot drift from them. A test pins the two together across every kind
+pair. The refusal states the rule positively — "Goal can't sit under Task — only under Aspect,
+Domain, Project, Goal" — so the keystroke that refused also answers *then where?*.
+
+The Shift-is-free claim was checked harder than the bead asked: `shift: true` swept across master,
+every local branch and every remote branch. Every Shift chord anywhere is on a non-letter key.
+
+**Two pre-existing defects it found and correctly did not fix. Both verified independently against
+master before being recorded here.**
+
+1. **An Info cannot actually live under a Commitment — the database forbids it.**
+   `0004_info_nodes.sql` is the only place the `infos.parent_type` CHECK is written:
+   `IN ('aspect','project','domain','goal','task','tag','info')`. No `commitment`, and
+   `0027_commitments.sql` never mentions the `infos` table, so nothing widened it. Meanwhile
+   `node-meta.ts` claims the opposite in four places — `isValidDropTarget("info","commitment")`,
+   `ALLOWED_CHILD_KINDS.commitment`, `validTypesForCycling` under a commitment, and
+   `kindToInfoParentType`. **Retyping a child to Info under a Commitment, or dragging one there,
+   fails at the DB today**; PR #10 shipped with this. The new `Shift+I` is a fourth route to the
+   same wall, not the cause of it. Needs a migration, so it needs a centrally assigned number.
+
+2. **`ALLOWED_CHILD_KINDS` and `isValidDropTarget` disagree about Tag.** `tag: ["info"]` ("a tag
+   holds only info notes") against `if (targetKind === "tag") return false` ("tag → no children").
+   Two predicates, one question, two answers. The branch used `isValidDropTarget`, which matches
+   what Tab, drag-drop and paste actually do.
+
+**One line past the bead, kept deliberately:** a backend rejection now raises a toast as well as
+logging, where the three sibling creators (`onCreateChild`, `onCreateSibling`, `onInsertParent`)
+still only `console.error`. It is inconsistent with its siblings, and it is kept because a key that
+silently does nothing is the exact failure this bead exists to remove. Extending it to the other
+three would be a sweep, so it is not being done without being asked.
+
+**Infrastructure: the shared `CARGO_TARGET_DIR` is not concurrency-safe.** A `cargo test` died with
+`could not execute process .../deps/tasks-<hash> — No such file or directory` because another
+agent's cargo replaced the test binary between build and exec; confirmed via `/proc/<pid>/cwd`
+showing two live cargos in different worktrees. Transient and retryable, but it presents as a broken
+build. Both running agents were told to retry once rather than debug it. Future briefs should say so
+up front, or serialise `cargo test` behind a `flock`.
+
+### PR #25 — `Arlesh-45d`, habit instances get their own windows
+
+`worktree-habit-cycle-scope` → master, +1160/-163, migration **0029** as assigned (verified: 0029
+here, 0030 on #22, nothing else past 0028 on any branch). Gate green: 93 files / **1307 tests**,
+`cargo test` all green with 7 new in `tests/flows.rs`, `cargo clippy --all-targets` clean, tarpaulin
+**91.37%** (3969/4344, +0.20%). It waited ~4 minutes for another agent's coverage run to clear
+before starting its own, so that figure comes from a run that had the machine to itself.
+
+The user's call — resolve in the backend — was implemented as `resolve_cycle`, with `resolve_pair`
+reduced to a thin wrapper over it, so `start` and the Habit render path share **one** implementation
+of the offset arithmetic. `iteration_instance_keys` becomes the single definition of "every instance
+in an iteration", used by both `set_iteration_done` and `iteration_resolutions`. The frontend now
+stamps `timeScope`/`plan` like any other node and derives Timing from `instance.past`.
+
+**The per-instance key: `(item_type, item_id, iteration_scope_id, cycle_id)`**, keyed on the cycle
+*pair* id rather than the resolved *scope* id — the pair is the template identity, stable across
+iterations and immune to calendar resolution, and two pairs resolving to the same scope cannot
+collide. `NOT NULL` with a `0` sentinel rather than nullable, because SQLite counts NULLs as
+distinct in a UNIQUE index: a nullable column would let an unpaired item accumulate duplicate rows
+per iteration and would silently break every `ON CONFLICT` upsert writing them. Existing rows remap
+to the item's **first** pair, so a one-pair item — the common case — keeps every completion it had.
+
+**One consequence this PR creates, and it needs a decision before merge.** Verified on master:
+`FlowOperator::set_cycles` (`flows/mod.rs:934`) does `DELETE FROM flow_item_cycles WHERE item_type =
+? AND item_id = ?` and re-inserts, so **a pair's id changes on any edit**. With completions now keyed
+to that id, editing a cycle strands its history against a pair that no longer exists — silently,
+because nothing invokes the existing `clear_habit_modifications` / `fork_flow` reconciliation on a
+pair edit specifically. Either remap on edit or extend the reconciliation prompt to cover it. This
+is new surface area, not a pre-existing bug, which is why it is a merge question rather than a bead.
+
+**Two adjacent findings, neither touched:**
+
+- **"Mark the whole iteration done" ticks occurrences that have not opened.** `set_iteration_done`
+  writes a `done` row for every instance key, including this evening's at breakfast — yet the user
+  cannot click an unopened occurrence individually. Not a regression; it is an asymmetry that did not
+  exist when every item always rendered.
+- **A Cycle Scope can resolve outside its iteration's window.** `offset_scope` will advance to day 9
+  of a 7-day week, unbounded against the window length. Pre-existing — `start` has always done it —
+  but now visible in the render path, where such an occurrence appears under an iteration whose
+  window does not contain it.
+
+**Both new PRs merge clean into master** as they stand. They share four files — `CHANGELOG.md`,
+`SPEC.md`, `use-node-actions.ts` and its test — so whichever lands second needs its base merged
+again, which is the orchestrator's job and not the agent's.
+
+### PR #26 — `Arlesh-2gm`, mark a Task agentic
+
+`worktree-task-agentic` → master, gate green: 94 files / **1337 tests**, `cargo test` 336 lib tests
+plus every integration suite, tarpaulin **91.14%** (3921/4302, −0.22%).
+
+The tri-state landed as briefed — a named enum in one `Option`, no `Option<Option<_>>`, no `wire.rs`:
+
+```rust
+pub enum TaskAgentic { Inherit, Yes, No }
+pub agentic: Option<TaskAgentic>,   // None = unchanged; Some(Inherit) writes NULL
+```
+
+Two tests pin the exact failure the brief was written to avoid: one deserializes `{}` against
+`{"agentic":"inherit"}` and asserts they differ, one asserts `Some(Inherit)` clears a stored `true`
+while an absent field keeps it. Persisted-filter survival went through the existing
+`withCurrentPillDimensions` helper rather than a custom merge, with a test that deletes `agentic`
+from a stored pills map and asserts it returns empty.
+
+**I caused a migration collision and it had to be fixed after the fact.** The brief I sent this
+agent said `0029`, and so did the brief I sent `habit-cycle-scope`. My report to the user said 0031
+for this one — that was the intent, but the intent is not what the agent received, and the agent did
+exactly what it was told. Both branches shipped an `0029`. Renumbered here to **0031** (0029 is
+#25's, 0030 is #22's): file contents untouched so the checksum is unchanged, the CHANGELOG sentence
+naming the migration number was dropped as an implementation detail rather than behaviour, and
+`cargo test` re-run afterwards — 336 lib tests plus every integration suite, 0 failed. Coverage was
+not re-run; renaming a `.sql` file cannot move it.
+
+The lesson from the last round was right and I applied half of it. Assigning numbers centrally is
+worthless if the assignment is not in the brief text itself — **the number in the brief is the only
+one that exists.**
+
+**The tarpaulin slot is raced by construction, confirmed by collision.** Every agent polls
+`pgrep -x cargo-tarpaulin` and starts the moment it is empty, so two waiters reliably fire together:
+this agent's run and habit-cycle-scope's launched **one second apart** (18:01:23 / 18:01:24,
+`/proc/<pid>/cwd` confirming different worktrees). It aborted its own run and **discarded those
+numbers rather than reporting them** — the 91.14% above is from a solo run started 18:14:29. Polling
+plus jitter only lowers the odds; a `flock` on a shared lockfile around the tarpaulin invocation is
+what makes the wait actually exclusive. That belongs in the brief template.
+
+**A merge-time reconciliation is owed on PR #21, and it is bigger than the agent's note.** Master's
+`tasks/model.rs` holds **eight** `Option<Option<_>>` fields and **none** of them is guarded, so
+clearing a delegate, a Time Scope, an on-scope-exit, a Plan or a Verdict Window from the UI is a
+silent no-op today. #21 guards six of them — but it was cut before the commitments stack landed, so
+`UpdateCommitmentRequest::time_scope` and `UpdateCommitmentRequest::verdict_window` **did not exist
+on its branch and will arrive unguarded when it merges**. They must be given
+`#[serde(default, deserialize_with = "crate::wire::null_clears")]` as part of merging #21, not
+afterwards. (`flows/model.rs` is the reverse case: master already guards 5 of 10 from an earlier PR,
+and #21 completes it to 10.)
+
+## The gate moved to CI — brief template replaced
+
+PR #20 merged as `cad5f44`. `.github/workflows/ci.yml` is on master, `pull_request` and `push` on
+master, plus a weekly backstop because coverage is a whole-tree property and two stacked PRs can
+each hold the floor alone and drop below it together.
+
+**The local gate an agent runs before pushing is now, in full:**
+
+```
+npm run lint
+npx tsc --noEmit
+npx vitest run --maxWorkers=2 --testTimeout=30000 --hookTimeout=30000
+```
+
+`cargo test` locally is optional — CI runs it on every PR. **`cargo tarpaulin` is gone**, not
+discouraged; there is no tarpaulin in CI at all. Which also retires the whole apparatus built around
+it: the `pgrep -x cargo-tarpaulin` wait, the concurrent-corruption warning, and the `flock` that was
+about to be added to make that wait exclusive. Coverage is no longer something a laptop races over.
+
+**The floor is 94, not 90, and it must not be "restored".** The unit changed: tarpaulin counted
+DWARF statement lines, `cargo llvm-cov` counts lines in coverage regions. 94 against a measured
+95.25% leaves ~72 lines of slack where 90 against 90.96% left ~52 — it is slightly *tighter*, not
+looser. CI runs tests and coverage as one command because the coverage tool runs the suite:
+`cargo test --locked` under `cargo llvm-cov show-env`, then `cargo llvm-cov report
+--fail-under-lines 94 --ignore-filename-regex '(^|/)src/commands/'`. 2m22s warm, 6m27s cold.
+
+**Two conventions every brief must now state, because an agent's reflex is the old form:**
+
+- **Unit tests live in sibling files.** `foo.rs` declares `#[cfg(test)] mod tests;` and `foo/tests.rs`
+  holds the body; a second suite takes a `*_tests` name. `.claude/rules/rust.md` is amended. A brief
+  that says "add a test" must say *where it goes*.
+- **Integration tests are four grouped targets plus `commitments.rs`** — `cargo test --test
+  flows|tasks|structure|operations`.
+
+**Verify by test count, not by exit status** — it caught the CI session out four times, every time
+behind a green tick. `cargo llvm-cov` skips doctests (630 against 644); `cargo test` already
+includes them, so adding `--doc` runs them twice (658); piping cargo through `| tail` reports
+*tail's* exit code, so a red suite reads green; and `rust-cache` reported "full match: true" while
+recompiling 384 crates, because its key did not encode which target directory the build wrote to.
+
+### Every open PR now conflicts with master, and that is #20's cost
+
+`workflow_dispatch` cannot reach any of them: none of the seven branches contains
+`.github/workflows/ci.yml`, and a ref without the workflow file cannot be dispatched to (HTTP 422).
+The only route to a check is merging master into each branch, which is also what brings the file.
+Done for **#24** as a canary — it merged clean and CI is running on it.
+
+The other six all conflict, and the cause is mostly #20's own test relocation landing while eight
+PRs were open:
+
+| PR | conflicts in | cause |
+|---|---|---|
+| #25 | `src/flows/habits.rs` | its 4 new inline unit tests against the move to `flows/habits/tests.rs` |
+| #26 | `src/tasks/{mod,model,retype}.rs` | same |
+| #21 | `tests/flows/flows.rs`, `tests/tasks/tasks.rs` | the integration regroup |
+| #22 | `src/database/session.rs`, `src/error/wire.rs`, `src/mcp/beads.rs` | source overlap |
+| #16 | `ListView.tsx`, `use-filter-store.ts` + test, `hotkeys.json`, CHANGELOG | older divergence, unrelated to #20 |
+| #23 | `filter-tree.ts` + test, `list-filter.ts` + test, `ListView.tsx`, SPEC | older divergence, unrelated to #20 |
+
+Six merge resolutions is not a thing to start unasked, and the conflict-resolution trap on this repo
+is documented: four separate times a resolution needed a brace or comma that **neither side owned**,
+caught by `tsc` and `json.load` and never by reading the diff. Surfaced for a decision rather than
+swept.
