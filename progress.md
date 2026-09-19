@@ -1688,3 +1688,49 @@ is why binary consolidation cut the run phase to 159s.
 GitGuardian, an external app. Until #20 lands, dropping the local step is not trading a slow gate
 for a fast one, it is trading a gate for none. It comes out of the brief template the hour #20
 merges.
+
+### PR #24 — `Arlesh-7z8`, Shift+initial creates a typed child
+
+`worktree-typed-child-chords` → master, +393/-8, 27 new tests. Gate clean: 93 files / **1340 tests**,
+`cargo test` 644, tarpaulin **91.17%** (3892/4269, +0.21%), and it confirmed `pgrep -x
+cargo-tarpaulin` was empty before starting and that its run was the only one.
+
+**The design decision worth keeping:** `validParentKinds` is *derived* by filtering
+`isValidDropTarget` rather than written out again, so creation enforces the same predicate as
+drag-and-drop and paste and cannot drift from them. A test pins the two together across every kind
+pair. The refusal states the rule positively — "Goal can't sit under Task — only under Aspect,
+Domain, Project, Goal" — so the keystroke that refused also answers *then where?*.
+
+The Shift-is-free claim was checked harder than the bead asked: `shift: true` swept across master,
+every local branch and every remote branch. Every Shift chord anywhere is on a non-letter key.
+
+**Two pre-existing defects it found and correctly did not fix. Both verified independently against
+master before being recorded here.**
+
+1. **An Info cannot actually live under a Commitment — the database forbids it.**
+   `0004_info_nodes.sql` is the only place the `infos.parent_type` CHECK is written:
+   `IN ('aspect','project','domain','goal','task','tag','info')`. No `commitment`, and
+   `0027_commitments.sql` never mentions the `infos` table, so nothing widened it. Meanwhile
+   `node-meta.ts` claims the opposite in four places — `isValidDropTarget("info","commitment")`,
+   `ALLOWED_CHILD_KINDS.commitment`, `validTypesForCycling` under a commitment, and
+   `kindToInfoParentType`. **Retyping a child to Info under a Commitment, or dragging one there,
+   fails at the DB today**; PR #10 shipped with this. The new `Shift+I` is a fourth route to the
+   same wall, not the cause of it. Needs a migration, so it needs a centrally assigned number.
+
+2. **`ALLOWED_CHILD_KINDS` and `isValidDropTarget` disagree about Tag.** `tag: ["info"]` ("a tag
+   holds only info notes") against `if (targetKind === "tag") return false` ("tag → no children").
+   Two predicates, one question, two answers. The branch used `isValidDropTarget`, which matches
+   what Tab, drag-drop and paste actually do.
+
+**One line past the bead, kept deliberately:** a backend rejection now raises a toast as well as
+logging, where the three sibling creators (`onCreateChild`, `onCreateSibling`, `onInsertParent`)
+still only `console.error`. It is inconsistent with its siblings, and it is kept because a key that
+silently does nothing is the exact failure this bead exists to remove. Extending it to the other
+three would be a sweep, so it is not being done without being asked.
+
+**Infrastructure: the shared `CARGO_TARGET_DIR` is not concurrency-safe.** A `cargo test` died with
+`could not execute process .../deps/tasks-<hash> — No such file or directory` because another
+agent's cargo replaced the test binary between build and exec; confirmed via `/proc/<pid>/cwd`
+showing two live cargos in different worktrees. Transient and retryable, but it presents as a broken
+build. Both running agents were told to retry once rather than debug it. Future briefs should say so
+up front, or serialise `cargo test` behind a `flock`.
