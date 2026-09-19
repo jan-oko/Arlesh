@@ -25,6 +25,7 @@ import styles from "./ListView.module.css";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
 import { useFocusExemption } from "@/hooks/use-focus-exemption";
 import { useSubtreeNav } from "@/hooks/use-subtree-nav";
+import { useListScroll } from "@/hooks/use-list-scroll";
 import { useFullscreenStore } from "@/stores/use-fullscreen-store";
 import { useDisplayStore } from "@/stores/use-display-store";
 
@@ -140,6 +141,9 @@ export default function ListView() {
     setListPreset(mode);
   }
 
+  // The viewport: it follows the selection, and j/k roam it without moving the selection.
+  const { containerRef, startScroll } = useListScroll(activeSelectedId);
+
   useKeyboardListView({
     // The prompt swallows the row keys while it is open, as the editor modal already does.
     isInputActive: isInputCaptured || planPrompt !== null,
@@ -149,6 +153,7 @@ export default function ListView() {
     onToggleFullscreen: toggleFullscreen,
     isSelectedBlocked,
     onNavigate: handleNavigate,
+    onScrollList: startScroll,
     onCycleStatus,
     onOpenEditor: onDoubleClick,
     onStartRename: setEditingTaskId,
@@ -168,7 +173,7 @@ export default function ListView() {
   if (error !== null) return <div className={styles.centered}>{t("common:error", { message: error })}</div>;
 
   return (
-    <div className={styles.container}>
+    <div className={styles.container} ref={containerRef}>
       <AnchoredToast toast={pendingToast} onDismiss={clearToast} />
 
       {filteredCommitments.length > 0 && (

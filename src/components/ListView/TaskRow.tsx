@@ -73,6 +73,8 @@ export default function TaskRow({
   return (
     <div
       className={`${styles.card} ${indentClass}${isSelected ? ` ${styles.cardSelected}` : ""}${isFocusExempt ? ` ${styles.cardFocusExempt}` : ""}`}
+      // How the list's scroller finds this row to bring it into view when it becomes the selection.
+      data-row-id={node.id}
       style={cardStyle}
       onClick={() => onSelect(node.id)}
       onDoubleClick={() => onOpenEditor(node.id)}
