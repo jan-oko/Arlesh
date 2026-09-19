@@ -363,6 +363,55 @@ filter dimensions" → seven). It never reached a release, so they were made to 
 rather than carrying a `Removed` note for something no user ever had. Agent also caught `README.md`,
 which my file map missed.
 
+## PR #22 — the undo journal
+
+Three commits, bead closed. Gate green: 87/1163 frontend, 251 Rust, tarpaulin **91.07%** — *above*
+the 90.96% trusted figure, because the new Rust is better covered than the crate average.
+
+**23 journaled tables, 69 triggers. `scopes` is the only domain table excluded, and the argument is
+the good one:** a scope row is not authored, it is the calendar — instantiated on demand by
+`get_or_create`, deduplicated by three unique indexes, and **nothing in the codebase ever deletes
+one** (checked, not assumed). Journalling it would have undo delete a row the next read recreates,
+and fail outright against the foreign keys when another item still references it. An item's own entry
+restores its *reference* to a scope; the scope needs no restoring.
+
+**It resisted the tempting exclusion in the other direction.** `flow_instances`,
+`flow_instance_nodes` and `habit_instance_modifications` *look* derived because they belong to
+instances. Nothing regenerates them — each is written once by a user action — so excluding them would
+have made "start this flow" and "mark this occurrence done" silently un-undoable. It also checked
+whether any background sweep writes lapse tombstones into `habit_instance_modifications`: none does,
+so no third `system` write source was needed.
+
+**`row_id` is the rowid, not a primary key** — six journaled tables have composite PKs and no id
+column. Verified before writing the migration rather than discovered by it.
+
+**The second guard test goes past what ADR 0006 asked for, and is the more valuable one.**
+`every_column_of_every_journaled_table_appears_in_its_triggers` reads `pragma_table_info` and asserts
+every column appears in every trigger. Trigger *existence* passes happily while a column added by a
+later migration is quietly missing from the image — which is exactly the "a new column silently stops
+being restored" failure the ADR rejects inverse-per-command to avoid. It also rejects BLOB-affinity
+columns, because `json_object()` refuses a BLOB and that would fail at write time on a real board
+rather than in CI.
+
+**The Gesture protocol fails in one direction only**, deliberately: a multi-command gesture that
+forgets its outer open degrades to per-command undo; a write with no gesture open is journaled
+ungrouped and never offered as an undo step. **Forgetting costs you an undo, never the wrong undo.**
+Now an invariant in `CONTEXT.md`.
+
+**Weakest point, named concretely:** `src/api/` has no shared `invoke` wrapper — all 18 files import
+from `@tauri-apps/api/core` directly, so "open a gesture per command" has nowhere to go yet. Until
+that choke point exists **nothing is undoable**, which is the safe direction. Noted onto
+`Arlesh-jga`, where the work belongs, and `Arlesh-h2u` got the journal's shape and suppression
+contract.
+
+**A detail that could have been a silent killer:** startup reset clears `undo_context`, not just the
+journal. A `suppressed = 1` left by a crash mid-undo would otherwise stop the triggers recording for
+an entire session — the quietest possible way for this feature to be broken.
+
+**Useful fact for everyone: `master` is not `cargo fmt --check` clean.** The agent ran a bare
+`cargo fmt` early, reformatted 41 files the repo had never formatted, and reverted all of them.
+Verified independently. Do not read a fmt diff on a branch as that branch's doing.
+
 ## PR #21 — `atb` + `9xk`, and a premise that did not survive contact
 
 Both P1s, one commit each, both beads closed. Gate green: 87/1163 frontend, 506 Rust, tarpaulin
