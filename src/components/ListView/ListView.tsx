@@ -14,6 +14,7 @@ import { groupRowsByPath } from "@/utils/list-data";
 import { collectSearchableNodes } from "@/utils/mindmap-tree";
 import { useNodeEditor } from "@/components/MindmapView/use-node-editor";
 import { useKeyboardListView } from "./use-keyboard-list-view";
+import { useUndo } from "@/hooks/use-undo";
 import TaskEditorModal from "@/components/TaskEditorModal/TaskEditorModal";
 import CommitmentEditorModal from "@/components/CommitmentEditorModal/CommitmentEditorModal";
 import NodeSearchModal from "@/components/NodeSearchModal/NodeSearchModal";
@@ -76,7 +77,7 @@ export default function ListView() {
     reload,
     showToast,
   });
-  const { markKept, markBroken } = useCommitmentVerdict({
+  const { markKept, markBroken, cycleVerdict } = useCommitmentVerdict({
     findNode: (id) => findNode(tree, id),
     reload,
     showToast,
@@ -147,6 +148,7 @@ export default function ListView() {
     setListPreset(mode);
   }
 
+  const { onUndo, onRedo } = useUndo({ reload, showToast });
   // The viewport: it follows the selection, and j/k roam it without moving the selection.
   const { containerRef, startScroll } = useListScroll(activeSelectedId);
 
@@ -168,12 +170,14 @@ export default function ListView() {
     onSetStatusMode: handleSetStatusPreset,
     onToggleBacklog: toggleBacklog,
     onToggleAgentic: toggleAgentic,
-    onMarkKept: markKept,
+    onCycleVerdict: cycleVerdict,
     onMarkBroken: markBroken,
     onOpenSearch: () => setIsSearchOpen(true),
     subtreeRootId,
     onExitSubtree,
     onExitToRoot,
+    onUndo,
+    onRedo,
   });
 
   if (isLoading) return <div className={styles.centered}>{t("common:loading")}</div>;

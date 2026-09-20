@@ -2,6 +2,7 @@
 #![allow(dead_code)]
 
 use arlesh_lib::database::session::SessionFactory;
+use arlesh_lib::undo::stacks::UndoStacks;
 use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::SqlitePool;
 
@@ -56,6 +57,10 @@ pub fn command_host(pool: &SqlitePool) -> tauri::App<tauri::test::MockRuntime> {
 
     let app = tauri::test::mock_app();
     app.manage(SessionFactory::new(pool.clone()));
+    // Every host manages the stacks, not only the tests that drive undo: `close_gesture` records
+    // onto them, so a host without them would fail to resolve state for a command that half the
+    // journal tests already call.
+    app.manage(UndoStacks::new());
     app
 }
 

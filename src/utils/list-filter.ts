@@ -5,8 +5,8 @@ import {
   isUnopenedOccurrence, passesCommitmentPreset,
 } from "@/utils/filter-tree";
 import { TASK_STATUS, GOAL_STATUS, PROJECT_STATUS } from "@/utils/status-mapping";
-import type { Verdict } from "@/api/commitments";
-import { VERDICT, VERDICT_VALUES } from "@/api/commitments";
+import type { Verdict } from "@/api/verdict";
+import { VERDICT, VERDICT_VALUES } from "@/api/verdict";
 
 /** Same any/all/exclude semantics as a tag filter, reused across every List View filter dimension. */
 export type PillMode = TagFilterMode;

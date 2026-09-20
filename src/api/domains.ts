@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./gesture";
 
 export const DOMAIN_SUBTYPE = {
   TAG: "tag",
