@@ -391,6 +391,7 @@ The root of the map is "Arlesh" (top level). Aspect cells are its direct childre
 - `Ctrl+O` — search for a node by title
 - `Alt+F` — toggle the filter menu; `Alt+A` / `Alt+P` / `Alt+S` / `Alt+D` / `Alt+B` — jump to the **All / Plan / Start / Do / Backlog** status preset (matched by physical key)
 - `Escape` — deselect; `Shift+Escape` — go back one level when inside a subtree; `Ctrl+Escape` — go back to the root
+- `Ctrl+Z` — undo the last thing you did to the board; `Ctrl+Shift+Z` (or `Ctrl+Y`) — redo it
 - `Alt+L` — switch between Mindmap and List View; `Ctrl+Shift+/` — open the keyboard cheat-sheet
 - `Right-click` — context menu (enter subtree, change type, delete, etc.)
 - Back button / back-to-top button available in the UI
@@ -503,6 +504,7 @@ A compact-card task list, reached via a Mindmap/List tab in the top bar or the `
 - `Ctrl+O` — search for a node by title, over **every** node kind (not just the Tasks the list shows), and **enter** the one you pick: the list re-roots at it and shows only the Tasks beneath it, with that root trimmed from the path headers and named in the top bar instead. This is subtree entry, not a filter — the filter chips, the status preset and the selection are all untouched, and the subtree composes with whatever filtering is already active
 - `Shift+Escape` — up one subtree level; `Ctrl+Escape` — straight back to the true root. Same semantics as the Mindmap's, and gated the same way (they do nothing at the true root, where bare `Escape` still deselects)
 - `Escape` — deselect
+- `Ctrl+Z` — undo the last thing you did to the board; `Ctrl+Shift+Z` (or `Ctrl+Y`) — redo it
 - `Alt+L` — switch back to the Mindmap; `Ctrl+Shift+/` — open the keyboard cheat-sheet
 
 A shortcut requires exactly the modifiers listed — `Ctrl+E` does not open the editor, only a bare `E` does.
@@ -638,6 +640,170 @@ A tool that fails returns a result flagged as an error carrying the same structu
 frontend receives across the Tauri boundary, including its stable `kind` — `not_found`,
 `containment_violated`, `invalid_request`, `database`, `internal` — so an agent branches on the
 discriminant rather than parsing a message.
+
+## Undo
+
+Ctrl+Z reverses a **Gesture** — one thing the user did — and Ctrl+Shift+Z reapplies it. There is
+**one stack for the whole app**, not one per view or window: there is one board and one history of
+changes to it, and a per-view stack could undo past another view's newer edit. Both stacks are
+**session-scoped** and empty on launch.
+
+### The journal
+
+The record undo works from is a **row-level journal written by SQL triggers**, not by the commands.
+Three triggers per journaled table — insert, update, delete — write a `undo_journal` row carrying
+the changed row's **before image**, its **after image**, or both, as JSON. Rows are journaled, so
+undo speaks in rows: it restores what a row was, not what the user meant by changing it. That is
+why the toast names the gesture ("Undid: delete 4 items") rather than describing column changes.
+
+The alternative — an inverse per command — was rejected because there are 83 mutating commands and
+an inverse is an obligation met 83 times and again by every command written afterwards, while a
+trigger cannot be forgotten by a command that does not know it exists. ADR 0006 weighs that against
+whole-database snapshots and `sqlite3session` changesets, and says why neither is available here.
+
+**Not every table is journaled.** Derived and materialised rows are excluded, or undo would fight
+the code that regenerates them. The exclusion list is part of the design rather than an
+optimisation, and today it is exactly `scopes` — a scope row is the calendar, instantiated on
+demand and never deleted, so undoing its creation would delete a row the next read recreates and,
+where another item still references it, fail against the foreign keys — plus the journal's own two
+tables. Everything else on the board is journaled, including the link and dependency tables that a
+foreign-key cascade removes without any command naming them.
+
+A table added later is **not journaled until its triggers are written**, and that is the one
+obligation this design does not remove. It is guarded by a test that enumerates the schema from
+`sqlite_master`, fails when a table that is not on the exclusion list has no triggers, and fails
+again when a *column* of a journaled table is missing from its triggers —
+`scripts/generate-undo-triggers.sh` writes the replacements.
+
+### Gestures
+
+A Gesture is not a command: pasting five nodes issues five commands and is one Ctrl+Z. The boundary
+is therefore **opened by the caller**, through the `open_gesture` and `close_gesture` commands, and
+the frontend is the layer that knows which commands belong together. Opens **nest and join** — a
+nested open joins the gesture already running rather than starting a second, the same rule ADR 0004
+gives transactions — so the intended shape is a gesture around every invoked command plus an
+explicit outer gesture around the runs that belong together.
+
+This is the weak seam in the design, and it fails in one direction only:
+
+- a multi-command gesture that forgets its outer open **degrades to per-command undo**;
+- a write made with no gesture open at all is journaled **ungrouped** and is never offered as an
+  undo step.
+
+Nothing here can make Ctrl+Z reverse something the user did not ask about; the cost of forgetting
+is a change that undo declines to touch. The seam narrows on its own as command logic moves into
+Rust, after which most gestures are one backend call and the protocol is vestigial.
+
+On the frontend, that shape is one module: `src/api/gesture.ts` is the only file that imports
+Tauri's `invoke`, and everything in `src/api/` goes through its wrapper, which opens a Gesture
+around **every** command. A lone command is therefore its own undo step without anyone remembering
+to ask for it — the same argument the trigger journal makes against per-command obligations — and
+a lint rule refuses a direct import so a new api file cannot quietly fall outside the stack. Runs
+that belong together are wrapped once more, by `withGesture(name, run)`, which opens the outer
+Gesture the per-command opens then join: a paste, a multi-select delete, an insert-parent (a create
+and a move), and a drag reparent that clamps scoped descendants before moving. Both wrappers close
+their Gesture in a `finally`, because a command that throws having already written something must
+still be a step the user can reverse.
+
+`withGesture`'s `name` is the human name of the Gesture, and it is set when the Gesture opens
+because only the frontend knows the user called it "paste 5 nodes". The backend has nowhere to put
+it — a Gesture id is minted by the database and the summary it returns carries counts and table
+names, not a sentence — so the names are held frontend-side, keyed by Gesture id, and read back
+when an undo returns that id.
+
+### What the user sees
+
+**Every press says something.** A Gesture that comes back raises the app's existing anchored
+notice, naming what was reversed: **"Undid: paste 5 nodes"** from the name the Gesture was opened
+with, or **"Undid: update 1 item"** from the row counts when nobody named it. A redo says
+**"Redid: …"** of the same phrase — the toast names the Gesture, not the direction of travel. The
+board then reloads the way every other mutation already ends.
+
+The other two outcomes also speak, and the three must not look alike:
+
+| outcome | undo | redo | reloads |
+|---|---|---|---|
+| applied | `Undid: paste 5 nodes` | `Redid: paste 5 nodes` | yes |
+| empty stack | `Nothing to undo` | `Nothing to redo` | no |
+| refused apply | `Couldn't undo: …` | `Couldn't redo: …` | no |
+
+An **empty stack** is not a failure: nothing was wrong, there was simply nothing there, and the
+message is a statement of fact about the board. A **refused apply** is a failure — the whole replay
+runs in one transaction, so the board is untouched and the Gesture is **still on the stack**, and
+the same press will work once whatever blocked it is gone. The anchored notice has one class and
+one tone, with no severity channel of its own, so the wording is the only thing holding those two
+apart: the refusal names a reason after a colon and says something could not be done, while the
+empty stack states a fact and carries no reason because there is none.
+
+Only a Gesture that was actually applied redraws anything. `undo_status` exists to label and
+disable a control and is never consulted before a keystroke; the backend handles an empty stack
+itself, so asking first would buy nothing but a round trip and a window for the answer to go stale.
+
+> An earlier draft of this design had the empty stack produce nothing at all, on the reasoning that
+> Ctrl+Z with nothing to undo is not a mistake and should not flash like one. That was revised in
+> review: a press that produces no response at all is indistinguishable from a dead key or a
+> shortcut that never registered, which is a worse failure than the one the silence avoided. The
+> distinction the silence was protecting is now carried by the wording instead.
+
+Both bindings are declared in the shared hotkey registry for **both views**, so the cheat-sheet
+lists them without being told twice, and they are suppressed exactly as every other view binding
+is — inside a text field, where Ctrl+Z means the field undo the browser already gives, and behind
+any modal or inline editor, through the same input-capture registry. `Ctrl+Y` is a hidden alias of
+the redo binding: dispatchable, but not a second cheat-sheet row.
+
+### Sources, and not undoing undo
+
+Every entry carries the **source** of its write. An MCP write is journaled but never enters the
+user's stack: an agent setting a `beads_id` is not something the user did, and Ctrl+Z reversing it
+would be indefensible. The journal stays a faithful history; the stack is a history of *the user*.
+The source is an enum rather than a boolean and the column carries no CHECK constraint, so a third
+source later is a code change and not a migration.
+
+Applying an undo or a redo is itself a write, and would be caught by the same triggers. The journal
+therefore carries a **suppression** flag the undo path sets for the duration of its own
+transaction. Both the flag and the source live in a single ambient row every connection shares; what
+makes that safe is that setting either is a write, so the transaction that sets it holds SQLite's
+single writer lock until it commits.
+
+The journal is truncated at startup and capped at a fixed number of gestures, so a long session
+cannot grow it without bound. An ungrouped entry counts as one gesture for that cap.
+
+### The two stacks
+
+The Undo Stack and the Redo Stack live in **backend memory**, one pair for the whole application,
+beside the session factory — not in the frontend, which has several views onto one board and would
+give each of them a private history, and not in the database, which would outlive the session they
+are scoped to. Launching Arlesh is an empty history; nothing has to clear them.
+
+A Gesture reaches the Undo Stack when `close_gesture` ends it, carrying **only its `user` journal
+entries**. The filter is per entry rather than per Gesture, because the ambient context is one row
+for the whole application: an agent writing while the user's Gesture happens to be open is
+journaled under that Gesture's id, and the `source` column is what tells the two apart. A Gesture
+that wrote nothing the user can undo never reaches a stack at all, so a press is never spent on a
+step with no effect.
+
+**Undo** takes the Gesture on top of the Undo Stack and applies the inverse of each of its entries
+in reverse order — the inverse of an insert is a delete of that row, of a delete an insert of the
+before image at its **original rowid**, and of an update a write of the before image back over
+every column — then moves the Gesture to the Redo Stack. **Redo** does the same in the other
+direction. Restoring by rowid is why the feature is row-level rather than command-level: a deleted
+goal that comes back at a new id comes back as an orphan, with its children, tags, dependencies and
+block reasons pointing at nothing.
+
+It is **one transaction**, with journalling suppressed and foreign keys deferred to the commit. The
+deferral is what lets a subtree be rebuilt in whatever order it was taken apart — what has to hold
+is the end state, not every step towards it — and a violation that is real still fails at the
+commit and rolls the whole thing back. There are exactly two outcomes: the Gesture is applied
+whole, or nothing changed and the user is told which Gesture could not be applied, with it still on
+the stack to try again.
+
+**A new user Gesture empties the Redo Stack**, so redo can never reapply rows onto a board that has
+moved on. An MCP write does not, because it never enters either stack.
+
+Undo with an empty stack is a **silent no-op**, not an error: a keystroke with nothing to act on is
+not a mistake the user made. `undo` and `redo` return what they applied, or nothing; `undo_status`
+reports what each press would do so a control can be labelled and disabled, and is never a
+precondition for calling them.
 
 ## Implementation Phases
 

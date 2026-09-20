@@ -58,5 +58,7 @@
   "toggleBacklog": "Put in / take out of the backlog",
   "toggleAgentic": "Mark Agentic / Not agentic",
   "markKept": "Mark the selected commitment kept (again to clear it)",
-  "markBroken": "Mark the selected commitment broken (again to clear it)"
+  "markBroken": "Mark the selected commitment broken (again to clear it)",
+  "undo": "Undo the last change",
+  "redo": "Redo the last undone change"
 }

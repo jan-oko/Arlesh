@@ -34,6 +34,8 @@ function baseOptions(overrides: Partial<Parameters<typeof useKeyboardListView>[0
     onToggleAgentic: vi.fn(),
     onMarkKept: vi.fn(),
     onMarkBroken: vi.fn(),
+    onUndo: vi.fn(),
+    onRedo: vi.fn(),
     onToggleFullscreen: vi.fn(),
     ...overrides,
   };
@@ -271,6 +273,54 @@ describe("useKeyboardListView", () => {
     fireKey("r");
     expect(options.onOpenEditor).not.toHaveBeenCalled();
     expect(options.onStartRename).not.toHaveBeenCalled();
+  });
+
+  // Ctrl+Z in both views, dispatched from the shared registry so the cheat-sheet lists it too.
+  describe("undo and redo", () => {
+    it("Ctrl+Z reaches undo", () => {
+      const options = baseOptions();
+      renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+      fireKey("z", { ctrlKey: true });
+      expect(options.onUndo).toHaveBeenCalledTimes(1);
+      expect(options.onRedo).not.toHaveBeenCalled();
+    });
+
+    it("Ctrl+Shift+Z reaches redo, and not undo", () => {
+      const options = baseOptions();
+      renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+      fireKey("z", { ctrlKey: true, shiftKey: true });
+      expect(options.onRedo).toHaveBeenCalledTimes(1);
+      expect(options.onUndo).not.toHaveBeenCalled();
+    });
+
+    it("Ctrl+Y reaches redo as well", () => {
+      const options = baseOptions();
+      renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+      fireKey("y", { ctrlKey: true });
+      expect(options.onRedo).toHaveBeenCalledTimes(1);
+    });
+
+    it("ignores both while an input is active", () => {
+      const options = baseOptions({ isInputActive: true });
+      renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+      fireKey("z", { ctrlKey: true });
+      fireKey("z", { ctrlKey: true, shiftKey: true });
+      expect(options.onUndo).not.toHaveBeenCalled();
+      expect(options.onRedo).not.toHaveBeenCalled();
+    });
+
+    // Inside a field Ctrl+Z means the field undo the browser already gives, not the board's.
+    it("leaves a keystroke from inside a text field alone", () => {
+      const options = baseOptions();
+      renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+      const input = document.createElement("input");
+      document.body.appendChild(input);
+      input.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "z", code: "KeyZ", ctrlKey: true, bubbles: true, cancelable: true }),
+      );
+      document.body.removeChild(input);
+      expect(options.onUndo).not.toHaveBeenCalled();
+    });
   });
 });
 
