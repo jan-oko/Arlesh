@@ -1,6 +1,6 @@
 //! Flow (template) resource models.
 
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 
 use crate::tasks::model::TimeScope;
 
@@ -200,20 +200,6 @@ pub struct CreateFlowRequest {
     pub verdict_window_kind: Option<String>,
 }
 
-/// Deserialises an explicitly-null JSON field into `Some(None)` rather than `None`.
-///
-/// `Option<Option<T>>` is how an update request spells *absent = unchanged, null = clear*, but
-/// serde collapses both spellings to `None` on its own — so a clear sent from the UI would be read
-/// as "leave it alone" and swallowed without a word. Pair with `#[serde(default)]`, which restores
-/// the absent case.
-fn null_clears<'de, T, D>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
-where
-    T: Deserialize<'de>,
-    D: Deserializer<'de>,
-{
-    Option::<T>::deserialize(deserializer).map(Some)
-}
-
 /// Request body for updating a flow (fields left `None` are unchanged; `Some(None)` clears).
 #[derive(Debug, Default, Deserialize)]
 pub struct UpdateFlowRequest {
@@ -222,32 +208,40 @@ pub struct UpdateFlowRequest {
     /// New instance type.
     pub instance_type: Option<InstanceType>,
     /// Target Node type (`Some(None)` clears it back to the derived parent default).
-    #[serde(default, deserialize_with = "null_clears")]
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
     pub target_type: Option<Option<String>>,
     /// Target Node id (`Some(None)` clears it back to the derived parent default).
-    #[serde(default, deserialize_with = "null_clears")]
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
     pub target_id: Option<Option<i64>>,
     /// Flow-scope duration count (Some(None) clears).
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
     pub flow_duration_n: Option<Option<i64>>,
     /// Flow Window kind (Some(None) clears).
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
     pub flow_duration_kind: Option<Option<String>>,
     /// Phase-`part` band (Some(None) clears).
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
     pub flow_window_part: Option<Option<String>>,
     /// Phase-`exact` window start time-of-day (Some(None) clears).
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
     pub flow_window_time_start: Option<Option<String>>,
     /// Phase-`exact` window end time-of-day (Some(None) clears).
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
     pub flow_window_time_end: Option<Option<String>>,
     /// Root Cycle Plan kind (Some(None) clears).
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
     pub root_plan_kind: Option<Option<String>>,
     /// Root Cycle Plan start offset (Some(None) clears).
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
     pub root_plan_start: Option<Option<i64>>,
     /// Root Cycle Plan end offset (Some(None) clears).
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
     pub root_plan_end: Option<Option<i64>>,
     /// Verdict Window count (`Some(None)` clears it, leaving iterations answerable indefinitely).
-    #[serde(default, deserialize_with = "null_clears")]
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
     pub verdict_window_n: Option<Option<i64>>,
     /// Verdict Window kind (`Some(None)` clears).
-    #[serde(default, deserialize_with = "null_clears")]
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
     pub verdict_window_kind: Option<Option<String>>,
     /// New parent type (with parent_id).
     pub parent_type: Option<String>,

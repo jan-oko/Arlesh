@@ -3639,3 +3639,81 @@ async fn a_scoped_backlogged_task_still_lapses_missed_when_its_window_closes() {
     assert_eq!(entry.archival, Archival::Archived);
     assert!(entry.archival_conflict);
 }
+
+// --- Clearing a Task's or Goal's nullable fields (Arlesh-atb) ---
+//
+// `Option<Option<T>>` spells *absent = leave unchanged, null = clear*, but serde collapses both
+// spellings to `None` on its own — which every `merge` reads as "unchanged". The task and goal
+// editors send the whole form on every save, so emptying a Time Scope, a Plan or a delegate puts a
+// JSON `null` on the wire and the save used to succeed while changing nothing. One test per field:
+// each carries its own `#[serde(default, deserialize_with = "crate::wire::null_clears")]`, and a
+// missing attribute on any one of them is its own silent drop.
+
+#[test]
+fn an_explicit_null_delegate_in_a_task_update_payload_clears_it() {
+    let absent: UpdateTaskRequest = serde_json::from_str(r#"{"title":"Renamed"}"#).unwrap();
+    assert_eq!(absent.delegate_to, None, "an absent key leaves the delegate alone");
+    let nulled: UpdateTaskRequest = serde_json::from_str(r#"{"delegate_to":null}"#).unwrap();
+    assert_eq!(nulled.delegate_to, Some(None), "an explicit null clears the delegate");
+    let set: UpdateTaskRequest = serde_json::from_str(r#"{"delegate_to":7}"#).unwrap();
+    assert_eq!(set.delegate_to, Some(Some(7)));
+}
+
+#[test]
+fn an_explicit_null_time_scope_in_a_task_update_payload_clears_it() {
+    let absent: UpdateTaskRequest = serde_json::from_str(r#"{"title":"Renamed"}"#).unwrap();
+    assert_eq!(absent.time_scope, None, "an absent key leaves the Time Scope alone");
+    let nulled: UpdateTaskRequest = serde_json::from_str(r#"{"time_scope":null}"#).unwrap();
+    assert_eq!(nulled.time_scope, Some(None), "an explicit null clears the Time Scope");
+    let set: UpdateTaskRequest =
+        serde_json::from_str(r#"{"time_scope":{"start_id":1,"end_id":2}}"#).unwrap();
+    assert_eq!(
+        set.time_scope,
+        Some(Some(TimeScope { start_id: 1, end_id: 2, duration: None }))
+    );
+}
+
+#[test]
+fn an_explicit_null_on_scope_exit_in_a_task_update_payload_clears_it() {
+    let absent: UpdateTaskRequest = serde_json::from_str(r#"{"title":"Renamed"}"#).unwrap();
+    assert_eq!(absent.on_scope_exit, None, "an absent key leaves the on-exit behavior alone");
+    let nulled: UpdateTaskRequest = serde_json::from_str(r#"{"on_scope_exit":null}"#).unwrap();
+    assert_eq!(nulled.on_scope_exit, Some(None), "an explicit null clears the on-exit behavior");
+    let set: UpdateTaskRequest = serde_json::from_str(r#"{"on_scope_exit":"archive"}"#).unwrap();
+    assert_eq!(set.on_scope_exit, Some(Some(OnScopeExit::Archive)));
+}
+
+#[test]
+fn an_explicit_null_plan_in_a_task_update_payload_clears_it() {
+    let absent: UpdateTaskRequest = serde_json::from_str(r#"{"title":"Renamed"}"#).unwrap();
+    assert_eq!(absent.plan, None, "an absent key leaves the Plan alone");
+    let nulled: UpdateTaskRequest = serde_json::from_str(r#"{"plan":null}"#).unwrap();
+    assert_eq!(nulled.plan, Some(None), "an explicit null clears the Plan");
+    let set: UpdateTaskRequest =
+        serde_json::from_str(r#"{"plan":{"start_id":3,"end_id":4}}"#).unwrap();
+    assert_eq!(set.plan, Some(Some(TimeScope { start_id: 3, end_id: 4, duration: None })));
+}
+
+#[test]
+fn an_explicit_null_time_scope_in_a_goal_update_payload_clears_it() {
+    let absent: UpdateGoalRequest = serde_json::from_str(r#"{"title":"Renamed"}"#).unwrap();
+    assert_eq!(absent.time_scope, None, "an absent key leaves the Time Scope alone");
+    let nulled: UpdateGoalRequest = serde_json::from_str(r#"{"time_scope":null}"#).unwrap();
+    assert_eq!(nulled.time_scope, Some(None), "an explicit null clears the Time Scope");
+    let set: UpdateGoalRequest =
+        serde_json::from_str(r#"{"time_scope":{"start_id":1,"end_id":2}}"#).unwrap();
+    assert_eq!(
+        set.time_scope,
+        Some(Some(TimeScope { start_id: 1, end_id: 2, duration: None }))
+    );
+}
+
+#[test]
+fn an_explicit_null_on_scope_exit_in_a_goal_update_payload_clears_it() {
+    let absent: UpdateGoalRequest = serde_json::from_str(r#"{"title":"Renamed"}"#).unwrap();
+    assert_eq!(absent.on_scope_exit, None, "an absent key leaves the on-exit behavior alone");
+    let nulled: UpdateGoalRequest = serde_json::from_str(r#"{"on_scope_exit":null}"#).unwrap();
+    assert_eq!(nulled.on_scope_exit, Some(None), "an explicit null clears the on-exit behavior");
+    let set: UpdateGoalRequest = serde_json::from_str(r#"{"on_scope_exit":"keep"}"#).unwrap();
+    assert_eq!(set.on_scope_exit, Some(Some(OnScopeExit::Keep)));
+}
