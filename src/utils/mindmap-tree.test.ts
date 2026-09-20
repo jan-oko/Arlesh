@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { connectedNodeIds, pathToNode, nearestInDirection, collectAllNodeIds, computeShiftSelectRange, parentAndChildrenIds, siblingIds, gatherSubtreeItems, collectSubtreePostOrder, conversionNeedsConfirm, flattenNodesById, canConvertNodeToFlow } from "./mindmap-tree";
+import { connectedNodeIds, pathToNode, owningFlowId, nearestInDirection, collectAllNodeIds, computeShiftSelectRange, parentAndChildrenIds, siblingIds, gatherSubtreeItems, collectSubtreePostOrder, conversionNeedsConfirm, flattenNodesById, canConvertNodeToFlow } from "./mindmap-tree";
 import type { MindmapNode } from "./tree-layout";
 import type { Position } from "./tree-layout";
 
@@ -385,5 +385,32 @@ describe("flattenNodesById", () => {
 
   it("returns undefined for an id not in the tree", () => {
     expect(flattenNodesById(TREE).get("missing")).toBeUndefined();
+  });
+});
+
+describe("owningFlowId", () => {
+  // A flow with a goal item holding a task item, beside a second flow and a plain task.
+  const NESTED_TASK: MindmapNode = { id: "flowtask-4", kind: "flow_task", title: "Step", position: 0, tagIds: [], children: [] };
+  const FLOW_GOAL: MindmapNode = { id: "flowgoal-3", kind: "flow_goal", title: "Block", position: 0, tagIds: [], children: [NESTED_TASK] };
+  const FLOW_A: MindmapNode = { id: "flow-1", kind: "flow", title: "Morning", position: 0, tagIds: [], children: [FLOW_GOAL] };
+  const FLOW_B: MindmapNode = { id: "flow-2", kind: "flow", title: "Evening", position: 1, tagIds: [], children: [] };
+  const TREE_WITH_FLOWS = node("root", [node("domain-1", [FLOW_A, FLOW_B, node("task-9")])]);
+
+  it("reports the flow itself for a flow node", () => {
+    expect(owningFlowId(TREE_WITH_FLOWS, "flow-1")).toBe("flow-1");
+  });
+
+  it("walks up to the flow a deeply nested item belongs to", () => {
+    expect(owningFlowId(TREE_WITH_FLOWS, "flowtask-4")).toBe("flow-1");
+    expect(owningFlowId(TREE_WITH_FLOWS, "flowgoal-3")).toBe("flow-1");
+  });
+
+  it("tells two templates apart, which is what copying an item is refused across", () => {
+    expect(owningFlowId(TREE_WITH_FLOWS, "flowtask-4")).not.toBe(owningFlowId(TREE_WITH_FLOWS, "flow-2"));
+  });
+
+  it("returns undefined for a node outside any flow, and for one not in the tree", () => {
+    expect(owningFlowId(TREE_WITH_FLOWS, "task-9")).toBeUndefined();
+    expect(owningFlowId(TREE_WITH_FLOWS, "missing")).toBeUndefined();
   });
 });

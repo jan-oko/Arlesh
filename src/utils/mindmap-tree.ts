@@ -9,6 +9,23 @@ export function findNode(root: MindmapNode, id: string): MindmapNode | undefined
   return undefined;
 }
 
+/**
+ * The id of the Flow `id` belongs to: itself when it *is* a flow, otherwise its nearest flow
+ * ancestor. `undefined` for a node outside any flow.
+ *
+ * Two flow items belong to the same template exactly when this agrees on them, which is what
+ * copying a flow item is allowed within and refused across.
+ */
+export function owningFlowId(root: MindmapNode, id: string): string | undefined {
+  let node = findNode(root, id);
+  while (node !== undefined) {
+    if (node.kind === "flow") return node.id;
+    const parent = findParent(root, node.id);
+    node = parent ?? undefined;
+  }
+  return undefined;
+}
+
 export function findParent(root: MindmapNode, id: string): MindmapNode | null {
   for (const child of root.children) {
     if (child.id === id) return root;
