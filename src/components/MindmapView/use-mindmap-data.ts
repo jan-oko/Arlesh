@@ -346,6 +346,7 @@ export function injectHabitInstances(
   flows: Flow[],
   iterationsByFlow: HabitIteration[][],
   labels: ScopeLabelFns,
+  now: string,
   flowGoals: FlowGoal[] = [],
   flowTasks: FlowTask[] = [],
   statusesByFlow: HabitItemStatus[][] = [],
@@ -380,6 +381,10 @@ export function injectHabitInstances(
       // chance to record a verdict has gone — but it is never given a Resolution, because nothing
       // in this kind ever concludes an outcome the user did not state.
       const expired = iteration.status === "expired";
+      // What the Mindmap's collapse of passed iterations folds by. `window_end` is exclusive, and
+      // the Habit's Consumption cannot answer this on its own: under Overlapping nothing lapses,
+      // so a long-closed window is still `active`.
+      const windowPassed = iteration.window_end <= now;
       // The root is its own instance (`flow_root`, keyed by the flow id) with its own status.
       const rootRaw = statuses.get(`${itemKey("flow_root", flow.id)}-${NO_CYCLE}-${scopeId}`);
       const rootDone = rootRaw === "done";
@@ -397,6 +402,17 @@ export function injectHabitInstances(
         virtual: true,
         habitItem: {
           flowId: flow.id, itemType: "flow_root", itemId: flow.id, scopeId, cycleId: NO_CYCLE,
+        },
+        habitIteration: {
+          flowId: flow.id,
+          index: iteration.index,
+          scopeKind: toCanonicalKind(flow.flow_duration_kind),
+          anchorDate: iteration.anchor_date,
+          windowEnd: iteration.window_end,
+          passed: windowPassed,
+          // "Done" is the iteration finishing as it was meant to: completed for a work Habit,
+          // Kept for a commitment one. A broken or unanswered verdict counts with the misses.
+          done: isCommitment ? rootVerdict === VERDICT.KEPT : rootDone,
         },
         // Iterations are injected after buildTree's colour propagation, so inherit the host's
         // already-resolved aspect colour directly.
@@ -497,6 +513,7 @@ function kindToInfoParentType(kind: NodeKind): string {
     case "commitment": return "commitment";
     case "flow": throw new Error("Flow nodes cannot parent info nodes");
     case "flow_goal": case "flow_task": throw new Error("Flow items cannot parent info nodes");
+    case "habit_group": throw new Error("A folded Habit history cannot parent info nodes");
   }
 }
 
@@ -509,7 +526,7 @@ function kindToFlowParentType(kind: NodeKind): string {
   switch (kind) {
     case "aspect": case "domain": case "project": case "goal": return kind;
     case "task": case "commitment": case "tag": case "info":
-    case "flow": case "flow_goal": case "flow_task":
+    case "flow": case "flow_goal": case "flow_task": case "habit_group":
       throw new Error(`Flows cannot hang from a node of kind "${kind}"`);
   }
 }
@@ -958,7 +975,8 @@ export function useMindmapData(): MindmapData {
       if (showSpinner) setIsLoading(true);
       setError(null);
       try {
-        const data = await loadMindmap(localNowIso());
+        const now = localNowIso();
+        const data = await loadMindmap(now);
         const built = buildTree(
           data.domains, data.goals, data.tasks, data.infos, data.commitments, data.flows,
           data.flow_goals, data.flow_tasks, data.flow_cycles, data.flow_dependencies,
@@ -969,7 +987,7 @@ export function useMindmapData(): MindmapData {
         // A flow whose derivation failed contributes an empty list here and a load condition
         // below — it is not silently indistinguishable from a flow that simply has no iterations.
         injectHabitInstances(
-          built, data.flows, habitIterations(data.habits), scopeLabels,
+          built, data.flows, habitIterations(data.habits), scopeLabels, now,
           data.flow_goals, data.flow_tasks, habitStatuses(data.habits),
         );
         setTree(built);
@@ -1278,6 +1296,9 @@ export function useMindmapData(): MindmapData {
           // reaching here means a caller skipped that check — say so instead of quietly
           // giving the aspect a parent and demoting it.
           throw new Error("Aspects are top level and cannot be moved");
+        case "habit_group":
+          // A display node standing in for iterations, with nothing of its own to move.
+          throw new Error("A folded Habit history cannot be moved");
         default: {
           // `kind` is `never` here only while every NodeKind is handled above. Adding a kind
           // without a branch fails this assignment at compile time — which is the whole point:
@@ -1332,6 +1353,8 @@ export function useMindmapData(): MindmapData {
           // Flows carry a Recurrence, instances and completion history; what a duplicate of one
           // should inherit is its own question, and `fork_flow` is the operation that asks it.
           throw new Error(`${kind} nodes cannot be duplicated`);
+        case "habit_group":
+          throw new Error("A folded Habit history cannot be duplicated");
         default: {
           const unhandled: never = kind;
           throw new Error(`duplicateNode has no branch for node kind "${String(unhandled)}"`);

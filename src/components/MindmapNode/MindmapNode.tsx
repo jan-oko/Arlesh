@@ -103,6 +103,9 @@ export default function MindmapNode({ node, parentKind, position, isSelected, is
       onMouseDown={handleMouseDown}
       style={{ cursor: "pointer", opacity: isDragSource === true ? 0 : (opacity === 1 ? undefined : opacity), pointerEvents: isDragSource === true ? "none" : undefined }}
     >
+      {/* A folded run says what it stands for on the node and *when* in its tooltip: the span is
+          what tells this September's history from last September's, and it would not fit. */}
+      {node.habitGroup !== undefined && <title>{node.habitGroup.spanLabel}</title>}
       <NodeRect node={node} width={width} height={activeHeight} iconWidth={iconWidth} iconCx={iconCx} iconCy={activeHeight / 2} iconR={iconR} fillColor={fillColor} fillOpacity={fillOpacity} strokeColor={strokeColor} isSelected={isSelected} isCollapsed={isCollapsed} iconColor={iconColor} iconOpacity={iconOpacity} isBlocked={isBlocked} canClickStatus={canClickStatus} isRtl={isRtl} onStatusIconClick={handleStatusIconClick} />
       <NodeLabel node={node} isEditing={isEditing} iconWidth={iconWidth} width={width} height={activeHeight} fontSize={fontSize} lineHeight={lineHeight} displayLineCount={displayLineCount} editLineCount={editLineCount} onEditLineCountChange={setEditLineCount} label={label} textFill={textFill} isRtl={isRtl} onCommitEdit={onCommitEdit} onCancelEdit={onCancelEdit} />
       {statusIndicators.length > 0 && (

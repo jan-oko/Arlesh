@@ -255,6 +255,16 @@ export interface HabitIteration {
   anchor_scope_id: number;
   /** The window's first day, ISO `YYYY-MM-DD`. */
   anchor_date: string;
+  /**
+   * The window's **exclusive** end, ISO `YYYY-MM-DDTHH:MM:SS`: the window has passed once the
+   * load's reference instant has reached it.
+   *
+   * Derived backend-side, with the same offset arithmetic `start` uses, rather than recomputed
+   * here from the flow's Duration. It is what the Mindmap folds passed iterations by, and
+   * {@link IterationStatus} could not answer that on its own — under Overlapping Consumption a
+   * long-closed window is still `active`.
+   */
+  window_end: string;
   status: IterationStatus;
   /** Every occurrence this iteration renders, in item order and then pair order. */
   instances: HabitInstance[];

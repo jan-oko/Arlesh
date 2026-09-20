@@ -13,6 +13,7 @@ import FilterPopover from "@/components/FilterPopover/FilterPopover";
 import FilterChips from "@/components/FilterChips/FilterChips";
 import Select from "@/components/Select/Select";
 import Switch from "@/components/Switch/Switch";
+import HabitCollapseSetting from "./HabitCollapseSetting";
 import styles from "./TopBar.module.css";
 
 const GEAR_ICON = "⚙";
@@ -105,6 +106,8 @@ export default function TopBar() {
                       />
                     </div>
                   )}
+                  {/* Folded Habit history is drawn on the mindmap, so its threshold is gated to it. */}
+                  {view === "mindmap" && <HabitCollapseSetting />}
                   {/* Path headers exist only in List View, so their glyph switch is gated the same
                       way the branch axis is gated to the mindmap — a control for something the
                       current view cannot show is noise. */}
