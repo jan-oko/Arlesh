@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { commitmentGlyphState, COMMITMENT_GLYPH } from "@/utils/commitment-glyph";
-import { VERDICT } from "@/api/commitments";
+import { VERDICT } from "@/api/verdict";
 
 describe("commitmentGlyphState", () => {
   it("draws a commitment nobody has judged yet as live", () => {

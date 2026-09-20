@@ -1,8 +1,9 @@
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode } from "@/utils/tree-layout";
-import type { Verdict } from "@/api/commitments";
-import { NEXT_VERDICT, VERDICT, updateCommitment, verdictAfterPressing } from "@/api/commitments";
+import type { Verdict } from "@/api/verdict";
+import { VERDICT } from "@/api/verdict";
+import { NEXT_VERDICT, updateCommitment, verdictAfterPressing } from "@/api/commitments";
 import { setHabitItemStatus } from "@/api/flows";
 import { getErrorMessage } from "@/api/errors";
 

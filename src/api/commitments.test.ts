@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { NEXT_VERDICT, VERDICT, isVerdict, verdictAfterPressing } from "./commitments";
+import { NEXT_VERDICT, verdictAfterPressing } from "./commitments";
+import { VERDICT, isVerdict } from "./verdict";
 
 describe("isVerdict", () => {
   it("accepts the three verdicts and nothing else", () => {

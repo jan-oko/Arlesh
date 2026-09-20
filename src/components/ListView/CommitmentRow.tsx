@@ -4,7 +4,7 @@ import type { CommitmentListRow } from "@/utils/list-filter";
 import { deriveStatusIndicators } from "@/utils/node-status-indicators";
 import { computeNodeAppearance } from "@/utils/node-visuals";
 import { useTagNames } from "@/hooks/use-tag-names";
-import { VERDICT } from "@/api/commitments";
+import { VERDICT } from "@/api/verdict";
 import VerdictIcon from "@/components/StatusIcons/VerdictIcon";
 import TaskRowBadges from "./TaskRowBadges";
 import taskStyles from "./TaskRow.module.css";
