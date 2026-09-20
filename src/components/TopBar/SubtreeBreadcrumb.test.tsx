@@ -72,6 +72,20 @@ describe("SubtreeBreadcrumb", () => {
     expect(screen.queryByRole("button", { name: "Deep" })).not.toBeInTheDocument();
   });
 
+  it("names itself for a screen reader, rather than prefixing the run of titles", () => {
+    giveChainRoom(1000);
+    enterDeepSubtree();
+    render(<SubtreeBreadcrumb />);
+    expect(screen.getByRole("navigation", { name: "insideSubtree" })).toBeInTheDocument();
+  });
+
+  it("opens with the root's title and no glyph before it", () => {
+    giveChainRoom(1000);
+    enterDeepSubtree();
+    const { container } = render(<SubtreeBreadcrumb />);
+    expect(container.querySelector("svg")).toBeNull();
+  });
+
   it("enters exactly the middle level whose segment is clicked", () => {
     giveChainRoom(1000);
     enterDeepSubtree();

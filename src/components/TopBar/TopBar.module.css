@@ -1,9 +1,12 @@
-/* Three columns, with the middle one taking everything the two sides do not need: the breadcrumb
-   in it grows with the chain rather than being sized to one subtree's title. `minmax(0, …)` lets a
-   crowded side shrink instead of pushing the breadcrumb past the end of the bar. */
+/* Three columns whose two sides are given the same share, so the middle one is centred on the bar
+   itself rather than on whatever the two clusters happen to leave between them — the left cluster
+   is several times the width of the Filter button, so the leftover space has its middle well right
+   of the bar's. The sides fall back to their own content width when an equal share would be too
+   little for one of them (a narrow window), and the middle is the one track allowed to be smaller
+   than its content: it holds the breadcrumb, which folds to fit rather than pushing anything. */
 .bar {
   display: grid;
-  grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto;
+  grid-template-columns: 1fr 2fr 1fr;
   align-items: center;
   padding: 0 var(--space-4);
   height: 36px;
@@ -12,15 +15,16 @@
   border-bottom: 1px solid var(--node-border);
 }
 
+/* No `min-width: 0` here, deliberately: the side tracks floor at their own content, so a squeezed
+   bar takes the room out of the breadcrumb — which can fold — and never out of the controls. */
 .side {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  min-width: 0;
 }
 
-/* The end-edge column is sized to its content now that the middle takes the bar's slack; the rule
-   keeps it against the end edge for as long as that stays true of only one of the two sides. */
+/* The end-edge column is as wide as the start-edge one, which is what centres the middle; its own
+   content is narrower than that, so it has to be pushed to the end of the track it is given. */
 .sideEnd {
   justify-content: flex-end;
 }
@@ -51,10 +55,9 @@
   color: var(--text-primary);
 }
 
-/* The middle column, held open whether or not the breadcrumb draws anything in it: at the true
-   root it draws nothing, and a collapsing cell would let the end-edge controls drift inwards. The
-   chain starts where the left-hand controls end and runs towards them, rather than being centred
-   on the bar — a path that re-centres itself on every step is harder to read back. */
+/* The middle column, held open whether or not the breadcrumb draws anything in it: at the true root
+   it draws nothing, and the track is sized by the grid rather than by its content, so the Filter
+   button sits in the same place inside a subtree and out of one. */
 .center {
   display: flex;
   min-width: 0;

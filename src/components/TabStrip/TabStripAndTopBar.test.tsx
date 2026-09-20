@@ -99,11 +99,11 @@ describe("two tabs sharing one top bar", () => {
       ancestors: [{ id: null, title: "Arlesh" }], currentTitle: "CODE",
     });
     render(<Harness />);
-    expect(screen.queryByText("insideSubtree")).not.toBeInTheDocument();
+    expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
 
     switchTo("CODE");
 
-    expect(screen.getByText("insideSubtree")).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "insideSubtree" })).toBeInTheDocument();
   });
 
   it("leaves the other tab where it was when one exits its subtree", () => {

@@ -6,6 +6,8 @@ import styles from "./SubtreeBreadcrumb.module.css";
 interface Props {
   /** The levels the breadcrumb had no room for, in the order they appear on the way down. */
   crumbs: readonly SubtreeCrumb[];
+  /** How far across the breadcrumb the `…` sits, so the menu opens under it and not beside it. */
+  offset: number;
   onSelect: (crumb: SubtreeCrumb) => void;
   onClose: () => void;
 }
@@ -18,7 +20,7 @@ interface Props {
  * clip this popover with it. `Escape` closes it: the subtree's own `Shift`/`Ctrl+Escape` are
  * modified chords, so the bare key is free to mean "never mind" here.
  */
-export default function FoldedCrumbsMenu({ crumbs, onSelect, onClose }: Props) {
+export default function FoldedCrumbsMenu({ crumbs, offset, onSelect, onClose }: Props) {
   const { t } = useTranslation("common");
 
   useEffect(() => {
@@ -34,7 +36,7 @@ export default function FoldedCrumbsMenu({ crumbs, onSelect, onClose }: Props) {
   return (
     <>
       <div className={styles.backdrop} onClick={onClose} />
-      <div className={styles.menu} role="menu" aria-label={t("foldedLevels")}>
+      <div className={styles.menu} style={{ insetInlineStart: offset }} role="menu" aria-label={t("foldedLevels")}>
         {crumbs.map((crumb) => (
           <button
             key={crumb.id ?? "root"}

@@ -128,14 +128,14 @@ function Harness() {
 describe("the top bar's breadcrumb, fed by a mounted view", () => {
   it("shows nothing at the true root", () => {
     render(<Harness />);
-    expect(screen.queryByText("insideSubtree")).not.toBeInTheDocument();
+    expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
   });
 
   it("names the current subtree once a view has entered one", () => {
     useMindmapStore.setState({ subtreeRootId: "project-1" });
     render(<Harness />);
     expect(screen.getByText("CODE")).toBeInTheDocument();
-    expect(screen.getByText("insideSubtree")).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "insideSubtree" })).toBeInTheDocument();
   });
 
   it("draws the whole chain, every ancestor a way out and the last step plain text", () => {

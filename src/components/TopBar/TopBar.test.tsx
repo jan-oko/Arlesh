@@ -66,10 +66,10 @@ describe("TopBar", () => {
     expect(screen.getByText("CODE")).toBeInTheDocument(); // where you are
   });
 
-  it("keeps the spoken label, so the chain is not heard as a run of bare titles", () => {
+  it("names the landmark, so the chain is not heard as a run of bare titles", () => {
     enterCODE();
     render(<TopBar />);
-    expect(screen.getByText("insideSubtree")).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "insideSubtree" })).toBeInTheDocument();
   });
 
   it("leaves the last segment plain — 'here' has nowhere to navigate to", () => {
@@ -80,7 +80,7 @@ describe("TopBar", () => {
 
   it("shows nothing at all at the true root", () => {
     render(<TopBar />);
-    expect(screen.queryByText("insideSubtree")).not.toBeInTheDocument();
+    expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
   });
 
   it("switches to List View when its tab is clicked", () => {
