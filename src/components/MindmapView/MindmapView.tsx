@@ -94,8 +94,8 @@ export default function MindmapView() {
   const clipboard = useClipboardStore((s) => s.clipboard);
   const setClipboard = useClipboardStore((s) => s.setClipboard);
 
-  // Shared with the List View: one subtree root, one set of back-nav pills, both views publishing
-  // the same descriptor so whichever is on screen keeps the top bar right.
+  // Shared with the List View: one subtree root, one breadcrumb, both views publishing the same
+  // descriptor so whichever is on screen keeps the top bar right.
   const { onExitSubtree, onExitToRoot } = useSubtreeNav(tree);
 
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
