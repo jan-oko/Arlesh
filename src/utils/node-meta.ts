@@ -1,4 +1,4 @@
-import type { NodeKind } from "./tree-layout";
+import type { MindmapNode, NodeKind } from "./tree-layout";
 import type { InstanceType } from "@/api/flows";
 
 export interface NodeSize {
@@ -90,6 +90,8 @@ export const NODE_ICON: Record<NodeKind, string> = {
   flow: "▶",
   flow_goal: "◇",
   flow_task: "✓",
+  // A stack of folded history, not a thing in its own right.
+  habit_group: "▤",
 };
 
 export const NODE_LABEL: Record<NodeKind, string> = {
@@ -104,6 +106,7 @@ export const NODE_LABEL: Record<NodeKind, string> = {
   flow: "Flow",
   flow_goal: "Goal",
   flow_task: "Task",
+  habit_group: "Habit history",
 };
 
 // All node types reachable from a domain-table parent (aspect/domain/project/tag). Commitment
@@ -158,6 +161,10 @@ export function validTypesForCycling(
 
   // The flow node itself is not part of the type cycle.
   if (kind === "flow") return [];
+
+  // A folded run of Habit iterations is a way of drawing them, not a node of its own: there is
+  // nothing behind it to retype.
+  if (kind === "habit_group") return [];
 
   // Flow items retype between goal and task, mirroring real nodes: a goal child is invalid
   // under a flow-task parent, so only flow-tasks may sit there.
@@ -264,4 +271,18 @@ const PARENT_CANDIDATES: readonly NodeKind[] = [
  */
 export function validParentKinds(childKind: NodeKind): NodeKind[] {
   return PARENT_CANDIDATES.filter((parentKind) => isValidDropTarget(childKind, parentKind));
+}
+
+/**
+ * Whether a **new Task** can be created under `node`.
+ *
+ * {@link isValidDropTarget} answers the question about kinds; this adds the two things a kind
+ * cannot tell you. A **virtual** node — a Habit repetition — has no database row to parent
+ * anything to, and neither has the synthetic root, whose id carries no `-<id>` suffix. Both would
+ * fail at the backend, and a gesture that can only fail is better answered before it is sent.
+ */
+export function canParentNewTask(node: MindmapNode): boolean {
+  if (node.virtual === true) return false;
+  if (!node.id.includes("-")) return false;
+  return isValidDropTarget("task", node.kind);
 }

@@ -52,5 +52,6 @@
   "agenticState": {
     "agentic": "Agentic",
     "not_agentic": "Not agentic"
-  }
+  },
+  "createTaskHere": "Add a task here"
 }

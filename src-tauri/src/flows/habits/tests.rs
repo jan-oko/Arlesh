@@ -112,3 +112,34 @@ fn blocking_holds_at_the_first_iteration_until_it_is_done() {
         assert_eq!(statuses(&result), vec![(0, IterationStatus::Active)], "catchup {catchup:?}");
     }
 }
+
+#[test]
+fn every_iteration_carries_its_own_window_end() {
+    let slots = four_weeks();
+    let resolved = HashMap::new();
+    let now = at("2026-01-22T00:00:00");
+    let result = classify_iterations(&slots, Consumption::Overlapping, &resolved, now);
+    let ends: Vec<_> = result.iter().map(|it| it.window_end.as_str()).collect();
+    assert_eq!(
+        ends,
+        vec![
+            "2026-01-12T00:00:00",
+            "2026-01-19T00:00:00",
+            "2026-01-26T00:00:00",
+            "2026-02-02T00:00:00",
+        ]
+    );
+}
+
+#[test]
+fn expiring_an_iteration_leaves_its_window_end_alone() {
+    let slots = four_weeks();
+    let resolved = HashMap::new();
+    let now = at("2026-02-10T00:00:00");
+    let iterations =
+        classify_iterations(&slots[..1], Consumption::Overlapping, &resolved, now);
+    let deadlines = HashMap::from([(0, at("2026-01-19T00:00:00"))]);
+    let expired = expire_unanswered(iterations, &deadlines, now);
+    assert_eq!(expired[0].status, IterationStatus::Expired);
+    assert_eq!(expired[0].window_end, "2026-01-12T00:00:00");
+}

@@ -59,6 +59,8 @@
   "toggleAgentic": "Mark Agentic / Not agentic",
   "cycleVerdict": "Cycle the selected commitment's verdict (Unresolved \u2192 Kept \u2192 Broken)",
   "markBroken": "Mark the selected commitment broken (again to clear it)",
+  "createChildRow": "Create a child of the selected row",
+  "createSiblingRow": "Create a sibling of the selected row",
   "undo": "Undo the last change",
   "redo": "Redo the last undone change"
 }

@@ -8,7 +8,7 @@ function keyToCode(key: string): string {
   return key; // Arrow*, Enter, Escape — code === key
 }
 
-function fireKey(key: string, modifiers: { altKey?: boolean; ctrlKey?: boolean; shiftKey?: boolean } = {}) {
+function fireKey(key: string, modifiers: { altKey?: boolean; ctrlKey?: boolean; shiftKey?: boolean; repeat?: boolean } = {}) {
   window.dispatchEvent(new KeyboardEvent("keydown", { key, code: keyToCode(key), bubbles: true, cancelable: true, ...modifiers }));
 }
 
@@ -37,6 +37,9 @@ function baseOptions(overrides: Partial<Parameters<typeof useKeyboardListView>[0
     onUndo: vi.fn(),
     onRedo: vi.fn(),
     onToggleFullscreen: vi.fn(),
+    onCreateSibling: vi.fn(),
+    onCreateChild: vi.fn(),
+    onDelete: vi.fn(),
     ...overrides,
   };
   // `selectedRowId` is whichever of the two kinds is selected, exactly as ListView derives it —
@@ -345,5 +348,101 @@ describe("useKeyboardListView — f shows the board alone", () => {
     fireKey("f", { altKey: true });
     expect(opts.onToggleFilter).toHaveBeenCalledTimes(1);
     expect(opts.onToggleFullscreen).not.toHaveBeenCalled();
+  });
+});
+
+describe("useKeyboardListView — creating rows", () => {
+  it("Tab creates a child of the selected row", () => {
+    const options = baseOptions();
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    fireKey("Tab");
+    expect(options.onCreateChild).toHaveBeenCalledWith("task-1");
+    expect(options.onCreateSibling).not.toHaveBeenCalled();
+  });
+
+  it("Shift+Enter creates a sibling of the selected row", () => {
+    const options = baseOptions();
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    fireKey("Enter", { shiftKey: true });
+    expect(options.onCreateSibling).toHaveBeenCalledWith("task-1");
+    expect(options.onCreateChild).not.toHaveBeenCalled();
+  });
+
+  // Shift+Enter shares its key with the two bare-Enter bindings, and strict chord matching is what
+  // keeps them apart: creating a sibling must never also advance the row it was created beside.
+  it("Shift+Enter does not cycle the selected row's status", () => {
+    const options = baseOptions();
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    fireKey("Enter", { shiftKey: true });
+    expect(options.onCycleStatus).not.toHaveBeenCalled();
+  });
+
+  it("bare Enter still cycles the status and creates nothing", () => {
+    const options = baseOptions();
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    fireKey("Enter");
+    expect(options.onCycleStatus).toHaveBeenCalledWith("task-1");
+    expect(options.onCreateSibling).not.toHaveBeenCalled();
+  });
+
+  it.each(["Tab", "Enter"] as const)("%s does nothing with nothing selected", (key) => {
+    const options = baseOptions({ selectedTaskId: null, selectedRowId: null });
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    fireKey(key, key === "Enter" ? { shiftKey: true } : {});
+    expect(options.onCreateChild).not.toHaveBeenCalled();
+    expect(options.onCreateSibling).not.toHaveBeenCalled();
+  });
+
+  // List View creates Tasks and nothing else, and both chords read their parent off the selection.
+  it.each(["Tab", "Enter"] as const)("%s does nothing while a Commitment is selected", (key) => {
+    const options = baseOptions({ selectedTaskId: null, selectedCommitmentId: "commitment-1" });
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    fireKey(key, key === "Enter" ? { shiftKey: true } : {});
+    expect(options.onCreateChild).not.toHaveBeenCalled();
+    expect(options.onCreateSibling).not.toHaveBeenCalled();
+  });
+
+  it.each(["Tab", "Enter"] as const)("leaves a held %s to one row, not one per repeat", (key) => {
+    const options = baseOptions();
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    const modifiers = key === "Enter" ? { shiftKey: true } : {};
+    fireKey(key, modifiers);
+    fireKey(key, { ...modifiers, repeat: true });
+    fireKey(key, { ...modifiers, repeat: true });
+    const created = key === "Tab" ? options.onCreateChild : options.onCreateSibling;
+    expect(created).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("useKeyboardListView — deleting a row", () => {
+  it("Delete raises the confirmation for the selected Task", () => {
+    const options = baseOptions();
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    fireKey("Delete");
+    expect(options.onDelete).toHaveBeenCalledWith("task-1");
+  });
+
+  // A Commitment is a real row too, and the Mindmap deletes one; the chord acts on whichever kind
+  // the single selection happens to be.
+  it("Delete acts on a selected Commitment as readily", () => {
+    const options = baseOptions({ selectedTaskId: null, selectedCommitmentId: "commitment-1" });
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    fireKey("Delete");
+    expect(options.onDelete).toHaveBeenCalledWith("commitment-1");
+  });
+
+  it("Delete does nothing with no row selected", () => {
+    const options = baseOptions({ selectedTaskId: null, selectedRowId: null });
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    fireKey("Delete");
+    expect(options.onDelete).not.toHaveBeenCalled();
+  });
+
+  it("leaves a held Delete to one confirmation, not one per repeat", () => {
+    const options = baseOptions();
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    fireKey("Delete");
+    fireKey("Delete", { repeat: true });
+    expect(options.onDelete).toHaveBeenCalledTimes(1);
   });
 });

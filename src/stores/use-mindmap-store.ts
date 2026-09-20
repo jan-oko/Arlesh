@@ -22,6 +22,14 @@ export interface MindmapStore {
   selectedNodeIds: ReadonlySet<string>;
   subtreeRootId: string | null;
   collapsedNodeIds: ReadonlySet<string>;
+  /**
+   * The folded Habit-history nodes the user has opened.
+   *
+   * The inverse of `collapsedNodeIds`, because the default is the inverse: a run of passed
+   * iterations is drawn folded on every load, so "not listed" has to mean folded, and only an
+   * expansion is worth writing down.
+   */
+  expandedRunIds: ReadonlySet<string>;
   pendingToast: PendingToast | null;
   subtreeNav: SubtreeNav | null;
 
@@ -32,6 +40,7 @@ export interface MindmapStore {
   exitSubtree: (parentSubtreeId: string | null) => void;
   exitToRoot: () => void;
   toggleCollapsed: (id: string) => void;
+  toggleRunExpanded: (id: string) => void;
   showToast: (toast: PendingToast) => void;
   clearToast: () => void;
   setSubtreeNav: (nav: SubtreeNav | null) => void;
@@ -45,12 +54,16 @@ export interface MindmapStore {
  *
  * The clipboard used to live here and no longer does: it is app-wide (`use-clipboard-store`).
  */
-export function createMindmapStore(subtreeRootId: string | null = null): StoreApi<MindmapStore> {
+export function createMindmapStore(
+  subtreeRootId: string | null = null,
+  expandedRunIds: ReadonlySet<string> = new Set(),
+): StoreApi<MindmapStore> {
   return createStore<MindmapStore>()((set) => ({
     selectedNodeId: null,
     selectedNodeIds: new Set(),
     subtreeRootId,
     collapsedNodeIds: new Set(),
+    expandedRunIds,
     pendingToast: null,
     subtreeNav: null,
 
@@ -99,6 +112,14 @@ export function createMindmapStore(subtreeRootId: string | null = null): StoreAp
           next.add(id);
         }
         return { collapsedNodeIds: next };
+      }),
+
+    toggleRunExpanded: (id) =>
+      set((state) => {
+        const next = new Set(state.expandedRunIds);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return { expandedRunIds: next };
       }),
 
     showToast: (toast) => set({ pendingToast: toast }),

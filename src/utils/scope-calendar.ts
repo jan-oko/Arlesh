@@ -74,6 +74,11 @@ export function weekStart(iso: string): string {
   return addDays(iso, -d.getUTCDay());
 }
 
+/** The calendar day before `iso`. */
+export function previousDay(iso: string): string {
+  return addDays(iso, -1);
+}
+
 /** Season name and display year for a date, matching the Rust scope model. */
 export function seasonOf(iso: string): { name: string; year: number } {
   const d = parse(iso);
