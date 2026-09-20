@@ -5,6 +5,7 @@ import TaskEditorModal from "@/components/TaskEditorModal/TaskEditorModal";
 import type { TaskSaveData } from "@/components/TaskEditorModal/TaskEditorModal";
 import type { CommitmentSaveData } from "@/components/CommitmentEditorModal/CommitmentEditorModal";
 import type { MindmapNode } from "@/utils/tree-layout";
+import { TASK_AGENTIC } from "@/api/tasks";
 
 // Nothing under `@/api` is mocked here, on purpose. The question these tests answer is what the
 // editor actually puts *on the wire* when a field is emptied: `Option<Option<T>>` on the Rust side
@@ -77,6 +78,9 @@ function editor() {
 const taskSave: TaskSaveData = {
   title: "Task", status: "todo", blockReasons: [], tagIds: [], addedDeps: [], removedDeps: [],
   timeScope: null, onScopeExit: null, plan: null, archival: "live", isPrivate: false,
+  // Master added this field while this branch was open. "Inherit" is where every Task starts, and
+  // these tests are about the nullable scope fields, not about the Agentic flag.
+  agentic: TASK_AGENTIC.INHERIT,
 };
 const commitmentSave: CommitmentSaveData = {
   title: "Asleep by 23:00", verdict: "unresolved", tagIds: [],
