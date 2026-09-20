@@ -445,6 +445,48 @@ pub async fn fork_flow(factory: State<'_, SessionFactory>, flow_id: i64) -> Resu
     Ok(forked)
 }
 
+/// Copies a Flow — template, Recurrence and all — under a new parent (the Mindmap's Copy+Paste).
+///
+/// Transactional and committed here: a copy is dozens of inserts whose parent, cycle and
+/// dependency remaps only make sense together.
+#[tauri::command]
+pub async fn duplicate_flow(
+    factory: State<'_, SessionFactory>,
+    flow_id: i64,
+    parent_type: String,
+    parent_id: i64,
+    position: i64,
+) -> Result<Flow, WireError> {
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    let copy = flows::duplicate_flow(&mut db, FlowId(flow_id), &parent_type, parent_id, position)
+        .await
+        .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)?;
+    Ok(copy)
+}
+
+/// Copies a flow item (and its nested items) within its own template. Returns the new item's id.
+///
+/// Transactional and committed here: the copy is one insert per nested item plus its cycle pairs
+/// and dependency edges, and the remap names ids written earlier in the same run.
+#[tauri::command]
+pub async fn duplicate_flow_item(
+    factory: State<'_, SessionFactory>,
+    item_type: FlowItemType,
+    item_id: i64,
+    parent_type: String,
+    parent_id: i64,
+    position: i64,
+) -> Result<i64, WireError> {
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    let new_id =
+        flows::duplicate_flow_item(&mut db, item_type, item_id, &parent_type, parent_id, position)
+            .await
+            .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)?;
+    Ok(new_id)
+}
+
 /// Converts a real Task/Goal subtree into a Flow template of the same Instance Type.
 #[tauri::command]
 pub async fn convert_to_flow(

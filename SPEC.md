@@ -455,13 +455,34 @@ other produces a copy whose members still wait on the originals. (That mirrors a
 is the conservative reading; Flow instances solve the same problem by remapping per instance, and
 that is the model to reach for if this proves wrong.)
 
-Projects, Domains, Tags, Goals, Tasks and Infos are duplicable. Aspects, Flows, flow items and
-virtual Habit instances are not — a Flow moves and forks through its own commands — and a Flow
-hanging under a copied node is therefore not copied with it. A paste whose selection includes any of
-these pastes the rest and reports how many it skipped in a toast. Otherwise a copy is refused exactly
-where a move would be, by the same drop-target rule; it lands at the end of the target's children; it
-is atomic, so a failure part-way leaves the tree untouched rather than half a subtree; and it leaves
-the clipboard intact, so the same subtree can be pasted into several places.
+Projects, Domains, Tags, Goals, Tasks, Infos, **Flows and flow items** are duplicable. Aspects,
+Commitments and virtual Habit instances are not, and a Flow hanging under a copied node is still not
+copied with it. A paste whose selection includes any of these pastes the rest and reports how many it
+skipped in a toast. Otherwise a copy is refused exactly where a move would be, by the same
+drop-target rule; it lands at the end of the target's children; it is atomic, so a failure part-way
+leaves the tree untouched rather than half a subtree; and it leaves the clipboard intact, so the same
+subtree can be pasted into several places.
+
+**Copying a Flow.** A Flow is usually built by copying the one next to it and changing the schedule
+or the target, so the copy is a **complete** clone of the template *and* its Recurrence: the flow
+row, its items, their Cycle Scope / Cycle Plan pairs, intra-flow dependencies remapped onto the
+clone, the Repetition (Start anchor, Gap, end), the Consumption tree and privacy. **Copying a Habit
+gives you a Habit**, recurring on the same schedule from the same anchor — the Start is deliberately
+*not* moved to today, because the copy is about to be edited anyway and a rule that quietly re-dated
+it would be the bigger surprise. A copy of a daily Habit started in July therefore renders every
+iteration since July until it is given a schedule of its own; that is an accepted consequence, not an
+oversight. Its **Target Node** is inherited exactly as stored: a Flow that never named one has a
+derived target meaning "my parent", so the copy's instances land wherever the paste put it, while a
+target chosen deliberately keeps pointing where it was put. Two things are left behind: **completion
+history** (Modifications belong to the original — the copy has not been done, and its cycle pairs are
+new rows, which is what a completion is keyed on) and **started instances** (`flow_instances` and the
+Goals and Tasks they materialised are real work standing somewhere on the board).
+
+**Copying a flow item** is allowed **within the same template** — onto its flow or onto another item
+inside it — and takes everything nested under it, its cycle pairs and its dependency edges, with an
+edge between two copied items rewired onto the copies. Pasting one into a *different* flow is
+refused: its Cycle Scope is an offset into its own flow's window, and another window does not share
+it.
 
 ### List View
 

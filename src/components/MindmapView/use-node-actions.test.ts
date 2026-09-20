@@ -330,11 +330,22 @@ describe("useNodeActions — onPaste", () => {
     expect(opts.showToast).toHaveBeenCalledWith({ nodeId: "goal-2", message: "pasteSkipped:1" });
   });
 
-  it("does not duplicate a lone flow item on COPY, but CUT still moves it", async () => {
+  it("copies a flow item back into its own template", async () => {
+    const opts = makeOpts({ clipboard: { operation: CLIPBOARD_OP.COPY, nodeIds: ["flowtask-4"] } });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onPaste("flow-1"); });
+    await vi.waitFor(() =>
+      expect(opts.duplicateNode).toHaveBeenCalledWith("flowtask-4", "flow_task", "flow-1", "flow", 1),
+    );
+    expect(opts.showToast).not.toHaveBeenCalled();
+  });
+
+  it("refuses a flow item copied into a DIFFERENT flow, but CUT still moves it", async () => {
     const copyOpts = makeOpts({ clipboard: { operation: CLIPBOARD_OP.COPY, nodeIds: ["flowtask-4"] } });
     const { result: copyResult } = renderHook(() => useNodeActions(copyOpts));
     act(() => { copyResult.current.onPaste("flow-2"); });
     await Promise.resolve();
+    // Its Cycle Scope is an offset into flow-1's window, which flow-2's window does not share.
     expect(copyOpts.duplicateNode).not.toHaveBeenCalled();
     expect(copyOpts.showToast).toHaveBeenCalledWith({ nodeId: "flow-2", message: "pasteSkipped:1" });
 
@@ -346,15 +357,16 @@ describe("useNodeActions — onPaste", () => {
     );
   });
 
-  it("does not duplicate a whole Flow on COPY, but CUT still moves it", async () => {
+  it("copies a whole Flow onto any parent a Flow may hang from", async () => {
     const flow = mkNode("flow-5", "flow");
     const tree = mkNode("root", "domain", [mkNode("domain-5", "project", [flow]), mkNode("goal-2", "goal")]);
     const copyOpts = makeOpts({ tree, clipboard: { operation: CLIPBOARD_OP.COPY, nodeIds: ["flow-5"] } });
     const { result: copyResult } = renderHook(() => useNodeActions(copyOpts));
     act(() => { copyResult.current.onPaste("goal-2"); });
-    await Promise.resolve();
-    expect(copyOpts.duplicateNode).not.toHaveBeenCalled();
-    expect(copyOpts.showToast).toHaveBeenCalledWith({ nodeId: "goal-2", message: "pasteSkipped:1" });
+    await vi.waitFor(() =>
+      expect(copyOpts.duplicateNode).toHaveBeenCalledWith("flow-5", "flow", "goal-2", "goal", 0),
+    );
+    expect(copyOpts.showToast).not.toHaveBeenCalled();
 
     const cutOpts = makeOpts({ tree, clipboard: { operation: CLIPBOARD_OP.CUT, nodeIds: ["flow-5"] } });
     const { result: cutResult } = renderHook(() => useNodeActions(cutOpts));
