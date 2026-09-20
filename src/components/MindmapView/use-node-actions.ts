@@ -8,11 +8,12 @@ import { updateTask } from "@/api/tasks";
 import type { TaskAgentic } from "@/api/tasks";
 import { storedAgenticState } from "@/utils/agentic";
 import { updateGoal } from "@/api/goals";
-import { setHabitItemStatus } from "@/api/flows";
 import { TASK_STATUS, GOAL_STATUS } from "@/utils/status-mapping";
 import { CLIPBOARD_OP } from "@/stores/use-clipboard-store";
 import { withGesture } from "@/api/gesture";
 import { getErrorMessage } from "@/api/errors";
+import { useOccurrenceCompletion } from "@/hooks/use-occurrence-completion";
+import type { OccurrencePrompt } from "@/hooks/use-occurrence-completion";
 
 const LOG_PREFIX = "[arlesh]";
 
@@ -56,6 +57,12 @@ interface Options {
 }
 
 interface Result {
+  /** The occurrence completion the backend is holding for confirmation, or `null`. */
+  occurrencePrompt: OccurrencePrompt | null;
+  /** Answers that prompt: marks the occurrence done and leaves its children in place. */
+  confirmOccurrence: () => void;
+  /** Declines it. Nothing was written, so nothing is undone. */
+  cancelOccurrence: () => void;
   onStatusClick: (nodeId: string) => void;
   onCommitEdit: (nodeId: string, title: string) => void;
   onCreateChild: (nodeId: string) => void;
@@ -71,6 +78,8 @@ export function useNodeActions({
   createNode, createChild, selectNode, setClipboard, setEditingNodeId, showToast, onNewFlow, onNewCommitment,
 }: Options): Result {
   const { t } = useTranslation(["warnings", "nodeKinds", "undo"]);
+  const { prompt: occurrencePrompt, setOccurrenceStatus, confirm: confirmOccurrence,
+    cancel: cancelOccurrence } = useOccurrenceCompletion(reload);
 
   const onStatusClick = useCallback(
     (nodeId: string) => {
@@ -86,7 +95,6 @@ export function useNodeActions({
       // records Broken, both through `useCommitmentVerdict`, which writes an iteration's verdict as
       // its Modification exactly as this branch writes an ordinary instance's status.
       if (node.habitItem !== undefined && node.kind !== "commitment") {
-        const { flowId, itemType, itemId, scopeId, cycleId } = node.habitItem;
         let next: string | null;
         if (node.kind === "goal") {
           next = node.status === GOAL_STATUS.ACHIEVED ? null : TASK_STATUS.DONE;
@@ -94,9 +102,9 @@ export function useNodeActions({
           const cycled = nextTaskStatus(node.status ?? TASK_STATUS.TODO);
           next = cycled === TASK_STATUS.TODO ? null : cycled;
         }
-        void setHabitItemStatus(flowId, itemType, itemId, scopeId, cycleId, next, Date.now())
-          .then(() => reload())
-          .catch((err: unknown) => console.error(`${LOG_PREFIX} habit item status failed:`, err));
+        // Through the completion guard: marking an occurrence done while it still holds
+        // unfinished added children asks first, and names them.
+        setOccurrenceStatus(node, next);
         return;
       }
       // A real goal toggles active ↔ achieved on click (like a habit goal instance) — no modal needed.
@@ -114,7 +122,7 @@ export function useNodeActions({
         .then(() => reload())
         .catch((err: unknown) => console.error(`${LOG_PREFIX} status cycle failed:`, err));
     },
-    [tree, reload],
+    [tree, reload, setOccurrenceStatus],
   );
 
   const onCommitEdit = useCallback(
@@ -330,5 +338,9 @@ export function useNodeActions({
     [tree, createChild, moveNode, selectNode, setEditingNodeId, t],
   );
 
-  return { onStatusClick, onCommitEdit, onCreateChild, onCreateTypedChild, onCreateSibling, onInsertParent, onDelete, onPaste };
+  return {
+    onStatusClick, onCommitEdit, onCreateChild, onCreateTypedChild, onCreateSibling,
+    onInsertParent, onDelete, onPaste,
+    occurrencePrompt, confirmOccurrence, cancelOccurrence,
+  };
 }

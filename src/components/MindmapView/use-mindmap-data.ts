@@ -22,6 +22,7 @@ import {
   duplicateFlow, duplicateFlowItem,
 } from "@/api/flows";
 import { findNode } from "@/utils/mindmap-tree";
+import { TASK_STATUS, GOAL_STATUS } from "@/utils/status-mapping";
 import { propagateAgentic } from "@/utils/agentic";
 import type { Domain } from "@/api/domains";
 import type { Task } from "@/api/tasks";
@@ -29,10 +30,10 @@ import type { Goal } from "@/api/goals";
 import type { Info } from "@/api/infos";
 import type {
   Flow, CreateFlowRequest, UpdateFlowRequest,
-  FlowGoal, FlowTask, FlowItemCycle, FlowDependency, FlowItemType, HabitInstance, HabitIteration,
-  HabitItemStatus, InstanceType, TargetRef,
+  FlowGoal, FlowTask, FlowItemCycle, FlowDependency, FlowItemType, HabitChildKind,
+  HabitInstance, HabitInstanceChild, HabitIteration, HabitItemStatus, InstanceType, TargetRef,
 } from "@/api/flows";
-import { NO_CYCLE } from "@/api/flows";
+import { createHabitInstanceChild, NO_CYCLE } from "@/api/flows";
 import type { ItemLifecycle, Timing } from "@/api/scope-lifecycle";
 import type { MindmapNode, NodeKind, FlowCyclePair, FlowItemDep } from "@/utils/tree-layout";
 import { entityNodeId, flowTargetNodeId } from "@/utils/tree-layout";
@@ -77,6 +78,18 @@ function lifecycleMap(lifecycles: ItemLifecycle[]): Map<string, ItemLifecycle> {
 function instanceStatus(isGoal: boolean, raw: string | undefined): string {
   if (isGoal) return raw === "done" ? "achieved" : "active";
   return raw ?? "todo";
+}
+
+/**
+ * Narrows a node kind to one a Habit occurrence can hold — everything a Task can parent.
+ *
+ * `null` for a Flow, a flow item or a domain-table kind: an occurrence is a Task, a Goal or a
+ * Commitment, and holds exactly what one of those holds.
+ */
+function asHabitChildKind(kind: NodeKind): HabitChildKind | null {
+  return kind === "task" || kind === "goal" || kind === "commitment" || kind === "info"
+    ? kind
+    : null;
 }
 
 /** What a Habit's iteration root draws as, from the flow's Instance Type. */
@@ -332,6 +345,84 @@ export function holdsUnrenderableGoalItems(flow: Flow, flowGoals: readonly FlowG
 }
 
 /**
+ * An occurrence's key in the added-children map: `"flow_task-12-3-88"` — item, cycle pair and
+ * iteration scope, the same quadruple the backend attaches by.
+ */
+function instanceKey(
+  itemType: string, itemId: number, cycleId: number, iterationScopeId: number,
+): string {
+  return `${itemType}-${itemId}-${cycleId}-${iterationScopeId}`;
+}
+
+/** Every added child grouped by the occurrence it hangs on. */
+function childrenByInstance(
+  children: readonly HabitInstanceChild[],
+): Map<string, HabitInstanceChild[]> {
+  const byInstance = new Map<string, HabitInstanceChild[]>();
+  for (const child of children) {
+    const key = instanceKey(child.item_type, child.item_id, child.cycle_id, child.iteration_scope_id);
+    const drawn = byInstance.get(key);
+    if (drawn === undefined) byInstance.set(key, [child]);
+    else drawn.push(child);
+  }
+  return byInstance;
+}
+
+/** Lifts a node out of the tree, returning it (with its own subtree) or `undefined`. */
+function detachNode(root: MindmapNode, id: string): MindmapNode | undefined {
+  const index = root.children.findIndex((child) => child.id === id);
+  if (index >= 0) return root.children.splice(index, 1)[0];
+  for (const child of root.children) {
+    const found = detachNode(child, id);
+    if (found !== undefined) return found;
+  }
+  return undefined;
+}
+
+/** Every occurrence node in one iteration — the root and each item instance beneath it. */
+function occurrenceNodes(root: MindmapNode): MindmapNode[] {
+  const found: MindmapNode[] = [];
+  const visit = (node: MindmapNode): void => {
+    if (node.habitItem !== undefined) found.push(node);
+    for (const child of node.children) visit(child);
+  };
+  visit(root);
+  return found;
+}
+
+/**
+ * Moves each occurrence's **added children** out of the ordinary tree and under the occurrence
+ * they belong to.
+ *
+ * They are real rows, so `buildTree` has already placed them — under the occurrence's host, which
+ * is where their `parent_type`/`parent_id` point, because a virtual instance has no id for those
+ * columns to name. Moving the node rather than rebuilding one keeps everything already stamped on
+ * it: its lifecycle, its tags, its block reasons, and its own children, which are ordinary nodes
+ * parented to it in the ordinary way and need no attachment of their own.
+ *
+ * A child whose node is not in the tree is skipped, not invented: it may have been filtered out,
+ * and an attachment naming a row that is gone is not a reason to draw something.
+ */
+function attachAddedChildren(
+  tree: MindmapNode,
+  iterationRoot: MindmapNode,
+  byInstance: ReadonlyMap<string, HabitInstanceChild[]>,
+): void {
+  if (byInstance.size === 0) return;
+  for (const occurrence of occurrenceNodes(iterationRoot)) {
+    const item = occurrence.habitItem;
+    if (item === undefined) continue;
+    const attached = byInstance.get(
+      instanceKey(item.itemType, item.itemId, item.cycleId, item.scopeId),
+    );
+    for (const child of attached ?? []) {
+      const moved = detachNode(tree, entityNodeId(child.child_type, child.child_id));
+      if (moved !== undefined) occurrence.children.push(moved);
+    }
+  }
+}
+
+/**
  * Injects each Habit's derived iterations as **virtual**, read-only child nodes under its Target
  * Node — its explicit one, or its parent when it has none (`flowTargetNodeId`). Each iteration root
  * carries the flow's items as its own virtual, per-item-completable instances. The `-virtual` id
@@ -351,7 +442,9 @@ export function injectHabitInstances(
   flowGoals: FlowGoal[] = [],
   flowTasks: FlowTask[] = [],
   statusesByFlow: HabitItemStatus[][] = [],
+  addedChildren: HabitInstanceChild[] = [],
 ): void {
+  const childrenOfFlow = childrenByInstance(addedChildren);
   flows.forEach((flow, i) => {
     const iterations = iterationsByFlow[i] ?? [];
     if (iterations.length === 0) return;
@@ -391,7 +484,7 @@ export function injectHabitInstances(
       const rootDone = rootRaw === "done";
       const isCommitment = flow.instance_type === "commitment";
       const rootVerdict = instanceVerdict(rootRaw);
-      host.children.push({
+      const iterationRoot: MindmapNode = {
         id: `habit-${flow.id}-${iteration.index}-virtual`,
         kind: iterationRootKind(flow.instance_type),
         title: `${flow.title} ${iterationAnchorLabel(flow, iteration, labels)}`,
@@ -425,7 +518,11 @@ export function injectHabitInstances(
         position: iteration.index,
         tagIds: [],
         children: buildIterationItems(flow, iteration, items, statuses, host.color, expired),
-      });
+      };
+      host.children.push(iterationRoot);
+      // After the iteration is assembled, because an added child hangs on an occurrence and the
+      // occurrences are what has just been built.
+      attachAddedChildren(root, iterationRoot, childrenOfFlow);
     }
   });
 }
@@ -1006,6 +1103,7 @@ export function useMindmapData(): MindmapData {
         injectHabitInstances(
           built, data.flows, habitIterations(data.habits), scopeLabels, now,
           data.flow_goals, data.flow_tasks, habitStatuses(data.habits),
+          data.habit_instance_children,
         );
         setTree(built);
         setLoadCondition(collectLoadConditions(data));
@@ -1023,8 +1121,51 @@ export function useMindmapData(): MindmapData {
     void load(true);
   }, [load]);
 
+  /**
+   * Creates one node under a virtual Habit occurrence and attaches it there, in one backend call.
+   *
+   * The child belongs to that occurrence alone — next week's is not carrying it — and is a real,
+   * fully editable node in every other respect. The four kinds are the ones a Task can parent; a
+   * Flow or a flow item is refused, as it is under a Task.
+   */
+  const createOccurrenceChild = useCallback(
+    async (
+      occurrence: NonNullable<MindmapNode["habitItem"]>,
+      childKind: NodeKind,
+      title: string,
+    ): Promise<MindmapNode> => {
+      const kind = asHabitChildKind(childKind);
+      if (kind === null) {
+        throw new Error(`A habit occurrence cannot hold a node of kind "${childKind}"`);
+      }
+      const child = await createHabitInstanceChild(
+        occurrence.flowId, occurrence.itemType, occurrence.itemId, occurrence.scopeId,
+        occurrence.cycleId, kind, title,
+      );
+      const newNode: MindmapNode = {
+        id: entityNodeId(child.node_type, child.node_id),
+        kind, title,
+        ...(kind === "task" ? { status: TASK_STATUS.TODO } : {}),
+        ...(kind === "goal" ? { status: GOAL_STATUS.ACTIVE } : {}),
+        ...(kind === "commitment" ? { verdict: VERDICT.UNRESOLVED } : {}),
+        position: 0, tagIds: [], children: [],
+      };
+      await load(false);
+      return newNode;
+    },
+    [load],
+  );
+
   const createNode = useCallback(
     async (parentId: string, parentKind: NodeKind, childKind: NodeKind, title: string, agentic?: TaskAgentic): Promise<MindmapNode> => {
+      // A virtual Habit occurrence has no row id, so it takes its children through the attachment
+      // path rather than through `dbIdFromNodeId`. Everything below is unchanged for every other
+      // parent: the same gesture, the same kinds, a real node either way.
+      const occurrence = findNodeInTree(tree, parentId)?.habitItem;
+      if (occurrence !== undefined) {
+        return createOccurrenceChild(occurrence, childKind, title);
+      }
+
       const dbParentId = dbIdFromNodeId(parentId);
 
       if (childKind === "domain" || childKind === "project" || childKind === "tag") {
@@ -1115,7 +1256,7 @@ export function useMindmapData(): MindmapData {
 
       throw new Error(`Cannot create a node of kind "${childKind}"`);
     },
-    [load, tree],
+    [load, tree, createOccurrenceChild],
   );
 
   const createChild = useCallback(
