@@ -29,6 +29,7 @@ function buildRow(node: MindmapNode, ancestors: readonly MindmapNode[], depsByTa
     isBlocked: isNodeBlocked(node),
     hasBlockedAncestor: ancestors.some(isNodeBlocked),
     isAgentic: isAgentic(node),
+    isAsynchronous: node.asynchronous === true,
     hasPrivateAncestor: ancestors.some((a) => a.isPrivate === true),
     scopeTokens: deriveScopeStateTokens(node),
   };

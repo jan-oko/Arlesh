@@ -694,6 +694,7 @@ export function buildTree(
       plan: task.plan,
       backlogged: task.archival === TASK_ARCHIVAL.BACKLOG,
       agentic: task.agentic,
+      asynchronous: task.asynchronous,
       position: task.position,
       isPrivate: task.is_private,
       ...(task.beads_id !== undefined ? { beadsId: task.beads_id } : {}),

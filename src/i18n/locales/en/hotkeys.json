@@ -57,6 +57,7 @@
   "statusBacklog": "Status preset: Backlog",
   "toggleBacklog": "Put in / take out of the backlog",
   "toggleAgentic": "Mark Agentic / Not agentic",
+  "toggleAsynchronous": "Mark Asynchronous / Not asynchronous",
   "cycleVerdict": "Cycle the selected commitment's verdict (Unresolved \u2192 Kept \u2192 Broken)",
   "markBroken": "Mark the selected commitment broken (again to clear it)",
   "createChildRow": "Create a child of the selected row",

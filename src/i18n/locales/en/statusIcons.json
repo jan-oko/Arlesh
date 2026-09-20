@@ -14,5 +14,6 @@
   "kept": "Kept",
   "broken": "Broken",
   "unresolved": "No verdict recorded yet",
-  "agentic": "Agentic — work an agent could take"
+  "agentic": "Agentic — work an agent could take",
+  "asynchronous": "Asynchronous — doing this starts a wait"
 }

@@ -92,6 +92,21 @@ describe("useKeyboardListView", () => {
     expect(options.onToggleAgentic).not.toHaveBeenCalled();
   });
 
+  it("plain W flips the selected row's Asynchronous flag", () => {
+    const options = listKeyboardContext();
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    fireKey("w");
+    expect(options.onToggleAsynchronous).toHaveBeenCalledWith("task-1");
+    expect(options.onToggleAgentic).not.toHaveBeenCalled();
+  });
+
+  it("plain W does nothing with no row selected", () => {
+    const options = listKeyboardContext({ selectedTaskId: null });
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    fireKey("w");
+    expect(options.onToggleAsynchronous).not.toHaveBeenCalled();
+  });
+
   it("ArrowDown/ArrowUp navigate the selection", () => {
     const options = listKeyboardContext();
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });

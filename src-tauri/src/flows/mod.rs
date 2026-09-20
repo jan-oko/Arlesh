@@ -2749,6 +2749,9 @@ async fn write_plan(
                         // Likewise it arrives inheriting: a flow item has no Agentic column of
                         // its own, so the instance reads whatever the branch it lands in says.
                         agentic: None,
+                        // And it arrives not asynchronous: a flow item has no column of its own,
+                        // and nothing infers that doing a materialized instance starts a wait.
+                        asynchronous: None,
                     },
                 )
                 .await?;

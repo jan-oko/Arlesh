@@ -4,7 +4,7 @@ import { useMindmapData } from "@/components/MindmapView/use-mindmap-data";
 import { collectSearchableNodes, flattenNodesById } from "@/utils/mindmap-tree";
 import {
   isTaskStatusValue, isGoalStatusValue, isProjectStatusValue, isScopeStateValue, isBlockedValue,
-  isVerdictValue, isAgenticValue,
+  isVerdictValue, isAgenticValue, isAsynchronousValue,
 } from "@/utils/list-filter";
 
 /** Every node kind that can stand on a row's ancestor chain — the pool for the Antecedent picker.
@@ -48,6 +48,7 @@ export interface FilterDisplay {
   displayScopeState: (value: string) => string;
   displayBlocked: (value: string) => string;
   displayAgentic: (value: string) => string;
+  displayAsynchronous: (value: string) => string;
 }
 
 /**
@@ -98,5 +99,7 @@ export function useFilterDisplay(): FilterDisplay {
     displayScopeState: (value) => (isScopeStateValue(value) ? t(`listView:scopeState.${value}`) : value),
     displayBlocked: (value) => (isBlockedValue(value) ? t(`listView:blockedState.${value}`) : value),
     displayAgentic: (value) => (isAgenticValue(value) ? t(`listView:agenticState.${value}`) : value),
+    displayAsynchronous: (value) =>
+      (isAsynchronousValue(value) ? t(`listView:asynchronousState.${value}`) : value),
   };
 }

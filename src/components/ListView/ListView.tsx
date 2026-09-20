@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useListData } from "@/hooks/use-list-data";
 import { useTaskBacklog } from "@/hooks/use-task-backlog";
 import { useTaskAgentic } from "@/hooks/use-task-agentic";
+import { useTaskAsynchronous } from "@/hooks/use-task-asynchronous";
 import { useCommitmentVerdict } from "@/hooks/use-commitment-verdict";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { findNode } from "@/utils/mindmap-tree";
@@ -14,6 +15,7 @@ import { filterCommitmentList, filterTaskListWithFocus } from "@/utils/list-filt
 import type { StatusMode } from "@/utils/filter-tree";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { groupRowsByPath } from "@/utils/list-data";
+import { withAsynchronousFirst } from "@/utils/async-first";
 import { collectSearchableNodes } from "@/utils/mindmap-tree";
 import { useNodeEditor } from "@/components/MindmapView/use-node-editor";
 import { useKeyboardListView } from "./use-keyboard-list-view";
@@ -52,6 +54,7 @@ export default function ListView() {
   // Subtree entry is shared state, not a filter: the Mindmap and the List View re-root together.
   const enterSubtree = useMindmapStore((s) => s.enterSubtree);
   const pathHeaderIcons = useDisplayStore((s) => s.pathHeaderIcons);
+  const asynchronousFirst = useDisplayStore((s) => s.asynchronousFirst);
   const { subtreeRootId, onExitSubtree, onExitToRoot } = useSubtreeNav(tree);
 
   const toggleFullscreen = useFullscreenStore((s) => s.toggle);
@@ -78,6 +81,11 @@ export default function ListView() {
     showToast,
   });
   const { toggleAgentic } = useTaskAgentic({
+    findNode: (id) => findNode(tree, id),
+    reload,
+    showToast,
+  });
+  const { toggleAsynchronous } = useTaskAsynchronous({
     findNode: (id) => findNode(tree, id),
     reload,
     showToast,
@@ -119,7 +127,13 @@ export default function ListView() {
     () => filterCommitmentList(commitmentRows, sharedFilter, listFilter),
     [commitmentRows, sharedFilter, listFilter],
   );
-  const entries = useMemo(() => groupRowsByPath(filteredRows), [filteredRows]);
+  // Grouped first, then reordered: the runs and their headers are settled before anything moves,
+  // so floating asynchronous work can only change the order *inside* a run — never which run a row
+  // belongs to, and never which headers are drawn.
+  const entries = useMemo(() => {
+    const grouped = groupRowsByPath(filteredRows);
+    return asynchronousFirst ? withAsynchronousFirst(grouped) : grouped;
+  }, [filteredRows, asynchronousFirst]);
   const taskIds = useMemo(
     () => entries.filter((entry) => entry.type === "task").map((entry) => entry.row.node.id),
     [entries],
@@ -246,6 +260,7 @@ export default function ListView() {
     onSetStatusMode: handleSetStatusPreset,
     onToggleBacklog: toggleBacklog,
     onToggleAgentic: toggleAgentic,
+    onToggleAsynchronous: toggleAsynchronous,
     onCycleVerdict: cycleVerdict,
     onMarkBroken: markBroken,
     onOpenSearch: () => setIsSearchOpen(true),

@@ -274,6 +274,9 @@ async fn clone_task(db: &mut Db<Transactional>, item: &PendingClone) -> Result<C
             // so, and inheriting if the original inherited — all three states copy, because all
             // three are things the user may have said.
             agentic: Some(TaskAgentic::from_column(original.agentic)),
+            // A copy starts the same wait the original starts: the flag describes the action, and
+            // the copy is the same action. Dropping it would be the same silent discard.
+            asynchronous: Some(original.asynchronous),
         },
     )
     .await?;

@@ -1,0 +1,5 @@
+- **Asynchronous tasks.** A Task can now be marked **Asynchronous** — doing it starts a wait rather than finishing something. Send the email, order the part, kick off the build: do those first and the wait runs while you work on everything else. Set it from the switch beside Backlog in the Task editor, or with **W** ("wait") on the selected Task in either view. A flagged Task carries an hourglass in its status-badge row, and the List View's filter gains an **Asynchronous / Not asynchronous** dimension with the usual Any/All/Exclusion modes.
+
+  The flag stays on the Task it is set on and does not pass down to subtasks — unlike Agentic, which marks a whole branch. A subtask of something you are waiting on is usually the work you do *after* the wait.
+
+  The settings popover also gains an **Asynchronous first** switch for the List View, off by default. Turn it on and asynchronous rows float to the top of their own path-header run; every run keeps its members, every header stays put, and the Mindmap's hand-set sibling order is left alone. With it off, nothing moves.

@@ -24,6 +24,7 @@ function row(over: Partial<TaskListRow> = {}): TaskListRow {
     dependencyRefs: [],
     isBlocked: false,
     isAgentic: false,
+    isAsynchronous: false,
     hasBlockedAncestor: false,
     hasPrivateAncestor: false,
     scopeTokens: ["unscoped", "unplanned"],
@@ -429,6 +430,50 @@ describe("filterTaskList — Agentic", () => {
     // who holds it. Nothing in this dimension may touch another.
     const filtered = filterTaskList([agentic, manual], sf(), lf({ pills: { ...DEFAULT_LIST_FILTER.pills, agentic: [{ value: "agentic", mode: "any" }] } }));
     expect(filtered).toHaveLength(1);
+  });
+});
+
+describe("filterTaskList — Asynchronous", () => {
+  const waiting = row({ node: n("task-w", "task", { status: "todo" }), isAsynchronous: true });
+  const doing = row({ node: n("task-d", "task", { status: "todo" }), isAsynchronous: false });
+
+  it("shows both when no Asynchronous pill is set", () => {
+    expect(filterTaskList([waiting, doing], sf(), lf())).toHaveLength(2);
+  });
+
+  it("keeps only asynchronous rows under an Any pill", () => {
+    const filtered = filterTaskList([waiting, doing], sf(), lf({ pills: { ...DEFAULT_LIST_FILTER.pills, asynchronous: [{ value: "asynchronous", mode: "any" }] } }));
+    expect(filtered.map((r) => r.node.id)).toEqual(["task-w"]);
+  });
+
+  it("keeps only the rest under a Not-asynchronous pill", () => {
+    const filtered = filterTaskList([waiting, doing], sf(), lf({ pills: { ...DEFAULT_LIST_FILTER.pills, asynchronous: [{ value: "not_asynchronous", mode: "any" }] } }));
+    expect(filtered.map((r) => r.node.id)).toEqual(["task-d"]);
+  });
+
+  it("drops asynchronous rows under an Exclusion pill", () => {
+    const filtered = filterTaskList([waiting, doing], sf(), lf({ pills: { ...DEFAULT_LIST_FILTER.pills, asynchronous: [{ value: "asynchronous", mode: "exclude" }] } }));
+    expect(filtered.map((r) => r.node.id)).toEqual(["task-d"]);
+  });
+
+  it("intersects an All pill with another dimension rather than replacing it", () => {
+    const both = row({ node: n("task-b", "task", { status: "todo" }), isAsynchronous: true, isAgentic: true });
+    const filtered = filterTaskList([waiting, doing, both], sf(), lf({
+      pills: {
+        ...DEFAULT_LIST_FILTER.pills,
+        asynchronous: [{ value: "asynchronous", mode: "all" }],
+        agentic: [{ value: "agentic", mode: "all" }],
+      },
+    }));
+    expect(filtered.map((r) => r.node.id)).toEqual(["task-b"]);
+  });
+
+  it("survives a filter persisted before Asynchronous was a dimension", () => {
+    const before: Record<string, unknown> = { ...DEFAULT_LIST_FILTER.pills };
+    delete before.asynchronous;
+    const restored = withCurrentPillDimensions({ preset: "all", pills: before });
+    expect(restored.pills.asynchronous).toEqual([]);
+    expect(filterTaskList([waiting, doing], sf(), restored)).toHaveLength(2);
   });
 });
 

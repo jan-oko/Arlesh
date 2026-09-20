@@ -11,6 +11,7 @@ import CalendarIcon from "./CalendarIcon";
 import IceIcon from "./IceIcon";
 import BacklogIcon from "./BacklogIcon";
 import AgenticIcon from "./AgenticIcon";
+import AsyncIcon from "./AsyncIcon";
 import ArchiveIcon from "./ArchiveIcon";
 import ExclamationIcon from "./ExclamationIcon";
 import EllipsisIcon from "./EllipsisIcon";
@@ -70,6 +71,8 @@ export default function StatusIconRow({ node, indicators, top }: Props) {
         return { tooltip: t("backlog"), icon: <BacklogIcon cx={cx} cy={rowY} r={ICON_R} color={MUTED} /> };
       case "agentic":
         return { tooltip: t("agentic"), icon: <AgenticIcon cx={cx} cy={rowY} r={ICON_R} color={MUTED} /> };
+      case "asynchronous":
+        return { tooltip: t("asynchronous"), icon: <AsyncIcon cx={cx} cy={rowY} r={ICON_R} color={MUTED} /> };
       case "info":
         return { tooltip: node.infoDetails ?? "", icon: <EllipsisIcon cx={cx} cy={rowY} r={ICON_R} color={MUTED} /> };
       case "flowInstance": {

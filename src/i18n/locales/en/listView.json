@@ -53,5 +53,10 @@
     "agentic": "Agentic",
     "not_agentic": "Not agentic"
   },
+  "asynchronousLabel": "Asynchronous",
+  "asynchronousState": {
+    "asynchronous": "Asynchronous",
+    "not_asynchronous": "Not asynchronous"
+  },
   "createTaskHere": "Add a task here"
 }

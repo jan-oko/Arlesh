@@ -258,6 +258,13 @@ pub struct SourceNode {
     /// and a Commitment is kept rather than done — so every other target drops an explicit flag,
     /// and it is reported like any other loss.
     pub agentic: Option<TaskAgentic>,
+    /// Whether the node is Asynchronous (tasks only); `None` for every kind whose table has no
+    /// such column.
+    ///
+    /// Tasks only on the narrower version of the Agentic reasoning: only a Task is *done*, and
+    /// only doing it starts a wait. Every other target drops a set flag, reported like any other
+    /// loss.
+    pub asynchronous: Option<bool>,
     /// Tag domain ids attached to the node (goals and tasks only).
     pub tag_ids: Vec<i64>,
     /// Explicit block reasons (goals and tasks only).
@@ -313,6 +320,9 @@ pub struct Carried {
     /// The Agentic state, when the target is a task and the source carried an explicit one.
     /// `None` leaves the new node inheriting — the state a Task is in when nobody has said.
     pub agentic: Option<TaskAgentic>,
+    /// The Asynchronous flag, when the target is a task and the source was actually flagged.
+    /// `None` leaves the new node **not** asynchronous — the state a Task is in by default.
+    pub asynchronous: Option<bool>,
     /// Tag attachments, when the target is a goal or a task.
     pub tag_ids: Vec<i64>,
     /// Explicit block reasons, when the target is a goal or a task.
@@ -548,6 +558,16 @@ fn carry_fields(
         lost_fields,
     );
 
+    // `false` is what a Task is when nobody has flagged it, so — exactly as with a status still at
+    // its default — only a set flag is a loss worth naming.
+    let asynchronous = keep_if(
+        target == RetypeKind::Task,
+        source.asynchronous.filter(|flag| *flag),
+        "asynchronous",
+        |_: &bool| "yes".to_string(),
+        lost_fields,
+    );
+
     let tag_ids = keep_list(
         scoped_target,
         &source.tag_ids,
@@ -621,6 +641,7 @@ fn carry_fields(
         archival,
         delegate_to,
         agentic,
+        asynchronous,
         tag_ids,
         block_reasons,
         beads_id,
@@ -644,6 +665,7 @@ fn everything(source: &SourceNode) -> Carried {
         archival: source.archival,
         delegate_to: source.delegate_to,
         agentic: source.agentic,
+        asynchronous: source.asynchronous,
         tag_ids: source.tag_ids.clone(),
         block_reasons: source.block_reasons.clone(),
         beads_id: source.beads_id.clone(),
@@ -1206,6 +1228,11 @@ async fn create_node(
                     // out inheriting, and an explicit flag lost on the way out is named in the
                     // plan before any of this runs.
                     agentic: carried.agentic,
+                    // Same story: only a Task has the column and a Task->Task retype never reaches
+                    // here, so this is `None` in practice — everything arriving from another kind
+                    // starts out not asynchronous, and a flag lost on the way out is named in the
+                    // plan before any of this runs.
+                    asynchronous: carried.asynchronous,
                 },
             )
             .await?;
@@ -1553,6 +1580,7 @@ async fn read_source<M: SessionMode>(
                     archival: None,
                     delegate_to: None,
                     agentic: None,
+                    asynchronous: None,
                     tag_ids: goal.tag_ids,
                     block_reasons,
                     dependents: dependents.max(0) as usize,
@@ -1589,6 +1617,7 @@ async fn read_source<M: SessionMode>(
                     archival: Some(task.archival),
                     delegate_to: task.delegate_to,
                     agentic: Some(TaskAgentic::from_column(task.agentic)),
+                    asynchronous: Some(task.asynchronous),
                     tag_ids: task.tag_ids,
                     block_reasons,
                     dependents: dependents.max(0) as usize,
@@ -1627,6 +1656,7 @@ async fn read_source<M: SessionMode>(
                     archival: None,
                     delegate_to: None,
                     agentic: None,
+                    asynchronous: None,
                     tag_ids: commitment.tag_ids,
                     // Never blocked, and never part of the dependency graph in either
                     // direction, so all three are structurally empty rather than unread.
@@ -1662,6 +1692,7 @@ async fn read_source<M: SessionMode>(
                     archival: None,
                     delegate_to: None,
                     agentic: None,
+                    asynchronous: None,
                     tag_ids: vec![],
                     block_reasons: vec![],
                     dependents: 0,
@@ -1696,6 +1727,7 @@ async fn read_source<M: SessionMode>(
                     archival: None,
                     delegate_to: None,
                     agentic: None,
+                    asynchronous: None,
                     tag_ids: vec![],
                     block_reasons: vec![],
                     dependents: 0,

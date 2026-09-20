@@ -19,6 +19,7 @@ fn goal(id: i64) -> SourceNode {
         archival: None,
         delegate_to: None,
         agentic: None,
+        asynchronous: None,
         tag_ids: vec![],
         block_reasons: vec![],
         dependents: 0,
@@ -35,6 +36,8 @@ fn task(id: i64) -> SourceNode {
         archival: Some(TaskArchival::Live),
         // Likewise: every Task has an Agentic state, and `Inherit` is the unchosen one.
         agentic: Some(TaskAgentic::Inherit),
+        // And every Task has an Asynchronous column; `false` is the answer nobody gave.
+        asynchronous: Some(false),
         ..goal(id)
     }
 }
@@ -42,6 +45,11 @@ fn task(id: i64) -> SourceNode {
 /// A Task explicitly flagged as agent work.
 fn agentic_task(id: i64) -> SourceNode {
     SourceNode { agentic: Some(TaskAgentic::Yes), ..task(id) }
+}
+
+/// A Task whose doing starts a wait.
+fn asynchronous_task(id: i64) -> SourceNode {
+    SourceNode { asynchronous: Some(true), ..task(id) }
 }
 
 /// An unresolved commitment with no Verdict Window — the shape a freshly created one has.
@@ -1107,6 +1115,61 @@ fn the_flag_and_the_delegate_are_lost_independently_of_each_other() {
     let lost = lost_field_names(&plan);
     assert!(lost.contains(&"agentic"));
     assert!(lost.contains(&"delegate_to"));
+}
+
+// --- Asynchronous, another Task-only flag ---
+
+#[test]
+fn an_asynchronous_task_loses_the_flag_to_every_kind_that_is_not_a_task() {
+    // Only a Task is *done*, and only doing it starts a wait, so every other target drops the
+    // flag and the prompt says so rather than discarding what the user said.
+    for target in [
+        RetypeKind::Goal,
+        RetypeKind::Commitment,
+        RetypeKind::Project,
+        RetypeKind::Domain,
+        RetypeKind::Tag,
+        RetypeKind::Info,
+    ] {
+        let plan = plan_retype(&asynchronous_task(1), &[], target);
+        assert!(
+            lost_field_names(&plan).contains(&"asynchronous"),
+            "{target:?} cannot be asynchronous, so it should report the flag lost"
+        );
+        assert_eq!(plan.carried.asynchronous, None, "{target:?} carries no flag");
+    }
+}
+
+#[test]
+fn a_task_that_was_never_asynchronous_reports_no_loss() {
+    // `false` is the answer nobody gave, so — like a status still at its default — it is not a
+    // loss and must not drag up a prompt on its own.
+    let plan = plan_retype(&task(1), &[], RetypeKind::Goal);
+
+    assert!(!lost_field_names(&plan).contains(&"asynchronous"));
+    assert!(!plan.loses_anything());
+}
+
+#[test]
+fn a_kind_with_no_asynchronous_column_reports_nothing_in_either_direction() {
+    let to_task = plan_retype(&goal(1), &[], RetypeKind::Task);
+    assert_eq!(to_task.carried.asynchronous, None);
+    assert!(!lost_field_names(&to_task).contains(&"asynchronous"));
+
+    let to_goal = plan_retype(&goal(1), &[], RetypeKind::Goal);
+    assert!(!lost_field_names(&to_goal).contains(&"asynchronous"));
+}
+
+#[test]
+fn asynchronous_and_agentic_are_lost_independently_of_each_other() {
+    // Two separate facts: one says the work suits an agent, the other that doing it starts a
+    // wait. A retype that drops both names both.
+    let both = SourceNode { asynchronous: Some(true), ..agentic_task(1) };
+    let plan = plan_retype(&both, &[], RetypeKind::Goal);
+
+    let lost = lost_field_names(&plan);
+    assert!(lost.contains(&"agentic"));
+    assert!(lost.contains(&"asynchronous"));
 }
 
 #[test]

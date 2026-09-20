@@ -77,6 +77,7 @@ function row(over: Partial<TaskListRow> = {}): TaskListRow {
     dependencyRefs: [],
     isBlocked: false,
     isAgentic: false,
+    isAsynchronous: false,
     hasBlockedAncestor: false,
     hasPrivateAncestor: false,
     scopeTokens: ["unscoped", "unplanned"],
@@ -115,7 +116,52 @@ beforeEach(() => {
   useListFilterStore.setState({ filter: { ...DEFAULT_LIST_FILTER, pills: { ...DEFAULT_LIST_FILTER.pills } } });
   mockUseListData.mockReturnValue(listData());
   useMindmapStore.setState({ subtreeRootId: null, subtreeNav: null });
-  useDisplayStore.setState({ pathHeaderIcons: true });
+  useDisplayStore.setState({ pathHeaderIcons: true, asynchronousFirst: false });
+});
+
+describe("ListView — Asynchronous first", () => {
+  /** Two sibling rows under one path, the second of which starts a wait. */
+  function mixedRows() {
+    const aspect = n("aspect-1", "aspect");
+    const goal = n("goal-1", "goal", { status: "active" });
+    return [
+      row({ node: n("task-sync", "task", { status: "todo" }), ancestors: [aspect, goal] }),
+      row({
+        node: n("task-wait", "task", { status: "todo", asynchronous: true }),
+        ancestors: [aspect, goal],
+        isAsynchronous: true,
+      }),
+    ];
+  }
+
+  /** The titles of the rendered task rows, in the order they are drawn. */
+  function renderedTitles(container: HTMLElement): string[] {
+    return Array.from(container.querySelectorAll<HTMLElement>("[class*='card']"))
+      .map((card) => card.textContent ?? "")
+      .map((text) => (text.includes("task-wait") ? "task-wait" : "task-sync"));
+  }
+
+  it("leaves row order exactly as the tree gave it while the setting is off", () => {
+    mockUseListData.mockReturnValue(listData({ rows: mixedRows() }));
+    const { container } = render(<ListView />);
+    expect(renderedTitles(container)).toEqual(["task-sync", "task-wait"]);
+  });
+
+  it("floats the asynchronous row to the top of its run once the setting is on", () => {
+    useDisplayStore.setState({ asynchronousFirst: true });
+    mockUseListData.mockReturnValue(listData({ rows: mixedRows() }));
+    const { container } = render(<ListView />);
+    expect(renderedTitles(container)).toEqual(["task-wait", "task-sync"]);
+  });
+
+  it("changes no run's membership or header", () => {
+    useDisplayStore.setState({ asynchronousFirst: true });
+    mockUseListData.mockReturnValue(listData({ rows: mixedRows() }));
+    render(<ListView />);
+    expect(screen.getAllByText("goal-1")).toHaveLength(1);
+    expect(screen.getByText("task-sync")).toBeInTheDocument();
+    expect(screen.getByText("task-wait")).toBeInTheDocument();
+  });
 });
 
 describe("ListView", () => {
