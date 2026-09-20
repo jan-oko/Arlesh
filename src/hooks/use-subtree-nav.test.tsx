@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, renderHook, act } from "@testing-library/react";
+import { render, screen, renderHook, act, fireEvent } from "@testing-library/react";
 import { useSubtreeNav } from "./use-subtree-nav";
 import TopBar from "@/components/TopBar/TopBar";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
@@ -79,26 +79,28 @@ describe("useSubtreeNav", () => {
     expect(useMindmapStore.getState().subtreeNav).toBeNull();
   });
 
-  it("names the subtree you are in, the root, and the level above it", () => {
+  it("names the subtree you are in and the true root above it", () => {
     useMindmapStore.setState({ subtreeRootId: "project-1" });
     renderHook(() => useSubtreeNav(TREE));
     expect(useMindmapStore.getState().subtreeNav).toEqual({
+      ancestors: [{ id: null, title: "Arlesh" }],
       currentTitle: "CODE",
-      rootTitle: "Arlesh",
-      parentTitle: "Arlesh",
-      parentSubtreeId: null,
     });
   });
 
-  it("points one level up at the enclosing subtree, not the root, when nested", () => {
+  it("publishes the whole chain, root first, when nested", () => {
     useMindmapStore.setState({ subtreeRootId: "project-2" });
     renderHook(() => useSubtreeNav(TREE));
     expect(useMindmapStore.getState().subtreeNav).toEqual({
+      ancestors: [{ id: null, title: "Arlesh" }, { id: "project-1", title: "CODE" }],
       currentTitle: "Deeper",
-      rootTitle: "Arlesh",
-      parentTitle: "CODE",
-      parentSubtreeId: "project-1",
     });
+  });
+
+  it("gives the true root no id, since it is nobody's subtree", () => {
+    useMindmapStore.setState({ subtreeRootId: "project-2" });
+    renderHook(() => useSubtreeNav(TREE));
+    expect(useMindmapStore.getState().subtreeNav?.ancestors[0]?.id).toBeNull();
   });
 
   it("exits one level at a time, then out to the root", () => {
@@ -116,32 +118,39 @@ describe("useSubtreeNav", () => {
  * The top bar holds no tree, so it can only show where you are if the mounted view publishes it.
  * `MindmapView` and `ListView` both do that by calling this hook and nothing else — so a harness
  * that calls the hook alongside the real `TopBar` exercises the identical path either view takes.
- * That is what makes the indicator appear in the Mindmap as well as the List View.
+ * That is what makes the breadcrumb appear in the Mindmap as well as the List View.
  */
 function Harness() {
   useSubtreeNav(TREE);
   return <TopBar />;
 }
 
-describe("the top bar's subtree indicator, fed by a mounted view", () => {
+describe("the top bar's breadcrumb, fed by a mounted view", () => {
   it("shows nothing at the true root", () => {
     render(<Harness />);
-    expect(screen.queryByText("common:insideSubtree")).not.toBeInTheDocument();
+    expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
   });
 
   it("names the current subtree once a view has entered one", () => {
     useMindmapStore.setState({ subtreeRootId: "project-1" });
     render(<Harness />);
     expect(screen.getByText("CODE")).toBeInTheDocument();
-    expect(screen.getByText("common:insideSubtree")).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "insideSubtree" })).toBeInTheDocument();
   });
 
-  it("shows the current subtree alongside, and distinct from, the two ways back out", () => {
+  it("draws the whole chain, every ancestor a way out and the last step plain text", () => {
     useMindmapStore.setState({ subtreeRootId: "project-2" });
     render(<Harness />);
     expect(screen.getByText("Deeper")).toBeInTheDocument(); // where you are
-    expect(screen.getByRole("button", { name: /CODE/ })).toBeInTheDocument(); // up one level
-    expect(screen.getByRole("button", { name: /Arlesh/ })).toBeInTheDocument(); // out to the root
-    expect(screen.queryByRole("button", { name: /Deeper/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "CODE" })).toBeInTheDocument(); // up one level
+    expect(screen.getByRole("button", { name: "Arlesh" })).toBeInTheDocument(); // out to the root
+    expect(screen.queryByRole("button", { name: "Deeper" })).not.toBeInTheDocument();
+  });
+
+  it("exits to the ancestor whose segment is clicked, not merely one level", () => {
+    useMindmapStore.setState({ subtreeRootId: "project-2" });
+    render(<Harness />);
+    fireEvent.click(screen.getByRole("button", { name: "Arlesh" }));
+    expect(useMindmapStore.getState().subtreeRootId).toBeNull();
   });
 });

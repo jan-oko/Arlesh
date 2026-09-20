@@ -94,23 +94,23 @@ describe("two tabs sharing one top bar", () => {
     expect(shownPreset()).toContain("listView:preset.start");
   });
 
-  it("shows the subtree indicator only for the tab that is inside one", () => {
+  it("shows the subtree breadcrumb only for the tab that is inside one", () => {
     useTabsStore.getState().tabs[1]?.stores.mindmap.getState().setSubtreeNav({
-      currentTitle: "CODE", rootTitle: "Arlesh", parentTitle: "Arlesh", parentSubtreeId: null,
+      ancestors: [{ id: null, title: "Arlesh" }], currentTitle: "CODE",
     });
     render(<Harness />);
-    expect(screen.queryByText("common:insideSubtree")).not.toBeInTheDocument();
+    expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
 
     switchTo("CODE");
 
-    expect(screen.getByText("common:insideSubtree")).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "insideSubtree" })).toBeInTheDocument();
   });
 
   it("leaves the other tab where it was when one exits its subtree", () => {
     const [first, second] = useTabsStore.getState().tabs;
     first?.stores.mindmap.getState().enterSubtree("goal-9");
     second?.stores.mindmap.getState().setSubtreeNav({
-      currentTitle: "CODE", rootTitle: "Arlesh", parentTitle: "Arlesh", parentSubtreeId: null,
+      ancestors: [{ id: null, title: "Arlesh" }], currentTitle: "CODE",
     });
     render(<Harness />);
 

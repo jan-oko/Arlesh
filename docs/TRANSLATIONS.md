@@ -19,7 +19,6 @@ second locale — not because a translation is pending.
 | `nodeKinds`    | Entity display names                           |
 | `status`       | Status pill labels (task / goal / project)     |
 | `warnings`     | Warning modal copy and toast messages          |
-| `navigation`   | Subtree navigation pill label                  |
 | `scopes`       | Time-scope and plan window labels              |
 | `filter`       | Filter popover and chip labels                 |
 | `statusIcons`  | Status-badge tooltips                          |

@@ -35,6 +35,22 @@ export function findParent(root: MindmapNode, id: string): MindmapNode | null {
   return null;
 }
 
+/**
+ * Every node stepped through to reach `id`, the tree root first and `id` itself last — empty when
+ * the id is not in the tree.
+ *
+ * One walk answers both "is it still there?" and "what is above it", which is what the top bar's
+ * breadcrumb needs: repeated `findParent` calls would climb the tree once per level.
+ */
+export function pathToNode(root: MindmapNode, id: string): readonly MindmapNode[] {
+  if (root.id === id) return [root];
+  for (const child of root.children) {
+    const below = pathToNode(child, id);
+    if (below.length > 0) return [root, ...below];
+  }
+  return [];
+}
+
 export function nearestInDirection(
   fromId: string,
   positions: Map<string, Position>,

@@ -1,0 +1,144 @@
+/* Fills the bar's middle cell, which the bar centres on itself, so "where you are" keeps one fixed
+   place however long the chain gets. `position: relative` anchors the folded-levels menu, which has
+   to sit outside the clipped chain below. */
+.wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+}
+
+/* The box the chain is measured against and clipped by. Its width is the cell's and never the
+   chain's — that is what makes folding terminate: a box that shrank onto its own content would
+   report "fits" the moment a segment folded, hand the room straight back, and fold it again. */
+.chain {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* The chain itself, centred in that box by its own auto margins — which resolve to zero the moment
+   the chain is wider than the box, so an overflowing chain anchors to the start and keeps its root
+   instead of being clipped at both ends the way `justify-content: center` would leave it. Nothing
+   inside shrinks, so what will not fit overflows this cap into the box's scroll width — and that is
+   the difference the measurement reads when it folds a segment away. */
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  max-width: 100%;
+  margin-inline: auto;
+}
+
+/* A way out, one level per segment. Bare text rather than a pill: the chain is read as a path, and
+   a row of buttons in chrome would be four controls competing with the titles they carry. */
+.segment {
+  flex: none;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* Each title is user content that may run right-to-left; isolate it so one segment's direction
+     never reorders its neighbours or the separators between them. */
+  unicode-bidi: isolate;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text-secondary);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.segment:hover {
+  color: var(--text-primary);
+  text-decoration: underline;
+}
+
+/* The folded middle. Never truncated and never underlined — it is a stand-in for titles, not one. */
+.fold {
+  max-width: none;
+  letter-spacing: 1px;
+}
+
+.fold:hover {
+  text-decoration: none;
+}
+
+/* Where you are, not a way out of it — so it is not shaped like the segments that are. No border,
+   no background, no pointer: the title alone, weighted enough to read as a heading.
+
+   It is capped and truncated exactly like a segment, and like one it does not shrink. It used to be
+   the part that gave up room first, held above a floor so it could not be eaten to nothing — but a
+   floor is a width reserved whether or not the title needs it, and a centred chain would sit that
+   much left of centre every time the title was short. Nothing shrinking means the chain's natural
+   width is what the box is asked to hold, and the answer to not holding it is to fold a segment. */
+.current {
+  flex: none;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  unicode-bidi: isolate;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.separator {
+  flex: none;
+  color: var(--text-secondary);
+  opacity: 0.6;
+}
+
+.separator::before {
+  content: "\203A";
+}
+
+/* Click-catcher behind the open menu. */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+}
+
+/* Its inline start is set per open, from where the `…` ended up once the chain was centred. */
+.menu {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+  max-width: 280px;
+  padding: var(--space-1);
+  background: var(--surface-raised);
+  border: 1px solid var(--node-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.menuItem {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  unicode-bidi: isolate;
+  padding: var(--space-1) var(--space-2);
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.menuItem:hover {
+  background: var(--surface);
+}
