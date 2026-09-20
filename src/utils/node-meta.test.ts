@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { computeNodeDimensions, estimateWrappedLineCount, getNodeSize, validTypesForCycling, typeAcceptsChildren, isValidDropTarget, computeEditHeight, validParentKinds, TYPED_CHILD_KINDS } from "./node-meta";
+import { computeNodeDimensions, estimateWrappedLineCount, getNodeSize, validTypesForCycling, typeAcceptsChildren, isValidDropTarget, computeEditHeight, validParentKinds, canParentNewTask, TYPED_CHILD_KINDS } from "./node-meta";
+import type { MindmapNode } from "./tree-layout";
 
 describe("computeNodeDimensions", () => {
   it("matches getNodeSize height for a short single-word title", () => {
@@ -377,5 +378,31 @@ describe("validParentKinds", () => {
         expect(listed.includes(parent)).toBe(isValidDropTarget(child, parent));
       }
     }
+  });
+});
+
+describe("canParentNewTask", () => {
+  function node(id: string, kind: MindmapNode["kind"], extra: Partial<MindmapNode> = {}): MindmapNode {
+    return { id, kind, title: id, position: 0, tagIds: [], children: [], ...extra };
+  }
+
+  it.each(["aspect", "domain", "project", "goal", "task", "commitment"] as const)(
+    "accepts a %s, exactly as reparenting does",
+    (kind) => {
+      expect(canParentNewTask(node(`${kind}-1`, kind))).toBe(true);
+    },
+  );
+
+  it.each(["info", "tag", "flow"] as const)("refuses a %s, exactly as reparenting does", (kind) => {
+    expect(canParentNewTask(node(`${kind}-1`, kind))).toBe(false);
+  });
+
+  // A Habit repetition is derived at load time; there is no row behind it to parent anything to.
+  it("refuses a virtual node whose kind would otherwise take a Task", () => {
+    expect(canParentNewTask(node("habititem-flow_task-2-1-0-virtual", "task", { virtual: true }))).toBe(false);
+  });
+
+  it("refuses the synthetic root, which has no database row either", () => {
+    expect(canParentNewTask(node("root", "domain"))).toBe(false);
   });
 });

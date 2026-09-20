@@ -6,10 +6,13 @@ import { useTaskAgentic } from "@/hooks/use-task-agentic";
 import { useCommitmentVerdict } from "@/hooks/use-commitment-verdict";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { findNode } from "@/utils/mindmap-tree";
+import { canParentNewTask } from "@/utils/node-meta";
+import { storedAgenticState } from "@/utils/agentic";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useListFilterStore } from "@/stores/use-list-filter-store";
 import { filterCommitmentList, filterTaskListWithFocus } from "@/utils/list-filter";
 import type { StatusMode } from "@/utils/filter-tree";
+import type { MindmapNode } from "@/utils/tree-layout";
 import { groupRowsByPath } from "@/utils/list-data";
 import { collectSearchableNodes } from "@/utils/mindmap-tree";
 import { useNodeEditor } from "@/components/MindmapView/use-node-editor";
@@ -23,9 +26,12 @@ import CommitmentRow from "./CommitmentRow";
 import PathHeaderRow from "./PathHeaderRow";
 import AnchoredToast from "@/components/AnchoredToast/AnchoredToast";
 import BacklogConfirmModal from "@/components/BacklogConfirmModal/BacklogConfirmModal";
+import DeleteConfirmModal from "@/components/DeleteConfirmModal/DeleteConfirmModal";
 import styles from "./ListView.module.css";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
 import { useFocusExemption } from "@/hooks/use-focus-exemption";
+import { useListCreate } from "@/hooks/use-list-create";
+import { useListDelete } from "@/hooks/use-list-delete";
 import { useSubtreeNav } from "@/hooks/use-subtree-nav";
 import { useListScroll } from "@/hooks/use-list-scroll";
 import { useFullscreenStore } from "@/stores/use-fullscreen-store";
@@ -33,8 +39,8 @@ import { useDisplayStore } from "@/stores/use-display-store";
 
 export default function ListView() {
   const { t } = useTranslation(["common", "listView", "editor"]);
-  const { tree, rows, commitmentRows, allTasksAndGoals, isLoading, error, reload, onCycleStatus, renameNode } =
-    useListData();
+  const { tree, rows, commitmentRows, allTasksAndGoals, isLoading, error, reload, onCycleStatus, renameNode,
+    createTask, deleteTask, removeNode } = useListData();
 
   const sharedFilter = useFilterStore((s) => s.filter);
   // The cheat-sheet overlay gates background shortcuts the same way an open modal does.
@@ -61,7 +67,6 @@ export default function ListView() {
   // One selection across both sections: a row is a Task or a Commitment, and which it is decides
   // what Enter does to it.
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
-  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
 
   const pendingToast = useMindmapStore((s) => s.pendingToast);
@@ -80,6 +85,16 @@ export default function ListView() {
   const { markKept, markBroken, cycleVerdict } = useCommitmentVerdict({
     findNode: (id) => findNode(tree, id),
     reload,
+    showToast,
+  });
+
+  // Creating a row and naming one are the same gesture here: a new Task arrives blank and opens
+  // straight into its own inline rename, so Escape during that first naming takes the Task back.
+  const { editingTaskId, startRename, createTaskUnder, commitTitle, cancelTitleEdit } = useListCreate({
+    createTask,
+    deleteTask,
+    renameTask: (id, title) => renameNode(id, "task", title),
+    selectRow: setSelectedRowId,
     showToast,
   });
 
@@ -136,11 +151,57 @@ export default function ListView() {
     setSelectedRowId(navigableIds[nextIndex] ?? null);
   }
 
-  function handleCommitTitle(id: string, title: string) {
-    setEditingTaskId(null);
-    const trimmed = title.trim();
-    if (trimmed === "") return;
-    void renameNode(id, "task", trimmed);
+  // The frame the list is drawn from — the subtree you have entered, or the whole board. It is the
+  // parent for a sibling of a row that has no ancestor inside the list to share one with.
+  const listRoot = useMemo(
+    () => (subtreeRootId !== null ? (findNode(tree, subtreeRootId) ?? tree) : tree),
+    [tree, subtreeRootId],
+  );
+
+  /** Shift+Enter: a sibling hangs from whatever the selected row hangs from, and carries over the
+   * source's **own stored** Agentic flag — exactly as the Mindmap's Shift+Enter does, so the same
+   * chord on the same Task cannot mean two things depending on which view you are in. */
+  function handleCreateSibling(id: string) {
+    const row = filteredRows.find((candidate) => candidate.node.id === id);
+    if (row === undefined) return;
+    createTaskUnder(row.ancestors[row.ancestors.length - 1] ?? listRoot, storedAgenticState(row.node.agentic));
+  }
+
+  /** Tab: a child hangs from the selected row itself. */
+  function handleCreateChild(id: string) {
+    const row = filteredRows.find((candidate) => candidate.node.id === id);
+    if (row === undefined) return;
+    createTaskUnder(row.node);
+  }
+
+  /** A path header's `+`, or `null` where the chain ends somewhere a Task cannot live. */
+  function headerCreateHandler(segments: readonly MindmapNode[]): (() => void) | null {
+    const parent = segments[segments.length - 1];
+    if (parent === undefined || !canParentNewTask(parent)) return null;
+    return () => createTaskUnder(parent);
+  }
+
+  /**
+   * Where the selection lands once a row and its subtree are gone: the next row down, or the one
+   * above when the deleted row was last, skipping anything that went with it.
+   *
+   * Deliberately not the Mindmap's rule of falling back to the nearest surviving *ancestor*. On a
+   * flat list a row's ancestors are usually a Goal or a Project, which are never rows — that rule
+   * would leave nothing selected most of the time. Stepping along the list is what the arrows
+   * already do, and it is where a reader's eye is.
+   */
+  function neighbourAfterDelete(id: string, deletedIds: ReadonlySet<string>): string | null {
+    const index = navigableIds.indexOf(id);
+    if (index === -1) return null;
+    const survives = (candidate: string | undefined): boolean =>
+      candidate !== undefined && !deletedIds.has(candidate);
+    for (let i = index + 1; i < navigableIds.length; i++) {
+      if (survives(navigableIds[i])) return navigableIds[i] ?? null;
+    }
+    for (let i = index - 1; i >= 0; i--) {
+      if (survives(navigableIds[i])) return navigableIds[i] ?? null;
+    }
+    return null;
   }
 
   function handleSetStatusPreset(mode: StatusMode) {
@@ -148,7 +209,19 @@ export default function ListView() {
     setListPreset(mode);
   }
 
+  // Deleting on the Mindmap's terms: its chord, its confirmation, its subtree cascade and its
+  // writer — so one undo step covers a delete made from either view.
+  const { pendingDelete, isDeleting, error: deleteError, requestDelete, confirmDelete, cancelDelete } =
+    useListDelete({
+      findNode: (id) => findNode(tree, id),
+      removeNode,
+      neighbourAfterDelete,
+      selectRow: setSelectedRowId,
+      showToast,
+    });
+
   const { onUndo, onRedo } = useUndo({ reload, showToast });
+
   // The viewport: it follows the selection, and j/k roam it without moving the selection.
   const { containerRef, startScroll } = useListScroll(activeSelectedId);
 
@@ -164,7 +237,10 @@ export default function ListView() {
     onScrollList: startScroll,
     onCycleStatus,
     onOpenEditor: onDoubleClick,
-    onStartRename: setEditingTaskId,
+    onStartRename: startRename,
+    onCreateSibling: handleCreateSibling,
+    onCreateChild: handleCreateChild,
+    onDelete: requestDelete,
     onDeselect: () => setSelectedRowId(null),
     onToggleFilter: toggleFilterPopover,
     onSetStatusMode: handleSetStatusPreset,
@@ -219,6 +295,7 @@ export default function ListView() {
                 segments={entry.segments}
                 onEnterSubtree={enterSubtree}
                 showKindIcon={pathHeaderIcons}
+                onCreateTask={headerCreateHandler(entry.segments)}
               />
             ) : (
               <TaskRow
@@ -231,8 +308,8 @@ export default function ListView() {
                 onSelect={setSelectedRowId}
                 onCycleStatus={onCycleStatus}
                 onOpenEditor={onDoubleClick}
-                onCommitTitle={handleCommitTitle}
-                onCancelTitleEdit={() => setEditingTaskId(null)}
+                onCommitTitle={commitTitle}
+                onCancelTitleEdit={cancelTitleEdit}
                 onAddParentFilter={(ref) => addPill("parent", ref)}
                 onAddTagFilter={addTagFilter}
               />
@@ -268,6 +345,18 @@ export default function ListView() {
           domainNames={domainNames}
           onSave={onCommitmentSave}
           onClose={() => setEditorModal(null)}
+        />
+      )}
+
+      {pendingDelete !== null && (
+        <DeleteConfirmModal
+          nodeTitle={pendingDelete.node.title}
+          nodeCount={1}
+          descendantCount={pendingDelete.descendantCount}
+          isDeleting={isDeleting}
+          error={deleteError}
+          onConfirm={confirmDelete}
+          onCancel={cancelDelete}
         />
       )}
 
