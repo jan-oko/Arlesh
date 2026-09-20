@@ -19,7 +19,7 @@ const mockUseFilterDisplay = vi.mocked(useFilterDisplay);
 const EMPTY_DISPLAY = {
   tagOptions: [], tagName: (id: number) => `#${id}`, tagColor: () => null,
   nodeLabel: (ref: string) => ref, nodeColor: () => null,
-  parentPool: [], dependencyPool: [],
+  antecedentPool: [], dependencyPool: [],
   displayTaskStatus: (v: string) => v, displayGoalStatus: (v: string) => v,
   displayProjectStatus: (v: string) => v, displayVerdict: (v: string) => v,
   displayScopeState: (v: string) => v, displayBlocked: (v: string) => v,
@@ -172,26 +172,26 @@ describe("FilterPopover", () => {
       expect(screen.getByText("not_blocked")).toBeInTheDocument();
     });
 
-    it("adds a parent filter pill from the searchable combobox", async () => {
+    it("adds an antecedent filter pill from the searchable combobox", async () => {
       mockUseFilterDisplay.mockReturnValue({
         ...EMPTY_DISPLAY,
-        parentPool: [{ id: "project-1", label: "Rocket", color: "#e74c3c" }],
+        antecedentPool: [{ id: "project-1", label: "Rocket", color: "#e74c3c" }],
       });
       render(<FilterPopover />);
-      fireEvent.focus(await screen.findByPlaceholderText("listView:addParent"));
+      fireEvent.focus(await screen.findByPlaceholderText("listView:addAntecedent"));
       await waitFor(() => expect(screen.getByText("Rocket")).toBeInTheDocument());
       fireEvent.mouseDown(screen.getByText("Rocket"));
-      expect(useListFilterStore.getState().filter.pills.parent).toEqual([{ value: "project-1", mode: "any" }]);
+      expect(useListFilterStore.getState().filter.pills.antecedent).toEqual([{ value: "project-1", mode: "any" }]);
     });
 
-    it("an already-added parent no longer appears as a candidate", () => {
-      useListFilterStore.getState().addPill("parent", "project-1");
+    it("an already-added antecedent no longer appears as a candidate", () => {
+      useListFilterStore.getState().addPill("antecedent", "project-1");
       mockUseFilterDisplay.mockReturnValue({
         ...EMPTY_DISPLAY,
-        parentPool: [{ id: "project-1", label: "Rocket", color: null }],
+        antecedentPool: [{ id: "project-1", label: "Rocket", color: null }],
       });
       render(<FilterPopover />);
-      expect(screen.queryByPlaceholderText("listView:addParent")).not.toBeInTheDocument();
+      expect(screen.queryByPlaceholderText("listView:addAntecedent")).not.toBeInTheDocument();
     });
 
     it("adds a dependency filter pill from its own pool (tasks/goals only)", async () => {

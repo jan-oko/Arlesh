@@ -7,8 +7,11 @@ import {
   isVerdictValue, isAgenticValue,
 } from "@/utils/list-filter";
 
-/** Node kinds a Task/Goal/Project can be parented under — the pool for the Parent picker. */
-const PARENT_KINDS = new Set(["aspect", "domain", "project", "goal", "task"]);
+/** Every node kind that can stand on a row's ancestor chain — the pool for the Antecedent picker.
+ * The pool is the whole tree, the way `Ctrl+O`'s search is, not just the ancestors of rows that
+ * happen to be on screen: filtering to a branch nothing visible descends from is exactly the case
+ * the filter exists for. */
+const ANTECEDENT_KINDS = new Set(["aspect", "domain", "project", "goal", "task"]);
 
 export interface EntityOption {
   id: string;
@@ -33,10 +36,10 @@ export interface FilterDisplay {
   tagOptions: TagOption[];
   tagName: (id: number) => string;
   tagColor: (id: number) => string | null;
-  /** Any tree node's title/color by id — resolves parent/dependency chip and pill labels. */
+  /** Any tree node's title/color by id — resolves antecedent/dependency chip and pill labels. */
   nodeLabel: (ref: string) => string;
   nodeColor: (ref: string) => string | null;
-  parentPool: EntityOption[];
+  antecedentPool: EntityOption[];
   dependencyPool: EntityOption[];
   displayTaskStatus: (value: string) => string;
   displayGoalStatus: (value: string) => string;
@@ -67,9 +70,9 @@ export function useFilterDisplay(): FilterDisplay {
   );
   const tagOptionById = useMemo(() => new Map(tagOptions.map((opt) => [opt.id, opt])), [tagOptions]);
 
-  const parentPool = useMemo<EntityOption[]>(
+  const antecedentPool = useMemo<EntityOption[]>(
     () => searchableNodes
-      .filter((n) => PARENT_KINDS.has(n.kind))
+      .filter((n) => ANTECEDENT_KINDS.has(n.kind))
       .map((n) => ({ id: n.id, label: n.title, color: nodeById.get(n.id)?.color ?? null })),
     [searchableNodes, nodeById],
   );
@@ -86,7 +89,7 @@ export function useFilterDisplay(): FilterDisplay {
     tagColor: (id) => tagOptionById.get(id)?.color ?? null,
     nodeLabel: (ref) => nodeById.get(ref)?.title ?? ref,
     nodeColor: (ref) => nodeById.get(ref)?.color ?? null,
-    parentPool,
+    antecedentPool,
     dependencyPool,
     displayTaskStatus: (value) => (isTaskStatusValue(value) ? t(`status:task.${value}`) : value),
     displayGoalStatus: (value) => (isGoalStatusValue(value) ? t(`status:goal.${value}`) : value),

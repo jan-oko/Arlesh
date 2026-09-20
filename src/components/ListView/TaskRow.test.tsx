@@ -16,7 +16,6 @@ function n(id: string, kind: NodeKind, extra: Partial<MindmapNode> = {}): Mindma
 function row(over: Partial<TaskListRow> = {}): TaskListRow {
   return {
     node: n("task-1", "task", { status: "todo" }),
-    parentRef: "goal-1",
     ancestors: [n("goal-1", "goal", { title: "Ship it" })],
     goalRef: "goal-1",
     goalStatus: "active",
@@ -44,7 +43,6 @@ function baseProps(overrides: Partial<ComponentProps<typeof TaskRow>> = {}) {
     onOpenEditor: vi.fn(),
     onCommitTitle: vi.fn(),
     onCancelTitleEdit: vi.fn(),
-    onAddParentFilter: vi.fn(),
     onAddTagFilter: vi.fn(),
     ...overrides,
   };
@@ -157,11 +155,12 @@ describe("TaskRow", () => {
     });
   });
 
-  it("clicking the parent label adds a parent filter", () => {
-    const onAddParentFilter = vi.fn();
-    render(<TaskRow {...baseProps({ onAddParentFilter })} />);
-    fireEvent.click(screen.getByText("Ship it"));
-    expect(onAddParentFilter).toHaveBeenCalledWith("goal-1");
+  // The path header above the run names the parent already; the card restating it was the whole
+  // case for retiring the Parent dimension, so the label goes with it. Tags stay: a tag is in no
+  // header, and clicking one here is the only way to add it from the row.
+  it("names no parent on the card, since the path header above the run already does", () => {
+    render(<TaskRow {...baseProps()} />);
+    expect(screen.queryByText("Ship it")).not.toBeInTheDocument();
   });
 
   it("clicking a tag pill adds a tag filter, resolving the tag's name", () => {

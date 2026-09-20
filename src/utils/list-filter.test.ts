@@ -16,7 +16,6 @@ function n(id: string, kind: NodeKind, extra: Partial<MindmapNode> = {}): Mindma
 function row(over: Partial<TaskListRow> = {}): TaskListRow {
   return {
     node: n("task-1", "task", { status: "todo" }),
-    parentRef: "goal-1",
     ancestors: [],
     goalRef: "goal-1",
     goalStatus: "active",
@@ -183,12 +182,6 @@ describe("filterTaskList", () => {
     expect(filterTaskList(rows, sf({ privateMode: true }), lf())).toHaveLength(2);
   });
 
-  it("parent filter (any) keeps only rows under the chosen parent", () => {
-    const rows = [row({ parentRef: "goal-1" }), row({ node: n("task-2", "task"), parentRef: "goal-2" })];
-    const filter = lf({ pills: { ...DEFAULT_LIST_FILTER.pills, parent: [{ value: "goal-1", mode: "any" }] } });
-    expect(filterTaskList(rows, sf(), filter).map((r) => r.parentRef)).toEqual(["goal-1"]);
-  });
-
   it("dependency filter (exclude) drops a task depending on the excluded target", () => {
     const rows = [row({ dependencyRefs: ["task-9"] })];
     const filter = lf({ pills: { ...DEFAULT_LIST_FILTER.pills, dependency: [{ value: "task-9", mode: "exclude" }] } });
@@ -294,21 +287,85 @@ describe("filterTaskList — tasks inside a Frozen/Archived Project", () => {
   });
 });
 
+/**
+ * The Antecedent dimension: a pill matches a row when the picked node stands anywhere on its
+ * ancestor chain, at any depth and of any kind.
+ *
+ * This is not what entering a subtree does, which is why both exist. Subtree entry re-roots and
+ * drops everything outside the branch; a pill keeps the whole board on screen and narrows it, and
+ * carries Exclude, which subtree entry has no equivalent of at all.
+ */
+describe("filterTaskList — Antecedent", () => {
+  const aspect = n("aspect-1", "aspect");
+  const project = n("project-1", "project", { status: "active" });
+  const goal = n("goal-1", "goal", { status: "active" });
+  const elsewhere = n("aspect-2", "aspect");
+
+  // Two rows inside ARLESH at different depths, one outside it entirely.
+  const deep = row({ node: n("task-deep", "task", { status: "todo" }), ancestors: [aspect, project, goal] });
+  const shallow = row({ node: n("task-shallow", "task", { status: "todo" }), ancestors: [aspect, project] });
+  const outside = row({ node: n("task-outside", "task", { status: "todo" }), ancestors: [elsewhere] });
+  const rows = [deep, shallow, outside];
+
+  const kept = (pills: PillFilter[]): string[] =>
+    filterTaskList(rows, sf(), lf({ pills: { ...DEFAULT_LIST_FILTER.pills, antecedent: pills } }))
+      .map((r) => r.node.id);
+
+  it("Any keeps every descendant of the picked node, at any depth", () => {
+    expect(kept([{ value: "project-1", mode: "any" }])).toEqual(["task-deep", "task-shallow"]);
+  });
+
+  it("matches a node at the far end of the chain, not just the immediate parent", () => {
+    // The Parent dimension could only ever have answered "goal-1" for the deep row.
+    expect(kept([{ value: "aspect-1", mode: "any" }])).toEqual(["task-deep", "task-shallow"]);
+  });
+
+  it("All requires every picked node on the same chain", () => {
+    expect(kept([
+      { value: "project-1", mode: "all" },
+      { value: "goal-1", mode: "all" },
+    ])).toEqual(["task-deep"]);
+  });
+
+  it("Exclude hides that whole branch and nothing else — the question subtree entry cannot ask", () => {
+    expect(kept([{ value: "project-1", mode: "exclude" }])).toEqual(["task-outside"]);
+  });
+
+  it("a row with no ancestors at all matches no antecedent pill", () => {
+    const rootLevel = row({ node: n("task-root", "task", { status: "todo" }), ancestors: [] });
+    const filter = lf({
+      pills: { ...DEFAULT_LIST_FILTER.pills, antecedent: [{ value: "aspect-1", mode: "any" }] },
+    });
+    expect(filterTaskList([rootLevel], sf(), filter)).toEqual([]);
+  });
+
+  // Both filter entry points run the same extracted predicate, and this pins that they cannot drift.
+  it("is applied on the focus-exempt path too, which only spares the focused row", () => {
+    const filter = lf({
+      pills: { ...DEFAULT_LIST_FILTER.pills, antecedent: [{ value: "project-1", mode: "any" }] },
+    });
+    const { rows: keptRows, exemptedIds } = filterTaskListWithFocus(rows, sf(), filter, "task-outside");
+    expect(keptRows.map((r) => r.node.id)).toEqual(["task-deep", "task-shallow", "task-outside"]);
+    expect([...exemptedIds]).toEqual(["task-outside"]);
+  });
+});
+
 describe("withCurrentPillDimensions", () => {
   it("drops a retired dimension, so a filter saved before it was removed stops narrowing the list", () => {
-    // A blob written while Antecedent was still a dimension, before subtree entry replaced it.
+    // A blob written while Parent was still a dimension, before the path header made it a
+    // restatement. The key is simply no longer read, so it cannot come back as an invisible filter.
     const restored = withCurrentPillDimensions({
       preset: "all",
-      pills: { ...DEFAULT_LIST_FILTER.pills, antecedent: [{ value: "aspect-1", mode: "any" }] },
+      pills: { ...DEFAULT_LIST_FILTER.pills, parent: [{ value: "goal-1", mode: "any" }] },
     });
     expect(restored.pills).toEqual(DEFAULT_LIST_FILTER.pills);
     expect(filterTaskList([row()], sf(), restored)).toHaveLength(1);
   });
 
   it("fills in a dimension the saved filter never had, so nothing reads an undefined pill list", () => {
-    const restored = withCurrentPillDimensions({ preset: "do", pills: { parent: [{ value: "goal-1", mode: "any" }] } });
+    const restored = withCurrentPillDimensions({ preset: "do", pills: { antecedent: [{ value: "goal-1", mode: "any" }] } });
     expect(restored.preset).toBe("do");
-    expect(restored.pills.parent).toEqual([{ value: "goal-1", mode: "any" }]);
+    expect(restored.pills.antecedent).toEqual([{ value: "goal-1", mode: "any" }]);
     expect(restored.pills.blocked).toEqual([]);
   });
 
@@ -326,9 +383,9 @@ describe("withCurrentPillDimensions", () => {
   it("drops a saved pill that is not a pill at all", () => {
     const restored = withCurrentPillDimensions({
       preset: "all",
-      pills: { parent: ["goal-1", { value: "goal-2", mode: "nope" }, { value: "goal-3", mode: "all" }] },
+      pills: { antecedent: ["goal-1", { value: "goal-2", mode: "nope" }, { value: "goal-3", mode: "all" }] },
     });
-    expect(restored.pills.parent).toEqual([{ value: "goal-3", mode: "all" }]);
+    expect(restored.pills.antecedent).toEqual([{ value: "goal-3", mode: "all" }]);
   });
 });
 
@@ -418,8 +475,7 @@ describe("filterCommitmentList", () => {
   function commitmentRow(over: Partial<CommitmentListRow> = {}): CommitmentListRow {
     return {
       node: n("commitment-1", "commitment", { verdict: "unresolved", timing: "active" }),
-      parentRef: "project-1",
-      ancestors: [],
+      ancestors: [n("project-1", "project", { status: "active" })],
       hasPrivateAncestor: false,
       scopeTokens: ["active", "unplanned"],
       ...over,
@@ -480,11 +536,18 @@ describe("filterCommitmentList", () => {
     expect(kept([commitmentRow()], sf(), withTaskPill)).toEqual(["commitment-1"]);
   });
 
-  it("applies the parent pill", () => {
-    const rows = [commitmentRow()];
-    const matching = lf({ pills: { ...DEFAULT_LIST_FILTER.pills, parent: [{ value: "project-1", mode: "any" }] } });
-    const other = lf({ pills: { ...DEFAULT_LIST_FILTER.pills, parent: [{ value: "project-2", mode: "any" }] } });
-    expect(kept(rows, sf(), matching)).toEqual(["commitment-1"]);
+  // A Commitment hangs off the same tree as everything else, so it has a full ancestor chain and
+  // takes the dimension: narrowing to a branch would be a lie if the band above the rows kept
+  // showing commitments from outside it.
+  it("applies the antecedent pill, at any depth", () => {
+    const rows = [commitmentRow({
+      ancestors: [n("aspect-1", "aspect"), n("project-1", "project", { status: "active" })],
+    })];
+    const nearest = lf({ pills: { ...DEFAULT_LIST_FILTER.pills, antecedent: [{ value: "project-1", mode: "any" }] } });
+    const distant = lf({ pills: { ...DEFAULT_LIST_FILTER.pills, antecedent: [{ value: "aspect-1", mode: "any" }] } });
+    const other = lf({ pills: { ...DEFAULT_LIST_FILTER.pills, antecedent: [{ value: "project-2", mode: "any" }] } });
+    expect(kept(rows, sf(), nearest)).toEqual(["commitment-1"]);
+    expect(kept(rows, sf(), distant)).toEqual(["commitment-1"]);
     expect(kept(rows, sf(), other)).toEqual([]);
   });
 

@@ -25,13 +25,14 @@ interface Props {
   onOpenEditor: (nodeId: string) => void;
   onCommitTitle: (nodeId: string, title: string) => void;
   onCancelTitleEdit: () => void;
-  onAddParentFilter: (parentRef: string) => void;
   onAddTagFilter: (tagId: number) => void;
 }
 
 /** A compact card row for one Task: a status control (mirrors the Mindmap node's own glyph and click
  * behavior), the title (or an inline rename input, keyboard "R"), its status-icon badges, and clickable
- * parent/tag labels (SPEC: clicking either inline adds it as a filter). Clicking anywhere on the card
+ * tag pills (SPEC: clicking one inline adds it as a filter). The card carries no parent label: the
+ * path header above the run already names the parent, so a label here only restated it — and a tag
+ * is not in that header, which is why the tag pills stay. Clicking anywhere on the card
  * selects it (for keyboard navigation/actions); double-clicking opens the Task editor, same as
  * double-clicking the node on the Mindmap.
  *
@@ -41,14 +42,13 @@ interface Props {
  * a row never indents under something that is not on screen. */
 export default function TaskRow({
   row, visibleDepth, isSelected, isFocusExempt, isEditingTitle, onSelect, onCycleStatus, onOpenEditor, onCommitTitle, onCancelTitleEdit,
-  onAddParentFilter, onAddTagFilter,
+  onAddTagFilter,
 }: Props) {
   useInputCapture(isEditingTitle);
   const { t } = useTranslation(["listView", "nodeKinds"]);
   const tagNames = useTagNames();
   const inputRef = useRef<HTMLInputElement>(null);
   const { node } = row;
-  const parent = row.ancestors[row.ancestors.length - 1];
 
   // Mirrors the Mindmap node's own gating: a Habit instance always advances; a real task only while unblocked.
   const canClickStatus = node.habitItem !== undefined || !row.isBlocked;
@@ -114,18 +114,8 @@ export default function TaskRow({
           <TaskRowBadges node={node} indicators={deriveStatusIndicators(node)} />
         </div>
 
-        {(parent !== undefined || node.tagIds.length > 0) && (
+        {node.tagIds.length > 0 && (
           <div className={styles.metaRow}>
-            {parent !== undefined && (
-              <button
-                type="button"
-                className={styles.parentLabel}
-                title={t("filterByParent")}
-                onClick={() => onAddParentFilter(row.parentRef)}
-              >
-                {parent.title}
-              </button>
-            )}
             {node.tagIds.map((tagId) => (
               <button
                 key={tagId}
