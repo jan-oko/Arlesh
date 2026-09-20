@@ -82,6 +82,7 @@
   "scopeLength": "Length",
   "fieldKbDir": "Knowledge base directory",
   "fieldBeadsId": "Issue",
+  "clearBeadsId": "Clear issue link",
   "placeholderBlockReason": "Reason…",
   "placeholderKbDir": "/path/to/vault",
   "placeholderDepSearch": "Search tasks or goals to add dependency…",

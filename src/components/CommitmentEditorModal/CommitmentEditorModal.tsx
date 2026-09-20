@@ -31,6 +31,9 @@ interface Props {
   /** Overrides the "Edit commitment" title — the create path opens the same fields on a blank node. */
   heading?: string;
   onSave: (data: CommitmentSaveData) => Promise<void>;
+  /** Drops the node's `bd` issue link, where a clear is on offer. Omitted — as on the blank node a
+   * create path opens, which has no link to drop — the Issue row stays wholly read-only. */
+  onClearBeadsId?: (() => Promise<void>) | undefined;
   onClose: () => void;
 }
 
@@ -43,7 +46,7 @@ interface Props {
  * is a **Verdict** — three equal choices rather than a cycle, so Broken is never one stray press
  * away from Kept — and a **Verdict Window**.
  */
-export default function CommitmentEditorModal({ node, allTags, domainNames, heading, onSave, onClose }: Props) {
+export default function CommitmentEditorModal({ node, allTags, domainNames, heading, onSave, onClearBeadsId, onClose }: Props) {
   useInputCapture();
   const { t } = useTranslation(["editor", "status"]);
   const [title, setTitle] = useState(node.title);
@@ -95,7 +98,7 @@ export default function CommitmentEditorModal({ node, allTags, domainNames, head
         {t("fieldTitle")}
         <input ref={titleRef} className={styles.input} value={title} onChange={(e) => setTitle(e.target.value)} type="text" />
       </label>
-      <BeadsIdField beadsId={node.beadsId} />
+      <BeadsIdField beadsId={node.beadsId} onClear={onClearBeadsId} />
       <div className={styles.label}>
         {t("fieldVerdict")}
         <div className={styles.statusPills}>

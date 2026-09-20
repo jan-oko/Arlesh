@@ -123,3 +123,27 @@ describe("ProjectEditorModal — focus on open", () => {
     expect(defaultProps.onClose).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("ProjectEditorModal — the Issue row", () => {
+  it("offers no row at all for a project with no issue link", () => {
+    render(<ProjectEditorModal {...defaultProps} onClearBeadsId={vi.fn()} />);
+    expect(screen.queryByText("fieldBeadsId")).not.toBeInTheDocument();
+  });
+
+  it("drops the link from the × without touching the save", async () => {
+    const onClearBeadsId = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ProjectEditorModal
+        {...defaultProps}
+        node={mkNode({ beadsId: "Arlesh-5fs" })}
+        onClearBeadsId={onClearBeadsId}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "clearBeadsId" }));
+
+    await waitFor(() => expect(onClearBeadsId).toHaveBeenCalledTimes(1));
+    expect(defaultProps.onSave).not.toHaveBeenCalled();
+    expect(defaultProps.onClose).not.toHaveBeenCalled();
+  });
+});

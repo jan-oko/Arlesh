@@ -8,6 +8,7 @@ import type { CommitmentSaveData } from "@/components/CommitmentEditorModal/Comm
 import type { ProjectSaveData } from "@/components/ProjectEditorModal/ProjectEditorModal";
 import type { InfoSaveData } from "@/components/InfoEditorModal/InfoEditorModal";
 import { updateInfo } from "@/api/infos";
+import { clearBeadsId, type BeadsNodeType } from "@/api/beads";
 import { setBlockReasons } from "@/api/block-reasons";
 import type { FlowSaveData } from "@/components/FlowEditorModal/FlowEditorModal";
 import { recurrenceStartKind } from "@/components/FlowEditorModal/recurrence-ui";
@@ -82,6 +83,8 @@ interface Result {
   onSimpleSave: (title: string, isPrivate: boolean) => Promise<void>;
   onProjectSave: (data: ProjectSaveData) => Promise<void>;
   onInfoSave: (data: InfoSaveData) => Promise<void>;
+  /** Drops the open node's `bd` issue link. `nodeType` is the editor's own kind. */
+  onClearBeadsId: (nodeType: BeadsNodeType) => Promise<void>;
   onFlowSave: (data: FlowSaveData) => Promise<void>;
   onFlowItemSave: (data: FlowItemSaveData) => Promise<void>;
   /** Prompts to clamp orphaned descendants; resolves true to proceed, false to abort. */
@@ -381,9 +384,24 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
     [editorModal, reload],
   );
 
+  // Unlinks the open node from its `bd` issue. Its own call rather than a field on the save,
+  // because it is not an edit the Save button commits: the × acts at once, and the editor stays
+  // open on everything else the user was doing. The reload is what makes the next open of this
+  // editor show no Issue row — the open one keeps its snapshot, and greys the row instead.
+  const onClearBeadsId = useCallback(
+    async (nodeType: BeadsNodeType) => {
+      if (editorModal === null) return;
+      const dbId = parseInt(editorModal.nodeId.split("-").pop() ?? "0", 10);
+      await clearBeadsId(nodeType, dbId);
+      await reload();
+    },
+    [editorModal, reload],
+  );
+
   return {
     editorModal, setEditorModal, allTags, domainNames, availableForDep, onDoubleClick,
     onTaskSave, onGoalSave, onCommitmentSave, onSimpleSave, onProjectSave, onInfoSave,
+    onClearBeadsId,
     onFlowSave, onFlowItemSave,
     checkScopeClamp, confirmScopeClamp, scopeClampRequest, resolveScopeClamp,
   };

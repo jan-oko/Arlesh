@@ -1,9 +1,11 @@
 //! The issue-link tool — the only write on this server.
 //!
-//! A Task, Goal, Commitment or Project can carry the id of the `bd` issue that tracks it. Nothing else can set
-//! it: no Tauri command writes the column and the UI renders it read-only, so an issue id in
-//! Arlesh always arrived through here. That is the whole point of the field — it records a link an
-//! agent established, and the app displays it without pretending the user maintains it.
+//! A Task, Goal, Commitment or Project can carry the id of the `bd` issue that tracks it. Nothing else can
+//! *set* it: the only Tauri command that writes the column
+//! ([`clear_beads_id`](crate::commands::beads::clear_beads_id)) writes null and nothing else, so an
+//! issue id in Arlesh always arrived through here. That is the whole point of the field — it
+//! records a link an agent established, and the app displays it without pretending the user
+//! maintains it. The user can drop that link, which needs no id; they cannot write one.
 
 use rmcp::{
     handler::server::wrapper::Parameters,

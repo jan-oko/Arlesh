@@ -6,6 +6,7 @@ import type { TaskSaveData } from "@/components/TaskEditorModal/TaskEditorModal"
 import type { CommitmentSaveData } from "@/components/CommitmentEditorModal/CommitmentEditorModal";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { TASK_AGENTIC } from "@/api/tasks";
+import { BEADS_NODE_TYPE } from "@/api/beads";
 
 // Nothing under `@/api` is mocked here, on purpose. The question these tests answer is what the
 // editor actually puts *on the wire* when a field is emptied: `Option<Option<T>>` on the Rust side
@@ -65,6 +66,17 @@ function wireRequest(command: string): Record<string, unknown> {
     throw new Error(`${command}'s request is not an object`);
   }
   return { ...request };
+}
+
+/** Every argument `command` reached the IPC boundary with, as JSON round-tripped it. */
+function wireArgs(command: string): Record<string, unknown> {
+  const call = ipc.mock.calls.find(([cmd]) => cmd === command);
+  if (call === undefined) throw new Error(`${command} never reached the IPC boundary`);
+  const sent: unknown = JSON.parse(JSON.stringify(call[1]));
+  if (sent === null || typeof sent !== "object") {
+    throw new Error(`${command} was sent without arguments`);
+  }
+  return { ...sent };
 }
 
 function editor() {
@@ -133,5 +145,45 @@ describe("emptying a field in the editor", () => {
 
     await waitFor(() => expect(onSave).toHaveBeenCalled());
     expect(onSave.mock.calls[0]?.[0]).toMatchObject({ timeScope: null, onScopeExit: null });
+  });
+});
+
+const linkedTaskNode: MindmapNode = { ...taskNode, beadsId: "Arlesh-5fs" };
+
+describe("clearing a beads id from the editor", () => {
+  it("sends the node's own kind and id to clear_beads_id, and grows no update field for it", async () => {
+    const result = editor();
+    act(() => result.current.setEditorModal({ nodeId: "task-5", node: linkedTaskNode }));
+    await act(async () => {
+      await result.current.onClearBeadsId(BEADS_NODE_TYPE.TASK);
+    });
+
+    expect(wireArgs("clear_beads_id")).toEqual({ nodeType: "task", nodeId: 5 });
+    expect(
+      ipc.mock.calls.some(([cmd]) => cmd === "update_task"),
+      "no update request carries a beads field, and none is sent alongside",
+    ).toBe(false);
+  });
+
+  it("reloads the board, so the next open of this editor shows no Issue row", async () => {
+    const reload = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(() =>
+      useNodeEditor({ tree: root, allTasksAndGoals: [taskNode], reload }),
+    );
+    act(() => result.current.setEditorModal({ nodeId: "task-5", node: linkedTaskNode }));
+    await act(async () => {
+      await result.current.onClearBeadsId(BEADS_NODE_TYPE.TASK);
+    });
+
+    expect(reload).toHaveBeenCalled();
+  });
+
+  it("writes nothing when no editor is open", async () => {
+    const result = editor();
+    await act(async () => {
+      await result.current.onClearBeadsId(BEADS_NODE_TYPE.TASK);
+    });
+
+    expect(ipc.mock.calls.some(([cmd]) => cmd === "clear_beads_id")).toBe(false);
   });
 });

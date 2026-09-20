@@ -212,8 +212,8 @@ pub enum BeadsNode {
 pub enum BeadsOperation {
     /// Links a Task, Goal, Commitment or Project to a `bd` issue, or clears the link.
     ///
-    /// This is the only way the link can be set: no Tauri command writes it and the UI renders it
-    /// read-only, so an issue id in Arlesh always came from here.
+    /// This is the only way the link can be *set*: the one Tauri command that writes the column
+    /// only ever clears it, so an issue id in Arlesh always came from here.
     Set {
         /// Which kind of resource to link.
         node_type: BeadsNode,

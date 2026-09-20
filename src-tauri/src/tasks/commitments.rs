@@ -353,10 +353,11 @@ impl<'session> CommitmentOperator<'session> {
 
     /// Links a commitment to the `bd` issue tracking it, or unlinks it when given `None`.
     ///
-    /// **The only writer of `beads_id`, and reachable only from the MCP server** — the same rule
-    /// Tasks and Goals live under: no Tauri command calls it and [`UpdateCommitmentRequest`] has
-    /// no field for it. Errors when no commitment has that id, rather than reporting success for
-    /// a write that landed nowhere.
+    /// **The only writer of `beads_id`, and the MCP server is its only *source*** — the same rule
+    /// Tasks and Goals live under: [`UpdateCommitmentRequest`] has no field for it, and the one
+    /// command that calls this ([`clear_beads_id`](crate::commands::beads::clear_beads_id))
+    /// only ever passes `None`. Errors when no commitment has that id, rather than reporting
+    /// success for a write that landed nowhere.
     pub async fn set_beads_id(
         &mut self,
         id: CommitmentId,

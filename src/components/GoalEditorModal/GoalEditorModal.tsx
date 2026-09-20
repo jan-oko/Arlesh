@@ -33,11 +33,14 @@ interface Props {
   allTags: Domain[];
   domainNames: Map<number, string>;
   onSave: (data: GoalSaveData) => Promise<void>;
+  /** Drops the node's `bd` issue link, where a clear is on offer. Omitted — as on the blank node a
+   * create path opens, which has no link to drop — the Issue row stays wholly read-only. */
+  onClearBeadsId?: (() => Promise<void>) | undefined;
   onCheckScopeClamp?: (nodeType: "task" | "goal", dbId: number, timeScope: TimeScope) => Promise<boolean>;
   onClose: () => void;
 }
 
-export default function GoalEditorModal({ node, allTags, domainNames, onSave, onCheckScopeClamp, onClose }: Props) {
+export default function GoalEditorModal({ node, allTags, domainNames, onSave, onClearBeadsId, onCheckScopeClamp, onClose }: Props) {
   useInputCapture();
   const { t } = useTranslation(["editor", "status"]);
   const [title, setTitle] = useState(node.title);
@@ -89,7 +92,7 @@ export default function GoalEditorModal({ node, allTags, domainNames, onSave, on
         {t("fieldTitle")}
         <input ref={titleRef} className={styles.input} value={title} onChange={(e) => setTitle(e.target.value)} type="text" />
       </label>
-      <BeadsIdField beadsId={node.beadsId} />
+      <BeadsIdField beadsId={node.beadsId} onClear={onClearBeadsId} />
       <div className={styles.label}>
         {t("fieldStatus")}
         <div className={styles.statusPills}>
