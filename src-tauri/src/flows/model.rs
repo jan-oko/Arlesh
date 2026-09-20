@@ -605,6 +605,15 @@ pub struct HabitIteration {
     pub anchor_scope_id: i64,
     /// The window's first day, ISO `YYYY-MM-DD` (drives the `{flow title} {start scope}` title).
     pub anchor_date: String,
+    /// The window's **exclusive** end, ISO `YYYY-MM-DDTHH:MM:SS` — the iteration's window has
+    /// passed once the reference instant has reached it.
+    ///
+    /// Sent because the frontend cannot derive it: the offset arithmetic that turns a Repetition
+    /// into windows lives here, and a renderer redoing it is exactly the disagreement this module
+    /// exists to prevent. It is what the Mindmap's collapse of passed iterations reads — under
+    /// Overlapping Consumption nothing lapses, so [`IterationStatus`] alone cannot tell a window
+    /// that has closed from one that is still open.
+    pub window_end: String,
     /// Derived state on the reference day.
     pub status: IterationStatus,
     /// Every occurrence this iteration renders, in item order and then pair order. Empty from the

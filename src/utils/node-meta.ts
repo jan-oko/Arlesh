@@ -90,6 +90,8 @@ export const NODE_ICON: Record<NodeKind, string> = {
   flow: "▶",
   flow_goal: "◇",
   flow_task: "✓",
+  // A stack of folded history, not a thing in its own right.
+  habit_group: "▤",
 };
 
 export const NODE_LABEL: Record<NodeKind, string> = {
@@ -104,6 +106,7 @@ export const NODE_LABEL: Record<NodeKind, string> = {
   flow: "Flow",
   flow_goal: "Goal",
   flow_task: "Task",
+  habit_group: "Habit history",
 };
 
 // All node types reachable from a domain-table parent (aspect/domain/project/tag). Commitment
@@ -158,6 +161,10 @@ export function validTypesForCycling(
 
   // The flow node itself is not part of the type cycle.
   if (kind === "flow") return [];
+
+  // A folded run of Habit iterations is a way of drawing them, not a node of its own: there is
+  // nothing behind it to retype.
+  if (kind === "habit_group") return [];
 
   // Flow items retype between goal and task, mirroring real nodes: a goal child is invalid
   // under a flow-task parent, so only flow-tasks may sit there.

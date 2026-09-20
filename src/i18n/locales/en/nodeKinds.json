@@ -10,5 +10,6 @@
   "info": "Info",
   "flow": "Flow",
   "flow_goal": "Goal",
-  "flow_task": "Task"
+  "flow_task": "Task",
+  "habit_group": "Habit history"
 }

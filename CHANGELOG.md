@@ -10,6 +10,15 @@ Arlesh is a personal app in live preview with no release cycle, so new entries c
 ## [Unreleased]
 
 ### Added
+- **A Habit's passed iterations now fold into one node you can open.** Every iteration of a Habit left a node behind, and they never stopped arriving. Miss a daily habit for three weeks and twenty-one dead nodes sat between you and the live one; *keep* one for a year and there were three hundred and sixty-five. Under **All**, or with the Archived pill on Include, a single habit could bury the branch it lived on.
+
+  Now a run of passed iterations — those whose window has closed — draws as **one node** reading what happened in it: **"14 passed · 9 done, 5 missed"**, with the dates it covers in its tooltip. The iteration whose window is still open always draws on its own, right where it was. Everything folds, however it went: a kept day counts with a missed one, because what piles up is the *number* of them, and a habit you have kept all year piles up fastest. That also covers a Destructive habit, whose lapsed iterations now disappear into the fold the moment the next window begins instead of accumulating unread.
+
+  **Ctrl+/ opens it** — the same key that collapses any other cell — and it stays open until you fold it again, across restarts. Opening it does not dump a list on you: it draws the run as a **tree of time**, inserting a level only where the run actually spans more than one of that unit. Five days inside one week are five day nodes and no week above them; three weeks inside one month get a week level and no month. Months group under seasons, and seasons under the year they belong to — a Winter that runs over New Year stays one node. Every level reads its own tally ("September · 18 done, 12 missed") and folds on its own with the same key, so you can open a year, look at one month, and leave the rest closed.
+
+  **How many it takes is yours to set.** "Collapse habit history after" sits in the gear popover with the other display settings, starts at **3**, and applies to every Habit at once. Below it, iterations draw as they always have — two passed days are not a pile.
+
+  The folded node is a way of *drawing* iterations, not a thing in its own right: arrow keys land on it and Ctrl+/ opens it, but it has no status to cycle, no editor, and nothing to drag. Your filters still decide which iterations exist — the node stands for whichever ones the current preset kept, and disappears entirely when none of them survive. Nothing about the iterations themselves changed: they are still worked out fresh each time, and nothing new is written down about them.
 - **Copy a Flow, and copy a flow item within its template.** Copying a Flow used to do nothing at all — the paste reported it as skipped and left you to rebuild the thing by hand, item by item, cycle pair by cycle pair. But a new Habit is almost never invented from nothing; it is the one next to it with a different schedule or a different target. Now **Ctrl+C on a Flow and Ctrl+V anywhere a Flow can hang gives you the whole thing again**: the template, its items, their Cycle Scope / Cycle Plan pairs, the dependencies between its items (rewired onto the copy, so the copy waits on itself and not on the original), its privacy, and the **Recurrence** — Start anchor, Gap, end and Consumption. **A copy of a Habit is a Habit**, recurring on the same schedule from the same anchor. A copy of a commitment Habit is a commitment Habit, with the one Consumption a commitment is allowed carried across intact.
 
   The copy's **Target Node** follows the same rule everything else does: a Flow that never named one targets *its own parent*, so the copy's instances land wherever you pasted it, while a target you had pointed somewhere on purpose keeps pointing there.
@@ -373,7 +382,6 @@ Arlesh is a personal app in live preview with no release cycle, so new entries c
 - `commands` module: thin Tauri IPC wrappers for all domain operations
 - `src-tauri/.cargo/config.toml` setting build target to `/tmp/arlesh-target` (Rust debug artifacts are large)
 - 22 integration tests covering all modules: DB migrations, domain validation, task dependency/blocking, scope containment, KB entities
-
 
 ## [0.1.0] — 2026-06-20
 

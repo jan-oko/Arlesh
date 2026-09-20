@@ -1,0 +1,9 @@
+{
+  "collapse": {
+    "run": "{{passed}} passed · {{done}} done, {{missed}} missed",
+    "level": "{{unit}} · {{done}} done, {{missed}} missed",
+    "span": "{{start}}–{{end}}",
+    "thresholdLabel": "Collapse habit history after",
+    "thresholdUnit": "iterations"
+  }
+}
