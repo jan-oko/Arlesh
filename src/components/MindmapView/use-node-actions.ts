@@ -190,13 +190,35 @@ export function useNodeActions({
 
   const onDelete = useCallback(
     (nodeIds: string[]) => {
-      const valid = nodeIds.filter((id) => {
-        const node = findNode(tree, id);
-        return node !== undefined && node.kind !== "aspect";
-      });
-      if (valid.length > 0) onRequestDelete(valid);
+      const nodes = nodeIds
+        .map((id) => findNode(tree, id))
+        .filter((node): node is MindmapNode => node !== undefined);
+
+      // A virtual Habit repetition is derived at load time, so there is no row to delete — and the
+      // Habit's template behind it is emphatically not what `Delete` on one occurrence should take
+      // away. It is refused here, in the List View's words (`useListDelete` raises the same key),
+      // because one gesture on one kind of node must not read two ways depending on the surface.
+      // Refusing this early is the whole point: the guard used to stop at `kind !== "aspect"`, so a
+      // repetition raised the confirmation and then reached `dbIdFromNodeId`, which rejects the
+      // `-virtual` tail — the user answered a dialog that could only end in "delete failed".
+      //
+      // One repetition anywhere in the selection refuses the **whole** gesture, rather than taking
+      // the real nodes and naming what was skipped the way `onPaste` does. Two reasons, and the
+      // second decides it. A delete is destructive where a paste is additive, so acting on half of
+      // a selection the user did not mean costs data rather than a stray copy. And the notice would
+      // not be read: it is a viewport toast that fades after three seconds, and confirming a delete
+      // puts the modal's overlay over the top of it — "deleted the rest, mentioned the skip" would
+      // be a silent skip wearing a message, which is the thing the rule exists to forbid.
+      const repetition = nodes.find((node) => node.virtual === true);
+      if (repetition !== undefined) {
+        showToast({ nodeId: repetition.id, message: t("warnings:deleteRepetitionRefused") });
+        return;
+      }
+
+      const valid = nodes.filter((node) => node.kind !== "aspect");
+      if (valid.length > 0) onRequestDelete(valid.map((node) => node.id));
     },
-    [tree, onRequestDelete],
+    [tree, onRequestDelete, showToast, t],
   );
 
   const onPaste = useCallback(
