@@ -4,8 +4,9 @@ import { createDomain, updateDomain, deleteDomain, duplicateDomain } from "@/api
 import { createTask, updateTask, deleteTask, duplicateTask, TASK_ARCHIVAL } from "@/api/tasks";
 import { createCommitment, updateCommitment, deleteCommitment, addTagToCommitment } from "@/api/commitments";
 import type { CommitmentSaveData } from "@/components/CommitmentEditorModal/CommitmentEditorModal";
-import type { Commitment, Verdict } from "@/api/commitments";
-import { VERDICT } from "@/api/commitments";
+import type { Commitment } from "@/api/commitments";
+import type { Verdict } from "@/api/verdict";
+import { VERDICT } from "@/api/verdict";
 import type { TaskAgentic, TaskDependencyEdge } from "@/api/tasks";
 import type { BlockReason } from "@/api/block-reasons";
 import { createGoal, updateGoal, deleteGoal, duplicateGoal } from "@/api/goals";

@@ -1,5 +1,5 @@
 import type { NodeKind } from "@/utils/tree-layout";
-import type { Verdict } from "@/api/commitments";
+import type { Verdict } from "@/api/verdict";
 import { commitmentGlyphState } from "@/utils/commitment-glyph";
 import DomainIcon from "./DomainIcon";
 import ProjectIcon from "./ProjectIcon";
