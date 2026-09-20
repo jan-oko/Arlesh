@@ -11,4 +11,5 @@ pub mod mindmap;
 pub mod retype;
 pub mod scopes;
 pub mod tasks;
+pub mod tray;
 pub mod undo;

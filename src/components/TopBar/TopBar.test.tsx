@@ -7,6 +7,7 @@ import { useListFilterStore } from "@/stores/use-list-filter-store";
 import { useViewStore } from "@/stores/use-view-store";
 import { useDisplayStore } from "@/stores/use-display-store";
 import { useThemeStore } from "@/stores/use-theme-store";
+import { useCloseToTrayStore } from "@/stores/use-close-to-tray-store";
 import { DEFAULT_FILTER } from "@/utils/filter-tree";
 import { DEFAULT_LIST_FILTER } from "@/utils/list-filter";
 import { useFilterDisplay } from "@/hooks/use-filter-display";
@@ -36,6 +37,7 @@ beforeEach(() => {
   useViewStore.setState({ view: "mindmap", mindmapOrientation: "horizontal" });
   useDisplayStore.setState({ pathHeaderIcons: true });
   useThemeStore.setState({ theme: "dark" });
+  useCloseToTrayStore.setState({ closeToTray: true });
   mockUseFilterDisplay.mockReturnValue(EMPTY_DISPLAY);
 });
 
@@ -168,6 +170,23 @@ describe("TopBar", () => {
       fireEvent.click(themeSwitch);
       expect(useThemeStore.getState().theme).toBe("light");
       expect(themeSwitch).toBeChecked();
+    });
+
+    it("turns close-to-tray off from its switch, which starts on", () => {
+      render(<TopBar />);
+      fireEvent.click(screen.getByRole("button", { name: "common:settings" }));
+      const traySwitch = screen.getByRole("checkbox", { name: "common:closeToTray" });
+      expect(traySwitch).toBeChecked();
+      fireEvent.click(traySwitch);
+      expect(useCloseToTrayStore.getState().closeToTray).toBe(false);
+      expect(traySwitch).not.toBeChecked();
+    });
+
+    it("offers the close-to-tray switch in List View too, since the close button is view-agnostic", () => {
+      useViewStore.setState({ view: "list" });
+      render(<TopBar />);
+      fireEvent.click(screen.getByRole("button", { name: "common:settings" }));
+      expect(screen.getByRole("checkbox", { name: "common:closeToTray" })).toBeInTheDocument();
     });
 
     it("flips the mindmap orientation from the vertical-layout switch", () => {

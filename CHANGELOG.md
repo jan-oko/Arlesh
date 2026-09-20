@@ -10,6 +10,14 @@ Arlesh is a personal app in live preview with no release cycle, so new entries c
 ## [Unreleased]
 
 ### Added
+- **Closing the window no longer quits Arlesh — it hides it to the system tray, and everything keeps running.** Arlesh is open all day and looked at in short bursts, so the most reflexive control on the screen was the one that ended the session: close it and you paid for a cold start the next time you wanted thirty seconds with the board. Worse, the MCP endpoint went with it. An agent could only read your board while you happened to have a window open for it.
+
+  Now there is an **Arlesh mark in the system tray** — the chevrons, flat and white, cut down to three so they stay legible at the size a panel draws them — for as long as the app is running, and the close button puts the window there instead of shutting anything down. Reopening is instant and the window comes back exactly where and how you left it, because it was never gone. **The MCP endpoint keeps answering the whole time** — Claude can read the board while Arlesh is out of your way, which is the point.
+
+  **Getting back to the window:** click the tray icon and pick **Show** (on Windows and macOS a left click brings the window straight back, and hides it again; Linux's tray does not report clicks, so there the menu is the way). **Getting out:** **Quit**, in the same menu, or **Ctrl+Q** from the keyboard — both end the app properly, releasing the database and the endpoint. Quitting is the only thing that stops Arlesh now, so it is deliberately the one item in the menu you cannot miss.
+
+  **It is a setting, and it starts on.** *Close to tray* sits in the settings popover (the gear) next to *Light mode*, and it is remembered between restarts. Turn it off and the close button means quit again, exactly as before.
+
 - **Ctrl+Z now works.** Nothing in Arlesh was undoable. A delete cascaded through a subtree, a paste wrote one, a drag reparented a branch — and every one of them was final. The only recovery was doing it back by hand, if you could still remember what "it" had been.
 
   **Ctrl+Z** reverses the last thing you did to the board, and **Ctrl+Shift+Z** (or **Ctrl+Y**) puts it back, in both the Mindmap and the List View. Both appear in the cheat-sheet with everything else.
