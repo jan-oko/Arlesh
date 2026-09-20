@@ -20,3 +20,30 @@ accepted
 - `labelKey` is typed as `keyof typeof en_hotkeys`, so a binding naming a label that doesn't exist is a compile error rather than a raw key rendered on the sheet.
 - The cheat-sheet merges bindings that share a `labelKey` into one row, which is why the four arrow keys read as a single `← → ↑ ↓` line. Giving two bindings the same label is therefore a display decision, not just a translation one.
 - `use-keyboard-mindmap` and `use-keyboard-list-view` kept their `Options` interfaces, so their existing event-level test suites (88 and 16 cases) carried over unchanged as the migration's regression net.
+
+## Amendment, 2026-09-20 — one module per feature
+
+The tables are still one ordered array per surface and the dispatch rule is unchanged, but they are
+now *assembled* rather than written out: each feature owns a module under `src/utils/hotkeys/list/`
+or `src/utils/hotkeys/mindmap/` declaring its own bindings and its own slice of the view's context,
+and `list-bindings.ts` / `mindmap-bindings.ts` spread those modules into the one ordered table and
+extend the slices into the one `ListContext` / `MindmapContext`. Adding a keyboard action stopped
+meaning an edit inside an 18- or 37-member interface and a 202-line array that every other feature
+in flight was also editing.
+
+What that costs, and what pays for it:
+
+- **Order is still the behaviour.** The modules are spread in an explicit order, not sorted, so the
+  table the dispatcher walks is the one a reader can see. The arrow families are the one genuine
+  ordered fall-through and live entirely inside `mindmap/navigate.ts`, where nothing can be
+  interleaved into them.
+- **Two features can now claim the same chord without meeting in a file**, and the loser would
+  simply never fire. `chord-sharing.test.ts` declares every chord bound more than once, with the
+  order it dispatches in, and fails on any new one — so that collision is a red test instead of a
+  silent no-op. It also pins that each complementary pair really is complementary: List View's two
+  bare-`Enter` bindings (`cycleStatus` on a Task, `cycleVerdict` on a Commitment) can never both
+  pass, because ListView has one selection and looks it up in two collections.
+- The `Options` interfaces, `labelKey`'s typing off `hotkeys.json`, strict chord matching and the
+  cheat-sheet's label merging are all untouched. The two hooks' test suites still pass unchanged,
+  and the cheat-sheet renders the same rows in the same order.
+
