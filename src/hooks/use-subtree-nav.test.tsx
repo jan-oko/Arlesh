@@ -23,7 +23,7 @@ const mockUseFilterDisplay = vi.mocked(useFilterDisplay);
 const EMPTY_DISPLAY = {
   tagOptions: [], tagName: (id: number) => `#${id}`, tagColor: () => null,
   nodeLabel: (ref: string) => ref, nodeColor: () => null,
-  parentPool: [], dependencyPool: [],
+  antecedentPool: [], dependencyPool: [],
   displayTaskStatus: (v: string) => v, displayGoalStatus: (v: string) => v,
   displayProjectStatus: (v: string) => v, displayVerdict: (v: string) => v,
   displayScopeState: (v: string) => v, displayBlocked: (v: string) => v,

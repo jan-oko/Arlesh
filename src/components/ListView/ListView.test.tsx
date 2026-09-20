@@ -59,7 +59,6 @@ function treeWith(...nodes: MindmapNode[]): MindmapNode {
 function commitmentRow(over: Partial<CommitmentListRow> = {}): CommitmentListRow {
   return {
     node: n("commitment-1", "commitment", { verdict: "unresolved", timing: "active" }),
-    parentRef: "project-1",
     ancestors: [n("aspect-1", "aspect"), n("project-1", "project", { status: "active" })],
     hasPrivateAncestor: false,
     scopeTokens: ["active", "unplanned"],
@@ -70,7 +69,6 @@ function commitmentRow(over: Partial<CommitmentListRow> = {}): CommitmentListRow
 function row(over: Partial<TaskListRow> = {}): TaskListRow {
   return {
     node: n("task-1", "task", { status: "todo" }),
-    parentRef: "goal-1",
     ancestors: [n("aspect-1", "aspect"), n("goal-1", "goal", { status: "active" })],
     goalRef: "goal-1",
     goalStatus: "active",
@@ -154,24 +152,24 @@ describe("ListView", () => {
   it("names a run's whole chain in a path header above it", () => {
     render(<ListView />);
     expect(screen.getByText("aspect-1")).toBeInTheDocument();
-    // "goal-1" reads twice: the last path segment, and the task row's own parent label.
-    expect(screen.getAllByText("goal-1")).toHaveLength(2);
+    // "goal-1" reads once, as the last path segment: the row card carries no parent label.
+    expect(screen.getAllByText("goal-1")).toHaveLength(1);
   });
 
   it("renders no path header for a task with no ancestors", () => {
     mockUseListData.mockReturnValue(listData({
-      rows: [row({ parentRef: "", ancestors: [], goalRef: null, goalStatus: null })],
+      rows: [row({ ancestors: [], goalRef: null, goalStatus: null })],
     }));
     render(<ListView />);
     expect(screen.getByText("task-1")).toBeInTheDocument();
-    expect(screen.queryByTitle("enterSubtree")).not.toBeInTheDocument();
+    expect(screen.queryByTitle("pathSegmentActions")).not.toBeInTheDocument();
   });
 
   // The chain is read for where it ends, so the header is marked with the kind of its nearest
   // ancestor — the node the rows below hang directly from — once, not once per step.
   it("marks a path header with the node kind of the nearest ancestor", () => {
     render(<ListView />);
-    const [firstSegment] = screen.getAllByTitle("enterSubtree");
+    const [firstSegment] = screen.getAllByTitle("pathSegmentActions");
     const header = firstSegment?.parentElement;
     if (header === null || header === undefined) throw new Error("expected a path header");
     expect(headerGlyphs(header)).toHaveLength(1);
@@ -181,21 +179,21 @@ describe("ListView", () => {
   it("drops the glyph when the settings popover's Path icons switch is off, keeping the chain", () => {
     useDisplayStore.setState({ pathHeaderIcons: false });
     render(<ListView />);
-    const [firstSegment] = screen.getAllByTitle("enterSubtree");
+    const [firstSegment] = screen.getAllByTitle("pathSegmentActions");
     const header = firstSegment?.parentElement;
     if (header === null || header === undefined) throw new Error("expected a path header");
     expect(headerGlyphs(header)).toHaveLength(0);
     // Only the glyph goes — the header still names where the run lives.
     expect(screen.getByText("aspect-1")).toBeInTheDocument();
-    expect(screen.getAllByText("goal-1")).toHaveLength(2);
+    expect(screen.getAllByText("goal-1")).toHaveLength(1);
   });
 
   it("marks no path header whose nearest ancestor is an Aspect, which carries no glyph anywhere", () => {
     mockUseListData.mockReturnValue(listData({
-      rows: [row({ parentRef: "aspect-1", ancestors: [n("aspect-1", "aspect")], goalRef: null, goalStatus: null })],
+      rows: [row({ ancestors: [n("aspect-1", "aspect")], goalRef: null, goalStatus: null })],
     }));
     render(<ListView />);
-    const [firstSegment] = screen.getAllByTitle("enterSubtree");
+    const [firstSegment] = screen.getAllByTitle("pathSegmentActions");
     const header = firstSegment?.parentElement;
     if (header === null || header === undefined) throw new Error("expected a path header");
     expect(headerGlyphs(header)).toHaveLength(0);
@@ -209,14 +207,13 @@ describe("ListView", () => {
         row({ node: parent }),
         row({
           node: n("task-child", "task", { status: "in_progress" }),
-          parentRef: "task-parent",
           ancestors: [n("aspect-1", "aspect"), n("goal-1", "goal", { status: "active" }), parent],
         }),
       ],
     }));
     render(<ListView />);
     // The Do preset filters the parent out as a row, so it moves into the header instead.
-    expect(screen.getAllByTitle("enterSubtree").map((segment) => segment.textContent))
+    expect(screen.getAllByTitle("pathSegmentActions").map((segment) => segment.textContent))
       .toEqual(["aspect-1", "goal-1", "task-parent"]);
   });
 
@@ -237,12 +234,10 @@ describe("ListView", () => {
         row({ node: parent }),
         row({
           node: child,
-          parentRef: "task-parent",
           ancestors: [aspect, goal, parent],
         }),
         row({
           node: n("task-grandchild", "task", { status: "in_progress" }),
-          parentRef: "task-child",
           ancestors: [aspect, goal, parent, child],
         }),
       ];
@@ -293,7 +288,7 @@ describe("ListView", () => {
   it("clicking a path segment enters that segment's subtree, exactly as Ctrl+O does", () => {
     mockUseListData.mockReturnValue(withPathTree());
     render(<ListView />);
-    const [aspectSegment] = screen.getAllByTitle("enterSubtree");
+    const [aspectSegment] = screen.getAllByTitle("pathSegmentActions");
     if (aspectSegment === undefined) throw new Error("expected a path header segment");
     fireEvent.click(aspectSegment);
     expect(useMindmapStore.getState().subtreeRootId).toBe("aspect-1");
@@ -307,11 +302,76 @@ describe("ListView", () => {
   it("clicking a path segment touches no filter at all", () => {
     mockUseListData.mockReturnValue(withPathTree());
     render(<ListView />);
-    const [aspectSegment] = screen.getAllByTitle("enterSubtree");
+    const [aspectSegment] = screen.getAllByTitle("pathSegmentActions");
     if (aspectSegment === undefined) throw new Error("expected a path header segment");
     fireEvent.click(aspectSegment);
     expect(useListFilterStore.getState().filter).toEqual(DEFAULT_LIST_FILTER);
     expect(useFilterStore.getState().filter.statusMode).toBe(DEFAULT_FILTER.statusMode);
+  });
+
+  // Plain click re-roots, modifier click narrows. The two are not variations on one action: entering
+  // a subtree rebuilds the rows with the segment as the frame and everything outside it is never
+  // built, where a pill leaves the flatten alone and filters the result, with a chip naming what is
+  // narrowing and the rest of the board one chip-click away.
+  describe("modifier-clicking a path segment filters instead of entering", () => {
+    /** The first segment of the header — `aspect-1`, which the tree in `withPathTree` really holds. */
+    function firstSegment() {
+      mockUseListData.mockReturnValue(withPathTree());
+      render(<ListView />);
+      const [segment] = screen.getAllByTitle("pathSegmentActions");
+      if (segment === undefined) throw new Error("expected a path header segment");
+      return segment;
+    }
+
+    function antecedentPills() {
+      return useListFilterStore.getState().filter.pills.antecedent;
+    }
+
+    it("Ctrl+click files the segment as an Antecedent filter and does not enter its subtree", () => {
+      fireEvent.click(firstSegment(), { ctrlKey: true });
+      expect(antecedentPills()).toEqual([{ value: "aspect-1", mode: "any" }]);
+      expect(useMindmapStore.getState().subtreeRootId).toBeNull();
+    });
+
+    it("Alt+click files it as an excluded Antecedent filter and does not enter its subtree", () => {
+      fireEvent.click(firstSegment(), { altKey: true });
+      expect(antecedentPills()).toEqual([{ value: "aspect-1", mode: "exclude" }]);
+      expect(useMindmapStore.getState().subtreeRootId).toBeNull();
+    });
+
+    // Each gesture names an answer rather than toggling, so the opposite one moves the pill across
+    // rather than leaving a second pill for the same node, or silently doing nothing.
+    it("Alt+click on a node already filtered for excludes it, rather than duplicating the pill", () => {
+      const segment = firstSegment();
+      fireEvent.click(segment, { ctrlKey: true });
+      fireEvent.click(segment, { altKey: true });
+      expect(antecedentPills()).toEqual([{ value: "aspect-1", mode: "exclude" }]);
+    });
+
+    // Filtering a branch out takes the run whose header you clicked with it, so the segment is no
+    // longer on screen to be clicked back: the chip at the top of the screen is the way back, which
+    // is exactly the difference from subtree entry. The include-after-exclude transition itself is
+    // pinned on the store, where the chip's own ∅ → ∪ cycle also reaches it.
+    it("Alt+click takes the run it heads off screen, leaving the chip as the way back", () => {
+      fireEvent.click(firstSegment(), { altKey: true });
+      expect(screen.queryAllByTitle("pathSegmentActions")).toHaveLength(0);
+      expect(screen.getByText("listView:empty")).toBeInTheDocument();
+    });
+
+    // Any and All both keep the node in, so re-asking to include it must not undo an intersection
+    // the user set on the chip.
+    it("Ctrl+click leaves an All-mode pill exactly as it is", () => {
+      const segment = firstSegment();
+      fireEvent.click(segment, { ctrlKey: true });
+      useListFilterStore.getState().setPillMode("antecedent", "aspect-1", "all");
+      fireEvent.click(segment, { ctrlKey: true });
+      expect(antecedentPills()).toEqual([{ value: "aspect-1", mode: "all" }]);
+    });
+
+    it("leaves the shared filter and the status preset alone", () => {
+      fireEvent.click(firstSegment(), { altKey: true });
+      expect(useFilterStore.getState().filter).toEqual(DEFAULT_FILTER);
+    });
   });
 
   it("no longer offers a Goal-visibility toggle", () => {
@@ -319,10 +379,11 @@ describe("ListView", () => {
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
   });
 
-  it("clicking a task's parent label adds a parent filter pill", () => {
+  // Parent was retired as a pill dimension: the path header above the run already names a row's
+  // parent, so a label on the card restated what was on screen a line above it.
+  it("shows no parent label on a task card", () => {
     render(<ListView />);
-    fireEvent.click(screen.getByTitle("filterByParent"));
-    expect(useListFilterStore.getState().filter.pills.parent).toEqual([{ value: "goal-1", mode: "any" }]);
+    expect(screen.queryByTitle("filterByParent")).not.toBeInTheDocument();
   });
 
   it("clicking a task's tag pill adds a shared tag filter", () => {
@@ -838,7 +899,6 @@ describe("ListView — creating tasks", () => {
   const createdChild = (status: string) =>
     row({
       node: n("task-new", "task", { status }),
-      parentRef: "task-a",
       ancestors: [n("aspect-1", "aspect"), n("goal-1", "goal", { status: "active" }), n("task-a", "task", { status: "in_progress" })],
     });
 
@@ -911,7 +971,7 @@ describe("ListView — creating tasks", () => {
 
   it("offers no + where the chain ends somewhere a Task cannot live", () => {
     setup({
-      rows: [row({ parentRef: "flow-1", ancestors: [n("flow-1", "flow")], goalRef: null, goalStatus: null })],
+      rows: [row({ ancestors: [n("flow-1", "flow")], goalRef: null, goalStatus: null })],
     });
     render(<ListView />);
     expect(screen.queryByTitle("createTaskHere")).not.toBeInTheDocument();
@@ -1116,7 +1176,6 @@ describe("ListView — deleting a row", () => {
           row({ node: taskA([childOfA()]) }),
           row({
             node: childOfA(),
-            parentRef: "task-a",
             ancestors: [n("aspect-1", "aspect"), n("goal-1", "goal", { status: "active" }), taskA()],
           }),
           row({ node: taskB() }),

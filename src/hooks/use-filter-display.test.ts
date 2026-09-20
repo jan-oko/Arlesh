@@ -63,10 +63,10 @@ describe("useFilterDisplay", () => {
     expect(result.current.nodeColor("task-999")).toBeNull();
   });
 
-  it("builds the parent pool from Aspect/Domain/Project/Goal/Task kinds, excluding tags", () => {
+  it("builds the antecedent pool from Aspect/Domain/Project/Goal/Task kinds, excluding tags", () => {
     mockUseMindmapData.mockReturnValue(mindmapData(TREE));
     const { result } = renderHook(() => useFilterDisplay());
-    const ids = result.current.parentPool.map((o) => o.id);
+    const ids = result.current.antecedentPool.map((o) => o.id);
     expect(ids).toEqual(expect.arrayContaining(["domain-1", "project-1", "goal-1", "task-1"]));
     expect(ids).not.toContain("domain-2"); // the tag
   });

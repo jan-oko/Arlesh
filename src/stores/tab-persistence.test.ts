@@ -34,18 +34,19 @@ describe("reading one tab's stored state", () => {
     expect(state.filter.statusMode).toBe("plan");
   });
 
-  it("drops an Antecedent pill saved before subtree entry replaced the dimension", () => {
+  it("drops a Parent pill saved before the dimension was retired", () => {
     const state = parseTabState({
       listFilter: {
         preset: "all",
         pills: {
-          parent: [], antecedent: [{ value: "aspect-1", mode: "any" }], dependency: [],
+          parent: [{ value: "goal-1", mode: "any" }], dependency: [],
           taskStatus: [], goalStatus: [], projectStatus: [], scopeState: [], blocked: [],
         },
       },
     });
 
-    // Not merely hidden: nothing is left narrowing the list that no chip shows and no control clears.
+    // Not merely hidden: nothing is left narrowing the list that no chip shows and no control
+    // clears — and nothing throws on the key either, since it is simply never read.
     expect(state.listFilter).toEqual(DEFAULT_LIST_FILTER);
   });
 
@@ -53,12 +54,16 @@ describe("reading one tab's stored state", () => {
     const state = parseTabState({
       listFilter: {
         preset: "unblock",
-        pills: { parent: [{ value: "goal-1", mode: "any" }], antecedent: [{ value: "aspect-1", mode: "any" }] },
+        pills: {
+          antecedent: [{ value: "aspect-1", mode: "any" }],
+          parent: [{ value: "goal-1", mode: "any" }],
+        },
       },
     });
 
     expect(state.listFilter.preset).toBe("unblock");
-    expect(state.listFilter.pills).toEqual({ ...DEFAULT_LIST_FILTER.pills, parent: [{ value: "goal-1", mode: "any" }] });
+    expect(state.listFilter.pills)
+      .toEqual({ ...DEFAULT_LIST_FILTER.pills, antecedent: [{ value: "aspect-1", mode: "any" }] });
   });
 
   it("falls back to the defaults for a tab whose stored state is missing or nonsense", () => {
@@ -117,7 +122,14 @@ describe("a session saved before tabs existed", () => {
       filter: { statusMode: "start", modeIncludeFlows: true, tagFilters: [{ tagId: 5, mode: "any" }], showInfo: true, showFlow: false, privateMode: true },
     });
     writeLegacy("arlesh-list-filter", {
-      filter: { preset: "unblock", pills: { parent: [{ value: "goal-1", mode: "all" }] } },
+      filter: {
+        preset: "unblock",
+        // A retired dimension beside a live one, as a real pre-tabs blob would carry it.
+        pills: {
+          parent: [{ value: "goal-1", mode: "all" }],
+          antecedent: [{ value: "project-1", mode: "all" }],
+        },
+      },
     });
     reloadTabs();
   });
@@ -142,7 +154,8 @@ describe("a session saved before tabs existed", () => {
   it("brings back the List View filter, with its pill map rebuilt to today's dimensions", () => {
     const listFilter = useTabsStore.getState().tabs[0]?.stores.listFilter.getState().filter;
     expect(listFilter?.preset).toBe("unblock");
-    expect(listFilter?.pills).toEqual({ ...DEFAULT_LIST_FILTER.pills, parent: [{ value: "goal-1", mode: "all" }] });
+    expect(listFilter?.pills)
+      .toEqual({ ...DEFAULT_LIST_FILTER.pills, antecedent: [{ value: "project-1", mode: "all" }] });
   });
 
   it("starts at the whole tree, which is where a pre-tabs session always reopened", () => {
