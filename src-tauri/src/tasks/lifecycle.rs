@@ -26,7 +26,10 @@ use crate::scopes::resolve::Bounds;
 use super::model::{DurationSpec, OnScopeExit, TaskArchival, Verdict};
 
 /// An item's window position relative to `now`. Unscoped items are always `Active`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+///
+/// `Deserialize` is derived beside `Serialize` so that a filter fixture can name a window position
+/// in the same spelling the wire uses — see [`crate::filters`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Timing {
     /// Window has not started yet.
