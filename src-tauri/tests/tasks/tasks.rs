@@ -16,7 +16,7 @@ use arlesh_lib::{
         lifecycle::{Archival, Resolution, Timing},
         model::{
             CreateGoalRequest, CreateTaskRequest, Dependency, DurationSpec, GoalStatus, OnScopeExit,
-            TaskArchival, TaskStatus, TimeScope, UpdateGoalRequest, UpdateTaskRequest,
+            TaskAgentic, TaskArchival, TaskStatus, TimeScope, UpdateGoalRequest, UpdateTaskRequest,
         },
         reparent_conflicts, update_goal, update_task,
     },
@@ -482,6 +482,134 @@ async fn update_task_title() {
         .unwrap();
 
     assert_eq!(updated.title, "New Title");
+}
+
+/// The flag's whole round trip: set, kept through an unrelated edit, and cleared back to
+/// inheriting. The clear is the interesting half — it is the one a nested `Option` would have
+/// turned into a silent no-op.
+#[tokio::test]
+async fn agentic_is_set_kept_and_cleared_back_to_inheriting() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+
+    let task = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
+            title: "Cast the bell".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            ..Default::default()
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
+        .unwrap();
+    assert_eq!(task.agentic, None, "a new task inherits rather than deciding for itself");
+
+    let flagged = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = update_task(&mut db,
+            task.id.into(),
+            UpdateTaskRequest { agentic: Some(TaskAgentic::Yes), ..Default::default() },
+        ).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
+        .unwrap();
+    assert_eq!(flagged.agentic, Some(true));
+
+    let renamed = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = update_task(&mut db,
+            task.id.into(),
+            UpdateTaskRequest { title: Some("Re-cast the bell".into()), ..Default::default() },
+        ).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
+        .unwrap();
+    assert_eq!(renamed.agentic, Some(true), "an edit that says nothing leaves the flag alone");
+
+    let refused = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = update_task(&mut db,
+            task.id.into(),
+            UpdateTaskRequest { agentic: Some(TaskAgentic::No), ..Default::default() },
+        ).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
+        .unwrap();
+    assert_eq!(refused.agentic, Some(false), "an explicit no is stored, not collapsed to a clear");
+
+    let cleared = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = update_task(&mut db,
+            task.id.into(),
+            UpdateTaskRequest { agentic: Some(TaskAgentic::Inherit), ..Default::default() },
+        ).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
+        .unwrap();
+    assert_eq!(cleared.agentic, None);
+
+    let stored: Option<bool> = sqlx::query_scalar("SELECT agentic FROM tasks WHERE id = ?")
+        .bind(task.id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(stored, None, "inheriting is the stored NULL, not a stored false");
+}
+
+/// Agentic and Delegation are independent: a task can be both, and setting one never moves the
+/// other.
+#[tokio::test]
+async fn a_task_can_be_agentic_and_delegated_at_once() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+
+    let person = helpers::session_factory(&pool)
+        .connect()
+        .await
+        .unwrap()
+        .people()
+        .create(arlesh_lib::knowledge_base::model::CreatePersonRequest {
+            name: "Ada".into(),
+            aliases: None,
+            linked_note: None,
+        })
+        .await
+        .unwrap()
+        .id;
+
+    let task = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
+            title: "Cast the bell".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            agentic: Some(TaskAgentic::Yes),
+            ..Default::default()
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
+        .unwrap();
+
+    let delegated = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = update_task(&mut db,
+            task.id.into(),
+            UpdateTaskRequest { delegate_to: Some(Some(person)), ..Default::default() },
+        ).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
+        .unwrap();
+
+    assert_eq!(delegated.agentic, Some(true));
+    assert_eq!(delegated.delegate_to, Some(person));
 }
 
 #[tokio::test]

@@ -178,6 +178,7 @@ struct TaskRow {
     parent_id: i64,
     status: String,
     delegate_to: Option<i64>,
+    agentic: Option<bool>,
     time_scope_start_id: Option<i64>,
     time_scope_end_id: Option<i64>,
     time_scope_duration_n: Option<i64>,
@@ -200,6 +201,7 @@ impl From<TaskRow> for Task {
             parent_id: row.parent_id,
             status: row.status,
             delegate_to: row.delegate_to,
+            agentic: row.agentic,
             time_scope: time_scope_from_row(
                 row.time_scope_start_id,
                 row.time_scope_end_id,
@@ -390,6 +392,8 @@ struct TaskWrite {
     status: String,
     /// Final delegate, or `None`.
     delegate_to: Option<i64>,
+    /// Final Agentic column: `None` is the NULL that inherits from the nearest flagged ancestor.
+    agentic: Option<bool>,
     /// Final Time Scope, or `None` for unscoped.
     time_scope: Option<TimeScope>,
     /// Requested on-exit behavior; dropped by [`on_scope_exit_column`] when unscoped.
@@ -425,6 +429,12 @@ impl TaskWrite {
             Some(new_delegate) => new_delegate,
             None => stored.delegate_to,
         };
+        // Three named states collapse to a column value here: an absent field leaves the column
+        // alone, and `Inherit` is a real request that writes the NULL back.
+        let agentic = match request.agentic {
+            Some(new_agentic) => new_agentic.as_column(),
+            None => stored.agentic,
+        };
         let time_scope = match request.time_scope {
             Some(new_time_scope) => new_time_scope,
             None => stored.time_scope,
@@ -451,6 +461,7 @@ impl TaskWrite {
             title: request.title.unwrap_or(stored.title),
             status,
             delegate_to,
+            agentic,
             time_scope,
             on_scope_exit: request.on_scope_exit.unwrap_or(stored.on_scope_exit),
             plan,
@@ -768,12 +779,14 @@ impl<'session> TaskOperator<'session> {
         let on_exit = on_scope_exit_column(&request.time_scope, request.on_scope_exit);
         let (plan_start, plan_end, _, _) = time_scope_columns(&request.plan);
         let archival = request.archival.unwrap_or_default();
+        let agentic = request.agentic.unwrap_or_default().as_column();
         let id = sqlx::query(
             "INSERT INTO tasks
                 (title, parent_type, parent_id, status,
                  time_scope_start_id, time_scope_end_id, time_scope_duration_n,
-                 time_scope_duration_kind, on_scope_exit, plan_start_id, plan_end_id, archival)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                 time_scope_duration_kind, on_scope_exit, plan_start_id, plan_end_id, archival,
+                 agentic)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&request.title)
         .bind(&request.parent_type)
@@ -787,6 +800,7 @@ impl<'session> TaskOperator<'session> {
         .bind(plan_start)
         .bind(plan_end)
         .bind(archival.as_str())
+        .bind(agentic)
         .execute(&mut *self.connection)
         .await?
         .last_insert_rowid();
@@ -902,7 +916,7 @@ impl<'session> TaskOperator<'session> {
             "UPDATE tasks SET title=?, status=?, delegate_to=?,
                 time_scope_start_id=?, time_scope_end_id=?, time_scope_duration_n=?,
                 time_scope_duration_kind=?, on_scope_exit=?, plan_start_id=?, plan_end_id=?,
-                archival=?, position=?, is_private=? WHERE id=?",
+                archival=?, agentic=?, position=?, is_private=? WHERE id=?",
         )
         .bind(&write.title)
         .bind(&write.status)
@@ -915,6 +929,7 @@ impl<'session> TaskOperator<'session> {
         .bind(plan_start)
         .bind(plan_end)
         .bind(write.archival.as_str())
+        .bind(write.agentic)
         .bind(write.position)
         .bind(write.is_private)
         .bind(id.0)

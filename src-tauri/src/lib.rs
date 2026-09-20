@@ -17,6 +17,7 @@ pub mod mcp;
 pub mod mindmap;
 pub mod scopes;
 pub mod tasks;
+pub mod undo;
 pub mod wire;
 
 use tauri::Manager;
@@ -59,12 +60,23 @@ pub fn run() {
             // out. Nothing managed here can acquire a connection behind a session's back.
             let factory = database::session::SessionFactory::new(pool);
 
+            // The Undo Stack is session-scoped, so the journal starts every run empty and the
+            // ambient context starts every run clear. A `suppressed` flag or a half-open Gesture
+            // left behind by a crash mid-undo would otherwise silently stop the triggers
+            // recording for the whole of this session.
+            tauri::async_runtime::block_on(undo::reset_journal(&factory))?;
+
             // The MCP endpoint shares the factory rather than the pool, so an agent's reads go
             // through the same session layer the commands do. `serve` swallows a bind failure:
             // an occupied port must not take the window down with it.
             tauri::async_runtime::spawn(mcp::serve(factory.clone()));
 
             app.manage(factory);
+
+            // The Undo and Redo Stacks: one pair for the whole app, in memory beside the factory.
+            // Constructing them here is the whole of "session-scoped" — a restart is an empty
+            // history, and nothing has to clear them.
+            app.manage(undo::stacks::UndoStacks::new());
 
             if let Some(window) = app.get_webview_window("main") {
                 let icon = match app.default_window_icon().cloned() {
@@ -87,6 +99,11 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::undo::open_gesture,
+            commands::undo::close_gesture,
+            commands::undo::undo,
+            commands::undo::redo,
+            commands::undo::undo_status,
             commands::block_reasons::list_all_block_reasons,
             commands::block_reasons::set_block_reasons,
             commands::infos::create_info,

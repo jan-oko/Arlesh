@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./gesture";
 
 /** A single explicit block reason on a task or goal. */
 export interface BlockReason {

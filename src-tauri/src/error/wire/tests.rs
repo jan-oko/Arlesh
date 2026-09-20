@@ -345,3 +345,23 @@ fn invalid_request_builds_an_invalid_request_kind_with_the_given_message_and_no_
     );
     assert!(!object.contains_key("details"));
 }
+
+#[test]
+fn an_unmatched_gesture_close_is_an_invalid_request_and_an_unreadable_source_is_internal() {
+    use crate::undo::error::UndoError;
+
+    assert_eq!(
+        WireError::from_error(UndoError::NoGestureOpen).kind,
+        WireErrorKind::InvalidRequest,
+        "a close with no open is the caller's pairing, which the caller can fix"
+    );
+    assert_eq!(
+        WireError::from_error(UndoError::UnknownWriteSource("scheduler".into())).kind,
+        WireErrorKind::Internal,
+        "a source no WriteSource names is unreadable persisted data, not a bad request"
+    );
+    assert_eq!(
+        WireError::from_error(UndoError::Database(sqlx::Error::RowNotFound)).kind,
+        WireErrorKind::Database
+    );
+}

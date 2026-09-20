@@ -13,6 +13,7 @@
   "statusDo": "Status preset: Do",
   "navigate": "Move between cells",
   "navigateRows": "Move between rows",
+  "scrollList": "Scroll the list (the selection stays put)",
   "panCanvas": "Pan the canvas (nothing selected)",
   "extendSelection": "Extend the selection across siblings",
   "cycleType": "Cycle the cell's type",
@@ -29,7 +30,7 @@
   "createSibling": "Create a sibling cell",
   "insertParent": "Insert a parent above",
   "focusRoot": "Focus the current root (nothing selected)",
-  "cycleStatus": "Cycle status / toggle achieved (double-tap enters a subtree)",
+  "cycleStatus": "Cycle status / toggle achieved / cycle a commitment's verdict (double-tap enters a subtree)",
   "cycleRowStatus": "Cycle the selected row's status",
   "delete": "Delete",
   "toggleCollapsed": "Collapse or expand",
@@ -55,6 +56,9 @@
   "toggleFullscreen": "Show the board alone (hide the tabs and top bar)",
   "statusBacklog": "Status preset: Backlog",
   "toggleBacklog": "Put in / take out of the backlog",
-  "markKept": "Mark the selected commitment kept (again to clear it)",
-  "markBroken": "Mark the selected commitment broken (again to clear it)"
+  "toggleAgentic": "Mark Agentic / Not agentic",
+  "cycleVerdict": "Cycle the selected commitment's verdict (Unresolved \u2192 Kept \u2192 Broken)",
+  "markBroken": "Mark the selected commitment broken (again to clear it)",
+  "undo": "Undo the last change",
+  "redo": "Redo the last undone change"
 }

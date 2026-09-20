@@ -75,7 +75,7 @@ Goals are never List View *rows*; they appear instead as a segment of a row's **
 
 ### Tasks
 
-Tasks represent action items. Fields: title, parent (Project / Goal / Domain / Task), tags (list), KB resource links, status, blockers, dependencies, delegation, beads id.
+Tasks represent action items. Fields: title, parent (Project / Goal / Domain / Task), tags (list), KB resource links, status, blockers, dependencies, delegation, agentic, beads id.
 
 **Status:** To Do / In Progress / Done
 
@@ -84,6 +84,10 @@ Tasks represent action items. Fields: title, parent (Project / Goal / Domain / T
 **Dependencies:** Tasks can depend on other Tasks or Goals. Circular dependencies are rejected at write time.
 
 **Delegation:** A Task can be delegated to a Person.
+
+**Agentic:** A Task can be marked **Agentic** — work that suits being handed to an agent. It is a stored three-state flag (`agentic` — NULL / true / false), not a boolean, because it **inherits downward and is overridable**, exactly as Delegation does: a Task with no value of its own reads its nearest flagged ancestor, so marking a whole branch is one edit, and an explicit value replaces what would have been inherited — including an explicit **not agentic**, which is how one Task comes back out of an agentic branch. The value inherits *through* Goals, Projects and Domains, which carry no flag of their own.
+
+It is **Tasks only**: an agent performs actions, where a Goal is a desired state and a Commitment is kept rather than done. It is also **independent of Delegation** — the flag says the work suits an agent, a delegate says who holds it, so a Task may be both, either or neither, and the delegated/undelegated filter is untouched by it. Set from the **Advanced** section of the Task editor (Inherit / Agentic / Not agentic, with the Advanced section opening on arrival when the Task carries an explicit value), and from the bare **A** binding in the Mindmap and List View, which is a **two-state toggle over the resolved value**, not a cycle through the stored one: it reads what the Task currently *reads as* and writes the opposite — agentic → explicit *Not agentic*, anything else → explicit *Agentic*. The flag stores three states but a Task only ever shows two, and *Inherit* under a non-agentic parent is the same picture as an explicit *Not agentic*, so a cycle spent a press moving between them with nothing on screen to show for it — marking a fresh Task agentic appeared to take two presses. The consequence is deliberate: **the key can no longer return a Task to *Inherit***, which is an editor-only state, and a press on a Task that was merely inheriting *yes* pins it to an explicit *no*. That is the price of no press being invisible. Creating a sibling with `Shift+Enter` carries over the source Task's **own stored** value, explicit or not-set — the stored column, never the resolved one, since freezing an inherited *yes* into an explicit one would silently cut the new Task off from the ancestor deciding for it, which the ordinary downward rule already covers. It is shown as its own **status-row badge** in both views, on a Task that reads as agentic whether it said so itself or inherited it; and filterable as its own List View pill dimension. Retyping a Task to any other kind drops an explicit flag and names it in the confirmation prompt alongside every other lost field; duplicating a Task copies it, all three states alike. A one-click **delegate** button belongs beside the flag once Delegation can point at an Agent rather than only a Person; the slot is left for it and nothing about this dispatches anything.
 
 **Time Scope & Plan:** A Task carries a **Time Scope** (relevance window) and an optional **Plan** (a single scope it is scheduled into). Goals carry a Time Scope but no Plan. See *Time Scopes & Planning* below.
 
@@ -202,7 +206,7 @@ A flow item is created under a flow (or another item) like any child — a flow 
 
 ## Habits
 
-A **Habit** is a Flow with a **Recurrence** pattern (a flow becomes a Habit when given a Recurrence — stored in a `flow_recurrences` row keyed by the flow, whose presence marks the flow as a Habit; a Habit requires a scoped flow). Its instances are generated automatically and are **virtual**: each is identified by `(instance, iteration scope)` — where an instance is a flow item **or the flow root itself** (the root materializes as a normal Task/Goal, so it is a first-class completable instance, not merely an aggregate of its items; an item-less habit therefore still has one instance, its root) — and rendered from the template, with only divergences (status, edited fields, dependencies, deletion/archival tombstones) persisted as **Modification** rows. The root instance's title reads `{flow title} {start scope}` (e.g. "Exercise W22").
+A **Habit** is a Flow with a **Recurrence** pattern (a flow becomes a Habit when given a Recurrence — stored in a `flow_recurrences` row keyed by the flow, whose presence marks the flow as a Habit; a Habit requires a scoped flow). Its instances are generated automatically and are **virtual**: each is identified by `(instance, iteration scope, cycle pair)` — where an instance is a flow item **or the flow root itself** (the root materializes as a normal Task/Goal, so it is a first-class completable instance, not merely an aggregate of its items; an item-less habit therefore still has one instance, its root) — and rendered from the template, with only divergences (status, edited fields, dependencies, deletion/archival tombstones) persisted as **Modification** rows. The **cycle pair** is part of that key because a flow item with N pairs draws N instances in a single iteration, exactly as it materializes N items when the flow is started: a morning and an evening occurrence of the same item are two things to complete on the same day, and ticking one must not tick the other. The root, and any item with no pairs, key on the `0` sentinel. The root instance's title reads `{flow title} {start scope}` (e.g. "Exercise W22").
 
 **Recurrence** = **Repetition** + **Consumption**:
 
@@ -212,11 +216,11 @@ A **Habit** is a Flow with a **Recurrence** pattern (a flow becomes a Habit when
   2. If Accumulating: **Overlapping** (new iterations generated regardless) vs **Blocking** (withheld while unresolved instances exist).
   3. If Blocking, the **catch-up policy** when the open iteration completes: *all pending* (every missed iteration, in order), *next* (advance by one), or *latest* (jump to current, recording skipped iterations as missed tombstones).
 
-**Generation.** Iterations are **derived**, never persisted per iteration: a pure function of the Recurrence, the reference day, and the completed iterations (the only persisted facts — a completed instance carries a `resolved_at`). Each started iteration is classified `Active` / `Done` / `Lapsed` (Destructive, passed unfinished) / `Missed` (a Blocking `latest` skip). Only iterations whose window has begun are generated; future ones are the ellipsis. An iteration is *resolved* when every one of its (non-tombstoned) instances is done. Consumption semantics: Destructive lapses any past unfinished iteration and keeps only the current window active; Overlapping keeps every started iteration active until done; Blocking withholds beyond the open iteration and, on completion, advances by **next** (release the next), **latest** (jump to the iteration containing the completion day; skipped ones become Missed), or **all pending** (release the whole backlog up to the completion day as active, blocking again beyond it). A Destructive iteration's virtual instances (root and items alike) map onto the Task/Goal Archival model above once their window has passed — a past-window instance is *effectively archived* regardless of whether it's `Done` or `Lapsed`, so a habit occurrence with some items completed and others missed still archives as a unit, rather than partially lingering visible via its completed siblings.
+**Generation.** Iterations are **derived**, never persisted per iteration: a pure function of the Recurrence, the reference day, and the completed iterations (the only persisted facts — a completed instance carries a `resolved_at`). Each started iteration is classified `Active` / `Done` / `Lapsed` (Destructive, passed unfinished) / `Missed` (a Blocking `latest` skip). Only iterations whose window has begun are generated; future ones are the ellipsis. An iteration is *resolved* when every one of its (non-tombstoned) instances is done. Consumption semantics: Destructive lapses any past unfinished iteration and keeps only the current window active; Overlapping keeps every started iteration active until done; Blocking withholds beyond the open iteration and, on completion, advances by **next** (release the next), **latest** (jump to the iteration containing the completion day; skipped ones become Missed), or **all pending** (release the whole backlog up to the completion day as active, blocking again beyond it). **Each instance carries its own window.** A flow item's Cycle Scope resolves against *that iteration's* window start — backend-side, through the same offset arithmetic `start` uses, so a rendered occurrence and a started one cannot disagree about when "the 2nd day of week 3" falls — and the instance's Timing is read from it rather than from the iteration's. A Morning item inside a day-long iteration is Active during the morning and, under Destructive, Lapsed from noon; a Tuesday item inside a week-long one is Active on Tuesday alone. Sub-day windows obey **Consumption** like every other size: an Accumulating habit's passed occurrence piles up rather than lapsing, and if a morning routine should vanish at noon, Destructive is what says so. An occurrence whose window has not opened is **Pending**, and whether it renders is the **status preset's** decision, not generation's: **All shows it** — All's contract is that it shows everything, and a Habit's later-today items are exactly what one looks at All to see — while **Plan, Start and Do hide it**, together with its own subtree, so this evening's item does not sit among the morning's work (children nest under their parent's first occurrence and would otherwise be redrawn a level up). The occurrence is generated and sent either way; dropping it backend-side put it beyond every preset at once. The rule is scoped to the occurrences a Habit generates in bulk: a hand-made task scheduled for next week is Pending too and still plans, as it always has. (Exact-time `HH:MM–HH:MM` cycles stay deferred with the cycle editor that would enter them.) A Destructive iteration's virtual instances (root and items alike) map onto the Task/Goal Archival model above once their window has passed — a past-window instance is *effectively archived* regardless of whether it's `Done` or `Lapsed`, so a habit occurrence with some items completed and others missed still archives as a unit, rather than partially lingering visible via its completed siblings.
 
 **Display.** Instances render under the Target Node — the Flow's own when it has one, otherwise its parent (and, only if that parent is not in the rendered tree, the Flow node itself). Active and past instances render directly; an **ellipsis node** stands in for future instances (which can be unbounded under overlapping/open-ended recurrence). Double-click/double-enter the ellipsis to open a search combobox of virtual instances; selected ones are **display-pinned** (still virtual) and render on their own.
 
-**Commitment habits.** An iteration of a Habit whose Instance Type is `commitment` renders as a **Commitment**, not as a Task or a Goal: the commitment glyph, the Verdict badge, and the two verdict controls in List View's commitments section — never a status control to cycle. That iteration's Verdict is its **Modification** row, in the same `status` slot an ordinary instance keeps a task status in; clearing it back to Unresolved removes the row, exactly as un-completing a task instance does. Nothing translates between the two vocabularies: a stale `done` is not read as `kept`. The items beneath the iteration are the flow's **task** items, rendered as Tasks — the supporting steps a Commitment legally parents — and, per *Commitments* above, none of them ever gates the verdict. A commitment flow whose template holds a **flow goal** has no valid materialisation at all, since a Commitment holds no Goals: `start` is refused by `goals.parent_type`, and a Habit derives **no iterations** rather than drawing a subtree the model forbids — the Mindmap's load-condition banner names every flow it withheld, so nothing goes missing quietly. One consequence of a virtual iteration having no Commitment row of its own: its Archival is derived here rather than by the lifecycle — past **and** judged is settled and archives; past and unjudged stays live, because the answer is still owed, and is never **Missed**. What ends "still owed" is the **Verdict Window**, which the Habit carries on the flow row (see *Recurrence* above) and every one of its iterations resolves to: the backend derives such an iteration as **Expired**, and it archives still unresolved. Expiry is checked before the past-and-unjudged rule, because under the Accumulating + Overlapping Consumption a commitment Habit is fixed to, an unanswered iteration classifies Active rather than Lapsed right up until it expires. A Habit with no Verdict Window set keeps its iterations answerable indefinitely, exactly as a Commitment with none anywhere above it does.
+**Commitment habits.** An iteration of a Habit whose Instance Type is `commitment` renders as a **Commitment**, not as a Task or a Goal: the commitment glyph, the Verdict badge, and the two verdict controls in List View's commitments section — never a status control to cycle. It is selectable on the Mindmap like any other node, where `Enter` cycles its verdict and `X` records Broken, exactly as on a real Commitment; the tick and the cross remain List-View-only controls. That iteration's Verdict is its **Modification** row, in the same `status` slot an ordinary instance keeps a task status in; clearing it back to Unresolved removes the row, exactly as un-completing a task instance does. Nothing translates between the two vocabularies: a stale `done` is not read as `kept`. The items beneath the iteration are the flow's **task** items, rendered as Tasks — the supporting steps a Commitment legally parents — and, per *Commitments* above, none of them ever gates the verdict. A commitment flow whose template holds a **flow goal** has no valid materialisation at all, since a Commitment holds no Goals: `start` is refused by `goals.parent_type`, and a Habit derives **no iterations** rather than drawing a subtree the model forbids — the Mindmap's load-condition banner names every flow it withheld, so nothing goes missing quietly. One consequence of a virtual iteration having no Commitment row of its own: its Archival is derived here rather than by the lifecycle — past **and** judged is settled and archives; past and unjudged stays live, because the answer is still owed, and is never **Missed**. What ends "still owed" is the **Verdict Window**, which the Habit carries on the flow row (see *Recurrence* above) and every one of its iterations resolves to: the backend derives such an iteration as **Expired**, and it archives still unresolved. Expiry is checked before the past-and-unjudged rule, because under the Accumulating + Overlapping Consumption a commitment Habit is fixed to, an unanswered iteration classifies Active rather than Lapsed right up until it expires. A Habit with no Verdict Window set keeps its iterations answerable indefinitely, exactly as a Commitment with none anywhere above it does.
 
 **Archiving** a Habit stops recurrence (even if still in scope); existing occurrences survive. **Editing** a Habit's scope or repetition prompts (*archive the old habit and create a new one* vs *delete instances and regenerate*) **only when divergent instances exist**; otherwise it silently regenerates.
 
@@ -235,6 +239,7 @@ Inheritance behavior per link type:
 | Time Scope (relevance) | A null child Time Scope inherits the nearest scoped ancestor's window. An explicit child Time Scope must be wholly contained within the parent's (interval containment); it narrows relevance but the parent window still contains it. |
 | Plan (scheduling)      | Task-only. Must be wholly contained within the task's Time Scope and within the parent's Plan. |
 | Delegation             | Override — child's explicit delegation replaces the inherited one |
+| Agentic (Tasks)        | Override — child's explicit value (agentic *or* not agentic) replaces the inherited one; inherits through unflagged kinds |
 
 Inherited links are computed on read (ancestor traversal). To be revisited if performance becomes an issue.
 
@@ -250,7 +255,7 @@ Filters apply to task/goal lists. Any number of filters can be active simultaneo
 
 Combined logic: `(union of Any-filters) AND (intersection of All-filters) AND NOT (union of Exclusion-filters)`
 
-Filterable fields: parent domain/task, dependency, status, delegate-to, delegated/undelegated, Person/Event/Thread/Scope, planned scope, Project, Aspect, Goal, Tag.
+Filterable fields: parent domain/task, dependency, status, delegate-to, delegated/undelegated, agentic, Person/Event/Thread/Scope, planned scope, Project, Aspect, Goal, Tag.
 
 **Focus exemption.** The **selected** node renders whatever the filter says about it, for as long as it stays selected — so a node that stops matching *because of your own edit* (completing a Task under Plan, cycling a Task to a Goal under Do, marking something Private) stays where it is instead of vanishing out from under you. It renders **dimmed**, carrying the status-icon badges that already say why it no longer matches; there is no new chrome. It overrides **every** hiding rule, the hard-hiding ones included — Private Mode, the Info/Flow type toggles, a shelved Project, a blocked subtree under Start — not just the soft preset/tag/pill filters. That is safe because toggling any of those *is* a filter change, which ends the exemption, so a private node can never survive into a Private-Mode-off view; the only case that survives is one you just marked private yourself, while still on it.
 
@@ -372,11 +377,13 @@ The root of the map is "Arlesh" (top level). Aspect cells are its direct childre
 - `Shift+arrows` — extend the selection across siblings (on the sibling axis for the current orientation; on the branch axis they navigate as usual)
 - `Alt+↑` / `Alt+↓` — move the cell among its siblings
 - `Ctrl+↑` / `Ctrl+↓` — cycle the cell's type through: Domain → Project → Goal → Task → Commitment
-- `Enter` — with a node selected: cycle a task's status / toggle a goal's achieved (double-tap enters a container as a subtree); **with nothing selected: focus the current display root**
-- `Shift+Enter` — create a sibling cell; `Ctrl+Enter` — insert a parent above
+- `Enter` — with a node selected: cycle a task's status / toggle a goal's achieved / cycle a **Commitment's verdict** (Unresolved → Kept → Broken → Unresolved) (double-tap enters a container as a subtree); **with nothing selected: focus the current display root**. A Commitment is both a container and a thing to judge, so it takes both: the single press cycles the verdict, the double tap enters its subtree, and the cycle waits out the double-tap window so that entering a commitment never records a verdict on the way in. Being blocked does not gate it — a Commitment is kept or broken, never worked on, and takes no part in the dependency graph
+- `X` — on a selected **Commitment**, mark it **Broken**, or clear the verdict if it already reads Broken. The same key it has in List View, so Broken is one press on both surfaces rather than two on the canvas
+- `Shift+Enter` — create a sibling cell (a Task sibling carries over the source Task's **own stored** Agentic flag — see *Tasks* above); `Ctrl+Enter` — insert a parent above
 - `F2` / `R` — rename the selected cell
 - `E` — open the selected cell's editor; `Double-click` does the same
 - `B` — put the selected Task in the Backlog, or take it out (real Tasks only — a virtual Habit occurrence has no row of its own to set aside, so the binding is inactive on one rather than silently doing nothing)
+- `A` — toggle the selected Task's Agentic flag: whatever it reads as now, one press writes the opposite (**Agentic ↔ Not agentic**); *Inherit* is resolved through, never written, so returning a Task to it means opening the editor (real Tasks only, on the same reasoning as `B`). Bare letters are flags on the selected Task, `Alt`+letter is a status preset, so `A` and `Alt+A` (the **All** preset) coexist exactly as `B` and `Alt+B` do — chord matching is strict about modifiers
 - `Delete` — delete the selection
 - `Ctrl+/` — collapse or expand the selected cell
 - `Ctrl+X` / `Ctrl+C` / `Ctrl+V` — cut / copy / paste
@@ -385,11 +392,14 @@ The root of the map is "Arlesh" (top level). Aspect cells are its direct childre
 - `Ctrl+O` — search for a node by title
 - `Alt+F` — toggle the filter menu; `Alt+A` / `Alt+P` / `Alt+S` / `Alt+D` / `Alt+B` — jump to the **All / Plan / Start / Do / Backlog** status preset (matched by physical key)
 - `Escape` — deselect; `Shift+Escape` — go back one level when inside a subtree; `Ctrl+Escape` — go back to the root
+- `Ctrl+Z` — undo the last thing you did to the board; `Ctrl+Shift+Z` (or `Ctrl+Y`) — redo it
 - `Alt+L` — switch between Mindmap and List View; `Ctrl+Shift+/` — open the keyboard cheat-sheet
 - `Right-click` — context menu (enter subtree, change type, delete, etc.)
 - Back button / back-to-top button available in the UI
 
 A shortcut requires exactly the modifiers listed — `Ctrl+E` does not open the editor, only a bare `E` does. Every binding above is declared once in the shared hotkey registry (`src/utils/hotkeys/`), which is also what the cheat-sheet renders, so this list, the overlay, and the handlers cannot disagree. The view-level bindings (Mindmap and List View) are suppressed whenever a modal or an inline rename is on screen; the global ones (`Alt+L`, `Ctrl+Shift+/`) always stay live. That suppression is driven by the modals and inline editors themselves, each registering while it is mounted (`src/stores/use-input-capture-store.ts`), rather than by the views tracking which of their own state flags imply an open modal — a flag can outlive the UI it describes, and a stale one would silently kill every view binding until the view remounted.
+
+**Modals and focus.** `Escape` dismisses any modal, and a modal is dismissable the instant it appears — so every modal **takes focus when it opens**, because dismissal is handled on the dialog element itself and a dialog holding no focus would not hear the key until the user tabbed or clicked into it first. Where that focus lands is decided per modal, not by DOM order. An **editor** focuses its own first field and selects its contents, so typing replaces the title rather than appending to it. A modal that exists to be **answered** focuses the answer that is safe to give by reflex: `WarningConfirmModal`, the convert-to-flow prompt and the commitment-window prompt focus **Cancel**, so the consequences are read before anything acts on them, while `DeleteConfirmModal` focuses **Delete**, the one case where the answer is known before the modal opens and confirming should stay a single key. Opening focus never lands on a toggle, where a reflex `Space` would change a stored setting instead of dismissing the dialog.
 
 **Entering a subtree:** Right-clicking a cell and selecting "Enter" re-roots the map at that cell; `Ctrl+O` does the same from the node search, in either view. Navigation back: back button, back-to-top button, `Shift+Escape` (up one level), or `Ctrl+Escape` (straight back to the root).
 
@@ -397,7 +407,7 @@ The subtree root is **shared between the Mindmap and the List View**, not per-vi
 
 Because the top bar holds no tree of its own, whichever view is mounted resolves the descriptor for it (`src/hooks/use-subtree-nav.ts`) — so the indicator and the pills are correct in both views, rather than only in the one that happens to own the subtree logic.
 
-**Status-icon row:** below each node sits a compact row of status badges (aligned to the node's left edge), each with a hover tooltip. A **clock** marks a Time Scope (tooltip = the window; crossed out once the window has passed); a red **exclamation** flags an **Overdue** item and an **archive box** any item whose *effective* Archival is **Archived** — an explicitly-Archived Goal/Project, or any scoped Task/Goal whose Resolution is **Completed** or **Missed** — tinted as a warning when it's a **conflict** (a manually-Frozen item that scope forced into Archived); a **calendar** marks a Plan (tooltip = the plan window); a **snowflake** a Frozen goal/project and a **tray** (three stacked lines) a Task in the **Backlog** — a badge of its own, since Backlog and Frozen are distinct states, and one that can appear alongside the archive box when a lapsed window has forced Archived over it; **no badge carries a Commitment's Verdict** — the node glyph itself does (see *Commitments* above: hollow while the answer is owed, solid once given, cleft when broken, struck through once the Verdict Window has run out), so the row would be restating it a few pixels below; every badge here says something the glyph does not; an **ellipsis** an Info node carrying a Details description (tooltip = the text); a **wave** a real Start-flow instance and the **cyclical habit glyph** a virtual Habit iteration; and a **tag** icon a node with tags (tooltip = their names). Badges appear only when relevant, so most nodes show few or none. The set of badges is a pure function of the node; scope/plan/tag tooltips resolve their labels on demand.
+**Status-icon row:** below each node sits a compact row of status badges (aligned to the node's left edge), each with a hover tooltip. A **clock** marks a Time Scope (tooltip = the window; crossed out once the window has passed); a red **exclamation** flags an **Overdue** item and an **archive box** any item whose *effective* Archival is **Archived** — an explicitly-Archived Goal/Project, or any scoped Task/Goal whose Resolution is **Completed** or **Missed** — tinted as a warning when it's a **conflict** (a manually-Frozen item that scope forced into Archived); a **calendar** marks a Plan (tooltip = the plan window); a **snowflake** a Frozen goal/project and a **tray** (three stacked lines) a Task in the **Backlog** — a badge of its own, since Backlog and Frozen are distinct states, and one that can appear alongside the archive box when a lapsed window has forced Archived over it; a small **bot head** marks a Task that reads as **Agentic** (see *Tasks* above) — its own flag or an ancestor's, since a branch marked in one edit must look marked all the way down; **no badge carries a Commitment's Verdict** — the node glyph itself does (see *Commitments* above: hollow while the answer is owed, solid once given, cleft when broken, struck through once the Verdict Window has run out), so the row would be restating it a few pixels below; every badge here says something the glyph does not; an **ellipsis** an Info node carrying a Details description (tooltip = the text); a **wave** a real Start-flow instance and the **cyclical habit glyph** a virtual Habit iteration; and a **tag** icon a node with tags (tooltip = their names). Badges appear only when relevant, so most nodes show few or none. The set of badges is a pure function of the node; scope/plan/tag tooltips resolve their labels on demand.
 
 **Top bar:** sits below the tab strip and belongs to the **active tab** — every control on it reads and writes that tab. At the start edge, a settings **gear** (popover with a **Light mode** switch, a **Keyboard shortcuts** entry, and the two view-scoped display switches — **Vertical layout** on the Mindmap, **Path icons** in the List View — each shown only while its own view is active; the theme and **Path icons** are app-wide, the branch axis is per tab; all persisted, theme defaults to dark and applies via a `data-theme` attribute and matching `tokens.css` overrides); a **Mindmap/List** view tab pair (also toggled by `Alt+L`); a **status-preset dropdown** (All/Plan/Start/Do, plus a 5th **Unblock** option while List View is active — see List View below) — a dropdown rather than a segmented control so it stays compact next to the tabs, built as a themed `Select` (listbox popover styled from the app's own tokens, with arrow-key/Enter/Escape keyboard support) rather than a native `<select>`, whose open option list ignores CSS and renders with plain OS chrome; the subtree **back-nav pills** and the **current-subtree indicator** (all shown only inside a subtree — the two pills are the ways out, `↑` to the root and `←` up one level, while the indicator is a static, non-interactive pill carrying a subtree glyph and the title of the subtree you are in, since "here" has nowhere to navigate to; its glyph is `aria-hidden` like the others, so it carries a visually-hidden "Inside subtree:" label to keep a screen reader from hearing three bare titles in a row); and, at the end edge, a **Filter** button (funnel) that opens the filter popover. Below the bar, a wrapping row of **active-filter chips** renders whenever any filter is engaged (empty and takes no space otherwise) — every active tag filter and, while List View is active, every active List-View-exclusive pill filter (see below). A chip shows a mode symbol (∪/∩/∅) and the filter's name; clicking the chip body cycles Any → All → Exclude, and an embedded **×** removes it. A chip's border/symbol color is a muted accent for its mode — a fixed, low-key hue per mode shared across every dimension, blended most of the way toward the neutral border rather than shown at full strength; its background additionally tints toward the value's resolved aspect color where one exists (tags, Parent, Dependency).
 
@@ -459,20 +469,22 @@ A compact-card task list, reached via a Mindmap/List tab in the top bar or the `
 
 **Rows are Tasks only** — real, flow-materialized, and virtual Habit instances alike. Goals, Projects, Domains, and every other kind are never list rows — they appear in a row's **path header** instead (see below). **Commitments are the one exception:** they render in their own section *above* the task rows rather than scattered through them (see *Commitments section* below). A row shows: a status control (click cycles To Do → In Progress → Done, or advances a Habit instance; disabled while the task is blocked, except for Habit instances which always advance), the title (click opens the Task editor; double-clicking anywhere else on the card opens it too, matching the Mindmap's double-click-to-edit gesture), the same status-icon badge row as the Mindmap node (scope/plan/flow/tag badges with tooltips), and the task's **parent label** and **tag pills** — clicking either inline adds it as a filter, per the general Filtering Logic. Each card spans the full row width, with generous padding for a sparse, readable list, and is tinted with its resolved aspect colour — the same fill/opacity derivation the Mindmap node uses — so a task's card matches its node's colour there. Clicking anywhere on a card **selects** it (a highlighted border), for the keyboard bindings below.
 
-**Commitments section.** A band across the top of the list, above the task rows, headed **Commitments** and separated by a rule; it takes no space at all when nothing matches. Today's commitments read as a standing band rather than as work scattered through the list. Each card shows **two verdict controls** — a tick and a cross, side by side — then the title, the same status-icon badge row as a task card, and the parent label and tag pills. Two explicit controls rather than one cycling one, so the two outcomes are visibly **equal** and **Broken is never one stray press past Kept**; pressing the control that is already lit clears the verdict back to Unresolved, which is how a misclick is taken back, and neither control ever moves straight from one verdict to the other. An unjudged commitment carries a marked left edge. The preset governs this section by the Commitment rules above, and the task rows beneath it as before.
+**Commitments section.** A band across the top of the list, above the task rows, headed **Commitments** and separated by a rule; it takes no space at all when nothing matches. Today's commitments read as a standing band rather than as work scattered through the list. Each card shows **two verdict controls** — a tick and a cross, side by side — then the title, the same status-icon badge row as a task card, and the parent label and tag pills. Two explicit controls rather than one cycling one, so the two outcomes are visibly **equal**; pressing the control that is already lit clears the verdict back to Unresolved, which is how a misclick is taken back, and neither control ever moves straight from one verdict to the other. The keyboard is the one place a verdict cycles: `Enter` walks Unresolved → Kept → Broken → Unresolved, and `X` stays the one-press route to Broken so that recording a broken commitment never has to pass through saying you kept it. An unjudged commitment carries a marked left edge. The preset governs this section by the Commitment rules above, and the task rows beneath it as before.
 
 
 **Keyboard interactions** (mirroring the Mindmap's bindings where they translate to a flat list):
 - `Alt+F` — toggle the filter menu; `Alt+A` / `Alt+P` / `Alt+S` / `Alt+D` / `Alt+B` — jump to the **All / Plan / Start / Do / Backlog** status preset (matched by physical key), same as the Mindmap
 - `B` — put the selected Task in the Backlog, or take it out (acts on the selected row only)
-- `↑` / `↓` — move the selection between rows (path headers are skipped); the commitments section is walked first and the task rows after, in the order the two are drawn; from nothing selected, `↓` selects the first row and `↑` the last
-- `Enter` — on a Task, cycle its status (disabled while it's blocked, except a Habit instance); on a **Commitment**, mark it **Kept**, or clear the verdict if it already reads Kept. A selection is one or the other, so the two never collide
-- `X` — on a **Commitment**, mark it **Broken**, or clear the verdict if it already reads Broken. A separate key rather than a second press of Enter, for the same reason the controls are separate
+- `↑` / `↓` — move the selection between rows (path headers are skipped); the commitments section is walked first and the task rows after, in the order the two are drawn; from nothing selected, `↓` selects the first row and `↑` the last. **The view follows the selection**: each row the selection lands on is scrolled into view with `nearest` alignment, so a row past the fold comes just far enough in to be read and a row already on screen does not jump
+- `J` / `K` — scroll the list down / up **without moving the selection**, which stays where it is even once it has scrolled out of sight. A tap nudges the view by a fixed 24px — about one line of text and its leading, the unit a reader tracks, so the eye follows it without having to re-find its place — and **holding the key scrolls on continuously at 300px/s**, roughly four to five compact rows a second. The hold is driven by an animation frame loop rather than by key auto-repeat, so the pace is the app's rather than the machine's: the OS repeat rate is a per-user setting the app cannot see, and a fixed step per repeat came out several times too fast on a normal one. The loop starts after a short hold delay (so a tap stays a tap) and stops on the key's release, on the window losing focus, or on leaving the view. A fixed amount rather than a measured row height (the user's call): tapping moves by one predictable unit instead of lurching by whatever row is under the fold. Reading ahead and moving the selection are separate gestures; where they meet, the selection wins — scrolling away with `J` and then pressing `↓` re-anchors the view on the selection, because the selection moved and the view follows it. The corollary: `↓` on the last row moves nothing and so re-anchors nothing. **List View only** — the Mindmap already pans with the arrow keys when nothing is selected, and a canvas pans in two dimensions, so `J`/`K` there would be a narrower version of what is already available
+- `Enter` — on a Task, cycle its status (disabled while it's blocked, except a Habit instance); on a **Commitment**, cycle its verdict: **Unresolved → Kept → Broken → Unresolved**. A selection is one or the other, so the two never collide. A commitment Habit's iteration is a Commitment row like any other and cycles the same way, its verdict stored as that iteration's Modification
+- `X` — on a **Commitment**, mark it **Broken**, or clear the verdict if it already reads Broken. It stays a key of its own now that Enter cycles: `X` reaches Broken in one press from any verdict, so recording a broken commitment never has to pass through saying you kept it
 - `E` — open the selected row's editor (Task or Commitment)
 - `R` — rename the selected Task inline (Enter/blur commits, Escape cancels)
 - `Ctrl+O` — search for a node by title, over **every** node kind (not just the Tasks the list shows), and **enter** the one you pick: the list re-roots at it and shows only the Tasks beneath it, with that root trimmed from the path headers and named in the top bar instead. This is subtree entry, not a filter — the filter chips, the status preset and the selection are all untouched, and the subtree composes with whatever filtering is already active
 - `Shift+Escape` — up one subtree level; `Ctrl+Escape` — straight back to the true root. Same semantics as the Mindmap's, and gated the same way (they do nothing at the true root, where bare `Escape` still deselects)
 - `Escape` — deselect
+- `Ctrl+Z` — undo the last thing you did to the board; `Ctrl+Shift+Z` (or `Ctrl+Y`) — redo it
 - `Alt+L` — switch back to the Mindmap; `Ctrl+Shift+/` — open the keyboard cheat-sheet
 
 A shortcut requires exactly the modifiers listed — `Ctrl+E` does not open the editor, only a bare `E` does.
@@ -497,6 +509,7 @@ On top of the shared filters, the List View adds its own filter dimensions — a
 | Verdict | Unresolved / Kept / Broken — applies to the commitments section only |
 | Scope | Unscoped / Active / Overdue / Lapsed / Planned / Unplanned — independent axes, so e.g. Unscoped + Planned can both apply to the same task |
 | Blocked | Blocked / Not blocked |
+| Agentic | Agentic / Not agentic — the flag as the task *reads* it, its own or inherited (see *Tasks* above). Independent of the delegated/undelegated question |
 
 ---
 
@@ -607,6 +620,170 @@ A tool that fails returns a result flagged as an error carrying the same structu
 frontend receives across the Tauri boundary, including its stable `kind` — `not_found`,
 `containment_violated`, `invalid_request`, `database`, `internal` — so an agent branches on the
 discriminant rather than parsing a message.
+
+## Undo
+
+Ctrl+Z reverses a **Gesture** — one thing the user did — and Ctrl+Shift+Z reapplies it. There is
+**one stack for the whole app**, not one per view or window: there is one board and one history of
+changes to it, and a per-view stack could undo past another view's newer edit. Both stacks are
+**session-scoped** and empty on launch.
+
+### The journal
+
+The record undo works from is a **row-level journal written by SQL triggers**, not by the commands.
+Three triggers per journaled table — insert, update, delete — write a `undo_journal` row carrying
+the changed row's **before image**, its **after image**, or both, as JSON. Rows are journaled, so
+undo speaks in rows: it restores what a row was, not what the user meant by changing it. That is
+why the toast names the gesture ("Undid: delete 4 items") rather than describing column changes.
+
+The alternative — an inverse per command — was rejected because there are 83 mutating commands and
+an inverse is an obligation met 83 times and again by every command written afterwards, while a
+trigger cannot be forgotten by a command that does not know it exists. ADR 0006 weighs that against
+whole-database snapshots and `sqlite3session` changesets, and says why neither is available here.
+
+**Not every table is journaled.** Derived and materialised rows are excluded, or undo would fight
+the code that regenerates them. The exclusion list is part of the design rather than an
+optimisation, and today it is exactly `scopes` — a scope row is the calendar, instantiated on
+demand and never deleted, so undoing its creation would delete a row the next read recreates and,
+where another item still references it, fail against the foreign keys — plus the journal's own two
+tables. Everything else on the board is journaled, including the link and dependency tables that a
+foreign-key cascade removes without any command naming them.
+
+A table added later is **not journaled until its triggers are written**, and that is the one
+obligation this design does not remove. It is guarded by a test that enumerates the schema from
+`sqlite_master`, fails when a table that is not on the exclusion list has no triggers, and fails
+again when a *column* of a journaled table is missing from its triggers —
+`scripts/generate-undo-triggers.sh` writes the replacements.
+
+### Gestures
+
+A Gesture is not a command: pasting five nodes issues five commands and is one Ctrl+Z. The boundary
+is therefore **opened by the caller**, through the `open_gesture` and `close_gesture` commands, and
+the frontend is the layer that knows which commands belong together. Opens **nest and join** — a
+nested open joins the gesture already running rather than starting a second, the same rule ADR 0004
+gives transactions — so the intended shape is a gesture around every invoked command plus an
+explicit outer gesture around the runs that belong together.
+
+This is the weak seam in the design, and it fails in one direction only:
+
+- a multi-command gesture that forgets its outer open **degrades to per-command undo**;
+- a write made with no gesture open at all is journaled **ungrouped** and is never offered as an
+  undo step.
+
+Nothing here can make Ctrl+Z reverse something the user did not ask about; the cost of forgetting
+is a change that undo declines to touch. The seam narrows on its own as command logic moves into
+Rust, after which most gestures are one backend call and the protocol is vestigial.
+
+On the frontend, that shape is one module: `src/api/gesture.ts` is the only file that imports
+Tauri's `invoke`, and everything in `src/api/` goes through its wrapper, which opens a Gesture
+around **every** command. A lone command is therefore its own undo step without anyone remembering
+to ask for it — the same argument the trigger journal makes against per-command obligations — and
+a lint rule refuses a direct import so a new api file cannot quietly fall outside the stack. Runs
+that belong together are wrapped once more, by `withGesture(name, run)`, which opens the outer
+Gesture the per-command opens then join: a paste, a multi-select delete, an insert-parent (a create
+and a move), and a drag reparent that clamps scoped descendants before moving. Both wrappers close
+their Gesture in a `finally`, because a command that throws having already written something must
+still be a step the user can reverse.
+
+`withGesture`'s `name` is the human name of the Gesture, and it is set when the Gesture opens
+because only the frontend knows the user called it "paste 5 nodes". The backend has nowhere to put
+it — a Gesture id is minted by the database and the summary it returns carries counts and table
+names, not a sentence — so the names are held frontend-side, keyed by Gesture id, and read back
+when an undo returns that id.
+
+### What the user sees
+
+**Every press says something.** A Gesture that comes back raises the app's existing anchored
+notice, naming what was reversed: **"Undid: paste 5 nodes"** from the name the Gesture was opened
+with, or **"Undid: update 1 item"** from the row counts when nobody named it. A redo says
+**"Redid: …"** of the same phrase — the toast names the Gesture, not the direction of travel. The
+board then reloads the way every other mutation already ends.
+
+The other two outcomes also speak, and the three must not look alike:
+
+| outcome | undo | redo | reloads |
+|---|---|---|---|
+| applied | `Undid: paste 5 nodes` | `Redid: paste 5 nodes` | yes |
+| empty stack | `Nothing to undo` | `Nothing to redo` | no |
+| refused apply | `Couldn't undo: …` | `Couldn't redo: …` | no |
+
+An **empty stack** is not a failure: nothing was wrong, there was simply nothing there, and the
+message is a statement of fact about the board. A **refused apply** is a failure — the whole replay
+runs in one transaction, so the board is untouched and the Gesture is **still on the stack**, and
+the same press will work once whatever blocked it is gone. The anchored notice has one class and
+one tone, with no severity channel of its own, so the wording is the only thing holding those two
+apart: the refusal names a reason after a colon and says something could not be done, while the
+empty stack states a fact and carries no reason because there is none.
+
+Only a Gesture that was actually applied redraws anything. `undo_status` exists to label and
+disable a control and is never consulted before a keystroke; the backend handles an empty stack
+itself, so asking first would buy nothing but a round trip and a window for the answer to go stale.
+
+> An earlier draft of this design had the empty stack produce nothing at all, on the reasoning that
+> Ctrl+Z with nothing to undo is not a mistake and should not flash like one. That was revised in
+> review: a press that produces no response at all is indistinguishable from a dead key or a
+> shortcut that never registered, which is a worse failure than the one the silence avoided. The
+> distinction the silence was protecting is now carried by the wording instead.
+
+Both bindings are declared in the shared hotkey registry for **both views**, so the cheat-sheet
+lists them without being told twice, and they are suppressed exactly as every other view binding
+is — inside a text field, where Ctrl+Z means the field undo the browser already gives, and behind
+any modal or inline editor, through the same input-capture registry. `Ctrl+Y` is a hidden alias of
+the redo binding: dispatchable, but not a second cheat-sheet row.
+
+### Sources, and not undoing undo
+
+Every entry carries the **source** of its write. An MCP write is journaled but never enters the
+user's stack: an agent setting a `beads_id` is not something the user did, and Ctrl+Z reversing it
+would be indefensible. The journal stays a faithful history; the stack is a history of *the user*.
+The source is an enum rather than a boolean and the column carries no CHECK constraint, so a third
+source later is a code change and not a migration.
+
+Applying an undo or a redo is itself a write, and would be caught by the same triggers. The journal
+therefore carries a **suppression** flag the undo path sets for the duration of its own
+transaction. Both the flag and the source live in a single ambient row every connection shares; what
+makes that safe is that setting either is a write, so the transaction that sets it holds SQLite's
+single writer lock until it commits.
+
+The journal is truncated at startup and capped at a fixed number of gestures, so a long session
+cannot grow it without bound. An ungrouped entry counts as one gesture for that cap.
+
+### The two stacks
+
+The Undo Stack and the Redo Stack live in **backend memory**, one pair for the whole application,
+beside the session factory — not in the frontend, which has several views onto one board and would
+give each of them a private history, and not in the database, which would outlive the session they
+are scoped to. Launching Arlesh is an empty history; nothing has to clear them.
+
+A Gesture reaches the Undo Stack when `close_gesture` ends it, carrying **only its `user` journal
+entries**. The filter is per entry rather than per Gesture, because the ambient context is one row
+for the whole application: an agent writing while the user's Gesture happens to be open is
+journaled under that Gesture's id, and the `source` column is what tells the two apart. A Gesture
+that wrote nothing the user can undo never reaches a stack at all, so a press is never spent on a
+step with no effect.
+
+**Undo** takes the Gesture on top of the Undo Stack and applies the inverse of each of its entries
+in reverse order — the inverse of an insert is a delete of that row, of a delete an insert of the
+before image at its **original rowid**, and of an update a write of the before image back over
+every column — then moves the Gesture to the Redo Stack. **Redo** does the same in the other
+direction. Restoring by rowid is why the feature is row-level rather than command-level: a deleted
+goal that comes back at a new id comes back as an orphan, with its children, tags, dependencies and
+block reasons pointing at nothing.
+
+It is **one transaction**, with journalling suppressed and foreign keys deferred to the commit. The
+deferral is what lets a subtree be rebuilt in whatever order it was taken apart — what has to hold
+is the end state, not every step towards it — and a violation that is real still fails at the
+commit and rolls the whole thing back. There are exactly two outcomes: the Gesture is applied
+whole, or nothing changed and the user is told which Gesture could not be applied, with it still on
+the stack to try again.
+
+**A new user Gesture empties the Redo Stack**, so redo can never reapply rows onto a board that has
+moved on. An MCP write does not, because it never enters either stack.
+
+Undo with an empty stack is a **silent no-op**, not an error: a keystroke with nothing to act on is
+not a mistake the user made. `undo` and `redo` return what they applied, or nothing; `undo_status`
+reports what each press would do so a control can be labelled and disabled, and is never a
+precondition for calling them.
 
 ## Implementation Phases
 

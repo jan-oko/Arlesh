@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useListData } from "@/hooks/use-list-data";
 import { useTaskBacklog } from "@/hooks/use-task-backlog";
+import { useTaskAgentic } from "@/hooks/use-task-agentic";
 import { useCommitmentVerdict } from "@/hooks/use-commitment-verdict";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { findNode } from "@/utils/mindmap-tree";
@@ -13,6 +14,7 @@ import { groupRowsByPath } from "@/utils/list-data";
 import { collectSearchableNodes } from "@/utils/mindmap-tree";
 import { useNodeEditor } from "@/components/MindmapView/use-node-editor";
 import { useKeyboardListView } from "./use-keyboard-list-view";
+import { useUndo } from "@/hooks/use-undo";
 import TaskEditorModal from "@/components/TaskEditorModal/TaskEditorModal";
 import CommitmentEditorModal from "@/components/CommitmentEditorModal/CommitmentEditorModal";
 import NodeSearchModal from "@/components/NodeSearchModal/NodeSearchModal";
@@ -25,6 +27,7 @@ import styles from "./ListView.module.css";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
 import { useFocusExemption } from "@/hooks/use-focus-exemption";
 import { useSubtreeNav } from "@/hooks/use-subtree-nav";
+import { useListScroll } from "@/hooks/use-list-scroll";
 import { useFullscreenStore } from "@/stores/use-fullscreen-store";
 import { useDisplayStore } from "@/stores/use-display-store";
 
@@ -69,7 +72,12 @@ export default function ListView() {
     reload,
     showToast,
   });
-  const { markKept, markBroken } = useCommitmentVerdict({
+  const { toggleAgentic } = useTaskAgentic({
+    findNode: (id) => findNode(tree, id),
+    reload,
+    showToast,
+  });
+  const { markKept, markBroken, cycleVerdict } = useCommitmentVerdict({
     findNode: (id) => findNode(tree, id),
     reload,
     showToast,
@@ -140,6 +148,10 @@ export default function ListView() {
     setListPreset(mode);
   }
 
+  const { onUndo, onRedo } = useUndo({ reload, showToast });
+  // The viewport: it follows the selection, and j/k roam it without moving the selection.
+  const { containerRef, startScroll } = useListScroll(activeSelectedId);
+
   useKeyboardListView({
     // The prompt swallows the row keys while it is open, as the editor modal already does.
     isInputActive: isInputCaptured || planPrompt !== null,
@@ -149,6 +161,7 @@ export default function ListView() {
     onToggleFullscreen: toggleFullscreen,
     isSelectedBlocked,
     onNavigate: handleNavigate,
+    onScrollList: startScroll,
     onCycleStatus,
     onOpenEditor: onDoubleClick,
     onStartRename: setEditingTaskId,
@@ -156,19 +169,22 @@ export default function ListView() {
     onToggleFilter: toggleFilterPopover,
     onSetStatusMode: handleSetStatusPreset,
     onToggleBacklog: toggleBacklog,
-    onMarkKept: markKept,
+    onToggleAgentic: toggleAgentic,
+    onCycleVerdict: cycleVerdict,
     onMarkBroken: markBroken,
     onOpenSearch: () => setIsSearchOpen(true),
     subtreeRootId,
     onExitSubtree,
     onExitToRoot,
+    onUndo,
+    onRedo,
   });
 
   if (isLoading) return <div className={styles.centered}>{t("common:loading")}</div>;
   if (error !== null) return <div className={styles.centered}>{t("common:error", { message: error })}</div>;
 
   return (
-    <div className={styles.container}>
+    <div className={styles.container} ref={containerRef}>
       <AnchoredToast toast={pendingToast} onDismiss={clearToast} />
 
       {filteredCommitments.length > 0 && (

@@ -41,6 +41,15 @@ export interface MindmapContext {
   onDelete: (ids: string[]) => void;
   onToggleCollapsed: (id: string) => void;
   onCycleStatus: (id: string) => void;
+  /** Advances the selected Commitment's verdict: Unresolved → Kept → Broken → Unresolved.
+   *
+   * The same press may turn out to be the first half of the double tap that enters the
+   * commitment's subtree, so `useKeyboardMindmap` holds this until the double-tap window closes
+   * and drops it if a subtree entry claimed the pair. Nothing but the user may decide a verdict,
+   * and that includes not deciding one on the way past. */
+  onCycleVerdict: (id: string) => void;
+  /** Records that the selected Commitment was not held to, or clears an existing Broken. */
+  onMarkBroken: (id: string) => void;
   onDeselect: () => void;
   onExitSubtree: () => void;
   onExitToRoot: () => void;
@@ -61,14 +70,30 @@ export interface MindmapContext {
   /** Puts the anchor Task in the backlog, or takes it out. Acts on the anchor, never the whole
    * multi-selection — setting work aside is a judgement about one thing at a time. */
   onToggleBacklog: (id: string) => void;
+  /** Reverses the last thing the user did to the board, anywhere in the app. */
+  onUndo: () => void;
+  /** Reapplies the most recently undone thing. */
+  onRedo: () => void;
+  /** Flips the anchor Task between Agentic and Not agentic, whichever it currently reads as. The
+   * anchor only, for the same reason Backlog acts on one node. */
+  onToggleAgentic: (id: string) => void;
 }
 
-const DOUBLE_TAP_MS = 300;
+/** How close two plain Enters must be to read as the double tap that enters a subtree. */
+export const DOUBLE_TAP_MS = 300;
 
 const hasSelection = (c: MindmapContext): boolean => c.selectedNodeId !== null;
 
 function selectedNode(c: MindmapContext): MindmapNode | undefined {
   return c.selectedNodeId === null ? undefined : c.findNodeById(c.selectedNodeId);
+}
+
+/** True when the selected node exists and its kind is `kind`. */
+function selectedKindIs(kind: string): (c: MindmapContext) => boolean {
+  return (c) => {
+    const node = selectedNode(c);
+    return node !== undefined && node.kind === kind;
+  };
 }
 
 /** True when the selected node exists and its kind is none of `kinds`. */
@@ -264,7 +289,13 @@ export const MINDMAP_BINDINGS: readonly Binding<MindmapContext>[] = [
   },
   {
     // Plain Enter on a selected node: a double tap enters a container as a subtree, otherwise it
-    // cycles a task's status / toggles a goal's achieved — but never while the node is blocked.
+    // cycles a task's status / toggles a goal's achieved / cycles a commitment's verdict — but
+    // never while the node is blocked.
+    //
+    // A Commitment is both: it holds Tasks and other Commitments, so the double tap still enters
+    // it, and its verdict still cycles on a single press. The two coexist because the cycle is
+    // deferred (see `onCycleVerdict`) rather than written on a press that may yet turn out to be
+    // half of a double tap — navigating into a commitment must never record a verdict.
     id: "mindmap.enter", section: "mindmap", chord: { code: "Enter" },
     labelKey: "cycleStatus",
     when: hasSelection,
@@ -281,10 +312,28 @@ export const MINDMAP_BINDINGS: readonly Binding<MindmapContext>[] = [
         return;
       }
       c.lastEnterMs.current = now;
-      if (node !== undefined && (node.kind === "goal" || node.kind === "task") && !isNodeBlocked(node)) {
-        if (c.selectedNodeId !== null) c.onCycleStatus(c.selectedNodeId);
+      if (node === undefined || c.selectedNodeId === null) return;
+      // The blocked rule below is deliberately not extended to a Commitment: one is kept or
+      // broken, never worked on, and it takes no part in the dependency graph — so there is no
+      // blocked state to refuse in the first place. Matches List View, where Enter on a
+      // commitment is ungated too.
+      if (node.kind === "commitment") {
+        c.onCycleVerdict(c.selectedNodeId);
+        return;
+      }
+      if ((node.kind === "goal" || node.kind === "task") && !isNodeBlocked(node)) {
+        c.onCycleStatus(c.selectedNodeId);
       }
     },
+  },
+  {
+    // The same key the List View gives it, for the same reason: Enter reaches Broken only by
+    // passing through Kept, so without this the canvas would offer Kept in one press and Broken
+    // in two. Bare X is free here; Ctrl+X is Cut, and a chord is matched on its exact modifiers.
+    id: "mindmap.markBroken", section: "mindmap", chord: { code: "KeyX" },
+    labelKey: "markBroken",
+    when: selectedKindIs("commitment"),
+    run: (c) => { if (c.selectedNodeId !== null) c.onMarkBroken(c.selectedNodeId); },
   },
   {
     id: "mindmap.delete", section: "mindmap", chord: { code: "Delete" },
@@ -414,7 +463,34 @@ export const MINDMAP_BINDINGS: readonly Binding<MindmapContext>[] = [
     run: (c) => { if (c.selectedNodeId !== null) c.onToggleBacklog(c.selectedNodeId); },
   },
   {
+    // Bare A, beside bare B for Backlog: a flag on the selected Task is a bare letter here, where
+    // Alt+letter is a status preset. Alt+A staying "All" is not a collision — chord matching is
+    // strict about modifiers, exactly as it already is for B and Alt+B.
+    //
+    // Excluded for the same reason Backlog is: a virtual Habit instance has no task row to flag.
+    id: "mindmap.toggleAgentic", section: "mindmap", chord: { code: "KeyA" },
+    labelKey: "toggleAgentic",
+    when: (c) => {
+      const node = selectedNode(c);
+      return node !== undefined && node.kind === "task" && node.habitItem === undefined;
+    },
+    run: (c) => { if (c.selectedNodeId !== null) c.onToggleAgentic(c.selectedNodeId); },
+  },
+  {
     id: "mindmap.openSearch", section: "mindmap", chord: { code: "KeyO", ctrl: true },
     labelKey: "openSearch", run: (c) => c.onOpenSearch(),
+  },
+  {
+    id: "mindmap.undo", section: "mindmap", chord: { code: "KeyZ", ctrl: true },
+    labelKey: "undo", allowRepeat: false, run: (c) => c.onUndo(),
+  },
+  {
+    id: "mindmap.redo", section: "mindmap", chord: { code: "KeyZ", ctrl: true, shift: true },
+    labelKey: "redo", allowRepeat: false, run: (c) => c.onRedo(),
+  },
+  {
+    // The other redo the world uses. Hidden because the sheet already lists Ctrl+Shift+Z.
+    id: "mindmap.redoAlias", section: "mindmap", chord: { code: "KeyY", ctrl: true },
+    labelKey: "redo", hidden: true, allowRepeat: false, run: (c) => c.onRedo(),
   },
 ];

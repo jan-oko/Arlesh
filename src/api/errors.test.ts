@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { invoke } from "@tauri-apps/api/core";
+import { mockCommandFailsOnce, mockGestureProtocol } from "@/test/command-mock";
 import { isWireError, getErrorMessage } from "./errors";
 import { listInfos } from "./infos";
 
@@ -7,6 +7,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockGestureProtocol();
 });
 
 describe("isWireError", () => {
@@ -71,7 +72,7 @@ describe("getErrorMessage", () => {
 
 describe("a rejected invoke", () => {
   it("surfaces a typed error the caller can read kind from", async () => {
-    vi.mocked(invoke).mockRejectedValueOnce({ kind: "not_found", message: "task 42 not found" });
+    mockCommandFailsOnce({ kind: "not_found", message: "task 42 not found" });
 
     try {
       await listInfos();

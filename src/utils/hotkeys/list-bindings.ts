@@ -14,6 +14,8 @@ export interface ListContext {
   /** Whether the selected row is currently blocked (and not a Habit instance) — gates Enter. */
   isSelectedBlocked: boolean;
   onNavigate: (direction: 1 | -1) => void;
+  /** Scrolls the list a fixed step down (1) or up (-1), leaving the selection where it is. */
+  onScrollList: (direction: 1 | -1) => void;
   onCycleStatus: (id: string) => void;
   onOpenEditor: (id: string) => void;
   onStartRename: (id: string) => void;
@@ -30,11 +32,26 @@ export interface ListContext {
   onExitToRoot: () => void;
   /** Puts the selected Task in the backlog, or takes it out. */
   onToggleBacklog: (id: string) => void;
-  /** Records that the selected Commitment was held to, or clears an existing Kept. */
-  onMarkKept: (id: string) => void;
-  /** Records that it was not, or clears an existing Broken. */
+  /** Flips the selected Task between Agentic and Not agentic, whichever it currently reads as. */
+  onToggleAgentic: (id: string) => void;
+  /** Advances the selected Commitment's verdict: Unresolved → Kept → Broken → Unresolved. */
+  onCycleVerdict: (id: string) => void;
+  /** Records that it was not held to, or clears an existing Broken. */
   onMarkBroken: (id: string) => void;
+  /** Reverses the last thing the user did to the board, anywhere in the app. */
+  onUndo: () => void;
+  /** Reapplies the most recently undone thing. */
+  onRedo: () => void;
 }
+
+/**
+ * The physical keys that scroll the list. Exported because the viewport has to watch for their
+ * *release* as well: the scroll runs while the key is held, so the binding table and the hook that
+ * moves the viewport must name the same two keys rather than each spelling them out.
+ */
+export const SCROLL_DOWN_CODE = "KeyJ";
+/** See {@link SCROLL_DOWN_CODE}. */
+export const SCROLL_UP_CODE = "KeyK";
 
 /** Alt+letter → status preset, matched on physical key so it works under any layout. */
 const STATUS_PRESETS: ReadonlyArray<{ code: string; mode: StatusMode; labelKey: HotkeyLabelKey }> = [
@@ -80,6 +97,19 @@ export const LIST_BINDINGS: readonly Binding<ListContext>[] = [
     id: "listView.navigateDown", section: "listView", chord: { code: "ArrowDown" },
     labelKey: "navigateRows", run: (c) => c.onNavigate(1),
   },
+  // Reading ahead without giving up your place: these move the viewport and nothing else, so the
+  // selection stays put even once it has scrolled out of sight. `allowRepeat: false` because the
+  // press only *starts* the motion — holding the key is then carried by an animation loop at a
+  // fixed speed (see use-list-scroll), and letting auto-repeat through as well would have the
+  // repeats restarting a scroll that is already running.
+  {
+    id: "listView.scrollDown", section: "listView", chord: { code: SCROLL_DOWN_CODE },
+    labelKey: "scrollList", allowRepeat: false, run: (c) => c.onScrollList(1),
+  },
+  {
+    id: "listView.scrollUp", section: "listView", chord: { code: SCROLL_UP_CODE },
+    labelKey: "scrollList", allowRepeat: false, run: (c) => c.onScrollList(-1),
+  },
   {
     id: "listView.cycleStatus", section: "listView", chord: { code: "Enter" },
     labelKey: "cycleRowStatus",
@@ -88,16 +118,16 @@ export const LIST_BINDINGS: readonly Binding<ListContext>[] = [
   },
   {
     // Shares Enter with `listView.cycleStatus`, and the two cannot both fire: a selection is a
-    // Task or a Commitment, never both. The same key means "advance the work" on one and
-    // "I kept this" on the other, which is the same gesture read in each kind's own terms.
-    id: "listView.markKept", section: "listView", chord: { code: "Enter" },
-    labelKey: "markKept",
+    // Task or a Commitment, never both. The same key means "advance the status" on one and
+    // "advance the verdict" on the other, which is the same gesture read in each kind's own terms.
+    id: "listView.cycleVerdict", section: "listView", chord: { code: "Enter" },
+    labelKey: "cycleVerdict",
     when: (c) => c.selectedCommitmentId !== null,
-    run: (c) => { if (c.selectedCommitmentId !== null) c.onMarkKept(c.selectedCommitmentId); },
+    run: (c) => { if (c.selectedCommitmentId !== null) c.onCycleVerdict(c.selectedCommitmentId); },
   },
   {
-    // A separate key rather than a second press of Enter: the two outcomes are equal, and
-    // Broken must never be one keystroke past Kept on a cycle.
+    // Kept in its own right even though Enter now cycles past Broken: this is the one-press route
+    // to Broken, so recording a broken commitment never has to pass through saying you kept it.
     id: "listView.markBroken", section: "listView", chord: { code: "KeyX" },
     labelKey: "markBroken",
     when: (c) => c.selectedCommitmentId !== null,
@@ -142,9 +172,31 @@ export const LIST_BINDINGS: readonly Binding<ListContext>[] = [
     run: (c) => { if (c.selectedTaskId !== null) c.onToggleBacklog(c.selectedTaskId); },
   },
   {
+    // Bare A beside bare B, matching the Mindmap: a flag on the selected Task is a bare letter,
+    // Alt+letter is a status preset, and strict chord matching keeps A and Alt+A apart.
+    // Habit instances are turned away in the hook, exactly as Backlog turns them away.
+    id: "listView.toggleAgentic", section: "listView", chord: { code: "KeyA" },
+    labelKey: "toggleAgentic",
+    when: (c) => c.selectedTaskId !== null,
+    run: (c) => { if (c.selectedTaskId !== null) c.onToggleAgentic(c.selectedTaskId); },
+  },
+  {
     id: "listView.deselect", section: "listView", chord: { code: "Escape" },
     labelKey: "deselect",
     when: (c) => c.selectedRowId !== null,
     run: (c) => c.onDeselect(),
+  },
+  {
+    id: "listView.undo", section: "listView", chord: { code: "KeyZ", ctrl: true },
+    labelKey: "undo", allowRepeat: false, run: (c) => c.onUndo(),
+  },
+  {
+    id: "listView.redo", section: "listView", chord: { code: "KeyZ", ctrl: true, shift: true },
+    labelKey: "redo", allowRepeat: false, run: (c) => c.onRedo(),
+  },
+  {
+    // The other redo the world uses. Hidden because the sheet already lists Ctrl+Shift+Z.
+    id: "listView.redoAlias", section: "listView", chord: { code: "KeyY", ctrl: true },
+    labelKey: "redo", hidden: true, allowRepeat: false, run: (c) => c.onRedo(),
   },
 ];

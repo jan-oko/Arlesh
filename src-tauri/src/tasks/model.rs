@@ -112,6 +112,62 @@ impl TaskArchival {
     }
 }
 
+/// A Task's **Agentic** flag: whether the work suits being handed to an agent.
+///
+/// Three named states rather than a `bool`, because the flag inherits downward and is overridable
+/// — the rule Delegation already uses. A Task with no value of its own reads its nearest flagged
+/// ancestor, so marking a branch agentic is one edit; an explicit value replaces what it would
+/// have inherited, in either direction.
+///
+/// Deliberately **not** spelled `Option<Option<bool>>` on an update request. That shape would nest
+/// "leave unchanged" around "set to NULL", and serde reads an explicit JSON `null` as an absent
+/// field — so clearing the flag over IPC would silently do nothing. Naming the three states makes
+/// the wire honest and the intent readable: `Some(Inherit)` writes the NULL, `None` (the outer
+/// `Option` on the request field) leaves the column alone.
+///
+/// Independent of the delegate: a Task may be agentic and delegated, either, or neither.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskAgentic {
+    /// No value of its own — reads the nearest flagged ancestor. Stored as NULL, and the state
+    /// every Task starts in.
+    #[default]
+    Inherit,
+    /// Explicitly agentic, whatever the ancestors say.
+    Yes,
+    /// Explicitly not agentic, overriding an agentic ancestor.
+    No,
+}
+
+impl TaskAgentic {
+    /// The column value this state stores: `None` is the NULL that means *inherit*.
+    pub fn as_column(self) -> Option<bool> {
+        match self {
+            Self::Inherit => None,
+            Self::Yes => Some(true),
+            Self::No => Some(false),
+        }
+    }
+
+    /// The state a stored column value carries; a NULL column reads as [`Self::Inherit`].
+    pub fn from_column(column: Option<bool>) -> Self {
+        match column {
+            None => Self::Inherit,
+            Some(true) => Self::Yes,
+            Some(false) => Self::No,
+        }
+    }
+
+    /// A short rendering, for a prompt that has to name the value at stake.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Inherit => "inherit",
+            Self::Yes => "yes",
+            Self::No => "no",
+        }
+    }
+}
+
 /// Goal lifecycle status.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -217,6 +273,10 @@ pub struct Task {
     pub status: String,
     /// Person id this task is delegated to (if any).
     pub delegate_to: Option<i64>,
+    /// Whether this task is explicitly Agentic. A null value inherits the nearest flagged
+    /// ancestor; `Some` is an explicit value that replaces what would have been inherited.
+    /// Independent of `delegate_to` — a task may be both.
+    pub agentic: Option<bool>,
     /// Relevance window (if set). A null value inherits the nearest scoped ancestor.
     pub time_scope: Option<TimeScope>,
     /// On-exit behavior; present iff `time_scope` is (inherited with the window otherwise).
@@ -332,6 +392,9 @@ pub struct CreateTaskRequest {
     /// Initial archival state (defaults to Live). Rejected together with a `plan`.
     #[serde(default)]
     pub archival: Option<TaskArchival>,
+    /// Initial Agentic state (defaults to Inherit, the stored NULL).
+    #[serde(default)]
+    pub agentic: Option<TaskAgentic>,
 }
 
 /// Request body for updating a task.
@@ -344,6 +407,10 @@ pub struct UpdateTaskRequest {
     /// Person to delegate to (None leaves unchanged, Some(None) clears it).
     #[serde(default, deserialize_with = "crate::wire::null_clears")]
     pub delegate_to: Option<Option<i64>>,
+    /// Agentic state to set. `None` leaves the column unchanged; `Some(TaskAgentic::Inherit)`
+    /// writes the NULL that puts the task back to inheriting. The three states are named rather
+    /// than nested in a second `Option` — see [`TaskAgentic`] for why that shape is wrong here.
+    pub agentic: Option<TaskAgentic>,
     /// Relevance window to set (None leaves unchanged, Some(None) clears it).
     #[serde(default, deserialize_with = "crate::wire::null_clears")]
     pub time_scope: Option<Option<TimeScope>>,

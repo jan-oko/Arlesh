@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook } from "@testing-library/react";
 import { useKeyboardMindmap } from "./use-keyboard-mindmap";
 import type { MindmapNode } from "@/utils/tree-layout";
+import { NO_CYCLE } from "@/api/flows";
 import type { StatusMode } from "@/utils/filter-tree";
 import type { TypedChildKind } from "@/utils/node-meta";
 
@@ -19,6 +20,19 @@ function makeDomain(id: string): MindmapNode {
 
 function makeFlow(id: string): MindmapNode {
   return { id, kind: "flow", title: "Flow", position: 0, tagIds: [], children: [] };
+}
+
+function makeCommitment(id: string): MindmapNode {
+  return { id, kind: "commitment", title: "Asleep by 23:00", verdict: "unresolved", position: 0, tagIds: [], children: [] };
+}
+
+/** The canvas with one commitment selected, since every verdict binding acts on the selection. */
+function commitmentSelected(id = "commitment-1") {
+  return baseOptions({
+    selectedNodeId: id,
+    selectedNodeIds: new Set([id]) as ReadonlySet<string>,
+    findNodeById: (nodeId: string) => (nodeId === id ? makeCommitment(id) : undefined),
+  });
 }
 
 /** Physical-key code for a produced character, mirroring what a browser sets on the event. */
@@ -55,6 +69,8 @@ function baseOptions(overrides: Partial<Parameters<typeof useKeyboardMindmap>[0]
     onDelete: vi.fn() as (ids: string[]) => void,
     onToggleCollapsed: vi.fn(),
     onCycleStatus: vi.fn(),
+    onCycleVerdict: vi.fn(),
+    onMarkBroken: vi.fn(),
     onDeselect: vi.fn(),
     onExitSubtree: vi.fn(),
     onExitToRoot: vi.fn(),
@@ -68,6 +84,9 @@ function baseOptions(overrides: Partial<Parameters<typeof useKeyboardMindmap>[0]
     onToggleFilter: vi.fn(),
     onSetStatusMode: vi.fn() as (mode: StatusMode) => void,
     onToggleBacklog: vi.fn(),
+    onUndo: vi.fn(),
+    onRedo: vi.fn(),
+    onToggleAgentic: vi.fn(),
     onToggleFullscreen: vi.fn(),
     onFocusRoot: vi.fn(),
     onCenterOnNode: vi.fn(),
@@ -704,6 +723,53 @@ describe("useKeyboardMindmap — filter shortcuts (Alt)", () => {
     expect(opts.onToggleBacklog).not.toHaveBeenCalled();
   });
 
+  it("plain A cycles the anchor task's Agentic flag, leaving the rest of the selection alone", () => {
+    const opts = baseOptions({
+      selectedNodeId: "task-1",
+      selectedNodeIds: new Set(["task-1", "task-2"]),
+      findNodeById: (id: string) => (id === "task-1" ? makeTask("task-1") : undefined),
+    });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("a");
+    expect(opts.onToggleAgentic).toHaveBeenCalledTimes(1);
+    expect(opts.onToggleAgentic).toHaveBeenCalledWith("task-1");
+    expect(opts.onSetStatusMode).not.toHaveBeenCalled();
+  });
+
+  it("Alt+A still selects the All mode without touching the Agentic flag", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("a", { altKey: true });
+    expect(opts.onSetStatusMode).toHaveBeenCalledWith("all");
+    expect(opts.onToggleAgentic).not.toHaveBeenCalled();
+  });
+
+  it("plain A does nothing on a goal — only a Task can be agentic", () => {
+    const goal: MindmapNode = { id: "goal-1", kind: "goal", title: "Goal", position: 0, tagIds: [], children: [] };
+    const opts = baseOptions({
+      selectedNodeId: "goal-1",
+      findNodeById: (id: string) => (id === "goal-1" ? goal : undefined),
+    });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("a");
+    expect(opts.onToggleAgentic).not.toHaveBeenCalled();
+  });
+
+  it("plain A does nothing on a virtual Habit instance — it has no task row to flag", () => {
+    const instance: MindmapNode = {
+      id: "task-4-virtual", kind: "task", title: "Instance", position: 0, tagIds: [], children: [],
+      virtual: true, habitItem: { flowId: 3, itemType: "flow_task", itemId: 4, scopeId: 100, cycleId: NO_CYCLE },
+    };
+    const opts = baseOptions({
+      selectedNodeId: "task-4-virtual",
+      selectedNodeIds: new Set(["task-4-virtual"]),
+      findNodeById: (id: string) => (id === "task-4-virtual" ? instance : undefined),
+    });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("a");
+    expect(opts.onToggleAgentic).not.toHaveBeenCalled();
+  });
+
   it("Alt+S selects the Start mode without starting a flow", () => {
     const opts = baseOptions({ selectedNodeId: "flow-1", findNodeById: (id: string) => (id === "flow-1" ? makeFlow("flow-1") : undefined) });
     renderHook(() => useKeyboardMindmap(opts));
@@ -849,6 +915,54 @@ describe("shift+arrow selection axis follows the orientation", () => {
     expect(opts.onExtendSelection).not.toHaveBeenCalled();
     expect(opts.onNavigate).toHaveBeenCalledWith("ArrowDown");
   });
+
+  // Ctrl+Z in both views, dispatched from the shared registry so the cheat-sheet lists it too.
+  describe("undo and redo", () => {
+    it("Ctrl+Z reaches undo", () => {
+      const options = baseOptions();
+      renderHook((opts) => useKeyboardMindmap(opts), { initialProps: options });
+      fireKey("z", { ctrlKey: true });
+      expect(options.onUndo).toHaveBeenCalledTimes(1);
+      expect(options.onRedo).not.toHaveBeenCalled();
+    });
+
+    it("Ctrl+Shift+Z reaches redo, and not undo", () => {
+      const options = baseOptions();
+      renderHook((opts) => useKeyboardMindmap(opts), { initialProps: options });
+      fireKey("z", { ctrlKey: true, shiftKey: true });
+      expect(options.onRedo).toHaveBeenCalledTimes(1);
+      expect(options.onUndo).not.toHaveBeenCalled();
+    });
+
+    it("Ctrl+Y reaches redo as well", () => {
+      const options = baseOptions();
+      renderHook((opts) => useKeyboardMindmap(opts), { initialProps: options });
+      fireKey("y", { ctrlKey: true });
+      expect(options.onRedo).toHaveBeenCalledTimes(1);
+    });
+
+    it("ignores both while an input is active", () => {
+      const options = baseOptions({ isInputActive: true });
+      renderHook((opts) => useKeyboardMindmap(opts), { initialProps: options });
+      fireKey("z", { ctrlKey: true });
+      fireKey("z", { ctrlKey: true, shiftKey: true });
+      expect(options.onUndo).not.toHaveBeenCalled();
+      expect(options.onRedo).not.toHaveBeenCalled();
+    });
+
+    // Inside a field Ctrl+Z means the field undo the browser already gives, not the board's.
+    it("leaves a keystroke from inside a text field alone", () => {
+      const options = baseOptions();
+      renderHook((opts) => useKeyboardMindmap(opts), { initialProps: options });
+      const input = document.createElement("input");
+      document.body.appendChild(input);
+      input.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "z", code: "KeyZ", ctrlKey: true, bubbles: true, cancelable: true }),
+      );
+      document.body.removeChild(input);
+      expect(options.onUndo).not.toHaveBeenCalled();
+    });
+  });
 });
 
 describe("useKeyboardMindmap — Shift+initial creates a typed child", () => {
@@ -933,5 +1047,101 @@ describe("useKeyboardMindmap — Shift+initial creates a typed child", () => {
       key: "t", code: "KeyT", shiftKey: true, repeat: true, bubbles: true, cancelable: true,
     }));
     expect(opts.onCreateTypedChild).not.toHaveBeenCalled();
+  });
+});
+
+describe("useKeyboardMindmap — Enter cycles a commitment's verdict", () => {
+  afterEach(() => { vi.useRealTimers(); });
+
+  it("cycles the verdict once the double-tap window has passed", () => {
+    vi.useFakeTimers();
+    const opts = commitmentSelected();
+    renderHook(() => useKeyboardMindmap(opts));
+
+    fireKey("Enter");
+    // Nothing is written while the press could still turn out to be half of a double tap.
+    expect(opts.onCycleVerdict).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(300);
+    expect(opts.onCycleVerdict).toHaveBeenCalledWith("commitment-1");
+    // A verdict is not a status: the commitment branch never reaches the task/goal one.
+    expect(opts.onCycleStatus).not.toHaveBeenCalled();
+  });
+
+  it("enters the subtree on a double tap and records no verdict at all", () => {
+    // Navigating into a commitment must not decide anything about it — the whole point of
+    // holding the cycle back. The first press of the pair is dropped, not written and undone.
+    vi.useFakeTimers();
+    const opts = commitmentSelected();
+    renderHook(() => useKeyboardMindmap(opts));
+
+    fireKey("Enter");
+    vi.advanceTimersByTime(100);
+    fireKey("Enter");
+
+    expect(opts.onEnterSubtree).toHaveBeenCalledWith("commitment-1");
+    vi.advanceTimersByTime(500);
+    expect(opts.onCycleVerdict).not.toHaveBeenCalled();
+  });
+
+  it("cycles twice for two presses further apart than the window", () => {
+    vi.useFakeTimers();
+    const opts = commitmentSelected();
+    renderHook(() => useKeyboardMindmap(opts));
+
+    fireKey("Enter");
+    vi.advanceTimersByTime(400);
+    fireKey("Enter");
+    vi.advanceTimersByTime(300);
+
+    expect(opts.onCycleVerdict).toHaveBeenCalledTimes(2);
+    expect(opts.onEnterSubtree).not.toHaveBeenCalled();
+  });
+
+  it("leaves Enter on a task cycling its status, immediately", () => {
+    vi.useFakeTimers();
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+
+    fireKey("Enter");
+    expect(opts.onCycleStatus).toHaveBeenCalledWith("task-1");
+    vi.advanceTimersByTime(500);
+    expect(opts.onCycleVerdict).not.toHaveBeenCalled();
+  });
+
+  it("drops a pending cycle when the canvas goes away", () => {
+    vi.useFakeTimers();
+    const opts = commitmentSelected();
+    const { unmount } = renderHook(() => useKeyboardMindmap(opts));
+
+    fireKey("Enter");
+    unmount();
+    vi.advanceTimersByTime(500);
+
+    expect(opts.onCycleVerdict).not.toHaveBeenCalled();
+  });
+});
+
+describe("useKeyboardMindmap — X records Broken", () => {
+  it("marks the selected commitment broken, in one press from any verdict", () => {
+    const opts = commitmentSelected();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("x");
+    expect(opts.onMarkBroken).toHaveBeenCalledWith("commitment-1");
+  });
+
+  it("does nothing on a task, which has no verdict to record", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("x");
+    expect(opts.onMarkBroken).not.toHaveBeenCalled();
+  });
+
+  it("is not Ctrl+X, which still cuts", () => {
+    const opts = commitmentSelected();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("x", { ctrlKey: true });
+    expect(opts.onMarkBroken).not.toHaveBeenCalled();
+    expect(opts.onCut).toHaveBeenCalled();
   });
 });

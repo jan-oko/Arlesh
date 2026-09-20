@@ -12,8 +12,8 @@ export interface ListFilterStore {
   reset: () => void;
 }
 
-/** One tab's List View filter state: its own preset selector and the seven List-View-exclusive pill
- * filters (parent/dependency/statuses/scope/blocked). Status preset, tag filters, and Info/Flow/Private
+/** One tab's List View filter state: its own preset selector and the List-View-exclusive pill
+ * filters (parent/dependency/statuses/scope/blocked/agentic). Status preset, tag filters, and Info/Flow/Private
  * toggles are shared with that tab's Mindmap via its `useFilterStore`. */
 export function createListFilterStore(seed: ListFilterState = DEFAULT_LIST_FILTER): StoreApi<ListFilterStore> {
   return createStore<ListFilterStore>()((set) => ({

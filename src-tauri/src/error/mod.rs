@@ -7,6 +7,7 @@ pub use wire::{WireError, WireErrorKind};
 use crate::{
     domains::error::DomainError, flows::error::FlowError,
     knowledge_base::error::KnowledgeBaseError, scopes::error::ScopeError, tasks::error::TaskError,
+    undo::error::UndoError,
 };
 
 /// Application-level error wrapping all domain errors.
@@ -27,6 +28,9 @@ pub enum AppError {
     /// Flow operation error.
     #[error(transparent)]
     Flow(#[from] FlowError),
+    /// Undo Journal context error.
+    #[error(transparent)]
+    Undo(#[from] UndoError),
     /// A database error occurred with no domain-specific error to wrap it (e.g. the `infos`
     /// and `block_reasons` repositories, which have no domain error enum of their own).
     #[error("database error: {0}")]

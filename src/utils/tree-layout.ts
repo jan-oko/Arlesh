@@ -141,6 +141,14 @@ export interface MindmapNode {
    * it keeps reading as backlogged even once a lapsed window has forced `archived` on top of it —
    * exactly as a Frozen goal keeps its `status` under the same override. */
   backlogged?: boolean;
+  /** The task's **own** Agentic flag (Tasks only): work that suits being handed to an agent.
+   * `null`/absent means it has none of its own and reads its nearest flagged ancestor's instead
+   * (see `inheritedAgentic`). Independent of the delegate: a Task can be both. */
+  agentic?: boolean | null;
+  /** What this node's ancestors say about Agentic — resolved on load by `propagateAgentic`, never
+   * persisted. Read together with `agentic` through `isAgentic`, never on its own: an explicit
+   * `agentic: false` overrides an agentic ancestor. */
+  inheritedAgentic?: boolean;
   /** A Commitment's recorded Verdict (Commitments only) — `unresolved` / `kept` / `broken`.
    * Never derived from the window passing or from children completing: `unresolved` means the
    * user has not said, which is information in its own right. */
@@ -154,9 +162,18 @@ export interface MindmapNode {
   /**
    * Present on any virtual Habit instance — a per-iteration flow-item instance, or the iteration
    * **root** itself (`itemType: "flow_root"`, `itemId` = the flow id). Carries the
-   * (flow, instance, iteration scope) its status click toggles.
+   * (flow, instance, iteration scope, cycle pair) its status click toggles. `cycleId` is what
+   * separates one occurrence of an item from another in the same iteration — an item with a
+   * morning and an evening cycle pair draws two nodes on the same day — and is `NO_CYCLE` for an
+   * item with no pairs, and for the root.
    */
-  habitItem?: { flowId: number; itemType: HabitInstanceType; itemId: number; scopeId: number };
+  habitItem?: {
+    flowId: number;
+    itemType: HabitInstanceType;
+    itemId: number;
+    scopeId: number;
+    cycleId: number;
+  };
   plan?: TimeScope | null;
   flow?: FlowData;
   flowItem?: FlowItemData;

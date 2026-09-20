@@ -26,6 +26,7 @@ const EMPTY_DISPLAY = {
   displayTaskStatus: (v: string) => v, displayGoalStatus: (v: string) => v,
   displayProjectStatus: (v: string) => v, displayVerdict: (v: string) => v,
   displayScopeState: (v: string) => v, displayBlocked: (v: string) => v,
+  displayAgentic: (v: string) => v,
 };
 
 beforeEach(() => {

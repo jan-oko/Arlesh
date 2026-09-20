@@ -15,8 +15,9 @@ use crate::{
         model::{
             CreateFlowItemRequest, CreateFlowRequest, Flow, FlowCycleInput, FlowDependency,
             FlowGoal, FlowId, FlowItemCycle, FlowItemType, FlowOrigin, FlowRecurrence, FlowTask,
-            HabitIteration, HabitItemStatus, MaterializedFlow, SetRecurrenceRequest,
-            StartFlowRequest, TargetRef, UpdateFlowItemRequest, UpdateFlowRequest,
+            HabitInstanceRef, HabitIteration, HabitItemStatus, MaterializedFlow,
+            SetRecurrenceRequest, StartFlowRequest, TargetRef, UpdateFlowItemRequest,
+            UpdateFlowRequest,
         },
     },
 };
@@ -373,27 +374,20 @@ pub async fn list_habit_item_statuses(
     db.flows().list_item_statuses(FlowId(flow_id)).await.map_err(WireError::from_error)
 }
 
-/// Sets a single instance's status at one iteration scope (`null` clears it), recording `resolved_at_ms`.
+/// Sets a single instance's status (`null` clears it), recording `resolved_at_ms`. `instance`
+/// names it down to its cycle pair — an item with several pairs draws one node per pair in the
+/// same iteration — with `cycle_id` `0` for an item that declares none, and for the flow root.
 #[tauri::command]
 pub async fn set_habit_item_status(
     factory: State<'_, SessionFactory>,
     flow_id: i64,
-    item_type: String,
-    item_id: i64,
-    iteration_scope_id: i64,
+    instance: HabitInstanceRef,
     status: Option<String>,
     resolved_at_ms: i64,
 ) -> Result<(), WireError> {
     let mut db = factory.connect().await.map_err(WireError::from_error)?;
     db.flows()
-        .set_item_status(
-            FlowId(flow_id),
-            &item_type,
-            item_id,
-            iteration_scope_id,
-            status.as_deref(),
-            resolved_at_ms,
-        )
+        .set_item_status(FlowId(flow_id), &instance, status.as_deref(), resolved_at_ms)
         .await
         .map_err(WireError::from_error)
 }

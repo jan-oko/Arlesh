@@ -10,6 +10,8 @@ import { useNodeActions } from "./use-node-actions";
 import { useContextAction } from "./use-context-action";
 import { useNavigateArrow } from "./use-navigate-arrow";
 import { useKeyboardMindmap } from "./use-keyboard-mindmap";
+import { useUndo } from "@/hooks/use-undo";
+import { withGesture } from "@/api/gesture";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { useClipboardStore, CLIPBOARD_OP } from "@/stores/use-clipboard-store";
 import { useTabsStore } from "@/stores/use-tabs-store";
@@ -47,6 +49,8 @@ import ConvertToFlowModal from "@/components/ConvertToFlowModal/ConvertToFlowMod
 import WarningConfirmModal from "@/components/WarningConfirmModal/WarningConfirmModal";
 import BacklogConfirmModal from "@/components/BacklogConfirmModal/BacklogConfirmModal";
 import { useTaskBacklog } from "@/hooks/use-task-backlog";
+import { useCommitmentVerdict } from "@/hooks/use-commitment-verdict";
+import { useTaskAgentic } from "@/hooks/use-task-agentic";
 import DeleteConfirmModal from "@/components/DeleteConfirmModal/DeleteConfirmModal";
 import styles from "./MindmapView.module.css";
 
@@ -78,7 +82,7 @@ const BLANK_COMMITMENT_NODE: MindmapNode = {
 };
 
 export default function MindmapView() {
-  const { t } = useTranslation(["common", "editor", "warnings", "nodeKinds"]);
+  const { t } = useTranslation(["common", "editor", "warnings", "nodeKinds", "undo"]);
   const { tree, isLoading, error, loadCondition, createNode, createChild, renameNode, retypeNode, reorderNode, moveNode, duplicateNode, removeNode, createCommitment, createFlow, reload } =
     useMindmapData();
   const {
@@ -313,26 +317,30 @@ export default function MindmapView() {
   );
 
   // Wraps moveNode so a drag reparent that would orphan scoped items prompts to clamp them first.
+  // One Gesture around the whole thing: the clamps only exist because of the move, so undoing the
+  // move without them would leave the scopes the drag rewrote sitting at their clamped values.
   const guardedMoveNode = useCallback(
     async (id: string, kind: NodeKind, parentId: string, parentKind: NodeKind, position: number) => {
-      if (kind === "task" || kind === "goal") {
-        const nodeDbId = parseInt(id.split("-").pop() ?? "0", 10);
-        const parentDbId = parseInt(parentId.split("-").pop() ?? "0", 10);
-        const { ancestor_time_scope, conflicts } = await reparentScopeConflicts(kind, nodeDbId, parentKind, parentDbId);
-        if (ancestor_time_scope !== null && conflicts.length > 0) {
-          if (!(await confirmScopeClamp(conflicts))) return;
-          for (const conflict of conflicts) {
-            if (conflict.node_type === "goal") {
-              await updateGoal(conflict.node_id, { time_scope: ancestor_time_scope });
-            } else {
-              await updateTask(conflict.node_id, { time_scope: ancestor_time_scope });
+      await withGesture(t("undo:gestures.move", { count: 1 }), async () => {
+        if (kind === "task" || kind === "goal") {
+          const nodeDbId = parseInt(id.split("-").pop() ?? "0", 10);
+          const parentDbId = parseInt(parentId.split("-").pop() ?? "0", 10);
+          const { ancestor_time_scope, conflicts } = await reparentScopeConflicts(kind, nodeDbId, parentKind, parentDbId);
+          if (ancestor_time_scope !== null && conflicts.length > 0) {
+            if (!(await confirmScopeClamp(conflicts))) return;
+            for (const conflict of conflicts) {
+              if (conflict.node_type === "goal") {
+                await updateGoal(conflict.node_id, { time_scope: ancestor_time_scope });
+              } else {
+                await updateTask(conflict.node_id, { time_scope: ancestor_time_scope });
+              }
             }
           }
         }
-      }
-      await moveNode(id, kind, parentId, parentKind, position);
+        await moveNode(id, kind, parentId, parentKind, position);
+      });
     },
-    [confirmScopeClamp, moveNode],
+    [confirmScopeClamp, moveNode, t],
   );
 
   const { dragSourceId, dragTargetId, ghostPos, onDragStart } = useDrag({ tree, moveNode: guardedMoveNode });
@@ -384,6 +392,13 @@ export default function MindmapView() {
   });
 
   const { toggleBacklog, planPrompt, confirmClearPlan, cancelPlanPrompt } = useTaskBacklog({
+    findNode: findNodeById, reload, showToast,
+  });
+
+  const { toggleAgentic } = useTaskAgentic({ findNode: findNodeById, reload, showToast });
+  // The same hook the List View's tick and cross go through, so the canvas grows no second write
+  // route: a real Commitment updates its row, a Habit iteration its Modification.
+  const { markBroken, cycleVerdict } = useCommitmentVerdict({
     findNode: findNodeById, reload, showToast,
   });
 
@@ -508,6 +523,8 @@ export default function MindmapView() {
     }
   }, [selectedNodeId, tree, selectNode, setSelection]);
 
+  const { onUndo, onRedo } = useUndo({ reload, showToast });
+
   useKeyboardMindmap({
     isInputActive: isInputCaptured,
     // Both prompts swallow the canvas keys; Escape dismisses whichever is open.
@@ -532,6 +549,8 @@ export default function MindmapView() {
     onDelete,
     onToggleCollapsed: toggleCollapsed,
     onCycleStatus: onStatusClick,
+    onCycleVerdict: cycleVerdict,
+    onMarkBroken: markBroken,
     onDeselect: () => { selectNode(null); },
     onExitSubtree,
     onExitToRoot,
@@ -550,6 +569,9 @@ export default function MindmapView() {
     onToggleFullscreen: toggleFullscreen,
     onExtendSelection: extendSelection,
     onToggleBacklog: toggleBacklog,
+    onUndo,
+    onRedo,
+    onToggleAgentic: toggleAgentic,
     findNodeById,
   });
   const targetPos = dragTargetId !== null ? positions.get(dragTargetId) : undefined;
