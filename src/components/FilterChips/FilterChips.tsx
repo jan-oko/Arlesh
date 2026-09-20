@@ -45,6 +45,8 @@ function pillDisplay(
       return { label: display.displayScopeState(value), color: null };
     case "blocked":
       return { label: display.displayBlocked(value), color: null };
+    case "agentic":
+      return { label: display.displayAgentic(value), color: null };
   }
 }
 

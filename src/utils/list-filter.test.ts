@@ -24,6 +24,7 @@ function row(over: Partial<TaskListRow> = {}): TaskListRow {
     projectStatus: "active",
     dependencyRefs: [],
     isBlocked: false,
+    isAgentic: false,
     hasBlockedAncestor: false,
     hasPrivateAncestor: false,
     scopeTokens: ["unscoped", "unplanned"],
@@ -114,6 +115,32 @@ describe("filterTaskList", () => {
   it("start preset drops a task with a blocked ancestor even though the task itself isn't blocked", () => {
     const rows = [row({ hasBlockedAncestor: true })];
     expect(filterTaskList(rows, sf({ statusMode: "start" }), lf())).toHaveLength(0);
+  });
+
+  it("shows a not-yet-open occurrence under All and hides it under Plan/Start/Do", () => {
+    // Same rule the canvas applies, on the flat list: All is the preset that shows everything,
+    // including this evening's habit item at breakfast.
+    const evening = n("evening", "task", {
+      status: "todo",
+      timing: "pending",
+      habitItem: { flowId: 3, itemType: "flow_task", itemId: 4, scopeId: 100, cycleId: 12 },
+    });
+    const rows = [row({ node: evening })];
+    expect(filterTaskList(rows, sf({ statusMode: "all" }), lf())).toHaveLength(1);
+    for (const statusMode of ["plan", "start", "do"] as const) {
+      expect(filterTaskList(rows, sf({ statusMode }), lf()), statusMode).toHaveLength(0);
+    }
+  });
+
+  it("hides a row whose habit-occurrence ancestor has not opened yet", () => {
+    // The canvas prunes the subtree; a flat list has to walk for it.
+    const ancestor = n("evening", "task", {
+      timing: "pending",
+      habitItem: { flowId: 3, itemType: "flow_task", itemId: 4, scopeId: 100, cycleId: 12 },
+    });
+    const rows = [row({ ancestors: [ancestor] })];
+    expect(filterTaskList(rows, sf({ statusMode: "all" }), lf())).toHaveLength(1);
+    expect(filterTaskList(rows, sf({ statusMode: "plan" }), lf())).toHaveLength(0);
   });
 
   it("do preset keeps only in-progress tasks", () => {
@@ -285,12 +312,66 @@ describe("withCurrentPillDimensions", () => {
     expect(restored.pills.blocked).toEqual([]);
   });
 
+  it("survives a filter persisted before Agentic was a dimension", () => {
+    // The shape a user's stored filter has today: every dimension but the new one. It must come
+    // back as an empty pill list rather than undefined, and must narrow nothing.
+    const beforeAgentic: Record<string, unknown> = { ...DEFAULT_LIST_FILTER.pills };
+    delete beforeAgentic.agentic;
+    const restored = withCurrentPillDimensions({ preset: "all", pills: beforeAgentic });
+    expect(restored.pills.agentic).toEqual([]);
+    expect(filterTaskList([row({ isAgentic: true }), row({ isAgentic: false })], sf(), restored))
+      .toHaveLength(2);
+  });
+
   it("drops a saved pill that is not a pill at all", () => {
     const restored = withCurrentPillDimensions({
       preset: "all",
       pills: { parent: ["goal-1", { value: "goal-2", mode: "nope" }, { value: "goal-3", mode: "all" }] },
     });
     expect(restored.pills.parent).toEqual([{ value: "goal-3", mode: "all" }]);
+  });
+});
+
+describe("filterTaskList — Agentic", () => {
+  const agentic = row({ node: n("task-a", "task", { status: "todo" }), isAgentic: true });
+  const manual = row({ node: n("task-m", "task", { status: "todo" }), isAgentic: false });
+
+  it("shows both when no Agentic pill is set", () => {
+    expect(filterTaskList([agentic, manual], sf(), lf())).toHaveLength(2);
+  });
+
+  it("keeps only agentic rows under an Any pill", () => {
+    const filtered = filterTaskList([agentic, manual], sf(), lf({ pills: { ...DEFAULT_LIST_FILTER.pills, agentic: [{ value: "agentic", mode: "any" }] } }));
+    expect(filtered.map((r) => r.node.id)).toEqual(["task-a"]);
+  });
+
+  it("keeps only the rest under a Not-agentic pill", () => {
+    const filtered = filterTaskList([agentic, manual], sf(), lf({ pills: { ...DEFAULT_LIST_FILTER.pills, agentic: [{ value: "not_agentic", mode: "any" }] } }));
+    expect(filtered.map((r) => r.node.id)).toEqual(["task-m"]);
+  });
+
+  it("drops agentic rows under an Exclusion pill", () => {
+    const filtered = filterTaskList([agentic, manual], sf(), lf({ pills: { ...DEFAULT_LIST_FILTER.pills, agentic: [{ value: "agentic", mode: "exclude" }] } }));
+    expect(filtered.map((r) => r.node.id)).toEqual(["task-m"]);
+  });
+
+  it("intersects an All pill with another dimension rather than replacing it", () => {
+    const blocked = row({ node: n("task-b", "task", { status: "todo" }), isAgentic: true, isBlocked: true });
+    const filtered = filterTaskList([agentic, manual, blocked], sf(), lf({
+      pills: {
+        ...DEFAULT_LIST_FILTER.pills,
+        agentic: [{ value: "agentic", mode: "all" }],
+        blocked: [{ value: "blocked", mode: "all" }],
+      },
+    }));
+    expect(filtered.map((r) => r.node.id)).toEqual(["task-b"]);
+  });
+
+  it("leaves the delegated/undelegated question alone — a row can be agentic and anything else", () => {
+    // The two are independent by design: the flag says the work suits an agent, a delegate says
+    // who holds it. Nothing in this dimension may touch another.
+    const filtered = filterTaskList([agentic, manual], sf(), lf({ pills: { ...DEFAULT_LIST_FILTER.pills, agentic: [{ value: "agentic", mode: "any" }] } }));
+    expect(filtered).toHaveLength(1);
   });
 });
 

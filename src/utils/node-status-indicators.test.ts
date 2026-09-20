@@ -14,6 +14,37 @@ function types(n: MindmapNode): StatusIndicatorType[] {
   return deriveStatusIndicators(n).map((i) => i.type);
 }
 
+describe("deriveStatusIndicators — Agentic", () => {
+  it("badges a task that flagged itself", () => {
+    expect(types(node("task", { status: "todo", agentic: true }))).toContain("agentic");
+  });
+
+  it("badges a task that inherited the flag, exactly like one that carries it", () => {
+    // A branch marked in one edit would otherwise look unmarked everywhere below the node it was
+    // set on, which is the opposite of what marking a branch is for.
+    expect(types(node("task", { status: "todo", inheritedAgentic: true }))).toContain("agentic");
+  });
+
+  it("does not badge a task that overrode an agentic ancestor", () => {
+    expect(types(node("task", { status: "todo", agentic: false, inheritedAgentic: true })))
+      .not.toContain("agentic");
+  });
+
+  it("does not badge an unflagged task", () => {
+    expect(types(node("task", { status: "todo" }))).not.toContain("agentic");
+  });
+
+  it("does not badge a goal or a commitment under an agentic task", () => {
+    expect(types(node("goal", { status: "active", inheritedAgentic: true }))).not.toContain("agentic");
+    expect(types(node("commitment", { inheritedAgentic: true }))).not.toContain("agentic");
+  });
+
+  it("sits alongside the other badges rather than replacing any of them", () => {
+    const flagged = node("task", { status: "todo", agentic: true, backlogged: true, tagIds: [3] });
+    expect(types(flagged)).toEqual(["backlog", "agentic", "tags"]);
+  });
+});
+
 describe("deriveStatusIndicators", () => {
   it("returns no indicators for a bare task", () => {
     expect(deriveStatusIndicators(node("task", { status: "todo" }))).toEqual([]);
@@ -77,7 +108,7 @@ describe("deriveStatusIndicators", () => {
 
   it("shows a flow-instance mark for a materialized (fromFlow) node and a virtual habit instance", () => {
     expect(types(node("task", { status: "todo", fromFlow: true }))).toEqual(["flowInstance"]);
-    const habit = node("task", { status: "todo", habitItem: { flowId: 1, itemType: "flow_root", itemId: 1, scopeId: 5 } });
+    const habit = node("task", { status: "todo", habitItem: { flowId: 1, itemType: "flow_root", itemId: 1, scopeId: 5, cycleId: 0 } });
     expect(types(habit)).toEqual(["flowInstance"]);
   });
 

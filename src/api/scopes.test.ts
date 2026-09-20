@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
+import { mockCommandOnce, mockGestureProtocol } from "@/test/command-mock";
 import {
   getScope,
   getOrCreateScope,
@@ -28,11 +29,12 @@ const mockScope: Scope = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockGestureProtocol();
 });
 
 describe("getScope", () => {
   it("calls invoke with get_scope and the id", async () => {
-    vi.mocked(invoke).mockResolvedValueOnce(mockScope);
+    mockCommandOnce(mockScope);
     const result = await getScope(1);
     expect(invoke).toHaveBeenCalledWith("get_scope", { id: 1 });
     expect(result).toEqual(mockScope);
@@ -41,7 +43,7 @@ describe("getScope", () => {
 
 describe("getOrCreateScope", () => {
   it("calls invoke with get_or_create_scope, the kind, and the date", async () => {
-    vi.mocked(invoke).mockResolvedValueOnce(mockScope);
+    mockCommandOnce(mockScope);
     const result = await getOrCreateScope("week", "2026-06-20");
     expect(invoke).toHaveBeenCalledWith("get_or_create_scope", {
       kind: "week",
@@ -53,7 +55,7 @@ describe("getOrCreateScope", () => {
 
 describe("getOrCreatePartScope", () => {
   it("calls invoke with get_or_create_part_scope, the date, and the part", async () => {
-    vi.mocked(invoke).mockResolvedValueOnce(mockScope);
+    mockCommandOnce(mockScope);
     await getOrCreatePartScope("2026-06-20", "morning");
     expect(invoke).toHaveBeenCalledWith("get_or_create_part_scope", {
       date: "2026-06-20",
@@ -64,7 +66,7 @@ describe("getOrCreatePartScope", () => {
 
 describe("getOrCreateExactScope", () => {
   it("calls invoke with get_or_create_exact_scope and the two datetimes", async () => {
-    vi.mocked(invoke).mockResolvedValueOnce(mockScope);
+    mockCommandOnce(mockScope);
     await getOrCreateExactScope("2026-06-20T09:30:00", "2026-06-22T14:00:00");
     expect(invoke).toHaveBeenCalledWith("get_or_create_exact_scope", {
       start: "2026-06-20T09:30:00",
@@ -80,7 +82,7 @@ describe("resolveScope", () => {
       end: "2026-06-21T00:00:00",
       active: true,
     };
-    vi.mocked(invoke).mockResolvedValueOnce(resolved);
+    mockCommandOnce(resolved);
     const result = await resolveScope(1);
     expect(invoke).toHaveBeenCalledWith("resolve_scope", { id: 1 });
     expect(result).toEqual(resolved);

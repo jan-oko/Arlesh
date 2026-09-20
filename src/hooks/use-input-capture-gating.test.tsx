@@ -5,10 +5,18 @@ import { useInputCapture, useIsInputCaptured } from "./use-input-capture";
 import { useInputCaptureStore } from "@/stores/use-input-capture-store";
 
 const onToggleFilter = vi.fn();
+const onUndo = vi.fn();
+const onRedo = vi.fn();
 
 function fireAltF() {
   window.dispatchEvent(
     new KeyboardEvent("keydown", { key: "f", code: "KeyF", altKey: true, bubbles: true, cancelable: true }),
+  );
+}
+
+function fireCtrlZ(shiftKey = false) {
+  window.dispatchEvent(
+    new KeyboardEvent("keydown", { key: "z", code: "KeyZ", ctrlKey: true, shiftKey, bubbles: true, cancelable: true }),
   );
 }
 
@@ -31,6 +39,7 @@ function View({ modalState, modalRenders }: { modalState: boolean; modalRenders:
     selectedRowId: "task-1",
     isSelectedBlocked: false,
     onNavigate: vi.fn(),
+    onScrollList: vi.fn(),
     onCycleStatus: vi.fn(),
     onOpenEditor: vi.fn(),
     onStartRename: vi.fn(),
@@ -42,14 +51,20 @@ function View({ modalState, modalRenders }: { modalState: boolean; modalRenders:
     onExitSubtree: vi.fn(),
     onExitToRoot: vi.fn(),
     onToggleBacklog: vi.fn(),
+    onToggleAgentic: vi.fn(),
     onCycleVerdict: vi.fn(),
     onMarkBroken: vi.fn(),
+    onUndo,
+    onRedo,
+    onToggleFullscreen: vi.fn(),
   });
   return modalState && modalRenders ? <Modal /> : null;
 }
 
 beforeEach(() => {
   onToggleFilter.mockClear();
+  onUndo.mockClear();
+  onRedo.mockClear();
   useInputCaptureStore.setState({ captors: new Set<string>() });
 });
 
@@ -73,6 +88,24 @@ describe("view hotkeys gated by the input-capture registry", () => {
     render(<View modalState={true} modalRenders={false} />);
     fireAltF();
     expect(onToggleFilter).toHaveBeenCalledTimes(1);
+  });
+
+  // Ctrl+Z is the one binding a modal must never let through: inside a field it means the field
+  // undo the browser already gives, and behind a modal it would reverse the board underneath it.
+  it("reaches undo and redo when nothing is on screen", () => {
+    render(<View modalState={false} modalRenders={false} />);
+    fireCtrlZ();
+    fireCtrlZ(true);
+    expect(onUndo).toHaveBeenCalledTimes(1);
+    expect(onRedo).toHaveBeenCalledTimes(1);
+  });
+
+  it("suppresses undo and redo while a modal is mounted", () => {
+    render(<View modalState={true} modalRenders={true} />);
+    fireCtrlZ();
+    fireCtrlZ(true);
+    expect(onUndo).not.toHaveBeenCalled();
+    expect(onRedo).not.toHaveBeenCalled();
   });
 
   it("restores the binding once the modal unmounts", () => {

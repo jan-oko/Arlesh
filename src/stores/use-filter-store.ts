@@ -1,10 +1,9 @@
-import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createStore, type StoreApi } from "zustand";
 import type { FilterState, StatusMode, TagFilterMode } from "@/utils/filter-tree";
 import { DEFAULT_FILTER, NEXT_OVERRIDE_MODE } from "@/utils/filter-tree";
-import { mergePersistedFilterSlice } from "@/stores/persist-merge";
+import { tabStoreHook } from "@/stores/tab-stores-context";
 
-interface FilterStore {
+export interface FilterStore {
   filter: FilterState;
   /** Whether the top-bar filter popover is open (ephemeral UI state — not persisted). */
   popoverOpen: boolean;
@@ -23,42 +22,34 @@ interface FilterStore {
   reset: () => void;
 }
 
-/** Persisted mindmap filter state (status preset, tag filters, type visibility). */
-export const useFilterStore = create<FilterStore>()(
-  persist(
-    (set) => ({
-      filter: DEFAULT_FILTER,
-      popoverOpen: false,
-      toggleFilterPopover: () => set((s) => ({ popoverOpen: !s.popoverOpen })),
-      setFilterPopover: (open) => set({ popoverOpen: open }),
-      setStatusMode: (mode) => set((s) => ({ filter: { ...s.filter, statusMode: mode } })),
-      toggleModeFlows: () => set((s) => ({ filter: { ...s.filter, modeIncludeFlows: !s.filter.modeIncludeFlows } })),
-      addTagFilter: (tagId) =>
-        set((s) =>
-          s.filter.tagFilters.some((t) => t.tagId === tagId)
-            ? {}
-            : { filter: { ...s.filter, tagFilters: [...s.filter.tagFilters, { tagId, mode: "any" as TagFilterMode }] } },
-        ),
-      setTagFilterMode: (tagId, mode) =>
-        set((s) => ({ filter: { ...s.filter, tagFilters: s.filter.tagFilters.map((t) => (t.tagId === tagId ? { ...t, mode } : t)) } })),
-      removeTagFilter: (tagId) =>
-        set((s) => ({ filter: { ...s.filter, tagFilters: s.filter.tagFilters.filter((t) => t.tagId !== tagId) } })),
-      toggleShowInfo: () => set((s) => ({ filter: { ...s.filter, showInfo: !s.filter.showInfo } })),
-      toggleShowFlow: () => set((s) => ({ filter: { ...s.filter, showFlow: !s.filter.showFlow } })),
-      togglePrivateMode: () => set((s) => ({ filter: { ...s.filter, privateMode: !s.filter.privateMode } })),
-      cycleArchivedMode: () =>
-        set((s) => ({ filter: { ...s.filter, archivedMode: NEXT_OVERRIDE_MODE[s.filter.archivedMode] } })),
-      cycleBacklogMode: () =>
-        set((s) => ({ filter: { ...s.filter, backlogMode: NEXT_OVERRIDE_MODE[s.filter.backlogMode] } })),
-      reset: () => set({ filter: DEFAULT_FILTER }),
-    }),
-    {
-      name: "arlesh-filter",
-      partialize: (state) => ({ filter: state.filter }),
-      merge: (persistedState, currentState) => ({
-        ...currentState,
-        filter: mergePersistedFilterSlice(persistedState, DEFAULT_FILTER),
-      }),
-    },
-  ),
-);
+/** One tab's mindmap filter state (status preset, tag filters, type visibility). */
+export function createFilterStore(seed: FilterState = DEFAULT_FILTER): StoreApi<FilterStore> {
+  return createStore<FilterStore>()((set) => ({
+    filter: seed,
+    popoverOpen: false,
+    toggleFilterPopover: () => set((s) => ({ popoverOpen: !s.popoverOpen })),
+    setFilterPopover: (open) => set({ popoverOpen: open }),
+    setStatusMode: (mode) => set((s) => ({ filter: { ...s.filter, statusMode: mode } })),
+    toggleModeFlows: () => set((s) => ({ filter: { ...s.filter, modeIncludeFlows: !s.filter.modeIncludeFlows } })),
+    addTagFilter: (tagId) =>
+      set((s) =>
+        s.filter.tagFilters.some((t) => t.tagId === tagId)
+          ? {}
+          : { filter: { ...s.filter, tagFilters: [...s.filter.tagFilters, { tagId, mode: "any" as TagFilterMode }] } },
+      ),
+    setTagFilterMode: (tagId, mode) =>
+      set((s) => ({ filter: { ...s.filter, tagFilters: s.filter.tagFilters.map((t) => (t.tagId === tagId ? { ...t, mode } : t)) } })),
+    removeTagFilter: (tagId) =>
+      set((s) => ({ filter: { ...s.filter, tagFilters: s.filter.tagFilters.filter((t) => t.tagId !== tagId) } })),
+    toggleShowInfo: () => set((s) => ({ filter: { ...s.filter, showInfo: !s.filter.showInfo } })),
+    toggleShowFlow: () => set((s) => ({ filter: { ...s.filter, showFlow: !s.filter.showFlow } })),
+    togglePrivateMode: () => set((s) => ({ filter: { ...s.filter, privateMode: !s.filter.privateMode } })),
+    cycleArchivedMode: () =>
+      set((s) => ({ filter: { ...s.filter, archivedMode: NEXT_OVERRIDE_MODE[s.filter.archivedMode] } })),
+    cycleBacklogMode: () =>
+      set((s) => ({ filter: { ...s.filter, backlogMode: NEXT_OVERRIDE_MODE[s.filter.backlogMode] } })),
+    reset: () => set({ filter: DEFAULT_FILTER }),
+  }));
+}
+
+export const useFilterStore = tabStoreHook<FilterStore>((stores) => stores.filter);

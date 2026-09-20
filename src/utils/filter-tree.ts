@@ -1,6 +1,6 @@
 import type { MindmapNode } from "@/utils/tree-layout";
 import { isNodeBlocked } from "@/utils/tree-layout";
-import { VERDICT } from "@/api/commitments";
+import { VERDICT } from "@/api/verdict";
 
 /** Status preset a filter is in. `all` disables status filtering; `backlog` inverts it, showing
  * only what has been deliberately set aside. */
@@ -122,6 +122,35 @@ export function isHiddenBacklog(node: MindmapNode, f: FilterState): boolean {
 }
 
 /**
+ * Whether `node` is a **habit occurrence** whose window has not opened yet and the active preset
+ * therefore hides, together with everything beneath it.
+ *
+ * This is the Archived shape, not the Archived rule: the backend produces the occurrence and says
+ * where its window stands, and the preset decides. **All shows it** — that is All's whole contract,
+ * and a habit's later-today items are exactly what you look at All to see. Plan, Start and Do hide
+ * it: a daily routine would otherwise put its whole day's occurrences into every one of them at
+ * breakfast.
+ *
+ * Restricted to occurrences (`habitItem`) on purpose. `Pending` is derived for **any** scoped item
+ * whose window is still ahead, and a real task scheduled for next week has always shown under Plan
+ * — that is what planning is. Nothing here changes that; the rule is about the occurrences a Habit
+ * generates in bulk, which is where it was asked for.
+ *
+ * It gates the subtree rather than merely failing its own match, because children nest under their
+ * parent's first occurrence — keeping an unopened parent on screen as the ancestor of a child whose
+ * own window *has* opened would draw a row nobody asked for under a preset that just said it did
+ * not want it.
+ *
+ * Deliberately not routed through the Archived pill: an unopened window is not archived, has no
+ * Resolution, and the pill that force-shows what has finished should not force-show what has not
+ * started.
+ */
+export function isUnopenedOccurrence(node: MindmapNode, f: FilterState): boolean {
+  if (node.habitItem === undefined || node.timing !== "pending") return false;
+  return f.statusMode !== "all";
+}
+
+/**
  * Whether `node` is a Project that Plan/Start shelve along with everything inside it. The Mindmap gets
  * the subtree removal from tree-pruning; List View has no tree to prune, so it applies this to each
  * row's ancestors itself (as it already does for blocked/private ancestors).
@@ -152,6 +181,8 @@ export function typeHardHidden(node: MindmapNode, f: FilterState): boolean {
   // A Frozen/Archived Project gates its subtree the same way: hide it outright rather than keeping it
   // as the ancestor of unresolved work that is, by its status, not on the table.
   if (isShelvedProject(node, f)) return true;
+  // A habit occurrence whose window has not opened: hidden by every preset but All, subtree and all.
+  if (isUnopenedOccurrence(node, f)) return true;
   return flowHardHidden(node, f);
 }
 

@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./gesture";
 import type { TimeScope } from "@/api/time-scope";
 import type { OnScopeExit } from "@/api/scope-lifecycle";
 import { isWireError } from "@/api/errors";
@@ -12,6 +12,18 @@ export const TASK_ARCHIVAL = {
   BACKLOG: "backlog",
 } as const;
 
+/** A Task's Agentic state as an update names it. Three states, not two: a Task with no value of
+ * its own inherits from its nearest flagged ancestor, and `"inherit"` is how an update puts it
+ * back to that. Sending it as a named state rather than as `null` keeps "leave the flag alone"
+ * (the field absent) distinguishable from "clear it". */
+export type TaskAgentic = "inherit" | "yes" | "no";
+
+export const TASK_AGENTIC = {
+  INHERIT: "inherit",
+  YES: "yes",
+  NO: "no",
+} as const;
+
 export interface Task {
   id: number;
   title: string;
@@ -19,6 +31,9 @@ export interface Task {
   parent_id: number;
   status: string;
   delegate_to: number | null;
+  // This task's own flag: true/false when it says so itself, null when it inherits the nearest
+  // flagged ancestor's. Independent of delegate_to — a task can be both.
+  agentic: boolean | null;
   time_scope: TimeScope | null;
   // Present iff time_scope is (inherited with the window otherwise).
   on_scope_exit: OnScopeExit | null;
@@ -42,12 +57,15 @@ export interface CreateTaskRequest {
   on_scope_exit?: OnScopeExit;
   plan?: TimeScope;
   archival?: TaskArchival;
+  agentic?: TaskAgentic;
 }
 
 export interface UpdateTaskRequest {
   title?: string;
   status?: string;
   delegate_to?: number | null;
+  // Absent = leave unchanged; "inherit" puts the task back to reading its ancestors.
+  agentic?: TaskAgentic;
   // Absent = leave unchanged, null = clear, value = set.
   time_scope?: TimeScope | null;
   // Forced null when the scope is cleared; defaulted to "keep" when a scope is set without one.

@@ -52,6 +52,8 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 **Backlog** — A Task deliberately set aside: not in play now, kept for later. A stored **Archival** value on Tasks (`Archival::Backlog`), independent of the Task's status, which continues to say where the work stands. Hidden from the Plan and Start presets together with its whole subtree, shown under All, and browsable on its own via the **Backlog** preset. The Task-side counterpart of a Goal's or Project's **Frozen**, but a separate state: neither maps to the other on retype. A Task cannot be both backlogged and planned.
 
+**Agentic** — A Task marked as work that suits being handed to an agent. A stored three-state flag on Tasks (`tasks.agentic`: NULL = inherit, true, false) that **inherits downward and is overridable**, the same rule Delegation follows: a Task with no value of its own reads its nearest flagged ancestor, and an explicit value — agentic *or* not agentic — replaces it for that Task and its subtree. Inherits *through* kinds that carry no flag (Goal, Project, Domain), and is read only on Tasks. Independent of **Delegation**: the flag says the work suits an agent, a delegate says who holds it, so a Task may be both. Set in the Task editor's Advanced section, badged in both views, and filterable as its own List View pill dimension. Nothing about it dispatches anything.
+
 **Instance Plan override** — A virtual Habit instance's own Plan, replacing the **Cycle Plan** for that iteration alone. A three-state divergence held in the **Modification** row: not overridden (inherit the Cycle Plan), overridden to a scope, or overridden to nothing (deliberately unplanned). Never propagates to the template; changing every occurrence is what editing the flow item's Cycle Plan is for.
 
 **Instance child** — A real node attached to one virtual Habit instance and no other, keyed by the same (instance, iteration scope) pair a **Modification** is. May be anything a Task can parent. Never gates its iteration's resolution — marking the occurrence done while a child is unfinished asks for confirmation instead, and nothing about that is stored. Archives with its occurrence as a unit, and counts as a divergence — so `delete instances and regenerate` removes it.
@@ -66,13 +68,17 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 ---
 
-**Gesture** — One thing the user did, and the unit Ctrl+Z reverses. A gesture may span several backend commands: pasting five nodes is five commands and one gesture. Opened and closed explicitly, so a gesture that is never opened is simply one command's worth of undo rather than a broken one.
+**Gesture** — One thing the user did, and the unit Ctrl+Z reverses. A gesture may span several backend commands: pasting five nodes is five commands and one gesture. Opened and closed explicitly by the caller, and opens **nest and join** — an open inside an open joins the gesture already running rather than starting a second one, so only the outermost close ends it. A gesture that is never opened is simply one command's worth of undo rather than a broken one.
 
 **Undo Journal** — The record of every journaled row change, written by database triggers rather than by the commands themselves, so a command cannot fail to be covered. Each entry carries its gesture, the row before and after, and the **source** of the write.
 
 **Write source** — Who caused a write: the user, or the MCP server. Both are journaled; only the user's enter the Undo Stack.
 
 **Undo Stack / Redo Stack** — The gestures Ctrl+Z will reverse and Ctrl+Shift+Z will reapply. One pair for the whole app, not one per tab or window. Session-scoped: closing Arlesh empties both.
+
+**Tab** — One place in the board you are looking at, held open alongside others. A Tab **owns** everything about a view of the board: its **subtree root**, which View it shows (Mindmap or List), its branch orientation, its Mindmap filter set and its List View filter set, its selection, its collapsed nodes and its pan/zoom. Switching Tabs swaps all of it at once, and nothing a Tab owns is visible to, or changed by, another Tab. What is **app-wide** and shared across every Tab: the theme, the **Clipboard**, the Undo/Redo stacks, the path-glyph display preference, and the board itself. A Tab's root, view, orientation and both filter sets are restored on reopening; its selection, collapsed nodes and pan/zoom are not — those are working state.
+
+**Tab label** — What a Tab is called in the strip: the title of the subtree it is rooted at, or a fixed label for a Tab showing the whole tree. Stored with the Tab rather than looked up, since an inactive Tab has no view mounted to resolve a title; refreshed whenever that Tab is visited.
 
 ## Status values
 
@@ -140,6 +146,7 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 - A Commitment's **Verdict Window** is the only automatic state change in the kind, and it moves **Archival**, never the Verdict: an unresolved Commitment whose window has run out archives *still unresolved*.
 - **Plan** shows `broken` Commitments whose window is still open, and not `kept` ones — a commitment already broken today is a live problem until the window closes, where a kept one is settled. This mirrors no Task rule.
 - A Commitment takes no part in the dependency graph, in either direction, and has no Plan, no delegate and no block reasons.
+- Only a Task carries **Agentic**, and it is independent of the delegate: a Task may be agentic, delegated, both or neither. An explicit value always beats an inherited one, in either direction.
 - Scope containment is evaluated on **resolved datetime boundaries** (interval containment), so it holds uniformly across canonical, exact, and multi-scope-kind windows. Scope X is "within" scope F iff X's window ⊆ F's window.
 - A child item's explicit Time Scope must be **wholly contained** within its parent's Time Scope.
 - A Task's Plan must be wholly contained within that task's Time Scope, and within its parent's Plan.
@@ -147,6 +154,11 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 - Flow/Habit instances (real copies and virtual instances) must satisfy containment against their **Target Node's** Time Scope. The target picker only offers scope-valid targets; editing the scope of an item that has flow children prompts the user to reconcile one side or the other.
 - A Gesture is the unit of undo, never a command. Two commands inside one gesture are undone together or not at all.
 - Only writes whose **source** is the user enter the Undo Stack. An MCP write is journaled and never undoable — Ctrl+Z reverses what the user did, never what an agent did.
+- A write made with no Gesture open is journaled **ungrouped** and is never offered as an undo step. Forgetting to open a Gesture makes a change un-undoable; it never makes Ctrl+Z reverse a different one.
 - Applying an undo or a redo is itself a write, and is never journaled. The stacks are the only record that it happened.
 - Derived and materialized rows are not journaled. Undoing a gesture must not fight the code that regenerates them.
 - There is one Undo Stack for the whole app. One board, one history of changes to it.
+- A Tab's state is reachable only through that Tab. No action in one Tab changes the subtree root, view, filters, selection, collapsed set or viewport of another.
+- The Clipboard and the theme are never per-Tab. Cutting in one Tab and pasting in another is the point of having two.
+- There is always at least one Tab. The gesture that would close the last one closes the window instead.
+- A restored subtree root whose node no longer exists falls back to the true root rather than leaving a Tab rooted at nothing.

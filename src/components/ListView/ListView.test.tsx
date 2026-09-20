@@ -1,16 +1,17 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import ListView from "./ListView";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useListFilterStore } from "@/stores/use-list-filter-store";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
-import { useViewStore } from "@/stores/use-view-store";
+import { useDisplayStore } from "@/stores/use-display-store";
 import { DEFAULT_FILTER } from "@/utils/filter-tree";
 import { DEFAULT_LIST_FILTER } from "@/utils/list-filter";
 import type { CommitmentListRow, TaskListRow } from "@/utils/list-filter";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import type { Verdict } from "@/api/commitments";
 import { useListData } from "@/hooks/use-list-data";
+import { LIST_SCROLL_STEP_PX } from "@/hooks/use-list-scroll";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -77,6 +78,7 @@ function row(over: Partial<TaskListRow> = {}): TaskListRow {
     projectStatus: null,
     dependencyRefs: [],
     isBlocked: false,
+    isAgentic: false,
     hasBlockedAncestor: false,
     hasPrivateAncestor: false,
     scopeTokens: ["unscoped", "unplanned"],
@@ -106,7 +108,7 @@ beforeEach(() => {
   useListFilterStore.setState({ filter: { ...DEFAULT_LIST_FILTER, pills: { ...DEFAULT_LIST_FILTER.pills } } });
   mockUseListData.mockReturnValue(listData());
   useMindmapStore.setState({ subtreeRootId: null, subtreeNav: null });
-  useViewStore.setState({ pathHeaderIcons: true });
+  useDisplayStore.setState({ pathHeaderIcons: true });
 });
 
 describe("ListView", () => {
@@ -168,7 +170,7 @@ describe("ListView", () => {
   });
 
   it("drops the glyph when the settings popover's Path icons switch is off, keeping the chain", () => {
-    useViewStore.setState({ pathHeaderIcons: false });
+    useDisplayStore.setState({ pathHeaderIcons: false });
     render(<ListView />);
     const [firstSegment] = screen.getAllByTitle("enterSubtree");
     const header = firstSegment?.parentElement;
@@ -533,6 +535,120 @@ describe("ListView", () => {
       expect(selected?.textContent).toContain("task-a");
     });
   });
+
+  /**
+   * jsdom implements neither scrolling nor layout: `scrollIntoView` and `scrollBy` do not exist and
+   * every element measures zero. These stubs record what the view asked the viewport to do, which is
+   * what the bindings are responsible for. Whether a `nearest` alignment actually leaves an
+   * already-visible row alone is the browser's contract and is not exercised here.
+   */
+  describe("scrolling", () => {
+    let intoViewRows: Array<string | null> = [];
+    let scrollByCalls: ScrollToOptions[] = [];
+    const originalIntoView = Element.prototype.scrollIntoView;
+    const originalScrollBy = Element.prototype.scrollBy;
+
+    beforeEach(() => {
+      intoViewRows = [];
+      scrollByCalls = [];
+      Element.prototype.scrollIntoView = function () {
+        intoViewRows.push(this.getAttribute("data-row-id"));
+      };
+      Element.prototype.scrollBy = function (options?: ScrollToOptions | number) {
+        if (typeof options === "object") scrollByCalls.push(options);
+      };
+    });
+
+    afterEach(() => {
+      Element.prototype.scrollIntoView = originalIntoView;
+      Element.prototype.scrollBy = originalScrollBy;
+    });
+
+    function twoRows() {
+      return listData({
+        rows: [
+          row({ node: n("task-a", "task", { status: "todo" }) }),
+          row({ node: n("task-b", "task", { status: "todo" }) }),
+        ],
+      });
+    }
+
+    it("brings each newly selected row into view as the arrows move", () => {
+      mockUseListData.mockReturnValue(twoRows());
+      render(<ListView />);
+      fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
+      fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
+      expect(intoViewRows).toEqual(["task-a", "task-b"]);
+    });
+
+    it("brings a selected commitment into view the same way as a task row", () => {
+      mockUseListData.mockReturnValue(listData({
+        commitmentRows: [commitmentRow()],
+        rows: [row()],
+        tree: treeWith(n("commitment-1", "commitment", { verdict: "unresolved" })),
+      }));
+      render(<ListView />);
+      fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
+      expect(intoViewRows).toEqual(["commitment-1"]);
+    });
+
+    it("J scrolls down a fixed step and leaves the selection where it is", () => {
+      mockUseListData.mockReturnValue(twoRows());
+      const { container } = render(<ListView />);
+      fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
+      intoViewRows = [];
+
+      fireEvent.keyDown(window, { key: "j", code: "KeyJ" });
+      fireEvent.keyUp(window, { key: "j", code: "KeyJ" });
+
+      expect(scrollByCalls).toEqual([{ top: LIST_SCROLL_STEP_PX, behavior: "auto" }]);
+      expect(container.querySelector("[class*='cardSelected']")?.textContent).toContain("task-a");
+      // The selection did not move, so nothing pulled the viewport back to it.
+      expect(intoViewRows).toEqual([]);
+    });
+
+    it("K scrolls up by the same step", () => {
+      mockUseListData.mockReturnValue(twoRows());
+      render(<ListView />);
+      fireEvent.keyDown(window, { key: "k", code: "KeyK" });
+      fireEvent.keyUp(window, { key: "k", code: "KeyK" });
+      expect(scrollByCalls).toEqual([{ top: -LIST_SCROLL_STEP_PX, behavior: "auto" }]);
+    });
+
+    it("leaves a held key to the animation loop rather than acting on auto-repeat", () => {
+      // The press starts a continuous scroll at a speed this app sets; if the repeats were acted on
+      // too they would restart it, and the pace would be the OS's key-repeat setting again.
+      mockUseListData.mockReturnValue(twoRows());
+      render(<ListView />);
+      fireEvent.keyDown(window, { key: "j", code: "KeyJ" });
+      fireEvent.keyDown(window, { key: "j", code: "KeyJ", repeat: true });
+      fireEvent.keyDown(window, { key: "j", code: "KeyJ", repeat: true });
+      expect(scrollByCalls).toEqual([{ top: LIST_SCROLL_STEP_PX, behavior: "auto" }]);
+      fireEvent.keyUp(window, { key: "j", code: "KeyJ" });
+    });
+
+    it("scrolls with no selection at all", () => {
+      mockUseListData.mockReturnValue(twoRows());
+      const { container } = render(<ListView />);
+      fireEvent.keyDown(window, { key: "j", code: "KeyJ" });
+      fireEvent.keyUp(window, { key: "j", code: "KeyJ" });
+      expect(scrollByCalls).toHaveLength(1);
+      expect(container.querySelector("[class*='cardSelected']")).toBeNull();
+    });
+
+    it("re-anchors on the selection when the arrows move it after a J scroll", () => {
+      mockUseListData.mockReturnValue(twoRows());
+      render(<ListView />);
+      fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
+      fireEvent.keyDown(window, { key: "j", code: "KeyJ" });
+      fireEvent.keyUp(window, { key: "j", code: "KeyJ" });
+      intoViewRows = [];
+
+      fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
+
+      expect(intoViewRows).toEqual(["task-b"]);
+    });
+  });
   describe("focus exemption", () => {
     const todo = () => row({ node: n("task-1", "task", { status: "todo" }) });
     const done = () => row({ node: n("task-1", "task", { status: "done" }) });
@@ -686,7 +802,7 @@ describe("ListView — the commitments section", () => {
       title: "Asleep by 23:00 Mon",
       verdict: "unresolved",
       virtual: true,
-      habitItem: { flowId: 3, itemType: "flow_root", itemId: 3, scopeId: 100 },
+      habitItem: { flowId: 3, itemType: "flow_root", itemId: 3, scopeId: 100, cycleId: 0 },
     });
     mockUseListData.mockReturnValue(listData({
       commitmentRows: [commitmentRow({ node: iteration })],
@@ -696,7 +812,7 @@ describe("ListView — the commitments section", () => {
     render(<ListView />);
 
     fireEvent.click(screen.getByRole("button", { name: "markBroken" }));
-    expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_root", 3, 100, "broken", expect.any(Number));
+    expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_root", 3, 100, 0, "broken", expect.any(Number));
     expect(updateCommitment).not.toHaveBeenCalled();
   });
 

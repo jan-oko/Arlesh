@@ -175,6 +175,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
         on_scope_exit: data.onScopeExit,
         plan: data.plan,
         archival: data.archival,
+        agentic: data.agentic,
         is_private: data.isPrivate,
       });
       // Scheduling a set-aside task puts it back in play. The editor already showed the switch go

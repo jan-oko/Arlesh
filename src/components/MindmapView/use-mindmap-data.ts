@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { createDomain, updateDomain, deleteDomain, duplicateDomain } from "@/api/domains";
 import { createTask, updateTask, deleteTask, duplicateTask, TASK_ARCHIVAL } from "@/api/tasks";
-import { createCommitment, updateCommitment, deleteCommitment } from "@/api/commitments";
+import { createCommitment, updateCommitment, deleteCommitment, addTagToCommitment } from "@/api/commitments";
+import type { CommitmentSaveData } from "@/components/CommitmentEditorModal/CommitmentEditorModal";
 import type { Commitment, Verdict } from "@/api/commitments";
 import { VERDICT } from "@/api/commitments";
-import type { TaskDependencyEdge } from "@/api/tasks";
+import type { TaskAgentic, TaskDependencyEdge } from "@/api/tasks";
 import type { BlockReason } from "@/api/block-reasons";
 import { createGoal, updateGoal, deleteGoal, duplicateGoal } from "@/api/goals";
 import { createInfo, updateInfo, deleteInfo, duplicateInfo } from "@/api/infos";
@@ -12,22 +14,25 @@ import { getErrorMessage } from "@/api/errors";
 import { asRetypeKind, retypeNode as backendRetype } from "@/api/retype";
 import type { StrandedChildren } from "@/api/retype";
 import { loadMindmap, habitIterations, habitStatuses } from "@/api/mindmap";
+import { withGesture } from "@/api/gesture";
 import type { MindmapLoad } from "@/api/mindmap";
 import {
   createFlow, updateFlow, deleteFlow,
   createFlowGoal, createFlowTask, updateFlowGoal, updateFlowTask, deleteFlowItem, convertFlowItem,
 } from "@/api/flows";
 import { findNode } from "@/utils/mindmap-tree";
+import { propagateAgentic } from "@/utils/agentic";
 import type { Domain } from "@/api/domains";
 import type { Task } from "@/api/tasks";
 import type { Goal } from "@/api/goals";
 import type { Info } from "@/api/infos";
 import type {
   Flow, CreateFlowRequest, UpdateFlowRequest,
-  FlowGoal, FlowTask, FlowItemCycle, FlowDependency, FlowItemType, HabitIteration, HabitItemStatus,
-  InstanceType, TargetRef,
+  FlowGoal, FlowTask, FlowItemCycle, FlowDependency, FlowItemType, HabitInstance, HabitIteration,
+  HabitItemStatus, InstanceType, TargetRef,
 } from "@/api/flows";
-import type { ItemLifecycle } from "@/api/scope-lifecycle";
+import { NO_CYCLE } from "@/api/flows";
+import type { ItemLifecycle, Timing } from "@/api/scope-lifecycle";
 import type { MindmapNode, NodeKind, FlowCyclePair, FlowItemDep } from "@/utils/tree-layout";
 import { entityNodeId, flowTargetNodeId } from "@/utils/tree-layout";
 import { formatScopeCore } from "@/utils/scope-format";
@@ -108,15 +113,22 @@ type IterationLifecycle = Pick<MindmapNode, "timing" | "resolution" | "archived"
 const EXPIRED_LIFECYCLE: IterationLifecycle = { timing: "lapsed", archived: true };
 
 /**
- * A Task/Goal iteration's derived lifecycle: once its window has passed it is archived as a unit,
- * and its Resolution says whether it was completed or missed.
+ * A Task/Goal iteration's — or one of its occurrences' — derived lifecycle, from where its window
+ * sits: once the window has passed it is archived as a unit, and its Resolution says whether it was
+ * completed or missed.
  *
- * It has no expiry case, and cannot: a Verdict Window belongs to the Commitment kind, so the
- * backend derives `expired` only for a commitment Habit. A work iteration is Active until its
- * window passes and settled after.
+ * "pending" reaches here only from an **occurrence**, whose Cycle Scope can open later than the
+ * iteration around it; an iteration root is never pending, because the backend generates only
+ * iterations whose own window has begun. A pending occurrence gets no Resolution and no Archival:
+ * nothing has happened to it yet, and calling it Missed before its window opens would be the app
+ * concluding an outcome from a clock that has not reached it.
+ *
+ * There is no expiry case, and cannot be: a Verdict Window belongs to the Commitment kind, so the
+ * backend derives `expired` only for a commitment Habit.
  */
-function workIterationLifecycle(past: boolean, done: boolean): IterationLifecycle {
-  if (!past) return { timing: "active" };
+function workIterationLifecycle(timing: Timing, done: boolean): IterationLifecycle {
+  if (timing === "pending") return { timing: "pending" };
+  if (timing === "active") return { timing: "active" };
   return { timing: "lapsed", resolution: done ? "completed" : "missed", archived: true };
 }
 
@@ -160,53 +172,149 @@ function iterationAnchorLabel(flow: Flow, iteration: HabitIteration, labels: Sco
   return kind === null ? iteration.anchor_date : formatScopeCore(kind, iteration.anchor_date, labels);
 }
 
+/** One flow item as the iteration builder reads it, with the flow-item table it came from. */
+interface TemplateItem {
+  itemType: FlowItemType;
+  item: FlowGoal | FlowTask;
+}
+
+/** An item's key in the template map and in the status overlay: `"flow_task-12"`. */
+function itemKey(itemType: string, itemId: number): string {
+  return `${itemType}-${itemId}`;
+}
+
+/** The in-flow parent key of a template item, or `null` when it hangs directly on the flow. */
+function parentKey(item: FlowGoal | FlowTask): string | null {
+  return item.parent_type === "flow_goal" || item.parent_type === "flow_task"
+    ? itemKey(item.parent_type, item.parent_id)
+    : null;
+}
+
 /**
- * Builds the flow's template items as **virtual**, per-iteration instances under one iteration root,
- * mirroring the template's parent hierarchy. Each item is individually completable (`habitItem`); its
- * status comes from `statuses` (`"itemType-itemId-scopeId"` → stored status). Returns the items
- * parented on the flow (the iteration root's direct children); nested items attach under their parent.
+ * The template's hierarchy: the items that hang directly on the flow (in template order), and each
+ * item's children by parent key.
+ *
+ * An item whose named parent is not in this flow's template is treated as a root rather than
+ * dropped — the same last resort the iteration root itself gets when its host is filtered out.
+ */
+function templateHierarchy(items: ReadonlyMap<string, TemplateItem>): {
+  roots: TemplateItem[];
+  childrenOf: Map<string, TemplateItem[]>;
+} {
+  const roots: TemplateItem[] = [];
+  const childrenOf = new Map<string, TemplateItem[]>();
+  for (const entry of items.values()) {
+    const parent = parentKey(entry.item);
+    if (parent === null || !items.has(parent)) {
+      roots.push(entry);
+      continue;
+    }
+    const siblings = childrenOf.get(parent);
+    if (siblings === undefined) childrenOf.set(parent, [entry]);
+    else siblings.push(entry);
+  }
+  return { roots, childrenOf };
+}
+
+/**
+ * One occurrence of one template item, as a virtual node.
+ *
+ * The window is the backend's: `instance.time_scope` is the item's Cycle Scope resolved against
+ * *this* iteration's window, and `instance.timing` is where that window stands under the Habit's
+ * Consumption. Both are stamped like any other node's, which is what makes a Morning item read
+ * Pending at dawn, Active in the morning and Lapsed in the afternoon instead of Active all day.
+ */
+function occurrenceNode(
+  flow: Flow,
+  iteration: HabitIteration,
+  entry: TemplateItem,
+  instance: HabitInstance,
+  statuses: ReadonlyMap<string, string>,
+  color: string | undefined,
+  expired: boolean,
+): MindmapNode {
+  const { itemType, item } = entry;
+  const scopeId = iteration.anchor_scope_id;
+  const raw = statuses.get(`${itemKey(itemType, item.id)}-${instance.cycle_id}-${scopeId}`);
+  const done = raw === "done";
+  return {
+    id: `habititem-${itemType}-${item.id}-${instance.cycle_id}-${iteration.index}-virtual`,
+    kind: itemType === "flow_goal" ? "goal" : "task",
+    title: item.title,
+    status: instanceStatus(itemType === "flow_goal", raw),
+    virtual: true,
+    habitItem: {
+      flowId: flow.id, itemType, itemId: item.id, scopeId, cycleId: instance.cycle_id,
+    },
+    ...(color !== undefined ? { color } : {}),
+    timeScope: instance.time_scope,
+    plan: instance.plan,
+    ...(expired ? EXPIRED_LIFECYCLE : workIterationLifecycle(instance.timing, done)),
+    isPrivate: item.is_private,
+    position: item.position,
+    tagIds: [],
+    children: [],
+  };
+}
+
+/**
+ * Builds one iteration's **virtual** instances under its root, mirroring the template's hierarchy.
+ *
+ * The iteration carries its own occurrence list, resolved backend-side: an item with N cycle pairs
+ * appears N times — SPEC's "a flow item with N pairs produces N items", which starting the flow has
+ * always obeyed — each with its own resolved window, including the ones whose windows have not
+ * opened yet (those carry `timing` "pending"; the filter, not this builder, decides whether they
+ * are drawn).
+ *
+ * Every template item therefore contributes at least one occurrence, and a subtree always has a
+ * parent to hang under — children nest under their parent's first occurrence, as they do when the
+ * flow is started. The `continue` below is a guard against an instance list that names no item at
+ * all, not a window rule.
+ *
+ * Each occurrence is individually completable (`habitItem`), keyed by its cycle pair as well as its
+ * item; its status comes from `statuses` (`"itemType-itemId-cycleId-scopeId"` → stored status).
+ * Returns the occurrences parented on the flow — the iteration root's direct children.
  */
 function buildIterationItems(
   flow: Flow,
-  scopeId: number,
-  index: number,
-  items: Array<{ itemType: FlowItemType; item: FlowGoal | FlowTask }>,
+  iteration: HabitIteration,
+  items: ReadonlyMap<string, TemplateItem>,
   statuses: ReadonlyMap<string, string>,
   color: string | undefined,
-  past: boolean,
   expired: boolean,
 ): MindmapNode[] {
-  const nodeByItem = new Map<string, MindmapNode>();
-  for (const { itemType, item } of items) {
-    const raw = statuses.get(`${itemType}-${item.id}-${scopeId}`);
-    const done = raw === "done";
-    nodeByItem.set(`${itemType}-${item.id}`, {
-      id: `habititem-${itemType}-${item.id}-${index}-virtual`,
-      kind: itemType === "flow_goal" ? "goal" : "task",
-      title: item.title,
-      status: instanceStatus(itemType === "flow_goal", raw),
-      virtual: true,
-      habitItem: { flowId: flow.id, itemType, itemId: item.id, scopeId },
-      ...(color !== undefined ? { color } : {}),
-      ...(expired ? EXPIRED_LIFECYCLE : workIterationLifecycle(past, done)),
-      isPrivate: item.is_private,
-      position: item.position,
-      tagIds: [],
-      children: [],
-    });
+  const occurrences = new Map<string, MindmapNode[]>();
+  for (const instance of iteration.instances) {
+    const key = itemKey(instance.item_type, instance.item_id);
+    const entry = items.get(key);
+    if (entry === undefined) continue;
+    const node = occurrenceNode(flow, iteration, entry, instance, statuses, color, expired);
+    const drawn = occurrences.get(key);
+    if (drawn === undefined) occurrences.set(key, [node]);
+    else drawn.push(node);
   }
-  const roots: MindmapNode[] = [];
-  for (const { itemType, item } of items) {
-    const node = nodeByItem.get(`${itemType}-${item.id}`);
-    if (node === undefined) continue;
-    const parent =
-      item.parent_type === "flow_goal" || item.parent_type === "flow_task"
-        ? nodeByItem.get(`${item.parent_type}-${item.parent_id}`)
-        : undefined;
-    if (parent !== undefined) parent.children.push(node);
-    else roots.push(node);
+
+  const { roots, childrenOf } = templateHierarchy(items);
+  const attached: MindmapNode[] = [];
+  const pending: Array<{ entry: TemplateItem; host: MindmapNode[] }> = roots.map((entry) => ({
+    entry,
+    host: attached,
+  }));
+  for (let cursor = 0; cursor < pending.length; cursor += 1) {
+    const next = pending[cursor];
+    if (next === undefined) continue;
+    const key = itemKey(next.entry.itemType, next.entry.item.id);
+    const drawn = occurrences.get(key) ?? [];
+    const [first] = drawn;
+    // No occurrence at all — nothing in the iteration named this item, so there is nowhere for
+    // its subtree to hang either. Not a window rule: an unopened window still draws an occurrence.
+    if (first === undefined) continue;
+    next.host.push(...drawn);
+    for (const child of childrenOf.get(key) ?? []) {
+      pending.push({ entry: child, host: first.children });
+    }
   }
-  return roots;
+  return attached;
 }
 
 /**
@@ -250,12 +358,20 @@ export function injectHabitInstances(
     // is filtered out of the rendered tree still has somewhere to hang its iterations.
     const host = findNode(root, flowTargetNodeId(flow)) ?? findNode(root, `flow-${flow.id}`);
     if (host === undefined) return;
-    const items: Array<{ itemType: FlowItemType; item: FlowGoal | FlowTask }> = [
+    const templateItems: TemplateItem[] = [
       ...flowGoals.filter((g) => g.flow_id === flow.id).map((item) => ({ itemType: "flow_goal" as const, item })),
       ...flowTasks.filter((t) => t.flow_id === flow.id).map((item) => ({ itemType: "flow_task" as const, item })),
     ];
+    const items = new Map(
+      templateItems.map((entry) => [itemKey(entry.itemType, entry.item.id), entry]),
+    );
+    // Keyed by the cycle pair too: one item can draw several occurrences in a single iteration, and
+    // completing the morning one must not tick the evening one off with it.
     const statuses = new Map(
-      (statusesByFlow[i] ?? []).map((s) => [`${s.item_type}-${s.item_id}-${s.iteration_scope_id}`, s.status]),
+      (statusesByFlow[i] ?? []).map((s) => [
+        `${itemKey(s.item_type, s.item_id)}-${s.cycle_id}-${s.iteration_scope_id}`,
+        s.status,
+      ]),
     );
     for (const iteration of iterations) {
       const scopeId = iteration.anchor_scope_id;
@@ -265,7 +381,7 @@ export function injectHabitInstances(
       // in this kind ever concludes an outcome the user did not state.
       const expired = iteration.status === "expired";
       // The root is its own instance (`flow_root`, keyed by the flow id) with its own status.
-      const rootRaw = statuses.get(`flow_root-${flow.id}-${scopeId}`);
+      const rootRaw = statuses.get(`${itemKey("flow_root", flow.id)}-${NO_CYCLE}-${scopeId}`);
       const rootDone = rootRaw === "done";
       const isCommitment = flow.instance_type === "commitment";
       const rootVerdict = instanceVerdict(rootRaw);
@@ -279,17 +395,19 @@ export function injectHabitInstances(
           ? { verdict: rootVerdict }
           : { status: instanceStatus(flow.instance_type === "goal", rootRaw) }),
         virtual: true,
-        habitItem: { flowId: flow.id, itemType: "flow_root", itemId: flow.id, scopeId },
+        habitItem: {
+          flowId: flow.id, itemType: "flow_root", itemId: flow.id, scopeId, cycleId: NO_CYCLE,
+        },
         // Iterations are injected after buildTree's colour propagation, so inherit the host's
         // already-resolved aspect colour directly.
         ...(host.color !== undefined ? { color: host.color } : {}),
         ...(isCommitment
           ? commitmentIterationLifecycle(past, expired, rootVerdict)
-          : workIterationLifecycle(past, rootDone)),
+          : workIterationLifecycle(past ? "lapsed" : "active", rootDone)),
         isPrivate: flow.is_private,
         position: iteration.index,
         tagIds: [],
-        children: buildIterationItems(flow, scopeId, iteration.index, items, statuses, host.color, past, expired),
+        children: buildIterationItems(flow, iteration, items, statuses, host.color, expired),
       });
     }
   });
@@ -325,7 +443,11 @@ interface MindmapData {
   error: string | null;
   /** Background load conditions from the most recent load — currently, Habit derivation failures. */
   loadCondition: LoadCondition;
-  createNode: (parentId: string, parentKind: NodeKind, childKind: NodeKind, title: string) => Promise<MindmapNode>;
+  /**
+   * `agentic` is the Agentic state a new **Task** is created carrying; omitted, it starts in the
+   * Inherit every Task defaults to. Ignored by every other kind, since only a Task has the flag.
+   */
+  createNode: (parentId: string, parentKind: NodeKind, childKind: NodeKind, title: string, agentic?: TaskAgentic) => Promise<MindmapNode>;
   createChild: (parentId: string, parentKind: NodeKind, title: string) => Promise<MindmapNode>;
   renameNode: (id: string, kind: NodeKind, title: string) => Promise<void>;
   retypeNode: (id: string, fromKind: NodeKind, toKind: NodeKind, options?: RetypeOptions) => Promise<string | null>;
@@ -333,6 +455,8 @@ interface MindmapData {
   moveNode: (id: string, kind: NodeKind, newParentId: string, newParentKind: NodeKind, position: number) => Promise<void>;
   duplicateNode: (id: string, kind: NodeKind, targetId: string, targetKind: NodeKind, position: number) => Promise<void>;
   removeNode: (nodesToDelete: Array<{ id: string; kind: NodeKind }>) => Promise<void>;
+  /** Writes a commitment configured in the new-commitment editor, window and all, under a parent. */
+  createCommitment: (parentId: string, parentKind: NodeKind, data: CommitmentSaveData) => Promise<void>;
   createFlow: (request: CreateFlowRequest) => Promise<Flow>;
   updateFlow: (id: number, request: UpdateFlowRequest) => Promise<void>;
   reload: () => Promise<void>;
@@ -535,6 +659,7 @@ export function buildTree(
       onScopeExit: task.on_scope_exit,
       plan: task.plan,
       backlogged: task.archival === TASK_ARCHIVAL.BACKLOG,
+      agentic: task.agentic,
       position: task.position,
       isPrivate: task.is_private,
       ...(task.beads_id !== undefined ? { beadsId: task.beads_id } : {}),
@@ -761,6 +886,9 @@ export function buildTree(
 
   const root = { ...VIRTUAL_ROOT, children: aspectNodes };
   propagateAspectColor(root, undefined);
+  // Agentic inherits downward and is overridable, exactly as a delegate does, so the value a node
+  // reads is resolved here once rather than by an ancestor walk at every badge and filter.
+  propagateAgentic(root, false);
   return root;
 }
 
@@ -811,6 +939,7 @@ function collectLoadConditions(data: MindmapLoad): LoadCondition {
 }
 
 export function useMindmapData(): MindmapData {
+  const { t } = useTranslation("undo");
   const [tree, setTree] = useState<MindmapNode>(VIRTUAL_ROOT);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -860,7 +989,7 @@ export function useMindmapData(): MindmapData {
   }, [load]);
 
   const createNode = useCallback(
-    async (parentId: string, parentKind: NodeKind, childKind: NodeKind, title: string): Promise<MindmapNode> => {
+    async (parentId: string, parentKind: NodeKind, childKind: NodeKind, title: string, agentic?: TaskAgentic): Promise<MindmapNode> => {
       const dbParentId = dbIdFromNodeId(parentId);
 
       if (childKind === "domain" || childKind === "project" || childKind === "tag") {
@@ -887,7 +1016,13 @@ export function useMindmapData(): MindmapData {
       }
 
       if (childKind === "task") {
-        const task = await createTask({ title, parent_type: kindToParentType(parentKind), parent_id: dbParentId });
+        // Spread rather than passed as `agentic: agentic`: under `exactOptionalPropertyTypes` an
+        // explicit `undefined` is not the same as an absent field, and absent is what "no opinion,
+        // take the default" has to send.
+        const task = await createTask({
+          title, parent_type: kindToParentType(parentKind), parent_id: dbParentId,
+          ...(agentic !== undefined ? { agentic } : {}),
+        });
         const newNode: MindmapNode = {
           id: `task-${task.id}`, kind: "task", title: task.title,
           status: task.status, position: task.position, tagIds: [], children: [],
@@ -1209,17 +1344,48 @@ export function useMindmapData(): MindmapData {
 
   const removeNode = useCallback(
     async (nodesToDelete: Array<{ id: string; kind: NodeKind }>): Promise<void> => {
-      for (const { id, kind } of nodesToDelete) {
-        const dbId = dbIdFromNodeId(id);
-        if (kind === "goal") await deleteGoal(dbId);
-        else if (kind === "task") await deleteTask(dbId);
-        else if (kind === "commitment") await deleteCommitment(dbId);
-        else if (kind === "info") await deleteInfo(dbId);
-        else if (kind === "flow") await deleteFlow(dbId);
-        else if (kind === "flow_goal") await deleteFlowItem("flow_goal", dbId);
-        else if (kind === "flow_task") await deleteFlowItem("flow_task", dbId);
-        else if (kind !== "aspect") await deleteDomain(dbId);
-      }
+      // One delete per node, so one Gesture around the lot: a multi-selection, or the subtree the
+      // confirm dialog expanded into its nodes, has to come back in a single press.
+      await withGesture(t("gestures.delete", { count: nodesToDelete.length }), async () => {
+        for (const { id, kind } of nodesToDelete) {
+          const dbId = dbIdFromNodeId(id);
+          if (kind === "goal") await deleteGoal(dbId);
+          else if (kind === "task") await deleteTask(dbId);
+          else if (kind === "commitment") await deleteCommitment(dbId);
+          else if (kind === "info") await deleteInfo(dbId);
+          else if (kind === "flow") await deleteFlow(dbId);
+          else if (kind === "flow_goal") await deleteFlowItem("flow_goal", dbId);
+          else if (kind === "flow_task") await deleteFlowItem("flow_task", dbId);
+          else if (kind !== "aspect") await deleteDomain(dbId);
+        }
+      });
+      await load(false);
+    },
+    [load, t],
+  );
+
+  /**
+   * Writes a commitment configured in the new-commitment editor, under `parentId`.
+   *
+   * Separate from `createNode`'s commitment branch, which posts a bare title: a commitment is
+   * invalid without a window, so the one Shift+C opens carries the window the user just set.
+   * `is_private` and tags are not fields of the create request, so they follow it — before the
+   * reload, so the new row appears once, configured, rather than twice, half-configured first.
+   * Any refusal propagates to the editor, which keeps itself open and shows it.
+   */
+  const createCommitmentNode = useCallback(
+    async (parentId: string, parentKind: NodeKind, data: CommitmentSaveData): Promise<void> => {
+      const dbParentId = parseInt(parentId.split("-").pop() ?? "0", 10);
+      const commitment = await createCommitment({
+        title: data.title,
+        parent_type: kindToParentType(parentKind),
+        parent_id: dbParentId,
+        verdict: data.verdict,
+        ...(data.timeScope !== null ? { time_scope: data.timeScope } : {}),
+        ...(data.verdictWindow !== null ? { verdict_window: data.verdictWindow } : {}),
+      });
+      if (data.isPrivate) await updateCommitment(commitment.id, { is_private: true });
+      for (const tagId of data.tagIds) await addTagToCommitment(commitment.id, tagId);
       await load(false);
     },
     [load],
@@ -1262,6 +1428,7 @@ export function useMindmapData(): MindmapData {
     moveNode,
     duplicateNode,
     removeNode,
+    createCommitment: createCommitmentNode,
     createFlow: createFlowNode,
     updateFlow: updateFlowNode,
     reload: reload,

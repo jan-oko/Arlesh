@@ -6,6 +6,7 @@ use serde::Serialize;
 use crate::{
     domains::error::DomainError, error::AppError, flows::error::FlowError,
     knowledge_base::error::KnowledgeBaseError, scopes::error::ScopeError, tasks::error::TaskError,
+    undo::error::UndoError,
 };
 
 /// Stable, machine-readable classification of a [`WireError`].
@@ -137,8 +138,33 @@ fn kind_of(error: &AppError) -> WireErrorKind {
         AppError::Scope(inner) => scope_kind(inner),
         AppError::KnowledgeBase(inner) => knowledge_base_kind(inner),
         AppError::Flow(inner) => flow_kind(inner),
+        AppError::Undo(inner) => undo_kind(inner),
         AppError::Database(sqlx::Error::RowNotFound) => WireErrorKind::NotFound,
         AppError::Database(_) => WireErrorKind::Database,
+    }
+}
+
+/// Maps an [`UndoError`] variant to its [`WireErrorKind`].
+fn undo_kind(error: &UndoError) -> WireErrorKind {
+    match error {
+        // The request itself is malformed: a close with no matching open. The caller's gesture
+        // pairing is wrong, and it is the caller that can fix it.
+        UndoError::NoGestureOpen => WireErrorKind::InvalidRequest,
+        // A `source` no `WriteSource` names can only have been written from outside this crate,
+        // so it is persisted data the app cannot interpret rather than anything the caller sent.
+        // Likewise persisted data the app cannot interpret: the journal's own CHECK constraint
+        // admits exactly three operations, and the triggers write every image with `json_object`
+        // over the table's columns, so none of these three can come from a caller.
+        UndoError::UnknownWriteSource(_)
+        | UndoError::UnknownRowOperation(_)
+        | UndoError::MalformedImage(_)
+        | UndoError::MalformedEntry { .. }
+        | UndoError::UnsafeIdentifier(_) => WireErrorKind::Internal,
+        // A Gesture that would not go back on is almost always a constraint the board has since
+        // acquired — a row the undo would reinstate whose parent is gone — which is a database
+        // failure the caller can neither rephrase nor be blamed for.
+        UndoError::ApplyFailed { .. } => WireErrorKind::Database,
+        UndoError::Database(_) => WireErrorKind::Database,
     }
 }
 

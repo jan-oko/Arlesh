@@ -172,6 +172,56 @@ describe("filterTree — flows & habits", () => {
   });
 });
 
+describe("filterTree — a habit occurrence whose window has not opened", () => {
+  const occurrence = (cycleId: number) => ({
+    flowId: 3, itemType: "flow_task" as const, itemId: 4, scopeId: 100, cycleId,
+  });
+
+  // A daily habit's iteration at breakfast: the morning item's window is open, this evening's is
+  // not. Both reach the frontend; only the preset decides which are drawn.
+  const iteration = () =>
+    n("root", "domain", {}, [
+      n("project-1", "project", {}, [
+        n("habit-3-0-virtual", "goal", { virtual: true, status: "active", timing: "active" }, [
+          n("morning", "task", { virtual: true, status: "todo", timing: "active", habitItem: occurrence(11) }),
+          n("evening", "task", { virtual: true, status: "todo", timing: "pending", habitItem: occurrence(12) }, [
+            n("evening-step", "task", { virtual: true, status: "todo", timing: "active", habitItem: occurrence(13) }),
+          ]),
+        ]),
+      ]),
+    ]);
+
+  it("All shows it — the bug was that no preset could, because it never left the backend", () => {
+    const kept = ids(filterTree(iteration(), f({ statusMode: "all" })));
+    expect(kept).toContain("evening");
+    expect(kept).toContain("morning");
+  });
+
+  it("Plan, Start and Do hide it, with its subtree, exactly as before", () => {
+    for (const statusMode of ["plan", "start", "do"] as const) {
+      const kept = ids(filterTree(iteration(), f({ statusMode })));
+      expect(kept, statusMode).not.toContain("evening");
+      // The subtree goes with it: an open child must not keep an unopened parent on screen.
+      expect(kept, statusMode).not.toContain("evening-step");
+    }
+    expect(ids(filterTree(iteration(), f({ statusMode: "plan" })))).toContain("morning");
+  });
+
+  it("the Archived pill does not reach it — an unopened window is not archived", () => {
+    // Include force-shows what has finished; it has no business force-showing what has not started.
+    const kept = ids(filterTree(iteration(), f({ statusMode: "plan", archivedMode: "include" })));
+    expect(kept).not.toContain("evening");
+  });
+
+  it("leaves a real task whose window is still ahead alone — planning ahead is what Plan is for", () => {
+    // `pending` is derived for any scoped item with its window ahead, not just habit occurrences.
+    // Only the generated ones are hidden; a task scheduled for next week still plans.
+    const t = n("root", "domain", {}, [n("next-week", "task", { status: "todo", timing: "pending" })]);
+    expect(ids(filterTree(t, f({ statusMode: "plan" })))).toContain("next-week");
+    expect(ids(filterTree(t, f({ statusMode: "start" })))).toContain("next-week");
+  });
+});
+
 describe("filterTree — info nodes are attachments, never keep a resolved parent", () => {
   it("hides an achieved goal whose only children are info notes (Start)", () => {
     const t = n("root", "domain", {}, [
