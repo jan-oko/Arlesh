@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./gesture";
 import type { Verdict } from "@/api/commitments";
 
 /** What happens to a scoped item once its Time Scope has fully passed unfinished. */

@@ -1,32 +1,10 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./gesture";
+import type { Verdict } from "@/api/verdict";
+import { VERDICT } from "@/api/verdict";
 import type { TimeScope, DurationSpec } from "@/api/time-scope";
 
-/**
- * Whether a Commitment was held to — the Commitment kind's answer to a Task's status.
- *
- * Never derived. Not from the window passing, not from children completing: a Task untouched at
- * window close is Missed, but a Commitment untouched may well have been Kept, so there is no
- * honest default, and "unresolved" carries real information ("you have not said") that a
- * defaulted verdict would destroy.
- */
-export type Verdict = "unresolved" | "kept" | "broken";
-
-export const VERDICT = {
-  UNRESOLVED: "unresolved",
-  KEPT: "kept",
-  BROKEN: "broken",
-} as const;
-
-export const VERDICT_VALUES: readonly Verdict[] = [
-  VERDICT.UNRESOLVED,
-  VERDICT.KEPT,
-  VERDICT.BROKEN,
-];
-
-/** Whether a string names a Verdict. */
-export function isVerdict(value: string): value is Verdict {
-  return VERDICT_VALUES.some((verdict) => verdict === value);
-}
+export type { Verdict } from "@/api/verdict";
+export { VERDICT, VERDICT_VALUES, isVerdict } from "@/api/verdict";
 
 export interface Commitment {
   id: number;
@@ -113,11 +91,24 @@ export async function removeTagFromCommitment(commitmentId: number, tagId: numbe
  * The verdict a control should write when it is pressed on a commitment currently reading
  * `current`.
  *
- * Both controls toggle: pressing the tick on a kept commitment clears it, pressing the cross on a
- * broken one clears it. What neither ever does is move straight from one verdict to the other —
- * two explicit controls rather than one cycling one is what keeps Broken from being a stray
- * keystroke away from Kept.
+ * The tick and the cross are two explicit, equal choices, and each one toggles: pressing the tick
+ * on a kept commitment clears it, pressing the cross on a broken one clears it. What neither
+ * control ever does is move straight from one verdict to the other — reaching Broken is always
+ * the cross, never a repeat of the tick.
  */
 export function verdictAfterPressing(pressed: Exclude<Verdict, "unresolved">, current: Verdict): Verdict {
   return current === pressed ? VERDICT.UNRESOLVED : pressed;
 }
+
+/**
+ * The verdict Enter advances to (Unresolved → Kept → Broken → Unresolved).
+ *
+ * One key walks the whole answer, so a commitment can be judged, corrected and un-judged without
+ * leaving the row. Kept leads because it is the answer given most often; Broken sitting one press
+ * further along is not the only way to reach it, since `X` writes Broken directly from any state.
+ */
+export const NEXT_VERDICT: Record<Verdict, Verdict> = {
+  unresolved: "kept",
+  kept: "broken",
+  broken: "unresolved",
+};

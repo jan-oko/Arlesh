@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { createDomain, updateDomain, deleteDomain, duplicateDomain } from "@/api/domains";
 import { createTask, updateTask, deleteTask, duplicateTask, TASK_ARCHIVAL } from "@/api/tasks";
 import { createCommitment, updateCommitment, deleteCommitment, addTagToCommitment } from "@/api/commitments";
@@ -13,10 +14,12 @@ import { getErrorMessage } from "@/api/errors";
 import { asRetypeKind, retypeNode as backendRetype } from "@/api/retype";
 import type { StrandedChildren } from "@/api/retype";
 import { loadMindmap, habitIterations, habitStatuses } from "@/api/mindmap";
+import { withGesture } from "@/api/gesture";
 import type { MindmapLoad } from "@/api/mindmap";
 import {
   createFlow, updateFlow, deleteFlow,
   createFlowGoal, createFlowTask, updateFlowGoal, updateFlowTask, deleteFlowItem, convertFlowItem,
+  duplicateFlow, duplicateFlowItem,
 } from "@/api/flows";
 import { findNode } from "@/utils/mindmap-tree";
 import { propagateAgentic } from "@/utils/agentic";
@@ -512,6 +515,20 @@ function kindToFlowParentType(kind: NodeKind): string {
   }
 }
 
+/**
+ * The `parent_type` a flow item records for an in-flow parent. The three flow kinds spell it
+ * exactly as they are named; every real kind is refused, because a flow item lives nowhere but
+ * inside its flow.
+ */
+function kindToFlowItemParentType(kind: NodeKind): string {
+  switch (kind) {
+    case "flow": case "flow_goal": case "flow_task": return kind;
+    case "aspect": case "domain": case "project": case "goal":
+    case "task": case "commitment": case "tag": case "info":
+      throw new Error(`Flow items cannot hang from a node of kind "${kind}"`);
+  }
+}
+
 function findNodeInTree(root: MindmapNode, id: string): MindmapNode | undefined {
   if (root.id === id) return root;
   for (const child of root.children) {
@@ -937,6 +954,7 @@ function collectLoadConditions(data: MindmapLoad): LoadCondition {
 }
 
 export function useMindmapData(): MindmapData {
+  const { t } = useTranslation("undo");
   const [tree, setTree] = useState<MindmapNode>(VIRTUAL_ROOT);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1290,8 +1308,8 @@ export function useMindmapData(): MindmapData {
 
   /**
    * Deep-clones `id`'s whole subtree under `(targetId, targetKind)`, placing the new root at
-   * `position` — the COPY counterpart to `moveNode`'s CUT. Flows and flow items aren't duplicable;
-   * callers filter those out before getting here (`onPaste` does, with a toast).
+   * `position` — the COPY counterpart to `moveNode`'s CUT. A Commitment has no duplicate command
+   * of its own; callers filter those out before getting here (`onPaste` does, with a toast).
    */
   const duplicateNode = useCallback(
     async (id: string, kind: NodeKind, targetId: string, targetKind: NodeKind, position: number): Promise<void> => {
@@ -1324,11 +1342,17 @@ export function useMindmapData(): MindmapData {
           // Aspects are the fixed roots of the board — there is no second Green.
           throw new Error("Aspects are fixed and cannot be duplicated");
         case "flow":
+          // Template, cycle pairs, dependencies and Recurrence — a copy of a Habit is a Habit. The
+          // Target Node is inherited as stored, so a flow that never named one targets wherever it
+          // was pasted. No completion history and no started instances travel with it.
+          await duplicateFlow(dbId, kindToFlowParentType(targetKind), dbTargetId, position);
+          break;
         case "flow_goal":
         case "flow_task":
-          // Flows carry a Recurrence, instances and completion history; what a duplicate of one
-          // should inherit is its own question, and `fork_flow` is the operation that asks it.
-          throw new Error(`${kind} nodes cannot be duplicated`);
+          // Within the flow only — `onPaste` refuses the cross-flow case before getting here, and
+          // the backend refuses it again: the Cycle Scope is an offset into *this* flow's window.
+          await duplicateFlowItem(kind, dbId, kindToFlowItemParentType(targetKind), dbTargetId, position);
+          break;
         default: {
           const unhandled: never = kind;
           throw new Error(`duplicateNode has no branch for node kind "${String(unhandled)}"`);
@@ -1341,20 +1365,24 @@ export function useMindmapData(): MindmapData {
 
   const removeNode = useCallback(
     async (nodesToDelete: Array<{ id: string; kind: NodeKind }>): Promise<void> => {
-      for (const { id, kind } of nodesToDelete) {
-        const dbId = dbIdFromNodeId(id);
-        if (kind === "goal") await deleteGoal(dbId);
-        else if (kind === "task") await deleteTask(dbId);
-        else if (kind === "commitment") await deleteCommitment(dbId);
-        else if (kind === "info") await deleteInfo(dbId);
-        else if (kind === "flow") await deleteFlow(dbId);
-        else if (kind === "flow_goal") await deleteFlowItem("flow_goal", dbId);
-        else if (kind === "flow_task") await deleteFlowItem("flow_task", dbId);
-        else if (kind !== "aspect") await deleteDomain(dbId);
-      }
+      // One delete per node, so one Gesture around the lot: a multi-selection, or the subtree the
+      // confirm dialog expanded into its nodes, has to come back in a single press.
+      await withGesture(t("gestures.delete", { count: nodesToDelete.length }), async () => {
+        for (const { id, kind } of nodesToDelete) {
+          const dbId = dbIdFromNodeId(id);
+          if (kind === "goal") await deleteGoal(dbId);
+          else if (kind === "task") await deleteTask(dbId);
+          else if (kind === "commitment") await deleteCommitment(dbId);
+          else if (kind === "info") await deleteInfo(dbId);
+          else if (kind === "flow") await deleteFlow(dbId);
+          else if (kind === "flow_goal") await deleteFlowItem("flow_goal", dbId);
+          else if (kind === "flow_task") await deleteFlowItem("flow_task", dbId);
+          else if (kind !== "aspect") await deleteDomain(dbId);
+        }
+      });
       await load(false);
     },
-    [load],
+    [load, t],
   );
 
   /**

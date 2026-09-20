@@ -18,7 +18,7 @@ pub mod habits;
 pub mod model;
 mod render;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chrono::{Datelike, Duration, Months, NaiveDate, NaiveDateTime, NaiveTime};
@@ -419,6 +419,48 @@ async fn habit_slots(
         index += 1;
     }
     Ok(slots)
+}
+
+/// Where a cloned template lands: the clone's parent and its sort position among its new siblings.
+///
+/// Absent — which is what a fork passes — the clone keeps the original's parent and takes the head
+/// of the list, because a fork stands in for the flow it was forked from.
+struct ClonePlacement {
+    /// The clone's `parent_type` (`aspect`/`project`/`domain`/`goal`).
+    parent_type: String,
+    /// The clone's parent id.
+    parent_id: i64,
+    /// The clone's sort position.
+    position: i64,
+}
+
+/// A cloned template: the new flow row, and the old→new id maps for its items.
+///
+/// The maps are how a caller carries something across that the clone itself does not — privacy,
+/// for [`duplicate_flow`] — without [`FlowOperator::clone_template`] needing to know about it.
+struct TemplateClone {
+    /// The new flow row.
+    flow: Flow,
+    /// Old→new `flow_goals` ids.
+    goals: HashMap<i64, i64>,
+    /// Old→new `flow_tasks` ids.
+    tasks: HashMap<i64, i64>,
+}
+
+/// Splits a list of copied items into per-table old→new id maps, for remapping references that
+/// name an item by `(item_type, item_id)`.
+fn item_id_maps(
+    copied: &[(FlowItemType, i64, i64)],
+) -> (HashMap<i64, i64>, HashMap<i64, i64>) {
+    let mut goals = HashMap::new();
+    let mut tasks = HashMap::new();
+    for (kind, old_id, new_id) in copied {
+        match kind {
+            FlowItemType::FlowGoal => goals.insert(*old_id, *new_id),
+            FlowItemType::FlowTask => tasks.insert(*old_id, *new_id),
+        };
+    }
+    (goals, tasks)
 }
 
 /// Reads and writes flow templates — and their items, cycles, recurrences and instances —
@@ -1397,16 +1439,31 @@ impl<'session> FlowOperator<'session> {
     }
 
     /// Deep-clones a flow's **template** — the flow row, its items, cycle pairs, and intra-flow
-    /// dependencies (remapped to the clone), but **not** its Recurrence or completion Modifications —
-    /// into a brand-new flow. The edit-habit "archive & new" reconciliation applies the edited
-    /// schedule to the clone, leaving the original habit (and its history) untouched.
+    /// dependencies (remapped to the clone) — into a brand-new flow, landing it per `placement`.
+    ///
+    /// The template and **only** the template. The Recurrence, the privacy flag, the completion
+    /// Modifications and the started instances are all left behind, and each caller adds back
+    /// whatever its own operation means to carry: [`fork_flow`] adds nothing (the habit editor's
+    /// archive-and-new is *about* dropping the schedule), [`duplicate_flow`] adds the Recurrence
+    /// and the privacy flag. Keeping those out of here is what lets the two callers differ without
+    /// a policy flag deciding it from the inside.
     ///
     /// **Module-private.** It reads the stored row and writes values derived from it, so it is
     /// only correct inside a transaction — and an operator wraps a bare connection, which cannot
-    /// demand one in its signature. [`fork_flow`] is the entry point; it takes
-    /// `&mut Db<Transactional>` and is this method's only caller.
-    async fn fork_flow(&mut self, flow_id: FlowId) -> Result<Flow, FlowError> {
+    /// demand one in its signature. [`fork_flow`] and [`duplicate_flow`] are the entry points;
+    /// they take `&mut Db<Transactional>`.
+    async fn clone_template(
+        &mut self,
+        flow_id: FlowId,
+        placement: Option<ClonePlacement>,
+    ) -> Result<TemplateClone, FlowError> {
         let flow = self.get(flow_id).await?;
+        // A fork stands in for the flow it was forked from, so with no placement the clone keeps
+        // the original's parent and takes the head of the list. A paste names both.
+        let (parent_type, parent_id, position) = match placement {
+            Some(landing) => (landing.parent_type, landing.parent_id, landing.position),
+            None => (flow.parent_type.clone(), flow.parent_id, now_position()),
+        };
         let new_id = sqlx::query(
             "INSERT INTO flows
                 (title, instance_type, parent_type, parent_id, target_type, target_id,
@@ -1418,8 +1475,12 @@ impl<'session> FlowOperator<'session> {
         )
         .bind(&flow.title)
         .bind(&flow.instance_type)
-        .bind(&flow.parent_type)
-        .bind(flow.parent_id)
+        .bind(&parent_type)
+        .bind(parent_id)
+        // The Target Node is bound **as stored**, NULL included. A NULL target means "my parent"
+        // and is resolved on read (migration 0025), so a clone of a flow that never named a target
+        // resolves to wherever *it* was put — and a clone of one that did keeps pointing there.
+        // Resolving the target here would pin every copy to the original's parent for ever.
         .bind(&flow.target_type)
         .bind(flow.target_id)
         .bind(flow.flow_duration_n)
@@ -1432,7 +1493,7 @@ impl<'session> FlowOperator<'session> {
         .bind(flow.root_plan_end)
         .bind(flow.verdict_window_n)
         .bind(&flow.verdict_window_kind)
-        .bind(now_position())
+        .bind(position)
         .execute(&mut *self.connection)
         .await?
         .last_insert_rowid();
@@ -1486,7 +1547,10 @@ impl<'session> FlowOperator<'session> {
                 .bind(&pt).bind(pid).bind(map_item("flow_task", t.id)?)
                 .execute(&mut *self.connection).await?;
         }
-        // Clone cycle pairs and dependencies, remapped to the new items.
+        // Clone cycle pairs and dependencies, remapped to the new items. Each pair is a new row
+        // with a new id, and a Habit occurrence's completion is keyed on its pair id (migration
+        // 0029) — so the clone's occurrences cannot inherit the original's ticks by construction,
+        // whatever a caller does about history.
         for c in self.list_all_cycles().await?.iter().filter(|c| c.flow_id == flow_id.0) {
             sqlx::query(
                 "INSERT INTO flow_item_cycles
@@ -1505,7 +1569,259 @@ impl<'session> FlowOperator<'session> {
             .bind(&d.depends_on_type).bind(map_item(&d.depends_on_type, d.depends_on_id)?)
             .execute(&mut *self.connection).await?;
         }
-        self.get(FlowId(new_id)).await
+        let cloned = self.get(FlowId(new_id)).await?;
+        Ok(TemplateClone { flow: cloned, goals: goal_map, tasks: task_map })
+    }
+
+    /// Deep-clones a flow's template in place, dropping its Recurrence — the edit-habit
+    /// "archive & new" reconciliation, which applies the edited schedule to the clone and leaves
+    /// the original habit (and its history) untouched.
+    ///
+    /// **Module-private**, for the reason [`Self::clone_template`] gives; [`fork_flow`] is the
+    /// entry point and this method's only caller.
+    async fn fork_flow(&mut self, flow_id: FlowId) -> Result<Flow, FlowError> {
+        Ok(self.clone_template(flow_id, None).await?.flow)
+    }
+
+    /// Copies one template item's privacy flag onto its clone.
+    ///
+    /// [`Self::clone_template`] writes the bare template and leaves privacy to its callers, and a
+    /// Flow *copy* must not quietly publish a private template — see [`duplicate_flow`]. One
+    /// statement per item rather than a read and a write, so the flag is never in Rust's hands.
+    async fn copy_item_privacy(
+        &mut self,
+        item_type: FlowItemType,
+        from: i64,
+        to: i64,
+    ) -> Result<(), FlowError> {
+        let table = match item_type {
+            FlowItemType::FlowGoal => "flow_goals",
+            FlowItemType::FlowTask => "flow_tasks",
+        };
+        sqlx::query(&format!(
+            "UPDATE {table} SET is_private = (SELECT is_private FROM {table} WHERE id = ?)
+             WHERE id = ?"
+        ))
+        .bind(from)
+        .bind(to)
+        .execute(&mut *self.connection)
+        .await?;
+        Ok(())
+    }
+
+    /// Copies a flow's Recurrence onto another flow, leaving `to` a plain flow when `from` is one.
+    ///
+    /// A straight row copy rather than a [`Self::set_recurrence`] call: the source row already
+    /// satisfies every Gap and Consumption rule that validation exists to enforce, including a
+    /// commitment Habit's fixed Accumulating + Overlapping, so re-deriving a request from it only
+    /// adds a way for the two spellings to disagree.
+    async fn copy_recurrence(&mut self, from: FlowId, to: FlowId) -> Result<(), FlowError> {
+        sqlx::query(
+            "INSERT INTO flow_recurrences
+                (flow_id, start_scope_id, gap_n, gap_kind, end_scope_id,
+                 consumption_kind, blocking_mode, catchup_policy)
+             SELECT ?, start_scope_id, gap_n, gap_kind, end_scope_id,
+                    consumption_kind, blocking_mode, catchup_policy
+             FROM flow_recurrences WHERE flow_id = ?",
+        )
+        .bind(to.0)
+        .bind(from.0)
+        .execute(&mut *self.connection)
+        .await?;
+        Ok(())
+    }
+
+    /// The flow a template item belongs to, or [`FlowError::NotFound`] if there is no such item.
+    pub async fn item_flow_id(
+        &mut self,
+        item_type: FlowItemType,
+        item_id: i64,
+    ) -> Result<i64, FlowError> {
+        let table = match item_type {
+            FlowItemType::FlowGoal => "flow_goals",
+            FlowItemType::FlowTask => "flow_tasks",
+        };
+        sqlx::query_scalar::<_, i64>(&format!("SELECT flow_id FROM {table} WHERE id = ?"))
+            .bind(item_id)
+            .fetch_optional(&mut *self.connection)
+            .await?
+            .ok_or(FlowError::NotFound(item_id))
+    }
+
+    /// Deep-clones one template item and everything nested under it, landing the copy on
+    /// `(parent_type, parent_id)` at `position` — **within the same flow**, which the caller has
+    /// already established. Returns the new root item's id.
+    ///
+    /// Cycle pairs travel with each copied item, because a Cycle Scope is an offset into the flow
+    /// window and the window is the same one. Dependency edges *out of* the copied set are copied
+    /// as they stand; an edge between two copied items is remapped onto the copies, so a copied
+    /// block waits on itself rather than reaching back into the original. That is the same rule
+    /// [`Self::clone_template`] applies, and the opposite of `duplicate::duplicate_subtree`'s for
+    /// real nodes — a flow's dependencies are its own internal wiring, and a copy of the wiring
+    /// that points at the original is a copy of nothing.
+    ///
+    /// **Module-private**, for the reason [`Self::clone_template`] gives; [`duplicate_flow_item`]
+    /// is the entry point.
+    async fn clone_item_subtree(
+        &mut self,
+        item_type: FlowItemType,
+        item_id: i64,
+        parent_type: &str,
+        parent_id: i64,
+        position: i64,
+    ) -> Result<i64, FlowError> {
+        let flow_id = self.item_flow_id(item_type, item_id).await?;
+        let new_root =
+            self.clone_item_row(item_type, item_id, parent_type, parent_id, Some(position)).await?;
+
+        // Breadth-first, like `duplicate::duplicate_subtree`: a child is cloned only once its own
+        // parent's new id exists, so every copy is attached from the start rather than repointed.
+        let mut copied: Vec<(FlowItemType, i64, i64)> = vec![(item_type, item_id, new_root)];
+        let mut queue: VecDeque<(FlowItemType, i64, i64)> = VecDeque::new();
+        queue.push_back((item_type, item_id, new_root));
+        while let Some((kind, old_id, new_id)) = queue.pop_front() {
+            for (child_kind, child_id) in self.item_children(kind, old_id).await? {
+                let new_child = self
+                    .clone_item_row(child_kind, child_id, kind.as_str(), new_id, None)
+                    .await?;
+                copied.push((child_kind, child_id, new_child));
+                queue.push_back((child_kind, child_id, new_child));
+            }
+        }
+
+        // Cycles and dependencies only once every copy exists, so an edge inside the copied set
+        // has a copy on both ends to be remapped onto.
+        let (goals, tasks) = item_id_maps(&copied);
+        for (kind, old_id, new_id) in &copied {
+            self.copy_item_cycles(flow_id, *kind, *old_id, *new_id).await?;
+            self.copy_item_dependencies(flow_id, *kind, *old_id, *new_id, &goals, &tasks).await?;
+        }
+        Ok(new_root)
+    }
+
+    /// Clones one template item row — title and privacy included — under a given parent, keeping
+    /// the original's sort position unless `position` overrides it (the pasted root does).
+    async fn clone_item_row(
+        &mut self,
+        item_type: FlowItemType,
+        item_id: i64,
+        parent_type: &str,
+        parent_id: i64,
+        position: Option<i64>,
+    ) -> Result<i64, FlowError> {
+        let table = match item_type {
+            FlowItemType::FlowGoal => "flow_goals",
+            FlowItemType::FlowTask => "flow_tasks",
+        };
+        // One INSERT ... SELECT so every column the source row carries is read and written in the
+        // same statement, and a column added later cannot be silently dropped by the copy.
+        let new_id = sqlx::query(&format!(
+            "INSERT INTO {table} (flow_id, title, parent_type, parent_id, position, is_private)
+             SELECT flow_id, title, ?, ?, COALESCE(?, position), is_private
+             FROM {table} WHERE id = ?"
+        ))
+        .bind(parent_type)
+        .bind(parent_id)
+        .bind(position)
+        .bind(item_id)
+        .execute(&mut *self.connection)
+        .await?
+        .last_insert_rowid();
+        Ok(new_id)
+    }
+
+    /// The template items parented directly on `(item_type, item_id)` — goal items then task
+    /// items, each in position order.
+    async fn item_children(
+        &mut self,
+        item_type: FlowItemType,
+        item_id: i64,
+    ) -> Result<Vec<(FlowItemType, i64)>, FlowError> {
+        let mut children = Vec::new();
+        // A flow-task parents only tasks; a flow-goal parents both.
+        if item_type == FlowItemType::FlowGoal {
+            let goals = sqlx::query_scalar::<_, i64>(
+                "SELECT id FROM flow_goals WHERE parent_type = 'flow_goal' AND parent_id = ?
+                 ORDER BY position ASC",
+            )
+            .bind(item_id)
+            .fetch_all(&mut *self.connection)
+            .await?;
+            children.extend(goals.into_iter().map(|id| (FlowItemType::FlowGoal, id)));
+        }
+        let tasks = sqlx::query_scalar::<_, i64>(
+            "SELECT id FROM flow_tasks WHERE parent_type = ? AND parent_id = ? ORDER BY position ASC",
+        )
+        .bind(item_type.as_str())
+        .bind(item_id)
+        .fetch_all(&mut *self.connection)
+        .await?;
+        children.extend(tasks.into_iter().map(|id| (FlowItemType::FlowTask, id)));
+        Ok(children)
+    }
+
+    /// Copies an item's (Cycle Scope, Cycle Plan) pairs onto its clone, in the same order.
+    async fn copy_item_cycles(
+        &mut self,
+        flow_id: i64,
+        item_type: FlowItemType,
+        old_id: i64,
+        new_id: i64,
+    ) -> Result<(), FlowError> {
+        sqlx::query(
+            "INSERT INTO flow_item_cycles
+                (flow_id, item_type, item_id, scope_kind, scope_index,
+                 plan_kind, plan_start, plan_end, position)
+             SELECT ?, item_type, ?, scope_kind, scope_index,
+                    plan_kind, plan_start, plan_end, position
+             FROM flow_item_cycles WHERE item_type = ? AND item_id = ?",
+        )
+        .bind(flow_id)
+        .bind(new_id)
+        .bind(item_type.as_str())
+        .bind(old_id)
+        .execute(&mut *self.connection)
+        .await?;
+        Ok(())
+    }
+
+    /// Copies the dependency edges *out of* one copied item onto its clone, remapping any that
+    /// land inside the copied set. Iterating outgoing edges alone still covers every edge internal
+    /// to the set, because each of those is outgoing for exactly one of its two ends.
+    async fn copy_item_dependencies(
+        &mut self,
+        flow_id: i64,
+        item_type: FlowItemType,
+        old_id: i64,
+        new_id: i64,
+        goals: &HashMap<i64, i64>,
+        tasks: &HashMap<i64, i64>,
+    ) -> Result<(), FlowError> {
+        let edges: Vec<(String, i64)> = sqlx::query_as(
+            "SELECT depends_on_type, depends_on_id FROM flow_dependencies
+             WHERE dependent_type = ? AND dependent_id = ?",
+        )
+        .bind(item_type.as_str())
+        .bind(old_id)
+        .fetch_all(&mut *self.connection)
+        .await?;
+        for (blocker_type, blocker_id) in edges {
+            let map = if blocker_type == FlowItemType::FlowGoal.as_str() { goals } else { tasks };
+            let target = map.get(&blocker_id).copied().unwrap_or(blocker_id);
+            sqlx::query(
+                "INSERT INTO flow_dependencies
+                    (flow_id, dependent_type, dependent_id, depends_on_type, depends_on_id)
+                 VALUES (?, ?, ?, ?, ?)",
+            )
+            .bind(flow_id)
+            .bind(item_type.as_str())
+            .bind(new_id)
+            .bind(&blocker_type)
+            .bind(target)
+            .execute(&mut *self.connection)
+            .await?;
+        }
+        Ok(())
     }
 
     /// Maps each slot index to the day its iteration was completed — present only when **every**
@@ -1705,6 +2021,116 @@ pub async fn set_iteration_done(
 #[tracing::instrument(skip(db))]
 pub async fn fork_flow(db: &mut Db<Transactional>, flow_id: FlowId) -> Result<Flow, FlowError> {
     db.flows().fork_flow(flow_id).await
+}
+
+/// Copies a Flow under `(parent_type, parent_id)` at `position` — the Mindmap's Copy+Paste of a
+/// Flow node, and the operation a copied Domain or Goal will call for each Flow beneath it.
+///
+/// **A copy of a Habit is a Habit.** It carries the whole template (items, cycle pairs, intra-flow
+/// dependencies remapped onto the copy), the Recurrence entire — Start anchor, Gap, end and the
+/// Consumption tree — and the privacy flag. The Start anchor is *not* moved to today: the copy
+/// exists to be edited within the minute, and a rule that quietly re-anchored it would trade one
+/// surprise for another. A copy of a daily Habit started in July therefore renders every iteration
+/// since July until it is given a schedule of its own; that is chosen, not overlooked.
+///
+/// What it deliberately leaves behind:
+///
+/// - **Completion history.** The `habit_instance_modifications` and per-iteration dependency
+///   divergences belong to the original: this copy has not been done. It is also true by
+///   construction — a Modification is keyed on its item *and its cycle pair* (migration 0029), and
+///   the copy's pairs are new rows with new ids, so there is nothing for it to inherit.
+/// - **Started instances.** `flow_instances` rows and the nodes they materialised are real Goals
+///   and Tasks standing somewhere on the board; copying a template does not copy finished work.
+///
+/// The **Target Node** is inherited exactly as stored, NULL included. A flow that never named a
+/// target has a NULL one meaning "my parent" (migration 0025), so the copy's instances land
+/// wherever the paste put it; a flow deliberately pointed elsewhere keeps pointing there.
+///
+/// Transactional, for the reason [`fork_flow`] is: dozens of inserts whose remaps only make sense
+/// together.
+#[tracing::instrument(skip(db))]
+pub async fn duplicate_flow(
+    db: &mut Db<Transactional>,
+    flow_id: FlowId,
+    parent_type: &str,
+    parent_id: i64,
+    position: i64,
+) -> Result<Flow, FlowError> {
+    let source = db.flows().get(flow_id).await?;
+    let placement =
+        ClonePlacement { parent_type: parent_type.to_string(), parent_id, position };
+    let clone = db.flows().clone_template(flow_id, Some(placement)).await?;
+    let new_id = FlowId(clone.flow.id);
+    db.flows().copy_recurrence(flow_id, new_id).await?;
+    // Privacy travels with the copy. Dropping it would publish a private template the moment it
+    // was duplicated, which is the one way a copy can be worse than no copy at all.
+    for (old_id, cloned_id) in &clone.goals {
+        db.flows().copy_item_privacy(FlowItemType::FlowGoal, *old_id, *cloned_id).await?;
+    }
+    for (old_id, cloned_id) in &clone.tasks {
+        db.flows().copy_item_privacy(FlowItemType::FlowTask, *old_id, *cloned_id).await?;
+    }
+    if source.is_private {
+        db.flows()
+            .update(new_id, UpdateFlowRequest { is_private: Some(true), ..Default::default() })
+            .await?;
+    }
+    db.flows().get(new_id).await
+}
+
+/// Copies a template item — and everything nested under it — onto `(parent_type, parent_id)` at
+/// `position`, **within its own flow**. Returns the new item's id.
+///
+/// Its cycle pairs come with it: a Cycle Scope is an offset into the flow window, and pasted back
+/// into the same template it is the same window, so the offset still means what it meant.
+///
+/// Pasting into a *different* flow is refused rather than resolved. The offset would have to be
+/// re-read against another window or dropped, which is the anchor-resolution problem `start`
+/// already solves once and is not worth solving twice on a paste.
+///
+/// Transactional: the copy is one insert per nested item plus its pairs and edges, and the
+/// dependency remap names ids written earlier in the same run.
+#[tracing::instrument(skip(db))]
+pub async fn duplicate_flow_item(
+    db: &mut Db<Transactional>,
+    item_type: FlowItemType,
+    item_id: i64,
+    parent_type: &str,
+    parent_id: i64,
+    position: i64,
+) -> Result<i64, FlowError> {
+    let flow_id = db.flows().item_flow_id(item_type, item_id).await?;
+    if destination_flow_id(db, parent_type, parent_id).await? != flow_id {
+        return Err(FlowError::Invalid(
+            "a flow item is copied only within its own template — its Cycle Scope is an offset \
+             into this flow's window, which another flow's window does not share"
+                .to_string(),
+        ));
+    }
+    // The nesting rule, said by name. `flow_goals.parent_type` would refuse this anyway, as a
+    // CHECK violation with nothing in it for the user.
+    if item_type == FlowItemType::FlowGoal && parent_type == FlowItemType::FlowTask.as_str() {
+        return Err(FlowError::Invalid(
+            "a flow-task holds no goal items — paste it onto the flow or onto a flow-goal"
+                .to_string(),
+        ));
+    }
+    db.flows().clone_item_subtree(item_type, item_id, parent_type, parent_id, position).await
+}
+
+/// The flow a paste destination belongs to: a `flow` parent **is** the flow, an item parent names
+/// one, and anything else cannot hold a flow item at all.
+async fn destination_flow_id(
+    db: &mut Db<Transactional>,
+    parent_type: &str,
+    parent_id: i64,
+) -> Result<i64, FlowError> {
+    match parent_type {
+        "flow" => Ok(db.flows().get(FlowId(parent_id)).await?.id),
+        "flow_goal" => db.flows().item_flow_id(FlowItemType::FlowGoal, parent_id).await,
+        "flow_task" => db.flows().item_flow_id(FlowItemType::FlowTask, parent_id).await,
+        other => Err(FlowError::Invalid(format!("a {other} cannot hold a flow item"))),
+    }
 }
 
 /// Derives a Habit's iterations at `now` (local wall-clock): the ordered schedule of started

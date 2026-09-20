@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
+import { invokedCommands } from "@/test/command-mock";
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { buildTree, useMindmapData, injectHabitInstances } from "./use-mindmap-data";
 import { useScopeLabels } from "@/hooks/use-scope-labels";
@@ -380,7 +381,8 @@ describe("useMindmapData", () => {
   it("fetches the whole mindmap in a single round trip", async () => {
     const { result } = renderHook(() => useMindmapData());
     await waitFor(() => expect(result.current.isLoading).toBe(false));
-    expect(vi.mocked(invoke).mock.calls.map((call) => call[0])).toEqual(["load_mindmap"]);
+    // The Gesture the wrapper opens around it is protocol, not a round trip for data.
+    expect(invokedCommands()).toEqual(["load_mindmap"]);
   });
 
   it("surfaces the flow whose habit iterations failed as a load condition instead of silently emptying it", async () => {
@@ -943,15 +945,54 @@ describe("useMindmapData — mutations", () => {
       expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("duplicate_domain", expect.anything());
     });
 
-    it("refuses a flow — a Flow moves and forks through its own commands", async () => {
+    it("flow: calls duplicate_flow with the parent the paste chose", async () => {
+      setupInvoke({ duplicate_flow: mkFlow({ id: 2 }) });
+      const { result } = await loadedHook();
+
+      await act(async () => {
+        await result.current.duplicateNode("flow-1", "flow", "domain-1", "aspect", 2);
+      });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("duplicate_flow", {
+        flowId: 1, parentType: "aspect", parentId: 1, position: 2,
+      });
+    });
+
+    it("flow item: calls duplicate_flow_item with its in-flow parent", async () => {
+      setupInvoke({ duplicate_flow_item: 9 });
+      const { result } = await loadedHook();
+
+      await act(async () => {
+        await result.current.duplicateNode("flowtask-4", "flow_task", "flowgoal-3", "flow_goal", 1);
+      });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("duplicate_flow_item", {
+        itemType: "flow_task", itemId: 4, parentType: "flow_goal", parentId: 3, position: 1,
+      });
+    });
+
+    it("refuses a flow pasted onto a node no Flow can hang from", async () => {
       setupInvoke({});
       const { result } = await loadedHook();
 
       await expect(
         act(async () => {
-          await result.current.duplicateNode("flow-1", "flow", "domain-1", "aspect", 0);
+          await result.current.duplicateNode("flow-1", "flow", "task-1", "task", 0);
         }),
-      ).rejects.toThrow("flow nodes cannot be duplicated");
+      ).rejects.toThrow('Flows cannot hang from a node of kind "task"');
+      expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("duplicate_flow", expect.anything());
+    });
+
+    it("refuses a flow item pasted onto a real node", async () => {
+      setupInvoke({});
+      const { result } = await loadedHook();
+
+      await expect(
+        act(async () => {
+          await result.current.duplicateNode("flowtask-4", "flow_task", "goal-1", "goal", 0);
+        }),
+      ).rejects.toThrow('Flow items cannot hang from a node of kind "goal"');
+      expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("duplicate_flow_item", expect.anything());
     });
   });
 

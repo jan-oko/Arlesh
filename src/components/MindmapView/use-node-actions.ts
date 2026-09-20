@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
-import { findNode, findParent, collectAllNodeIds } from "@/utils/mindmap-tree";
+import { findNode, findParent, collectAllNodeIds, owningFlowId } from "@/utils/mindmap-tree";
 import { isValidDropTarget, validParentKinds } from "@/utils/node-meta";
 import type { TypedChildKind } from "@/utils/node-meta";
 import { updateTask } from "@/api/tasks";
@@ -11,6 +11,7 @@ import { updateGoal } from "@/api/goals";
 import { setHabitItemStatus } from "@/api/flows";
 import { TASK_STATUS, GOAL_STATUS } from "@/utils/status-mapping";
 import { CLIPBOARD_OP } from "@/stores/use-clipboard-store";
+import { withGesture } from "@/api/gesture";
 import { getErrorMessage } from "@/api/errors";
 
 const LOG_PREFIX = "[arlesh]";
@@ -69,7 +70,7 @@ export function useNodeActions({
   tree, clipboard, moveNode, duplicateNode, onRequestDelete, reload, renameNode,
   createNode, createChild, selectNode, setClipboard, setEditingNodeId, showToast, onNewFlow, onNewCommitment,
 }: Options): Result {
-  const { t } = useTranslation(["warnings", "nodeKinds"]);
+  const { t } = useTranslation(["warnings", "nodeKinds", "undo"]);
 
   const onStatusClick = useCallback(
     (nodeId: string) => {
@@ -79,9 +80,11 @@ export function useNodeActions({
       // goal toggles achieved; a task cycles todo → in_progress → done. `null` clears the Modification
       // (back to the base status). A goal's "achieved" is stored canonically as `done`.
       //
-      // A commitment iteration is excluded: it is kept or broken, never advanced, and its two
-      // verdict controls live in List View beside every other commitment's. Like a real Commitment,
-      // it has no status control on the canvas at all.
+      // A commitment iteration is excluded: it is kept or broken, never advanced. Like a real
+      // Commitment it has no status control to click on the canvas — the tick and the cross are
+      // List View's — but the canvas is not silent about it either: Enter cycles its verdict and X
+      // records Broken, both through `useCommitmentVerdict`, which writes an iteration's verdict as
+      // its Modification exactly as this branch writes an ordinary instance's status.
       if (node.habitItem !== undefined && node.kind !== "commitment") {
         const { flowId, itemType, itemId, scopeId, cycleId } = node.habitItem;
         let next: string | null;
@@ -205,16 +208,24 @@ export function useNodeActions({
 
       // A node is pasteable here if drag-and-drop would allow the same reparent (e.g. aspects are
       // fixed and can't be reparented) and it isn't a derived, DB-less virtual node. A COPY refuses
-      // a Flow, a flow item or a Commitment on top of that: none of them has a duplicate command.
-      // A Commitment's would have to decide what a copy of a recorded Verdict means, which nobody
-      // has. Refused here rather than in `duplicateNode` so it is *said* — the skipped-paste toast
-      // names the count, instead of the copy failing where nothing is watching.
+      // two more things. A Commitment, which has no duplicate command: its would have to decide
+      // what a copy of a recorded Verdict means, and nobody has. And a flow item pasted into a
+      // *different* flow, because its Cycle Scope is an offset into its own flow's window and
+      // another window does not share it. Refused here rather than in `duplicateNode` so it is
+      // *said* — the skipped-paste toast names the count, instead of the copy failing where
+      // nothing is watching.
       const nodeIds = clipboard.nodeIds.filter((id) => {
         const node = findNode(tree, id);
         if (node === undefined || node.virtual === true) return false;
         if (!isValidDropTarget(node.kind, targetNode.kind)) return false;
-        if (isCopy && (node.kind === "flow" || node.kind === "flow_goal" || node.kind === "flow_task")) return false;
         if (isCopy && node.kind === "commitment") return false;
+        if (
+          isCopy &&
+          (node.kind === "flow_goal" || node.kind === "flow_task") &&
+          owningFlowId(tree, id) !== owningFlowId(tree, targetId)
+        ) {
+          return false;
+        }
         return true;
       });
       const skippedCount = clipboard.nodeIds.length - nodeIds.length;
@@ -243,7 +254,12 @@ export function useNodeActions({
           ? Math.max(...targetNode.children.map((c) => c.position)) + 1
           : 0;
 
-      void (async () => {
+      // One Gesture around every write the paste makes, so five pasted nodes are one Ctrl+Z rather
+      // than five. This is the run the whole granularity design exists for.
+      const label = isCopy
+        ? t("undo:gestures.paste", { count: topLevel.length })
+        : t("undo:gestures.move", { count: topLevel.length });
+      void withGesture(label, async () => {
         for (let i = 0; i < topLevel.length; i++) {
           const nodeId = topLevel[i]!;
           const sourceNode = findNode(tree, nodeId);
@@ -255,7 +271,9 @@ export function useNodeActions({
           }
         }
         if (!isCopy) setClipboard(null);
-      })();
+      }).catch((err: unknown) => {
+        console.error(`${LOG_PREFIX} paste failed:`, err);
+      });
     },
     [clipboard, tree, moveNode, duplicateNode, setClipboard, showToast, t],
   );
@@ -294,18 +312,22 @@ export function useNodeActions({
       if (node === undefined || node.kind === "aspect") return;
       const parent = findParent(tree, nodeId);
       if (parent === null || parent.id === "root") return;
+      // Two writes — the new parent, then the move under it. Without a Gesture, undoing would take
+      // back the move and leave an empty node behind.
       void (async () => {
         try {
-          const newNode = await createChild(parent.id, parent.kind, "");
-          await moveNode(nodeId, node.kind, newNode.id, newNode.kind, 0);
-          selectNode(newNode.id);
-          setEditingNodeId(newNode.id);
+          await withGesture(t("undo:gestures.insertParent"), async () => {
+            const newNode = await createChild(parent.id, parent.kind, "");
+            await moveNode(nodeId, node.kind, newNode.id, newNode.kind, 0);
+            selectNode(newNode.id);
+            setEditingNodeId(newNode.id);
+          });
         } catch (err) {
           console.error(`${LOG_PREFIX} insertParent failed:`, err);
         }
       })();
     },
-    [tree, createChild, moveNode, selectNode, setEditingNodeId],
+    [tree, createChild, moveNode, selectNode, setEditingNodeId, t],
   );
 
   return { onStatusClick, onCommitEdit, onCreateChild, onCreateTypedChild, onCreateSibling, onInsertParent, onDelete, onPaste };
