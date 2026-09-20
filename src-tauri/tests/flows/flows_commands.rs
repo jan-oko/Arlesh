@@ -532,6 +532,117 @@ async fn the_fork_flow_command_commits_the_whole_clone() {
 }
 
 #[tokio::test]
+async fn the_duplicate_flow_command_commits_the_copy_and_its_recurrence() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let flow = flow_commands::create_flow(app.state(), create_req("Morning")).await.unwrap();
+    let item = flow_commands::create_flow_task(
+        app.state(),
+        CreateFlowItemRequest {
+            flow_id: flow.id,
+            title: "Stretch".into(),
+            parent_type: "flow".into(),
+            parent_id: flow.id,
+        },
+    )
+    .await
+    .unwrap();
+    flow_commands::set_flow_item_cycles(
+        app.state(),
+        flow.id,
+        FlowItemType::FlowTask,
+        item.id,
+        vec![FlowCycleInput { scope_kind: Some("day".into()), scope_index: Some(1), ..Default::default() }],
+    )
+    .await
+    .unwrap();
+    let start = helpers::session_factory(&pool)
+        .connect()
+        .await
+        .unwrap()
+        .scopes()
+        .get_or_create(ScopeKind::Week, ymd(2026, 1, 5))
+        .await
+        .unwrap()
+        .id;
+    flow_commands::set_flow_recurrence(
+        app.state(),
+        flow.id,
+        SetRecurrenceRequest {
+            start_scope_id: start,
+            gap_n: None,
+            gap_kind: None,
+            end_scope_id: None,
+            consumption_kind: ConsumptionKind::Destructive,
+            blocking_mode: None,
+            catchup_policy: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    let copy = flow_commands::duplicate_flow(app.state(), flow.id, "aspect".into(), 2, 4)
+        .await
+        .unwrap();
+
+    assert_ne!(copy.id, flow.id);
+    assert_eq!(count_where(&pool, "flows", "id", copy.id).await, 1, "the copy's flow row");
+    assert_eq!(count_where(&pool, "flow_tasks", "flow_id", copy.id).await, 1, "its item");
+    assert_eq!(count_where(&pool, "flow_item_cycles", "flow_id", copy.id).await, 1, "its cycle pair");
+    assert_eq!(
+        count_where(&pool, "flow_recurrences", "flow_id", copy.id).await,
+        1,
+        "and the Recurrence that makes it a Habit — all in one transaction",
+    );
+}
+
+#[tokio::test]
+async fn the_duplicate_flow_item_command_commits_the_copied_item_and_its_pairs() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let flow = flow_commands::create_flow(app.state(), create_req("Routine")).await.unwrap();
+    let item = flow_commands::create_flow_task(
+        app.state(),
+        CreateFlowItemRequest {
+            flow_id: flow.id,
+            title: "Stretch".into(),
+            parent_type: "flow".into(),
+            parent_id: flow.id,
+        },
+    )
+    .await
+    .unwrap();
+    flow_commands::set_flow_item_cycles(
+        app.state(),
+        flow.id,
+        FlowItemType::FlowTask,
+        item.id,
+        vec![FlowCycleInput { scope_kind: Some("day".into()), scope_index: Some(3), ..Default::default() }],
+    )
+    .await
+    .unwrap();
+
+    let new_id = flow_commands::duplicate_flow_item(
+        app.state(),
+        FlowItemType::FlowTask,
+        item.id,
+        "flow".into(),
+        flow.id,
+        1,
+    )
+    .await
+    .unwrap();
+
+    assert_ne!(new_id, item.id);
+    assert_eq!(count_where(&pool, "flow_tasks", "flow_id", flow.id).await, 2, "the original and its copy");
+    assert_eq!(
+        count_where(&pool, "flow_item_cycles", "item_id", new_id).await,
+        1,
+        "and the copy's own cycle pair — committed, not rolled back",
+    );
+}
+
+#[tokio::test]
 async fn the_convert_to_flow_command_commits_the_template_and_the_deletion() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);

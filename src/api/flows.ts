@@ -328,6 +328,35 @@ export async function forkFlow(flowId: number): Promise<Flow> {
 }
 
 /**
+ * Copies a Flow under a new parent: the template, its cycle pairs and intra-flow dependencies, its
+ * Recurrence (so a copy of a Habit is a Habit, on the same schedule from the same anchor) and its
+ * privacy. No completion history and no started instances come with it.
+ */
+export async function duplicateFlow(
+  flowId: number,
+  parentType: string,
+  parentId: number,
+  position: number,
+): Promise<Flow> {
+  return invoke<Flow>("duplicate_flow", { flowId, parentType, parentId, position });
+}
+
+/**
+ * Copies a flow item, and everything nested under it, within its own template — cycle pairs
+ * included. Returns the new item's id. Refused across flows, where the Cycle Scope offset would
+ * have to be resolved against a window it was never measured in.
+ */
+export async function duplicateFlowItem(
+  itemType: FlowItemType,
+  itemId: number,
+  parentType: string,
+  parentId: number,
+  position: number,
+): Promise<number> {
+  return invoke<number>("duplicate_flow_item", { itemType, itemId, parentType, parentId, position });
+}
+
+/**
  * Converts a real Task/Goal subtree into a Flow template of the same instance type. `keepDependencies`
  * remaps intra-subtree task dependencies; `mapScopes` translates the root's Time Scope to the flow
  * Window and descendants' scopes to relative cycle scopes. The original subtree is deleted.

@@ -17,6 +17,15 @@ Arlesh is a personal app in live preview with no release cycle, so new entries c
   You can also add it **without opening the filter at all**, from the path header above each run of rows — the line that already spells out `Growth › CODE › ARLESH › Features`. **Ctrl+click** a segment to narrow the list to what is under it; **Alt+click** it to drop what is under it and keep everything else. A plain click on a segment still *enters* that subtree, exactly as before. The split is worth holding on to: entering re-roots the list and the branch becomes the whole board, where a Ctrl+click or Alt+click leaves the board alone and narrows it, with a chip at the top naming what is narrowing and one click on that chip putting everything back. Same node, two different questions.
 
   Each gesture says what it wants rather than toggling, so Ctrl+click on something you had filtered out brings it back in, Alt+click on something you had filtered to swaps it over, and pressing the same one twice changes nothing. Alt+click does take the run you clicked off the screen — that is what filtering a branch out means — so the chip is how you come back. The tooltip on each segment names all three gestures, and the filter popover's search box is still there when you would rather type a name.
+- **Copy a Flow, and copy a flow item within its template.** Copying a Flow used to do nothing at all — the paste reported it as skipped and left you to rebuild the thing by hand, item by item, cycle pair by cycle pair. But a new Habit is almost never invented from nothing; it is the one next to it with a different schedule or a different target. Now **Ctrl+C on a Flow and Ctrl+V anywhere a Flow can hang gives you the whole thing again**: the template, its items, their Cycle Scope / Cycle Plan pairs, the dependencies between its items (rewired onto the copy, so the copy waits on itself and not on the original), its privacy, and the **Recurrence** — Start anchor, Gap, end and Consumption. **A copy of a Habit is a Habit**, recurring on the same schedule from the same anchor. A copy of a commitment Habit is a commitment Habit, with the one Consumption a commitment is allowed carried across intact.
+
+  The copy's **Target Node** follows the same rule everything else does: a Flow that never named one targets *its own parent*, so the copy's instances land wherever you pasted it, while a target you had pointed somewhere on purpose keeps pointing there.
+
+  Two things stay with the original. **What you have already done** — a copy has not been done, so it starts with no ticks and none of the original's history. And **anything the Flow has already started**: those are real Goals and Tasks standing on your board, and copying a template does not duplicate finished work.
+
+  The Start anchor is **not** moved to today. The copy is about to be edited anyway, and a rule that quietly re-dated it would be the bigger surprise — so a copy of a daily Habit you started in July will render every iteration since July until you give it a schedule of its own.
+
+  **Flow items copy too**, within their own template: copy a step or a block and paste it onto the flow or onto another item inside it, and everything nested under it comes with it, cycle pairs and all. Pasting one into a *different* flow is still refused and says so in the skipped-paste toast — its Cycle Scope is measured against its own flow's window, and another flow's window is not the same window.
 
 - **Ctrl+Z now works.** Nothing in Arlesh was undoable. A delete cascaded through a subtree, a paste wrote one, a drag reparented a branch — and every one of them was final. The only recovery was doing it back by hand, if you could still remember what "it" had been.
 
@@ -371,7 +380,6 @@ Arlesh is a personal app in live preview with no release cycle, so new entries c
 - `commands` module: thin Tauri IPC wrappers for all domain operations
 - `src-tauri/.cargo/config.toml` setting build target to `/tmp/arlesh-target` (Rust debug artifacts are large)
 - 22 integration tests covering all modules: DB migrations, domain validation, task dependency/blocking, scope containment, KB entities
-
 
 ## [0.1.0] — 2026-06-20
 
