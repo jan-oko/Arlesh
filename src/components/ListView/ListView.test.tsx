@@ -104,6 +104,7 @@ function listData(overrides: Partial<ReturnType<typeof useListData>> = {}) {
     renameNode: vi.fn(),
     createTask: vi.fn(() => Promise.resolve(n("task-new", "task", { status: "todo" }))),
     deleteTask: vi.fn(() => Promise.resolve()),
+    removeNode: vi.fn(() => Promise.resolve()),
     ...overrides,
   };
 }
@@ -974,6 +975,158 @@ describe("ListView — creating tasks", () => {
       if (anchorCard === null) throw new Error("expected the anchor row");
       fireEvent.click(anchorCard);
       expect(screen.queryByText("task-new")).not.toBeInTheDocument();
+    });
+  });
+});
+
+describe("ListView — deleting a row", () => {
+  const taskA = (children: MindmapNode[] = []) => n("task-a", "task", { status: "todo", children });
+  const taskB = () => n("task-b", "task", { status: "todo" });
+  const childOfA = () => n("task-a1", "task", { status: "todo" });
+
+  /** The list as drawn, with a tree behind it — the delete looks its target up in the tree. */
+  function setup(nodes: MindmapNode[], rows: TaskListRow[]) {
+    const removeNode = vi.fn(() => Promise.resolve());
+    mockUseListData.mockReturnValue(listData({ tree: treeWith(...nodes), rows, removeNode }));
+    return { removeNode };
+  }
+
+  function twoSiblings() {
+    return setup(
+      [taskA(), taskB()],
+      [row({ node: taskA() }), row({ node: taskB() })],
+    );
+  }
+
+  /** Selects the row card with this id — by the card, since a child row repeats its parent's
+   * title as its parent label — and presses Delete. */
+  function deleteRow(id: string) {
+    const card = document.querySelector(`[data-row-id='${id}']`);
+    if (card === null) throw new Error(`no row ${id}`);
+    fireEvent.click(card);
+    fireEvent.keyDown(window, { key: "Delete", code: "Delete" });
+  }
+
+  async function confirm() {
+    await act(async () => {
+      fireEvent.click(screen.getByText("warnings:deleteConfirm"));
+    });
+  }
+
+  it("asks before it writes anything", () => {
+    const { removeNode } = twoSiblings();
+    render(<ListView />);
+    deleteRow("task-a");
+    expect(screen.getByText("warnings:deleteHeading")).toBeInTheDocument();
+    expect(removeNode).not.toHaveBeenCalled();
+  });
+
+  it("writes nothing when the confirmation is cancelled", () => {
+    const { removeNode } = twoSiblings();
+    render(<ListView />);
+    deleteRow("task-a");
+    fireEvent.click(screen.getByText("common:cancel"));
+    expect(screen.queryByText("warnings:deleteHeading")).not.toBeInTheDocument();
+    expect(removeNode).not.toHaveBeenCalled();
+  });
+
+  it("deletes the row on confirmation", async () => {
+    const { removeNode } = twoSiblings();
+    render(<ListView />);
+    deleteRow("task-a");
+    await confirm();
+    expect(removeNode).toHaveBeenCalledWith([{ id: "task-a", kind: "task" }]);
+  });
+
+  // The Mindmap's cascade, through the Mindmap's writer: the same one step undo reverses.
+  it("takes the row's subtree with it, and says so beforehand", async () => {
+    const { removeNode } = setup(
+      [taskA([childOfA()]), taskB()],
+      [row({ node: taskA([childOfA()]) }), row({ node: taskB() })],
+    );
+    render(<ListView />);
+    deleteRow("task-a");
+    expect(screen.getByText("warnings:deleteWithChildren")).toBeInTheDocument();
+    await confirm();
+    expect(removeNode).toHaveBeenCalledWith([
+      { id: "task-a1", kind: "task" },
+      { id: "task-a", kind: "task" },
+    ]);
+  });
+
+  it("does nothing with no row selected", () => {
+    const { removeNode } = twoSiblings();
+    render(<ListView />);
+    fireEvent.keyDown(window, { key: "Delete", code: "Delete" });
+    expect(screen.queryByText("warnings:deleteHeading")).not.toBeInTheDocument();
+    expect(removeNode).not.toHaveBeenCalled();
+  });
+
+  // Derived at load time: there is no row behind it, and the Habit's template is not what Delete on
+  // one occurrence should take away.
+  it("refuses a Habit repetition out loud rather than doing nothing", () => {
+    const occurrence = n("habititem-flow_task-2-1-0-virtual", "task", {
+      status: "todo",
+      virtual: true,
+      habitItem: { flowId: 1, itemType: "flow_task", itemId: 2, scopeId: 3, cycleId: 4 },
+    });
+    const { removeNode } = setup([occurrence], [row({ node: occurrence })]);
+    render(<ListView />);
+    deleteRow("habititem-flow_task-2-1-0-virtual");
+    expect(screen.queryByText("warnings:deleteHeading")).not.toBeInTheDocument();
+    expect(removeNode).not.toHaveBeenCalled();
+    expect(useMindmapStore.getState().pendingToast).not.toBeNull();
+  });
+
+  describe("where the selection lands", () => {
+    /** The card the list is currently standing on. */
+    function selectedTitle(container: HTMLElement): string | undefined {
+      return container.querySelector("[class*='cardSelected']")?.textContent ?? undefined;
+    }
+
+    it("moves to the row below the one that went", async () => {
+      twoSiblings();
+      const { container } = render(<ListView />);
+      deleteRow("task-a");
+      await confirm();
+      expect(selectedTitle(container)).toContain("task-b");
+    });
+
+    it("moves to the row above when the deleted one was last", async () => {
+      twoSiblings();
+      const { container } = render(<ListView />);
+      deleteRow("task-b");
+      await confirm();
+      expect(selectedTitle(container)).toContain("task-a");
+    });
+
+    // The row below may be a child that is going with it, which would leave the selection on a row
+    // that no longer exists.
+    it("skips the rows that went with it", async () => {
+      setup(
+        [taskA([childOfA()]), taskB()],
+        [
+          row({ node: taskA([childOfA()]) }),
+          row({
+            node: childOfA(),
+            parentRef: "task-a",
+            ancestors: [n("aspect-1", "aspect"), n("goal-1", "goal", { status: "active" }), taskA()],
+          }),
+          row({ node: taskB() }),
+        ],
+      );
+      const { container } = render(<ListView />);
+      deleteRow("task-a");
+      await confirm();
+      expect(selectedTitle(container)).toContain("task-b");
+    });
+
+    it("clears the selection when the list had nothing else in it", async () => {
+      setup([taskA()], [row({ node: taskA() })]);
+      const { container } = render(<ListView />);
+      deleteRow("task-a");
+      await confirm();
+      expect(container.querySelector("[class*='cardSelected']")).toBeNull();
     });
   });
 });

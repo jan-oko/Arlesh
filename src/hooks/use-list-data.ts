@@ -39,6 +39,9 @@ interface ListData {
   createTask: (parentId: string, parentKind: NodeKind, agentic?: TaskAgentic) => Promise<MindmapNode>;
   /** Deletes a Task by node id — how a create abandoned before it was named is taken back. */
   deleteTask: (id: string) => Promise<void>;
+  /** The Mindmap's own delete writer, passed straight through so a row deleted from either view
+   * takes the same path (and so one undo step covers both). */
+  removeNode: (nodes: Array<{ id: string; kind: NodeKind }>) => Promise<void>;
 }
 
 /** List View's data source: reuses the Mindmap's own tree (so the two views never drift out of
@@ -97,6 +100,6 @@ export function useListData(): ListData {
 
   return {
     tree, rows, commitmentRows, allTasksAndGoals, isLoading, error, reload, onCycleStatus,
-    renameNode, createTask, deleteTask,
+    renameNode, createTask, deleteTask, removeNode,
   };
 }

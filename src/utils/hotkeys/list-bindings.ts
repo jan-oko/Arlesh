@@ -34,6 +34,8 @@ export interface ListContext {
   onCreateSibling: (id: string) => void;
   /** Creates a child of the selected Task — the Mindmap's Tab, flattened. */
   onCreateChild: (id: string) => void;
+  /** Raises the delete confirmation for the selected row. */
+  onDelete: (id: string) => void;
   /** Puts the selected Task in the backlog, or takes it out. */
   onToggleBacklog: (id: string) => void;
   /** Flips the selected Task between Agentic and Not agentic, whichever it currently reads as. */
@@ -167,6 +169,16 @@ export const LIST_BINDINGS: readonly Binding<ListContext>[] = [
     labelKey: "createSiblingRow", allowRepeat: false,
     when: (c) => c.selectedTaskId !== null,
     run: (c) => { if (c.selectedTaskId !== null) c.onCreateSibling(c.selectedTaskId); },
+  },
+  {
+    // The Mindmap's chord, acting on the one thing a flat list can have selected. A Task or a
+    // Commitment alike: both are real rows, and both are deletable there. The confirmation, the
+    // subtree cascade and the writer behind it are all the Mindmap's, so `Delete` cannot come to
+    // mean two different things depending on which view you pressed it in.
+    id: "listView.delete", section: "listView", chord: { code: "Delete" },
+    labelKey: "delete", allowRepeat: false,
+    when: (c) => c.selectedRowId !== null,
+    run: (c) => { if (c.selectedRowId !== null) c.onDelete(c.selectedRowId); },
   },
   {
     id: "listView.openSearch", section: "listView", chord: { code: "KeyO", ctrl: true },

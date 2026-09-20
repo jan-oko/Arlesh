@@ -37,6 +37,7 @@ function baseOptions(overrides: Partial<Parameters<typeof useKeyboardListView>[0
     onToggleFullscreen: vi.fn(),
     onCreateSibling: vi.fn(),
     onCreateChild: vi.fn(),
+    onDelete: vi.fn(),
     ...overrides,
   };
   // `selectedRowId` is whichever of the two kinds is selected, exactly as ListView derives it —
@@ -360,5 +361,38 @@ describe("useKeyboardListView — creating rows", () => {
     fireKey(key, { ...modifiers, repeat: true });
     const created = key === "Tab" ? options.onCreateChild : options.onCreateSibling;
     expect(created).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("useKeyboardListView — deleting a row", () => {
+  it("Delete raises the confirmation for the selected Task", () => {
+    const options = baseOptions();
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    fireKey("Delete");
+    expect(options.onDelete).toHaveBeenCalledWith("task-1");
+  });
+
+  // A Commitment is a real row too, and the Mindmap deletes one; the chord acts on whichever kind
+  // the single selection happens to be.
+  it("Delete acts on a selected Commitment as readily", () => {
+    const options = baseOptions({ selectedTaskId: null, selectedCommitmentId: "commitment-1" });
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    fireKey("Delete");
+    expect(options.onDelete).toHaveBeenCalledWith("commitment-1");
+  });
+
+  it("Delete does nothing with no row selected", () => {
+    const options = baseOptions({ selectedTaskId: null, selectedRowId: null });
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    fireKey("Delete");
+    expect(options.onDelete).not.toHaveBeenCalled();
+  });
+
+  it("leaves a held Delete to one confirmation, not one per repeat", () => {
+    const options = baseOptions();
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    fireKey("Delete");
+    fireKey("Delete", { repeat: true });
+    expect(options.onDelete).toHaveBeenCalledTimes(1);
   });
 });

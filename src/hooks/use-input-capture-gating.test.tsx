@@ -37,6 +37,7 @@ function View({ modalState, modalRenders }: { modalState: boolean; modalRenders:
     onStartRename: vi.fn(),
     onCreateSibling: vi.fn(),
     onCreateChild: vi.fn(),
+    onDelete: vi.fn(),
     onDeselect: vi.fn(),
     onToggleFilter,
     onSetStatusMode: vi.fn(),
