@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook } from "@testing-library/react";
 import { useKeyboardMindmap } from "./use-keyboard-mindmap";
+import { mindmapKeyboardContext } from "@/test/keyboard-context";
 import type { MindmapNode } from "@/utils/tree-layout";
-import { NO_CYCLE } from "@/api/flows";
-import type { StatusMode } from "@/utils/filter-tree";
 import type { TypedChildKind } from "@/utils/node-meta";
+import { NO_CYCLE } from "@/api/flows";
 
 function makeTask(id: string): MindmapNode {
   return { id, kind: "task", title: "Task", position: 0, tagIds: [], children: [] };
@@ -28,7 +28,7 @@ function makeCommitment(id: string): MindmapNode {
 
 /** The canvas with one commitment selected, since every verdict binding acts on the selection. */
 function commitmentSelected(id = "commitment-1") {
-  return baseOptions({
+  return mindmapKeyboardContext({
     selectedNodeId: id,
     selectedNodeIds: new Set([id]) as ReadonlySet<string>,
     findNodeById: (nodeId: string) => (nodeId === id ? makeCommitment(id) : undefined),
@@ -46,78 +46,25 @@ function fireKey(key: string, modifiers: { shiftKey?: boolean; ctrlKey?: boolean
   window.dispatchEvent(new KeyboardEvent("keydown", { key, code: keyToCode(key), bubbles: true, cancelable: true, ...modifiers }));
 }
 
-function baseOptions(overrides: Partial<Parameters<typeof useKeyboardMindmap>[0]> = {}) {
-  return {
-    isInputActive: false,
-    isWarningActive: false,
-    onDismissWarning: vi.fn(),
-    selectedNodeId: "task-1" as string | null,
-    selectedNodeIds: new Set(["task-1"]) as ReadonlySet<string>,
-    subtreeRootId: null as string | null,
-    clipboard: null,
-    onNavigate: vi.fn(),
-    onPanCanvas: vi.fn(),
-    onCycleType: vi.fn(),
-    onReorder: vi.fn(),
-    onStartRename: vi.fn(),
-    onCreateChild: vi.fn(),
-    onCreateTypedChild: vi.fn() as (id: string, kind: TypedChildKind) => void,
-    onCreateSibling: vi.fn(),
-    onInsertParent: vi.fn(),
-    onOpenEditor: vi.fn(),
-    onStartFlow: vi.fn(),
-    onDelete: vi.fn() as (ids: string[]) => void,
-    onToggleCollapsed: vi.fn(),
-    onCycleStatus: vi.fn(),
-    onCycleVerdict: vi.fn(),
-    onMarkBroken: vi.fn(),
-    onDeselect: vi.fn(),
-    onExitSubtree: vi.fn(),
-    onExitToRoot: vi.fn(),
-    onCut: vi.fn() as (ids: string[]) => void,
-    onCopy: vi.fn() as (ids: string[]) => void,
-    onPaste: vi.fn(),
-    onEnterSubtree: vi.fn(),
-    onOpenSearch: vi.fn(),
-    onZoomIn: vi.fn(),
-    onZoomOut: vi.fn(),
-    onToggleFilter: vi.fn(),
-    onSetStatusMode: vi.fn() as (mode: StatusMode) => void,
-    onToggleBacklog: vi.fn(),
-    onUndo: vi.fn(),
-    onRedo: vi.fn(),
-    onToggleAgentic: vi.fn(),
-    onToggleFullscreen: vi.fn(),
-    onFocusRoot: vi.fn(),
-    onCenterOnNode: vi.fn(),
-    onConvertToFlow: vi.fn(),
-    onExtendSelection: vi.fn() as (key: "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown") => void,
-    orientation: "horizontal" as const,
-    findNodeById: (id: string): MindmapNode | undefined =>
-      id === "task-1" ? makeTask("task-1") : undefined,
-    ...overrides,
-  };
-}
-
 beforeEach(() => { vi.clearAllMocks(); });
 
 describe("useKeyboardMindmap — start flow (s)", () => {
   it("starts the flow when 's' is pressed on a focused flow node", () => {
-    const opts = baseOptions({ selectedNodeId: "flow-1", findNodeById: (id: string) => (id === "flow-1" ? makeFlow("flow-1") : undefined) });
+    const opts = mindmapKeyboardContext({ selectedNodeId: "flow-1", findNodeById: (id: string) => (id === "flow-1" ? makeFlow("flow-1") : undefined) });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("s");
     expect(opts.onStartFlow).toHaveBeenCalledWith("flow-1");
   });
 
   it("does nothing when 's' is pressed on a non-flow node", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("s");
     expect(opts.onStartFlow).not.toHaveBeenCalled();
   });
 
   it("ignores Ctrl+s (reserved) on a flow node", () => {
-    const opts = baseOptions({ selectedNodeId: "flow-1", findNodeById: (id: string) => (id === "flow-1" ? makeFlow("flow-1") : undefined) });
+    const opts = mindmapKeyboardContext({ selectedNodeId: "flow-1", findNodeById: (id: string) => (id === "flow-1" ? makeFlow("flow-1") : undefined) });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("s", { ctrlKey: true });
     expect(opts.onStartFlow).not.toHaveBeenCalled();
@@ -126,21 +73,21 @@ describe("useKeyboardMindmap — start flow (s)", () => {
 
 describe("useKeyboardMindmap — blocked when input/warning active", () => {
   it("ignores all keys when isInputActive is true", () => {
-    const opts = baseOptions({ isInputActive: true });
+    const opts = mindmapKeyboardContext({ isInputActive: true });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("ArrowLeft");
     expect(opts.onNavigate).not.toHaveBeenCalled();
   });
 
   it("Escape calls onDismissWarning when isWarningActive", () => {
-    const opts = baseOptions({ isWarningActive: true });
+    const opts = mindmapKeyboardContext({ isWarningActive: true });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("Escape");
     expect(opts.onDismissWarning).toHaveBeenCalledTimes(1);
   });
 
   it("other keys are ignored when isWarningActive", () => {
-    const opts = baseOptions({ isWarningActive: true });
+    const opts = mindmapKeyboardContext({ isWarningActive: true });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("ArrowLeft");
     expect(opts.onNavigate).not.toHaveBeenCalled();
@@ -149,49 +96,49 @@ describe("useKeyboardMindmap — blocked when input/warning active", () => {
 
 describe("useKeyboardMindmap — arrow navigation", () => {
   it("ArrowLeft calls onNavigate with 'ArrowLeft'", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("ArrowLeft");
     expect(opts.onNavigate).toHaveBeenCalledWith("ArrowLeft");
   });
 
   it("ArrowRight calls onNavigate with 'ArrowRight'", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("ArrowRight");
     expect(opts.onNavigate).toHaveBeenCalledWith("ArrowRight");
   });
 
   it("ArrowUp calls onNavigate when no modifier", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("ArrowUp");
     expect(opts.onNavigate).toHaveBeenCalledWith("ArrowUp");
   });
 
   it("ArrowDown calls onNavigate when no modifier", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("ArrowDown");
     expect(opts.onNavigate).toHaveBeenCalledWith("ArrowDown");
   });
 
   it("Ctrl+ArrowUp calls onCycleType with -1", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("ArrowUp", { ctrlKey: true });
     expect(opts.onCycleType).toHaveBeenCalledWith("task-1", -1);
   });
 
   it("Ctrl+ArrowDown calls onCycleType with 1", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("ArrowDown", { ctrlKey: true });
     expect(opts.onCycleType).toHaveBeenCalledWith("task-1", 1);
   });
 
   it("ignores Ctrl+ArrowDown key auto-repeat (no duplicate-sibling race) and does not fall back to navigate", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", code: "ArrowDown", ctrlKey: true, repeat: true, bubbles: true, cancelable: true }));
     expect(opts.onCycleType).not.toHaveBeenCalled();
@@ -199,14 +146,14 @@ describe("useKeyboardMindmap — arrow navigation", () => {
   });
 
   it("Alt+ArrowUp calls onReorder with -1", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("ArrowUp", { altKey: true });
     expect(opts.onReorder).toHaveBeenCalledWith("task-1", -1);
   });
 
   it("Alt+ArrowDown calls onReorder with 1", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("ArrowDown", { altKey: true });
     expect(opts.onReorder).toHaveBeenCalledWith("task-1", 1);
@@ -215,7 +162,7 @@ describe("useKeyboardMindmap — arrow navigation", () => {
 
 describe("useKeyboardMindmap — arrow keys pan the canvas when nothing is selected", () => {
   it("ArrowLeft calls onPanCanvas instead of onNavigate", () => {
-    const opts = baseOptions({ selectedNodeId: null });
+    const opts = mindmapKeyboardContext({ selectedNodeId: null });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("ArrowLeft");
     expect(opts.onPanCanvas).toHaveBeenCalledWith("ArrowLeft");
@@ -223,7 +170,7 @@ describe("useKeyboardMindmap — arrow keys pan the canvas when nothing is selec
   });
 
   it("ArrowRight calls onPanCanvas instead of onNavigate", () => {
-    const opts = baseOptions({ selectedNodeId: null });
+    const opts = mindmapKeyboardContext({ selectedNodeId: null });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("ArrowRight");
     expect(opts.onPanCanvas).toHaveBeenCalledWith("ArrowRight");
@@ -231,7 +178,7 @@ describe("useKeyboardMindmap — arrow keys pan the canvas when nothing is selec
   });
 
   it("ArrowUp calls onPanCanvas instead of onNavigate", () => {
-    const opts = baseOptions({ selectedNodeId: null });
+    const opts = mindmapKeyboardContext({ selectedNodeId: null });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("ArrowUp");
     expect(opts.onPanCanvas).toHaveBeenCalledWith("ArrowUp");
@@ -239,7 +186,7 @@ describe("useKeyboardMindmap — arrow keys pan the canvas when nothing is selec
   });
 
   it("ArrowDown calls onPanCanvas instead of onNavigate", () => {
-    const opts = baseOptions({ selectedNodeId: null });
+    const opts = mindmapKeyboardContext({ selectedNodeId: null });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("ArrowDown");
     expect(opts.onPanCanvas).toHaveBeenCalledWith("ArrowDown");
@@ -247,7 +194,7 @@ describe("useKeyboardMindmap — arrow keys pan the canvas when nothing is selec
   });
 
   it("does not pan when a node is selected", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("ArrowLeft");
     fireKey("ArrowRight");
@@ -257,7 +204,7 @@ describe("useKeyboardMindmap — arrow keys pan the canvas when nothing is selec
   });
 
   it("Shift+ArrowUp still extends selection rather than panning, even with nothing selected", () => {
-    const opts = baseOptions({ selectedNodeId: null });
+    const opts = mindmapKeyboardContext({ selectedNodeId: null });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("ArrowUp", { shiftKey: true });
     expect(opts.onExtendSelection).toHaveBeenCalledWith("ArrowUp");
@@ -265,7 +212,7 @@ describe("useKeyboardMindmap — arrow keys pan the canvas when nothing is selec
   });
 
   it("ignores all keys when isInputActive is true, including panning", () => {
-    const opts = baseOptions({ isInputActive: true, selectedNodeId: null });
+    const opts = mindmapKeyboardContext({ isInputActive: true, selectedNodeId: null });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("ArrowLeft");
     expect(opts.onPanCanvas).not.toHaveBeenCalled();
@@ -274,7 +221,7 @@ describe("useKeyboardMindmap — arrow keys pan the canvas when nothing is selec
 
 describe("useKeyboardMindmap — Tab (create child)", () => {
   it("Tab on a node with hyphen (not tag) calls onCreateChild", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("Tab");
     expect(opts.onCreateChild).toHaveBeenCalledWith("task-1");
@@ -282,7 +229,7 @@ describe("useKeyboardMindmap — Tab (create child)", () => {
 
   it("Tab does not call onCreateChild for a tag-kind node", () => {
     const tagNode: MindmapNode = { id: "domain-9", kind: "tag", title: "tag", position: 0, tagIds: [], children: [] };
-    const opts = baseOptions({
+    const opts = mindmapKeyboardContext({
       selectedNodeId: "domain-9",
       findNodeById: (id) => (id === "domain-9" ? tagNode : undefined),
     });
@@ -292,7 +239,7 @@ describe("useKeyboardMindmap — Tab (create child)", () => {
   });
 
   it("Tab does nothing when no node is selected", () => {
-    const opts = baseOptions({ selectedNodeId: null });
+    const opts = mindmapKeyboardContext({ selectedNodeId: null });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("Tab");
     expect(opts.onCreateChild).not.toHaveBeenCalled();
@@ -301,21 +248,21 @@ describe("useKeyboardMindmap — Tab (create child)", () => {
 
 describe("useKeyboardMindmap — Escape variants", () => {
   it("Ctrl+Escape calls onExitToRoot when subtreeRootId is set", () => {
-    const opts = baseOptions({ subtreeRootId: "domain-1" });
+    const opts = mindmapKeyboardContext({ subtreeRootId: "domain-1" });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("Escape", { ctrlKey: true });
     expect(opts.onExitToRoot).toHaveBeenCalledTimes(1);
   });
 
   it("Shift+Escape calls onExitSubtree when subtreeRootId is set", () => {
-    const opts = baseOptions({ subtreeRootId: "domain-1" });
+    const opts = mindmapKeyboardContext({ subtreeRootId: "domain-1" });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("Escape", { shiftKey: true });
     expect(opts.onExitSubtree).toHaveBeenCalledTimes(1);
   });
 
   it("plain Escape calls onDeselect when a node is selected", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("Escape");
     expect(opts.onDeselect).toHaveBeenCalledTimes(1);
@@ -324,14 +271,14 @@ describe("useKeyboardMindmap — Escape variants", () => {
 
 describe("useKeyboardMindmap — Ctrl+V (paste)", () => {
   it("Ctrl+V calls onPaste when clipboard is set", () => {
-    const opts = baseOptions({ clipboard: { operation: "cut", nodeIds: ["task-1"] } });
+    const opts = mindmapKeyboardContext({ clipboard: { operation: "cut", nodeIds: ["task-1"] } });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("v", { ctrlKey: true });
     expect(opts.onPaste).toHaveBeenCalledWith("task-1");
   });
 
   it("Ctrl+V does nothing when clipboard is null", () => {
-    const opts = baseOptions({ clipboard: null });
+    const opts = mindmapKeyboardContext({ clipboard: null });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("v", { ctrlKey: true });
     expect(opts.onPaste).not.toHaveBeenCalled();
@@ -340,21 +287,21 @@ describe("useKeyboardMindmap — Ctrl+V (paste)", () => {
 
 describe("useKeyboardMindmap — Ctrl+= / Ctrl+- (zoom)", () => {
   it("Ctrl+= zooms in (physical Equal key)", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "=", code: "Equal", ctrlKey: true, bubbles: true, cancelable: true }));
     expect(opts.onZoomIn).toHaveBeenCalled();
   });
 
   it("Ctrl+- zooms out (physical Minus key)", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "-", code: "Minus", ctrlKey: true, bubbles: true, cancelable: true }));
     expect(opts.onZoomOut).toHaveBeenCalled();
   });
 
   it("plain = (no ctrl) does not zoom", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("=");
     expect(opts.onZoomIn).not.toHaveBeenCalled();
@@ -363,7 +310,7 @@ describe("useKeyboardMindmap — Ctrl+= / Ctrl+- (zoom)", () => {
 
 describe("useKeyboardMindmap — Ctrl+O (node search)", () => {
   it("opens the node search on Ctrl+O, even with no selection", () => {
-    const opts = baseOptions({ selectedNodeId: null });
+    const opts = mindmapKeyboardContext({ selectedNodeId: null });
     renderHook(() => useKeyboardMindmap(opts));
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "ז", code: "KeyO", ctrlKey: true, bubbles: true, cancelable: true }));
     expect(opts.onOpenSearch).toHaveBeenCalled();
@@ -372,7 +319,7 @@ describe("useKeyboardMindmap — Ctrl+O (node search)", () => {
 
 describe("useKeyboardMindmap — Ctrl+/ (toggle collapsed)", () => {
   it("Ctrl+/ calls onToggleCollapsed with the selected node id", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("/", { ctrlKey: true });
     expect(opts.onToggleCollapsed).toHaveBeenCalledWith("task-1");
@@ -381,7 +328,7 @@ describe("useKeyboardMindmap — Ctrl+/ (toggle collapsed)", () => {
 
 describe("useKeyboardMindmap — layout-agnostic letter shortcuts", () => {
   it("opens the editor on the physical E key even under a non-Latin layout", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     // Hebrew layout: physical E produces "ק", but the code is still "KeyE".
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "ק", code: "KeyE", bubbles: true, cancelable: true }));
@@ -389,7 +336,7 @@ describe("useKeyboardMindmap — layout-agnostic letter shortcuts", () => {
   });
 
   it("cuts on the physical X key regardless of the produced character", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "ט", code: "KeyX", ctrlKey: true, bubbles: true, cancelable: true }));
     expect(opts.onCut).toHaveBeenCalled();
@@ -398,28 +345,28 @@ describe("useKeyboardMindmap — layout-agnostic letter shortcuts", () => {
 
 describe("useKeyboardMindmap — Shift+Enter creates sibling", () => {
   it("calls onCreateSibling with the selected node id", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("Enter", { shiftKey: true });
     expect(opts.onCreateSibling).toHaveBeenCalledWith("task-1");
   });
 
   it("does nothing when no node is selected", () => {
-    const opts = baseOptions({ selectedNodeId: null });
+    const opts = mindmapKeyboardContext({ selectedNodeId: null });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("Enter", { shiftKey: true });
     expect(opts.onCreateSibling).not.toHaveBeenCalled();
   });
 
   it("does nothing when input is active", () => {
-    const opts = baseOptions({ isInputActive: true });
+    const opts = mindmapKeyboardContext({ isInputActive: true });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("Enter", { shiftKey: true });
     expect(opts.onCreateSibling).not.toHaveBeenCalled();
   });
 
   it("does not also trigger onCycleStatus", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("Enter", { shiftKey: true });
     expect(opts.onCycleStatus).not.toHaveBeenCalled();
@@ -428,28 +375,28 @@ describe("useKeyboardMindmap — Shift+Enter creates sibling", () => {
 
 describe("useKeyboardMindmap — Ctrl+Enter inserts intermediate parent", () => {
   it("calls onInsertParent with the selected node id", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("Enter", { ctrlKey: true });
     expect(opts.onInsertParent).toHaveBeenCalledWith("task-1");
   });
 
   it("does nothing when no node is selected", () => {
-    const opts = baseOptions({ selectedNodeId: null });
+    const opts = mindmapKeyboardContext({ selectedNodeId: null });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("Enter", { ctrlKey: true });
     expect(opts.onInsertParent).not.toHaveBeenCalled();
   });
 
   it("does nothing when input is active", () => {
-    const opts = baseOptions({ isInputActive: true });
+    const opts = mindmapKeyboardContext({ isInputActive: true });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("Enter", { ctrlKey: true });
     expect(opts.onInsertParent).not.toHaveBeenCalled();
   });
 
   it("does not also trigger onCycleStatus", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("Enter", { ctrlKey: true });
     expect(opts.onCycleStatus).not.toHaveBeenCalled();
@@ -458,7 +405,7 @@ describe("useKeyboardMindmap — Ctrl+Enter inserts intermediate parent", () => 
 
 describe("useKeyboardMindmap — plain Enter cycles task status", () => {
   it("calls onCycleStatus for an unblocked task", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("Enter");
     expect(opts.onCycleStatus).toHaveBeenCalledWith("task-1");
@@ -466,42 +413,42 @@ describe("useKeyboardMindmap — plain Enter cycles task status", () => {
 
   it("toggles a goal's status on plain Enter (via onCycleStatus)", () => {
     const goal: MindmapNode = { id: "goal-1", kind: "goal", title: "g", status: "active", position: 0, tagIds: [], children: [] };
-    const opts = baseOptions({ selectedNodeId: "goal-1", findNodeById: (id) => (id === "goal-1" ? goal : undefined) });
+    const opts = mindmapKeyboardContext({ selectedNodeId: "goal-1", findNodeById: (id) => (id === "goal-1" ? goal : undefined) });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("Enter");
     expect(opts.onCycleStatus).toHaveBeenCalledWith("goal-1");
   });
 
   it("does not call onCycleStatus when Shift+Enter is pressed", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("Enter", { shiftKey: true });
     expect(opts.onCycleStatus).not.toHaveBeenCalled();
   });
 
   it("does not call onCycleStatus when Ctrl+Enter is pressed", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("Enter", { ctrlKey: true });
     expect(opts.onCycleStatus).not.toHaveBeenCalled();
   });
 
   it("does not call onCreateSibling on plain Enter", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("Enter");
     expect(opts.onCreateSibling).not.toHaveBeenCalled();
   });
 
   it("does not call onInsertParent on plain Enter", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("Enter");
     expect(opts.onInsertParent).not.toHaveBeenCalled();
   });
 
   it("does not cycle status for an aspect node", () => {
-    const opts = baseOptions({
+    const opts = mindmapKeyboardContext({
       selectedNodeId: "domain-99",
       findNodeById: (id: string) => (id === "domain-99" ? makeAspect("domain-99") : undefined),
     });
@@ -513,28 +460,28 @@ describe("useKeyboardMindmap — plain Enter cycles task status", () => {
 
 describe("useKeyboardMindmap — e opens editor modal", () => {
   it("calls onOpenEditor with the selected node id for a task", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("e");
     expect(opts.onOpenEditor).toHaveBeenCalledWith("task-1");
   });
 
   it("does nothing when no node is selected", () => {
-    const opts = baseOptions({ selectedNodeId: null });
+    const opts = mindmapKeyboardContext({ selectedNodeId: null });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("e");
     expect(opts.onOpenEditor).not.toHaveBeenCalled();
   });
 
   it("does nothing when input is active", () => {
-    const opts = baseOptions({ isInputActive: true });
+    const opts = mindmapKeyboardContext({ isInputActive: true });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("e");
     expect(opts.onOpenEditor).not.toHaveBeenCalled();
   });
 
   it("does nothing for an aspect node", () => {
-    const opts = baseOptions({
+    const opts = mindmapKeyboardContext({
       selectedNodeId: "domain-1",
       findNodeById: (id: string) => (id === "domain-1" ? makeAspect("domain-1") : undefined),
     });
@@ -546,28 +493,28 @@ describe("useKeyboardMindmap — e opens editor modal", () => {
 
 describe("useKeyboardMindmap — r renames node title", () => {
   it("calls onStartRename with the selected node id for a task", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("r");
     expect(opts.onStartRename).toHaveBeenCalledWith("task-1");
   });
 
   it("does nothing when no node is selected", () => {
-    const opts = baseOptions({ selectedNodeId: null });
+    const opts = mindmapKeyboardContext({ selectedNodeId: null });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("r");
     expect(opts.onStartRename).not.toHaveBeenCalled();
   });
 
   it("does nothing when input is active", () => {
-    const opts = baseOptions({ isInputActive: true });
+    const opts = mindmapKeyboardContext({ isInputActive: true });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("r");
     expect(opts.onStartRename).not.toHaveBeenCalled();
   });
 
   it("does nothing for an aspect node", () => {
-    const opts = baseOptions({
+    const opts = mindmapKeyboardContext({
       selectedNodeId: "domain-1",
       findNodeById: (id: string) => (id === "domain-1" ? makeAspect("domain-1") : undefined),
     });
@@ -580,7 +527,7 @@ describe("useKeyboardMindmap — r renames node title", () => {
 describe("useKeyboardMindmap — multi-select Ctrl+X/C/Delete", () => {
   it("Ctrl+X passes all selectedNodeIds to onCut", () => {
     const selectedNodeIds = new Set(["task-1", "task-2"]);
-    const opts = baseOptions({ selectedNodeIds });
+    const opts = mindmapKeyboardContext({ selectedNodeIds });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("x", { ctrlKey: true });
     expect(opts.onCut).toHaveBeenCalledWith(expect.arrayContaining(["task-1", "task-2"]));
@@ -589,7 +536,7 @@ describe("useKeyboardMindmap — multi-select Ctrl+X/C/Delete", () => {
 
   it("Ctrl+C passes all selectedNodeIds to onCopy", () => {
     const selectedNodeIds = new Set(["task-1", "task-2"]);
-    const opts = baseOptions({ selectedNodeIds });
+    const opts = mindmapKeyboardContext({ selectedNodeIds });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("c", { ctrlKey: true });
     expect(opts.onCopy).toHaveBeenCalledWith(expect.arrayContaining(["task-1", "task-2"]));
@@ -598,7 +545,7 @@ describe("useKeyboardMindmap — multi-select Ctrl+X/C/Delete", () => {
 
   it("Delete passes all selectedNodeIds to onDelete", () => {
     const selectedNodeIds = new Set(["task-1", "task-2"]);
-    const opts = baseOptions({ selectedNodeIds });
+    const opts = mindmapKeyboardContext({ selectedNodeIds });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("Delete");
     expect(opts.onDelete).toHaveBeenCalledWith(expect.arrayContaining(["task-1", "task-2"]));
@@ -606,7 +553,7 @@ describe("useKeyboardMindmap — multi-select Ctrl+X/C/Delete", () => {
   });
 
   it("Ctrl+X with single selected node passes [selectedNodeId] to onCut", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("x", { ctrlKey: true });
     expect(opts.onCut).toHaveBeenCalledWith(["task-1"]);
@@ -620,7 +567,7 @@ describe("useKeyboardMindmap — double-tap Enter enters subtree", () => {
 
   it("calls onEnterSubtree on second Enter within 300ms for a domain node", () => {
     vi.useFakeTimers();
-    const opts = baseOptions({
+    const opts = mindmapKeyboardContext({
       selectedNodeId: "domain-1",
       findNodeById: (id) => (id === "domain-1" ? makeDomain("domain-1") : undefined),
     });
@@ -633,7 +580,7 @@ describe("useKeyboardMindmap — double-tap Enter enters subtree", () => {
 
   it("does not call onEnterSubtree when two Enters are more than 300ms apart", () => {
     vi.useFakeTimers();
-    const opts = baseOptions({
+    const opts = mindmapKeyboardContext({
       selectedNodeId: "domain-1",
       findNodeById: (id) => (id === "domain-1" ? makeDomain("domain-1") : undefined),
     });
@@ -646,7 +593,7 @@ describe("useKeyboardMindmap — double-tap Enter enters subtree", () => {
 
   it("does not call onEnterSubtree for a task node on double-tap", () => {
     vi.useFakeTimers();
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("Enter");
     vi.advanceTimersByTime(100);
@@ -656,7 +603,7 @@ describe("useKeyboardMindmap — double-tap Enter enters subtree", () => {
 
   it("does not call onEnterSubtree when no node is selected", () => {
     vi.useFakeTimers();
-    const opts = baseOptions({ selectedNodeId: null });
+    const opts = mindmapKeyboardContext({ selectedNodeId: null });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("Enter");
     vi.advanceTimersByTime(100);
@@ -666,7 +613,7 @@ describe("useKeyboardMindmap — double-tap Enter enters subtree", () => {
 
   it("does not call onEnterSubtree on the first Enter alone", () => {
     vi.useFakeTimers();
-    const opts = baseOptions({
+    const opts = mindmapKeyboardContext({
       selectedNodeId: "domain-1",
       findNodeById: (id) => (id === "domain-1" ? makeDomain("domain-1") : undefined),
     });
@@ -678,14 +625,14 @@ describe("useKeyboardMindmap — double-tap Enter enters subtree", () => {
 
 describe("useKeyboardMindmap — filter shortcuts (Alt)", () => {
   it("Alt+F toggles the filter menu", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("f", { altKey: true });
     expect(opts.onToggleFilter).toHaveBeenCalledTimes(1);
   });
 
   it("Alt+<first letter> selects each status mode", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("a", { altKey: true });
     fireKey("p", { altKey: true });
@@ -700,7 +647,7 @@ describe("useKeyboardMindmap — filter shortcuts (Alt)", () => {
   });
 
   it("plain B toggles the anchor task's backlog, leaving the rest of the selection alone", () => {
-    const opts = baseOptions({
+    const opts = mindmapKeyboardContext({
       selectedNodeId: "task-1",
       selectedNodeIds: new Set(["task-1", "task-2"]),
       findNodeById: (id: string) => (id === "task-1" ? makeTask("task-1") : undefined),
@@ -714,7 +661,7 @@ describe("useKeyboardMindmap — filter shortcuts (Alt)", () => {
 
   it("plain B does nothing on a goal — Backlog is a Task-only state", () => {
     const goal: MindmapNode = { id: "goal-1", kind: "goal", title: "Goal", position: 0, tagIds: [], children: [] };
-    const opts = baseOptions({
+    const opts = mindmapKeyboardContext({
       selectedNodeId: "goal-1",
       findNodeById: (id: string) => (id === "goal-1" ? goal : undefined),
     });
@@ -724,7 +671,7 @@ describe("useKeyboardMindmap — filter shortcuts (Alt)", () => {
   });
 
   it("plain A cycles the anchor task's Agentic flag, leaving the rest of the selection alone", () => {
-    const opts = baseOptions({
+    const opts = mindmapKeyboardContext({
       selectedNodeId: "task-1",
       selectedNodeIds: new Set(["task-1", "task-2"]),
       findNodeById: (id: string) => (id === "task-1" ? makeTask("task-1") : undefined),
@@ -737,7 +684,7 @@ describe("useKeyboardMindmap — filter shortcuts (Alt)", () => {
   });
 
   it("Alt+A still selects the All mode without touching the Agentic flag", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("a", { altKey: true });
     expect(opts.onSetStatusMode).toHaveBeenCalledWith("all");
@@ -746,7 +693,7 @@ describe("useKeyboardMindmap — filter shortcuts (Alt)", () => {
 
   it("plain A does nothing on a goal — only a Task can be agentic", () => {
     const goal: MindmapNode = { id: "goal-1", kind: "goal", title: "Goal", position: 0, tagIds: [], children: [] };
-    const opts = baseOptions({
+    const opts = mindmapKeyboardContext({
       selectedNodeId: "goal-1",
       findNodeById: (id: string) => (id === "goal-1" ? goal : undefined),
     });
@@ -760,7 +707,7 @@ describe("useKeyboardMindmap — filter shortcuts (Alt)", () => {
       id: "task-4-virtual", kind: "task", title: "Instance", position: 0, tagIds: [], children: [],
       virtual: true, habitItem: { flowId: 3, itemType: "flow_task", itemId: 4, scopeId: 100, cycleId: NO_CYCLE },
     };
-    const opts = baseOptions({
+    const opts = mindmapKeyboardContext({
       selectedNodeId: "task-4-virtual",
       selectedNodeIds: new Set(["task-4-virtual"]),
       findNodeById: (id: string) => (id === "task-4-virtual" ? instance : undefined),
@@ -771,7 +718,7 @@ describe("useKeyboardMindmap — filter shortcuts (Alt)", () => {
   });
 
   it("Alt+S selects the Start mode without starting a flow", () => {
-    const opts = baseOptions({ selectedNodeId: "flow-1", findNodeById: (id: string) => (id === "flow-1" ? makeFlow("flow-1") : undefined) });
+    const opts = mindmapKeyboardContext({ selectedNodeId: "flow-1", findNodeById: (id: string) => (id === "flow-1" ? makeFlow("flow-1") : undefined) });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("s", { altKey: true });
     expect(opts.onSetStatusMode).toHaveBeenCalledWith("start");
@@ -779,7 +726,7 @@ describe("useKeyboardMindmap — filter shortcuts (Alt)", () => {
   });
 
   it("plain 's' still starts a flow (Alt gate does not swallow it)", () => {
-    const opts = baseOptions({ selectedNodeId: "flow-1", findNodeById: (id: string) => (id === "flow-1" ? makeFlow("flow-1") : undefined) });
+    const opts = mindmapKeyboardContext({ selectedNodeId: "flow-1", findNodeById: (id: string) => (id === "flow-1" ? makeFlow("flow-1") : undefined) });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("s");
     expect(opts.onStartFlow).toHaveBeenCalledWith("flow-1");
@@ -787,7 +734,7 @@ describe("useKeyboardMindmap — filter shortcuts (Alt)", () => {
   });
 
   it("Alt+ArrowUp still reorders (the Alt filter gate lets non-letter keys through)", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("ArrowUp", { altKey: true });
     expect(opts.onReorder).toHaveBeenCalledWith("task-1", -1);
@@ -796,14 +743,14 @@ describe("useKeyboardMindmap — filter shortcuts (Alt)", () => {
 
 describe("useKeyboardMindmap — Enter focuses the root when nothing is selected", () => {
   it("focuses the display root on Enter with no selection", () => {
-    const opts = baseOptions({ selectedNodeId: null });
+    const opts = mindmapKeyboardContext({ selectedNodeId: null });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("Enter");
     expect(opts.onFocusRoot).toHaveBeenCalledTimes(1);
   });
 
   it("does not focus the root when a node is already selected", () => {
-    const opts = baseOptions({ selectedNodeId: "task-1" });
+    const opts = mindmapKeyboardContext({ selectedNodeId: "task-1" });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("Enter");
     expect(opts.onFocusRoot).not.toHaveBeenCalled();
@@ -812,21 +759,21 @@ describe("useKeyboardMindmap — Enter focuses the root when nothing is selected
 
 describe("useKeyboardMindmap — c centers the view on the selected node", () => {
   it("calls onCenterOnNode with the selected node id", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("c");
     expect(opts.onCenterOnNode).toHaveBeenCalledWith("task-1");
   });
 
   it("does nothing when no node is selected", () => {
-    const opts = baseOptions({ selectedNodeId: null });
+    const opts = mindmapKeyboardContext({ selectedNodeId: null });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("c");
     expect(opts.onCenterOnNode).not.toHaveBeenCalled();
   });
 
   it("Ctrl+C still copies and does not center", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("c", { ctrlKey: true });
     expect(opts.onCopy).toHaveBeenCalled();
@@ -836,14 +783,14 @@ describe("useKeyboardMindmap — c centers the view on the selected node", () =>
 
 describe("useKeyboardMindmap — f converts an applicable node to a flow", () => {
   it("calls onConvertToFlow with the selected node id", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("f");
     expect(opts.onConvertToFlow).toHaveBeenCalledWith("task-1");
   });
 
   it("shows the board alone when no node is selected, since there is nothing to convert", () => {
-    const opts = baseOptions({ selectedNodeId: null });
+    const opts = mindmapKeyboardContext({ selectedNodeId: null });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("f");
     expect(opts.onConvertToFlow).not.toHaveBeenCalled();
@@ -851,14 +798,14 @@ describe("useKeyboardMindmap — f converts an applicable node to a flow", () =>
   });
 
   it("does not show the board alone when a node IS selected — the conversion wins the key", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("f");
     expect(opts.onToggleFullscreen).not.toHaveBeenCalled();
   });
 
   it("Alt+F still toggles the filter menu and does not convert", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("f", { altKey: true });
     expect(opts.onToggleFilter).toHaveBeenCalledTimes(1);
@@ -869,7 +816,7 @@ describe("useKeyboardMindmap — f converts an applicable node to a flow", () =>
 
 describe("useKeyboardMindmap — Shift+Arrow extends the selection", () => {
   it("Shift+ArrowUp calls onExtendSelection with 'ArrowUp'", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("ArrowUp", { shiftKey: true });
     expect(opts.onExtendSelection).toHaveBeenCalledWith("ArrowUp");
@@ -877,7 +824,7 @@ describe("useKeyboardMindmap — Shift+Arrow extends the selection", () => {
   });
 
   it("Shift+ArrowDown calls onExtendSelection with 'ArrowDown'", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("ArrowDown", { shiftKey: true });
     expect(opts.onExtendSelection).toHaveBeenCalledWith("ArrowDown");
@@ -887,14 +834,14 @@ describe("useKeyboardMindmap — Shift+Arrow extends the selection", () => {
 
 describe("shift+arrow selection axis follows the orientation", () => {
   it("horizontal: Shift+Down extends the selection", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("ArrowDown", { shiftKey: true });
     expect(opts.onExtendSelection).toHaveBeenCalledWith("ArrowDown");
   });
 
   it("horizontal: Shift+Right navigates instead of extending", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("ArrowRight", { shiftKey: true });
     expect(opts.onExtendSelection).not.toHaveBeenCalled();
@@ -902,14 +849,14 @@ describe("shift+arrow selection axis follows the orientation", () => {
   });
 
   it("vertical: Shift+Right extends the selection", () => {
-    const opts = baseOptions({ orientation: "vertical" as const });
+    const opts = mindmapKeyboardContext({ orientation: "vertical" as const });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("ArrowRight", { shiftKey: true });
     expect(opts.onExtendSelection).toHaveBeenCalledWith("ArrowRight");
   });
 
   it("vertical: Shift+Down navigates instead of extending", () => {
-    const opts = baseOptions({ orientation: "vertical" as const });
+    const opts = mindmapKeyboardContext({ orientation: "vertical" as const });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("ArrowDown", { shiftKey: true });
     expect(opts.onExtendSelection).not.toHaveBeenCalled();
@@ -919,7 +866,7 @@ describe("shift+arrow selection axis follows the orientation", () => {
   // Ctrl+Z in both views, dispatched from the shared registry so the cheat-sheet lists it too.
   describe("undo and redo", () => {
     it("Ctrl+Z reaches undo", () => {
-      const options = baseOptions();
+      const options = mindmapKeyboardContext();
       renderHook((opts) => useKeyboardMindmap(opts), { initialProps: options });
       fireKey("z", { ctrlKey: true });
       expect(options.onUndo).toHaveBeenCalledTimes(1);
@@ -927,7 +874,7 @@ describe("shift+arrow selection axis follows the orientation", () => {
     });
 
     it("Ctrl+Shift+Z reaches redo, and not undo", () => {
-      const options = baseOptions();
+      const options = mindmapKeyboardContext();
       renderHook((opts) => useKeyboardMindmap(opts), { initialProps: options });
       fireKey("z", { ctrlKey: true, shiftKey: true });
       expect(options.onRedo).toHaveBeenCalledTimes(1);
@@ -935,14 +882,14 @@ describe("shift+arrow selection axis follows the orientation", () => {
     });
 
     it("Ctrl+Y reaches redo as well", () => {
-      const options = baseOptions();
+      const options = mindmapKeyboardContext();
       renderHook((opts) => useKeyboardMindmap(opts), { initialProps: options });
       fireKey("y", { ctrlKey: true });
       expect(options.onRedo).toHaveBeenCalledTimes(1);
     });
 
     it("ignores both while an input is active", () => {
-      const options = baseOptions({ isInputActive: true });
+      const options = mindmapKeyboardContext({ isInputActive: true });
       renderHook((opts) => useKeyboardMindmap(opts), { initialProps: options });
       fireKey("z", { ctrlKey: true });
       fireKey("z", { ctrlKey: true, shiftKey: true });
@@ -952,7 +899,7 @@ describe("shift+arrow selection axis follows the orientation", () => {
 
     // Inside a field Ctrl+Z means the field undo the browser already gives, not the board's.
     it("leaves a keystroke from inside a text field alone", () => {
-      const options = baseOptions();
+      const options = mindmapKeyboardContext();
       renderHook((opts) => useKeyboardMindmap(opts), { initialProps: options });
       const input = document.createElement("input");
       document.body.appendChild(input);
@@ -978,14 +925,14 @@ describe("useKeyboardMindmap — Shift+initial creates a typed child", () => {
 
   for (const [key, kind] of CHORDS) {
     it(`Shift+${key.toUpperCase()} asks for a ${kind} child of the selection`, () => {
-      const opts = baseOptions();
+      const opts = mindmapKeyboardContext();
       renderHook(() => useKeyboardMindmap(opts));
       fireKey(key, { shiftKey: true });
       expect(opts.onCreateTypedChild).toHaveBeenCalledWith("task-1", kind);
     });
 
     it(`Shift+${key.toUpperCase()} does nothing at all with no selection`, () => {
-      const opts = baseOptions({ selectedNodeId: null, selectedNodeIds: new Set<string>() });
+      const opts = mindmapKeyboardContext({ selectedNodeId: null, selectedNodeIds: new Set<string>() });
       renderHook(() => useKeyboardMindmap(opts));
       fireKey(key, { shiftKey: true });
       expect(opts.onCreateTypedChild).not.toHaveBeenCalled();
@@ -993,7 +940,7 @@ describe("useKeyboardMindmap — Shift+initial creates a typed child", () => {
   }
 
   it("leaves bare C centering on the selection, not creating a commitment", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("c");
     expect(opts.onCenterOnNode).toHaveBeenCalledWith("task-1");
@@ -1001,14 +948,14 @@ describe("useKeyboardMindmap — Shift+initial creates a typed child", () => {
   });
 
   it("leaves Ctrl+C copying, not creating a commitment", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("c", { ctrlKey: true });
     expect(opts.onCreateTypedChild).not.toHaveBeenCalled();
   });
 
   it("leaves bare F converting the selection to a Flow", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("f");
     expect(opts.onConvertToFlow).toHaveBeenCalledWith("task-1");
@@ -1016,7 +963,7 @@ describe("useKeyboardMindmap — Shift+initial creates a typed child", () => {
   });
 
   it("Shift+F creates a Flow child and does not convert the selection", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("f", { shiftKey: true });
     expect(opts.onCreateTypedChild).toHaveBeenCalledWith("task-1", "flow");
@@ -1024,7 +971,7 @@ describe("useKeyboardMindmap — Shift+initial creates a typed child", () => {
   });
 
   it("leaves Tab creating an inherit-the-parent child", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("Tab");
     expect(opts.onCreateChild).toHaveBeenCalledWith("task-1");
@@ -1032,7 +979,7 @@ describe("useKeyboardMindmap — Shift+initial creates a typed child", () => {
   });
 
   it("does not fire on a plain letter — Shift is what distinguishes the chord", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("d");
     fireKey("t", { ctrlKey: true });
@@ -1041,7 +988,7 @@ describe("useKeyboardMindmap — Shift+initial creates a typed child", () => {
   });
 
   it("ignores a held-key repeat so one press never spawns two children", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     window.dispatchEvent(new KeyboardEvent("keydown", {
       key: "t", code: "KeyT", shiftKey: true, repeat: true, bubbles: true, cancelable: true,
@@ -1100,7 +1047,7 @@ describe("useKeyboardMindmap — Enter cycles a commitment's verdict", () => {
 
   it("leaves Enter on a task cycling its status, immediately", () => {
     vi.useFakeTimers();
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
 
     fireKey("Enter");
@@ -1131,7 +1078,7 @@ describe("useKeyboardMindmap — X records Broken", () => {
   });
 
   it("does nothing on a task, which has no verdict to record", () => {
-    const opts = baseOptions();
+    const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("x");
     expect(opts.onMarkBroken).not.toHaveBeenCalled();

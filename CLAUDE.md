@@ -12,10 +12,15 @@ Additional rules live in `.claude/rules/`. Read them before starting any task.
 
 ## Key conventions
 
-- `SPEC.md` is the authoritative design document. Update it when design decisions are made or revised.
-- `CHANGELOG.md` uses Keep a Changelog format, under a single `[Unreleased]` section — this is a personal app in live preview, with no release cycle. Record every meaningful change there using the `Added` / `Changed` / `Fixed` / `Removed` headings. It is user-facing: describe behaviour, not refactors.
+- The design specification is authoritative. Update it when design decisions are made or revised. It is one document in several files: `SPEC.md` is the front door — the overview, an index of the areas, and the implementation phases — and each area lives in its own file under `docs/spec/` (`resources.md`, `time-scopes.md`, `flows.md`, `habits.md`, `link-inheritance.md`, `filtering-logic.md`, `tabs.md`, `mindmap-view.md`, `list-view.md`, `mcp-server.md`, `undo.md`). Write a design change into the area file it belongs to, so two features in flight stop meeting in one file; `SPEC.md` itself changes only when an area is added, renamed or removed.
+- `CHANGELOG.md` uses Keep a Changelog format, under a single `[Unreleased]` section — this is a personal app in live preview, with no release cycle. It is user-facing: describe behaviour, not refactors. **Never edit `[Unreleased]` by hand.** Record a change as a fragment in `changelog.d/`:
+  - **One file per change**, at `changelog.d/<heading>/<NNNN>-<slug>.md`. The directory is the heading — `added`, `changed`, `fixed` or `removed`. The four-digit number orders the section, newest first; pick one above every number you can see. It does **not** have to be unique, so two branches picking the same number still produce two different files.
+  - The file holds the entry exactly as it should read, starting `- **Title.** …`, continuation paragraphs indented two spaces. Same voice as always.
+  - `npm run changelog` assembles `CHANGELOG.md`'s `[Unreleased]` section from the fragments. The numbered release sections below it are history and are never rewritten.
+  - **A feature branch adds a fragment and does not run the assembler** — reassembling on a branch puts the merge conflict straight back. Assembly runs on `master`, after a merge; CI checks it there (`npm run changelog:check`) and never on a PR.
+  - Nothing user-visible changed? Write no fragment.
 - **Commit all changes at the end of every request.** Stage and commit everything modified during the request in a single commit with a clear message. Do not leave the working tree dirty.
-- The five implementation phases in `SPEC.md` define sequencing. Do not implement Phase N+1 features while Phase N is in progress unless explicitly asked.
+- The implementation phases, listed in `SPEC.md` and nowhere else, define sequencing. Do not implement Phase N+1 features while Phase N is in progress unless explicitly asked.
 
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:1105d646 -->

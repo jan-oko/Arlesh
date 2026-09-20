@@ -8,6 +8,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "lint": "eslint src",
+    "changelog": "node scripts/assemble-changelog.mjs",
+    "changelog:check": "node scripts/assemble-changelog.mjs --check",
     "test": "vitest run",
     "test:watch": "vitest",
     "tauri": "tauri"
