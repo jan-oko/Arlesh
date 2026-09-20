@@ -1,8 +1,10 @@
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
-import { findNode, findParent, collectAllNodeIds, owningFlowId } from "@/utils/mindmap-tree";
+import { findNode, findParent, collectAllNodeIds } from "@/utils/mindmap-tree";
 import { isValidDropTarget, validParentKinds } from "@/utils/node-meta";
+import { pasteRefusal, countPasteRefusals, PASTE_REFUSAL_KEY } from "@/utils/paste-refusal";
+import type { PasteRefusal } from "@/utils/paste-refusal";
 import type { TypedChildKind } from "@/utils/node-meta";
 import { updateTask } from "@/api/tasks";
 import type { TaskAgentic } from "@/api/tasks";
@@ -206,31 +208,27 @@ export function useNodeActions({
       if (targetNode === undefined) return;
       const isCopy = clipboard.operation === CLIPBOARD_OP.COPY;
 
-      // A node is pasteable here if drag-and-drop would allow the same reparent (e.g. aspects are
-      // fixed and can't be reparented) and it isn't a derived, DB-less virtual node. A COPY refuses
-      // two more things. A Commitment, which has no duplicate command: its would have to decide
-      // what a copy of a recorded Verdict means, and nobody has. And a flow item pasted into a
-      // *different* flow, because its Cycle Scope is an offset into its own flow's window and
-      // another window does not share it. Refused here rather than in `duplicateNode` so it is
-      // *said* — the skipped-paste toast names the count, instead of the copy failing where
-      // nothing is watching.
+      // Every reason a node is left behind lives in `pasteRefusal`, which the drag-and-drop rule is
+      // only one of: an Aspect is fixed wherever you point, a Habit repetition has no row behind it
+      // to copy, a Commitment has no duplicate at all (what a copy of a recorded Verdict means has
+      // never been decided), and a flow item's Cycle Scope is an offset into its own Flow's window,
+      // which another Flow's does not share. Refused here rather than in `duplicateNode` so each one
+      // is *said*, instead of the copy failing where nothing is watching.
+      const refusals: PasteRefusal[] = [];
       const nodeIds = clipboard.nodeIds.filter((id) => {
-        const node = findNode(tree, id);
-        if (node === undefined || node.virtual === true) return false;
-        if (!isValidDropTarget(node.kind, targetNode.kind)) return false;
-        if (isCopy && node.kind === "commitment") return false;
-        if (
-          isCopy &&
-          (node.kind === "flow_goal" || node.kind === "flow_task") &&
-          owningFlowId(tree, id) !== owningFlowId(tree, targetId)
-        ) {
-          return false;
-        }
-        return true;
+        const refusal = pasteRefusal(tree, id, targetNode, isCopy);
+        if (refusal === null) return true;
+        refusals.push(refusal);
+        return false;
       });
-      const skippedCount = clipboard.nodeIds.length - nodeIds.length;
-      if (skippedCount > 0) {
-        showToast({ nodeId: targetId, message: t("pasteSkipped", { count: skippedCount }) });
+      // One toast carrying every reason, never one call per reason: the store holds a single pending
+      // toast, so a second `showToast` would overwrite the first and the node it spoke for would be
+      // dropped in silence — exactly what this message exists to prevent.
+      if (refusals.length > 0) {
+        const message = countPasteRefusals(refusals)
+          .map(({ refusal, count }) => t(PASTE_REFUSAL_KEY[refusal], { count }))
+          .join(" ");
+        showToast({ nodeId: targetId, message });
       }
       if (nodeIds.length === 0) return;
       const selectedSet = new Set(nodeIds);

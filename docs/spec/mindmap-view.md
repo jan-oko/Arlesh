@@ -103,8 +103,14 @@ that is the model to reach for if this proves wrong.)
 
 Projects, Domains, Tags, Goals, Tasks, Infos, **Flows and flow items** are duplicable. Aspects,
 Commitments and virtual Habit instances are not, and a Flow hanging under a copied node is still not
-copied with it. A paste whose selection includes any of these pastes the rest and reports how many it
-skipped in a toast. Otherwise a copy is refused exactly where a move would be, by the same
+copied with it. A paste whose selection includes any of these pastes the rest and says in a toast what
+it skipped — **grouped by reason, one sentence per reason**, because only one of the reasons is about
+the destination. An Aspect is fixed wherever you point it, a Habit repetition has no row behind it to
+copy, and a Commitment or a flow item leaving its own Flow has no duplicate at all though cut still
+moves it; telling the user any of these "couldn't be pasted here" sends them to change a destination
+that was never the problem. A mixed selection reports every reason it hit, in **one** toast: the view
+holds a single pending toast, so a second would overwrite the first and skip a node in silence.
+Otherwise a copy is refused exactly where a move would be, by the same
 drop-target rule; it lands at the end of the target's children; it is atomic, so a failure part-way
 leaves the tree untouched rather than half a subtree; and it leaves the clipboard intact, so the same
 subtree can be pasted into several places.

@@ -317,7 +317,7 @@ describe("useNodeActions — onPaste", () => {
     act(() => { result.current.onPaste("goal-2"); });
     await vi.waitFor(() => expect(opts.duplicateNode).toHaveBeenCalledWith("task-5", "task", "goal-2", "goal", 0));
     expect(opts.duplicateNode).toHaveBeenCalledTimes(1);
-    expect(opts.showToast).toHaveBeenCalledWith({ nodeId: "goal-2", message: "pasteSkipped:1" });
+    expect(opts.showToast).toHaveBeenCalledWith({ nodeId: "goal-2", message: "pasteSkippedAspect:1" });
   });
 
   it("does not paste a virtual (habit-instance) node", async () => {
@@ -327,7 +327,55 @@ describe("useNodeActions — onPaste", () => {
     act(() => { result.current.onPaste("goal-2"); });
     await Promise.resolve();
     expect(opts.duplicateNode).not.toHaveBeenCalled();
-    expect(opts.showToast).toHaveBeenCalledWith({ nodeId: "goal-2", message: "pasteSkipped:1" });
+    expect(opts.showToast).toHaveBeenCalledWith({ nodeId: "goal-2", message: "pasteSkippedRepetition:1" });
+  });
+
+  // One toast per reason, and every reason its own sentence: "couldn't be pasted here" used to
+  // cover all of them, sending the user to hunt for a different parent when the parent was fine.
+  it("says the destination is wrong only when the destination really is wrong", async () => {
+    const clipboard = { operation: CLIPBOARD_OP.COPY, nodeIds: ["domain-3"] };
+    const opts = makeOpts({ clipboard });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onPaste("goal-2"); });
+    await Promise.resolve();
+    expect(opts.duplicateNode).not.toHaveBeenCalled();
+    expect(opts.showToast).toHaveBeenCalledWith({ nodeId: "goal-2", message: "pasteSkippedHere:1" });
+  });
+
+  it("names the Commitment, not the destination, when a copied Commitment is refused", async () => {
+    const clipboard = { operation: CLIPBOARD_OP.COPY, nodeIds: ["commitment-7"] };
+    const opts = makeOpts({ clipboard });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onPaste("goal-2"); });
+    await Promise.resolve();
+    expect(opts.duplicateNode).not.toHaveBeenCalled();
+    expect(opts.showToast).toHaveBeenCalledWith({ nodeId: "goal-2", message: "pasteSkippedCommitment:1" });
+  });
+
+  it("says the copied node is gone when its id has left the tree", async () => {
+    const clipboard = { operation: CLIPBOARD_OP.COPY, nodeIds: ["task-404"] };
+    const opts = makeOpts({ clipboard });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onPaste("goal-2"); });
+    await Promise.resolve();
+    expect(opts.duplicateNode).not.toHaveBeenCalled();
+    expect(opts.showToast).toHaveBeenCalledWith({ nodeId: "goal-2", message: "pasteSkippedGone:1" });
+  });
+
+  // A second showToast would overwrite the first, so a mixed selection has to arrive as one message
+  // — and it still pastes the nodes that were legal.
+  it("reports both reasons in one toast when a selection hits two, and pastes the rest", async () => {
+    const clipboard = { operation: CLIPBOARD_OP.COPY, nodeIds: ["aspect-1", "commitment-7", "task-5"] };
+    const opts = makeOpts({ clipboard });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onPaste("goal-2"); });
+    await vi.waitFor(() => expect(opts.duplicateNode).toHaveBeenCalledWith("task-5", "task", "goal-2", "goal", 0));
+    expect(opts.duplicateNode).toHaveBeenCalledTimes(1);
+    expect(opts.showToast).toHaveBeenCalledTimes(1);
+    expect(opts.showToast).toHaveBeenCalledWith({
+      nodeId: "goal-2",
+      message: "pasteSkippedAspect:1 pasteSkippedCommitment:1",
+    });
   });
 
   it("copies a flow item back into its own template", async () => {
@@ -347,7 +395,7 @@ describe("useNodeActions — onPaste", () => {
     await Promise.resolve();
     // Its Cycle Scope is an offset into flow-1's window, which flow-2's window does not share.
     expect(copyOpts.duplicateNode).not.toHaveBeenCalled();
-    expect(copyOpts.showToast).toHaveBeenCalledWith({ nodeId: "flow-2", message: "pasteSkipped:1" });
+    expect(copyOpts.showToast).toHaveBeenCalledWith({ nodeId: "flow-2", message: "pasteSkippedOtherFlow:1" });
 
     const cutOpts = makeOpts({ clipboard: { operation: CLIPBOARD_OP.CUT, nodeIds: ["flowtask-4"] } });
     const { result: cutResult } = renderHook(() => useNodeActions(cutOpts));
