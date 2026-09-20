@@ -32,7 +32,7 @@ function baseOptions(overrides: Partial<Parameters<typeof useKeyboardListView>[0
     onExitToRoot: vi.fn(),
     onToggleBacklog: vi.fn(),
     onToggleAgentic: vi.fn(),
-    onMarkKept: vi.fn(),
+    onCycleVerdict: vi.fn(),
     onMarkBroken: vi.fn(),
     onUndo: vi.fn(),
     onRedo: vi.fn(),
