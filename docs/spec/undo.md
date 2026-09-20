@@ -124,6 +124,19 @@ transaction. Both the flag and the source live in a single ambient row every con
 makes that safe is that setting either is a write, so the transaction that sets it holds SQLite's
 single writer lock until it commits.
 
+The database runs in **WAL** journal mode, which leaves that argument standing. WAL changes how a
+reader and a writer coexist — a reader takes a snapshot instead of waiting — not how two writers
+do: SQLite still admits one write transaction at a time, database-wide, and that is the whole of
+what the flag relies on. No second write can be in flight to be journalled under someone else's
+flag, and a concurrent reader is no loophole either — it reads the last committed snapshot, so it
+sees the flag clear, and it writes no journal entries to mis-attribute in any case.
+
+What did have to change is *when* the lock is taken. A transaction the session factory opens is now
+**immediate**, holding the writer lock from its `BEGIN` rather than from its first write. Before
+that, a transaction that read anything before setting the flag could be refused the upgrade to
+writer outright — the failure `Arlesh-odd` reported. It is the same claim as above, made true from
+one statement earlier.
+
 The journal is truncated at startup and capped at a fixed number of gestures, so a long session
 cannot grow it without bound. An ungrouped entry counts as one gesture for that cap.
 
