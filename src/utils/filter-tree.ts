@@ -1,6 +1,6 @@
 import type { MindmapNode } from "@/utils/tree-layout";
 import { isNodeBlocked } from "@/utils/tree-layout";
-import { VERDICT } from "@/api/commitments";
+import { VERDICT } from "@/api/verdict";
 
 /** Status preset a filter is in. `all` disables status filtering; `backlog` inverts it, showing
  * only what has been deliberately set aside. */

@@ -1,6 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useHotkeys } from "@/hooks/use-hotkeys";
-import { MINDMAP_BINDINGS } from "@/utils/hotkeys/mindmap-bindings";
+import { DOUBLE_TAP_MS, MINDMAP_BINDINGS } from "@/utils/hotkeys/mindmap-bindings";
 import type { MindmapContext } from "@/utils/hotkeys/mindmap-bindings";
 
 /**
@@ -22,7 +22,28 @@ interface Options extends Omit<MindmapContext, "lastEnterMs"> {
 export function useKeyboardMindmap(options: Options): void {
   const { isInputActive, isWarningActive, onDismissWarning, ...rest } = options;
   const lastEnterMs = useRef(-Infinity);
-  const context: MindmapContext = { ...rest, lastEnterMs };
+  const pendingVerdict = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { onCycleVerdict } = rest;
+
+  // Enter on a Commitment is ambiguous while the double-tap window is open: the press may yet turn
+  // out to be the first half of the double tap that enters the commitment's subtree. Since nothing
+  // but the user may decide a verdict, the cycle waits the window out rather than writing a step
+  // that navigating would then have to take back. The binding stamps `lastEnterMs` with -Infinity
+  // when a double tap consumes the pair, which is how a waiting cycle learns it was half of one.
+  const scheduleVerdictCycle = useCallback((nodeId: string) => {
+    if (pendingVerdict.current !== null) clearTimeout(pendingVerdict.current);
+    pendingVerdict.current = setTimeout(() => {
+      pendingVerdict.current = null;
+      if (lastEnterMs.current === -Infinity) return;
+      onCycleVerdict(nodeId);
+    }, DOUBLE_TAP_MS);
+  }, [onCycleVerdict]);
+
+  useEffect(() => () => {
+    if (pendingVerdict.current !== null) clearTimeout(pendingVerdict.current);
+  }, []);
+
+  const context: MindmapContext = { ...rest, lastEnterMs, onCycleVerdict: scheduleVerdictCycle };
 
   useEffect(() => {
     if (isInputActive || !isWarningActive) return;

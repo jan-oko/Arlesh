@@ -75,6 +75,30 @@ describe("useCommitmentVerdict", () => {
       );
     });
 
+    it("takes the same Enter cycle as any other commitment, one Modification at a time", async () => {
+      // An iteration is selectable in exactly the same list, so Enter has to mean the same thing
+      // on it; only where the verdict is stored differs.
+      vi.mocked(setHabitItemStatus).mockResolvedValue(undefined);
+      const { result } = setup([commitment(ITERATION.id, { ...ITERATION, verdict: "kept" })]);
+
+      act(() => { result.current.cycleVerdict(ITERATION.id); });
+
+      await waitFor(() =>
+        expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_root", 3, 100, 0, "broken", expect.any(Number)),
+      );
+    });
+
+    it("clears the iteration's verdict when the cycle comes back round to Unresolved", async () => {
+      vi.mocked(setHabitItemStatus).mockResolvedValue(undefined);
+      const { result } = setup([commitment(ITERATION.id, { ...ITERATION, verdict: "broken" })]);
+
+      act(() => { result.current.cycleVerdict(ITERATION.id); });
+
+      await waitFor(() =>
+        expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_root", 3, 100, 0, null, expect.any(Number)),
+      );
+    });
+
     it("says so when the write fails instead of leaving the control looking pressed", async () => {
       vi.mocked(setHabitItemStatus).mockRejectedValue(new Error("db is locked"));
       const { result, showToast, reload } = setup([ITERATION]);

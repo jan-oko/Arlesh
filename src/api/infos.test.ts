@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
+import { mockCommandOnce, mockGestureProtocol } from "@/test/command-mock";
 import { listInfos, createInfo, updateInfo, deleteInfo } from "./infos";
 import type { Info, CreateInfoRequest } from "./infos";
 
@@ -11,11 +12,12 @@ const mockInfo: Info = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockGestureProtocol();
 });
 
 describe("listInfos", () => {
   it("calls invoke with list_infos and returns the info array", async () => {
-    vi.mocked(invoke).mockResolvedValueOnce([mockInfo]);
+    mockCommandOnce([mockInfo]);
     const result = await listInfos();
     expect(invoke).toHaveBeenCalledWith("list_infos");
     expect(result).toEqual([mockInfo]);
@@ -24,7 +26,7 @@ describe("listInfos", () => {
 
 describe("createInfo", () => {
   it("calls invoke with create_info and wraps the request", async () => {
-    vi.mocked(invoke).mockResolvedValueOnce(mockInfo);
+    mockCommandOnce(mockInfo);
     const req: CreateInfoRequest = {
       body: "Remember to update docs", parent_type: "task", parent_id: 3, position: 0,
     };
@@ -37,7 +39,7 @@ describe("createInfo", () => {
 describe("updateInfo", () => {
   it("calls invoke with update_info, the id, and the partial request", async () => {
     const updated = { ...mockInfo, body: "Updated note" };
-    vi.mocked(invoke).mockResolvedValueOnce(updated);
+    mockCommandOnce(updated);
     const result = await updateInfo(1, { body: "Updated note" });
     expect(invoke).toHaveBeenCalledWith("update_info", { id: 1, request: { body: "Updated note" } });
     expect(result.body).toBe("Updated note");
@@ -46,7 +48,7 @@ describe("updateInfo", () => {
 
 describe("deleteInfo", () => {
   it("calls invoke with delete_info and the id", async () => {
-    vi.mocked(invoke).mockResolvedValueOnce(undefined);
+    mockCommandOnce(undefined);
     await deleteInfo(1);
     expect(invoke).toHaveBeenCalledWith("delete_info", { id: 1 });
   });

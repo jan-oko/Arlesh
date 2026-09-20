@@ -17,7 +17,9 @@ use super::{
 };
 use crate::{
     domains::model::DomainId,
+    error::AppError,
     tasks::model::{CommitmentId, GoalId, TaskId},
+    undo::model::WriteSource,
 };
 
 #[tool_router(router = beads_router, vis = "pub(super)")]
@@ -60,54 +62,45 @@ impl ArleshMcp {
             beads_id: beads_id.clone(),
         };
 
-        match node_type {
-            // One UPDATE over one column, so a pooled session is enough — SQLite gives a single
-            // statement atomicity on its own.
-            BeadsNode::Task => {
-                let mut db = match self.factory.connect().await {
-                    Ok(db) => db,
-                    Err(error) => return result::failed(error),
-                };
-                match db.tasks().set_beads_id(TaskId(node_id), beads_id).await {
-                    Ok(()) => result::ok(link),
-                    Err(error) => result::failed(error),
-                }
-            }
-            BeadsNode::Goal => {
-                let mut db = match self.factory.connect().await {
-                    Ok(db) => db,
-                    Err(error) => return result::failed(error),
-                };
-                match db.goals().set_beads_id(GoalId(node_id), beads_id).await {
-                    Ok(()) => result::ok(link),
-                    Err(error) => result::failed(error),
-                }
-            }
-            BeadsNode::Commitment => {
-                let mut db = match self.factory.connect().await {
-                    Ok(db) => db,
-                    Err(error) => return result::failed(error),
-                };
-                match db
-                    .commitments()
-                    .set_beads_id(CommitmentId(node_id), beads_id)
-                    .await
-                {
-                    Ok(()) => result::ok(link),
-                    Err(error) => result::failed(error),
-                }
-            }
+        // Transactional for all three node kinds, including the two that are one UPDATE over one
+        // column and would otherwise need no transaction at all. The write has to be **tagged**:
+        // the Undo Journal's ambient source is one row shared by every connection, so the only
+        // thing that makes "the source is mcp" true for exactly these statements is holding
+        // SQLite's single writer lock from the moment it is set until it is put back — which is
+        // what a transaction is. The restore is also what stops an agent's tag outliving the
+        // write; on any failure below the session drops and rolls the tag back with everything
+        // else.
+        let mut db = match self.factory.begin().await {
+            Ok(db) => db,
+            Err(error) => return result::failed(error),
+        };
+        let user_source = match db.undo().set_source(WriteSource::Mcp).await {
+            Ok(previous) => previous,
+            Err(error) => return result::failed(error),
+        };
+
+        let write: Result<(), AppError> = match node_type {
+            BeadsNode::Task => db
+                .tasks()
+                .set_beads_id(TaskId(node_id), beads_id)
+                .await
+                .map_err(AppError::from),
+            BeadsNode::Goal => db
+                .goals()
+                .set_beads_id(GoalId(node_id), beads_id)
+                .await
+                .map_err(AppError::from),
+            BeadsNode::Commitment => db
+                .commitments()
+                .set_beads_id(CommitmentId(node_id), beads_id)
+                .await
+                .map_err(AppError::from),
             // A Project is the `project` subtype of Domain, and the operator's setter deliberately
             // does not check the subtype — no schema constraint backs the invariant, so it is
             // enforced here. Reading the row and then writing it is two statements, which per
             // ADR-0004 means a transactional session: without it another writer could retype the
             // domain between the check and the update.
             BeadsNode::Project => {
-                let mut db = match self.factory.begin().await {
-                    Ok(db) => db,
-                    Err(error) => return result::failed(error),
-                };
-
                 let domain = match db.domains().get(DomainId(node_id)).await {
                     Ok(domain) => domain,
                     Err(error) => return result::failed(error),
@@ -121,20 +114,23 @@ impl ArleshMcp {
                         domain.subtype
                     ));
                 }
-
-                if let Err(error) = db
-                    .domains()
+                db.domains()
                     .set_beads_id(DomainId(node_id), beads_id)
                     .await
-                {
-                    return result::failed(error);
-                }
-                if let Err(error) = db.commit().await {
-                    return result::failed(error);
-                }
-
-                result::ok(link)
+                    .map_err(AppError::from)
             }
+        };
+        if let Err(error) = write {
+            return result::failed(error);
         }
+
+        if let Err(error) = db.undo().set_source(user_source).await {
+            return result::failed(error);
+        }
+        if let Err(error) = db.commit().await {
+            return result::failed(error);
+        }
+
+        result::ok(link)
     }
 }
