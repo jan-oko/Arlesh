@@ -49,8 +49,8 @@ export type HabitScopeLevel = Exclude<HabitGroupLevel, "run">;
  * the same arrangement `scope-format` has with `ScopeLabelFns`.
  */
 export interface HabitCollapseLabels {
-  /** The folded run: "14 passed · 9 done, 5 missed". */
-  run: (tally: HabitTally) => string;
+  /** The folded run, named for the Habit behind it: "Journal: 14 passed · 9 done, 5 missed". */
+  run: (habit: string, tally: HabitTally) => string;
   /** One scope level: "September · 18 done, 12 missed". */
   level: (unit: string, tally: HabitTally) => string;
   /** The year-less label of one unit — "W12", "September", "Autumn", "2026". */
@@ -141,9 +141,14 @@ function habitLevelId(flowId: number, level: HabitScopeLevel, firstAnchorDate: s
   return `habitrun-${flowId}-${level}-${firstAnchorDate}-virtual`;
 }
 
-/** Whether a node is the folded stand-in for a whole run (as opposed to one of its scope levels). */
-export function isHabitRunNode(node: MindmapNode): boolean {
-  return node.habitGroup?.level === "run";
+/**
+ * Whether a node is one of the fold's own — the run, or one of the scope levels it expands into.
+ *
+ * They are one kind for the purposes of opening and closing: both are drawn shut until the user
+ * opens them, so both answer to `expandedHabitGroupIds` rather than to `collapsedNodeIds`.
+ */
+export function isHabitGroupNode(node: MindmapNode): boolean {
+  return node.habitGroup !== undefined;
 }
 
 /** One iteration node paired with the metadata the fold reads off it. */
@@ -238,7 +243,7 @@ function runNode(entries: readonly RunEntry[], labels: HabitCollapseLabels): Min
     "run",
     entries,
     habitRunId(first.flowId),
-    (tally) => labels.run(tally),
+    (tally) => labels.run(first.flowTitle, tally),
     levelChildren(entries, levelsForRun(metas), labels),
     labels,
   );
@@ -298,21 +303,21 @@ export function foldHabitRuns(
 
 /**
  * The collapsed set the canvas should lay out with: the nodes the user has collapsed, plus every
- * run node they have not expanded.
+ * group node — run or scope level — they have not opened.
  *
- * A run node is folded by default, which is the whole point of it, and the ordinary collapsed set
- * cannot say that — an id absent from it means *expanded*. The scope levels inside an expanded run
- * are ordinary in this respect and answer to `collapsedIds` alone, so opening a run shows the
- * whole tree and each level closes independently from there.
+ * Everything the fold draws is shut until asked for, which the ordinary collapsed set cannot say:
+ * an id absent from it means *expanded*. So the run and its levels share one inverted set, and
+ * opening a run shows the levels it spans rather than every iteration underneath them — which is
+ * the whole point of levelling it. Each level then opens on its own with the same gesture.
  */
-export function collapsedWithFoldedRuns(
+export function collapsedWithFoldedGroups(
   root: MindmapNode,
   collapsedIds: ReadonlySet<string>,
-  expandedRunIds: ReadonlySet<string>,
+  expandedHabitGroupIds: ReadonlySet<string>,
 ): ReadonlySet<string> {
   const folded = new Set(collapsedIds);
   function visit(node: MindmapNode): void {
-    if (isHabitRunNode(node) && !expandedRunIds.has(node.id)) folded.add(node.id);
+    if (isHabitGroupNode(node) && !expandedHabitGroupIds.has(node.id)) folded.add(node.id);
     for (const child of node.children) visit(child);
   }
   visit(root);

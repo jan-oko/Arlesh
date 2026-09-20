@@ -23,13 +23,14 @@ export interface MindmapStore {
   subtreeRootId: string | null;
   collapsedNodeIds: ReadonlySet<string>;
   /**
-   * The folded Habit-history nodes the user has opened.
+   * The folded Habit-history nodes the user has opened — the run of passed iterations, and each
+   * scope level inside it.
    *
-   * The inverse of `collapsedNodeIds`, because the default is the inverse: a run of passed
-   * iterations is drawn folded on every load, so "not listed" has to mean folded, and only an
-   * expansion is worth writing down.
+   * The inverse of `collapsedNodeIds`, because the default is the inverse: every one of them is
+   * drawn shut on each load, so "not listed" has to mean folded, and only an opening is worth
+   * writing down.
    */
-  expandedRunIds: ReadonlySet<string>;
+  expandedHabitGroupIds: ReadonlySet<string>;
   pendingToast: PendingToast | null;
   subtreeNav: SubtreeNav | null;
 
@@ -40,7 +41,7 @@ export interface MindmapStore {
   exitSubtree: (parentSubtreeId: string | null) => void;
   exitToRoot: () => void;
   toggleCollapsed: (id: string) => void;
-  toggleRunExpanded: (id: string) => void;
+  toggleGroupExpanded: (id: string) => void;
   showToast: (toast: PendingToast) => void;
   clearToast: () => void;
   setSubtreeNav: (nav: SubtreeNav | null) => void;
@@ -56,14 +57,14 @@ export interface MindmapStore {
  */
 export function createMindmapStore(
   subtreeRootId: string | null = null,
-  expandedRunIds: ReadonlySet<string> = new Set(),
+  expandedHabitGroupIds: ReadonlySet<string> = new Set(),
 ): StoreApi<MindmapStore> {
   return createStore<MindmapStore>()((set) => ({
     selectedNodeId: null,
     selectedNodeIds: new Set(),
     subtreeRootId,
     collapsedNodeIds: new Set(),
-    expandedRunIds,
+    expandedHabitGroupIds,
     pendingToast: null,
     subtreeNav: null,
 
@@ -114,12 +115,12 @@ export function createMindmapStore(
         return { collapsedNodeIds: next };
       }),
 
-    toggleRunExpanded: (id) =>
+    toggleGroupExpanded: (id) =>
       set((state) => {
-        const next = new Set(state.expandedRunIds);
+        const next = new Set(state.expandedHabitGroupIds);
         if (next.has(id)) next.delete(id);
         else next.add(id);
-        return { expandedRunIds: next };
+        return { expandedHabitGroupIds: next };
       }),
 
     showToast: (toast) => set({ pendingToast: toast }),

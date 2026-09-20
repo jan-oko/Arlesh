@@ -406,6 +406,7 @@ export function injectHabitInstances(
         },
         habitIteration: {
           flowId: flow.id,
+          flowTitle: flow.title,
           index: iteration.index,
           scopeKind: toCanonicalKind(flow.flow_duration_kind),
           anchorDate: iteration.anchor_date,
