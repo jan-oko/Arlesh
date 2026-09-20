@@ -64,3 +64,65 @@ describe("MindmapTree focus exemption", () => {
     expect(container.querySelector("[data-node-id='child']")?.getAttribute("style") ?? "").not.toContain("opacity");
   });
 });
+
+describe("a folded run of Habit iterations", () => {
+  const RUN: MindmapNode = {
+    id: "habitrun-7-virtual",
+    kind: "habit_group",
+    title: "14 passed · 9 done, 5 missed",
+    virtual: true,
+    habitGroup: {
+      flowId: 7, level: "run", passed: 14, done: 9, missed: 5,
+      spanStart: "2026-09-01", spanEnd: "2026-09-14", spanLabel: "01/09/26–14/09/26",
+    },
+    position: 0,
+    tagIds: [],
+    children: [node("habit-7-0-virtual"), node("habit-7-1-virtual")],
+  };
+  const TREE_WITH_RUN = node("root", [RUN]);
+
+  function renderRun(collapsedNodeIds: ReadonlySet<string>) {
+    return render(
+      <svg>
+        <MindmapTree
+          root={TREE_WITH_RUN}
+          orientation="horizontal"
+          collapsedNodeIds={collapsedNodeIds}
+          selectedNodeIds={new Set()}
+          focusExemptIds={new Set()}
+          editingNodeId={null}
+          dragTargetId={null}
+          dragSourceId={null}
+          hasClipboard={false}
+          onSelect={vi.fn()}
+          onDoubleClick={vi.fn()}
+          onCommitEdit={vi.fn()}
+          onCancelEdit={vi.fn()}
+          onContextAction={vi.fn()}
+          onDragStart={vi.fn()}
+          onStatusClick={vi.fn()}
+        />
+      </svg>,
+    );
+  }
+
+  it("reads its tally and keeps the iterations behind it off screen", () => {
+    const { container } = renderRun(new Set(["habitrun-7-virtual"]));
+
+    expect(container.textContent).toContain("14 passed · 9 done, 5 missed");
+    expect(container.querySelector("[data-node-id='habit-7-0-virtual']")).toBeNull();
+  });
+
+  it("draws its iterations once it is expanded", () => {
+    const { container } = renderRun(new Set());
+
+    expect(container.querySelector("[data-node-id='habit-7-0-virtual']")).not.toBeNull();
+  });
+
+  it("names its span in a tooltip, since the node itself has no room for it", () => {
+    const { container } = renderRun(new Set(["habitrun-7-virtual"]));
+
+    expect(container.querySelector("[data-node-id='habitrun-7-virtual'] title")?.textContent)
+      .toBe("01/09/26–14/09/26");
+  });
+});

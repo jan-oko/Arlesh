@@ -235,3 +235,44 @@ describe("a tab's name in storage", () => {
     expect(useTabsStore.getState().tabs[0]?.customTitle).toBeNull();
   });
 });
+
+describe("an opened habit history", () => {
+  it("comes back open", () => {
+    const state = parseTabState({ expandedRunIds: ["habitrun-7-virtual", "habitrun-9-virtual"] });
+
+    expect(state.expandedRunIds).toEqual(["habitrun-7-virtual", "habitrun-9-virtual"]);
+  });
+
+  it("reads as none for a tab written before histories could be opened", () => {
+    const state = parseTabState({ subtreeRootId: "project-1" });
+
+    expect(state.expandedRunIds).toEqual([]);
+  });
+
+  it("drops anything stored under the key that is not a node id", () => {
+    const state = parseTabState({ expandedRunIds: ["habitrun-7-virtual", 4, null] });
+
+    expect(state.expandedRunIds).toEqual(["habitrun-7-virtual"]);
+  });
+
+  it("survives a reload of the whole strip", () => {
+    localStorage.setItem(TABS_STORAGE_KEY, JSON.stringify({
+      activeTabId: "tab-1",
+      tabs: [{ id: "tab-1", title: null, customTitle: null, state: { expandedRunIds: ["habitrun-7-virtual"] } }],
+    }));
+
+    reloadTabs();
+
+    expect(useTabsStore.getState().tabs[0]?.stores.mindmap.getState().expandedRunIds)
+      .toEqual(new Set(["habitrun-7-virtual"]));
+  });
+
+  it("is written down as soon as it is opened", () => {
+    reloadTabs();
+    const tab = useTabsStore.getState().tabs[0];
+
+    tab?.stores.mindmap.getState().toggleRunExpanded("habitrun-7-virtual");
+
+    expect(readPersistedTabs()?.tabs[0]?.state.expandedRunIds).toEqual(["habitrun-7-virtual"]);
+  });
+});

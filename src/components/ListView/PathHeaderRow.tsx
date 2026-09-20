@@ -10,10 +10,16 @@ interface Props {
   onEnterSubtree: (id: string) => void;
   /** Whether to draw the leading kind glyph — the settings popover's **Path icons** switch. */
   showKindIcon: boolean;
+  /** Creates a Task under the chain's last node. `null` where that node cannot hold one, so the
+   * affordance is absent rather than present and always refusing. */
+  onCreateTask: (() => void) | null;
 }
 
 /** Sized against the header's `--text-sm`, not against a TaskRow card's larger status icon. */
 const ICON_R = 7;
+
+/** The `+` glyph, a shade smaller than the kind icon: it qualifies the chain rather than heading it. */
+const PLUS_SIZE = 10;
 
 /** The location of the run of rows beneath it — `Growth › CODE › ARLESH › Features` — named once
  * rather than repeated on every card. Carries every ancestor not rendered as a row above the task
@@ -25,8 +31,13 @@ const ICON_R = 7;
  * directly from — drawn with the same `NodeIcon` the Mindmap and the task rows use, so one
  * vocabulary covers all three. One glyph, not one per segment: the chain is read for where it ends,
  * and a marker beside every step would compete with the titles it exists to qualify. The glyph can
- * be switched off from the settings popover, leaving the chain as bare titles. */
-export default function PathHeaderRow({ segments, onEnterSubtree, showKindIcon }: Props) {
+ * be switched off from the settings popover, leaving the chain as bare titles.
+ *
+ * The chain closes with a **`+`** that creates a Task under its last node — the one the rows below
+ * hang from, so where the new row lands is exactly what the header already says. It is the way in
+ * with nothing selected, which the two creation chords cannot cover because both read their parent
+ * off the selection. */
+export default function PathHeaderRow({ segments, onEnterSubtree, showKindIcon, onCreateTask }: Props) {
   const { t } = useTranslation("listView");
   const parent = segments[segments.length - 1];
   return (
@@ -70,6 +81,19 @@ export default function PathHeaderRow({ segments, onEnterSubtree, showKindIcon }
           </button>
         </Fragment>
       ))}
+      {onCreateTask !== null && (
+        <button
+          type="button"
+          className={styles.create}
+          title={t("createTaskHere")}
+          aria-label={t("createTaskHere")}
+          onClick={onCreateTask}
+        >
+          <svg width={PLUS_SIZE} height={PLUS_SIZE} viewBox="0 0 10 10" aria-hidden="true">
+            <path d="M5 1.5v7M1.5 5h7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+          </svg>
+        </button>
+      )}
     </div>
   );
 }

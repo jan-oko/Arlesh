@@ -4,7 +4,7 @@ import { useDisplayStore } from "./use-display-store";
 beforeEach(() => {
   // Reset before clearing: the persist middleware writes the key back on every set, so clearing
   // first would leave a stored value behind for the boot-from-scratch cases below.
-  useDisplayStore.setState({ pathHeaderIcons: true });
+  useDisplayStore.setState({ pathHeaderIcons: true, habitCollapseThreshold: 3 });
   localStorage.clear();
 });
 
@@ -64,5 +64,46 @@ describe("a path-icon choice made before tabs existed", () => {
     const store = await bootDisplayStore();
 
     expect(store.getState().pathHeaderIcons).toBe(true);
+  });
+});
+
+describe("the habit-history collapse threshold", () => {
+  it("starts at three", () => {
+    expect(useDisplayStore.getState().habitCollapseThreshold).toBe(3);
+  });
+
+  it("holds a chosen threshold", () => {
+    useDisplayStore.getState().setHabitCollapseThreshold(8);
+    expect(useDisplayStore.getState().habitCollapseThreshold).toBe(8);
+  });
+
+  it("refuses a threshold below two, and one far above anything useful", () => {
+    useDisplayStore.getState().setHabitCollapseThreshold(1);
+    expect(useDisplayStore.getState().habitCollapseThreshold).toBe(2);
+
+    useDisplayStore.getState().setHabitCollapseThreshold(5000);
+    expect(useDisplayStore.getState().habitCollapseThreshold).toBe(99);
+  });
+
+  it("rounds a fractional threshold rather than folding on half an iteration", () => {
+    useDisplayStore.getState().setHabitCollapseThreshold(4.6);
+    expect(useDisplayStore.getState().habitCollapseThreshold).toBe(5);
+  });
+
+  it("falls back to the default when handed something that is not a number", () => {
+    useDisplayStore.getState().setHabitCollapseThreshold(Number.NaN);
+    expect(useDisplayStore.getState().habitCollapseThreshold).toBe(3);
+  });
+
+  it("comes back as it was left", async () => {
+    localStorage.setItem(
+      "arlesh-display",
+      JSON.stringify({ state: { habitCollapseThreshold: 12 }, version: 0 }),
+    );
+    vi.resetModules();
+
+    const module = await import("./use-display-store");
+
+    expect(module.useDisplayStore.getState().habitCollapseThreshold).toBe(12);
   });
 });

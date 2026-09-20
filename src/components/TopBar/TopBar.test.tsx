@@ -208,3 +208,49 @@ describe("TopBar", () => {
     });
   });
 });
+
+describe("the habit-history collapse threshold", () => {
+  function openSettings() {
+    render(<TopBar />);
+    fireEvent.click(screen.getByRole("button", { name: "common:settings" }));
+  }
+
+  it("shows the current threshold in the settings popover", () => {
+    useDisplayStore.setState({ habitCollapseThreshold: 5 });
+    openSettings();
+    expect(screen.getByLabelText("collapse.thresholdLabel")).toHaveValue(5);
+  });
+
+  it("stores a new threshold once the field is left", () => {
+    useDisplayStore.setState({ habitCollapseThreshold: 3 });
+    openSettings();
+    const field = screen.getByLabelText("collapse.thresholdLabel");
+    fireEvent.change(field, { target: { value: "7" } });
+    fireEvent.blur(field);
+    expect(useDisplayStore.getState().habitCollapseThreshold).toBe(7);
+  });
+
+  it("refuses a threshold below two — one iteration is not a run", () => {
+    useDisplayStore.setState({ habitCollapseThreshold: 3 });
+    openSettings();
+    const field = screen.getByLabelText("collapse.thresholdLabel");
+    fireEvent.change(field, { target: { value: "1" } });
+    fireEvent.blur(field);
+    expect(useDisplayStore.getState().habitCollapseThreshold).toBe(2);
+  });
+
+  it("keeps the old threshold when the field is left empty", () => {
+    useDisplayStore.setState({ habitCollapseThreshold: 4 });
+    openSettings();
+    const field = screen.getByLabelText("collapse.thresholdLabel");
+    fireEvent.change(field, { target: { value: "" } });
+    fireEvent.blur(field);
+    expect(useDisplayStore.getState().habitCollapseThreshold).toBe(4);
+  });
+
+  it("stays out of List View, which draws no mindmap nodes to fold", () => {
+    useViewStore.setState({ view: "list", mindmapOrientation: "horizontal" });
+    openSettings();
+    expect(screen.queryByLabelText("collapse.thresholdLabel")).not.toBeInTheDocument();
+  });
+});

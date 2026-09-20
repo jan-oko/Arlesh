@@ -752,3 +752,131 @@ async fn a_commitment_under_a_scoped_task_inherits_that_window_and_no_verdict_wi
         "nothing above it sets a Verdict Window, so it stays answerable indefinitely",
     );
 }
+
+// ---------------------------------------------------------------------------
+// Clearing over the wire (Arlesh-atb)
+// ---------------------------------------------------------------------------
+//
+// `Option<Option<T>>` spells *absent = leave unchanged, null = clear*, but serde collapses both
+// spellings to `None` on its own, and `merge` reads that as "unchanged". The Commitment editor
+// sends the whole form on every save, so emptying the Time Scope or the Verdict Window puts a JSON
+// `null` on the wire — and the save reports success while the old value stays in the row. The
+// request is built here the way the IPC boundary builds it, from the editor's own payload, because
+// that is the hop that drops the clear: constructing `Some(None)` in Rust skips the very step
+// under test.
+
+#[tokio::test]
+async fn the_editors_clear_payload_empties_a_commitments_own_window() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let july_month = window(&pool, ScopeKind::Month, july(15)).await;
+    let a_day = window(&pool, ScopeKind::Day, july(15)).await;
+
+    // A scoped parent, so clearing the child's own window is allowed rather than refused.
+    let month = create(
+        &pool,
+        CreateCommitmentRequest {
+            title: "No social media this month".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            time_scope: Some(july_month),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    let commitment = create(
+        &pool,
+        CreateCommitmentRequest {
+            title: "Asleep by 23:00".into(),
+            parent_type: "commitment".into(),
+            parent_id: month.id,
+            time_scope: Some(a_day),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert!(commitment.time_scope.is_some(), "the scope was set and saved");
+
+    // Exactly what `updateCommitment` puts on the wire when the editor's scope field is emptied.
+    let payload: UpdateCommitmentRequest = serde_json::from_str(
+        r#"{"title":"Asleep by 23:00","verdict":"unresolved","time_scope":null,
+            "verdict_window":null,"is_private":false}"#,
+    )
+    .unwrap();
+
+    let cleared = update(&pool, commitment.id, payload).await.unwrap();
+    assert_eq!(cleared.time_scope, None, "the emptied scope is emptied in the row");
+
+    let stored: Option<i64> =
+        sqlx::query_scalar("SELECT time_scope_start_id FROM commitments WHERE id = ?")
+            .bind(commitment.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(stored, None, "and stays cleared when read back");
+}
+
+#[tokio::test]
+async fn the_editors_clear_payload_empties_a_commitments_verdict_window() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let tonight = window(&pool, ScopeKind::Day, july(1)).await;
+
+    let commitment = create(
+        &pool,
+        CreateCommitmentRequest {
+            title: "Asleep by 23:00".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            time_scope: Some(tonight),
+            verdict_window: Some(DurationSpec { n: 2, kind: "day".into() }),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert!(commitment.verdict_window.is_some(), "the Verdict Window was set and saved");
+
+    let payload: UpdateCommitmentRequest = serde_json::from_str(
+        r#"{"title":"Asleep by 23:00","verdict":"unresolved","verdict_window":null,
+            "is_private":false}"#,
+    )
+    .unwrap();
+
+    let cleared = update(&pool, commitment.id, payload).await.unwrap();
+    assert_eq!(cleared.verdict_window, None, "the emptied Verdict Window goes back to inheriting");
+
+    let stored: Option<i64> =
+        sqlx::query_scalar("SELECT verdict_window_n FROM commitments WHERE id = ?")
+            .bind(commitment.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(stored, None, "and stays cleared when read back");
+}
+
+#[test]
+fn an_explicit_null_time_scope_in_a_commitment_update_payload_clears_it() {
+    let absent: UpdateCommitmentRequest = serde_json::from_str(r#"{"title":"Renamed"}"#).unwrap();
+    assert_eq!(absent.time_scope, None, "an absent key leaves the window alone");
+    let nulled: UpdateCommitmentRequest = serde_json::from_str(r#"{"time_scope":null}"#).unwrap();
+    assert_eq!(nulled.time_scope, Some(None), "an explicit null clears the window");
+    let set: UpdateCommitmentRequest =
+        serde_json::from_str(r#"{"time_scope":{"start_id":1,"end_id":2}}"#).unwrap();
+    assert_eq!(set.time_scope, Some(Some(TimeScope { start_id: 1, end_id: 2, duration: None })));
+}
+
+#[test]
+fn an_explicit_null_verdict_window_in_a_commitment_update_payload_clears_it() {
+    let absent: UpdateCommitmentRequest = serde_json::from_str(r#"{"title":"Renamed"}"#).unwrap();
+    assert_eq!(absent.verdict_window, None, "an absent key leaves the Verdict Window alone");
+    let nulled: UpdateCommitmentRequest =
+        serde_json::from_str(r#"{"verdict_window":null}"#).unwrap();
+    assert_eq!(nulled.verdict_window, Some(None), "an explicit null clears the Verdict Window");
+    let set: UpdateCommitmentRequest =
+        serde_json::from_str(r#"{"verdict_window":{"n":3,"kind":"day"}}"#).unwrap();
+    assert_eq!(set.verdict_window, Some(Some(DurationSpec { n: 3, kind: "day".into() })));
+}

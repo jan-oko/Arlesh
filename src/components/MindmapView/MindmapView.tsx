@@ -29,6 +29,9 @@ import { useViewStore } from "@/stores/use-view-store";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
 import { useSubtreeNav } from "@/hooks/use-subtree-nav";
 import { filterTreeWithFocus } from "@/utils/filter-tree";
+import { collapsedWithFoldedRuns, foldHabitRuns, isHabitRunNode } from "@/utils/habit-collapse";
+import { useHabitCollapseLabels } from "@/hooks/use-habit-collapse-labels";
+import { useDisplayStore } from "@/stores/use-display-store";
 import { focusExemptPath } from "@/utils/focus-exemption";
 import { useFocusExemption } from "@/hooks/use-focus-exemption";
 import AnchoredToast from "@/components/AnchoredToast/AnchoredToast";
@@ -86,9 +89,9 @@ export default function MindmapView() {
   const { tree, isLoading, error, loadCondition, createNode, createChild, renameNode, retypeNode, reorderNode, moveNode, duplicateNode, removeNode, createCommitment, createFlow, reload } =
     useMindmapData();
   const {
-    selectedNodeId, selectedNodeIds, subtreeRootId, collapsedNodeIds, pendingToast,
+    selectedNodeId, selectedNodeIds, subtreeRootId, collapsedNodeIds, expandedRunIds, pendingToast,
     selectNode, addToSelection, setSelection, enterSubtree,
-    toggleCollapsed, showToast, clearToast,
+    toggleCollapsed, toggleRunExpanded, showToast, clearToast,
   } = useMindmapStore((s) => s);
   // App-wide, so a subtree cut in one tab pastes in another.
   const clipboard = useClipboardStore((s) => s.clipboard);
@@ -127,10 +130,34 @@ export default function MindmapView() {
   // matching — completing a task under Plan no longer erases it out from under you. It ends when the
   // selection moves or the filter/subtree changes; see use-focus-exemption.
   const focusExemptNodeId = useFocusExemption(selectedNodeId, [filter, subtreeRootId]);
-  const { root: displayRoot, exemptedIds: focusExemptIds } = useMemo(() => {
+  const { root: filteredRoot, exemptedIds: focusExemptIds } = useMemo(() => {
     const base = subtreeRootId !== null ? (findNode(tree, subtreeRootId) ?? tree) : tree;
     return filterTreeWithFocus(base, filter, focusExemptPath(base, focusExemptNodeId));
   }, [subtreeRootId, tree, filter, focusExemptNodeId]);
+
+  // Passed Habit iterations fold *after* the filter, never before it: a folded run is a way of
+  // drawing iterations, not a node the filter could evaluate, so it stands for whichever of them
+  // the filter kept — and therefore renders exactly when one of them would have.
+  const habitCollapseThreshold = useDisplayStore((s) => s.habitCollapseThreshold);
+  const collapseLabels = useHabitCollapseLabels();
+  const displayRoot = useMemo(
+    () => foldHabitRuns(filteredRoot, habitCollapseThreshold, collapseLabels),
+    [filteredRoot, habitCollapseThreshold, collapseLabels],
+  );
+  // A run node is folded until the user opens it, which the collapsed set cannot say on its own.
+  const collapsedWithRuns = useMemo(
+    () => collapsedWithFoldedRuns(displayRoot, collapsedNodeIds, expandedRunIds),
+    [displayRoot, collapsedNodeIds, expandedRunIds],
+  );
+  // Ctrl+/ on a folded run opens it; on anything else it collapses as it always has.
+  const toggleCollapsedOrRun = useCallback(
+    (id: string) => {
+      const node = findNode(displayRoot, id);
+      if (node !== undefined && isHabitRunNode(node)) toggleRunExpanded(id);
+      else toggleCollapsed(id);
+    },
+    [displayRoot, toggleRunExpanded, toggleCollapsed],
+  );
 
   const canvasRef = useRef<MindmapCanvasHandle>(null);
 
@@ -346,7 +373,7 @@ export default function MindmapView() {
   const { dragSourceId, dragTargetId, ghostPos, onDragStart } = useDrag({ tree, moveNode: guardedMoveNode });
 
   const { effectiveCollapsedIds, positions, subtreeLayout, placeholderPos } = useCanvasLayout({
-    displayRoot, tree, collapsedNodeIds, dragSourceId, dragTargetId, orientation: mindmapOrientation,
+    displayRoot, tree, collapsedNodeIds: collapsedWithRuns, dragSourceId, dragTargetId, orientation: mindmapOrientation,
   });
 
   // Follow the selection: when it *changes* to a node off the visible canvas (e.g. arrow navigation),
@@ -510,7 +537,7 @@ export default function MindmapView() {
 
   const { onContextAction } = useContextAction({
     findNodeById, enterSubtree, setEditingNodeId, setType,
-    setClipboard, clipboard, onPaste, toggleCollapsed, onDelete, onNewFlow, onConvertToFlow, onStartFlow,
+    setClipboard, clipboard, onPaste, toggleCollapsed: toggleCollapsedOrRun, onDelete, onNewFlow, onConvertToFlow, onStartFlow,
   });
 
   const handleCtrlClick = useCallback((id: string) => { addToSelection(id); }, [addToSelection]);
@@ -547,7 +574,7 @@ export default function MindmapView() {
     onOpenEditor: onDoubleClick,
     onStartFlow,
     onDelete,
-    onToggleCollapsed: toggleCollapsed,
+    onToggleCollapsed: toggleCollapsedOrRun,
     onCycleStatus: onStatusClick,
     onCycleVerdict: cycleVerdict,
     onMarkBroken: markBroken,
@@ -600,7 +627,7 @@ export default function MindmapView() {
         dragSourceId={dragSourceId}
         hasClipboard={clipboard !== null}
         canvasOverlay={placeholderPos !== null && targetPos !== undefined ? (
-          <DragPlaceholder placeholderPos={placeholderPos} targetPos={targetPos} subtreeLayout={subtreeLayout} collapsedNodeIds={collapsedNodeIds} dragSourceId={dragSourceId} orientation={mindmapOrientation} tree={tree} />
+          <DragPlaceholder placeholderPos={placeholderPos} targetPos={targetPos} subtreeLayout={subtreeLayout} collapsedNodeIds={collapsedWithRuns} dragSourceId={dragSourceId} orientation={mindmapOrientation} tree={tree} />
         ) : undefined}
         onSelect={selectNode}
         onCtrlClick={handleCtrlClick}

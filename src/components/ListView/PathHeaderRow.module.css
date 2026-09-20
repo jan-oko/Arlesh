@@ -59,3 +59,28 @@
 .separator::before {
   content: "\203A";
 }
+
+/* The way in with nothing selected. Always drawn rather than revealed on hover: this is the
+   discoverable entry point to creating a task, and an affordance you have to hover to find is not
+   one. `flex: none`, so a long chain squeezes the titles and never this. */
+.create {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: var(--node-radius);
+  background: none;
+  color: var(--text-secondary);
+  opacity: 0.6;
+  cursor: pointer;
+}
+
+.create:hover {
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  opacity: 1;
+}
