@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook } from "@testing-library/react";
 import { useKeyboardMindmap } from "./use-keyboard-mindmap";
 import type { MindmapNode } from "@/utils/tree-layout";
+import { NO_CYCLE } from "@/api/flows";
 import type { StatusMode } from "@/utils/filter-tree";
 import type { TypedChildKind } from "@/utils/node-meta";
 
@@ -68,6 +69,8 @@ function baseOptions(overrides: Partial<Parameters<typeof useKeyboardMindmap>[0]
     onToggleFilter: vi.fn(),
     onSetStatusMode: vi.fn() as (mode: StatusMode) => void,
     onToggleBacklog: vi.fn(),
+    onUndo: vi.fn(),
+    onRedo: vi.fn(),
     onToggleAgentic: vi.fn(),
     onToggleFullscreen: vi.fn(),
     onFocusRoot: vi.fn(),
@@ -740,7 +743,7 @@ describe("useKeyboardMindmap — filter shortcuts (Alt)", () => {
   it("plain A does nothing on a virtual Habit instance — it has no task row to flag", () => {
     const instance: MindmapNode = {
       id: "task-4-virtual", kind: "task", title: "Instance", position: 0, tagIds: [], children: [],
-      virtual: true, habitItem: { flowId: 3, itemType: "flow_task", itemId: 4, scopeId: 100 },
+      virtual: true, habitItem: { flowId: 3, itemType: "flow_task", itemId: 4, scopeId: 100, cycleId: NO_CYCLE },
     };
     const opts = baseOptions({
       selectedNodeId: "task-4-virtual",
@@ -896,6 +899,54 @@ describe("shift+arrow selection axis follows the orientation", () => {
     fireKey("ArrowDown", { shiftKey: true });
     expect(opts.onExtendSelection).not.toHaveBeenCalled();
     expect(opts.onNavigate).toHaveBeenCalledWith("ArrowDown");
+  });
+
+  // Ctrl+Z in both views, dispatched from the shared registry so the cheat-sheet lists it too.
+  describe("undo and redo", () => {
+    it("Ctrl+Z reaches undo", () => {
+      const options = baseOptions();
+      renderHook((opts) => useKeyboardMindmap(opts), { initialProps: options });
+      fireKey("z", { ctrlKey: true });
+      expect(options.onUndo).toHaveBeenCalledTimes(1);
+      expect(options.onRedo).not.toHaveBeenCalled();
+    });
+
+    it("Ctrl+Shift+Z reaches redo, and not undo", () => {
+      const options = baseOptions();
+      renderHook((opts) => useKeyboardMindmap(opts), { initialProps: options });
+      fireKey("z", { ctrlKey: true, shiftKey: true });
+      expect(options.onRedo).toHaveBeenCalledTimes(1);
+      expect(options.onUndo).not.toHaveBeenCalled();
+    });
+
+    it("Ctrl+Y reaches redo as well", () => {
+      const options = baseOptions();
+      renderHook((opts) => useKeyboardMindmap(opts), { initialProps: options });
+      fireKey("y", { ctrlKey: true });
+      expect(options.onRedo).toHaveBeenCalledTimes(1);
+    });
+
+    it("ignores both while an input is active", () => {
+      const options = baseOptions({ isInputActive: true });
+      renderHook((opts) => useKeyboardMindmap(opts), { initialProps: options });
+      fireKey("z", { ctrlKey: true });
+      fireKey("z", { ctrlKey: true, shiftKey: true });
+      expect(options.onUndo).not.toHaveBeenCalled();
+      expect(options.onRedo).not.toHaveBeenCalled();
+    });
+
+    // Inside a field Ctrl+Z means the field undo the browser already gives, not the board's.
+    it("leaves a keystroke from inside a text field alone", () => {
+      const options = baseOptions();
+      renderHook((opts) => useKeyboardMindmap(opts), { initialProps: options });
+      const input = document.createElement("input");
+      document.body.appendChild(input);
+      input.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "z", code: "KeyZ", ctrlKey: true, bubbles: true, cancelable: true }),
+      );
+      document.body.removeChild(input);
+      expect(options.onUndo).not.toHaveBeenCalled();
+    });
   });
 });
 

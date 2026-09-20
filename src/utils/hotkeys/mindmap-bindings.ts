@@ -61,6 +61,10 @@ export interface MindmapContext {
   /** Puts the anchor Task in the backlog, or takes it out. Acts on the anchor, never the whole
    * multi-selection — setting work aside is a judgement about one thing at a time. */
   onToggleBacklog: (id: string) => void;
+  /** Reverses the last thing the user did to the board, anywhere in the app. */
+  onUndo: () => void;
+  /** Reapplies the most recently undone thing. */
+  onRedo: () => void;
   /** Flips the anchor Task between Agentic and Not agentic, whichever it currently reads as. The
    * anchor only, for the same reason Backlog acts on one node. */
   onToggleAgentic: (id: string) => void;
@@ -433,5 +437,18 @@ export const MINDMAP_BINDINGS: readonly Binding<MindmapContext>[] = [
   {
     id: "mindmap.openSearch", section: "mindmap", chord: { code: "KeyO", ctrl: true },
     labelKey: "openSearch", run: (c) => c.onOpenSearch(),
+  },
+  {
+    id: "mindmap.undo", section: "mindmap", chord: { code: "KeyZ", ctrl: true },
+    labelKey: "undo", allowRepeat: false, run: (c) => c.onUndo(),
+  },
+  {
+    id: "mindmap.redo", section: "mindmap", chord: { code: "KeyZ", ctrl: true, shift: true },
+    labelKey: "redo", allowRepeat: false, run: (c) => c.onRedo(),
+  },
+  {
+    // The other redo the world uses. Hidden because the sheet already lists Ctrl+Shift+Z.
+    id: "mindmap.redoAlias", section: "mindmap", chord: { code: "KeyY", ctrl: true },
+    labelKey: "redo", hidden: true, allowRepeat: false, run: (c) => c.onRedo(),
   },
 ];

@@ -11,6 +11,7 @@ import { updateGoal } from "@/api/goals";
 import { setHabitItemStatus } from "@/api/flows";
 import { TASK_STATUS, GOAL_STATUS } from "@/utils/status-mapping";
 import { CLIPBOARD_OP } from "@/stores/use-clipboard-store";
+import { withGesture } from "@/api/gesture";
 import { getErrorMessage } from "@/api/errors";
 
 const LOG_PREFIX = "[arlesh]";
@@ -69,7 +70,7 @@ export function useNodeActions({
   tree, clipboard, moveNode, duplicateNode, onRequestDelete, reload, renameNode,
   createNode, createChild, selectNode, setClipboard, setEditingNodeId, showToast, onNewFlow, onNewCommitment,
 }: Options): Result {
-  const { t } = useTranslation(["warnings", "nodeKinds"]);
+  const { t } = useTranslation(["warnings", "nodeKinds", "undo"]);
 
   const onStatusClick = useCallback(
     (nodeId: string) => {
@@ -243,7 +244,12 @@ export function useNodeActions({
           ? Math.max(...targetNode.children.map((c) => c.position)) + 1
           : 0;
 
-      void (async () => {
+      // One Gesture around every write the paste makes, so five pasted nodes are one Ctrl+Z rather
+      // than five. This is the run the whole granularity design exists for.
+      const label = isCopy
+        ? t("undo:gestures.paste", { count: topLevel.length })
+        : t("undo:gestures.move", { count: topLevel.length });
+      void withGesture(label, async () => {
         for (let i = 0; i < topLevel.length; i++) {
           const nodeId = topLevel[i]!;
           const sourceNode = findNode(tree, nodeId);
@@ -255,7 +261,9 @@ export function useNodeActions({
           }
         }
         if (!isCopy) setClipboard(null);
-      })();
+      }).catch((err: unknown) => {
+        console.error(`${LOG_PREFIX} paste failed:`, err);
+      });
     },
     [clipboard, tree, moveNode, duplicateNode, setClipboard, showToast, t],
   );
@@ -294,18 +302,22 @@ export function useNodeActions({
       if (node === undefined || node.kind === "aspect") return;
       const parent = findParent(tree, nodeId);
       if (parent === null || parent.id === "root") return;
+      // Two writes — the new parent, then the move under it. Without a Gesture, undoing would take
+      // back the move and leave an empty node behind.
       void (async () => {
         try {
-          const newNode = await createChild(parent.id, parent.kind, "");
-          await moveNode(nodeId, node.kind, newNode.id, newNode.kind, 0);
-          selectNode(newNode.id);
-          setEditingNodeId(newNode.id);
+          await withGesture(t("undo:gestures.insertParent"), async () => {
+            const newNode = await createChild(parent.id, parent.kind, "");
+            await moveNode(nodeId, node.kind, newNode.id, newNode.kind, 0);
+            selectNode(newNode.id);
+            setEditingNodeId(newNode.id);
+          });
         } catch (err) {
           console.error(`${LOG_PREFIX} insertParent failed:`, err);
         }
       })();
     },
-    [tree, createChild, moveNode, selectNode, setEditingNodeId],
+    [tree, createChild, moveNode, selectNode, setEditingNodeId, t],
   );
 
   return { onStatusClick, onCommitEdit, onCreateChild, onCreateTypedChild, onCreateSibling, onInsertParent, onDelete, onPaste };
