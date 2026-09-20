@@ -50,6 +50,7 @@ export default function ListView() {
   const toggleFullscreen = useFullscreenStore((s) => s.toggle);
   const listFilter = useListFilterStore((s) => s.filter);
   const setListPreset = useListFilterStore((s) => s.setPreset);
+  const setPillSide = useListFilterStore((s) => s.setPillSide);
 
   const {
     editorModal, setEditorModal, allTags, domainNames, availableForDep, onDoubleClick,
@@ -212,6 +213,10 @@ export default function ListView() {
                 key={`path-${index}-${entry.pathKey}`}
                 segments={entry.segments}
                 onEnterSubtree={enterSubtree}
+                // Ctrl/Alt-click on a segment narrows the list in place rather than re-rooting it:
+                // the same Antecedent pill the filter popover's combobox adds, on the element that
+                // already names the ancestors.
+                onFilterByAntecedent={(id, side) => setPillSide("antecedent", id, side)}
                 showKindIcon={pathHeaderIcons}
               />
             ) : (

@@ -13,7 +13,7 @@
   "empty": "No tasks match the current filters.",
   "cycleStatus": "Cycle status",
   "filterByTag": "Filter by this tag",
-  "enterSubtree": "Enter this subtree",
+  "pathSegmentActions": "Click: enter this subtree\nCtrl+click: filter to it\nAlt+click: filter it out",
   "filterSectionLabel": "List filters",
   "antecedentLabel": "Antecedent",
   "dependencyLabel": "Dependency",

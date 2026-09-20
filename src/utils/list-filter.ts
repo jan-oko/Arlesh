@@ -23,6 +23,21 @@ export const PILL_MODE_SYMBOL: Record<PillMode, string> = { any: "∪", all: "�
 /** The mode a pill advances to when its chip is clicked (Any → All → Exclude → Any). */
 export const NEXT_PILL_MODE: Record<PillMode, PillMode> = { any: "all", all: "exclude", exclude: "any" };
 
+/**
+ * Which way a pill points: it keeps its value **in** or keeps it **out**.
+ *
+ * `any` and `all` are both "in" — they differ only in how several pills of one dimension combine,
+ * not in whether the value is wanted — and `exclude` is the one that reverses the question. A
+ * gesture that says "filter to this" or "filter this out" names a side, not a mode, so the code
+ * that answers such a gesture can leave an `all` the user set on a chip exactly where it is.
+ */
+export type PillSide = "include" | "exclude";
+
+/** The side a mode puts its value on. */
+export function pillSide(mode: PillMode): PillSide {
+  return mode === "exclude" ? "exclude" : "include";
+}
+
 /** The List-View-exclusive filter dimensions (status preset, tags, and type toggles stay in the shared FilterState). */
 export type PillDimension =
   | "antecedent" | "dependency"
