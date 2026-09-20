@@ -52,7 +52,7 @@ function View({ modalState, modalRenders }: { modalState: boolean; modalRenders:
     onExitToRoot: vi.fn(),
     onToggleBacklog: vi.fn(),
     onToggleAgentic: vi.fn(),
-    onMarkKept: vi.fn(),
+    onCycleVerdict: vi.fn(),
     onMarkBroken: vi.fn(),
     onUndo,
     onRedo,

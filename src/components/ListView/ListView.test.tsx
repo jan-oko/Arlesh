@@ -9,6 +9,7 @@ import { DEFAULT_FILTER } from "@/utils/filter-tree";
 import { DEFAULT_LIST_FILTER } from "@/utils/list-filter";
 import type { CommitmentListRow, TaskListRow } from "@/utils/list-filter";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
+import type { Verdict } from "@/api/commitments";
 import { useListData } from "@/hooks/use-list-data";
 import { LIST_SCROLL_STEP_PX } from "@/hooks/use-list-scroll";
 
@@ -769,16 +770,28 @@ describe("ListView — the commitments section", () => {
     expect(updateCommitment).toHaveBeenCalledWith(1, { verdict: "broken" });
   });
 
-  it("marks the selected commitment kept on Enter and broken on X", () => {
-    mockUseListData.mockReturnValue(listData({ commitmentRows: [commitmentRow()], rows: [], tree: treeWith(n("commitment-1", "commitment", { verdict: "unresolved" })) }));
+  /** Selects the one commitment row and presses a key on it. */
+  function pressOnCommitment(verdict: Verdict, key: { key: string; code: string }) {
+    const node = n("commitment-1", "commitment", { verdict, timing: "active" });
+    mockUseListData.mockReturnValue(listData({ commitmentRows: [commitmentRow({ node })], rows: [], tree: treeWith(node) }));
     render(<ListView />);
-
     fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
-    fireEvent.keyDown(window, { key: "Enter", code: "Enter" });
-    expect(updateCommitment).toHaveBeenCalledWith(1, { verdict: "kept" });
+    fireEvent.keyDown(window, key);
+  }
 
-    updateCommitment.mockClear();
-    fireEvent.keyDown(window, { key: "x", code: "KeyX" });
+  it.each([
+    ["unresolved", "kept"],
+    ["kept", "broken"],
+    ["broken", "unresolved"],
+  ] as const)("cycles the selected commitment's verdict on Enter: %s to %s", (current, next) => {
+    pressOnCommitment(current, { key: "Enter", code: "Enter" });
+    expect(updateCommitment).toHaveBeenCalledWith(1, { verdict: next });
+  });
+
+  it.each(["unresolved", "kept"] as const)("records Broken on X from %s, without passing through Kept", (current) => {
+    // Enter now walks past Broken, so X is what keeps Broken reachable in one press from
+    // anywhere — including from Kept, which Enter would take two presses to leave.
+    pressOnCommitment(current, { key: "x", code: "KeyX" });
     expect(updateCommitment).toHaveBeenCalledWith(1, { verdict: "broken" });
   });
 

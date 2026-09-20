@@ -945,15 +945,54 @@ describe("useMindmapData — mutations", () => {
       expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("duplicate_domain", expect.anything());
     });
 
-    it("refuses a flow — a Flow moves and forks through its own commands", async () => {
+    it("flow: calls duplicate_flow with the parent the paste chose", async () => {
+      setupInvoke({ duplicate_flow: mkFlow({ id: 2 }) });
+      const { result } = await loadedHook();
+
+      await act(async () => {
+        await result.current.duplicateNode("flow-1", "flow", "domain-1", "aspect", 2);
+      });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("duplicate_flow", {
+        flowId: 1, parentType: "aspect", parentId: 1, position: 2,
+      });
+    });
+
+    it("flow item: calls duplicate_flow_item with its in-flow parent", async () => {
+      setupInvoke({ duplicate_flow_item: 9 });
+      const { result } = await loadedHook();
+
+      await act(async () => {
+        await result.current.duplicateNode("flowtask-4", "flow_task", "flowgoal-3", "flow_goal", 1);
+      });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("duplicate_flow_item", {
+        itemType: "flow_task", itemId: 4, parentType: "flow_goal", parentId: 3, position: 1,
+      });
+    });
+
+    it("refuses a flow pasted onto a node no Flow can hang from", async () => {
       setupInvoke({});
       const { result } = await loadedHook();
 
       await expect(
         act(async () => {
-          await result.current.duplicateNode("flow-1", "flow", "domain-1", "aspect", 0);
+          await result.current.duplicateNode("flow-1", "flow", "task-1", "task", 0);
         }),
-      ).rejects.toThrow("flow nodes cannot be duplicated");
+      ).rejects.toThrow('Flows cannot hang from a node of kind "task"');
+      expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("duplicate_flow", expect.anything());
+    });
+
+    it("refuses a flow item pasted onto a real node", async () => {
+      setupInvoke({});
+      const { result } = await loadedHook();
+
+      await expect(
+        act(async () => {
+          await result.current.duplicateNode("flowtask-4", "flow_task", "goal-1", "goal", 0);
+        }),
+      ).rejects.toThrow('Flow items cannot hang from a node of kind "goal"');
+      expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("duplicate_flow_item", expect.anything());
     });
   });
 

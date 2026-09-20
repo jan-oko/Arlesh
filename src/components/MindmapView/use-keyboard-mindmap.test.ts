@@ -22,6 +22,19 @@ function makeFlow(id: string): MindmapNode {
   return { id, kind: "flow", title: "Flow", position: 0, tagIds: [], children: [] };
 }
 
+function makeCommitment(id: string): MindmapNode {
+  return { id, kind: "commitment", title: "Asleep by 23:00", verdict: "unresolved", position: 0, tagIds: [], children: [] };
+}
+
+/** The canvas with one commitment selected, since every verdict binding acts on the selection. */
+function commitmentSelected(id = "commitment-1") {
+  return baseOptions({
+    selectedNodeId: id,
+    selectedNodeIds: new Set([id]) as ReadonlySet<string>,
+    findNodeById: (nodeId: string) => (nodeId === id ? makeCommitment(id) : undefined),
+  });
+}
+
 /** Physical-key code for a produced character, mirroring what a browser sets on the event. */
 function keyToCode(key: string): string {
   if (/^[a-zA-Z]$/.test(key)) return `Key${key.toUpperCase()}`;
@@ -56,6 +69,8 @@ function baseOptions(overrides: Partial<Parameters<typeof useKeyboardMindmap>[0]
     onDelete: vi.fn() as (ids: string[]) => void,
     onToggleCollapsed: vi.fn(),
     onCycleStatus: vi.fn(),
+    onCycleVerdict: vi.fn(),
+    onMarkBroken: vi.fn(),
     onDeselect: vi.fn(),
     onExitSubtree: vi.fn(),
     onExitToRoot: vi.fn(),
@@ -1032,5 +1047,101 @@ describe("useKeyboardMindmap — Shift+initial creates a typed child", () => {
       key: "t", code: "KeyT", shiftKey: true, repeat: true, bubbles: true, cancelable: true,
     }));
     expect(opts.onCreateTypedChild).not.toHaveBeenCalled();
+  });
+});
+
+describe("useKeyboardMindmap — Enter cycles a commitment's verdict", () => {
+  afterEach(() => { vi.useRealTimers(); });
+
+  it("cycles the verdict once the double-tap window has passed", () => {
+    vi.useFakeTimers();
+    const opts = commitmentSelected();
+    renderHook(() => useKeyboardMindmap(opts));
+
+    fireKey("Enter");
+    // Nothing is written while the press could still turn out to be half of a double tap.
+    expect(opts.onCycleVerdict).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(300);
+    expect(opts.onCycleVerdict).toHaveBeenCalledWith("commitment-1");
+    // A verdict is not a status: the commitment branch never reaches the task/goal one.
+    expect(opts.onCycleStatus).not.toHaveBeenCalled();
+  });
+
+  it("enters the subtree on a double tap and records no verdict at all", () => {
+    // Navigating into a commitment must not decide anything about it — the whole point of
+    // holding the cycle back. The first press of the pair is dropped, not written and undone.
+    vi.useFakeTimers();
+    const opts = commitmentSelected();
+    renderHook(() => useKeyboardMindmap(opts));
+
+    fireKey("Enter");
+    vi.advanceTimersByTime(100);
+    fireKey("Enter");
+
+    expect(opts.onEnterSubtree).toHaveBeenCalledWith("commitment-1");
+    vi.advanceTimersByTime(500);
+    expect(opts.onCycleVerdict).not.toHaveBeenCalled();
+  });
+
+  it("cycles twice for two presses further apart than the window", () => {
+    vi.useFakeTimers();
+    const opts = commitmentSelected();
+    renderHook(() => useKeyboardMindmap(opts));
+
+    fireKey("Enter");
+    vi.advanceTimersByTime(400);
+    fireKey("Enter");
+    vi.advanceTimersByTime(300);
+
+    expect(opts.onCycleVerdict).toHaveBeenCalledTimes(2);
+    expect(opts.onEnterSubtree).not.toHaveBeenCalled();
+  });
+
+  it("leaves Enter on a task cycling its status, immediately", () => {
+    vi.useFakeTimers();
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+
+    fireKey("Enter");
+    expect(opts.onCycleStatus).toHaveBeenCalledWith("task-1");
+    vi.advanceTimersByTime(500);
+    expect(opts.onCycleVerdict).not.toHaveBeenCalled();
+  });
+
+  it("drops a pending cycle when the canvas goes away", () => {
+    vi.useFakeTimers();
+    const opts = commitmentSelected();
+    const { unmount } = renderHook(() => useKeyboardMindmap(opts));
+
+    fireKey("Enter");
+    unmount();
+    vi.advanceTimersByTime(500);
+
+    expect(opts.onCycleVerdict).not.toHaveBeenCalled();
+  });
+});
+
+describe("useKeyboardMindmap — X records Broken", () => {
+  it("marks the selected commitment broken, in one press from any verdict", () => {
+    const opts = commitmentSelected();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("x");
+    expect(opts.onMarkBroken).toHaveBeenCalledWith("commitment-1");
+  });
+
+  it("does nothing on a task, which has no verdict to record", () => {
+    const opts = baseOptions();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("x");
+    expect(opts.onMarkBroken).not.toHaveBeenCalled();
+  });
+
+  it("is not Ctrl+X, which still cuts", () => {
+    const opts = commitmentSelected();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("x", { ctrlKey: true });
+    expect(opts.onMarkBroken).not.toHaveBeenCalled();
+    expect(opts.onCut).toHaveBeenCalled();
   });
 });
