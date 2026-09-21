@@ -6,6 +6,7 @@ import type { TaskSaveData } from "@/components/TaskEditorModal/TaskEditorModal"
 import type { CommitmentSaveData } from "@/components/CommitmentEditorModal/CommitmentEditorModal";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { TASK_AGENTIC } from "@/api/tasks";
+import { BEADS_NODE_TYPE, clearBeadsId } from "@/api/beads";
 
 // Nothing under `@/api` is mocked here, on purpose. The question these tests answer is what the
 // editor actually puts *on the wire* when a field is emptied: `Option<Option<T>>` on the Rust side
@@ -65,6 +66,17 @@ function wireRequest(command: string): Record<string, unknown> {
     throw new Error(`${command}'s request is not an object`);
   }
   return { ...request };
+}
+
+/** Every argument `command` reached the IPC boundary with, as JSON round-tripped it. */
+function wireArgs(command: string): Record<string, unknown> {
+  const call = ipc.mock.calls.find(([cmd]) => cmd === command);
+  if (call === undefined) throw new Error(`${command} never reached the IPC boundary`);
+  const sent: unknown = JSON.parse(JSON.stringify(call[1]));
+  if (sent === null || typeof sent !== "object") {
+    throw new Error(`${command} was sent without arguments`);
+  }
+  return { ...sent };
 }
 
 function editor() {
@@ -134,5 +146,134 @@ describe("emptying a field in the editor", () => {
 
     await waitFor(() => expect(onSave).toHaveBeenCalled());
     expect(onSave.mock.calls[0]?.[0]).toMatchObject({ timeScope: null, onScopeExit: null });
+  });
+});
+
+const linkedTaskNode: MindmapNode = { ...taskNode, beadsId: "Arlesh-5fs" };
+
+describe("clearing a beads id from the editor", () => {
+  it("sends the node's own kind and id to clear_beads_id, and grows no update field for it", async () => {
+    const result = editor();
+    act(() => result.current.setEditorModal({ nodeId: "task-5", node: linkedTaskNode }));
+    await act(async () => {
+      await result.current.onClearBeadsId(BEADS_NODE_TYPE.TASK);
+    });
+
+    expect(wireArgs("clear_beads_id")).toEqual({ nodeType: "task", nodeId: 5 });
+    expect(
+      ipc.mock.calls.some(([cmd]) => cmd === "update_task"),
+      "no update request carries a beads field, and none is sent alongside",
+    ).toBe(false);
+  });
+
+  it("reloads the board, so the next open of this editor shows no Issue row", async () => {
+    const reload = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(() =>
+      useNodeEditor({ tree: root, allTasksAndGoals: [taskNode], reload }),
+    );
+    act(() => result.current.setEditorModal({ nodeId: "task-5", node: linkedTaskNode }));
+    await act(async () => {
+      await result.current.onClearBeadsId(BEADS_NODE_TYPE.TASK);
+    });
+
+    expect(reload).toHaveBeenCalled();
+  });
+
+  it("writes nothing when no editor is open", async () => {
+    const result = editor();
+    await act(async () => {
+      await result.current.onClearBeadsId(BEADS_NODE_TYPE.TASK);
+    });
+
+    expect(ipc.mock.calls.some(([cmd]) => cmd === "clear_beads_id")).toBe(false);
+  });
+});
+
+/** Lets every pending IPC round trip finish, so "nothing was written" means nothing ever will be. */
+async function settle(): Promise<void> {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
+
+// The same node, opened in a real editor, with `clearBeadsId` reaching the real IPC boundary. What
+// is under test here is *when* the write leaves: staged on the ×, sent by Save, and never sent at
+// all if the editor is dismissed instead.
+function linkedTaskEditor(onSave: () => Promise<void>, onClose: () => void) {
+  return render(
+    <TaskEditorModal
+      node={linkedTaskNode}
+      allTags={[]}
+      domainNames={new Map()}
+      availableForDep={[]}
+      onSave={onSave}
+      onClearBeadsId={() => clearBeadsId(BEADS_NODE_TYPE.TASK, 5)}
+      onClose={onClose}
+    />,
+  );
+}
+
+describe("a beads clear staged in the editor", () => {
+  it("writes nothing when the editor is cancelled after the ×", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const onClose = vi.fn();
+    linkedTaskEditor(onSave, onClose);
+
+    fireEvent.click(screen.getByRole("button", { name: "clearBeadsId" }));
+    fireEvent.click(screen.getByText("cancel"));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    await settle();
+
+    expect(ipc.mock.calls.some(([cmd]) => cmd === "clear_beads_id")).toBe(false);
+    expect(onSave).not.toHaveBeenCalled();
+    expect(screen.getByText("Arlesh-5fs")).toBeInTheDocument();
+  });
+
+  it("writes nothing when the editor is dismissed with Escape after the ×", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const onClose = vi.fn();
+    linkedTaskEditor(onSave, onClose);
+
+    fireEvent.click(screen.getByRole("button", { name: "clearBeadsId" }));
+    fireEvent.keyDown(screen.getByText("Arlesh-5fs"), { key: "Escape" });
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    await settle();
+
+    expect(ipc.mock.calls.some(([cmd]) => cmd === "clear_beads_id")).toBe(false);
+  });
+
+  it("sends the clear on Save, before the update it is saved with", async () => {
+    let clearedBeforeSave = false;
+    const onSave = vi.fn(() => {
+      clearedBeforeSave = ipc.mock.calls.some(([cmd]) => cmd === "clear_beads_id");
+      return Promise.resolve();
+    });
+    linkedTaskEditor(onSave, vi.fn());
+
+    fireEvent.click(screen.getByRole("button", { name: "clearBeadsId" }));
+    fireEvent.click(screen.getByText("save"));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    await settle();
+
+    expect(wireArgs("clear_beads_id")).toEqual({ nodeType: "task", nodeId: 5 });
+    expect(
+      clearedBeforeSave,
+      "the clear goes first, so a refusal leaves the rest of the node untouched",
+    ).toBe(true);
+  });
+
+  it("sends no clear on Save when the × was never pressed", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    linkedTaskEditor(onSave, vi.fn());
+
+    fireEvent.click(screen.getByText("save"));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    await settle();
+
+    expect(ipc.mock.calls.some(([cmd]) => cmd === "clear_beads_id")).toBe(false);
   });
 });

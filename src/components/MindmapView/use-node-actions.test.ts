@@ -229,6 +229,51 @@ describe("useNodeActions — onDelete", () => {
     act(() => { result.current.onDelete(["aspect-1"]); });
     expect(opts.onRequestDelete).not.toHaveBeenCalled();
   });
+
+  it("refuses a virtual Habit repetition out loud instead of raising the confirmation", () => {
+    // The repetition has no row behind it, so the confirmation used to open on a delete that could
+    // only throw: `dbIdFromNodeId` rejects the `-virtual` tail, and the throw surfaced as a generic
+    // "delete failed" inside the dialog. It never gets that far now — and it says the same thing
+    // the List View says, since one gesture on one kind of node must not have two wordings.
+    const opts = makeOpts();
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onDelete(["habit-3-0-virtual"]); });
+    expect(opts.onRequestDelete).not.toHaveBeenCalled();
+    expect(opts.showToast).toHaveBeenCalledWith({
+      nodeId: "habit-3-0-virtual",
+      message: expect.stringContaining("deleteRepetitionRefused"),
+    });
+  });
+
+  it("refuses a per-item virtual Habit instance too, not just the iteration root", () => {
+    const opts = makeOpts();
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onDelete(["habititem-flow_task-4-0-virtual"]); });
+    expect(opts.onRequestDelete).not.toHaveBeenCalled();
+    expect(opts.showToast).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses the whole selection when a repetition is in it, deleting none of the real nodes", () => {
+    // Not the paste rule of dropping what it cannot take and naming the count: a delete is
+    // destructive where a paste is additive, and the notice would be raised underneath the
+    // confirmation overlay and fade unread.
+    const opts = makeOpts();
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onDelete(["task-5", "habit-3-0-virtual", "goal-2"]); });
+    expect(opts.onRequestDelete).not.toHaveBeenCalled();
+    expect(opts.showToast).toHaveBeenCalledWith({
+      nodeId: "habit-3-0-virtual",
+      message: expect.stringContaining("deleteRepetitionRefused"),
+    });
+  });
+
+  it("says nothing and deletes normally when the selection is all real nodes", () => {
+    const opts = makeOpts();
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onDelete(["task-5", "goal-2"]); });
+    expect(opts.onRequestDelete).toHaveBeenCalledWith(["task-5", "goal-2"]);
+    expect(opts.showToast).not.toHaveBeenCalled();
+  });
 });
 
 describe("useNodeActions — onPaste", () => {

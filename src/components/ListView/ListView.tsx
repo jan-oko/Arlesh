@@ -18,6 +18,7 @@ import { groupRowsByPath } from "@/utils/list-data";
 import { withAsynchronousSection } from "@/utils/async-first";
 import { collectSearchableNodes } from "@/utils/mindmap-tree";
 import { useNodeEditor } from "@/components/MindmapView/use-node-editor";
+import { BEADS_NODE_TYPE } from "@/api/beads";
 import { useKeyboardListView } from "./use-keyboard-list-view";
 import { useUndo } from "@/hooks/use-undo";
 import TaskEditorModal from "@/components/TaskEditorModal/TaskEditorModal";
@@ -64,7 +65,7 @@ export default function ListView() {
 
   const {
     editorModal, setEditorModal, allTags, domainNames, availableForDep, onDoubleClick,
-    onTaskSave, onCommitmentSave, checkScopeClamp,
+    onTaskSave, onCommitmentSave, onClearBeadsId, checkScopeClamp,
   } = useNodeEditor({ tree, allTasksAndGoals, reload });
 
   // One selection across both sections: a row is a Task or a Commitment, and which it is decides
@@ -372,6 +373,7 @@ export default function ListView() {
           domainNames={domainNames}
           availableForDep={availableForDep}
           onSave={onTaskSave}
+          onClearBeadsId={() => onClearBeadsId(BEADS_NODE_TYPE.TASK)}
           onCheckScopeClamp={checkScopeClamp}
           onClose={() => setEditorModal(null)}
         />
@@ -383,6 +385,7 @@ export default function ListView() {
           allTags={allTags}
           domainNames={domainNames}
           onSave={onCommitmentSave}
+          onClearBeadsId={() => onClearBeadsId(BEADS_NODE_TYPE.COMMITMENT)}
           onClose={() => setEditorModal(null)}
         />
       )}

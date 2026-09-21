@@ -445,6 +445,13 @@
   margin-bottom: 2px;
 }
 
+/* The bd issue row: a value this app cannot author, next to the one control that can drop it. */
+.readOnlyRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
 /* A value this app cannot change (the bd issue a node is tracked as): raw text, in the monospace
    face an identifier reads best in, with no input box so it doesn't read as editable. */
 .readOnlyValue {
@@ -452,6 +459,14 @@
   font-family: var(--font-mono);
   font-size: var(--text-sm);
   padding: 0 var(--space-1);
+}
+
+/* A link just dropped. The row stays for the life of the editor so the dialog does not reflow
+   under the pointer, but it reads as gone and offers no × to press again. */
+.readOnlyValueCleared {
+  color: var(--text-secondary);
+  text-decoration: line-through;
+  opacity: 0.6;
 }
 
 /* Immutable dependency-derived reasons: raw text (no input box, so they don't read as editable). */

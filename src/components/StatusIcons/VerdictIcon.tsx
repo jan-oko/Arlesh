@@ -1,5 +1,5 @@
-import type { Verdict } from "@/api/commitments";
-import { VERDICT } from "@/api/commitments";
+import type { Verdict } from "@/api/verdict";
+import { VERDICT } from "@/api/verdict";
 
 interface Props { cx: number; cy: number; r: number; color: string; verdict: Verdict }
 

@@ -113,7 +113,8 @@ pub struct Domain {
     pub is_private: bool,
     /// The `bd` issue tracking this Project, if any (e.g. `"Arlesh-5fs"`). Sourced only from the
     /// MCP server, through [`DomainOperator::set_beads_id`](crate::domains::DomainOperator::set_beads_id);
-    /// no update request carries it. Duplicating a node propagates the id it already has.
+    /// no update request carries it. Duplicating a node propagates the id it already has, and the
+    /// Issue row's × drops the link — neither writes a new one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub beads_id: Option<String>,
 }

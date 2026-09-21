@@ -11,6 +11,7 @@
 
 mod helpers;
 
+use arlesh_lib::commands::beads::clear_beads_id;
 use arlesh_lib::commands::block_reasons as block_reason_commands;
 use arlesh_lib::commands::flows as flow_commands;
 use arlesh_lib::commands::tasks as task_commands;
@@ -711,51 +712,55 @@ async fn undoing_an_edit_that_cleared_agentic_puts_the_flag_back() {
     assert_eq!(agentic(&pool, task.id).await, None, "and redo must clear it again");
 }
 
-/// The `asynchronous` flag as the database holds it.
-async fn asynchronous(pool: &SqlitePool, task_id: i64) -> bool {
-    sqlx::query_scalar("SELECT asynchronous FROM tasks WHERE id = ?")
+/// The `bd` issue link as the database holds it, read straight off the table.
+async fn beads_id(pool: &SqlitePool, task_id: i64) -> Option<String> {
+    sqlx::query_scalar("SELECT beads_id FROM tasks WHERE id = ?")
         .bind(task_id)
         .fetch_one(pool)
         .await
-        .expect("read asynchronous")
+        .expect("read beads_id")
 }
 
 #[tokio::test]
-async fn undoing_an_edit_that_unflagged_asynchronous_puts_the_flag_back() {
+async fn undoing_a_cleared_issue_link_puts_the_id_back() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
     let project_id = make_project(&pool).await;
     let task = task_commands::create_task(
         app.state(),
-        CreateTaskRequest {
-            asynchronous: Some(true),
-            ..task_request("project", project_id, "order the casting")
-        },
+        task_request("project", project_id, "tracked in bd"),
     )
     .await
     .expect("create task");
-    assert!(asynchronous(&pool, task.id).await);
+
+    // Established the only way a link is ever established: through the MCP server. That write is
+    // agent-sourced and deliberately not on the user's stack, so the undo below can only be
+    // reversing the user's clear.
+    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    mcp.beads(Parameters(params::BeadsOperation::Set {
+        node_type: params::BeadsNode::Task,
+        node_id: task.id,
+        beads_id: Some("Arlesh-ncy".into()),
+    }))
+    .await
+    .expect("link the task to its issue");
+    assert_eq!(beads_id(&pool, task.id).await, Some("Arlesh-ncy".into()));
 
     open_gesture(&app).await;
-    task_commands::update_task(
-        app.state(),
-        task.id,
-        UpdateTaskRequest { asynchronous: Some(false), ..Default::default() },
-    )
-    .await
-    .expect("unflag the task");
+    clear_beads_id(app.state(), "task".into(), task.id).await.expect("clear the link");
     close_gesture(&app).await;
-    assert!(!asynchronous(&pool, task.id).await);
+    assert_eq!(beads_id(&pool, task.id).await, None, "the × writes NULL, not an empty string");
 
     undo(&app).await.expect("there is something to undo");
-    assert!(
-        asynchronous(&pool, task.id).await,
-        "undo must put the flag back — a column the triggers do not name is restored silently \
-         as whatever it was at insert time"
+    assert_eq!(
+        beads_id(&pool, task.id).await,
+        Some("Arlesh-ncy".into()),
+        "the clear is a user-sourced write, so Ctrl+Z puts the link back — the reason it needs no \
+         confirmation dialog"
     );
 
     redo(&app).await.expect("there is something to redo");
-    assert!(!asynchronous(&pool, task.id).await, "and redo must clear it again");
+    assert_eq!(beads_id(&pool, task.id).await, None, "and redo drops it again");
 }
 
 #[tokio::test]
@@ -935,4 +940,51 @@ async fn an_undo_that_cannot_be_applied_changes_nothing_and_leaves_the_gesture_o
         Some(doomed.gesture),
         "and the gesture stays on the stack, so the press can be tried again"
     );
+}
+
+/// The `asynchronous` flag as the database holds it.
+async fn asynchronous(pool: &SqlitePool, task_id: i64) -> bool {
+    sqlx::query_scalar("SELECT asynchronous FROM tasks WHERE id = ?")
+        .bind(task_id)
+        .fetch_one(pool)
+        .await
+        .expect("read asynchronous")
+}
+
+#[tokio::test]
+async fn undoing_an_edit_that_unflagged_asynchronous_puts_the_flag_back() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let project_id = make_project(&pool).await;
+    let task = task_commands::create_task(
+        app.state(),
+        CreateTaskRequest {
+            asynchronous: Some(true),
+            ..task_request("project", project_id, "order the casting")
+        },
+    )
+    .await
+    .expect("create task");
+    assert!(asynchronous(&pool, task.id).await);
+
+    open_gesture(&app).await;
+    task_commands::update_task(
+        app.state(),
+        task.id,
+        UpdateTaskRequest { asynchronous: Some(false), ..Default::default() },
+    )
+    .await
+    .expect("unflag the task");
+    close_gesture(&app).await;
+    assert!(!asynchronous(&pool, task.id).await);
+
+    undo(&app).await.expect("there is something to undo");
+    assert!(
+        asynchronous(&pool, task.id).await,
+        "undo must put the flag back — a column the triggers do not name is restored silently \
+         as whatever it was at insert time"
+    );
+
+    redo(&app).await.expect("there is something to redo");
+    assert!(!asynchronous(&pool, task.id).await, "and redo must clear it again");
 }
