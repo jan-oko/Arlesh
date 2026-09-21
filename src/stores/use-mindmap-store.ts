@@ -50,6 +50,16 @@ export interface MindmapStore {
   exitToRoot: () => void;
   toggleCollapsed: (id: string) => void;
   toggleGroupExpanded: (id: string) => void;
+  /**
+   * Opens a whole subtree in one step: the ordinary nodes stop being collapsed and the fold's
+   * nodes start being expanded.
+   *
+   * Two sets, because the two mechanisms are inverted relative to each other, and one action
+   * rather than a loop of toggles, because a toggle would shut whatever was already open and
+   * because the canvas should relayout once, not once per node. `recursive-expand.ts` works out
+   * which ids go in which set.
+   */
+  expandSubtree: (collapsedIdsToClear: ReadonlySet<string>, habitGroupIdsToOpen: ReadonlySet<string>) => void;
   showToast: (toast: PendingToast) => void;
   clearToast: () => void;
   setSubtreeNav: (nav: SubtreeNav | null) => void;
@@ -129,6 +139,15 @@ export function createMindmapStore(
         if (next.has(id)) next.delete(id);
         else next.add(id);
         return { expandedHabitGroupIds: next };
+      }),
+
+    expandSubtree: (collapsedIdsToClear, habitGroupIdsToOpen) =>
+      set((state) => {
+        const collapsed = new Set(state.collapsedNodeIds);
+        for (const id of collapsedIdsToClear) collapsed.delete(id);
+        const expanded = new Set(state.expandedHabitGroupIds);
+        for (const id of habitGroupIdsToOpen) expanded.add(id);
+        return { collapsedNodeIds: collapsed, expandedHabitGroupIds: expanded };
       }),
 
     showToast: (toast) => set({ pendingToast: toast }),

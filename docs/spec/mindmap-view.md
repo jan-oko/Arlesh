@@ -32,6 +32,7 @@ The root of the map is "Arlesh" (top level). Aspect cells are its direct childre
 - `A` — toggle the selected Task's Agentic flag: whatever it reads as now, one press writes the opposite (**Agentic ↔ Not agentic**); *Inherit* is resolved through, never written, so returning a Task to it means opening the editor (real Tasks only, on the same reasoning as `B`). Bare letters are flags on the selected Task, `Alt`+letter is a status preset, so `A` and `Alt+A` (the **All** preset) coexist exactly as `B` and `Alt+B` do — chord matching is strict about modifiers
 - `Delete` — delete the selection
 - `Ctrl+/` — collapse or expand the selected cell, including opening and re-folding a Habit's collapsed history (see *Habits*)
+- `Ctrl+Shift+/` — expand the selected cell **and everything beneath it**, all the way down, in one press. It reaches both kinds of closed cell in the same walk: an ordinary collapsed cell stops being collapsed, and every node the Habit fold drew — the run and each scope level inside it — is opened (see *Habits* for why those are two sets and not one). Each kind keeps its own persistence rule, so the fold's openings survive a restart with the tab and the ordinary expansions do not
 - `Ctrl+X` / `Ctrl+C` / `Ctrl+V` — cut / copy / paste
 - `C` — center the view on the selection; `Ctrl+=` / `Ctrl+-` (and numpad `+`/`-`) — zoom
 - `S` — start the selected Flow; `F` — convert the selected cell to a Flow
@@ -39,7 +40,7 @@ The root of the map is "Arlesh" (top level). Aspect cells are its direct childre
 - `Alt+F` — toggle the filter menu; `Alt+A` / `Alt+P` / `Alt+S` / `Alt+D` / `Alt+B` — jump to the **All / Plan / Start / Do / Backlog** status preset (matched by physical key)
 - `Escape` — deselect; `Shift+Escape` — go back one level when inside a subtree; `Ctrl+Escape` — go back to the root
 - `Ctrl+Z` — undo the last thing you did to the board; `Ctrl+Shift+Z` (or `Ctrl+Y`) — redo it
-- `Alt+L` — switch between Mindmap and List View; `Ctrl+Shift+/` — open the keyboard cheat-sheet
+- `Alt+L` — switch between Mindmap and List View; `Ctrl+Shift+/` — open the keyboard cheat-sheet **when no cell is selected**, since the Mindmap takes that chord for the recursive expand whenever there is a cell to expand. Deselect with `Escape` first, or use the gear popover's entry; the sheet is also closed by the same chord, which it keeps while it is open
 - `Right-click` — context menu (enter subtree, change type, delete, etc.)
 - The top bar's subtree **breadcrumb** is the pointing-device equivalent: every ancestor segment exits to that level
 

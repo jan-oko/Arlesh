@@ -17,9 +17,14 @@ describe("HotkeysModal", () => {
     expect(screen.getByText("hotkeys:sectionListView")).toBeInTheDocument();
   });
 
-  it("renders the Ctrl+Shift+/ chord that opens it", () => {
+  it("renders the Ctrl+Shift+/ chord that opens it, and the Mindmap action that shares it", () => {
     render(<HotkeysModal onClose={vi.fn()} />);
-    expect(screen.getByText("Ctrl+Shift+/")).toBeInTheDocument();
+    // One row under Global for the sheet itself, one under Mindmap for the recursive expand: the
+    // chord is genuinely bound twice on complementary guards, so listing it once would be a lie
+    // about whichever of the two the reader is standing in.
+    expect(screen.getAllByText("Ctrl+Shift+/")).toHaveLength(2);
+    expect(screen.getByText("hotkeys:toggleHotkeys")).toBeInTheDocument();
+    expect(screen.getByText("hotkeys:expandRecursively")).toBeInTheDocument();
   });
 
   it("merges every chord that triggers one action into a single row", () => {

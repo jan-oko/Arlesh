@@ -324,6 +324,23 @@ describe("useKeyboardMindmap — Ctrl+/ (toggle collapsed)", () => {
     fireKey("/", { ctrlKey: true });
     expect(opts.onToggleCollapsed).toHaveBeenCalledWith("task-1");
   });
+
+  it("Ctrl+Shift+/ expands the selected node recursively instead of toggling it", () => {
+    const opts = mindmapKeyboardContext();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("/", { ctrlKey: true, shiftKey: true });
+    expect(opts.onExpandRecursively).toHaveBeenCalledWith("task-1");
+    expect(opts.onToggleCollapsed).not.toHaveBeenCalled();
+  });
+
+  it("neither fires with nothing selected", () => {
+    const opts = mindmapKeyboardContext({ selectedNodeId: null, selectedNodeIds: new Set() });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("/", { ctrlKey: true });
+    fireKey("/", { ctrlKey: true, shiftKey: true });
+    expect(opts.onToggleCollapsed).not.toHaveBeenCalled();
+    expect(opts.onExpandRecursively).not.toHaveBeenCalled();
+  });
 });
 
 describe("useKeyboardMindmap — layout-agnostic letter shortcuts", () => {

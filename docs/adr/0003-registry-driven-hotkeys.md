@@ -47,3 +47,19 @@ What that costs, and what pays for it:
   cheat-sheet's label merging are all untouched. The two hooks' test suites still pass unchanged,
   and the cheat-sheet renders the same rows in the same order.
 
+
+## Amendment, 2026-09-22 — a chord shared across two tables
+
+`Ctrl+Shift+/` is now bound twice: the cheat-sheet in `GLOBAL_BINDINGS`, and the Mindmap's
+recursive expand in `mindmap/collapse.ts`. That is a different kind of sharing from the ones above,
+because the two tables are dispatched by two `useHotkeys` calls with two listeners, so the
+first-match rule cannot order them — nothing can. A cross-table pair therefore has to be strictly
+complementary, and the split is decided in exactly one place, `isRecursiveExpandArmed`: the Mindmap
+owns the chord when its own table is live and has a cell to expand, the sheet owns it otherwise,
+including while the sheet is open, since the same chord is what closes it.
+
+`chord-sharing.test.ts` could not see this collision — it groups by section, and two sections are
+two tables — so it grew a second declaration, `CROSS_TABLE_CHORDS`, listing the chords a view's
+table shares with an always-live one, plus the state-by-state proof that at most one of the pair
+ever fires. The consequence note above, that strict matching stopped `Ctrl+Shift+/` also collapsing
+a node, still holds: what it fixed was an *accident*, and this is a declared and tested split.

@@ -149,3 +149,31 @@ describe("toggleGroupExpanded", () => {
     expect(useMindmapStore.getState().collapsedNodeIds.has("habitrun-7-virtual")).toBe(false);
   });
 });
+
+describe("expandSubtree", () => {
+  it("clears ordinary collapses and opens habit groups in the one call", () => {
+    useMindmapStore.getState().toggleCollapsed("goal-5");
+
+    useMindmapStore.getState().expandSubtree(new Set(["goal-5"]), new Set(["habitrun-7-virtual"]));
+
+    expect(useMindmapStore.getState().collapsedNodeIds.has("goal-5")).toBe(false);
+    expect(useMindmapStore.getState().expandedHabitGroupIds.has("habitrun-7-virtual")).toBe(true);
+  });
+
+  it("leaves a collapse outside the subtree alone", () => {
+    useMindmapStore.getState().toggleCollapsed("goal-5");
+    useMindmapStore.getState().toggleCollapsed("goal-6");
+
+    useMindmapStore.getState().expandSubtree(new Set(["goal-5"]), new Set());
+
+    expect(useMindmapStore.getState().collapsedNodeIds.has("goal-6")).toBe(true);
+  });
+
+  it("only ever opens, so a group already open stays open", () => {
+    useMindmapStore.getState().toggleGroupExpanded("habitrun-7-virtual");
+
+    useMindmapStore.getState().expandSubtree(new Set(), new Set(["habitrun-7-virtual"]));
+
+    expect(useMindmapStore.getState().expandedHabitGroupIds.has("habitrun-7-virtual")).toBe(true);
+  });
+});

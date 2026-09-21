@@ -30,6 +30,7 @@ import { useIsInputCaptured } from "@/hooks/use-input-capture";
 import { useSubtreeNav } from "@/hooks/use-subtree-nav";
 import { filterTreeWithFocus } from "@/utils/filter-tree";
 import { collapsedWithFoldedGroups, foldHabitRuns, isHabitGroupNode } from "@/utils/habit-collapse";
+import { subtreeExpansion } from "@/utils/recursive-expand";
 import { useHabitCollapseLabels } from "@/hooks/use-habit-collapse-labels";
 import { useDisplayStore } from "@/stores/use-display-store";
 import { focusExemptPath } from "@/utils/focus-exemption";
@@ -91,7 +92,7 @@ export default function MindmapView() {
   const {
     selectedNodeId, selectedNodeIds, subtreeRootId, collapsedNodeIds, expandedHabitGroupIds, pendingToast,
     selectNode, addToSelection, setSelection, enterSubtree,
-    toggleCollapsed, toggleGroupExpanded, showToast, clearToast,
+    toggleCollapsed, toggleGroupExpanded, expandSubtree, showToast, clearToast,
   } = useMindmapStore((s) => s);
   // App-wide, so a subtree cut in one tab pastes in another.
   const clipboard = useClipboardStore((s) => s.clipboard);
@@ -159,6 +160,17 @@ export default function MindmapView() {
       else toggleCollapsed(id);
     },
     [displayRoot, toggleGroupExpanded, toggleCollapsed],
+  );
+
+  // Ctrl+Shift+/ opens the cell and everything under it. It reads the *drawn* tree, because the
+  // fold's nodes have no counterpart in the loaded one — and needs only one walk of it, because a
+  // run's levels and iterations are built eagerly and merely drawn shut.
+  const expandRecursively = useCallback(
+    (id: string) => {
+      const { collapsedIdsToClear, habitGroupIdsToOpen } = subtreeExpansion(displayRoot, id);
+      expandSubtree(collapsedIdsToClear, habitGroupIdsToOpen);
+    },
+    [displayRoot, expandSubtree],
   );
 
   const canvasRef = useRef<MindmapCanvasHandle>(null);
@@ -581,6 +593,7 @@ export default function MindmapView() {
     onStartFlow,
     onDelete,
     onToggleCollapsed: toggleCollapsedOrGroup,
+    onExpandRecursively: expandRecursively,
     onCycleStatus: onStatusClick,
     onCycleVerdict: cycleVerdict,
     onMarkBroken: markBroken,

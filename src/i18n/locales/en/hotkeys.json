@@ -34,6 +34,7 @@
   "cycleRowStatus": "Cycle the selected row's status",
   "delete": "Delete",
   "toggleCollapsed": "Collapse or expand",
+  "expandRecursively": "Expand the cell and everything under it",
   "zoomIn": "Zoom in",
   "zoomOut": "Zoom out",
   "exitToRoot": "Back to the root",

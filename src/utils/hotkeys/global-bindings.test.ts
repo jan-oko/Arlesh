@@ -3,13 +3,19 @@ import { GLOBAL_BINDINGS } from "./global-bindings";
 import type { GlobalContext } from "./global-bindings";
 import { matchesChord } from "./chord";
 
-function makeContext(): GlobalContext {
-  return { onToggleView: vi.fn(), onToggleHotkeys: vi.fn(), onToggleFullscreen: vi.fn() };
+function makeContext(overrides: Partial<GlobalContext> = {}): GlobalContext {
+  return {
+    onToggleView: vi.fn(),
+    onToggleHotkeys: vi.fn(),
+    onToggleFullscreen: vi.fn(),
+    isRecursiveExpandArmed: false,
+    ...overrides,
+  };
 }
 
 function runFor(code: string, modifiers: Partial<KeyboardEventInit>, ctx: GlobalContext): boolean {
   const event = new KeyboardEvent("keydown", { code, ...modifiers });
-  const binding = GLOBAL_BINDINGS.find((b) => matchesChord(event, b.chord));
+  const binding = GLOBAL_BINDINGS.find((b) => matchesChord(event, b.chord) && (b.when === undefined || b.when(ctx)));
   if (binding === undefined) return false;
   binding.run(ctx);
   return true;
@@ -26,6 +32,12 @@ describe("GLOBAL_BINDINGS", () => {
     const ctx = makeContext();
     expect(runFor("Slash", { ctrlKey: true, shiftKey: true }, ctx)).toBe(true);
     expect(ctx.onToggleHotkeys).toHaveBeenCalledTimes(1);
+  });
+
+  it("when Ctrl+Shift+/ is pressed with the Mindmap's recursive expand armed, leaves it alone", () => {
+    const ctx = makeContext({ isRecursiveExpandArmed: true });
+    expect(runFor("Slash", { ctrlKey: true, shiftKey: true }, ctx)).toBe(false);
+    expect(ctx.onToggleHotkeys).not.toHaveBeenCalled();
   });
 
   it("when F11 is pressed, shows the board alone", () => {

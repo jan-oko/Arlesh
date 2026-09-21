@@ -1,0 +1,5 @@
+- **Ctrl+Shift+/ opens a cell and everything under it.** `Ctrl+/` opens one cell at a time, which is what you want when you are looking for the shape of something and tedious when you already know you want all of it — most of all over a folded Habit history, where it means opening a year, then four seasons, then twelve months, then the weeks, by hand.
+
+  `Ctrl+Shift+/` opens the selected cell and every cell beneath it in one press. It reaches both kinds of closed cell on the way down: an ordinary collapsed cell opens, and so does every level of a folded Habit run, down to the individual days. Each keeps the behaviour it already had afterwards — the Habit history stays open across restarts, an ordinary expansion lasts as long as the session.
+
+  **The cheat-sheet keeps the same chord when nothing is selected.** With a cell selected in the Mindmap, `Ctrl+Shift+/` now expands it; press `Escape` first, or use the gear popover, to bring the shortcut list up. The list still closes on `Ctrl+Shift+/` while it is showing.
