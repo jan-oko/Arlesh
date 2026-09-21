@@ -6,15 +6,23 @@ export interface PendingToast {
   message: string;
 }
 
-/** Data the top bar needs to render the subtree indicator and back-nav pills. Pushed by whichever
- * view is mounted, via `use-subtree-nav` — the top bar holds no tree of its own. */
+/** One level above the one you are in: a step on the breadcrumb, and a way back out to that level. */
+export interface SubtreeCrumb {
+  /** The subtree to re-root at — `null` is the true root, which is nobody's subtree. */
+  id: string | null;
+  title: string;
+}
+
+/** Data the top bar needs to draw the subtree breadcrumb. Pushed by whichever view is mounted, via
+ * `use-subtree-nav` — the top bar holds no tree of its own. */
 export interface SubtreeNav {
+  /**
+   * Every level above the one you are in, the true root first. **Never empty** while a subtree is
+   * entered: the shallowest subtree there is still sits under the true root.
+   */
+  ancestors: readonly SubtreeCrumb[];
   /** The subtree you are currently inside. Named in the bar, since it is trimmed from the paths. */
   currentTitle: string;
-  rootTitle: string;
-  parentTitle: string;
-  /** Subtree id one level up (null = the parent is the true root). */
-  parentSubtreeId: string | null;
 }
 
 export interface MindmapStore {

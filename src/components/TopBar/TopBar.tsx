@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useListFilterStore } from "@/stores/use-list-filter-store";
 import { useViewStore } from "@/stores/use-view-store";
@@ -13,26 +12,13 @@ import FilterPopover from "@/components/FilterPopover/FilterPopover";
 import FilterChips from "@/components/FilterChips/FilterChips";
 import Select from "@/components/Select/Select";
 import Switch from "@/components/Switch/Switch";
+import SubtreeBreadcrumb from "./SubtreeBreadcrumb";
 import HabitCollapseSetting from "./HabitCollapseSetting";
 import styles from "./TopBar.module.css";
 
 const GEAR_ICON = "⚙";
-const ROOT_ICON = "↑";
-const BACK_ICON = "←";
 /** Unblock only makes sense — and only appears as an option — while List View is active. */
 const MINDMAP_PRESETS: readonly ListPreset[] = LIST_PRESET_VALUES.filter((p) => p !== "unblock");
-
-/** A subtree glyph — a parent branching down to two children — for the "you are here" indicator. */
-function SubtreeIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <rect x="9" y="2" width="6" height="5" rx="1" />
-      <rect x="2" y="17" width="6" height="5" rx="1" />
-      <rect x="16" y="17" width="6" height="5" rx="1" />
-      <path d="M12 7v4M5 17v-2h14v2" />
-    </svg>
-  );
-}
 
 /** A small funnel (filter) glyph for the Filter button. */
 function FunnelIcon() {
@@ -45,10 +31,6 @@ function FunnelIcon() {
 
 export default function TopBar() {
   const { t } = useTranslation(["common", "listView"]);
-  const subtreeRootId = useMindmapStore((s) => s.subtreeRootId);
-  const subtreeNav = useMindmapStore((s) => s.subtreeNav);
-  const exitSubtree = useMindmapStore((s) => s.exitSubtree);
-  const exitToRoot = useMindmapStore((s) => s.exitToRoot);
   const statusMode = useFilterStore((s) => s.filter.statusMode);
   const setStatusMode = useFilterStore((s) => s.setStatusMode);
   // Popover-open state lives in the store so the Alt+F keyboard shortcut can toggle it too.
@@ -155,32 +137,13 @@ export default function TopBar() {
             onChange={selectPreset}
             ariaLabel={t("listView:statusPresetLabel")}
           />
-          {subtreeRootId !== null && subtreeNav !== null && (
-            <>
-              {subtreeNav.parentSubtreeId !== null && (
-                <button className={styles.pill} type="button" onClick={exitToRoot}>
-                  <span aria-hidden="true">{ROOT_ICON}</span>{subtreeNav.rootTitle}
-                </button>
-              )}
-              <button className={styles.pill} type="button" onClick={() => exitSubtree(subtreeNav.parentSubtreeId)}>
-                <span aria-hidden="true">{BACK_ICON}</span>{subtreeNav.parentTitle}
-              </button>
-            </>
-          )}
         </div>
 
-        {/* Where you are — centred in the bar, and unadorned. It is not a control and not a way
-            out (its neighbours on the left are), so it carries no pill, border or background:
-            the glyph and the title alone say which subtree you are inside. The label is spelled
-            out for a screen reader, which would otherwise hear a third bare title. */}
+        {/* Where you are, and the whole way down to it. A slot rather than a sibling, because the
+            breadcrumb draws nothing at the true root and the cell has to hold its place anyway —
+            otherwise the Filter button would slide into the middle of the bar. */}
         <div className={styles.center}>
-          {subtreeRootId !== null && subtreeNav !== null && (
-            <span className={styles.current}>
-              <SubtreeIcon />
-              <span className={styles.srOnly}>{t("common:insideSubtree")}</span>
-              {subtreeNav.currentTitle}
-            </span>
-          )}
+          <SubtreeBreadcrumb />
         </div>
 
         <div className={`${styles.side} ${styles.sideEnd}`}>

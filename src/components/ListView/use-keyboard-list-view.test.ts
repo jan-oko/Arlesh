@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook } from "@testing-library/react";
 import { useKeyboardListView } from "./use-keyboard-list-view";
+import { listKeyboardContext } from "@/test/keyboard-context";
 
 /** Physical-key code for a produced character, mirroring what a browser sets on the event. */
 function keyToCode(key: string): string {
@@ -10,45 +11,6 @@ function keyToCode(key: string): string {
 
 function fireKey(key: string, modifiers: { altKey?: boolean; ctrlKey?: boolean; shiftKey?: boolean; repeat?: boolean } = {}) {
   window.dispatchEvent(new KeyboardEvent("keydown", { key, code: keyToCode(key), bubbles: true, cancelable: true, ...modifiers }));
-}
-
-function baseOptions(overrides: Partial<Parameters<typeof useKeyboardListView>[0]> = {}) {
-  const merged = {
-    isInputActive: false,
-    selectedTaskId: "task-1" as string | null,
-    selectedCommitmentId: null as string | null,
-    isSelectedBlocked: false,
-    onNavigate: vi.fn(),
-    onScrollList: vi.fn(),
-    onCycleStatus: vi.fn(),
-    onOpenEditor: vi.fn(),
-    onStartRename: vi.fn(),
-    onDeselect: vi.fn(),
-    onToggleFilter: vi.fn(),
-    onSetStatusMode: vi.fn(),
-    onOpenSearch: vi.fn(),
-    subtreeRootId: null as string | null,
-    onExitSubtree: vi.fn(),
-    onExitToRoot: vi.fn(),
-    onToggleBacklog: vi.fn(),
-    onToggleAgentic: vi.fn(),
-    onCycleVerdict: vi.fn(),
-    onMarkBroken: vi.fn(),
-    onUndo: vi.fn(),
-    onRedo: vi.fn(),
-    onToggleFullscreen: vi.fn(),
-    onCreateSibling: vi.fn(),
-    onCreateChild: vi.fn(),
-    onDelete: vi.fn(),
-    ...overrides,
-  };
-  // `selectedRowId` is whichever of the two kinds is selected, exactly as ListView derives it —
-  // computed here rather than defaulted, so a test that says "nothing is selected" is not
-  // silently contradicted by a stale row id.
-  return {
-    ...merged,
-    selectedRowId: overrides.selectedRowId ?? merged.selectedTaskId ?? merged.selectedCommitmentId,
-  };
 }
 
 let addSpy: ReturnType<typeof vi.spyOn>;
@@ -66,14 +28,14 @@ afterEach(() => {
 
 describe("useKeyboardListView", () => {
   it("registers and cleans up a capturing keydown listener", () => {
-    const { unmount } = renderHook((opts) => useKeyboardListView(opts), { initialProps: baseOptions() });
+    const { unmount } = renderHook((opts) => useKeyboardListView(opts), { initialProps: listKeyboardContext() });
     expect(addSpy).toHaveBeenCalledWith("keydown", expect.any(Function), { capture: true });
     unmount();
     expect(removeSpy).toHaveBeenCalledWith("keydown", expect.any(Function), { capture: true });
   });
 
   it("Alt+F toggles the filter menu", () => {
-    const options = baseOptions();
+    const options = listKeyboardContext();
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey("f", { altKey: true });
     expect(options.onToggleFilter).toHaveBeenCalledTimes(1);
@@ -86,14 +48,14 @@ describe("useKeyboardListView", () => {
     ["d", "do"],
     ["b", "backlog"],
   ] as const)("Alt+%s sets the %s status preset", (key, mode) => {
-    const options = baseOptions();
+    const options = listKeyboardContext();
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey(key, { altKey: true });
     expect(options.onSetStatusMode).toHaveBeenCalledWith(mode);
   });
 
   it("plain B toggles the selected row's backlog", () => {
-    const options = baseOptions();
+    const options = listKeyboardContext();
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey("b");
     expect(options.onToggleBacklog).toHaveBeenCalledWith("task-1");
@@ -101,14 +63,14 @@ describe("useKeyboardListView", () => {
   });
 
   it("plain B does nothing with no row selected", () => {
-    const options = baseOptions({ selectedTaskId: null });
+    const options = listKeyboardContext({ selectedTaskId: null });
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey("b");
     expect(options.onToggleBacklog).not.toHaveBeenCalled();
   });
 
   it("plain A cycles the selected row's Agentic flag without tripping the All preset", () => {
-    const options = baseOptions();
+    const options = listKeyboardContext();
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey("a");
     expect(options.onToggleAgentic).toHaveBeenCalledWith("task-1");
@@ -116,7 +78,7 @@ describe("useKeyboardListView", () => {
   });
 
   it("Alt+A still sets the All preset and leaves the Agentic flag alone", () => {
-    const options = baseOptions();
+    const options = listKeyboardContext();
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey("a", { altKey: true });
     expect(options.onSetStatusMode).toHaveBeenCalledWith("all");
@@ -124,14 +86,14 @@ describe("useKeyboardListView", () => {
   });
 
   it("plain A does nothing with no row selected", () => {
-    const options = baseOptions({ selectedTaskId: null });
+    const options = listKeyboardContext({ selectedTaskId: null });
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey("a");
     expect(options.onToggleAgentic).not.toHaveBeenCalled();
   });
 
   it("ArrowDown/ArrowUp navigate the selection", () => {
-    const options = baseOptions();
+    const options = listKeyboardContext();
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey("ArrowDown");
     expect(options.onNavigate).toHaveBeenCalledWith(1);
@@ -140,56 +102,56 @@ describe("useKeyboardListView", () => {
   });
 
   it("Enter cycles the selected row's status when not blocked", () => {
-    const options = baseOptions();
+    const options = listKeyboardContext();
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey("Enter");
     expect(options.onCycleStatus).toHaveBeenCalledWith("task-1");
   });
 
   it("Enter does nothing when the selected row is blocked", () => {
-    const options = baseOptions({ isSelectedBlocked: true });
+    const options = listKeyboardContext({ isSelectedBlocked: true });
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey("Enter");
     expect(options.onCycleStatus).not.toHaveBeenCalled();
   });
 
   it("Enter does nothing when nothing is selected", () => {
-    const options = baseOptions({ selectedTaskId: null });
+    const options = listKeyboardContext({ selectedTaskId: null });
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey("Enter");
     expect(options.onCycleStatus).not.toHaveBeenCalled();
   });
 
   it("E opens the editor for the selected row", () => {
-    const options = baseOptions();
+    const options = listKeyboardContext();
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey("e");
     expect(options.onOpenEditor).toHaveBeenCalledWith("task-1");
   });
 
   it("R starts renaming the selected row", () => {
-    const options = baseOptions();
+    const options = listKeyboardContext();
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey("r");
     expect(options.onStartRename).toHaveBeenCalledWith("task-1");
   });
 
   it("Ctrl+O opens the node search", () => {
-    const options = baseOptions();
+    const options = listKeyboardContext();
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey("o", { ctrlKey: true });
     expect(options.onOpenSearch).toHaveBeenCalledTimes(1);
   });
 
   it("Ctrl+O opens the node search with nothing selected", () => {
-    const options = baseOptions({ selectedTaskId: null });
+    const options = listKeyboardContext({ selectedTaskId: null });
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey("o", { ctrlKey: true });
     expect(options.onOpenSearch).toHaveBeenCalledTimes(1);
   });
 
   it("Ctrl+O touches neither the selection nor the status preset", () => {
-    const options = baseOptions();
+    const options = listKeyboardContext();
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey("o", { ctrlKey: true });
     expect(options.onDeselect).not.toHaveBeenCalled();
@@ -198,14 +160,14 @@ describe("useKeyboardListView", () => {
   });
 
   it("plain O does not open the node search", () => {
-    const options = baseOptions();
+    const options = listKeyboardContext();
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey("o");
     expect(options.onOpenSearch).not.toHaveBeenCalled();
   });
 
   it("Shift+Escape goes up one subtree level while inside a subtree", () => {
-    const options = baseOptions({ subtreeRootId: "project-1" });
+    const options = listKeyboardContext({ subtreeRootId: "project-1" });
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey("Escape", { shiftKey: true });
     expect(options.onExitSubtree).toHaveBeenCalledTimes(1);
@@ -214,7 +176,7 @@ describe("useKeyboardListView", () => {
   });
 
   it("Ctrl+Escape goes straight back to the root while inside a subtree", () => {
-    const options = baseOptions({ subtreeRootId: "project-1" });
+    const options = listKeyboardContext({ subtreeRootId: "project-1" });
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey("Escape", { ctrlKey: true });
     expect(options.onExitToRoot).toHaveBeenCalledTimes(1);
@@ -223,7 +185,7 @@ describe("useKeyboardListView", () => {
   });
 
   it("the subtree-exit chords do nothing at the true root", () => {
-    const options = baseOptions({ subtreeRootId: null });
+    const options = listKeyboardContext({ subtreeRootId: null });
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey("Escape", { shiftKey: true });
     fireKey("Escape", { ctrlKey: true });
@@ -232,7 +194,7 @@ describe("useKeyboardListView", () => {
   });
 
   it("bare Escape still deselects rather than leaving the subtree", () => {
-    const options = baseOptions({ subtreeRootId: "project-1" });
+    const options = listKeyboardContext({ subtreeRootId: "project-1" });
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey("Escape");
     expect(options.onDeselect).toHaveBeenCalledTimes(1);
@@ -241,21 +203,21 @@ describe("useKeyboardListView", () => {
   });
 
   it("Escape deselects when something is selected", () => {
-    const options = baseOptions();
+    const options = listKeyboardContext();
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey("Escape");
     expect(options.onDeselect).toHaveBeenCalledTimes(1);
   });
 
   it("Escape does nothing when nothing is selected", () => {
-    const options = baseOptions({ selectedTaskId: null });
+    const options = listKeyboardContext({ selectedTaskId: null });
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey("Escape");
     expect(options.onDeselect).not.toHaveBeenCalled();
   });
 
   it("ignores every binding while an input is active", () => {
-    const options = baseOptions({ isInputActive: true });
+    const options = listKeyboardContext({ isInputActive: true });
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey("e");
     fireKey("r");
@@ -270,7 +232,7 @@ describe("useKeyboardListView", () => {
   });
 
   it("E/R with no selection do nothing", () => {
-    const options = baseOptions({ selectedTaskId: null });
+    const options = listKeyboardContext({ selectedTaskId: null });
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey("e");
     fireKey("r");
@@ -281,7 +243,7 @@ describe("useKeyboardListView", () => {
   // Ctrl+Z in both views, dispatched from the shared registry so the cheat-sheet lists it too.
   describe("undo and redo", () => {
     it("Ctrl+Z reaches undo", () => {
-      const options = baseOptions();
+      const options = listKeyboardContext();
       renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
       fireKey("z", { ctrlKey: true });
       expect(options.onUndo).toHaveBeenCalledTimes(1);
@@ -289,7 +251,7 @@ describe("useKeyboardListView", () => {
     });
 
     it("Ctrl+Shift+Z reaches redo, and not undo", () => {
-      const options = baseOptions();
+      const options = listKeyboardContext();
       renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
       fireKey("z", { ctrlKey: true, shiftKey: true });
       expect(options.onRedo).toHaveBeenCalledTimes(1);
@@ -297,14 +259,14 @@ describe("useKeyboardListView", () => {
     });
 
     it("Ctrl+Y reaches redo as well", () => {
-      const options = baseOptions();
+      const options = listKeyboardContext();
       renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
       fireKey("y", { ctrlKey: true });
       expect(options.onRedo).toHaveBeenCalledTimes(1);
     });
 
     it("ignores both while an input is active", () => {
-      const options = baseOptions({ isInputActive: true });
+      const options = listKeyboardContext({ isInputActive: true });
       renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
       fireKey("z", { ctrlKey: true });
       fireKey("z", { ctrlKey: true, shiftKey: true });
@@ -314,7 +276,7 @@ describe("useKeyboardListView", () => {
 
     // Inside a field Ctrl+Z means the field undo the browser already gives, not the board's.
     it("leaves a keystroke from inside a text field alone", () => {
-      const options = baseOptions();
+      const options = listKeyboardContext();
       renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
       const input = document.createElement("input");
       document.body.appendChild(input);
@@ -329,21 +291,21 @@ describe("useKeyboardListView", () => {
 
 describe("useKeyboardListView — f shows the board alone", () => {
   it("with no row selected, f hides the chrome", () => {
-    const opts = baseOptions({ selectedTaskId: null, selectedCommitmentId: null, selectedRowId: null });
+    const opts = listKeyboardContext({ selectedTaskId: null, selectedCommitmentId: null, selectedRowId: null });
     renderHook(() => useKeyboardListView(opts));
     fireKey("f");
     expect(opts.onToggleFullscreen).toHaveBeenCalledTimes(1);
   });
 
   it("with a row selected, f does nothing — the same rule the Mindmap uses", () => {
-    const opts = baseOptions({ selectedTaskId: "task-1" });
+    const opts = listKeyboardContext({ selectedTaskId: "task-1" });
     renderHook(() => useKeyboardListView(opts));
     fireKey("f");
     expect(opts.onToggleFullscreen).not.toHaveBeenCalled();
   });
 
   it("Alt+F still reaches the filter, not the board-alone mode", () => {
-    const opts = baseOptions({ selectedTaskId: null, selectedCommitmentId: null, selectedRowId: null });
+    const opts = listKeyboardContext({ selectedTaskId: null, selectedCommitmentId: null, selectedRowId: null });
     renderHook(() => useKeyboardListView(opts));
     fireKey("f", { altKey: true });
     expect(opts.onToggleFilter).toHaveBeenCalledTimes(1);
@@ -353,7 +315,7 @@ describe("useKeyboardListView — f shows the board alone", () => {
 
 describe("useKeyboardListView — creating rows", () => {
   it("Tab creates a child of the selected row", () => {
-    const options = baseOptions();
+    const options = listKeyboardContext();
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey("Tab");
     expect(options.onCreateChild).toHaveBeenCalledWith("task-1");
@@ -361,7 +323,7 @@ describe("useKeyboardListView — creating rows", () => {
   });
 
   it("Shift+Enter creates a sibling of the selected row", () => {
-    const options = baseOptions();
+    const options = listKeyboardContext();
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey("Enter", { shiftKey: true });
     expect(options.onCreateSibling).toHaveBeenCalledWith("task-1");
@@ -371,14 +333,14 @@ describe("useKeyboardListView — creating rows", () => {
   // Shift+Enter shares its key with the two bare-Enter bindings, and strict chord matching is what
   // keeps them apart: creating a sibling must never also advance the row it was created beside.
   it("Shift+Enter does not cycle the selected row's status", () => {
-    const options = baseOptions();
+    const options = listKeyboardContext();
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey("Enter", { shiftKey: true });
     expect(options.onCycleStatus).not.toHaveBeenCalled();
   });
 
   it("bare Enter still cycles the status and creates nothing", () => {
-    const options = baseOptions();
+    const options = listKeyboardContext();
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey("Enter");
     expect(options.onCycleStatus).toHaveBeenCalledWith("task-1");
@@ -386,7 +348,7 @@ describe("useKeyboardListView — creating rows", () => {
   });
 
   it.each(["Tab", "Enter"] as const)("%s does nothing with nothing selected", (key) => {
-    const options = baseOptions({ selectedTaskId: null, selectedRowId: null });
+    const options = listKeyboardContext({ selectedTaskId: null, selectedRowId: null });
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey(key, key === "Enter" ? { shiftKey: true } : {});
     expect(options.onCreateChild).not.toHaveBeenCalled();
@@ -395,7 +357,7 @@ describe("useKeyboardListView — creating rows", () => {
 
   // List View creates Tasks and nothing else, and both chords read their parent off the selection.
   it.each(["Tab", "Enter"] as const)("%s does nothing while a Commitment is selected", (key) => {
-    const options = baseOptions({ selectedTaskId: null, selectedCommitmentId: "commitment-1" });
+    const options = listKeyboardContext({ selectedTaskId: null, selectedCommitmentId: "commitment-1" });
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey(key, key === "Enter" ? { shiftKey: true } : {});
     expect(options.onCreateChild).not.toHaveBeenCalled();
@@ -403,7 +365,7 @@ describe("useKeyboardListView — creating rows", () => {
   });
 
   it.each(["Tab", "Enter"] as const)("leaves a held %s to one row, not one per repeat", (key) => {
-    const options = baseOptions();
+    const options = listKeyboardContext();
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     const modifiers = key === "Enter" ? { shiftKey: true } : {};
     fireKey(key, modifiers);
@@ -416,7 +378,7 @@ describe("useKeyboardListView — creating rows", () => {
 
 describe("useKeyboardListView — deleting a row", () => {
   it("Delete raises the confirmation for the selected Task", () => {
-    const options = baseOptions();
+    const options = listKeyboardContext();
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey("Delete");
     expect(options.onDelete).toHaveBeenCalledWith("task-1");
@@ -425,21 +387,21 @@ describe("useKeyboardListView — deleting a row", () => {
   // A Commitment is a real row too, and the Mindmap deletes one; the chord acts on whichever kind
   // the single selection happens to be.
   it("Delete acts on a selected Commitment as readily", () => {
-    const options = baseOptions({ selectedTaskId: null, selectedCommitmentId: "commitment-1" });
+    const options = listKeyboardContext({ selectedTaskId: null, selectedCommitmentId: "commitment-1" });
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey("Delete");
     expect(options.onDelete).toHaveBeenCalledWith("commitment-1");
   });
 
   it("Delete does nothing with no row selected", () => {
-    const options = baseOptions({ selectedTaskId: null, selectedRowId: null });
+    const options = listKeyboardContext({ selectedTaskId: null, selectedRowId: null });
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey("Delete");
     expect(options.onDelete).not.toHaveBeenCalled();
   });
 
   it("leaves a held Delete to one confirmation, not one per repeat", () => {
-    const options = baseOptions();
+    const options = listKeyboardContext();
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey("Delete");
     fireKey("Delete", { repeat: true });

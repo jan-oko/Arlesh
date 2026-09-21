@@ -20,7 +20,7 @@
 - `#![deny(clippy::all)]` in all crates
 
 ### Module structure
-- **Domain-first**: top-level modules mirror the SPEC resource model
+- **Domain-first**: top-level modules mirror the resource model in `docs/spec/resources.md`
   ```
   src/
     tasks/      — tasks, goals, blockers, dependencies

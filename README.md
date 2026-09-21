@@ -36,8 +36,8 @@ connect.
 Six tools, of which `arlesh_snapshot` returns the whole planning graph, a page at a time. An agent
 cannot create, rename, complete or delete anything; the single thing it can write is an item's
 `bd` issue link, which is also the only way that link is ever set. The port is overridable with
-`ARLESH_MCP_PORT`; the endpoint binds loopback only and refuses requests from a browser. See the
-**MCP Server** section of [`SPEC.md`](SPEC.md).
+`ARLESH_MCP_PORT`; the endpoint binds loopback only and refuses requests from a browser. See
+[`docs/spec/mcp-server.md`](docs/spec/mcp-server.md).
 
 ## Stack
 
@@ -51,7 +51,8 @@ cannot create, rename, complete or delete anything; the single thing it can writ
 
 ## Status
 
-**Phases 1–3 complete** — data layer, Mindmap view, and List view are implemented and tested. See [`SPEC.md`](SPEC.md) for the full specification.
+**Phases 1–3 complete** — data layer, Mindmap view, and List view are implemented and tested. See [`SPEC.md`](SPEC.md) for the full specification — an index over the areas in
+[`docs/spec/`](docs/spec/).
 
 ## Implementation Phases
 

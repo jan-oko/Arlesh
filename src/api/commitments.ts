@@ -3,9 +3,6 @@ import type { Verdict } from "@/api/verdict";
 import { VERDICT } from "@/api/verdict";
 import type { TimeScope, DurationSpec } from "@/api/time-scope";
 
-export type { Verdict } from "@/api/verdict";
-export { VERDICT, VERDICT_VALUES, isVerdict } from "@/api/verdict";
-
 export interface Commitment {
   id: number;
   title: string;

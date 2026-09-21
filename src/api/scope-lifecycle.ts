@@ -1,5 +1,5 @@
 import { invoke } from "./gesture";
-import type { Verdict } from "@/api/commitments";
+import type { Verdict } from "@/api/verdict";
 
 /** What happens to a scoped item once its Time Scope has fully passed unfinished. */
 export type OnScopeExit = "archive" | "keep";

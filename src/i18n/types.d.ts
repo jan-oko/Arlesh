@@ -4,7 +4,6 @@ import type en_editor from "./locales/en/editor.json";
 import type en_nodeKinds from "./locales/en/nodeKinds.json";
 import type en_status from "./locales/en/status.json";
 import type en_warnings from "./locales/en/warnings.json";
-import type en_navigation from "./locales/en/navigation.json";
 import type en_scopes from "./locales/en/scopes.json";
 import type en_filter from "./locales/en/filter.json";
 import type en_statusIcons from "./locales/en/statusIcons.json";
@@ -23,7 +22,6 @@ declare module "i18next" {
       nodeKinds: typeof en_nodeKinds;
       status: typeof en_status;
       warnings: typeof en_warnings;
-      navigation: typeof en_navigation;
       scopes: typeof en_scopes;
       filter: typeof en_filter;
       statusIcons: typeof en_statusIcons;

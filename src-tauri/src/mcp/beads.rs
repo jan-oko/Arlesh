@@ -66,7 +66,7 @@ impl ArleshMcp {
         // column and would otherwise need no transaction at all. The write has to be **tagged**:
         // the Undo Journal's ambient source is one row shared by every connection, so the only
         // thing that makes "the source is mcp" true for exactly these statements is holding
-        // SQLite's single writer lock from the moment it is set until it is put back — which is
+        // SQLite's single writer lock from before it is set until it is put back — which is
         // what a transaction is. The restore is also what stops an agent's tag outliving the
         // write; on any failure below the session drops and rolls the tag back with everything
         // else.
