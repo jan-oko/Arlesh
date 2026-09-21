@@ -210,6 +210,16 @@ export function crossesGoalTaskBoundary(from: NodeKind, to: NodeKind): boolean {
 }
 
 /**
+ * Whether `kind` lives inside a Flow — the Flow itself, or one of its items.
+ *
+ * One definition, because two would let the drop rule and the message that explains a refusal
+ * disagree about where the boundary between the flow world and the real one runs.
+ */
+export function isFlowKind(kind: NodeKind): boolean {
+  return kind === "flow" || kind === "flow_goal" || kind === "flow_task";
+}
+
+/**
  * Returns true if `sourceKind` is a valid child of `targetKind`.
  *
  * Parent rules:
@@ -225,7 +235,6 @@ export function isValidDropTarget(sourceKind: NodeKind, targetKind: NodeKind): b
   if (sourceKind === "aspect") return false;
 
   // Flows and flow items live in their own world — they never mix with real nodes.
-  const isFlowKind = (k: NodeKind): boolean => k === "flow" || k === "flow_goal" || k === "flow_task";
   if (isFlowKind(sourceKind) || isFlowKind(targetKind)) {
     if (sourceKind === "flow") return targetKind === "aspect" || targetKind === "domain" || targetKind === "project" || targetKind === "goal";
     if (sourceKind === "flow_goal") return targetKind === "flow" || targetKind === "flow_goal";
@@ -259,9 +268,14 @@ export const TYPED_CHILD_KINDS = ["domain", "project", "goal", "task", "commitme
 /** One of the kinds a Shift+initial chord can create. */
 export type TypedChildKind = (typeof TYPED_CHILD_KINDS)[number];
 
-/** Every real node kind, in the order a refusal message should read them out. */
+/**
+ * Every kind that can hold a child, in the order a refusal message should read them out. The flow
+ * kinds are on the end so a flow item's answer is a list rather than an empty one: a refused paste
+ * has to be able to say where a flow item *does* go, and that is inside its Flow.
+ */
 const PARENT_CANDIDATES: readonly NodeKind[] = [
   "aspect", "domain", "project", "goal", "task", "commitment", "info", "tag",
+  "flow", "flow_goal", "flow_task",
 ];
 
 /**
