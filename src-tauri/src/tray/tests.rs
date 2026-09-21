@@ -68,3 +68,18 @@ fn a_requested_quit_is_not_undone_by_setting_the_preference() {
 
     assert_eq!(preference.action(), CloseAction::Quit);
 }
+
+#[test]
+fn clicking_the_tray_with_the_window_showing_hides_it() {
+    assert_eq!(activate_action(Some(true)), ActivateAction::Hide);
+}
+
+#[test]
+fn clicking_the_tray_with_the_window_hidden_shows_it() {
+    assert_eq!(activate_action(Some(false)), ActivateAction::Show);
+}
+
+#[test]
+fn clicking_the_tray_when_visibility_is_unreadable_shows_the_window() {
+    assert_eq!(activate_action(None), ActivateAction::Show);
+}

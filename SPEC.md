@@ -526,13 +526,22 @@ a tab. Turn it off and the close button means quit again, as it used to. On by d
 setting that has to be found first would leave the endpoint down for anyone who never looked; a
 malformed stored value falls back to on rather than being read as falsy.
 
-**Getting back, and getting out.** The tray menu offers **Show** and **Quit** — nothing the menu
-cannot do that a click can, nothing missing that is needed. **Ctrl+Q** quits from the keyboard and
-appears in the cheat-sheet. Left-clicking the tray icon toggles the window, on the platforms that
-report tray clicks at all: Linux does not, and there a left click opens the same menu, so **Show** is
-the route back. The window returns where and how it was left, since hiding never destroys it. Quit
-is a real shutdown — the database session factory and the MCP listener are released with the app,
-not abandoned.
+**Getting back, and getting out.** A left click on the tray icon toggles the window — the shortest
+gesture for the thing done most often. The right button opens a menu offering **Show** and
+**Quit**: nothing the menu cannot do that a click can, nothing missing that is needed. **Ctrl+Q**
+quits from the keyboard and appears in the cheat-sheet. The window returns where and how it was
+left, since hiding never destroys it. Quit is a real shutdown — the database session factory and
+the MCP listener are released with the app, not abandoned.
+
+**On Linux the tray icon is Arlesh's own, not Tauri's.** A Linux tray is a protocol, not a widget:
+the app exports a [StatusNotifierItem](https://www.freedesktop.org/wiki/Specifications/StatusNotifierItem/)
+on the session bus and the panel calls `Activate` on it when the icon is clicked. Tauri exports
+that object through libappindicator, whose item has no `Activate` method at all — so a panel has
+nothing to call, and every one of them falls back to opening the menu. That is a hole in the
+library, not a platform limit, and the only way through it is to export the item directly, which is
+what Arlesh does. It costs a dependency and buys back the plainest gesture the feature has, plus
+the hover tooltip libappindicator drops. Windows and macOS keep the tray Tauri builds, whose click
+events work.
 
 **The tray mark is monochrome, and it is not the logo.** A tray sits on a bar whose colour and
 theme are not the app's to know, and every other icon on it is a flat silhouette; the full-colour

@@ -70,3 +70,27 @@ pub fn tray_mark(size: u32) -> anyhow::Result<Image<'static>> {
 pub fn tray() -> anyhow::Result<Image<'static>> {
     tray_mark(TRAY_ICON_SIZE)
 }
+
+/// Reorders an RGBA buffer in place into ARGB32, big-endian — alpha first, then red, green, blue.
+///
+/// The [StatusNotifierItem] protocol, which is how Linux panels are handed an icon, asks for that
+/// order and nothing else; Tauri's [`Image`] is RGBA. One rotation per pixel is the whole of the
+/// difference. A buffer whose length is not a whole number of pixels leaves its tail alone rather
+/// than being refused — a partial pixel is nothing a panel can draw either way.
+///
+/// [StatusNotifierItem]: https://www.freedesktop.org/wiki/Specifications/StatusNotifierItem/
+pub fn rgba_to_argb32(buffer: &mut [u8]) {
+    for pixel in buffer.chunks_exact_mut(4) {
+        pixel.rotate_right(1);
+    }
+}
+
+/// The tray mark as a square of ARGB32 bytes, with the side it was rendered at.
+///
+/// What a Linux panel is given directly, where Tauri's tray takes an [`Image`]. See
+/// [`rgba_to_argb32`].
+pub fn tray_argb32() -> anyhow::Result<(u32, Vec<u8>)> {
+    let mut pixels = tray()?.rgba().to_vec();
+    rgba_to_argb32(&mut pixels);
+    Ok((TRAY_ICON_SIZE, pixels))
+}

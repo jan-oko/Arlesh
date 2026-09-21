@@ -41,6 +41,13 @@ rmcp = { version = "3.4.0", features = ["server", "macros", "transport-streamabl
 axum = "0.8.9"
 schemars = "1.2.2"
 
+# Linux's tray is the StatusNotifierItem D-Bus protocol, and `ksni` speaks it directly. Tauri's
+# tray goes through libappindicator instead, whose item exports no `Activate` method at all — so a
+# panel that wants to tell us about a left click has nothing to call, and `TrayIconEvent` can never
+# fire. Owning the item is what makes a plain click reach the app. See `commands::tray`.
+[target.'cfg(target_os = "linux")'.dependencies]
+ksni = "0.3.6"
+
 [dev-dependencies]
 tokio = { version = "1", features = ["rt", "macros"] }
 # `test` brings `tauri::test::mock_app`, the only way to obtain a real `tauri::State` — it is a

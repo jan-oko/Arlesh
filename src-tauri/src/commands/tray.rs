@@ -6,22 +6,44 @@
 //! as the rest of this module turns an `invoke` into a call on a resource operator. Nothing here
 //! can be reached without a running event loop, which is why the decision does not live here.
 //!
-//! # Platform note
+//! # Two trays, because Linux's is a protocol rather than a widget
 //!
-//! Tray *click* events are not emitted on Linux — the icon is shown and its menu opens, but
-//! [`tauri::tray::TrayIconEvent`] never fires. [`toggle_window`] is therefore reached only on
-//! Windows and macOS, and the menu's **Show** is the route back to a hidden window on Linux, which
-//! is the platform Arlesh runs on.
+//! Windows and macOS get the tray Tauri builds, and its [`tauri::tray::TrayIconEvent`] reports the
+//! click. Linux gets an icon Arlesh puts on the bar itself, over D-Bus, and that is not a
+//! preference — it is the only way a left click can reach the app at all.
+//!
+//! A Linux tray is the [StatusNotifierItem] protocol: the app exports an object on the session bus
+//! and the panel calls `Activate` on it when the icon is clicked. Tauri does not export that object
+//! itself. It goes through `tray-icon`, which on Linux is a thin wrapper over libappindicator, and
+//! **libappindicator's item has no `Activate` method** — its interface is `Scroll`,
+//! `SecondaryActivate` and `XAyatanaSecondaryActivate`, and nothing else. There is no callback to
+//! subscribe to and no flag to set: a panel that wants to tell Arlesh about a left click has
+//! nothing to call, so `TrayIconEvent` cannot fire, and every panel falls back to opening the menu.
+//!
+//! Checked 2026-09-22 against `tauri` 2.11.3, `tray-icon` 0.24.1 (whose GTK backend is byte for
+//! byte the same in 0.25.1, the newest release) and `libappindicator` 12.10.1 — and confirmed on
+//! the bus against a running Arlesh, whose item answered `No such method "Activate"`. The upstream
+//! issue is [tauri-apps/tray-icon#104]. `libayatana-appindicator` 0.6.0 does implement `Activate`,
+//! but only forwards it when a GObject signal handler is attached, and neither `tray-icon` nor
+//! Tauri exposes the indicator far enough to attach one.
+//!
+//! So on Linux [`ksni`] exports the item instead, with `ItemIsMenu` false, a real `Activate` that
+//! toggles the window, and the same two-item menu. The right button still opens that menu; the
+//! left button no longer has to.
+//!
+//! [StatusNotifierItem]: https://www.freedesktop.org/wiki/Specifications/StatusNotifierItem/
+//! [tauri-apps/tray-icon#104]: https://github.com/tauri-apps/tray-icon/issues/104
 
+#[cfg(not(target_os = "linux"))]
 use tauri::{
     menu::{Menu, MenuEvent, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Manager, State, WindowEvent,
 };
+use tauri::{AppHandle, Manager, State, WindowEvent};
 
 use crate::{
     icon,
-    tray::{CloseAction, ClosePreference},
+    tray::{activate_action, ActivateAction, CloseAction, ClosePreference},
 };
 
 /// The label of the window the tray shows, hides and quits.
@@ -33,9 +55,17 @@ const TRAY_ID: &str = "arlesh-tray";
 /// What the tray says when nothing better is available.
 const FALLBACK_TOOLTIP: &str = "Arlesh";
 
-/// Menu item ids. They are matched as strings when the menu fires, so they are named once here.
+/// What the two menu items read on the bar. Both trays build the same menu from these.
+const SHOW_LABEL: &str = "Show";
+/// See [`SHOW_LABEL`].
+const QUIT_LABEL: &str = "Quit";
+
+/// Menu item ids. They are matched as strings when Tauri's menu fires, so they are named once here.
+/// Linux's menu carries a callback per item instead and needs no ids.
+#[cfg(not(target_os = "linux"))]
 const SHOW_ITEM: &str = "show";
 /// See [`SHOW_ITEM`].
+#[cfg(not(target_os = "linux"))]
 const QUIT_ITEM: &str = "quit";
 
 /// Builds the tray icon and, if it went up, takes over the main window's close button.
@@ -71,32 +101,138 @@ pub fn install(app: &AppHandle) {
     tracing::info!("tray icon ready; closing the window hides it by default");
 }
 
-/// Puts the icon and its two-item menu in the tray.
+/// Puts the icon and its two-item menu in the tray, through Tauri's own tray.
+#[cfg(not(target_os = "linux"))]
 fn build_tray(app: &AppHandle) -> anyhow::Result<()> {
-    let show = MenuItem::with_id(app, SHOW_ITEM, "Show", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, QUIT_ITEM, "Quit", true, None::<&str>)?;
+    let show = MenuItem::with_id(app, SHOW_ITEM, SHOW_LABEL, true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, QUIT_ITEM, QUIT_LABEL, true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show, &quit])?;
 
     TrayIconBuilder::with_id(TRAY_ID)
         // The white silhouette, not the colour logo: see `crate::icon`.
         .icon(icon::tray()?)
         // What the silhouette already is, said out loud. macOS is the only platform that acts on
-        // it — it tints a template image to suit a light or dark menu bar — and on Linux, where
-        // Arlesh runs, it is ignored and the white bitmap is drawn as rendered.
+        // it — it tints a template image to suit a light or dark menu bar.
         .icon_as_template(true)
         // The window's title, not a constant: `scripts/branch-instance.sh` titles each branch's
         // window after its branch, and with several instances up their tray icons are otherwise
         // indistinguishable.
         .tooltip(tray_tooltip(app))
         .menu(&menu)
-        // The menu belongs to the right button; the left one toggles the window. Ignored on Linux,
-        // where the toolkit opens the menu on either button and says nothing about the click.
+        // The menu belongs to the right button; the left one toggles the window.
         .show_menu_on_left_click(false)
         .on_menu_event(on_menu_event)
         .on_tray_icon_event(|tray, event| on_tray_icon_event(tray.app_handle(), event))
         .build(app)?;
 
     Ok(())
+}
+
+/// Puts the icon and its two-item menu on the bar, as a StatusNotifierItem Arlesh exports itself.
+///
+/// See this module's header for why Linux does not use the tray Tauri builds. Registering is
+/// awaited rather than left to run on: [`install`] only takes over the close button once the tray
+/// is up, and a close that hid the window into a tray that never appeared would be a trap.
+#[cfg(target_os = "linux")]
+fn build_tray(app: &AppHandle) -> anyhow::Result<()> {
+    use ksni::TrayMethods;
+
+    let tray = SystemTray::new(app)?;
+    let handle = tauri::async_runtime::block_on(tray.spawn())
+        .map_err(|error| anyhow::anyhow!("registering the tray item: {error}"))?;
+
+    // Held for the life of the app. The service owns itself once spawned, so this is belt and
+    // braces — but it is also what a later tooltip or icon change would go through.
+    app.manage(handle);
+
+    Ok(())
+}
+
+/// Arlesh's StatusNotifierItem: the icon on a Linux bar, and what its two buttons do.
+#[cfg(target_os = "linux")]
+struct SystemTray {
+    /// The app the click acts on. Every use hops to the main thread — see [`on_main_thread`].
+    app: AppHandle,
+    /// What the bar shows on hover, and the item's `Title`.
+    title: String,
+    /// The mark, in the ARGB32 the protocol asks for.
+    icon: ksni::Icon,
+}
+
+#[cfg(target_os = "linux")]
+impl SystemTray {
+    /// Reads the icon and the window title once, at build time, since neither changes after.
+    fn new(app: &AppHandle) -> anyhow::Result<Self> {
+        let (size, data) = icon::tray_argb32()?;
+        let side = i32::try_from(size)?;
+
+        Ok(Self {
+            app: app.clone(),
+            title: tray_tooltip(app),
+            icon: ksni::Icon {
+                width: side,
+                height: side,
+                data,
+            },
+        })
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl ksni::Tray for SystemTray {
+    fn id(&self) -> String {
+        TRAY_ID.to_string()
+    }
+
+    fn title(&self) -> String {
+        self.title.clone()
+    }
+
+    fn icon_pixmap(&self) -> Vec<ksni::Icon> {
+        vec![self.icon.clone()]
+    }
+
+    fn tool_tip(&self) -> ksni::ToolTip {
+        ksni::ToolTip {
+            title: self.title.clone(),
+            ..Default::default()
+        }
+    }
+
+    /// A plain left click. The whole reason this item exists rather than Tauri's.
+    fn activate(&mut self, _x: i32, _y: i32) {
+        on_main_thread(&self.app, toggle_window);
+    }
+
+    fn menu(&self) -> Vec<ksni::MenuItem<Self>> {
+        vec![
+            ksni::menu::StandardItem {
+                label: SHOW_LABEL.to_string(),
+                activate: Box::new(|tray: &mut Self| on_main_thread(&tray.app, show_window)),
+                ..Default::default()
+            }
+            .into(),
+            ksni::menu::StandardItem {
+                label: QUIT_LABEL.to_string(),
+                activate: Box::new(|tray: &mut Self| on_main_thread(&tray.app, quit)),
+                ..Default::default()
+            }
+            .into(),
+        ]
+    }
+}
+
+/// Runs `action` on the thread that owns the windows.
+///
+/// The StatusNotifierItem answers D-Bus on the async runtime, not on the main thread, and showing
+/// or hiding a window from anywhere else is not something to rely on. A failure here means the
+/// event loop is gone, which is to say the app is already on its way out.
+#[cfg(target_os = "linux")]
+fn on_main_thread(app: &AppHandle, action: impl FnOnce(&AppHandle) + Send + 'static) {
+    let handle = app.clone();
+    if let Err(error) = app.run_on_main_thread(move || action(&handle)) {
+        tracing::warn!(error = %error, "the tray could not reach the main thread");
+    }
 }
 
 /// What the tray icon says on hover: the main window's title, else [`FALLBACK_TOOLTIP`].
@@ -139,6 +275,7 @@ fn resolve_close(app: &AppHandle) -> CloseAction {
     }
 }
 
+#[cfg(not(target_os = "linux"))]
 fn on_menu_event(app: &AppHandle, event: MenuEvent) {
     match event.id().as_ref() {
         SHOW_ITEM => show_window(app),
@@ -148,6 +285,7 @@ fn on_menu_event(app: &AppHandle, event: MenuEvent) {
     }
 }
 
+#[cfg(not(target_os = "linux"))]
 fn on_tray_icon_event(app: &AppHandle, event: TrayIconEvent) {
     // On release, not on press: a press that turns into a drag is not a click.
     if let TrayIconEvent::Click {
@@ -186,19 +324,19 @@ fn hide_window(app: &AppHandle) {
 
 /// Hides the window when it is showing and shows it when it is not.
 ///
-/// An unreadable visibility shows it: the click was made by someone who wants the window, and a
-/// window that appears when it was already there is a far smaller surprise than one that vanishes.
+/// What the decision is, and why an unreadable visibility shows rather than hides, is
+/// [`activate_action`].
 fn toggle_window(app: &AppHandle) {
     let Some(window) = app.get_webview_window(MAIN_WINDOW) else {
         return;
     };
-    match window.is_visible() {
-        Ok(true) => hide_window(app),
-        Ok(false) => show_window(app),
-        Err(error) => {
-            tracing::warn!(error = %error, "could not read window visibility; showing it");
-            show_window(app);
-        }
+    let visible = window.is_visible().map_err(|error| {
+        tracing::warn!(error = %error, "could not read window visibility; showing it");
+    });
+
+    match activate_action(visible.ok()) {
+        ActivateAction::Hide => hide_window(app),
+        ActivateAction::Show => show_window(app),
     }
 }
 

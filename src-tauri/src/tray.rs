@@ -8,6 +8,9 @@
 //! tray menu's Quit, and turning the preference off — after which the close button means quit
 //! again. Both arrive here as [`CloseAction::Quit`].
 //!
+//! The other way back is a plain click on the tray icon, which toggles the window rather than
+//! ending anything; [`activate_action`] is what one click means.
+//!
 //! This module is the decision and nothing else. The tray icon, the menu and the window event that
 //! consult it live in [`crate::commands::tray`], which is Tauri's side of the same feature.
 
@@ -39,6 +42,28 @@ pub fn close_action(close_to_tray: bool, quit_requested: bool) -> CloseAction {
         return CloseAction::Quit;
     }
     CloseAction::HideToTray
+}
+
+/// What a plain click on the tray icon should do to the main window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ActivateAction {
+    /// Put the window back on screen and give it the keyboard.
+    Show,
+    /// Send the window back to the tray.
+    Hide,
+}
+
+/// Decides what one tray activation means, given whether the window is on screen.
+///
+/// `visible` is an [`Option`] rather than a `bool` because the window can fail to answer: on the
+/// platforms that hand visibility back through the windowing system it is a fallible read. `None`
+/// shows the window — the click was made by someone who wants it, and a window that appears when
+/// it was already there is a far smaller surprise than one that vanishes.
+pub fn activate_action(visible: Option<bool>) -> ActivateAction {
+    match visible {
+        Some(true) => ActivateAction::Hide,
+        Some(false) | None => ActivateAction::Show,
+    }
 }
 
 /// The live close-to-tray preference, plus whether a quit is already under way.
