@@ -9,10 +9,12 @@ use crate::tasks::{lifecycle::Timing, model::Verdict};
 /// `All` disables status filtering, `Backlog` inverts it — showing only what was deliberately set
 /// aside — and the three in between narrow progressively.
 ///
-/// **Unblock is not here.** It is the List View's own sixth option, and it does not replace the
-/// preset: picking it leaves whatever preset was active in place and adds "blocked rows only" on
-/// top. It is therefore [`BoardFilter::unblock`], a flag beside the preset rather than a variant
-/// of it, which is what the frontend stores too.
+/// **Unblock is not here.** It is the List View's own sixth option, and picking it leaves whatever
+/// preset was active where it is — the Mindmap still answers to that preset when you switch back.
+/// It is therefore [`BoardFilter::unblock`], a flag beside the preset rather than a variant of it,
+/// which is what the frontend stores too. The flag sits beside the preset without combining with
+/// it: while it is set the list's rows are the blocked ones and the preset does not answer for
+/// them (see [`crate::filters::list::passes_row`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Preset {
@@ -77,8 +79,8 @@ pub struct TagFilter {
 pub struct BoardFilter {
     /// The status preset.
     pub preset: Preset,
-    /// The List View's sixth option: blocked rows only, on top of `preset`. Ignored by the
-    /// Mindmap, which does not offer it.
+    /// The List View's sixth option: blocked rows only, in place of `preset`'s rules rather than
+    /// on top of them. Ignored by the Mindmap, which does not offer it.
     pub unblock: bool,
     /// Plan/Start's per-preset "include flows" subtoggle, separate from `show_flow`.
     pub include_flows: bool,
