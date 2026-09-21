@@ -220,8 +220,8 @@
       "commitments": []
     },
     {
-      "name": "unblock over start hides the very rows it exists to show",
-      "spec": "DIVERGENCE — list-view.md promises Unblock shows every blocked task, but Unblock does not write through to the shared preset, and Start hard-hides a blocked node together with its subtree. Reproduced from the shipped frontend, not adopted as the rule.",
+      "name": "unblock over start still shows every blocked task",
+      "spec": "list-view.md — Unblock replaces the preset's rules for the list rather than combining with them, so the list reads the shared preset as All. It has to: Start hides a blocked task together with its subtree, which is exactly the set Unblock exists to show. The preset still answers for the Mindmap, which keeps it.",
       "filter": {
         "preset": "start",
         "unblock": true
@@ -239,7 +239,9 @@
         "task-todo-child",
         "task-under-achieved-goal"
       ],
-      "list": [],
+      "list": [
+        "task-blocked"
+      ],
       "commitments": []
     },
     {

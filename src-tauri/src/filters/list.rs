@@ -5,6 +5,8 @@
 //! ancestors explicitly here. Everything else is the same predicate the Mindmap uses, from
 //! [`rules`](super::rules).
 
+use std::borrow::Cow;
+
 use super::{
     model::{BoardFilter, NodeFacts, NodeKind, Preset},
     rules,
@@ -43,18 +45,17 @@ impl<'a> Row<'a> {
 
 /// Whether one Task row survives the filter.
 ///
-/// # Divergence from the specification
-///
-/// `docs/spec/list-view.md` says Unblock "shows every blocked task". It does not replace the
-/// status preset — picking it leaves the shared preset alone — and this reproduces that: when
-/// [`BoardFilter::unblock`] is set, the preset's own row predicate is skipped but
-/// [`rules::type_hard_hidden`] still runs under `preset`. Under `Preset::Start` that hard-hides
-/// every blocked node, so `preset = start, unblock = true` shows **nothing** where the
-/// specification promises every blocked task. The frontend behaves exactly this way today, which
-/// is why it is reproduced rather than corrected here; splitting the preset out as a field of its
-/// own is what makes it visible at all.
+/// Under [`BoardFilter::unblock`] the preset does not answer at all: the row predicate is
+/// `blocked` and nothing else, and the hard-hide runs under the neutralised filter from
+/// [`unblock_filter`]. Everything that is not a preset rule — tags, the Info/Flow/Private
+/// toggles, the Archived and Backlog pills — still applies.
 pub fn passes_row(row: Row<'_>, filter: &BoardFilter) -> bool {
-    if rules::type_hard_hidden(row.node, filter) {
+    let effective: Cow<'_, BoardFilter> = if filter.unblock {
+        Cow::Owned(unblock_filter(filter))
+    } else {
+        Cow::Borrowed(filter)
+    };
+    if rules::type_hard_hidden(row.node, &effective) {
         return false;
     }
     if !filter.private_mode && row.has_private_ancestor() {
@@ -68,6 +69,22 @@ pub fn passes_row(row: Row<'_>, filter: &BoardFilter) -> bool {
         return false;
     }
     rules::passes_tags(row.node, filter)
+}
+
+/// The filter as Unblock reads it: the same tags, Info/Flow/Private toggles and Archived/Backlog
+/// pills, with the status preset neutralised to [`Preset::All`].
+///
+/// Unblock is not a sixth preset combined with the one already set — the List View's dropdown holds
+/// a single value, and picking Unblock *is* the whole question ("what is blocking me?"). The preset
+/// left in the filter belongs to the Mindmap, which keeps it, and it must not answer here:
+/// [`rules::type_hard_hidden`] under [`Preset::Start`] drops a blocked node together with its
+/// subtree, which is precisely the set Unblock exists to show, so reading it left Unblock-over-Start
+/// an empty list. Mirrors `unblockSharedFilter` in `src/utils/list-filter.ts`.
+fn unblock_filter(filter: &BoardFilter) -> BoardFilter {
+    BoardFilter {
+        preset: Preset::All,
+        ..filter.clone()
+    }
 }
 
 /// The status preset, asked of a flat row.

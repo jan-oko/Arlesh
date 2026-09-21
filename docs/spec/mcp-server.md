@@ -54,7 +54,9 @@ same definition — not an approximation assembled from `lifecycles`. `{"preset"
 user's own view applies: Plan minus lapsed windows, minus in-progress tasks with nothing left under
 them to start, minus Habit flows, minus blocked subtrees. `all`, `plan`, `start`, `do` and
 `backlog` are the presets; `unblock` rides beside them as a flag rather than replacing one, exactly
-as the List View stores it. The Archived and Backlog pills, the tag filters, the Info/Flow toggles
+as the List View stores it — beside them in shape, but not in effect: while the flag is set the
+list's rows are the blocked ones and the preset does not answer for them (see
+[*List View*](list-view.md)). The Archived and Backlog pills, the tag filters, the Info/Flow toggles
 and Private Mode are all carried too, each defaulting to what the app's own filter defaults to —
 so `{"preset": "all"}` is the app's neutral filter and **hides private nodes**, where omitting
 `filter` entirely applies no filter at all and returns them. "Everything, unfiltered" and

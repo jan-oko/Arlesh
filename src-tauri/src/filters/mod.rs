@@ -28,8 +28,8 @@
 //! This module reproduces the shipped frontend behaviour exactly, including the places where the
 //! frontend and the specification do not agree. Each one is named at the rule that carries it, so
 //! that the disagreement is documented rather than quietly promoted to the specification. See
-//! [`rules::type_hard_hidden`], [`list::passes_row`] and [`list::passes_commitment_row`], and the
-//! corpus cases whose `spec` field opens with DIVERGENCE or GAP.
+//! [`rules::type_hard_hidden`] and [`list::passes_commitment_row`], and the corpus cases whose
+//! `spec` field opens with DIVERGENCE or GAP.
 
 pub mod facts;
 pub mod list;

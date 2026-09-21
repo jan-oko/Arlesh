@@ -142,19 +142,24 @@ fn unblock_keeps_the_blocked_rows_and_only_those() {
 }
 
 #[test]
-fn unblock_over_start_empties_the_list_it_was_meant_to_fill() {
-    // The divergence named on `passes_row`, pinned so a future change to it is deliberate.
+fn unblock_over_start_still_shows_every_blocked_row() {
+    // Start hard-hides a blocked node together with its subtree — exactly the set Unblock exists
+    // to show — so Unblock neutralises the preset. The subtree comes back with it, and only the
+    // blocked row is kept.
     let mut blocked = task("task-1", "todo");
     blocked.is_blocked = true;
     let root = FactNode::with_children(
         NodeFacts::new("root", NodeKind::Aspect),
-        vec![FactNode::leaf(blocked)],
+        vec![FactNode::with_children(
+            blocked,
+            vec![FactNode::leaf(task("task-2", "todo"))],
+        )],
     );
     let filter = BoardFilter {
         unblock: true,
         ..BoardFilter::preset(Preset::Start)
     };
-    assert!(rows_of(&root, &filter).is_empty());
+    assert_eq!(rows_of(&root, &filter), ["task-1"]);
 }
 
 fn commitment(id: &str, verdict: Verdict, timing: Timing) -> NodeFacts {
