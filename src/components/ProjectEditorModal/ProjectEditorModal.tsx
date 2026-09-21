@@ -6,6 +6,7 @@ import EditorModal from "@/components/EditorModal/EditorModal";
 import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
 import BeadsIdField from "@/components/EditorModal/BeadsIdField";
 import { useInputCapture } from "@/hooks/use-input-capture";
+import { useBeadsIdClear } from "@/hooks/use-beads-id-clear";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 import { PROJECT_STATUS } from "@/utils/status-mapping";
 
@@ -21,8 +22,9 @@ const PROJECT_STATUSES = Object.values(PROJECT_STATUS);
 interface Props {
   node: MindmapNode;
   onSave: (data: ProjectSaveData) => Promise<void>;
-  /** Drops the node's `bd` issue link, where a clear is on offer. Omitted — as on the blank node a
-   * create path opens, which has no link to drop — the Issue row stays wholly read-only. */
+  /** Drops the node's `bd` issue link. Called by Save once the row's × has staged the drop, never
+   * by the × itself, so Cancel discards it like any other unsaved field. Omitted — as on the blank
+   * node a create path opens, which has no link to drop — the Issue row stays wholly read-only. */
   onClearBeadsId?: (() => Promise<void>) | undefined;
   onClose: () => void;
 }
@@ -36,6 +38,7 @@ export default function ProjectEditorModal({ node, onSave, onClearBeadsId, onClo
   const [isPrivate, setIsPrivate] = useState(node.isPrivate ?? false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const beadsClear = useBeadsIdClear(onClearBeadsId);
   const titleRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { titleRef.current?.focus(); titleRef.current?.select(); }, []);
@@ -45,6 +48,9 @@ export default function ProjectEditorModal({ node, onSave, onClearBeadsId, onClo
     setIsSaving(true);
     setSaveError(null);
     try {
+      // Before the update, not after: a refused clear then leaves the node exactly as it was,
+      // rather than half-saved, and the refusal reaches the save error line below the fields.
+      await beadsClear.commitClear();
       await onSave({ title: title.trim(), status, knowledgeBaseDirectory: kbDir.trim(), isPrivate });
     } catch (err) {
       setSaveError(getErrorMessage(err));
@@ -63,7 +69,7 @@ export default function ProjectEditorModal({ node, onSave, onClearBeadsId, onClo
         {t("fieldTitle")}
         <input ref={titleRef} className={styles.input} value={title} onChange={(e) => setTitle(e.target.value)} type="text" />
       </label>
-      <BeadsIdField beadsId={node.beadsId} onClear={onClearBeadsId} />
+      <BeadsIdField beadsId={node.beadsId} isCleared={beadsClear.isCleared} onClear={beadsClear.stageClear} />
       <div className={styles.label}>
         {t("fieldStatus")}
         <div className={styles.statusPills}>

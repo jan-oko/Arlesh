@@ -13,6 +13,7 @@ import BeadsIdField from "@/components/EditorModal/BeadsIdField";
 import TimeScopeField from "@/components/ScopePicker/TimeScopeField";
 import VerdictWindowField from "./VerdictWindowField";
 import { useInputCapture } from "@/hooks/use-input-capture";
+import { useBeadsIdClear } from "@/hooks/use-beads-id-clear";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 
 export interface CommitmentSaveData {
@@ -31,8 +32,9 @@ interface Props {
   /** Overrides the "Edit commitment" title — the create path opens the same fields on a blank node. */
   heading?: string;
   onSave: (data: CommitmentSaveData) => Promise<void>;
-  /** Drops the node's `bd` issue link, where a clear is on offer. Omitted — as on the blank node a
-   * create path opens, which has no link to drop — the Issue row stays wholly read-only. */
+  /** Drops the node's `bd` issue link. Called by Save once the row's × has staged the drop, never
+   * by the × itself, so Cancel discards it like any other unsaved field. Omitted — as on the blank
+   * node a create path opens, which has no link to drop — the Issue row stays wholly read-only. */
   onClearBeadsId?: (() => Promise<void>) | undefined;
   onClose: () => void;
 }
@@ -57,6 +59,7 @@ export default function CommitmentEditorModal({ node, allTags, domainNames, head
   const [isPrivate, setIsPrivate] = useState(node.isPrivate ?? false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const beadsClear = useBeadsIdClear(onClearBeadsId);
   const titleRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { titleRef.current?.focus(); titleRef.current?.select(); }, []);
@@ -66,6 +69,9 @@ export default function CommitmentEditorModal({ node, allTags, domainNames, head
     setIsSaving(true);
     setSaveError(null);
     try {
+      // Before the update, not after: a refused clear then leaves the node exactly as it was,
+      // rather than half-saved, and the refusal reaches the save error line below the fields.
+      await beadsClear.commitClear();
       await onSave({ title: title.trim(), verdict, tagIds, timeScope, verdictWindow, isPrivate });
     } catch (err) {
       // A commitment that can never come due is not written — whether that is a new one saved
@@ -98,7 +104,7 @@ export default function CommitmentEditorModal({ node, allTags, domainNames, head
         {t("fieldTitle")}
         <input ref={titleRef} className={styles.input} value={title} onChange={(e) => setTitle(e.target.value)} type="text" />
       </label>
-      <BeadsIdField beadsId={node.beadsId} onClear={onClearBeadsId} />
+      <BeadsIdField beadsId={node.beadsId} isCleared={beadsClear.isCleared} onClear={beadsClear.stageClear} />
       <div className={styles.label}>
         {t("fieldVerdict")}
         <div className={styles.statusPills}>

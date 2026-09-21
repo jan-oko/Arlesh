@@ -22,7 +22,9 @@ export const BEADS_NODE_TYPE = {
  *
  * The **only** write on that column this app can make. Authoring and editing a link stay MCP-only,
  * because the UI has no way to produce an id `bd` issued; clearing needs no such value, which is
- * the whole reason it is carved out. No update request gained a beads field for it.
+ * the whole reason it is carved out. No update request gained a beads field for it: the editors
+ * call this from their Save instead, once the Issue row's × has staged the drop, so that Cancel
+ * discards an unsaved clear the way it discards every other unsaved field.
  *
  * Clearing a node that carries no link is not an error. An unknown node is.
  */

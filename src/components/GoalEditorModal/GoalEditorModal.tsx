@@ -13,6 +13,7 @@ import BeadsIdField from "@/components/EditorModal/BeadsIdField";
 import TimeScopeField from "@/components/ScopePicker/TimeScopeField";
 import OnScopeExitField from "@/components/ScopePicker/OnScopeExitField";
 import { useInputCapture } from "@/hooks/use-input-capture";
+import { useBeadsIdClear } from "@/hooks/use-beads-id-clear";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 import { GOAL_STATUS } from "@/utils/status-mapping";
 
@@ -33,8 +34,9 @@ interface Props {
   allTags: Domain[];
   domainNames: Map<number, string>;
   onSave: (data: GoalSaveData) => Promise<void>;
-  /** Drops the node's `bd` issue link, where a clear is on offer. Omitted — as on the blank node a
-   * create path opens, which has no link to drop — the Issue row stays wholly read-only. */
+  /** Drops the node's `bd` issue link. Called by Save once the row's × has staged the drop, never
+   * by the × itself, so Cancel discards it like any other unsaved field. Omitted — as on the blank
+   * node a create path opens, which has no link to drop — the Issue row stays wholly read-only. */
   onClearBeadsId?: (() => Promise<void>) | undefined;
   onCheckScopeClamp?: (nodeType: "task" | "goal", dbId: number, timeScope: TimeScope) => Promise<boolean>;
   onClose: () => void;
@@ -52,6 +54,7 @@ export default function GoalEditorModal({ node, allTags, domainNames, onSave, on
   const [isPrivate, setIsPrivate] = useState(node.isPrivate ?? false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const beadsClear = useBeadsIdClear(onClearBeadsId);
   const titleRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { titleRef.current?.focus(); titleRef.current?.select(); }, []);
@@ -66,6 +69,9 @@ export default function GoalEditorModal({ node, allTags, domainNames, onSave, on
         setIsSaving(false);
         return;
       }
+      // Before the update, not after: a refused clear then leaves the node exactly as it was,
+      // rather than half-saved, and the refusal reaches the save error line below the fields.
+      await beadsClear.commitClear();
       await onSave({
         title: title.trim(),
         status,
@@ -92,7 +98,7 @@ export default function GoalEditorModal({ node, allTags, domainNames, onSave, on
         {t("fieldTitle")}
         <input ref={titleRef} className={styles.input} value={title} onChange={(e) => setTitle(e.target.value)} type="text" />
       </label>
-      <BeadsIdField beadsId={node.beadsId} onClear={onClearBeadsId} />
+      <BeadsIdField beadsId={node.beadsId} isCleared={beadsClear.isCleared} onClear={beadsClear.stageClear} />
       <div className={styles.label}>
         {t("fieldStatus")}
         <div className={styles.statusPills}>
