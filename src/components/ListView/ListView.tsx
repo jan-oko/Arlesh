@@ -244,6 +244,7 @@ export default function ListView() {
     onDeselect: () => setSelectedRowId(null),
     onToggleFilter: toggleFilterPopover,
     onSetStatusMode: handleSetStatusPreset,
+    onSetUnblockPreset: () => setListPreset("unblock"),
     onToggleBacklog: toggleBacklog,
     onToggleAgentic: toggleAgentic,
     onCycleVerdict: cycleVerdict,
