@@ -17,9 +17,10 @@
 //!   on, even when that target was itself copied. That is what a plain reparent does, and it is
 //!   the conservative reading; Flow instances solve the same problem the other way, by remapping
 //!   per instance (ADR 0002), and that is the model to reach for if this proves wrong.
-//! - **Flows are not traversed.** A Flow hanging under a copied node is not copied. Duplicating a
-//!   Flow raises its own questions — what a copy of a Recurrence or of an instance history even
-//!   means — and `fork_flow` is the operation that asks them.
+//! - **Flows are not traversed.** A Flow hanging under a copied node is not copied. Copying a Flow
+//!   on its own is `flows::duplicate_flow`, which answers what a copy of a Recurrence and of a
+//!   completion history means; wiring this walk to call it for each Flow under a copied node is
+//!   the piece still missing, and all that is missing.
 //!
 //! Aspects are never duplicated: they are the fixed, seeded roots of the board.
 //!

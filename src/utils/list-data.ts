@@ -15,13 +15,11 @@ function nearestOfKind(ancestors: readonly MindmapNode[], kind: MindmapNode["kin
 }
 
 function buildRow(node: MindmapNode, ancestors: readonly MindmapNode[], depsByTask: ReadonlyMap<number, string[]>): TaskListRow {
-  const parent = ancestors[ancestors.length - 1];
   const goal = nearestOfKind(ancestors, "goal");
   const project = nearestOfKind(ancestors, "project");
   const dbId = parseInt(node.id.split("-").pop() ?? "", 10);
   return {
     node,
-    parentRef: parent?.id ?? "",
     ancestors: [...ancestors],
     goalRef: goal?.id ?? null,
     goalStatus: goal?.status ?? null,
@@ -83,10 +81,8 @@ export function flattenCommitmentRows(root: MindmapNode): CommitmentListRow[] {
   const rows: CommitmentListRow[] = [];
   function visit(node: MindmapNode, ancestors: readonly MindmapNode[]): void {
     if (node.kind === "commitment") {
-      const parent = ancestors[ancestors.length - 1];
       rows.push({
         node,
-        parentRef: parent?.id ?? "",
         ancestors: [...ancestors],
         hasPrivateAncestor: ancestors.some((a) => a.isPrivate === true),
         scopeTokens: deriveScopeStateTokens(node),

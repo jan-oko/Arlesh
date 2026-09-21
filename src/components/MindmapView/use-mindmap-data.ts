@@ -4,8 +4,9 @@ import { createDomain, updateDomain, deleteDomain, duplicateDomain } from "@/api
 import { createTask, updateTask, deleteTask, duplicateTask, TASK_ARCHIVAL } from "@/api/tasks";
 import { createCommitment, updateCommitment, deleteCommitment, addTagToCommitment } from "@/api/commitments";
 import type { CommitmentSaveData } from "@/components/CommitmentEditorModal/CommitmentEditorModal";
-import type { Commitment, Verdict } from "@/api/commitments";
-import { VERDICT } from "@/api/commitments";
+import type { Commitment } from "@/api/commitments";
+import type { Verdict } from "@/api/verdict";
+import { VERDICT } from "@/api/verdict";
 import type { TaskAgentic, TaskDependencyEdge } from "@/api/tasks";
 import type { BlockReason } from "@/api/block-reasons";
 import { createGoal, updateGoal, deleteGoal, duplicateGoal } from "@/api/goals";
@@ -19,6 +20,7 @@ import type { MindmapLoad } from "@/api/mindmap";
 import {
   createFlow, updateFlow, deleteFlow,
   createFlowGoal, createFlowTask, updateFlowGoal, updateFlowTask, deleteFlowItem, convertFlowItem,
+  duplicateFlow, duplicateFlowItem,
 } from "@/api/flows";
 import { findNode } from "@/utils/mindmap-tree";
 import { propagateAgentic } from "@/utils/agentic";
@@ -346,6 +348,7 @@ export function injectHabitInstances(
   flows: Flow[],
   iterationsByFlow: HabitIteration[][],
   labels: ScopeLabelFns,
+  now: string,
   flowGoals: FlowGoal[] = [],
   flowTasks: FlowTask[] = [],
   statusesByFlow: HabitItemStatus[][] = [],
@@ -380,6 +383,10 @@ export function injectHabitInstances(
       // chance to record a verdict has gone — but it is never given a Resolution, because nothing
       // in this kind ever concludes an outcome the user did not state.
       const expired = iteration.status === "expired";
+      // What the Mindmap's collapse of passed iterations folds by. `window_end` is exclusive, and
+      // the Habit's Consumption cannot answer this on its own: under Overlapping nothing lapses,
+      // so a long-closed window is still `active`.
+      const windowPassed = iteration.window_end <= now;
       // The root is its own instance (`flow_root`, keyed by the flow id) with its own status.
       const rootRaw = statuses.get(`${itemKey("flow_root", flow.id)}-${NO_CYCLE}-${scopeId}`);
       const rootDone = rootRaw === "done";
@@ -397,6 +404,17 @@ export function injectHabitInstances(
         virtual: true,
         habitItem: {
           flowId: flow.id, itemType: "flow_root", itemId: flow.id, scopeId, cycleId: NO_CYCLE,
+        },
+        habitIteration: {
+          flowId: flow.id,
+          index: iteration.index,
+          scopeKind: toCanonicalKind(flow.flow_duration_kind),
+          anchorDate: iteration.anchor_date,
+          windowEnd: iteration.window_end,
+          passed: windowPassed,
+          // "Done" is the iteration finishing as it was meant to: completed for a work Habit,
+          // Kept for a commitment one. A broken or unanswered verdict counts with the misses.
+          done: isCommitment ? rootVerdict === VERDICT.KEPT : rootDone,
         },
         // Iterations are injected after buildTree's colour propagation, so inherit the host's
         // already-resolved aspect colour directly.
@@ -497,6 +515,7 @@ function kindToInfoParentType(kind: NodeKind): string {
     case "commitment": return "commitment";
     case "flow": throw new Error("Flow nodes cannot parent info nodes");
     case "flow_goal": case "flow_task": throw new Error("Flow items cannot parent info nodes");
+    case "habit_group": throw new Error("A folded Habit history cannot parent info nodes");
   }
 }
 
@@ -509,8 +528,24 @@ function kindToFlowParentType(kind: NodeKind): string {
   switch (kind) {
     case "aspect": case "domain": case "project": case "goal": return kind;
     case "task": case "commitment": case "tag": case "info":
-    case "flow": case "flow_goal": case "flow_task":
+    case "flow": case "flow_goal": case "flow_task": case "habit_group":
       throw new Error(`Flows cannot hang from a node of kind "${kind}"`);
+  }
+}
+
+/**
+ * The `parent_type` a flow item records for an in-flow parent. The three flow kinds spell it
+ * exactly as they are named; every real kind is refused, because a flow item lives nowhere but
+ * inside its flow.
+ */
+function kindToFlowItemParentType(kind: NodeKind): string {
+  switch (kind) {
+    case "flow": case "flow_goal": case "flow_task": return kind;
+    // `habit_group` is among them because a folded run of passed iterations is drawn, not stored
+    // — it is nobody's parent.
+    case "aspect": case "domain": case "project": case "goal":
+    case "task": case "commitment": case "tag": case "info": case "habit_group":
+      throw new Error(`Flow items cannot hang from a node of kind "${kind}"`);
   }
 }
 
@@ -958,7 +993,8 @@ export function useMindmapData(): MindmapData {
       if (showSpinner) setIsLoading(true);
       setError(null);
       try {
-        const data = await loadMindmap(localNowIso());
+        const now = localNowIso();
+        const data = await loadMindmap(now);
         const built = buildTree(
           data.domains, data.goals, data.tasks, data.infos, data.commitments, data.flows,
           data.flow_goals, data.flow_tasks, data.flow_cycles, data.flow_dependencies,
@@ -969,7 +1005,7 @@ export function useMindmapData(): MindmapData {
         // A flow whose derivation failed contributes an empty list here and a load condition
         // below — it is not silently indistinguishable from a flow that simply has no iterations.
         injectHabitInstances(
-          built, data.flows, habitIterations(data.habits), scopeLabels,
+          built, data.flows, habitIterations(data.habits), scopeLabels, now,
           data.flow_goals, data.flow_tasks, habitStatuses(data.habits),
         );
         setTree(built);
@@ -1278,6 +1314,9 @@ export function useMindmapData(): MindmapData {
           // reaching here means a caller skipped that check — say so instead of quietly
           // giving the aspect a parent and demoting it.
           throw new Error("Aspects are top level and cannot be moved");
+        case "habit_group":
+          // A display node standing in for iterations, with nothing of its own to move.
+          throw new Error("A folded Habit history cannot be moved");
         default: {
           // `kind` is `never` here only while every NodeKind is handled above. Adding a kind
           // without a branch fails this assignment at compile time — which is the whole point:
@@ -1293,8 +1332,8 @@ export function useMindmapData(): MindmapData {
 
   /**
    * Deep-clones `id`'s whole subtree under `(targetId, targetKind)`, placing the new root at
-   * `position` — the COPY counterpart to `moveNode`'s CUT. Flows and flow items aren't duplicable;
-   * callers filter those out before getting here (`onPaste` does, with a toast).
+   * `position` — the COPY counterpart to `moveNode`'s CUT. A Commitment has no duplicate command
+   * of its own; callers filter those out before getting here (`onPaste` does, with a toast).
    */
   const duplicateNode = useCallback(
     async (id: string, kind: NodeKind, targetId: string, targetKind: NodeKind, position: number): Promise<void> => {
@@ -1327,11 +1366,19 @@ export function useMindmapData(): MindmapData {
           // Aspects are the fixed roots of the board — there is no second Green.
           throw new Error("Aspects are fixed and cannot be duplicated");
         case "flow":
+          // Template, cycle pairs, dependencies and Recurrence — a copy of a Habit is a Habit. The
+          // Target Node is inherited as stored, so a flow that never named one targets wherever it
+          // was pasted. No completion history and no started instances travel with it.
+          await duplicateFlow(dbId, kindToFlowParentType(targetKind), dbTargetId, position);
+          break;
         case "flow_goal":
         case "flow_task":
-          // Flows carry a Recurrence, instances and completion history; what a duplicate of one
-          // should inherit is its own question, and `fork_flow` is the operation that asks it.
-          throw new Error(`${kind} nodes cannot be duplicated`);
+          // Within the flow only — `onPaste` refuses the cross-flow case before getting here, and
+          // the backend refuses it again: the Cycle Scope is an offset into *this* flow's window.
+          await duplicateFlowItem(kind, dbId, kindToFlowItemParentType(targetKind), dbTargetId, position);
+          break;
+        case "habit_group":
+          throw new Error("A folded Habit history cannot be duplicated");
         default: {
           const unhandled: never = kind;
           throw new Error(`duplicateNode has no branch for node kind "${String(unhandled)}"`);

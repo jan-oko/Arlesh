@@ -255,6 +255,16 @@ export interface HabitIteration {
   anchor_scope_id: number;
   /** The window's first day, ISO `YYYY-MM-DD`. */
   anchor_date: string;
+  /**
+   * The window's **exclusive** end, ISO `YYYY-MM-DDTHH:MM:SS`: the window has passed once the
+   * load's reference instant has reached it.
+   *
+   * Derived backend-side, with the same offset arithmetic `start` uses, rather than recomputed
+   * here from the flow's Duration. It is what the Mindmap folds passed iterations by, and
+   * {@link IterationStatus} could not answer that on its own — under Overlapping Consumption a
+   * long-closed window is still `active`.
+   */
+  window_end: string;
   status: IterationStatus;
   /** Every occurrence this iteration renders, in item order and then pair order. */
   instances: HabitInstance[];
@@ -325,6 +335,35 @@ export async function clearHabitModifications(flowId: number): Promise<void> {
 /** Deep-clones a flow's template into a new flow (archive-and-new reconciliation). */
 export async function forkFlow(flowId: number): Promise<Flow> {
   return invoke<Flow>("fork_flow", { flowId });
+}
+
+/**
+ * Copies a Flow under a new parent: the template, its cycle pairs and intra-flow dependencies, its
+ * Recurrence (so a copy of a Habit is a Habit, on the same schedule from the same anchor) and its
+ * privacy. No completion history and no started instances come with it.
+ */
+export async function duplicateFlow(
+  flowId: number,
+  parentType: string,
+  parentId: number,
+  position: number,
+): Promise<Flow> {
+  return invoke<Flow>("duplicate_flow", { flowId, parentType, parentId, position });
+}
+
+/**
+ * Copies a flow item, and everything nested under it, within its own template — cycle pairs
+ * included. Returns the new item's id. Refused across flows, where the Cycle Scope offset would
+ * have to be resolved against a window it was never measured in.
+ */
+export async function duplicateFlowItem(
+  itemType: FlowItemType,
+  itemId: number,
+  parentType: string,
+  parentId: number,
+  position: number,
+): Promise<number> {
+  return invoke<number>("duplicate_flow_item", { itemType, itemId, parentType, parentId, position });
 }
 
 /**

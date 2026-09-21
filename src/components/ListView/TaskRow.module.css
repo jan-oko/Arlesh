@@ -112,7 +112,6 @@
   flex-wrap: wrap;
 }
 
-.parentLabel,
 .tagPill {
   background: none;
   border: 1px solid var(--node-border);
@@ -124,7 +123,6 @@
   cursor: pointer;
 }
 
-.parentLabel:hover,
 .tagPill:hover {
   color: var(--text-primary);
   border-color: var(--node-border-selected);

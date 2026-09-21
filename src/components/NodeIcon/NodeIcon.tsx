@@ -1,5 +1,5 @@
 import type { NodeKind } from "@/utils/tree-layout";
-import type { Verdict } from "@/api/commitments";
+import type { Verdict } from "@/api/verdict";
 import { commitmentGlyphState } from "@/utils/commitment-glyph";
 import DomainIcon from "./DomainIcon";
 import ProjectIcon from "./ProjectIcon";
@@ -10,6 +10,7 @@ import CommitmentIcon from "./CommitmentIcon";
 import InfoIcon from "./InfoIcon";
 import FlowIcon from "./FlowIcon";
 import HabitIcon from "./HabitIcon";
+import HabitGroupIcon from "./HabitGroupIcon";
 
 interface Props {
   kind: NodeKind;
@@ -44,6 +45,8 @@ export default function NodeIcon({ kind, status, verdict, isArchived = false, is
       ? <HabitIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} />
       : <FlowIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} />;
   }
+  // A folded run of passed Habit iterations: stacked bars, not another cycle.
+  if (kind === "habit_group") return <HabitGroupIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} />;
   // Flow items are templates for goals/tasks — reuse their icons.
   if (kind === "flow_goal") return <GoalIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} status={status} />;
   if (kind === "flow_task") return <TaskIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} status={status} isBlocked={isBlocked} />;

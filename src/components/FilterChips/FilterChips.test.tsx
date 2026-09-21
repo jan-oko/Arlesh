@@ -19,7 +19,7 @@ const DISPLAY = {
   tagColor: (id: number) => (id === 5 ? "#3498db" : null),
   nodeLabel: (ref: string) => (ref === "project-1" ? "Rocket" : ref),
   nodeColor: (ref: string) => (ref === "project-1" ? "#e74c3c" : null),
-  parentPool: [],
+  antecedentPool: [],
   dependencyPool: [],
   displayTaskStatus: (v: string) => `task.${v}`,
   displayGoalStatus: (v: string) => `goal.${v}`,
@@ -79,7 +79,7 @@ describe("FilterChips", () => {
         ...DEFAULT_LIST_FILTER,
         pills: {
           ...DEFAULT_LIST_FILTER.pills,
-          parent: [{ value: "project-1", mode: "any" }],
+          antecedent: [{ value: "project-1", mode: "any" }],
           blocked: [{ value: "blocked", mode: "exclude" }],
         },
       },

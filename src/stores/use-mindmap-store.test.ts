@@ -7,6 +7,7 @@ beforeEach(() => {
     selectedNodeIds: new Set(),
     subtreeRootId: null,
     collapsedNodeIds: new Set(),
+    expandedRunIds: new Set(),
     pendingToast: null,
   });
 });
@@ -132,5 +133,19 @@ describe("showToast / clearToast", () => {
     expect(useMindmapStore.getState().pendingToast).toEqual({ nodeId: "n", message: "hi" });
     useMindmapStore.getState().clearToast();
     expect(useMindmapStore.getState().pendingToast).toBeNull();
+  });
+});
+
+describe("toggleRunExpanded", () => {
+  it("opens a folded habit history and folds it again", () => {
+    useMindmapStore.getState().toggleRunExpanded("habitrun-7-virtual");
+    expect(useMindmapStore.getState().expandedRunIds.has("habitrun-7-virtual")).toBe(true);
+    useMindmapStore.getState().toggleRunExpanded("habitrun-7-virtual");
+    expect(useMindmapStore.getState().expandedRunIds.has("habitrun-7-virtual")).toBe(false);
+  });
+
+  it("leaves the ordinary collapsed set alone", () => {
+    useMindmapStore.getState().toggleRunExpanded("habitrun-7-virtual");
+    expect(useMindmapStore.getState().collapsedNodeIds.has("habitrun-7-virtual")).toBe(false);
   });
 });

@@ -1,0 +1,1 @@
+- **Converting a Flow item between Goal and Task no longer makes a private item public.** The conversion carried the title, position and parent across to the new row but dropped the Private flag, so a private Flow goal became a visible task (and vice versa) the moment it was converted. Private now carries across in both directions.

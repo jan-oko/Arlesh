@@ -2,16 +2,19 @@ import { hierarchy, tree } from "d3-hierarchy";
 import type { TimeScope } from "@/api/time-scope";
 import type { InstanceType, FlowItemType, HabitInstanceType } from "@/api/flows";
 import type { OnScopeExit, Timing, Resolution } from "@/api/scope-lifecycle";
-import type { Verdict } from "@/api/commitments";
+import type { Verdict } from "@/api/verdict";
 import type { DurationSpec } from "@/api/time-scope";
+import type { CanonicalKind } from "@/utils/scope-ref";
 
 export type NodeKind =
   | "aspect" | "project" | "domain" | "goal" | "task" | "commitment" | "tag" | "info"
-  | "flow" | "flow_goal" | "flow_task";
+  | "flow" | "flow_goal" | "flow_task"
+  /** A display-only stand-in for a run of passed Habit iterations — see {@link HabitGroup}. */
+  | "habit_group";
 
 const ALL_NODE_KINDS: NodeKind[] = [
   "aspect", "project", "domain", "goal", "task", "commitment", "tag", "info",
-  "flow", "flow_goal", "flow_task",
+  "flow", "flow_goal", "flow_task", "habit_group",
 ];
 
 /** Type guard: whether a string is a `NodeKind`. */
@@ -110,6 +113,56 @@ export interface FlowItemData {
   dependsOn: FlowItemDep[];
 }
 
+/**
+ * What one virtual Habit iteration contributes to a collapsed run: where its window sits, whether
+ * that window has passed, and how it ended.
+ *
+ * Kept apart from `habitItem` (which names the Modification row a status click writes) because this
+ * is purely what the renderer folds by — nothing here is ever written back.
+ */
+export interface HabitIterationMeta {
+  /** The Habit this iteration belongs to; iterations fold only with their own flow's. */
+  flowId: number;
+  /** Zero-based ordinal from the Repetition Start, for ordering within a run. */
+  index: number;
+  /** The scope kind the iteration's window is one unit of, or `null` for a sub-day Phase window. */
+  scopeKind: CanonicalKind | null;
+  /** The window's first day, ISO `YYYY-MM-DD`. */
+  anchorDate: string;
+  /** The window's exclusive end, ISO `YYYY-MM-DDTHH:MM:SS`, as the backend derived it. */
+  windowEnd: string;
+  /** Whether that window had already closed at the load's reference instant. Only passed
+   * iterations fold; the one whose window is still open always renders on its own. */
+  passed: boolean;
+  /** Whether the iteration was finished, as opposed to Lapsed, Missed or Expired. Drives the
+   * `9 done, 5 missed` half of a group's tally. */
+  done: boolean;
+}
+
+/** Which unit of time a `habit_group` node stands for. `run` is the whole folded run; the rest are
+ * the scope levels its expansion inserts, `year` being a display-only grouping above Season. */
+export type HabitGroupLevel = "run" | "year" | "season" | "month" | "week";
+
+/** What a `habit_group` node stands for: a run of passed Habit iterations, or one scope level of
+ * that run's expansion. It has no DB row, no status and no filter of its own — it is the tally and
+ * the span, and everything else about it is read from the iterations behind it. */
+export interface HabitGroup {
+  flowId: number;
+  level: HabitGroupLevel;
+  /** How many passed iterations this node stands for. */
+  passed: number;
+  /** How many of them finished. */
+  done: number;
+  /** How many did not — Lapsed, Missed or Expired alike. */
+  missed: number;
+  /** First day of the earliest iteration behind it, ISO `YYYY-MM-DD`. */
+  spanStart: string;
+  /** Last day of the latest iteration behind it, ISO `YYYY-MM-DD`. */
+  spanEnd: string;
+  /** The span in words, for the node's tooltip. */
+  spanLabel: string;
+}
+
 export interface MindmapNode {
   id: string;
   kind: NodeKind;
@@ -174,6 +227,11 @@ export interface MindmapNode {
     scopeId: number;
     cycleId: number;
   };
+  /** Present on a virtual Habit **iteration root** — what the Mindmap's collapse of passed
+   * iterations reads off it. Absent on the occurrences beneath it, which never fold on their own. */
+  habitIteration?: HabitIterationMeta;
+  /** Present on a `habit_group` node, and on no other kind: what it stands for. */
+  habitGroup?: HabitGroup;
   plan?: TimeScope | null;
   flow?: FlowData;
   flowItem?: FlowItemData;

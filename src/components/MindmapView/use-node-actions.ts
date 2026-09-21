@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
-import { findNode, findParent, collectAllNodeIds } from "@/utils/mindmap-tree";
+import { findNode, findParent, collectAllNodeIds, owningFlowId } from "@/utils/mindmap-tree";
 import { isValidDropTarget, validParentKinds } from "@/utils/node-meta";
 import type { TypedChildKind } from "@/utils/node-meta";
 import { updateTask } from "@/api/tasks";
@@ -80,9 +80,11 @@ export function useNodeActions({
       // goal toggles achieved; a task cycles todo → in_progress → done. `null` clears the Modification
       // (back to the base status). A goal's "achieved" is stored canonically as `done`.
       //
-      // A commitment iteration is excluded: it is kept or broken, never advanced, and its two
-      // verdict controls live in List View beside every other commitment's. Like a real Commitment,
-      // it has no status control on the canvas at all.
+      // A commitment iteration is excluded: it is kept or broken, never advanced. Like a real
+      // Commitment it has no status control to click on the canvas — the tick and the cross are
+      // List View's — but the canvas is not silent about it either: Enter cycles its verdict and X
+      // records Broken, both through `useCommitmentVerdict`, which writes an iteration's verdict as
+      // its Modification exactly as this branch writes an ordinary instance's status.
       if (node.habitItem !== undefined && node.kind !== "commitment") {
         const { flowId, itemType, itemId, scopeId, cycleId } = node.habitItem;
         let next: string | null;
@@ -188,13 +190,35 @@ export function useNodeActions({
 
   const onDelete = useCallback(
     (nodeIds: string[]) => {
-      const valid = nodeIds.filter((id) => {
-        const node = findNode(tree, id);
-        return node !== undefined && node.kind !== "aspect";
-      });
-      if (valid.length > 0) onRequestDelete(valid);
+      const nodes = nodeIds
+        .map((id) => findNode(tree, id))
+        .filter((node): node is MindmapNode => node !== undefined);
+
+      // A virtual Habit repetition is derived at load time, so there is no row to delete — and the
+      // Habit's template behind it is emphatically not what `Delete` on one occurrence should take
+      // away. It is refused here, in the List View's words (`useListDelete` raises the same key),
+      // because one gesture on one kind of node must not read two ways depending on the surface.
+      // Refusing this early is the whole point: the guard used to stop at `kind !== "aspect"`, so a
+      // repetition raised the confirmation and then reached `dbIdFromNodeId`, which rejects the
+      // `-virtual` tail — the user answered a dialog that could only end in "delete failed".
+      //
+      // One repetition anywhere in the selection refuses the **whole** gesture, rather than taking
+      // the real nodes and naming what was skipped the way `onPaste` does. Two reasons, and the
+      // second decides it. A delete is destructive where a paste is additive, so acting on half of
+      // a selection the user did not mean costs data rather than a stray copy. And the notice would
+      // not be read: it is a viewport toast that fades after three seconds, and confirming a delete
+      // puts the modal's overlay over the top of it — "deleted the rest, mentioned the skip" would
+      // be a silent skip wearing a message, which is the thing the rule exists to forbid.
+      const repetition = nodes.find((node) => node.virtual === true);
+      if (repetition !== undefined) {
+        showToast({ nodeId: repetition.id, message: t("warnings:deleteRepetitionRefused") });
+        return;
+      }
+
+      const valid = nodes.filter((node) => node.kind !== "aspect");
+      if (valid.length > 0) onRequestDelete(valid.map((node) => node.id));
     },
-    [tree, onRequestDelete],
+    [tree, onRequestDelete, showToast, t],
   );
 
   const onPaste = useCallback(
@@ -206,16 +230,24 @@ export function useNodeActions({
 
       // A node is pasteable here if drag-and-drop would allow the same reparent (e.g. aspects are
       // fixed and can't be reparented) and it isn't a derived, DB-less virtual node. A COPY refuses
-      // a Flow, a flow item or a Commitment on top of that: none of them has a duplicate command.
-      // A Commitment's would have to decide what a copy of a recorded Verdict means, which nobody
-      // has. Refused here rather than in `duplicateNode` so it is *said* — the skipped-paste toast
-      // names the count, instead of the copy failing where nothing is watching.
+      // two more things. A Commitment, which has no duplicate command: its would have to decide
+      // what a copy of a recorded Verdict means, and nobody has. And a flow item pasted into a
+      // *different* flow, because its Cycle Scope is an offset into its own flow's window and
+      // another window does not share it. Refused here rather than in `duplicateNode` so it is
+      // *said* — the skipped-paste toast names the count, instead of the copy failing where
+      // nothing is watching.
       const nodeIds = clipboard.nodeIds.filter((id) => {
         const node = findNode(tree, id);
         if (node === undefined || node.virtual === true) return false;
         if (!isValidDropTarget(node.kind, targetNode.kind)) return false;
-        if (isCopy && (node.kind === "flow" || node.kind === "flow_goal" || node.kind === "flow_task")) return false;
         if (isCopy && node.kind === "commitment") return false;
+        if (
+          isCopy &&
+          (node.kind === "flow_goal" || node.kind === "flow_task") &&
+          owningFlowId(tree, id) !== owningFlowId(tree, targetId)
+        ) {
+          return false;
+        }
         return true;
       });
       const skippedCount = clipboard.nodeIds.length - nodeIds.length;

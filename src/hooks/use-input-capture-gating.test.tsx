@@ -3,6 +3,7 @@ import { render } from "@testing-library/react";
 import { useKeyboardListView } from "@/components/ListView/use-keyboard-list-view";
 import { useInputCapture, useIsInputCaptured } from "./use-input-capture";
 import { useInputCaptureStore } from "@/stores/use-input-capture-store";
+import { listKeyboardContext } from "@/test/keyboard-context";
 
 const onToggleFilter = vi.fn();
 const onUndo = vi.fn();
@@ -32,32 +33,12 @@ function Modal() {
  */
 function View({ modalState, modalRenders }: { modalState: boolean; modalRenders: boolean }) {
   const isInputCaptured = useIsInputCaptured();
-  useKeyboardListView({
+  useKeyboardListView(listKeyboardContext({
     isInputActive: isInputCaptured,
-    selectedTaskId: "task-1",
-    selectedCommitmentId: null,
-    selectedRowId: "task-1",
-    isSelectedBlocked: false,
-    onNavigate: vi.fn(),
-    onScrollList: vi.fn(),
-    onCycleStatus: vi.fn(),
-    onOpenEditor: vi.fn(),
-    onStartRename: vi.fn(),
-    onDeselect: vi.fn(),
     onToggleFilter,
-    onSetStatusMode: vi.fn(),
-    onOpenSearch: vi.fn(),
-    subtreeRootId: null,
-    onExitSubtree: vi.fn(),
-    onExitToRoot: vi.fn(),
-    onToggleBacklog: vi.fn(),
-    onToggleAgentic: vi.fn(),
-    onMarkKept: vi.fn(),
-    onMarkBroken: vi.fn(),
     onUndo,
     onRedo,
-    onToggleFullscreen: vi.fn(),
-  });
+  }));
   return modalState && modalRenders ? <Modal /> : null;
 }
 

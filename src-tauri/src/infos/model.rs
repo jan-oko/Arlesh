@@ -58,6 +58,7 @@ pub struct UpdateInfoRequest {
     /// New one-line text content, if changing.
     pub body: Option<String>,
     /// New details, if changing (`Some(None)` clears).
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
     pub details: Option<Option<String>>,
     /// New display order, if changing.
     pub position: Option<i64>,

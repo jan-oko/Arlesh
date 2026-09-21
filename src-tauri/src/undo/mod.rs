@@ -57,11 +57,13 @@
 //! [`UndoOperator::set_suppressed`] turns the triggers off for the writer that set it, and
 //! [`UndoOperator::set_source`] tags writes as coming from somewhere other than the user. Both
 //! return the value they replaced, because both are meant to be **restored** — and both are meant
-//! to be set inside a transaction. That is what makes one shared row safe: the statement that sets
-//! the flag takes SQLite's single writer lock, so from that moment until the commit no other
-//! connection can write at all, and no other connection's rows can be journaled under this
-//! writer's flag or lose their entries to it. Setting either on a pooled session leaves it set for
-//! everyone until something puts it back.
+//! to be set inside a transaction. That is what makes one shared row safe: a transaction
+//! [`SessionFactory::begin`](crate::database::session::SessionFactory::begin) opens holds SQLite's
+//! single writer lock from its `BEGIN` until its commit, so for the whole life of the flag no
+//! other connection can write at all, and no other connection's rows can be journaled under this
+//! writer's flag or lose their entries to it. WAL does not loosen that — it lets a *reader* run
+//! alongside, on the last committed snapshot, and a reader journals nothing. Setting either on a
+//! pooled session leaves it set for everyone until something puts it back.
 
 pub mod error;
 pub mod model;

@@ -22,15 +22,22 @@ export interface TabStores {
 }
 
 /**
- * The part of a tab worth restoring: where it is rooted, how it is displayed, and both its filter
- * sets. Selection, collapsed nodes and pan/zoom are excluded on purpose — they are working state,
- * and coming back to a stale selection is worse than coming back to none.
+ * The part of a tab worth restoring: where it is rooted, how it is displayed, both its filter sets,
+ * and the folded Habit histories it has opened. Selection, collapsed nodes and pan/zoom are
+ * excluded on purpose — they are working state, and coming back to a stale selection is worse than
+ * coming back to none.
+ *
+ * An opened Habit history is not working state in that sense, which is why it is here and an
+ * ordinary collapsed node is not: collapsing a node hides something the app was showing you, and
+ * forgetting it merely shows it again, while a run of passed iterations is folded on *every* load —
+ * forgetting an expansion would silently undo the only thing that gets it open.
  */
 export interface TabState {
   subtreeRootId: string | null;
   view: ViewState;
   filter: FilterState;
   listFilter: ListFilterState;
+  expandedRunIds: string[];
 }
 
 export const DEFAULT_TAB_STATE: TabState = {
@@ -38,6 +45,7 @@ export const DEFAULT_TAB_STATE: TabState = {
   view: DEFAULT_VIEW_STATE,
   filter: DEFAULT_FILTER,
   listFilter: DEFAULT_LIST_FILTER,
+  expandedRunIds: [],
 };
 
 /** Fresh stores for a tab, seeded from restored (or default) state. */
@@ -46,7 +54,7 @@ export function createTabStores(state: TabState = DEFAULT_TAB_STATE): TabStores 
     view: createViewStore(state.view),
     filter: createFilterStore(state.filter),
     listFilter: createListFilterStore(state.listFilter),
-    mindmap: createMindmapStore(state.subtreeRootId),
+    mindmap: createMindmapStore(state.subtreeRootId, new Set(state.expandedRunIds)),
     panZoom: createPanZoomStore(),
   };
 }
@@ -59,5 +67,6 @@ export function readTabState(stores: TabStores): TabState {
     view: { view, mindmapOrientation },
     filter: stores.filter.getState().filter,
     listFilter: stores.listFilter.getState().filter,
+    expandedRunIds: [...stores.mindmap.getState().expandedRunIds],
   };
 }

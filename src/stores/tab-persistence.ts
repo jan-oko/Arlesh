@@ -56,6 +56,12 @@ function readString(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
 
+/** A stored list of node ids, tolerating a key written before the field existed. */
+function readStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string");
+}
+
 function readViewState(value: unknown): ViewState {
   const source = isRecord(value) ? value : {};
   const view = source["view"] === "list" ? "list" : "mindmap";
@@ -90,6 +96,7 @@ export function parseTabState(value: unknown): TabState {
     view: readViewState(source["view"]),
     filter: readFilterState(source["filter"]),
     listFilter: readListFilterState(source["listFilter"]),
+    expandedRunIds: readStringList(source["expandedRunIds"]),
   };
 }
 
@@ -130,6 +137,7 @@ export function legacyTabState(): TabState | null {
     view: readViewState(view),
     filter: readFilterState(filter?.["filter"]),
     listFilter: readListFilterState(listFilter?.["filter"]),
+    expandedRunIds: [],
   };
 }
 

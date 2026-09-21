@@ -66,7 +66,7 @@ export default function FilterPopover() {
   function addedSet(dimension: PillDimension): ReadonlySet<string> {
     return new Set(listFilter.pills[dimension].map((p) => p.value));
   }
-  function availableEntities(dimension: PillDimension, pool: typeof display.parentPool) {
+  function availableEntities(dimension: PillDimension, pool: typeof display.antecedentPool) {
     const added = addedSet(dimension);
     return pool.filter((option) => !added.has(option.id));
   }
@@ -140,14 +140,14 @@ export default function FilterPopover() {
       )}
 
       {view === "list" && (() => {
-        const parentCandidates = availableEntities("parent", display.parentPool);
+        const antecedentCandidates = availableEntities("antecedent", display.antecedentPool);
         const dependencyCandidates = availableEntities("dependency", display.dependencyPool);
         return (
           <div className={styles.cluster}>
             <div className={styles.clusterLabel}>{t("listView:hierarchyClusterLabel")}</div>
-            <PillFilterSection label={t("listView:parentLabel")}>
-              {parentCandidates.length > 0 && (
-                <EntityAdder placeholder={t("listView:addParent")} available={parentCandidates} onAdd={(id) => addPill("parent", id)} />
+            <PillFilterSection label={t("listView:antecedentLabel")}>
+              {antecedentCandidates.length > 0 && (
+                <EntityAdder placeholder={t("listView:addAntecedent")} available={antecedentCandidates} onAdd={(id) => addPill("antecedent", id)} />
               )}
             </PillFilterSection>
             <PillFilterSection label={t("listView:dependencyLabel")}>

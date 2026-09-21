@@ -3,9 +3,6 @@ import type { Verdict } from "@/api/verdict";
 import { VERDICT } from "@/api/verdict";
 import type { TimeScope, DurationSpec } from "@/api/time-scope";
 
-export type { Verdict } from "@/api/verdict";
-export { VERDICT, VERDICT_VALUES, isVerdict } from "@/api/verdict";
-
 export interface Commitment {
   id: number;
   title: string;
@@ -91,11 +88,24 @@ export async function removeTagFromCommitment(commitmentId: number, tagId: numbe
  * The verdict a control should write when it is pressed on a commitment currently reading
  * `current`.
  *
- * Both controls toggle: pressing the tick on a kept commitment clears it, pressing the cross on a
- * broken one clears it. What neither ever does is move straight from one verdict to the other —
- * two explicit controls rather than one cycling one is what keeps Broken from being a stray
- * keystroke away from Kept.
+ * The tick and the cross are two explicit, equal choices, and each one toggles: pressing the tick
+ * on a kept commitment clears it, pressing the cross on a broken one clears it. What neither
+ * control ever does is move straight from one verdict to the other — reaching Broken is always
+ * the cross, never a repeat of the tick.
  */
 export function verdictAfterPressing(pressed: Exclude<Verdict, "unresolved">, current: Verdict): Verdict {
   return current === pressed ? VERDICT.UNRESOLVED : pressed;
 }
+
+/**
+ * The verdict Enter advances to (Unresolved → Kept → Broken → Unresolved).
+ *
+ * One key walks the whole answer, so a commitment can be judged, corrected and un-judged without
+ * leaving the row. Kept leads because it is the answer given most often; Broken sitting one press
+ * further along is not the only way to reach it, since `X` writes Broken directly from any state.
+ */
+export const NEXT_VERDICT: Record<Verdict, Verdict> = {
+  unresolved: "kept",
+  kept: "broken",
+  broken: "unresolved",
+};

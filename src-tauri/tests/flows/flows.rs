@@ -5,11 +5,12 @@ use arlesh_lib::flows::{
         BlockingMode, CatchupPolicy, ConsumptionKind, CreateFlowItemRequest, CreateFlowRequest,
         FlowCycleInput, FlowId, FlowItemType, InstanceTiming, InstanceType, SetRecurrenceRequest,
         StartFlowRequest,
-        HabitInstanceRef, TargetRef, UpdateFlowItemRequest, UpdateFlowRequest, NO_CYCLE,
+        Flow, HabitInstanceRef, TargetRef, UpdateFlowItemRequest, UpdateFlowRequest, NO_CYCLE,
     },
-    convert_flow_item, convert_to_flow, delete_flow, fork_flow, generate_habit_iterations,
-    set_flow_recurrence, set_iteration_done, start, update_flow, update_flow_goal,
-    update_flow_task, valid_targets,
+    error::FlowError,
+    convert_flow_item, convert_to_flow, delete_flow, duplicate_flow, duplicate_flow_item,
+    fork_flow, generate_habit_iterations, set_flow_recurrence, set_iteration_done, start,
+    update_flow, update_flow_goal, update_flow_task, valid_targets,
 };
 use arlesh_lib::scopes::model::ScopeKind;
 use arlesh_lib::tasks::{
@@ -1973,6 +1974,102 @@ async fn a_flow_with_no_goal_items_may_still_become_a_commitment_flow() {
     assert_eq!(updated.instance_type, "commitment");
 }
 
+// --- Clearing the rest of a Flow's nullable fields (Arlesh-atb) ---
+//
+// The Target Node above was the first field taught to tell an absent key from an explicit null.
+// Every other `Option<Option<T>>` on `UpdateFlowRequest` had the same lying type: the Flow editor
+// sends the whole form on every save, so emptying the Duration, the Phase window or the root Cycle
+// Plan puts a JSON `null` on the wire — which serde collapsed to "leave it alone". One test per
+// field, because each carries its own `#[serde(default, deserialize_with = ...)]` and a missing
+// attribute on any one of them is its own silent drop.
+
+#[test]
+fn an_explicit_null_flow_duration_n_in_an_update_payload_clears_it() {
+    let absent: UpdateFlowRequest = serde_json::from_str(r#"{"title":"Renamed"}"#).unwrap();
+    assert_eq!(absent.flow_duration_n, None, "an absent key leaves the duration count alone");
+    let nulled: UpdateFlowRequest = serde_json::from_str(r#"{"flow_duration_n":null}"#).unwrap();
+    assert_eq!(nulled.flow_duration_n, Some(None), "an explicit null clears the duration count");
+    let set: UpdateFlowRequest = serde_json::from_str(r#"{"flow_duration_n":3}"#).unwrap();
+    assert_eq!(set.flow_duration_n, Some(Some(3)));
+}
+
+#[test]
+fn an_explicit_null_flow_duration_kind_in_an_update_payload_clears_it() {
+    let absent: UpdateFlowRequest = serde_json::from_str(r#"{"title":"Renamed"}"#).unwrap();
+    assert_eq!(absent.flow_duration_kind, None, "an absent key leaves the duration kind alone");
+    let nulled: UpdateFlowRequest = serde_json::from_str(r#"{"flow_duration_kind":null}"#).unwrap();
+    assert_eq!(nulled.flow_duration_kind, Some(None), "an explicit null clears the duration kind");
+    let set: UpdateFlowRequest = serde_json::from_str(r#"{"flow_duration_kind":"week"}"#).unwrap();
+    assert_eq!(set.flow_duration_kind, Some(Some("week".to_string())));
+}
+
+#[test]
+fn an_explicit_null_flow_window_part_in_an_update_payload_clears_it() {
+    let absent: UpdateFlowRequest = serde_json::from_str(r#"{"title":"Renamed"}"#).unwrap();
+    assert_eq!(absent.flow_window_part, None, "an absent key leaves the Phase band alone");
+    let nulled: UpdateFlowRequest = serde_json::from_str(r#"{"flow_window_part":null}"#).unwrap();
+    assert_eq!(nulled.flow_window_part, Some(None), "an explicit null clears the Phase band");
+    let set: UpdateFlowRequest = serde_json::from_str(r#"{"flow_window_part":"morning"}"#).unwrap();
+    assert_eq!(set.flow_window_part, Some(Some("morning".to_string())));
+}
+
+#[test]
+fn an_explicit_null_flow_window_time_start_in_an_update_payload_clears_it() {
+    let absent: UpdateFlowRequest = serde_json::from_str(r#"{"title":"Renamed"}"#).unwrap();
+    assert_eq!(absent.flow_window_time_start, None, "an absent key leaves the window start alone");
+    let nulled: UpdateFlowRequest =
+        serde_json::from_str(r#"{"flow_window_time_start":null}"#).unwrap();
+    assert_eq!(
+        nulled.flow_window_time_start,
+        Some(None),
+        "an explicit null clears the window start"
+    );
+    let set: UpdateFlowRequest =
+        serde_json::from_str(r#"{"flow_window_time_start":"09:00"}"#).unwrap();
+    assert_eq!(set.flow_window_time_start, Some(Some("09:00".to_string())));
+}
+
+#[test]
+fn an_explicit_null_flow_window_time_end_in_an_update_payload_clears_it() {
+    let absent: UpdateFlowRequest = serde_json::from_str(r#"{"title":"Renamed"}"#).unwrap();
+    assert_eq!(absent.flow_window_time_end, None, "an absent key leaves the window end alone");
+    let nulled: UpdateFlowRequest =
+        serde_json::from_str(r#"{"flow_window_time_end":null}"#).unwrap();
+    assert_eq!(nulled.flow_window_time_end, Some(None), "an explicit null clears the window end");
+    let set: UpdateFlowRequest = serde_json::from_str(r#"{"flow_window_time_end":"10:30"}"#).unwrap();
+    assert_eq!(set.flow_window_time_end, Some(Some("10:30".to_string())));
+}
+
+#[test]
+fn an_explicit_null_root_plan_kind_in_an_update_payload_clears_it() {
+    let absent: UpdateFlowRequest = serde_json::from_str(r#"{"title":"Renamed"}"#).unwrap();
+    assert_eq!(absent.root_plan_kind, None, "an absent key leaves the root Cycle Plan kind alone");
+    let nulled: UpdateFlowRequest = serde_json::from_str(r#"{"root_plan_kind":null}"#).unwrap();
+    assert_eq!(nulled.root_plan_kind, Some(None), "an explicit null clears the root Cycle Plan kind");
+    let set: UpdateFlowRequest = serde_json::from_str(r#"{"root_plan_kind":"day"}"#).unwrap();
+    assert_eq!(set.root_plan_kind, Some(Some("day".to_string())));
+}
+
+#[test]
+fn an_explicit_null_root_plan_start_in_an_update_payload_clears_it() {
+    let absent: UpdateFlowRequest = serde_json::from_str(r#"{"title":"Renamed"}"#).unwrap();
+    assert_eq!(absent.root_plan_start, None, "an absent key leaves the root Cycle Plan start alone");
+    let nulled: UpdateFlowRequest = serde_json::from_str(r#"{"root_plan_start":null}"#).unwrap();
+    assert_eq!(nulled.root_plan_start, Some(None), "an explicit null clears the root Cycle Plan start");
+    let set: UpdateFlowRequest = serde_json::from_str(r#"{"root_plan_start":0}"#).unwrap();
+    assert_eq!(set.root_plan_start, Some(Some(0)));
+}
+
+#[test]
+fn an_explicit_null_root_plan_end_in_an_update_payload_clears_it() {
+    let absent: UpdateFlowRequest = serde_json::from_str(r#"{"title":"Renamed"}"#).unwrap();
+    assert_eq!(absent.root_plan_end, None, "an absent key leaves the root Cycle Plan end alone");
+    let nulled: UpdateFlowRequest = serde_json::from_str(r#"{"root_plan_end":null}"#).unwrap();
+    assert_eq!(nulled.root_plan_end, Some(None), "an explicit null clears the root Cycle Plan end");
+    let set: UpdateFlowRequest = serde_json::from_str(r#"{"root_plan_end":2}"#).unwrap();
+    assert_eq!(set.root_plan_end, Some(Some(2)));
+}
+
 // --- Cycle Scope on a Habit's virtual instances (Arlesh-45d) ---
 //
 // SPEC: "a flow item with N pairs produces N items", and each item's Cycle Scope is its own
@@ -2296,4 +2393,429 @@ async fn each_occurrence_of_an_item_is_completed_separately() {
         statuses.iter().map(|s| (s.item_type.clone(), s.item_id, s.cycle_id)).collect();
     assert!(keyed.contains(&("flow_task".to_string(), item_id, pairs[0])));
     assert!(keyed.contains(&("flow_task".to_string(), item_id, pairs[1])));
+}
+
+// --- Copying a Flow, and a flow item within its own template (Mindmap Copy+Paste) ---
+
+/// Runs `duplicate_flow` in its own transaction, committing only on success.
+async fn copy_flow(
+    pool: &sqlx::SqlitePool,
+    flow_id: i64,
+    parent_type: &str,
+    parent_id: i64,
+) -> Result<Flow, FlowError> {
+    let mut db = helpers::session_factory(pool).begin().await.unwrap();
+    let result = duplicate_flow(&mut db, FlowId(flow_id), parent_type, parent_id, 7).await;
+    if result.is_ok() {
+        db.commit().await.unwrap();
+    }
+    result
+}
+
+/// Runs `duplicate_flow_item` in its own transaction, committing only on success.
+async fn copy_item(
+    pool: &sqlx::SqlitePool,
+    item_type: FlowItemType,
+    item_id: i64,
+    parent_type: &str,
+    parent_id: i64,
+) -> Result<i64, FlowError> {
+    let mut db = helpers::session_factory(pool).begin().await.unwrap();
+    let result = duplicate_flow_item(&mut db, item_type, item_id, parent_type, parent_id, 3).await;
+    if result.is_ok() {
+        db.commit().await.unwrap();
+    }
+    result
+}
+
+/// The `flow_item_cycles` rows belonging to one flow, in id order.
+async fn cycles_of(pool: &sqlx::SqlitePool, flow_id: i64) -> Vec<arlesh_lib::flows::model::FlowItemCycle> {
+    let mut all = helpers::session_factory(pool).connect().await.unwrap().flows().list_all_cycles().await.unwrap();
+    all.retain(|c| c.flow_id == flow_id);
+    all
+}
+
+/// The `flow_dependencies` rows belonging to one flow.
+async fn deps_of(pool: &sqlx::SqlitePool, flow_id: i64) -> Vec<arlesh_lib::flows::model::FlowDependency> {
+    let mut all = helpers::session_factory(pool).connect().await.unwrap().flows().list_all_dependencies().await.unwrap();
+    all.retain(|d| d.flow_id == flow_id);
+    all
+}
+
+#[tokio::test]
+async fn copying_a_habit_gives_a_habit_on_the_same_schedule_under_the_new_parent() {
+    let pool = helpers::test_pool().await;
+    let flow = helpers::session_factory(&pool).connect().await.unwrap().flows().create(create_req("Morning")).await.unwrap();
+    let goal = helpers::session_factory(&pool).connect().await.unwrap().flows().create_goal(CreateFlowItemRequest {
+        flow_id: flow.id, title: "Milestone".into(), parent_type: "flow".into(), parent_id: flow.id,
+    }).await.unwrap();
+    let task = helpers::session_factory(&pool).connect().await.unwrap().flows().create_task(CreateFlowItemRequest {
+        flow_id: flow.id, title: "Step".into(), parent_type: "flow_goal".into(), parent_id: goal.id,
+    }).await.unwrap();
+    {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = db.flows().set_cycles(flow.id, FlowItemType::FlowTask, task.id, &[day_cycle(2)]).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }.unwrap();
+    helpers::session_factory(&pool).connect().await.unwrap().flows()
+        .add_dependency(flow.id, FlowItemType::FlowTask, task.id, FlowItemType::FlowGoal, goal.id).await.unwrap();
+    let start = week_scope_id(&pool, ymd(2026, 1, 5)).await;
+    {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = set_flow_recurrence(&mut db, FlowId(flow.id), destructive_recurrence(start)).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }.unwrap();
+
+    let copy = copy_flow(&pool, flow.id, "aspect", 2).await.unwrap();
+
+    assert_ne!(copy.id, flow.id);
+    assert_eq!(copy.title, "Morning", "a duplicate keeps the original's title");
+    assert_eq!((copy.parent_type.as_str(), copy.parent_id, copy.position), ("aspect", 2, 7));
+    assert!(copy.is_habit, "a copy of a Habit is a Habit");
+    let recurrence = helpers::session_factory(&pool).connect().await.unwrap().flows().get_recurrence(FlowId(copy.id)).await.unwrap().unwrap();
+    assert_eq!(recurrence.start_scope_id, start, "the same Start anchor — the copy is not re-anchored to today");
+    assert_eq!(recurrence.consumption_kind, "destructive");
+
+    let new_goals = helpers::session_factory(&pool).connect().await.unwrap().flows().list_goals(FlowId(copy.id)).await.unwrap();
+    let new_tasks = helpers::session_factory(&pool).connect().await.unwrap().flows().list_tasks(FlowId(copy.id)).await.unwrap();
+    assert_eq!((new_goals.len(), new_tasks.len()), (1, 1));
+    assert_eq!(new_tasks[0].parent_id, new_goals[0].id, "nested under the CLONED goal");
+
+    let cycles = cycles_of(&pool, copy.id).await;
+    assert_eq!(cycles.len(), 1);
+    assert_eq!((cycles[0].item_id, cycles[0].scope_index), (new_tasks[0].id, Some(2)));
+    let deps = deps_of(&pool, copy.id).await;
+    assert_eq!(deps.len(), 1);
+    assert_eq!((deps[0].dependent_id, deps[0].depends_on_id), (new_tasks[0].id, new_goals[0].id));
+
+    // The original is left exactly as it was.
+    assert_eq!(helpers::session_factory(&pool).connect().await.unwrap().flows().list_tasks(FlowId(flow.id)).await.unwrap().len(), 1);
+    assert_eq!(cycles_of(&pool, flow.id).await.len(), 1);
+}
+
+#[tokio::test]
+async fn a_copied_flow_keeps_a_derived_target_and_so_follows_the_paste() {
+    let pool = helpers::test_pool().await;
+    let flow = helpers::session_factory(&pool).connect().await.unwrap().flows().create(create_req("Routine")).await.unwrap();
+    assert!(flow.target_type.is_none(), "created with no explicit target");
+
+    let copy = copy_flow(&pool, flow.id, "aspect", 3).await.unwrap();
+
+    assert!(
+        copy.target_type.is_none() && copy.target_id.is_none(),
+        "a NULL target means 'my parent' and resolves on read, so the copy targets where it was \
+         pasted; snapshotting one here would pin every copy to the original's parent",
+    );
+}
+
+#[tokio::test]
+async fn a_copied_flow_keeps_a_target_that_was_chosen_deliberately() {
+    let pool = helpers::test_pool().await;
+    let target = create_goal(
+        &mut helpers::session_factory(&pool).begin().await.unwrap(),
+        CreateGoalRequest { title: "Elsewhere".into(), parent_type: "project".into(), parent_id: 1, ..Default::default() },
+    ).await.unwrap();
+    let flow = helpers::session_factory(&pool).connect().await.unwrap().flows().create(CreateFlowRequest {
+        target_type: Some("goal".into()), target_id: Some(target.id), ..create_req("Routine")
+    }).await.unwrap();
+
+    let copy = copy_flow(&pool, flow.id, "aspect", 3).await.unwrap();
+
+    assert_eq!(copy.target_type.as_deref(), Some("goal"));
+    assert_eq!(copy.target_id, Some(target.id), "a target pointed somewhere on purpose stays pointed there");
+}
+
+#[tokio::test]
+async fn a_copied_habit_carries_no_completion_history() {
+    let pool = helpers::test_pool().await;
+    let flow = helpers::session_factory(&pool).connect().await.unwrap().flows().create(create_req("Habit")).await.unwrap();
+    let task = helpers::session_factory(&pool).connect().await.unwrap().flows().create_task(CreateFlowItemRequest {
+        flow_id: flow.id, title: "Do".into(), parent_type: "flow".into(), parent_id: flow.id,
+    }).await.unwrap();
+    {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = db.flows().set_cycles(flow.id, FlowItemType::FlowTask, task.id, &[day_cycle(1)]).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }.unwrap();
+    let start = week_scope_id(&pool, ymd(2026, 1, 5)).await;
+    {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = set_flow_recurrence(&mut db, FlowId(flow.id), destructive_recurrence(start)).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }.unwrap();
+    let now = ymd(2026, 3, 1).and_hms_opt(12, 0, 0).unwrap();
+    let scope = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = generate_habit_iterations(&mut db, FlowId(flow.id), now).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }.unwrap()[0].anchor_scope_id;
+    {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = set_iteration_done(&mut db, FlowId(flow.id), scope, true, 1_767_600_000_000).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }.unwrap();
+    assert_eq!(helpers::session_factory(&pool).connect().await.unwrap().flows().habit_completion_count(FlowId(flow.id)).await.unwrap(), 1);
+
+    let copy = copy_flow(&pool, flow.id, "aspect", 1).await.unwrap();
+
+    assert_eq!(
+        helpers::session_factory(&pool).connect().await.unwrap().flows().habit_completion_count(FlowId(copy.id)).await.unwrap(),
+        0,
+        "history belongs to the original — the copy has not been done",
+    );
+    let original_pairs: Vec<i64> = cycles_of(&pool, flow.id).await.iter().map(|c| c.id).collect();
+    let copied_pairs: Vec<i64> = cycles_of(&pool, copy.id).await.iter().map(|c| c.id).collect();
+    assert_eq!(copied_pairs.len(), 1);
+    assert!(
+        !copied_pairs.iter().any(|id| original_pairs.contains(id)),
+        "a completion is keyed on its cycle pair, so new pairs make inherited ticks impossible",
+    );
+    assert_eq!(
+        helpers::session_factory(&pool).connect().await.unwrap().flows().habit_completion_count(FlowId(flow.id)).await.unwrap(),
+        1,
+        "and the original keeps its own",
+    );
+}
+
+#[tokio::test]
+async fn a_copy_of_a_private_flow_is_private() {
+    let pool = helpers::test_pool().await;
+    let flow = helpers::session_factory(&pool).connect().await.unwrap().flows().create(create_req("Secret")).await.unwrap();
+    let task = helpers::session_factory(&pool).connect().await.unwrap().flows().create_task(CreateFlowItemRequest {
+        flow_id: flow.id, title: "Do".into(), parent_type: "flow".into(), parent_id: flow.id,
+    }).await.unwrap();
+    {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = update_flow(&mut db, FlowId(flow.id), UpdateFlowRequest { is_private: Some(true), ..Default::default() }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }.unwrap();
+    {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = update_flow_task(&mut db, task.id, UpdateFlowItemRequest { is_private: Some(true), ..Default::default() }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }.unwrap();
+
+    let copy = copy_flow(&pool, flow.id, "aspect", 2).await.unwrap();
+
+    assert!(copy.is_private, "copying a private template must not publish it");
+    let items = helpers::session_factory(&pool).connect().await.unwrap().flows().list_tasks(FlowId(copy.id)).await.unwrap();
+    assert!(items[0].is_private, "nor any of its items");
+}
+
+#[tokio::test]
+async fn copying_a_commitment_flow_gives_a_commitment_flow_with_no_goal_items() {
+    let pool = helpers::test_pool().await;
+    let flow = helpers::session_factory(&pool).connect().await.unwrap().flows().create(CreateFlowRequest {
+        instance_type: Some(InstanceType::Commitment), ..create_req("Asleep by 23:00")
+    }).await.unwrap();
+    helpers::session_factory(&pool).connect().await.unwrap().flows().create_task(CreateFlowItemRequest {
+        flow_id: flow.id, title: "Lights out".into(), parent_type: "flow".into(), parent_id: flow.id,
+    }).await.unwrap();
+    let start = week_scope_id(&pool, ymd(2026, 1, 5)).await;
+    {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = set_flow_recurrence(&mut db, FlowId(flow.id), SetRecurrenceRequest {
+            consumption_kind: ConsumptionKind::Accumulating,
+            blocking_mode: Some(BlockingMode::Overlapping),
+            ..destructive_recurrence(start)
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }.unwrap();
+
+    let copy = copy_flow(&pool, flow.id, "aspect", 2).await.unwrap();
+
+    assert_eq!(copy.instance_type, "commitment");
+    assert!(copy.is_habit);
+    assert!(
+        helpers::session_factory(&pool).connect().await.unwrap().flows().list_goals(FlowId(copy.id)).await.unwrap().is_empty(),
+        "a commitment flow holds no goal items, and a copy of one cannot invent any",
+    );
+    let recurrence = helpers::session_factory(&pool).connect().await.unwrap().flows().get_recurrence(FlowId(copy.id)).await.unwrap().unwrap();
+    assert_eq!(
+        (recurrence.consumption_kind.as_str(), recurrence.blocking_mode.as_deref()),
+        ("accumulating", Some("overlapping")),
+        "the one Consumption a commitment Habit is allowed, carried across intact",
+    );
+}
+
+#[tokio::test]
+async fn a_fork_still_keeps_the_original_s_parent_and_drops_its_recurrence() {
+    let pool = helpers::test_pool().await;
+    let flow = helpers::session_factory(&pool).connect().await.unwrap().flows().create(create_req("Routine")).await.unwrap();
+    let start = week_scope_id(&pool, ymd(2026, 1, 5)).await;
+    {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = set_flow_recurrence(&mut db, FlowId(flow.id), destructive_recurrence(start)).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }.unwrap();
+
+    let forked = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = fork_flow(&mut db, FlowId(flow.id)).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }.unwrap();
+
+    assert_eq!((forked.parent_type.as_str(), forked.parent_id), (flow.parent_type.as_str(), flow.parent_id));
+    assert!(!forked.is_habit, "archive-and-new drops the schedule: that is the whole point of a fork");
+}
+
+#[tokio::test]
+async fn copying_a_flow_item_duplicates_it_with_its_cycle_pairs() {
+    let pool = helpers::test_pool().await;
+    let flow = helpers::session_factory(&pool).connect().await.unwrap().flows().create(create_req("Routine")).await.unwrap();
+    let task = helpers::session_factory(&pool).connect().await.unwrap().flows().create_task(CreateFlowItemRequest {
+        flow_id: flow.id, title: "Step".into(), parent_type: "flow".into(), parent_id: flow.id,
+    }).await.unwrap();
+    {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = db.flows().set_cycles(flow.id, FlowItemType::FlowTask, task.id, &[day_cycle(2), day_cycle(5)]).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }.unwrap();
+
+    let new_id = copy_item(&pool, FlowItemType::FlowTask, task.id, "flow", flow.id).await.unwrap();
+
+    assert_ne!(new_id, task.id);
+    let tasks = helpers::session_factory(&pool).connect().await.unwrap().flows().list_tasks(FlowId(flow.id)).await.unwrap();
+    assert_eq!(tasks.len(), 2);
+    let copy = tasks.iter().find(|t| t.id == new_id).unwrap();
+    assert_eq!(copy.title, "Step");
+    assert_eq!((copy.parent_type.as_str(), copy.parent_id, copy.position), ("flow", flow.id, 3));
+
+    let mut copied: Vec<Option<i64>> =
+        cycles_of(&pool, flow.id).await.iter().filter(|c| c.item_id == new_id).map(|c| c.scope_index).collect();
+    copied.sort();
+    assert_eq!(
+        copied,
+        vec![Some(2), Some(5)],
+        "the offsets are into the same flow window, so they still mean what they meant",
+    );
+}
+
+#[tokio::test]
+async fn copying_a_flow_item_clones_what_is_nested_under_it_and_rewires_it_to_the_copy() {
+    let pool = helpers::test_pool().await;
+    let flow = helpers::session_factory(&pool).connect().await.unwrap().flows().create(create_req("Routine")).await.unwrap();
+    let outside = helpers::session_factory(&pool).connect().await.unwrap().flows().create_task(CreateFlowItemRequest {
+        flow_id: flow.id, title: "Prep".into(), parent_type: "flow".into(), parent_id: flow.id,
+    }).await.unwrap();
+    let goal = helpers::session_factory(&pool).connect().await.unwrap().flows().create_goal(CreateFlowItemRequest {
+        flow_id: flow.id, title: "Block".into(), parent_type: "flow".into(), parent_id: flow.id,
+    }).await.unwrap();
+    let first = helpers::session_factory(&pool).connect().await.unwrap().flows().create_task(CreateFlowItemRequest {
+        flow_id: flow.id, title: "First".into(), parent_type: "flow_goal".into(), parent_id: goal.id,
+    }).await.unwrap();
+    let second = helpers::session_factory(&pool).connect().await.unwrap().flows().create_task(CreateFlowItemRequest {
+        flow_id: flow.id, title: "Second".into(), parent_type: "flow_goal".into(), parent_id: goal.id,
+    }).await.unwrap();
+    let ops = helpers::session_factory(&pool);
+    ops.connect().await.unwrap().flows().add_dependency(flow.id, FlowItemType::FlowTask, second.id, FlowItemType::FlowTask, first.id).await.unwrap();
+    ops.connect().await.unwrap().flows().add_dependency(flow.id, FlowItemType::FlowTask, second.id, FlowItemType::FlowTask, outside.id).await.unwrap();
+
+    let new_goal = copy_item(&pool, FlowItemType::FlowGoal, goal.id, "flow", flow.id).await.unwrap();
+
+    let tasks = helpers::session_factory(&pool).connect().await.unwrap().flows().list_tasks(FlowId(flow.id)).await.unwrap();
+    let copied: Vec<_> = tasks.iter().filter(|t| t.parent_id == new_goal && t.parent_type == "flow_goal").collect();
+    assert_eq!(copied.len(), 2, "both nested items came with the block");
+    let copied_second = copied.iter().find(|t| t.title == "Second").unwrap();
+    let copied_first = copied.iter().find(|t| t.title == "First").unwrap();
+
+    let edges: Vec<i64> = deps_of(&pool, flow.id).await.iter()
+        .filter(|d| d.dependent_id == copied_second.id && d.dependent_type == "flow_task")
+        .map(|d| d.depends_on_id)
+        .collect();
+    assert!(edges.contains(&copied_first.id), "an edge inside the copied block is rewired onto the copy");
+    assert!(edges.contains(&outside.id), "and one leaving it still waits on what it waited on");
+    assert_eq!(edges.len(), 2);
+}
+
+#[tokio::test]
+async fn copying_a_flow_item_into_another_flow_is_refused() {
+    let pool = helpers::test_pool().await;
+    let source = helpers::session_factory(&pool).connect().await.unwrap().flows().create(create_req("Mine")).await.unwrap();
+    let other = helpers::session_factory(&pool).connect().await.unwrap().flows().create(create_req("Theirs")).await.unwrap();
+    let task = helpers::session_factory(&pool).connect().await.unwrap().flows().create_task(CreateFlowItemRequest {
+        flow_id: source.id, title: "Step".into(), parent_type: "flow".into(), parent_id: source.id,
+    }).await.unwrap();
+
+    let refused = copy_item(&pool, FlowItemType::FlowTask, task.id, "flow", other.id).await.unwrap_err();
+
+    assert!(
+        refused.to_string().contains("within its own template"),
+        "the refusal names the reason, not just the fact: {refused}",
+    );
+    assert!(
+        helpers::session_factory(&pool).connect().await.unwrap().flows().list_tasks(FlowId(other.id)).await.unwrap().is_empty(),
+        "and nothing is written",
+    );
+}
+
+#[tokio::test]
+async fn copying_a_goal_item_onto_a_task_item_is_refused_by_name() {
+    let pool = helpers::test_pool().await;
+    let flow = helpers::session_factory(&pool).connect().await.unwrap().flows().create(create_req("Routine")).await.unwrap();
+    let goal = helpers::session_factory(&pool).connect().await.unwrap().flows().create_goal(CreateFlowItemRequest {
+        flow_id: flow.id, title: "Block".into(), parent_type: "flow".into(), parent_id: flow.id,
+    }).await.unwrap();
+    let task = helpers::session_factory(&pool).connect().await.unwrap().flows().create_task(CreateFlowItemRequest {
+        flow_id: flow.id, title: "Step".into(), parent_type: "flow".into(), parent_id: flow.id,
+    }).await.unwrap();
+
+    let refused = copy_item(&pool, FlowItemType::FlowGoal, goal.id, "flow_task", task.id).await.unwrap_err();
+
+    assert!(refused.to_string().contains("holds no goal items"), "{refused}");
+}
+
+#[tokio::test]
+async fn copying_an_item_that_does_not_exist_is_a_not_found() {
+    let pool = helpers::test_pool().await;
+    let flow = helpers::session_factory(&pool).connect().await.unwrap().flows().create(create_req("Routine")).await.unwrap();
+
+    let refused = copy_item(&pool, FlowItemType::FlowTask, 9_999, "flow", flow.id).await.unwrap_err();
+
+    assert!(matches!(refused, FlowError::NotFound(9_999)), "{refused}");
+}
+
+#[tokio::test]
+async fn pasting_a_flow_item_onto_a_real_node_is_refused() {
+    let pool = helpers::test_pool().await;
+    let flow = helpers::session_factory(&pool).connect().await.unwrap().flows().create(create_req("Routine")).await.unwrap();
+    let task = helpers::session_factory(&pool).connect().await.unwrap().flows().create_task(CreateFlowItemRequest {
+        flow_id: flow.id, title: "Step".into(), parent_type: "flow".into(), parent_id: flow.id,
+    }).await.unwrap();
+
+    let refused = copy_item(&pool, FlowItemType::FlowTask, task.id, "goal", 1).await.unwrap_err();
+
+    assert!(refused.to_string().contains("cannot hold a flow item"), "{refused}");
+}
+
+#[tokio::test]
+async fn a_flow_item_can_be_pasted_onto_another_item_inside_the_same_flow() {
+    let pool = helpers::test_pool().await;
+    let flow = helpers::session_factory(&pool).connect().await.unwrap().flows().create(create_req("Routine")).await.unwrap();
+    let goal = helpers::session_factory(&pool).connect().await.unwrap().flows().create_goal(CreateFlowItemRequest {
+        flow_id: flow.id, title: "Block".into(), parent_type: "flow".into(), parent_id: flow.id,
+    }).await.unwrap();
+    let task = helpers::session_factory(&pool).connect().await.unwrap().flows().create_task(CreateFlowItemRequest {
+        flow_id: flow.id, title: "Step".into(), parent_type: "flow".into(), parent_id: flow.id,
+    }).await.unwrap();
+
+    let new_id = copy_item(&pool, FlowItemType::FlowTask, task.id, "flow_goal", goal.id).await.unwrap();
+
+    let tasks = helpers::session_factory(&pool).connect().await.unwrap().flows().list_tasks(FlowId(flow.id)).await.unwrap();
+    let copy = tasks.iter().find(|t| t.id == new_id).unwrap();
+    assert_eq!((copy.parent_type.as_str(), copy.parent_id), ("flow_goal", goal.id));
+    let original = tasks.iter().find(|t| t.id == task.id).unwrap();
+    assert_eq!(original.parent_type, "flow", "the original stays where it was");
 }

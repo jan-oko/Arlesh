@@ -4,7 +4,7 @@ import type { CommitmentListRow } from "@/utils/list-filter";
 import { deriveStatusIndicators } from "@/utils/node-status-indicators";
 import { computeNodeAppearance } from "@/utils/node-visuals";
 import { useTagNames } from "@/hooks/use-tag-names";
-import { VERDICT } from "@/api/commitments";
+import { VERDICT } from "@/api/verdict";
 import VerdictIcon from "@/components/StatusIcons/VerdictIcon";
 import TaskRowBadges from "./TaskRowBadges";
 import taskStyles from "./TaskRow.module.css";
@@ -19,7 +19,6 @@ interface Props {
   onMarkKept: (nodeId: string) => void;
   onMarkBroken: (nodeId: string) => void;
   onOpenEditor: (nodeId: string) => void;
-  onAddParentFilter: (parentRef: string) => void;
   onAddTagFilter: (tagId: number) => void;
 }
 
@@ -32,12 +31,11 @@ interface Props {
  * verdict, which is how a misclick is taken back.
  */
 export default function CommitmentRow({
-  row, isSelected, onSelect, onMarkKept, onMarkBroken, onOpenEditor, onAddParentFilter, onAddTagFilter,
+  row, isSelected, onSelect, onMarkKept, onMarkBroken, onOpenEditor, onAddTagFilter,
 }: Props) {
   const { t } = useTranslation("listView");
   const tagNames = useTagNames();
   const { node } = row;
-  const parent = row.ancestors[row.ancestors.length - 1];
   const verdict = node.verdict ?? VERDICT.UNRESOLVED;
 
   const { fillColor, fillOpacity } = computeNodeAppearance(node, row.ancestors.length);
@@ -98,18 +96,8 @@ export default function CommitmentRow({
           <TaskRowBadges node={node} indicators={deriveStatusIndicators(node)} />
         </div>
 
-        {(parent !== undefined || node.tagIds.length > 0) && (
+        {node.tagIds.length > 0 && (
           <div className={taskStyles.metaRow}>
-            {parent !== undefined && (
-              <button
-                type="button"
-                className={taskStyles.parentLabel}
-                title={t("filterByParent")}
-                onClick={() => onAddParentFilter(row.parentRef)}
-              >
-                {parent.title}
-              </button>
-            )}
             {node.tagIds.map((tagId) => (
               <button
                 key={tagId}
