@@ -10,7 +10,9 @@ Domain or knowledge-base entry.
 
 The endpoint is hosted by the app itself, not a separate process, so there is only ever one writer
 to the database and the agent sees exactly what the open window sees. The cost is that it answers
-nothing while Arlesh is closed.
+nothing while Arlesh is **not running** — which, since closing the window only hides it to the tray
+([Window & Tray](window-tray.md)), now takes a deliberate Quit rather than a reflexive click on the
+close button.
 
 **Address.** `http://127.0.0.1:4747/mcp`, overridable with the `ARLESH_MCP_PORT` environment
 variable. It binds loopback only and rejects any request carrying an `Origin` header, so a page in
