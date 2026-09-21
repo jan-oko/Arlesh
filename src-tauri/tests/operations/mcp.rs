@@ -248,7 +248,7 @@ async fn snapshot_returns_what_the_mindmap_command_returns() {
     seed(&app).await;
 
     let result = mcp
-        .snapshot(Parameters(params::SnapshotOperation::Load { now: now(), sections: None, cursor: None }))
+        .snapshot(Parameters(params::SnapshotOperation::Load { now: now(), sections: None, cursor: None, filter: None }))
         .await
         .unwrap();
 
@@ -277,6 +277,66 @@ async fn snapshot_returns_what_the_mindmap_command_returns() {
 }
 
 #[tokio::test]
+async fn snapshot_narrows_to_the_status_preset_it_is_given() {
+    use arlesh_lib::filters::model::{BoardFilter, Preset};
+
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    let task_id = seed(&app).await;
+
+    // The seeded task is To Do, so Do should hold nothing at all while Plan still holds it. The
+    // preset rules themselves are pinned by the shared conformance corpus; what this proves is
+    // that the tool reaches them, and that it cuts the derived sections to match.
+    let planned = mcp
+        .snapshot(Parameters(params::SnapshotOperation::Load {
+            now: now(),
+            sections: None,
+            cursor: None,
+            filter: Some(BoardFilter::preset(Preset::Plan)),
+        }))
+        .await
+        .unwrap();
+    assert_eq!(task_ids(&planned), vec![task_id]);
+
+    let doing = mcp
+        .snapshot(Parameters(params::SnapshotOperation::Load {
+            now: now(),
+            sections: None,
+            cursor: None,
+            filter: Some(BoardFilter::preset(Preset::Do)),
+        }))
+        .await
+        .unwrap();
+    assert!(task_ids(&doing).is_empty(), "a To Do task is not in progress");
+    assert!(
+        payload(&doing)
+            .get("lifecycles")
+            .and_then(|section| section.as_array())
+            .is_some_and(|items| items.is_empty()),
+        "the derived sections are cut to the nodes that survived"
+    );
+    assert!(
+        payload(&doing)
+            .get("goals")
+            .and_then(|section| section.as_array())
+            .is_some_and(|items| items.is_empty()),
+        "a goal shows only as the ancestor of a content match, and there is none"
+    );
+}
+
+/// The ids in a snapshot payload's `tasks` section.
+fn task_ids(result: &CallToolResult) -> Vec<i64> {
+    payload(result)
+        .get("tasks")
+        .and_then(|section| section.as_array())
+        .expect("the payload carries a tasks section")
+        .iter()
+        .filter_map(|task| task.get("id").and_then(serde_json::Value::as_i64))
+        .collect()
+}
+
+#[tokio::test]
 async fn snapshot_commits_rather_than_rolling_back() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
@@ -293,7 +353,7 @@ async fn snapshot_commits_rather_than_rolling_back() {
         .unwrap();
 
     let result = mcp
-        .snapshot(Parameters(params::SnapshotOperation::Load { now: now(), sections: None, cursor: None }))
+        .snapshot(Parameters(params::SnapshotOperation::Load { now: now(), sections: None, cursor: None, filter: None }))
         .await
         .unwrap();
     assert_ne!(result.is_error, Some(true));
@@ -770,7 +830,7 @@ async fn the_snapshot_carries_a_beads_id_once_it_is_set() {
     // The whole point of the field: an agent sets the link and then sees it in the same payload it
     // reads everything else from, without a per-item lookup.
     let snapshot = mcp
-        .snapshot(Parameters(params::SnapshotOperation::Load { now: now(), sections: None, cursor: None }))
+        .snapshot(Parameters(params::SnapshotOperation::Load { now: now(), sections: None, cursor: None, filter: None }))
         .await
         .unwrap();
 
@@ -911,6 +971,7 @@ async fn page_of(
             now: now(),
             sections,
             cursor,
+            filter: None,
         }))
         .await
         .unwrap();
@@ -1059,6 +1120,7 @@ async fn a_cursor_the_server_never_issued_is_refused() {
                 now: now(),
                 sections: None,
                 cursor: Some(bad.into()),
+                filter: None,
             }))
             .await
             .unwrap();
@@ -1082,6 +1144,7 @@ async fn an_empty_sections_list_is_refused_rather_than_returning_nothing() {
             now: now(),
             sections: Some(vec![]),
             cursor: None,
+            filter: None,
         }))
         .await
         .unwrap();

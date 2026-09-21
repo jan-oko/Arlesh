@@ -8,6 +8,7 @@ pub mod database;
 pub mod domains;
 pub mod duplicate;
 pub mod error;
+pub mod filters;
 pub mod flows;
 pub mod icon;
 pub mod infos;

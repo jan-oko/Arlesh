@@ -1,0 +1,1195 @@
+{
+  "about": [
+    "The status presets, written as data: one board, one filter, and what each surface keeps.",
+    "",
+    "Both evaluators replay it. `src-tauri/tests/operations/preset_conformance.rs` runs every case",
+    "through `crate::filters`; `src/utils/preset-conformance.test.ts` runs the same case through",
+    "`filter-tree.ts` and `list-filter.ts`. Neither side generates this file, so a rule changed in",
+    "one language and not the other turns the other language red on the case it broke.",
+    "",
+    "A node carries only the facts a filter reads. `hasTodoChild` is never written here: both sides",
+    "derive it from the node's own children, because that is what the rule is about. The `root`",
+    "node frames each board — it is never a row and never appears in an expectation.",
+    "",
+    "`filter.preset` is the shared status preset. `filter.unblock` is the List View's sixth option,",
+    "which does not replace the preset: it leaves it where it was and adds `blocked rows only`."
+  ],
+  "cases": [
+    {
+      "name": "all shows the whole board",
+      "spec": "mindmap-view.md — All shows everything, containers included.",
+      "filter": {
+        "preset": "all"
+      },
+      "board": "mixed",
+      "mindmap": [
+        "commitment-broken-lapsed",
+        "commitment-broken-open",
+        "commitment-kept",
+        "commitment-unresolved",
+        "domain-achieved",
+        "domain-active",
+        "domain-empty-active",
+        "domain-frozen",
+        "goal-achieved",
+        "goal-live",
+        "info-note",
+        "task-backlogged",
+        "task-blocked",
+        "task-done",
+        "task-inprogress-bare",
+        "task-inprogress-parent",
+        "task-inside-achieved",
+        "task-inside-frozen",
+        "task-lapsed",
+        "task-todo",
+        "task-todo-child",
+        "task-under-achieved-goal",
+        "task-under-backlogged",
+        "task-under-blocked"
+      ],
+      "list": [
+        "task-backlogged",
+        "task-blocked",
+        "task-done",
+        "task-inprogress-bare",
+        "task-inprogress-parent",
+        "task-inside-achieved",
+        "task-inside-frozen",
+        "task-lapsed",
+        "task-todo",
+        "task-todo-child",
+        "task-under-achieved-goal",
+        "task-under-backlogged",
+        "task-under-blocked"
+      ],
+      "commitments": [
+        "commitment-broken-lapsed",
+        "commitment-broken-open",
+        "commitment-kept",
+        "commitment-unresolved"
+      ]
+    },
+    {
+      "name": "plan hides done tasks, resolved goals and effectively-archived items",
+      "spec": "mindmap-view.md — Plan: hide done tasks, achieved/frozen/archived goals, and anything whose effective Archival is Archived. A Frozen or Archived Project goes with its whole subtree; Achieved keeps ordinary ancestor-keeping. An active Aspect/Domain/Project shows on its own.",
+      "filter": {
+        "preset": "plan"
+      },
+      "board": "mixed",
+      "mindmap": [
+        "commitment-broken-open",
+        "commitment-unresolved",
+        "domain-achieved",
+        "domain-active",
+        "domain-empty-active",
+        "goal-achieved",
+        "goal-live",
+        "task-blocked",
+        "task-inprogress-bare",
+        "task-inprogress-parent",
+        "task-inside-achieved",
+        "task-todo",
+        "task-todo-child",
+        "task-under-achieved-goal",
+        "task-under-blocked"
+      ],
+      "list": [
+        "task-blocked",
+        "task-inprogress-bare",
+        "task-inprogress-parent",
+        "task-inside-achieved",
+        "task-todo",
+        "task-todo-child",
+        "task-under-achieved-goal",
+        "task-under-blocked"
+      ],
+      "commitments": [
+        "commitment-broken-open",
+        "commitment-unresolved"
+      ]
+    },
+    {
+      "name": "start drops lapsed windows, bare in-progress tasks and blocked subtrees",
+      "spec": "mindmap-view.md — Start: Plan, minus in-progress tasks with no todo child, minus Timing-Lapsed items, minus Habit flow nodes; a blocked task/goal is dropped together with its whole subtree. A container shows only as the ancestor of a content match.",
+      "filter": {
+        "preset": "start"
+      },
+      "board": "mixed",
+      "mindmap": [
+        "commitment-unresolved",
+        "domain-achieved",
+        "domain-active",
+        "goal-achieved",
+        "goal-live",
+        "task-inprogress-parent",
+        "task-inside-achieved",
+        "task-todo",
+        "task-todo-child",
+        "task-under-achieved-goal"
+      ],
+      "list": [
+        "task-inprogress-parent",
+        "task-inside-achieved",
+        "task-todo",
+        "task-todo-child",
+        "task-under-achieved-goal"
+      ],
+      "commitments": [
+        "commitment-unresolved"
+      ]
+    },
+    {
+      "name": "do shows in-progress tasks and the containers carrying them",
+      "spec": "mindmap-view.md — Do: only in-progress tasks; goals and structure appear solely as ancestors.",
+      "filter": {
+        "preset": "do"
+      },
+      "board": "mixed",
+      "mindmap": [
+        "commitment-unresolved",
+        "domain-active",
+        "goal-live",
+        "task-inprogress-bare",
+        "task-inprogress-parent"
+      ],
+      "list": [
+        "task-inprogress-bare",
+        "task-inprogress-parent"
+      ],
+      "commitments": [
+        "commitment-unresolved"
+      ]
+    },
+    {
+      "name": "backlog shows what was set aside, and everything beneath it",
+      "spec": "resources.md — Backlog: only Tasks deliberately set aside, together with their whole subtrees. A Commitment has no Backlog state to be in.",
+      "filter": {
+        "preset": "backlog"
+      },
+      "board": "mixed",
+      "mindmap": [
+        "domain-active",
+        "goal-live",
+        "task-backlogged",
+        "task-under-backlogged"
+      ],
+      "list": [
+        "task-backlogged",
+        "task-under-backlogged"
+      ],
+      "commitments": []
+    },
+    {
+      "name": "unblock over all shows every blocked task and empties the commitments band",
+      "spec": "list-view.md — Unblock shows every blocked task, List-View-only, and leaves the shared preset alone. Unblock and Backlog leave the commitments section empty.",
+      "filter": {
+        "preset": "all",
+        "unblock": true
+      },
+      "board": "mixed",
+      "mindmap": [
+        "commitment-broken-lapsed",
+        "commitment-broken-open",
+        "commitment-kept",
+        "commitment-unresolved",
+        "domain-achieved",
+        "domain-active",
+        "domain-empty-active",
+        "domain-frozen",
+        "goal-achieved",
+        "goal-live",
+        "info-note",
+        "task-backlogged",
+        "task-blocked",
+        "task-done",
+        "task-inprogress-bare",
+        "task-inprogress-parent",
+        "task-inside-achieved",
+        "task-inside-frozen",
+        "task-lapsed",
+        "task-todo",
+        "task-todo-child",
+        "task-under-achieved-goal",
+        "task-under-backlogged",
+        "task-under-blocked"
+      ],
+      "list": [
+        "task-blocked"
+      ],
+      "commitments": []
+    },
+    {
+      "name": "unblock over start hides the very rows it exists to show",
+      "spec": "DIVERGENCE — list-view.md promises Unblock shows every blocked task, but Unblock does not write through to the shared preset, and Start hard-hides a blocked node together with its subtree. Reproduced from the shipped frontend, not adopted as the rule.",
+      "filter": {
+        "preset": "start",
+        "unblock": true
+      },
+      "board": "mixed",
+      "mindmap": [
+        "commitment-unresolved",
+        "domain-achieved",
+        "domain-active",
+        "goal-achieved",
+        "goal-live",
+        "task-inprogress-parent",
+        "task-inside-achieved",
+        "task-todo",
+        "task-todo-child",
+        "task-under-achieved-goal"
+      ],
+      "list": [],
+      "commitments": []
+    },
+    {
+      "name": "the archived pill on include force-shows archived items under plan",
+      "spec": "mindmap-view.md — Archived Include force-shows archived items even under Plan/Start.",
+      "filter": {
+        "preset": "plan",
+        "archived": "include"
+      },
+      "board": "mixed",
+      "mindmap": [
+        "commitment-broken-open",
+        "commitment-unresolved",
+        "domain-achieved",
+        "domain-active",
+        "domain-empty-active",
+        "goal-achieved",
+        "goal-live",
+        "info-note",
+        "task-blocked",
+        "task-inprogress-bare",
+        "task-inprogress-parent",
+        "task-inside-achieved",
+        "task-lapsed",
+        "task-todo",
+        "task-todo-child",
+        "task-under-achieved-goal",
+        "task-under-blocked"
+      ],
+      "list": [
+        "task-blocked",
+        "task-inprogress-bare",
+        "task-inprogress-parent",
+        "task-inside-achieved",
+        "task-lapsed",
+        "task-todo",
+        "task-todo-child",
+        "task-under-achieved-goal",
+        "task-under-blocked"
+      ],
+      "commitments": [
+        "commitment-broken-open",
+        "commitment-unresolved"
+      ]
+    },
+    {
+      "name": "the archived pill on exclude hides archived subtrees even under all",
+      "spec": "mindmap-view.md — Archived Exclude force-hides archived items even under All, hard-hiding the whole subtree.",
+      "filter": {
+        "preset": "all",
+        "archived": "exclude"
+      },
+      "board": "mixed",
+      "mindmap": [
+        "commitment-broken-lapsed",
+        "commitment-broken-open",
+        "commitment-kept",
+        "commitment-unresolved",
+        "domain-achieved",
+        "domain-active",
+        "domain-empty-active",
+        "domain-frozen",
+        "goal-achieved",
+        "goal-live",
+        "task-backlogged",
+        "task-blocked",
+        "task-done",
+        "task-inprogress-bare",
+        "task-inprogress-parent",
+        "task-inside-achieved",
+        "task-inside-frozen",
+        "task-todo",
+        "task-todo-child",
+        "task-under-achieved-goal",
+        "task-under-backlogged",
+        "task-under-blocked"
+      ],
+      "list": [
+        "task-backlogged",
+        "task-blocked",
+        "task-done",
+        "task-inprogress-bare",
+        "task-inprogress-parent",
+        "task-inside-achieved",
+        "task-inside-frozen",
+        "task-todo",
+        "task-todo-child",
+        "task-under-achieved-goal",
+        "task-under-backlogged",
+        "task-under-blocked"
+      ],
+      "commitments": [
+        "commitment-broken-lapsed",
+        "commitment-broken-open",
+        "commitment-kept",
+        "commitment-unresolved"
+      ]
+    },
+    {
+      "name": "the backlog pill on include force-shows set-aside work under plan",
+      "spec": "resources.md / mindmap-view.md — Backlog Include force-shows backlogged Tasks under Plan/Start.",
+      "filter": {
+        "preset": "plan",
+        "backlog": "include"
+      },
+      "board": "mixed",
+      "mindmap": [
+        "commitment-broken-open",
+        "commitment-unresolved",
+        "domain-achieved",
+        "domain-active",
+        "domain-empty-active",
+        "goal-achieved",
+        "goal-live",
+        "task-backlogged",
+        "task-blocked",
+        "task-inprogress-bare",
+        "task-inprogress-parent",
+        "task-inside-achieved",
+        "task-todo",
+        "task-todo-child",
+        "task-under-achieved-goal",
+        "task-under-backlogged",
+        "task-under-blocked"
+      ],
+      "list": [
+        "task-backlogged",
+        "task-blocked",
+        "task-inprogress-bare",
+        "task-inprogress-parent",
+        "task-inside-achieved",
+        "task-todo",
+        "task-todo-child",
+        "task-under-achieved-goal",
+        "task-under-backlogged",
+        "task-under-blocked"
+      ],
+      "commitments": [
+        "commitment-broken-open",
+        "commitment-unresolved"
+      ]
+    },
+    {
+      "name": "the backlog pill on exclude hides set-aside subtrees even under all",
+      "spec": "resources.md / mindmap-view.md — Backlog Exclude force-hides backlogged Tasks even under All, subtree and all.",
+      "filter": {
+        "preset": "all",
+        "backlog": "exclude"
+      },
+      "board": "mixed",
+      "mindmap": [
+        "commitment-broken-lapsed",
+        "commitment-broken-open",
+        "commitment-kept",
+        "commitment-unresolved",
+        "domain-achieved",
+        "domain-active",
+        "domain-empty-active",
+        "domain-frozen",
+        "goal-achieved",
+        "goal-live",
+        "info-note",
+        "task-blocked",
+        "task-done",
+        "task-inprogress-bare",
+        "task-inprogress-parent",
+        "task-inside-achieved",
+        "task-inside-frozen",
+        "task-lapsed",
+        "task-todo",
+        "task-todo-child",
+        "task-under-achieved-goal",
+        "task-under-blocked"
+      ],
+      "list": [
+        "task-blocked",
+        "task-done",
+        "task-inprogress-bare",
+        "task-inprogress-parent",
+        "task-inside-achieved",
+        "task-inside-frozen",
+        "task-lapsed",
+        "task-todo",
+        "task-todo-child",
+        "task-under-achieved-goal",
+        "task-under-blocked"
+      ],
+      "commitments": [
+        "commitment-broken-lapsed",
+        "commitment-broken-open",
+        "commitment-kept",
+        "commitment-unresolved"
+      ]
+    },
+    {
+      "name": "private mode off hard-hides a private subtree under all",
+      "spec": "mindmap-view.md — while Private Mode is off, every node marked Private is hard-hidden together with its whole subtree.",
+      "filter": {
+        "preset": "all"
+      },
+      "board": "private",
+      "mindmap": [
+        "domain-open",
+        "task-open"
+      ],
+      "list": [
+        "task-open"
+      ],
+      "commitments": []
+    },
+    {
+      "name": "private mode on reveals the private subtree",
+      "spec": "mindmap-view.md — turning Private Mode on reveals them.",
+      "filter": {
+        "preset": "all",
+        "privateMode": true
+      },
+      "board": "private",
+      "mindmap": [
+        "commitment-under-private",
+        "domain-open",
+        "domain-private",
+        "task-open",
+        "task-under-private"
+      ],
+      "list": [
+        "task-open",
+        "task-under-private"
+      ],
+      "commitments": [
+        "commitment-under-private"
+      ]
+    },
+    {
+      "name": "a tag filter in any mode keeps only the tagged content",
+      "spec": "filtering-logic.md — (union of Any-filters) AND (intersection of All-filters) AND NOT (union of Exclusion-filters).",
+      "filter": {
+        "preset": "all",
+        "tags": [
+          {
+            "tagId": 7,
+            "mode": "any"
+          }
+        ]
+      },
+      "board": "tags",
+      "mindmap": [
+        "commitment-tag-7",
+        "domain-tagged",
+        "task-tag-7",
+        "task-tag-7-8"
+      ],
+      "list": [
+        "task-tag-7",
+        "task-tag-7-8"
+      ],
+      "commitments": [
+        "commitment-tag-7"
+      ]
+    },
+    {
+      "name": "a tag filter in exclusion mode drops the tagged content",
+      "spec": "filtering-logic.md — Exclusion: item must not match any Exclusion-mode filter.",
+      "filter": {
+        "preset": "all",
+        "tags": [
+          {
+            "tagId": 7,
+            "mode": "exclude"
+          }
+        ]
+      },
+      "board": "tags",
+      "mindmap": [
+        "domain-tagged",
+        "task-tag-8",
+        "task-untagged"
+      ],
+      "list": [
+        "task-tag-8",
+        "task-untagged"
+      ],
+      "commitments": []
+    },
+    {
+      "name": "two tag filters in all mode need both tags",
+      "spec": "filtering-logic.md — All: item must match every All-mode filter.",
+      "filter": {
+        "preset": "all",
+        "tags": [
+          {
+            "tagId": 7,
+            "mode": "all"
+          },
+          {
+            "tagId": 8,
+            "mode": "all"
+          }
+        ]
+      },
+      "board": "tags",
+      "mindmap": [
+        "domain-tagged",
+        "task-tag-7-8"
+      ],
+      "list": [
+        "task-tag-7-8"
+      ],
+      "commitments": []
+    },
+    {
+      "name": "info notes ride along but never keep a node on screen",
+      "spec": "mindmap-view.md — Info notes are attachments: they ride along with a kept node but never keep one.",
+      "filter": {
+        "preset": "plan"
+      },
+      "board": "notes",
+      "mindmap": [
+        "goal-live-with-note",
+        "info-on-live",
+        "task-beside-note"
+      ],
+      "list": [
+        "task-beside-note"
+      ],
+      "commitments": []
+    },
+    {
+      "name": "start hides a habit flow and everything in it",
+      "spec": "mindmap-view.md — Start drops Habit flow nodes.",
+      "filter": {
+        "preset": "start"
+      },
+      "board": "flows",
+      "mindmap": [
+        "domain-with-flows",
+        "flow-plain",
+        "flow_task-plain-item",
+        "task-beside-flows"
+      ],
+      "list": [
+        "task-beside-flows"
+      ],
+      "commitments": []
+    },
+    {
+      "name": "plan keeps flows while the include-flows subtoggle is on",
+      "spec": "mindmap-view.md — an Include flows subtoggle, shown only in Plan/Start.",
+      "filter": {
+        "preset": "plan"
+      },
+      "board": "flows",
+      "mindmap": [
+        "domain-with-flows",
+        "flow-habit",
+        "flow-plain",
+        "flow_task-habit-item",
+        "flow_task-plain-item",
+        "task-beside-flows"
+      ],
+      "list": [
+        "task-beside-flows"
+      ],
+      "commitments": []
+    },
+    {
+      "name": "plan drops flows once the include-flows subtoggle is off",
+      "spec": "mindmap-view.md — both the global Flow toggle and the per-preset subtoggle must be on for flows to show.",
+      "filter": {
+        "preset": "plan",
+        "includeFlows": false
+      },
+      "board": "flows",
+      "mindmap": [
+        "domain-with-flows",
+        "task-beside-flows"
+      ],
+      "list": [
+        "task-beside-flows"
+      ],
+      "commitments": []
+    },
+    {
+      "name": "an unopened habit occurrence shows under all",
+      "spec": "habits.md — an occurrence whose window has not opened is Pending, and All shows it.",
+      "filter": {
+        "preset": "all"
+      },
+      "board": "occurrences",
+      "mindmap": [
+        "commitment-under-unopened",
+        "domain-habit",
+        "goal-occurrence-open",
+        "goal-occurrence-unopened",
+        "task-occurrence-open-item",
+        "task-occurrence-unopened-item"
+      ],
+      "list": [
+        "task-occurrence-open-item",
+        "task-occurrence-unopened-item"
+      ],
+      "commitments": [
+        "commitment-under-unopened"
+      ]
+    },
+    {
+      "name": "plan hides an unopened habit occurrence and its subtree",
+      "spec": "habits.md — Plan, Start and Do hide it, together with its own subtree.",
+      "filter": {
+        "preset": "plan"
+      },
+      "board": "occurrences",
+      "mindmap": [
+        "domain-habit",
+        "goal-occurrence-open",
+        "task-occurrence-open-item"
+      ],
+      "list": [
+        "task-occurrence-open-item"
+      ],
+      "commitments": [
+        "commitment-under-unopened"
+      ]
+    },
+    {
+      "name": "a status-less container inherits its nearest status-bearing ancestor",
+      "spec": "mindmap-view.md — a status-less container inherits the nearest status-bearing ancestor's status; one with no status-bearing ancestor at all reads as Active.",
+      "filter": {
+        "preset": "plan"
+      },
+      "board": "inheritance",
+      "mindmap": [
+        "domain-inside-active",
+        "domain-unparented",
+        "project-active"
+      ],
+      "list": [],
+      "commitments": []
+    },
+    {
+      "name": "do shows a backlogged in-progress task",
+      "spec": "GAP — resources.md says a backlogged Task is hidden from Plan and Start, shown under All and browsable under Backlog. It says nothing about Do, and Do shows it.",
+      "filter": {
+        "preset": "do"
+      },
+      "board": "do-edges",
+      "mindmap": [
+        "domain-do",
+        "task-inprogress-archived",
+        "task-inprogress-backlogged",
+        "task-inprogress-plain"
+      ],
+      "list": [
+        "task-inprogress-archived",
+        "task-inprogress-backlogged",
+        "task-inprogress-plain"
+      ],
+      "commitments": []
+    },
+    {
+      "name": "the archived pill on exclude still hides an archived task under do",
+      "spec": "DIVERGENCE — mindmap-view.md says the Archived pill has no effect under Do. Exclude's hard-hide runs under every preset, so it does.",
+      "filter": {
+        "preset": "do",
+        "archived": "exclude"
+      },
+      "board": "do-edges",
+      "mindmap": [
+        "domain-do",
+        "task-inprogress-backlogged",
+        "task-inprogress-plain"
+      ],
+      "list": [
+        "task-inprogress-backlogged",
+        "task-inprogress-plain"
+      ],
+      "commitments": []
+    },
+    {
+      "name": "the archived pill on include force-shows an archived commitment under do",
+      "spec": "DIVERGENCE — mindmap-view.md says the Archived pill has no effect under Do. The Commitment branch runs the override, so Include force-shows one.",
+      "filter": {
+        "preset": "do",
+        "archived": "include"
+      },
+      "board": "do-edges",
+      "mindmap": [
+        "commitment-archived",
+        "domain-do",
+        "task-inprogress-archived",
+        "task-inprogress-backlogged",
+        "task-inprogress-plain"
+      ],
+      "list": [
+        "task-inprogress-archived",
+        "task-inprogress-backlogged",
+        "task-inprogress-plain"
+      ],
+      "commitments": [
+        "commitment-archived"
+      ]
+    },
+    {
+      "name": "a commitment under an unopened occurrence survives the preset that hid its parent",
+      "spec": "DIVERGENCE — habits.md hides an unopened occurrence together with its own subtree, and the Mindmap and the task rows both do. The commitments band does not walk for it, so the row stays.",
+      "filter": {
+        "preset": "plan"
+      },
+      "board": "occurrences",
+      "mindmap": [
+        "domain-habit",
+        "goal-occurrence-open",
+        "task-occurrence-open-item"
+      ],
+      "list": [
+        "task-occurrence-open-item"
+      ],
+      "commitments": [
+        "commitment-under-unopened"
+      ]
+    }
+  ],
+  "boards": {
+    "mixed": {
+      "id": "root",
+      "kind": "aspect",
+      "children": [
+        {
+          "id": "domain-active",
+          "kind": "project",
+          "status": "active",
+          "children": [
+            {
+              "id": "goal-live",
+              "kind": "goal",
+              "status": "active",
+              "children": [
+                {
+                  "id": "task-todo",
+                  "kind": "task",
+                  "status": "todo"
+                },
+                {
+                  "id": "task-inprogress-parent",
+                  "kind": "task",
+                  "status": "in_progress",
+                  "children": [
+                    {
+                      "id": "task-todo-child",
+                      "kind": "task",
+                      "status": "todo"
+                    }
+                  ]
+                },
+                {
+                  "id": "task-inprogress-bare",
+                  "kind": "task",
+                  "status": "in_progress"
+                },
+                {
+                  "id": "task-done",
+                  "kind": "task",
+                  "status": "done"
+                },
+                {
+                  "id": "task-blocked",
+                  "kind": "task",
+                  "status": "todo",
+                  "isBlocked": true,
+                  "children": [
+                    {
+                      "id": "task-under-blocked",
+                      "kind": "task",
+                      "status": "todo"
+                    }
+                  ]
+                },
+                {
+                  "id": "task-backlogged",
+                  "kind": "task",
+                  "status": "todo",
+                  "backlogged": true,
+                  "children": [
+                    {
+                      "id": "task-under-backlogged",
+                      "kind": "task",
+                      "status": "todo"
+                    }
+                  ]
+                },
+                {
+                  "id": "task-lapsed",
+                  "kind": "task",
+                  "status": "todo",
+                  "timing": "lapsed",
+                  "archived": true,
+                  "children": [
+                    {
+                      "id": "info-note",
+                      "kind": "info"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "commitment-unresolved",
+              "kind": "commitment",
+              "verdict": "unresolved",
+              "timing": "active"
+            }
+          ]
+        },
+        {
+          "id": "domain-frozen",
+          "kind": "project",
+          "status": "frozen",
+          "children": [
+            {
+              "id": "task-inside-frozen",
+              "kind": "task",
+              "status": "todo"
+            }
+          ]
+        },
+        {
+          "id": "domain-achieved",
+          "kind": "project",
+          "status": "achieved",
+          "children": [
+            {
+              "id": "task-inside-achieved",
+              "kind": "task",
+              "status": "todo"
+            }
+          ]
+        },
+        {
+          "id": "domain-empty-active",
+          "kind": "domain"
+        },
+        {
+          "id": "goal-achieved",
+          "kind": "goal",
+          "status": "achieved",
+          "children": [
+            {
+              "id": "task-under-achieved-goal",
+              "kind": "task",
+              "status": "todo"
+            }
+          ]
+        },
+        {
+          "id": "commitment-kept",
+          "kind": "commitment",
+          "verdict": "kept",
+          "timing": "active"
+        },
+        {
+          "id": "commitment-broken-open",
+          "kind": "commitment",
+          "verdict": "broken",
+          "timing": "active"
+        },
+        {
+          "id": "commitment-broken-lapsed",
+          "kind": "commitment",
+          "verdict": "broken",
+          "timing": "lapsed"
+        }
+      ]
+    },
+    "private": {
+      "id": "root",
+      "kind": "aspect",
+      "children": [
+        {
+          "id": "domain-open",
+          "kind": "domain",
+          "children": [
+            {
+              "id": "task-open",
+              "kind": "task",
+              "status": "todo"
+            }
+          ]
+        },
+        {
+          "id": "domain-private",
+          "kind": "domain",
+          "isPrivate": true,
+          "children": [
+            {
+              "id": "task-under-private",
+              "kind": "task",
+              "status": "todo"
+            },
+            {
+              "id": "commitment-under-private",
+              "kind": "commitment",
+              "verdict": "unresolved",
+              "timing": "active"
+            }
+          ]
+        }
+      ]
+    },
+    "tags": {
+      "id": "root",
+      "kind": "aspect",
+      "children": [
+        {
+          "id": "domain-tagged",
+          "kind": "domain",
+          "children": [
+            {
+              "id": "task-untagged",
+              "kind": "task",
+              "status": "todo"
+            },
+            {
+              "id": "task-tag-7",
+              "kind": "task",
+              "status": "todo",
+              "tagIds": [
+                7
+              ]
+            },
+            {
+              "id": "task-tag-8",
+              "kind": "task",
+              "status": "todo",
+              "tagIds": [
+                8
+              ]
+            },
+            {
+              "id": "task-tag-7-8",
+              "kind": "task",
+              "status": "todo",
+              "tagIds": [
+                7,
+                8
+              ]
+            },
+            {
+              "id": "commitment-tag-7",
+              "kind": "commitment",
+              "verdict": "unresolved",
+              "timing": "active",
+              "tagIds": [
+                7
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "notes": {
+      "id": "root",
+      "kind": "aspect",
+      "children": [
+        {
+          "id": "goal-achieved-with-note",
+          "kind": "goal",
+          "status": "achieved",
+          "children": [
+            {
+              "id": "info-on-achieved",
+              "kind": "info"
+            }
+          ]
+        },
+        {
+          "id": "goal-live-with-note",
+          "kind": "goal",
+          "status": "active",
+          "children": [
+            {
+              "id": "info-on-live",
+              "kind": "info"
+            },
+            {
+              "id": "task-beside-note",
+              "kind": "task",
+              "status": "todo"
+            }
+          ]
+        }
+      ]
+    },
+    "flows": {
+      "id": "root",
+      "kind": "aspect",
+      "children": [
+        {
+          "id": "domain-with-flows",
+          "kind": "domain",
+          "children": [
+            {
+              "id": "flow-habit",
+              "kind": "flow",
+              "isHabitFlow": true,
+              "children": [
+                {
+                  "id": "flow_task-habit-item",
+                  "kind": "flow_task",
+                  "status": "todo"
+                }
+              ]
+            },
+            {
+              "id": "flow-plain",
+              "kind": "flow",
+              "children": [
+                {
+                  "id": "flow_task-plain-item",
+                  "kind": "flow_task",
+                  "status": "todo"
+                }
+              ]
+            },
+            {
+              "id": "task-beside-flows",
+              "kind": "task",
+              "status": "todo"
+            }
+          ]
+        }
+      ]
+    },
+    "occurrences": {
+      "id": "root",
+      "kind": "aspect",
+      "children": [
+        {
+          "id": "domain-habit",
+          "kind": "domain",
+          "children": [
+            {
+              "id": "goal-occurrence-open",
+              "kind": "goal",
+              "status": "active",
+              "isHabitOccurrence": true,
+              "timing": "active",
+              "children": [
+                {
+                  "id": "task-occurrence-open-item",
+                  "kind": "task",
+                  "status": "todo",
+                  "isHabitOccurrence": true,
+                  "timing": "active"
+                }
+              ]
+            },
+            {
+              "id": "goal-occurrence-unopened",
+              "kind": "goal",
+              "status": "active",
+              "isHabitOccurrence": true,
+              "timing": "pending",
+              "children": [
+                {
+                  "id": "task-occurrence-unopened-item",
+                  "kind": "task",
+                  "status": "todo",
+                  "isHabitOccurrence": true,
+                  "timing": "active"
+                },
+                {
+                  "id": "commitment-under-unopened",
+                  "kind": "commitment",
+                  "verdict": "unresolved",
+                  "timing": "active"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "inheritance": {
+      "id": "root",
+      "kind": "aspect",
+      "children": [
+        {
+          "id": "project-achieved",
+          "kind": "project",
+          "status": "achieved",
+          "children": [
+            {
+              "id": "domain-inside-achieved",
+              "kind": "domain"
+            }
+          ]
+        },
+        {
+          "id": "project-active",
+          "kind": "project",
+          "status": "active",
+          "children": [
+            {
+              "id": "domain-inside-active",
+              "kind": "domain"
+            }
+          ]
+        },
+        {
+          "id": "domain-unparented",
+          "kind": "domain"
+        }
+      ]
+    },
+    "do-edges": {
+      "id": "root",
+      "kind": "aspect",
+      "children": [
+        {
+          "id": "domain-do",
+          "kind": "domain",
+          "children": [
+            {
+              "id": "task-inprogress-plain",
+              "kind": "task",
+              "status": "in_progress"
+            },
+            {
+              "id": "task-inprogress-archived",
+              "kind": "task",
+              "status": "in_progress",
+              "timing": "lapsed",
+              "archived": true
+            },
+            {
+              "id": "task-inprogress-backlogged",
+              "kind": "task",
+              "status": "in_progress",
+              "backlogged": true
+            },
+            {
+              "id": "commitment-archived",
+              "kind": "commitment",
+              "verdict": "kept",
+              "timing": "lapsed",
+              "archived": true
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

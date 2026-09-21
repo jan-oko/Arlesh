@@ -33,6 +33,13 @@ impl ArleshMcp {
     /// section missing from a page is one you have not reached yet, which is why an empty section
     /// is sent as `[]` rather than left out. Narrow with `sections` when you know what you need.
     ///
+    /// **Filterable.** `filter` reads the board under one of the List View's status presets —
+    /// `all`, `plan`, `start`, `do` or `backlog` — using the same rules the user's own view
+    /// applies, so "what should I start" has one answer rather than two. Omit it for the whole
+    /// board, private nodes included; `{"preset": "all"}` is the app's neutral filter instead, and
+    /// hides those. Pass the **same** filter on every page of a walk: pages are derived
+    /// independently, so changing it partway is no different from the board changing underfoot.
+    ///
     /// Not read-only: deriving habit iterations materialises the scope rows their windows land on.
     /// It creates no tasks, goals or flows.
     #[tool(
@@ -47,6 +54,7 @@ impl ArleshMcp {
             now,
             sections,
             cursor,
+            filter,
         } = operation;
 
         let wanted = sections.unwrap_or_else(|| SECTIONS.to_vec());
@@ -70,10 +78,20 @@ impl ArleshMcp {
             Err(error) => return result::failed(error),
         };
 
-        let load = match crate::mindmap::load(&mut db, now).await {
+        let mut load = match crate::mindmap::load(&mut db, now).await {
             Ok(load) => load,
             Err(error) => return result::failed(error),
         };
+
+        // The presets are defined in `crate::filters`, and the frontend's own evaluator is held
+        // to the same conformance corpus — so an agent asking "what should I start" and a user
+        // looking at the board cannot quietly disagree about what is live.
+        //
+        // Narrowing before paging is what makes a filtered walk cheap: the budget is spent on
+        // items the caller asked for rather than on ones it would have skipped.
+        if let Some(filter) = &filter {
+            crate::filters::facts::narrow(&mut load, filter);
+        }
 
         if let Err(error) = db.commit().await {
             return result::failed(error);
