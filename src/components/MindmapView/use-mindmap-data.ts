@@ -41,7 +41,7 @@ import { formatScopeCore } from "@/utils/scope-format";
 import type { ScopeLabelFns } from "@/hooks/use-scope-labels";
 import { useScopeLabels } from "@/hooks/use-scope-labels";
 import type { CanonicalKind } from "@/utils/scope-ref";
-import type { TimeScope } from "@/api/time-scope";
+import type { DurationSpec, TimeScope } from "@/api/time-scope";
 
 /** Local wall-clock now as a `YYYY-MM-DDTHH:MM:SS` string for the scope-lifecycle derivation. */
 function localNowIso(): string {
@@ -1069,6 +1069,94 @@ function collectLoadConditions(data: MindmapLoad): LoadCondition {
     : { failedFlows, unrenderableCommitmentFlows };
 }
 
+/** One virtual Habit occurrence, as the node carrying it names itself. */
+type Occurrence = NonNullable<MindmapNode["habitItem"]>;
+
+/**
+ * Writes one node onto a virtual Habit occurrence, attaches it there in the same backend call,
+ * and hands back the kind and row id it was given.
+ *
+ * The reload is deliberately *not* here. A caller with more to say about the new node — a
+ * Commitment's verdict, window, privacy and tags — has to say it before the board is rebuilt, or
+ * the node appears twice: half-configured first and configured second.
+ */
+async function attachOccurrenceChild(
+  occurrence: Occurrence,
+  childKind: NodeKind,
+  title: string,
+): Promise<{ kind: HabitChildKind; id: number }> {
+  const kind = asHabitChildKind(childKind);
+  if (kind === null) {
+    throw new Error(`A habit occurrence cannot hold a node of kind "${childKind}"`);
+  }
+  const child = await createHabitInstanceChild(
+    occurrence.flowId, occurrence.itemType, occurrence.itemId, occurrence.scopeId,
+    occurrence.cycleId, kind, title,
+  );
+  return { kind, id: child.node_id };
+}
+
+/**
+ * The window fields an editor-configured commitment carries, omitted when it named none.
+ *
+ * Absent is not the same as `null` here: absent inherits the window above, which for an occurrence
+ * child is the occurrence's own — the one the attachment already wrote.
+ */
+function commitmentWindow(data: CommitmentSaveData): {
+  time_scope?: TimeScope;
+  verdict_window?: DurationSpec;
+} {
+  return {
+    ...(data.timeScope !== null ? { time_scope: data.timeScope } : {}),
+    ...(data.verdictWindow !== null ? { verdict_window: data.verdictWindow } : {}),
+  };
+}
+
+/**
+ * Writes a commitment configured in the editor onto a virtual Habit occurrence, and answers with
+ * its row id.
+ *
+ * The attachment writes the row already carrying the occurrence's window — a commitment is never
+ * momentarily windowless — and the editor's own fields follow it. That second write is where the
+ * ordinary path's single create refuses, so a refusal here takes the row back out again: the
+ * editor stays open on the field that earned it, and the Save the user tries next makes one
+ * commitment rather than a second one beside an abandoned first.
+ */
+async function attachCommitmentToOccurrence(
+  occurrence: Occurrence,
+  data: CommitmentSaveData,
+): Promise<number> {
+  const { id } = await attachOccurrenceChild(occurrence, "commitment", data.title);
+  try {
+    await updateCommitment(id, {
+      verdict: data.verdict,
+      ...commitmentWindow(data),
+      ...(data.isPrivate ? { is_private: true } : {}),
+    });
+  } catch (error: unknown) {
+    await deleteCommitment(id);
+    throw error;
+  }
+  return id;
+}
+
+/** Writes a commitment configured in the editor under an ordinary, row-backed parent. */
+async function createCommitmentUnderNode(
+  parentId: string,
+  parentKind: NodeKind,
+  data: CommitmentSaveData,
+): Promise<number> {
+  const commitment = await createCommitment({
+    title: data.title,
+    parent_type: kindToParentType(parentKind),
+    parent_id: dbIdFromNodeId(parentId),
+    verdict: data.verdict,
+    ...commitmentWindow(data),
+  });
+  if (data.isPrivate) await updateCommitment(commitment.id, { is_private: true });
+  return commitment.id;
+}
+
 export function useMindmapData(): MindmapData {
   const { t } = useTranslation("undo");
   const [tree, setTree] = useState<MindmapNode>(VIRTUAL_ROOT);
@@ -1130,20 +1218,13 @@ export function useMindmapData(): MindmapData {
    */
   const createOccurrenceChild = useCallback(
     async (
-      occurrence: NonNullable<MindmapNode["habitItem"]>,
+      occurrence: Occurrence,
       childKind: NodeKind,
       title: string,
     ): Promise<MindmapNode> => {
-      const kind = asHabitChildKind(childKind);
-      if (kind === null) {
-        throw new Error(`A habit occurrence cannot hold a node of kind "${childKind}"`);
-      }
-      const child = await createHabitInstanceChild(
-        occurrence.flowId, occurrence.itemType, occurrence.itemId, occurrence.scopeId,
-        occurrence.cycleId, kind, title,
-      );
+      const { kind, id } = await attachOccurrenceChild(occurrence, childKind, title);
       const newNode: MindmapNode = {
-        id: entityNodeId(child.node_type, child.node_id),
+        id: entityNodeId(kind, id),
         kind, title,
         ...(kind === "task" ? { status: TASK_STATUS.TODO } : {}),
         ...(kind === "goal" ? { status: GOAL_STATUS.ACTIVE } : {}),
@@ -1559,23 +1640,24 @@ export function useMindmapData(): MindmapData {
    * `is_private` and tags are not fields of the create request, so they follow it — before the
    * reload, so the new row appears once, configured, rather than twice, half-configured first.
    * Any refusal propagates to the editor, which keeps itself open and shows it.
+   *
+   * A **virtual Habit occurrence** has no row id for a parent link, so it takes its commitment
+   * through the attachment path instead, exactly as every other kind does in `createNode`. The
+   * attachment writes the row already carrying the occurrence's own window — a commitment is never
+   * momentarily windowless — and returns it, so the editor's fields are written onto it by the
+   * same follow-up writes the ordinary path uses, and still before the reload.
    */
   const createCommitmentNode = useCallback(
     async (parentId: string, parentKind: NodeKind, data: CommitmentSaveData): Promise<void> => {
-      const dbParentId = parseInt(parentId.split("-").pop() ?? "0", 10);
-      const commitment = await createCommitment({
-        title: data.title,
-        parent_type: kindToParentType(parentKind),
-        parent_id: dbParentId,
-        verdict: data.verdict,
-        ...(data.timeScope !== null ? { time_scope: data.timeScope } : {}),
-        ...(data.verdictWindow !== null ? { verdict_window: data.verdictWindow } : {}),
-      });
-      if (data.isPrivate) await updateCommitment(commitment.id, { is_private: true });
-      for (const tagId of data.tagIds) await addTagToCommitment(commitment.id, tagId);
+      const occurrence = findNodeInTree(tree, parentId)?.habitItem;
+      const commitmentId =
+        occurrence !== undefined
+          ? await attachCommitmentToOccurrence(occurrence, data)
+          : await createCommitmentUnderNode(parentId, parentKind, data);
+      for (const tagId of data.tagIds) await addTagToCommitment(commitmentId, tagId);
       await load(false);
     },
-    [load],
+    [load, tree],
   );
 
   const createFlowNode = useCallback(

@@ -2,6 +2,8 @@
 
   Now an occurrence takes children — **Tasks, Goals, Commitments and notes**, anything a Task can hold — with the same gesture you use everywhere else: Tab for a child, Shift+T/G/C/I for one of a named kind, and the List View's create keys. What you add belongs to **that occurrence alone**: next week's is not carrying it. It is a real node in every other respect — rename it, scope it, plan it, tag it, complete it, and give it children of its own for a step with sub-steps.
 
+  A commitment added this way opens its editor first, as it does anywhere else, and starts with the occurrence's own window already filled in — so Shift+C on tonight's run gives you a rule for tonight without asking you to say so twice.
+
   Its window is the occurrence's: an added child cannot be scoped or planned outside the day (or week, or morning) it was written on, exactly as a child cannot escape its parent anywhere else. When the occurrence's window passes, everything on it archives **as a unit** — the occurrence and its children together, still reachable under **All**. Nothing is thrown away.
 
   **Marking an occurrence done while it still holds unfinished work asks first**, and names what it is about to close over: "*Groceries Mon* still holds 1 unfinished item — buy milk". Say yes and the occurrence is done with the child left where it is; say no and nothing at all has been written. The question only comes up when it has something to say — a note is never unfinished work, and neither is a child you have already ticked off.
