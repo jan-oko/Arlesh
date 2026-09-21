@@ -74,8 +74,9 @@ worth.
 ## Issue links
 
 A Task, Goal, Commitment or Project can carry the id of the `bd` issue tracking it, and `arlesh_beads.set` is
-the **only** way that field is ever written: no Tauri command touches the column and the editor
-modals render it as text with no control. So an issue id shown in Arlesh always arrived over MCP.
+the **only** way that field is ever given a *value*: the one Tauri command that touches the column
+(`clear_beads_id`) writes null and nothing else, and the editor modals render the id as text with no
+control but an × that stages the drop for their Save. So an issue id shown in Arlesh always arrived over MCP.
 Passing `null` clears the link. Setting one on an item that does not exist is an error rather than
 a silent no-op, and only the `project` subtype of Domain accepts a link — an Aspect, Domain or Tag
 is refused.

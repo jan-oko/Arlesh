@@ -96,6 +96,7 @@ pub fn run() {
             commands::undo::undo,
             commands::undo::redo,
             commands::undo::undo_status,
+            commands::beads::clear_beads_id,
             commands::block_reasons::list_all_block_reasons,
             commands::block_reasons::set_block_reasons,
             commands::infos::create_info,

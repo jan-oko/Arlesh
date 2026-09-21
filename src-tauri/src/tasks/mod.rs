@@ -694,10 +694,12 @@ impl<'session> GoalOperator<'session> {
     /// Links a goal to the `bd` issue tracking it, or unlinks it when given `None`.
     ///
     /// **The only setter of `beads_id`, and the MCP server is its only *source*.**
-    /// [`UpdateGoalRequest`] has no field for it, so no gesture can author, edit or clear a link from the UI.
-    /// One command does reach this method: [`duplicate_subtree`](crate::duplicate::duplicate_subtree)
-    /// *propagates* an id a node already carries onto its copy — SPEC's named exception. It can
-    /// only ever pass on a value `bd` issued, never invent or change one.
+    /// [`UpdateGoalRequest`] has no field for it, so no gesture can author or edit a link from the
+    /// UI. Two commands reach this method, and neither can produce a value `bd` did not issue:
+    /// [`clear_beads_id`](crate::commands::beads::clear_beads_id) passes `None` — the × on the
+    /// Issue row, SPEC's one UI-writable case — and
+    /// [`duplicate_subtree`](crate::duplicate::duplicate_subtree) *propagates* an id a node already
+    /// carries onto its copy.
     ///
     /// `bd` owns the issue; the app only mirrors which one a node belongs to.
     ///
@@ -1129,10 +1131,12 @@ impl<'session> TaskOperator<'session> {
     /// Links a task to the `bd` issue tracking it, or unlinks it when given `None`.
     ///
     /// **The only setter of `beads_id`, and the MCP server is its only *source*.**
-    /// [`UpdateTaskRequest`] has no field for it, so no gesture can author, edit or clear a link from the UI.
-    /// One command does reach this method: [`duplicate_subtree`](crate::duplicate::duplicate_subtree)
-    /// *propagates* an id a node already carries onto its copy — SPEC's named exception. It can
-    /// only ever pass on a value `bd` issued, never invent or change one.
+    /// [`UpdateTaskRequest`] has no field for it, so no gesture can author or edit a link from the
+    /// UI. Two commands reach this method, and neither can produce a value `bd` did not issue:
+    /// [`clear_beads_id`](crate::commands::beads::clear_beads_id) passes `None` — the × on the
+    /// Issue row, SPEC's one UI-writable case — and
+    /// [`duplicate_subtree`](crate::duplicate::duplicate_subtree) *propagates* an id a node already
+    /// carries onto its copy.
     ///
     /// `bd` owns the issue; the app only mirrors which one a node belongs to.
     ///

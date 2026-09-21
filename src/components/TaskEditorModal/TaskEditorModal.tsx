@@ -19,6 +19,7 @@ import TimeScopeField from "@/components/ScopePicker/TimeScopeField";
 import OnScopeExitField from "@/components/ScopePicker/OnScopeExitField";
 import PlanField from "@/components/ScopePicker/PlanField";
 import { useInputCapture } from "@/hooks/use-input-capture";
+import { useBeadsIdClear } from "@/hooks/use-beads-id-clear";
 import Switch from "@/components/Switch/Switch";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 import { TASK_STATUS } from "@/utils/status-mapping";
@@ -53,11 +54,15 @@ interface Props {
   domainNames: Map<number, string>;
   availableForDep: MindmapNode[];
   onSave: (data: TaskSaveData) => Promise<void>;
+  /** Drops the node's `bd` issue link. Called by Save once the row's × has staged the drop, never
+   * by the × itself, so Cancel discards it like any other unsaved field. Omitted — as on the blank
+   * node a create path opens, which has no link to drop — the Issue row stays wholly read-only. */
+  onClearBeadsId?: (() => Promise<void>) | undefined;
   onCheckScopeClamp?: (nodeType: "task" | "goal", dbId: number, timeScope: TimeScope) => Promise<boolean>;
   onClose: () => void;
 }
 
-export default function TaskEditorModal({ node, allTags, domainNames, availableForDep, onSave, onCheckScopeClamp, onClose }: Props) {
+export default function TaskEditorModal({ node, allTags, domainNames, availableForDep, onSave, onClearBeadsId, onCheckScopeClamp, onClose }: Props) {
   useInputCapture();
   const { t } = useTranslation(["editor", "status", "nodeKinds"]);
   const [title, setTitle] = useState(node.title);
@@ -75,6 +80,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   const [depSearch, setDepSearch] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const beadsClear = useBeadsIdClear(onClearBeadsId);
   const titleRef = useRef<HTMLInputElement>(null);
   const dbId = parseInt(node.id.split("-").pop() ?? "0", 10);
 
@@ -109,6 +115,9 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
         setIsSaving(false);
         return;
       }
+      // Before the update, not after: a refused clear then leaves the node exactly as it was,
+      // rather than half-saved, and the refusal reaches the save error line below the fields.
+      await beadsClear.commitClear();
       await onSave({
         title: title.trim(), status, blockReasons: blockReasons.map((r) => r.trim()).filter((r) => r !== ""),
         tagIds, addedDeps, removedDeps, timeScope,
@@ -173,7 +182,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
         {t("fieldTitle")}
         <input ref={titleRef} className={styles.input} value={title} onChange={(e) => setTitle(e.target.value)} type="text" />
       </label>
-      <BeadsIdField beadsId={node.beadsId} />
+      <BeadsIdField beadsId={node.beadsId} isCleared={beadsClear.isCleared} onClear={beadsClear.stageClear} />
       <div className={styles.label}>
         {t("fieldStatus")}
         <div className={styles.statusPills}>
