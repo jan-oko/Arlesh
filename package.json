@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "lint": "eslint src",
+    "lint": "eslint src && node scripts/check-source-text.mjs",
     "changelog": "node scripts/assemble-changelog.mjs",
     "changelog:check": "node scripts/assemble-changelog.mjs --check",
     "test": "vitest run",
