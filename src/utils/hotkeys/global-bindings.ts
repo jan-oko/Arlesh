@@ -52,8 +52,8 @@ export const GLOBAL_BINDINGS: readonly Binding<GlobalContext>[] = [
     run: (c) => c.onToggleFullscreen(),
   },
   {
-    // Shared with the Mindmap's `expandRecursively`, which takes the chord whenever a cell is
-    // selected to expand. The two tables dispatch from separate listeners, so ADR 0003's
+    // Shared with the Mindmap's `toggleSubtreeCollapsed`, which takes the chord whenever a cell
+    // is selected to act on. The two tables dispatch from separate listeners, so ADR 0003's
     // first-match rule cannot order them: the guards have to be complementary instead, and
     // `chord-sharing.test.ts` pins that they are.
     id: "global.toggleHotkeys",

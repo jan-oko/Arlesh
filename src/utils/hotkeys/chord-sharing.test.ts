@@ -57,9 +57,9 @@ const ALL: readonly BindingMeta[] = [...GLOBAL_BINDINGS, ...TAB_BINDINGS, ...MIN
  * the one such pair there is.
  */
 const CROSS_TABLE_CHORDS: Readonly<Record<string, readonly string[]>> = {
-  // The cheat-sheet's chord, which the Mindmap borrows for the recursive expand whenever there is
-  // a cell to expand. `isRecursiveExpandArmed` is the one place the split is decided.
-  "mindmap Ctrl+Shift+/": ["global.toggleHotkeys", "mindmap.expandRecursively"],
+  // The cheat-sheet's chord, which the Mindmap borrows for the recursive collapse-or-expand
+  // whenever there is a cell to act on. `isRecursiveExpandArmed` is the one place the split is decided.
+  "mindmap Ctrl+Shift+/": ["global.toggleHotkeys", "mindmap.toggleSubtreeCollapsed"],
 };
 
 /** Every chord an always-live table shares with `view`'s own, keyed the way the view's section is. */
@@ -185,7 +185,7 @@ describe("chords a view shares with an always-live table", () => {
 
 describe("Ctrl+Shift+/ across the cheat-sheet and the Mindmap", () => {
   const toggleHotkeys = guardOf(GLOBAL_BINDINGS, "global.toggleHotkeys");
-  const expandRecursively = guardOf(MINDMAP_BINDINGS, "mindmap.expandRecursively");
+  const toggleSubtree = guardOf(MINDMAP_BINDINGS, "mindmap.toggleSubtreeCollapsed");
 
   function mindmapContext(selectedNodeId: string | null): MindmapContext {
     const selection = selectedNodeId === null ? [] : [selectedNodeId];
@@ -219,7 +219,7 @@ describe("Ctrl+Shift+/ across the cheat-sheet and the Mindmap", () => {
     const sheet = toggleHotkeys(globalContext(armed));
     // The Mindmap's table is not dispatched at all unless its view is mounted and live.
     const isMindmapLive = state.isMindmapOnScreen && !state.isInputCaptured;
-    const expand = isMindmapLive && expandRecursively(mindmapContext(state.selectedNodeId));
+    const expand = isMindmapLive && toggleSubtree(mindmapContext(state.selectedNodeId));
     expect(Number(sheet) + Number(expand)).toBe(1);
   });
 

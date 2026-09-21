@@ -30,7 +30,7 @@ import { useIsInputCaptured } from "@/hooks/use-input-capture";
 import { useSubtreeNav } from "@/hooks/use-subtree-nav";
 import { filterTreeWithFocus } from "@/utils/filter-tree";
 import { collapsedWithFoldedGroups, foldHabitRuns, isHabitGroupNode } from "@/utils/habit-collapse";
-import { subtreeExpansion } from "@/utils/recursive-expand";
+import { subtreeToggle } from "@/utils/subtree-toggle";
 import { useHabitCollapseLabels } from "@/hooks/use-habit-collapse-labels";
 import { useDisplayStore } from "@/stores/use-display-store";
 import { focusExemptPath } from "@/utils/focus-exemption";
@@ -92,7 +92,7 @@ export default function MindmapView() {
   const {
     selectedNodeId, selectedNodeIds, subtreeRootId, collapsedNodeIds, expandedHabitGroupIds, pendingToast,
     selectNode, addToSelection, setSelection, enterSubtree,
-    toggleCollapsed, toggleGroupExpanded, expandSubtree, showToast, clearToast,
+    toggleCollapsed, toggleGroupExpanded, expandSubtree, collapseSubtree, showToast, clearToast,
   } = useMindmapStore((s) => s);
   // App-wide, so a subtree cut in one tab pastes in another.
   const clipboard = useClipboardStore((s) => s.clipboard);
@@ -162,15 +162,18 @@ export default function MindmapView() {
     [displayRoot, toggleGroupExpanded, toggleCollapsed],
   );
 
-  // Ctrl+Shift+/ opens the cell and everything under it. It reads the *drawn* tree, because the
-  // fold's nodes have no counterpart in the loaded one — and needs only one walk of it, because a
-  // run's levels and iterations are built eagerly and merely drawn shut.
-  const expandRecursively = useCallback(
+  // Ctrl+Shift+/ opens the cell and everything under it, or shuts them all again if the cell is
+  // already open. It reads the *drawn* tree, because the fold's nodes have no counterpart in the
+  // loaded one — and needs only one walk of it, because a run's levels and iterations are built
+  // eagerly and merely drawn shut. `collapsedWithGroups` is what tells it which way to go: it is
+  // the one set in which the two mechanisms have already been reconciled.
+  const toggleSubtreeCollapsed = useCallback(
     (id: string) => {
-      const { collapsedIdsToClear, habitGroupIdsToOpen } = subtreeExpansion(displayRoot, id);
-      expandSubtree(collapsedIdsToClear, habitGroupIdsToOpen);
+      const toggle = subtreeToggle(displayRoot, id, collapsedWithGroups);
+      if (toggle.direction === "expand") expandSubtree(toggle.collapsedIdsToClear, toggle.habitGroupIdsToOpen);
+      else collapseSubtree(toggle.collapsedIdsToAdd, toggle.habitGroupIdsToShut);
     },
-    [displayRoot, expandSubtree],
+    [displayRoot, collapsedWithGroups, expandSubtree, collapseSubtree],
   );
 
   const canvasRef = useRef<MindmapCanvasHandle>(null);
@@ -593,7 +596,7 @@ export default function MindmapView() {
     onStartFlow,
     onDelete,
     onToggleCollapsed: toggleCollapsedOrGroup,
-    onExpandRecursively: expandRecursively,
+    onToggleSubtreeCollapsed: toggleSubtreeCollapsed,
     onCycleStatus: onStatusClick,
     onCycleVerdict: cycleVerdict,
     onMarkBroken: markBroken,

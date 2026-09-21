@@ -306,10 +306,84 @@ describe("expanding a folded Habit run and everything under it", () => {
 
   it("leaves a run outside the pressed subtree folded", () => {
     const { container } = render(<MindmapView />);
+    act(() => { mindmapStore().setState({ collapsedNodeIds: new Set(["task-9"]) }); });
     select("task-9");
 
     press("/", { ctrlKey: true, shiftKey: true });
 
     expect(container.querySelector("[data-node-id^='habitrun-7-week-']")).toBeNull();
+  });
+});
+
+/**
+ * The same chord shuts what it opened. Which way a press goes is read off the cell it was pressed
+ * on — drawn shut means open it, drawn open means shut it — so the second press is always the
+ * other direction, and the board comes back to where it started.
+ *
+ * The collapse descends past that cell rather than merely shutting it, because the two sets are
+ * also what the single-cell `Ctrl+/` reads: leaving the inside of a run open would make the next
+ * `Ctrl+/` on it reveal every iteration at once instead of the levels.
+ */
+describe("collapsing a subtree with the same chord", () => {
+  /** Every cell the canvas is drawing, in id order — the board as the user sees it. */
+  function drawnIds(container: HTMLElement): string[] {
+    return [...container.querySelectorAll("[data-node-id]")]
+      .map((element) => element.getAttribute("data-node-id") ?? "")
+      .sort();
+  }
+
+  function pressChord(): void {
+    press("/", { ctrlKey: true, shiftKey: true });
+  }
+
+  it("puts the board back exactly as it was, over both mechanisms at once", () => {
+    // `goal-5` is collapsed and the fold sits underneath it: one press has to clear the ordinary
+    // collapse *and* open the run, and the second has to undo both.
+    const { container } = render(<MindmapView />);
+    act(() => { mindmapStore().setState({ collapsedNodeIds: new Set(["goal-5"]) }); });
+    select("goal-5");
+    const before = drawnIds(container);
+
+    pressChord();
+    const opened = drawnIds(container);
+    pressChord();
+
+    expect(opened).not.toEqual(before);
+    expect(opened).toContain("habit-7-3-virtual");
+    expect(drawnIds(container)).toEqual(before);
+  });
+
+  it("re-folds a run it opened, levels and all", () => {
+    const { container } = render(<MindmapView />);
+    select(RUN);
+    const before = drawnIds(container);
+
+    pressChord();
+    pressChord();
+
+    expect(drawnIds(container)).toEqual(before);
+  });
+
+  it("leaves the levels inside a re-folded run shut, so Ctrl+/ opens it one level again", () => {
+    const { container } = render(<MindmapView />);
+    select(RUN);
+
+    pressChord();
+    pressChord();
+    press("/", { ctrlKey: true });
+
+    expect(container.querySelectorAll("[data-node-id^='habitrun-7-week-']")).toHaveLength(2);
+    expect(container.querySelector("[data-node-id='habit-7-0-virtual']")).toBeNull();
+  });
+
+  it("shuts a cell that was already open, rather than opening it again", () => {
+    const { container } = render(<MindmapView />);
+    select("goal-5");
+
+    pressChord();
+
+    expect(container.querySelector("[data-node-id='goal-5']")).not.toBeNull();
+    expect(container.querySelector("[data-node-id='task-9']")).toBeNull();
+    expect(container.querySelector(`[data-node-id='${RUN}']`)).toBeNull();
   });
 });

@@ -56,10 +56,21 @@ export interface MindmapStore {
    *
    * Two sets, because the two mechanisms are inverted relative to each other, and one action
    * rather than a loop of toggles, because a toggle would shut whatever was already open and
-   * because the canvas should relayout once, not once per node. `recursive-expand.ts` works out
+   * because the canvas should relayout once, not once per node. `subtree-toggle.ts` works out
    * which ids go in which set.
    */
   expandSubtree: (collapsedIdsToClear: ReadonlySet<string>, habitGroupIdsToOpen: ReadonlySet<string>) => void;
+  /**
+   * Shuts a whole subtree in one step — the mirror of `expandSubtree`, down to which set each kind
+   * of node is written to: the ordinary nodes are *added* to the collapsed set, the fold's nodes
+   * are *removed* from the opened one, because absent means open for the first and shut for the
+   * second.
+   *
+   * It descends past the node the gesture was aimed at rather than merely shutting it, so that the
+   * single-node `Ctrl+/` afterwards opens a run one level at a time again instead of finding the
+   * levels inside it still open.
+   */
+  collapseSubtree: (collapsedIdsToAdd: ReadonlySet<string>, habitGroupIdsToShut: ReadonlySet<string>) => void;
   showToast: (toast: PendingToast) => void;
   clearToast: () => void;
   setSubtreeNav: (nav: SubtreeNav | null) => void;
@@ -147,6 +158,15 @@ export function createMindmapStore(
         for (const id of collapsedIdsToClear) collapsed.delete(id);
         const expanded = new Set(state.expandedHabitGroupIds);
         for (const id of habitGroupIdsToOpen) expanded.add(id);
+        return { collapsedNodeIds: collapsed, expandedHabitGroupIds: expanded };
+      }),
+
+    collapseSubtree: (collapsedIdsToAdd, habitGroupIdsToShut) =>
+      set((state) => {
+        const collapsed = new Set(state.collapsedNodeIds);
+        for (const id of collapsedIdsToAdd) collapsed.add(id);
+        const expanded = new Set(state.expandedHabitGroupIds);
+        for (const id of habitGroupIdsToShut) expanded.delete(id);
         return { collapsedNodeIds: collapsed, expandedHabitGroupIds: expanded };
       }),
 

@@ -5,7 +5,7 @@ import { hasSelection } from "./selection";
 /** What folding a cell acts on. */
 export interface MindmapCollapseContext extends MindmapSelectionContext {
   onToggleCollapsed: (id: string) => void;
-  onExpandRecursively: (id: string) => void;
+  onToggleSubtreeCollapsed: (id: string) => void;
 }
 
 export const MINDMAP_COLLAPSE_BINDINGS: readonly Binding<MindmapCollapseContext>[] = [
@@ -16,13 +16,16 @@ export const MINDMAP_COLLAPSE_BINDINGS: readonly Binding<MindmapCollapseContext>
     run: (c) => { if (c.selectedNodeId !== null) c.onToggleCollapsed(c.selectedNodeId); },
   },
   {
+    // The recursive counterpart of the binding above: it goes whichever way the pressed cell is
+    // not, so a second press is the first one undone.
+    //
     // Ctrl+Shift+/ is also the cheat-sheet's chord, and the two tables dispatch from separate
     // listeners, so what keeps exactly one of them firing is the pair of guards, not the order:
-    // this one takes the chord whenever there is a cell to expand, and `global.toggleHotkeys`
+    // this one takes the chord whenever there is a cell to act on, and `global.toggleHotkeys`
     // takes it otherwise. `chord-sharing.test.ts` declares the pair and pins it complementary.
-    id: "mindmap.expandRecursively", section: "mindmap", chord: { code: "Slash", ctrl: true, shift: true },
-    labelKey: "expandRecursively",
+    id: "mindmap.toggleSubtreeCollapsed", section: "mindmap", chord: { code: "Slash", ctrl: true, shift: true },
+    labelKey: "toggleSubtreeCollapsed",
     when: hasSelection,
-    run: (c) => { if (c.selectedNodeId !== null) c.onExpandRecursively(c.selectedNodeId); },
+    run: (c) => { if (c.selectedNodeId !== null) c.onToggleSubtreeCollapsed(c.selectedNodeId); },
   },
 ];

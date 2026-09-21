@@ -177,3 +177,34 @@ describe("expandSubtree", () => {
     expect(useMindmapStore.getState().expandedHabitGroupIds.has("habitrun-7-virtual")).toBe(true);
   });
 });
+
+describe("collapseSubtree", () => {
+  it("collapses ordinary nodes and shuts habit groups in the one call", () => {
+    useMindmapStore.getState().toggleGroupExpanded("habitrun-7-virtual");
+
+    useMindmapStore.getState().collapseSubtree(new Set(["goal-5"]), new Set(["habitrun-7-virtual"]));
+
+    expect(useMindmapStore.getState().collapsedNodeIds.has("goal-5")).toBe(true);
+    expect(useMindmapStore.getState().expandedHabitGroupIds.has("habitrun-7-virtual")).toBe(false);
+  });
+
+  it("leaves an opened group outside the subtree alone", () => {
+    useMindmapStore.getState().toggleGroupExpanded("habitrun-7-virtual");
+    useMindmapStore.getState().toggleGroupExpanded("habitrun-8-virtual");
+
+    useMindmapStore.getState().collapseSubtree(new Set(), new Set(["habitrun-7-virtual"]));
+
+    expect(useMindmapStore.getState().expandedHabitGroupIds.has("habitrun-8-virtual")).toBe(true);
+  });
+
+  it("undoes an expandSubtree exactly, leaving neither set holding anything", () => {
+    useMindmapStore.getState().expandSubtree(new Set(["goal-5"]), new Set(["habitrun-7-virtual"]));
+
+    useMindmapStore.getState().collapseSubtree(new Set(["goal-5"]), new Set(["habitrun-7-virtual"]));
+
+    expect(useMindmapStore.getState().expandedHabitGroupIds.size).toBe(0);
+    // The ordinary side does not come back empty, and cannot: the node itself is now collapsed, so
+    // what is under it is hidden by that alone. What matters is that nothing is left half-open.
+    expect(useMindmapStore.getState().collapsedNodeIds).toEqual(new Set(["goal-5"]));
+  });
+});

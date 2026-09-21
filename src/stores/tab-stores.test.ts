@@ -106,4 +106,16 @@ describe("readTabState", () => {
 
     expect(readTabState(stores)).toEqual(DEFAULT_TAB_STATE);
   });
+
+  it("keeps no habit group a recursive collapse shut, so the two presses cancel out", () => {
+    // The fold's openings are the one part of this that is written down, so a recursive collapse
+    // that forgot to take them back out again would persist an expansion the board is not showing.
+    const stores = createTabStores();
+    const mindmap = stores.mindmap.getState();
+    mindmap.expandSubtree(new Set(["goal-5"]), new Set(["habitrun-7-virtual", "habitrun-7-week-2026-09-06-virtual"]));
+
+    mindmap.collapseSubtree(new Set(["goal-5"]), new Set(["habitrun-7-virtual", "habitrun-7-week-2026-09-06-virtual"]));
+
+    expect(readTabState(stores)).toEqual(DEFAULT_TAB_STATE);
+  });
 });
