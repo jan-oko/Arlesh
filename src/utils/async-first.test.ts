@@ -27,10 +27,12 @@ function row(id: string, ancestorIds: readonly string[] = []): TaskListRow {
   };
 }
 
-/** The rendered shape, for assertions: the section as `~`, a header as `#a›b`, a task as `id:depth`. */
+/** The rendered shape, for assertions: the section heading as `~`, the rule that closes it as `—`,
+ * a header as `#a›b`, a task as `id:depth`. */
 function shapeOf(entries: readonly ListRowEntry[]): string[] {
   return entries.map((entry) => {
     if (entry.type === "asynchronous") return "~";
+    if (entry.type === "asynchronousEnd") return "—";
     if (entry.type === "path") return `#${entry.segments.map((segment) => segment.id).join("›")}`;
     return `${entry.row.node.id}:${entry.visibleDepth}`;
   });
@@ -47,7 +49,7 @@ describe("withAsynchronousSection", () => {
       row("s2", ["goal", "p"]),
     ]);
     expect(shapeOf(entries)).toEqual([
-      "~", "#goal›p", "a1:0",
+      "~", "#goal›p", "a1:0", "—",
       "#goal", "p:0", "s1:1", "s2:1",
     ]);
   });
@@ -59,7 +61,7 @@ describe("withAsynchronousSection", () => {
       row("a1", ["goal", "p"]),
     ]);
     expect(shapeOf(entries)).toEqual([
-      "~", "#goal›p", "a1:0",
+      "~", "#goal›p", "a1:0", "—",
       "#goal", "p:0", "s1:1",
     ]);
   });
@@ -78,7 +80,7 @@ describe("withAsynchronousSection", () => {
       row("s1", ["goal"]),
     ]);
     expect(shapeOf(entries)).toEqual([
-      "~", "#goal", "a1:0", "c1:1", "c2:2",
+      "~", "#goal", "a1:0", "c1:1", "c2:2", "—",
       "#goal", "s1:0",
     ]);
   });
@@ -99,7 +101,7 @@ describe("withAsynchronousSection", () => {
       row("s1", ["goal"]),
     ]);
     expect(shapeOf(entries)).toEqual([
-      "~", "#goal", "a1:0", "#goal›hidden", "grandchild:1",
+      "~", "#goal", "a1:0", "#goal›hidden", "grandchild:1", "—",
       "#goal", "s1:0",
     ]);
   });
@@ -108,7 +110,7 @@ describe("withAsynchronousSection", () => {
     const entries = withAsynchronousSection([
       row("s1", ["goal"]), row("a1", ["goal"]), row("s2", ["goal"]), row("a2", ["goal"]),
     ]);
-    expect(shapeOf(entries)).toEqual(["~", "#goal", "a1:0", "a2:0", "#goal", "s1:0", "s2:0"]);
+    expect(shapeOf(entries)).toEqual(["~", "#goal", "a1:0", "a2:0", "—", "#goal", "s1:0", "s2:0"]);
   });
 
   it("draws no section at all — not an empty one — when nothing is asynchronous", () => {
@@ -116,7 +118,8 @@ describe("withAsynchronousSection", () => {
     expect(shapeOf(entries)).toEqual(["#goal", "s1:0", "s2:1"]);
   });
 
-  it("leaves no stray headers below when every row is asynchronous", () => {
+  it("leaves no stray header and no closing rule below when every row is asynchronous", () => {
+    // Nothing follows the section, so a rule under it would be a line drawn into empty space.
     const entries = withAsynchronousSection([row("a1", ["goal"]), row("a2", ["goal"])]);
     expect(shapeOf(entries)).toEqual(["~", "#goal", "a1:0", "a2:0"]);
   });

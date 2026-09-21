@@ -159,6 +159,24 @@ describe("ListView — Asynchronous first", () => {
       .map((card) => card.style.getPropertyValue("--row-depth"));
   }
 
+  /** Everything the list draws, in the order it draws it: section headings, the rule that closes
+   * the Asynchronous section, path headers and rows. */
+  function renderedBlocks(container: HTMLElement): string[] {
+    const drawn = container.querySelectorAll<HTMLElement>(
+      "h2, [class*='sectionEnd'], [class*='header'], [class*='card']",
+    );
+    return Array.from(drawn).map((element) => {
+      if (element.tagName === "H2") return `section:${element.textContent}`;
+      if (element.className.includes("sectionEnd")) return "rule";
+      if (element.className.includes("card")) {
+        return `row:${element.querySelector("button[class*='title']")?.textContent ?? ""}`;
+      }
+      return `header:${Array.from(element.querySelectorAll("button[class*='segment']"))
+        .map((segment) => segment.textContent)
+        .join(" > ")}`;
+    });
+  }
+
   it("leaves row order exactly as the tree gave it, and draws no section, while the setting is off", () => {
     mockUseListData.mockReturnValue(listData({ rows: nestedRows() }));
     const { container } = render(<ListView />);
@@ -269,6 +287,53 @@ describe("ListView — Asynchronous first", () => {
     view.rerender(<ListView />);
     expect(renderedTitles(view.container)).toEqual(["task-wait", "task-plain"]);
     expect(view.container.querySelector("[class*='cardFocusExempt']")?.textContent).toContain("task-wait");
+  });
+
+  it("closes the section with a rule, between its last row and the first ordinary header", () => {
+    useDisplayStore.setState({ asynchronousFirst: true });
+    mockUseListData.mockReturnValue(listData({ rows: nestedRows() }));
+    const { container } = render(<ListView />);
+    expect(renderedBlocks(container)).toEqual([
+      "section:listView:asynchronousHeading",
+      "header:aspect-1 > goal-1 > task-parent",
+      "row:task-wait",
+      "rule",
+      "header:aspect-1 > goal-1",
+      "row:task-parent",
+      "row:task-first",
+      "row:task-last",
+    ]);
+  });
+
+  it("draws no closing rule when every row is asynchronous, rather than a line into empty space", () => {
+    useDisplayStore.setState({ asynchronousFirst: true });
+    mockUseListData.mockReturnValue(listData({
+      rows: [
+        row({
+          node: n("task-wait", "task", { status: "todo", asynchronous: true }),
+          ancestors: [aspect(), goal()],
+          isAsynchronous: true,
+        }),
+      ],
+    }));
+    const { container } = render(<ListView />);
+    expect(renderedBlocks(container)).toEqual([
+      "section:listView:asynchronousHeading",
+      "header:aspect-1 > goal-1",
+      "row:task-wait",
+    ]);
+  });
+
+  it("draws no closing rule when no row is asynchronous, since there is no section to close", () => {
+    useDisplayStore.setState({ asynchronousFirst: true });
+    mockUseListData.mockReturnValue(listData({
+      rows: [row({ node: n("task-plain", "task", { status: "todo" }), ancestors: [aspect(), goal()] })],
+    }));
+    const { container } = render(<ListView />);
+    expect(renderedBlocks(container)).toEqual([
+      "header:aspect-1 > goal-1",
+      "row:task-plain",
+    ]);
   });
 
   it("walks the commitments band, the section and the ordinary list as one run of arrow presses", () => {

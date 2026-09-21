@@ -55,7 +55,8 @@ function splitAsynchronous(rows: readonly TaskListRow[]): AsynchronousSplit {
  * them. So a path can head a run in both halves — the same location, named once per section.
  *
  * With nothing asynchronous there is no section header, not an empty one; with everything
- * asynchronous the ordinary list below is empty and draws no stray header.
+ * asynchronous the ordinary list below is empty and draws neither a stray header nor the closing
+ * rule, which would be a line drawn into empty space.
  *
  * The Mindmap is deliberately untouched. Sibling order there is set by hand with `Alt+↑`/`Alt+↓`,
  * which is a deliberate and visible thing; silently re-ordering a branch underneath it would
@@ -64,5 +65,9 @@ function splitAsynchronous(rows: readonly TaskListRow[]): AsynchronousSplit {
 export function withAsynchronousSection(rows: readonly TaskListRow[]): ListRowEntry[] {
   const { lifted, remaining } = splitAsynchronous(rows);
   if (lifted.length === 0) return groupRowsByPath(remaining);
-  return [{ type: "asynchronous" }, ...groupRowsByPath(lifted), ...groupRowsByPath(remaining)];
+  const below = groupRowsByPath(remaining);
+  // The closing rule is what makes the section read as a block rather than as a heading with the
+  // whole list under it. It is drawn only when there is a list below to be closed off from.
+  const closing: ListRowEntry[] = below.length === 0 ? [] : [{ type: "asynchronousEnd" }];
+  return [{ type: "asynchronous" }, ...groupRowsByPath(lifted), ...closing, ...below];
 }

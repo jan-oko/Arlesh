@@ -315,6 +315,13 @@ export default function ListView() {
                 </h2>
               );
             }
+            // The rule that closes it. A wrapper with a border — the way the commitments band is
+            // drawn — is not available here: the section's rows are entries in the same flat list
+            // as everything below, and the keyboard walks that one order. So the boundary is an
+            // entry too, and `withAsynchronousSection` omits it when nothing follows the section.
+            if (entry.type === "asynchronousEnd") {
+              return <hr key="asynchronous-end" className={styles.sectionEnd} />;
+            }
             if (entry.type === "path") {
               return (
                 <PathHeaderRow

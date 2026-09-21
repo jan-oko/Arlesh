@@ -97,19 +97,25 @@ export function flattenCommitmentRows(root: MindmapNode): CommitmentListRow[] {
 }
 
 /** One rendered List View entry: a **path header** naming a run's location, a task row carrying the
- * depth it is indented to, or the **Asynchronous section** heading. Header and depth partition a
- * row's ancestors — the header names every ancestor *not* rendered as a row above it, the depth
- * counts every ancestor that *is* — so the list never implies a parent that is not on screen. The
- * section heading carries nothing: it is drawn at most once, at the very top, and everything
- * between it and the next ordinary run belongs to it (see `withAsynchronousSection`). */
+ * depth it is indented to, or one of the two markers that bracket the **Asynchronous section**.
+ * Header and depth partition a row's ancestors — the header names every ancestor *not* rendered as
+ * a row above it, the depth counts every ancestor that *is* — so the list never implies a parent
+ * that is not on screen.
+ *
+ * The two section markers carry nothing, and are drawn at most once each: `asynchronous` is the
+ * heading that opens the section at the very top of the list, `asynchronousEnd` the rule that
+ * closes it off from the ordinary list below. They are markers in the stream rather than a wrapper
+ * around one, for the same reason a path header is: the list is one flat run of rows, and the
+ * keyboard walks it in exactly the order it is drawn (see `withAsynchronousSection`). */
 export type ListRowEntry =
   | { type: "path"; pathKey: string; segments: MindmapNode[] }
   | { type: "task"; row: TaskListRow; visibleDepth: number }
-  | { type: "asynchronous" };
+  | { type: "asynchronous" }
+  | { type: "asynchronousEnd" };
 
-/** What path grouping alone can produce. The section heading is the caller's to add, so saying so
- * in the type keeps every reader of a grouped run from having to rule it out. */
-export type PathGroupedEntry = Exclude<ListRowEntry, { type: "asynchronous" }>;
+/** What path grouping alone can produce. The section markers are the caller's to add, so saying so
+ * in the type keeps every reader of a grouped run from having to rule them out. */
+export type PathGroupedEntry = Exclude<ListRowEntry, { type: "asynchronous" } | { type: "asynchronousEnd" }>;
 
 /** Identity of a path: the ancestors it names, in order. Empty for a row with nothing above it. */
 function pathKeyOf(segments: readonly MindmapNode[]): string {
