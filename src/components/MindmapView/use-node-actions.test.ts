@@ -19,9 +19,13 @@ vi.mock("@/api/flows", () => ({
   setHabitItemStatus: vi.fn().mockResolvedValue(undefined),
 }));
 
+// The stub renders the key and every interpolation value it was given, so a test can pin *which*
+// kinds a refusal named — not merely that some refusal fired. A count-only call still reads
+// `key:count`, exactly as it did when count was the only thing a refusal had to say.
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string, opts?: { count?: number }) => (opts ? `${key}:${opts.count}` : key),
+    t: (key: string, opts?: Record<string, unknown>) =>
+      opts === undefined ? key : [key, ...Object.values(opts).map((value) => String(value))].join(":"),
   }),
 }));
 
@@ -84,6 +88,22 @@ function makeOpts(overrides: Partial<Parameters<typeof useNodeActions>[0]> = {})
     onNewCommitment: vi.fn(),
     ...overrides,
   };
+}
+
+/**
+ * What the stubbed `t` makes of a destination refusal: the frame, the count, the kind refused
+ * (carrying its own count, which is what gives it a plural), the destination it was dropped on,
+ * and the parents the drop rule does allow. Spelling it out here keeps the expectations readable
+ * while still pinning every one of those parts.
+ */
+function refusedHere(child: NodeKind, parent: NodeKind, count: number, parents: readonly NodeKind[]): string {
+  return [
+    "pasteSkippedHere",
+    String(count),
+    `nodeKinds:${child}:${count}`,
+    `nodeKinds:${parent}`,
+    parents.map((kind) => `nodeKinds:${kind}`).join(", "),
+  ].join(":");
 }
 
 describe("useNodeActions — onStatusClick", () => {
@@ -362,7 +382,7 @@ describe("useNodeActions — onPaste", () => {
     act(() => { result.current.onPaste("goal-2"); });
     await vi.waitFor(() => expect(opts.duplicateNode).toHaveBeenCalledWith("task-5", "task", "goal-2", "goal", 0));
     expect(opts.duplicateNode).toHaveBeenCalledTimes(1);
-    expect(opts.showToast).toHaveBeenCalledWith({ nodeId: "goal-2", message: "pasteSkipped:1" });
+    expect(opts.showToast).toHaveBeenCalledWith({ nodeId: "goal-2", message: "pasteSkippedAspect:1" });
   });
 
   it("does not paste a virtual (habit-instance) node", async () => {
@@ -372,7 +392,110 @@ describe("useNodeActions — onPaste", () => {
     act(() => { result.current.onPaste("goal-2"); });
     await Promise.resolve();
     expect(opts.duplicateNode).not.toHaveBeenCalled();
-    expect(opts.showToast).toHaveBeenCalledWith({ nodeId: "goal-2", message: "pasteSkipped:1" });
+    expect(opts.showToast).toHaveBeenCalledWith({ nodeId: "goal-2", message: "pasteSkippedRepetition:1" });
+  });
+
+  // One toast per reason, and every reason its own sentence: "couldn't be pasted here" used to
+  // cover all of them, sending the user to hunt for a different parent when the parent was fine.
+  it("says the destination is wrong only when the destination really is wrong", async () => {
+    const clipboard = { operation: CLIPBOARD_OP.COPY, nodeIds: ["domain-3"] };
+    const opts = makeOpts({ clipboard });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onPaste("goal-2"); });
+    await Promise.resolve();
+    expect(opts.duplicateNode).not.toHaveBeenCalled();
+    expect(opts.showToast).toHaveBeenCalledWith({
+      nodeId: "goal-2",
+      message: refusedHere("project", "goal", 1, ["aspect", "project"]),
+    });
+  });
+
+  // The headline case: "1 node couldn't be pasted here" named neither the Goal nor the rule about
+  // Task parents, so the only thing it told the user to do was guess.
+  it("names the Goal, the Task it was dropped on, and where a Goal does go", async () => {
+    const clipboard = { operation: CLIPBOARD_OP.COPY, nodeIds: ["goal-2"] };
+    const opts = makeOpts({ clipboard });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onPaste("task-5"); });
+    await Promise.resolve();
+    expect(opts.duplicateNode).not.toHaveBeenCalled();
+    expect(opts.showToast).toHaveBeenCalledWith({
+      nodeId: "task-5",
+      message: refusedHere("goal", "task", 1, ["aspect", "domain", "project", "goal"]),
+    });
+  });
+
+  // Two kinds refused by one destination are two different rules. Counting them together — "2
+  // nodes couldn't be pasted here" — would state a rule that is true of neither.
+  it("gives each refused kind its own sentence when one destination refuses two", async () => {
+    const clipboard = { operation: CLIPBOARD_OP.COPY, nodeIds: ["goal-2", "domain-3"] };
+    const opts = makeOpts({ clipboard });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onPaste("task-5"); });
+    await Promise.resolve();
+    expect(opts.duplicateNode).not.toHaveBeenCalled();
+    expect(opts.showToast).toHaveBeenCalledTimes(1);
+    expect(opts.showToast).toHaveBeenCalledWith({
+      nodeId: "task-5",
+      message: [
+        refusedHere("project", "task", 1, ["aspect", "project"]),
+        refusedHere("goal", "task", 1, ["aspect", "domain", "project", "goal"]),
+      ].join(" "),
+    });
+  });
+
+  // Listing a flow item's legal parents would read "Flow, Goal, Task" — the labels real nodes use
+  // — and so claim a Task cannot sit under a Task, which is false everywhere else in the app.
+  it("sends a flow item dropped on a real node back inside its Flow", async () => {
+    const clipboard = { operation: CLIPBOARD_OP.CUT, nodeIds: ["flowtask-4"] };
+    const opts = makeOpts({ clipboard });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onPaste("task-5"); });
+    await Promise.resolve();
+    expect(opts.moveNode).not.toHaveBeenCalled();
+    expect(opts.showToast).toHaveBeenCalledWith({
+      nodeId: "task-5",
+      message: [
+        "pasteSkippedHereInFlow", "1", "nodeKinds:flow_task:1", "nodeKinds:task",
+        "nodeKinds:flow, nodeKinds:flow_goal, nodeKinds:flow_task",
+      ].join(":"),
+    });
+  });
+
+  it("names the Commitment, not the destination, when a copied Commitment is refused", async () => {
+    const clipboard = { operation: CLIPBOARD_OP.COPY, nodeIds: ["commitment-7"] };
+    const opts = makeOpts({ clipboard });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onPaste("goal-2"); });
+    await Promise.resolve();
+    expect(opts.duplicateNode).not.toHaveBeenCalled();
+    expect(opts.showToast).toHaveBeenCalledWith({ nodeId: "goal-2", message: "pasteSkippedCommitment:1" });
+  });
+
+  it("says the copied node is gone when its id has left the tree", async () => {
+    const clipboard = { operation: CLIPBOARD_OP.COPY, nodeIds: ["task-404"] };
+    const opts = makeOpts({ clipboard });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onPaste("goal-2"); });
+    await Promise.resolve();
+    expect(opts.duplicateNode).not.toHaveBeenCalled();
+    expect(opts.showToast).toHaveBeenCalledWith({ nodeId: "goal-2", message: "pasteSkippedGone:1" });
+  });
+
+  // A second showToast would overwrite the first, so a mixed selection has to arrive as one message
+  // — and it still pastes the nodes that were legal.
+  it("reports both reasons in one toast when a selection hits two, and pastes the rest", async () => {
+    const clipboard = { operation: CLIPBOARD_OP.COPY, nodeIds: ["aspect-1", "commitment-7", "task-5"] };
+    const opts = makeOpts({ clipboard });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onPaste("goal-2"); });
+    await vi.waitFor(() => expect(opts.duplicateNode).toHaveBeenCalledWith("task-5", "task", "goal-2", "goal", 0));
+    expect(opts.duplicateNode).toHaveBeenCalledTimes(1);
+    expect(opts.showToast).toHaveBeenCalledTimes(1);
+    expect(opts.showToast).toHaveBeenCalledWith({
+      nodeId: "goal-2",
+      message: "pasteSkippedAspect:1 pasteSkippedCommitment:1",
+    });
   });
 
   it("copies a flow item back into its own template", async () => {
@@ -392,7 +515,7 @@ describe("useNodeActions — onPaste", () => {
     await Promise.resolve();
     // Its Cycle Scope is an offset into flow-1's window, which flow-2's window does not share.
     expect(copyOpts.duplicateNode).not.toHaveBeenCalled();
-    expect(copyOpts.showToast).toHaveBeenCalledWith({ nodeId: "flow-2", message: "pasteSkipped:1" });
+    expect(copyOpts.showToast).toHaveBeenCalledWith({ nodeId: "flow-2", message: "pasteSkippedOtherFlow:1" });
 
     const cutOpts = makeOpts({ clipboard: { operation: CLIPBOARD_OP.CUT, nodeIds: ["flowtask-4"] } });
     const { result: cutResult } = renderHook(() => useNodeActions(cutOpts));
