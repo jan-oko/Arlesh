@@ -18,11 +18,11 @@ interface DisplayStore {
   habitCollapseThreshold: number;
   setHabitCollapseThreshold: (value: number) => void;
   /**
-   * Whether the List View floats asynchronous rows to the top of their own path-header run.
+   * Whether the List View collects the asynchronous work into its own section at the top.
    *
    * **Off by default.** Row order is something the tree already answers, and quietly rearranging it
-   * for everyone would be a change nobody asked for — so manual ordering is untouched until this is
-   * turned on.
+   * for everyone would be a change nobody asked for — so manual ordering is untouched, and no
+   * section is drawn, until this is turned on.
    */
   asynchronousFirst: boolean;
   toggleAsynchronousFirst: () => void;

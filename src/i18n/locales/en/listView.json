@@ -53,6 +53,7 @@
     "agentic": "Agentic",
     "not_agentic": "Not agentic"
   },
+  "asynchronousHeading": "Asynchronous",
   "asynchronousLabel": "Asynchronous",
   "asynchronousState": {
     "asynchronous": "Asynchronous",

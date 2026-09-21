@@ -120,47 +120,179 @@ beforeEach(() => {
 });
 
 describe("ListView — Asynchronous first", () => {
-  /** Two sibling rows under one path, the second of which starts a wait. */
-  function mixedRows() {
-    const aspect = n("aspect-1", "aspect");
-    const goal = n("goal-1", "goal", { status: "active" });
+  const aspect = () => n("aspect-1", "aspect");
+  const goal = () => n("goal-1", "goal", { status: "active" });
+
+  /** The user's own case: one asynchronous task, alone among its siblings, deep inside a subtree —
+   * with nothing to overtake where it stands. */
+  function nestedRows() {
+    const parent = n("task-parent", "task", { status: "todo" });
     return [
-      row({ node: n("task-sync", "task", { status: "todo" }), ancestors: [aspect, goal] }),
+      row({ node: parent, ancestors: [aspect(), goal()] }),
+      row({ node: n("task-first", "task", { status: "todo" }), ancestors: [aspect(), goal(), parent] }),
       row({
         node: n("task-wait", "task", { status: "todo", asynchronous: true }),
-        ancestors: [aspect, goal],
+        ancestors: [aspect(), goal(), parent],
         isAsynchronous: true,
       }),
+      row({ node: n("task-last", "task", { status: "todo" }), ancestors: [aspect(), goal(), parent] }),
     ];
   }
 
-  /** The titles of the rendered task rows, in the order they are drawn. */
+  /** The titles of the rendered rows, in the order they are drawn. */
   function renderedTitles(container: HTMLElement): string[] {
     return Array.from(container.querySelectorAll<HTMLElement>("[class*='card']"))
-      .map((card) => card.textContent ?? "")
-      .map((text) => (text.includes("task-wait") ? "task-wait" : "task-sync"));
+      .map((card) => card.querySelector("button[class*='title']")?.textContent ?? "");
   }
 
-  it("leaves row order exactly as the tree gave it while the setting is off", () => {
-    mockUseListData.mockReturnValue(listData({ rows: mixedRows() }));
+  /** Each path header drawn, as the chain of segment titles it names. */
+  function renderedHeaders(container: HTMLElement): string[] {
+    return Array.from(container.querySelectorAll<HTMLElement>("[class*='header']")).map((header) =>
+      Array.from(header.querySelectorAll("button[class*='segment']"))
+        .map((segment) => segment.textContent)
+        .join(" > "),
+    );
+  }
+
+  function renderedDepths(container: HTMLElement): string[] {
+    return Array.from(container.querySelectorAll<HTMLElement>("[class*='card']"))
+      .map((card) => card.style.getPropertyValue("--row-depth"));
+  }
+
+  it("leaves row order exactly as the tree gave it, and draws no section, while the setting is off", () => {
+    mockUseListData.mockReturnValue(listData({ rows: nestedRows() }));
     const { container } = render(<ListView />);
-    expect(renderedTitles(container)).toEqual(["task-sync", "task-wait"]);
+    expect(renderedTitles(container)).toEqual(["task-parent", "task-first", "task-wait", "task-last"]);
+    expect(screen.queryByText("listView:asynchronousHeading")).not.toBeInTheDocument();
   });
 
-  it("floats the asynchronous row to the top of its run once the setting is on", () => {
+  it("lifts the asynchronous row into a section at the top once the setting is on", () => {
     useDisplayStore.setState({ asynchronousFirst: true });
-    mockUseListData.mockReturnValue(listData({ rows: mixedRows() }));
+    mockUseListData.mockReturnValue(listData({ rows: nestedRows() }));
     const { container } = render(<ListView />);
-    expect(renderedTitles(container)).toEqual(["task-wait", "task-sync"]);
+    expect(screen.getByText("listView:asynchronousHeading")).toBeInTheDocument();
+    expect(renderedTitles(container)).toEqual(["task-wait", "task-parent", "task-first", "task-last"]);
   });
 
-  it("changes no run's membership or header", () => {
+  it("names the parent the lifted row left behind in the section's own path header", () => {
     useDisplayStore.setState({ asynchronousFirst: true });
-    mockUseListData.mockReturnValue(listData({ rows: mixedRows() }));
-    render(<ListView />);
-    expect(screen.getAllByText("goal-1")).toHaveLength(1);
-    expect(screen.getByText("task-sync")).toBeInTheDocument();
-    expect(screen.getByText("task-wait")).toBeInTheDocument();
+    mockUseListData.mockReturnValue(listData({ rows: nestedRows() }));
+    const { container } = render(<ListView />);
+    expect(renderedHeaders(container)).toEqual([
+      "aspect-1 > goal-1 > task-parent",
+      "aspect-1 > goal-1",
+    ]);
+  });
+
+  it("moves the row rather than duplicating it", () => {
+    useDisplayStore.setState({ asynchronousFirst: true });
+    mockUseListData.mockReturnValue(listData({ rows: nestedRows() }));
+    const { container } = render(<ListView />);
+    expect(renderedTitles(container).filter((title) => title === "task-wait")).toHaveLength(1);
+  });
+
+  it("carries a lifted row's children with it, indentation intact", () => {
+    useDisplayStore.setState({ asynchronousFirst: true });
+    const waiting = n("task-wait", "task", { status: "todo", asynchronous: true });
+    mockUseListData.mockReturnValue(listData({
+      rows: [
+        row({ node: n("task-plain", "task", { status: "todo" }), ancestors: [aspect(), goal()] }),
+        row({ node: waiting, ancestors: [aspect(), goal()], isAsynchronous: true }),
+        row({ node: n("task-child", "task", { status: "todo" }), ancestors: [aspect(), goal(), waiting] }),
+      ],
+    }));
+    const { container } = render(<ListView />);
+    expect(renderedTitles(container)).toEqual(["task-wait", "task-child", "task-plain"]);
+    expect(renderedDepths(container)).toEqual(["0", "1", "0"]);
+  });
+
+  it("lifts an outer asynchronous subtree once, so a nested asynchronous row does not lift twice", () => {
+    useDisplayStore.setState({ asynchronousFirst: true });
+    const outer = n("task-outer", "task", { status: "todo", asynchronous: true });
+    const middle = n("task-middle", "task", { status: "todo" });
+    mockUseListData.mockReturnValue(listData({
+      rows: [
+        row({ node: outer, ancestors: [aspect(), goal()], isAsynchronous: true }),
+        row({ node: middle, ancestors: [aspect(), goal(), outer] }),
+        row({
+          node: n("task-inner", "task", { status: "todo", asynchronous: true }),
+          ancestors: [aspect(), goal(), outer, middle],
+          isAsynchronous: true,
+        }),
+      ],
+    }));
+    const { container } = render(<ListView />);
+    expect(renderedTitles(container)).toEqual(["task-outer", "task-middle", "task-inner"]);
+    expect(renderedDepths(container)).toEqual(["0", "1", "2"]);
+    expect(renderedHeaders(container)).toEqual(["aspect-1 > goal-1"]);
+  });
+
+  it("draws no section when no row is asynchronous", () => {
+    useDisplayStore.setState({ asynchronousFirst: true });
+    mockUseListData.mockReturnValue(listData({
+      rows: [row({ node: n("task-plain", "task", { status: "todo" }), ancestors: [aspect(), goal()] })],
+    }));
+    const { container } = render(<ListView />);
+    expect(screen.queryByText("listView:asynchronousHeading")).not.toBeInTheDocument();
+    expect(renderedHeaders(container)).toEqual(["aspect-1 > goal-1"]);
+  });
+
+  it("leaves no stray header below when every row is asynchronous", () => {
+    useDisplayStore.setState({ asynchronousFirst: true });
+    mockUseListData.mockReturnValue(listData({
+      rows: [
+        row({
+          node: n("task-wait", "task", { status: "todo", asynchronous: true }),
+          ancestors: [aspect(), goal()],
+          isAsynchronous: true,
+        }),
+      ],
+    }));
+    const { container } = render(<ListView />);
+    expect(screen.getByText("listView:asynchronousHeading")).toBeInTheDocument();
+    expect(renderedHeaders(container)).toEqual(["aspect-1 > goal-1"]);
+    expect(renderedTitles(container)).toEqual(["task-wait"]);
+  });
+
+  it("keeps a focus-exempt asynchronous row in the section rather than dropping it", () => {
+    useDisplayStore.setState({ asynchronousFirst: true });
+    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, statusMode: "plan" } });
+    const todo = n("task-wait", "task", { status: "todo", asynchronous: true });
+    const done = n("task-wait", "task", { status: "done", asynchronous: true });
+    const waiting = (node: MindmapNode) =>
+      row({ node, ancestors: [aspect(), goal()], isAsynchronous: true });
+    const neighbour = row({ node: n("task-plain", "task", { status: "todo" }), ancestors: [aspect(), goal()] });
+    mockUseListData.mockReturnValue(listData({ rows: [waiting(todo), neighbour] }));
+    const view = render(<ListView />);
+    fireEvent.click(screen.getByText("task-wait"));
+    mockUseListData.mockReturnValue(listData({ rows: [waiting(done), neighbour] }));
+    view.rerender(<ListView />);
+    expect(renderedTitles(view.container)).toEqual(["task-wait", "task-plain"]);
+    expect(view.container.querySelector("[class*='cardFocusExempt']")?.textContent).toContain("task-wait");
+  });
+
+  it("walks the commitments band, the section and the ordinary list as one run of arrow presses", () => {
+    useDisplayStore.setState({ asynchronousFirst: true });
+    mockUseListData.mockReturnValue(listData({
+      commitmentRows: [commitmentRow()],
+      rows: [
+        row({ node: n("task-plain", "task", { status: "todo" }), ancestors: [aspect(), goal()] }),
+        row({
+          node: n("task-wait", "task", { status: "todo", asynchronous: true }),
+          ancestors: [aspect(), goal()],
+          isAsynchronous: true,
+        }),
+      ],
+    }));
+    const { container } = render(<ListView />);
+    const selected: string[] = [];
+    for (let step = 0; step < 3; step++) {
+      fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
+      const card = container.querySelector("[class*='cardSelected']");
+      selected.push(card?.querySelector("button[class*='title']")?.textContent ?? "");
+    }
+    // The band first, then the section, then what the section left behind — no dead stop, nothing skipped.
+    expect(selected).toEqual(["commitment-1", "task-wait", "task-plain"]);
   });
 });
 

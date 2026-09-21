@@ -96,13 +96,20 @@ export function flattenCommitmentRows(root: MindmapNode): CommitmentListRow[] {
   return rows;
 }
 
-/** One rendered List View entry: a **path header** naming a run's location, or a task row carrying
- * the depth it is indented to. The two halves partition a row's ancestors — the header names every
- * ancestor *not* rendered as a row above it, the depth counts every ancestor that *is* — so the list
- * never implies a parent that is not on screen. */
+/** One rendered List View entry: a **path header** naming a run's location, a task row carrying the
+ * depth it is indented to, or the **Asynchronous section** heading. Header and depth partition a
+ * row's ancestors — the header names every ancestor *not* rendered as a row above it, the depth
+ * counts every ancestor that *is* — so the list never implies a parent that is not on screen. The
+ * section heading carries nothing: it is drawn at most once, at the very top, and everything
+ * between it and the next ordinary run belongs to it (see `withAsynchronousSection`). */
 export type ListRowEntry =
   | { type: "path"; pathKey: string; segments: MindmapNode[] }
-  | { type: "task"; row: TaskListRow; visibleDepth: number };
+  | { type: "task"; row: TaskListRow; visibleDepth: number }
+  | { type: "asynchronous" };
+
+/** What path grouping alone can produce. The section heading is the caller's to add, so saying so
+ * in the type keeps every reader of a grouped run from having to rule it out. */
+export type PathGroupedEntry = Exclude<ListRowEntry, { type: "asynchronous" }>;
 
 /** Identity of a path: the ancestors it names, in order. Empty for a row with nothing above it. */
 function pathKeyOf(segments: readonly MindmapNode[]): string {
@@ -119,9 +126,9 @@ function pathKeyOf(segments: readonly MindmapNode[]): string {
  * the header leaves out is exactly what the indentation shows, so the two never repeat each other.
  * A run with an empty path — a task with no ancestors — gets no header rather than a blank one.
  */
-export function groupRowsByPath(rows: readonly TaskListRow[]): ListRowEntry[] {
+export function groupRowsByPath(rows: readonly TaskListRow[]): PathGroupedEntry[] {
   const rowIds = new Set(rows.map((row) => row.node.id));
-  const entries: ListRowEntry[] = [];
+  const entries: PathGroupedEntry[] = [];
   let lastPathKey: string | null = null;
   for (const row of rows) {
     const segments = row.ancestors.filter((ancestor) => !rowIds.has(ancestor.id));

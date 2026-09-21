@@ -2,4 +2,4 @@
 
   The flag stays on the Task it is set on and does not pass down to subtasks — unlike Agentic, which marks a whole branch. A subtask of something you are waiting on is usually the work you do *after* the wait.
 
-  The settings popover also gains an **Asynchronous first** switch for the List View, off by default. Turn it on and asynchronous rows float to the top of their own path-header run; every run keeps its members, every header stays put, and the Mindmap's hand-set sibling order is left alone. With it off, nothing moves.
+  The settings popover also gains an **Asynchronous first** switch for the List View, off by default. Turn it on and the list grows an **Asynchronous** section at the very top, collecting every asynchronous task in the filtered list — wherever it sits — along with anything beneath it. Paths are drawn in there as ordinary headers and rows look the same, so a task lifted out of a branch still reads in context; below the section the rest of the list carries on without it. A task is moved, never shown twice, and the Mindmap's hand-set sibling order is left alone. With it off, nothing moves and there is no section.

@@ -36,11 +36,17 @@
   border-bottom: 1px solid var(--node-border);
 }
 
-.commitmentsHeading {
+/* One voice for every section label in this view — the commitments band's and the Asynchronous
+   section's — so a section reads as a section whatever it collects. */
+.sectionHeading {
   margin: 0;
   font-size: var(--font-size-sm, 0.8rem);
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-secondary, var(--node-text-muted));
+}
+
+.commitmentsHeading {
+  composes: sectionHeading;
 }

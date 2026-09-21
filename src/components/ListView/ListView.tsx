@@ -15,7 +15,7 @@ import { filterCommitmentList, filterTaskListWithFocus } from "@/utils/list-filt
 import type { StatusMode } from "@/utils/filter-tree";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { groupRowsByPath } from "@/utils/list-data";
-import { withAsynchronousFirst } from "@/utils/async-first";
+import { withAsynchronousSection } from "@/utils/async-first";
 import { collectSearchableNodes } from "@/utils/mindmap-tree";
 import { useNodeEditor } from "@/components/MindmapView/use-node-editor";
 import { useKeyboardListView } from "./use-keyboard-list-view";
@@ -127,13 +127,15 @@ export default function ListView() {
     () => filterCommitmentList(commitmentRows, sharedFilter, listFilter),
     [commitmentRows, sharedFilter, listFilter],
   );
-  // Grouped first, then reordered: the runs and their headers are settled before anything moves,
-  // so floating asynchronous work can only change the order *inside* a run — never which run a row
-  // belongs to, and never which headers are drawn.
-  const entries = useMemo(() => {
-    const grouped = groupRowsByPath(filteredRows);
-    return asynchronousFirst ? withAsynchronousFirst(grouped) : grouped;
-  }, [filteredRows, asynchronousFirst]);
+  // Split first, then grouped: with the setting on, the asynchronous work is pulled out of the
+  // filtered set before any header is drawn, so each half is grouped by path on its own terms — the
+  // section's rows gain the parent they left behind as a header segment, and the rows left below
+  // keep the header and indentation their remaining ancestors give them. With it off nothing is
+  // pulled out and the list is exactly what the tree ordered.
+  const entries = useMemo(
+    () => (asynchronousFirst ? withAsynchronousSection(filteredRows) : groupRowsByPath(filteredRows)),
+    [filteredRows, asynchronousFirst],
+  );
   const taskIds = useMemo(
     () => entries.filter((entry) => entry.type === "task").map((entry) => entry.row.node.id),
     [entries],
@@ -302,20 +304,33 @@ export default function ListView() {
         <div className={styles.centered}>{t("listView:empty")}</div>
       ) : (
         <div className={styles.rows}>
-          {entries.map((entry, index) =>
-            entry.type === "path" ? (
-              <PathHeaderRow
-                key={`path-${index}-${entry.pathKey}`}
-                segments={entry.segments}
-                onEnterSubtree={enterSubtree}
-                // Ctrl/Alt-click on a segment narrows the list in place rather than re-rooting it:
-                // the same Antecedent pill the filter popover's combobox adds, on the element that
-                // already names the ancestors.
-                onFilterByAntecedent={(id, side) => setPillSide("antecedent", id, side)}
-                showKindIcon={pathHeaderIcons}
-                onCreateTask={headerCreateHandler(entry.segments)}
-              />
-            ) : (
+          {entries.map((entry, index) => {
+            // The Asynchronous section's heading: drawn in the list's own flow rather than wrapped
+            // in a section element, because the rows it collects are path-grouped runs like any
+            // other and share the one arrow-key order.
+            if (entry.type === "asynchronous") {
+              return (
+                <h2 key="asynchronous" className={styles.sectionHeading}>
+                  {t("listView:asynchronousHeading")}
+                </h2>
+              );
+            }
+            if (entry.type === "path") {
+              return (
+                <PathHeaderRow
+                  key={`path-${index}-${entry.pathKey}`}
+                  segments={entry.segments}
+                  onEnterSubtree={enterSubtree}
+                  // Ctrl/Alt-click on a segment narrows the list in place rather than re-rooting it:
+                  // the same Antecedent pill the filter popover's combobox adds, on the element that
+                  // already names the ancestors.
+                  onFilterByAntecedent={(id, side) => setPillSide("antecedent", id, side)}
+                  showKindIcon={pathHeaderIcons}
+                  onCreateTask={headerCreateHandler(entry.segments)}
+                />
+              );
+            }
+            return (
               <TaskRow
                 key={entry.row.node.id}
                 row={entry.row}
@@ -330,8 +345,8 @@ export default function ListView() {
                 onCancelTitleEdit={cancelTitleEdit}
                 onAddTagFilter={addTagFilter}
               />
-            ),
-          )}
+            );
+          })}
         </div>
       )}
 
