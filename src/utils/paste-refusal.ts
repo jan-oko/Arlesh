@@ -1,6 +1,7 @@
-import type { MindmapNode } from "./tree-layout";
+import type { MindmapNode, NodeKind } from "./tree-layout";
+import { ALL_NODE_KINDS } from "./tree-layout";
 import { findNode, owningFlowId } from "./mindmap-tree";
-import { isValidDropTarget } from "./node-meta";
+import { isFlowKind, isValidDropTarget, validParentKinds } from "./node-meta";
 
 /**
  * Why one node on the clipboard cannot be pasted onto a given target.
@@ -25,12 +26,37 @@ export const PASTE_REFUSAL = {
   OTHER_FLOW: "otherFlow",
 } as const;
 
-/** One reason a single node was left behind by a paste. */
-export type PasteRefusal = (typeof PASTE_REFUSAL)[keyof typeof PASTE_REFUSAL];
+/** Which of the refusals happened. */
+export type PasteRefusalReason = (typeof PASTE_REFUSAL)[keyof typeof PASTE_REFUSAL];
 
 /**
- * The `warnings` key each refusal reports itself with. Every one is pluralised, because a refusal
- * counts the nodes it applies to rather than naming them.
+ * The destination refusal, carrying what its sentence has to name: the kind that was refused, and
+ * every kind that would have taken it.
+ *
+ * `validParents` is read off `isValidDropTarget` — the same predicate that produced the refusal,
+ * turned round by {@link validParentKinds}. The message therefore cannot claim a parentage the drop
+ * check does not enforce, which a hand-written table beside it eventually would.
+ */
+export interface HereRefusal {
+  reason: typeof PASTE_REFUSAL.HERE;
+  child: NodeKind;
+  validParents: readonly NodeKind[];
+}
+
+/** A refusal about the node itself: no destination would have changed the answer. */
+export interface NodeRefusal {
+  reason: Exclude<PasteRefusalReason, typeof PASTE_REFUSAL.HERE>;
+}
+
+/** One reason a single node was left behind by a paste. */
+export type PasteRefusal = HereRefusal | NodeRefusal;
+
+/**
+ * The `warnings` key each refusal about the node reports itself with. Every one is pluralised,
+ * because such a refusal counts the nodes it applies to rather than naming them.
+ *
+ * The destination refusal is not in this shape — it picks between two sentences, so it goes
+ * through {@link pasteRefusalKey} like the rest.
  */
 export const PASTE_REFUSAL_KEY = {
   gone: "pasteSkippedGone",
@@ -39,14 +65,19 @@ export const PASTE_REFUSAL_KEY = {
   here: "pasteSkippedHere",
   commitment: "pasteSkippedCommitment",
   otherFlow: "pasteSkippedOtherFlow",
-} as const satisfies Record<PasteRefusal, string>;
+} as const satisfies Record<PasteRefusalReason, string>;
+
+/** A `warnings` key one refusal line can be said with. */
+export type PasteRefusalMessageKey =
+  | (typeof PASTE_REFUSAL_KEY)[PasteRefusalReason]
+  | "pasteSkippedHereInFlow";
 
 /**
  * Report order, fixed so the same mixed selection always produces the same sentence. Destination
  * first because it is the one the user can act on where they are standing; the stale clipboard last
  * because it is about a gesture already finished.
  */
-const REFUSAL_ORDER: readonly PasteRefusal[] = [
+const REFUSAL_ORDER: readonly PasteRefusalReason[] = [
   PASTE_REFUSAL.HERE,
   PASTE_REFUSAL.ASPECT,
   PASTE_REFUSAL.REPETITION,
@@ -69,27 +100,28 @@ export function pasteRefusal(
   isCopy: boolean,
 ): PasteRefusal | null {
   const node = findNode(tree, nodeId);
-  if (node === undefined) return PASTE_REFUSAL.GONE;
-  if (node.virtual === true) return PASTE_REFUSAL.REPETITION;
-  if (node.kind === "aspect") return PASTE_REFUSAL.ASPECT;
-  if (!isValidDropTarget(node.kind, target.kind)) return PASTE_REFUSAL.HERE;
+  if (node === undefined) return { reason: PASTE_REFUSAL.GONE };
+  if (node.virtual === true) return { reason: PASTE_REFUSAL.REPETITION };
+  if (node.kind === "aspect") return { reason: PASTE_REFUSAL.ASPECT };
+  if (!isValidDropTarget(node.kind, target.kind)) {
+    // The rule that said no also says where yes would have been, in the same breath and from the
+    // same predicate — so the sentence and the decision cannot drift apart.
+    return { reason: PASTE_REFUSAL.HERE, child: node.kind, validParents: validParentKinds(node.kind) };
+  }
   // Everything below is about duplication, so a CUT of the same node is fine and says nothing.
   if (!isCopy) return null;
-  if (node.kind === "commitment") return PASTE_REFUSAL.COMMITMENT;
+  if (node.kind === "commitment") return { reason: PASTE_REFUSAL.COMMITMENT };
   if (
     (node.kind === "flow_goal" || node.kind === "flow_task") &&
     owningFlowId(tree, nodeId) !== owningFlowId(tree, target.id)
   ) {
-    return PASTE_REFUSAL.OTHER_FLOW;
+    return { reason: PASTE_REFUSAL.OTHER_FLOW };
   }
   return null;
 }
 
 /** One refusal and how many of the pasted nodes hit it. */
-export interface PasteRefusalCount {
-  refusal: PasteRefusal;
-  count: number;
-}
+export type PasteRefusalCount = PasteRefusal & { count: number };
 
 /**
  * The refusals a paste collected, counted and in report order. Reasons nothing hit are dropped, so
@@ -97,9 +129,50 @@ export interface PasteRefusalCount {
  */
 export function countPasteRefusals(refusals: readonly PasteRefusal[]): PasteRefusalCount[] {
   const counts: PasteRefusalCount[] = [];
-  for (const refusal of REFUSAL_ORDER) {
-    const count = refusals.filter((candidate) => candidate === refusal).length;
-    if (count > 0) counts.push({ refusal, count });
+  for (const reason of REFUSAL_ORDER) {
+    if (reason === PASTE_REFUSAL.HERE) {
+      counts.push(...countByRefusedKind(refusals));
+      continue;
+    }
+    const count = refusals.filter((candidate) => candidate.reason === reason).length;
+    if (count > 0) counts.push({ reason, count });
   }
   return counts;
+}
+
+/**
+ * Destination refusals, a line per kind refused.
+ *
+ * Folding them into one count is the swallowing this whole message exists to undo: the rule that
+ * refuses a Goal under a Task is not the rule that refuses a Project under one, and a single
+ * "2 nodes couldn't be pasted here" would state a rule true of neither. Ordered by
+ * {@link ALL_NODE_KINDS} so one selection always reads the same way, however it was assembled.
+ */
+function countByRefusedKind(refusals: readonly PasteRefusal[]): PasteRefusalCount[] {
+  const here = refusals.filter(
+    (candidate): candidate is HereRefusal => candidate.reason === PASTE_REFUSAL.HERE,
+  );
+  const lines: PasteRefusalCount[] = [];
+  for (const child of ALL_NODE_KINDS) {
+    const ofKind = here.filter((candidate) => candidate.child === child);
+    const first = ofKind[0];
+    if (first === undefined) continue;
+    lines.push({ ...first, count: ofKind.length });
+  }
+  return lines;
+}
+
+/**
+ * Which sentence one refusal line reads out.
+ *
+ * A destination refusal has two, because listing a flow item's legal parents would print the labels
+ * real nodes already use — "only under Flow, Goal, Task" — and so produce "a Task can't sit under a
+ * Task", which the app contradicts everywhere else. A flow item is told about its Flow instead. The
+ * test for that is the parents the rule handed back, never a second list of which kinds are flow
+ * kinds: if the drop rule ever lets a flow item out of its Flow, the sentence follows it.
+ */
+export function pasteRefusalKey(line: PasteRefusalCount): PasteRefusalMessageKey {
+  if (line.reason !== PASTE_REFUSAL.HERE) return PASTE_REFUSAL_KEY[line.reason];
+  const onlyInsideAFlow = line.validParents.length > 0 && line.validParents.every(isFlowKind);
+  return onlyInsideAFlow ? "pasteSkippedHereInFlow" : PASTE_REFUSAL_KEY.here;
 }

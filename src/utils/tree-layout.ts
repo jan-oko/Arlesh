@@ -12,7 +12,12 @@ export type NodeKind =
   /** A display-only stand-in for a run of passed Habit iterations — see {@link HabitGroup}. */
   | "habit_group";
 
-const ALL_NODE_KINDS: NodeKind[] = [
+/**
+ * Every node kind, in the order anything that reads them all should read them out. It is the one
+ * list: the `NodeKind` type guard narrows against it, and a message that names several kinds
+ * orders them by it, so the same set always reads the same way.
+ */
+export const ALL_NODE_KINDS: readonly NodeKind[] = [
   "aspect", "project", "domain", "goal", "task", "commitment", "tag", "info",
   "flow", "flow_goal", "flow_task", "habit_group",
 ];

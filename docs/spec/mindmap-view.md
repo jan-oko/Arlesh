@@ -109,7 +109,18 @@ the destination. An Aspect is fixed wherever you point it, a Habit repetition ha
 copy, and a Commitment or a flow item leaving its own Flow has no duplicate at all though cut still
 moves it; telling the user any of these "couldn't be pasted here" sends them to change a destination
 that was never the problem. A mixed selection reports every reason it hit, in **one** toast: the view
-holds a single pending toast, so a second would overwrite the first and skip a node in silence.
+holds a single pending toast, so a second would overwrite the first and skip a node in silence. A
+toast stays up long enough to be read, which is a function of how much it says, not a fixed three
+seconds.
+
+The refusal that **is** about the destination names the kind it refused, what that kind was dropped
+on, and — read off the drop-target rule itself, never off a list kept beside it — every kind that
+*would* have taken it: "1 Goal can't sit under Task — only under Aspect, Domain, Project, Goal." It
+is counted **per kind**, so a Goal and a Project refused by the same Task get a sentence each; one
+count over both would state a rule true of neither. A flow item is told about its Flow instead of
+being given that list, because a flow item's legal parents carry the same labels real nodes do and
+the list would read as a claim about Tasks and Goals in general.
+
 Otherwise a copy is refused exactly where a move would be, by the same
 drop-target rule; it lands at the end of the target's children; it is atomic, so a failure part-way
 leaves the tree untouched rather than half a subtree; and it leaves the clipboard intact, so the same

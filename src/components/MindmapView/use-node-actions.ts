@@ -3,8 +3,8 @@ import { useTranslation } from "react-i18next";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { findNode, findParent, collectAllNodeIds } from "@/utils/mindmap-tree";
 import { isValidDropTarget, validParentKinds } from "@/utils/node-meta";
-import { pasteRefusal, countPasteRefusals, PASTE_REFUSAL_KEY } from "@/utils/paste-refusal";
-import type { PasteRefusal } from "@/utils/paste-refusal";
+import { pasteRefusal, countPasteRefusals, pasteRefusalKey, PASTE_REFUSAL } from "@/utils/paste-refusal";
+import type { PasteRefusal, PasteRefusalCount } from "@/utils/paste-refusal";
 import type { TypedChildKind } from "@/utils/node-meta";
 import { updateTask } from "@/api/tasks";
 import type { TaskAgentic } from "@/api/tasks";
@@ -201,6 +201,30 @@ export function useNodeActions({
     [tree, onRequestDelete],
   );
 
+  /**
+   * One refusal line, as a sentence.
+   *
+   * A refusal about the node reads the same however it arose, so it takes the count alone. The
+   * destination refusal is the one that has to be built, because it is the only one that used to
+   * say nothing: it names the kind that was refused, what it was dropped on, and — from
+   * `validParentKinds`, which is the drop rule read the other way round — where it would have gone.
+   * The count's noun is the kind itself, whose plural comes from `nodeKinds`, which is why the
+   * frame in `warnings` needs no plural of its own.
+   */
+  const refusalSentence = useCallback(
+    (line: PasteRefusalCount, parentKind: NodeKind): string => {
+      const key = pasteRefusalKey(line);
+      if (line.reason !== PASTE_REFUSAL.HERE) return t(key, { count: line.count });
+      return t(key, {
+        count: line.count,
+        child: t(`nodeKinds:${line.child}`, { count: line.count }),
+        parent: t(`nodeKinds:${parentKind}`),
+        parents: line.validParents.map((kind) => t(`nodeKinds:${kind}`)).join(", "),
+      });
+    },
+    [t],
+  );
+
   const onPaste = useCallback(
     (targetId: string) => {
       if (clipboard === null) return;
@@ -226,7 +250,7 @@ export function useNodeActions({
       // dropped in silence — exactly what this message exists to prevent.
       if (refusals.length > 0) {
         const message = countPasteRefusals(refusals)
-          .map(({ refusal, count }) => t(PASTE_REFUSAL_KEY[refusal], { count }))
+          .map((line) => refusalSentence(line, targetNode.kind))
           .join(" ");
         showToast({ nodeId: targetId, message });
       }
@@ -273,7 +297,7 @@ export function useNodeActions({
         console.error(`${LOG_PREFIX} paste failed:`, err);
       });
     },
-    [clipboard, tree, moveNode, duplicateNode, setClipboard, showToast, t],
+    [clipboard, tree, moveNode, duplicateNode, setClipboard, showToast, refusalSentence, t],
   );
 
   const onCreateSibling = useCallback(
