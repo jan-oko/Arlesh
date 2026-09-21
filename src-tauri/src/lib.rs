@@ -2,8 +2,6 @@
 #![deny(missing_docs)]
 //! Arlesh — task management and knowledge-base desktop app.
 
-const EMBEDDED_ICON: &[u8] = include_bytes!("../icons/128x128.png");
-
 pub mod block_reasons;
 pub mod commands;
 pub mod database;
@@ -11,12 +9,14 @@ pub mod domains;
 pub mod duplicate;
 pub mod error;
 pub mod flows;
+pub mod icon;
 pub mod infos;
 pub mod knowledge_base;
 pub mod mcp;
 pub mod mindmap;
 pub mod scopes;
 pub mod tasks;
+pub mod tray;
 pub mod undo;
 pub mod wire;
 
@@ -78,32 +78,25 @@ pub fn run() {
             // history, and nothing has to clear them.
             app.manage(undo::stacks::UndoStacks::new());
 
-            if let Some(window) = app.get_webview_window("main") {
-                let icon = match app.default_window_icon().cloned() {
-                    Some(icon) => icon,
-                    None => {
-                        let mut decoder = png::Decoder::new(EMBEDDED_ICON);
-                        decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::ALPHA);
-                        let mut reader = decoder.read_info()
-                            .map_err(|e| anyhow::anyhow!("icon decode error: {e}"))?;
-                        let mut buf = vec![0u8; reader.output_buffer_size()];
-                        let info = reader.next_frame(&mut buf)
-                            .map_err(|e| anyhow::anyhow!("icon frame error: {e}"))?;
-                        let rgba = buf[..info.buffer_size()].to_vec();
-                        tauri::image::Image::new_owned(rgba, info.width, info.height)
-                    }
-                };
-                window.set_icon(icon)?;
-            }
+            commands::tray::set_window_icon(app.handle())?;
+
+            // The tray goes up last, so that everything its Quit has to release cleanly — the
+            // factory, the journal, the MCP listener — is already in place before the user can
+            // ask for it. Closing the window hides it to this tray by default, which is what
+            // keeps the MCP endpoint answering while no window is open.
+            commands::tray::install(app.handle());
 
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::tray::set_close_to_tray,
+            commands::tray::quit_app,
             commands::undo::open_gesture,
             commands::undo::close_gesture,
             commands::undo::undo,
             commands::undo::redo,
             commands::undo::undo_status,
+            commands::beads::clear_beads_id,
             commands::block_reasons::list_all_block_reasons,
             commands::block_reasons::set_block_reasons,
             commands::infos::create_info,

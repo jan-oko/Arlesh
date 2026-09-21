@@ -201,6 +201,7 @@ describe("Ctrl+Shift+/ across the cheat-sheet and the Mindmap", () => {
       onToggleHotkeys: () => {},
       onToggleFullscreen: () => {},
       isRecursiveExpandArmed: armed,
+      onQuit: () => {},
     };
   }
 

@@ -5,6 +5,7 @@ import { useListFilterStore } from "@/stores/use-list-filter-store";
 import { useViewStore } from "@/stores/use-view-store";
 import { useDisplayStore } from "@/stores/use-display-store";
 import { useThemeStore } from "@/stores/use-theme-store";
+import { useCloseToTrayStore } from "@/stores/use-close-to-tray-store";
 import { useHotkeysStore } from "@/stores/use-hotkeys-store";
 import { LIST_PRESET_VALUES, isListPreset } from "@/utils/list-filter";
 import type { ListPreset } from "@/utils/list-filter";
@@ -47,6 +48,8 @@ export default function TopBar() {
   const setListPreset = useListFilterStore((s) => s.setPreset);
   const theme = useThemeStore((s) => s.theme);
   const toggleTheme = useThemeStore((s) => s.toggleTheme);
+  const closeToTray = useCloseToTrayStore((s) => s.closeToTray);
+  const toggleCloseToTray = useCloseToTrayStore((s) => s.toggleCloseToTray);
   const toggleHotkeys = useHotkeysStore((s) => s.toggle);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -77,6 +80,11 @@ export default function TopBar() {
                 <div className={styles.popover}>
                   <div className={styles.settingRow}>
                     <Switch checked={theme === "light"} onChange={toggleTheme} label={t("common:lightMode")} />
+                  </div>
+                  {/* Neither view-specific nor tab-specific: what the window's close button does is
+                      the same wherever you are, so it sits beside the theme, ungated. */}
+                  <div className={styles.settingRow}>
+                    <Switch checked={closeToTray} onChange={toggleCloseToTray} label={t("common:closeToTray")} />
                   </div>
                   {/* Branch axis only means something on the mindmap, so it stays out of List View. */}
                   {view === "mindmap" && (

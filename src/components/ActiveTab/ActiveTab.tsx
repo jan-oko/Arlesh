@@ -5,6 +5,7 @@ import { useViewStore } from "@/stores/use-view-store";
 import { useHotkeysStore } from "@/stores/use-hotkeys-store";
 import { useFullscreenStore } from "@/stores/use-fullscreen-store";
 import { useHotkeys } from "@/hooks/use-hotkeys";
+import { useQuit } from "@/hooks/use-close-to-tray";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { useTabTitle } from "@/hooks/use-tab-title";
@@ -33,11 +34,12 @@ export default function ActiveTab() {
   const selectedNodeId = useMindmapStore((s) => s.selectedNodeId);
   const isInputCaptured = useIsInputCaptured();
   const armed = isRecursiveExpandArmed({ isMindmapOnScreen: view === "mindmap", selectedNodeId, isInputCaptured });
+  const quit = useQuit();
 
   useTabTitle();
   useHotkeys(
     GLOBAL_BINDINGS,
-    { onToggleView: toggleView, onToggleHotkeys: toggleHotkeys, onToggleFullscreen: toggleFullscreen, isRecursiveExpandArmed: armed },
+    { onToggleView: toggleView, onToggleHotkeys: toggleHotkeys, onToggleFullscreen: toggleFullscreen, isRecursiveExpandArmed: armed, onQuit: quit },
     true,
   );
 

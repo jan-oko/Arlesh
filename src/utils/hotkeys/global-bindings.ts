@@ -10,6 +10,7 @@ export interface GlobalContext {
    * for this press. False while the cheat-sheet is open, since the same chord is what closes it.
    */
   isRecursiveExpandArmed: boolean;
+  onQuit: () => void;
 }
 
 /** What `isRecursiveExpandArmed` is decided from — the state the two guards have to agree about. */
@@ -50,6 +51,16 @@ export const GLOBAL_BINDINGS: readonly Binding<GlobalContext>[] = [
     chord: { code: "F11" },
     labelKey: "toggleFullscreen",
     run: (c) => c.onToggleFullscreen(),
+  },
+  {
+    // Quitting has to be reachable without the mouse, because with close-to-tray on the close
+    // button no longer does it. Ctrl+Q is where every desktop app puts this.
+    id: "global.quit",
+    section: "global",
+    chord: { code: "KeyQ", ctrl: true },
+    labelKey: "quitApp",
+    allowRepeat: false,
+    run: (c) => c.onQuit(),
   },
   {
     // Shared with the Mindmap's `toggleSubtreeCollapsed`, which takes the chord whenever a cell

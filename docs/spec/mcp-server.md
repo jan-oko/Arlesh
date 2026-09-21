@@ -10,7 +10,9 @@ Domain or knowledge-base entry.
 
 The endpoint is hosted by the app itself, not a separate process, so there is only ever one writer
 to the database and the agent sees exactly what the open window sees. The cost is that it answers
-nothing while Arlesh is closed.
+nothing while Arlesh is **not running** — which, since closing the window only hides it to the tray
+([Window & Tray](window-tray.md)), now takes a deliberate Quit rather than a reflexive click on the
+close button.
 
 **Address.** `http://127.0.0.1:4747/mcp`, overridable with the `ARLESH_MCP_PORT` environment
 variable. It binds loopback only and rejects any request carrying an `Origin` header, so a page in
@@ -72,8 +74,9 @@ worth.
 ## Issue links
 
 A Task, Goal, Commitment or Project can carry the id of the `bd` issue tracking it, and `arlesh_beads.set` is
-the **only** way that field is ever written: no Tauri command touches the column and the editor
-modals render it as text with no control. So an issue id shown in Arlesh always arrived over MCP.
+the **only** way that field is ever given a *value*: the one Tauri command that touches the column
+(`clear_beads_id`) writes null and nothing else, and the editor modals render the id as text with no
+control but an × that stages the drop for their Save. So an issue id shown in Arlesh always arrived over MCP.
 Passing `null` clears the link. Setting one on an item that does not exist is an error rather than
 a silent no-op, and only the `project` subtype of Domain accepts a link — an Aspect, Domain or Tag
 is refused.

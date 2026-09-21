@@ -9,6 +9,7 @@ function makeContext(overrides: Partial<GlobalContext> = {}): GlobalContext {
     onToggleHotkeys: vi.fn(),
     onToggleFullscreen: vi.fn(),
     isRecursiveExpandArmed: false,
+    onQuit: vi.fn(),
     ...overrides,
   };
 }
@@ -44,6 +45,23 @@ describe("GLOBAL_BINDINGS", () => {
     const ctx = makeContext();
     expect(runFor("F11", {}, ctx)).toBe(true);
     expect(ctx.onToggleFullscreen).toHaveBeenCalledTimes(1);
+  });
+
+  it("when Ctrl+Q is pressed, quits the app", () => {
+    const ctx = makeContext();
+    expect(runFor("KeyQ", { ctrlKey: true }, ctx)).toBe(true);
+    expect(ctx.onQuit).toHaveBeenCalledTimes(1);
+  });
+
+  it("when Q is pressed on its own, quits nothing", () => {
+    const ctx = makeContext();
+    expect(runFor("KeyQ", {}, ctx)).toBe(false);
+    expect(ctx.onQuit).not.toHaveBeenCalled();
+  });
+
+  it("does not repeat the quit while Ctrl+Q is held", () => {
+    const quit = GLOBAL_BINDINGS.find((b) => b.id === "global.quit");
+    expect(quit?.allowRepeat).toBe(false);
   });
 
   it("when Alt+Shift+L is pressed, matches nothing", () => {
