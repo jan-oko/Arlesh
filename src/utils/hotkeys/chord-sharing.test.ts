@@ -7,6 +7,7 @@ import { TAB_BINDINGS } from "./tab-bindings";
 import { LIST_BINDINGS } from "./list-bindings";
 import type { ListContext } from "./list-bindings";
 import { MINDMAP_BINDINGS } from "./mindmap-bindings";
+import { PLAN_BINDINGS } from "./plan-bindings";
 import type { MindmapContext } from "./mindmap-bindings";
 
 /**
@@ -44,7 +45,9 @@ const SHARED_CHORDS: Readonly<Record<string, readonly string[]>> = {
   "listView Enter": ["listView.cycleStatus", "listView.cycleVerdict"],
 };
 
-const ALL: readonly BindingMeta[] = [...GLOBAL_BINDINGS, ...TAB_BINDINGS, ...MINDMAP_BINDINGS, ...LIST_BINDINGS];
+const ALL: readonly BindingMeta[] = [
+  ...GLOBAL_BINDINGS, ...TAB_BINDINGS, ...MINDMAP_BINDINGS, ...LIST_BINDINGS, ...PLAN_BINDINGS,
+];
 
 /**
  * The chords a view's table shares with an always-live one. There are none, and that is the point.
@@ -176,6 +179,7 @@ describe("chords a view shares with an always-live table", () => {
     expect({
       ...crossTableGroups("mindmap", MINDMAP_BINDINGS),
       ...crossTableGroups("listView", LIST_BINDINGS),
+      ...crossTableGroups("planView", PLAN_BINDINGS),
     }).toEqual(CROSS_TABLE_CHORDS);
   });
 });

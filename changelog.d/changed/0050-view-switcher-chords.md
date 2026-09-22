@@ -1,0 +1,7 @@
+- **Switching views moved to `Ctrl`: `Ctrl+M` for the Mindmap, `Ctrl+L` for the List, `Ctrl+P` for the new Plan view — and `Alt+L` no longer switches views at all.** `Alt+L` used to toggle between the only two views there were. With a third, a toggle has nothing to mean: it would have had to become "next view", quietly turning a chord you already have in your fingers into something that depends on where you happen to be standing. Each view now names itself instead, so every one of them is a single press from any other and there is no cycle order to learn.
+
+  **The status presets are untouched.** `Alt+A`, `Alt+P`, `Alt+S`, `Alt+D` and `Alt+B` are still All, Plan, Start, Do and Backlog, exactly where they have always been — which is why the *views* are the ones that moved. `Ctrl+S` is deliberately left free, held for a view still to come, so this is the last time these chords change.
+
+  `Ctrl+P` and `Ctrl+S` are the browser's print and save. Arlesh takes them the way it already takes `Ctrl+W` and `Ctrl+T`, and a rename box or an editor field still gets them first, so a save reflex while you are typing is still just a reflex that does nothing. The view chords also stop working while a modal or an inline rename is open, so a view can never change out from under something you have open on top of it — `Ctrl+Q` and the `Ctrl+Shift+/` cheat-sheet stay live as they always have.
+
+  The cheat-sheet lists all three.

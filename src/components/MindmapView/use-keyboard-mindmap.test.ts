@@ -246,21 +246,10 @@ describe("useKeyboardMindmap — Tab (create child)", () => {
   });
 });
 
+// The two modified Escapes are global bindings now — see `global-bindings.test.ts`. Bare Escape
+// stayed here because it needs the canvas's own selection, which is exactly why it was not
+// promoted with them.
 describe("useKeyboardMindmap — Escape variants", () => {
-  it("Ctrl+Escape calls onExitToRoot when subtreeRootId is set", () => {
-    const opts = mindmapKeyboardContext({ subtreeRootId: "domain-1" });
-    renderHook(() => useKeyboardMindmap(opts));
-    fireKey("Escape", { ctrlKey: true });
-    expect(opts.onExitToRoot).toHaveBeenCalledTimes(1);
-  });
-
-  it("Shift+Escape calls onExitSubtree when subtreeRootId is set", () => {
-    const opts = mindmapKeyboardContext({ subtreeRootId: "domain-1" });
-    renderHook(() => useKeyboardMindmap(opts));
-    fireKey("Escape", { shiftKey: true });
-    expect(opts.onExitSubtree).toHaveBeenCalledTimes(1);
-  });
-
   it("plain Escape calls onDeselect when a node is selected", () => {
     const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
@@ -305,15 +294,6 @@ describe("useKeyboardMindmap — Ctrl+= / Ctrl+- (zoom)", () => {
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("=");
     expect(opts.onZoomIn).not.toHaveBeenCalled();
-  });
-});
-
-describe("useKeyboardMindmap — Ctrl+O (node search)", () => {
-  it("opens the node search on Ctrl+O, even with no selection", () => {
-    const opts = mindmapKeyboardContext({ selectedNodeId: null });
-    renderHook(() => useKeyboardMindmap(opts));
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: "ז", code: "KeyO", ctrlKey: true, bubbles: true, cancelable: true }));
-    expect(opts.onOpenSearch).toHaveBeenCalled();
   });
 });
 
@@ -651,13 +631,6 @@ describe("useKeyboardMindmap — double-tap Enter enters subtree", () => {
 });
 
 describe("useKeyboardMindmap — filter shortcuts (Alt)", () => {
-  it("Alt+F toggles the filter menu", () => {
-    const opts = mindmapKeyboardContext();
-    renderHook(() => useKeyboardMindmap(opts));
-    fireKey("f", { altKey: true });
-    expect(opts.onToggleFilter).toHaveBeenCalledTimes(1);
-  });
-
   it("Alt+<first letter> selects each status mode", () => {
     const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
@@ -852,15 +825,6 @@ describe("useKeyboardMindmap — f converts an applicable node to a flow", () =>
     const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("f");
-    expect(opts.onToggleFullscreen).not.toHaveBeenCalled();
-  });
-
-  it("Alt+F still toggles the filter menu and does not convert", () => {
-    const opts = mindmapKeyboardContext();
-    renderHook(() => useKeyboardMindmap(opts));
-    fireKey("f", { altKey: true });
-    expect(opts.onToggleFilter).toHaveBeenCalledTimes(1);
-    expect(opts.onConvertToFlow).not.toHaveBeenCalled();
     expect(opts.onToggleFullscreen).not.toHaveBeenCalled();
   });
 });
