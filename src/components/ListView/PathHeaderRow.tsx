@@ -3,8 +3,6 @@ import type { MouseEvent } from "react";
 import { useTranslation } from "react-i18next";
 import type { PillSide } from "@/utils/list-filter";
 import type { MindmapNode } from "@/utils/tree-layout";
-import { isNodeBlocked } from "@/utils/tree-layout";
-import NodeIcon from "@/components/NodeIcon/NodeIcon";
 import styles from "./PathHeaderRow.module.css";
 
 interface Props {
@@ -12,15 +10,10 @@ interface Props {
   onEnterSubtree: (id: string) => void;
   /** Files the segment as an **Antecedent** pill — kept in (`include`) or kept out (`exclude`). */
   onFilterByAntecedent: (id: string, side: PillSide) => void;
-  /** Whether to draw the leading kind glyph — the settings popover's **Path icons** switch. */
-  showKindIcon: boolean;
   /** Creates a Task under the chain's last node. `null` where that node cannot hold one, so the
    * affordance is absent rather than present and always refusing. */
   onCreateTask: (() => void) | null;
 }
-
-/** Sized against the header's `--text-sm`, not against a TaskRow card's larger status icon. */
-const ICON_R = 7;
 
 /**
  * Which side of the Antecedent filter a click on a segment is asking for, or `null` for a bare
@@ -36,7 +29,7 @@ function filterSideFor(event: MouseEvent): PillSide | null {
   if (event.altKey) return "exclude";
   return null;
 }
-/** The `+` glyph, a shade smaller than the kind icon: it qualifies the chain rather than heading it. */
+/** The `+` glyph, a shade smaller than the header's text: it qualifies the chain rather than heading it. */
 const PLUS_SIZE = 10;
 
 /** The location of the run of rows beneath it — `Growth › CODE › ARLESH › Features` — named once
@@ -57,19 +50,12 @@ const PLUS_SIZE = 10;
  * pill is typing a node's name into the filter popover's combobox, which is a poor answer to
  * "not this branch" when the branch is on screen and under the pointer.
  *
- * The header opens with one glyph for the **nearest** ancestor — the node the rows below hang
- * directly from — drawn with the same `NodeIcon` the Mindmap and the task rows use, so one
- * vocabulary covers all three. One glyph, not one per segment: the chain is read for where it ends,
- * and a marker beside every step would compete with the titles it exists to qualify. The glyph can
- * be switched off from the settings popover, leaving the chain as bare titles.
- *
  * The chain closes with a **`+`** that creates a Task under its last node — the one the rows below
  * hang from, so where the new row lands is exactly what the header already says. It is the way in
  * with nothing selected, which the two creation chords cannot cover because both read their parent
  * off the selection. */
-export default function PathHeaderRow({ segments, onEnterSubtree, onFilterByAntecedent, showKindIcon, onCreateTask }: Props) {
+export default function PathHeaderRow({ segments, onEnterSubtree, onFilterByAntecedent, onCreateTask }: Props) {
   const { t } = useTranslation("listView");
-  const parent = segments[segments.length - 1];
 
   function handleSegmentClick(event: MouseEvent, id: string) {
     const side = filterSideFor(event);
@@ -88,31 +74,6 @@ export default function PathHeaderRow({ segments, onEnterSubtree, onFilterByAnte
 
   return (
     <div className={styles.header}>
-      {/* An Aspect carries no glyph anywhere in the app — `NodeIcon` returns null for one — so the
-          wrapper is skipped rather than reserving an empty box before the chain. */}
-      {showKindIcon && parent !== undefined && parent.kind !== "aspect" && (
-        <svg
-          className={styles.icon}
-          width={ICON_R * 2}
-          height={ICON_R * 2}
-          viewBox={`0 0 ${ICON_R * 2} ${ICON_R * 2}`}
-          aria-hidden="true"
-        >
-          <NodeIcon
-            kind={parent.kind}
-            status={parent.status}
-            verdict={parent.verdict}
-            isArchived={parent.archived === true}
-            isBlocked={isNodeBlocked(parent)}
-            isHabit={parent.flow?.isHabit === true}
-            cx={ICON_R}
-            cy={ICON_R}
-            r={ICON_R * 0.9}
-            color="currentColor"
-            opacity={1}
-          />
-        </svg>
-      )}
       {segments.map((segment, index) => (
         <Fragment key={segment.id}>
           {index > 0 && <span className={styles.separator} aria-hidden="true" />}

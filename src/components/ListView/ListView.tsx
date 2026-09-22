@@ -56,7 +56,6 @@ export default function ListView() {
 
   // Subtree entry is shared state, not a filter: the Mindmap and the List View re-root together.
   const enterSubtree = useMindmapStore((s) => s.enterSubtree);
-  const pathHeaderIcons = useDisplayStore((s) => s.pathHeaderIcons);
   const asynchronousFirst = useDisplayStore((s) => s.asynchronousFirst);
   const { subtreeRootId, onExitSubtree, onExitToRoot } = useSubtreeNav(tree);
 
@@ -336,7 +335,6 @@ export default function ListView() {
                   // the same Antecedent pill the filter popover's combobox adds, on the element that
                   // already names the ancestors.
                   onFilterByAntecedent={(id, side) => setPillSide("antecedent", id, side)}
-                  showKindIcon={pathHeaderIcons}
                   onCreateTask={headerCreateHandler(entry.segments)}
                 />
               );

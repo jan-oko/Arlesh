@@ -114,14 +114,6 @@ function readTab(value: unknown): PersistedTab | null {
   };
 }
 
-/** The pre-tabs path-icon preference, so turning tabs on does not silently reset it. */
-export function legacyPathHeaderIcons(): boolean | null {
-  const slice = persistedSlice(readJson(LEGACY_VIEW_KEY));
-  if (slice === null) return null;
-  const stored = slice["pathHeaderIcons"];
-  return typeof stored === "boolean" ? stored : null;
-}
-
 /**
  * The single tab an existing user gets on their first run with tabs: the view, orientation and both
  * filter sets they already had. There was no stored subtree root before tabs, so it starts at the

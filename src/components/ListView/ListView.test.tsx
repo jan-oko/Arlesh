@@ -119,7 +119,7 @@ beforeEach(() => {
   useListFilterStore.setState({ filter: { ...DEFAULT_LIST_FILTER, pills: { ...DEFAULT_LIST_FILTER.pills } } });
   mockUseListData.mockReturnValue(listData());
   useMindmapStore.setState({ subtreeRootId: null, subtreeNav: null });
-  useDisplayStore.setState({ pathHeaderIcons: true, asynchronousFirst: false });
+  useDisplayStore.setState({ asynchronousFirst: false });
 });
 
 describe("ListView — Asynchronous first", () => {
@@ -411,38 +411,17 @@ describe("ListView", () => {
     expect(screen.queryByTitle("pathSegmentActions")).not.toBeInTheDocument();
   });
 
-  // The chain is read for where it ends, so the header is marked with the kind of its nearest
-  // ancestor — the node the rows below hang directly from — once, not once per step.
-  it("marks a path header with the node kind of the nearest ancestor", () => {
-    render(<ListView />);
-    const [firstSegment] = screen.getAllByTitle("pathSegmentActions");
-    const header = firstSegment?.parentElement;
-    if (header === null || header === undefined) throw new Error("expected a path header");
-    expect(headerGlyphs(header)).toHaveLength(1);
-    expect([...header.querySelectorAll("[title='enterSubtree']")].some((b) => b.querySelector("svg") !== null)).toBe(false);
-  });
-
-  it("drops the glyph when the settings popover's Path icons switch is off, keeping the chain", () => {
-    useDisplayStore.setState({ pathHeaderIcons: false });
+  // The header used to open with a glyph for its nearest ancestor, behind a *Path icons* switch in
+  // the settings popover. Both are gone: a header is its titles, its separators and its `+`.
+  it("draws no kind glyph before the chain", () => {
     render(<ListView />);
     const [firstSegment] = screen.getAllByTitle("pathSegmentActions");
     const header = firstSegment?.parentElement;
     if (header === null || header === undefined) throw new Error("expected a path header");
     expect(headerGlyphs(header)).toHaveLength(0);
-    // Only the glyph goes — the header still names where the run lives.
+    // Only the glyph went — the header still names where the run lives.
     expect(screen.getByText("aspect-1")).toBeInTheDocument();
     expect(screen.getAllByText("goal-1")).toHaveLength(1);
-  });
-
-  it("marks no path header whose nearest ancestor is an Aspect, which carries no glyph anywhere", () => {
-    mockUseListData.mockReturnValue(listData({
-      rows: [row({ ancestors: [n("aspect-1", "aspect")], goalRef: null, goalStatus: null })],
-    }));
-    render(<ListView />);
-    const [firstSegment] = screen.getAllByTitle("pathSegmentActions");
-    const header = firstSegment?.parentElement;
-    if (header === null || header === undefined) throw new Error("expected a path header");
-    expect(headerGlyphs(header)).toHaveLength(0);
   });
 
   it("names an ancestor task the active filter hides, so an orphaned subtask still reads in context", () => {
