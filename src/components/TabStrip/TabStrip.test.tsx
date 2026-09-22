@@ -3,20 +3,34 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import TabStrip from "./TabStrip";
 import { reloadTabs, useTabsStore } from "@/stores/use-tabs-store";
 import { freshTabState } from "@/stores/tab-persistence";
-import { closeWindow } from "@/api/window";
+import { closeWindow, openBoardWindow, windowAtCursor } from "@/api/window";
+import { sendTabToWindow } from "@/api/board";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
 vi.mock("@/api/window", async () => (await import("@/test/window-api-mock")).windowApi());
+vi.mock("@/api/board", () => ({
+  sendTabToWindow: vi.fn(() => Promise.resolve()),
+  onBoardChanged: vi.fn(() => Promise.resolve(() => {})),
+  onTabMoved: vi.fn(() => Promise.resolve(() => {})),
+}));
 
 const mockCloseWindow = vi.mocked(closeWindow);
+const mockOpenWindow = vi.mocked(openBoardWindow);
+const mockWindowAtCursor = vi.mocked(windowAtCursor);
+const mockSendTab = vi.mocked(sendTabToWindow);
 
 beforeEach(() => {
   localStorage.clear();
   reloadTabs();
   mockCloseWindow.mockClear();
+  mockOpenWindow.mockClear();
+  mockSendTab.mockClear();
+  mockWindowAtCursor.mockReset();
+  // jsdom has no desktop, so the honest default is "released over nothing".
+  mockWindowAtCursor.mockResolvedValue(null);
 });
 
 /** A real mouse click with a given button — `fireEvent.click` cannot express a middle click. */
@@ -117,6 +131,20 @@ describe("reordering by drag", () => {
     fireEvent.drop(firstTab?.parentElement ?? document.body);
 
     expect(useTabsStore.getState().tabs[0]?.id).toBe(moved);
+  });
+
+  it("does not move the tab anywhere when the strip took the drop", async () => {
+    openLabelled("CODE", "project-1");
+    render(<TabStrip />);
+    const [firstTab, secondTab] = screen.getAllByRole("tab");
+
+    fireEvent.dragStart(secondTab?.parentElement ?? document.body);
+    fireEvent.drop(firstTab?.parentElement ?? document.body);
+    fireEvent.dragEnd(secondTab?.parentElement ?? document.body);
+
+    // A reorder is finished business: nothing is asked of the backend and no window appears.
+    await waitFor(() => expect(mockWindowAtCursor).not.toHaveBeenCalled());
+    expect(mockOpenWindow).not.toHaveBeenCalled();
   });
 
   it("leaves the order alone when a drop arrives with nothing being dragged", () => {
@@ -270,5 +298,57 @@ describe("renaming a tab", () => {
     typeName(longName, "Enter");
 
     expect(screen.getByRole("tab", { name: longName })).toHaveAttribute("title", longName);
+  });
+});
+
+describe("dragging a tab out of the window", () => {
+  /** Drags the second tab and lets go somewhere the backend answers for. */
+  async function dragOut(): Promise<void> {
+    openLabelled("CODE", "project-1");
+    render(<TabStrip />);
+    const tab = screen.getAllByRole("tab")[1]?.parentElement ?? document.body;
+    fireEvent.dragStart(tab);
+    fireEvent.dragEnd(tab);
+  }
+
+  it("becomes a window of its own when it was released over the desktop", async () => {
+    mockWindowAtCursor.mockResolvedValue(null);
+
+    await dragOut();
+
+    await waitFor(() => expect(mockOpenWindow).toHaveBeenCalledOnce());
+    expect(mockSendTab).not.toHaveBeenCalled();
+  });
+
+  it("moves into the window it was released over", async () => {
+    mockWindowAtCursor.mockResolvedValue("board-a");
+
+    await dragOut();
+
+    await waitFor(() => expect(mockSendTab).toHaveBeenCalledOnce());
+    expect(mockSendTab.mock.calls[0]?.[0]).toBe("board-a");
+    expect(mockOpenWindow).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when it was released over the window it came from", async () => {
+    // The board, the strip's empty space, the title bar: one gesture, which went nowhere.
+    mockWindowAtCursor.mockResolvedValue("main");
+
+    await dragOut();
+
+    await waitFor(() => expect(mockWindowAtCursor).toHaveBeenCalled());
+    expect(mockOpenWindow).not.toHaveBeenCalled();
+    expect(mockSendTab).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when the platform would not say where the pointer was", async () => {
+    // Deliberately not read as the desktop: a window nobody asked for costs more than a repeat.
+    mockWindowAtCursor.mockRejectedValue(new Error("no cursor position"));
+
+    await dragOut();
+
+    await waitFor(() => expect(mockWindowAtCursor).toHaveBeenCalled());
+    expect(mockOpenWindow).not.toHaveBeenCalled();
+    expect(mockSendTab).not.toHaveBeenCalled();
   });
 });
