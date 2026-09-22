@@ -85,15 +85,16 @@ already are; which cell it marks as *current* is still the real instant, so brow
 not relabel the week you landed on as the current one.
 
 **Two switches, both off by default** (gear popover, shown only while the Plan View is active,
-persisted app-wide beside *Path icons* and *Asynchronous first*). They are separate switches, not
+persisted app-wide beside *Asynchronous first*). They are separate switches, not
 one, because they answer different questions — *where the work lives* against *when it is planned*
 — and a planning pass wants them in different combinations.
 
 **Group by path** draws a header above each contiguous run of rows sharing a location, spelling the
 chain — `Growth › CODE › ARLESH › Features` — exactly as the List View does, in **both** panes. It
-is the same header: clicking a segment enters that subtree, Ctrl-clicking files it as an Antecedent
-pill, and the *Path icons* switch governs its glyph here too. The Plan View offers no **+** on a
-header, because planning is the only thing this view writes.
+is the same header: clicking a segment enters that subtree and Ctrl-clicking files it as an
+Antecedent pill. It carries no kind glyph, here or in the List View — see
+[*Path headers*](list-view.md). The Plan View offers no **+** on a header, because planning is the
+only thing this view writes.
 
 **Split planned by subscope** divides the **planned** pane into one section per subscope — the
 weeks of a month, the days of a week, the bands of a day — so a whole month's buckets and their

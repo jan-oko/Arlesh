@@ -11,13 +11,14 @@ doing today" are two different subtrees under two different presets, and a tab e
 held. Nothing a tab owns is reachable from another tab: exiting a subtree, changing a preset or
 collapsing a branch in one leaves every other exactly where it was.
 
-**Theme and the clipboard are app-wide**, along with the Undo/Redo stacks and the List View's
-**Path icons** preference. The clipboard deliberately so — cutting a subtree in one tab and pasting
-it in another is the obvious thing to want from a second tab, and nothing about a clipboard is
-specific to where it was filled. The theme likewise: the app must not change appearance as you move
-between tabs. The branch axis is per tab, because a wide subtree may want to be vertical while
-another stays horizontal; path glyphs are not, because they are a matter of taste about how the
-List View reads, the way the theme is.
+**Theme and the clipboard are app-wide**, along with the Undo/Redo stacks and the display
+preferences in the settings popover. The clipboard deliberately so — cutting a subtree in one tab
+and pasting it in another is the obvious thing to want from a second tab, and nothing about a
+clipboard is specific to where it was filled. The theme likewise: the app must not change
+appearance as you move between tabs. The branch axis is per tab, because a wide subtree may want to
+be vertical while another stays horizontal; how much Habit history folds and whether asynchronous
+work leads a run are not, because they are matters of taste about how a board reads, the way the
+theme is.
 
 **The strip** sits above the top bar, so the top bar stays the active tab's controls and does not
 have to know that tabs exist. Each tab is labelled by the subtree it is rooted at; one showing the

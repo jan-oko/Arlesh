@@ -109,6 +109,12 @@ async fn close_gesture(app: &App<MockRuntime>) -> Option<GestureSummary> {
         .expect("close gesture")
 }
 
+async fn abort_gesture(app: &App<MockRuntime>) -> Option<GestureSummary> {
+    undo_commands::abort_gesture(helpers::window(app), app.state(), app.state())
+        .await
+        .expect("abort gesture")
+}
+
 async fn undo(app: &App<MockRuntime>) -> Option<GestureSummary> {
     undo_commands::undo(helpers::window(app), app.state(), app.state())
         .await
@@ -367,6 +373,143 @@ async fn a_gesture_spanning_several_commands_is_reversed_by_one_undo() {
         "one press must take all five back"
     );
     assert_eq!(undo(&app).await, None, "and there must be nothing left");
+}
+
+#[tokio::test]
+async fn an_aborted_gesture_leaves_the_board_exactly_as_it_was() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let project_id = make_project(&pool).await;
+    let task = task_commands::create_task(app.state(), task_request("project", project_id, "kept"))
+        .await
+        .expect("create task");
+    let before = board(&pool).await;
+    let journal_before = journal_sequence(&pool).await;
+
+    // What an editor's Save looks like from here: several commands that are one thing the user
+    // filled in, the last of which is refused.
+    open_gesture(&app).await;
+    task_commands::update_task(
+        app.state(),
+        task.id,
+        UpdateTaskRequest {
+            title: Some("edited".into()),
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("update task");
+    block_reason_commands::set_block_reasons(
+        app.state(),
+        "task".into(),
+        task.id,
+        vec!["waiting on someone".into()],
+    )
+    .await
+    .expect("set block reasons");
+    assert_ne!(
+        board(&pool).await,
+        before,
+        "the writes must have landed, or the abort has nothing to take back"
+    );
+
+    let aborted = abort_gesture(&app).await.expect("something was taken back");
+    assert!(aborted.rows >= 2, "both writes were in it, got {aborted:?}");
+    assert_eq!(
+        board(&pool).await,
+        before,
+        "no part of an aborted save may stand"
+    );
+    assert_eq!(
+        journal_sequence(&pool).await,
+        journal_before,
+        "the entries are dropped with the writes: the reversal is suppressed, so leaving them \
+         would leave the journal describing a board that never existed"
+    );
+}
+
+#[tokio::test]
+async fn an_aborted_gesture_is_neither_an_undo_step_nor_clears_the_redo_stack() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let project_id = make_project(&pool).await;
+
+    open_gesture(&app).await;
+    task_commands::create_task(app.state(), task_request("project", project_id, "first"))
+        .await
+        .expect("create task");
+    let recorded = close_gesture(&app).await.expect("the gesture is undoable");
+    undo(&app).await.expect("undone");
+
+    open_gesture(&app).await;
+    task_commands::create_task(app.state(), task_request("project", project_id, "refused"))
+        .await
+        .expect("create task");
+    abort_gesture(&app).await.expect("something was taken back");
+
+    let status = undo_commands::undo_status(app.state())
+        .await
+        .expect("status");
+    assert_eq!(
+        status.undo, None,
+        "a save that was taken back is not a press the user should spend"
+    );
+    assert_eq!(
+        status.redo.map(|summary| summary.gesture),
+        Some(recorded.gesture),
+        "and it must not have thrown away a redo the user still had"
+    );
+}
+
+#[tokio::test]
+async fn aborting_a_gesture_that_wrote_nothing_does_nothing() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let before = board(&pool).await;
+
+    open_gesture(&app).await;
+    task_commands::list_tasks(app.state())
+        .await
+        .expect("a read changes nothing");
+
+    assert_eq!(abort_gesture(&app).await, None);
+    assert_eq!(board(&pool).await, before);
+    assert_eq!(
+        undo_commands::undo_status(app.state())
+            .await
+            .expect("status")
+            .undo,
+        None
+    );
+}
+
+#[tokio::test]
+async fn a_nested_abort_closes_its_own_open_and_leaves_the_gesture_running() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let project_id = make_project(&pool).await;
+    let before = board(&pool).await;
+
+    // The documented shape rather than a behaviour of its own: the outermost open owns the
+    // boundary, so a nested caller cannot take back writes the gesture above it may still want.
+    open_gesture(&app).await;
+    open_gesture(&app).await;
+    task_commands::create_task(app.state(), task_request("project", project_id, "inner"))
+        .await
+        .expect("create task");
+    assert_eq!(
+        abort_gesture(&app).await,
+        None,
+        "a nested abort ends nothing"
+    );
+
+    let summary = close_gesture(&app).await.expect("the outer close ends it");
+    assert!(
+        summary.rows >= 1,
+        "the inner write is still the outer gesture's, got {summary:?}"
+    );
+    undo(&app).await.expect("undone");
+    assert_eq!(board(&pool).await, before);
 }
 
 #[tokio::test]

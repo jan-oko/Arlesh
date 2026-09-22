@@ -178,7 +178,9 @@ fn undo_kind(error: &UndoError) -> WireErrorKind {
         // A Gesture that would not go back on is almost always a constraint the board has since
         // acquired — a row the undo would reinstate whose parent is gone — which is a database
         // failure the caller can neither rephrase nor be blamed for.
-        UndoError::ApplyFailed { .. } => WireErrorKind::Database,
+        // Same again for a Gesture that would not come back off: an abort replays it through the
+        // same engine, and what stops that is the state of the board rather than the request.
+        UndoError::ApplyFailed { .. } | UndoError::AbortFailed { .. } => WireErrorKind::Database,
         UndoError::Database(_) => WireErrorKind::Database,
     }
 }

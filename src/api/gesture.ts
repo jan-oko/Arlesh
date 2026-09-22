@@ -91,6 +91,19 @@ async function closeGesture(): Promise<void> {
   }
 }
 
+/**
+ * Closes one open and takes back everything the Gesture wrote, swallowing a failure for the same
+ * reason {@link closeGesture} does: the caller is already propagating the error the user needs to
+ * see, and a second one about undo bookkeeping would only displace it.
+ */
+async function abortGesture(): Promise<void> {
+  try {
+    await tauriInvoke("abort_gesture");
+  } catch (error: unknown) {
+    console.error(`${LOG_PREFIX} abort_gesture failed; the failed run's writes stand:`, error);
+  }
+}
+
 /** Names a Gesture, unless a wider one already claimed it — the outermost name is the true one. */
 function rememberName(gesture: string, name: string): void {
   if (gestureNames.has(gesture)) return;
@@ -143,6 +156,40 @@ export async function withGesture<T>(name: string, run: () => Promise<T>): Promi
     return await run();
   } finally {
     if (gesture !== null) await closeGesture();
+  }
+}
+
+/**
+ * Runs `run` as one **all-or-nothing** Gesture called `name`: one Ctrl+Z when it succeeds, and
+ * nothing written at all when it does not.
+ *
+ * The difference from {@link withGesture} is what a failure halfway through means. A paste that
+ * gets five nodes in and is refused the sixth has done five things the user can see, and closing
+ * the Gesture — making them one Ctrl+Z — is the right answer. An editor's Save is not like that:
+ * the fields are one thing the user filled in, so a save that writes the title, the tags and then
+ * fails on a dependency has left a state nobody asked for. So the Gesture is *aborted*, and the
+ * backend takes its writes back in one transaction.
+ *
+ * `run`'s error propagates unchanged, and the caller is expected to say what failed — the writes
+ * are gone, so a silent failure would leave the user looking at a board that did not change with
+ * no reason given.
+ */
+export async function withAtomicGesture<T>(name: string, run: () => Promise<T>): Promise<T> {
+  const gesture = await openGesture();
+  if (gesture !== null) rememberName(gesture, name);
+  // The catch is here to *record* the outcome, not to handle it: the close and the abort are two
+  // different endings for the same Gesture, and only the `finally` can promise one of them runs.
+  let failed = false;
+  try {
+    return await run();
+  } catch (error: unknown) {
+    failed = true;
+    throw error;
+  } finally {
+    if (gesture !== null) {
+      if (failed) await abortGesture();
+      else await closeGesture();
+    }
   }
 }
 

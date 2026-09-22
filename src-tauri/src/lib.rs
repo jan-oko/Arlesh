@@ -111,6 +111,7 @@ pub fn run() {
             commands::tray::quit_app,
             commands::undo::open_gesture,
             commands::undo::close_gesture,
+            commands::undo::abort_gesture,
             commands::undo::undo,
             commands::undo::redo,
             commands::undo::undo_status,

@@ -155,14 +155,6 @@ export function parsePersistedTab(value: unknown): PersistedTab | null {
   };
 }
 
-/** The pre-tabs path-icon preference, so turning tabs on does not silently reset it. */
-export function legacyPathHeaderIcons(): boolean | null {
-  const slice = persistedSlice(readJson(LEGACY_VIEW_KEY));
-  if (slice === null) return null;
-  const stored = slice["pathHeaderIcons"];
-  return typeof stored === "boolean" ? stored : null;
-}
-
 /**
  * The pre-windows strip, for the bootstrap window only. See {@link readPersistedTabs}.
  */

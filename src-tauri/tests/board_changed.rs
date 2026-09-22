@@ -284,3 +284,69 @@ fn a_change_reaches_every_window_but_the_one_that_made_it() {
     assert_eq!(recipients(&open, Some("main")), vec!["board-a", "board-b"]);
     assert!(recipients(&open[..1], Some("main")).is_empty());
 }
+
+#[tokio::test]
+async fn an_abort_that_took_everything_back_announces_nothing() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let project_id = make_project(&pool).await;
+
+    open(&app).await;
+    create_task(&app, project_id, "Never mind").await;
+    let aborted = engine::abort_gesture(
+        &app.state::<arlesh_lib::database::session::SessionFactory>(),
+        &app.state::<arlesh_lib::undo::stacks::UndoStacks>(),
+    )
+    .await
+    .expect("abort gesture");
+
+    assert!(
+        aborted.taken_back.is_some(),
+        "the create was the user's, so the abort reverses it"
+    );
+    assert!(
+        !aborted.wrote,
+        "the board is back where it was, so there is nothing to tell the other windows"
+    );
+}
+
+#[tokio::test]
+async fn an_abort_still_announces_an_agents_write_it_could_not_take_back() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let project_id = make_project(&pool).await;
+    let task_id = create_task(&app, project_id, "Linked mid-gesture").await;
+
+    open(&app).await;
+    create_task(&app, project_id, "Never mind").await;
+    {
+        let mut db = helpers::session_factory(&pool).begin().await.expect("begin");
+        let previous = db
+            .undo()
+            .set_source(WriteSource::Mcp)
+            .await
+            .expect("set source");
+        db.tasks()
+            .set_beads_id(
+                arlesh_lib::tasks::model::TaskId(task_id),
+                Some("Arlesh-fxo".into()),
+            )
+            .await
+            .expect("set beads id");
+        db.undo().set_source(previous).await.expect("restore source");
+        db.commit().await.expect("commit");
+    }
+
+    let aborted = engine::abort_gesture(
+        &app.state::<arlesh_lib::database::session::SessionFactory>(),
+        &app.state::<arlesh_lib::undo::stacks::UndoStacks>(),
+    )
+    .await
+    .expect("abort gesture");
+
+    assert!(
+        aborted.wrote,
+        "an abort takes back the user's writes; an agent's was never this Gesture's to reverse, \
+         so it stands and the other windows still have to hear about it"
+    );
+}

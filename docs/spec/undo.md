@@ -87,6 +87,43 @@ it — a Gesture id is minted by the database and the summary it returns carries
 names, not a sentence — so the names are held frontend-side, keyed by Gesture id, and read back
 when an undo returns that id.
 
+### An editor's Save
+
+An editor's Save is **one Gesture, and all or nothing**. A Task save issues an update, a set of
+block reasons, one call per tag added or removed, one per dependency added or removed, and the
+staged clear of the `bd` link — so it used to be several undo steps, and *how many* depended on
+which fields the user happened to have touched. It is one press now, under a name of its own:
+**edit a task**, **edit a goal**, **edit a commitment**, **edit a project**. The Gesture is opened
+by the editor rather than by the save handler behind it, because the staged `bd` clear is the
+editor's own call and belongs inside the same boundary; the clamp-or-cancel prompt a narrowed
+Time Scope raises stays outside it, having written nothing yet and being a wait of indefinite
+length.
+
+All-or-nothing is the part the protocol did not already have. `withGesture` closes in a `finally`,
+which **commits**: a paste that got five nodes in and was refused the sixth has done five things
+the user can see, and one Ctrl+Z over them is the right answer. A form is not like that. Its fields
+are one thing the user filled in, so a save that writes the title and the tags and is then refused
+a dependency leaves a state nobody asked for, and "one undo step containing a half-save" answers
+the wrong question. So a save that throws **aborts**: `abort_gesture` closes the Gesture and
+replays its entries in reverse through the same engine Ctrl+Z uses — one transaction, foreign keys
+deferred, applied whole or not at all — and then drops those entries from the journal. The
+reversal is written with journalling suppressed, so entries left behind would have the journal
+asserting changes the board no longer carries, with nothing after them to say they were taken back.
+
+An aborted Gesture reaches **neither stack**. It is not an undo step, because there is nothing left
+to undo; and it does not clear the Redo Stack, because the board never moved on, so a redo the user
+still had is still theirs. The one exception is a reversal that itself fails: the writes stand, and
+the Gesture is then put on the Undo Stack after all — a change the user can still take back by hand
+is better than one stranded outside both stacks — and the error says so.
+
+A **nested** abort takes nothing back, because the outermost open owns the boundary and a caller
+inside someone else's Gesture cannot declare the whole of it failed. Nothing reaches an editor save
+from inside another Gesture, so that is the shape written down rather than a case with behaviour of
+its own. The refusal itself is reported the way [the Mindmap's refusal policy](mindmap-view.md)
+requires: the editor stays open and names the backend's own reason on its save error line, beside
+the fields that would answer it. And a save that changed nothing writes nothing, so it closes a
+Gesture with no user entries and — as for every such Gesture — no press is ever spent on it.
+
 ## What the user sees
 
 **Every press says something.** A Gesture that comes back raises the app's existing anchored
