@@ -964,10 +964,18 @@ describe("useNodeActions — onCreateTypedChild", () => {
     expect(opts.showToast).toHaveBeenCalledTimes(1);
   });
 
-  it("refuses every kind under a Tag, which is a leaf", () => {
-    const opts = typedOpts();
+  it("creates an Info under a Tag — the one kind a label holds", async () => {
+    const opts = typedOpts({ createNode: vi.fn().mockResolvedValue(mkNode("info-99", "info")) });
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onCreateTypedChild("domain-20", "info"); });
+    await vi.waitFor(() => expect(opts.createNode).toHaveBeenCalledWith("domain-20", "tag", "info", ""));
+    expect(opts.showToast).not.toHaveBeenCalled();
+  });
+
+  it("refuses every other kind under a Tag", () => {
+    const opts = typedOpts();
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onCreateTypedChild("domain-20", "task"); });
     expect(opts.createNode).not.toHaveBeenCalled();
     expect(opts.showToast).toHaveBeenCalledTimes(1);
   });
