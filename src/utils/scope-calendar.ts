@@ -2,8 +2,8 @@
 // navigation between views. This is the client-side "grid layout" half of the hybrid decision;
 // the backend remains the source of truth for a materialized scope's authoritative bounds.
 
-import type { CanonicalKind, ScopeRef } from "@/utils/scope-ref";
-import type { PartOfDay } from "@/api/scopes";
+import { refForScope, type CanonicalKind, type ScopeRef } from "@/utils/scope-ref";
+import type { PartOfDay, Scope } from "@/api/scopes";
 
 /** A single selectable calendar cell. `startDate`/`endDate` are inclusive ISO dates for shading. */
 export interface ScopeCell {
@@ -28,6 +28,11 @@ export function descendKind(kind: ViewKind): ViewKind | null {
 export function ascendKind(kind: ViewKind): ViewKind | null {
   const index = VIEW_ORDER.indexOf(kind);
   return index > 0 ? VIEW_ORDER[index - 1] ?? null : null;
+}
+
+/** The coarser of two views. */
+function coarserKind(a: ViewKind, b: ViewKind): ViewKind {
+  return VIEW_ORDER.indexOf(a) <= VIEW_ORDER.indexOf(b) ? a : b;
 }
 
 const MONTH_NAMES = [
@@ -190,6 +195,87 @@ export function partCells(iso: string): ScopeCell[] {
 /** Whether `todayIso` falls within a cell's inclusive date range. */
 export function cellContainsDate(cell: ScopeCell, todayIso: string): boolean {
   return cell.startDate <= todayIso && todayIso <= cell.endDate;
+}
+
+/**
+ * The part of day holding a wall-clock `hour` (0–23), mirroring the Rust `PartOfDay::containing`:
+ * Premorning 02–06, Morning 06–12, Noon 12–15, Afternoon 15–18, Evening 18–22, Night 22–02.
+ */
+export function partContaining(hour: number): PartOfDay {
+  if (hour < 2) return "night";
+  if (hour < 6) return "premorning";
+  if (hour < 12) return "morning";
+  if (hour < 15) return "noon";
+  if (hour < 18) return "afternoon";
+  if (hour < 22) return "evening";
+  return "night";
+}
+
+/**
+ * The part-of-day cell holding the instant `now`. Night runs 22:00–02:00 and belongs to the day it
+ * starts on, so between 00:00 and 01:59 the current part is the **previous** date's Night — which
+ * is why currency is a property of (instant, date, part), not of the part alone.
+ */
+export function currentPartRef(now: Date): { date: string; part: PartOfDay } {
+  const hour = now.getUTCHours();
+  const part = partContaining(hour);
+  const date = isoDate(now);
+  return hour < 2 ? { date: previousDay(date), part } : { date, part };
+}
+
+/**
+ * Whether a cell is the period holding `now` — the current-period marker. Every view but
+ * part-of-day marks the cell whose dates contain today; a part-of-day cell is current only when it
+ * is the one part (on the one date) holding the instant, Night's midnight wrap included.
+ */
+export function isCellCurrent(cell: ScopeCell, now: Date): boolean {
+  if (cell.ref.kind !== "part_of_day") return cellContainsDate(cell, isoDate(now));
+  const current = currentPartRef(now);
+  return cell.ref.date === current.date && cell.ref.part === current.part;
+}
+
+/** Where the picker opens: the view to show, and the date that view is anchored on. */
+export interface ScopeOpening {
+  kind: ViewKind;
+  anchor: string;
+}
+
+/**
+ * The narrowest view that can display `ref` — the view whose cells are of the ref's own kind —
+ * anchored so that the period the ref names is on screen. An Exact window has no view of its own,
+ * so it opens on the Day view holding its start.
+ */
+export function openingForRef(ref: ScopeRef): ScopeOpening {
+  if (ref.kind === "exact") return { kind: "day", anchor: ref.start.slice(0, 10) };
+  return { kind: ref.kind, anchor: ref.date };
+}
+
+/**
+ * The narrowest view that can display every ref, anchored on the earliest of them: the endpoints'
+ * own view for a same-kind range, the coarser endpoint's view when the kinds differ. Null for an
+ * empty list, leaving the caller's default opening in place.
+ */
+export function openingForRefs(refs: ScopeRef[]): ScopeOpening | null {
+  const openings = refs.map(openingForRef);
+  if (openings.length === 0) return null;
+  return openings.reduce((merged, opening) => ({
+    kind: coarserKind(merged.kind, opening.kind),
+    anchor: merged.anchor <= opening.anchor ? merged.anchor : opening.anchor,
+  }));
+}
+
+/**
+ * The opening for a persisted window's endpoint scopes (a Time Scope or a Plan). Rows that name no
+ * calendar cell are dropped, so a window of only such rows yields null and the caller's default
+ * opening stands.
+ */
+export function openingForScopes(scopes: Scope[]): ScopeOpening | null {
+  const refs: ScopeRef[] = [];
+  for (const scope of scopes) {
+    const ref = refForScope(scope);
+    if (ref !== null) refs.push(ref);
+  }
+  return openingForRefs(refs);
 }
 
 /** The cells of a view, given the browsed anchor date. */

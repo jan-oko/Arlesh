@@ -2,10 +2,11 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { getOrCreateScope, getScope } from "@/api/scopes";
+import type { Scope } from "@/api/scopes";
 import type { TimeScope } from "@/api/time-scope";
 import { useScopePicker } from "@/hooks/use-scope-picker";
 import { useScopeLabels } from "@/hooks/use-scope-labels";
-import { addScopePeriods } from "@/utils/scope-calendar";
+import { addScopePeriods, openingForScopes } from "@/utils/scope-calendar";
 import { formatScopeRange } from "@/utils/scope-format";
 import type { CanonicalKind } from "@/utils/scope-ref";
 import ScopePicker from "./ScopePicker";
@@ -40,20 +41,28 @@ export default function TimeScopeField({ value, onChange }: Props) {
     DURATION_KINDS.find((kind) => kind === value?.duration?.kind) ?? "week",
   );
   const labels = useScopeLabels();
-  // The label(s) of a Boundaries/single value are fetched; Unscoped and duration are derived.
-  const [rangeLabel, setRangeLabel] = useState<string | null>(null);
+  // The endpoint scopes of a Boundaries/single value are fetched; they give both its label and the
+  // view the picker opens on. Unscoped and duration values derive without a fetch. The fetch is
+  // tagged with the endpoints it was made for, so a previous value's scopes are never shown.
+  const [fetched, setFetched] = useState<{ key: string; scopes: [Scope, Scope] } | null>(null);
+  const boundariesKey =
+    value === null || value.duration ? null : `${value.start_id}:${value.end_id}`;
   useEffect(() => {
     if (value === null || value.duration) return;
     let active = true;
+    const key = `${value.start_id}:${value.end_id}`;
     void Promise.all([getScope(value.start_id), getScope(value.end_id)]).then(([start, end]) => {
-      if (active && start != null && end != null) {
-        setRangeLabel(formatScopeRange(start, end, labels));
-      }
+      if (active && start != null && end != null) setFetched({ key, scopes: [start, end] });
     });
     return () => {
       active = false;
     };
-  }, [value, labels]);
+  }, [value]);
+
+  const endpoints = fetched !== null && fetched.key === boundariesKey ? fetched.scopes : null;
+  const rangeLabel = endpoints === null ? null : formatScopeRange(endpoints[0], endpoints[1], labels);
+  // Open on the scope already chosen; with none (or one that names no cell), open on Month.
+  const opening = endpoints === null ? null : openingForScopes(endpoints);
 
   const summary =
     value === null
@@ -119,7 +128,13 @@ export default function TimeScopeField({ value, onChange }: Props) {
           </div>
           {form === "boundaries" ? (
             <>
-              <ScopePicker picker={rangePicker} initialKind="month" />
+              {/* Keyed on the opening so a late-arriving scope re-opens the picker on it. */}
+              <ScopePicker
+                key={opening === null ? "default" : `${opening.kind}:${opening.anchor}`}
+                picker={rangePicker}
+                initialKind={opening?.kind ?? "month"}
+                {...(opening ? { initialAnchor: opening.anchor } : {})}
+              />
               <button type="button" className={`${styles.button} ${styles.primary}`} onClick={() => void applyBoundaries()}>
                 {t("scopeApply")}
               </button>

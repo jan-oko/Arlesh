@@ -6,8 +6,10 @@ import {
   nextSingleSelection,
   nextRangeSelection,
   adjustRangeEndpoint,
+  refForScope,
   type ScopeRef,
 } from "./scope-ref";
+import type { Scope } from "@/api/scopes";
 
 const week = (date: string): ScopeRef => ({ kind: "week", date });
 const day = (date: string): ScopeRef => ({ kind: "day", date });
@@ -95,5 +97,49 @@ describe("adjustRangeEndpoint", () => {
     // Drag the start past the end → they swap.
     const moved = adjustRangeEndpoint(both, "start", week("2026-07-05"));
     expect(moved).toEqual({ start: week("2026-06-28"), end: week("2026-07-05") });
+  });
+});
+
+describe("refForScope", () => {
+  function scope(fields: Partial<Scope>): Scope {
+    return {
+      id: 1, kind: "day", label: "", start_date: "2026-09-16", end_date: "2026-09-16",
+      week_id: null, month_id: null, season_id: null, day_id: null,
+      part: null, start_datetime: null, end_datetime: null,
+      ...fields,
+    };
+  }
+
+  it("reads a canonical scope as its cell", () => {
+    expect(refForScope(scope({ kind: "month", start_date: "2026-09-01" }))).toEqual({
+      kind: "month",
+      date: "2026-09-01",
+    });
+  });
+
+  it("reads a part-of-day scope as its date and band", () => {
+    expect(refForScope(scope({ kind: "part_of_day", part: "night" }))).toEqual({
+      kind: "part_of_day",
+      date: "2026-09-16",
+      part: "night",
+    });
+  });
+
+  it("reads an exact scope as its datetime window", () => {
+    const exact = scope({
+      kind: "exact",
+      start_datetime: "2026-09-16T14:00:00",
+      end_datetime: "2026-09-16T15:00:00",
+    });
+    expect(refForScope(exact)).toEqual({
+      kind: "exact",
+      start: "2026-09-16T14:00:00",
+      end: "2026-09-16T15:00:00",
+    });
+  });
+
+  it("names no cell for a row missing its band or datetimes", () => {
+    expect(refForScope(scope({ kind: "part_of_day", part: null }))).toBeNull();
+    expect(refForScope(scope({ kind: "exact" }))).toBeNull();
   });
 });

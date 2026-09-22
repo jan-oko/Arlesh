@@ -2,7 +2,7 @@
 // content (not a DB id), so selection logic stays synchronous and testable; the cell is
 // materialized to a Scope id only when the selection is resolved.
 
-import type { PartOfDay } from "@/api/scopes";
+import type { PartOfDay, Scope } from "@/api/scopes";
 
 /** The four calendar-aligned scope kinds selectable by an anchor date. */
 export type CanonicalKind = "season" | "month" | "week" | "day";
@@ -22,6 +22,22 @@ const PART_ORDER: PartOfDay[] = [
   "evening",
   "night",
 ];
+
+/**
+ * The calendar cell a persisted scope occupies, or null for a row that names no cell — a
+ * Part-of-Day scope with no band, or an Exact scope with no datetimes. The caller falls back to
+ * its own default rather than guessing a cell.
+ */
+export function refForScope(scope: Scope): ScopeRef | null {
+  if (scope.kind === "part_of_day") {
+    return scope.part === null ? null : { kind: "part_of_day", date: scope.start_date, part: scope.part };
+  }
+  if (scope.kind === "exact") {
+    const { start_datetime: start, end_datetime: end } = scope;
+    return start === null || end === null ? null : { kind: "exact", start, end };
+  }
+  return { kind: scope.kind, date: scope.start_date };
+}
 
 /** Whether two refs identify the same cell. */
 export function sameScopeRef(a: ScopeRef, b: ScopeRef): boolean {

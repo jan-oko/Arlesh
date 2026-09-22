@@ -15,7 +15,14 @@ import {
   browseAnchor,
   viewHeader,
   addScopePeriods,
+  partContaining,
+  currentPartRef,
+  isCellCurrent,
+  openingForRef,
+  openingForRefs,
+  openingForScopes,
 } from "./scope-calendar";
+import type { Scope } from "@/api/scopes";
 
 describe("view navigation", () => {
   it("descends season → month → week → day → part → null", () => {
@@ -146,5 +153,145 @@ describe("viewHeader", () => {
     expect(viewHeader("season", "2026-06-20")).toBe("2026");
     expect(viewHeader("week", "2026-06-20")).toBe("June 2026");
     expect(viewHeader("part_of_day", "2026-06-20")).toBe("2026-06-20");
+  });
+});
+
+describe("partContaining", () => {
+  it("maps each band's hours to its part", () => {
+    expect(partContaining(3)).toBe("premorning");
+    expect(partContaining(6)).toBe("morning");
+    expect(partContaining(12)).toBe("noon");
+    expect(partContaining(15)).toBe("afternoon");
+    expect(partContaining(18)).toBe("evening");
+    expect(partContaining(22)).toBe("night");
+  });
+
+  it("puts the hours past midnight in Night", () => {
+    expect(partContaining(0)).toBe("night");
+    expect(partContaining(1)).toBe("night");
+    expect(partContaining(2)).toBe("premorning");
+  });
+});
+
+describe("currentPartRef", () => {
+  it("names the part of the date the clock reads, during the day", () => {
+    expect(currentPartRef(new Date("2026-06-15T10:00:00Z"))).toEqual({
+      date: "2026-06-15",
+      part: "morning",
+    });
+  });
+
+  it("at 23:00 names that date's Night", () => {
+    expect(currentPartRef(new Date("2026-06-15T23:00:00Z"))).toEqual({
+      date: "2026-06-15",
+      part: "night",
+    });
+  });
+
+  it("at 00:30 names the previous date's Night (the wrap past midnight)", () => {
+    expect(currentPartRef(new Date("2026-06-15T00:30:00Z"))).toEqual({
+      date: "2026-06-14",
+      part: "night",
+    });
+  });
+
+  it("at 02:00 the wrap is over and Premorning belongs to the date the clock reads", () => {
+    expect(currentPartRef(new Date("2026-06-15T02:00:00Z"))).toEqual({
+      date: "2026-06-15",
+      part: "premorning",
+    });
+  });
+});
+
+describe("isCellCurrent", () => {
+  it("marks exactly one part of day, on the date that part belongs to", () => {
+    const now = new Date("2026-06-15T10:00:00Z");
+    const current = partCells("2026-06-15").filter((cell) => isCellCurrent(cell, now));
+    expect(current.map((cell) => cell.label)).toEqual(["Morning"]);
+    expect(partCells("2026-06-14").filter((cell) => isCellCurrent(cell, now))).toEqual([]);
+  });
+
+  it("at 00:30 marks the previous date's Night and nothing on the clock's date", () => {
+    const now = new Date("2026-06-15T00:30:00Z");
+    expect(partCells("2026-06-14").filter((cell) => isCellCurrent(cell, now)).map((c) => c.label))
+      .toEqual(["Night"]);
+    expect(partCells("2026-06-15").filter((cell) => isCellCurrent(cell, now))).toEqual([]);
+  });
+
+  it("marks the cell containing today in the coarser views", () => {
+    const now = new Date("2026-06-15T10:00:00Z");
+    const current = monthCells(2026).filter((cell) => isCellCurrent(cell, now));
+    expect(current.map((cell) => cell.label)).toEqual(["June 2026"]);
+  });
+});
+
+describe("openingForRef", () => {
+  it("opens a canonical ref on its own view, anchored on its date", () => {
+    expect(openingForRef({ kind: "day", date: "2026-09-16" })).toEqual({
+      kind: "day",
+      anchor: "2026-09-16",
+    });
+    expect(openingForRef({ kind: "season", date: "2026-09-01" })).toEqual({
+      kind: "season",
+      anchor: "2026-09-01",
+    });
+  });
+
+  it("opens a part-of-day ref on the part view of its date", () => {
+    expect(openingForRef({ kind: "part_of_day", date: "2026-09-16", part: "night" })).toEqual({
+      kind: "part_of_day",
+      anchor: "2026-09-16",
+    });
+  });
+
+  it("opens an exact window on the day holding its start", () => {
+    expect(
+      openingForRef({ kind: "exact", start: "2026-09-16T14:30:00", end: "2026-09-16T15:00:00" }),
+    ).toEqual({ kind: "day", anchor: "2026-09-16" });
+  });
+});
+
+describe("openingForRefs", () => {
+  it("is null for no refs, leaving the caller's default", () => {
+    expect(openingForRefs([])).toBeNull();
+  });
+
+  it("opens a same-kind range at that kind, anchored on the earlier endpoint", () => {
+    expect(
+      openingForRefs([
+        { kind: "week", date: "2026-09-20" },
+        { kind: "week", date: "2026-09-06" },
+      ]),
+    ).toEqual({ kind: "week", anchor: "2026-09-06" });
+  });
+
+  it("opens a mixed-kind range at the coarser of the two views", () => {
+    expect(
+      openingForRefs([
+        { kind: "day", date: "2026-09-16" },
+        { kind: "month", date: "2026-10-01" },
+      ]),
+    ).toEqual({ kind: "month", anchor: "2026-09-16" });
+  });
+});
+
+describe("openingForScopes", () => {
+  function scope(fields: Partial<Scope>): Scope {
+    return {
+      id: 1, kind: "day", label: "", start_date: "2026-09-16", end_date: "2026-09-16",
+      week_id: null, month_id: null, season_id: null, day_id: null,
+      part: null, start_datetime: null, end_datetime: null,
+      ...fields,
+    };
+  }
+
+  it("opens on a stored Day scope's own day", () => {
+    const day = scope({ kind: "day", start_date: "2026-09-16" });
+    expect(openingForScopes([day, day])).toEqual({ kind: "day", anchor: "2026-09-16" });
+  });
+
+  it("drops a row that names no calendar cell", () => {
+    const broken = scope({ kind: "part_of_day", part: null });
+    expect(openingForScopes([broken, broken])).toBeNull();
   });
 });
