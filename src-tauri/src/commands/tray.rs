@@ -343,9 +343,17 @@ impl ksni::Tray for SystemTray {
 /// so nothing here has to compose the entries — this only says "ask again".
 #[cfg(target_os = "linux")]
 pub fn refresh_menu<R: Runtime>(app: &AppHandle<R>) {
-    if let Some(handle) = app.try_state::<ksni::Handle<SystemTray>>() {
-        handle.update(|_tray| {});
-    }
+    let Some(handle) = app.try_state::<ksni::Handle<SystemTray>>() else {
+        return;
+    };
+    let handle = handle.inner().clone();
+    // `update` is async — it takes the service lock and then waits for the bar to acknowledge — so
+    // it is spawned rather than awaited. Every caller is a window event or a command that has no
+    // business blocking on a desktop bar answering, and nothing downstream depends on the menu
+    // having been redrawn by the time this returns.
+    tauri::async_runtime::spawn(async move {
+        handle.update(|_tray| {}).await;
+    });
 }
 
 /// Runs `action` on the thread that owns the windows.
