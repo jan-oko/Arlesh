@@ -212,12 +212,12 @@ jobs:
           rustc --version
           cargo --version
 
-      # llvm-profdata and llvm-cov must come from the same toolchain that
-      # instruments the binaries; using the system LLVM is the usual way to get
-      # "malformed instrumentation profile data".
-      - name: Install llvm-tools-preview
-        run: rustup component add llvm-tools-preview
-
+      # llvm-tools-preview is no longer installed here: /rust-toolchain.toml names
+      # it among the pin's components, so llvm-profdata and llvm-cov arrive with
+      # the compiler that instruments the binaries rather than being added to
+      # whichever toolchain a rustup call at the root happens to resolve. That is
+      # the same drift the pin closed for clippy, and reaching for the system LLVM
+      # instead is the usual way to get "malformed instrumentation profile data".
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-llvm-cov
