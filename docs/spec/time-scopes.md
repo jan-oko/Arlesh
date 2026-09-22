@@ -48,6 +48,21 @@ Evaluated as interval containment on resolved datetime boundaries:
 
 ## Scope Picker
 
-Scopes are chosen in a calendar-like picker (date-picker-style). It opens at the highest sensible scope (default Season; the active item's scope kind when narrower) and can be bounded (e.g. can't browse outside a season when the item is season-scoped). Double-click descends into a scope (week → days); single-click selects. Three selection modes: **range** (first click = start, second = end, third resets; drag an endpoint to adjust), **single** (each click replaces; click selected to deselect), **multiple** (each click adds; click to remove — used for flow cycle scopes). Calendar views per kind: seasons (year of four squares), months (season of three / year of twelve), weeks (month grid, Sunday-start numbering), days (week of seven), parts of day (day → part), exact (clock, browsable days).
+Scopes are chosen in a calendar-like picker (date-picker-style). It can be bounded (e.g. can't browse outside a season when the item is season-scoped). Double-click descends into a scope (week → days); single-click selects. Three selection modes: **range** (first click = start, second = end, third resets; drag an endpoint to adjust), **single** (each click replaces; click selected to deselect), **multiple** (each click adds; click to remove — used for flow cycle scopes). Calendar views per kind: seasons (year of four squares), months (season of three / year of twelve), weeks (month grid, Sunday-start numbering), days (week of seven), parts of day (day → part), exact (clock, browsable days).
+
+### Opening view
+
+The picker opens on **the narrowest view that can display the scope it was given, showing the period that scope names** — a Day-scoped item opens on the day view, on that day's week; a Week, Month or Season scope opens on its own view, on its own period. The rules for the cases a single cell doesn't cover:
+
+- **A range** opens at its endpoints' granularity, anchored on the earlier endpoint. The endpoints' own view is the only one that can draw the range, so a range is never widened to a coarser view to fit both ends on screen; the user browses instead.
+- **Endpoints of different kinds** open on the coarser of the two views — the narrowest one that can display both.
+- **An Exact window** has no view of its own; it opens on the day view, on the day holding its start.
+- **No scope** (or a stored scope that names no cell) leaves the field's own default: Month for a Time Scope, Day for a Plan.
+
+The opening view is derived from the scope every time the picker opens; nothing about the last view is remembered.
+
+### Current period
+
+The cell holding the present is outlined. In every view but parts of day that is the cell whose dates contain today. A part of day is a function of the instant, the displayed date **and** the part: exactly one part is current, and only on the date that part belongs to. Because Night runs 22:00–02:00 and belongs to the day it starts on, between 00:00 and 01:59 the current part is the **previous** calendar date's Night — on the date the clock reads, no part is outlined at all.
 
 ---

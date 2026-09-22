@@ -5,17 +5,18 @@ import { refSortKey, sameScopeRef, type ScopeRef } from "@/utils/scope-ref";
 import {
   ascendKind,
   browseAnchor,
-  cellContainsDate,
   cellsForView,
   descendKind,
+  isCellCurrent,
   viewHeader,
   type ScopeCell,
   type ViewKind,
 } from "@/utils/scope-calendar";
 import styles from "./ScopePicker.module.css";
 
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+/** The UTC calendar date of an instant, matching the UTC date math in `scope-calendar`. */
+function isoDateOf(now: Date): string {
+  return now.toISOString().slice(0, 10);
 }
 
 function isSelected(picker: UseScopePicker, ref: ScopeRef): boolean {
@@ -53,8 +54,10 @@ interface ScopePickerProps {
   picker: UseScopePicker;
   /** The view to open at. Defaults to the coarsest (season). */
   initialKind?: ViewKind;
-  /** Current date (ISO), injectable for tests. Defaults to today. */
-  today?: string;
+  /** The date the opening view is anchored on (ISO). Defaults to today. */
+  initialAnchor?: string;
+  /** The current instant, injectable for tests. Defaults to now. */
+  now?: Date;
   /** Restricts selection to cells wholly within this inclusive date range. */
   constraint?: ScopeConstraint;
   /** Locks the view to `initialKind`: hides ascend and disables double-click descend. */
@@ -70,13 +73,13 @@ interface ScopePickerProps {
 export default function ScopePicker({
   picker,
   initialKind = "season",
-  today,
+  initialAnchor,
+  now = new Date(),
   constraint,
   lockKind = false,
 }: ScopePickerProps) {
   const [viewKind, setViewKind] = useState<ViewKind>(initialKind);
-  const [anchor, setAnchor] = useState<string>(today ?? todayIso());
-  const now = today ?? todayIso();
+  const [anchor, setAnchor] = useState<string>(initialAnchor ?? isoDateOf(now));
 
   const cells = cellsForView(viewKind, anchor);
   const parentKind = lockKind ? null : ascendKind(viewKind);
@@ -124,7 +127,7 @@ export default function ScopePicker({
         {cells.map((cell) => {
           const selected = isSelected(picker, cell.ref);
           const inRange = isInRange(picker, cell.ref);
-          const isToday = cellContainsDate(cell, now);
+          const isCurrent = isCellCurrent(cell, now);
           const allowed = withinConstraint(cell, constraint);
           return (
             <button
@@ -132,7 +135,7 @@ export default function ScopePicker({
               type="button"
               className={`${styles.cell}${inRange ? ` ${styles.inRange}` : ""}`}
               aria-pressed={selected}
-              aria-current={isToday ? "date" : undefined}
+              aria-current={isCurrent ? "date" : undefined}
               disabled={!allowed}
               onClick={() => picker.handleClick(cell.ref)}
               onDoubleClick={() => onCellDoubleClick(cell)}

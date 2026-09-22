@@ -110,3 +110,22 @@ describe("TimeScopeField — editing", () => {
     );
   });
 });
+
+describe("TimeScopeField — opening view", () => {
+  it("opens the picker on Month when there is no scope", () => {
+    render(<TimeScopeField value={null} onChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "edit scope" }));
+    expect(screen.getByRole("button", { name: "January 2026" })).toBeInTheDocument();
+  });
+
+  it("opens the picker on the day of a Day-scoped value", async () => {
+    vi.mocked(getScope).mockImplementation((id) =>
+      Promise.resolve({ ...mkScope(id), kind: "day", start_date: "2026-09-16" }),
+    );
+    render(<TimeScopeField value={{ start_id: 9, end_id: 9 }} onChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "edit scope" }));
+    // The week of Wednesday 16 September 2026, not the twelve months of the year.
+    await waitFor(() => expect(screen.getByRole("button", { name: "16" })).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "September 2026" })).not.toBeInTheDocument();
+  });
+});
