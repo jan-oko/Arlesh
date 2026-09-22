@@ -2,16 +2,32 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, renderHook } from "@testing-library/react";
 import { useTabCommands } from "./use-tab-commands";
 import { reloadTabs, useTabsStore } from "@/stores/use-tabs-store";
-import { closeWindow } from "@/api/window";
+import { boardWindowLabels, closeWindow, focusBoardWindow, openBoardWindow } from "@/api/window";
+import { sendTabToWindow } from "@/api/board";
+import { readPersistedTabs } from "@/stores/tab-persistence";
 
 vi.mock("@/api/window", async () => (await import("@/test/window-api-mock")).windowApi());
+vi.mock("@/api/board", () => ({
+  sendTabToWindow: vi.fn(() => Promise.resolve()),
+  onBoardChanged: vi.fn(() => Promise.resolve(() => {})),
+  onTabMoved: vi.fn(() => Promise.resolve(() => {})),
+}));
 
 const mockCloseWindow = vi.mocked(closeWindow);
+const mockOpenWindow = vi.mocked(openBoardWindow);
+const mockSendTab = vi.mocked(sendTabToWindow);
+const mockFocusWindow = vi.mocked(focusBoardWindow);
 
 beforeEach(() => {
   localStorage.clear();
   reloadTabs();
   mockCloseWindow.mockClear();
+  mockOpenWindow.mockClear();
+  mockOpenWindow.mockResolvedValue(undefined);
+  mockSendTab.mockClear();
+  mockSendTab.mockResolvedValue(undefined);
+  mockFocusWindow.mockClear();
+  vi.mocked(boardWindowLabels).mockResolvedValue(["main"]);
 });
 
 describe("opening a tab", () => {
@@ -80,5 +96,121 @@ describe("moving between tabs", () => {
     act(() => result.current.jumpToTab(1));
 
     expect(useTabsStore.getState().activeTabId).toBe(ids[0]);
+  });
+});
+
+/** The label `openBoardWindow` was asked for, which is also the key the tab was written under. */
+function openedWindowLabel(): string {
+  const call = mockOpenWindow.mock.calls[0];
+  expect(call).toBeDefined();
+  return call?.[0] ?? "";
+}
+
+describe("tearing a tab off into its own window", () => {
+  it("writes the tab down under the new window's label before asking for the window", () => {
+    const { result } = renderHook(() => useTabCommands());
+    act(() => result.current.openTab());
+    const torn = useTabsStore.getState().activeTabId;
+
+    act(() => result.current.tearOffTab(torn));
+
+    const strip = readPersistedTabs(openedWindowLabel());
+    expect(strip?.tabs.map((tab) => tab.id)).toEqual([torn]);
+    expect(strip?.activeTabId).toBe(torn);
+  });
+
+  it("takes the tab out of this window", () => {
+    const { result } = renderHook(() => useTabCommands());
+    act(() => result.current.openTab());
+    const torn = useTabsStore.getState().activeTabId;
+
+    act(() => result.current.tearOffTab(torn));
+
+    expect(useTabsStore.getState().tabs.some((tab) => tab.id === torn)).toBe(false);
+  });
+
+  it("carries the tab's own filters across rather than opening a fresh one", () => {
+    const { result } = renderHook(() => useTabCommands());
+    act(() => result.current.openTab());
+    const torn = useTabsStore.getState().activeTabId;
+    act(() => {
+      useTabsStore.getState().tabs[1]?.stores.filter.getState().setStatusMode("do");
+    });
+
+    act(() => result.current.tearOffTab(torn));
+
+    expect(readPersistedTabs(openedWindowLabel())?.tabs[0]?.state.filter.statusMode).toBe("do");
+  });
+
+  it("refuses to tear off the only tab, which would move the window rather than divide it", () => {
+    const { result } = renderHook(() => useTabCommands());
+    const only = useTabsStore.getState().activeTabId;
+
+    act(() => result.current.tearOffTab(only));
+
+    expect(useTabsStore.getState().tabs).toHaveLength(1);
+    expect(mockOpenWindow).not.toHaveBeenCalled();
+  });
+
+  it("gives the tab back when the window will not open", async () => {
+    mockOpenWindow.mockRejectedValue(new Error("no windowing system"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { result } = renderHook(() => useTabCommands());
+    act(() => result.current.openTab());
+    const torn = useTabsStore.getState().activeTabId;
+
+    await act(async () => {
+      result.current.tearOffTab(torn);
+      await Promise.resolve();
+    });
+
+    const { tabs } = useTabsStore.getState();
+    expect(tabs).toHaveLength(2);
+    expect(readPersistedTabs(openedWindowLabel())).toBeNull();
+  });
+});
+
+describe("moving a tab into another window", () => {
+  it("hands the tab over and then takes it out of this one", async () => {
+    const { result } = renderHook(() => useTabCommands());
+    act(() => result.current.openTab());
+    const moved = useTabsStore.getState().activeTabId;
+
+    await act(async () => {
+      result.current.moveTabToWindow(moved, "board-a");
+      await Promise.resolve();
+    });
+
+    expect(mockSendTab).toHaveBeenCalledWith("board-a", expect.objectContaining({ id: moved }));
+    expect(useTabsStore.getState().tabs.some((tab) => tab.id === moved)).toBe(false);
+    expect(mockFocusWindow).toHaveBeenCalledWith("board-a");
+  });
+
+  it("closes this window when the tab it handed over was its last", async () => {
+    const { result } = renderHook(() => useTabCommands());
+    const only = useTabsStore.getState().activeTabId;
+
+    await act(async () => {
+      result.current.moveTabToWindow(only, "board-a");
+      await Promise.resolve();
+    });
+
+    expect(mockCloseWindow).toHaveBeenCalledOnce();
+  });
+
+  it("leaves the tab where it was when the hand-over fails", async () => {
+    mockSendTab.mockRejectedValue(new Error("no such window"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { result } = renderHook(() => useTabCommands());
+    act(() => result.current.openTab());
+    const moved = useTabsStore.getState().activeTabId;
+
+    await act(async () => {
+      result.current.moveTabToWindow(moved, "board-a");
+      await Promise.resolve();
+    });
+
+    expect(useTabsStore.getState().tabs.some((tab) => tab.id === moved)).toBe(true);
+    expect(mockCloseWindow).not.toHaveBeenCalled();
   });
 });

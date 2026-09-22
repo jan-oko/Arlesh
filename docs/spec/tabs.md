@@ -85,5 +85,47 @@ that opens it, where forgetting a collapse merely shows something again. A resto
 leaving a tab rooted at nothing. A session saved before tabs existed comes back as a single tab
 carrying its view, orientation and filters.
 
-Tearing a tab off into its own window — and anything else multi-window — is a separate piece of
-work and is not described here.
+**A strip per window.** Every window is a tab strip, so the stored strip is **one key per window**,
+named after that window's label: `arlesh-window:<label>`. Every window shares one browser store —
+they are webviews on one origin — so a single key would have the second window overwriting the
+first's tabs. A key each rather than one key holding them all, because a key each is the only shape
+in which a window writes down *only its own*: read-modify-write on a shared key is a lost update
+the moment two windows are edited at once, and two windows being used at once is the whole point.
+
+The **list of windows** is deliberately not stored beside the strips; it belongs to the backend, for
+the reason given under [Windows & Tray](window-tray.md). A window whose label the backend no longer
+knows leaves its strip behind, and those are swept at startup by the first window — which is safe
+because every window of a session is reopened before any of them runs a line of frontend code, so a
+stored label with no window at that moment is a window that really went.
+
+A strip written down before there were windows — under the old single key — is read once, as **the
+first window's**, and then left alone. It is the strip the only window a pre-windows session ever
+had was showing, and it opens in the window that would have had it. A torn-off window with no
+stored strip of its own starts fresh rather than borrowing somebody else's.
+
+**Tearing a tab off.** Dragging a tab **out of the strip** takes it into a window of its own — the
+browser gesture, and the one most people will reach for. A drag that ends inside the strip is a
+reorder, and a drag that ends on the strip's empty space is a drag that went nowhere; only a drag
+that ends outside the strip's rectangle tears off. That last condition is also what makes the
+failure safe: a platform that reports no position for the end of a drag hands the app `(0, 0)`,
+which is inside the strip, so the gesture reads as "went nowhere" and no window appears. A tear-off
+that did not happen costs one more attempt; a window that appears from a drag nobody made is a
+window to go and close.
+
+The tab menu offers **Move tab to new window** as well, for anyone who would rather not drag, and it
+is absent when the tab is the window's only one — tearing off the only tab would move the window
+rather than divide it.
+
+**Moving a tab back** is the menu alone: **Move tab to "…"**, one entry per other open window, named
+by what that window's active tab is called. A drag cannot do it. An HTML drag is captured by the
+window it began in, and no other window hears about it — so a gesture that looked symmetrical would
+work in one direction and silently fail in the other, which is worse than a gesture that is honestly
+asymmetrical. Each window is named by its active tab because that is the one thing about another
+window the user can see from here: a window's label is a UUID and a window has no title of its own.
+
+The tab travels as the same thing it is stored as, so a tab that moves and a tab that comes back
+after a restart are one tab arriving by two routes. Tearing off writes it to the new window's key
+*before* asking for the window, so the window finds its tab on boot and nothing travels through an
+event that could arrive before the window listening for it does; a window that fails to open gives
+the tab straight back. Moving to an existing window sends it first and removes it second, so a
+hand-over that never arrives leaves the tab exactly where it was.

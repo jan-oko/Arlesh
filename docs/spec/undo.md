@@ -7,6 +7,23 @@ Ctrl+Z reverses a **Gesture** — one thing the user did — and Ctrl+Shift+Z re
 changes to it, and a per-view stack could undo past another view's newer edit. Both stacks are
 **session-scoped** and empty on launch.
 
+That answer was already the right one when a second window arrived, and it is why a
+[board-changed](window-tray.md) event needs to do nothing to the stacks at all. The stacks live in
+backend memory, one pair for the whole application, so an edit made in one window is on the same
+stack a Ctrl+Z in another window pops — which is exactly what the paragraph above asks for. Ctrl+Z
+anywhere reverses the most recent thing the user did anywhere; a new Gesture in one window clears
+the Redo Stack another was about to use, for the same reason it clears it within one window. The
+board-changed event is a signal to reload and nothing more, and a window reloading on receipt
+neither pushes nor pops anything.
+
+One consequence is worth saying out loud. The **name** a Gesture was opened with is held
+frontend-side, keyed by Gesture id, because only the frontend knows the user called it "paste 5
+nodes" — so it is held in the window that opened it. Undoing that Gesture from *another* window
+finds no name and falls back to the row counts: "Undid: update 1 item" rather than "Undid: paste 5
+nodes". The step reversed is the right one and the toast still says something true; it says less.
+Moving the names into the backend would mean giving a Gesture id a sentence the database has
+nowhere to put, which is the trade this design already declined.
+
 ## The journal
 
 The record undo works from is a **row-level journal written by SQL triggers**, not by the commands.

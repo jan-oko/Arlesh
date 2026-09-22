@@ -45,7 +45,7 @@ so a change to what a node *is* belongs above, and a change to how it is *shown*
 
 | Area | What is in it |
 | --- | --- |
-| [Window & Tray](docs/spec/window-tray.md) | The tray icon, what the close button does, quitting, the monochrome tray mark |
+| [Windows & Tray](docs/spec/window-tray.md) | Tearing a tab into its own window, the board-changed broadcast, session restore; the tray icon, what the close button does, quitting, the monochrome tray mark |
 | [MCP Server](docs/spec/mcp-server.md) | The read-only endpoint an agent reaches the board through: tools, paging, errors |
 | [Undo](docs/spec/undo.md) | The journal, which gestures are one step, the two stacks, what is deliberately not undoable |
 
