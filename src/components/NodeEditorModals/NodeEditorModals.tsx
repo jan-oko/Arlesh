@@ -4,6 +4,7 @@ import type { MindmapNode } from "@/utils/tree-layout";
 import type { NodeEditorHandles } from "@/components/MindmapView/use-node-editor";
 import { findParent } from "@/utils/mindmap-tree";
 import { allFlowItemNodes, flowTargetNodes, targetSelectionFor } from "@/utils/flow-target";
+import { hasNodeEditor } from "@/utils/node-meta";
 import { BEADS_NODE_TYPE } from "@/api/beads";
 import TaskEditorModal from "@/components/TaskEditorModal/TaskEditorModal";
 import GoalEditorModal from "@/components/GoalEditorModal/GoalEditorModal";
@@ -58,6 +59,10 @@ export default function NodeEditorModals({ tree, editor }: Props) {
 
   if (editorModal === null) return null;
   const node = editorModal.node;
+  // Belt and braces: a caller that opens an editor on a node that has none would otherwise leave
+  // the keyboard captured behind a modal that never renders. The gesture checks this too — this is
+  // the copy that makes the component honest about what it can draw.
+  if (!hasNodeEditor(node)) return null;
   const close = () => setEditorModal(null);
 
   switch (node.kind) {
@@ -126,9 +131,9 @@ export default function NodeEditorModals({ tree, editor }: Props) {
           onSave={onFlowItemSave} onClose={close}
         />
       );
-    // An Aspect is fixed and a folded run of Habit history is a drawing: neither has an editor, and
-    // neither is a kind a gesture can open one on. Named rather than defaulted, so a kind added to
-    // `NodeKind` later is a compile error here instead of a modal that silently never appears.
+    // Unreachable: `hasNodeEditor` above already turned both away. Named rather than defaulted, so
+    // a kind added to `NodeKind` later is a compile error here instead of a modal that silently
+    // never appears.
     case "aspect":
     case "habit_group":
       return null;

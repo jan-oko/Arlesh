@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useListFilterStore } from "@/stores/use-list-filter-store";
-import { useViewStore, ALL_VIEWS } from "@/stores/use-view-store";
+import { useViewStore, ALL_VIEWS, isView } from "@/stores/use-view-store";
 import type { View } from "@/stores/use-view-store";
 import { useDisplayStore } from "@/stores/use-display-store";
 import { useThemeStore } from "@/stores/use-theme-store";
@@ -174,20 +174,19 @@ export default function TopBar() {
               </>
             )}
           </div>
-          {/* One tab per view, drawn from the one list of them, so a fourth view is a union member
-              rather than another hand-written button that could go out of step with it. */}
-          <div className={styles.viewTabs}>
-            {ALL_VIEWS.map((candidate) => (
-              <button
-                key={candidate}
-                type="button"
-                className={`${styles.viewTab}${view === candidate ? ` ${styles.viewTabActive}` : ""}`}
-                onClick={() => setView(candidate)}
-              >
-                {viewLabels[candidate]}
-              </button>
-            ))}
-          </div>
+          {/* A dropdown rather than a row of tabs. Four views already crowded the bar, and a row
+              that grows with every view is a bar that shrinks with every view — where a dropdown
+              costs the same width at four as at ten. It is the app's own `Select`, the one beside
+              it, so the bar has one dropdown affordance rather than a second invented for this;
+              the kebab menus arriving in the Plan View are a different control for a different
+              question (several independent toggles, not one choice among some). Options come from
+              the one list of views, so a fifth is a union member and nothing else. */}
+          <Select
+            value={view}
+            options={ALL_VIEWS.map((candidate) => ({ value: candidate, label: viewLabels[candidate] }))}
+            onChange={(next) => { if (isView(next)) setView(next); }}
+            ariaLabel={t("common:viewSelectorLabel")}
+          />
           <Select
             value={activePreset}
             options={presetOptions.map((preset) => ({ value: preset, label: t(`listView:preset.${preset}`) }))}

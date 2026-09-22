@@ -82,8 +82,6 @@ export default function StepCardFields({ node, fields }: Props) {
         return node.onScopeExit === "archive"
           ? t("stepsView:value.onExitArchive")
           : t("stepsView:value.onExitKeep");
-      case "verdict":
-        return t(`status:commitment.${node.verdict ?? "unresolved"}`);
       case "verdictWindow": {
         const window = node.verdictWindow;
         return window == null ? "" : `${window.n} ${window.kind}`;
@@ -94,20 +92,10 @@ export default function StepCardFields({ node, fields }: Props) {
         return node.infoDetails ?? "";
       case "knowledgeBase":
         return node.knowledgeBaseDirectory ?? "";
-      case "instanceType":
-        return t(`nodeKinds:${node.flow?.instanceType ?? "task"}`);
-      case "recurrence":
-        return t("stepsView:value.habit");
-      case "backlog":
-      case "asynchronous":
       case "private":
         return t("stepsView:value.yes");
-      case "agentic":
-        // An explicit flag reads as Yes; one that came from an ancestor says so, because "this
-        // branch is agentic" and "this task is" are different statements about the same badge.
-        return node.agentic === true || node.agentic === false
-          ? t("stepsView:value.yes")
-          : t("stepsView:value.inherited");
+      case "instanceType":
+        return t(`nodeKinds:${node.flow?.instanceType ?? "task"}`);
       case "beadsId":
         return node.beadsId ?? "";
       case "tags":

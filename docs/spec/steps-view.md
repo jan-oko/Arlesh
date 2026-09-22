@@ -76,13 +76,16 @@ consequence is handled deliberately: arrowing up from the top row changes *what 
 rather than *what you are choosing*, so the header card reads as visibly different from a child card
 — a full-width band with a "you are here" mark.
 
-**At the true root the header card is the board.** Every Step has the same shape and the root is
-addressable, but there is no node there to draw: the card carries the app's own name, a line saying
-it is the whole board, and the child count, and **nothing else** — no glyph, no badges and no fields,
-rather than an empty form. Every gesture that would act on a node is refused there out loud (`E`,
-`Space`, `B`/`A`/`W`, `Enter`), because a *selected* card that answers nothing in silence reads as a
-broken key. Bare `F` still shows the board alone only when nothing at all is selected, which is why
-"the board is selected" and "nothing is selected" are two states rather than one.
+**At the true root the header card is the board, and it says only the app's name, centred.** Every
+Step has the same shape and the root is addressable, but there is no node there to draw — so rather
+than an empty form, or a strapline explaining what the absence of one means, it carries the name and
+stops. A child count there would be the one number on the board nobody decides anything from.
+
+The *behaviour* is the same as on any header card: every gesture that would act on a node is refused
+there out loud (`E`, `Space`, `B`/`A`/`W`, `Enter`), because a *selected* card that answers nothing
+in silence reads as a broken key. Bare `F` still shows the board alone only when nothing at all is
+selected, which is why "the board is selected" and "nothing is selected" are two states rather than
+one.
 
 ## What a card carries
 
@@ -101,22 +104,63 @@ Plan, tags, beads id, privacy, knowledge-base directory, info details and the fl
 and hiding the blanks — a Commitment's Verdict Window is meaningless on a Domain, and a Task's
 Backlog is meaningless on a Goal. A field the node has no value for is left out entirely.
 
+**A card never repeats what its icon or its badge row already says.** Those two are not decoration:
+the glyph encodes a Task's and a Goal's status (and its blocked-ness), a Commitment's Verdict, and
+whether a Flow recurs; the badge row carries every boolean flag there is. So `Status`, `Verdict`,
+`Recurrence`, `Backlog`, `Agentic` and `Asynchronous` are **not** fields — each was a second copy of
+something already on the card, in a view whose only scarcity is vertical space.
+
+The line is drawn at **boolean against value**. A badge says a Task *has* a Time Scope; only a field
+says it is *this week*. The badge is the duplicate; the value behind it is not.
+
 | Kind | Fields, in reading order |
 | --- | --- |
-| Task | Status, Time Scope, Plan, On scope exit, Backlog, Agentic, Asynchronous |
-| Goal | Status, Time Scope, Plan, On scope exit |
-| Commitment | Verdict, Verdict Window, Time Scope, Plan |
+| Task · Goal | Time Scope, Plan, On scope exit |
+| Commitment | Verdict Window, Time Scope, Plan |
 | Info | Details |
 | Project | Status, Knowledge base |
 | Aspect · Domain · Tag | Knowledge base |
-| Flow | Instance Type, Recurrence |
+| Flow | Instance Type |
 | Flow item | Time Scope |
 
-Every kind then reads **Blocked by**, **Tags**, **Issue** and **Private** after its own.
+Every kind then reads **Blocked by**, **Tags**, **Issue** and **Private** after its own. A Project's
+Status stays a field because no icon draws it and no badge carries it.
 
-**Reuse, not re-derivation.** Badges come from `deriveStatusIndicators`, the tint from
-`computeNodeAppearance`, the glyph from `NodeIcon`, and the scope and plan labels from the
-formatters the editors use — so a node reads the same whichever surface you meet it on.
+**Under the fields, the node's first Info notes, as bullets — as many as the card's height leaves
+room for.** A card is a fixed height at a given zoom and every row in it is a single line, so how
+many fit is arithmetic rather than a measurement per card. A note too long for its line is
+**truncated, never dropped**: a clipped note still says it exists and roughly what it says, where a
+dropped one says nothing at all, and the whole of it is one `E` away. When the notes outrun the
+room, the **last line becomes a count of what is left** rather than one more note — it costs a note
+to say it, and that is the right trade, because a note you cannot see is a note you do not know to
+go looking for.
+
+**Reuse, not re-derivation.** Badges come from `deriveStatusIndicators`, the glyph from `NodeIcon`,
+the fill from `statusTint`, and the scope and plan labels from the formatters the editors use — so a
+node reads the same whichever surface you meet it on.
+
+### What the fill says
+
+**A card's fill is its status**, not its depth. Depth is the one thing a Steps card never needs to
+encode, because a Step *is* one depth — and the old rule (the aspect's colour at an opacity falling
+off with depth) had no contrast guarantee against the text on top of it, which is why an Aspect's own
+card, drawn at full strength by that rule, was unreadable in both themes.
+
+The tints are **opaque surfaces** chosen against the text colour, at low chroma so a card reads as a
+surface with a hue rather than a colour block. They are matched in the order the facts override each
+other: **blocked** first, because it is the most actionable thing a card can say and it is true
+whatever the stored status claims; then **archived**, because the model already lets a lapsed scope
+force it over a stored status and the card should agree with the model rather than with the field;
+then **frozen**, a deliberate hold that outranks the progress made before it; then **done**, **in
+progress**, and everything else. A Commitment is matched on its **Verdict**, which is the state it
+actually has: broken reads like blocked, kept like done, unanswered like open.
+
+The **aspect colour moves to the card's leading edge** — a bar, not a fill. It still says which part
+of the board a card belongs to, without sitting behind the text.
+
+**The List View follows the same rule**, for the same reason: one visual vocabulary, so a Task reads
+the same on either surface. The Mindmap keeps `computeNodeAppearance` — a canvas node is a glyph on
+a tinted rectangle with no body text over it, so the depth ramp there is doing a different job.
 
 **A card shows `virtualBlockers` ("Blocked by …") and no free-text description.** The derived
 blockers are the only dependency information the node carries and are exactly what you would open
@@ -136,6 +180,13 @@ act on the selected card, as they do on a Mindmap node.
 Because a Steps card is any kind at all, the editor fan-out every view used to carry its own copy of
 is now one shared component: the List View and the Plan View could get away with two kinds each
 because a row there is only ever a Task or a Commitment, and that is what stopped being true here.
+
+**Three kinds have no editor at all** — an Aspect, which is fixed; a folded run of Habit history,
+which is a drawing; and a virtual Habit occurrence, which is rendered from its template rather than
+stored. `E` on one of them is **refused out loud**. That it is one named predicate rather than a
+silent `return` in the gesture and a `null` branch in the modal matters: two encodings of the one
+fact is how this view shipped a card that set the editor open, drew no modal, and left the keyboard
+captured with nothing on screen to release it.
 
 An **empty Step offers to create the first child**, which arrives through the parent's own default
 child kind and opens straight into its editor to be named. Creation gestures beyond that — `Tab`,

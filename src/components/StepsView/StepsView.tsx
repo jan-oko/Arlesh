@@ -19,7 +19,9 @@ import { getErrorMessage } from "@/api/errors";
 import { filterTreeWithFocus } from "@/utils/filter-tree";
 import { focusExemptPath } from "@/utils/focus-exemption";
 import { collectSearchableNodes, collectTasksAndGoals, findNode } from "@/utils/mindmap-tree";
+import { aspectColorOf } from "@/utils/node-visuals";
 import { canDescendInto, stepChildCounts, stepRefusalKey } from "@/utils/steps-card";
+import { hasNodeEditor } from "@/utils/node-meta";
 import {
   CARD_GAP, HEADER_CURSOR, STEPS_ZOOM_LEVELS, cardSizeForZoom, childCursor, clampPage, moveCursor,
   pageCount, pageSlice, resolveGrid,
@@ -214,13 +216,22 @@ export default function StepsView() {
     [zoom, setZoom],
   );
 
+  /**
+   * Opening the editor. A kind that has none is **refused out loud** rather than setting the modal
+   * open on nothing: `NodeEditorModals` would render null, the keyboard would stay captured behind
+   * a modal that was never drawn, and every Steps binding would go dead with no way back.
+   */
   const onOpenEditor = useCallback(
     (id: string) => {
       const node = findNode(tree, id);
       if (node === undefined) return;
+      if (!hasNodeEditor(node)) {
+        showToast({ nodeId: id, message: t("stepsView:refusedNoEditor", { title: node.title }) });
+        return;
+      }
       setEditorModal({ nodeId: id, node });
     },
-    [tree, setEditorModal],
+    [tree, setEditorModal, showToast, t],
   );
 
   /** The empty Step's offer: a first child, taken straight into its editor to be named. */
@@ -269,15 +280,16 @@ export default function StepsView() {
   if (error !== null) return <div className={styles.centered}>{t("common:error", { message: error })}</div>;
 
   const card = cardSizeForZoom(zoom);
+  // The aspect this Step sits under, for every card's leading edge. One lookup for the whole Step:
+  // a Step is one place on the board, so its cards share an aspect except at the true root, where
+  // each top-level card is an aspect of its own.
+  const stepAspectColor = rawStepNode === null ? undefined : aspectColorOf(tree, rawStepNode.id);
   const gridStyle: CSSProperties & Record<`--${string}`, string | number> = {
     "--step-card-width": `${card.width}px`,
     "--step-card-height": `${card.height}px`,
     "--step-card-gap": `${CARD_GAP}px`,
     "--step-columns": grid.columns,
   };
-  // The Mindmap tints a node by how deep it sits; a Step's children are all one level below its
-  // header, so they share one depth and the header is one shallower.
-  const headerDepth = rawStepNode === null ? 0 : 1;
   const headerCounts = stepChildCounts(filteredRoot, rawStepNode ?? tree);
   const stepTitle = rawStepNode?.title ?? t("stepsView:boardTitle");
   const canCreateFirstChild = rawStepNode !== null && headerCounts.total === 0 && canDescendInto(rawStepNode);
@@ -286,9 +298,14 @@ export default function StepsView() {
     <div className={styles.container} style={gridStyle}>
       <AnchoredToast toast={pendingToast} onDismiss={clearToast} />
 
+      {/* The header card takes the *filtered* copy of the node it stands for. The node itself is
+          whatever you walked to and the filter never takes that away — but its children are what
+          the Info bullets are drawn from, and those must honour the filter exactly as the child
+          cards below it do. */}
       <StepCard
-        node={rawStepNode}
-        depth={headerDepth}
+        node={rawStepNode === null ? null : filteredRoot}
+        aspectColor={stepAspectColor}
+        cardHeight={card.height}
         isHeader
         isSelected={cursor?.cell === "header"}
         counts={headerCounts}
@@ -323,7 +340,8 @@ export default function StepsView() {
             <StepCard
               key={child.id}
               node={child}
-              depth={headerDepth + 1}
+              aspectColor={stepAspectColor ?? aspectColorOf(tree, child.id)}
+              cardHeight={card.height}
               isHeader={false}
               isSelected={cursor?.cell === "child" && cursor.index === index}
               counts={stepChildCounts(child, findNode(tree, child.id))}

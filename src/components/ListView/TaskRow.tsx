@@ -3,7 +3,7 @@ import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import type { TaskListRow } from "@/utils/list-filter";
 import { deriveStatusIndicators } from "@/utils/node-status-indicators";
-import { computeNodeAppearance } from "@/utils/node-visuals";
+import { statusTintValue } from "@/utils/node-visuals";
 import { isRtlText } from "@/utils/text-direction";
 import { useTagNames } from "@/hooks/use-tag-names";
 import { useInputCapture } from "@/hooks/use-input-capture";
@@ -54,10 +54,11 @@ export default function TaskRow({
   const canClickStatus = node.habitItem !== undefined || !row.isBlocked;
 
   // Same aspect-color derivation the Mindmap node uses, so a card's tint matches its node's fill there.
-  const { fillColor, fillOpacity } = computeNodeAppearance(node, row.ancestors.length);
+  // The fill says what state the work is in, not how deep it sits — one rule, shared with the
+  // Steps View, so a Task reads the same on either surface.
   const cardStyle: CSSProperties & Record<`--${string}`, string | number> = {
-    "--card-tint": fillColor,
-    "--card-tint-opacity": fillOpacity,
+    "--card-tint": statusTintValue(node),
+    "--card-tint-opacity": 1,
     "--row-depth": visibleDepth,
   };
   // The indent follows the title's own direction, the same way a Mindmap node's layout does: a Hebrew

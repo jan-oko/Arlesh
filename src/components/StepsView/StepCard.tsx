@@ -3,8 +3,10 @@ import { useTranslation } from "react-i18next";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { isNodeBlocked } from "@/utils/tree-layout";
 import { deriveStatusIndicators } from "@/utils/node-status-indicators";
-import { computeNodeAppearance } from "@/utils/node-visuals";
-import { stepCardFields, type StepChildCounts } from "@/utils/steps-card";
+import { DIMMED_OPACITY, statusTintValue } from "@/utils/node-visuals";
+import {
+  bulletCapacity, infoBullets, infoChildTitles, stepCardFields, type StepChildCounts,
+} from "@/utils/steps-card";
 import { isRtlText } from "@/utils/text-direction";
 import NodeIcon from "@/components/NodeIcon/NodeIcon";
 import TaskRowBadges from "@/components/ListView/TaskRowBadges";
@@ -16,8 +18,10 @@ const ICON_R = 9;
 interface Props {
   /** The node this card stands for, or `null` for the board's own header card at the true root. */
   node: MindmapNode | null;
-  /** How far down the board this card's node sits — the Mindmap's tint depth, so colours match. */
-  depth: number;
+  /** The aspect colour this card sits under, for its leading edge. `undefined` outside any aspect. */
+  aspectColor: string | undefined;
+  /** The card's drawn height in pixels — what decides how many Info bullets fit under its fields. */
+  cardHeight: number;
   /** Whether this is the card for the Step you are standing on, drawn above its children. */
   isHeader: boolean;
   isSelected: boolean;
@@ -30,23 +34,27 @@ interface Props {
 
 /**
  * One card on a Step: the node's glyph, its title, the badges it carries on the Mindmap, the fields
- * you would open the editor to read, and how many children it holds.
+ * you would open the editor to read, its first Info notes, and how many children it holds.
+ *
+ * **The fill says what state the work is in**, not how deep the node sits — see `statusTint`. The
+ * aspect the node lives under keeps a colour bar on the leading edge, which is where that colour
+ * went when it stopped being the fill: behind the text it had no contrast guarantee, and on an
+ * Aspect's own card, drawn at full strength, it had none at all.
  *
  * **The header card reads as visibly different from a child card**, and it has to: it is the first
  * cell of the same arrow grid, so `↑` from the top row changes *what you are standing on* rather
  * than *what you are choosing*. The "you are here" mark and the full-width band are what say so.
  *
- * **At the true root the header card is the board itself.** It carries the tree's own title, no
- * glyph, no badges and no fields, because there is no row behind it — and it says as much in words
- * rather than rendering as an empty form. Every gesture that would act on a node is refused there,
- * out loud, by the view.
+ * **At the true root the header card is the board, and says only its name.** There is no node
+ * behind it, so there is nothing true to put under the title — a strapline explaining that would be
+ * chrome, and a child count there is the one number on the board nobody is deciding anything from.
+ * The *behaviour* is unchanged: every gesture that would act on a node is refused out loud there.
  *
- * Badges, tint and glyph are all **reused, not re-derived**: `deriveStatusIndicators`,
- * `computeNodeAppearance` and `NodeIcon` are the Mindmap's own, so a node reads the same whichever
- * surface you meet it on.
+ * Badges, glyph and tint are all **reused, not re-derived**: `deriveStatusIndicators`, `NodeIcon`
+ * and `statusTint` are shared, so a node reads the same whichever surface you meet it on.
  */
 export default function StepCard({
-  node, depth, isHeader, isSelected, counts, onSelect, onDescend, onOpenEditor,
+  node, aspectColor, cardHeight, isHeader, isSelected, counts, onSelect, onDescend, onOpenEditor,
 }: Props) {
   const { t } = useTranslation(["stepsView", "nodeKinds"]);
 
@@ -64,27 +72,18 @@ export default function StepCard({
         aria-current={isSelected ? "true" : undefined}
         onClick={onSelect}
       >
-        <span className={styles.top}>
-          <span className={styles.title}>{t("stepsView:boardTitle")}</span>
-          <span className={styles.here}>{t("stepsView:hereLabel")}</span>
-        </span>
-        <span className={styles.subtitle}>{t("stepsView:boardSubtitle")}</span>
-        {counts !== null && (
-          <span className={styles.count}>
-            {t("stepsView:childCount", { matching: counts.matching, total: counts.total })}
-          </span>
-        )}
+        <span className={styles.boardTitle}>{t("stepsView:boardTitle")}</span>
       </div>
     );
   }
 
-  const appearance = computeNodeAppearance(node, depth);
   const indicators = deriveStatusIndicators(node);
   const fields = stepCardFields(node);
+  const bullets = infoBullets(infoChildTitles(node), bulletCapacity(cardHeight, fields.length));
   const cardStyle: CSSProperties & Record<`--${string}`, string | number> = {
-    "--card-tint": appearance.fillColor,
-    "--card-tint-opacity": appearance.fillOpacity,
-    opacity: appearance.nodeOpacity,
+    "--card-tint": statusTintValue(node),
+    "--card-edge": aspectColor ?? "transparent",
+    opacity: node.archived === true ? DIMMED_OPACITY : 1,
   };
 
   return (
@@ -106,8 +105,7 @@ export default function StepCard({
               kind={node.kind} status={node.status} verdict={node.verdict}
               isArchived={node.archived === true} isBlocked={isNodeBlocked(node)}
               isHabit={node.flow?.isHabit === true}
-              cx={ICON_R} cy={ICON_R} r={ICON_R * 0.9} color={appearance.iconColor}
-              opacity={appearance.iconOpacity}
+              cx={ICON_R} cy={ICON_R} r={ICON_R * 0.9} color="var(--node-text)" opacity={1}
             />
           </svg>
         </span>
@@ -118,6 +116,19 @@ export default function StepCard({
       <span className={styles.kind}>{t(`nodeKinds:${node.kind}`)}</span>
       <TaskRowBadges node={node} indicators={indicators} />
       <StepCardFields node={node} fields={fields} />
+
+      {(bullets.shown.length > 0 || bullets.more > 0) && (
+        <ul className={styles.notes}>
+          {bullets.shown.map((title, index) => (
+            <li key={`${index}-${title}`} className={styles.note}>{title}</li>
+          ))}
+          {bullets.more > 0 && (
+            <li className={`${styles.note} ${styles.noteMore}`}>
+              {t("stepsView:moreNotes", { count: bullets.more })}
+            </li>
+          )}
+        </ul>
+      )}
 
       <span className={styles.footer}>
         {counts !== null && (

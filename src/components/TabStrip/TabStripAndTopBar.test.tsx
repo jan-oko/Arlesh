@@ -124,7 +124,8 @@ describe("two tabs sharing one top bar", () => {
 
   it("switches the view with the tab, so a list stays a list", () => {
     render(<Harness />);
-    fireEvent.click(screen.getByRole("button", { name: "common:viewList" }));
+    fireEvent.click(screen.getByRole("button", { name: "common:viewSelectorLabel" }));
+    fireEvent.click(screen.getByRole("option", { name: "common:viewList" }));
 
     switchTo("CODE");
     expect(useTabsStore.getState().tabs[1]?.stores.view.getState().view).toBe("mindmap");

@@ -2,7 +2,7 @@ import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import type { CommitmentListRow } from "@/utils/list-filter";
 import { deriveStatusIndicators } from "@/utils/node-status-indicators";
-import { computeNodeAppearance } from "@/utils/node-visuals";
+import { statusTintValue } from "@/utils/node-visuals";
 import { useTagNames } from "@/hooks/use-tag-names";
 import { VERDICT } from "@/api/verdict";
 import VerdictIcon from "@/components/StatusIcons/VerdictIcon";
@@ -38,10 +38,11 @@ export default function CommitmentRow({
   const { node } = row;
   const verdict = node.verdict ?? VERDICT.UNRESOLVED;
 
-  const { fillColor, fillOpacity } = computeNodeAppearance(node, row.ancestors.length);
+  // The fill says what state the work is in, not how deep it sits — one rule, shared with the
+  // Steps View, so a Task reads the same on either surface.
   const cardStyle: CSSProperties & Record<`--card-tint${string}`, string | number> = {
-    "--card-tint": fillColor,
-    "--card-tint-opacity": fillOpacity,
+    "--card-tint": statusTintValue(node),
+    "--card-tint-opacity": 1,
   };
 
   const control = (

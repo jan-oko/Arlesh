@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
-import { canDescendInto, stepCardFields, stepChildCounts, stepRefusalKey } from "./steps-card";
+import {
+  bulletCapacity, canDescendInto, infoBullets, infoChildTitles, stepCardFields, stepChildCounts,
+  stepRefusalKey,
+} from "./steps-card";
 
 function node(kind: NodeKind, extra: Partial<MindmapNode> = {}): MindmapNode {
   return { id: `${kind}-1`, kind, title: kind, position: 0, tagIds: [], children: [], ...extra };
@@ -9,34 +12,41 @@ function node(kind: NodeKind, extra: Partial<MindmapNode> = {}): MindmapNode {
 const WINDOW = { start_id: 7, end_id: 7 };
 
 describe("the fields a card spells out", () => {
-  it("are chosen by kind: a Task's flags, and none of them on a Goal", () => {
-    const task = node("task", { status: "todo", backlogged: true, asynchronous: true });
-    const goal = node("goal", { status: "active", backlogged: true, asynchronous: true });
-    expect(stepCardFields(task)).toEqual(["status", "backlog", "asynchronous"]);
-    expect(stepCardFields(goal)).toEqual(["status"]);
+  it("never repeat the icon: a Task's status is the glyph, so it is not also a field", () => {
+    const task = node("task", { status: "todo", timeScope: WINDOW });
+    expect(stepCardFields(task)).toEqual(["timeScope"]);
   });
 
-  it("leave out what the node has no value for", () => {
-    expect(stepCardFields(node("task"))).toEqual([]);
+  it("never repeat the badge row: the three Task flags are badges, so they are not also fields", () => {
+    const task = node("task", { backlogged: true, asynchronous: true, inheritedAgentic: true });
+    expect(stepCardFields(task)).toEqual([]);
   });
 
-  it("read the kind's own fields before the shared ones", () => {
-    const task = node("task", { status: "todo", tagIds: [3], virtualBlockers: ["Blocked by Spec"] });
-    expect(stepCardFields(task)).toEqual(["status", "blockedBy", "tags"]);
+  it("keeps the value behind a badge — the clock says a Task has a window, not which one", () => {
+    expect(stepCardFields(node("task", { timeScope: WINDOW, plan: WINDOW }))).toEqual(["timeScope", "plan"]);
   });
 
-  it("give a Commitment its verdict and its window, and never a Task's backlog", () => {
+  it("reads the kind's own fields before the shared ones", () => {
+    const task = node("task", { timeScope: WINDOW, tagIds: [3], virtualBlockers: ["Blocked by Spec"] });
+    expect(stepCardFields(task)).toEqual(["timeScope", "blockedBy", "tags"]);
+  });
+
+  it("gives a Commitment its window but not its verdict, which the shield already draws", () => {
     const commitment = node("commitment", {
       verdict: "unresolved", verdictWindow: { n: 2, kind: "week" }, backlogged: true,
     });
-    expect(stepCardFields(commitment)).toEqual(["verdict", "verdictWindow"]);
+    expect(stepCardFields(commitment)).toEqual(["verdictWindow"]);
   });
 
-  it("give an Info note its details — the one kind with free text", () => {
+  it("gives an Info note its details — the one kind with free text", () => {
     expect(stepCardFields(node("info", { infoDetails: "a traceback" }))).toEqual(["details"]);
   });
 
-  it("give a Habit its instance type and its recurrence", () => {
+  it("keeps a Project's status, which no icon and no badge carries", () => {
+    expect(stepCardFields(node("project", { status: "active" }))).toEqual(["status"]);
+  });
+
+  it("gives a Habit its instance type but not its recurrence, which the glyph already is", () => {
     const flow = node("flow", {
       flow: {
         instanceType: "task", targetType: null, targetId: null, durationN: 1, durationKind: "day",
@@ -45,16 +55,54 @@ describe("the fields a card spells out", () => {
         verdictWindowN: null, verdictWindowKind: null,
       },
     });
-    expect(stepCardFields(flow)).toEqual(["instanceType", "recurrence"]);
+    expect(stepCardFields(flow)).toEqual(["instanceType"]);
   });
 
-  it("read an inherited Agentic flag as a value, the way the badge row does", () => {
-    expect(stepCardFields(node("task", { inheritedAgentic: true }))).toEqual(["agentic"]);
+  it("leaves out what the node has no value for", () => {
+    expect(stepCardFields(node("task"))).toEqual([]);
+  });
+});
+
+describe("how many Info notes fit", () => {
+  it("falls as the fields above them take the room", () => {
+    const tall = bulletCapacity(240, 0);
+    expect(bulletCapacity(240, 2)).toBe(tall - 2);
   });
 
-  it("list a scope and a plan a Task carries", () => {
-    const task = node("task", { timeScope: WINDOW, plan: WINDOW, onScopeExit: "archive" });
-    expect(stepCardFields(task)).toEqual(["timeScope", "plan", "onScopeExit"]);
+  it("is none on a card with no room left", () => {
+    expect(bulletCapacity(108, 8)).toBe(0);
+  });
+
+  it("grows with the card", () => {
+    expect(bulletCapacity(240, 1)).toBeGreaterThan(bulletCapacity(108, 1));
+  });
+});
+
+describe("the Info notes a card draws", () => {
+  it("shows them all when they fit", () => {
+    expect(infoBullets(["a", "b"], 3)).toEqual({ shown: ["a", "b"], more: 0 });
+  });
+
+  it("spends the last line saying what is left, rather than dropping it in silence", () => {
+    expect(infoBullets(["a", "b", "c", "d"], 3)).toEqual({ shown: ["a", "b"], more: 2 });
+  });
+
+  it("says only the count when there is room for one line and more than one note", () => {
+    expect(infoBullets(["a", "b"], 1)).toEqual({ shown: [], more: 2 });
+  });
+
+  it("reports everything as missing when there is no room at all", () => {
+    expect(infoBullets(["a", "b"], 0)).toEqual({ shown: [], more: 2 });
+  });
+});
+
+describe("a node's Info children", () => {
+  it("are the info-kind children, in the order they are drawn", () => {
+    const parent = node("goal", {
+      children: [node("task"), node("info", { id: "info-1", title: "first" }),
+        node("info", { id: "info-2", title: "second" })],
+    });
+    expect(infoChildTitles(parent)).toEqual(["first", "second"]);
   });
 });
 

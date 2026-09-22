@@ -73,4 +73,12 @@ On top of the shared filters, the List View adds its own filter dimensions — a
 | Agentic | Agentic / Not agentic — the flag as the task *reads* it, its own or inherited (see [*Tasks*](resources.md)). Independent of the delegated/undelegated question |
 | Asynchronous | Asynchronous / Not asynchronous — the task's **own** flag (see [*Tasks*](resources.md)); it does not inherit, so a subtask of an asynchronous task reads as not asynchronous |
 
+## What a row's colour says
+
+A row's fill is **its status**, not how deep its node sits — the same rule the
+[Steps View](steps-view.md) draws its cards by, so a Task reads the same on either surface. See
+that page for the tints and the order they override each other in. The depth ramp it replaced dated
+from when the List View was the only flat surface and a row's colour was the only thing left saying
+where it came from; the path header says that now, and says it in words.
+
 ---

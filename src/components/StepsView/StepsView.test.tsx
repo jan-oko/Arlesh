@@ -212,6 +212,62 @@ describe("the arrow grid", () => {
   });
 });
 
+describe("a card with no editor", () => {
+  // The bug this pins: opening an editor on a kind that has none set the modal open on nothing.
+  // `NodeEditorModals` drew null, so there was no modal on screen — and the view gates its whole
+  // keyboard on `editorModal !== null`, so every Steps binding went dead with no way back.
+  it("refuses an Aspect out loud, and leaves the keyboard alive", () => {
+    mockTree([n("domain-1", "aspect"), n("domain-2", "domain")]);
+    render(<StepsView />);
+
+    press("ArrowDown");
+    expect(selectedCardId()).toBe("domain-1");
+    press("KeyE");
+
+    expect(setEditorModal).not.toHaveBeenCalled();
+    expect(useMindmapStore.getState().pendingToast?.message).toBe("stepsView:refusedNoEditor");
+
+    // The proof it is not wedged: the next keystroke still moves.
+    press("ArrowRight");
+    expect(selectedCardId()).toBe("domain-2");
+  });
+
+  it("refuses a virtual Habit occurrence, which is drawn from its template rather than stored", () => {
+    mockTree([n("task-7", "task", {
+      virtual: true,
+      habitItem: { flowId: 1, itemType: "flow_task", itemId: 2, scopeId: 3, cycleId: 0 },
+    })]);
+    render(<StepsView />);
+
+    press("ArrowDown");
+    press("KeyE");
+
+    expect(setEditorModal).not.toHaveBeenCalled();
+    expect(useMindmapStore.getState().pendingToast?.message).toBe("stepsView:refusedNoEditor");
+  });
+});
+
+describe("the Info notes on a card", () => {
+  it("draws the first ones as bullets", () => {
+    mockTree([n("goal-1", "goal", {
+      children: [n("info-1", "info", { title: "watch the migration" })],
+    })]);
+    render(<StepsView />);
+
+    expect(screen.getByText("watch the migration")).toBeTruthy();
+  });
+
+  it("says what it had no room for rather than dropping it in silence", () => {
+    // The smallest card, with more notes than any card could hold.
+    useViewStore.setState({ stepsZoom: 1 });
+    const notes = Array.from({ length: 12 }, (_, i) => n(`info-${i}`, "info", { title: `note ${i}` }));
+    mockTree([n("goal-1", "goal", { children: notes })]);
+    render(<StepsView />);
+
+    expect(screen.getByText("stepsView:moreNotes")).toBeTruthy();
+  });
+});
+
 describe("acting on the selected card", () => {
   it("cycles a Task's status on Space", () => {
     mockTree([n("task-1", "task", { status: "todo" })]);

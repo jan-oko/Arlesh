@@ -26,6 +26,18 @@ html, body, #root {
   --node-text: #e0e0f0;
   --node-text-muted: #888899;
 
+  /* Status tints — a card's fill says what state the work is in.
+     They are **opaque surfaces**, not a colour at some opacity: contrast against --node-text is
+     then a property of the token rather than an accident of how deep a node happened to sit, which
+     is what made an Aspect card unreadable when the fill was its own full-strength colour. Low
+     chroma on purpose, so a card reads as a surface with a hue rather than as a colour block. */
+  --tint-open: #1e1e2e;
+  --tint-progress: #232a44;
+  --tint-done: #1d2b26;
+  --tint-blocked: #331f22;
+  --tint-frozen: #222a3a;
+  --tint-archived: #1a1a24;
+
   /* Canvas */
   --canvas-bg: #13131f;
   --edge-color: #3a3a5a;
@@ -71,6 +83,15 @@ html, body, #root {
   --node-border-selected: #5546d8;
   --node-text: #1a1a2e;
   --node-text-muted: #6b6b7a;
+
+  /* Status tints — see the dark set above. The same hues at the same low chroma, so one state
+     reads as that state in either theme. */
+  --tint-open: #ffffff;
+  --tint-progress: #eceffd;
+  --tint-done: #e8f4ec;
+  --tint-blocked: #fbeaea;
+  --tint-frozen: #edf1f8;
+  --tint-archived: #f1f1f5;
 
   /* Canvas */
   --canvas-bg: #f4f4fa;

@@ -10,9 +10,10 @@
   be a walk while another stays a Mindmap.
 
   A card carries what the editor carries: the fields you would open the editor to read, chosen by
-  kind, beside the badges and colour the same node wears on the Mindmap. A card that holds something
-  says how much — "3 of 12", what the current filter will show against what the board actually
-  holds. All four arrows move between cards, `Enter` descends, `E` opens the editor, `Space` cycles
+  kind, and never a second copy of what its icon or its badges already say. Under them sit the
+  node's first Info notes as bullets, as many as the card has room for, with the last line saying
+  how many did not fit rather than dropping them in silence. A card that holds something says how
+  much — "3 of 12", what the current filter will show against what the board actually holds. All four arrows move between cards, `Enter` descends, `E` opens the editor, `Space` cycles
   a status, and a leaf opens on an empty Step that offers to create the first child rather than
   being a dead end.
 
