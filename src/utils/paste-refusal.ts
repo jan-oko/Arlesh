@@ -1,7 +1,7 @@
 import type { MindmapNode, NodeKind } from "./tree-layout";
 import { ALL_NODE_KINDS } from "./tree-layout";
 import { findNode, owningFlowId } from "./mindmap-tree";
-import { isFlowKind, isValidDropTarget, validParentKinds } from "./node-meta";
+import { canAdoptExistingChild, isFlowKind, validParentKinds } from "./node-meta";
 
 /**
  * Why one node on the clipboard cannot be pasted onto a given target.
@@ -103,7 +103,10 @@ export function pasteRefusal(
   if (node === undefined) return { reason: PASTE_REFUSAL.GONE };
   if (node.virtual === true) return { reason: PASTE_REFUSAL.REPETITION };
   if (node.kind === "aspect") return { reason: PASTE_REFUSAL.ASPECT };
-  if (!isValidDropTarget(node.kind, target.kind)) {
+  // Asked of the target **node**, not of its kind: a folded run of Habit history and a virtual
+  // occurrence both wear a kind that would say yes. A target that can adopt nothing at all is
+  // refused by the caller before this is ever reached, so what is left here really is about kinds.
+  if (!canAdoptExistingChild(target, node.kind)) {
     // The rule that said no also says where yes would have been, in the same breath and from the
     // same predicate — so the sentence and the decision cannot drift apart.
     return { reason: PASTE_REFUSAL.HERE, child: node.kind, validParents: validParentKinds(node.kind) };
