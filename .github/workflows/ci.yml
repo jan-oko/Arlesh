@@ -84,16 +84,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Master only. A branch adds a fragment to changelog.d/ and leaves CHANGELOG.md
-      # alone — that is the whole point of fragments, and a branch that reassembled the
-      # file would put the conflict straight back. So the assembled file is only ever in
-      # step on master, and only master is asked about it. A red step here means someone
-      # merged a fragment without running `npm run changelog`; it is a ten-second fix and
-      # it never blocks a PR.
-      - name: npm run changelog:check
-        if: github.event_name != 'pull_request'
-        run: npm run changelog:check
-
+      # `npm run changelog:check` used to run here, master only, ahead of the three steps
+      # below. It has moved to changelog.yml, which assembles the file before asserting on
+      # it. Here the assertion could only ever fire against the tree as merged — before
+      # anything had a chance to reassemble it — so every merge that carried a fragment
+      # went red, and because this step sat first in the lane, lint, tsc and vitest never
+      # ran for that commit. The check is not weaker for moving; it is simply no longer
+      # standing in front of the steps that say whether the code works.
       - name: npm run lint
         run: npm run lint
 
