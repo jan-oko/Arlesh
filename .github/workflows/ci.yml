@@ -182,6 +182,10 @@ jobs:
             libayatana-appindicator3-dev \
             libssl-dev
 
+      # Reads /rust-toolchain.toml, so this prints the pinned toolchain rather than
+      # whatever the image calls `stable` — which is the only visible proof in the
+      # log that the pin resolved. It runs at the root, like every rustup call in
+      # this lane, which is why the pin lives there and not in src-tauri.
       - name: Show toolchain
         run: |
           rustc --version
@@ -198,7 +202,10 @@ jobs:
           tool: cargo-llvm-cov
 
       # Caches ~/.cargo/{registry,git} and src-tauri/target, keyed on Cargo.lock,
-      # the rustc version and this key. It prunes the intermediate artifacts that
+      # the rustc version and this key. That rustc version is now ours rather than
+      # the image's: rust-cache probes `rustc -vV` at the root, where
+      # /rust-toolchain.toml governs, so the cache rolls when we bump the pin — a
+      # commit — instead of whenever GitHub rebuilds the runner image. It prunes the intermediate artifacts that
       # make a warm Rust tree enormous, which is what keeps this inside GitHub's
       # 10 GB per-repo cache budget. One key now, where there used to be two:
       # with `cargo test` folded into cargo-llvm-cov there is only one set of
@@ -246,9 +253,10 @@ jobs:
       # It shares no artifacts with that build. Coverage compiles under
       # cargo-llvm-cov's RUSTFLAGS into target/llvm-cov-target; this compiles
       # unflagged and check-only into target/debug — two fingerprints, exactly as
-      # the cache-key comment above describes. No `rustup component add`: the runner
-      # image installs the minimal profile and then adds rustfmt and clippy on top,
-      # so clippy is already on the toolchain llvm-tools-preview is added to.
+      # the cache-key comment above describes. There is no `rustup component add`
+      # for it: /rust-toolchain.toml pins the toolchain and names clippy among its
+      # components, so it arrives with the compiler rather than depending on which
+      # profile the runner image happened to install.
       - name: cargo clippy
         working-directory: src-tauri
         run: cargo clippy --locked --all-targets -- -D warnings

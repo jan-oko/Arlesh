@@ -133,11 +133,12 @@ fn a_render_of_nothing_at_all_is_empty_rather_than_a_panic() {
 fn every_pixel_of_a_render_is_white_and_says_its_coverage_in_alpha() {
     let rgba = square().rasterise(32);
 
-    for pixel in rgba.chunks_exact(4) {
+    for pixel in rgba.as_chunks::<4>().0 {
         assert_eq!(&pixel[..3], &[255, 255, 255], "a pixel was not white");
     }
-    assert!(rgba.chunks_exact(4).any(|p| p[3] == 255), "nothing is drawn");
-    assert!(rgba.chunks_exact(4).any(|p| p[3] == 0), "nothing is clear");
+    let pixels = rgba.as_chunks::<4>().0;
+    assert!(pixels.iter().any(|p| p[3] == 255), "nothing is drawn");
+    assert!(pixels.iter().any(|p| p[3] == 0), "nothing is clear");
 }
 
 #[test]

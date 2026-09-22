@@ -244,10 +244,9 @@ fn parse_points(raw: &str) -> Result<Vec<Point>, SvgError> {
         return Err(bad());
     }
     Ok(values
-        .chunks_exact(2)
-        .filter_map(|pair| match pair {
-            [x, y] => Some(Point { x: *x, y: *y }),
-            _ => None,
-        })
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|&[x, y]| Point { x, y })
         .collect())
 }
