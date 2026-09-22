@@ -1,0 +1,87 @@
+.container {
+  display: flex;
+  height: calc(100% - var(--topbar-height));
+  flex-direction: column;
+  box-sizing: border-box;
+  padding: var(--space-4);
+  background: var(--canvas-bg);
+  gap: var(--space-3);
+}
+
+/* The children's area. It is measured, and the measurement is what decides the page size — a Step
+   paginates rather than scrolling, so nothing here ever overflows. */
+.children {
+  display: grid;
+  min-height: 0;
+  flex: 1 1 auto;
+  align-content: start;
+  justify-content: start;
+  gap: var(--step-card-gap);
+  grid-template-columns: repeat(var(--step-columns), var(--step-card-width));
+}
+
+.empty {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  gap: var(--space-3);
+}
+
+.createBtn {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--node-border);
+  border-radius: var(--node-radius);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+}
+
+.createBtn:hover {
+  border-color: var(--node-border-selected);
+}
+
+/* The landing between pages. Deliberately unlike the cards and unlike the breadcrumb: turning a
+   page is neither descending nor climbing, and it must not look like either. */
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  gap: var(--space-3);
+}
+
+.pagerBtn {
+  padding: 0 var(--space-2);
+  border: 1px solid var(--node-border);
+  border-radius: var(--node-radius);
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: var(--text-base);
+  line-height: 1.6;
+}
+
+.pagerBtn:disabled {
+  color: var(--text-secondary);
+  cursor: default;
+  opacity: 0.4;
+}
+
+.centered {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+}

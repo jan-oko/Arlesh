@@ -70,7 +70,14 @@ interface Options {
   reload: () => Promise<void>;
 }
 
-interface Result {
+/**
+ * Everything the editor plumbing hands back: the open modal, and the save path for every kind.
+ *
+ * Exported as a name of its own because `NodeEditorModals` takes the whole of it as one prop —
+ * a component that renders the editor for *any* kind needs every handler in here, and spelling
+ * them out one by one at the call site would put fifteen props between a view and its editor.
+ */
+export interface NodeEditorHandles {
   editorModal: EditorModalState | null;
   setEditorModal: (m: EditorModalState | null) => void;
   allTags: Domain[];
@@ -95,7 +102,7 @@ interface Result {
   resolveScopeClamp: (proceed: boolean) => void;
 }
 
-export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Result {
+export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): NodeEditorHandles {
   const { t } = useTranslation("warnings");
   const showToast = useMindmapStore((s) => s.showToast);
   const [editorModal, setEditorModal] = useState<EditorModalState | null>(null);

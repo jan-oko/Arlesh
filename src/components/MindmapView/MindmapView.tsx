@@ -6,7 +6,6 @@ import { useDrag } from "./use-drag";
 import { useCanvasLayout } from "./use-canvas-layout";
 import { useNodeTypeManager } from "./use-node-type-manager";
 import { useNodeEditor } from "./use-node-editor";
-import { BEADS_NODE_TYPE } from "@/api/beads";
 import { useNodeActions } from "./use-node-actions";
 import { useContextAction } from "./use-context-action";
 import { useNavigateArrow } from "./use-navigate-arrow";
@@ -38,16 +37,12 @@ import { focusExemptPath } from "@/utils/focus-exemption";
 import { useFocusExemption } from "@/hooks/use-focus-exemption";
 import AnchoredToast from "@/components/AnchoredToast/AnchoredToast";
 import HabitFailureBanner from "@/components/HabitFailureBanner/HabitFailureBanner";
-import TaskEditorModal from "@/components/TaskEditorModal/TaskEditorModal";
-import GoalEditorModal from "@/components/GoalEditorModal/GoalEditorModal";
 import CommitmentEditorModal, { type CommitmentSaveData } from "@/components/CommitmentEditorModal/CommitmentEditorModal";
 import CommitmentScopePrompt from "@/components/CommitmentScopePrompt/CommitmentScopePrompt";
-import TitleEditorModal from "@/components/TitleEditorModal/TitleEditorModal";
-import ProjectEditorModal from "@/components/ProjectEditorModal/ProjectEditorModal";
-import InfoEditorModal from "@/components/InfoEditorModal/InfoEditorModal";
 import NodeSearchModal from "@/components/NodeSearchModal/NodeSearchModal";
-import FlowEditorModal, { type FlowSaveData, type TargetSelection } from "@/components/FlowEditorModal/FlowEditorModal";
-import FlowItemEditorModal from "@/components/FlowItemEditorModal/FlowItemEditorModal";
+import FlowEditorModal, { type FlowSaveData } from "@/components/FlowEditorModal/FlowEditorModal";
+import NodeEditorModals from "@/components/NodeEditorModals/NodeEditorModals";
+import { flowTargetNodes, targetSelectionFor } from "@/utils/flow-target";
 import StartFlowModal, { type StartFlowData } from "@/components/StartFlowModal/StartFlowModal";
 import { startFlow, convertToFlow } from "@/api/flows";
 import ConvertToFlowModal from "@/components/ConvertToFlowModal/ConvertToFlowModal";
@@ -63,17 +58,6 @@ import styles from "./MindmapView.module.css";
 
 /** Screen-px moved per arrow-key press when panning the canvas (nothing selected). */
 const KEYBOARD_PAN_STEP = 80;
-
-/**
- * A tree node as a Flow Target Node value. Used to show a flow's parent as its **inherited** target
- * — a flow with no explicit target renders its instances under its parent — so the editor and the
- * start modal both offer the node the instances would actually land on.
- */
-function targetSelectionFor(node: MindmapNode | null | undefined): TargetSelection | null {
-  if (node === null || node === undefined || node.id === "root") return null;
-  const id = parseInt(node.id.split("-").pop() ?? "", 10);
-  return Number.isNaN(id) ? null : { kind: node.kind, id, title: node.title };
-}
 
 // A pristine flow used to seed the create editor before the flow is persisted.
 const BLANK_FLOW_NODE: MindmapNode = {
@@ -194,43 +178,15 @@ export default function MindmapView() {
     if (subtreeRootId !== null) canvasRef.current?.centerOnRoot();
   }, [subtreeRootId, activeTabId]);
 
+  const nodeEditor = useNodeEditor({ tree, allTasksAndGoals, reload });
   const {
-    editorModal, setEditorModal, allTags, domainNames, availableForDep, onDoubleClick,
-    onTaskSave, onGoalSave, onCommitmentSave, onSimpleSave, onProjectSave, onInfoSave,
-    onClearBeadsId, onFlowSave, onFlowItemSave,
-    checkScopeClamp, confirmScopeClamp, scopeClampRequest, resolveScopeClamp,
-  } = useNodeEditor({ tree, allTasksAndGoals, reload });
+    setEditorModal, allTags, domainNames, onDoubleClick,
+    confirmScopeClamp, scopeClampRequest, resolveScopeClamp,
+  } = nodeEditor;
 
-  // Every flow item, used to offer intra-flow dependency targets within the same flow.
-  const allFlowItems = useMemo(() => {
-    const acc: MindmapNode[] = [];
-    const walk = (node: MindmapNode) => {
-      if (node.kind === "flow_goal" || node.kind === "flow_task") acc.push(node);
-      node.children.forEach(walk);
-    };
-    walk(tree);
-    return acc;
-  }, [tree]);
-
-  // Nodes a Flow may target — those that can hold a Goal/Task instance. Phase 7.5 further
-  // narrows this to targets whose Time Scope satisfies containment.
-  const flowTargets = useMemo(() => {
-    const canHoldInstance = new Set<NodeKind>(["aspect", "domain", "project", "goal", "task"]);
-    const acc: MindmapNode[] = [];
-    const walk = (node: MindmapNode) => {
-      if (node.id !== "root" && canHoldInstance.has(node.kind)) acc.push(node);
-      node.children.forEach(walk);
-    };
-    walk(tree);
-    return acc;
-  }, [tree]);
-
-  // The parent a flow's instances fall back to when it carries no explicit Target Node: the node
-  // the editor shows as the inherited value, and the start modal pre-selects.
-  const editedFlowParent = useMemo(
-    () => (editorModal !== null && editorModal.node.kind === "flow" ? targetSelectionFor(findParent(tree, editorModal.node.id)) : null),
-    [editorModal, tree],
-  );
+  // The targets the *create* and *start* paths offer. The open editor's own targets are derived
+  // inside `NodeEditorModals`, which is the only other place that needed them.
+  const flowTargets = useMemo(() => flowTargetNodes(tree), [tree]);
   const newFlowParent = useMemo(
     () => (flowCreateParent === null ? null : targetSelectionFor(findNode(tree, flowCreateParent.id))),
     [flowCreateParent, tree],
@@ -670,36 +626,15 @@ export default function MindmapView() {
 
       <AnchoredToast toast={pendingToast} onDismiss={clearToast} />
 
-      {editorModal !== null && editorModal.node.kind === "task" && (
-        <TaskEditorModal node={editorModal.node} allTags={allTags} domainNames={domainNames} availableForDep={availableForDep} onSave={onTaskSave} onClearBeadsId={() => onClearBeadsId(BEADS_NODE_TYPE.TASK)} onCheckScopeClamp={checkScopeClamp} onClose={() => setEditorModal(null)} />
-      )}
-      {editorModal !== null && editorModal.node.kind === "goal" && (
-        <GoalEditorModal node={editorModal.node} allTags={allTags} domainNames={domainNames} onSave={onGoalSave} onClearBeadsId={() => onClearBeadsId(BEADS_NODE_TYPE.GOAL)} onCheckScopeClamp={checkScopeClamp} onClose={() => setEditorModal(null)} />
-      )}
-      {editorModal !== null && editorModal.node.kind === "commitment" && (
-        <CommitmentEditorModal node={editorModal.node} allTags={allTags} domainNames={domainNames} onSave={onCommitmentSave} onClearBeadsId={() => onClearBeadsId(BEADS_NODE_TYPE.COMMITMENT)} onClose={() => setEditorModal(null)} />
-      )}
-      {editorModal !== null && editorModal.node.kind === "domain" && (
-        <TitleEditorModal heading={t("editor:editDomain")} title={editorModal.node.title} isPrivate={editorModal.node.isPrivate ?? false} onSave={onSimpleSave} onClose={() => setEditorModal(null)} />
-      )}
-      {editorModal !== null && editorModal.node.kind === "project" && (
-        <ProjectEditorModal node={editorModal.node} onSave={onProjectSave} onClearBeadsId={() => onClearBeadsId(BEADS_NODE_TYPE.PROJECT)} onClose={() => setEditorModal(null)} />
-      )}
-      {editorModal !== null && editorModal.node.kind === "tag" && (
-        <TitleEditorModal heading={t("editor:editTag")} title={editorModal.node.title} isPrivate={editorModal.node.isPrivate ?? false} onSave={onSimpleSave} onClose={() => setEditorModal(null)} />
-      )}
-      {editorModal !== null && editorModal.node.kind === "info" && (
-        <InfoEditorModal node={editorModal.node} onSave={onInfoSave} onClose={() => setEditorModal(null)} />
-      )}
+      {/* The editor for whichever kind is open — one component, shared with the Steps View, which
+          can open one on any kind at all. */}
+      <NodeEditorModals tree={tree} editor={nodeEditor} />
       {searchOpen && (
         <NodeSearchModal
           nodes={collectSearchableNodes(tree)}
           onSelect={(id) => { enterSubtree(id); closeSearch(); }}
           onClose={closeSearch}
         />
-      )}
-      {editorModal !== null && editorModal.node.kind === "flow" && (
-        <FlowEditorModal node={editorModal.node} availableTargets={flowTargets} inheritedTarget={editedFlowParent} onSave={onFlowSave} onClose={() => setEditorModal(null)} />
       )}
       {commitmentCreateParent !== null && (
         <CommitmentEditorModal node={BLANK_COMMITMENT_NODE} allTags={allTags} domainNames={domainNames} heading={t("editor:newCommitmentTitle")} onSave={onCreateCommitment} onClose={() => setCommitmentCreateParent(null)} />
@@ -727,14 +662,6 @@ export default function MindmapView() {
           title={convertNode.title}
           onConvert={handleConvertToFlow}
           onClose={() => setConvertNode(null)}
-        />
-      )}
-      {editorModal !== null && (editorModal.node.kind === "flow_goal" || editorModal.node.kind === "flow_task") && (
-        <FlowItemEditorModal
-          node={editorModal.node}
-          availableDeps={allFlowItems.filter((n) => n.flowItem?.flowId === editorModal.node.flowItem?.flowId && n.id !== editorModal.node.id)}
-          onSave={onFlowItemSave}
-          onClose={() => setEditorModal(null)}
         />
       )}
 

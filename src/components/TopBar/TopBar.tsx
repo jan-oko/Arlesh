@@ -16,6 +16,7 @@ import Select from "@/components/Select/Select";
 import Switch from "@/components/Switch/Switch";
 import SubtreeBreadcrumb from "./SubtreeBreadcrumb";
 import HabitCollapseSetting from "./HabitCollapseSetting";
+import StepsZoomSetting from "./StepsZoomSetting";
 import styles from "./TopBar.module.css";
 
 const GEAR_ICON = "⚙";
@@ -62,6 +63,7 @@ export default function TopBar() {
     mindmap: t("common:viewMindmap"),
     list: t("common:viewList"),
     plan: t("common:viewPlan"),
+    steps: t("common:viewSteps"),
   };
 
   const activePreset: ListPreset = view === "list" && listPreset === "unblock" ? "unblock" : statusMode;
@@ -107,6 +109,9 @@ export default function TopBar() {
                   )}
                   {/* Folded Habit history is drawn on the mindmap, so its threshold is gated to it. */}
                   {view === "mindmap" && <HabitCollapseSetting />}
+                  {/* Card size is what a Step is drawn at, and what decides how many fit on a page,
+                      so it is gated to Steps exactly as the branch axis is gated to the Mindmap. */}
+                  {view === "steps" && <StepsZoomSetting />}
                   {/* Path headers exist only in List View, so their glyph switch is gated the same
                       way the branch axis is gated to the mindmap — a control for something the
                       current view cannot show is noise. */}

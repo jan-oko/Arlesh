@@ -5,9 +5,11 @@
   "sectionMindmap": "Mindmap",
   "sectionListView": "List View",
   "sectionPlanView": "Plan View",
+  "sectionStepsView": "Steps View",
   "viewMindmap": "Show the Mindmap",
   "viewList": "Show the List",
   "viewPlan": "Show the Plan view",
+  "viewSteps": "Show the Steps view",
   "toggleHotkeys": "Show this cheat-sheet",
   "quitApp": "Quit Arlesh",
   "toggleFilter": "Toggle the filter menu",
@@ -73,5 +75,7 @@
   "planMoveAcross": "Plan the selected task into the scope, or take it back out",
   "planSwitchPane": "Move between the candidates and the scope",
   "planStepScope": "Fill the previous / next scope",
-  "planToggleBacklog": "Show or hide backlogged candidates"
+  "planToggleBacklog": "Show or hide backlogged candidates",
+  "stepsDescend": "Descend into the selected card",
+  "stepsPage": "Turn to the previous / next page of this Step"
 }
