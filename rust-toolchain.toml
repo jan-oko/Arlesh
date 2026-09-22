@@ -1,0 +1,36 @@
+# The toolchain this repo builds with, pinned rather than inherited.
+#
+# Without this file the runner is a silent input: CI compiles with whatever
+# rustc the `ubuntu-latest` image happens to ship that week, so a new
+# `clippy::all` lint arriving in a new image turns master red with no commit
+# touching the repo, and nobody can reproduce it locally until they happen to
+# update. That is not hypothetical — it is exactly how
+# `clippy::chunks_exact_to_as_chunks` arrived: red on a CI-only change, against
+# a laptop on 1.96 that had never heard of the lint. The image is scheduled to
+# migrate to Ubuntu 26 on 2026-10-19, which moves the version again.
+#
+# 1.98.1 is what the image ships today, so the pin changes nothing about how CI
+# behaves and moves local development forward to meet it. Bumping it is now a
+# commit, with whatever lint fallout it brings resolved in the same PR — which
+# is the entire point. Pinning backwards to 1.96 would have made clippy green
+# without touching the code; it was rejected as suppressing a real lint to dodge
+# the work, and it freezes the repo on an older compiler besides.
+#
+# This sits at the repo ROOT, not beside src-tauri/Cargo.toml, because rustup
+# reads it from the working directory upwards. Cargo only ever runs in
+# src-tauri and would find it in either place — but `rustup component add`,
+# `rustc --version` and rust-cache's own `rustc -vV` probe all run at the root
+# in CI, and a pin they could not see would quietly resolve against the image's
+# default toolchain instead, which is the same class of bug this file exists to
+# remove.
+#
+# `components` makes the pin self-sufficient. clippy and rustfmt come with the
+# `default` profile but not `minimal`, and a gate must not depend on which
+# profile a given machine happens to have been set up with; `minimal` plus the
+# two named keeps the download to what is actually used. llvm-tools-preview
+# stays a CI step rather than a component here: it is coverage tooling that only
+# the CI lane needs, and it is added at the root, where this pin now governs it.
+[toolchain]
+channel = "1.98.1"
+profile = "minimal"
+components = ["clippy", "rustfmt"]
