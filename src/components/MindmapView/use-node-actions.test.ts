@@ -7,6 +7,9 @@ import { CLIPBOARD_OP } from "@/stores/use-clipboard-store";
 vi.mock("@/api/tasks", () => ({
   updateTask: vi.fn().mockResolvedValue({ id: 1, status: "in_progress" }),
   TASK_STATUS: { TODO: "todo", IN_PROGRESS: "in_progress", DONE: "done" },
+  // Read through `cameOutOfBacklog`: starting a set-aside task clears its Backlog, and the row
+  // the backend sends back is what says whether it did.
+  TASK_ARCHIVAL: { LIVE: "live", BACKLOG: "backlog" },
   // Read through `storedAgenticState`, which onCreateSibling uses to seed the new sibling.
   TASK_AGENTIC: { INHERIT: "inherit", YES: "yes", NO: "no" },
 }));
@@ -137,6 +140,27 @@ describe("useNodeActions — onStatusClick", () => {
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("task-6"); });
     await vi.waitFor(() => expect(updateTask).toHaveBeenCalledWith(6, { status: "todo" }));
+  });
+
+  it("names the backlog the write cleared when a set-aside task is started", async () => {
+    // Starting something you had put down takes it out of the backlog — one write, one undo step.
+    // The toast comes from the row the backend sent back, never from predicting the rule here.
+    const backlogged = mkNode("task-13", "task", [], { status: "todo", backlogged: true });
+    const opts = makeOpts({ tree: mkNode("root", "domain", [mkNode("domain-3", "project", [backlogged])]) });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onStatusClick("task-13"); });
+    await vi.waitFor(() => expect(updateTask).toHaveBeenCalledWith(13, { status: "in_progress" }));
+    await vi.waitFor(() => expect(opts.showToast).toHaveBeenCalledWith({
+      nodeId: "task-13", message: "warnings:backlogClearedByStart",
+    }));
+  });
+
+  it("says nothing about the backlog when the task was never in it", async () => {
+    const opts = makeOpts();
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onStatusClick("task-5"); });
+    await vi.waitFor(() => expect(updateTask).toHaveBeenCalledWith(5, { status: "in_progress" }));
+    expect(opts.showToast).not.toHaveBeenCalled();
   });
 
   it("does not call updateTask for a non-task node", () => {
@@ -743,6 +767,66 @@ describe("useNodeActions — onPaste", () => {
     await vi.waitFor(() => expect(opts.moveNode).toHaveBeenCalledWith("flow-5", "flow", "goal-2", "goal", 0));
     expect(opts.moveNode).toHaveBeenCalledTimes(1);
   });
+
+  // The skip nothing in the selection hinted at. The backend's duplication walk does not descend
+  // into a Flow, so a Habit hanging under a copied Goal was simply absent from the paste — no
+  // count, no toast, a subtree quietly smaller than the one that was copied.
+  describe("a Flow left behind under a copied node", () => {
+    const habit = mkNode("flow-7", "flow", [], { title: "Morning pages" });
+    const lift = mkNode("flow-8", "flow", [], { title: "Lift" });
+    const carrier = mkNode("goal-6", "goal", [habit, mkNode("task-9", "task", [lift])]);
+    const destination = mkNode("goal-2", "goal");
+    const tree = mkNode("root", "domain", [mkNode("domain-5", "project", [carrier, destination])]);
+
+    /** What the stubbed `t` makes of the sentence: the frame, the count, then the flows list. */
+    function leftBehind(count: number, ...flows: string[]): string {
+      return ["pasteSkippedFlowUnder", String(count), flows.join(", ")].join(":");
+    }
+    const named = (title: string) => `warnings:pasteSkippedFlowName:${title}`;
+
+    it("names the Flows it could not carry, and still copies the node it could", async () => {
+      const opts = makeOpts({ tree, clipboard: { operation: CLIPBOARD_OP.COPY, nodeIds: ["goal-6"] } });
+      const { result } = renderHook(() => useNodeActions(opts));
+      act(() => { result.current.onPaste("goal-2"); });
+      await vi.waitFor(() =>
+        expect(opts.duplicateNode).toHaveBeenCalledWith("goal-6", "goal", "goal-2", "goal", 0),
+      );
+      // One toast for two Flows, not one each: the store holds a single pending notice.
+      expect(opts.showToast).toHaveBeenCalledTimes(1);
+      expect(opts.showToast).toHaveBeenCalledWith({
+        nodeId: "goal-2",
+        message: leftBehind(2, named("Morning pages"), named("Lift")),
+      });
+    });
+
+    // A cut re-points one parent link and the whole subtree follows, Flows included.
+    it("says nothing when the same subtree is cut, because nothing is left behind", async () => {
+      const opts = makeOpts({ tree, clipboard: { operation: CLIPBOARD_OP.CUT, nodeIds: ["goal-6"] } });
+      const { result } = renderHook(() => useNodeActions(opts));
+      act(() => { result.current.onPaste("goal-2"); });
+      await vi.waitFor(() => expect(opts.moveNode).toHaveBeenCalledTimes(1));
+      expect(opts.showToast).not.toHaveBeenCalled();
+    });
+
+    // Composition: a destination refusal and a left-behind Flow arrive in the same message, or the
+    // second showToast would take the first off screen unsaid.
+    it("reports it alongside a refusal the same paste tripped", async () => {
+      const clipboard = { operation: CLIPBOARD_OP.COPY, nodeIds: ["goal-6", "aspect-1"] };
+      const opts = makeOpts({ tree: mkNode("root", "domain", [
+        mkNode("domain-5", "project", [carrier, destination, mkNode("aspect-1", "aspect")]),
+      ]), clipboard });
+      const { result } = renderHook(() => useNodeActions(opts));
+      act(() => { result.current.onPaste("goal-2"); });
+      await vi.waitFor(() =>
+        expect(opts.duplicateNode).toHaveBeenCalledWith("goal-6", "goal", "goal-2", "goal", 0),
+      );
+      expect(opts.showToast).toHaveBeenCalledTimes(1);
+      expect(opts.showToast).toHaveBeenCalledWith({
+        nodeId: "goal-2",
+        message: `pasteSkippedAspect:1 ${leftBehind(2, named("Morning pages"), named("Lift"))}`,
+      });
+    });
+  });
 });
 
 describe("useNodeActions — onInsertParent", () => {
@@ -940,10 +1024,18 @@ describe("useNodeActions — onCreateTypedChild", () => {
     expect(opts.showToast).toHaveBeenCalledTimes(1);
   });
 
-  it("refuses every kind under a Tag, which is a leaf", () => {
-    const opts = typedOpts();
+  it("creates an Info under a Tag — the one kind a label holds", async () => {
+    const opts = typedOpts({ createNode: vi.fn().mockResolvedValue(mkNode("info-99", "info")) });
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onCreateTypedChild("domain-20", "info"); });
+    await vi.waitFor(() => expect(opts.createNode).toHaveBeenCalledWith("domain-20", "tag", "info", ""));
+    expect(opts.showToast).not.toHaveBeenCalled();
+  });
+
+  it("refuses every other kind under a Tag", () => {
+    const opts = typedOpts();
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onCreateTypedChild("domain-20", "task"); });
     expect(opts.createNode).not.toHaveBeenCalled();
     expect(opts.showToast).toHaveBeenCalledTimes(1);
   });

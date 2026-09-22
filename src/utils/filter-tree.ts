@@ -125,6 +125,11 @@ function isBacklogged(node: MindmapNode): boolean {
  * Plan and Start hide it; All and Do leave it alone; Backlog is the preset that exists to show it.
  * The pill overrides all of that: `include` force-shows it under Plan/Start, `exclude` hides it
  * everywhere, even under All.
+ *
+ * **Do is deliberate.** Backlog says *not planning this now* and Do asks *what is underway* —
+ * different questions a Task can answer yes to at once — so a backlogged in-progress Task still
+ * shows there. The tension is resolved where it starts instead: setting a Task In Progress takes it
+ * out of the Backlog (see `docs/spec/resources.md`), so the pair is rare rather than hidden.
  */
 export function isHiddenBacklog(node: MindmapNode, f: FilterState): boolean {
   if (!isBacklogged(node)) return false;
@@ -139,9 +144,9 @@ export function isHiddenBacklog(node: MindmapNode, f: FilterState): boolean {
  *
  * This is the Archived shape, not the Archived rule: the backend produces the occurrence and says
  * where its window stands, and the preset decides. **All shows it** — that is All's whole contract,
- * and a habit's later-today items are exactly what you look at All to see. Plan, Start and Do hide
- * it: a daily routine would otherwise put its whole day's occurrences into every one of them at
- * breakfast.
+ * and a habit's later-today items are exactly what you look at All to see. **Every other preset
+ * hides it**, Backlog included: a daily routine would otherwise put its whole day's occurrences
+ * into every one of them at breakfast, and an unopened window is not work that was set aside.
  *
  * Restricted to occurrences (`habitItem`) on purpose. `Pending` is derived for **any** scoped item
  * whose window is still ahead, and a real task scheduled for next week has always shown under Plan

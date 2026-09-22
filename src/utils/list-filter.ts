@@ -254,21 +254,29 @@ export function deriveScopeStateTokens(node: MindmapNode): string[] {
   return tokens;
 }
 
+/**
+ * Whether some ancestor of a row gates the whole subtree beneath it under this filter.
+ *
+ * Three rules hide a node *together with everything under it*: a Frozen/Archived Project shelved by
+ * Plan/Start, a backlogged Task, and a habit occurrence whose window has not opened. The Mindmap
+ * gets that for free from tree-pruning — drop the node and its descendants go with it — but a flat
+ * list has no tree to prune, so it asks each row's chain outright. (A row's own three are handled
+ * by `typeHardHidden`, before this runs.)
+ *
+ * Shared by the task rows and the commitments band so the band cannot keep a Commitment from a
+ * branch the rows have dropped.
+ */
+function hasGatingAncestor(ancestors: readonly MindmapNode[], f: FilterState): boolean {
+  return ancestors.some((a) => isShelvedProject(a, f) || isHiddenBacklog(a, f) || isUnopenedOccurrence(a, f));
+}
+
 /** Task-only status-preset predicate (List View rows are always tasks, so no container logic is
  * needed here, unlike the Mindmap's passesStatus). Mirrors filter-tree.ts's task branches — including
  * its effective-Archival clause, so a lapsed task archives out of Plan here exactly as it does on the
  * canvas — plus an explicit blocked-ancestor check, since a flat list has no tree-pruning to cut off a
  * blocked subtree. */
 function passesListPreset(row: TaskListRow, f: FilterState): boolean {
-  // A Frozen/Archived Project shelves its whole subtree in Plan/Start. The Mindmap drops it by
-  // tree-pruning; a flat list needs the explicit ancestor walk (no-op under All/Do).
-  if (row.ancestors.some((a) => isShelvedProject(a, f))) return false;
-  // Likewise a backlogged ancestor Task: the Mindmap prunes the subtree away, a flat list has to
-  // walk for it. (The row's own backlog is handled by `typeHardHidden`, before this runs.)
-  if (row.ancestors.some((a) => isHiddenBacklog(a, f))) return false;
-  // And likewise a habit occurrence above this row whose window has not opened — its subtree goes
-  // with it on the canvas, so it must here too. (The row's own window: `typeHardHidden`.)
-  if (row.ancestors.some((a) => isUnopenedOccurrence(a, f))) return false;
+  if (hasGatingAncestor(row.ancestors, f)) return false;
   switch (f.statusMode) {
     case "all":
       return true;
@@ -358,6 +366,12 @@ function rowPassesFilters(
  *
  * Two presets are special. **Unblock** is about blocked tasks and a Commitment is never blocked,
  * so the section is empty there. **Backlog** is a Task-only state, so it is empty there too.
+ *
+ * The ancestor walk is literally the task rows' — {@link hasGatingAncestor}, shared so the two
+ * cannot drift apart. A Commitment hangs off the same tree, so a branch hidden as a whole subtree
+ * (a shelved Project, a backlogged Task, a habit occurrence whose window has not opened) takes the
+ * commitments inside it with it; a band still showing one from a branch the list has dropped would
+ * be describing a different board.
  */
 export function filterCommitmentList(
   rows: readonly CommitmentListRow[],
@@ -370,8 +384,7 @@ export function filterCommitmentList(
   return rows.filter((row) => {
     if (typeHardHidden(row.node, shared)) return false;
     if (!shared.privateMode && row.hasPrivateAncestor) return false;
-    if (row.ancestors.some((a) => isShelvedProject(a, shared))) return false;
-    if (row.ancestors.some((a) => isHiddenBacklog(a, shared))) return false;
+    if (hasGatingAncestor(row.ancestors, shared)) return false;
     if (!withArchivedOverride(row.node, shared, passesCommitmentPreset(row.node, shared))) {
       return false;
     }

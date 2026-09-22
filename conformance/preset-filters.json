@@ -643,10 +643,14 @@
         "domain-habit",
         "goal-occurrence-open",
         "goal-occurrence-unopened",
+        "task-backlogged-under-open",
+        "task-backlogged-under-unopened",
         "task-occurrence-open-item",
         "task-occurrence-unopened-item"
       ],
       "list": [
+        "task-backlogged-under-open",
+        "task-backlogged-under-unopened",
         "task-occurrence-open-item",
         "task-occurrence-unopened-item"
       ],
@@ -656,7 +660,7 @@
     },
     {
       "name": "plan hides an unopened habit occurrence and its subtree",
-      "spec": "habits.md — Plan, Start and Do hide it, together with its own subtree.",
+      "spec": "habits.md — every preset but All hides an unopened occurrence, together with its own subtree; the commitments band walks for it as the task rows do.",
       "filter": {
         "preset": "plan"
       },
@@ -669,9 +673,24 @@
       "list": [
         "task-occurrence-open-item"
       ],
-      "commitments": [
-        "commitment-under-unopened"
-      ]
+      "commitments": []
+    },
+    {
+      "name": "backlog hides an unopened habit occurrence and the work set aside inside it",
+      "spec": "habits.md — Backlog hides an unopened occurrence like every preset but All: an unopened window is not work somebody set aside. Work genuinely set aside under an *open* occurrence still shows.",
+      "filter": {
+        "preset": "backlog"
+      },
+      "board": "occurrences",
+      "mindmap": [
+        "domain-habit",
+        "goal-occurrence-open",
+        "task-backlogged-under-open"
+      ],
+      "list": [
+        "task-backlogged-under-open"
+      ],
+      "commitments": []
     },
     {
       "name": "a status-less container inherits its nearest status-bearing ancestor",
@@ -690,7 +709,7 @@
     },
     {
       "name": "do shows a backlogged in-progress task",
-      "spec": "GAP — resources.md says a backlogged Task is hidden from Plan and Start, shown under All and browsable under Backlog. It says nothing about Do, and Do shows it.",
+      "spec": "resources.md — Backlog says \"not planning this now\" and Do asks \"what is underway\": a Task can answer yes to both, so Do shows a backlogged in-progress Task. (Setting a Task In Progress clears the flag, so the pair is reached by setting aside work already under way.)",
       "filter": {
         "preset": "do"
       },
@@ -710,7 +729,7 @@
     },
     {
       "name": "the archived pill on exclude still hides an archived task under do",
-      "spec": "DIVERGENCE — mindmap-view.md says the Archived pill has no effect under Do. Exclude's hard-hide runs under every preset, so it does.",
+      "spec": "mindmap-view.md — the Archived pill reads the same way under every preset, Do included: Exclude hard-hides an effectively-archived in-progress Task there too.",
       "filter": {
         "preset": "do",
         "archived": "exclude"
@@ -729,7 +748,7 @@
     },
     {
       "name": "the archived pill on include force-shows an archived commitment under do",
-      "spec": "DIVERGENCE — mindmap-view.md says the Archived pill has no effect under Do. The Commitment branch runs the override, so Include force-shows one.",
+      "spec": "mindmap-view.md — the Archived pill reads the same way under every preset, Do included: Include force-shows an archived Commitment there.",
       "filter": {
         "preset": "do",
         "archived": "include"
@@ -752,23 +771,15 @@
       ]
     },
     {
-      "name": "a commitment under an unopened occurrence survives the preset that hid its parent",
-      "spec": "DIVERGENCE — habits.md hides an unopened occurrence together with its own subtree, and the Mindmap and the task rows both do. The commitments band does not walk for it, so the row stays.",
+      "name": "a commitment under an unopened occurrence is hidden with its parent",
+      "spec": "habits.md / list-view.md — an unopened occurrence hides together with its own subtree, and the commitments band answers that subtree rule like every other surface.",
       "filter": {
-        "preset": "plan"
+        "preset": "do"
       },
       "board": "occurrences",
-      "mindmap": [
-        "domain-habit",
-        "goal-occurrence-open",
-        "task-occurrence-open-item"
-      ],
-      "list": [
-        "task-occurrence-open-item"
-      ],
-      "commitments": [
-        "commitment-under-unopened"
-      ]
+      "mindmap": [],
+      "list": [],
+      "commitments": []
     },
     {
       "name": "relevance overlapping keeps everything the week touches",
@@ -1274,6 +1285,12 @@
                   "status": "todo",
                   "isHabitOccurrence": true,
                   "timing": "active"
+                },
+                {
+                  "id": "task-backlogged-under-open",
+                  "kind": "task",
+                  "status": "todo",
+                  "backlogged": true
                 }
               ]
             },
@@ -1296,6 +1313,12 @@
                   "kind": "commitment",
                   "verdict": "unresolved",
                   "timing": "active"
+                },
+                {
+                  "id": "task-backlogged-under-unopened",
+                  "kind": "task",
+                  "status": "todo",
+                  "backlogged": true
                 }
               ]
             }

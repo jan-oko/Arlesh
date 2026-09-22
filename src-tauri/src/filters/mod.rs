@@ -26,13 +26,13 @@
 //! frontend replay. Neither side generates it: it is the specification written as data, so a rule
 //! changed on one side alone turns the other side red.
 //!
-//! # Deliberate divergences from `docs/spec/mindmap-view.md`
+//! # Agreement with `docs/spec/`
 //!
-//! This module reproduces the shipped frontend behaviour exactly, including the places where the
-//! frontend and the specification do not agree. Each one is named at the rule that carries it, so
-//! that the disagreement is documented rather than quietly promoted to the specification. See
-//! [`rules::type_hard_hidden`] and [`list::passes_commitment_row`], and the corpus cases whose
-//! `spec` field opens with DIVERGENCE or GAP.
+//! Porting these rules turned up five places where the shipped frontend and the specification did
+//! not agree. Each has since been ruled on and the two brought back together — the specification
+//! gained the sentence it was missing, or the code gained the rule it was missing — so every
+//! predicate here is the written rule, not a reproduction of a disagreement. The corpus case for
+//! each of them names the sentence it now comes from.
 
 pub mod facts;
 pub mod list;
