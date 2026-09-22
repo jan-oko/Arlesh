@@ -8,6 +8,7 @@
   "keyboardShortcuts": "Keyboard shortcuts",
   "verticalLayout": "Vertical layout",
   "pathIcons": "Path icons",
+  "asynchronousFirst": "Asynchronous first",
   "filter": "Filter",
   "viewMindmap": "Mindmap",
   "viewList": "List",

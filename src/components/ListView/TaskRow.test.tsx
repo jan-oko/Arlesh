@@ -24,6 +24,7 @@ function row(over: Partial<TaskListRow> = {}): TaskListRow {
     dependencyRefs: [],
     isBlocked: false,
     isAgentic: false,
+    isAsynchronous: false,
     hasBlockedAncestor: false,
     hasPrivateAncestor: false,
     scopeTokens: ["unscoped", "unplanned"],
@@ -62,6 +63,18 @@ describe("TaskRow — Agentic badge", () => {
   it("leaves an unflagged task unbadged", () => {
     render(<TaskRow {...baseProps()} />);
     expect(screen.queryByTitle("agentic")).not.toBeInTheDocument();
+  });
+});
+
+describe("TaskRow — Asynchronous badge", () => {
+  it("badges a task whose doing starts a wait", () => {
+    render(<TaskRow {...baseProps({ row: row({ node: n("task-1", "task", { status: "todo", asynchronous: true }) }) })} />);
+    expect(screen.getByTitle("asynchronous")).toBeInTheDocument();
+  });
+
+  it("leaves an unflagged task unbadged", () => {
+    render(<TaskRow {...baseProps()} />);
+    expect(screen.queryByTitle("asynchronous")).not.toBeInTheDocument();
   });
 });
 

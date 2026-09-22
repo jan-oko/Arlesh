@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useListData } from "@/hooks/use-list-data";
 import { useTaskBacklog } from "@/hooks/use-task-backlog";
 import { useTaskAgentic } from "@/hooks/use-task-agentic";
+import { useTaskAsynchronous } from "@/hooks/use-task-asynchronous";
 import { useCommitmentVerdict } from "@/hooks/use-commitment-verdict";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { findNode } from "@/utils/mindmap-tree";
@@ -14,6 +15,7 @@ import { filterCommitmentList, filterTaskListWithFocus } from "@/utils/list-filt
 import type { StatusMode } from "@/utils/filter-tree";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { groupRowsByPath } from "@/utils/list-data";
+import { withAsynchronousSection } from "@/utils/async-first";
 import { collectSearchableNodes } from "@/utils/mindmap-tree";
 import { useNodeEditor } from "@/components/MindmapView/use-node-editor";
 import { BEADS_NODE_TYPE } from "@/api/beads";
@@ -27,6 +29,7 @@ import CommitmentRow from "./CommitmentRow";
 import PathHeaderRow from "./PathHeaderRow";
 import AnchoredToast from "@/components/AnchoredToast/AnchoredToast";
 import BacklogConfirmModal from "@/components/BacklogConfirmModal/BacklogConfirmModal";
+import UnfinishedChildrenModal from "@/components/UnfinishedChildrenModal/UnfinishedChildrenModal";
 import DeleteConfirmModal from "@/components/DeleteConfirmModal/DeleteConfirmModal";
 import styles from "./ListView.module.css";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
@@ -41,7 +44,8 @@ import { useDisplayStore } from "@/stores/use-display-store";
 export default function ListView() {
   const { t } = useTranslation(["common", "listView", "editor"]);
   const { tree, rows, commitmentRows, allTasksAndGoals, isLoading, error, reload, onCycleStatus, renameNode,
-    createTask, deleteTask, removeNode } = useListData();
+    createTask, deleteTask, removeNode,
+    occurrencePrompt, confirmOccurrence, cancelOccurrence } = useListData();
 
   const sharedFilter = useFilterStore((s) => s.filter);
   // The cheat-sheet overlay gates background shortcuts the same way an open modal does.
@@ -53,6 +57,7 @@ export default function ListView() {
   // Subtree entry is shared state, not a filter: the Mindmap and the List View re-root together.
   const enterSubtree = useMindmapStore((s) => s.enterSubtree);
   const pathHeaderIcons = useDisplayStore((s) => s.pathHeaderIcons);
+  const asynchronousFirst = useDisplayStore((s) => s.asynchronousFirst);
   const { subtreeRootId, onExitSubtree, onExitToRoot } = useSubtreeNav(tree);
 
   const toggleFullscreen = useFullscreenStore((s) => s.toggle);
@@ -79,6 +84,11 @@ export default function ListView() {
     showToast,
   });
   const { toggleAgentic } = useTaskAgentic({
+    findNode: (id) => findNode(tree, id),
+    reload,
+    showToast,
+  });
+  const { toggleAsynchronous } = useTaskAsynchronous({
     findNode: (id) => findNode(tree, id),
     reload,
     showToast,
@@ -120,7 +130,15 @@ export default function ListView() {
     () => filterCommitmentList(commitmentRows, sharedFilter, listFilter),
     [commitmentRows, sharedFilter, listFilter],
   );
-  const entries = useMemo(() => groupRowsByPath(filteredRows), [filteredRows]);
+  // Split first, then grouped: with the setting on, the asynchronous work is pulled out of the
+  // filtered set before any header is drawn, so each half is grouped by path on its own terms — the
+  // section's rows gain the parent they left behind as a header segment, and the rows left below
+  // keep the header and indentation their remaining ancestors give them. With it off nothing is
+  // pulled out and the list is exactly what the tree ordered.
+  const entries = useMemo(
+    () => (asynchronousFirst ? withAsynchronousSection(filteredRows) : groupRowsByPath(filteredRows)),
+    [filteredRows, asynchronousFirst],
+  );
   const taskIds = useMemo(
     () => entries.filter((entry) => entry.type === "task").map((entry) => entry.row.node.id),
     [entries],
@@ -228,7 +246,7 @@ export default function ListView() {
 
   useKeyboardListView({
     // The prompt swallows the row keys while it is open, as the editor modal already does.
-    isInputActive: isInputCaptured || planPrompt !== null,
+    isInputActive: isInputCaptured || planPrompt !== null || occurrencePrompt !== null,
     selectedTaskId,
     selectedCommitmentId,
     selectedRowId: activeSelectedId,
@@ -248,6 +266,7 @@ export default function ListView() {
     onSetUnblockPreset: () => setListPreset("unblock"),
     onToggleBacklog: toggleBacklog,
     onToggleAgentic: toggleAgentic,
+    onToggleAsynchronous: toggleAsynchronous,
     onCycleVerdict: cycleVerdict,
     onMarkBroken: markBroken,
     onOpenSearch: () => setIsSearchOpen(true),
@@ -289,20 +308,40 @@ export default function ListView() {
         <div className={styles.centered}>{t("listView:empty")}</div>
       ) : (
         <div className={styles.rows}>
-          {entries.map((entry, index) =>
-            entry.type === "path" ? (
-              <PathHeaderRow
-                key={`path-${index}-${entry.pathKey}`}
-                segments={entry.segments}
-                onEnterSubtree={enterSubtree}
-                // Ctrl/Alt-click on a segment narrows the list in place rather than re-rooting it:
-                // the same Antecedent pill the filter popover's combobox adds, on the element that
-                // already names the ancestors.
-                onFilterByAntecedent={(id, side) => setPillSide("antecedent", id, side)}
-                showKindIcon={pathHeaderIcons}
-                onCreateTask={headerCreateHandler(entry.segments)}
-              />
-            ) : (
+          {entries.map((entry, index) => {
+            // The Asynchronous section's heading: drawn in the list's own flow rather than wrapped
+            // in a section element, because the rows it collects are path-grouped runs like any
+            // other and share the one arrow-key order.
+            if (entry.type === "asynchronous") {
+              return (
+                <h2 key="asynchronous" className={styles.sectionHeading}>
+                  {t("listView:asynchronousHeading")}
+                </h2>
+              );
+            }
+            // The rule that closes it. A wrapper with a border — the way the commitments band is
+            // drawn — is not available here: the section's rows are entries in the same flat list
+            // as everything below, and the keyboard walks that one order. So the boundary is an
+            // entry too, and `withAsynchronousSection` omits it when nothing follows the section.
+            if (entry.type === "asynchronousEnd") {
+              return <hr key="asynchronous-end" className={styles.sectionEnd} />;
+            }
+            if (entry.type === "path") {
+              return (
+                <PathHeaderRow
+                  key={`path-${index}-${entry.pathKey}`}
+                  segments={entry.segments}
+                  onEnterSubtree={enterSubtree}
+                  // Ctrl/Alt-click on a segment narrows the list in place rather than re-rooting it:
+                  // the same Antecedent pill the filter popover's combobox adds, on the element that
+                  // already names the ancestors.
+                  onFilterByAntecedent={(id, side) => setPillSide("antecedent", id, side)}
+                  showKindIcon={pathHeaderIcons}
+                  onCreateTask={headerCreateHandler(entry.segments)}
+                />
+              );
+            }
+            return (
               <TaskRow
                 key={entry.row.node.id}
                 row={entry.row}
@@ -317,8 +356,8 @@ export default function ListView() {
                 onCancelTitleEdit={cancelTitleEdit}
                 onAddTagFilter={addTagFilter}
               />
-            ),
-          )}
+            );
+          })}
         </div>
       )}
 
@@ -363,6 +402,14 @@ export default function ListView() {
           error={deleteError}
           onConfirm={confirmDelete}
           onCancel={cancelDelete}
+        />
+      )}
+
+      {occurrencePrompt !== null && (
+        <UnfinishedChildrenModal
+          prompt={occurrencePrompt}
+          onConfirm={confirmOccurrence}
+          onCancel={cancelOccurrence}
         />
       )}
 

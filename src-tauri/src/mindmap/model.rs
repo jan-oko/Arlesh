@@ -6,8 +6,8 @@ use crate::{
     block_reasons::model::BlockReason,
     domains::model::Domain,
     flows::model::{
-        Flow, FlowDependency, FlowGoal, FlowItemCycle, FlowTask, HabitIteration, HabitItemStatus,
-        TargetRef,
+        Flow, FlowDependency, FlowGoal, FlowItemCycle, FlowTask, HabitInstanceChild,
+        HabitIteration, HabitItemStatus, TargetRef,
     },
     infos::model::Info,
     tasks::{
@@ -95,4 +95,10 @@ pub struct MindmapLoad {
     pub lifecycles: Vec<ItemLifecycle>,
     /// One entry per flow, in `flows` order — the dependent wave, resolved backend-side.
     pub habits: Vec<FlowHabitEntry>,
+    /// Every node attached to a virtual Habit occurrence — as `list_all_habit_instance_children`.
+    ///
+    /// The attachments only, not the nodes: an added child is an ordinary Task, Goal, Commitment
+    /// or Info and already travels in its own list above. What this says is which occurrence each
+    /// one hangs on, which is the one thing its own row cannot.
+    pub habit_instance_children: Vec<HabitInstanceChild>,
 }

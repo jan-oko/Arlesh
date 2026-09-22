@@ -317,12 +317,39 @@ describe("useKeyboardMindmap — Ctrl+O (node search)", () => {
   });
 });
 
-describe("useKeyboardMindmap — Ctrl+/ (toggle collapsed)", () => {
+describe("useKeyboardMindmap — Ctrl+/ and Ctrl+Alt+/ (toggle collapsed)", () => {
   it("Ctrl+/ calls onToggleCollapsed with the selected node id", () => {
     const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("/", { ctrlKey: true });
     expect(opts.onToggleCollapsed).toHaveBeenCalledWith("task-1");
+  });
+
+  it("Ctrl+Alt+/ toggles the selected node's whole subtree instead of the node alone", () => {
+    const opts = mindmapKeyboardContext();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("/", { ctrlKey: true, altKey: true });
+    expect(opts.onToggleSubtreeCollapsed).toHaveBeenCalledWith("task-1");
+    expect(opts.onToggleCollapsed).not.toHaveBeenCalled();
+  });
+
+  // Ctrl+Shift+/ is the cheat-sheet's, and the Mindmap does not touch it: the recursive expand sits
+  // on Ctrl+Alt+/ precisely so that neither binding has to guard against the other.
+  it("Ctrl+Shift+/ collapses nothing — it belongs to the cheat-sheet", () => {
+    const opts = mindmapKeyboardContext();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("/", { ctrlKey: true, shiftKey: true });
+    expect(opts.onToggleSubtreeCollapsed).not.toHaveBeenCalled();
+    expect(opts.onToggleCollapsed).not.toHaveBeenCalled();
+  });
+
+  it("neither fires with nothing selected", () => {
+    const opts = mindmapKeyboardContext({ selectedNodeId: null, selectedNodeIds: new Set() });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("/", { ctrlKey: true });
+    fireKey("/", { ctrlKey: true, altKey: true });
+    expect(opts.onToggleCollapsed).not.toHaveBeenCalled();
+    expect(opts.onToggleSubtreeCollapsed).not.toHaveBeenCalled();
   });
 });
 
@@ -715,6 +742,30 @@ describe("useKeyboardMindmap — filter shortcuts (Alt)", () => {
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("a");
     expect(opts.onToggleAgentic).not.toHaveBeenCalled();
+  });
+
+  it("plain W flips the anchor task's Asynchronous flag, leaving the rest of the selection alone", () => {
+    const opts = mindmapKeyboardContext({
+      selectedNodeId: "task-1",
+      selectedNodeIds: new Set(["task-1", "task-2"]),
+      findNodeById: (id: string) => (id === "task-1" ? makeTask("task-1") : undefined),
+    });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("w");
+    expect(opts.onToggleAsynchronous).toHaveBeenCalledTimes(1);
+    expect(opts.onToggleAsynchronous).toHaveBeenCalledWith("task-1");
+    expect(opts.onToggleAgentic).not.toHaveBeenCalled();
+  });
+
+  it("plain W does nothing on a goal — only a Task starts a wait by being done", () => {
+    const goal: MindmapNode = { id: "goal-1", kind: "goal", title: "Goal", position: 0, tagIds: [], children: [] };
+    const opts = mindmapKeyboardContext({
+      selectedNodeId: "goal-1",
+      findNodeById: (id: string) => (id === "goal-1" ? goal : undefined),
+    });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("w");
+    expect(opts.onToggleAsynchronous).not.toHaveBeenCalled();
   });
 
   it("Alt+S selects the Start mode without starting a flow", () => {

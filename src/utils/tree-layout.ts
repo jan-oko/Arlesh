@@ -128,6 +128,10 @@ export interface FlowItemData {
 export interface HabitIterationMeta {
   /** The Habit this iteration belongs to; iterations fold only with their own flow's. */
   flowId: number;
+  /** That Habit's own title — "Journal", not the iteration's "Journal 2026-09-14". A folded run
+   * names the Habit it stands for, and this is the only place the renderer can read it: the run
+   * node is built from the iterations alone, and the Flow node may be filtered out of the tree. */
+  flowTitle: string;
   /** Zero-based ordinal from the Repetition Start, for ordering within a run. */
   index: number;
   /** The scope kind the iteration's window is one unit of, or `null` for a sub-day Phase window. */
@@ -207,6 +211,13 @@ export interface MindmapNode {
    * persisted. Read together with `agentic` through `isAgentic`, never on its own: an explicit
    * `agentic: false` overrides an agentic ancestor. */
   inheritedAgentic?: boolean;
+  /** Whether doing this Task starts a **wait** rather than finishing something (Tasks only) —
+   * send the email, order the part, kick off the build.
+   *
+   * Deliberately **not** inherited, unlike `agentic`: "starts a wait" is a property of one
+   * concrete action, and a subtask of an asynchronous Task is usually the work you do *after* the
+   * wait. There is no `inheritedAsynchronous` for that reason, and there should not be one. */
+  asynchronous?: boolean;
   /** A Commitment's recorded Verdict (Commitments only) — `unresolved` / `kept` / `broken`.
    * Never derived from the window passing or from children completing: `unresolved` means the
    * user has not said, which is information in its own right. */

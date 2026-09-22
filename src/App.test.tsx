@@ -6,6 +6,7 @@ import { useThemeStore } from "@/stores/use-theme-store";
 import { reloadTabs, useTabsStore } from "@/stores/use-tabs-store";
 import { closeWindow } from "@/api/window";
 import { useFullscreenStore } from "@/stores/use-fullscreen-store";
+import { useHotkeysStore } from "@/stores/use-hotkeys-store";
 
 vi.mock("@/components/TopBar/TopBar", () => ({ default: () => <div data-testid="top-bar" /> }));
 vi.mock("@/components/MindmapView/MindmapView", () => ({ default: () => <div data-testid="mindmap-view" /> }));
@@ -22,6 +23,7 @@ beforeEach(() => {
   useViewStore.setState({ view: "mindmap" });
   useThemeStore.setState({ theme: "dark" });
   useFullscreenStore.setState({ isFullscreen: false });
+  useHotkeysStore.setState({ isOpen: false });
   document.documentElement.removeAttribute("data-theme");
 });
 
@@ -46,28 +48,41 @@ describe("App", () => {
     expect(screen.queryByTestId("mindmap-view")).not.toBeInTheDocument();
   });
 
-  // One chord per view, not a cycle: Alt+L names the List and says nothing about where you were.
-  it("Alt+L shows the List and leaves it showing when pressed again", () => {
+  // One chord per view, not a cycle: Ctrl+L names the List and says nothing about where you were.
+  it("Ctrl+L shows the List and leaves it showing when pressed again", () => {
     render(<App />);
-    fireEvent.keyDown(window, { code: "KeyL", altKey: true });
+    fireEvent.keyDown(window, { code: "KeyL", ctrlKey: true });
     expect(useViewStore.getState().view).toBe("list");
-    fireEvent.keyDown(window, { code: "KeyL", altKey: true });
+    fireEvent.keyDown(window, { code: "KeyL", ctrlKey: true });
     expect(useViewStore.getState().view).toBe("list");
   });
 
-  it("Alt+M shows the Mindmap from wherever you were", () => {
+  it("Ctrl+M shows the Mindmap from wherever you were", () => {
     useViewStore.setState({ view: "list" });
     render(<App />);
-    fireEvent.keyDown(window, { code: "KeyM", altKey: true });
+    fireEvent.keyDown(window, { code: "KeyM", ctrlKey: true });
     expect(useViewStore.getState().view).toBe("mindmap");
   });
 
-  it("does not switch views while typing in an input", () => {
+  it("Ctrl+P shows the Plan view", () => {
+    render(<App />);
+    fireEvent.keyDown(window, { code: "KeyP", ctrlKey: true });
+    expect(useViewStore.getState().view).toBe("plan");
+  });
+
+  // The dispatcher returns early on a typing target, so a save or print reflex inside a rename box
+  // or an editor field is still just a reflex — it never reaches the switcher. Worth pinning:
+  // Ctrl+S and Ctrl+P are exactly what someone will try while a field has the keyboard.
+  it.each([
+    { code: "KeyL", name: "Ctrl+L" },
+    { code: "KeyP", name: "Ctrl+P" },
+    { code: "KeyS", name: "Ctrl+S" },
+  ])("does not switch views on $name while typing in an input", ({ code }) => {
     render(<App />);
     const input = document.createElement("input");
     document.body.appendChild(input);
     input.focus();
-    fireEvent.keyDown(input, { code: "KeyL", altKey: true });
+    fireEvent.keyDown(input, { code, ctrlKey: true });
     expect(useViewStore.getState().view).toBe("mindmap");
     document.body.removeChild(input);
   });
@@ -150,6 +165,16 @@ describe("tab shortcuts", () => {
 
     expect(useTabsStore.getState().tabs).toHaveLength(2);
   });
+
+  it("Ctrl+Shift+/ both opens the cheat-sheet and closes it again", () => {
+    render(<App />);
+    fireEvent.keyDown(window, { code: "Slash", ctrlKey: true, shiftKey: true });
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { code: "Slash", ctrlKey: true, shiftKey: true });
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
 });
 
 describe("the board alone (fullscreen)", () => {
@@ -192,6 +217,7 @@ describe("the board alone (fullscreen)", () => {
 
     // What a restart actually restores: whatever was persisted. The mode deliberately is not.
     useFullscreenStore.setState({ isFullscreen: false });
+  useHotkeysStore.setState({ isOpen: false });
     render(<App />);
     expect(screen.getByRole("tablist")).toBeInTheDocument();
   });

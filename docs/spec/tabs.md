@@ -75,13 +75,30 @@ reopening Arlesh with no chrome and no visible way back is a bad first second, a
 one keystroke. Every tab shortcut stays live while the strip is hidden — the bindings never depended
 on it being drawn.
 
-**Switching views.** Each view has a chord of its own — `Alt+M` for the Mindmap and `Alt+L` for the
-List — rather than one chord that cycles. Every view is then one press from any other, there is no
-cycle order to learn, and a new view costs one binding rather than a re-think; `Alt+L` also keeps
-meaning List, which is what it has always meant, where a cycling `Alt+L` would quietly have turned
-an existing reflex into "next view". The [Plan View](plan-view.md) has no chord yet, because the two
-letters the scheme reaches for next are already status presets — that open decision is written down
-there.
+**Switching views.** Each view has a chord of its own — `Ctrl+M` for the Mindmap, `Ctrl+L` for the
+List and `Ctrl+P` for the [Plan View](plan-view.md) — rather than one chord that cycles. Every view
+is then one press from any other, there is no cycle order to learn, and a new view costs one binding
+rather than a re-think. `Ctrl+S` is **held for the Steps View** and deliberately left unbound, so
+that view inherits the scheme rather than re-opening it.
+
+The switcher sits on **`Ctrl`** because `Alt` was already spoken for: `Alt+A/P/S/D/B` have been the
+All/Plan/Start/Do/Backlog status presets since the presets shipped, in every view's own table. Those
+tables are dispatched by their own listener, separate from this one, so a view chord sharing a
+preset's letter would fire **both** actions on one press — `preventDefault` on the first listener
+does not reach the second, and nothing orders them. Moving the views was the cheaper side of that:
+the presets keep letters people already have in their fingers. The cost is `Alt+L`, which used to
+toggle Mindmap ↔ List and no longer does anything; it was changing regardless, since a two-way
+toggle has no meaning once there are three views.
+
+`Ctrl+P` and `Ctrl+S` are webview defaults (print, save) and Arlesh takes them exactly as it already
+takes `Ctrl+W` and `Ctrl+T` — the dispatcher reads the event in the capture phase and calls
+`preventDefault`, and Arlesh declares no native menu accelerator that would claim them first. Inside
+a text field nothing reaches the switcher at all, because the dispatcher ignores events from a
+typing target, so a save reflex in a rename box stays a save reflex that does nothing.
+
+Unlike the tab shortcuts below, the three view chords are **suppressed while a modal or an inline
+editor holds the keyboard**: switching tabs is never ambiguous about what it acts on, where
+switching views behind an open editor would leave that editor over a board it no longer belongs to.
 
 **Persistence.** The tab list, its order, which tab was active, any name a tab was given, and each
 tab's subtree root, view, orientation, Plan scope kind, both filter sets and opened Habit histories

@@ -36,11 +36,27 @@
   border-bottom: 1px solid var(--node-border);
 }
 
-.commitmentsHeading {
+/* One voice for every section label in this view — the commitments band's and the Asynchronous
+   section's — so a section reads as a section whatever it collects. */
+.sectionHeading {
   margin: 0;
   font-size: var(--font-size-sm, 0.8rem);
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-secondary, var(--node-text-muted));
+}
+
+.commitmentsHeading {
+  composes: sectionHeading;
+}
+
+/* The end of the Asynchronous section. The commitments band closes itself with its wrapper's
+   border-bottom; this section has no wrapper to hang one on, so the boundary is drawn as its own
+   entry in the list. The flex gap above and below it does the spacing, so the rule sits centred in
+   the break rather than crowding the run it closes. */
+.sectionEnd {
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--node-border);
 }

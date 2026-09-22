@@ -28,7 +28,7 @@ function makeOpts(selectedNodeId: string) {
     selectedNodeId,
     selectedNodeIds: new Set([selectedNodeId]),
     positions: POSITIONS,
-    tree: TREE,
+    displayRoot: TREE,
     orientation: "horizontal" as const,
     selectNode: vi.fn(),
     setSelection: vi.fn(),
@@ -60,7 +60,7 @@ function makeSiblingOpts(selectedNodeId: string, selectedNodeIds: ReadonlySet<st
     selectedNodeId,
     selectedNodeIds,
     positions: SIBLING_POSITIONS,
-    tree: SIBLING_TREE,
+    displayRoot: SIBLING_TREE,
     orientation: "horizontal" as const,
     selectNode: vi.fn(),
     setSelection: vi.fn(),
@@ -71,7 +71,7 @@ describe("useNavigateArrow", () => {
   it("does nothing when no node is selected", () => {
     const selectNode = vi.fn();
     const { result } = renderHook(() => useNavigateArrow({
-      selectedNodeId: null, selectedNodeIds: new Set(), positions: POSITIONS, tree: TREE, orientation: "horizontal" as const, selectNode, setSelection: vi.fn(),
+      selectedNodeId: null, selectedNodeIds: new Set(), positions: POSITIONS, displayRoot: TREE, orientation: "horizontal" as const, selectNode, setSelection: vi.fn(),
     }));
     act(() => { result.current.navigateArrow("ArrowRight"); });
     expect(selectNode).not.toHaveBeenCalled();
@@ -184,7 +184,7 @@ function makeVerticalOpts(selectedNodeId: string, selectedNodeIds: ReadonlySet<s
     selectedNodeId,
     selectedNodeIds,
     positions: V_POSITIONS,
-    tree: TREE,
+    displayRoot: TREE,
     orientation: "vertical" as const,
     selectNode: vi.fn(),
     setSelection: vi.fn(),

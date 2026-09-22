@@ -107,6 +107,10 @@ async fn delete_infos_under(
         stack.extend(children);
     }
     for id in all {
+        // A note attached to a Habit occurrence is only ever deleted with the node it hangs under
+        // or on its own command, and both funnel through here. SQLite recycles rowids, so an
+        // attachment outliving its row would later be inherited by an unrelated one.
+        db.flows().detach_instance_child("info", id).await?;
         db.infos().delete(InfoId(id)).await?;
     }
     Ok(())
@@ -136,6 +140,10 @@ async fn delete_node_subtree(
         stack.extend(commitment_children.into_iter().map(|id| ("commitment".to_string(), id)));
     }
     for (node_type, node_id) in &nodes {
+        // The node may be an added child of a Habit occurrence. Its attachment names the row, so
+        // it goes when the row goes — see `delete_infos_under` for why an orphan is not merely
+        // untidy.
+        db.flows().detach_instance_child(node_type, *node_id).await?;
         delete_infos_under(db, node_type, *node_id).await?;
         // Block reasons hang off a polymorphic owner link with no foreign key, like infos. A
         // Commitment never has any, and asking for none costs one statement against the risk of
@@ -179,6 +187,7 @@ struct TaskRow {
     status: String,
     delegate_to: Option<i64>,
     agentic: Option<bool>,
+    asynchronous: bool,
     time_scope_start_id: Option<i64>,
     time_scope_end_id: Option<i64>,
     time_scope_duration_n: Option<i64>,
@@ -202,6 +211,7 @@ impl From<TaskRow> for Task {
             status: row.status,
             delegate_to: row.delegate_to,
             agentic: row.agentic,
+            asynchronous: row.asynchronous,
             time_scope: time_scope_from_row(
                 row.time_scope_start_id,
                 row.time_scope_end_id,
@@ -394,6 +404,8 @@ struct TaskWrite {
     delegate_to: Option<i64>,
     /// Final Agentic column: `None` is the NULL that inherits from the nearest flagged ancestor.
     agentic: Option<bool>,
+    /// Final Asynchronous column: whether doing this task starts a wait.
+    asynchronous: bool,
     /// Final Time Scope, or `None` for unscoped.
     time_scope: Option<TimeScope>,
     /// Requested on-exit behavior; dropped by [`on_scope_exit_column`] when unscoped.
@@ -435,6 +447,9 @@ impl TaskWrite {
             Some(new_agentic) => new_agentic.as_column(),
             None => stored.agentic,
         };
+        // One `Option` deep, not two: the column is a plain boolean, so there is no third state an
+        // absent field could be confused with.
+        let asynchronous = request.asynchronous.unwrap_or(stored.asynchronous);
         let time_scope = match request.time_scope {
             Some(new_time_scope) => new_time_scope,
             None => stored.time_scope,
@@ -462,6 +477,7 @@ impl TaskWrite {
             status,
             delegate_to,
             agentic,
+            asynchronous,
             time_scope,
             on_scope_exit: request.on_scope_exit.unwrap_or(stored.on_scope_exit),
             plan,
@@ -782,13 +798,14 @@ impl<'session> TaskOperator<'session> {
         let (plan_start, plan_end, _, _) = time_scope_columns(&request.plan);
         let archival = request.archival.unwrap_or_default();
         let agentic = request.agentic.unwrap_or_default().as_column();
+        let asynchronous = request.asynchronous.unwrap_or(false);
         let id = sqlx::query(
             "INSERT INTO tasks
                 (title, parent_type, parent_id, status,
                  time_scope_start_id, time_scope_end_id, time_scope_duration_n,
                  time_scope_duration_kind, on_scope_exit, plan_start_id, plan_end_id, archival,
-                 agentic)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                 agentic, asynchronous)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&request.title)
         .bind(&request.parent_type)
@@ -803,6 +820,7 @@ impl<'session> TaskOperator<'session> {
         .bind(plan_end)
         .bind(archival.as_str())
         .bind(agentic)
+        .bind(asynchronous)
         .execute(&mut *self.connection)
         .await?
         .last_insert_rowid();
@@ -918,7 +936,7 @@ impl<'session> TaskOperator<'session> {
             "UPDATE tasks SET title=?, status=?, delegate_to=?,
                 time_scope_start_id=?, time_scope_end_id=?, time_scope_duration_n=?,
                 time_scope_duration_kind=?, on_scope_exit=?, plan_start_id=?, plan_end_id=?,
-                archival=?, agentic=?, position=?, is_private=? WHERE id=?",
+                archival=?, agentic=?, asynchronous=?, position=?, is_private=? WHERE id=?",
         )
         .bind(&write.title)
         .bind(&write.status)
@@ -932,6 +950,7 @@ impl<'session> TaskOperator<'session> {
         .bind(plan_end)
         .bind(write.archival.as_str())
         .bind(write.agentic)
+        .bind(write.asynchronous)
         .bind(write.position)
         .bind(write.is_private)
         .bind(id.0)
@@ -1246,6 +1265,7 @@ pub async fn create_goal(
 ) -> Result<Goal, TaskError> {
     scope_rules::validate_goal_containment(
         db,
+        None,
         &request.parent_type,
         request.parent_id,
         &request.time_scope,
@@ -1284,8 +1304,14 @@ pub async fn update_goal(
 ) -> Result<Goal, TaskError> {
     let stored = db.goals().get(id).await?;
     let write = GoalWrite::merge(stored, request);
-    scope_rules::validate_goal_containment(db, &write.parent_type, write.parent_id, &write.time_scope)
-        .await?;
+    scope_rules::validate_goal_containment(
+        db,
+        Some(id),
+        &write.parent_type,
+        write.parent_id,
+        &write.time_scope,
+    )
+    .await?;
     db.goals().update(id, write).await
 }
 
@@ -1324,6 +1350,7 @@ pub async fn create_task(
     reject_backlog_with_plan(request.archival.unwrap_or_default(), &request.plan)?;
     scope_rules::validate_task_containment(
         db,
+        None,
         &request.parent_type,
         request.parent_id,
         &request.time_scope,
@@ -1373,6 +1400,7 @@ pub async fn update_task(
     reject_backlog_with_plan(write.archival, &write.plan)?;
     scope_rules::validate_task_containment(
         db,
+        Some(id),
         &write.parent_type,
         write.parent_id,
         &write.time_scope,

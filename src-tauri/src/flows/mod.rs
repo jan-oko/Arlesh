@@ -30,9 +30,10 @@ use crate::scopes::ScopeOperator;
 use habits::{
     classify_iterations, expire_unanswered, instance_timing, Catchup, Consumption, SlotWindow,
 };
+use crate::infos::model::CreateInfoRequest;
 use crate::tasks::model::{
     CommitmentId, CreateCommitmentRequest, CreateGoalRequest, CreateTaskRequest, Dependency,
-    DurationSpec, GoalId, TaskId, TimeScope,
+    DurationSpec, GoalId, TaskId, TimeScope, Verdict,
 };
 use crate::tasks::lifecycle::verdict_deadline;
 use crate::tasks::{
@@ -45,12 +46,12 @@ use render::{
     TemplateItem,
 };
 use model::{
-    BlockingMode, ConsumptionKind, CreateFlowItemRequest, CreateFlowRequest, Flow, FlowCycleInput,
-    FlowDependency, FlowGoal, FlowId, FlowItemCycle, FlowItemType, FlowOrigin, FlowRecurrence,
-    FlowTask, HabitInstance, HabitInstanceRef, HabitIteration, HabitItemStatus, InstanceType,
-    IterationStatus,
-    MaterializedFlow, SetRecurrenceRequest, StartFlowRequest, TargetRef, UpdateFlowItemRequest,
-    UpdateFlowRequest, NO_CYCLE,
+    BlockingMode, ChildAttachment, ConsumptionKind, CreateFlowItemRequest, CreateFlowRequest, Flow,
+    FlowCycleInput, FlowDependency, FlowGoal, FlowId, FlowItemCycle, FlowItemType, FlowOrigin,
+    FlowRecurrence, FlowTask, HabitInstance, HabitInstanceChild, HabitInstanceRef, HabitIteration,
+    HabitItemStatus, InstanceType, IterationStatus,
+    MaterializedFlow, SetRecurrenceRequest, StartFlowRequest, TargetRef, UnfinishedChild,
+    UpdateFlowItemRequest, UpdateFlowRequest, NO_CYCLE,
 };
 
 /// Sentinel `item_type` for the flow **root** instance in `habit_instance_modifications`. The root is
@@ -1415,13 +1416,24 @@ impl<'session> FlowOperator<'session> {
         Ok(())
     }
 
-    /// Number of distinct **completed** iterations of a Habit (used to detect divergent instances
-    /// before an edit-habit reconciliation).
+    /// Number of **divergent** iterations of a Habit — the probe the edit-habit reconciliation
+    /// prompt fires on.
+    ///
+    /// An iteration diverges when it has been completed **or** when something has been hung on
+    /// one of its occurrences. Both are work the user did against that iteration specifically, and
+    /// delete-and-regenerate destroys both, so both have to raise the prompt that says so. Counted
+    /// over the union of the two tables' iteration scopes rather than summed, so an iteration that
+    /// is completed *and* carries an added child counts once.
     pub async fn habit_completion_count(&mut self, flow_id: FlowId) -> Result<i64, FlowError> {
         let count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(DISTINCT iteration_scope_id) FROM habit_instance_modifications
-             WHERE flow_id = ? AND status = 'done' AND tombstone_kind IS NULL",
+            "SELECT COUNT(*) FROM (
+                 SELECT iteration_scope_id FROM habit_instance_modifications
+                 WHERE flow_id = ? AND status = 'done' AND tombstone_kind IS NULL
+                 UNION
+                 SELECT iteration_scope_id FROM habit_instance_children WHERE flow_id = ?
+             )",
         )
+        .bind(flow_id.0)
         .bind(flow_id.0)
         .fetch_one(&mut *self.connection)
         .await?;
@@ -1430,8 +1442,193 @@ impl<'session> FlowOperator<'session> {
 
     /// Clears every Habit Modification for a flow (drops all completion history) — the
     /// delete-and-regenerate arm of edit-habit reconciliation.
+    ///
+    /// The added children the flow's occurrences held go with it, rows and attachments alike: the
+    /// instances they hung off are about to stop existing, and a child left behind would be a node
+    /// attached to an occurrence no longer generated. The prompt this arm sits behind is what
+    /// keeps that from being a surprise.
     pub async fn clear_habit_modifications(&mut self, flow_id: FlowId) -> Result<(), FlowError> {
+        self.delete_instance_children(flow_id).await?;
         sqlx::query("DELETE FROM habit_instance_modifications WHERE flow_id = ?")
+            .bind(flow_id.0)
+            .execute(&mut *self.connection)
+            .await?;
+        Ok(())
+    }
+
+    /// One cycle pair by id, or `None` when the id names none — including [`NO_CYCLE`], the
+    /// sentinel an occurrence with no pair of its own carries.
+    pub async fn cycle(&mut self, cycle_id: i64) -> Result<Option<FlowItemCycle>, FlowError> {
+        Ok(sqlx::query_as::<_, FlowItemCycle>("SELECT * FROM flow_item_cycles WHERE id = ?")
+        .bind(cycle_id)
+        .fetch_optional(&mut *self.connection)
+        .await?)
+    }
+
+    /// Every added child of every occurrence of one Habit.
+    pub async fn list_instance_children(
+        &mut self,
+        flow_id: FlowId,
+    ) -> Result<Vec<HabitInstanceChild>, FlowError> {
+        Ok(sqlx::query_as::<_, HabitInstanceChild>(
+            "SELECT flow_id, item_type, item_id, iteration_scope_id, cycle_id, child_type, child_id
+             FROM habit_instance_children WHERE flow_id = ? ORDER BY id",
+        )
+        .bind(flow_id.0)
+        .fetch_all(&mut *self.connection)
+        .await?)
+    }
+
+    /// Every added child on the board, across every Habit — the mindmap's whole-tree read.
+    pub async fn list_all_instance_children(
+        &mut self,
+    ) -> Result<Vec<HabitInstanceChild>, FlowError> {
+        Ok(sqlx::query_as::<_, HabitInstanceChild>(
+            "SELECT flow_id, item_type, item_id, iteration_scope_id, cycle_id, child_type, child_id
+             FROM habit_instance_children ORDER BY id",
+        )
+        .fetch_all(&mut *self.connection)
+        .await?)
+    }
+
+    /// The occurrence one node is attached to, if it is an added child of one.
+    ///
+    /// The window comes back resolved, as the Time Scope `(iteration_scope_id,
+    /// window_end_scope_id)` the attachment settled at attach time, together with the kind the
+    /// occurrence renders as. That is everything the ancestry climb needs to treat the occurrence
+    /// as the node's parent without resolving a Flow Window — which would mint scope rows, and so
+    /// could not happen on a read.
+    ///
+    /// Fails as a bare [`sqlx::Error`] rather than a [`FlowError`], because its caller is the
+    /// ancestry climb in `tasks` — a `FlowError` there would need `TaskError` to wrap the very
+    /// enum that already wraps it. Both error types convert from `sqlx::Error` directly, so the
+    /// narrower failure type is the one that serves both sides.
+    pub async fn child_attachment(
+        &mut self,
+        child_type: &str,
+        child_id: i64,
+    ) -> Result<Option<ChildAttachment>, sqlx::Error> {
+        let row: Option<(i64, String, i64, i64)> = sqlx::query_as(
+            "SELECT c.flow_id, f.instance_type, c.iteration_scope_id, c.window_end_scope_id
+             FROM habit_instance_children c JOIN flows f ON f.id = c.flow_id
+             WHERE c.child_type = ? AND c.child_id = ?",
+        )
+        .bind(child_type)
+        .bind(child_id)
+        .fetch_optional(&mut *self.connection)
+        .await?;
+        Ok(row.map(|(flow_id, instance_type, start_id, end_id)| ChildAttachment {
+            flow_id,
+            instance_type,
+            window: TimeScope { start_id, end_id, duration: None },
+        }))
+    }
+
+    /// Attaches an already-created row to one occurrence. `window_end_scope_id` closes the
+    /// occurrence's window, resolved by the caller inside the same transaction.
+    ///
+    /// **Module-private**: the row and its attachment are one gesture, and a row written without
+    /// its attachment is a node loose on the board. [`create_instance_child`] is the entry point.
+    async fn attach_instance_child(
+        &mut self,
+        flow_id: FlowId,
+        instance: &HabitInstanceRef,
+        window_end_scope_id: i64,
+        child_type: &str,
+        child_id: i64,
+    ) -> Result<(), FlowError> {
+        sqlx::query(
+            "INSERT INTO habit_instance_children
+                (flow_id, item_type, item_id, iteration_scope_id, cycle_id, window_end_scope_id,
+                 child_type, child_id)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(flow_id.0)
+        .bind(&instance.item_type)
+        .bind(instance.item_id)
+        .bind(instance.iteration_scope_id)
+        .bind(instance.cycle_id)
+        .bind(window_end_scope_id)
+        .bind(child_type)
+        .bind(child_id)
+        .execute(&mut *self.connection)
+        .await?;
+        Ok(())
+    }
+
+    /// Forgets that a node was an occurrence's child, without touching the node.
+    ///
+    /// Called when the node itself is deleted. SQLite recycles rowids, so an attachment left
+    /// pointing at a deleted row is not merely litter — a later node minted with the same id would
+    /// inherit it, and appear under an occurrence nobody put it on.
+    ///
+    /// Fails as a bare [`sqlx::Error`] for the same reason [`Self::child_attachment`] does: its
+    /// callers are the delete paths in `tasks`, whose own error type converts from it directly.
+    pub async fn detach_instance_child(
+        &mut self,
+        child_type: &str,
+        child_id: i64,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("DELETE FROM habit_instance_children WHERE child_type = ? AND child_id = ?")
+            .bind(child_type)
+            .bind(child_id)
+            .execute(&mut *self.connection)
+            .await?;
+        Ok(())
+    }
+
+    /// Moves an attachment from one row to another — the retype path, where the node keeps its
+    /// meaning and changes its table.
+    ///
+    /// A no-op when the old row held no attachment, which is every retype but the rare one, so
+    /// callers need not ask first. Tonight's "buy milk" retyped from a Task into a Note is still
+    /// something written on tonight's grocery run, and this is what keeps it there.
+    pub async fn repoint_instance_child(
+        &mut self,
+        old_type: &str,
+        old_id: i64,
+        new_type: &str,
+        new_id: i64,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE habit_instance_children SET child_type = ?, child_id = ?
+             WHERE child_type = ? AND child_id = ?",
+        )
+        .bind(new_type)
+        .bind(new_id)
+        .bind(old_type)
+        .bind(old_id)
+        .execute(&mut *self.connection)
+        .await?;
+        Ok(())
+    }
+
+    /// Deletes every added child of a Habit — the child rows themselves and their attachments.
+    ///
+    /// Private: it destroys real nodes, so it is reachable only through
+    /// [`Self::clear_habit_modifications`], which is the arm of the reconciliation prompt that
+    /// says out loud that it will.
+    async fn delete_instance_children(&mut self, flow_id: FlowId) -> Result<(), FlowError> {
+        for kind in model::CHILD_KINDS {
+            let table = match kind {
+                "task" => "tasks",
+                "goal" => "goals",
+                "commitment" => "commitments",
+                _ => "infos",
+            };
+            // The table name is one of four literals chosen here, never caller text.
+            sqlx::query(&format!(
+                "DELETE FROM {table} WHERE id IN (
+                     SELECT child_id FROM habit_instance_children
+                     WHERE flow_id = ? AND child_type = ?
+                 )"
+            ))
+            .bind(flow_id.0)
+            .bind(kind)
+            .execute(&mut *self.connection)
+            .await?;
+        }
+        sqlx::query("DELETE FROM habit_instance_children WHERE flow_id = ?")
             .bind(flow_id.0)
             .execute(&mut *self.connection)
             .await?;
@@ -2010,6 +2207,212 @@ pub async fn set_iteration_done(
     resolved_at_ms: i64,
 ) -> Result<(), FlowError> {
     db.flows().set_iteration_done(flow_id, iteration_scope_id, done, resolved_at_ms).await
+}
+
+/// The window one occurrence of a Habit runs over, resolved against its own iteration.
+///
+/// The iteration's window first, from the scope anchoring it; then, for an occurrence drawn by a
+/// **cycle pair**, that pair's Cycle Scope resolved against the iteration's start — the same
+/// arithmetic [`resolve_iteration_instances`] uses, so the window an added child is held to and
+/// the window its occurrence renders with are one answer and not two. A pair naming no Cycle Scope
+/// falls back to the iteration's, exactly as an occurrence with no pair does.
+///
+/// **This writes**: resolving a window mints the scope rows it lands on.
+async fn occurrence_window(
+    db: &mut Db<Transactional>,
+    flow: &Flow,
+    instance: &HabitInstanceRef,
+) -> Result<TimeScope, FlowError> {
+    let anchor = db.scopes().get(ScopeId(instance.iteration_scope_id)).await?;
+    let anchor_date = scope_bounds(&anchor)?.0.date();
+    let (iteration, window_start) =
+        resolve_flow_window(&mut db.scopes(), flow, anchor_date).await?;
+    if instance.cycle_id == NO_CYCLE {
+        return Ok(iteration);
+    }
+    let pair = db.flows().cycle(instance.cycle_id).await?;
+    let resolved = resolve_cycle(&mut db.scopes(), pair.as_ref(), Some(window_start)).await?;
+    Ok(resolved.map_or(iteration, |resolved| resolved.time_scope))
+}
+
+/// Creates one real node and attaches it to one virtual Habit occurrence, as a single gesture.
+///
+/// Both halves or neither: a row written without its attachment is a node loose on the board under
+/// the occurrence's host, which is precisely the "unrelated sibling Task" this feature exists to
+/// stop people from having to make.
+///
+/// The row's own `parent_type`/`parent_id` name the occurrence's **host** — the flow's Target Node
+/// — because a virtual instance has no id for them to point at. What makes the occurrence the
+/// child's parent is the attachment, which the ancestry climb reads: containment, inheritance and
+/// Archival all follow the occurrence from that moment on, not the host.
+///
+/// A **Commitment** child is the one kind created carrying the occurrence's window as its own,
+/// because a Commitment with no effective window has nothing it could ever be kept or broken over
+/// and the model refuses it. The other three are created unscoped and inherit the occurrence's.
+#[tracing::instrument(skip(db))]
+pub async fn create_instance_child(
+    db: &mut Db<Transactional>,
+    flow_id: FlowId,
+    instance: &HabitInstanceRef,
+    child_type: &str,
+    title: String,
+) -> Result<TargetRef, FlowError> {
+    if !model::CHILD_KINDS.contains(&child_type) {
+        return Err(FlowError::Invalid(format!(
+            "a habit occurrence holds tasks, goals, commitments and notes — not a {child_type}"
+        )));
+    }
+    let flow = db.flows().get(flow_id).await?;
+    let window = occurrence_window(db, &flow, instance).await?;
+    let (host_type, host_id) = match (&flow.target_type, flow.target_id) {
+        (Some(kind), Some(id)) => (target_parent_type(kind), id),
+        _ => (target_parent_type(&flow.parent_type), flow.parent_id),
+    };
+
+    let child_id = match child_type {
+        "task" => {
+            create_task(
+                db,
+                CreateTaskRequest {
+                    title,
+                    parent_type: host_type,
+                    parent_id: host_id,
+                    status: None,
+                    time_scope: None,
+                    on_scope_exit: None,
+                    plan: None,
+                    archival: None,
+                    agentic: None,
+                    asynchronous: None,
+                },
+            )
+            .await?
+            .id
+        }
+        "goal" => {
+            create_goal(
+                db,
+                CreateGoalRequest {
+                    title,
+                    parent_type: host_type,
+                    parent_id: host_id,
+                    status: None,
+                    time_scope: None,
+                    on_scope_exit: None,
+                },
+            )
+            .await?
+            .id
+        }
+        "commitment" => {
+            create_commitment(
+                db,
+                CreateCommitmentRequest {
+                    title,
+                    parent_type: host_type,
+                    parent_id: host_id,
+                    verdict: None,
+                    time_scope: Some(window.clone()),
+                    verdict_window: None,
+                },
+            )
+            .await?
+            .id
+        }
+        _ => {
+            db.infos()
+                .create(CreateInfoRequest {
+                    body: title,
+                    details: None,
+                    parent_type: host_type,
+                    parent_id: host_id,
+                    position: 0,
+                })
+                .await?
+                .id
+        }
+    };
+
+    db.flows()
+        .attach_instance_child(flow_id, instance, window.end_id, child_type, child_id)
+        .await?;
+    Ok(TargetRef { node_type: child_type.to_string(), node_id: child_id })
+}
+
+/// The added children of one occurrence that are not finished, titles and all.
+///
+/// Only that occurrence's own children, not their descendants. The guard exists to stop a closing
+/// occurrence from silently carrying off what was written *on* it; a step nested under one of
+/// those children is that child's business, and that child's own status already says so.
+pub async fn unfinished_instance_children(
+    db: &mut Db<Transactional>,
+    flow_id: FlowId,
+    instance: &HabitInstanceRef,
+) -> Result<Vec<UnfinishedChild>, FlowError> {
+    unfinished_children(db, flow_id, |child| {
+        child.item_type == instance.item_type
+            && child.item_id == instance.item_id
+            && child.iteration_scope_id == instance.iteration_scope_id
+            && child.cycle_id == instance.cycle_id
+    })
+    .await
+}
+
+/// The unfinished added children on **any** occurrence of one iteration — the guard for closing
+/// the iteration as a unit.
+pub async fn unfinished_iteration_children(
+    db: &mut Db<Transactional>,
+    flow_id: FlowId,
+    iteration_scope_id: i64,
+) -> Result<Vec<UnfinishedChild>, FlowError> {
+    unfinished_children(db, flow_id, |child| {
+        child.iteration_scope_id == iteration_scope_id
+    })
+    .await
+}
+
+/// The unfinished added children of a Habit that `matches` selects.
+///
+/// What "finished" means is each kind's own answer and not a fifth one invented here: a Task is
+/// finished when it is `done`, a Goal when it is `achieved` (or archived outright), a Commitment
+/// once a verdict has been recorded — kept **or** broken, since either is an answer given. An
+/// **Info** is never unfinished: a note is not work, and one left on an occurrence is no reason to
+/// stop and ask before closing it.
+async fn unfinished_children(
+    db: &mut Db<Transactional>,
+    flow_id: FlowId,
+    matches: impl Fn(&HabitInstanceChild) -> bool,
+) -> Result<Vec<UnfinishedChild>, FlowError> {
+    let mut unfinished = Vec::new();
+    for child in db.flows().list_instance_children(flow_id).await? {
+        if !matches(&child) {
+            continue;
+        }
+        let open: Option<String> = match child.child_type.as_str() {
+            "task" => {
+                let task = db.tasks().get(TaskId(child.child_id)).await?;
+                (task.status != "done").then_some(task.title)
+            }
+            "goal" => {
+                let goal = db.goals().get(GoalId(child.child_id)).await?;
+                (goal.status != "achieved" && goal.status != "archived").then_some(goal.title)
+            }
+            "commitment" => {
+                let commitment = db.commitments().get(CommitmentId(child.child_id)).await?;
+                (commitment.verdict == Verdict::Unresolved).then_some(commitment.title)
+            }
+            // A note has nothing to finish.
+            _ => None,
+        };
+        if let Some(title) = open {
+            unfinished.push(UnfinishedChild {
+                child_type: child.child_type,
+                child_id: child.child_id,
+                title,
+            });
+        }
+    }
+    Ok(unfinished)
 }
 
 /// Deep-clones a flow's **template** — the flow row, its items, cycle pairs, and intra-flow
@@ -2749,6 +3152,9 @@ async fn write_plan(
                         // Likewise it arrives inheriting: a flow item has no Agentic column of
                         // its own, so the instance reads whatever the branch it lands in says.
                         agentic: None,
+                        // And it arrives not asynchronous: a flow item has no column of its own,
+                        // and nothing infers that doing a materialized instance starts a wait.
+                        asynchronous: None,
                     },
                 )
                 .await?;

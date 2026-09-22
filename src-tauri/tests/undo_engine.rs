@@ -180,6 +180,7 @@ fn task_request(parent_type: &str, parent_id: i64, title: &str) -> CreateTaskReq
         plan: None,
         archival: None,
         agentic: None,
+        asynchronous: None,
     }
 }
 
@@ -847,13 +848,14 @@ async fn undoing_a_cleared_habit_completion_brings_it_back_on_the_occurrence_it_
         instance(),
         Some("done".into()),
         1_767_600_000_000,
+        None,
     )
     .await
     .expect("mark the evening occurrence done");
 
     // ...and then un-completed, which deletes the Modification row, inside a gesture.
     open_gesture(&app).await;
-    flow_commands::set_habit_item_status(app.state(), flow.id, instance(), None, 0)
+    flow_commands::set_habit_item_status(app.state(), flow.id, instance(), None, 0, None)
         .await
         .expect("clear the status");
     close_gesture(&app).await;
@@ -939,4 +941,51 @@ async fn an_undo_that_cannot_be_applied_changes_nothing_and_leaves_the_gesture_o
         Some(doomed.gesture),
         "and the gesture stays on the stack, so the press can be tried again"
     );
+}
+
+/// The `asynchronous` flag as the database holds it.
+async fn asynchronous(pool: &SqlitePool, task_id: i64) -> bool {
+    sqlx::query_scalar("SELECT asynchronous FROM tasks WHERE id = ?")
+        .bind(task_id)
+        .fetch_one(pool)
+        .await
+        .expect("read asynchronous")
+}
+
+#[tokio::test]
+async fn undoing_an_edit_that_unflagged_asynchronous_puts_the_flag_back() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let project_id = make_project(&pool).await;
+    let task = task_commands::create_task(
+        app.state(),
+        CreateTaskRequest {
+            asynchronous: Some(true),
+            ..task_request("project", project_id, "order the casting")
+        },
+    )
+    .await
+    .expect("create task");
+    assert!(asynchronous(&pool, task.id).await);
+
+    open_gesture(&app).await;
+    task_commands::update_task(
+        app.state(),
+        task.id,
+        UpdateTaskRequest { asynchronous: Some(false), ..Default::default() },
+    )
+    .await
+    .expect("unflag the task");
+    close_gesture(&app).await;
+    assert!(!asynchronous(&pool, task.id).await);
+
+    undo(&app).await.expect("there is something to undo");
+    assert!(
+        asynchronous(&pool, task.id).await,
+        "undo must put the flag back — a column the triggers do not name is restored silently \
+         as whatever it was at insert time"
+    );
+
+    redo(&app).await.expect("there is something to redo");
+    assert!(!asynchronous(&pool, task.id).await, "and redo must clear it again");
 }

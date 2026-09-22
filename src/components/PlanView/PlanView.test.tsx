@@ -78,7 +78,7 @@ function row(node: MindmapNode, ancestors: MindmapNode[] = []): TaskListRow {
     node,
     ancestors,
     goalRef: null, goalStatus: null, projectRef: null, projectStatus: null,
-    dependencyRefs: [], isBlocked: false, isAgentic: false,
+    dependencyRefs: [], isBlocked: false, isAgentic: false, isAsynchronous: false,
     hasBlockedAncestor: false, hasPrivateAncestor: false, scopeTokens: [],
   };
 }
@@ -95,6 +95,12 @@ function mockRows(rows: TaskListRow[]): void {
     error: null,
     reload,
     onCycleStatus: vi.fn(),
+    // The Plan View never cycles a status and never triages a virtual occurrence, so the
+    // occurrence-completion prompt cannot be raised from it; it is stubbed only to satisfy the
+    // shape `useListData` returns.
+    occurrencePrompt: null,
+    confirmOccurrence: vi.fn(),
+    cancelOccurrence: vi.fn(),
     renameNode: vi.fn(),
     createTask: vi.fn(),
     deleteTask: vi.fn(),

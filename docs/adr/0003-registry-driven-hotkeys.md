@@ -46,4 +46,3 @@ What that costs, and what pays for it:
 - The `Options` interfaces, `labelKey`'s typing off `hotkeys.json`, strict chord matching and the
   cheat-sheet's label merging are all untouched. The two hooks' test suites still pass unchanged,
   and the cheat-sheet renders the same rows in the same order.
-

@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
-  collapsedWithFoldedRuns,
+  collapsedWithFoldedGroups,
   foldHabitRuns,
   habitRunId,
-  isHabitRunNode,
+  isHabitGroupNode,
   levelsForRun,
   unitKey,
   type HabitCollapseLabels,
@@ -13,7 +13,7 @@ import type { HabitIterationMeta, MindmapNode } from "@/utils/tree-layout";
 
 /** Plain, un-localized stand-ins, so what a node reads is visible in the assertion. */
 const LABELS: HabitCollapseLabels = {
-  run: (tally) => `${tally.passed} passed · ${tally.done} done, ${tally.missed} missed`,
+  run: (habit, tally) => `${habit}: ${tally.passed} passed · ${tally.done} done, ${tally.missed} missed`,
   level: (unit, tally) => `${unit} · ${tally.done} done, ${tally.missed} missed`,
   unit: (level, anchorDate) => `${level}:${anchorDate}`,
   span: (start, end) => `${start}..${end}`,
@@ -24,12 +24,13 @@ const FLOW = 7;
 /** One day-long iteration anchored on `date`, whose window closed the next midnight. */
 function dayIteration(
   date: string,
-  options: { done?: boolean; passed?: boolean; flowId?: number; index?: number } = {},
+  options: { done?: boolean; passed?: boolean; flowId?: number; flowTitle?: string; index?: number } = {},
 ): MindmapNode {
   const next = new Date(`${date}T00:00:00Z`);
   next.setUTCDate(next.getUTCDate() + 1);
   const meta: HabitIterationMeta = {
     flowId: options.flowId ?? FLOW,
+    flowTitle: options.flowTitle ?? "Journal",
     index: options.index ?? 0,
     scopeKind: "day",
     anchorDate: date,
@@ -143,7 +144,7 @@ describe("foldHabitRuns", () => {
 
     const folded = foldHabitRuns(tree, 3, LABELS);
 
-    expect(titles(folded.children)).toEqual(["3 passed · 2 done, 1 missed"]);
+    expect(titles(folded.children)).toEqual(["Journal: 3 passed · 2 done, 1 missed"]);
   });
 
   it("leaves a run shorter than the threshold as its own iterations", () => {
@@ -167,7 +168,7 @@ describe("foldHabitRuns", () => {
 
     const folded = foldHabitRuns(tree, 3, LABELS);
 
-    expect(titles(folded.children)).toEqual(["3 passed · 0 done, 3 missed", "2026-09-17"]);
+    expect(titles(folded.children)).toEqual(["Journal: 3 passed · 0 done, 3 missed", "2026-09-17"]);
   });
 
   it("folds each Habit's iterations only with its own", () => {
@@ -182,7 +183,7 @@ describe("foldHabitRuns", () => {
     const folded = foldHabitRuns(tree, 3, LABELS);
 
     expect(titles(folded.children)).toEqual([
-      "3 passed · 0 done, 3 missed",
+      "Journal: 3 passed · 0 done, 3 missed",
       "2026-09-14",
       "2026-09-15",
     ]);
@@ -198,7 +199,7 @@ describe("foldHabitRuns", () => {
 
     const folded = foldHabitRuns(tree, 3, LABELS);
 
-    expect(titles(folded.children)).toEqual(["Buy shoes", "3 passed · 0 done, 3 missed"]);
+    expect(titles(folded.children)).toEqual(["Buy shoes", "Journal: 3 passed · 0 done, 3 missed"]);
   });
 
   it("folds runs wherever they sit in the tree, not only under the root", () => {
@@ -213,7 +214,7 @@ describe("foldHabitRuns", () => {
 
     const folded = foldHabitRuns(tree, 3, LABELS);
 
-    expect(titles(folded.children[0]?.children ?? [])).toEqual(["3 passed · 0 done, 3 missed"]);
+    expect(titles(folded.children[0]?.children ?? [])).toEqual(["Journal: 3 passed · 0 done, 3 missed"]);
   });
 
   it("gives the run node the span of its iterations' days for the tooltip", () => {
@@ -285,7 +286,19 @@ describe("foldHabitRuns", () => {
     const run = foldHabitRuns(tree, 3, LABELS).children[0];
 
     expect(run?.id).toBe(habitRunId(FLOW));
-    expect(isHabitRunNode(run!)).toBe(true);
+    expect(isHabitGroupNode(run!)).toBe(true);
+  });
+
+  it("names the Habit the run stands for, not only the tally", () => {
+    const tree = host([
+      dayIteration("2026-09-14", { index: 0, flowTitle: "Stretch" }),
+      dayIteration("2026-09-15", { index: 1, flowTitle: "Stretch" }),
+      dayIteration("2026-09-16", { index: 2, flowTitle: "Stretch" }),
+    ]);
+
+    const run = foldHabitRuns(tree, 3, LABELS).children[0];
+
+    expect(run?.title).toBe("Stretch: 3 passed · 0 done, 3 missed");
   });
 
   it("marks the run node virtual, so it can be neither edited nor dragged", () => {
@@ -299,7 +312,7 @@ describe("foldHabitRuns", () => {
   });
 });
 
-describe("collapsedWithFoldedRuns", () => {
+describe("collapsedWithFoldedGroups", () => {
   const tree = host([
     dayIteration("2026-09-14", { index: 0 }),
     dayIteration("2026-09-15", { index: 1 }),
@@ -308,17 +321,58 @@ describe("collapsedWithFoldedRuns", () => {
   const folded = foldHabitRuns(tree, 3, LABELS);
 
   it("collapses a run the user has not expanded", () => {
-    const collapsed = collapsedWithFoldedRuns(folded, new Set(), new Set());
+    const collapsed = collapsedWithFoldedGroups(folded, new Set(), new Set());
     expect(collapsed.has(habitRunId(FLOW))).toBe(true);
   });
 
   it("leaves an expanded run open", () => {
-    const collapsed = collapsedWithFoldedRuns(folded, new Set(), new Set([habitRunId(FLOW)]));
+    const collapsed = collapsedWithFoldedGroups(folded, new Set(), new Set([habitRunId(FLOW)]));
     expect(collapsed.has(habitRunId(FLOW))).toBe(false);
   });
 
   it("keeps the nodes the user collapsed by hand", () => {
-    const collapsed = collapsedWithFoldedRuns(folded, new Set(["goal-5"]), new Set());
+    const collapsed = collapsedWithFoldedGroups(folded, new Set(["goal-5"]), new Set());
     expect(collapsed.has("goal-5")).toBe(true);
+  });
+
+  // Opening a run is a request to see the shape of the history, not every day of it: the levels
+  // it spans come up shut, exactly as the run itself does, and each opens on its own from there.
+  describe("a run that spans two months", () => {
+    const spanning = host(
+      ["2026-09-10", "2026-09-20", "2026-10-10", "2026-10-20"].map((d, i) => dayIteration(d, { index: i })),
+    );
+    const run = foldHabitRuns(spanning, 3, LABELS).children[0];
+    const months = run?.children ?? [];
+    const september = months[0]?.id ?? "";
+    const october = months[1]?.id ?? "";
+
+    it("draws the scope levels of an opened run shut", () => {
+      const collapsed = collapsedWithFoldedGroups(
+        foldHabitRuns(spanning, 3, LABELS), new Set(), new Set([habitRunId(FLOW)]),
+      );
+
+      expect(collapsed.has(habitRunId(FLOW))).toBe(false);
+      expect(collapsed.has(september)).toBe(true);
+      expect(collapsed.has(october)).toBe(true);
+    });
+
+    it("opens one level without opening its neighbour", () => {
+      const collapsed = collapsedWithFoldedGroups(
+        foldHabitRuns(spanning, 3, LABELS), new Set(), new Set([habitRunId(FLOW), september]),
+      );
+
+      expect(collapsed.has(september)).toBe(false);
+      expect(collapsed.has(october)).toBe(true);
+    });
+
+    it("keeps the week levels under an opened month shut in their turn", () => {
+      const weeks = months[0]?.children ?? [];
+      const collapsed = collapsedWithFoldedGroups(
+        foldHabitRuns(spanning, 3, LABELS), new Set(), new Set([habitRunId(FLOW), september]),
+      );
+
+      expect(weeks).toHaveLength(2);
+      for (const week of weeks) expect(collapsed.has(week.id)).toBe(true);
+    });
   });
 });

@@ -37,7 +37,7 @@ export interface TabState {
   view: ViewState;
   filter: FilterState;
   listFilter: ListFilterState;
-  expandedRunIds: string[];
+  expandedHabitGroupIds: string[];
 }
 
 export const DEFAULT_TAB_STATE: TabState = {
@@ -45,7 +45,7 @@ export const DEFAULT_TAB_STATE: TabState = {
   view: DEFAULT_VIEW_STATE,
   filter: DEFAULT_FILTER,
   listFilter: DEFAULT_LIST_FILTER,
-  expandedRunIds: [],
+  expandedHabitGroupIds: [],
 };
 
 /** Fresh stores for a tab, seeded from restored (or default) state. */
@@ -54,7 +54,7 @@ export function createTabStores(state: TabState = DEFAULT_TAB_STATE): TabStores 
     view: createViewStore(state.view),
     filter: createFilterStore(state.filter),
     listFilter: createListFilterStore(state.listFilter),
-    mindmap: createMindmapStore(state.subtreeRootId, new Set(state.expandedRunIds)),
+    mindmap: createMindmapStore(state.subtreeRootId, new Set(state.expandedHabitGroupIds)),
     panZoom: createPanZoomStore(),
   };
 }
@@ -67,6 +67,6 @@ export function readTabState(stores: TabStores): TabState {
     view: { view, mindmapOrientation, planScopeKind },
     filter: stores.filter.getState().filter,
     listFilter: stores.listFilter.getState().filter,
-    expandedRunIds: [...stores.mindmap.getState().expandedRunIds],
+    expandedHabitGroupIds: [...stores.mindmap.getState().expandedHabitGroupIds],
   };
 }

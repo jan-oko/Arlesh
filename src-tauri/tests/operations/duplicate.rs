@@ -300,6 +300,7 @@ async fn a_duplicated_task_carries_every_field_the_original_held() {
             plan: Some(at(week)),
             archival: None,
             agentic: Some(TaskAgentic::Yes),
+            asynchronous: Some(true),
         },
     )
     .await
@@ -339,6 +340,10 @@ async fn a_duplicated_task_carries_every_field_the_original_held() {
         copy.agentic,
         Some(true),
         "the Agentic flag carries, and carries independently of the delegate"
+    );
+    assert!(
+        copy.asynchronous,
+        "the Asynchronous flag carries: the copy is the same action, so it starts the same wait"
     );
     assert!(copy.is_private);
     assert_eq!(copy.tag_ids, vec![tag], "the copy keeps the original's tags, not copies of them");
@@ -384,6 +389,7 @@ async fn a_duplicated_task_is_set_aside_if_the_original_was() {
             plan: None,
             archival: Some(TaskArchival::Backlog),
             agentic: None,
+            asynchronous: None,
         },
     )
     .await

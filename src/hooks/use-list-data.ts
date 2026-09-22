@@ -5,12 +5,13 @@ import { listAllTaskDependencies } from "@/api/tasks";
 import type { TaskDependencyEdge } from "@/api/tasks";
 import { updateTask } from "@/api/tasks";
 import type { TaskAgentic } from "@/api/tasks";
-import { setHabitItemStatus } from "@/api/flows";
 import { TASK_STATUS } from "@/utils/status-mapping";
 import { findNode, collectTasksAndGoals } from "@/utils/mindmap-tree";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import type { CommitmentListRow, TaskListRow } from "@/utils/list-filter";
 import { flattenCommitmentRows, flattenTaskRows } from "@/utils/list-data";
+import { useOccurrenceCompletion } from "@/hooks/use-occurrence-completion";
+import type { OccurrencePrompt } from "@/hooks/use-occurrence-completion";
 
 function nextTaskStatus(current: string): string {
   if (current === TASK_STATUS.IN_PROGRESS) return TASK_STATUS.DONE;
@@ -31,6 +32,12 @@ interface ListData {
   reload: () => Promise<void>;
   /** Cycles a row's status (todo → in_progress → done), or advances a virtual Habit instance. */
   onCycleStatus: (nodeId: string) => void;
+  /** The occurrence completion the backend is holding for confirmation, or `null`. */
+  occurrencePrompt: OccurrencePrompt | null;
+  /** Answers that prompt: marks the occurrence done and leaves its children in place. */
+  confirmOccurrence: () => void;
+  /** Declines it. Nothing was written, so nothing is undone. */
+  cancelOccurrence: () => void;
   /** Renames a task (inline rename, keyboard "R"). */
   renameNode: (id: string, kind: NodeKind, title: string) => Promise<void>;
   /** Creates a blank To Do Task under a parent — List View's creation gestures make Tasks and
@@ -49,6 +56,8 @@ interface ListData {
 export function useListData(): ListData {
   const { tree, isLoading, error, reload, renameNode, createNode, removeNode } = useMindmapData();
   const subtreeRootId = useMindmapStore((s) => s.subtreeRootId);
+  const { prompt: occurrencePrompt, setOccurrenceStatus, confirm: confirmOccurrence,
+    cancel: cancelOccurrence } = useOccurrenceCompletion(reload);
   const [taskDeps, setTaskDeps] = useState<TaskDependencyEdge[]>([]);
 
   useEffect(() => {
@@ -75,16 +84,17 @@ export function useListData(): ListData {
       const node = findNode(tree, nodeId);
       if (node === undefined || node.kind !== "task") return;
       if (node.habitItem !== undefined) {
-        const { flowId, itemType, itemId, scopeId, cycleId } = node.habitItem;
         const cycled = nextTaskStatus(node.status ?? TASK_STATUS.TODO);
         const next = cycled === TASK_STATUS.TODO ? null : cycled;
-        void setHabitItemStatus(flowId, itemType, itemId, scopeId, cycleId, next, Date.now()).then(() => reload());
+        // Through the completion guard, exactly as the Mindmap's status click is: the same
+        // occurrence closed from either view asks the same question.
+        setOccurrenceStatus(node, next);
         return;
       }
       const dbId = parseInt(nodeId.split("-").pop() ?? "", 10);
       void updateTask(dbId, { status: nextTaskStatus(node.status ?? TASK_STATUS.TODO) }).then(() => reload());
     },
-    [tree, reload],
+    [tree, reload, setOccurrenceStatus],
   );
 
   const createTask = useCallback(
@@ -101,5 +111,6 @@ export function useListData(): ListData {
   return {
     tree, rows, commitmentRows, allTasksAndGoals, isLoading, error, reload, onCycleStatus,
     renameNode, createTask, deleteTask, removeNode,
+    occurrencePrompt, confirmOccurrence, cancelOccurrence,
   };
 }

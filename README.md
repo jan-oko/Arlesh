@@ -6,7 +6,7 @@ A knowledge-base and task management desktop app that integrates with [Obsidian]
 
 Arlesh manages resources (tasks, goals, domains, knowledge-base entities) and their linkages. Task management is the primary focus; knowledge-base integration allows filtering and contextualizing tasks against notes, people, events, and threads.
 
-Three views (the view tabs in the top bar switch between them; `Alt+M` and `Alt+L` reach the first two):
+Three views (`Ctrl+M`, `Ctrl+L` and `Ctrl+P`, or the view tabs in the top bar):
 - **Mindmap** — a left-right balanced tree editor for navigating and building the task hierarchy
 - **List** — a filterable task list sharing the Mindmap's filters, with its own preset modes (All / Plan / Start / Do / Unblock) and additional pill filters (parent, dependency, statuses, scope, blocked)
 - **Plan** — a two-pane triage over one scope at a time: unscheduled work that is relevant now on the left, what the scope already holds on the right, and moving a card across sets its Plan

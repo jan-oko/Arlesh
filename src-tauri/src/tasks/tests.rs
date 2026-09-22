@@ -24,6 +24,7 @@ fn stored_task() -> Task {
         status: TaskStatus::Todo.as_str().to_string(),
         delegate_to: Some(3),
         agentic: None,
+        asynchronous: false,
         time_scope: Some(TimeScope { start_id: 10, end_id: 11, duration: None }),
         on_scope_exit: Some(OnScopeExit::Keep),
         plan: Some(TimeScope { start_id: 12, end_id: 12, duration: None }),
@@ -151,6 +152,55 @@ fn agentic_and_the_delegate_are_merged_independently() {
     assert_eq!(write.delegate_to, None);
 }
 
+/// The stored row, flagged as work that starts a wait.
+fn asynchronous_task() -> Task {
+    Task { asynchronous: true, ..stored_task() }
+}
+
+#[test]
+fn an_update_that_says_nothing_about_asynchronous_leaves_the_flag_alone() {
+    let write = TaskWrite::merge(asynchronous_task(), UpdateTaskRequest {
+        title: Some("Renamed".to_string()),
+        ..Default::default()
+    });
+    assert!(write.asynchronous);
+}
+
+#[test]
+fn each_asynchronous_answer_writes_itself() {
+    // One `Option` deep, unlike Agentic: the column is a plain boolean, so `Some(false)` is a
+    // real answer that clears the flag and only an absent field leaves it alone. If those two
+    // ever agreed, unflagging a Task would be a silent no-op.
+    for (stored, requested, expected) in [
+        (true, Some(false), false),
+        (true, Some(true), true),
+        (false, Some(true), true),
+        (true, None, true),
+        (false, None, false),
+    ] {
+        let write = TaskWrite::merge(
+            Task { asynchronous: stored, ..stored_task() },
+            UpdateTaskRequest { asynchronous: requested, ..Default::default() },
+        );
+        assert_eq!(
+            write.asynchronous, expected,
+            "stored {stored}, requested {requested:?}"
+        );
+    }
+}
+
+#[test]
+fn asynchronous_and_agentic_are_merged_independently() {
+    // Two unrelated questions about one Task — whether the work suits an agent, and whether
+    // doing it starts a wait. Setting one must never disturb the other.
+    let write = TaskWrite::merge(
+        Task { asynchronous: true, ..agentic_task() },
+        UpdateTaskRequest { agentic: Some(TaskAgentic::No), ..Default::default() },
+    );
+    assert_eq!(write.agentic, Some(false));
+    assert!(write.asynchronous);
+}
+
 #[test]
 fn an_empty_update_request_writes_the_stored_row_back_unchanged() {
     let write = TaskWrite::merge(stored_task(), UpdateTaskRequest::default());
@@ -160,6 +210,7 @@ fn an_empty_update_request_writes_the_stored_row_back_unchanged() {
     assert_eq!(write.title, "Stored");
     assert_eq!(write.delegate_to, Some(3));
     assert_eq!(write.agentic, None);
+    assert!(!write.asynchronous);
     assert_eq!(write.position, 100);
     assert!(!write.is_private);
 }

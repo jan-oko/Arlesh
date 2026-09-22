@@ -105,13 +105,9 @@ kind is **Week**.
 - `Ctrl+Z` / `Ctrl+Shift+Z` — undo and redo, which cover a move like any other board change
 - `F` with nothing selected — the board alone
 
-**Reaching the view has no chord yet, and that is an open decision.** The switcher was specified as
-one chord per view — `Alt+M` / `Alt+L` / `Alt+P` / `Alt+S` — with no cycle to learn, and `Alt+M` and
-`Alt+L` are built. `Alt+P` and `Alt+S` are **already the Plan and Start status presets**, in both
-existing view tables and now in this one, so two of the four chords are spoken for. Moving a preset
-off the letter it has always been on is a decision about an existing reflex and is not one this
-change gets to make on its own; until it is made, the Plan View is reached from the tab in the top
-bar. The Steps View will meet the same wall on `Alt+S`.
+**`Ctrl+P` shows this view**, from wherever you are — see the switcher in [Tabs](tabs.md). It is
+gated on nothing having the keyboard, like the other two view chords: switching views out from under
+an open editor would leave the editor sitting over a board it no longer belongs to.
 
 ## What this view does not do
 

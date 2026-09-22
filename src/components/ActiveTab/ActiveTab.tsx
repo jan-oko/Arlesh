@@ -6,6 +6,7 @@ import { useViewStore } from "@/stores/use-view-store";
 import { useHotkeysStore } from "@/stores/use-hotkeys-store";
 import { useFullscreenStore } from "@/stores/use-fullscreen-store";
 import { useHotkeys } from "@/hooks/use-hotkeys";
+import { useIsInputCaptured } from "@/hooks/use-input-capture";
 import { useQuit } from "@/hooks/use-close-to-tray";
 import { useTabTitle } from "@/hooks/use-tab-title";
 import { GLOBAL_BINDINGS } from "@/utils/hotkeys/global-bindings";
@@ -25,11 +26,13 @@ export default function ActiveTab() {
   const isFullscreen = useFullscreenStore((s) => s.isFullscreen);
   const toggleFullscreen = useFullscreenStore((s) => s.toggle);
   const quit = useQuit();
+  // The view switcher alone consults this; quitting and the cheat-sheet stay live behind a modal.
+  const isInputCaptured = useIsInputCaptured();
 
   useTabTitle();
   useHotkeys(
     GLOBAL_BINDINGS,
-    { onSetView: setView, onToggleHotkeys: toggleHotkeys, onToggleFullscreen: toggleFullscreen, onQuit: quit },
+    { isInputCaptured, onSetView: setView, onToggleHotkeys: toggleHotkeys, onToggleFullscreen: toggleFullscreen, onQuit: quit },
     true,
   );
 

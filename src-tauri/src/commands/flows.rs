@@ -15,9 +15,9 @@ use crate::{
         model::{
             CreateFlowItemRequest, CreateFlowRequest, Flow, FlowCycleInput, FlowDependency,
             FlowGoal, FlowId, FlowItemCycle, FlowItemType, FlowOrigin, FlowRecurrence, FlowTask,
-            HabitInstanceRef, HabitIteration, HabitItemStatus, MaterializedFlow,
-            SetRecurrenceRequest, StartFlowRequest, TargetRef, UpdateFlowItemRequest,
-            UpdateFlowRequest,
+            HabitInstanceChild, HabitInstanceRef, HabitIteration, HabitItemStatus,
+            MaterializedFlow, SetRecurrenceRequest, StartFlowRequest, TargetRef, UnfinishedChild,
+            UpdateFlowItemRequest, UpdateFlowRequest,
         },
     },
 };
@@ -377,6 +377,15 @@ pub async fn list_habit_item_statuses(
 /// Sets a single instance's status (`null` clears it), recording `resolved_at_ms`. `instance`
 /// names it down to its cycle pair — an item with several pairs draws one node per pair in the
 /// same iteration — with `cycle_id` `0` for an item that declares none, and for the flow root.
+///
+/// Marking an occurrence **done** while it still holds unfinished added children is refused with
+/// [`NeedsConfirmation`](crate::error::WireErrorKind::NeedsConfirmation) until `confirmed` says
+/// the caller has seen them; the refusal names every one. Confirming marks the occurrence done and
+/// leaves the children exactly as they are, to archive with it when its window passes. Nothing is
+/// stored either way — the guard exists at the moment of completion and nowhere else, because a
+/// per-child setting would put a permanent knob on every note to express something that matters
+/// once. Added children never gate the **iteration's** resolution: they are not instances, so no
+/// future occurrence of the Habit is ever withheld by one.
 #[tauri::command]
 pub async fn set_habit_item_status(
     factory: State<'_, SessionFactory>,
@@ -384,10 +393,77 @@ pub async fn set_habit_item_status(
     instance: HabitInstanceRef,
     status: Option<String>,
     resolved_at_ms: i64,
+    confirmed: Option<bool>,
 ) -> Result<(), WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    if completing(status.as_deref()) && confirmed != Some(true) {
+        let open = flows::unfinished_instance_children(&mut db, FlowId(flow_id), &instance)
+            .await
+            .map_err(WireError::from_error)?;
+        if !open.is_empty() {
+            return Err(unfinished_refusal(&open));
+        }
+    }
     db.flows()
         .set_item_status(FlowId(flow_id), &instance, status.as_deref(), resolved_at_ms)
+        .await
+        .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)
+}
+
+/// Whether a status write is the one the completion guard watches for.
+///
+/// `done` and nothing else. A Commitment Habit's iteration is **kept** or **broken** rather than
+/// done, and neither is a completion: a verdict says whether a rule was held to, which is not a
+/// claim that the work written under it was finished.
+fn completing(status: Option<&str>) -> bool {
+    status == Some("done")
+}
+
+/// The refusal a completion with unfinished children comes back as.
+///
+/// The children are named, not counted. A prompt the user can only accept blind is not consent,
+/// and the whole point of the guard is being able to see what is about to be closed over.
+fn unfinished_refusal(open: &[UnfinishedChild]) -> WireError {
+    WireError::needs_confirmation(
+        format!("this occurrence still holds {} unfinished item(s)", open.len()),
+        serde_json::json!({
+            "reason": "unfinished_children",
+            "children": open,
+        }),
+    )
+}
+
+/// Creates one node and attaches it to a single virtual Habit occurrence, atomically.
+///
+/// `child_type` is `task`, `goal`, `commitment` or `info` — anything a Task can parent. The node
+/// is real and fully editable, and it belongs to that one occurrence: next week's does not carry
+/// it. It may hold children of its own in the ordinary way; only the first level is attached.
+#[tauri::command]
+pub async fn create_habit_instance_child(
+    factory: State<'_, SessionFactory>,
+    flow_id: i64,
+    instance: HabitInstanceRef,
+    child_type: String,
+    title: String,
+) -> Result<TargetRef, WireError> {
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    let child = flows::create_instance_child(&mut db, FlowId(flow_id), &instance, &child_type, title)
+        .await
+        .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)?;
+    Ok(child)
+}
+
+/// Every added child of every occurrence of one Habit.
+#[tauri::command]
+pub async fn list_habit_instance_children(
+    factory: State<'_, SessionFactory>,
+    flow_id: i64,
+) -> Result<Vec<HabitInstanceChild>, WireError> {
+    let mut db = factory.connect().await.map_err(WireError::from_error)?;
+    db.flows()
+        .list_instance_children(FlowId(flow_id))
         .await
         .map_err(WireError::from_error)
 }
@@ -406,8 +482,20 @@ pub async fn set_habit_iteration_done(
     iteration_scope_id: i64,
     done: bool,
     resolved_at_ms: i64,
+    confirmed: Option<bool>,
 ) -> Result<(), WireError> {
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    if done && confirmed != Some(true) {
+        // One prompt for the whole iteration, naming every unfinished child on any of its
+        // occurrences: closing an iteration in one gesture is one decision, and asking once per
+        // occurrence would turn a single click into a queue of modals.
+        let open = flows::unfinished_iteration_children(&mut db, FlowId(flow_id), iteration_scope_id)
+            .await
+            .map_err(WireError::from_error)?;
+        if !open.is_empty() {
+            return Err(unfinished_refusal(&open));
+        }
+    }
     flows::set_iteration_done(&mut db, FlowId(flow_id), iteration_scope_id, done, resolved_at_ms)
         .await
         .map_err(WireError::from_error)?;

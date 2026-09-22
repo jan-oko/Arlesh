@@ -81,7 +81,7 @@ describe("seeding a tab", () => {
       view: { view: "list", mindmapOrientation: "vertical", planScopeKind: "day" },
       filter: { ...DEFAULT_FILTER, statusMode: "start" },
       listFilter: { ...DEFAULT_LIST_FILTER, preset: "unblock" },
-      expandedRunIds: ["habitrun-4-virtual"],
+      expandedHabitGroupIds: ["habitrun-4-virtual"],
     });
 
     expect(stores.mindmap.getState().subtreeRootId).toBe("project-7");
@@ -89,7 +89,7 @@ describe("seeding a tab", () => {
     expect(stores.view.getState().planScopeKind).toBe("day");
     expect(stores.filter.getState().filter.statusMode).toBe("start");
     expect(stores.listFilter.getState().filter.preset).toBe("unblock");
-    expect(stores.mindmap.getState().expandedRunIds).toEqual(new Set(["habitrun-4-virtual"]));
+    expect(stores.mindmap.getState().expandedHabitGroupIds).toEqual(new Set(["habitrun-4-virtual"]));
   });
 });
 
@@ -104,6 +104,18 @@ describe("readTabState", () => {
     stores.mindmap.getState().selectNode("task-1");
     stores.mindmap.getState().toggleCollapsed("goal-2");
     stores.panZoom.getState().setTransform({ x: 5, y: 5, scale: 3 });
+
+    expect(readTabState(stores)).toEqual(DEFAULT_TAB_STATE);
+  });
+
+  it("keeps no habit group a recursive collapse shut, so the two presses cancel out", () => {
+    // The fold's openings are the one part of this that is written down, so a recursive collapse
+    // that forgot to take them back out again would persist an expansion the board is not showing.
+    const stores = createTabStores();
+    const mindmap = stores.mindmap.getState();
+    mindmap.expandSubtree(new Set(["goal-5"]), new Set(["habitrun-7-virtual", "habitrun-7-week-2026-09-06-virtual"]));
+
+    mindmap.collapseSubtree(new Set(["goal-5"]), new Set(["habitrun-7-virtual", "habitrun-7-week-2026-09-06-virtual"]));
 
     expect(readTabState(stores)).toEqual(DEFAULT_TAB_STATE);
   });
