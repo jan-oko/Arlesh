@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useClipboardStore } from "./use-clipboard-store";
 import { reloadTabs, useTabsStore } from "./use-tabs-store";
+import { windowTabsKey } from "./tab-persistence";
+import { BOOTSTRAP_WINDOW_LABEL } from "@/api/window-label";
 
 beforeEach(() => {
   localStorage.clear();
@@ -33,6 +35,10 @@ describe("the clipboard across tabs", () => {
 
   it("is not something a tab holds, so it is not written down with the strip either", () => {
     useClipboardStore.getState().setClipboard({ operation: "cut", nodeIds: ["task-1"] });
-    expect(localStorage.getItem("arlesh-tabs")).not.toContain("task-1");
+
+    // The strip a window stores is its own, under its own label — see `tab-persistence`.
+    const stored = localStorage.getItem(windowTabsKey(BOOTSTRAP_WINDOW_LABEL));
+    expect(stored).not.toBeNull();
+    expect(stored).not.toContain("task-1");
   });
 });
