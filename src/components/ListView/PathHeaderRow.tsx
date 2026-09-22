@@ -73,7 +73,9 @@ export default function PathHeaderRow({ segments, onEnterSubtree, onFilterByAnte
   }
 
   return (
-    <div className={styles.header}>
+    // The marker is what lets a test find a header without reaching for a CSS-module class name.
+    // It matters more since the Plan View started drawing these too: one component, two views.
+    <div className={styles.header} data-path-header="">
       {segments.map((segment, index) => (
         <Fragment key={segment.id}>
           {index > 0 && <span className={styles.separator} aria-hidden="true" />}

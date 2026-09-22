@@ -52,12 +52,16 @@ export default function ListView() {
   const isInputCaptured = useIsInputCaptured();
   const addTagFilter = useFilterStore((s) => s.addTagFilter);
   const setStatusMode = useFilterStore((s) => s.setStatusMode);
-  const toggleFilterPopover = useFilterStore((s) => s.toggleFilterPopover);
 
   // Subtree entry is shared state, not a filter: the Mindmap and the List View re-root together.
   const enterSubtree = useMindmapStore((s) => s.enterSubtree);
+  // Ctrl+O is global; the flag it raises is read here, where the loaded tree is.
+  const searchOpen = useMindmapStore((s) => s.searchOpen);
+  const closeSearch = useMindmapStore((s) => s.closeSearch);
   const asynchronousFirst = useDisplayStore((s) => s.asynchronousFirst);
-  const { subtreeRootId, onExitSubtree, onExitToRoot } = useSubtreeNav(tree);
+  // Publishes the tab's subtree descriptor for the top bar; the exits themselves are global
+  // bindings now and are driven from `ActiveTab`.
+  const { subtreeRootId } = useSubtreeNav(tree);
 
   const toggleFullscreen = useFullscreenStore((s) => s.toggle);
   const listFilter = useListFilterStore((s) => s.filter);
@@ -72,7 +76,6 @@ export default function ListView() {
   // One selection across both sections: a row is a Task or a Commitment, and which it is decides
   // what Enter does to it.
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
 
   const pendingToast = useMindmapStore((s) => s.pendingToast);
   const showToast = useMindmapStore((s) => s.showToast);
@@ -260,7 +263,6 @@ export default function ListView() {
     onCreateChild: handleCreateChild,
     onDelete: requestDelete,
     onDeselect: () => setSelectedRowId(null),
-    onToggleFilter: toggleFilterPopover,
     onSetStatusMode: handleSetStatusPreset,
     onSetUnblockPreset: () => setListPreset("unblock"),
     onToggleBacklog: toggleBacklog,
@@ -268,10 +270,6 @@ export default function ListView() {
     onToggleAsynchronous: toggleAsynchronous,
     onCycleVerdict: cycleVerdict,
     onMarkBroken: markBroken,
-    onOpenSearch: () => setIsSearchOpen(true),
-    subtreeRootId,
-    onExitSubtree,
-    onExitToRoot,
     onUndo,
     onRedo,
   });
@@ -359,11 +357,11 @@ export default function ListView() {
         </div>
       )}
 
-      {isSearchOpen && (
+      {searchOpen && (
         <NodeSearchModal
           nodes={searchableNodes}
-          onSelect={(id) => { enterSubtree(id); setIsSearchOpen(false); }}
-          onClose={() => setIsSearchOpen(false)}
+          onSelect={(id) => { enterSubtree(id); closeSearch(); }}
+          onClose={closeSearch}
         />
       )}
 

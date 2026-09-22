@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useListFilterStore } from "@/stores/use-list-filter-store";
-import { useViewStore } from "@/stores/use-view-store";
+import { useViewStore, ALL_VIEWS } from "@/stores/use-view-store";
+import type { View } from "@/stores/use-view-store";
 import { useDisplayStore } from "@/stores/use-display-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { useCloseToTrayStore } from "@/stores/use-close-to-tray-store";
@@ -43,6 +44,10 @@ export default function TopBar() {
   const mindmapOrientation = useViewStore((s) => s.mindmapOrientation);
   const toggleMindmapOrientation = useViewStore((s) => s.toggleMindmapOrientation);
   const asynchronousFirst = useDisplayStore((s) => s.asynchronousFirst);
+  const planPathGrouping = useDisplayStore((s) => s.planPathGrouping);
+  const togglePlanPathGrouping = useDisplayStore((s) => s.togglePlanPathGrouping);
+  const planSubscopeSplit = useDisplayStore((s) => s.planSubscopeSplit);
+  const togglePlanSubscopeSplit = useDisplayStore((s) => s.togglePlanSubscopeSplit);
   const toggleAsynchronousFirst = useDisplayStore((s) => s.toggleAsynchronousFirst);
   const listPreset = useListFilterStore((s) => s.filter.preset);
   const setListPreset = useListFilterStore((s) => s.setPreset);
@@ -55,6 +60,12 @@ export default function TopBar() {
 
   // Unblock is List-View-only and doesn't touch the shared status mode — so its "active" state must
   // itself be gated on the current view, or a stale Unblock selection would leak into the Mindmap.
+  const viewLabels: Record<View, string> = {
+    mindmap: t("common:viewMindmap"),
+    list: t("common:viewList"),
+    plan: t("common:viewPlan"),
+  };
+
   const activePreset: ListPreset = view === "list" && listPreset === "unblock" ? "unblock" : statusMode;
   const presetOptions = view === "list" ? LIST_PRESET_VALUES : MINDMAP_PRESETS;
 
@@ -110,6 +121,27 @@ export default function TopBar() {
                       />
                     </div>
                   )}
+                  {/* Two switches, not one: where the work lives and when it is planned are
+                      different questions, and a planning pass wants them in different
+                      combinations. Gated to the Plan View like every switch above them. */}
+                  {view === "plan" && (
+                    <>
+                      <div className={styles.settingRow}>
+                        <Switch
+                          checked={planPathGrouping}
+                          onChange={togglePlanPathGrouping}
+                          label={t("common:planPathGrouping")}
+                        />
+                      </div>
+                      <div className={styles.settingRow}>
+                        <Switch
+                          checked={planSubscopeSplit}
+                          onChange={togglePlanSubscopeSplit}
+                          label={t("common:planSubscopeSplit")}
+                        />
+                      </div>
+                    </>
+                  )}
                   <div className={styles.settingRow}>
                     <button
                       className={styles.popoverBtn}
@@ -123,21 +155,19 @@ export default function TopBar() {
               </>
             )}
           </div>
+          {/* One tab per view, drawn from the one list of them, so a fourth view is a union member
+              rather than another hand-written button that could go out of step with it. */}
           <div className={styles.viewTabs}>
-            <button
-              type="button"
-              className={`${styles.viewTab}${view === "mindmap" ? ` ${styles.viewTabActive}` : ""}`}
-              onClick={() => setView("mindmap")}
-            >
-              {t("common:viewMindmap")}
-            </button>
-            <button
-              type="button"
-              className={`${styles.viewTab}${view === "list" ? ` ${styles.viewTabActive}` : ""}`}
-              onClick={() => setView("list")}
-            >
-              {t("common:viewList")}
-            </button>
+            {ALL_VIEWS.map((candidate) => (
+              <button
+                key={candidate}
+                type="button"
+                className={`${styles.viewTab}${view === candidate ? ` ${styles.viewTabActive}` : ""}`}
+                onClick={() => setView(candidate)}
+              >
+                {viewLabels[candidate]}
+              </button>
+            ))}
           </div>
           <Select
             value={activePreset}

@@ -3,7 +3,8 @@
 *One area of the [Arlesh design specification](../../SPEC.md).*
 
 Arlesh holds several places on the board open at once. A **tab** owns everything about a view of
-the board — its **subtree root**, whether it shows the Mindmap or the List, its branch orientation,
+the board — its **subtree root**, which of the views it shows, its branch orientation, the scope
+kind its [Plan](plan-view.md) pass fills,
 its whole Mindmap filter set, its whole List View filter set, its selection, its collapsed nodes,
 the Habit histories it has opened and its pan/zoom — and switching tabs swaps all of it at once. "What is left in Bugfixes" and "what am I
 doing today" are two different subtrees under two different presets, and a tab each is how both are
@@ -75,9 +76,66 @@ reopening Arlesh with no chrome and no visible way back is a bad first second, a
 one keystroke. Every tab shortcut stays live while the strip is hidden — the bindings never depended
 on it being drawn.
 
+**Switching views.** Each view has a chord of its own — `Ctrl+M` for the Mindmap, `Ctrl+L` for the
+List and `Ctrl+P` for the [Plan View](plan-view.md) — rather than one chord that cycles. Every view
+is then one press from any other, there is no cycle order to learn, and a new view costs one binding
+rather than a re-think. `Ctrl+S` is **held for the Steps View** and deliberately left unbound, so
+that view inherits the scheme rather than re-opening it.
+
+The switcher sits on **`Ctrl`** because `Alt` was already spoken for: `Alt+A/P/S/D/B` have been the
+All/Plan/Start/Do/Backlog status presets since the presets shipped, in every view's own table. Those
+tables are dispatched by their own listener, separate from this one, so a view chord sharing a
+preset's letter would fire **both** actions on one press — `preventDefault` on the first listener
+does not reach the second, and nothing orders them. Moving the views was the cheaper side of that:
+the presets keep letters people already have in their fingers. The cost is `Alt+L`, which used to
+toggle Mindmap ↔ List and no longer does anything; it was changing regardless, since a two-way
+toggle has no meaning once there are three views.
+
+`Ctrl+P` and `Ctrl+S` are webview defaults (print, save) and Arlesh takes them exactly as it already
+takes `Ctrl+W` and `Ctrl+T` — the dispatcher reads the event in the capture phase and calls
+`preventDefault`, and Arlesh declares no native menu accelerator that would claim them first. Inside
+a text field nothing reaches the switcher at all, because the dispatcher ignores events from a
+typing target, so a save reflex in a rename box stays a save reflex that does nothing.
+
+Unlike the tab shortcuts below, the three view chords are **suppressed while a modal or an inline
+editor holds the keyboard**: switching tabs is never ambiguous about what it acts on, where
+switching views behind an open editor would leave that editor over a board it no longer belongs to.
+
+**What is a global binding, and what is not.** A chord belongs in the global table when what it
+acts on belongs to the **tab** rather than to the view drawing it. On that rule these are global,
+declared once and listed once on the cheat-sheet: the three view chords above; `Ctrl+Escape` and
+`Shift+Escape`, which leave a subtree — and the subtree root is the tab's, shared by every view;
+`Ctrl+O`, which searches every node and re-roots the tab at the one you pick; and `Alt+F`, which
+opens the filter popover over the tab's own filter set. Each of them used to be declared once per
+view with an identical chord and an identical action, which meant the cheat-sheet printed it once
+per view and each new view added another copy.
+
+They carry the input-capture guard, unlike `Ctrl+Q` and `Ctrl+Shift+/`: as view bindings they were
+suppressed whenever a modal or an inline rename held the keyboard, and keeping that is what makes
+the promotion a move rather than a change. The cheat-sheet's own chord stays unguarded on purpose,
+since it is what closes the cheat-sheet again.
+
+Three families look promotable and are deliberately **not**, and the reasons are worth keeping so
+they are not re-litigated:
+
+- **Bare `Escape`** deselects, and only a view knows its own selection. The two modified Escapes
+  above are a different question — where the *tab* is rooted — which is why they separate cleanly.
+- **Bare `F`** shows the board alone, but the same key converts a node to a Flow on the Mindmap and
+  is only eligible when nothing is selected. It is genuinely contested per view; `F11` is the global
+  half of it.
+- **`Alt+A/P/S/D/B`**, the status presets, write to the shared filter and look identical — but the
+  List View's handler also writes that view's **own** preset, which is how any of the five takes the
+  list back out of **Unblock**. A single global handler would silently drop that half, and `Alt+U`
+  is List-only besides, so the set is not even symmetric.
+
+**Undo and redo** (`Ctrl+Z`, `Ctrl+Shift+Z`, `Ctrl+Y`) are identical in all three views and would
+belong here on the rule above, but they are blocked on something else: the handler needs the board
+reload, and each view owns its own. They stay per view until the loaded board is tab-level state.
+
 **Persistence.** The tab list, its order, which tab was active, any name a tab was given, and each
-tab's subtree root, view, orientation, both filter sets and opened Habit histories are restored on
-reopening. A strip
+tab's subtree root, view, orientation, Plan scope kind, both filter sets and opened Habit histories
+are restored on reopening. A stored view this build does not recognise falls back to the default
+rather than leaving the tab rendering nothing. A strip
 written down before tabs could be named comes back as tabs with no names, labelled as they were. Selection, collapsed nodes and pan/zoom
 are **not**: they are working state, and coming back to a stale selection is worse than coming back
 to none. An opened Habit history is on the restored side of that line for a reason of its own: a

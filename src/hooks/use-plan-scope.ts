@@ -1,0 +1,124 @@
+import { useCallback, useEffect, useState } from "react";
+import { getOrCreatePartScope, getOrCreateScope } from "@/api/scopes";
+import type { Scope } from "@/api/scopes";
+import { getErrorMessage } from "@/api/errors";
+import { useScopeLabels } from "@/hooks/use-scope-labels";
+import { useViewStore } from "@/stores/use-view-store";
+import { formatScope } from "@/utils/scope-format";
+import type { ViewKind } from "@/utils/scope-calendar";
+import type { ScopeRef } from "@/utils/scope-ref";
+import type { PlanScopeCursor } from "@/utils/plan-scope";
+import { cursorAtNow, cursorFromRef, cursorRef, stepCursor } from "@/utils/plan-scope";
+
+/** The scope a Plan pass is filling, and the ways to move to another one. */
+export interface PlanScopeHandles {
+  /** Where the pass is standing on the calendar. */
+  cursor: PlanScopeCursor;
+  /** The materialized scope row, once it exists; `null` while it is being created or resolved. */
+  scope: Scope | null;
+  /** The scope in words, for the header. */
+  label: string;
+  /** Why the scope could not be materialized, if it could not. */
+  error: string | null;
+  /** Fills a different kind of scope, staying at the same point in the calendar. */
+  setKind: (kind: ViewKind) => void;
+  /** Walks one whole scope later (`1`) or earlier (`-1`). */
+  step: (direction: 1 | -1) => void;
+  /** Jumps to a cell picked in the calendar. A cell no pass can fill is ignored. */
+  jumpTo: (ref: ScopeRef) => void;
+}
+
+function todayIso(now: Date): string {
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+/** Materializes a cursor's cell, creating the scope row on demand — the same get-or-create the
+ * Scope Picker resolves a selection through. */
+async function materialize(cursor: PlanScopeCursor): Promise<Scope> {
+  const ref = cursorRef(cursor);
+  if (ref.kind === "part_of_day") return getOrCreatePartScope(ref.date, ref.part);
+  if (ref.kind === "exact") throw new Error("an exact window is not a scope a Plan pass can fill");
+  return getOrCreateScope(ref.kind, ref.date);
+}
+
+/**
+ * Owns the scope a Plan pass is filling.
+ *
+ * The **kind** is the tab's, and persists with it; the **place** is working state and is not
+ * written down. A pass therefore opens on the current scope of the kind you last filled — the week
+ * you were filling on Friday is not the week you want on Monday, and restoring it would put you
+ * to work on the past without saying so.
+ *
+ * Stepping walks from the materialized scope's own `start_date` rather than from wherever the
+ * cursor happened to be inside it, so a month stepped from the 31st lands on the next month rather
+ * than on whatever a naive month-addition overflows to.
+ */
+export function usePlanScope(now: Date = new Date()): PlanScopeHandles {
+  const kind = useViewStore((s) => s.planScopeKind);
+  const setPlanScopeKind = useViewStore((s) => s.setPlanScopeKind);
+  const labels = useScopeLabels();
+  const [cursor, setCursor] = useState<PlanScopeCursor>(() =>
+    cursorAtNow(kind, todayIso(now), now.getHours()),
+  );
+  // The answer is stored **with the cursor it answers**, rather than being cleared when the cursor
+  // moves: clearing it would be a setState in an effect body, and a stale answer left on screen for
+  // one frame would label the new scope with the old scope's name. Comparing by reference works
+  // because every cursor move makes a new object, and the seed one never changes.
+  const [answer, setAnswer] = useState<{ cursor: PlanScopeCursor; scope: Scope | null; error: string | null } | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void materialize(cursor).then(
+      (resolved) => {
+        if (active) setAnswer({ cursor, scope: resolved, error: null });
+      },
+      (failure: unknown) => {
+        if (active) setAnswer({ cursor, scope: null, error: getErrorMessage(failure) });
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [cursor]);
+
+  const current = answer !== null && answer.cursor === cursor ? answer : null;
+  const scope = current?.scope ?? null;
+  const error = current?.error ?? null;
+
+  const setKind = useCallback(
+    (next: ViewKind) => {
+      setPlanScopeKind(next);
+      setCursor((current) => ({ ...current, kind: next }));
+    },
+    [setPlanScopeKind],
+  );
+
+  const anchorDate = scope?.start_date;
+  const step = useCallback(
+    (direction: 1 | -1) => {
+      setCursor((current) => stepCursor({ ...current, date: anchorDate ?? current.date }, direction));
+    },
+    [anchorDate],
+  );
+
+  const jumpTo = useCallback((ref: ScopeRef) => {
+    setCursor((current) => cursorFromRef(ref, current.part) ?? current);
+  }, []);
+
+  // The scope's window is deliberately **not** derived here. `resolve_scope` is the authority on
+  // what a scope spans, and `useScopeWindows` is what asks it — for this scope alongside every
+  // task's, through one cache, so the target and the windows it is compared against can never be
+  // resolved two different ways.
+  return {
+    cursor,
+    scope,
+    label: scope === null ? "" : formatScope(scope, labels),
+    error,
+    setKind,
+    step,
+    jumpTo,
+  };
+}

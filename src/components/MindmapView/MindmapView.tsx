@@ -94,7 +94,8 @@ export default function MindmapView() {
     useMindmapData();
   const {
     selectedNodeId, selectedNodeIds, subtreeRootId, collapsedNodeIds, expandedHabitGroupIds, pendingToast,
-    selectNode, addToSelection, setSelection, enterSubtree,
+    searchOpen,
+    selectNode, addToSelection, setSelection, enterSubtree, closeSearch,
     toggleCollapsed, toggleGroupExpanded, expandSubtree, collapseSubtree, showToast, clearToast,
   } = useMindmapStore((s) => s);
   // App-wide, so a subtree cut in one tab pastes in another.
@@ -103,12 +104,12 @@ export default function MindmapView() {
 
   // Shared with the List View: one subtree root, one breadcrumb, both views publishing the same
   // descriptor so whichever is on screen keeps the top bar right.
-  const { onExitSubtree, onExitToRoot } = useSubtreeNav(tree);
+  // Publishes the tab's subtree descriptor for the top bar; the exits are global bindings.
+  useSubtreeNav(tree);
 
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const { visibleFailedFlows, visibleUnrenderableCommitmentFlows, dismiss: dismissHabitBanner } =
     useDismissableLoadCondition(loadCondition);
-  const [nodeSearchOpen, setNodeSearchOpen] = useState(false);
   const [flowCreateParent, setFlowCreateParent] = useState<{ id: string; kind: NodeKind } | null>(null);
   const [commitmentCreateParent, setCommitmentCreateParent] = useState<{ id: string; kind: NodeKind } | null>(null);
   const [startFlowNode, setStartFlowNode] = useState<MindmapNode | null>(null);
@@ -129,7 +130,6 @@ export default function MindmapView() {
   const filter = useFilterStore((s) => s.filter);
   const toggleFullscreen = useFullscreenStore((s) => s.toggle);
   const setStatusMode = useFilterStore((s) => s.setStatusMode);
-  const toggleFilterPopover = useFilterStore((s) => s.toggleFilterPopover);
   // The focus exemption: whatever is selected stays on screen even once your own edit stops it
   // matching — completing a task under Plan no longer erases it out from under you. It ends when the
   // selection moves or the filter/subtree changes; see use-focus-exemption.
@@ -588,7 +588,6 @@ export default function MindmapView() {
     onDismissWarning: () => { setWarningModal(null); cancelPlanPrompt(); },
     selectedNodeId,
     selectedNodeIds,
-    subtreeRootId,
     clipboard,
     orientation: mindmapOrientation,
     onNavigate: navigateArrow,
@@ -609,16 +608,12 @@ export default function MindmapView() {
     onCycleVerdict: cycleVerdict,
     onMarkBroken: markBroken,
     onDeselect: () => { selectNode(null); },
-    onExitSubtree,
-    onExitToRoot,
     onCut: (ids) => setClipboard({ operation: CLIPBOARD_OP.CUT, nodeIds: ids }),
     onCopy: (ids) => setClipboard({ operation: CLIPBOARD_OP.COPY, nodeIds: ids }),
     onPaste,
     onEnterSubtree: enterSubtree,
-    onOpenSearch: () => setNodeSearchOpen(true),
     onZoomIn: () => canvasRef.current?.zoomIn(),
     onZoomOut: () => canvasRef.current?.zoomOut(),
-    onToggleFilter: toggleFilterPopover,
     onSetStatusMode: setStatusMode,
     onFocusRoot: () => selectNode(subtreeRootId ?? tree.id),
     onCenterOnNode: onCenterOnSelected,
@@ -696,11 +691,11 @@ export default function MindmapView() {
       {editorModal !== null && editorModal.node.kind === "info" && (
         <InfoEditorModal node={editorModal.node} onSave={onInfoSave} onClose={() => setEditorModal(null)} />
       )}
-      {nodeSearchOpen && (
+      {searchOpen && (
         <NodeSearchModal
           nodes={collectSearchableNodes(tree)}
-          onSelect={(id) => { enterSubtree(id); setNodeSearchOpen(false); }}
-          onClose={() => setNodeSearchOpen(false)}
+          onSelect={(id) => { enterSubtree(id); closeSearch(); }}
+          onClose={closeSearch}
         />
       )}
       {editorModal !== null && editorModal.node.kind === "flow" && (
