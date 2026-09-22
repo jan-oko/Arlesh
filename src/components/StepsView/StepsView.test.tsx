@@ -77,16 +77,17 @@ function selectedCardId(): string | null {
   return selected === null ? null : selected.getAttribute("data-step-card");
 }
 
-function press(code: string, init: Partial<KeyboardEventInit> = {}): void {
-  act(() => {
-    window.dispatchEvent(new KeyboardEvent("keydown", { code, bubbles: true, ...init }));
-  });
+function press(code: string): void {
+  act(() => { fireEvent.keyDown(window, { code }); });
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   useFilterStore.setState({ filter: { ...DEFAULT_FILTER } });
-  useMindmapStore.setState({ subtreeRootId: null, pendingToast: null, searchOpen: false });
+  useMindmapStore.setState({
+    subtreeRootId: null, pendingToast: null, searchOpen: false,
+    selectedNodeId: null, selectedNodeIds: new Set(),
+  });
   useViewStore.setState({ stepsZoom: 3 });
 });
 
@@ -107,12 +108,18 @@ describe("a Step", () => {
   });
 
   it("counts what descending will show against what the board holds, so the filter's effect shows", () => {
-    const shown = n("task-1", "task", { status: "todo" });
+    // Standing on the Goal: one of its two Tasks survives the Do preset, so the header card counts
+    // "1 of 2" while the surviving Task, which holds nothing, reads as empty.
+    const shown = n("task-1", "task", { status: "in_progress" });
     const hidden = n("task-2", "task", { status: "done" });
     mockTree([n("goal-1", "goal", { status: "active", children: [shown, hidden] })]);
+    useMindmapStore.setState({ subtreeRootId: "goal-1" });
     useFilterStore.setState({ filter: { ...DEFAULT_FILTER, statusMode: "do" } });
     render(<StepsView />);
-    expect(screen.getAllByText("stepsView:childCount").length).toBeGreaterThan(0);
+
+    expect(cardIds()).toEqual(["goal-1", "task-1"]);
+    expect(screen.getAllByText("stepsView:childCount")).toHaveLength(1);
+    expect(screen.getAllByText("stepsView:childCountEmpty")).toHaveLength(1);
   });
 });
 
