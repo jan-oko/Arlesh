@@ -93,11 +93,7 @@ fn collect_ids(node: &FactNode, ids: &mut BTreeSet<String>) {
     }
 }
 
-fn prune_at(
-    node: &FactNode,
-    filter: &BoardFilter,
-    inherited: Inherited<'_>,
-) -> Option<FactNode> {
+fn prune_at(node: &FactNode, filter: &BoardFilter, inherited: Inherited<'_>) -> Option<FactNode> {
     if rules::type_hard_hidden(&node.facts, filter) {
         return None;
     }

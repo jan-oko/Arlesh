@@ -549,7 +549,10 @@ fn a_plan_is_never_inherited_from_an_ancestor() {
 
 #[test]
 fn a_container_is_never_judged_on_a_filter_it_has_no_window_to_answer() {
-    for node in [project("active"), NodeFacts::new("domain-2", NodeKind::Domain)] {
+    for node in [
+        project("active"),
+        NodeFacts::new("domain-2", NodeKind::Domain),
+    ] {
         assert!(passes_scope(
             &node,
             &scoped(ScopeAxis::Relevance, ScopeMatch::Within, week()),

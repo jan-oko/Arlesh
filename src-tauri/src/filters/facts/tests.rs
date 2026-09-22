@@ -237,7 +237,11 @@ fn narrowing_cuts_the_derived_sections_to_match_the_nodes_that_survived() {
     load.lifecycles
         .push(lifecycle("task", 22, Timing::Active, Archival::Live));
 
-    narrow(&mut load, &BoardFilter::preset(Preset::Plan), &ScopeWindows::new());
+    narrow(
+        &mut load,
+        &BoardFilter::preset(Preset::Plan),
+        &ScopeWindows::new(),
+    );
 
     // The done task is gone, and so is everything the payload said about it.
     assert!(load.tasks.iter().all(|task| task.id != 22));
@@ -254,7 +258,11 @@ fn narrowing_cuts_the_derived_sections_to_match_the_nodes_that_survived() {
 #[test]
 fn narrowing_to_do_keeps_the_containers_that_carry_an_in_progress_task() {
     let mut load = board();
-    narrow(&mut load, &BoardFilter::preset(Preset::Do), &ScopeWindows::new());
+    narrow(
+        &mut load,
+        &BoardFilter::preset(Preset::Do),
+        &ScopeWindows::new(),
+    );
     assert_eq!(
         load.tasks.iter().map(|task| task.id).collect::<Vec<_>>(),
         [20]
@@ -277,13 +285,21 @@ fn a_backlogged_task_leaves_plan_and_comes_back_under_the_backlog_preset() {
     }
 
     let mut planned = load.clone();
-    narrow(&mut planned, &BoardFilter::preset(Preset::Plan), &ScopeWindows::new());
+    narrow(
+        &mut planned,
+        &BoardFilter::preset(Preset::Plan),
+        &ScopeWindows::new(),
+    );
     assert!(planned.tasks.iter().all(|task| task.id != 21));
 
     // Task 20 is task 21's parent: it does not match Backlog itself, and comes back only as the
     // ancestor that reaches what does.
     let mut backlogged = load;
-    narrow(&mut backlogged, &BoardFilter::preset(Preset::Backlog), &ScopeWindows::new());
+    narrow(
+        &mut backlogged,
+        &BoardFilter::preset(Preset::Backlog),
+        &ScopeWindows::new(),
+    );
     assert_eq!(
         backlogged
             .tasks
