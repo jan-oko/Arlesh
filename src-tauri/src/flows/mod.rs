@@ -2283,6 +2283,7 @@ pub async fn create_instance_child(
                     plan: None,
                     archival: None,
                     agentic: None,
+                    asynchronous: None,
                 },
             )
             .await?

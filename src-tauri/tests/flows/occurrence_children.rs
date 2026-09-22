@@ -541,6 +541,7 @@ async fn an_added_child_holds_children_of_its_own_in_the_ordinary_way() {
             plan: None,
             archival: None,
             agentic: None,
+            asynchronous: None,
         },
     )
     .await
