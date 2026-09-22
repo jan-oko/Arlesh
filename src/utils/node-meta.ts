@@ -1,4 +1,5 @@
 import type { MindmapNode, NodeKind } from "./tree-layout";
+import { ALL_NODE_KINDS } from "./tree-layout";
 import type { InstanceType } from "@/api/flows";
 
 export interface NodeSize {
@@ -234,6 +235,12 @@ export function isFlowKind(kind: NodeKind): boolean {
 export function isValidDropTarget(sourceKind: NodeKind, targetKind: NodeKind): boolean {
   if (sourceKind === "aspect") return false;
 
+  // A `habit_group` is a *drawing* of a run of iterations — a tally and a span — and is neither a
+  // thing to move nor a place to move one to. It is named here because it is exactly what the old
+  // fall-through let through: every source that reached the bottom of this function was permitted
+  // under a folded run of Habit history.
+  if (sourceKind === "habit_group" || targetKind === "habit_group") return false;
+
   // Flows and flow items live in their own world — they never mix with real nodes.
   if (isFlowKind(sourceKind) || isFlowKind(targetKind)) {
     if (sourceKind === "flow") return targetKind === "aspect" || targetKind === "domain" || targetKind === "project" || targetKind === "goal";
@@ -252,9 +259,17 @@ export function isValidDropTarget(sourceKind: NodeKind, targetKind: NodeKind): b
   if (sourceKind === "project") return targetKind === "aspect" || targetKind === "project";
   if (sourceKind === "domain") return targetKind === "aspect" || targetKind === "domain" || targetKind === "project";
   if (sourceKind === "tag") return targetKind === "aspect" || targetKind === "domain" || targetKind === "project";
-  if (sourceKind === "goal") return targetKind !== "task";
-  // task: valid under aspect, domain, project, goal, or task
-  return true;
+  if (sourceKind === "goal") {
+    return targetKind === "aspect" || targetKind === "domain" || targetKind === "project" || targetKind === "goal";
+  }
+  // task: valid under aspect, domain, project, goal, or task. Stated rather than defaulted to, and
+  // the function ends in `false`: a kind added to `NodeKind` later is refused until someone teaches
+  // this rule about it, because "permitted unless named" is how a folded run came to take children.
+  if (sourceKind === "task") {
+    return targetKind === "aspect" || targetKind === "domain" || targetKind === "project" ||
+      targetKind === "goal" || targetKind === "task";
+  }
+  return false;
 }
 
 /**
@@ -288,15 +303,97 @@ export function validParentKinds(childKind: NodeKind): NodeKind[] {
 }
 
 /**
- * Whether a **new Task** can be created under `node`.
+ * What a node is, as far as holding a child goes — the thing its *kind* cannot tell you.
  *
- * {@link isValidDropTarget} answers the question about kinds; this adds the two things a kind
- * cannot tell you. A **virtual** node — a Habit repetition — has no database row to parent
- * anything to, and neither has the synthetic root, whose id carries no `-<id>` suffix. Both would
- * fail at the backend, and a gesture that can only fail is better answered before it is sent.
+ * `row`        — an ordinary node with a database row a child's parent link can point at.
+ * `occurrence` — a virtual Habit occurrence. It has no row, but it can hold children of its own
+ *                through the attachment path (`create_habit_instance_child`), which writes the
+ *                child and hangs it on that one iteration in a single call.
+ * `drawing`    — something drawn rather than stored, and nobody's parent: the synthetic root,
+ *                a folded run of Habit history, and any other virtual node.
+ */
+type ParentCapacity = "row" | "occurrence" | "drawing";
+
+/** Which of the three `node` is. Ordered deepest fact first: a folded run is virtual too. */
+function parentCapacity(node: MindmapNode): ParentCapacity {
+  // The synthetic root: its id carries no `-<id>` suffix because there is no id to carry.
+  if (!node.id.includes("-")) return "drawing";
+  // A folded run of passed iterations — a tally and a span, standing in for many nodes at once.
+  if (node.habitGroup !== undefined) return "drawing";
+  if (node.habitItem !== undefined) return "occurrence";
+  if (node.virtual === true) return "drawing";
+  return "row";
+}
+
+/**
+ * Whether a **new** node of `childKind` can be created directly under `node`.
+ *
+ * {@link isValidDropTarget} answers the question about kinds; this asks it about the node, which
+ * is the only form of the question a gesture actually has. A kind cannot tell a real row from a
+ * drawing of one — the synthetic root, a folded run of Habit history and a virtual occurrence all
+ * wear a kind that would otherwise say yes — so every gesture that asked the kind alone had to
+ * remember virtuality separately, and each one that forgot failed a different way.
+ *
+ * Virtuality is not one answer. An **occurrence** holds children of its own, attached to that one
+ * iteration; everything else that is drawn rather than stored holds nothing at all.
+ */
+export function canParentNewChild(node: MindmapNode, childKind: NodeKind): boolean {
+  switch (parentCapacity(node)) {
+    case "drawing":
+      return false;
+    case "occurrence":
+      // An occurrence's children are ordinary nodes, written and hung on that one iteration by the
+      // attachment path. A Flow or a flow item is not one of those: it belongs to the Habit's
+      // template, which is the very thing the occurrence is a repetition of. Everything else its
+      // drawn kind would take, it takes — so `Shift+G` under a Task occurrence is refused exactly
+      // as it is under a Task, and the four kinds left are the four the attachment path writes.
+      return !isFlowKind(childKind) && isValidDropTarget(childKind, node.kind);
+    case "row":
+      return isValidDropTarget(childKind, node.kind);
+  }
+}
+
+/**
+ * Whether an **existing** node of `childKind` can be re-parented under `node` — a drag, or a paste.
+ *
+ * Deliberately stricter than {@link canParentNewChild} on exactly one node: a Habit **occurrence**
+ * can be *given* a new child but cannot adopt an existing one. Attaching writes the child and the
+ * link together; a move only re-points a row's `parent_id`, and an occurrence has no id for one to
+ * point at. Two predicates rather than one with a flag, because the difference is a real one about
+ * the two writes, not a mode of the same question.
+ */
+export function canAdoptExistingChild(node: MindmapNode, childKind: NodeKind): boolean {
+  return canAdoptChildren(node) && isValidDropTarget(childKind, node.kind);
+}
+
+/**
+ * Whether `node` has a database row for an existing child's parent link to point at.
+ *
+ * The question a paste and a drag ask of their **destination** before they ask anything about what
+ * is being moved. A folded run of Habit history, a virtual occurrence and the synthetic root refuse
+ * every kind for the same one reason, and saying that reason once is not the same sentence as
+ * telling the user, of each node on the clipboard in turn, that it cannot sit under a Task.
+ */
+export function canAdoptChildren(node: MindmapNode): boolean {
+  return parentCapacity(node) === "row";
+}
+
+/**
+ * Whether **any** new child can be created under `node` at all.
+ *
+ * The question `Tab` asks, and the only form it can ask it in: `Tab` names no kind — the parent
+ * decides what its child is — so there is nothing to put to {@link canParentNewChild}. Two kinds
+ * of node answer no: a Tag, which is a label rather than a container, and anything drawn rather
+ * than stored.
+ */
+export function canParentAnyNewChild(node: MindmapNode): boolean {
+  return ALL_NODE_KINDS.some((kind) => canParentNewChild(node, kind));
+}
+
+/**
+ * Whether a **new Task** can be created under `node` — {@link canParentNewChild} for the kind the
+ * List View creates, which is the only kind it creates.
  */
 export function canParentNewTask(node: MindmapNode): boolean {
-  if (node.virtual === true) return false;
-  if (!node.id.includes("-")) return false;
-  return isValidDropTarget("task", node.kind);
+  return canParentNewChild(node, "task");
 }

@@ -69,6 +69,15 @@ const COMMITMENT_NODE = mkNode("commitment-7", "commitment", [], { verdict: "kep
 const FLOW_TASK_NODE = mkNode("flowtask-4", "flow_task");
 const FLOW_NODE = mkNode("flow-1", "flow", [FLOW_TASK_NODE]);
 const FLOW_NODE_2 = mkNode("flow-2", "flow", []);
+// A folded run of passed Habit iterations: `habit_group` is a tally and a span drawn in place of
+// many nodes, with no row of its own. Its kind is the one the drop rule used to fall through on.
+const HABIT_RUN = mkNode("habitgroup-3-run", "habit_group", [], {
+  virtual: true,
+  habitGroup: {
+    flowId: 3, level: "run", passed: 3, done: 2, missed: 1,
+    spanStart: "2026-09-14", spanEnd: "2026-09-16", spanLabel: "2026-09-14..2026-09-16",
+  },
+});
 const PROJECT = mkNode("domain-3", "project", [TASK_NODE, TASK_DONE, GOAL_NODE, GOAL_ACHIEVED, ASPECT, HABIT_ITER, HABIT_DONE, HABIT_ITEM, HABIT_GOAL_DONE, HABIT_TASK_IP, TASK_AGENTIC_YES, TASK_AGENTIC_NO, TASK_INHERITS_YES, COMMITMENT_NODE, FLOW_NODE, FLOW_NODE_2]);
 const ROOT = mkNode("root", "domain", [PROJECT]);
 
@@ -200,7 +209,50 @@ describe("useNodeActions — onStatusClick", () => {
   });
 });
 
+describe("useNodeActions — onStatusClick failures", () => {
+  it("says so when the backend refuses a task's status cycle", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.mocked(updateTask).mockRejectedValueOnce(new Error("database is locked"));
+    const opts = makeOpts();
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onStatusClick("task-5"); });
+    await vi.waitFor(() => expect(opts.showToast).toHaveBeenCalledWith({
+      nodeId: "task-5",
+      message: expect.stringContaining("statusChangeFailed"),
+    }));
+    consoleError.mockRestore();
+  });
+
+  it("says so when the backend refuses a goal's toggle", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.mocked(updateGoal).mockRejectedValueOnce(new Error("database is locked"));
+    const opts = makeOpts();
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onStatusClick("goal-2"); });
+    await vi.waitFor(() => expect(opts.showToast).toHaveBeenCalledWith({
+      nodeId: "goal-2",
+      message: expect.stringContaining("statusChangeFailed"),
+    }));
+    consoleError.mockRestore();
+  });
+});
+
 describe("useNodeActions — onCommitEdit", () => {
+  it("says so when the backend refuses the rename, and leaves the editor open", async () => {
+    // A refused rename used to leave the old title on the canvas with nothing said — which reads
+    // exactly like a rename that worked and was undone.
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const opts = makeOpts({ renameNode: vi.fn().mockRejectedValue(new Error("aspects are fixed")) });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onCommitEdit("task-5", "New title"); });
+    await vi.waitFor(() => expect(opts.showToast).toHaveBeenCalledWith({
+      nodeId: "task-5",
+      message: expect.stringContaining("renameFailed"),
+    }));
+    expect(opts.setEditingNodeId).not.toHaveBeenCalledWith(null);
+    consoleError.mockRestore();
+  });
+
   it("calls setEditingNodeId(null) for an empty title without renaming", () => {
     const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
@@ -227,6 +279,42 @@ describe("useNodeActions — onCreateChild", () => {
     expect(opts.createChild).not.toHaveBeenCalled();
   });
 
+  it("says why a Tag holds nothing, instead of being an inert key", () => {
+    const TREE = mkNode("root", "domain", [mkNode("domain-3", "project", [mkNode("domain-20", "tag")])]);
+    const opts = makeOpts({ tree: TREE });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onCreateChild("domain-20"); });
+    expect(opts.createChild).not.toHaveBeenCalled();
+    expect(opts.showToast).toHaveBeenCalledWith({
+      nodeId: "domain-20",
+      message: expect.stringContaining("createUnderTagRefused"),
+    });
+  });
+
+  it("says why a folded run of Habit history holds nothing", () => {
+    const TREE = mkNode("root", "domain", [mkNode("domain-3", "project", [HABIT_RUN])]);
+    const opts = makeOpts({ tree: TREE });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onCreateChild("habitgroup-3-run"); });
+    expect(opts.createChild).not.toHaveBeenCalled();
+    expect(opts.showToast).toHaveBeenCalledWith({
+      nodeId: "habitgroup-3-run",
+      message: expect.stringContaining("createUnderRepetition"),
+    });
+  });
+
+  it("says so when the backend refuses the child", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const opts = makeOpts({ createChild: vi.fn().mockRejectedValue(new Error("tags cannot have child domains")) });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onCreateChild("domain-3"); });
+    await vi.waitFor(() => expect(opts.showToast).toHaveBeenCalledWith({
+      nodeId: "domain-3",
+      message: expect.stringContaining("createFailed"),
+    }));
+    consoleError.mockRestore();
+  });
+
   it("creates a child and sets selection and editing state", async () => {
     const newNode = mkNode("domain-99", "domain");
     const opts = makeOpts({ createChild: vi.fn().mockResolvedValue(newNode) });
@@ -239,17 +327,47 @@ describe("useNodeActions — onCreateChild", () => {
 });
 
 describe("useNodeActions — onDelete", () => {
-  it("filters out aspect nodes and calls onRequestDelete with remaining IDs", () => {
+  it("refuses the whole selection out loud when one of its nodes is an Aspect", () => {
+    // It used to filter the Aspect out and delete the rest without a word. A delete is destructive
+    // where a paste is additive, so it refuses the gesture entirely — the repetition precedent.
     const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onDelete(["task-5", "aspect-1"]); });
-    expect(opts.onRequestDelete).toHaveBeenCalledWith(["task-5"]);
+    expect(opts.onRequestDelete).not.toHaveBeenCalled();
+    expect(opts.showToast).toHaveBeenCalledWith({
+      nodeId: "aspect-1",
+      message: expect.stringContaining("deleteAspectRefused"),
+    });
   });
 
-  it("does not call onRequestDelete when all IDs are aspects or unknown", () => {
+  it("says why Delete on an Aspect alone does nothing, instead of being an inert key", () => {
     const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onDelete(["aspect-1"]); });
+    expect(opts.onRequestDelete).not.toHaveBeenCalled();
+    expect(opts.showToast).toHaveBeenCalledWith({
+      nodeId: "aspect-1",
+      message: expect.stringContaining("deleteAspectRefused"),
+    });
+  });
+
+  it("says both reasons in one toast when a selection holds a repetition and an Aspect", () => {
+    // The store holds a single pending notice, so a selection tripping both rules has to say both
+    // at once or say one of them into nothing.
+    const opts = makeOpts();
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onDelete(["habit-3-0-virtual", "aspect-1", "task-5"]); });
+    expect(opts.onRequestDelete).not.toHaveBeenCalled();
+    const calls = vi.mocked(opts.showToast).mock.calls;
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.[0].message).toContain("deleteRepetitionRefused");
+    expect(calls[0]?.[0].message).toContain("deleteAspectRefused");
+  });
+
+  it("does not call onRequestDelete when every id has left the tree", () => {
+    const opts = makeOpts();
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onDelete(["task-404"]); });
     expect(opts.onRequestDelete).not.toHaveBeenCalled();
   });
 
@@ -319,6 +437,71 @@ describe("useNodeActions — onPaste", () => {
     await vi.waitFor(() =>
       expect(opts.moveNode).toHaveBeenCalledWith("commitment-7", "commitment", "goal-2", "goal", 0),
     );
+  });
+
+  it("says so when the backend refuses the paste, instead of leaving an unchanged board", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const clipboard = { operation: CLIPBOARD_OP.CUT, nodeIds: ["task-5"] };
+    const opts = makeOpts({
+      clipboard,
+      moveNode: vi.fn().mockRejectedValue({ kind: "invalid_request", message: "would create a cycle" }),
+    });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onPaste("goal-2"); });
+    await vi.waitFor(() => expect(opts.showToast).toHaveBeenCalledWith({
+      nodeId: "goal-2",
+      message: expect.stringContaining("pasteFailed"),
+    }));
+    // The backend's own reason travels with it — a paste refused for a cycle and one refused for a
+    // constraint must not read the same.
+    const calls = vi.mocked(opts.showToast).mock.calls;
+    expect(calls[calls.length - 1]?.[0].message).toContain("would create a cycle");
+    consoleError.mockRestore();
+  });
+
+  it("a backend refusal replaces a skip notice only by containing it", async () => {
+    // Both come from one gesture and the store holds one pending toast, so the later message
+    // carries the earlier one rather than taking it off screen unsaid.
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const clipboard = { operation: CLIPBOARD_OP.COPY, nodeIds: ["commitment-7", "task-5"] };
+    const opts = makeOpts({
+      clipboard,
+      duplicateNode: vi.fn().mockRejectedValue(new Error("UNIQUE constraint failed")),
+    });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onPaste("goal-2"); });
+    await vi.waitFor(() => expect(vi.mocked(opts.showToast).mock.calls.length).toBe(2));
+    const [skip, both] = vi.mocked(opts.showToast).mock.calls;
+    expect(skip?.[0].message).toContain("pasteSkippedCommitment");
+    expect(both?.[0].message).toContain("pasteSkippedCommitment");
+    expect(both?.[0].message).toContain("pasteFailed");
+    consoleError.mockRestore();
+  });
+
+  it("refuses a paste onto a folded run of Habit history, once, rather than per clipboard node", () => {
+    const TREE = mkNode("root", "domain", [mkNode("domain-3", "project", [TASK_NODE, GOAL_NODE, HABIT_RUN])]);
+    const clipboard = { operation: CLIPBOARD_OP.CUT, nodeIds: ["task-5", "goal-2"] };
+    const opts = makeOpts({ tree: TREE, clipboard });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onPaste("habitgroup-3-run"); });
+    expect(opts.moveNode).not.toHaveBeenCalled();
+    expect(opts.showToast).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(opts.showToast).mock.calls[0]?.[0].message)
+      .toContain("pasteOntoRepetitionRefused");
+  });
+
+  it("refuses a paste onto a virtual Habit occurrence, which cannot adopt an existing row", () => {
+    // An occurrence holds children of its own, but they are *attached* when they are created. A
+    // move only re-points a row's parent link, and there is no id here for one to point at.
+    const clipboard = { operation: CLIPBOARD_OP.CUT, nodeIds: ["task-5"] };
+    const opts = makeOpts({ clipboard });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onPaste("habit-3-0-virtual"); });
+    expect(opts.moveNode).not.toHaveBeenCalled();
+    expect(opts.showToast).toHaveBeenCalledWith({
+      nodeId: "habit-3-0-virtual",
+      message: expect.stringContaining("pasteOntoRepetitionRefused"),
+    });
   });
 
   it("does nothing when clipboard is null", () => {
@@ -563,11 +746,27 @@ describe("useNodeActions — onPaste", () => {
 });
 
 describe("useNodeActions — onInsertParent", () => {
-  it("does nothing for an aspect node", () => {
+  it("says why nothing can be inserted above an Aspect, instead of being an inert key", () => {
     const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onInsertParent("aspect-1"); });
     expect(opts.createChild).not.toHaveBeenCalled();
+    expect(opts.showToast).toHaveBeenCalledWith({
+      nodeId: "aspect-1",
+      message: expect.stringContaining("insertParentAspectRefused"),
+    });
+  });
+
+  it("says so when the backend refuses one of its two writes", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const opts = makeOpts({ createChild: vi.fn().mockRejectedValue(new Error("no such parent")) });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onInsertParent("task-5"); });
+    await vi.waitFor(() => expect(opts.showToast).toHaveBeenCalledWith({
+      nodeId: "task-5",
+      message: expect.stringContaining("insertParentFailed"),
+    }));
+    consoleError.mockRestore();
   });
 
   it("does nothing when the node's parent is root", () => {
@@ -592,11 +791,27 @@ describe("useNodeActions — onInsertParent", () => {
 });
 
 describe("useNodeActions — onCreateSibling", () => {
-  it("does nothing for an aspect node", () => {
+  it("says why there is no new Aspect to create alongside this one", () => {
     const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onCreateSibling("aspect-1"); });
     expect(opts.createNode).not.toHaveBeenCalled();
+    expect(opts.showToast).toHaveBeenCalledWith({
+      nodeId: "aspect-1",
+      message: expect.stringContaining("siblingAspectRefused"),
+    });
+  });
+
+  it("says so when the backend refuses the sibling", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const opts = makeOpts({ createNode: vi.fn().mockRejectedValue(new Error("CHECK constraint failed")) });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onCreateSibling("task-5"); });
+    await vi.waitFor(() => expect(opts.showToast).toHaveBeenCalledWith({
+      nodeId: "task-5",
+      message: expect.stringContaining("createFailed"),
+    }));
+    consoleError.mockRestore();
   });
 
   it("creates a sibling of the same kind under the same parent", async () => {
@@ -653,7 +868,12 @@ describe("useNodeActions — onCreateTypedChild", () => {
   const TAG = mkNode("domain-20", "tag");
   const DOMAIN = mkNode("domain-21", "domain");
   const INFO = mkNode("info-1", "info");
-  const CONTAINER = mkNode("domain-3", "project", [TASK_NODE, GOAL_NODE, COMMITMENT_NODE, TAG, DOMAIN, INFO, FLOW_NODE]);
+  // A Habit whose instances are Goals draws its iteration root as a `goal`. That is what made
+  // Shift+F on one pass a kind-only check: a Flow may sit under a Goal.
+  const GOAL_OCCURRENCE = mkNode("habit-3-0-virtual", "goal", [], {
+    virtual: true, habitItem: { flowId: 3, itemType: "flow_root", itemId: 3, scopeId: 100, cycleId: 0 },
+  });
+  const CONTAINER = mkNode("domain-3", "project", [TASK_NODE, GOAL_NODE, COMMITMENT_NODE, TAG, DOMAIN, INFO, FLOW_NODE, GOAL_OCCURRENCE, HABIT_RUN]);
   const TREE = mkNode("root", "domain", [CONTAINER]);
 
   function typedOpts(overrides: Partial<Parameters<typeof useNodeActions>[0]> = {}) {
@@ -795,5 +1015,39 @@ describe("useNodeActions — onCreateTypedChild", () => {
     act(() => { result.current.onCreateTypedChild("root", "domain"); });
     expect(opts.createNode).not.toHaveBeenCalled();
     expect(opts.showToast).not.toHaveBeenCalled();
+  });
+
+  // Shift+F used to reach the Flow editor on a virtual occurrence and post a parent id of `NaN`,
+  // because the rule was asked about the occurrence's *kind* — `goal`, which does hold Flows.
+  it("refuses a Flow on a virtual Habit occurrence instead of opening the editor on a NaN parent", () => {
+    const opts = typedOpts();
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onCreateTypedChild("habit-3-0-virtual", "flow"); });
+    expect(opts.onNewFlow).not.toHaveBeenCalled();
+    expect(opts.showToast).toHaveBeenCalledWith({
+      nodeId: "habit-3-0-virtual",
+      message: expect.stringContaining("createUnderOccurrenceRefused"),
+    });
+  });
+
+  // The other half of the same rule: an occurrence does hold children of its own, so the four
+  // kinds its attachment path can write are not refused with it.
+  it("still opens the Commitment editor on a virtual Habit occurrence", () => {
+    const opts = typedOpts();
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onCreateTypedChild("habit-3-0-virtual", "commitment"); });
+    expect(opts.onNewCommitment).toHaveBeenCalledWith("habit-3-0-virtual");
+    expect(opts.showToast).not.toHaveBeenCalled();
+  });
+
+  it("refuses a Task on a folded run of Habit history, which is drawn rather than stored", () => {
+    const opts = typedOpts();
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onCreateTypedChild("habitgroup-3-run", "task"); });
+    expect(opts.createNode).not.toHaveBeenCalled();
+    expect(opts.showToast).toHaveBeenCalledWith({
+      nodeId: "habitgroup-3-run",
+      message: expect.stringContaining("createUnderRepetition"),
+    });
   });
 });
