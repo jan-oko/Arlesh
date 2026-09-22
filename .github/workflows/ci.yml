@@ -167,6 +167,27 @@ jobs:
           fi
           echo "No inline test modules."
 
+      # Second, for the same reason the guard above is first: this needs no apt
+      # packages, no cache and no build — just the toolchain — so it costs seconds
+      # and a violation never reaches the six-minute compile. That is the whole
+      # difference between this and the clippy step further down, which is a
+      # compiler and has to wait for everything.
+      #
+      # Stock rustfmt, no rustfmt.toml. The tree was hand-formatted and
+      # inconsistent with itself before the sweep that precedes this step, and no
+      # config described it — `use_small_heuristics = "Max"` reached 104 of 134
+      # files where the default reached 75. A config would only be something to
+      # argue about later.
+      #
+      # /rust-toolchain.toml is what makes this deterministic, exactly as it does
+      # for clippy: rustfmt's output changes between releases, so an unpinned
+      # toolchain would mean a runner-image bump reformatting the tree out from
+      # under everyone and failing here with no commit to blame. Same file, same
+      # reason, second gate.
+      - name: cargo fmt --check
+        working-directory: src-tauri
+        run: cargo fmt --check
+
       # `tauri` is in the dependency tree with its default features, so wry and
       # webkit2gtk-sys compile even for `cargo test`, and they need the GTK/
       # WebKit development headers to exist. The webkit2gtk crate at 2.0.2 binds
