@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { pasteRefusal, countPasteRefusals, pasteRefusalKey, PASTE_REFUSAL, PASTE_REFUSAL_KEY } from "./paste-refusal";
-import type { NodeRefusal, PasteRefusal } from "./paste-refusal";
+import {
+  pasteRefusal, countPasteRefusals, pasteRefusalKey, flowsLeftBehind,
+  NAMED_FLOWS_LIMIT, PASTE_REFUSAL, PASTE_REFUSAL_KEY,
+} from "./paste-refusal";
+import type { FlowUnderRefusal, HereRefusal, PasteRefusal, PasteRefusalReason } from "./paste-refusal";
 import { isValidDropTarget, validParentKinds } from "./node-meta";
 import type { MindmapNode, NodeKind } from "./tree-layout";
 import { ALL_NODE_KINDS } from "./tree-layout";
@@ -24,9 +27,17 @@ const PROJECT = mkNode("domain-3", "project", [TASK, GOAL, ASPECT, TAG, COMMITME
 const TREE = mkNode("root", "domain", [PROJECT]);
 
 /** A destination refusal for `child`, carrying the parents the rule itself would have accepted. */
-function here(child: NodeKind): PasteRefusal {
+function here(child: NodeKind): HereRefusal {
   return { reason: PASTE_REFUSAL.HERE, child, validParents: validParentKinds(child) };
 }
+
+/** One Flow reported as left behind under a copied node. */
+function leftBehind(title: string): FlowUnderRefusal {
+  return { reason: PASTE_REFUSAL.FLOW_UNDER, title };
+}
+
+/** A refusal that reads out as a counted sentence of its own — everything but the destination. */
+type CountedReason = Exclude<PasteRefusalReason, typeof PASTE_REFUSAL.HERE>;
 
 describe("pasteRefusal", () => {
   it("allows a task onto a goal, for both cut and copy", () => {
@@ -57,6 +68,62 @@ describe("pasteRefusal", () => {
     expect(pasteRefusal(TREE, "flowtask-4", FLOW_TWO, true)).toEqual({ reason: PASTE_REFUSAL.OTHER_FLOW });
     expect(pasteRefusal(TREE, "flowtask-4", FLOW_ONE, true)).toBeNull();
     expect(pasteRefusal(TREE, "flowtask-4", FLOW_TWO, false)).toBeNull();
+  });
+});
+
+// The skip that used to be silent. A Flow put on the clipboard is copied; a Flow hanging *under* a
+// copied node is not, because the backend's duplication walk never descends into one — so the
+// pasted subtree came out smaller than the one that was copied, with nothing said about it.
+describe("flowsLeftBehind", () => {
+  const HABIT = mkNode("flow-10", "flow", [mkNode("flowtask-11", "flow_task")], { title: "Morning pages" });
+  const LIFT = mkNode("flow-12", "flow", [], { title: "Lift" });
+  const INNER = mkNode("task-13", "task", [LIFT]);
+  const PARENT_GOAL = mkNode("goal-14", "goal", [HABIT, INNER]);
+  const BOARD = mkNode("root", "domain", [mkNode("domain-15", "project", [PARENT_GOAL])]);
+
+  it("says nothing when nothing is selected", () => {
+    expect(flowsLeftBehind(BOARD, [])).toEqual([]);
+  });
+
+  it("names a Flow hanging under the copied node", () => {
+    expect(flowsLeftBehind(BOARD, ["goal-14"])).toEqual([leftBehind("Morning pages"), leftBehind("Lift")]);
+  });
+
+  it("names a Flow however deep under the copied node it hangs", () => {
+    expect(flowsLeftBehind(BOARD, ["task-13"])).toEqual([leftBehind("Lift")]);
+  });
+
+  // The Flow itself goes through `duplicate_flow`, which clones the template and its Recurrence.
+  // Reporting it as left behind would claim a loss that did not happen.
+  it("says nothing about a Flow copied on its own", () => {
+    expect(flowsLeftBehind(BOARD, ["flow-10"])).toEqual([]);
+  });
+
+  // A Flow *and* its parent on the clipboard: the paste keeps only top-level nodes, so the Flow is
+  // taken as part of the parent's subtree — which does not carry it. That is a real loss.
+  it("names a selected Flow whose parent was selected too, since only the parent is pasted", () => {
+    expect(flowsLeftBehind(BOARD, ["goal-14", "flow-10"])).toEqual([
+      leftBehind("Morning pages"), leftBehind("Lift"),
+    ]);
+  });
+
+  it("reports one Flow once when two selected nodes above it both reach it", () => {
+    expect(flowsLeftBehind(BOARD, ["goal-14", "task-13"])).toEqual([
+      leftBehind("Morning pages"), leftBehind("Lift"),
+    ]);
+  });
+
+  // Read off the tree, not off the clipboard, so the sentence does not change with the order the
+  // selection happened to be assembled in.
+  it("names them in tree order whatever order the clipboard holds", () => {
+    expect(flowsLeftBehind(BOARD, ["task-13", "goal-14"])).toEqual(flowsLeftBehind(BOARD, ["goal-14", "task-13"]));
+  });
+
+  // A flow item goes wherever its Flow goes, and a Habit's repetitions are drawn from the template
+  // rather than stored, so nothing beneath a Flow is separately at risk.
+  it("stops at a Flow instead of reporting what hangs inside it", () => {
+    expect(flowsLeftBehind(BOARD, ["domain-15"]).map((refusal) => refusal.title))
+      .toEqual(["Morning pages", "Lift"]);
   });
 });
 
@@ -160,6 +227,34 @@ describe("countPasteRefusals", () => {
     ]);
   });
 
+  // Every left-behind Flow folds into ONE line, never a toast each: the view holds a single
+  // pending notice, so a second would overwrite the first and drop a Flow in silence.
+  it("folds every left-behind Flow into one line that keeps their names", () => {
+    expect(countPasteRefusals([leftBehind("Morning pages"), leftBehind("Lift")])).toEqual([
+      { reason: PASTE_REFUSAL.FLOW_UNDER, count: 2, named: ["Morning pages", "Lift"], unnamed: 0 },
+    ]);
+  });
+
+  // A toast is a viewport strip. A Domain that has collected a year of Habits would fill it with a
+  // list nobody reads, so past three the count is what is honest.
+  it("names the first few and counts the rest once there are more than a glance takes", () => {
+    const many = ["Pages", "Lift", "Read", "Stretch", "Journal"].map(leftBehind);
+    expect(countPasteRefusals(many)).toEqual([
+      { reason: PASTE_REFUSAL.FLOW_UNDER, count: 5, named: ["Pages", "Lift", "Read"], unnamed: 2 },
+    ]);
+    expect(NAMED_FLOWS_LIMIT).toBe(3);
+  });
+
+  // Composition, which is the whole point of one slot: a paste that trips a destination rule AND
+  // leaves a Flow behind says both, in one message.
+  it("reports a left-behind Flow beside the other reasons rather than instead of them", () => {
+    expect(countPasteRefusals([here("goal"), leftBehind("Lift"), { reason: PASTE_REFUSAL.GONE }])).toEqual([
+      { ...here("goal"), count: 1 },
+      { reason: PASTE_REFUSAL.FLOW_UNDER, count: 1, named: ["Lift"], unnamed: 0 },
+      { reason: PASTE_REFUSAL.GONE, count: 1 },
+    ]);
+  });
+
   it("orders the destination lines by kind, so the same selection reads the same way", () => {
     const mixed: PasteRefusal[] = [here("tag"), here("project"), here("goal")];
     expect(countPasteRefusals(mixed).map((line) => (line.reason === PASTE_REFUSAL.HERE ? line.child : null)))
@@ -173,6 +268,8 @@ describe("pasteRefusalKey", () => {
     expect(pasteRefusalKey({ reason: PASTE_REFUSAL.GONE, count: 1 })).toBe("pasteSkippedGone");
     expect(pasteRefusalKey({ reason: PASTE_REFUSAL.ASPECT, count: 2 })).toBe("pasteSkippedAspect");
     expect(pasteRefusalKey({ reason: PASTE_REFUSAL.COMMITMENT, count: 1 })).toBe("pasteSkippedCommitment");
+    expect(pasteRefusalKey({ reason: PASTE_REFUSAL.FLOW_UNDER, count: 1, named: ["Lift"], unnamed: 0 }))
+      .toBe("pasteSkippedFlowUnder");
   });
 
   it("uses the parent-kinds sentence for a real node", () => {
@@ -193,8 +290,11 @@ describe("pasteRefusalKey", () => {
 // The wordings are the point of the whole change: a refusal that names the wrong cause sends the
 // user to fix something that was never the problem. These pin each one to the thing it names.
 describe("the message each refusal produces", () => {
-  const nodeRefusals: NodeRefusal["reason"][] = Object.values(PASTE_REFUSAL)
-    .filter((reason): reason is NodeRefusal["reason"] => reason !== PASTE_REFUSAL.HERE);
+  // Every reason that reads out as a counted sentence of its own, which is all of them but the
+  // destination — the left-behind Flow included: it names the Flows *and* counts them, so its
+  // sentence still turns on the count like the rest.
+  const nodeRefusals: CountedReason[] = Object.values(PASTE_REFUSAL)
+    .filter((reason): reason is CountedReason => reason !== PASTE_REFUSAL.HERE);
 
   it("gives every refusal about the node a singular and a plural of its own", () => {
     const singulars = nodeRefusals.map((reason) => warnings[`${PASTE_REFUSAL_KEY[reason]}_one`]);
@@ -309,5 +409,36 @@ describe("the destination refusal, rendered", () => {
   it("sends a flow item back inside its Flow instead of listing labels real nodes share", () => {
     expect(render("flow_task", "task", 1)).toBe("1 Task belongs inside its Flow — it can't sit under Task.");
     expect(render("flow_goal", "domain", 2)).toBe("2 Goals belong inside their Flow — they can't sit under Domain.");
+  });
+});
+
+// The one refusal that names rather than counts, rendered through the real catalogue. A Flow under
+// a copied node was never on the clipboard and is invisible in the paste, so "2 Flows weren't
+// copied" would leave the user hunting the copy for whatever is missing. The names are the remedy.
+describe("the left-behind Flow, rendered", () => {
+  function render(titles: readonly string[]): string {
+    const line = countPasteRefusals(titles.map(leftBehind))[0];
+    if (line === undefined || line.reason !== PASTE_REFUSAL.FLOW_UNDER) throw new Error("no line");
+    const flows = line.named.map((title) => i18n.t("warnings:pasteSkippedFlowName", { title }));
+    if (line.unnamed > 0) flows.push(i18n.t("warnings:pasteSkippedFlowMore", { count: line.unnamed }));
+    return i18n.t(`warnings:${pasteRefusalKey(line)}`, { count: line.count, flows: flows.join(", ") });
+  }
+
+  it("names the one Flow it left behind, and says what to do about it", () => {
+    expect(render(["Morning pages"])).toBe(
+      "1 Flow under what you copied wasn't copied with it — copy “Morning pages” across on its own.",
+    );
+  });
+
+  it("names several in one sentence rather than one toast each", () => {
+    expect(render(["Morning pages", "Lift"])).toBe(
+      "2 Flows under what you copied weren't copied with it — copy “Morning pages”, “Lift” across on their own.",
+    );
+  });
+
+  it("counts the tail once a subtree holds more Habits than a toast can read out", () => {
+    expect(render(["Pages", "Lift", "Read", "Stretch", "Journal"])).toBe(
+      "5 Flows under what you copied weren't copied with it — copy “Pages”, “Lift”, “Read”, and 2 more across on their own.",
+    );
   });
 });
