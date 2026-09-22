@@ -16,7 +16,7 @@ all of it — so two parts of the board under two different presets can both sta
 `Ctrl+W`, `Ctrl+Tab` and `Ctrl+1`–`9` behave as they do in a browser, and tabs are restored on
 reopening. The theme and the clipboard are shared, so copying in one tab pastes in another.
 
-Both views are keyboard-driven; `Ctrl+Shift+/` opens a cheat-sheet listing every binding.
+Both views are keyboard-driven; `Ctrl+Alt+/` opens a cheat-sheet listing every binding.
 
 ## Agent access (MCP)
 

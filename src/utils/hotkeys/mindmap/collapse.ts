@@ -18,11 +18,6 @@ export const MINDMAP_COLLAPSE_BINDINGS: readonly Binding<MindmapCollapseContext>
   {
     // The recursive counterpart of the binding above: it goes whichever way the pressed cell is
     // not, so a second press is the first one undone.
-    //
-    // Ctrl+Shift+/ is also the cheat-sheet's chord, and the two tables dispatch from separate
-    // listeners, so what keeps exactly one of them firing is the pair of guards, not the order:
-    // this one takes the chord whenever there is a cell to act on, and `global.toggleHotkeys`
-    // takes it otherwise. `chord-sharing.test.ts` declares the pair and pins it complementary.
     id: "mindmap.toggleSubtreeCollapsed", section: "mindmap", chord: { code: "Slash", ctrl: true, shift: true },
     labelKey: "toggleSubtreeCollapsed",
     when: hasSelection,

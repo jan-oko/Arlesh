@@ -8,7 +8,6 @@ function makeContext(overrides: Partial<GlobalContext> = {}): GlobalContext {
     onToggleView: vi.fn(),
     onToggleHotkeys: vi.fn(),
     onToggleFullscreen: vi.fn(),
-    isRecursiveExpandArmed: false,
     onQuit: vi.fn(),
     ...overrides,
   };
@@ -29,14 +28,23 @@ describe("GLOBAL_BINDINGS", () => {
     expect(ctx.onToggleView).toHaveBeenCalledTimes(1);
   });
 
-  it("when Ctrl+Shift+/ is pressed, toggles the cheat-sheet", () => {
+  it("when Ctrl+Alt+/ is pressed, toggles the cheat-sheet", () => {
     const ctx = makeContext();
-    expect(runFor("Slash", { ctrlKey: true, shiftKey: true }, ctx)).toBe(true);
+    expect(runFor("Slash", { ctrlKey: true, altKey: true }, ctx)).toBe(true);
     expect(ctx.onToggleHotkeys).toHaveBeenCalledTimes(1);
   });
 
-  it("when Ctrl+Shift+/ is pressed with the Mindmap's recursive expand armed, leaves it alone", () => {
-    const ctx = makeContext({ isRecursiveExpandArmed: true });
+  // Carrying no guard, the same chord is what shuts the sheet again — and it stays reachable
+  // whatever the Mindmap has selected, which Ctrl+Shift+/ did not.
+  it("when Ctrl+Alt+/ is pressed a second time, toggles the cheat-sheet shut", () => {
+    const ctx = makeContext();
+    expect(runFor("Slash", { ctrlKey: true, altKey: true }, ctx)).toBe(true);
+    expect(runFor("Slash", { ctrlKey: true, altKey: true }, ctx)).toBe(true);
+    expect(ctx.onToggleHotkeys).toHaveBeenCalledTimes(2);
+  });
+
+  it("when Ctrl+Shift+/ is pressed, matches nothing global — the Mindmap owns that chord", () => {
+    const ctx = makeContext();
     expect(runFor("Slash", { ctrlKey: true, shiftKey: true }, ctx)).toBe(false);
     expect(ctx.onToggleHotkeys).not.toHaveBeenCalled();
   });

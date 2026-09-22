@@ -6,10 +6,8 @@ import { useHotkeysStore } from "@/stores/use-hotkeys-store";
 import { useFullscreenStore } from "@/stores/use-fullscreen-store";
 import { useHotkeys } from "@/hooks/use-hotkeys";
 import { useQuit } from "@/hooks/use-close-to-tray";
-import { useIsInputCaptured } from "@/hooks/use-input-capture";
-import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { useTabTitle } from "@/hooks/use-tab-title";
-import { GLOBAL_BINDINGS, isRecursiveExpandArmed } from "@/utils/hotkeys/global-bindings";
+import { GLOBAL_BINDINGS } from "@/utils/hotkeys/global-bindings";
 
 /**
  * Everything one tab shows: its top bar and whichever of the two views it is on.
@@ -25,21 +23,12 @@ export default function ActiveTab() {
   const toggleHotkeys = useHotkeysStore((s) => s.toggle);
   const isFullscreen = useFullscreenStore((s) => s.isFullscreen);
   const toggleFullscreen = useFullscreenStore((s) => s.toggle);
-  // Ctrl+Shift+/ belongs to the Mindmap's recursive expand whenever there is a cell to expand, and
-  // to the cheat-sheet otherwise. The two bindings live in different tables dispatched by different
-  // listeners, so nothing orders them — only these guards keep one of the two firing. The
-  // condition is exactly when the Mindmap's own bindings are live: its view is on screen, nothing
-  // has captured the keyboard (including the sheet itself, which this chord has to be able to
-  // close), and something is selected.
-  const selectedNodeId = useMindmapStore((s) => s.selectedNodeId);
-  const isInputCaptured = useIsInputCaptured();
-  const armed = isRecursiveExpandArmed({ isMindmapOnScreen: view === "mindmap", selectedNodeId, isInputCaptured });
   const quit = useQuit();
 
   useTabTitle();
   useHotkeys(
     GLOBAL_BINDINGS,
-    { onToggleView: toggleView, onToggleHotkeys: toggleHotkeys, onToggleFullscreen: toggleFullscreen, isRecursiveExpandArmed: armed, onQuit: quit },
+    { onToggleView: toggleView, onToggleHotkeys: toggleHotkeys, onToggleFullscreen: toggleFullscreen, onQuit: quit },
     true,
   );
 

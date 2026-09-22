@@ -45,7 +45,7 @@ function rowsFor(section: Section): Row[] {
   return rows;
 }
 
-/** Ctrl+Shift+/ cheat-sheet: every keyboard binding, grouped by the surface it applies to. */
+/** Ctrl+Alt+/ cheat-sheet: every keyboard binding, grouped by the surface it applies to. */
 export default function HotkeysModal({ onClose }: Props) {
   useInputCapture();
   const { t } = useTranslation(["hotkeys"]);

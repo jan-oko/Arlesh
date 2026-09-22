@@ -3,5 +3,3 @@
   `Ctrl+Shift+/` does the whole branch in one press. It reaches both kinds of closed cell on the way down: an ordinary collapsed cell opens, and so does every level of a folded Habit run, down to the individual days. Each keeps the behaviour it already had afterwards — the Habit history stays open across restarts, an ordinary expansion lasts as long as the session.
 
   Press it on a cell that is already open and it goes the other way, shutting that cell and everything beneath it, so a second press puts the board back exactly as it was before the first. A re-folded Habit run is properly folded again, not just closed over an expansion still waiting inside it: `Ctrl+/` on it afterwards opens its scope levels, one level at a time, as it would have before.
-
-  **The cheat-sheet keeps the same chord when nothing is selected.** With a cell selected in the Mindmap, `Ctrl+Shift+/` now expands or collapses it; press `Escape` first, or use the gear popover, to bring the shortcut list up. The list still closes on `Ctrl+Shift+/` while it is showing.

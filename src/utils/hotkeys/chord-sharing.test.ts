@@ -2,8 +2,7 @@ import { describe, it, expect } from "vitest";
 import { listKeyboardContext, mindmapKeyboardContext } from "@/test/keyboard-context";
 import { formatChord } from "./chord";
 import type { Binding, BindingMeta } from "./chord";
-import { GLOBAL_BINDINGS, isRecursiveExpandArmed } from "./global-bindings";
-import type { GlobalContext } from "./global-bindings";
+import { GLOBAL_BINDINGS } from "./global-bindings";
 import { TAB_BINDINGS } from "./tab-bindings";
 import { LIST_BINDINGS } from "./list-bindings";
 import type { ListContext } from "./list-bindings";
@@ -48,19 +47,17 @@ const SHARED_CHORDS: Readonly<Record<string, readonly string[]>> = {
 const ALL: readonly BindingMeta[] = [...GLOBAL_BINDINGS, ...TAB_BINDINGS, ...MINDMAP_BINDINGS, ...LIST_BINDINGS];
 
 /**
- * The chords a view's table shares with an always-live one.
+ * The chords a view's table shares with an always-live one. There are none, and that is the point.
  *
- * `SHARED_CHORDS` above cannot see these: it groups by section, and two sections are two *tables*,
- * dispatched by two listeners from two `useHotkeys` calls. So ADR 0003's first-match rule does not
- * order them — nothing does — and a pair declared here has to be strictly complementary, with at
- * most one guard passing in any state the app can be in. That is what the suite below proves for
- * the one such pair there is.
+ * `SHARED_CHORDS` above cannot see this kind of collision: it groups by section, and two sections
+ * are two *tables*, dispatched by two listeners from two `useHotkeys` calls. So ADR 0003's
+ * first-match rule does not order them — nothing does, and the loser would simply never fire.
+ * A pair that landed here would have to be strictly complementary, with at most one guard passing
+ * in any state the app can be in, and would need the state-by-state proof to go with it. The
+ * cheaper answer is almost always a free chord: the cheat-sheet moved off `Ctrl+Shift+/` onto the
+ * unused `Ctrl+Alt+/` rather than split that chord with the Mindmap's recursive expand.
  */
-const CROSS_TABLE_CHORDS: Readonly<Record<string, readonly string[]>> = {
-  // The cheat-sheet's chord, which the Mindmap borrows for the recursive collapse-or-expand
-  // whenever there is a cell to act on. `isRecursiveExpandArmed` is the one place the split is decided.
-  "mindmap Ctrl+Shift+/": ["global.toggleHotkeys", "mindmap.toggleSubtreeCollapsed"],
-};
+const CROSS_TABLE_CHORDS: Readonly<Record<string, readonly string[]>> = {};
 
 /** Every chord an always-live table shares with `view`'s own, keyed the way the view's section is. */
 function crossTableGroups(section: string, view: readonly BindingMeta[]): Record<string, string[]> {
@@ -180,52 +177,5 @@ describe("chords a view shares with an always-live table", () => {
       ...crossTableGroups("mindmap", MINDMAP_BINDINGS),
       ...crossTableGroups("listView", LIST_BINDINGS),
     }).toEqual(CROSS_TABLE_CHORDS);
-  });
-});
-
-describe("Ctrl+Shift+/ across the cheat-sheet and the Mindmap", () => {
-  const toggleHotkeys = guardOf(GLOBAL_BINDINGS, "global.toggleHotkeys");
-  const toggleSubtree = guardOf(MINDMAP_BINDINGS, "mindmap.toggleSubtreeCollapsed");
-
-  function mindmapContext(selectedNodeId: string | null): MindmapContext {
-    const selection = selectedNodeId === null ? [] : [selectedNodeId];
-    return {
-      ...mindmapKeyboardContext({ selectedNodeId, selectedNodeIds: new Set(selection) }),
-      lastEnterMs: { current: -Infinity },
-    };
-  }
-
-  function globalContext(armed: boolean): GlobalContext {
-    return {
-      onToggleView: () => {},
-      onToggleHotkeys: () => {},
-      onToggleFullscreen: () => {},
-      isRecursiveExpandArmed: armed,
-      onQuit: () => {},
-    };
-  }
-
-  // Every state the two guards can be in together, written as the app decides them: which view is
-  // on screen, what the Mindmap has selected, and whether something has taken the keyboard. The
-  // Mindmap's table is only dispatched at all while its view is mounted and nothing is capturing.
-  const states: ReadonlyArray<{ name: string; isMindmapOnScreen: boolean; selectedNodeId: string | null; isInputCaptured: boolean }> = [
-    { name: "the Mindmap has a cell selected", isMindmapOnScreen: true, selectedNodeId: "task-1", isInputCaptured: false },
-    { name: "the Mindmap has nothing selected", isMindmapOnScreen: true, selectedNodeId: null, isInputCaptured: false },
-    { name: "the cheat-sheet is open over a selection", isMindmapOnScreen: true, selectedNodeId: "task-1", isInputCaptured: true },
-    { name: "the List View is on screen", isMindmapOnScreen: false, selectedNodeId: "task-1", isInputCaptured: false },
-  ];
-
-  it.each(states)("when $name, exactly one of the two fires", (state) => {
-    const armed = isRecursiveExpandArmed(state);
-    const sheet = toggleHotkeys(globalContext(armed));
-    // The Mindmap's table is not dispatched at all unless its view is mounted and live.
-    const isMindmapLive = state.isMindmapOnScreen && !state.isInputCaptured;
-    const expand = isMindmapLive && toggleSubtree(mindmapContext(state.selectedNodeId));
-    expect(Number(sheet) + Number(expand)).toBe(1);
-  });
-
-  it("leaves the cheat-sheet its chord back the moment the selection is dropped", () => {
-    expect(toggleHotkeys(globalContext(isRecursiveExpandArmed({ isMindmapOnScreen: true, selectedNodeId: "task-1", isInputCaptured: false })))).toBe(false);
-    expect(toggleHotkeys(globalContext(isRecursiveExpandArmed({ isMindmapOnScreen: true, selectedNodeId: null, isInputCaptured: false })))).toBe(true);
   });
 });
