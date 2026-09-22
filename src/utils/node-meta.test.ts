@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { computeNodeDimensions, estimateWrappedLineCount, getNodeSize, validTypesForCycling, typeAcceptsChildren, isValidDropTarget, computeEditHeight, validParentKinds, isFlowKind, canParentNewTask, TYPED_CHILD_KINDS } from "./node-meta";
+import { computeNodeDimensions, estimateWrappedLineCount, getNodeSize, validTypesForCycling, typeAcceptsChildren, isValidDropTarget, computeEditHeight, validParentKinds, isFlowKind, canParentNewTask, canParentNewChild, canParentAnyNewChild, canAdoptChildren, canAdoptExistingChild, TYPED_CHILD_KINDS } from "./node-meta";
+import { ALL_NODE_KINDS } from "./tree-layout";
 import type { MindmapNode } from "./tree-layout";
 
 describe("computeNodeDimensions", () => {
@@ -417,5 +418,101 @@ describe("canParentNewTask", () => {
 
   it("refuses the synthetic root, which has no database row either", () => {
     expect(canParentNewTask(node("root", "domain"))).toBe(false);
+  });
+});
+
+describe("isValidDropTarget — a folded run of Habit history", () => {
+  // `habit_group` is a tally and a span drawn in place of many iterations. It used to fall through
+  // to the function's trailing `return true`, which is how a folded run came to accept children.
+  it.each(ALL_NODE_KINDS)("refuses a %s dropped onto a habit_group", (kind) => {
+    expect(isValidDropTarget(kind, "habit_group")).toBe(false);
+  });
+
+  it.each(ALL_NODE_KINDS)("refuses a habit_group dropped onto a %s", (kind) => {
+    expect(isValidDropTarget("habit_group", kind)).toBe(false);
+  });
+});
+
+describe("canParentNewChild", () => {
+  function node(id: string, kind: MindmapNode["kind"], extra: Partial<MindmapNode> = {}): MindmapNode {
+    return { id, kind, title: id, position: 0, tagIds: [], children: [], ...extra };
+  }
+
+  const occurrence = (kind: MindmapNode["kind"]) =>
+    node(`habit-3-0-virtual`, kind, {
+      virtual: true,
+      habitItem: { flowId: 3, itemType: "flow_root", itemId: 3, scopeId: 100, cycleId: 0 },
+    });
+
+  const foldedRun = node("habitgroup-3-run", "habit_group", {
+    virtual: true,
+    habitGroup: {
+      flowId: 3, level: "run", passed: 3, done: 2, missed: 1,
+      spanStart: "2026-09-14", spanEnd: "2026-09-16", spanLabel: "2026-09-14..2026-09-16",
+    },
+  });
+
+  it("answers the kind rule for an ordinary row", () => {
+    expect(canParentNewChild(node("goal-1", "goal"), "task")).toBe(true);
+    expect(canParentNewChild(node("task-1", "task"), "goal")).toBe(false);
+  });
+
+  it.each(["task", "goal", "commitment", "info"] as const)(
+    "lets a Goal occurrence hold a new %s, which the attachment path writes",
+    (childKind) => {
+      expect(canParentNewChild(occurrence("goal"), childKind)).toBe(true);
+    },
+  );
+
+  // The bug Shift+F reproduced: a Habit whose instances are Goals draws a `goal` iteration root,
+  // and a Flow may sit under a Goal — so the kind alone said yes and the editor posted a NaN parent.
+  it("refuses a Flow on a Goal occurrence, though the kind rule would allow one under a Goal", () => {
+    expect(isValidDropTarget("flow", "goal")).toBe(true);
+    expect(canParentNewChild(occurrence("goal"), "flow")).toBe(false);
+  });
+
+  it("still applies the occurrence's own drawn kind — no Goal under a Task occurrence", () => {
+    expect(canParentNewChild(occurrence("task"), "goal")).toBe(false);
+    expect(canParentNewChild(occurrence("task"), "task")).toBe(true);
+  });
+
+  it.each(ALL_NODE_KINDS)("refuses a new %s under a folded run of Habit history", (childKind) => {
+    expect(canParentNewChild(foldedRun, childKind)).toBe(false);
+  });
+
+  it("refuses everything under the synthetic root, which has no row", () => {
+    expect(canParentNewChild(node("root", "domain"), "task")).toBe(false);
+  });
+
+  describe("canParentAnyNewChild", () => {
+    it("says yes for a Project and no for a Tag, which is a label rather than a container", () => {
+      expect(canParentAnyNewChild(node("domain-1", "project"))).toBe(true);
+      expect(canParentAnyNewChild(node("domain-2", "tag"))).toBe(false);
+    });
+
+    it("says no for a folded run and yes for an occurrence, which holds children of its own", () => {
+      expect(canParentAnyNewChild(foldedRun)).toBe(false);
+      expect(canParentAnyNewChild(occurrence("task"))).toBe(true);
+    });
+  });
+
+  describe("canAdoptChildren / canAdoptExistingChild", () => {
+    // The one node the two predicates disagree about. Attaching writes the child and the link in
+    // one call; a move only re-points an existing row's parent, and there is no id to point at.
+    it("lets an occurrence hold a NEW child but not adopt an existing one", () => {
+      expect(canParentNewChild(occurrence("task"), "task")).toBe(true);
+      expect(canAdoptChildren(occurrence("task"))).toBe(false);
+      expect(canAdoptExistingChild(occurrence("task"), "task")).toBe(false);
+    });
+
+    it("answers the kind rule for an ordinary row, exactly as creating does", () => {
+      expect(canAdoptExistingChild(node("goal-1", "goal"), "task")).toBe(true);
+      expect(canAdoptExistingChild(node("task-1", "task"), "goal")).toBe(false);
+    });
+
+    it("refuses a folded run and the synthetic root", () => {
+      expect(canAdoptChildren(foldedRun)).toBe(false);
+      expect(canAdoptChildren(node("root", "domain"))).toBe(false);
+    });
   });
 });

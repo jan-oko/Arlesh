@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { findNode, findParent, collectAllNodeIds } from "@/utils/mindmap-tree";
-import { isValidDropTarget, validParentKinds } from "@/utils/node-meta";
+import { canAdoptChildren, canParentAnyNewChild, canParentNewChild, validParentKinds } from "@/utils/node-meta";
 import { pasteRefusal, countPasteRefusals, pasteRefusalKey, PASTE_REFUSAL } from "@/utils/paste-refusal";
 import type { PasteRefusal, PasteRefusalCount } from "@/utils/paste-refusal";
 import type { TypedChildKind } from "@/utils/node-meta";
@@ -115,33 +115,61 @@ export function useNodeActions({
         const next = node.status === GOAL_STATUS.ACHIEVED ? GOAL_STATUS.ACTIVE : GOAL_STATUS.ACHIEVED;
         void updateGoal(dbId, { status: next })
           .then(() => reload())
-          .catch((err: unknown) => console.error(`${LOG_PREFIX} goal status toggle failed:`, err));
+          .catch((err: unknown) => {
+            console.error(`${LOG_PREFIX} goal status toggle failed:`, err);
+            showToast({ nodeId, message: t("warnings:statusChangeFailed", { message: getErrorMessage(err) }) });
+          });
         return;
       }
       if (node.kind !== "task") return;
       const dbId = parseInt(nodeId.split("-").pop() ?? "0", 10);
       void updateTask(dbId, { status: nextTaskStatus(node.status ?? TASK_STATUS.TODO) })
         .then(() => reload())
-        .catch((err: unknown) => console.error(`${LOG_PREFIX} status cycle failed:`, err));
+        .catch((err: unknown) => {
+          console.error(`${LOG_PREFIX} status cycle failed:`, err);
+          showToast({ nodeId, message: t("warnings:statusChangeFailed", { message: getErrorMessage(err) }) });
+        });
     },
-    [tree, reload, setOccurrenceStatus],
+    [tree, reload, setOccurrenceStatus, showToast, t],
   );
 
   const onCommitEdit = useCallback(
     (nodeId: string, title: string) => {
       if (title.trim() === "") { setEditingNodeId(null); return; }
       const node = findNode(tree, nodeId);
-      if (node !== undefined) {
-        void renameNode(nodeId, node.kind, title.trim()).then(() => setEditingNodeId(null));
-      }
+      if (node === undefined) return;
+      void renameNode(nodeId, node.kind, title.trim())
+        .then(() => setEditingNodeId(null))
+        .catch((err: unknown) => {
+          // The rename stays open on the title that earned the refusal, rather than closing on a
+          // write that did not happen. Before this, a refused rename left the old title on the
+          // canvas and said nothing — indistinguishable from a rename that worked and was undone.
+          console.error(`${LOG_PREFIX} rename failed:`, err);
+          showToast({ nodeId, message: t("warnings:renameFailed", { message: getErrorMessage(err) }) });
+        });
     },
-    [tree, renameNode, setEditingNodeId],
+    [tree, renameNode, setEditingNodeId, showToast, t],
   );
 
   const onCreateChild = useCallback(
     (nodeId: string) => {
       const node = findNode(tree, nodeId);
-      if (node === undefined || !nodeId.includes("-") || node.kind === "tag") return;
+      // The synthetic root is the "nothing was aimed at" case, and stays silent on purpose — the
+      // same answer the typed chords give with no selection at all.
+      if (node === undefined || !nodeId.includes("-")) return;
+      // `Tab` names no kind — the parent decides what its child is — so the question it can ask is
+      // whether this node holds anything at all. Exactly two answers are no: a Tag, which is a
+      // label rather than a container, and a node drawn rather than stored (a folded run of Habit
+      // history). Both used to be an `if (…) return` with nothing on screen.
+      if (!canParentAnyNewChild(node)) {
+        showToast({
+          nodeId,
+          message: node.kind === "tag"
+            ? t("warnings:createUnderTagRefused")
+            : t("warnings:createUnderRepetition"),
+        });
+        return;
+      }
       void (async () => {
         try {
           const newNode = await createChild(nodeId, node.kind, "");
@@ -149,10 +177,36 @@ export function useNodeActions({
           setEditingNodeId(newNode.id);
         } catch (err) {
           console.error(`${LOG_PREFIX} createChild failed:`, err);
+          showToast({ nodeId, message: t("warnings:createFailed", { message: getErrorMessage(err) }) });
         }
       })();
     },
-    [tree, createChild, selectNode, setEditingNodeId],
+    [tree, createChild, selectNode, setEditingNodeId, showToast, t],
+  );
+
+  /**
+   * Why `parent` cannot take a new `childKind`, as a sentence.
+   *
+   * Three refusals, because three different things are wrong and a user sent to fix the wrong one
+   * is worse off than one told nothing. A **folded run of Habit history** is drawn rather than
+   * stored, so no kind would have worked and no other parent is being suggested. An **occurrence**
+   * does hold children of its own — but only the four its attachment path can write, so a Flow
+   * aimed at one is refused for a reason that has nothing to do with where Flows live. Everything
+   * else is the ordinary parenting rule, stated positively so it answers "then where?".
+   */
+  const typedChildRefusal = useCallback(
+    (parent: MindmapNode, childKind: TypedChildKind): string => {
+      if (parent.habitItem !== undefined) {
+        return t("warnings:createUnderOccurrenceRefused", { child: t(`nodeKinds:${childKind}`) });
+      }
+      if (parent.virtual === true) return t("warnings:createUnderRepetition");
+      return t("warnings:typedChildRefused", {
+        child: t(`nodeKinds:${childKind}`),
+        parent: t(`nodeKinds:${parent.kind}`),
+        parents: validParentKinds(childKind).map((kind) => t(`nodeKinds:${kind}`)).join(", "),
+      });
+    },
+    [t],
   );
 
   const onCreateTypedChild = useCallback(
@@ -162,17 +216,14 @@ export function useNodeActions({
       if (parent === undefined || !nodeId.includes("-")) return;
 
       // Refused, not relocated: putting the node somewhere other than where the user pointed is
-      // worse than not creating it — and saying nothing would read as a broken key. The message
-      // states the rule positively, so it answers "then where?" in the same breath.
-      if (!isValidDropTarget(childKind, parent.kind)) {
-        showToast({
-          nodeId,
-          message: t("warnings:typedChildRefused", {
-            child: t(`nodeKinds:${childKind}`),
-            parent: t(`nodeKinds:${parent.kind}`),
-            parents: validParentKinds(childKind).map((kind) => t(`nodeKinds:${kind}`)).join(", "),
-          }),
-        });
+      // worse than not creating it — and saying nothing would read as a broken key.
+      //
+      // Asked of the **node**, not of its kind. A kind cannot tell a real row from a drawing of
+      // one, so `Shift+F` on a virtual Habit occurrence used to pass this check (a Habit whose
+      // instances are Goals draws an iteration root of kind `goal`, and a Flow may sit under a
+      // Goal), route straight to the Flow editor below, and post a parent id of `NaN`.
+      if (!canParentNewChild(parent, childKind)) {
+        showToast({ nodeId, message: typedChildRefusal(parent, childKind) });
         return;
       }
 
@@ -195,7 +246,7 @@ export function useNodeActions({
         }
       })();
     },
-    [tree, createNode, onNewFlow, onNewCommitment, selectNode, setEditingNodeId, showToast, t],
+    [tree, createNode, onNewFlow, onNewCommitment, selectNode, setEditingNodeId, showToast, t, typedChildRefusal],
   );
 
   const onDelete = useCallback(
@@ -219,14 +270,26 @@ export function useNodeActions({
       // not be read: it is a viewport toast that fades after three seconds, and confirming a delete
       // puts the modal's overlay over the top of it — "deleted the rest, mentioned the skip" would
       // be a silent skip wearing a message, which is the thing the rule exists to forbid.
-      const repetition = nodes.find((node) => node.virtual === true);
-      if (repetition !== undefined) {
-        showToast({ nodeId: repetition.id, message: t("warnings:deleteRepetitionRefused") });
+      //
+      // An **Aspect** is the second node this applies to, and the reason it is here rather than
+      // quietly filtered out of the delete set: the backend refuses every write to one (`domains`
+      // returns `FixedAspect` on update and on delete alike), the six are seeded with the board,
+      // and there is no gesture anywhere that removes one. `Delete` on an Aspect alone used to be
+      // an inert key — indistinguishable from a dead one — and in a mixed selection it took
+      // everything else and said nothing about what it had dropped.
+      const refused = nodes.filter((node) => node.virtual === true || node.kind === "aspect");
+      const first = refused[0];
+      if (first !== undefined) {
+        // One toast, both sentences: the store holds a single pending notice, so a selection that
+        // trips both rules has to say both at once or say one of them into nothing.
+        const messages: string[] = [];
+        if (refused.some((node) => node.virtual === true)) messages.push(t("warnings:deleteRepetitionRefused"));
+        if (refused.some((node) => node.kind === "aspect")) messages.push(t("warnings:deleteAspectRefused"));
+        showToast({ nodeId: first.id, message: messages.join(" ") });
         return;
       }
 
-      const valid = nodes.filter((node) => node.kind !== "aspect");
-      if (valid.length > 0) onRequestDelete(valid.map((node) => node.id));
+      if (nodes.length > 0) onRequestDelete(nodes.map((node) => node.id));
     },
     [tree, onRequestDelete, showToast, t],
   );
@@ -260,6 +323,16 @@ export function useNodeActions({
       if (clipboard === null) return;
       const targetNode = findNode(tree, targetId);
       if (targetNode === undefined) return;
+
+      // The destination is asked first, and as a node. A folded run of Habit history and a virtual
+      // occurrence both wear a kind that the drop rule would say yes to, and neither has a row for
+      // a moved node's parent link to point at — an occurrence's own children are *attached* to
+      // the iteration when they are created, which a move of an existing row cannot do. Refused
+      // once here rather than once per clipboard entry: one reason, one sentence.
+      if (!canAdoptChildren(targetNode)) {
+        showToast({ nodeId: targetId, message: t("warnings:pasteOntoRepetitionRefused") });
+        return;
+      }
       const isCopy = clipboard.operation === CLIPBOARD_OP.COPY;
 
       // Every reason a node is left behind lives in `pasteRefusal`, which the drag-and-drop rule is
@@ -278,12 +351,12 @@ export function useNodeActions({
       // One toast carrying every reason, never one call per reason: the store holds a single pending
       // toast, so a second `showToast` would overwrite the first and the node it spoke for would be
       // dropped in silence — exactly what this message exists to prevent.
-      if (refusals.length > 0) {
-        const message = countPasteRefusals(refusals)
+      const skipped = refusals.length === 0
+        ? ""
+        : countPasteRefusals(refusals)
           .map((line) => refusalSentence(line, targetNode.kind))
           .join(" ");
-        showToast({ nodeId: targetId, message });
-      }
+      if (skipped !== "") showToast({ nodeId: targetId, message: skipped });
       if (nodeIds.length === 0) return;
       const selectedSet = new Set(nodeIds);
 
@@ -325,6 +398,16 @@ export function useNodeActions({
         if (!isCopy) setClipboard(null);
       }).catch((err: unknown) => {
         console.error(`${LOG_PREFIX} paste failed:`, err);
+        // Every refusal the *backend* raises — a CHECK constraint, a cycle, a foreign key — used
+        // to reach the user as nothing at all: a board that silently did not change, which is
+        // worse than a wrong reason or a generic one.
+        //
+        // It arrives after the skip notice this same gesture may already have put up, and the
+        // store holds one toast. So it replaces that notice only by **containing** it: both
+        // sentences, in the order they happened. Nothing the gesture said is taken off screen
+        // unsaid, and the timer restarts on a message that now has more to read.
+        const failure = t("warnings:pasteFailed", { message: getErrorMessage(err) });
+        showToast({ nodeId: targetId, message: skipped === "" ? failure : `${skipped} ${failure}` });
       });
     },
     [clipboard, tree, moveNode, duplicateNode, setClipboard, showToast, refusalSentence, t],
@@ -333,7 +416,14 @@ export function useNodeActions({
   const onCreateSibling = useCallback(
     (nodeId: string) => {
       const node = findNode(tree, nodeId);
-      if (node === undefined || node.kind === "aspect") return;
+      if (node === undefined) return;
+      // The six Aspects are seeded with the board and the backend refuses every write to one, so
+      // there is no seventh to create alongside this. Said, not skipped: the chord used to be an
+      // inert key here, which reads as a broken one.
+      if (node.kind === "aspect") {
+        showToast({ nodeId, message: t("warnings:siblingAspectRefused") });
+        return;
+      }
       const parent = findParent(tree, nodeId);
       if (parent === null || parent.id === "root") return;
       // The sibling carries over the source Task's **own stored** Agentic flag. Sharing a parent
@@ -352,16 +442,23 @@ export function useNodeActions({
           setEditingNodeId(newNode.id);
         } catch (err) {
           console.error(`${LOG_PREFIX} createSibling failed:`, err);
+          showToast({ nodeId, message: t("warnings:createFailed", { message: getErrorMessage(err) }) });
         }
       })();
     },
-    [tree, createNode, selectNode, setEditingNodeId],
+    [tree, createNode, selectNode, setEditingNodeId, showToast, t],
   );
 
   const onInsertParent = useCallback(
     (nodeId: string) => {
       const node = findNode(tree, nodeId);
-      if (node === undefined || node.kind === "aspect") return;
+      if (node === undefined) return;
+      // An Aspect is the top of the board: it has nothing above it but the root, and the backend
+      // would refuse the move even if a parent were created for it.
+      if (node.kind === "aspect") {
+        showToast({ nodeId, message: t("warnings:insertParentAspectRefused") });
+        return;
+      }
       const parent = findParent(tree, nodeId);
       if (parent === null || parent.id === "root") return;
       // Two writes — the new parent, then the move under it. Without a Gesture, undoing would take
@@ -376,10 +473,11 @@ export function useNodeActions({
           });
         } catch (err) {
           console.error(`${LOG_PREFIX} insertParent failed:`, err);
+          showToast({ nodeId, message: t("warnings:insertParentFailed", { message: getErrorMessage(err) }) });
         }
       })();
     },
-    [tree, createChild, moveNode, selectNode, setEditingNodeId, t],
+    [tree, createChild, moveNode, selectNode, setEditingNodeId, showToast, t],
   );
 
   return {

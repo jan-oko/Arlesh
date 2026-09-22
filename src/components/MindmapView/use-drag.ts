@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
-import { isValidDropTarget } from "@/utils/node-meta";
+import { canAdoptExistingChild } from "@/utils/node-meta";
 import { findNode } from "@/utils/mindmap-tree";
 
 const DRAG_THRESHOLD = 4;
@@ -48,7 +48,12 @@ export function useDrag(
       const target = findNode(tree, targetId);
       if (source === undefined || target === undefined) return null;
       if (findNode(source, targetId) !== undefined) return null;
-      return isValidDropTarget(source.kind, target.kind) ? targetId : null;
+      // A drag says "not here" by not lighting the node up, which is the whole gesture's own
+      // feedback and is on screen the entire time it is wrong — so this is the one place a refusal
+      // needs no toast. What it must not do is offer a drop the write cannot make: a **virtual**
+      // node has no row whose parent link a move could re-point, on either side of the drop.
+      if (source.virtual === true) return null;
+      return canAdoptExistingChild(target, source.kind) ? targetId : null;
     }
 
     function executeDrop(gesture: DragGesture, targetId: string) {
