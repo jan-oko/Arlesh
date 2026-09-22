@@ -84,6 +84,55 @@ opens **anchored on the scope the bar is showing**, not on today, so jumping sta
 already are; which cell it marks as *current* is still the real instant, so browsing forward does
 not relabel the week you landed on as the current one.
 
+**Two switches, both off by default** (gear popover, shown only while the Plan View is active,
+persisted app-wide beside *Path icons* and *Asynchronous first*). They are separate switches, not
+one, because they answer different questions — *where the work lives* against *when it is planned*
+— and a planning pass wants them in different combinations.
+
+**Group by path** draws a header above each contiguous run of rows sharing a location, spelling the
+chain — `Growth › CODE › ARLESH › Features` — exactly as the List View does, in **both** panes. It
+is the same header: clicking a segment enters that subtree, Ctrl-clicking files it as an Antecedent
+pill, and the *Path icons* switch governs its glyph here too. The Plan View offers no **+** on a
+header, because planning is the only thing this view writes.
+
+**Split planned by subscope** divides the **planned** pane into one section per subscope — the
+weeks of a month, the days of a week, the bands of a day — so a whole month's buckets and their
+contents read in one pass. The subscope is the next kind down the ladder `season → month → week →
+day → part of day`; a Part of Day has nothing below it and does not split, and neither does an
+Exact window, which is not a calendar cell.
+
+The candidates pane is **never** split. Candidates are unplanned, so they sit in no subscope; there
+is no bucket to put them in, and bucketing them by relevance window instead was considered and
+rejected as answering a different question from the one the pane asks.
+
+The sections are always open — no disclosure triangles. Seeing every bucket at once is the point,
+and a fold defeats it. Three rules keep the split from hiding anything:
+
+- **Empty subscopes are drawn.** An empty week is the answer to "what is in this month" just as
+  much as a full one, and it is the only way the pane can show a bucket you have not filled yet.
+- **Straddling subscopes are drawn and marked partial, with their dates.** A month's first and last
+  weeks usually poke outside it. Showing only wholly-contained subscopes would hide work planned
+  into a straddling week from the month's view entirely.
+- **Work that sits in no single subscope goes to a named catch-all**, drawn first and only when it
+  holds something: a task planned to the scope *itself* while you are filling it, one whose plan
+  spans several subscopes, and one whose plan has not been read back yet. The pane never holds
+  fewer tasks than the triage put in it.
+
+With both switches on, rows inside a section still carry their path headers. The two groupings
+nest rather than compete, because they say different things: the section says *when*, the header
+says *where*.
+
+**Sectioning compares dates, never instants.** A scope row carries `start_date` and `end_date` as
+plain dates, and so does a calendar cell, so "is this plan inside that week" is a string
+comparison. Building a datetime window here would bake in what instant a day begins at — which is
+the backend's answer, and not one this view may assume.
+
+**The keyboard walks what is drawn.** A split reorders the pane, so the flat row list the selection
+moves through comes from the rendered model rather than from the triage. Section headings and path
+headers are entries in that stream rather than wrappers around it, and none of them is landable:
+`Down` steps from the last card of one bucket to the first card of the next. Crossing panes still
+keeps your place by index, against the drawn order on both sides.
+
 Stepping walks from the materialized scope's own start date rather than from wherever the cursor
 happened to sit inside it, so a month stepped from the 31st lands on the next month. Walking parts
 of a day rolls over into the next or previous day at either end of the sequence.

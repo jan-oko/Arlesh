@@ -26,7 +26,7 @@ use chrono::{Datelike, Duration, Months, NaiveDate, NaiveDateTime, NaiveTime};
 use crate::database::session::{Db, SessionMode, Transactional};
 use crate::infos::model::CreateInfoRequest;
 use crate::scopes::model::{PartOfDay, Scope, ScopeId, ScopeKind};
-use crate::scopes::resolve::{interval_contains, scope_bounds};
+use crate::scopes::resolve::{day_boundary, interval_contains, scope_bounds};
 use crate::scopes::ScopeOperator;
 use crate::tasks::lifecycle::verdict_deadline;
 use crate::tasks::model::{
@@ -427,8 +427,8 @@ async fn habit_slots(
                 let next_contiguous = advance(window_start, *n, kind_str).ok_or_else(overflow)?;
                 (
                     scope.id,
-                    window_start.and_time(NaiveTime::MIN),
-                    next_contiguous.and_time(NaiveTime::MIN),
+                    day_boundary(window_start),
+                    day_boundary(next_contiguous),
                     Some(next_contiguous),
                 )
             }

@@ -19,12 +19,30 @@ fn at_hour(date: NaiveDate, hour: u32) -> NaiveDateTime {
     date.and_time(time)
 }
 
+/// The wall-clock hour the whole scope ladder turns over on. A Day runs 02:00 → 02:00, and
+/// Season, Month and Week start and end on the same seam, so that every scope contains exactly
+/// its own parts.
+///
+/// 02:00 is not a new seam: [`PartOfDay::band`] already runs Night 22:00–02:00 and Premorning
+/// 02:00–06:00. A midnight boundary left a Day not containing its own Night — for the two hours
+/// after midnight the part-of-day model said "still yesterday" and the Day scope said "already
+/// today". Moving only the Day would have pushed the same contradiction up to the Week boundary,
+/// so the whole ladder moves together: one rule, no special cases.
+pub const DAY_BOUNDARY_HOUR: u32 = 2;
+
+/// The instant the Day named by `date` begins — `date` at [`DAY_BOUNDARY_HOUR`].
+pub fn day_boundary(date: NaiveDate) -> NaiveDateTime {
+    at_hour(date, DAY_BOUNDARY_HOUR)
+}
+
 /// Resolves a canonical (Day/Week/Month/Season) scope from its inclusive date range to a
-/// half-open datetime interval spanning whole days: `[start 00:00, (end + 1 day) 00:00)`.
+/// half-open datetime interval spanning whole days: `[start 02:00, (end + 1 day) 02:00)` — see
+/// [`DAY_BOUNDARY_HOUR`].
 pub fn canonical_bounds(start_date: NaiveDate, end_date: NaiveDate) -> Bounds {
-    let start = start_date.and_time(NaiveTime::MIN);
-    let end = (end_date + Duration::days(1)).and_time(NaiveTime::MIN);
-    (start, end)
+    (
+        day_boundary(start_date),
+        day_boundary(end_date + Duration::days(1)),
+    )
 }
 
 /// Resolves a Part-of-Day scope to its half-open datetime interval. `start_date` is the day

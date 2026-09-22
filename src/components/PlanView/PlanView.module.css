@@ -73,3 +73,53 @@
   color: var(--text-secondary);
   font-family: var(--font-sans);
 }
+
+/* A subscope bucket's header inside the planned pane. It sits in the same scrolling column as the
+   cards — the pane is one flat run so the keyboard can walk it in the order it is drawn — so the
+   separation is a rule above the heading rather than a box around the section. */
+.sectionHeading {
+  display: flex;
+  align-items: baseline;
+  margin: var(--space-3) 0 0;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+/* The first bucket needs no rule: there is nothing above it to be separated from. */
+.cards > .sectionHeading:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.sectionName {
+  letter-spacing: 0.04em;
+}
+
+/* Says a bucket reaches outside the scope being filled, and how far. Quieter than the name: it
+   qualifies the bucket rather than identifying it. */
+.sectionPartial {
+  color: var(--text-tertiary, var(--text-secondary));
+  font-size: var(--text-xs, var(--text-sm));
+  font-weight: 400;
+  opacity: 0.8;
+}
+
+/* Work planned into the scope but into no single subscope of it. */
+.sectionLoose {
+  font-style: italic;
+}
+
+.sectionEmpty {
+  margin: 0;
+  padding: var(--space-1) 0 var(--space-2);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  opacity: 0.7;
+}

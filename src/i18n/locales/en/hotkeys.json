@@ -79,7 +79,7 @@
   "stepsNavigate": "Move between the cards on this Step",
   "stepsDescend": "Descend into the selected card",
   "stepsCycleStatus": "Cycle the selected card's status",
+  "stepsPage": "Turn to the previous / next page of this Step",
   "stepsZoomIn": "Larger cards (fewer to a page)",
-  "stepsZoomOut": "Smaller cards (more to a page)",
-  "stepsPage": "Turn to the previous / next page of this Step"
+  "stepsZoomOut": "Smaller cards (more to a page)"
 }

@@ -87,7 +87,9 @@ export default function PathHeaderRow({ segments, onEnterSubtree, onFilterByAnte
   }
 
   return (
-    <div className={styles.header}>
+    // The marker is what lets a test find a header without reaching for a CSS-module class name.
+    // It matters more since the Plan View started drawing these too: one component, two views.
+    <div className={styles.header} data-path-header="">
       {/* An Aspect carries no glyph anywhere in the app — `NodeIcon` returns null for one — so the
           wrapper is skipped rather than reserving an empty box before the chain. */}
       {showKindIcon && parent !== undefined && parent.kind !== "aspect" && (
