@@ -28,17 +28,19 @@ fn resolve_reports_iso_half_open_bounds() {
         at("2026-06-20T09:00:00"),
     )
     .unwrap();
-    assert_eq!(resolved.start, "2026-06-20T00:00:00");
-    assert_eq!(resolved.end, "2026-06-21T00:00:00");
+    assert_eq!(resolved.start, "2026-06-20T02:00:00");
+    assert_eq!(resolved.end, "2026-06-21T02:00:00");
 }
 
 #[test]
 fn resolve_marks_active_only_inside_the_window() {
     let day = scope("day", "2026-06-20", "2026-06-20");
-    assert!(resolve(&day, at("2026-06-20T00:00:00")).unwrap().active);
+    assert!(resolve(&day, at("2026-06-20T02:00:00")).unwrap().active);
     assert!(resolve(&day, at("2026-06-20T23:59:00")).unwrap().active);
-    assert!(!resolve(&day, at("2026-06-21T00:00:00")).unwrap().active);
-    assert!(!resolve(&day, at("2026-06-19T23:59:00")).unwrap().active);
+    // Past midnight is still the same day, right up to 02:00.
+    assert!(resolve(&day, at("2026-06-21T01:59:00")).unwrap().active);
+    assert!(!resolve(&day, at("2026-06-21T02:00:00")).unwrap().active);
+    assert!(!resolve(&day, at("2026-06-20T01:59:00")).unwrap().active);
 }
 
 #[test]

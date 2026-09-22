@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { entityNodeId } from "@/utils/tree-layout";
+import { dayScopeDate } from "@/utils/scope-calendar";
 import { getErrorMessage } from "@/api/errors";
 import EditorModal from "@/components/EditorModal/EditorModal";
 import { useValidFlowTargets } from "@/hooks/use-valid-flow-targets";
@@ -31,11 +32,12 @@ function initialTarget(defaultTargetType: string | null, defaultTargetId: number
   return { kind, id: defaultTargetId, title: match?.title ?? `#${defaultTargetId}` };
 }
 
+/** The local wall-clock Day scope's date — before 02:00 that is still yesterday's Day. */
 function todayIso(): string {
   const d = new Date();
   const month = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
-  return `${d.getFullYear()}-${month}-${day}`;
+  return dayScopeDate(`${d.getFullYear()}-${month}-${day}`, d.getHours());
 }
 
 interface Props {

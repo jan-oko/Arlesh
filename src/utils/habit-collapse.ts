@@ -17,7 +17,7 @@
 // of its own. It is a way of drawing iterations, which is why the fold runs *after* the filter —
 // a group renders exactly when at least one iteration behind it would have.
 
-import { previousDay, seasonOf, weekStart } from "@/utils/scope-calendar";
+import { lastDayOfWindow, seasonOf, weekStart } from "@/utils/scope-calendar";
 import type { CanonicalKind } from "@/utils/scope-ref";
 import type { HabitGroupLevel, HabitIterationMeta, MindmapNode } from "@/utils/tree-layout";
 
@@ -105,13 +105,6 @@ export function levelsForRun(iterations: readonly HabitIterationMeta[]): HabitSc
   }).reverse();
 }
 
-/** The last day a half-open window covers: an end at midnight belongs to the previous day. */
-function lastDayOf(windowEnd: string): string {
-  const [date, time] = windowEnd.split("T");
-  if (date === undefined) return windowEnd;
-  return time === undefined || time === "00:00:00" ? previousDay(date) : date;
-}
-
 function tallyOf(iterations: readonly HabitIterationMeta[]): HabitTally {
   const done = iterations.filter((it) => it.done).length;
   return { passed: iterations.length, done, missed: iterations.length - done };
@@ -172,7 +165,7 @@ function groupNode(
   if (first === undefined || last === undefined) throw new Error("habit group with no iterations");
   const tally = tallyOf(metas);
   const spanStart = first.anchorDate;
-  const spanEnd = lastDayOf(last.windowEnd);
+  const spanEnd = lastDayOfWindow(last.windowEnd);
   const color = entries[0]?.node.color;
   return {
     id,
