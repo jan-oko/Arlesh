@@ -119,7 +119,8 @@ that is the model to reach for if this proves wrong.)
 
 Projects, Domains, Tags, Goals, Tasks, Infos, **Flows and flow items** are duplicable. Aspects,
 Commitments and virtual Habit instances are not, and a Flow hanging under a copied node is still not
-copied with it. A paste whose selection includes any of these pastes the rest and says in a toast what
+copied with it — but it is now **named**, not dropped in silence (see *A Flow left behind*, below).
+A paste whose selection includes any of these pastes the rest and says in a toast what
 it skipped — **grouped by reason, one sentence per reason**, because only one of the reasons is about
 the destination. An Aspect is fixed wherever you point it, a Habit repetition has no row behind it to
 copy, and a Commitment or a flow item leaving its own Flow has no duplicate at all though cut still
@@ -133,6 +134,20 @@ shown together (see *When a gesture cannot act*). And the **destination** is che
 before anything on the clipboard is considered: a folded run of Habit history or a virtual
 occurrence refuses every paste for one reason, said once, rather than telling the user of each
 node in turn that it cannot sit under a Task.
+
+**A Flow left behind.** Every other skip is about a node that was put on the clipboard. This one is
+not: a Flow hanging *underneath* a copied node is never copied with it — the duplication walk does
+not descend into a Flow — so the pasted subtree comes out smaller than the one that was copied, and
+nothing in the selection hints at what went missing. It is reported as one more reason in the same
+composed toast, and it is the one reason that **names** rather than counts: the other skips are
+about nodes the user selected and can still see, where a count identifies them, while a left-behind
+Flow was never selected and is invisible in the paste, so "2 Flows weren't copied" would leave the
+user hunting the copy for whatever is absent. The names are the remedy — they are what you go and
+copy across on their own. Past **three** names the sentence counts the rest ("and 4 more"), because
+a toast is a viewport strip and a Domain that has collected a year of Habits would fill it with a
+list nobody reads. The report changes nothing about what gets copied: everything that can be is,
+and this only says what the copy could not carry. A **cut** says nothing, because it loses nothing —
+a move re-points one parent link and the whole subtree follows, Flows included.
 
 The refusal that **is** about the destination names the kind it refused, what that kind was dropped
 on, and — read off the drop-target rule itself, never off a list kept beside it — every kind that
