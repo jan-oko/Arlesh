@@ -11,6 +11,7 @@ import { TabStoresContext } from "@/stores/tab-stores-context";
 import { useHotkeys } from "@/hooks/use-hotkeys";
 import { useTabCommands } from "@/hooks/use-tab-commands";
 import { useCloseToTraySync } from "@/hooks/use-close-to-tray";
+import { useIsInputCaptured } from "@/hooks/use-input-capture";
 import { useForgetClosedWindows, useTabInbox } from "@/hooks/use-window-session";
 import { TAB_BINDINGS } from "@/utils/hotkeys/tab-bindings";
 import styles from "./App.module.css";
@@ -22,7 +23,11 @@ export default function App() {
   const closeHotkeys = useHotkeysStore((s) => s.close);
   const tabs = useTabsStore((s) => s.tabs);
   const activeTabId = useTabsStore((s) => s.activeTabId);
-  const { openTab, closeTab, nextTab, previousTab, jumpToTab } = useTabCommands();
+  const {
+    openTab, openWindow, closeTab, nextTab, previousTab, jumpToTab, tearOffTab,
+  } = useTabCommands();
+  // Only the tear-off consults this; everything else in the table stays live behind a modal.
+  const isInputCaptured = useIsInputCaptured();
 
   useCloseToTraySync();
   // Every window is the same thing, so this is all it takes to be one of several: accept a tab
@@ -35,11 +40,21 @@ export default function App() {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
 
-  // Tab shortcuts are unconditionally live — unlike a view binding, switching tabs is never
-  // ambiguous about what it would act on, so an open modal is no reason to suppress it.
+  // Tab shortcuts are live behind a modal — unlike a view binding, opening or switching a tab is
+  // never ambiguous about what it would act on. The tear-off is the one exception, and carries its
+  // own guard rather than taking the whole table off; `tab-bindings.ts` says why.
   useHotkeys(
     TAB_BINDINGS,
-    { onOpenTab: openTab, onCloseTab: () => closeTab(), onNextTab: nextTab, onPreviousTab: previousTab, onJumpToTab: jumpToTab },
+    {
+      isInputCaptured,
+      onOpenTab: openTab,
+      onOpenWindow: openWindow,
+      onCloseTab: () => closeTab(),
+      onTearOffTab: () => tearOffTab(activeTabId),
+      onNextTab: nextTab,
+      onPreviousTab: previousTab,
+      onJumpToTab: jumpToTab,
+    },
     true,
   );
 

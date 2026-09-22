@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, renderHook } from "@testing-library/react";
+// Real English, because the refusal a chord raises is the only thing that says why nothing
+// happened — its wording is part of the feature, as it is for the undo toast.
+import "@/i18n";
 import { useTabCommands } from "./use-tab-commands";
 import { reloadTabs, useTabsStore } from "@/stores/use-tabs-store";
 import { boardWindowLabels, closeWindow, focusBoardWindow, openBoardWindow } from "@/api/window";
@@ -152,6 +155,17 @@ describe("tearing a tab off into its own window", () => {
     expect(mockOpenWindow).not.toHaveBeenCalled();
   });
 
+  it("says why it refused rather than reading as a broken key", () => {
+    const { result } = renderHook(() => useTabCommands());
+    const tab = useTabsStore.getState().tabs[0];
+
+    act(() => result.current.tearOffTab(tab?.id ?? ""));
+
+    const toast = tab?.stores.mindmap.getState().pendingToast;
+    expect(toast?.message).toContain("only tab");
+    expect(toast?.message).toContain("leave the window empty");
+  });
+
   it("gives the tab back when the window will not open", async () => {
     mockOpenWindow.mockRejectedValue(new Error("no windowing system"));
     vi.spyOn(console, "error").mockImplementation(() => {});
@@ -212,5 +226,57 @@ describe("moving a tab into another window", () => {
 
     expect(useTabsStore.getState().tabs.some((tab) => tab.id === moved)).toBe(true);
     expect(mockCloseWindow).not.toHaveBeenCalled();
+  });
+});
+
+describe("opening a new window", () => {
+  it("writes one tab down under a new label and asks for the window", () => {
+    const { result } = renderHook(() => useTabCommands());
+
+    act(() => result.current.openWindow());
+
+    const strip = readPersistedTabs(openedWindowLabel());
+    expect(strip?.tabs).toHaveLength(1);
+    expect(strip?.activeTabId).toBe(strip?.tabs[0]?.id);
+  });
+
+  it("starts it where the current tab is looking, exactly as a new tab starts", () => {
+    useTabsStore.getState().tabs[0]?.stores.mindmap.getState().enterSubtree("project-1");
+    const { result } = renderHook(() => useTabCommands());
+
+    act(() => result.current.openWindow());
+
+    expect(readPersistedTabs(openedWindowLabel())?.tabs[0]?.state.subtreeRootId).toBe("project-1");
+  });
+
+  it("gives the new window fresh filters rather than the current tab's", () => {
+    useTabsStore.getState().tabs[0]?.stores.filter.getState().setStatusMode("do");
+    const { result } = renderHook(() => useTabCommands());
+
+    act(() => result.current.openWindow());
+
+    expect(readPersistedTabs(openedWindowLabel())?.tabs[0]?.state.filter.statusMode).toBe("all");
+  });
+
+  it("takes nothing out of this window", () => {
+    const { result } = renderHook(() => useTabCommands());
+    const before = useTabsStore.getState().tabs.length;
+
+    act(() => result.current.openWindow());
+
+    expect(useTabsStore.getState().tabs).toHaveLength(before);
+  });
+
+  it("leaves no orphaned strip behind when the window will not open", async () => {
+    mockOpenWindow.mockRejectedValue(new Error("no windowing system"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { result } = renderHook(() => useTabCommands());
+
+    await act(async () => {
+      result.current.openWindow();
+      await Promise.resolve();
+    });
+
+    expect(readPersistedTabs(openedWindowLabel())).toBeNull();
   });
 });

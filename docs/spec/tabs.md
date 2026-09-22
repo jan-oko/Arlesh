@@ -51,15 +51,32 @@ binding is (`src/utils/hotkeys/`), so the cheat-sheet lists them with the rest:
 
 - `Ctrl+T` — open a tab **at the current subtree root**, so opening one to look at something nearby
   costs no navigation. Everything else about it is fresh: a new tab does not inherit filters.
+- `Ctrl+N` — open a new **window**, beside `Ctrl+T`'s new tab. That pairing is what every desktop
+  app uses, so it needs no explaining. The window starts the same way the tab does — one tab at the
+  current subtree root, with fresh filters — because a second window is usually opened to put
+  *nearby* work on another monitor, and starting it at the true root would cost the navigation back
+  every time. A window **torn off** carries its tab's whole state instead: there the tab already
+  exists and is being moved rather than made.
+- `Ctrl+Alt+N` — take the current tab into a new window: the same thing, but with what you are
+  holding. It **refuses out loud** when the tab is the window's only one, rather than doing nothing
+  — the menu can hide an entry that does not apply, a chord cannot, and an inert key is what the
+  refusal policy exists to stop.
 - `Ctrl+W` — close the tab. Closing the **last** tab closes the window, so there is never an empty
-  one left over. The app takes `Ctrl+W` itself (capture-phase, `preventDefault`); Arlesh declares no
-  native menu accelerator that would claim it first.
+  one left over. The app takes `Ctrl+W` and `Ctrl+N` itself (capture-phase, `preventDefault`);
+  Arlesh declares no native menu accelerator that would claim either first.
 - `Ctrl+Tab` / `Ctrl+Shift+Tab` — cycle forward and back, wrapping at both ends
 - `Ctrl+1`–`Ctrl+9` — jump to a tab by position
 
 These are **global** bindings: unlike the view-level ones they stay live while a modal or the
-cheat-sheet is open, because switching tabs is never ambiguous about what it would act on. They are
-still suppressed inside a text input, like every other binding.
+cheat-sheet is open, because opening or switching a tab is never ambiguous about what it would act
+on. They are still suppressed inside a text input, like every other binding.
+
+`Ctrl+Alt+N` is the **one exception**, and the difference is real rather than cautious. A tear-off
+carries the tab's *persisted* state across, and an open modal or inline editor is state inside the
+tab that is not persisted — so tearing off from under one would silently drop whatever is being
+typed into it. `Ctrl+W` loses it too, but a close is a gesture that says "throw this away"; a move
+that quietly drops the contents is a different thing. So it alone takes the same
+`isInputCaptured` guard the view chords carry.
 
 **The board alone.** `F11` hides the tab strip and the top bar, leaving the view filling the window;
 `F11` again brings them back. Bare `F` does the same, but **only when nothing is selected** — with a
@@ -171,9 +188,11 @@ which is inside the strip, so the gesture reads as "went nowhere" and no window 
 that did not happen costs one more attempt; a window that appears from a drag nobody made is a
 window to go and close.
 
-The tab menu offers **Move tab to new window** as well, for anyone who would rather not drag, and it
-is absent when the tab is the window's only one — tearing off the only tab would move the window
-rather than divide it.
+The tab menu offers **Move tab to new window** as well, for anyone who would rather not drag, and
+`Ctrl+Alt+N` does the same from the keyboard. The menu entry is **absent** when the tab is the
+window's only one; the chord **refuses out loud** instead. That is not an inconsistency: a menu can
+leave out an entry that does not apply and the user simply never sees it, where a key that did
+nothing would read as broken.
 
 **Moving a tab back** is the menu alone: **Move tab to "…"**, one entry per other open window, named
 by what that window's active tab is called. A drag cannot do it. An HTML drag is captured by the
