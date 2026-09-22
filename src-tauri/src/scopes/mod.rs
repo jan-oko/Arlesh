@@ -115,13 +115,12 @@ impl<'session> ScopeOperator<'session> {
             let end_str = end.to_string();
             let label = scope_label(canonical, date);
 
-            if let Some(scope) = sqlx::query_as::<_, Scope>(
-                "SELECT * FROM scopes WHERE kind = ? AND start_date = ?",
-            )
-            .bind(canonical.as_str())
-            .bind(&start_str)
-            .fetch_optional(&mut *self.connection)
-            .await?
+            if let Some(scope) =
+                sqlx::query_as::<_, Scope>("SELECT * FROM scopes WHERE kind = ? AND start_date = ?")
+                    .bind(canonical.as_str())
+                    .bind(&start_str)
+                    .fetch_optional(&mut *self.connection)
+                    .await?
             {
                 return Ok(scope);
             }
@@ -304,7 +303,11 @@ fn scope_bounds(kind: CanonicalKind, date: NaiveDate) -> (NaiveDate, NaiveDate) 
             let start = NaiveDate::from_ymd_opt(year, season_month, 1).unwrap();
             // end_month is always 2, 5, 8, or 11 — never 12 — so end_month + 1 is always safe
             let end_month = ((season_month - 1 + 2) % 12) + 1;
-            let end_year = if season_month + 2 > 12 { year + 1 } else { year };
+            let end_year = if season_month + 2 > 12 {
+                year + 1
+            } else {
+                year
+            };
             let after_end = NaiveDate::from_ymd_opt(end_year, end_month + 1, 1).unwrap();
             let end = after_end - Duration::days(1);
             (start, end)

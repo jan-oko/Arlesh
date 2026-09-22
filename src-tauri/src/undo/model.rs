@@ -86,7 +86,6 @@ pub struct UndoContext {
     pub suppressed: bool,
 }
 
-
 /// What a journal entry says happened to one row.
 ///
 /// The three cases are the whole of what the journal records, and each has exactly one inverse:
@@ -156,7 +155,9 @@ impl RowImage {
 
     /// The row's columns, in name order.
     pub fn columns(&self) -> impl Iterator<Item = (&str, &Value)> {
-        self.columns.iter().map(|(name, value)| (name.as_str(), value))
+        self.columns
+            .iter()
+            .map(|(name, value)| (name.as_str(), value))
     }
 
     /// Whether the image names a column.

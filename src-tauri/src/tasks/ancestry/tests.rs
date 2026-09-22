@@ -47,7 +47,11 @@ async fn insert_goal(pool: &DatabasePool, id: i64, parent_type: &str, parent_id:
 
 /// The `(kind, id)` of each link, which is all the shape assertions need.
 fn shape(chain: &AncestryChain) -> Vec<(NodeKind, i64)> {
-    chain.links.iter().map(|link| (link.kind, link.id)).collect()
+    chain
+        .links
+        .iter()
+        .map(|link| (link.kind, link.id))
+        .collect()
 }
 
 // --- Pure searches (Task 3.2) ---
@@ -58,7 +62,11 @@ fn shape(chain: &AncestryChain) -> Vec<(NodeKind, i64)> {
 
 /// A Time Scope over one scope id — enough to tell two scopes apart by identity.
 fn scope(id: i64) -> TimeScope {
-    TimeScope { start_id: id, end_id: id, duration: None }
+    TimeScope {
+        start_id: id,
+        end_id: id,
+        duration: None,
+    }
 }
 
 /// An unscoped, unplanned task link parented by the next id up.
@@ -102,20 +110,36 @@ fn commitment_link(id: i64) -> AncestryLink {
 
 /// A chain over `links` that reached the root.
 fn rooted(links: Vec<AncestryLink>) -> AncestryChain {
-    AncestryChain { links, end: ChainEnd::Root }
+    AncestryChain {
+        links,
+        end: ChainEnd::Root,
+    }
 }
 
 /// A chain over `links` that broke on a missing `kind` reference.
 fn broken_at(links: Vec<AncestryLink>, kind: NodeKind, id: i64) -> AncestryChain {
-    AncestryChain { links, end: ChainEnd::Broken { kind, id, cause: BreakCause::Missing } }
+    AncestryChain {
+        links,
+        end: ChainEnd::Broken {
+            kind,
+            id,
+            cause: BreakCause::Missing,
+        },
+    }
 }
 
 #[test]
 fn nearest_scoped_takes_the_first_scoped_link_climbing_through_goals() {
     let chain = rooted(vec![
         task_link(1),
-        AncestryLink { time_scope: Some(scope(70)), ..goal_link(2) },
-        AncestryLink { time_scope: Some(scope(80)), ..goal_link(3) },
+        AncestryLink {
+            time_scope: Some(scope(70)),
+            ..goal_link(2)
+        },
+        AncestryLink {
+            time_scope: Some(scope(80)),
+            ..goal_link(3)
+        },
     ]);
 
     assert_eq!(
@@ -127,15 +151,24 @@ fn nearest_scoped_takes_the_first_scoped_link_climbing_through_goals() {
 
 #[test]
 fn nearest_scoped_defaults_a_missing_on_exit_to_keep_and_otherwise_reports_the_stored_one() {
-    let defaulted = rooted(vec![AncestryLink { time_scope: Some(scope(70)), ..task_link(1) }]);
-    assert_eq!(defaulted.nearest_scoped(), Search::Found((&scope(70), OnScopeExit::Keep)));
+    let defaulted = rooted(vec![AncestryLink {
+        time_scope: Some(scope(70)),
+        ..task_link(1)
+    }]);
+    assert_eq!(
+        defaulted.nearest_scoped(),
+        Search::Found((&scope(70), OnScopeExit::Keep))
+    );
 
     let stored = rooted(vec![AncestryLink {
         time_scope: Some(scope(70)),
         on_scope_exit: Some(OnScopeExit::Archive),
         ..task_link(1)
     }]);
-    assert_eq!(stored.nearest_scoped(), Search::Found((&scope(70), OnScopeExit::Archive)));
+    assert_eq!(
+        stored.nearest_scoped(),
+        Search::Found((&scope(70), OnScopeExit::Archive))
+    );
 }
 
 #[test]
@@ -148,7 +181,13 @@ fn nearest_scoped_on_a_rooted_chain_with_nothing_scoped_is_unconstrained() {
 #[test]
 fn nearest_scoped_prefers_a_scope_found_before_the_chain_broke() {
     let chain = broken_at(
-        vec![AncestryLink { time_scope: Some(scope(70)), ..task_link(1) }, task_link(2)],
+        vec![
+            AncestryLink {
+                time_scope: Some(scope(70)),
+                ..task_link(1)
+            },
+            task_link(2),
+        ],
         NodeKind::Task,
         3,
     );
@@ -166,7 +205,11 @@ fn nearest_scoped_on_a_broken_chain_with_nothing_scoped_is_undetermined() {
 
     assert_eq!(
         chain.nearest_scoped(),
-        Search::Undetermined { kind: NodeKind::Goal, id: 2, cause: BreakCause::Missing },
+        Search::Undetermined {
+            kind: NodeKind::Goal,
+            id: 2,
+            cause: BreakCause::Missing
+        },
         "the scope walk needed that goal, so the question is unanswered — not answered 'no'"
     );
 }
@@ -175,8 +218,14 @@ fn nearest_scoped_on_a_broken_chain_with_nothing_scoped_is_undetermined() {
 fn nearest_planned_takes_the_nearest_task_plan() {
     let chain = rooted(vec![
         task_link(1),
-        AncestryLink { plan: Some(scope(90)), ..task_link(2) },
-        AncestryLink { plan: Some(scope(91)), ..task_link(3) },
+        AncestryLink {
+            plan: Some(scope(90)),
+            ..task_link(2)
+        },
+        AncestryLink {
+            plan: Some(scope(91)),
+            ..task_link(3)
+        },
     ]);
 
     assert_eq!(chain.nearest_planned(), Search::Found(&scope(90)));
@@ -190,7 +239,10 @@ fn nearest_planned_stops_at_a_goal_and_ignores_every_plan_above_it() {
     let chain = rooted(vec![
         task_link(1),
         goal_link(2),
-        AncestryLink { plan: Some(scope(90)), ..task_link(3) },
+        AncestryLink {
+            plan: Some(scope(90)),
+            ..task_link(3)
+        },
     ]);
 
     assert_eq!(
@@ -211,7 +263,11 @@ fn nearest_planned_ignores_a_break_beyond_the_goal_that_already_stopped_it() {
     );
     assert_eq!(
         chain.nearest_scoped(),
-        Search::Undetermined { kind: NodeKind::Goal, id: 2, cause: BreakCause::Missing },
+        Search::Undetermined {
+            kind: NodeKind::Goal,
+            id: 2,
+            cause: BreakCause::Missing
+        },
         "the same chain leaves the scope question unanswered — this pair is the quirk"
     );
 }
@@ -222,7 +278,11 @@ fn nearest_planned_on_a_chain_broken_at_a_task_is_undetermined() {
 
     assert_eq!(
         chain.nearest_planned(),
-        Search::Undetermined { kind: NodeKind::Task, id: 2, cause: BreakCause::Missing },
+        Search::Undetermined {
+            kind: NodeKind::Task,
+            id: 2,
+            cause: BreakCause::Missing
+        },
         "a task the walk would have read is a task it cannot skip"
     );
 }
@@ -251,7 +311,11 @@ fn the_write_policy_rejects_an_undetermined_search_with_the_reference_it_could_n
 
     let cyclic = AncestryChain {
         links: vec![task_link(1)],
-        end: ChainEnd::Broken { kind: NodeKind::Task, id: 1, cause: BreakCause::Cycle },
+        end: ChainEnd::Broken {
+            kind: NodeKind::Task,
+            id: 1,
+            cause: BreakCause::Cycle,
+        },
     };
     assert!(matches!(
         cyclic.nearest_scoped().or_reject(),
@@ -261,8 +325,14 @@ fn the_write_policy_rejects_an_undetermined_search_with_the_reference_it_could_n
 
 #[test]
 fn both_policies_pass_a_found_answer_and_an_unconstrained_one_straight_through() {
-    let found = rooted(vec![AncestryLink { time_scope: Some(scope(70)), ..task_link(1) }]);
-    assert_eq!(found.nearest_scoped().or_unconstrained(), Some((&scope(70), OnScopeExit::Keep)));
+    let found = rooted(vec![AncestryLink {
+        time_scope: Some(scope(70)),
+        ..task_link(1)
+    }]);
+    assert_eq!(
+        found.nearest_scoped().or_unconstrained(),
+        Some((&scope(70), OnScopeExit::Keep))
+    );
     assert!(matches!(found.nearest_scoped().or_reject(), Ok(Some(_))));
 
     let empty = rooted(vec![task_link(1)]);
@@ -276,13 +346,20 @@ async fn a_three_deep_chain_climbs_to_the_root() {
     insert_goal(&pool, 1, "project", 99).await;
     insert_task(&pool, 2, "goal", 1).await;
     insert_task(&pool, 3, "task", 2).await;
-    let mut db = SessionFactory::new(pool.clone()).connect().await.expect("connect failed");
+    let mut db = SessionFactory::new(pool.clone())
+        .connect()
+        .await
+        .expect("connect failed");
 
     let chain = climb(&mut db, "task", 3).await.expect("climb failed");
 
     assert_eq!(
         shape(&chain),
-        vec![(NodeKind::Task, 3), (NodeKind::Task, 2), (NodeKind::Goal, 1)],
+        vec![
+            (NodeKind::Task, 3),
+            (NodeKind::Task, 2),
+            (NodeKind::Goal, 1)
+        ],
         "the chain must include the starting node and climb through the goal"
     );
     assert_eq!(chain.end, ChainEnd::Root);
@@ -293,14 +370,21 @@ async fn a_chain_whose_middle_parent_is_missing_ends_as_broken() {
     let pool = scratch_pool().await;
     // Task 3's parent, task 2, was never inserted — the chain dangles one step up.
     insert_task(&pool, 3, "task", 2).await;
-    let mut db = SessionFactory::new(pool.clone()).connect().await.expect("connect failed");
+    let mut db = SessionFactory::new(pool.clone())
+        .connect()
+        .await
+        .expect("connect failed");
 
     let chain = climb(&mut db, "task", 3).await.expect("climb failed");
 
     assert_eq!(shape(&chain), vec![(NodeKind::Task, 3)]);
     assert_eq!(
         chain.end,
-        ChainEnd::Broken { kind: NodeKind::Task, id: 2, cause: BreakCause::Missing },
+        ChainEnd::Broken {
+            kind: NodeKind::Task,
+            id: 2,
+            cause: BreakCause::Missing
+        },
         "a broken chain must name the reference it could not follow"
     );
 }
@@ -311,14 +395,24 @@ async fn a_cyclic_parent_chain_terminates_as_broken() {
     // A tree the write path cannot currently prevent: 4 is its own grandparent.
     insert_task(&pool, 4, "task", 5).await;
     insert_task(&pool, 5, "task", 4).await;
-    let mut db = SessionFactory::new(pool.clone()).connect().await.expect("connect failed");
+    let mut db = SessionFactory::new(pool.clone())
+        .connect()
+        .await
+        .expect("connect failed");
 
     let chain = climb(&mut db, "task", 4).await.expect("climb failed");
 
-    assert_eq!(shape(&chain), vec![(NodeKind::Task, 4), (NodeKind::Task, 5)]);
+    assert_eq!(
+        shape(&chain),
+        vec![(NodeKind::Task, 4), (NodeKind::Task, 5)]
+    );
     assert_eq!(
         chain.end,
-        ChainEnd::Broken { kind: NodeKind::Task, id: 4, cause: BreakCause::Cycle },
+        ChainEnd::Broken {
+            kind: NodeKind::Task,
+            id: 4,
+            cause: BreakCause::Cycle
+        },
         "a cycle must terminate the walk and name where it closed"
     );
 }
@@ -326,7 +420,10 @@ async fn a_cyclic_parent_chain_terminates_as_broken() {
 #[tokio::test]
 async fn a_start_that_is_not_a_scoped_node_yields_an_empty_rooted_chain() {
     let pool = scratch_pool().await;
-    let mut db = SessionFactory::new(pool.clone()).connect().await.expect("connect failed");
+    let mut db = SessionFactory::new(pool.clone())
+        .connect()
+        .await
+        .expect("connect failed");
 
     let chain = climb(&mut db, "project", 99).await.expect("climb failed");
 
@@ -341,17 +438,26 @@ fn the_nearest_commitment_that_sets_a_verdict_window_wins() {
     let chain = rooted(vec![
         commitment_link(1),
         AncestryLink {
-            verdict_window: Some(DurationSpec { n: 2, kind: "day".into() }),
+            verdict_window: Some(DurationSpec {
+                n: 2,
+                kind: "day".into(),
+            }),
             ..commitment_link(2)
         },
         AncestryLink {
-            verdict_window: Some(DurationSpec { n: 1, kind: "week".into() }),
+            verdict_window: Some(DurationSpec {
+                n: 1,
+                kind: "week".into(),
+            }),
             ..commitment_link(3)
         },
     ]);
     assert_eq!(
         chain.nearest_verdict_window(),
-        Search::Found(&DurationSpec { n: 2, kind: "day".to_string() }),
+        Search::Found(&DurationSpec {
+            n: 2,
+            kind: "day".to_string()
+        }),
     );
 }
 
@@ -359,12 +465,18 @@ fn the_nearest_commitment_that_sets_a_verdict_window_wins() {
 fn a_commitment_that_sets_its_own_verdict_window_needs_no_ancestor() {
     // The chain starts at the node itself, so its own value is the first link examined.
     let chain = rooted(vec![AncestryLink {
-        verdict_window: Some(DurationSpec { n: 3, kind: "day".into() }),
+        verdict_window: Some(DurationSpec {
+            n: 3,
+            kind: "day".into(),
+        }),
         ..commitment_link(1)
     }]);
     assert_eq!(
         chain.nearest_verdict_window(),
-        Search::Found(&DurationSpec { n: 3, kind: "day".to_string() }),
+        Search::Found(&DurationSpec {
+            n: 3,
+            kind: "day".to_string()
+        }),
     );
 }
 
@@ -388,7 +500,11 @@ fn a_chain_broken_above_a_non_commitment_still_answers_unbounded() {
     // question unanswerable.
     let chain = AncestryChain {
         links: vec![commitment_link(1), task_link(2)],
-        end: ChainEnd::Broken { kind: NodeKind::Task, id: 3, cause: BreakCause::Missing },
+        end: ChainEnd::Broken {
+            kind: NodeKind::Task,
+            id: 3,
+            cause: BreakCause::Missing,
+        },
     };
     assert_eq!(chain.nearest_verdict_window(), Search::Unconstrained);
 }
@@ -397,11 +513,19 @@ fn a_chain_broken_above_a_non_commitment_still_answers_unbounded() {
 fn a_commitment_chain_that_breaks_before_answering_is_undetermined() {
     let chain = AncestryChain {
         links: vec![commitment_link(1)],
-        end: ChainEnd::Broken { kind: NodeKind::Commitment, id: 2, cause: BreakCause::Missing },
+        end: ChainEnd::Broken {
+            kind: NodeKind::Commitment,
+            id: 2,
+            cause: BreakCause::Missing,
+        },
     };
     assert_eq!(
         chain.nearest_verdict_window(),
-        Search::Undetermined { kind: NodeKind::Commitment, id: 2, cause: BreakCause::Missing },
+        Search::Undetermined {
+            kind: NodeKind::Commitment,
+            id: 2,
+            cause: BreakCause::Missing
+        },
     );
 }
 
@@ -412,7 +536,10 @@ fn a_commitments_window_governs_the_tasks_beneath_it_and_they_keep_rather_than_a
     // for a commitment link.
     let chain = rooted(vec![
         task_link(1),
-        AncestryLink { time_scope: Some(scope(70)), ..commitment_link(2) },
+        AncestryLink {
+            time_scope: Some(scope(70)),
+            ..commitment_link(2)
+        },
     ]);
     assert_eq!(
         chain.nearest_scoped(),

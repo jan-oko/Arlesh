@@ -151,13 +151,9 @@ async fn seed(app: &tauri::App<tauri::test::MockRuntime>, pool: &sqlx::SqlitePoo
     )
     .await
     .unwrap();
-    task_commands::add_task_dependency(
-        app.state(),
-        second.id,
-        Dependency::Task { id: first.id },
-    )
-    .await
-    .unwrap();
+    task_commands::add_task_dependency(app.state(), second.id, Dependency::Task { id: first.id })
+        .await
+        .unwrap();
     block_reason_commands::set_block_reasons(
         app.state(),
         "task".into(),
@@ -264,14 +260,30 @@ async fn the_envelope_carries_what_the_individual_commands_return() {
         };
     }
 
-    same!(load.domains, domain_commands::list_domains(app.state(), None), "domains");
+    same!(
+        load.domains,
+        domain_commands::list_domains(app.state(), None),
+        "domains"
+    );
     same!(load.goals, task_commands::list_goals(app.state()), "goals");
     same!(load.tasks, task_commands::list_tasks(app.state()), "tasks");
     same!(load.infos, info_commands::list_infos(app.state()), "infos");
     same!(load.flows, flow_commands::list_flows(app.state()), "flows");
-    same!(load.flow_goals, flow_commands::list_all_flow_goals(app.state()), "flow goals");
-    same!(load.flow_tasks, flow_commands::list_all_flow_tasks(app.state()), "flow tasks");
-    same!(load.flow_cycles, flow_commands::list_all_flow_cycles(app.state()), "flow cycles");
+    same!(
+        load.flow_goals,
+        flow_commands::list_all_flow_goals(app.state()),
+        "flow goals"
+    );
+    same!(
+        load.flow_tasks,
+        flow_commands::list_all_flow_tasks(app.state()),
+        "flow tasks"
+    );
+    same!(
+        load.flow_cycles,
+        flow_commands::list_all_flow_cycles(app.state()),
+        "flow cycles"
+    );
     same!(
         load.flow_dependencies,
         flow_commands::list_all_flow_dependencies(app.state()),
@@ -299,7 +311,11 @@ async fn the_envelope_carries_what_the_individual_commands_return() {
     );
 
     // And the dependent wave, which the frontend used to fetch per flow after the flow list.
-    assert_eq!(load.habits.len(), load.flows.len(), "one habit entry per flow, in flow order");
+    assert_eq!(
+        load.habits.len(),
+        load.flows.len(),
+        "one habit entry per flow, in flow order"
+    );
     for (entry, flow) in load.habits.iter().zip(&load.flows) {
         assert_eq!(entry.flow_id, flow.id);
         assert_eq!(entry.flow_title, flow.title);
@@ -354,7 +370,11 @@ async fn the_command_commits_the_scopes_its_habit_derivation_materialises() {
     let FlowHabitResult::Loaded { iterations, .. } = &entry.result else {
         panic!("the habit should have loaded: {:?}", entry.result);
     };
-    assert_eq!(iterations.len(), 3, "three two-week windows have started by 4 February");
+    assert_eq!(
+        iterations.len(),
+        3,
+        "three two-week windows have started by 4 February"
+    );
 
     // The assertion that fails when the commit goes: a rolled-back load returns this same
     // envelope, but leaves no scope behind.
@@ -410,8 +430,14 @@ async fn one_flow_failing_is_recorded_on_its_entry_and_the_rest_still_loads() {
     let FlowHabitResult::Failed { message } = &entry.result else {
         panic!("the broken flow should have failed: {:?}", entry.result);
     };
-    assert!(!message.is_empty(), "the failure carries a reason for the user");
-    assert_eq!(entry.flow_title, "Broken", "named, so the notice can say which flow");
+    assert!(
+        !message.is_empty(),
+        "the failure carries a reason for the user"
+    );
+    assert_eq!(
+        entry.flow_title, "Broken",
+        "named, so the notice can say which flow"
+    );
 
     // The whole point: one bad flow does not abort the load.
     let good = load
@@ -423,7 +449,10 @@ async fn one_flow_failing_is_recorded_on_its_entry_and_the_rest_still_loads() {
         matches!(good.result, FlowHabitResult::Loaded { .. }),
         "a healthy flow is unaffected by its neighbour's failure"
     );
-    assert!(!load.domains.is_empty(), "and the rest of the mindmap arrived");
+    assert!(
+        !load.domains.is_empty(),
+        "and the rest of the mindmap arrived"
+    );
     assert!(!load.tasks.is_empty());
     assert!(!load.goals.is_empty());
 }
@@ -470,8 +499,12 @@ async fn an_empty_database_loads_an_empty_envelope() {
     assert!(load.habits.is_empty(), "no flows, no per-flow wave");
     assert_eq!(
         serde_json::to_value(&load.domains).unwrap(),
-        serde_json::to_value(domain_commands::list_domains(app.state(), None).await.unwrap())
-            .unwrap(),
+        serde_json::to_value(
+            domain_commands::list_domains(app.state(), None)
+                .await
+                .unwrap()
+        )
+        .unwrap(),
         "the seeded aspects are still there"
     );
 }

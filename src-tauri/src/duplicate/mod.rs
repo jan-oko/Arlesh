@@ -117,7 +117,10 @@ pub async fn duplicate_subtree(
 }
 
 /// Clones one node, without touching its children.
-async fn clone_node(db: &mut Db<Transactional>, item: &PendingClone) -> Result<ClonedNode, AppError> {
+async fn clone_node(
+    db: &mut Db<Transactional>,
+    item: &PendingClone,
+) -> Result<ClonedNode, AppError> {
     match item.kind {
         DuplicableKind::Domain => clone_domain(db, item).await,
         DuplicableKind::Goal => clone_goal(db, item).await,
@@ -141,22 +144,62 @@ async fn children_of(
         DuplicableKind::Domain => {
             // A goal or task under any domains-table row records `parent_type = 'project'`,
             // whatever the parent's real subtype is; an info records the exact subtype.
-            extend(&mut children, DuplicableKind::Domain, db.domains().child_ids(DomainId(old_id)).await?);
-            extend(&mut children, DuplicableKind::Goal, db.goals().child_ids("project", old_id).await?);
-            extend(&mut children, DuplicableKind::Task, db.tasks().child_ids("project", old_id).await?);
-            extend(&mut children, DuplicableKind::Info, db.infos().child_ids(&cloned.kind, old_id).await?);
+            extend(
+                &mut children,
+                DuplicableKind::Domain,
+                db.domains().child_ids(DomainId(old_id)).await?,
+            );
+            extend(
+                &mut children,
+                DuplicableKind::Goal,
+                db.goals().child_ids("project", old_id).await?,
+            );
+            extend(
+                &mut children,
+                DuplicableKind::Task,
+                db.tasks().child_ids("project", old_id).await?,
+            );
+            extend(
+                &mut children,
+                DuplicableKind::Info,
+                db.infos().child_ids(&cloned.kind, old_id).await?,
+            );
         }
         DuplicableKind::Goal => {
-            extend(&mut children, DuplicableKind::Goal, db.goals().child_ids("goal", old_id).await?);
-            extend(&mut children, DuplicableKind::Task, db.tasks().child_ids("goal", old_id).await?);
-            extend(&mut children, DuplicableKind::Info, db.infos().child_ids("goal", old_id).await?);
+            extend(
+                &mut children,
+                DuplicableKind::Goal,
+                db.goals().child_ids("goal", old_id).await?,
+            );
+            extend(
+                &mut children,
+                DuplicableKind::Task,
+                db.tasks().child_ids("goal", old_id).await?,
+            );
+            extend(
+                &mut children,
+                DuplicableKind::Info,
+                db.infos().child_ids("goal", old_id).await?,
+            );
         }
         DuplicableKind::Task => {
-            extend(&mut children, DuplicableKind::Task, db.tasks().child_ids("task", old_id).await?);
-            extend(&mut children, DuplicableKind::Info, db.infos().child_ids("task", old_id).await?);
+            extend(
+                &mut children,
+                DuplicableKind::Task,
+                db.tasks().child_ids("task", old_id).await?,
+            );
+            extend(
+                &mut children,
+                DuplicableKind::Info,
+                db.infos().child_ids("task", old_id).await?,
+            );
         }
         DuplicableKind::Info => {
-            extend(&mut children, DuplicableKind::Info, db.infos().child_ids("info", old_id).await?);
+            extend(
+                &mut children,
+                DuplicableKind::Info,
+                db.infos().child_ids("info", old_id).await?,
+            );
         }
     }
     Ok(children
@@ -188,7 +231,10 @@ fn collapse_parent_kind(kind: &str) -> &str {
 }
 
 /// Clones a Project, Domain or Tag row.
-async fn clone_domain(db: &mut Db<Transactional>, item: &PendingClone) -> Result<ClonedNode, AppError> {
+async fn clone_domain(
+    db: &mut Db<Transactional>,
+    item: &PendingClone,
+) -> Result<ClonedNode, AppError> {
     let original = db.domains().get(DomainId(item.old_id)).await?;
     // `from_db` has no `Aspect` spelling, so an aspect that reached here — a caller that skipped
     // the frontend's own check — is refused with the message the UI already knows.
@@ -215,11 +261,17 @@ async fn clone_domain(db: &mut Db<Transactional>, item: &PendingClone) -> Result
         )
         .await?;
     carry_beads_id(db, DuplicableKind::Domain, created.id, original.beads_id).await?;
-    Ok(ClonedNode { new_id: created.id, kind: original.subtype })
+    Ok(ClonedNode {
+        new_id: created.id,
+        kind: original.subtype,
+    })
 }
 
 /// Clones a goal row, with its tags and block reasons.
-async fn clone_goal(db: &mut Db<Transactional>, item: &PendingClone) -> Result<ClonedNode, AppError> {
+async fn clone_goal(
+    db: &mut Db<Transactional>,
+    item: &PendingClone,
+) -> Result<ClonedNode, AppError> {
     let original = db.goals().get(GoalId(item.old_id)).await?;
     let created = crate::tasks::create_goal(
         db,
@@ -248,11 +300,17 @@ async fn clone_goal(db: &mut Db<Transactional>, item: &PendingClone) -> Result<C
     }
     carry_block_reasons(db, "goal", item.old_id, created.id).await?;
     carry_beads_id(db, DuplicableKind::Goal, created.id, original.beads_id).await?;
-    Ok(ClonedNode { new_id: created.id, kind: "goal".to_string() })
+    Ok(ClonedNode {
+        new_id: created.id,
+        kind: "goal".to_string(),
+    })
 }
 
 /// Clones a task row, with its tags, block reasons and dependencies.
-async fn clone_task(db: &mut Db<Transactional>, item: &PendingClone) -> Result<ClonedNode, AppError> {
+async fn clone_task(
+    db: &mut Db<Transactional>,
+    item: &PendingClone,
+) -> Result<ClonedNode, AppError> {
     let original = db.tasks().get(TaskId(item.old_id)).await?;
     let created = crate::tasks::create_task(
         db,
@@ -301,11 +359,17 @@ async fn clone_task(db: &mut Db<Transactional>, item: &PendingClone) -> Result<C
         crate::tasks::add_task_dependency(db, TaskId(created.id), dependency).await?;
     }
     carry_beads_id(db, DuplicableKind::Task, created.id, original.beads_id).await?;
-    Ok(ClonedNode { new_id: created.id, kind: "task".to_string() })
+    Ok(ClonedNode {
+        new_id: created.id,
+        kind: "task".to_string(),
+    })
 }
 
 /// Clones an info row.
-async fn clone_info(db: &mut Db<Transactional>, item: &PendingClone) -> Result<ClonedNode, AppError> {
+async fn clone_info(
+    db: &mut Db<Transactional>,
+    item: &PendingClone,
+) -> Result<ClonedNode, AppError> {
     let original = db.infos().get(InfoId(item.old_id)).await?;
     let created = db
         .infos()
@@ -319,10 +383,19 @@ async fn clone_info(db: &mut Db<Transactional>, item: &PendingClone) -> Result<C
         .await?;
     if original.is_private {
         db.infos()
-            .update(InfoId(created.id), UpdateInfoRequest { is_private: Some(true), ..Default::default() })
+            .update(
+                InfoId(created.id),
+                UpdateInfoRequest {
+                    is_private: Some(true),
+                    ..Default::default()
+                },
+            )
             .await?;
     }
-    Ok(ClonedNode { new_id: created.id, kind: "info".to_string() })
+    Ok(ClonedNode {
+        new_id: created.id,
+        kind: "info".to_string(),
+    })
 }
 
 /// Copies an owner's ordered block reasons onto its clone.
@@ -357,7 +430,11 @@ async fn carry_beads_id(
         return Ok(());
     }
     match kind {
-        DuplicableKind::Domain => db.domains().set_beads_id(DomainId(new_id), beads_id).await?,
+        DuplicableKind::Domain => {
+            db.domains()
+                .set_beads_id(DomainId(new_id), beads_id)
+                .await?
+        }
         DuplicableKind::Goal => db.goals().set_beads_id(GoalId(new_id), beads_id).await?,
         DuplicableKind::Task => db.tasks().set_beads_id(TaskId(new_id), beads_id).await?,
         // Infos carry no issue link — there is no column to write.

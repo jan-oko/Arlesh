@@ -92,12 +92,17 @@ fn create_req(title: &str) -> CreateFlowRequest {
 async fn the_update_flow_command_commits_the_merged_row() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let flow = flow_commands::create_flow(app.state(), create_req("Draft")).await.unwrap();
+    let flow = flow_commands::create_flow(app.state(), create_req("Draft"))
+        .await
+        .unwrap();
 
     flow_commands::update_flow(
         app.state(),
         flow.id,
-        UpdateFlowRequest { title: Some("Renamed".into()), ..Default::default() },
+        UpdateFlowRequest {
+            title: Some("Renamed".into()),
+            ..Default::default()
+        },
     )
     .await
     .unwrap();
@@ -113,9 +118,13 @@ async fn the_update_flow_command_commits_the_merged_row() {
 async fn the_delete_flow_command_commits_the_deletion() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let flow = flow_commands::create_flow(app.state(), create_req("Doomed")).await.unwrap();
+    let flow = flow_commands::create_flow(app.state(), create_req("Doomed"))
+        .await
+        .unwrap();
 
-    flow_commands::delete_flow(app.state(), flow.id).await.unwrap();
+    flow_commands::delete_flow(app.state(), flow.id)
+        .await
+        .unwrap();
 
     assert_eq!(count_where(&pool, "flows", "id", flow.id).await, 0);
 }
@@ -124,7 +133,9 @@ async fn the_delete_flow_command_commits_the_deletion() {
 async fn the_update_flow_goal_command_commits_the_merged_row() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let flow = flow_commands::create_flow(app.state(), create_req("Feature")).await.unwrap();
+    let flow = flow_commands::create_flow(app.state(), create_req("Feature"))
+        .await
+        .unwrap();
     let goal = flow_commands::create_flow_goal(
         app.state(),
         CreateFlowItemRequest {
@@ -140,13 +151,18 @@ async fn the_update_flow_goal_command_commits_the_merged_row() {
     flow_commands::update_flow_goal(
         app.state(),
         goal.id,
-        UpdateFlowItemRequest { title: Some("Released".into()), ..Default::default() },
+        UpdateFlowItemRequest {
+            title: Some("Released".into()),
+            ..Default::default()
+        },
     )
     .await
     .unwrap();
 
     assert_eq!(
-        text_at(&pool, "flow_goals", "title", goal.id).await.as_deref(),
+        text_at(&pool, "flow_goals", "title", goal.id)
+            .await
+            .as_deref(),
         Some("Released")
     );
 }
@@ -155,7 +171,9 @@ async fn the_update_flow_goal_command_commits_the_merged_row() {
 async fn the_update_flow_task_command_commits_the_merged_row() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let flow = flow_commands::create_flow(app.state(), create_req("Feature")).await.unwrap();
+    let flow = flow_commands::create_flow(app.state(), create_req("Feature"))
+        .await
+        .unwrap();
     let task = flow_commands::create_flow_task(
         app.state(),
         CreateFlowItemRequest {
@@ -171,13 +189,18 @@ async fn the_update_flow_task_command_commits_the_merged_row() {
     flow_commands::update_flow_task(
         app.state(),
         task.id,
-        UpdateFlowItemRequest { title: Some("Implement".into()), ..Default::default() },
+        UpdateFlowItemRequest {
+            title: Some("Implement".into()),
+            ..Default::default()
+        },
     )
     .await
     .unwrap();
 
     assert_eq!(
-        text_at(&pool, "flow_tasks", "title", task.id).await.as_deref(),
+        text_at(&pool, "flow_tasks", "title", task.id)
+            .await
+            .as_deref(),
         Some("Implement")
     );
 }
@@ -186,7 +209,9 @@ async fn the_update_flow_task_command_commits_the_merged_row() {
 async fn the_set_flow_item_cycles_command_commits_every_pair() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let flow = flow_commands::create_flow(app.state(), create_req("Routine")).await.unwrap();
+    let flow = flow_commands::create_flow(app.state(), create_req("Routine"))
+        .await
+        .unwrap();
     let task = flow_commands::create_flow_task(
         app.state(),
         CreateFlowItemRequest {
@@ -231,7 +256,9 @@ async fn the_set_flow_item_cycles_command_commits_every_pair() {
 async fn the_delete_flow_item_command_commits_the_item_and_its_links() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let flow = flow_commands::create_flow(app.state(), create_req("Feature")).await.unwrap();
+    let flow = flow_commands::create_flow(app.state(), create_req("Feature"))
+        .await
+        .unwrap();
     let specify = flow_commands::create_flow_task(
         app.state(),
         CreateFlowItemRequest {
@@ -278,7 +305,11 @@ async fn the_delete_flow_item_command_commits_the_item_and_its_links() {
         .await
         .unwrap();
 
-    assert_eq!(count_where(&pool, "flow_tasks", "id", specify.id).await, 0, "the row");
+    assert_eq!(
+        count_where(&pool, "flow_tasks", "id", specify.id).await,
+        0,
+        "the row"
+    );
     assert_eq!(
         count_where(&pool, "flow_item_cycles", "item_id", specify.id).await,
         0,
@@ -295,7 +326,9 @@ async fn the_delete_flow_item_command_commits_the_item_and_its_links() {
 async fn the_convert_flow_item_command_commits_both_halves() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let flow = flow_commands::create_flow(app.state(), create_req("Feature")).await.unwrap();
+    let flow = flow_commands::create_flow(app.state(), create_req("Feature"))
+        .await
+        .unwrap();
     let task = flow_commands::create_flow_task(
         app.state(),
         CreateFlowItemRequest {
@@ -308,13 +341,19 @@ async fn the_convert_flow_item_command_commits_both_halves() {
     .await
     .unwrap();
 
-    let new_id =
-        flow_commands::convert_flow_item(app.state(), FlowItemType::FlowTask, task.id, FlowItemType::FlowGoal)
-            .await
-            .unwrap();
+    let new_id = flow_commands::convert_flow_item(
+        app.state(),
+        FlowItemType::FlowTask,
+        task.id,
+        FlowItemType::FlowGoal,
+    )
+    .await
+    .unwrap();
 
     assert_eq!(
-        text_at(&pool, "flow_goals", "title", new_id).await.as_deref(),
+        text_at(&pool, "flow_goals", "title", new_id)
+            .await
+            .as_deref(),
         Some("Ambiguous"),
         "the new row must be committed"
     );
@@ -329,7 +368,9 @@ async fn the_convert_flow_item_command_commits_both_halves() {
 async fn the_set_flow_recurrence_command_commits_the_recurrence() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let flow = flow_commands::create_flow(app.state(), create_req("Routine")).await.unwrap();
+    let flow = flow_commands::create_flow(app.state(), create_req("Routine"))
+        .await
+        .unwrap();
     let start = helpers::session_factory(&pool)
         .connect()
         .await
@@ -356,14 +397,19 @@ async fn the_set_flow_recurrence_command_commits_the_recurrence() {
     .await
     .unwrap();
 
-    assert_eq!(count_where(&pool, "flow_recurrences", "flow_id", flow.id).await, 1);
+    assert_eq!(
+        count_where(&pool, "flow_recurrences", "flow_id", flow.id).await,
+        1
+    );
 }
 
 #[tokio::test]
 async fn the_set_habit_iteration_done_command_commits_a_modification_for_every_instance() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let flow = flow_commands::create_flow(app.state(), create_req("Routine")).await.unwrap();
+    let flow = flow_commands::create_flow(app.state(), create_req("Routine"))
+        .await
+        .unwrap();
     flow_commands::create_flow_task(
         app.state(),
         CreateFlowItemRequest {
@@ -385,9 +431,16 @@ async fn the_set_habit_iteration_done_command_commits_a_modification_for_every_i
         .unwrap()
         .id;
 
-    flow_commands::set_habit_iteration_done(app.state(), flow.id, iteration, true, 1_767_600_000_000, None)
-        .await
-        .unwrap();
+    flow_commands::set_habit_iteration_done(
+        app.state(),
+        flow.id,
+        iteration,
+        true,
+        1_767_600_000_000,
+        None,
+    )
+    .await
+    .unwrap();
 
     assert_eq!(
         count_where(&pool, "habit_instance_modifications", "flow_id", flow.id).await,
@@ -400,7 +453,9 @@ async fn the_set_habit_iteration_done_command_commits_a_modification_for_every_i
 async fn the_generate_habit_iterations_command_commits_the_scopes_it_materialises() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let flow = flow_commands::create_flow(app.state(), create_req("Routine")).await.unwrap();
+    let flow = flow_commands::create_flow(app.state(), create_req("Routine"))
+        .await
+        .unwrap();
     let start = helpers::session_factory(&pool)
         .connect()
         .await
@@ -461,7 +516,10 @@ async fn the_scope_valid_flow_targets_command_commits_the_window_it_resolves() {
         Some(2),
         Some("week".into()),
         Some(ymd(2026, 1, 5)),
-        vec![TargetRef { node_type: "aspect".into(), node_id: 1 }],
+        vec![TargetRef {
+            node_type: "aspect".into(),
+            node_id: 1,
+        }],
     )
     .await
     .unwrap();
@@ -477,7 +535,9 @@ async fn the_scope_valid_flow_targets_command_commits_the_window_it_resolves() {
 async fn the_fork_flow_command_commits_the_whole_clone() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let flow = flow_commands::create_flow(app.state(), create_req("Routine")).await.unwrap();
+    let flow = flow_commands::create_flow(app.state(), create_req("Routine"))
+        .await
+        .unwrap();
     let parent = flow_commands::create_flow_goal(
         app.state(),
         CreateFlowItemRequest {
@@ -514,7 +574,9 @@ async fn the_fork_flow_command_commits_the_whole_clone() {
     .await
     .unwrap();
 
-    let forked = flow_commands::fork_flow(app.state(), flow.id).await.unwrap();
+    let forked = flow_commands::fork_flow(app.state(), flow.id)
+        .await
+        .unwrap();
 
     assert_ne!(forked.id, flow.id);
     assert_eq!(
@@ -522,8 +584,16 @@ async fn the_fork_flow_command_commits_the_whole_clone() {
         1,
         "the clone's flow row"
     );
-    assert_eq!(count_where(&pool, "flow_goals", "flow_id", forked.id).await, 1, "its goal item");
-    assert_eq!(count_where(&pool, "flow_tasks", "flow_id", forked.id).await, 1, "its task item");
+    assert_eq!(
+        count_where(&pool, "flow_goals", "flow_id", forked.id).await,
+        1,
+        "its goal item"
+    );
+    assert_eq!(
+        count_where(&pool, "flow_tasks", "flow_id", forked.id).await,
+        1,
+        "its task item"
+    );
     assert_eq!(
         count_where(&pool, "flow_item_cycles", "flow_id", forked.id).await,
         1,
@@ -535,7 +605,9 @@ async fn the_fork_flow_command_commits_the_whole_clone() {
 async fn the_duplicate_flow_command_commits_the_copy_and_its_recurrence() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let flow = flow_commands::create_flow(app.state(), create_req("Morning")).await.unwrap();
+    let flow = flow_commands::create_flow(app.state(), create_req("Morning"))
+        .await
+        .unwrap();
     let item = flow_commands::create_flow_task(
         app.state(),
         CreateFlowItemRequest {
@@ -552,7 +624,11 @@ async fn the_duplicate_flow_command_commits_the_copy_and_its_recurrence() {
         flow.id,
         FlowItemType::FlowTask,
         item.id,
-        vec![FlowCycleInput { scope_kind: Some("day".into()), scope_index: Some(1), ..Default::default() }],
+        vec![FlowCycleInput {
+            scope_kind: Some("day".into()),
+            scope_index: Some(1),
+            ..Default::default()
+        }],
     )
     .await
     .unwrap();
@@ -586,9 +662,21 @@ async fn the_duplicate_flow_command_commits_the_copy_and_its_recurrence() {
         .unwrap();
 
     assert_ne!(copy.id, flow.id);
-    assert_eq!(count_where(&pool, "flows", "id", copy.id).await, 1, "the copy's flow row");
-    assert_eq!(count_where(&pool, "flow_tasks", "flow_id", copy.id).await, 1, "its item");
-    assert_eq!(count_where(&pool, "flow_item_cycles", "flow_id", copy.id).await, 1, "its cycle pair");
+    assert_eq!(
+        count_where(&pool, "flows", "id", copy.id).await,
+        1,
+        "the copy's flow row"
+    );
+    assert_eq!(
+        count_where(&pool, "flow_tasks", "flow_id", copy.id).await,
+        1,
+        "its item"
+    );
+    assert_eq!(
+        count_where(&pool, "flow_item_cycles", "flow_id", copy.id).await,
+        1,
+        "its cycle pair"
+    );
     assert_eq!(
         count_where(&pool, "flow_recurrences", "flow_id", copy.id).await,
         1,
@@ -600,7 +688,9 @@ async fn the_duplicate_flow_command_commits_the_copy_and_its_recurrence() {
 async fn the_duplicate_flow_item_command_commits_the_copied_item_and_its_pairs() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let flow = flow_commands::create_flow(app.state(), create_req("Routine")).await.unwrap();
+    let flow = flow_commands::create_flow(app.state(), create_req("Routine"))
+        .await
+        .unwrap();
     let item = flow_commands::create_flow_task(
         app.state(),
         CreateFlowItemRequest {
@@ -617,7 +707,11 @@ async fn the_duplicate_flow_item_command_commits_the_copied_item_and_its_pairs()
         flow.id,
         FlowItemType::FlowTask,
         item.id,
-        vec![FlowCycleInput { scope_kind: Some("day".into()), scope_index: Some(3), ..Default::default() }],
+        vec![FlowCycleInput {
+            scope_kind: Some("day".into()),
+            scope_index: Some(3),
+            ..Default::default()
+        }],
     )
     .await
     .unwrap();
@@ -634,7 +728,11 @@ async fn the_duplicate_flow_item_command_commits_the_copied_item_and_its_pairs()
     .unwrap();
 
     assert_ne!(new_id, item.id);
-    assert_eq!(count_where(&pool, "flow_tasks", "flow_id", flow.id).await, 2, "the original and its copy");
+    assert_eq!(
+        count_where(&pool, "flow_tasks", "flow_id", flow.id).await,
+        2,
+        "the original and its copy"
+    );
     assert_eq!(
         count_where(&pool, "flow_item_cycles", "item_id", new_id).await,
         1,
@@ -661,7 +759,11 @@ async fn the_convert_to_flow_command_commits_the_template_and_the_deletion() {
             title: "Routine".into(),
             parent_type: "domain".into(),
             parent_id: 1,
-            time_scope: Some(TimeScope { start_id: scope.id, end_id: scope.id, duration: None }),
+            time_scope: Some(TimeScope {
+                start_id: scope.id,
+                end_id: scope.id,
+                duration: None,
+            }),
             ..Default::default()
         },
     )
@@ -684,13 +786,21 @@ async fn the_convert_to_flow_command_commits_the_template_and_the_deletion() {
         .await
         .unwrap();
 
-    assert_eq!(count_where(&pool, "flows", "id", flow.id).await, 1, "the template's flow row");
+    assert_eq!(
+        count_where(&pool, "flows", "id", flow.id).await,
+        1,
+        "the template's flow row"
+    );
     assert_eq!(
         count_where(&pool, "flow_tasks", "flow_id", flow.id).await,
         1,
         "the item mirroring the child"
     );
-    assert_eq!(count_where(&pool, "goals", "id", root.id).await, 0, "the original root");
+    assert_eq!(
+        count_where(&pool, "goals", "id", root.id).await,
+        0,
+        "the original root"
+    );
     assert_eq!(
         count_where(&pool, "tasks", "id", step.id).await,
         0,
@@ -724,8 +834,16 @@ struct ConvertSubtree {
 async fn seed_convert_subtree(pool: &sqlx::SqlitePool) -> ConvertSubtree {
     let mut db = helpers::session_factory(pool).begin().await.unwrap();
 
-    let week = db.scopes().get_or_create(ScopeKind::Week, ymd(2026, 1, 5)).await.unwrap();
-    let day = db.scopes().get_or_create(ScopeKind::Day, ymd(2026, 1, 7)).await.unwrap();
+    let week = db
+        .scopes()
+        .get_or_create(ScopeKind::Week, ymd(2026, 1, 5))
+        .await
+        .unwrap();
+    let day = db
+        .scopes()
+        .get_or_create(ScopeKind::Day, ymd(2026, 1, 7))
+        .await
+        .unwrap();
 
     let root = create_goal(
         &mut db,
@@ -733,7 +851,11 @@ async fn seed_convert_subtree(pool: &sqlx::SqlitePool) -> ConvertSubtree {
             title: "Routine".into(),
             parent_type: "domain".into(),
             parent_id: 1,
-            time_scope: Some(TimeScope { start_id: week.id, end_id: week.id, duration: None }),
+            time_scope: Some(TimeScope {
+                start_id: week.id,
+                end_id: week.id,
+                duration: None,
+            }),
             ..Default::default()
         },
     )
@@ -745,7 +867,11 @@ async fn seed_convert_subtree(pool: &sqlx::SqlitePool) -> ConvertSubtree {
             title: "Step".into(),
             parent_type: "goal".into(),
             parent_id: root.id,
-            time_scope: Some(TimeScope { start_id: day.id, end_id: day.id, duration: None }),
+            time_scope: Some(TimeScope {
+                start_id: day.id,
+                end_id: day.id,
+                duration: None,
+            }),
             ..Default::default()
         },
     )
@@ -764,14 +890,24 @@ async fn seed_convert_subtree(pool: &sqlx::SqlitePool) -> ConvertSubtree {
     .unwrap();
 
     // A dependency inside the subtree, so the conversion writes a flow_dependencies row too.
-    add_task_dependency(&mut db, TaskId(child.id), Dependency::Task { id: grandchild.id })
-        .await
-        .unwrap();
+    add_task_dependency(
+        &mut db,
+        TaskId(child.id),
+        Dependency::Task { id: grandchild.id },
+    )
+    .await
+    .unwrap();
 
     // Block reasons and infos hang off polymorphic owner links with no foreign key, so nothing in
     // the schema removes them when their owner goes: the cascade has to do it by hand.
-    db.block_reasons().set("goal", root.id, &["waiting on review".into()]).await.unwrap();
-    db.block_reasons().set("task", child.id, &["blocked".into()]).await.unwrap();
+    db.block_reasons()
+        .set("goal", root.id, &["waiting on review".into()])
+        .await
+        .unwrap();
+    db.block_reasons()
+        .set("task", child.id, &["blocked".into()])
+        .await
+        .unwrap();
     let outer = db
         .infos()
         .create(CreateInfoRequest {
@@ -816,8 +952,16 @@ async fn the_convert_to_flow_command_commits_the_whole_cascade_under_the_deleted
         .await
         .unwrap();
 
-    assert_eq!(count_where(&pool, "goals", "id", seeded.root_id).await, 0, "the root goal");
-    assert_eq!(count_where(&pool, "tasks", "id", seeded.child_id).await, 0, "its child task");
+    assert_eq!(
+        count_where(&pool, "goals", "id", seeded.root_id).await,
+        0,
+        "the root goal"
+    );
+    assert_eq!(
+        count_where(&pool, "tasks", "id", seeded.child_id).await,
+        0,
+        "its child task"
+    );
     assert_eq!(
         count_where(&pool, "tasks", "id", seeded.grandchild_id).await,
         0,
@@ -881,11 +1025,16 @@ async fn a_convert_to_flow_aborted_after_the_delete_restores_the_subtree_and_lea
     // The command's own shape: begin, convert, (…), commit. This test stands in for the caller and
     // fails where the command's `?` would fire.
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-    let flow = flows::convert_to_flow(&mut db, "goal", seeded.root_id, true, true).await.unwrap();
+    let flow = flows::convert_to_flow(&mut db, "goal", seeded.root_id, true, true)
+        .await
+        .unwrap();
 
     // The conversion really did get past its delete — otherwise the rollback assertions below
     // would hold vacuously.
-    assert!(db.goals().get(GoalId(seeded.root_id)).await.is_err(), "deleted inside the transaction");
+    assert!(
+        db.goals().get(GoalId(seeded.root_id)).await.is_err(),
+        "deleted inside the transaction"
+    );
     assert_eq!(
         db.flows().list_tasks(FlowId(flow.id)).await.unwrap().len(),
         2,
@@ -897,12 +1046,23 @@ async fn a_convert_to_flow_aborted_after_the_delete_restores_the_subtree_and_lea
     // reaches the database the same way — the `Db<Transactional>` is dropped without `commit()`
     // and sqlx rolls back — so this stands for the whole class, the failing `commit()` included.
     let rejected = flows::convert_to_flow(&mut db, "task", unconvertible.id, true, true).await;
-    assert!(rejected.is_err(), "a task under a task cannot become a flow");
+    assert!(
+        rejected.is_err(),
+        "a task under a task cannot become a flow"
+    );
     drop(db);
 
     // Everything the conversion deleted is back, by id.
-    assert_eq!(count_where(&pool, "goals", "id", seeded.root_id).await, 1, "the root goal");
-    assert_eq!(count_where(&pool, "tasks", "id", seeded.child_id).await, 1, "its child task");
+    assert_eq!(
+        count_where(&pool, "goals", "id", seeded.root_id).await,
+        1,
+        "the root goal"
+    );
+    assert_eq!(
+        count_where(&pool, "tasks", "id", seeded.child_id).await,
+        1,
+        "its child task"
+    );
     assert_eq!(
         count_where(&pool, "tasks", "id", seeded.grandchild_id).await,
         1,
@@ -913,7 +1073,11 @@ async fn a_convert_to_flow_aborted_after_the_delete_restores_the_subtree_and_lea
         1,
         "the root's block reason — the cascade widened in Task 2.2, so the rollback must undo it"
     );
-    assert_eq!(count_block_reasons(&pool, "task", seeded.child_id).await, 1, "and the child's");
+    assert_eq!(
+        count_block_reasons(&pool, "task", seeded.child_id).await,
+        1,
+        "and the child's"
+    );
     assert_eq!(
         count_where(&pool, "infos", "id", seeded.outer_info_id).await,
         1,
@@ -926,10 +1090,26 @@ async fn a_convert_to_flow_aborted_after_the_delete_restores_the_subtree_and_lea
     );
 
     // And nothing of the abandoned template survives.
-    assert_eq!(count_where(&pool, "flows", "id", flow.id).await, 0, "the template's flow row");
-    assert_eq!(count_where(&pool, "flow_goals", "flow_id", flow.id).await, 0, "its goal items");
-    assert_eq!(count_where(&pool, "flow_tasks", "flow_id", flow.id).await, 0, "its task items");
-    assert_eq!(count_where(&pool, "flow_item_cycles", "flow_id", flow.id).await, 0, "its cycles");
+    assert_eq!(
+        count_where(&pool, "flows", "id", flow.id).await,
+        0,
+        "the template's flow row"
+    );
+    assert_eq!(
+        count_where(&pool, "flow_goals", "flow_id", flow.id).await,
+        0,
+        "its goal items"
+    );
+    assert_eq!(
+        count_where(&pool, "flow_tasks", "flow_id", flow.id).await,
+        0,
+        "its task items"
+    );
+    assert_eq!(
+        count_where(&pool, "flow_item_cycles", "flow_id", flow.id).await,
+        0,
+        "its cycles"
+    );
     assert_eq!(
         count_where(&pool, "flow_dependencies", "flow_id", flow.id).await,
         0,
@@ -941,7 +1121,9 @@ async fn a_convert_to_flow_aborted_after_the_delete_restores_the_subtree_and_lea
 async fn the_start_flow_command_commits_the_materialised_subtree() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let flow = flow_commands::create_flow(app.state(), create_req("Feature")).await.unwrap();
+    let flow = flow_commands::create_flow(app.state(), create_req("Feature"))
+        .await
+        .unwrap();
     flow_commands::create_flow_task(
         app.state(),
         CreateFlowItemRequest {
@@ -969,7 +1151,9 @@ async fn the_start_flow_command_commits_the_materialised_subtree() {
 
     assert_eq!(materialized.root_type, "task");
     assert_eq!(
-        text_at(&pool, "tasks", "title", materialized.root_id).await.as_deref(),
+        text_at(&pool, "tasks", "title", materialized.root_id)
+            .await
+            .as_deref(),
         Some("Ship the feature"),
         "the materialised root must be committed"
     );
@@ -978,7 +1162,11 @@ async fn the_start_flow_command_commits_the_materialised_subtree() {
         2,
         "root plus the one item instance, both in the same transaction"
     );
-    assert_eq!(count_where(&pool, "flow_instances", "flow_id", flow.id).await, 1, "the instance");
+    assert_eq!(
+        count_where(&pool, "flow_instances", "flow_id", flow.id).await,
+        1,
+        "the instance"
+    );
     assert_eq!(
         count_all(&pool, "flow_instance_nodes").await,
         2,
@@ -1002,7 +1190,10 @@ async fn starting_a_commitment_flow_holding_a_goal_item_is_refused_outright() {
     let app = helpers::command_host(&pool);
     let flow = flow_commands::create_flow(
         app.state(),
-        CreateFlowRequest { instance_type: Some(InstanceType::Task), ..create_req("Asleep by 23:00") },
+        CreateFlowRequest {
+            instance_type: Some(InstanceType::Task),
+            ..create_req("Asleep by 23:00")
+        },
     )
     .await
     .unwrap();
@@ -1035,10 +1226,25 @@ async fn starting_a_commitment_flow_holding_a_goal_item_is_refused_outright() {
     )
     .await;
 
-    assert!(refused.is_err(), "a Commitment cannot parent a Goal, so the run cannot stand");
+    assert!(
+        refused.is_err(),
+        "a Commitment cannot parent a Goal, so the run cannot stand"
+    );
     // And nothing half-built survives it: the root commitment is written before the goal is
     // attempted, so only a rolled-back transaction leaves the board as it was.
-    assert_eq!(count_all(&pool, "commitments").await, 0, "not even the root commitment");
-    assert_eq!(count_all(&pool, "goals").await, 0, "nor the goal that was refused");
-    assert_eq!(count_all(&pool, "flow_instances").await, 0, "and no run was recorded");
+    assert_eq!(
+        count_all(&pool, "commitments").await,
+        0,
+        "not even the root commitment"
+    );
+    assert_eq!(
+        count_all(&pool, "goals").await,
+        0,
+        "nor the goal that was refused"
+    );
+    assert_eq!(
+        count_all(&pool, "flow_instances").await,
+        0,
+        "and no run was recorded"
+    );
 }

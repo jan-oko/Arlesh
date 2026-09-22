@@ -44,12 +44,18 @@ fn task(id: i64) -> SourceNode {
 
 /// A Task explicitly flagged as agent work.
 fn agentic_task(id: i64) -> SourceNode {
-    SourceNode { agentic: Some(TaskAgentic::Yes), ..task(id) }
+    SourceNode {
+        agentic: Some(TaskAgentic::Yes),
+        ..task(id)
+    }
 }
 
 /// A Task whose doing starts a wait.
 fn asynchronous_task(id: i64) -> SourceNode {
-    SourceNode { asynchronous: Some(true), ..task(id) }
+    SourceNode {
+        asynchronous: Some(true),
+        ..task(id)
+    }
 }
 
 /// An unresolved commitment with no Verdict Window — the shape a freshly created one has.
@@ -172,12 +178,21 @@ fn a_task_becoming_a_commitment_loses_its_plan_delegate_and_block_reasons() {
     // not a unit of work in a graph, so nothing gates it and it gates nothing.
     assert_eq!(
         lost_field_names(&plan),
-        vec!["plan", "delegate_to", "block_reasons", "dependents", "dependencies"],
+        vec![
+            "plan",
+            "delegate_to",
+            "block_reasons",
+            "dependents",
+            "dependencies"
+        ],
     );
     assert_eq!(plan.carried.plan, None);
     assert_eq!(plan.carried.delegate_to, None);
     assert!(plan.carried.block_reasons.is_empty());
-    assert!(plan.loses_anything(), "the caller must be told before any of that goes");
+    assert!(
+        plan.loses_anything(),
+        "the caller must be told before any of that goes"
+    );
 }
 
 #[test]
@@ -185,17 +200,26 @@ fn a_task_becoming_a_commitment_never_arrives_with_a_verdict() {
     // `done` is not `kept`. A task that was finished says nothing about whether a rule was
     // held to, and inventing that equivalence is the inference this kind exists to avoid.
     for status in ["todo", "in_progress", "done"] {
-        let source = SourceNode { status: Some(status.into()), ..task(1) };
+        let source = SourceNode {
+            status: Some(status.into()),
+            ..task(1)
+        };
         let plan = plan_retype(&source, &[], RetypeKind::Commitment);
         assert_eq!(plan.carried.verdict, None, "from {status}");
-        assert_eq!(plan.carried.status, None, "a commitment has no status column");
+        assert_eq!(
+            plan.carried.status, None,
+            "a commitment has no status column"
+        );
     }
 }
 
 #[test]
 fn a_finished_task_becoming_a_commitment_is_told_its_status_is_going() {
     // A non-default status is real intent, and it has nowhere to go.
-    let source = SourceNode { status: Some("done".into()), ..task(1) };
+    let source = SourceNode {
+        status: Some("done".into()),
+        ..task(1)
+    };
     let plan = plan_retype(&source, &[], RetypeKind::Commitment);
     assert_eq!(lost_field_names(&plan), vec!["status"]);
 }
@@ -211,16 +235,30 @@ fn an_untouched_task_becoming_a_commitment_is_not_told_about_a_status_nobody_cho
 fn a_commitment_becoming_a_task_loses_its_verdict_and_verdict_window() {
     let source = SourceNode {
         verdict: Some(Verdict::Broken),
-        verdict_window: Some(DurationSpec { n: 2, kind: "day".into() }),
+        verdict_window: Some(DurationSpec {
+            n: 2,
+            kind: "day".into(),
+        }),
         ..commitment(1)
     };
 
     let plan = plan_retype(&source, &[], RetypeKind::Task);
 
     assert_eq!(lost_field_names(&plan), vec!["verdict", "verdict_window"]);
-    let values: Vec<&str> = plan.lost_fields.iter().map(|lost| lost.value.as_str()).collect();
-    assert_eq!(values, vec!["broken", "2 day"], "the prompt says what is at stake, not only which field");
-    assert_eq!(plan.carried.status, None, "no verdict is translated into a status");
+    let values: Vec<&str> = plan
+        .lost_fields
+        .iter()
+        .map(|lost| lost.value.as_str())
+        .collect();
+    assert_eq!(
+        values,
+        vec!["broken", "2 day"],
+        "the prompt says what is at stake, not only which field"
+    );
+    assert_eq!(
+        plan.carried.status, None,
+        "no verdict is translated into a status"
+    );
 }
 
 #[test]
@@ -234,14 +272,24 @@ fn an_unjudged_commitment_becoming_a_task_loses_nothing() {
 
 #[test]
 fn a_commitment_keeps_its_issue_link_in_both_directions() {
-    let tracked = SourceNode { beads_id: Some("Arlesh-cyo".into()), ..commitment(1) };
+    let tracked = SourceNode {
+        beads_id: Some("Arlesh-cyo".into()),
+        ..commitment(1)
+    };
     assert_eq!(
-        plan_retype(&tracked, &[], RetypeKind::Task).carried.beads_id,
+        plan_retype(&tracked, &[], RetypeKind::Task)
+            .carried
+            .beads_id,
         Some("Arlesh-cyo".to_string()),
     );
-    let tracked_task = SourceNode { beads_id: Some("Arlesh-cyo".into()), ..task(1) };
+    let tracked_task = SourceNode {
+        beads_id: Some("Arlesh-cyo".into()),
+        ..task(1)
+    };
     assert_eq!(
-        plan_retype(&tracked_task, &[], RetypeKind::Commitment).carried.beads_id,
+        plan_retype(&tracked_task, &[], RetypeKind::Commitment)
+            .carried
+            .beads_id,
         Some("Arlesh-cyo".to_string()),
     );
 }
@@ -268,7 +316,12 @@ fn a_commitment_keeps_task_and_commitment_children_and_strands_the_rest() {
 #[test]
 fn every_kind_that_can_hold_a_task_can_hold_a_commitment_except_a_goals_own_refusals() {
     // A Commitment lives anywhere a Task can, plus inside another Commitment.
-    for holder in [RetypeKind::Project, RetypeKind::Domain, RetypeKind::Goal, RetypeKind::Task] {
+    for holder in [
+        RetypeKind::Project,
+        RetypeKind::Domain,
+        RetypeKind::Goal,
+        RetypeKind::Task,
+    ] {
         assert!(
             holder.accepts_child(ChildKind::Commitment),
             "{} should hold a commitment",
@@ -289,8 +342,14 @@ fn a_commitment_refuses_a_goal_child() {
 #[test]
 fn commitment_is_a_retypeable_kind_on_the_wire() {
     assert_eq!(RetypeKind::Commitment.as_str(), "commitment");
-    assert_eq!(RetypeKind::from_db("commitment"), Some(RetypeKind::Commitment));
-    assert_eq!(ChildKind::from(RetypeKind::Commitment), ChildKind::Commitment);
+    assert_eq!(
+        RetypeKind::from_db("commitment"),
+        Some(RetypeKind::Commitment)
+    );
+    assert_eq!(
+        ChildKind::from(RetypeKind::Commitment),
+        ChildKind::Commitment
+    );
     assert_eq!(ChildKind::Commitment.as_str(), "commitment");
 }
 
@@ -298,10 +357,22 @@ fn commitment_is_a_retypeable_kind_on_the_wire() {
 fn a_commitment_parent_is_acceptable_to_a_task_and_a_commitment_but_not_a_goal() {
     // Which is what makes `climb_to_acceptable_parent` move a commitment's child further up
     // when it becomes a Goal, rather than writing a parent link the CHECK would refuse.
-    assert!(accepts_category(RetypeKind::Task, ParentCategory::Commitment));
-    assert!(accepts_category(RetypeKind::Commitment, ParentCategory::Commitment));
-    assert!(!accepts_category(RetypeKind::Goal, ParentCategory::Commitment));
-    assert!(!accepts_category(RetypeKind::Project, ParentCategory::Commitment));
+    assert!(accepts_category(
+        RetypeKind::Task,
+        ParentCategory::Commitment
+    ));
+    assert!(accepts_category(
+        RetypeKind::Commitment,
+        ParentCategory::Commitment
+    ));
+    assert!(!accepts_category(
+        RetypeKind::Goal,
+        ParentCategory::Commitment
+    ));
+    assert!(!accepts_category(
+        RetypeKind::Project,
+        ParentCategory::Commitment
+    ));
     assert_eq!(category_of("commitment"), ParentCategory::Commitment);
     assert_eq!(goal_task_parent_type("commitment"), "commitment");
 }
@@ -323,11 +394,17 @@ fn a_goal_becoming_a_task_carries_scope_exit_behaviour_tags_reasons_privacy_and_
     assert_eq!(plan.carried.time_scope, Some(window(3, 5)));
     assert_eq!(plan.carried.on_scope_exit, Some(OnScopeExit::Archive));
     assert_eq!(plan.carried.tag_ids, vec![7, 9]);
-    assert_eq!(plan.carried.block_reasons, vec!["waiting on Ana".to_string()]);
+    assert_eq!(
+        plan.carried.block_reasons,
+        vec!["waiting on Ana".to_string()]
+    );
     assert!(plan.carried.is_private, "privacy carries");
     assert_eq!(plan.carried.position, 17);
     assert_eq!(plan.carried.title, "Ship it");
-    assert!(!plan.loses_anything(), "nothing on a goal is foreign to a task");
+    assert!(
+        !plan.loses_anything(),
+        "nothing on a goal is foreign to a task"
+    );
 }
 
 #[test]
@@ -348,7 +425,11 @@ fn a_goal_becoming_a_task_maps_every_unachieved_status_to_todo() {
             ..goal(1)
         };
         let plan = plan_retype(&source, &[], RetypeKind::Task);
-        assert_eq!(plan.carried.status, Some("todo".to_string()), "from {status}");
+        assert_eq!(
+            plan.carried.status,
+            Some("todo".to_string()),
+            "from {status}"
+        );
     }
 }
 
@@ -369,7 +450,10 @@ fn a_goal_becoming_a_task_strands_its_goal_children_and_keeps_the_rest() {
         "a task can hold neither a sub-goal nor a flow"
     );
     assert_eq!(
-        plan.moved_children.iter().map(|c| c.kind).collect::<Vec<_>>(),
+        plan.moved_children
+            .iter()
+            .map(|c| c.kind)
+            .collect::<Vec<_>>(),
         vec![ChildKind::Task, ChildKind::Info]
     );
     assert!(plan.loses_anything());
@@ -395,7 +479,11 @@ fn a_task_becoming_a_goal_maps_todo_and_in_progress_to_active() {
             ..task(1)
         };
         let plan = plan_retype(&source, &[], RetypeKind::Goal);
-        assert_eq!(plan.carried.status, Some("active".to_string()), "from {status}");
+        assert_eq!(
+            plan.carried.status,
+            Some("active".to_string()),
+            "from {status}"
+        );
     }
 }
 
@@ -546,7 +634,10 @@ fn a_goal_becoming_a_project_keeps_its_status_and_loses_scope_tags_and_reasons()
         lost_field_names(&plan),
         vec!["time_scope", "tags", "block_reasons"]
     );
-    assert_eq!(plan.carried.on_scope_exit, None, "the exit behaviour goes with the window");
+    assert_eq!(
+        plan.carried.on_scope_exit, None,
+        "the exit behaviour goes with the window"
+    );
 }
 
 #[test]
@@ -559,9 +650,15 @@ fn a_goal_becoming_a_tag_strands_every_child_that_is_not_a_note() {
 
     let plan = plan_retype(&goal(1), &children, RetypeKind::Tag);
 
-    assert_eq!(lost_child_kinds(&plan), vec![ChildKind::Goal, ChildKind::Task]);
     assert_eq!(
-        plan.moved_children.iter().map(|c| c.kind).collect::<Vec<_>>(),
+        lost_child_kinds(&plan),
+        vec![ChildKind::Goal, ChildKind::Task]
+    );
+    assert_eq!(
+        plan.moved_children
+            .iter()
+            .map(|c| c.kind)
+            .collect::<Vec<_>>(),
         vec![ChildKind::Info]
     );
 }
@@ -584,7 +681,11 @@ fn a_tag_becoming_a_domain_carries_its_description() {
 #[test]
 fn a_status_still_at_its_default_is_not_reported_as_lost() {
     let plan = plan_retype(&goal(1), &[], RetypeKind::Domain);
-    assert_eq!(lost_field_names(&plan), Vec::<&str>::new(), "an untouched `active` says nothing");
+    assert_eq!(
+        lost_field_names(&plan),
+        Vec::<&str>::new(),
+        "an untouched `active` says nothing"
+    );
 
     let chosen = SourceNode {
         status: Some("archived".into()),
@@ -732,8 +833,18 @@ fn info(id: i64) -> SourceNode {
 #[test]
 fn an_info_accepts_only_an_info_child() {
     assert!(RetypeKind::Info.accepts_child(ChildKind::Info));
-    for other in [ChildKind::Goal, ChildKind::Task, ChildKind::Domain, ChildKind::Project, ChildKind::Tag, ChildKind::Flow] {
-        assert!(!RetypeKind::Info.accepts_child(other), "an info cannot hold a {other:?}");
+    for other in [
+        ChildKind::Goal,
+        ChildKind::Task,
+        ChildKind::Domain,
+        ChildKind::Project,
+        ChildKind::Tag,
+        ChildKind::Flow,
+    ] {
+        assert!(
+            !RetypeKind::Info.accepts_child(other),
+            "an info cannot hold a {other:?}"
+        );
     }
 }
 
@@ -747,13 +858,19 @@ fn every_target_kind_accepts_an_info_child() {
         RetypeKind::Tag,
         RetypeKind::Info,
     ] {
-        assert!(target.accepts_child(ChildKind::Info), "{target:?} should accept an info child");
+        assert!(
+            target.accepts_child(ChildKind::Info),
+            "{target:?} should accept an info child"
+        );
     }
 }
 
 #[test]
 fn an_info_target_has_no_status_vocabulary_so_a_non_default_status_is_lost() {
-    let source = SourceNode { status: Some("achieved".into()), ..task(1) };
+    let source = SourceNode {
+        status: Some("achieved".into()),
+        ..task(1)
+    };
     let plan = plan_retype(&source, &[], RetypeKind::Info);
     assert_eq!(
         lost_field_names(&plan),
@@ -766,7 +883,10 @@ fn an_info_target_has_no_status_vocabulary_so_a_non_default_status_is_lost() {
 fn an_info_source_carries_no_status_since_it_never_had_one() {
     let plan = plan_retype(&info(1), &[], RetypeKind::Task);
     assert_eq!(plan.carried.status, None);
-    assert!(!lost_field_names(&plan).contains(&"status"), "an info never had a status to lose");
+    assert!(
+        !lost_field_names(&plan).contains(&"status"),
+        "an info never had a status to lose"
+    );
 }
 
 #[test]
@@ -814,21 +934,38 @@ fn an_info_becoming_a_task_keeps_its_privacy_and_position() {
         ..info(1)
     };
     let plan = plan_retype(&source, &[], RetypeKind::Task);
-    assert!(plan.carried.is_private, "privacy carries from an info to a task");
+    assert!(
+        plan.carried.is_private,
+        "privacy carries from an info to a task"
+    );
     assert_eq!(plan.carried.position, 4);
 }
 
 #[test]
 fn a_pending_parent_climb_alone_still_requires_confirmation() {
     let mut plan = plan_retype(&task(1), &[], RetypeKind::Goal);
-    assert!(!plan.loses_anything(), "no climb yet — plan_retype never sets one");
+    assert!(
+        !plan.loses_anything(),
+        "no climb yet — plan_retype never sets one"
+    );
 
     plan.parent_climb = Some(ParentClimb {
-        from: NamedParent { kind: "info".into(), id: 2, title: "Note".into() },
-        to: NamedParent { kind: "project".into(), id: 3, title: "Ops".into() },
+        from: NamedParent {
+            kind: "info".into(),
+            id: 2,
+            title: "Note".into(),
+        },
+        to: NamedParent {
+            kind: "project".into(),
+            id: 3,
+            title: "Ops".into(),
+        },
     });
 
-    assert!(plan.loses_anything(), "leaving the current parent needs the same consent as a loss");
+    assert!(
+        plan.loses_anything(),
+        "leaving the current parent needs the same consent as a loss"
+    );
     assert_eq!(
         plan.details()["parent_climb"],
         serde_json::json!({
@@ -869,7 +1006,10 @@ fn only_an_info_target_accepts_an_info_shaped_parent() {
         RetypeKind::Project,
         RetypeKind::Tag,
     ] {
-        assert!(!accepts_category(target, ParentCategory::Info), "{target:?} CHECK never spells \"info\"");
+        assert!(
+            !accepts_category(target, ParentCategory::Info),
+            "{target:?} CHECK never spells \"info\""
+        );
     }
     assert!(accepts_category(RetypeKind::Info, ParentCategory::Info));
 }
@@ -880,7 +1020,10 @@ fn category_of_reads_the_raw_kind_spelling() {
     assert_eq!(category_of("task"), ParentCategory::Task);
     assert_eq!(category_of("info"), ParentCategory::Info);
     for domains_table_kind in ["aspect", "project", "domain", "tag"] {
-        assert_eq!(category_of(domains_table_kind), ParentCategory::DomainsTable);
+        assert_eq!(
+            category_of(domains_table_kind),
+            ParentCategory::DomainsTable
+        );
     }
 }
 
@@ -974,7 +1117,10 @@ fn a_backlogged_task_becoming_a_goal_names_the_backlog_among_its_losses() {
     // and the prompt has to say so rather than let one stored state vanish quietly.
     let plan = plan_retype(&backlogged_task(1), &[], RetypeKind::Goal);
 
-    assert_eq!(plan.carried.archival, None, "the new goal is simply in play");
+    assert_eq!(
+        plan.carried.archival, None,
+        "the new goal is simply in play"
+    );
     assert_eq!(
         plan.lost_fields,
         vec![LostField {
@@ -1054,7 +1200,10 @@ fn an_agentic_task_becoming_a_goal_names_the_flag_among_its_losses() {
 fn an_explicitly_unagentic_task_loses_just_as_much_as_a_flagged_one() {
     // "Not agentic" is a real answer — it overrides an agentic ancestor — so losing it is a
     // loss, exactly like losing the flag itself.
-    let refused = SourceNode { agentic: Some(TaskAgentic::No), ..task(1) };
+    let refused = SourceNode {
+        agentic: Some(TaskAgentic::No),
+        ..task(1)
+    };
     let plan = plan_retype(&refused, &[], RetypeKind::Goal);
 
     assert_eq!(
@@ -1109,7 +1258,10 @@ fn a_kind_with_no_agentic_column_reports_nothing_in_either_direction() {
 fn the_flag_and_the_delegate_are_lost_independently_of_each_other() {
     // They are separate facts about the task: one says the work suits an agent, the other
     // says who holds it. A retype that drops both names both.
-    let both = SourceNode { delegate_to: Some(12), ..agentic_task(1) };
+    let both = SourceNode {
+        delegate_to: Some(12),
+        ..agentic_task(1)
+    };
     let plan = plan_retype(&both, &[], RetypeKind::Goal);
 
     let lost = lost_field_names(&plan);
@@ -1136,7 +1288,10 @@ fn an_asynchronous_task_loses_the_flag_to_every_kind_that_is_not_a_task() {
             lost_field_names(&plan).contains(&"asynchronous"),
             "{target:?} cannot be asynchronous, so it should report the flag lost"
         );
-        assert_eq!(plan.carried.asynchronous, None, "{target:?} carries no flag");
+        assert_eq!(
+            plan.carried.asynchronous, None,
+            "{target:?} carries no flag"
+        );
     }
 }
 
@@ -1164,7 +1319,10 @@ fn a_kind_with_no_asynchronous_column_reports_nothing_in_either_direction() {
 fn asynchronous_and_agentic_are_lost_independently_of_each_other() {
     // Two separate facts: one says the work suits an agent, the other that doing it starts a
     // wait. A retype that drops both names both.
-    let both = SourceNode { asynchronous: Some(true), ..agentic_task(1) };
+    let both = SourceNode {
+        asynchronous: Some(true),
+        ..agentic_task(1)
+    };
     let plan = plan_retype(&both, &[], RetypeKind::Goal);
 
     let lost = lost_field_names(&plan);

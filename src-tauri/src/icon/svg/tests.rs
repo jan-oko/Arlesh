@@ -109,7 +109,8 @@ fn points_that_are_not_numbers_are_refused() {
 
 #[test]
 fn a_document_with_nothing_to_draw_is_refused() {
-    let error = parse("<svg viewBox=\"0 0 10 10\"><circle r=\"4\"/></svg>").expect_err("no polygon");
+    let error =
+        parse("<svg viewBox=\"0 0 10 10\"><circle r=\"4\"/></svg>").expect_err("no polygon");
 
     assert!(matches!(error, SvgError::NoPolygons), "{error}");
 }

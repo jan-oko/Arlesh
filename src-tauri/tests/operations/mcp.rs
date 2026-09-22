@@ -113,7 +113,9 @@ async fn scopes_resolve_many_resolves_each_id_in_order() {
     }
 
     let result = mcp
-        .scopes(Parameters(params::ScopesOperation::ResolveMany { ids: ids.clone() }))
+        .scopes(Parameters(params::ScopesOperation::ResolveMany {
+            ids: ids.clone(),
+        }))
         .await
         .unwrap();
 
@@ -248,7 +250,12 @@ async fn snapshot_returns_what_the_mindmap_command_returns() {
     seed(&app).await;
 
     let result = mcp
-        .snapshot(Parameters(params::SnapshotOperation::Load { now: now(), sections: None, cursor: None, filter: None }))
+        .snapshot(Parameters(params::SnapshotOperation::Load {
+            now: now(),
+            sections: None,
+            cursor: None,
+            filter: None,
+        }))
         .await
         .unwrap();
 
@@ -308,7 +315,10 @@ async fn snapshot_narrows_to_the_status_preset_it_is_given() {
         }))
         .await
         .unwrap();
-    assert!(task_ids(&doing).is_empty(), "a To Do task is not in progress");
+    assert!(
+        task_ids(&doing).is_empty(),
+        "a To Do task is not in progress"
+    );
     assert!(
         payload(&doing)
             .get("lifecycles")
@@ -353,7 +363,12 @@ async fn snapshot_commits_rather_than_rolling_back() {
         .unwrap();
 
     let result = mcp
-        .snapshot(Parameters(params::SnapshotOperation::Load { now: now(), sections: None, cursor: None, filter: None }))
+        .snapshot(Parameters(params::SnapshotOperation::Load {
+            now: now(),
+            sections: None,
+            cursor: None,
+            filter: None,
+        }))
         .await
         .unwrap();
     assert_ne!(result.is_error, Some(true));
@@ -830,7 +845,12 @@ async fn the_snapshot_carries_a_beads_id_once_it_is_set() {
     // The whole point of the field: an agent sets the link and then sees it in the same payload it
     // reads everything else from, without a per-item lookup.
     let snapshot = mcp
-        .snapshot(Parameters(params::SnapshotOperation::Load { now: now(), sections: None, cursor: None, filter: None }))
+        .snapshot(Parameters(params::SnapshotOperation::Load {
+            now: now(),
+            sections: None,
+            cursor: None,
+            filter: None,
+        }))
         .await
         .unwrap();
 
@@ -863,7 +883,9 @@ async fn scopes_resolve_matches_the_command() {
     .unwrap();
 
     let result = mcp
-        .scopes(Parameters(params::ScopesOperation::Resolve { id: scope.id }))
+        .scopes(Parameters(params::ScopesOperation::Resolve {
+            id: scope.id,
+        }))
         .await
         .unwrap();
 
@@ -1170,7 +1192,10 @@ async fn beads_set_links_a_commitment_and_then_clears_it() {
         .await
         .unwrap()
         .scopes()
-        .get_or_create(ScopeKind::Day, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap())
+        .get_or_create(
+            ScopeKind::Day,
+            chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap(),
+        )
         .await
         .unwrap();
 
@@ -1180,7 +1205,11 @@ async fn beads_set_links_a_commitment_and_then_clears_it() {
             title: "Asleep by 23:00".into(),
             parent_type: "domain".into(),
             parent_id: 1,
-            time_scope: Some(TimeScope { start_id: scope.id, end_id: scope.id, duration: None }),
+            time_scope: Some(TimeScope {
+                start_id: scope.id,
+                end_id: scope.id,
+                duration: None,
+            }),
             ..Default::default()
         },
     )
@@ -1211,7 +1240,10 @@ async fn beads_set_links_a_commitment_and_then_clears_it() {
     }))
     .await
     .unwrap();
-    assert_eq!(stored_beads_id(&pool, "commitments", commitment.id).await, None);
+    assert_eq!(
+        stored_beads_id(&pool, "commitments", commitment.id).await,
+        None
+    );
 }
 
 #[tokio::test]
@@ -1227,5 +1259,9 @@ async fn beads_set_on_a_commitment_that_does_not_exist_is_an_error() {
         }))
         .await
         .unwrap();
-    assert_eq!(result.is_error, Some(true), "a write that landed nowhere is not a success");
+    assert_eq!(
+        result.is_error,
+        Some(true),
+        "a write that landed nowhere is not a success"
+    );
 }

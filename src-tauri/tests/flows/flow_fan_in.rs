@@ -194,7 +194,11 @@ async fn fan_in_filters_dependents_to_tasks_but_never_filters_blockers() {
     let approves = nodes_from(&pool, FlowItemType::FlowGoal, approve.id).await;
     let designs = nodes_from(&pool, FlowItemType::FlowGoal, design.id).await;
     let specs = nodes_from(&pool, FlowItemType::FlowTask, spec.id).await;
-    assert_eq!(builds.len(), 2, "Build has two cycle pairs, so two instances");
+    assert_eq!(
+        builds.len(),
+        2,
+        "Build has two cycle pairs, so two instances"
+    );
     assert_eq!(approves.len(), 1);
     assert_eq!(designs.len(), 1);
     assert_eq!(specs.len(), 1);

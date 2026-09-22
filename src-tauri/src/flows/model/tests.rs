@@ -9,7 +9,11 @@ fn instance_type_as_str_covers_all_variants() {
 
 #[test]
 fn instance_type_from_db_roundtrips_every_variant() {
-    for instance_type in [InstanceType::Goal, InstanceType::Task, InstanceType::Commitment] {
+    for instance_type in [
+        InstanceType::Goal,
+        InstanceType::Task,
+        InstanceType::Commitment,
+    ] {
         assert_eq!(InstanceType::from_db(instance_type.as_str()), instance_type);
     }
 }

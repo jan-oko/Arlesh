@@ -15,7 +15,7 @@ use crate::{
         model::{
             CreateFlowItemRequest, CreateFlowRequest, Flow, FlowCycleInput, FlowDependency,
             FlowGoal, FlowId, FlowItemCycle, FlowItemType, FlowOrigin, FlowRecurrence, FlowTask,
-            HabitInstanceChild, HabitInstanceRef, HabitIteration, HabitItemStatus,
+            HabitInstanceChild, HabitInstanceRef, HabitItemStatus, HabitIteration,
             MaterializedFlow, SetRecurrenceRequest, StartFlowRequest, TargetRef, UnfinishedChild,
             UpdateFlowItemRequest, UpdateFlowRequest,
         },
@@ -29,14 +29,20 @@ pub async fn create_flow(
     request: CreateFlowRequest,
 ) -> Result<Flow, WireError> {
     let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.flows().create(request).await.map_err(WireError::from_error)
+    db.flows()
+        .create(request)
+        .await
+        .map_err(WireError::from_error)
 }
 
 /// Fetches a flow by id.
 #[tauri::command]
 pub async fn get_flow(factory: State<'_, SessionFactory>, id: i64) -> Result<Flow, WireError> {
     let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.flows().get(FlowId(id)).await.map_err(WireError::from_error)
+    db.flows()
+        .get(FlowId(id))
+        .await
+        .map_err(WireError::from_error)
 }
 
 /// Lists all flows.
@@ -65,7 +71,9 @@ pub async fn update_flow(
 #[tauri::command]
 pub async fn delete_flow(factory: State<'_, SessionFactory>, id: i64) -> Result<(), WireError> {
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    flows::delete_flow(&mut db, FlowId(id)).await.map_err(WireError::from_error)?;
+    flows::delete_flow(&mut db, FlowId(id))
+        .await
+        .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)
 }
 
@@ -76,7 +84,10 @@ pub async fn create_flow_goal(
     request: CreateFlowItemRequest,
 ) -> Result<FlowGoal, WireError> {
     let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.flows().create_goal(request).await.map_err(WireError::from_error)
+    db.flows()
+        .create_goal(request)
+        .await
+        .map_err(WireError::from_error)
 }
 
 /// Creates a flow-task item.
@@ -86,7 +97,10 @@ pub async fn create_flow_task(
     request: CreateFlowItemRequest,
 ) -> Result<FlowTask, WireError> {
     let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.flows().create_task(request).await.map_err(WireError::from_error)
+    db.flows()
+        .create_task(request)
+        .await
+        .map_err(WireError::from_error)
 }
 
 /// Lists a flow's goal items.
@@ -96,7 +110,10 @@ pub async fn list_flow_goals(
     flow_id: i64,
 ) -> Result<Vec<FlowGoal>, WireError> {
     let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.flows().list_goals(FlowId(flow_id)).await.map_err(WireError::from_error)
+    db.flows()
+        .list_goals(FlowId(flow_id))
+        .await
+        .map_err(WireError::from_error)
 }
 
 /// Lists a flow's task items.
@@ -106,7 +123,10 @@ pub async fn list_flow_tasks(
     flow_id: i64,
 ) -> Result<Vec<FlowTask>, WireError> {
     let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.flows().list_tasks(FlowId(flow_id)).await.map_err(WireError::from_error)
+    db.flows()
+        .list_tasks(FlowId(flow_id))
+        .await
+        .map_err(WireError::from_error)
 }
 
 /// Lists every flow's goal items.
@@ -115,7 +135,10 @@ pub async fn list_all_flow_goals(
     factory: State<'_, SessionFactory>,
 ) -> Result<Vec<FlowGoal>, WireError> {
     let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.flows().list_all_goals().await.map_err(WireError::from_error)
+    db.flows()
+        .list_all_goals()
+        .await
+        .map_err(WireError::from_error)
 }
 
 /// Lists every flow's task items.
@@ -124,7 +147,10 @@ pub async fn list_all_flow_tasks(
     factory: State<'_, SessionFactory>,
 ) -> Result<Vec<FlowTask>, WireError> {
     let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.flows().list_all_tasks().await.map_err(WireError::from_error)
+    db.flows()
+        .list_all_tasks()
+        .await
+        .map_err(WireError::from_error)
 }
 
 /// Updates a flow-goal item.
@@ -219,7 +245,10 @@ pub async fn get_flow_recurrence(
     flow_id: i64,
 ) -> Result<Option<FlowRecurrence>, WireError> {
     let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.flows().get_recurrence(FlowId(flow_id)).await.map_err(WireError::from_error)
+    db.flows()
+        .get_recurrence(FlowId(flow_id))
+        .await
+        .map_err(WireError::from_error)
 }
 
 /// Deletes a flow's Recurrence, demoting the Habit back to a plain flow.
@@ -229,7 +258,10 @@ pub async fn delete_flow_recurrence(
     flow_id: i64,
 ) -> Result<(), WireError> {
     let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.flows().delete_recurrence(FlowId(flow_id)).await.map_err(WireError::from_error)
+    db.flows()
+        .delete_recurrence(FlowId(flow_id))
+        .await
+        .map_err(WireError::from_error)
 }
 
 /// Derives a Habit's iterations on `today`, each classified per its Consumption behavior.
@@ -256,7 +288,10 @@ pub async fn flow_origins(
     nodes: Vec<TargetRef>,
 ) -> Result<Vec<FlowOrigin>, WireError> {
     let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.flows().origins(nodes).await.map_err(WireError::from_error)
+    db.flows()
+        .origins(nodes)
+        .await
+        .map_err(WireError::from_error)
 }
 
 /// Every real node materialised by a started flow, for the mindmap's flow-instance badge.
@@ -265,7 +300,10 @@ pub async fn list_flow_instance_nodes(
     factory: State<'_, SessionFactory>,
 ) -> Result<Vec<TargetRef>, WireError> {
     let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.flows().list_instance_node_refs().await.map_err(WireError::from_error)
+    db.flows()
+        .list_instance_node_refs()
+        .await
+        .map_err(WireError::from_error)
 }
 
 /// Converts a flow item to the other kind (goal↔task), preserving its cycles and dependencies.
@@ -292,7 +330,10 @@ pub async fn delete_flow_item(
     id: i64,
 ) -> Result<(), WireError> {
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    db.flows().delete_item(item_type, id).await.map_err(WireError::from_error)?;
+    db.flows()
+        .delete_item(item_type, id)
+        .await
+        .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)
 }
 
@@ -319,7 +360,10 @@ pub async fn list_all_flow_cycles(
     factory: State<'_, SessionFactory>,
 ) -> Result<Vec<FlowItemCycle>, WireError> {
     let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.flows().list_all_cycles().await.map_err(WireError::from_error)
+    db.flows()
+        .list_all_cycles()
+        .await
+        .map_err(WireError::from_error)
 }
 
 /// Adds an intra-flow dependency (`dependent` waits on `depends_on`).
@@ -334,7 +378,13 @@ pub async fn add_flow_dependency(
 ) -> Result<(), WireError> {
     let mut db = factory.connect().await.map_err(WireError::from_error)?;
     db.flows()
-        .add_dependency(flow_id, dependent_type, dependent_id, depends_on_type, depends_on_id)
+        .add_dependency(
+            flow_id,
+            dependent_type,
+            dependent_id,
+            depends_on_type,
+            depends_on_id,
+        )
         .await
         .map_err(WireError::from_error)
 }
@@ -361,7 +411,10 @@ pub async fn list_all_flow_dependencies(
     factory: State<'_, SessionFactory>,
 ) -> Result<Vec<FlowDependency>, WireError> {
     let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.flows().list_all_dependencies().await.map_err(WireError::from_error)
+    db.flows()
+        .list_all_dependencies()
+        .await
+        .map_err(WireError::from_error)
 }
 
 /// Lists every instance's divergent status for this flow, with the iteration scope it applies to.
@@ -371,7 +424,10 @@ pub async fn list_habit_item_statuses(
     flow_id: i64,
 ) -> Result<Vec<HabitItemStatus>, WireError> {
     let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.flows().list_item_statuses(FlowId(flow_id)).await.map_err(WireError::from_error)
+    db.flows()
+        .list_item_statuses(FlowId(flow_id))
+        .await
+        .map_err(WireError::from_error)
 }
 
 /// Sets a single instance's status (`null` clears it), recording `resolved_at_ms`. `instance`
@@ -405,7 +461,12 @@ pub async fn set_habit_item_status(
         }
     }
     db.flows()
-        .set_item_status(FlowId(flow_id), &instance, status.as_deref(), resolved_at_ms)
+        .set_item_status(
+            FlowId(flow_id),
+            &instance,
+            status.as_deref(),
+            resolved_at_ms,
+        )
         .await
         .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)
@@ -426,7 +487,10 @@ fn completing(status: Option<&str>) -> bool {
 /// and the whole point of the guard is being able to see what is about to be closed over.
 fn unfinished_refusal(open: &[UnfinishedChild]) -> WireError {
     WireError::needs_confirmation(
-        format!("this occurrence still holds {} unfinished item(s)", open.len()),
+        format!(
+            "this occurrence still holds {} unfinished item(s)",
+            open.len()
+        ),
         serde_json::json!({
             "reason": "unfinished_children",
             "children": open,
@@ -448,9 +512,10 @@ pub async fn create_habit_instance_child(
     title: String,
 ) -> Result<TargetRef, WireError> {
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let child = flows::create_instance_child(&mut db, FlowId(flow_id), &instance, &child_type, title)
-        .await
-        .map_err(WireError::from_error)?;
+    let child =
+        flows::create_instance_child(&mut db, FlowId(flow_id), &instance, &child_type, title)
+            .await
+            .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)?;
     Ok(child)
 }
@@ -489,16 +554,23 @@ pub async fn set_habit_iteration_done(
         // One prompt for the whole iteration, naming every unfinished child on any of its
         // occurrences: closing an iteration in one gesture is one decision, and asking once per
         // occurrence would turn a single click into a queue of modals.
-        let open = flows::unfinished_iteration_children(&mut db, FlowId(flow_id), iteration_scope_id)
-            .await
-            .map_err(WireError::from_error)?;
+        let open =
+            flows::unfinished_iteration_children(&mut db, FlowId(flow_id), iteration_scope_id)
+                .await
+                .map_err(WireError::from_error)?;
         if !open.is_empty() {
             return Err(unfinished_refusal(&open));
         }
     }
-    flows::set_iteration_done(&mut db, FlowId(flow_id), iteration_scope_id, done, resolved_at_ms)
-        .await
-        .map_err(WireError::from_error)?;
+    flows::set_iteration_done(
+        &mut db,
+        FlowId(flow_id),
+        iteration_scope_id,
+        done,
+        resolved_at_ms,
+    )
+    .await
+    .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)
 }
 
@@ -509,7 +581,10 @@ pub async fn habit_completion_count(
     flow_id: i64,
 ) -> Result<i64, WireError> {
     let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.flows().habit_completion_count(FlowId(flow_id)).await.map_err(WireError::from_error)
+    db.flows()
+        .habit_completion_count(FlowId(flow_id))
+        .await
+        .map_err(WireError::from_error)
 }
 
 /// Clears every Habit Modification for a flow (delete-and-regenerate reconciliation).
@@ -519,12 +594,18 @@ pub async fn clear_habit_modifications(
     flow_id: i64,
 ) -> Result<(), WireError> {
     let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.flows().clear_habit_modifications(FlowId(flow_id)).await.map_err(WireError::from_error)
+    db.flows()
+        .clear_habit_modifications(FlowId(flow_id))
+        .await
+        .map_err(WireError::from_error)
 }
 
 /// Deep-clones a flow's template into a new flow (the archive-and-new reconciliation arm).
 #[tauri::command]
-pub async fn fork_flow(factory: State<'_, SessionFactory>, flow_id: i64) -> Result<Flow, WireError> {
+pub async fn fork_flow(
+    factory: State<'_, SessionFactory>,
+    flow_id: i64,
+) -> Result<Flow, WireError> {
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
     let forked = flows::fork_flow(&mut db, FlowId(flow_id))
         .await
@@ -567,10 +648,16 @@ pub async fn duplicate_flow_item(
     position: i64,
 ) -> Result<i64, WireError> {
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let new_id =
-        flows::duplicate_flow_item(&mut db, item_type, item_id, &parent_type, parent_id, position)
-            .await
-            .map_err(WireError::from_error)?;
+    let new_id = flows::duplicate_flow_item(
+        &mut db,
+        item_type,
+        item_id,
+        &parent_type,
+        parent_id,
+        position,
+    )
+    .await
+    .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)?;
     Ok(new_id)
 }

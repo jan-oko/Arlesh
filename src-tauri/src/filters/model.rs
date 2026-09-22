@@ -15,7 +15,9 @@ use crate::tasks::{lifecycle::Timing, model::Verdict};
 /// which is what the frontend stores too. The flag sits beside the preset without combining with
 /// it: while it is set the list's rows are the blocked ones and the preset does not answer for
 /// them (see [`crate::filters::list::passes_row`]).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum Preset {
     /// Everything, containers included.
@@ -37,7 +39,9 @@ pub enum Preset {
 ///
 /// `Inactive` defers entirely to the preset; `Include` force-shows; `Exclude` force-hides, gating
 /// the whole subtree. Shared by the Archived and Backlog pills, which behave identically.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum OverrideMode {
     /// Defer to the preset.

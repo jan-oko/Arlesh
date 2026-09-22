@@ -145,7 +145,8 @@ fn encloses(polygon: &[Point], point: Point) -> bool {
         if (current.y > point.y) != (previous.y > point.y) {
             let rise = previous.y - current.y;
             if rise != 0.0 {
-                let crossing_x = (previous.x - current.x) * (point.y - current.y) / rise + current.x;
+                let crossing_x =
+                    (previous.x - current.x) * (point.y - current.y) / rise + current.x;
                 if point.x < crossing_x {
                     inside = !inside;
                 }
@@ -181,10 +182,7 @@ pub fn parse(svg: &str) -> Result<Silhouette, SvgError> {
     if polygons.is_empty() {
         return Err(SvgError::NoPolygons);
     }
-    Ok(Silhouette {
-        view_box,
-        polygons,
-    })
+    Ok(Silhouette { view_box, polygons })
 }
 
 /// Drops every `<!-- … -->` region.

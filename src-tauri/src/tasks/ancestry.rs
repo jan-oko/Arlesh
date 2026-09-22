@@ -69,7 +69,10 @@ pub(super) struct NodeRef {
 impl NodeRef {
     /// A reference to `node_id` in the table `node_type` names.
     pub(super) fn new(node_type: impl Into<String>, node_id: i64) -> Self {
-        Self { node_type: node_type.into(), node_id }
+        Self {
+            node_type: node_type.into(),
+            node_id,
+        }
     }
 }
 
@@ -256,7 +259,10 @@ impl AncestryChain {
             }
         }
         match self.end {
-            ChainEnd::Broken { kind: NodeKind::Commitment, .. } => self.exhausted(),
+            ChainEnd::Broken {
+                kind: NodeKind::Commitment,
+                ..
+            } => self.exhausted(),
             ChainEnd::Broken { .. } | ChainEnd::Root => Search::Unconstrained,
         }
     }
@@ -281,7 +287,10 @@ impl AncestryChain {
             }
         }
         match self.end {
-            ChainEnd::Broken { kind: NodeKind::Task, .. } => self.exhausted(),
+            ChainEnd::Broken {
+                kind: NodeKind::Task,
+                ..
+            } => self.exhausted(),
             ChainEnd::Broken { .. } | ChainEnd::Root => Search::Unconstrained,
         }
     }
@@ -357,17 +366,26 @@ pub(super) async fn climb<M: SessionMode>(
     let mut next = NodeRef::new(start_type, start_id);
     loop {
         let Some(kind) = NodeKind::from_db(&next.node_type) else {
-            return Ok(AncestryChain { links, end: ChainEnd::Root });
+            return Ok(AncestryChain {
+                links,
+                end: ChainEnd::Root,
+            });
         };
         if !visited.insert((kind, next.node_id)) {
-            let end = ChainEnd::Broken { kind, id: next.node_id, cause: BreakCause::Cycle };
+            let end = ChainEnd::Broken {
+                kind,
+                id: next.node_id,
+                cause: BreakCause::Cycle,
+            };
             return Ok(AncestryChain { links, end });
         }
         let read = match kind {
             NodeKind::Task => db.tasks().ancestry_link(TaskId(next.node_id)).await,
             NodeKind::Goal => db.goals().ancestry_link(GoalId(next.node_id)).await,
             NodeKind::Commitment => {
-                db.commitments().ancestry_link(CommitmentId(next.node_id)).await
+                db.commitments()
+                    .ancestry_link(CommitmentId(next.node_id))
+                    .await
             }
         };
         let link = match read {
@@ -379,7 +397,11 @@ pub(super) async fn climb<M: SessionMode>(
                 | TaskError::GoalNotFound(_)
                 | TaskError::CommitmentNotFound(_),
             ) => {
-                let end = ChainEnd::Broken { kind, id: next.node_id, cause: BreakCause::Missing };
+                let end = ChainEnd::Broken {
+                    kind,
+                    id: next.node_id,
+                    cause: BreakCause::Missing,
+                };
                 return Ok(AncestryChain { links, end });
             }
             Err(error) => return Err(error),
@@ -393,7 +415,10 @@ pub(super) async fn climb<M: SessionMode>(
         if let Some(occurrence) = occurrence_of(db, kind, next.node_id).await? {
             links.push(link);
             links.push(occurrence);
-            return Ok(AncestryChain { links, end: ChainEnd::Root });
+            return Ok(AncestryChain {
+                links,
+                end: ChainEnd::Root,
+            });
         }
         next = link.parent.clone();
         links.push(link);

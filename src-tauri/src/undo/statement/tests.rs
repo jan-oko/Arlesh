@@ -204,7 +204,11 @@ fn a_table_name_that_is_not_a_plain_identifier_is_refused() {
 
 #[test]
 fn a_column_name_that_is_not_a_plain_identifier_is_refused() {
-    let entries = vec![entry(RowOperation::Delete, Some(r#"{"ti\"tle":"x"}"#), None)];
+    let entries = vec![entry(
+        RowOperation::Delete,
+        Some(r#"{"ti\"tle":"x"}"#),
+        None,
+    )];
     let error = plan(&entries, Replay::Inverse).expect_err("must not build a statement");
 
     assert!(

@@ -130,7 +130,8 @@ fn prune_at(
     if node.facts.kind == NodeKind::Info {
         return Some(FactNode::with_children(node.facts.clone(), children));
     }
-    if has_content_match || rules::self_matches(&node.facts, filter, inherited_status, under_backlog)
+    if has_content_match
+        || rules::self_matches(&node.facts, filter, inherited_status, under_backlog)
     {
         return Some(FactNode::with_children(node.facts.clone(), children));
     }
