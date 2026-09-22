@@ -140,10 +140,11 @@ describe("what you can descend into", () => {
     expect(canDescendInto(occurrence)).toBe(true);
   });
 
-  it("refuses a childless Tag, which is a label rather than a container", () => {
-    const tag = node("tag");
-    expect(canDescendInto(tag)).toBe(false);
-    expect(stepRefusalKey(tag)).toBe("refusedHoldsNothing");
+  it("opens a childless Tag, which holds notes about itself", () => {
+    // Arlesh-71m taught `isValidDropTarget` that a tag takes info children. A Tag was the one real
+    // node this view refused, and it is not one any more — so the rule is now simply "a drawing
+    // has no inside, everything else does".
+    expect(canDescendInto(node("tag"))).toBe(true);
   });
 
   it("refuses a childless drawing, which has no inside at all", () => {

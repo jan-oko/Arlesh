@@ -1359,6 +1359,9 @@ export function useMindmapData(): MindmapData {
         : parentKind === "flow" ? flowRootChildKind()
         : parentKind === "flow_goal" ? "flow_goal"
         : parentKind === "flow_task" ? "flow_task"
+        // A Tag holds notes about itself and nothing else (Arlesh-71m taught `isValidDropTarget`
+        // that and left this table behind), so its default child is the only child it can take.
+        : parentKind === "tag" ? "info"
         : "domain"; // aspect, domain → domain
       return createNode(parentId, parentKind, childKind, title);
     },

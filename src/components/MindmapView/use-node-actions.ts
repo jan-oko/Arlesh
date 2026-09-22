@@ -72,7 +72,7 @@ export function useNodeActions({
 }: Options): Result {
   const { t } = useTranslation(["warnings", "nodeKinds", "undo"]);
   // Advancing a status is one definition, shared with every other surface that draws the gesture
-  // — including the occurrence completion guard, which must ask the same question everywhere.
+  // — the occurrence completion guard and the Backlog clearing travel with it.
   const { cycleStatus, occurrencePrompt, confirmOccurrence, cancelOccurrence } = useStatusCycle({
     findNode: (id) => findNode(tree, id), reload, showToast,
   });
@@ -103,17 +103,18 @@ export function useNodeActions({
       // The synthetic root is the "nothing was aimed at" case, and stays silent on purpose — the
       // same answer the typed chords give with no selection at all.
       if (node === undefined || !nodeId.includes("-")) return;
-      // `Tab` names no kind — the parent decides what its child is — so the question it can ask is
-      // whether this node holds anything at all. Exactly two answers are no: a Tag, which is a
-      // label rather than a container, and a node drawn rather than stored (a folded run of Habit
-      // history). Both used to be an `if (…) return` with nothing on screen.
+      // `Tab` names no kind — the parent decides what its child is — so the two refusals it can
+      // give are about that. A **Tag** does hold something (an Info note, and nothing else), but
+      // not the Domain a label's default child would be, and the kind it does hold has a chord of
+      // its own — so `Tab` points at it rather than creating something the backend would refuse.
+      if (node.kind === "tag") {
+        showToast({ nodeId, message: t("warnings:createUnderTagRefused") });
+        return;
+      }
+      // And a node drawn rather than stored — a folded run of Habit history — holds nothing at
+      // all. Both used to be an `if (…) return` with nothing on screen.
       if (!canParentAnyNewChild(node)) {
-        showToast({
-          nodeId,
-          message: node.kind === "tag"
-            ? t("warnings:createUnderTagRefused")
-            : t("warnings:createUnderRepetition"),
-        });
+        showToast({ nodeId, message: t("warnings:createUnderRepetition") });
         return;
       }
       void (async () => {

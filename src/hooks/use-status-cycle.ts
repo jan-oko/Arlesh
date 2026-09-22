@@ -4,17 +4,12 @@ import { updateTask } from "@/api/tasks";
 import { updateGoal } from "@/api/goals";
 import { getErrorMessage } from "@/api/errors";
 import { GOAL_STATUS, TASK_STATUS } from "@/utils/status-mapping";
+import { cameOutOfBacklog, nextTaskStatus } from "@/utils/task-status-cycle";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { useOccurrenceCompletion } from "@/hooks/use-occurrence-completion";
 import type { OccurrencePrompt } from "@/hooks/use-occurrence-completion";
 
 const LOG_PREFIX = "[arlesh]";
-
-function nextTaskStatus(current: string): string {
-  if (current === TASK_STATUS.IN_PROGRESS) return TASK_STATUS.DONE;
-  if (current === TASK_STATUS.DONE) return TASK_STATUS.TODO;
-  return TASK_STATUS.IN_PROGRESS;
-}
 
 interface Options {
   findNode: (id: string) => MindmapNode | undefined;
@@ -41,13 +36,16 @@ interface StatusCycle {
  * base status. A **Commitment** is excluded: it is kept or broken, never advanced, and its verdict
  * has its own writer.
  *
- * Marking an occurrence done while it still holds unfinished added children goes through the
- * completion guard, which asks first and names them — so the question is asked the same way from
- * every view rather than only from the one that happened to implement it.
+ * Two rules travel with the gesture rather than with the caller, which is the whole point of it
+ * living here. Marking an occurrence done while it still holds unfinished added children goes
+ * through the **completion guard**, which asks first and names them. And starting a set-aside Task
+ * **takes it out of the Backlog** — read off the row the backend sent back rather than predicted,
+ * and said out loud, because a flag that stops being true without a word is a flag you stop
+ * trusting.
  *
  * It lives here because there are now three callers. The Mindmap's `useNodeActions` delegates to
- * it, the Steps View uses it directly, and every future surface that draws a status glyph gets the
- * occurrence guard for free rather than rediscovering that it needed one.
+ * it and the Steps View uses it directly, so every surface that draws a status glyph gets both of
+ * those rules rather than rediscovering that it needed them.
  */
 export function useStatusCycle({ findNode, reload, showToast }: Options): StatusCycle {
   const { t } = useTranslation(["warnings"]);
@@ -58,6 +56,11 @@ export function useStatusCycle({ findNode, reload, showToast }: Options): Status
     (nodeId: string) => {
       const node = findNode(nodeId);
       if (node === undefined) return;
+      // A virtual Habit instance (an item, or the iteration root `flow_root`) advances just itself:
+      // a goal toggles achieved; a task cycles todo → in_progress → done. `null` clears the
+      // Modification (back to the base status). A goal's "achieved" is stored canonically as `done`.
+      //
+      // A commitment iteration is excluded: it is kept or broken, never advanced.
       if (node.habitItem !== undefined && node.kind !== "commitment") {
         let next: string | null;
         if (node.kind === "goal") {
@@ -69,6 +72,7 @@ export function useStatusCycle({ findNode, reload, showToast }: Options): Status
         setOccurrenceStatus(node, next);
         return;
       }
+      // A real goal toggles active ↔ achieved on click (like a habit goal instance) — no modal.
       if (node.kind === "goal") {
         const dbId = parseInt(nodeId.split("-").pop() ?? "0", 10);
         const next = node.status === GOAL_STATUS.ACHIEVED ? GOAL_STATUS.ACTIVE : GOAL_STATUS.ACHIEVED;
@@ -83,7 +87,14 @@ export function useStatusCycle({ findNode, reload, showToast }: Options): Status
       if (node.kind !== "task") return;
       const dbId = parseInt(nodeId.split("-").pop() ?? "0", 10);
       void updateTask(dbId, { status: nextTaskStatus(node.status ?? TASK_STATUS.TODO) })
-        .then(() => reload())
+        .then(async (updated) => {
+          // Starting a set-aside task takes it out of the backlog, in the same write and so in the
+          // same undo step. The row that comes back says whether it did; it is never assumed.
+          if (cameOutOfBacklog(node, updated)) {
+            showToast({ nodeId, message: t("warnings:backlogClearedByStart") });
+          }
+          await reload();
+        })
         .catch((err: unknown) => {
           console.error(`${LOG_PREFIX} status cycle failed:`, err);
           showToast({ nodeId, message: t("warnings:statusChangeFailed", { message: getErrorMessage(err) }) });

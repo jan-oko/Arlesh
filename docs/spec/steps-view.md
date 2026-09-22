@@ -44,10 +44,13 @@ Task, an Info note and a virtual Habit occurrence all open on an *empty* Step th
 the first child: a leaf is not a dead end, and refusing to enter one would make "what is under
 this?" a question you can only ask where the answer is already yes.
 
-Two things are refused, and both say why rather than doing nothing: a childless **Tag**, which is a
-label rather than a container, and a childless **drawing** — anything rendered rather than stored,
-which has no inside at all. The predicate is `canParentAnyNewChild` in `node-meta.ts`, the same one
-the creation gestures ask; there is no second opinion about what can hold a child.
+What is refused says why rather than doing nothing: a **drawing** — anything rendered rather than
+stored, such as a folded run of Habit history — which has no inside at all. Every *real* node opens,
+a **Tag** included: a tag is a label, and the one thing you hang on a label is a note about it.
+
+The predicate is `canParentAnyNewChild` in `node-meta.ts`, the same one the creation gestures ask;
+there is no second opinion about what can hold a child, which is why teaching the model that a Tag
+takes notes moved this rule with it and cost nothing here.
 
 **Virtual nodes are enterable** — a Habit iteration or occurrence is a node like any other here. The
 persistence hazard is already handled and needs no second mechanism: `use-subtree-nav.ts` runs a

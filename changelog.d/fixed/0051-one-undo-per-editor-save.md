@@ -1,0 +1,5 @@
+- **Saving an editor is now one `Ctrl+Z`, and a save that fails leaves nothing behind.** A save writes several things at once — the fields, the block reasons, each tag you added or removed, each dependency, the `bd` link you dropped — and every one of them used to be its own undo step. Taking back a save meant pressing `Ctrl+Z` several times, and how many depended on which fields you had touched, so there was no way to know when you had got it all. One press now takes back the whole save, and one `Ctrl+Y` puts it back, for the Task, Goal, Commitment and Project editors alike.
+
+  The undo notice names which it was — "Undid: edit a task" — rather than counting rows.
+
+  A save that is refused partway is now **taken back in full** instead of leaving the fields that happened to be written first standing. The editor stays open with the reason on it, as before, and what you are looking at is the node exactly as it was — nothing half-applied, and nothing left on the redo stack waiting to reapply a save that never happened.

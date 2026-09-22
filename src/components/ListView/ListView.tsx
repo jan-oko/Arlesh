@@ -58,7 +58,6 @@ export default function ListView() {
   // Ctrl+O is global; the flag it raises is read here, where the loaded tree is.
   const searchOpen = useMindmapStore((s) => s.searchOpen);
   const closeSearch = useMindmapStore((s) => s.closeSearch);
-  const pathHeaderIcons = useDisplayStore((s) => s.pathHeaderIcons);
   const asynchronousFirst = useDisplayStore((s) => s.asynchronousFirst);
   // Publishes the tab's subtree descriptor for the top bar; the exits themselves are global
   // bindings now and are driven from `ActiveTab`.
@@ -334,7 +333,6 @@ export default function ListView() {
                   // the same Antecedent pill the filter popover's combobox adds, on the element that
                   // already names the ancestors.
                   onFilterByAntecedent={(id, side) => setPillSide("antecedent", id, side)}
-                  showKindIcon={pathHeaderIcons}
                   onCreateTask={headerCreateHandler(entry.segments)}
                 />
               );

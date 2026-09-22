@@ -145,15 +145,20 @@ describe("walking down", () => {
     expect(useMindmapStore.getState().subtreeRootId).toBe("task-1");
   });
 
-  it("refuses a childless Tag out loud, because a label is not a container", () => {
-    mockTree([n("domain-9", "tag")]);
+  it("refuses a folded run of Habit history out loud — a drawing has no inside", () => {
+    mockTree([n("habitrun-1-virtual", "habit_group", {
+      habitGroup: {
+        flowId: 1, level: "run", passed: 9, done: 5, missed: 4,
+        spanStart: "2026-01-01", spanEnd: "2026-02-01", spanLabel: "January",
+      },
+    })]);
     render(<StepsView />);
 
     press("ArrowDown");
     press("Enter");
 
     expect(useMindmapStore.getState().subtreeRootId).toBeNull();
-    expect(useMindmapStore.getState().pendingToast?.message).toBe("stepsView:refusedHoldsNothing");
+    expect(useMindmapStore.getState().pendingToast?.message).toBe("stepsView:refusedNotStored");
   });
 
   it("says so rather than doing nothing when Enter lands on the card you are standing on", () => {

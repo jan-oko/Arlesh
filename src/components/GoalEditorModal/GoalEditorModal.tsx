@@ -7,6 +7,7 @@ import type { Domain } from "@/api/domains";
 import type { TimeScope } from "@/api/time-scope";
 import type { OnScopeExit } from "@/api/scope-lifecycle";
 import { getErrorMessage } from "@/api/errors";
+import { withAtomicGesture } from "@/api/gesture";
 import EditorModal from "@/components/EditorModal/EditorModal";
 import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
 import BeadsIdField from "@/components/EditorModal/BeadsIdField";
@@ -44,7 +45,7 @@ interface Props {
 
 export default function GoalEditorModal({ node, allTags, domainNames, onSave, onClearBeadsId, onCheckScopeClamp, onClose }: Props) {
   useInputCapture();
-  const { t } = useTranslation(["editor", "status"]);
+  const { t } = useTranslation(["editor", "status", "undo"]);
   const [title, setTitle] = useState(node.title);
   const [status, setStatus] = useState(node.status ?? GOAL_STATUS.ACTIVE);
   const [blockReasons, setBlockReasons] = useState<string[]>(node.blockReasons ?? []);
@@ -69,17 +70,22 @@ export default function GoalEditorModal({ node, allTags, domainNames, onSave, on
         setIsSaving(false);
         return;
       }
-      // Before the update, not after: a refused clear then leaves the node exactly as it was,
-      // rather than half-saved, and the refusal reaches the save error line below the fields.
-      await beadsClear.commitClear();
-      await onSave({
-        title: title.trim(),
-        status,
-        blockReasons: blockReasons.map((r) => r.trim()).filter((r) => r !== ""),
-        tagIds,
-        timeScope,
-        onScopeExit: timeScope !== null ? (onScopeExit ?? "keep") : null,
-        isPrivate,
+      // One Gesture, all or nothing: the beads clear, the update, the block reasons and the tags
+      // are several commands but one thing the user filled in, so they are one Ctrl+Z — and a
+      // refusal partway takes back the ones that landed rather than leaving a form half-applied.
+      await withAtomicGesture(t("undo:gestures.editGoal"), async () => {
+        // Before the update, not after: a refused clear then leaves the node exactly as it was,
+        // rather than half-saved, and the refusal reaches the save error line below the fields.
+        await beadsClear.commitClear();
+        await onSave({
+          title: title.trim(),
+          status,
+          blockReasons: blockReasons.map((r) => r.trim()).filter((r) => r !== ""),
+          tagIds,
+          timeScope,
+          onScopeExit: timeScope !== null ? (onScopeExit ?? "keep") : null,
+          isPrivate,
+        });
       });
     } catch (err) {
       setSaveError(getErrorMessage(err));

@@ -11,6 +11,7 @@ import type { TimeScope } from "@/api/time-scope";
 import type { OnScopeExit } from "@/api/scope-lifecycle";
 import { listTaskDependencies } from "@/api/tasks";
 import { getErrorMessage } from "@/api/errors";
+import { withAtomicGesture } from "@/api/gesture";
 import EditorModal from "@/components/EditorModal/EditorModal";
 import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
 import BeadsIdField from "@/components/EditorModal/BeadsIdField";
@@ -67,7 +68,7 @@ interface Props {
 
 export default function TaskEditorModal({ node, allTags, domainNames, availableForDep, onSave, onClearBeadsId, onCheckScopeClamp, onClose }: Props) {
   useInputCapture();
-  const { t } = useTranslation(["editor", "status", "nodeKinds"]);
+  const { t } = useTranslation(["editor", "status", "nodeKinds", "undo"]);
   const [title, setTitle] = useState(node.title);
   const [status, setStatus] = useState(node.status ?? TASK_STATUS.TODO);
   const [blockReasons, setBlockReasons] = useState<string[]>(node.blockReasons ?? []);
@@ -119,18 +120,24 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
         setIsSaving(false);
         return;
       }
-      // Before the update, not after: a refused clear then leaves the node exactly as it was,
-      // rather than half-saved, and the refusal reaches the save error line below the fields.
-      await beadsClear.commitClear();
-      await onSave({
-        title: title.trim(), status, blockReasons: blockReasons.map((r) => r.trim()).filter((r) => r !== ""),
-        tagIds, addedDeps, removedDeps, timeScope,
-        onScopeExit: timeScope !== null ? (onScopeExit ?? "keep") : null,
-        plan,
-        archival: isBacklogged ? TASK_ARCHIVAL.BACKLOG : TASK_ARCHIVAL.LIVE,
-        agentic,
-        asynchronous: isAsynchronous,
-        isPrivate,
+      // One Gesture, all or nothing: the beads clear, the update, the block reasons, the tags and
+      // the dependencies are several commands but one thing the user filled in, so they are one
+      // Ctrl+Z — and a refusal partway takes back the ones that landed rather than leaving a form
+      // half-applied. The clamp prompt above is outside it, having written nothing yet.
+      await withAtomicGesture(t("undo:gestures.editTask"), async () => {
+        // Before the update, not after: a refused clear then leaves the node exactly as it was,
+        // rather than half-saved, and the refusal reaches the save error line below the fields.
+        await beadsClear.commitClear();
+        await onSave({
+          title: title.trim(), status, blockReasons: blockReasons.map((r) => r.trim()).filter((r) => r !== ""),
+          tagIds, addedDeps, removedDeps, timeScope,
+          onScopeExit: timeScope !== null ? (onScopeExit ?? "keep") : null,
+          plan,
+          archival: isBacklogged ? TASK_ARCHIVAL.BACKLOG : TASK_ARCHIVAL.LIVE,
+          agentic,
+          asynchronous: isAsynchronous,
+          isPrivate,
+        });
       });
     } catch (err) {
       setSaveError(getErrorMessage(err));
@@ -149,6 +156,15 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   function setPlanAndClearBacklog(next: TimeScope | null) {
     setPlan(next);
     if (next !== null) setIsBacklogged(false);
+  }
+
+  // Starting a set-aside task takes it out of the backlog — you cannot be actively doing something
+  // you have put down — and the backend does exactly this to a bare status change. Here the switch
+  // moves in front of the user instead, so the save is not the first they hear of it. Only this
+  // direction: a task already in progress may still be set aside, and keeps its status when it is.
+  function setStatusAndClearBacklog(next: string) {
+    setStatus(next);
+    if (next === TASK_STATUS.IN_PROGRESS) setIsBacklogged(false);
   }
 
   function handleKeyDown(event: React.KeyboardEvent) {
@@ -192,7 +208,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
         {t("fieldStatus")}
         <div className={styles.statusPills}>
           {TASK_STATUSES.map((s) => (
-            <button key={s} type="button" className={`${styles.statusPill}${status === s ? ` ${styles.statusPillActive}` : ""}`} onClick={() => setStatus(s)}>
+            <button key={s} type="button" className={`${styles.statusPill}${status === s ? ` ${styles.statusPillActive}` : ""}`} onClick={() => setStatusAndClearBacklog(s)}>
               {t(`status:task.${s}`)}
             </button>
           ))}

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { getErrorMessage } from "@/api/errors";
+import { withAtomicGesture } from "@/api/gesture";
 import EditorModal from "@/components/EditorModal/EditorModal";
 import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
 import BeadsIdField from "@/components/EditorModal/BeadsIdField";
@@ -31,7 +32,7 @@ interface Props {
 
 export default function ProjectEditorModal({ node, onSave, onClearBeadsId, onClose }: Props) {
   useInputCapture();
-  const { t } = useTranslation(["editor", "status"]);
+  const { t } = useTranslation(["editor", "status", "undo"]);
   const [title, setTitle] = useState(node.title);
   const [status, setStatus] = useState(node.status ?? PROJECT_STATUS.ACTIVE);
   const [kbDir, setKbDir] = useState(node.knowledgeBaseDirectory ?? "");
@@ -48,10 +49,15 @@ export default function ProjectEditorModal({ node, onSave, onClearBeadsId, onClo
     setIsSaving(true);
     setSaveError(null);
     try {
-      // Before the update, not after: a refused clear then leaves the node exactly as it was,
-      // rather than half-saved, and the refusal reaches the save error line below the fields.
-      await beadsClear.commitClear();
-      await onSave({ title: title.trim(), status, knowledgeBaseDirectory: kbDir.trim(), isPrivate });
+      // One Gesture, all or nothing: the beads clear and the update are two commands but one thing
+      // the user filled in, so they are one Ctrl+Z — and a refusal partway takes back the one that
+      // landed rather than leaving a form half-applied.
+      await withAtomicGesture(t("undo:gestures.editProject"), async () => {
+        // Before the update, not after: a refused clear then leaves the node exactly as it was,
+        // rather than half-saved, and the refusal reaches the save error line below the fields.
+        await beadsClear.commitClear();
+        await onSave({ title: title.trim(), status, knowledgeBaseDirectory: kbDir.trim(), isPrivate });
+      });
     } catch (err) {
       setSaveError(getErrorMessage(err));
       setIsSaving(false);

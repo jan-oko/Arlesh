@@ -153,9 +153,14 @@ export function stepChildCounts(
  *     refusing to enter one would make "what is under this?" a question you can only ask where the
  *     answer is already yes.
  *
- * What is left is genuinely nothing: a childless **Tag**, which is a label rather than a container,
- * and a childless **drawing** — a folded run of Habit history, or anything else rendered rather than
- * stored. Both are refused out loud (Arlesh-zlg), through {@link stepRefusalKey}.
+ * What is left is a **drawing** — a folded run of Habit history, or anything else rendered rather
+ * than stored — which has no inside at all. It is refused out loud (Arlesh-zlg), through
+ * {@link stepRefusalKey}.
+ *
+ * Every *real* node passes the second test, including a **Tag**: a tag is a label, and the one
+ * thing you hang on a label is a note about it (Arlesh-71m). `stepRefusalKey`'s other answer is
+ * kept for a kind that accepts nothing at all, which is a shape the model does not have today and
+ * should still be refused in words if it ever does.
  *
  * `canParentAnyNewChild` is the node-aware predicate the create gestures already ask; this asks the
  * same one rather than adding a third opinion about what can hold a child.
@@ -168,8 +173,8 @@ export function canDescendInto(node: MindmapNode): boolean {
 export type StepRefusalKey = "refusedHoldsNothing" | "refusedNotStored";
 
 /**
- * The reason a descent was refused, as the two genuinely different ones: a real node that holds
- * nothing, and something drawn rather than stored, which has no inside at all.
+ * The reason a descent was refused: something drawn rather than stored, or — for a kind the model
+ * does not have today — a real node that can hold nothing at all.
  */
 export function stepRefusalKey(node: MindmapNode): StepRefusalKey {
   return canAdoptChildren(node) ? "refusedHoldsNothing" : "refusedNotStored";
