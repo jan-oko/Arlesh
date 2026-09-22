@@ -12,6 +12,12 @@ export interface GlobalContext {
   onToggleHotkeys: () => void;
   onToggleFullscreen: () => void;
   onQuit: () => void;
+  /** Whether the tab is re-rooted at a subtree — gates the two exit chords, as it did per view. */
+  subtreeRootId: string | null;
+  onExitSubtree: () => void;
+  onExitToRoot: () => void;
+  onOpenSearch: () => void;
+  onToggleFilter: () => void;
 }
 
 /**
@@ -97,5 +103,55 @@ export const GLOBAL_BINDINGS: readonly Binding<GlobalContext>[] = [
     chord: { code: "Slash", ctrl: true, shift: true },
     labelKey: "toggleHotkeys",
     run: (c) => c.onToggleHotkeys(),
+  },
+  // --- Promoted out of the view tables ---
+  //
+  // These were declared once per view with byte-identical chords and run bodies, which meant the
+  // cheat-sheet printed each of them once per view and a fourth view meant a fourth copy. They are
+  // not view behaviour: the subtree root, the search and the filter set are all **per tab**, and
+  // every view was calling the same tab store through its own context member.
+  //
+  // Each one is **removed** from the view tables at the same time. Global and view tables are
+  // separate capture-phase listeners, so ADR 0003's first-match rule cannot order them — a chord
+  // left in both would fire twice. `chord-sharing.test.ts`'s `crossTableGroups` is what holds that.
+  //
+  // They all carry the input-capture guard, because that is what makes the promotion a move rather
+  // than a change: as view bindings they were suppressed whenever a modal or an inline rename held
+  // the keyboard, and the global table is otherwise dispatched unconditionally.
+  {
+    id: "global.exitToRoot",
+    section: "global",
+    chord: { code: "Escape", ctrl: true },
+    labelKey: "exitToRoot",
+    when: (c) => !c.isInputCaptured && c.subtreeRootId !== null,
+    run: (c) => c.onExitToRoot(),
+  },
+  {
+    id: "global.exitSubtree",
+    section: "global",
+    chord: { code: "Escape", shift: true },
+    labelKey: "exitSubtree",
+    when: (c) => !c.isInputCaptured && c.subtreeRootId !== null,
+    run: (c) => c.onExitSubtree(),
+  },
+  {
+    // `enterBySearch` of the two labels the views carried, because it describes what the chord
+    // actually does everywhere: picking a result re-roots the tab at that node. The Mindmap's
+    // `openSearch` ("Search for a node") named the dialog rather than the gesture, and stopped
+    // short of the half that matters.
+    id: "global.openSearch",
+    section: "global",
+    chord: { code: "KeyO", ctrl: true },
+    labelKey: "enterBySearch",
+    when: (c) => !c.isInputCaptured,
+    run: (c) => c.onOpenSearch(),
+  },
+  {
+    id: "global.toggleFilter",
+    section: "global",
+    chord: { code: "KeyF", alt: true },
+    labelKey: "toggleFilter",
+    when: (c) => !c.isInputCaptured,
+    run: (c) => c.onToggleFilter(),
   },
 ];

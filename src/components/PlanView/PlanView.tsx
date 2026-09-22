@@ -16,10 +16,12 @@ import { BEADS_NODE_TYPE } from "@/api/beads";
 import type { FilterState } from "@/utils/filter-tree";
 import type { TaskListRow } from "@/utils/list-filter";
 import { DEFAULT_LIST_FILTER, filterTaskList } from "@/utils/list-filter";
+import { collectSearchableNodes } from "@/utils/mindmap-tree";
 import { partitionForScope, referencedScopeIds } from "@/utils/plan-triage";
 import type { PlanPanes } from "@/utils/plan-triage";
 import type { PlanPane } from "@/utils/hotkeys/plan-bindings";
 import AnchoredToast from "@/components/AnchoredToast/AnchoredToast";
+import NodeSearchModal from "@/components/NodeSearchModal/NodeSearchModal";
 import TaskEditorModal from "@/components/TaskEditorModal/TaskEditorModal";
 import PlanScopeBar from "./PlanScopeBar";
 import PlanTaskCard from "./PlanTaskCard";
@@ -55,13 +57,17 @@ export default function PlanView() {
 
   const sharedFilter = useFilterStore((s) => s.filter);
   const setStatusMode = useFilterStore((s) => s.setStatusMode);
-  const toggleFilterPopover = useFilterStore((s) => s.toggleFilterPopover);
   const toggleFullscreen = useFullscreenStore((s) => s.toggle);
+  // Ctrl+O is a global binding; the flag it raises is read here, where the loaded tree already is.
+  const enterSubtree = useMindmapStore((s) => s.enterSubtree);
+  const searchOpen = useMindmapStore((s) => s.searchOpen);
+  const closeSearch = useMindmapStore((s) => s.closeSearch);
   const pendingToast = useMindmapStore((s) => s.pendingToast);
   const showToast = useMindmapStore((s) => s.showToast);
   const clearToast = useMindmapStore((s) => s.clearToast);
   const isInputCaptured = useIsInputCaptured();
-  const { subtreeRootId, onExitSubtree, onExitToRoot } = useSubtreeNav(tree);
+  // Publishes the tab's subtree descriptor for the top bar; the exits are global bindings.
+  useSubtreeNav(tree);
   const { onUndo, onRedo } = useUndo({ reload, showToast });
 
   const scope = usePlanScope();
@@ -164,14 +170,10 @@ export default function PlanView() {
     onMoveAcross,
     onStepScope: scope.step,
     onToggleBacklogCandidates: () => setShowBacklogged((on) => !on),
-    onToggleFilter: toggleFilterPopover,
     onSetStatusMode: setStatusMode,
     onOpenEditor: onDoubleClick,
     onDeselect: () => setSelectedTaskId(null),
     onToggleFullscreen: toggleFullscreen,
-    subtreeRootId,
-    onExitSubtree,
-    onExitToRoot,
     onUndo,
     onRedo,
   });
@@ -241,6 +243,14 @@ export default function PlanView() {
             <p className={styles.empty}>{t("planView:plannedEmpty")}</p>,
           )}
         </div>
+      )}
+
+      {searchOpen && (
+        <NodeSearchModal
+          nodes={collectSearchableNodes(tree)}
+          onSelect={(id) => { enterSubtree(id); closeSearch(); }}
+          onClose={closeSearch}
+        />
       )}
 
       {editorModal !== null && editorModal.node.kind === "task" && (

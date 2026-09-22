@@ -4,7 +4,11 @@ import type { useKeyboardMindmap } from "@/components/MindmapView/use-keyboard-m
 import type { MindmapNode } from "@/utils/tree-layout";
 
 /**
- * The one place a keyboard context is enumerated.
+ * The one place a **view's** keyboard context is enumerated.
+ *
+ * The subtree exits, the node search and the filter menu are no longer here: they are global
+ * bindings now, declared once in `global-bindings.ts` and exercised from `global-bindings.test.ts`
+ * against `GlobalContext` instead.
  *
  * Three test files used to list every member of `ListContext` or `MindmapContext` by hand, so
  * adding a single `on*` member broke all three — and any two branches adding one broke them in the
@@ -37,7 +41,6 @@ export function listKeyboardContext(overrides: Partial<ListOptions> = {}): ListO
     selectedCommitmentId: null,
     selectedRowId: null,
     isSelectedBlocked: false,
-    subtreeRootId: null,
     onNavigate: vi.fn(),
     onScrollList: vi.fn(),
     onCycleStatus: vi.fn(),
@@ -47,12 +50,8 @@ export function listKeyboardContext(overrides: Partial<ListOptions> = {}): ListO
     onCreateChild: vi.fn(),
     onDelete: vi.fn(),
     onDeselect: vi.fn(),
-    onToggleFilter: vi.fn(),
     onSetStatusMode: vi.fn(),
     onSetUnblockPreset: vi.fn(),
-    onOpenSearch: vi.fn(),
-    onExitSubtree: vi.fn(),
-    onExitToRoot: vi.fn(),
     onToggleBacklog: vi.fn(),
     onToggleAgentic: vi.fn(),
     onToggleAsynchronous: vi.fn(),
@@ -77,7 +76,6 @@ export function mindmapKeyboardContext(overrides: Partial<MindmapOptions> = {}):
     onDismissWarning: vi.fn(),
     selectedNodeId: "task-1",
     selectedNodeIds: new Set(["task-1"]),
-    subtreeRootId: null,
     clipboard: null,
     orientation: "horizontal",
     findNodeById: (id: string) => (id === "task-1" ? makeFixtureTask("task-1") : undefined),
@@ -99,16 +97,12 @@ export function mindmapKeyboardContext(overrides: Partial<MindmapOptions> = {}):
     onCycleVerdict: vi.fn(),
     onMarkBroken: vi.fn(),
     onDeselect: vi.fn(),
-    onExitSubtree: vi.fn(),
-    onExitToRoot: vi.fn(),
     onCut: vi.fn(),
     onCopy: vi.fn(),
     onPaste: vi.fn(),
     onEnterSubtree: vi.fn(),
-    onOpenSearch: vi.fn(),
     onZoomIn: vi.fn(),
     onZoomOut: vi.fn(),
-    onToggleFilter: vi.fn(),
     onSetStatusMode: vi.fn(),
     onToggleBacklog: vi.fn(),
     onUndo: vi.fn(),

@@ -3,14 +3,12 @@ import type { PlanPane, PlanSelectionContext } from "./plan/selection";
 import { PLAN_BACKLOG_BINDINGS, type PlanBacklogContext } from "./plan/backlog";
 import { PLAN_DESELECT_BINDINGS, type PlanDeselectContext } from "./plan/deselect";
 import { PLAN_EDITOR_BINDINGS, type PlanEditorContext } from "./plan/editor";
-import { PLAN_FILTER_BINDINGS, type PlanFilterContext } from "./plan/filter";
 import { PLAN_FULLSCREEN_BINDINGS, type PlanFullscreenContext } from "./plan/fullscreen";
 import { PLAN_HISTORY_BINDINGS, type PlanHistoryContext } from "./plan/history";
 import { PLAN_MOVE_BINDINGS, type PlanMoveContext } from "./plan/move";
 import { PLAN_NAVIGATE_BINDINGS, type PlanNavigateContext } from "./plan/navigate";
 import { PLAN_SCOPE_BINDINGS, type PlanScopeContext } from "./plan/scope";
 import { PLAN_STATUS_PRESET_BINDINGS, type PlanStatusPresetContext } from "./plan/status-presets";
-import { PLAN_SUBTREE_BINDINGS, type PlanSubtreeContext } from "./plan/subtree";
 
 export type { PlanPane, PlanSelectionContext };
 
@@ -25,26 +23,27 @@ export interface PlanContext extends
   PlanBacklogContext,
   PlanDeselectContext,
   PlanEditorContext,
-  PlanFilterContext,
   PlanFullscreenContext,
   PlanHistoryContext,
   PlanMoveContext,
   PlanNavigateContext,
   PlanScopeContext,
-  PlanStatusPresetContext,
-  PlanSubtreeContext {}
+  PlanStatusPresetContext {}
 
 /**
- * The Plan View's bindings.
+ * The Plan View's bindings — the ones that are genuinely its own.
  *
- * Order is only significant between entries sharing a chord, and nothing here shares one: the two
- * `Escape` variants carry different modifiers, which chord matching treats as different chords
- * altogether. `chord-sharing.test.ts` fails on any chord that becomes shared without being
- * declared, so a second module quietly shadowing one of these is a red test rather than a key that
- * silently stops working.
+ * The subtree exits, the node search, the filter menu and (in the other two views) undo/redo were
+ * all declared per view with identical chords and identical run bodies; the first three are now in
+ * `global-bindings.ts` and are deliberately absent here. A chord left in both tables would fire
+ * twice, since the two are separate capture-phase listeners.
+ *
+ * Order is only significant between entries sharing a chord, and nothing here shares one.
+ * `chord-sharing.test.ts` fails on any chord that becomes shared without being declared, so a
+ * second module quietly shadowing one of these is a red test rather than a key that silently stops
+ * working.
  */
 export const PLAN_BINDINGS: readonly Binding<PlanContext>[] = [
-  ...PLAN_FILTER_BINDINGS,
   ...PLAN_FULLSCREEN_BINDINGS,
   ...PLAN_STATUS_PRESET_BINDINGS,
   ...PLAN_NAVIGATE_BINDINGS,
@@ -52,7 +51,6 @@ export const PLAN_BINDINGS: readonly Binding<PlanContext>[] = [
   ...PLAN_MOVE_BINDINGS,
   ...PLAN_BACKLOG_BINDINGS,
   ...PLAN_EDITOR_BINDINGS,
-  ...PLAN_SUBTREE_BINDINGS,
   ...PLAN_DESELECT_BINDINGS,
   ...PLAN_HISTORY_BINDINGS,
 ];

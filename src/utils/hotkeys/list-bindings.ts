@@ -5,17 +5,14 @@ import { LIST_CREATE_BINDINGS, type ListCreateContext } from "./list/create";
 import { LIST_DELETE_BINDINGS, type ListDeleteContext } from "./list/delete";
 import { LIST_DESELECT_BINDINGS, type ListDeselectContext } from "./list/deselect";
 import { LIST_EDITOR_BINDINGS, type ListEditorContext } from "./list/editor";
-import { LIST_FILTER_BINDINGS, type ListFilterContext } from "./list/filter";
 import { LIST_FLAGS_BINDINGS, type ListFlagsContext } from "./list/flags";
 import { LIST_FULLSCREEN_BINDINGS, type ListFullscreenContext } from "./list/fullscreen";
 import { LIST_HISTORY_BINDINGS, type ListHistoryContext } from "./list/history";
 import { LIST_NAVIGATE_BINDINGS, type ListNavigateContext } from "./list/navigate";
 import { LIST_RENAME_BINDINGS, type ListRenameContext } from "./list/rename";
 import { LIST_SCROLL_BINDINGS, type ListScrollContext } from "./list/scroll";
-import { LIST_SEARCH_BINDINGS, type ListSearchContext } from "./list/search";
 import { LIST_STATUS_BINDINGS, type ListStatusContext } from "./list/status";
 import { LIST_STATUS_PRESET_BINDINGS, type ListStatusPresetContext } from "./list/status-presets";
-import { LIST_SUBTREE_BINDINGS, type ListSubtreeContext } from "./list/subtree";
 import { LIST_UNBLOCK_PRESET_BINDINGS, type ListUnblockPresetContext } from "./list/unblock-preset";
 
 export type { ListSelectionContext };
@@ -34,17 +31,14 @@ export interface ListContext extends
   ListDeleteContext,
   ListDeselectContext,
   ListEditorContext,
-  ListFilterContext,
   ListFlagsContext,
   ListFullscreenContext,
   ListHistoryContext,
   ListNavigateContext,
   ListRenameContext,
   ListScrollContext,
-  ListSearchContext,
   ListStatusContext,
   ListStatusPresetContext,
-  ListSubtreeContext,
   ListUnblockPresetContext {}
 
 /**
@@ -57,7 +51,6 @@ export interface ListContext extends
  * chord is a red test rather than a silent no-op.
  */
 export const LIST_BINDINGS: readonly Binding<ListContext>[] = [
-  ...LIST_FILTER_BINDINGS,
   ...LIST_FULLSCREEN_BINDINGS,
   ...LIST_STATUS_PRESET_BINDINGS,
   ...LIST_UNBLOCK_PRESET_BINDINGS,
@@ -69,8 +62,6 @@ export const LIST_BINDINGS: readonly Binding<ListContext>[] = [
   ...LIST_RENAME_BINDINGS,
   ...LIST_CREATE_BINDINGS,
   ...LIST_DELETE_BINDINGS,
-  ...LIST_SEARCH_BINDINGS,
-  ...LIST_SUBTREE_BINDINGS,
   ...LIST_FLAGS_BINDINGS,
   ...LIST_DESELECT_BINDINGS,
   ...LIST_HISTORY_BINDINGS,

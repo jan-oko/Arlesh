@@ -37,9 +37,9 @@ The root of the map is "Arlesh" (top level). Aspect cells are its direct childre
 - `Ctrl+X` / `Ctrl+C` / `Ctrl+V` — cut / copy / paste
 - `C` — center the view on the selection; `Ctrl+=` / `Ctrl+-` (and numpad `+`/`-`) — zoom
 - `S` — start the selected Flow; `F` — convert the selected cell to a Flow
-- `Ctrl+O` — search for a node by title
-- `Alt+F` — toggle the filter menu; `Alt+A` / `Alt+P` / `Alt+S` / `Alt+D` / `Alt+B` — jump to the **All / Plan / Start / Do / Backlog** status preset (matched by physical key)
-- `Escape` — deselect; `Shift+Escape` — go back one level when inside a subtree; `Ctrl+Escape` — go back to the root
+- `Ctrl+O` — search for a node by title *(a [global binding](tabs.md) — declared once, not per view)*
+- `Alt+F` — toggle the filter menu *(a [global binding](tabs.md) — declared once, not per view)*; `Alt+A` / `Alt+P` / `Alt+S` / `Alt+D` / `Alt+B` — jump to the **All / Plan / Start / Do / Backlog** status preset (matched by physical key)
+- `Escape` — deselect (this one stays per view: only a view knows its selection); `Shift+Escape` — go back one level when inside a subtree; `Ctrl+Escape` — go back to the root *(a [global binding](tabs.md) — declared once, not per view)*
 - `Ctrl+Z` — undo the last thing you did to the board; `Ctrl+Shift+Z` (or `Ctrl+Y`) — redo it
 - `Ctrl+L` — show the List View, `Ctrl+P` the Plan View, `Ctrl+M` the Mindmap (one chord per view, not a cycle — see [*Tabs*](tabs.md)); `Ctrl+Shift+/` — open the keyboard cheat-sheet
 - `Right-click` — context menu (enter subtree, change type, delete, etc.)

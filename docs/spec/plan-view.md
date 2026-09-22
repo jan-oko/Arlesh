@@ -100,8 +100,11 @@ kind is **Week**.
   selected Task in the List View, and a key that sets one task aside must not reveal a whole
   category of them elsewhere
 - `E` — open the selected task's editor; `Escape` — deselect
-- `Alt+F` — the filter menu; `Alt+A`/`Alt+P`/`Alt+S`/`Alt+D`/`Alt+B` — the shared status presets
-- `Shift+Escape` / `Ctrl+Escape` — up one subtree level / back to the true root
+- `Alt+F` — the filter menu, also global; `Alt+A`/`Alt+P`/`Alt+S`/`Alt+D`/`Alt+B` — the shared status
+  presets
+- `Ctrl+O` — search every node and enter the one you pick; `Shift+Escape` / `Ctrl+Escape` — up one
+  subtree level / back to the true root. All three are [global bindings](tabs.md): they act on the
+  tab's subtree root, which every view shares
 - `Ctrl+Z` / `Ctrl+Shift+Z` — undo and redo, which cover a move like any other board change
 - `F` with nothing selected — the board alone
 

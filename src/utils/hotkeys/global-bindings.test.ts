@@ -10,6 +10,11 @@ function makeContext(overrides: Partial<GlobalContext> = {}): GlobalContext {
     onToggleHotkeys: vi.fn(),
     onToggleFullscreen: vi.fn(),
     onQuit: vi.fn(),
+    subtreeRootId: null,
+    onExitSubtree: vi.fn(),
+    onExitToRoot: vi.fn(),
+    onOpenSearch: vi.fn(),
+    onToggleFilter: vi.fn(),
     ...overrides,
   };
 }
@@ -131,5 +136,102 @@ describe("GLOBAL_BINDINGS", () => {
       expect(binding.labelKey).not.toBe("");
       expect(binding.section).toBe("global");
     }
+  });
+});
+
+/**
+ * The chords promoted out of the view tables.
+ *
+ * They were declared once per view with identical chords and identical run bodies, so the
+ * cheat-sheet printed each of them once per view and every new view meant another copy. What they
+ * act on — the subtree root, the search, the filter set — is per *tab*, never per view.
+ *
+ * The promotion has to be a **move**, not a change, and these pin the two halves of that: the chord
+ * still fires, and it is still suppressed exactly where it used to be.
+ */
+describe("the chords promoted out of the view tables", () => {
+  it("Ctrl+Escape goes back to the root while inside a subtree", () => {
+    const ctx = makeContext({ subtreeRootId: "project-1" });
+    expect(runFor("Escape", { ctrlKey: true }, ctx)).toBe(true);
+    expect(ctx.onExitToRoot).toHaveBeenCalledTimes(1);
+    expect(ctx.onExitSubtree).not.toHaveBeenCalled();
+  });
+
+  it("Shift+Escape goes up one subtree level while inside a subtree", () => {
+    const ctx = makeContext({ subtreeRootId: "project-1" });
+    expect(runFor("Escape", { shiftKey: true }, ctx)).toBe(true);
+    expect(ctx.onExitSubtree).toHaveBeenCalledTimes(1);
+    expect(ctx.onExitToRoot).not.toHaveBeenCalled();
+  });
+
+  it("neither exit does anything at the true root", () => {
+    const ctx = makeContext({ subtreeRootId: null });
+    expect(runFor("Escape", { ctrlKey: true }, ctx)).toBe(false);
+    expect(runFor("Escape", { shiftKey: true }, ctx)).toBe(false);
+    expect(ctx.onExitToRoot).not.toHaveBeenCalled();
+    expect(ctx.onExitSubtree).not.toHaveBeenCalled();
+  });
+
+  // Bare Escape deselects and was deliberately left in the view tables, because only a view knows
+  // its own selection. Strict modifier matching is what keeps the three apart.
+  it("bare Escape reaches nothing global, so it still deselects in the view", () => {
+    const ctx = makeContext({ subtreeRootId: "project-1" });
+    expect(runFor("Escape", {}, ctx)).toBe(false);
+  });
+
+  it("Ctrl+O opens the node search", () => {
+    const ctx = makeContext();
+    expect(runFor("KeyO", { ctrlKey: true }, ctx)).toBe(true);
+    expect(ctx.onOpenSearch).toHaveBeenCalledTimes(1);
+  });
+
+  it("plain O does not", () => {
+    const ctx = makeContext();
+    expect(runFor("KeyO", {}, ctx)).toBe(false);
+    expect(ctx.onOpenSearch).not.toHaveBeenCalled();
+  });
+
+  it("Alt+F toggles the filter menu", () => {
+    const ctx = makeContext();
+    expect(runFor("KeyF", { altKey: true }, ctx)).toBe(true);
+    expect(ctx.onToggleFilter).toHaveBeenCalledTimes(1);
+  });
+
+  // Bare F is the board-alone mode and is declared per view, because whether it is eligible depends
+  // on the view's selection. A global Alt+F never reaches it: the modifiers differ.
+  it("bare F reaches nothing global", () => {
+    const ctx = makeContext();
+    expect(runFor("KeyF", {}, ctx)).toBe(false);
+  });
+
+  it.each([
+    { name: "Ctrl+Escape", code: "Escape", mods: { ctrlKey: true } },
+    { name: "Shift+Escape", code: "Escape", mods: { shiftKey: true } },
+    { name: "Ctrl+O", code: "KeyO", mods: { ctrlKey: true } },
+    { name: "Alt+F", code: "KeyF", mods: { altKey: true } },
+  ])("$name is suppressed while a modal holds the keyboard, as it was per view", ({ code, mods }) => {
+    const ctx = makeContext({ isInputCaptured: true, subtreeRootId: "project-1" });
+    expect(runFor(code, mods, ctx)).toBe(false);
+  });
+
+  // The distinction the promotion rests on: the global table is otherwise dispatched
+  // unconditionally, which is what lets the cheat-sheet's own chord close it again.
+  it("leaves the cheat-sheet and quit unguarded", () => {
+    const ctx = makeContext({ isInputCaptured: true });
+    expect(runFor("Slash", { ctrlKey: true, shiftKey: true }, ctx)).toBe(true);
+    expect(runFor("KeyQ", { ctrlKey: true }, ctx)).toBe(true);
+  });
+
+  it("guards every binding that acts on the board, and only those", () => {
+    const guarded = GLOBAL_BINDINGS.filter((b) => b.when !== undefined).map((b) => b.id).sort();
+    expect(guarded).toEqual([
+      "global.exitSubtree",
+      "global.exitToRoot",
+      "global.openSearch",
+      "global.toggleFilter",
+      "global.viewList",
+      "global.viewMindmap",
+      "global.viewPlan",
+    ]);
   });
 });
