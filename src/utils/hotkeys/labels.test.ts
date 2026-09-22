@@ -4,9 +4,12 @@ import { GLOBAL_BINDINGS } from "./global-bindings";
 import { TAB_BINDINGS } from "./tab-bindings";
 import { MINDMAP_BINDINGS } from "./mindmap-bindings";
 import { LIST_BINDINGS } from "./list-bindings";
+import { PLAN_BINDINGS } from "./plan-bindings";
 import type { BindingMeta } from "./chord";
 
-const ALL: readonly BindingMeta[] = [...GLOBAL_BINDINGS, ...TAB_BINDINGS, ...MINDMAP_BINDINGS, ...LIST_BINDINGS];
+const ALL: readonly BindingMeta[] = [
+  ...GLOBAL_BINDINGS, ...TAB_BINDINGS, ...MINDMAP_BINDINGS, ...LIST_BINDINGS, ...PLAN_BINDINGS,
+];
 
 function hasKey(locale: Record<string, string>, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(locale, key);

@@ -1,0 +1,29 @@
+{
+  "candidatesHeading": "Candidates",
+  "plannedHeading": "In this scope",
+  "candidatesEmpty": "Nothing unplanned is relevant to this scope.",
+  "candidatesEmptyBacklogHint": "Backlogged work is hidden — turn on Backlogged to reconsider it.",
+  "plannedEmpty": "Nothing is planned into this scope yet.",
+  "scopeKind": "Scope kind",
+  "kind": {
+    "season": "Season",
+    "month": "Month",
+    "week": "Week",
+    "day": "Day",
+    "part_of_day": "Part of day"
+  },
+  "previousScope": "Previous scope",
+  "nextScope": "Next scope",
+  "jumpToScope": "Jump to a scope",
+  "closeScopePicker": "Close",
+  "showBacklogged": "Backlogged",
+  "resolvingScope": "Resolving the scope…",
+  "scopeFailed": "This scope could not be opened: {{message}}",
+  "planInto": "Plan into this scope",
+  "unplan": "Take out of this scope",
+  "refusedTimeScope": "“{{title}}” cannot be planned into {{scope}}: its own Time Scope does not cover it. Widen the task's window in its editor first.",
+  "refusedParentPlan": "“{{title}}” cannot be planned into {{scope}}: its parent task's Plan does not cover it.",
+  "unbacklogged": "“{{title}}” is planned into {{scope}}, and is no longer in the Backlog.",
+  "moveFailed": "“{{title}}” could not be moved: {{message}}",
+  "noPath": "Directly under the root"
+}

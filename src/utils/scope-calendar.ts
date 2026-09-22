@@ -44,9 +44,13 @@ const PART_LABELS: Record<PartOfDay, string> = {
   night: "Night",
 };
 
-// Parts in chronological order within a calendar day, with their start day-offset handling for
-// Night (which ends on the following day).
-const PART_SEQUENCE: PartOfDay[] = ["premorning", "morning", "noon", "afternoon", "evening", "night"];
+/**
+ * Parts in chronological order within a calendar day, with their start day-offset handling for
+ * Night (which ends on the following day). Exported because walking one part at a time — which the
+ * Plan View does — is the same order this lays the cells out in, and two orders would be one too
+ * many.
+ */
+export const PART_SEQUENCE: readonly PartOfDay[] = ["premorning", "morning", "noon", "afternoon", "evening", "night"];
 
 // --- date helpers (UTC to avoid timezone drift) ---
 

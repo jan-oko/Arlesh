@@ -1,0 +1,75 @@
+.container {
+  display: flex;
+  height: calc(100% - var(--topbar-height));
+  flex-direction: column;
+  box-sizing: border-box;
+  padding: var(--space-4);
+  background: var(--canvas-bg);
+  gap: var(--space-4);
+}
+
+.panes {
+  display: grid;
+  min-height: 0;
+  flex: 1 1 auto;
+  gap: var(--space-4);
+  grid-template-columns: 1fr 1fr;
+}
+
+.pane {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  padding: var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--node-radius);
+  gap: var(--space-2);
+}
+
+/* Which pane the keyboard is in. A pane is always focused, even with nothing selected inside it,
+   so the outline is what says where the arrow keys will land. */
+.paneFocused {
+  border-color: var(--node-border);
+  background: var(--surface);
+}
+
+.paneHeading {
+  margin: 0;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.cards {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow-y: auto;
+  gap: var(--space-2);
+}
+
+.empty {
+  padding: var(--space-4) 0;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+}
+
+.hint {
+  display: block;
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.centered {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+}

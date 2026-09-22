@@ -4,7 +4,7 @@ import type { GlobalContext } from "./global-bindings";
 import { matchesChord } from "./chord";
 
 function makeContext(): GlobalContext {
-  return { onToggleView: vi.fn(), onToggleHotkeys: vi.fn(), onToggleFullscreen: vi.fn(), onQuit: vi.fn() };
+  return { onSetView: vi.fn(), onToggleHotkeys: vi.fn(), onToggleFullscreen: vi.fn(), onQuit: vi.fn() };
 }
 
 function runFor(code: string, modifiers: Partial<KeyboardEventInit>, ctx: GlobalContext): boolean {
@@ -16,10 +16,21 @@ function runFor(code: string, modifiers: Partial<KeyboardEventInit>, ctx: Global
 }
 
 describe("GLOBAL_BINDINGS", () => {
-  it("when Alt+L is pressed, toggles the view", () => {
+  it("when Alt+L is pressed, shows the List", () => {
     const ctx = makeContext();
     expect(runFor("KeyL", { altKey: true }, ctx)).toBe(true);
-    expect(ctx.onToggleView).toHaveBeenCalledTimes(1);
+    expect(ctx.onSetView).toHaveBeenCalledWith("list");
+  });
+
+  it("when Alt+M is pressed, shows the Mindmap", () => {
+    const ctx = makeContext();
+    expect(runFor("KeyM", { altKey: true }, ctx)).toBe(true);
+    expect(ctx.onSetView).toHaveBeenCalledWith("mindmap");
+  });
+
+  it("names each view outright, so no chord depends on which view you are on", () => {
+    const setters = GLOBAL_BINDINGS.filter((b) => b.id.startsWith("global.view"));
+    expect(setters.map((b) => b.id)).toEqual(["global.viewMindmap", "global.viewList"]);
   });
 
   it("when Ctrl+Shift+/ is pressed, toggles the cheat-sheet", () => {

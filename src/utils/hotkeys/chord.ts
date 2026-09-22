@@ -1,7 +1,7 @@
 import type en_hotkeys from "@/i18n/locales/en/hotkeys.json";
 
 /** Which surface a binding belongs to — also the cheat-sheet's grouping. */
-export type Section = "global" | "tabs" | "mindmap" | "listView";
+export type Section = "global" | "tabs" | "mindmap" | "listView" | "planView";
 
 /**
  * A key of the `hotkeys` namespace. Typing it from the English locale means a binding referencing a

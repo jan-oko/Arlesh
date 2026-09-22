@@ -3,7 +3,7 @@ import { useViewStore } from "./use-view-store";
 
 beforeEach(() => {
   localStorage.clear();
-  useViewStore.setState({ view: "mindmap", mindmapOrientation: "horizontal" });
+  useViewStore.setState({ view: "mindmap", mindmapOrientation: "horizontal", planScopeKind: "week" });
 });
 
 describe("setView", () => {
@@ -13,12 +13,22 @@ describe("setView", () => {
   });
 });
 
-describe("toggleView", () => {
-  it("toggles between mindmap and list", () => {
-    useViewStore.getState().toggleView();
-    expect(useViewStore.getState().view).toBe("list");
-    useViewStore.getState().toggleView();
-    expect(useViewStore.getState().view).toBe("mindmap");
+describe("setView", () => {
+  it("reaches the Plan view from the List view in one call, with no cycle to walk", () => {
+    useViewStore.getState().setView("list");
+    useViewStore.getState().setView("plan");
+    expect(useViewStore.getState().view).toBe("plan");
+  });
+});
+
+describe("planScopeKind", () => {
+  it("defaults to the week", () => {
+    expect(useViewStore.getState().planScopeKind).toBe("week");
+  });
+
+  it("remembers the kind last filled", () => {
+    useViewStore.getState().setPlanScopeKind("day");
+    expect(useViewStore.getState().planScopeKind).toBe("day");
   });
 });
 

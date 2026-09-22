@@ -10,6 +10,7 @@ import { useFullscreenStore } from "@/stores/use-fullscreen-store";
 vi.mock("@/components/TopBar/TopBar", () => ({ default: () => <div data-testid="top-bar" /> }));
 vi.mock("@/components/MindmapView/MindmapView", () => ({ default: () => <div data-testid="mindmap-view" /> }));
 vi.mock("@/components/ListView/ListView", () => ({ default: () => <div data-testid="list-view" /> }));
+vi.mock("@/components/PlanView/PlanView", () => ({ default: () => <div data-testid="plan-view" /> }));
 vi.mock("@/api/window", () => ({ closeWindow: vi.fn(() => Promise.resolve()) }));
 
 const mockCloseWindow = vi.mocked(closeWindow);
@@ -38,15 +39,30 @@ describe("App", () => {
     expect(screen.queryByTestId("mindmap-view")).not.toBeInTheDocument();
   });
 
-  it("Alt+L toggles between views", () => {
+  it("renders the Plan view once the store switches to it", () => {
+    useViewStore.setState({ view: "plan" });
+    render(<App />);
+    expect(screen.getByTestId("plan-view")).toBeInTheDocument();
+    expect(screen.queryByTestId("mindmap-view")).not.toBeInTheDocument();
+  });
+
+  // One chord per view, not a cycle: Alt+L names the List and says nothing about where you were.
+  it("Alt+L shows the List and leaves it showing when pressed again", () => {
     render(<App />);
     fireEvent.keyDown(window, { code: "KeyL", altKey: true });
     expect(useViewStore.getState().view).toBe("list");
     fireEvent.keyDown(window, { code: "KeyL", altKey: true });
+    expect(useViewStore.getState().view).toBe("list");
+  });
+
+  it("Alt+M shows the Mindmap from wherever you were", () => {
+    useViewStore.setState({ view: "list" });
+    render(<App />);
+    fireEvent.keyDown(window, { code: "KeyM", altKey: true });
     expect(useViewStore.getState().view).toBe("mindmap");
   });
 
-  it("does not toggle while typing in an input", () => {
+  it("does not switch views while typing in an input", () => {
     render(<App />);
     const input = document.createElement("input");
     document.body.appendChild(input);

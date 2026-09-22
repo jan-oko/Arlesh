@@ -23,6 +23,7 @@ second locale — not because a translation is pending.
 | `filter`       | Filter popover and chip labels                 |
 | `statusIcons`  | Status-badge tooltips                          |
 | `listView`     | List View presets, columns, empty states       |
+| `planView`     | Plan View headings, scope stepper, refusals     |
 | `hotkeys`      | Keyboard cheat-sheet action labels             |
 
 ---

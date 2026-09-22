@@ -3,7 +3,8 @@
 *One area of the [Arlesh design specification](../../SPEC.md).*
 
 Arlesh holds several places on the board open at once. A **tab** owns everything about a view of
-the board — its **subtree root**, whether it shows the Mindmap or the List, its branch orientation,
+the board — its **subtree root**, which of the views it shows, its branch orientation, the scope
+kind its [Plan](plan-view.md) pass fills,
 its whole Mindmap filter set, its whole List View filter set, its selection, its collapsed nodes,
 the Habit histories it has opened and its pan/zoom — and switching tabs swaps all of it at once. "What is left in Bugfixes" and "what am I
 doing today" are two different subtrees under two different presets, and a tab each is how both are
@@ -74,9 +75,18 @@ reopening Arlesh with no chrome and no visible way back is a bad first second, a
 one keystroke. Every tab shortcut stays live while the strip is hidden — the bindings never depended
 on it being drawn.
 
+**Switching views.** Each view has a chord of its own — `Alt+M` for the Mindmap and `Alt+L` for the
+List — rather than one chord that cycles. Every view is then one press from any other, there is no
+cycle order to learn, and a new view costs one binding rather than a re-think; `Alt+L` also keeps
+meaning List, which is what it has always meant, where a cycling `Alt+L` would quietly have turned
+an existing reflex into "next view". The [Plan View](plan-view.md) has no chord yet, because the two
+letters the scheme reaches for next are already status presets — that open decision is written down
+there.
+
 **Persistence.** The tab list, its order, which tab was active, any name a tab was given, and each
-tab's subtree root, view, orientation, both filter sets and opened Habit histories are restored on
-reopening. A strip
+tab's subtree root, view, orientation, Plan scope kind, both filter sets and opened Habit histories
+are restored on reopening. A stored view this build does not recognise falls back to the default
+rather than leaving the tab rendering nothing. A strip
 written down before tabs could be named comes back as tabs with no names, labelled as they were. Selection, collapsed nodes and pan/zoom
 are **not**: they are working state, and coming back to a stale selection is worse than coming back
 to none. An opened Habit history is on the restored side of that line for a reason of its own: a

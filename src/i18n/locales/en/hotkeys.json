@@ -4,7 +4,9 @@
   "sectionTabs": "Tabs",
   "sectionMindmap": "Mindmap",
   "sectionListView": "List View",
-  "toggleView": "Switch between Mindmap and List",
+  "sectionPlanView": "Plan View",
+  "viewMindmap": "Show the Mindmap",
+  "viewList": "Show the List",
   "toggleHotkeys": "Show this cheat-sheet",
   "quitApp": "Quit Arlesh",
   "toggleFilter": "Toggle the filter menu",
@@ -64,5 +66,9 @@
   "createChildRow": "Create a child of the selected row",
   "createSiblingRow": "Create a sibling of the selected row",
   "undo": "Undo the last change",
-  "redo": "Redo the last undone change"
+  "redo": "Redo the last undone change",
+  "planMoveAcross": "Plan the selected task into the scope, or take it back out",
+  "planSwitchPane": "Move between the candidates and the scope",
+  "planStepScope": "Fill the previous / next scope",
+  "planToggleBacklog": "Show or hide backlogged candidates"
 }

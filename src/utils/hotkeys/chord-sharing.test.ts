@@ -7,6 +7,7 @@ import { TAB_BINDINGS } from "./tab-bindings";
 import { LIST_BINDINGS } from "./list-bindings";
 import type { ListContext } from "./list-bindings";
 import { MINDMAP_BINDINGS } from "./mindmap-bindings";
+import { PLAN_BINDINGS } from "./plan-bindings";
 import type { MindmapContext } from "./mindmap-bindings";
 
 /**
@@ -44,7 +45,9 @@ const SHARED_CHORDS: Readonly<Record<string, readonly string[]>> = {
   "listView Enter": ["listView.cycleStatus", "listView.cycleVerdict"],
 };
 
-const ALL: readonly BindingMeta[] = [...GLOBAL_BINDINGS, ...TAB_BINDINGS, ...MINDMAP_BINDINGS, ...LIST_BINDINGS];
+const ALL: readonly BindingMeta[] = [
+  ...GLOBAL_BINDINGS, ...TAB_BINDINGS, ...MINDMAP_BINDINGS, ...LIST_BINDINGS, ...PLAN_BINDINGS,
+];
 
 /** Every chord bound more than once within its section, mapped to its bindings in dispatch order. */
 function sharedChordGroups(bindings: readonly BindingMeta[]): Record<string, string[]> {

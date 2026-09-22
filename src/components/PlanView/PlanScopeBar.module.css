@@ -1,0 +1,66 @@
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  font-family: var(--font-sans);
+}
+
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.step {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--node-border);
+  border-radius: var(--node-radius);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: var(--text-lg);
+  line-height: 1;
+}
+
+.step:hover {
+  border-color: var(--node-border-selected);
+}
+
+.anchor {
+  position: relative;
+}
+
+.scope {
+  min-width: 10ch;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--node-radius);
+  background: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.scope:hover {
+  border-color: var(--node-border);
+}
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+}
+
+.picker {
+  position: absolute;
+  z-index: 11;
+  top: calc(100% + var(--space-2));
+  left: 50%;
+  padding: var(--space-3);
+  border: 1px solid var(--node-border);
+  border-radius: var(--node-radius);
+  background: var(--surface);
+  transform: translateX(-50%);
+}

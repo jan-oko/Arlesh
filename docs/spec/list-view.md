@@ -2,7 +2,7 @@
 
 *One area of the [Arlesh design specification](../../SPEC.md).*
 
-A compact-card task list, reached via a Mindmap/List tab in the top bar or the `Alt+L` shortcut (both toggle between the two views; the choice belongs to the tab and persists with it). Reuses the Mindmap's own loaded tree (flattened to Tasks) rather than fetching independently, so the two views never drift out of sync — a materialized Start-flow task or a virtual Habit instance shows consistently in both.
+A compact-card task list, reached via its tab in the top bar or the `Alt+L` shortcut (which names the List rather than toggling; the choice belongs to the tab and persists with it — see [Tabs](tabs.md)). Reuses the Mindmap's own loaded tree (flattened to Tasks) rather than fetching independently, so the two views never drift out of sync — a materialized Start-flow task or a virtual Habit instance shows consistently in both.
 
 **Rows are Tasks only** — real, flow-materialized, and virtual Habit instances alike. Goals, Projects, Domains, and every other kind are never list rows — they appear in a row's **path header** instead (see below). **Commitments are the one exception:** they render in their own section *above* the task rows rather than scattered through them (see *Commitments section* below). A row shows: a status control (click cycles To Do → In Progress → Done, or advances a Habit instance; disabled while the task is blocked, except for Habit instances which always advance), the title (click opens the Task editor; double-clicking anywhere else on the card opens it too, matching the Mindmap's double-click-to-edit gesture), the same status-icon badge row as the Mindmap node (scope/plan/flow/tag badges with tooltips), and the task's **tag pills** — clicking one inline adds it as a filter, per the general [Filtering Logic](filtering-logic.md). The card carries **no parent label**: the path header above the run already names the row's parent, so a label on the card only restated what was on screen a line above it. Tags stay, because a tag appears in no header and clicking one here is the only way to add it from the row. Each card spans the full row width, with generous padding for a sparse, readable list, and is tinted with its resolved aspect colour — the same fill/opacity derivation the Mindmap node uses — so a task's card matches its node's colour there. Clicking anywhere on a card **selects** it (a highlighted border), for the keyboard bindings below.
 
@@ -24,7 +24,7 @@ A compact-card task list, reached via a Mindmap/List tab in the top bar or the `
 - `Shift+Escape` — up one subtree level; `Ctrl+Escape` — straight back to the true root. Same semantics as the Mindmap's, and gated the same way (they do nothing at the true root, where bare `Escape` still deselects)
 - `Escape` — deselect
 - `Ctrl+Z` — undo the last thing you did to the board; `Ctrl+Shift+Z` (or `Ctrl+Y`) — redo it
-- `Alt+L` — switch back to the Mindmap; `Ctrl+Shift+/` — open the keyboard cheat-sheet
+- `Alt+M` — show the Mindmap; `Ctrl+Shift+/` — open the keyboard cheat-sheet
 
 A shortcut requires exactly the modifiers listed — `Ctrl+E` does not open the editor, only a bare `E` does.
 
