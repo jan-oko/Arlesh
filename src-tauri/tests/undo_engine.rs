@@ -847,13 +847,14 @@ async fn undoing_a_cleared_habit_completion_brings_it_back_on_the_occurrence_it_
         instance(),
         Some("done".into()),
         1_767_600_000_000,
+        None,
     )
     .await
     .expect("mark the evening occurrence done");
 
     // ...and then un-completed, which deletes the Modification row, inside a gesture.
     open_gesture(&app).await;
-    flow_commands::set_habit_item_status(app.state(), flow.id, instance(), None, 0)
+    flow_commands::set_habit_item_status(app.state(), flow.id, instance(), None, 0, None)
         .await
         .expect("clear the status");
     close_gesture(&app).await;

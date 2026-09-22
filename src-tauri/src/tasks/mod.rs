@@ -107,6 +107,10 @@ async fn delete_infos_under(
         stack.extend(children);
     }
     for id in all {
+        // A note attached to a Habit occurrence is only ever deleted with the node it hangs under
+        // or on its own command, and both funnel through here. SQLite recycles rowids, so an
+        // attachment outliving its row would later be inherited by an unrelated one.
+        db.flows().detach_instance_child("info", id).await?;
         db.infos().delete(InfoId(id)).await?;
     }
     Ok(())
@@ -136,6 +140,10 @@ async fn delete_node_subtree(
         stack.extend(commitment_children.into_iter().map(|id| ("commitment".to_string(), id)));
     }
     for (node_type, node_id) in &nodes {
+        // The node may be an added child of a Habit occurrence. Its attachment names the row, so
+        // it goes when the row goes — see `delete_infos_under` for why an orphan is not merely
+        // untidy.
+        db.flows().detach_instance_child(node_type, *node_id).await?;
         delete_infos_under(db, node_type, *node_id).await?;
         // Block reasons hang off a polymorphic owner link with no foreign key, like infos. A
         // Commitment never has any, and asking for none costs one statement against the risk of
@@ -1246,6 +1254,7 @@ pub async fn create_goal(
 ) -> Result<Goal, TaskError> {
     scope_rules::validate_goal_containment(
         db,
+        None,
         &request.parent_type,
         request.parent_id,
         &request.time_scope,
@@ -1284,8 +1293,14 @@ pub async fn update_goal(
 ) -> Result<Goal, TaskError> {
     let stored = db.goals().get(id).await?;
     let write = GoalWrite::merge(stored, request);
-    scope_rules::validate_goal_containment(db, &write.parent_type, write.parent_id, &write.time_scope)
-        .await?;
+    scope_rules::validate_goal_containment(
+        db,
+        Some(id),
+        &write.parent_type,
+        write.parent_id,
+        &write.time_scope,
+    )
+    .await?;
     db.goals().update(id, write).await
 }
 
@@ -1324,6 +1339,7 @@ pub async fn create_task(
     reject_backlog_with_plan(request.archival.unwrap_or_default(), &request.plan)?;
     scope_rules::validate_task_containment(
         db,
+        None,
         &request.parent_type,
         request.parent_id,
         &request.time_scope,
@@ -1373,6 +1389,7 @@ pub async fn update_task(
     reject_backlog_with_plan(write.archival, &write.plan)?;
     scope_rules::validate_task_containment(
         db,
+        Some(id),
         &write.parent_type,
         write.parent_id,
         &write.time_scope,

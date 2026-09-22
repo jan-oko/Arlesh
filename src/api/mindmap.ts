@@ -7,7 +7,7 @@ import type { Info } from "@/api/infos";
 import type { BlockReason } from "@/api/block-reasons";
 import type {
   Flow, FlowGoal, FlowTask, FlowItemCycle, FlowDependency,
-  HabitIteration, HabitItemStatus, TargetRef,
+  HabitInstanceChild, HabitIteration, HabitItemStatus, TargetRef,
 } from "@/api/flows";
 import type { ItemLifecycle } from "@/api/scope-lifecycle";
 
@@ -54,6 +54,11 @@ export interface MindmapLoad {
   lifecycles: ItemLifecycle[];
   /** One entry per flow, in `flows` order — the dependent wave, resolved backend-side. */
   habits: FlowHabitEntry[];
+  /**
+   * Which virtual Habit occurrence each added child hangs on. The children themselves arrive in
+   * `tasks`/`goals`/`commitments`/`infos` like any other node; this is the attachment alone.
+   */
+  habit_instance_children: HabitInstanceChild[];
 }
 
 /**

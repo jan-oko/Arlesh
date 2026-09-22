@@ -417,6 +417,7 @@ pub async fn create_commitment(
 ) -> Result<Commitment, TaskError> {
     scope_rules::validate_commitment_scope(
         db,
+        None,
         &request.parent_type,
         request.parent_id,
         &request.time_scope,
@@ -439,8 +440,14 @@ pub async fn update_commitment(
 ) -> Result<Commitment, TaskError> {
     let stored = db.commitments().get(id).await?;
     let write = CommitmentWrite::merge(stored, request);
-    scope_rules::validate_commitment_scope(db, &write.parent_type, write.parent_id, &write.time_scope)
-        .await?;
+    scope_rules::validate_commitment_scope(
+        db,
+        Some(id),
+        &write.parent_type,
+        write.parent_id,
+        &write.time_scope,
+    )
+    .await?;
     db.commitments().update(id, write).await
 }
 
