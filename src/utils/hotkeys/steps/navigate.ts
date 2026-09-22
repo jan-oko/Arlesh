@@ -27,6 +27,6 @@ export const STEPS_NAVIGATE_BINDINGS: readonly Binding<StepsNavigateContext>[] =
     id: `stepsView.navigate.${code}`,
     section: "stepsView" as const,
     chord: { code },
-    labelKey: "navigate" as const,
+    labelKey: "stepsNavigate" as const,
     run: (c: StepsNavigateContext) => c.onNavigate(direction),
   }));

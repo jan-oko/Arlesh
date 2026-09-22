@@ -20,7 +20,7 @@ export interface StepsStatusContext extends StepsSelectionContext {
 export const STEPS_STATUS_BINDINGS: readonly Binding<StepsStatusContext>[] = [
   {
     id: "stepsView.cycleStatus", section: "stepsView", chord: { code: "Space" },
-    labelKey: "cycleRowStatus",
+    labelKey: "stepsCycleStatus",
     when: (c) => hasSelection(c),
     run: (c) => withNode(c, c.onCycleStatus),
   },

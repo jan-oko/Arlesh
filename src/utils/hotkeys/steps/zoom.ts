@@ -16,20 +16,20 @@ export interface StepsZoomContext {
 export const STEPS_ZOOM_BINDINGS: readonly Binding<StepsZoomContext>[] = [
   {
     id: "stepsView.zoomIn", section: "stepsView", chord: { code: "Equal", ctrl: true },
-    labelKey: "zoomIn", run: (c) => c.onStepZoom(1),
+    labelKey: "stepsZoomIn", run: (c) => c.onStepZoom(1),
   },
   {
     // The numpad pair, hidden because the sheet already lists Ctrl+= and Ctrl+-, exactly as the
     // Mindmap's are hidden. A reflex learned on one view should not die on another.
     id: "stepsView.zoomInNumpad", section: "stepsView", chord: { code: "NumpadAdd", ctrl: true },
-    labelKey: "zoomIn", hidden: true, run: (c) => c.onStepZoom(1),
+    labelKey: "stepsZoomIn", hidden: true, run: (c) => c.onStepZoom(1),
   },
   {
     id: "stepsView.zoomOut", section: "stepsView", chord: { code: "Minus", ctrl: true },
-    labelKey: "zoomOut", run: (c) => c.onStepZoom(-1),
+    labelKey: "stepsZoomOut", run: (c) => c.onStepZoom(-1),
   },
   {
     id: "stepsView.zoomOutNumpad", section: "stepsView", chord: { code: "NumpadSubtract", ctrl: true },
-    labelKey: "zoomOut", hidden: true, run: (c) => c.onStepZoom(-1),
+    labelKey: "stepsZoomOut", hidden: true, run: (c) => c.onStepZoom(-1),
   },
 ];

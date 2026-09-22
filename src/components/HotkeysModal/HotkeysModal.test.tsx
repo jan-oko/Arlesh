@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, within } from "@testing-library/react";
 import HotkeysModal from "./HotkeysModal";
 
 vi.mock("react-i18next", () => ({
@@ -10,11 +10,13 @@ vi.mock("react-i18next", () => ({
 }));
 
 describe("HotkeysModal", () => {
-  it("renders a section heading for each of the three sections", () => {
+  it("renders a section heading for every surface", () => {
     render(<HotkeysModal onClose={vi.fn()} />);
     expect(screen.getByText("hotkeys:sectionGlobal")).toBeInTheDocument();
     expect(screen.getByText("hotkeys:sectionMindmap")).toBeInTheDocument();
     expect(screen.getByText("hotkeys:sectionListView")).toBeInTheDocument();
+    expect(screen.getByText("hotkeys:sectionPlanView")).toBeInTheDocument();
+    expect(screen.getByText("hotkeys:sectionStepsView")).toBeInTheDocument();
   });
 
   it("renders the Ctrl+Shift+/ chord that opens it, and the Mindmap's own Ctrl+Alt+/", () => {
@@ -29,10 +31,16 @@ describe("HotkeysModal", () => {
 
   it("merges every chord that triggers one action into a single row", () => {
     render(<HotkeysModal onClose={vi.fn()} />);
+    // Scoped to the Mindmap's own section: the Steps View binds Ctrl+= to its card size, so the
+    // chord is no longer unique on the sheet — what this pins is that one *action* is one row.
+    const heading = screen.getByText("hotkeys:sectionMindmap").closest("section");
+    expect(heading).not.toBeNull();
+    if (heading === null) return;
+    const mindmap = within(heading);
     // Both zoom-in chords live on one row rather than duplicating the label.
-    expect(screen.getByText("Ctrl+=")).toBeInTheDocument();
-    expect(screen.getByText("Ctrl+Numpad +")).toBeInTheDocument();
-    expect(screen.getAllByText("hotkeys:zoomIn")).toHaveLength(1);
+    expect(mindmap.getByText("Ctrl+=")).toBeInTheDocument();
+    expect(mindmap.getByText("Ctrl+Numpad +")).toBeInTheDocument();
+    expect(mindmap.getAllByText("hotkeys:zoomIn")).toHaveLength(1);
   });
 
   it("omits hidden bindings, so the arrow row carries only the plain arrows", () => {
