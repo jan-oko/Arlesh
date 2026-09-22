@@ -80,7 +80,7 @@ pub fn tray() -> anyhow::Result<Image<'static>> {
 ///
 /// [StatusNotifierItem]: https://www.freedesktop.org/wiki/Specifications/StatusNotifierItem/
 pub fn rgba_to_argb32(buffer: &mut [u8]) {
-    for pixel in buffer.chunks_exact_mut(4) {
+    for pixel in buffer.as_chunks_mut::<4>().0 {
         pixel.rotate_right(1);
     }
 }
