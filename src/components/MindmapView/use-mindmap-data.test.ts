@@ -1837,7 +1837,7 @@ describe("injectHabitInstances", () => {
       return buildTree(
         [{ id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false }],
         [{ id: 5, title: "Fitness", parent_type: "domain", parent_id: 1, status: "active", time_scope: null, on_scope_exit: null, tag_ids: [], position: 0, is_private: false }],
-        [{ id: 12, title: "Buy milk", parent_type: "goal", parent_id: 5, status: "todo", time_scope: null, plan: null, on_scope_exit: null, tag_ids: [], position: 0, is_private: false, archival: "live", agentic: null, delegate_to: null }],
+        [{ id: 12, title: "Buy milk", parent_type: "goal", parent_id: 5, status: "todo", time_scope: null, plan: null, on_scope_exit: null, tag_ids: [], position: 0, is_private: false, archival: "live", agentic: null, asynchronous: false, delegate_to: null }],
         [],
       );
     }
