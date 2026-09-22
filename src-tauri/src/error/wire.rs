@@ -105,6 +105,21 @@ impl WireError {
         }
     }
 
+    /// Builds an [`Internal`](WireErrorKind::Internal) [`WireError`] directly, bypassing
+    /// [`AppError`].
+    ///
+    /// For a failure at the command boundary that is nobody's request and no domain's business —
+    /// the windowing system refusing to open a window, say. It is deliberately separate from
+    /// [`WireError::invalid_request`]: telling the user their request was invalid when the request
+    /// was fine and the platform was not sends them looking in the wrong place.
+    pub fn internal(message: impl Into<String>) -> Self {
+        Self {
+            kind: WireErrorKind::Internal,
+            message: message.into(),
+            details: None,
+        }
+    }
+
     /// Builds a [`NeedsConfirmation`](WireErrorKind::NeedsConfirmation) [`WireError`] carrying the
     /// structured `details` the frontend needs to say what is at stake.
     ///
