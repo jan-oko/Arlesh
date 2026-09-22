@@ -7,6 +7,9 @@ import { CLIPBOARD_OP } from "@/stores/use-clipboard-store";
 vi.mock("@/api/tasks", () => ({
   updateTask: vi.fn().mockResolvedValue({ id: 1, status: "in_progress" }),
   TASK_STATUS: { TODO: "todo", IN_PROGRESS: "in_progress", DONE: "done" },
+  // Read through `cameOutOfBacklog`: starting a set-aside task clears its Backlog, and the row
+  // the backend sends back is what says whether it did.
+  TASK_ARCHIVAL: { LIVE: "live", BACKLOG: "backlog" },
   // Read through `storedAgenticState`, which onCreateSibling uses to seed the new sibling.
   TASK_AGENTIC: { INHERIT: "inherit", YES: "yes", NO: "no" },
 }));
@@ -137,6 +140,27 @@ describe("useNodeActions — onStatusClick", () => {
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("task-6"); });
     await vi.waitFor(() => expect(updateTask).toHaveBeenCalledWith(6, { status: "todo" }));
+  });
+
+  it("names the backlog the write cleared when a set-aside task is started", async () => {
+    // Starting something you had put down takes it out of the backlog — one write, one undo step.
+    // The toast comes from the row the backend sent back, never from predicting the rule here.
+    const backlogged = mkNode("task-13", "task", [], { status: "todo", backlogged: true });
+    const opts = makeOpts({ tree: mkNode("root", "domain", [mkNode("domain-3", "project", [backlogged])]) });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onStatusClick("task-13"); });
+    await vi.waitFor(() => expect(updateTask).toHaveBeenCalledWith(13, { status: "in_progress" }));
+    await vi.waitFor(() => expect(opts.showToast).toHaveBeenCalledWith({
+      nodeId: "task-13", message: "warnings:backlogClearedByStart",
+    }));
+  });
+
+  it("says nothing about the backlog when the task was never in it", async () => {
+    const opts = makeOpts();
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onStatusClick("task-5"); });
+    await vi.waitFor(() => expect(updateTask).toHaveBeenCalledWith(5, { status: "in_progress" }));
+    expect(opts.showToast).not.toHaveBeenCalled();
   });
 
   it("does not call updateTask for a non-task node", () => {

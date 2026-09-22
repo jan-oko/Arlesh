@@ -308,6 +308,35 @@ describe("TaskEditorModal — Backlog control", () => {
     // Both axes independent: finished, and still set aside.
     expect(onSave.mock.calls[0]?.[0]).toMatchObject({ status: "done", archival: "backlog" });
   });
+
+  it("turns the switch off in front of the user when the task is set In Progress", async () => {
+    // One pair the two axes cannot hold at once: you are not actively doing what you have put
+    // down. The backend does this to a bare status change; here the switch moves where it is seen.
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<TaskEditorModal {...defaultProps} node={mkNode({ backlogged: true })} onSave={onSave} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
+    expect(screen.getByRole("checkbox", { name: "backlogOn" })).toBeChecked();
+
+    fireEvent.click(screen.getByRole("button", { name: "status:task.in_progress" }));
+    expect(screen.getByRole("checkbox", { name: "backlogOff" })).not.toBeChecked();
+
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ status: "in_progress", archival: "live" });
+  });
+
+  it("still lets a task already In Progress be set aside", async () => {
+    // The rule is one-directional: a task under way may be put down, and keeps its status so it
+    // says where the work stood when it is picked back up.
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<TaskEditorModal {...defaultProps} node={mkNode({ status: "in_progress" })} onSave={onSave} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "backlogOff" }));
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ status: "in_progress", archival: "backlog" });
+  });
 });
 
 describe("TaskEditorModal — Asynchronous", () => {

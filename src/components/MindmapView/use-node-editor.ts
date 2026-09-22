@@ -36,6 +36,7 @@ import { addTagToCommitment, removeTagFromCommitment, updateCommitment } from "@
 import type { TimeScope } from "@/api/time-scope";
 import { findNode } from "@/utils/mindmap-tree";
 import { DOMAIN_SUBTYPE } from "@/api/domains";
+import { TASK_STATUS } from "@/utils/status-mapping";
 
 export interface EditorModalState {
   nodeId: string;
@@ -182,10 +183,14 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
         asynchronous: data.asynchronous,
         is_private: data.isPrivate,
       });
-      // Scheduling a set-aside task puts it back in play. The editor already showed the switch go
-      // off, but the save is where it becomes true, so it is named rather than left to be noticed.
-      if (node.backlogged === true && data.archival === TASK_ARCHIVAL.LIVE && data.plan !== null) {
-        showToast({ nodeId, message: t("backlogClearedByPlan") });
+      // Scheduling a set-aside task puts it back in play, and so does starting one. The editor
+      // already showed the switch go off, but the save is where it becomes true, so it is named
+      // rather than left to be noticed.
+      if (node.backlogged === true && data.archival === TASK_ARCHIVAL.LIVE) {
+        if (data.plan !== null) showToast({ nodeId, message: t("backlogClearedByPlan") });
+        else if (data.status === TASK_STATUS.IN_PROGRESS) {
+          showToast({ nodeId, message: t("backlogClearedByStart") });
+        }
       }
       await setBlockReasons("task", dbId, data.blockReasons);
       const tagsAdded = data.tagIds.filter((id) => !node.tagIds.includes(id));

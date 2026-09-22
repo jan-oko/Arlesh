@@ -11,6 +11,7 @@ import type { TaskAgentic } from "@/api/tasks";
 import { storedAgenticState } from "@/utils/agentic";
 import { updateGoal } from "@/api/goals";
 import { TASK_STATUS, GOAL_STATUS } from "@/utils/status-mapping";
+import { cameOutOfBacklog, nextTaskStatus } from "@/utils/task-status-cycle";
 import { CLIPBOARD_OP } from "@/stores/use-clipboard-store";
 import { withGesture } from "@/api/gesture";
 import { getErrorMessage } from "@/api/errors";
@@ -18,12 +19,6 @@ import { useOccurrenceCompletion } from "@/hooks/use-occurrence-completion";
 import type { OccurrencePrompt } from "@/hooks/use-occurrence-completion";
 
 const LOG_PREFIX = "[arlesh]";
-
-function nextTaskStatus(current: string): string {
-  if (current === TASK_STATUS.IN_PROGRESS) return TASK_STATUS.DONE;
-  if (current === TASK_STATUS.DONE) return TASK_STATUS.TODO;
-  return TASK_STATUS.IN_PROGRESS;
-}
 
 interface ClipboardEntry {
   operation: "cut" | "copy";
@@ -124,7 +119,14 @@ export function useNodeActions({
       if (node.kind !== "task") return;
       const dbId = parseInt(nodeId.split("-").pop() ?? "0", 10);
       void updateTask(dbId, { status: nextTaskStatus(node.status ?? TASK_STATUS.TODO) })
-        .then(() => reload())
+        .then(async (updated) => {
+          // Starting a set-aside task takes it out of the backlog, in the same write and so in the
+          // same undo step. The row that comes back says whether it did; it is never assumed.
+          if (cameOutOfBacklog(node, updated)) {
+            showToast({ nodeId, message: t("warnings:backlogClearedByStart") });
+          }
+          await reload();
+        })
         .catch((err: unknown) => {
           console.error(`${LOG_PREFIX} status cycle failed:`, err);
           showToast({ nodeId, message: t("warnings:statusChangeFailed", { message: getErrorMessage(err) }) });

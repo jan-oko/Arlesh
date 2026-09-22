@@ -69,6 +69,7 @@
   "backlogClearPlanAction": "Clear the plan and backlog it",
   "backlogFailed": "Backlog failed: {{message}}",
   "backlogClearedByPlan": "Taken out of the backlog — it is planned now.",
+  "backlogClearedByStart": "Taken out of the backlog — it is in progress now.",
   "agenticFailed": "Could not change the Agentic flag: {{message}}",
   "asynchronousFailed": "Could not change the Asynchronous flag: {{message}}",
   "verdictFailed": "Could not record the verdict: {{message}}",

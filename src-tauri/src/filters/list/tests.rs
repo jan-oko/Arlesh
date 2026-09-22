@@ -267,3 +267,30 @@ fn the_archived_pill_on_include_reaches_a_commitment_too() {
         ["commitment-1"]
     );
 }
+
+#[test]
+fn an_unopened_occurrence_above_the_band_empties_it_too() {
+    // `docs/spec/habits.md`: an unopened occurrence hides together with its own subtree, and the
+    // band answers that rule like every other surface — the walk is the task rows' own.
+    let mut unopened = NodeFacts::new("goal-occurrence", NodeKind::Goal);
+    unopened.is_habit_occurrence = true;
+    unopened.timing = Some(Timing::Pending);
+    let root = FactNode::with_children(
+        NodeFacts::new("root", NodeKind::Aspect),
+        vec![FactNode::with_children(
+            unopened,
+            vec![FactNode::leaf(commitment(
+                "commitment-1",
+                Verdict::Unresolved,
+                Timing::Active,
+            ))],
+        )],
+    );
+    // All is the one preset that shows the occurrence, so it is the one that keeps the commitment.
+    assert_eq!(
+        commitment_rows(&root, &BoardFilter::preset(Preset::All)),
+        ["commitment-1"]
+    );
+    assert!(commitment_rows(&root, &BoardFilter::preset(Preset::Plan)).is_empty());
+    assert!(commitment_rows(&root, &BoardFilter::preset(Preset::Do)).is_empty());
+}
