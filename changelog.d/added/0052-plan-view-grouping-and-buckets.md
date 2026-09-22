@@ -1,0 +1,7 @@
+- **The Plan View can group by path, and split what is planned into its subscopes.** Two new switches in the settings gear, both off until you turn them on, both shown only while the Plan View is up.
+
+  **Group by path** gives both panes the same headers the List View has: one line naming the chain — `Growth › CODE › ARLESH › Features` — above each run of work that lives in the same place, instead of nothing at all. The segments behave as they do in the List: click one to enter it, Ctrl-click to file it as an Antecedent pill.
+
+  **Split planned by subscope** turns the right-hand pane into one section per bucket — the weeks of a month, the days of a week, the parts of a day — so filling a month shows you every week and what is in it at once, rather than one scope at a time. Every bucket is always open; there is nothing to unfold. Weeks that poke outside the month are shown and labelled *partial* with their dates rather than quietly left out, empty buckets are drawn because an empty week is worth seeing when you are deciding what to put in it, and anything planned to the month itself — or across several of its weeks — is collected under its own heading at the top instead of disappearing. The left-hand pane is not split: work that is not planned yet is not in any bucket.
+
+  The keyboard is unchanged: `Down` walks from the last card of one bucket straight into the next, and headings are never landed on.
