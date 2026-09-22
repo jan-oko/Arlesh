@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { persistTab, useTabsStore } from "@/stores/use-tabs-store";
+import { newTabId, persistTab, useTabsStore } from "@/stores/use-tabs-store";
 import { forgetPersistedTabs, freshTabState, writePersistedTabs } from "@/stores/tab-persistence";
 import { closeWindow, openBoardWindow, focusBoardWindow } from "@/api/window";
 import { newWindowLabel } from "@/api/window-label";
@@ -64,7 +64,7 @@ export function useTabCommands(): TabCommands {
   // tab already exists and is being moved rather than made.
   const openWindow = useCallback(() => {
     const label = newWindowLabel();
-    const id = crypto.randomUUID();
+    const id = newTabId();
     writePersistedTabs(label, {
       activeTabId: id,
       tabs: [{ id, title: null, customTitle: null, state: startingState() }],

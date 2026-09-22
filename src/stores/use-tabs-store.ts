@@ -50,7 +50,14 @@ interface TabsStore {
   adoptTab: (tab: PersistedTab) => void;
 }
 
-function newTabId(): string {
+/**
+ * A fresh tab id.
+ *
+ * Exported because a tab can now be created **outside** this store: a new window's first tab is
+ * written to storage before that window exists to hold it. One function decides what a tab id
+ * looks like, so the two routes cannot drift into two answers.
+ */
+export function newTabId(): string {
   return crypto.randomUUID();
 }
 
