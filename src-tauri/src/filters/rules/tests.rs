@@ -35,8 +35,16 @@ fn matches(node: &NodeFacts, preset: Preset) -> bool {
 
 #[test]
 fn all_shows_every_kind() {
-    for node in [task("done"), goal("achieved"), commitment(Verdict::Kept, Timing::Lapsed)] {
-        assert!(matches(&node, Preset::All), "{:?} should show under All", node.kind);
+    for node in [
+        task("done"),
+        goal("achieved"),
+        commitment(Verdict::Kept, Timing::Lapsed),
+    ] {
+        assert!(
+            matches(&node, Preset::All),
+            "{:?} should show under All",
+            node.kind
+        );
     }
 }
 
@@ -67,7 +75,10 @@ fn plan_drops_an_item_a_resolution_archived_whatever_its_stored_status_says() {
 fn start_drops_a_lapsed_window_even_when_nothing_else_would() {
     let mut node = task("todo");
     node.timing = Some(Timing::Lapsed);
-    assert!(matches(&node, Preset::Plan), "Plan still shows an Overdue item");
+    assert!(
+        matches(&node, Preset::Plan),
+        "Plan still shows an Overdue item"
+    );
     assert!(!matches(&node, Preset::Start));
 }
 
@@ -108,7 +119,10 @@ fn a_structural_container_shows_alone_only_in_plan_and_only_while_active() {
     assert!(!matches(&active, Preset::Start));
     assert!(!matches(&active, Preset::Do));
     assert!(!matches(&project("achieved"), Preset::Plan));
-    assert!(!matches(&NodeFacts::new("domain-2", NodeKind::Tag), Preset::Plan));
+    assert!(!matches(
+        &NodeFacts::new("domain-2", NodeKind::Tag),
+        Preset::Plan
+    ));
 }
 
 #[test]
@@ -125,36 +139,72 @@ fn a_status_less_container_reads_its_nearest_status_bearing_ancestor() {
 fn a_commitment_answers_its_own_branch_of_the_rules() {
     let unresolved = commitment(Verdict::Unresolved, Timing::Active);
     for preset in [Preset::All, Preset::Plan, Preset::Start, Preset::Do] {
-        assert!(passes_commitment_preset(&unresolved, &BoardFilter::preset(preset)));
+        assert!(passes_commitment_preset(
+            &unresolved,
+            &BoardFilter::preset(preset)
+        ));
     }
-    assert!(!passes_commitment_preset(&unresolved, &BoardFilter::preset(Preset::Backlog)));
+    assert!(!passes_commitment_preset(
+        &unresolved,
+        &BoardFilter::preset(Preset::Backlog)
+    ));
 
     let kept = commitment(Verdict::Kept, Timing::Active);
-    assert!(passes_commitment_preset(&kept, &BoardFilter::preset(Preset::All)));
-    assert!(!passes_commitment_preset(&kept, &BoardFilter::preset(Preset::Plan)));
+    assert!(passes_commitment_preset(
+        &kept,
+        &BoardFilter::preset(Preset::All)
+    ));
+    assert!(!passes_commitment_preset(
+        &kept,
+        &BoardFilter::preset(Preset::Plan)
+    ));
 }
 
 #[test]
 fn plan_alone_shows_a_broken_commitment_whose_window_is_still_open() {
     let open = commitment(Verdict::Broken, Timing::Active);
     let closed = commitment(Verdict::Broken, Timing::Lapsed);
-    assert!(passes_commitment_preset(&open, &BoardFilter::preset(Preset::Plan)));
-    assert!(!passes_commitment_preset(&closed, &BoardFilter::preset(Preset::Plan)));
+    assert!(passes_commitment_preset(
+        &open,
+        &BoardFilter::preset(Preset::Plan)
+    ));
+    assert!(!passes_commitment_preset(
+        &closed,
+        &BoardFilter::preset(Preset::Plan)
+    ));
     // The carve-out mirrors no Task rule, and no other preset repeats it.
-    assert!(!passes_commitment_preset(&open, &BoardFilter::preset(Preset::Start)));
-    assert!(!passes_commitment_preset(&open, &BoardFilter::preset(Preset::Do)));
+    assert!(!passes_commitment_preset(
+        &open,
+        &BoardFilter::preset(Preset::Start)
+    ));
+    assert!(!passes_commitment_preset(
+        &open,
+        &BoardFilter::preset(Preset::Do)
+    ));
 }
 
 #[test]
 fn a_frozen_or_archived_project_shelves_its_subtree_in_plan_and_start_only() {
     for status in ["frozen", "archived"] {
         let node = project(status);
-        assert!(is_shelved_project(&node, &BoardFilter::preset(Preset::Plan)), "{status}");
-        assert!(is_shelved_project(&node, &BoardFilter::preset(Preset::Start)), "{status}");
-        assert!(!is_shelved_project(&node, &BoardFilter::preset(Preset::All)), "{status}");
+        assert!(
+            is_shelved_project(&node, &BoardFilter::preset(Preset::Plan)),
+            "{status}"
+        );
+        assert!(
+            is_shelved_project(&node, &BoardFilter::preset(Preset::Start)),
+            "{status}"
+        );
+        assert!(
+            !is_shelved_project(&node, &BoardFilter::preset(Preset::All)),
+            "{status}"
+        );
     }
     // Achieved keeps the ordinary ancestor-keeping.
-    assert!(!is_shelved_project(&project("achieved"), &BoardFilter::preset(Preset::Plan)));
+    assert!(!is_shelved_project(
+        &project("achieved"),
+        &BoardFilter::preset(Preset::Plan)
+    ));
 }
 
 #[test]
@@ -172,9 +222,15 @@ fn a_backlogged_task_answers_the_preset_and_then_the_pill() {
     let mut node = task("todo");
     node.backlogged = true;
     assert!(is_hidden_backlog(&node, &BoardFilter::preset(Preset::Plan)));
-    assert!(is_hidden_backlog(&node, &BoardFilter::preset(Preset::Start)));
+    assert!(is_hidden_backlog(
+        &node,
+        &BoardFilter::preset(Preset::Start)
+    ));
     assert!(!is_hidden_backlog(&node, &BoardFilter::preset(Preset::All)));
-    assert!(!is_hidden_backlog(&node, &BoardFilter::preset(Preset::Backlog)));
+    assert!(!is_hidden_backlog(
+        &node,
+        &BoardFilter::preset(Preset::Backlog)
+    ));
 
     let include = BoardFilter {
         backlog: OverrideMode::Include,
@@ -193,13 +249,22 @@ fn an_unopened_habit_occurrence_shows_under_all_and_nowhere_else() {
     let mut node = task("todo");
     node.is_habit_occurrence = true;
     node.timing = Some(Timing::Pending);
-    assert!(!is_unopened_occurrence(&node, &BoardFilter::preset(Preset::All)));
-    assert!(is_unopened_occurrence(&node, &BoardFilter::preset(Preset::Plan)));
+    assert!(!is_unopened_occurrence(
+        &node,
+        &BoardFilter::preset(Preset::All)
+    ));
+    assert!(is_unopened_occurrence(
+        &node,
+        &BoardFilter::preset(Preset::Plan)
+    ));
 
     // A hand-made task scheduled for next week is Pending too, and still plans.
     let mut ordinary = task("todo");
     ordinary.timing = Some(Timing::Pending);
-    assert!(!is_unopened_occurrence(&ordinary, &BoardFilter::preset(Preset::Plan)));
+    assert!(!is_unopened_occurrence(
+        &ordinary,
+        &BoardFilter::preset(Preset::Plan)
+    ));
 }
 
 #[test]
@@ -244,8 +309,14 @@ fn a_habit_flow_drops_out_of_start_and_every_flow_drops_out_of_do() {
     habit.is_habit_flow = true;
     let plain = NodeFacts::new("flow-2", NodeKind::Flow);
 
-    assert!(type_hard_hidden(&habit, &BoardFilter::preset(Preset::Start)));
-    assert!(!type_hard_hidden(&plain, &BoardFilter::preset(Preset::Start)));
+    assert!(type_hard_hidden(
+        &habit,
+        &BoardFilter::preset(Preset::Start)
+    ));
+    assert!(!type_hard_hidden(
+        &plain,
+        &BoardFilter::preset(Preset::Start)
+    ));
     assert!(type_hard_hidden(&plain, &BoardFilter::preset(Preset::Do)));
     assert!(type_hard_hidden(
         &plain,
@@ -288,7 +359,10 @@ fn tags_combine_as_any_and_all_and_not_exclude() {
         &tagged(&[7]),
         &with(vec![(7, TagMode::All), (8, TagMode::All)])
     ));
-    assert!(!passes_tags(&tagged(&[7]), &with(vec![(7, TagMode::Exclude)])));
+    assert!(!passes_tags(
+        &tagged(&[7]),
+        &with(vec![(7, TagMode::Exclude)])
+    ));
 
     // A kind that carries no tags is not judged, rather than read as having failed.
     assert!(passes_tags(

@@ -87,7 +87,11 @@ async fn week_scope(pool: &sqlx::SqlitePool, date: NaiveDate) -> i64 {
 
 /// A single-scope Time Scope, the form both fixtures and assertions use here.
 fn at(scope_id: i64) -> TimeScope {
-    TimeScope { start_id: scope_id, end_id: scope_id, duration: None }
+    TimeScope {
+        start_id: scope_id,
+        end_id: scope_id,
+        duration: None,
+    }
 }
 
 /// Titles of every row in a table, so a clone can be found by what it says rather than by id.
@@ -154,7 +158,9 @@ async fn duplicating_a_project_clones_its_whole_subtree_and_leaves_the_original_
     db.commit().await.unwrap();
 
     let app = helpers::command_host(&pool);
-    let copy = duplicate_domain(app.state(), project, aspect, 500).await.unwrap();
+    let copy = duplicate_domain(app.state(), project, aspect, 500)
+        .await
+        .unwrap();
 
     // The copy is its own row, under the paste target, at the position the paste asked for, and
     // titled exactly as the original — there is no " (copy)" suffix.
@@ -166,9 +172,18 @@ async fn duplicating_a_project_clones_its_whole_subtree_and_leaves_the_original_
     // Every level below came with it, once each.
     assert_eq!(count_titled(&pool, "domains", "title", "Rocket").await, 2);
     assert_eq!(count_titled(&pool, "domains", "title", "Engines").await, 2);
-    assert_eq!(count_titled(&pool, "goals", "title", "Reach orbit").await, 2);
-    assert_eq!(count_titled(&pool, "tasks", "title", "Cast the bell").await, 2);
-    assert_eq!(count_titled(&pool, "infos", "body", "Nozzle notes").await, 2);
+    assert_eq!(
+        count_titled(&pool, "goals", "title", "Reach orbit").await,
+        2
+    );
+    assert_eq!(
+        count_titled(&pool, "tasks", "title", "Cast the bell").await,
+        2
+    );
+    assert_eq!(
+        count_titled(&pool, "infos", "body", "Nozzle notes").await,
+        2
+    );
 
     // …and the copy is a tree, not a flat pile: each clone hangs off the clone above it.
     let engines_copy: i64 =
@@ -177,13 +192,12 @@ async fn duplicating_a_project_clones_its_whole_subtree_and_leaves_the_original_
             .fetch_one(&pool)
             .await
             .unwrap();
-    let goal_copy: i64 = sqlx::query_scalar(
-        "SELECT id FROM goals WHERE parent_type = 'project' AND parent_id = ?",
-    )
-    .bind(engines_copy)
-    .fetch_one(&pool)
-    .await
-    .unwrap();
+    let goal_copy: i64 =
+        sqlx::query_scalar("SELECT id FROM goals WHERE parent_type = 'project' AND parent_id = ?")
+            .bind(engines_copy)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     let task_copy: i64 =
         sqlx::query_scalar("SELECT id FROM tasks WHERE parent_type = 'goal' AND parent_id = ?")
             .bind(goal_copy)
@@ -210,12 +224,13 @@ async fn duplicating_a_project_clones_its_whole_subtree_and_leaves_the_original_
         .await
         .unwrap();
     assert_eq!(original.parent_id, Some(aspect));
-    let still_under_engines: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM goals WHERE parent_id = ? AND parent_type = 'project'")
-            .bind(engines)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let still_under_engines: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM goals WHERE parent_id = ? AND parent_type = 'project'",
+    )
+    .bind(engines)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
     assert_eq!(still_under_engines, 1, "the original goal did not move");
 }
 
@@ -240,7 +255,9 @@ async fn an_independent_copy_does_not_change_when_the_original_is_edited() {
     db.commit().await.unwrap();
 
     let app = helpers::command_host(&pool);
-    let copy = duplicate_task(app.state(), task.id, "project".into(), project, 10).await.unwrap();
+    let copy = duplicate_task(app.state(), task.id, "project".into(), project, 10)
+        .await
+        .unwrap();
 
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
     update_task(
@@ -284,7 +301,11 @@ async fn a_duplicated_task_carries_every_field_the_original_held() {
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
     let person = db
         .people()
-        .create(CreatePersonRequest { name: "Ada".into(), aliases: None, linked_note: None })
+        .create(CreatePersonRequest {
+            name: "Ada".into(),
+            aliases: None,
+            linked_note: None,
+        })
         .await
         .unwrap()
         .id;
@@ -321,11 +342,16 @@ async fn a_duplicated_task_carries_every_field_the_original_held() {
         .set("task", task.id, &["waiting on the foundry".to_string()])
         .await
         .unwrap();
-    db.tasks().set_beads_id(TaskId(task.id), Some("Arlesh-je5".into())).await.unwrap();
+    db.tasks()
+        .set_beads_id(TaskId(task.id), Some("Arlesh-je5".into()))
+        .await
+        .unwrap();
     db.commit().await.unwrap();
 
     let app = helpers::command_host(&pool);
-    let copy = duplicate_task(app.state(), task.id, "project".into(), target, 77).await.unwrap();
+    let copy = duplicate_task(app.state(), task.id, "project".into(), target, 77)
+        .await
+        .unwrap();
 
     assert_ne!(copy.id, task.id);
     assert_eq!(copy.title, "Cast the bell");
@@ -346,7 +372,11 @@ async fn a_duplicated_task_carries_every_field_the_original_held() {
         "the Asynchronous flag carries: the copy is the same action, so it starts the same wait"
     );
     assert!(copy.is_private);
-    assert_eq!(copy.tag_ids, vec![tag], "the copy keeps the original's tags, not copies of them");
+    assert_eq!(
+        copy.tag_ids,
+        vec![tag],
+        "the copy keeps the original's tags, not copies of them"
+    );
     assert_eq!(
         copy.beads_id.as_deref(),
         Some("Arlesh-je5"),
@@ -410,8 +440,15 @@ async fn a_duplicated_task_is_set_aside_if_the_original_was() {
         .get(TaskId(cloned))
         .await
         .unwrap();
-    assert_eq!(copy.archival, TaskArchival::Backlog, "the copy is set aside, as the original was");
-    assert!(copy.plan.is_none(), "and still unplanned, so the invariant holds");
+    assert_eq!(
+        copy.archival,
+        TaskArchival::Backlog,
+        "the copy is set aside, as the original was"
+    );
+    assert!(
+        copy.plan.is_none(),
+        "and still unplanned, so the invariant holds"
+    );
 }
 
 #[tokio::test]
@@ -439,17 +476,28 @@ async fn a_duplicated_goal_carries_status_scope_tags_reasons_and_its_issue_link(
     update_goal(
         &mut db,
         GoalId(goal.id),
-        UpdateGoalRequest { is_private: Some(true), ..Default::default() },
+        UpdateGoalRequest {
+            is_private: Some(true),
+            ..Default::default()
+        },
     )
     .await
     .unwrap();
     db.goals().add_tag(GoalId(goal.id), tag).await.unwrap();
-    db.block_reasons().set("goal", goal.id, &["no launch window".to_string()]).await.unwrap();
-    db.goals().set_beads_id(GoalId(goal.id), Some("Arlesh-a4u".into())).await.unwrap();
+    db.block_reasons()
+        .set("goal", goal.id, &["no launch window".to_string()])
+        .await
+        .unwrap();
+    db.goals()
+        .set_beads_id(GoalId(goal.id), Some("Arlesh-a4u".into()))
+        .await
+        .unwrap();
     db.commit().await.unwrap();
 
     let app = helpers::command_host(&pool);
-    let copy = duplicate_goal(app.state(), goal.id, "project".into(), project, 9).await.unwrap();
+    let copy = duplicate_goal(app.state(), goal.id, "project".into(), project, 9)
+        .await
+        .unwrap();
 
     assert_eq!(copy.title, "Reach orbit");
     assert_eq!(copy.status, "frozen");
@@ -501,12 +549,17 @@ async fn a_duplicated_project_carries_its_description_status_directory_and_issue
         .unwrap();
 
     let app = helpers::command_host(&pool);
-    let copy = duplicate_domain(app.state(), project.id, aspect, 3).await.unwrap();
+    let copy = duplicate_domain(app.state(), project.id, aspect, 3)
+        .await
+        .unwrap();
 
     assert_eq!(copy.subtype, "project");
     assert_eq!(copy.description.as_deref(), Some("Build a rocket"));
     assert_eq!(copy.status.as_deref(), Some("frozen"));
-    assert_eq!(copy.knowledge_base_directory.as_deref(), Some("Vault/Rocket"));
+    assert_eq!(
+        copy.knowledge_base_directory.as_deref(),
+        Some("Vault/Rocket")
+    );
     assert_eq!(copy.beads_id.as_deref(), Some("Arlesh-n66"));
 }
 
@@ -531,7 +584,10 @@ async fn a_duplicated_info_carries_its_details_and_privacy() {
     db.infos()
         .update(
             InfoId(info.id),
-            UpdateInfoRequest { is_private: Some(true), ..Default::default() },
+            UpdateInfoRequest {
+                is_private: Some(true),
+                ..Default::default()
+            },
         )
         .await
         .unwrap();
@@ -548,18 +604,21 @@ async fn a_duplicated_info_carries_its_details_and_privacy() {
     db.commit().await.unwrap();
 
     let app = helpers::command_host(&pool);
-    let copy = duplicate_info(app.state(), info.id, "project".into(), project, 4).await.unwrap();
+    let copy = duplicate_info(app.state(), info.id, "project".into(), project, 4)
+        .await
+        .unwrap();
 
     assert_eq!(copy.body, "Nozzle notes");
     assert_eq!(copy.details.as_deref(), Some("Bell ratio 40:1"));
     assert_eq!(copy.position, 4);
     assert!(copy.is_private);
-    let nested: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM infos WHERE parent_type = 'info' AND parent_id = ?")
-            .bind(copy.id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let nested: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM infos WHERE parent_type = 'info' AND parent_id = ?",
+    )
+    .bind(copy.id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
     assert_eq!(nested, 1, "an info's own children come with it");
 }
 
@@ -619,12 +678,22 @@ async fn a_copied_task_waits_on_the_same_things_the_original_waits_on() {
     )
     .await
     .unwrap();
-    add_task_dependency(&mut db, TaskId(inner_a.id), Dependency::Task { id: inner_b.id })
-        .await
-        .unwrap();
-    add_task_dependency(&mut db, TaskId(inner_a.id), Dependency::Goal { id: outside_goal.id })
-        .await
-        .unwrap();
+    add_task_dependency(
+        &mut db,
+        TaskId(inner_a.id),
+        Dependency::Task { id: inner_b.id },
+    )
+    .await
+    .unwrap();
+    add_task_dependency(
+        &mut db,
+        TaskId(inner_a.id),
+        Dependency::Goal {
+            id: outside_goal.id,
+        },
+    )
+    .await
+    .unwrap();
     db.commit().await.unwrap();
 
     let app = helpers::command_host(&pool);
@@ -640,7 +709,11 @@ async fn a_copied_task_waits_on_the_same_things_the_original_waits_on() {
     .await
     .unwrap();
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
-    let deps = db.tasks().list_dependencies(TaskId(copied_a)).await.unwrap();
+    let deps = db
+        .tasks()
+        .list_dependencies(TaskId(copied_a))
+        .await
+        .unwrap();
     drop(db);
 
     let mut targets: Vec<(String, i64)> = deps
@@ -675,8 +748,15 @@ async fn duplicating_an_aspect_is_refused() {
     let app = helpers::command_host(&pool);
     let refused = duplicate_domain(app.state(), aspect, aspect, 0).await;
 
-    assert!(refused.is_err(), "an aspect is a fixed, seeded root — there is no second Growth");
-    assert_eq!(titles(&pool, "domains", "title").await, before, "and nothing was written");
+    assert!(
+        refused.is_err(),
+        "an aspect is a fixed, seeded root — there is no second Growth"
+    );
+    assert_eq!(
+        titles(&pool, "domains", "title").await,
+        before,
+        "and nothing was written"
+    );
 }
 
 /// A duplicate that fails on a *descendant* leaves nothing behind — not even the root it had
@@ -722,7 +802,10 @@ async fn a_duplicate_that_fails_part_way_leaves_the_tree_untouched() {
     update_goal(
         &mut db,
         GoalId(goal.id),
-        UpdateGoalRequest { time_scope: Some(Some(at(august))), ..Default::default() },
+        UpdateGoalRequest {
+            time_scope: Some(Some(at(august))),
+            ..Default::default()
+        },
     )
     .await
     .unwrap();
@@ -732,12 +815,25 @@ async fn a_duplicate_that_fails_part_way_leaves_the_tree_untouched() {
     // already landed inside the transaction when the task clone is refused. Without this the
     // command assertion below would hold vacuously, for a duplicate that never wrote anything.
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-    let refused =
-        duplicate_subtree(&mut db, DuplicableKind::Goal, goal.id, "project", project, 30).await;
-    assert!(refused.is_err(), "the descendant's window escapes the cloned goal's");
+    let refused = duplicate_subtree(
+        &mut db,
+        DuplicableKind::Goal,
+        goal.id,
+        "project",
+        project,
+        30,
+    )
+    .await;
+    assert!(
+        refused.is_err(),
+        "the descendant's window escapes the cloned goal's"
+    );
     let inside = db.goals().list().await.unwrap();
     let clones_inside = inside.iter().filter(|g| g.title == "Reach orbit").count();
-    assert_eq!(clones_inside, 2, "the goal clone landed before the task clone was refused");
+    assert_eq!(
+        clones_inside, 2,
+        "the goal clone landed before the task clone was refused"
+    );
     drop(db);
 
     // Then, through the command, that the caller sees the refusal and the tree is as it was.
@@ -750,5 +846,8 @@ async fn a_duplicate_that_fails_part_way_leaves_the_tree_untouched() {
         1,
         "the goal clone that had already landed was rolled back with the rest"
     );
-    assert_eq!(count_titled(&pool, "tasks", "title", "Cast the bell").await, 1);
+    assert_eq!(
+        count_titled(&pool, "tasks", "title", "Cast the bell").await,
+        1
+    );
 }

@@ -7,7 +7,7 @@ use crate::{
     domains::model::Domain,
     flows::model::{
         Flow, FlowDependency, FlowGoal, FlowItemCycle, FlowTask, HabitInstanceChild,
-        HabitIteration, HabitItemStatus, TargetRef,
+        HabitItemStatus, HabitIteration, TargetRef,
     },
     infos::model::Info,
     tasks::{

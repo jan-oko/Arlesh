@@ -27,9 +27,9 @@
 //! See `docs/superpowers/specs/2026-09-16-mcp-server-design.md`.
 
 mod beads;
-pub mod paging;
 mod flows;
 mod kb;
+pub mod paging;
 pub mod params;
 mod result;
 mod scopes;

@@ -4,7 +4,9 @@ use arlesh_lib::{
     database::session::SessionFactory,
     knowledge_base::{
         error::KnowledgeBaseError,
-        model::{CreateEventRequest, CreatePersonRequest, CreateThreadRequest, UpdatePersonRequest},
+        model::{
+            CreateEventRequest, CreatePersonRequest, CreateThreadRequest, UpdatePersonRequest,
+        },
     },
     tasks::{create_task, model::CreateTaskRequest, update_task},
 };
@@ -150,7 +152,10 @@ async fn person_linked_to_task_via_delegation() {
 
     let undelegated = db.tasks().get(task.id.into()).await.unwrap();
     db.commit().await.unwrap();
-    assert_eq!(undelegated.delegate_to, None, "clearing the delegate must remove it");
+    assert_eq!(
+        undelegated.delegate_to, None,
+        "clearing the delegate must remove it"
+    );
 }
 
 #[tokio::test]
@@ -161,12 +166,20 @@ async fn list_people() {
 
     let alice = db
         .people()
-        .create(CreatePersonRequest { name: "Alice".into(), aliases: None, linked_note: None })
+        .create(CreatePersonRequest {
+            name: "Alice".into(),
+            aliases: None,
+            linked_note: None,
+        })
         .await
         .unwrap();
     let bob = db
         .people()
-        .create(CreatePersonRequest { name: "Bob".into(), aliases: None, linked_note: None })
+        .create(CreatePersonRequest {
+            name: "Bob".into(),
+            aliases: None,
+            linked_note: None,
+        })
         .await
         .unwrap();
 
@@ -183,7 +196,11 @@ async fn delete_person() {
 
     let person = db
         .people()
-        .create(CreatePersonRequest { name: "Doomed".into(), aliases: None, linked_note: None })
+        .create(CreatePersonRequest {
+            name: "Doomed".into(),
+            aliases: None,
+            linked_note: None,
+        })
         .await
         .unwrap();
 
@@ -289,12 +306,18 @@ async fn create_and_list_threads() {
 
     let t1 = db
         .threads()
-        .create(CreateThreadRequest { title: "Alpha Thread".into(), linked_note: None })
+        .create(CreateThreadRequest {
+            title: "Alpha Thread".into(),
+            linked_note: None,
+        })
         .await
         .unwrap();
     let t2 = db
         .threads()
-        .create(CreateThreadRequest { title: "Beta Thread".into(), linked_note: None })
+        .create(CreateThreadRequest {
+            title: "Beta Thread".into(),
+            linked_note: None,
+        })
         .await
         .unwrap();
 
@@ -313,7 +336,10 @@ async fn delete_thread() {
 
     let thread = db
         .threads()
-        .create(CreateThreadRequest { title: "Doomed Thread".into(), linked_note: None })
+        .create(CreateThreadRequest {
+            title: "Doomed Thread".into(),
+            linked_note: None,
+        })
         .await
         .unwrap();
 
@@ -344,7 +370,11 @@ async fn update_person_linked_note() {
 
     let person = db
         .people()
-        .create(CreatePersonRequest { name: "Dana".into(), aliases: None, linked_note: None })
+        .create(CreatePersonRequest {
+            name: "Dana".into(),
+            aliases: None,
+            linked_note: None,
+        })
         .await
         .unwrap();
 

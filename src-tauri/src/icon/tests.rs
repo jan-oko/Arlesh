@@ -20,7 +20,10 @@ fn the_app_icon_is_in_colour_rather_than_a_silhouette() {
         .iter()
         .any(|pixel| pixel[3] > 0 && (pixel[0] != pixel[1] || pixel[1] != pixel[2]));
 
-    assert!(coloured, "the app icon should be the logo, in its own colours");
+    assert!(
+        coloured,
+        "the app icon should be the logo, in its own colours"
+    );
 }
 
 #[test]
@@ -99,7 +102,6 @@ fn the_tray_mark_keeps_clear_air_between_its_bands_at_the_size_it_is_drawn() {
 
     assert_eq!(runs, 3, "the three bands must not run into each other");
 }
-
 
 #[test]
 fn rgba_becomes_argb_by_moving_alpha_to_the_front_of_each_pixel() {

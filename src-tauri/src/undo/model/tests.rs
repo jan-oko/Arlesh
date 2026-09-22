@@ -58,7 +58,10 @@ fn a_row_image_carries_every_column_including_the_null_ones() {
 
     assert_eq!(image.len(), 3);
     assert!(!image.is_empty());
-    assert!(image.has_column("delegate_to"), "a NULL column is present, not omitted");
+    assert!(
+        image.has_column("delegate_to"),
+        "a NULL column is present, not omitted"
+    );
     assert_eq!(
         image.columns().map(|(name, _)| name).collect::<Vec<_>>(),
         ["delegate_to", "id", "title"]

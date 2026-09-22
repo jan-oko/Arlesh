@@ -33,7 +33,10 @@ fn a_match_deep_in_a_branch_keeps_every_ancestor_that_reaches_it() {
 
 #[test]
 fn a_branch_with_nothing_matching_in_it_drops_out_entirely() {
-    let root = domain("domain-1", vec![domain("domain-2", vec![task("task-1", "todo")])]);
+    let root = domain(
+        "domain-1",
+        vec![domain("domain-2", vec![task("task-1", "todo")])],
+    );
     assert!(prune(&root, &BoardFilter::preset(Preset::Do)).is_none());
 }
 
@@ -56,7 +59,10 @@ fn an_info_note_rides_along_but_never_keeps_its_parent() {
             vec![node("info-1", NodeKind::Info, vec![])],
         )],
     );
-    assert_eq!(ids(&prune_tree(&root, &BoardFilter::preset(Preset::Plan))), ["root"]);
+    assert_eq!(
+        ids(&prune_tree(&root, &BoardFilter::preset(Preset::Plan))),
+        ["root"]
+    );
 }
 
 #[test]
@@ -66,9 +72,15 @@ fn a_hard_hidden_node_takes_its_whole_subtree_with_it() {
     blocked.is_blocked = true;
     let root = domain(
         "root",
-        vec![FactNode::with_children(blocked, vec![task("task-2", "todo")])],
+        vec![FactNode::with_children(
+            blocked,
+            vec![task("task-2", "todo")],
+        )],
     );
-    assert_eq!(ids(&prune_tree(&root, &BoardFilter::preset(Preset::Start))), ["root"]);
+    assert_eq!(
+        ids(&prune_tree(&root, &BoardFilter::preset(Preset::Start))),
+        ["root"]
+    );
     assert_eq!(
         ids(&prune_tree(&root, &BoardFilter::preset(Preset::Plan))),
         ["root", "task-1", "task-2"]
@@ -82,7 +94,10 @@ fn backlog_propagates_down_the_chain_but_a_container_status_does_not() {
     set_aside.backlogged = true;
     let root = domain(
         "root",
-        vec![FactNode::with_children(set_aside, vec![task("task-2", "todo")])],
+        vec![FactNode::with_children(
+            set_aside,
+            vec![task("task-2", "todo")],
+        )],
     );
     assert_eq!(
         ids(&prune_tree(&root, &BoardFilter::preset(Preset::Backlog))),
@@ -121,7 +136,10 @@ fn the_archived_pill_on_exclude_hides_a_subtree_that_all_would_otherwise_keep() 
     archived.archived = true;
     let root = domain(
         "root",
-        vec![FactNode::with_children(archived, vec![task("task-1", "done")])],
+        vec![FactNode::with_children(
+            archived,
+            vec![task("task-1", "done")],
+        )],
     );
     let filter = BoardFilter {
         archived: OverrideMode::Exclude,

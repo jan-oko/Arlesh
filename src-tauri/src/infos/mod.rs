@@ -123,7 +123,11 @@ impl<'session> InfoOperator<'session> {
     /// # }
     /// ```
     #[tracing::instrument(skip(self))]
-    pub async fn update(&mut self, id: InfoId, req: UpdateInfoRequest) -> Result<Info, sqlx::Error> {
+    pub async fn update(
+        &mut self,
+        id: InfoId,
+        req: UpdateInfoRequest,
+    ) -> Result<Info, sqlx::Error> {
         if let Some(body) = &req.body {
             sqlx::query("UPDATE infos SET body = ?, updated_at = datetime('now') WHERE id = ?")
                 .bind(body)
@@ -146,11 +150,13 @@ impl<'session> InfoOperator<'session> {
                 .await?;
         }
         if let Some(is_private) = req.is_private {
-            sqlx::query("UPDATE infos SET is_private = ?, updated_at = datetime('now') WHERE id = ?")
-                .bind(is_private)
-                .bind(id.0)
-                .execute(&mut *self.connection)
-                .await?;
+            sqlx::query(
+                "UPDATE infos SET is_private = ?, updated_at = datetime('now') WHERE id = ?",
+            )
+            .bind(is_private)
+            .bind(id.0)
+            .execute(&mut *self.connection)
+            .await?;
         }
         if let (Some(pt), Some(pi)) = (req.parent_type, req.parent_id) {
             sqlx::query(

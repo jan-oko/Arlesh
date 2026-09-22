@@ -7,8 +7,15 @@ fn stored() -> Commitment {
         parent_type: "project".to_string(),
         parent_id: 7,
         verdict: Verdict::Unresolved,
-        time_scope: Some(TimeScope { start_id: 10, end_id: 10, duration: None }),
-        verdict_window: Some(DurationSpec { n: 2, kind: "day".to_string() }),
+        time_scope: Some(TimeScope {
+            start_id: 10,
+            end_id: 10,
+            duration: None,
+        }),
+        verdict_window: Some(DurationSpec {
+            n: 2,
+            kind: "day".to_string(),
+        }),
         tag_ids: vec![3],
         position: 100,
         is_private: false,
@@ -35,7 +42,10 @@ fn recording_a_verdict_changes_nothing_else() {
     for verdict in [Verdict::Kept, Verdict::Broken] {
         let write = CommitmentWrite::merge(
             stored(),
-            UpdateCommitmentRequest { verdict: Some(verdict), ..Default::default() },
+            UpdateCommitmentRequest {
+                verdict: Some(verdict),
+                ..Default::default()
+            },
         );
         assert_eq!(write.verdict, verdict);
         assert_eq!(write.time_scope, stored().time_scope);
@@ -47,10 +57,16 @@ fn recording_a_verdict_changes_nothing_else() {
 fn a_verdict_can_be_taken_back_to_unresolved() {
     // A misclick has to be recoverable, and the way back is an ordinary write of the value
     // that means "you have not said" — not a separate clearing operation.
-    let kept = Commitment { verdict: Verdict::Kept, ..stored() };
+    let kept = Commitment {
+        verdict: Verdict::Kept,
+        ..stored()
+    };
     let write = CommitmentWrite::merge(
         kept,
-        UpdateCommitmentRequest { verdict: Some(Verdict::Unresolved), ..Default::default() },
+        UpdateCommitmentRequest {
+            verdict: Some(Verdict::Unresolved),
+            ..Default::default()
+        },
     );
     assert_eq!(write.verdict, Verdict::Unresolved);
 }
@@ -59,7 +75,10 @@ fn a_verdict_can_be_taken_back_to_unresolved() {
 fn clearing_the_time_scope_clears_it_rather_than_keeping_the_stored_one() {
     let write = CommitmentWrite::merge(
         stored(),
-        UpdateCommitmentRequest { time_scope: Some(None), ..Default::default() },
+        UpdateCommitmentRequest {
+            time_scope: Some(None),
+            ..Default::default()
+        },
     );
     assert_eq!(write.time_scope, None);
 }
@@ -70,14 +89,20 @@ fn clearing_the_verdict_window_returns_it_to_inheriting() {
     // whatever the nearest ancestor Commitment says.
     let write = CommitmentWrite::merge(
         stored(),
-        UpdateCommitmentRequest { verdict_window: Some(None), ..Default::default() },
+        UpdateCommitmentRequest {
+            verdict_window: Some(None),
+            ..Default::default()
+        },
     );
     assert_eq!(write.verdict_window, None);
 }
 
 #[test]
 fn setting_a_verdict_window_replaces_the_stored_one() {
-    let week = DurationSpec { n: 1, kind: "week".to_string() };
+    let week = DurationSpec {
+        n: 1,
+        kind: "week".to_string(),
+    };
     let write = CommitmentWrite::merge(
         stored(),
         UpdateCommitmentRequest {
@@ -92,9 +117,15 @@ fn setting_a_verdict_window_replaces_the_stored_one() {
 fn a_reparent_needs_both_halves_and_becomes_the_validated_parent() {
     let half = CommitmentWrite::merge(
         stored(),
-        UpdateCommitmentRequest { parent_type: Some("commitment".into()), ..Default::default() },
+        UpdateCommitmentRequest {
+            parent_type: Some("commitment".into()),
+            ..Default::default()
+        },
     );
-    assert!(half.reparent.is_none(), "a parent type without an id is not a move");
+    assert!(
+        half.reparent.is_none(),
+        "a parent type without an id is not a move"
+    );
     assert_eq!(half.parent_type, "project");
 
     let full = CommitmentWrite::merge(
@@ -112,7 +143,10 @@ fn a_reparent_needs_both_halves_and_becomes_the_validated_parent() {
 
 #[test]
 fn a_verdict_window_travels_to_the_database_as_a_pair_or_not_at_all() {
-    let (n, kind) = verdict_window_columns(&Some(DurationSpec { n: 3, kind: "week".into() }));
+    let (n, kind) = verdict_window_columns(&Some(DurationSpec {
+        n: 3,
+        kind: "week".into(),
+    }));
     assert_eq!((n, kind), (Some(3), Some("week".to_string())));
     assert_eq!(verdict_window_columns(&None), (None, None));
 }
@@ -121,7 +155,10 @@ fn a_verdict_window_travels_to_the_database_as_a_pair_or_not_at_all() {
 fn half_a_stored_verdict_window_reads_as_none_rather_than_as_a_guess() {
     assert_eq!(
         verdict_window_from_row(Some(2), Some("day".into())),
-        Some(DurationSpec { n: 2, kind: "day".to_string() }),
+        Some(DurationSpec {
+            n: 2,
+            kind: "day".to_string()
+        }),
     );
     assert_eq!(verdict_window_from_row(Some(2), None), None);
     assert_eq!(verdict_window_from_row(None, Some("day".into())), None);

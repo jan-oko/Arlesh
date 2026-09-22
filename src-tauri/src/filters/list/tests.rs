@@ -45,7 +45,10 @@ fn a_shelved_project_above_a_row_takes_the_row_with_it() {
         )],
     );
     assert!(rows_of(&root, &BoardFilter::preset(Preset::Plan)).is_empty());
-    assert_eq!(rows_of(&root, &BoardFilter::preset(Preset::All)), ["task-1"]);
+    assert_eq!(
+        rows_of(&root, &BoardFilter::preset(Preset::All)),
+        ["task-1"]
+    );
 }
 
 #[test]
@@ -182,7 +185,11 @@ fn the_commitments_band_answers_the_commitment_rules() {
     let root = FactNode::with_children(
         NodeFacts::new("root", NodeKind::Aspect),
         vec![
-            FactNode::leaf(commitment("commitment-1", Verdict::Unresolved, Timing::Active)),
+            FactNode::leaf(commitment(
+                "commitment-1",
+                Verdict::Unresolved,
+                Timing::Active,
+            )),
             FactNode::leaf(commitment("commitment-2", Verdict::Kept, Timing::Active)),
             FactNode::leaf(commitment("commitment-3", Verdict::Broken, Timing::Active)),
         ],
