@@ -11,8 +11,18 @@ import { clearScopeWindowCache } from "@/hooks/use-scope-windows";
 import { clearScopeRowCache } from "@/hooks/use-scope-rows";
 import { useDisplayStore } from "@/stores/use-display-store";
 
+// The usual key-for-string stub, with one exception: a bucket's keyboard mnemonic is the initial
+// of its **rendered** name, so a stub that answered "planView:weekday.3" for Wednesday would give
+// every day of the week the same initial and take every letter away.
+const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string) => {
+      const weekday = /^planView:weekday\.([0-6])$/.exec(key);
+      return weekday === null ? key : WEEKDAY_NAMES[Number(weekday[1])] ?? key;
+    },
+  }),
 }));
 
 vi.mock("@/hooks/use-list-data");
@@ -395,6 +405,7 @@ describe("splitting the planned pane by subscope", () => {
     await renderPlanView();
     // Sunday the 20th through Saturday the 26th: seven buckets, six of them empty.
     expect(headingsIn("planned")).toHaveLength(7);
+    expect(headingsIn("planned")[0]).toContain("Sunday");
     expect(headingsIn("planned")[0]).toContain("2026-09-20");
     expect(cardsIn("planned")).toEqual(["task-2"]);
   });
