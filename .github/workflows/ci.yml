@@ -227,6 +227,32 @@ jobs:
           mkdir -p dist
           printf '<!doctype html><title>arlesh ci</title>' > dist/index.html
 
+      # `#![deny(clippy::all)]` sits at the top of src/lib.rs and has been inert
+      # since the day it was written: plain rustc parses the `clippy::` tool lints
+      # and ignores them, so the attribute only means anything on a run that is
+      # actually clippy. This is that run. `-D warnings` covers the rest — clippy's
+      # warn-by-default lints outside `all`, and rustc's own, across the test and
+      # bench targets that `--all-targets` pulls in.
+      #
+      # Unlike the inline-test-module guard, this cannot sit at the top of the lane
+      # where a violation fails in seconds. Clippy is a compiler front end: it needs
+      # the toolchain, the apt packages (webkit2gtk-sys's build script shells out to
+      # pkg-config and fails without the dev headers), the warm rust-cache, and the
+      # `dist/` stub above — a lint run still expands `tauri::generate_context!`,
+      # which embeds the frontend bundle. So it goes as early as it can: last of the
+      # cheap steps, ahead of the instrumented build below, which a lint-only
+      # failure now skips entirely.
+      #
+      # It shares no artifacts with that build. Coverage compiles under
+      # cargo-llvm-cov's RUSTFLAGS into target/llvm-cov-target; this compiles
+      # unflagged and check-only into target/debug — two fingerprints, exactly as
+      # the cache-key comment above describes. No `rustup component add`: the runner
+      # image installs the minimal profile and then adds rustfmt and clippy on top,
+      # so clippy is already on the toolchain llvm-tools-preview is added to.
+      - name: cargo clippy
+        working-directory: src-tauri
+        run: cargo clippy --locked --all-targets -- -D warnings
+
       # One instrumented build, three consumers. `show-env` emits the RUSTFLAGS
       # and profile paths cargo-llvm-cov would use, so the test run and the
       # doctest run compile against the same fingerprint and share artifacts.
