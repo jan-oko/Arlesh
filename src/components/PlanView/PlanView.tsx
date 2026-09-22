@@ -303,11 +303,11 @@ export default function PlanView() {
         if (head !== undefined) showToast({ nodeId: head.node.id, message: t("planView:noParentPlan") });
         return;
       }
-      const ids = rows.map((row) => row.node.id);
       void (from === "candidates" ? planInto(rows) : unplan(rows)).then((moved) => {
-        // Only what actually moved advances the cursor. A refusal leaves the selection on the task
-        // the toast is about, which is the one you are being told something about.
-        advancePast(from, moved.length === ids.length ? ids : moved);
+        // Only what actually moved advances the cursor. A batch where nothing did leaves the
+        // selection on the work the toast is about, which is what you are being told something
+        // about.
+        advancePast(from, moved);
       });
     },
     [plannedModel.sectioned, planInto, unplan, advancePast, showToast, t],
@@ -326,9 +326,8 @@ export default function PlanView() {
     (section: PlanSection, rows: readonly TaskListRow[], from: PlanPaneSide) => {
       if (rows.length === 0) return;
       const label = sectionInfo.get(section.key)?.label ?? "";
-      const ids = rows.map((row) => row.node.id);
       void planIntoSubscope(rows, section.ref, label, section.partial).then((moved) => {
-        advancePast(from, moved.length === ids.length ? ids : moved);
+        advancePast(from, moved);
       });
     },
     [sectionInfo, planIntoSubscope, advancePast],
