@@ -21,7 +21,7 @@ const LABELS: HabitCollapseLabels = {
 
 const FLOW = 7;
 
-/** One day-long iteration anchored on `date`, whose window closed the next midnight. */
+/** One day-long iteration anchored on `date`, whose window closed at 02:00 the next morning. */
 function dayIteration(
   date: string,
   options: { done?: boolean; passed?: boolean; flowId?: number; flowTitle?: string; index?: number } = {},
@@ -34,7 +34,7 @@ function dayIteration(
     index: options.index ?? 0,
     scopeKind: "day",
     anchorDate: date,
-    windowEnd: `${next.toISOString().slice(0, 10)}T00:00:00`,
+    windowEnd: `${next.toISOString().slice(0, 10)}T02:00:00`,
     passed: options.passed ?? true,
     done: options.done ?? false,
   };
@@ -105,22 +105,22 @@ describe("levelsForRun", () => {
     // Two months inside one Autumn: nothing coarser is spanned twice, and no month or week level
     // may be inserted under monthly iterations.
     const run = [
-      iterationOfKind("month", "2026-09-01", "2026-10-01T00:00:00", 0),
-      iterationOfKind("month", "2026-10-01", "2026-11-01T00:00:00", 1),
+      iterationOfKind("month", "2026-09-01", "2026-10-01T02:00:00", 0),
+      iterationOfKind("month", "2026-10-01", "2026-11-01T02:00:00", 1),
     ];
     expect(levelsForRun(metas(run))).toEqual([]);
   });
 
   it("groups seasons under a year only once the run spans more than one of them", () => {
     const oneYear = [
-      iterationOfKind("season", "2026-03-01", "2026-06-01T00:00:00", 0),
-      iterationOfKind("season", "2026-06-01", "2026-09-01T00:00:00", 1),
+      iterationOfKind("season", "2026-03-01", "2026-06-01T02:00:00", 0),
+      iterationOfKind("season", "2026-06-01", "2026-09-01T02:00:00", 1),
     ];
     expect(levelsForRun(metas(oneYear))).toEqual([]);
 
     const twoYears = [
-      iterationOfKind("season", "2026-09-01", "2026-12-01T00:00:00", 0),
-      iterationOfKind("season", "2027-03-01", "2027-06-01T00:00:00", 1),
+      iterationOfKind("season", "2026-09-01", "2026-12-01T02:00:00", 0),
+      iterationOfKind("season", "2027-03-01", "2027-06-01T02:00:00", 1),
     ];
     expect(levelsForRun(metas(twoYears))).toEqual(["year"]);
   });
