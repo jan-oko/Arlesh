@@ -546,6 +546,7 @@ impl<'session> UndoOperator<'session> {
                 .fetch_one(&mut *self.connection)
                 .await?;
         Ok(wrote)
+    }
 
     /// Drops `gesture`'s `user` entries from the journal, and returns how many it removed.
     ///
