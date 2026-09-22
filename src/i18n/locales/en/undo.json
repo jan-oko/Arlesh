@@ -22,6 +22,10 @@
     "move_other": "move {{count}} nodes",
     "delete_one": "delete 1 node",
     "delete_other": "delete {{count}} nodes",
-    "insertParent": "insert a parent"
+    "insertParent": "insert a parent",
+    "editTask": "edit a task",
+    "editGoal": "edit a goal",
+    "editCommitment": "edit a commitment",
+    "editProject": "edit a project"
   }
 }

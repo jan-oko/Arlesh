@@ -54,6 +54,26 @@ pub async fn close_gesture(
         .map_err(WireError::from_error)
 }
 
+/// Closes one [`open_gesture`] and takes back everything the Gesture wrote.
+///
+/// The all-or-nothing counterpart to [`close_gesture`], for a run of commands that is one thing
+/// the user filled in rather than one thing they did to the board — an editor's Save, where a
+/// half-applied form is a state nobody asked for. The Gesture reaches neither stack: it is not an
+/// undo step, and it does not clear the Redo Stack.
+///
+/// Returns what it took back, or `None` when the Gesture wrote nothing the user can undo or the
+/// close was a nested one. An error means the reversal itself failed, in which case the writes
+/// stand and the Gesture has been put on the Undo Stack so the user can still take it back.
+#[tauri::command]
+pub async fn abort_gesture(
+    factory: State<'_, SessionFactory>,
+    stacks: State<'_, UndoStacks>,
+) -> Result<Option<GestureSummary>, WireError> {
+    engine::abort_gesture(&factory, &stacks)
+        .await
+        .map_err(WireError::from_error)
+}
+
 /// Reverses the most recent user Gesture, and returns what it reversed.
 ///
 /// `None` means the Undo Stack was empty: nothing happened, and that is not an error. An error

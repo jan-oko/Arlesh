@@ -72,6 +72,21 @@ pub enum UndoError {
         cause: Box<UndoError>,
     },
 
+    /// A Gesture could not be taken back, and its writes stand.
+    ///
+    /// The opposite claim to [`ApplyFailed`](Self::ApplyFailed), and deliberately worded to say
+    /// so: there the board is untouched, while an abort that cannot reverse what the Gesture
+    /// already wrote leaves exactly the half-applied state the abort existed to prevent. The
+    /// Gesture is put on the Undo Stack on the way out, so the user has a Ctrl+Z for it.
+    #[error("could not take back {gesture}; its changes stand, and are the next undo: {cause}")]
+    AbortFailed {
+        /// Which Gesture could not be taken back.
+        gesture: GestureId,
+        /// Why the reversal failed.
+        #[source]
+        cause: Box<UndoError>,
+    },
+
     /// A database error occurred.
     #[error("database error: {0}")]
     Database(#[from] sqlx::Error),
