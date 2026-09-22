@@ -385,7 +385,7 @@ async fn the_set_habit_iteration_done_command_commits_a_modification_for_every_i
         .unwrap()
         .id;
 
-    flow_commands::set_habit_iteration_done(app.state(), flow.id, iteration, true, 1_767_600_000_000)
+    flow_commands::set_habit_iteration_done(app.state(), flow.id, iteration, true, 1_767_600_000_000, None)
         .await
         .unwrap();
 

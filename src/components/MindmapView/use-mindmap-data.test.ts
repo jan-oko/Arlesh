@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { invokedCommands } from "@/test/command-mock";
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { buildTree, useMindmapData, injectHabitInstances } from "./use-mindmap-data";
+import type { HabitInstanceChild } from "@/api/flows";
 import { useScopeLabels } from "@/hooks/use-scope-labels";
 import type { Domain } from "@/api/domains";
 import type { Goal } from "@/api/goals";
@@ -327,6 +328,7 @@ function mindmapEnvelope(overrides: Partial<MindmapLoad> = {}): MindmapLoad {
     domains: [], goals: [], tasks: [], commitments: [], infos: [], flows: [],
     flow_goals: [], flow_tasks: [], flow_cycles: [], flow_dependencies: [],
     block_reasons: [], task_dependencies: [], flow_instance_nodes: [], lifecycles: [],
+    habit_instance_children: [],
     habits: flows.map((flow) => ({
       flow_id: flow.id,
       flow_title: flow.title,
@@ -649,6 +651,56 @@ describe("useMindmapData — mutations", () => {
       expect(vi.mocked(invoke)).toHaveBeenCalledWith("create_info", {
         request: expect.objectContaining({ body: "My note", parent_type: "goal", parent_id: 1 }),
       });
+    });
+
+    it("a habit occurrence takes its child through the attachment path, not a parent link", async () => {
+      // The same gesture as anywhere else — Tab on the selected node — but the parent is virtual,
+      // so there is no row id for `create_task` to hang it from.
+      const flow = {
+        id: 3, title: "Groceries", instance_type: "task" as const,
+        parent_type: "domain", parent_id: 1, target_type: "goal", target_id: 1,
+        flow_duration_n: 1, flow_duration_kind: "day",
+        flow_window_part: null, flow_window_time_start: null, flow_window_time_end: null,
+        is_habit: true, root_plan_kind: null, root_plan_start: null, root_plan_end: null,
+        verdict_window_n: null, verdict_window_kind: null, position: 0, is_private: false,
+      };
+      const envelope = mindmapEnvelope({
+        domains: [ASPECT], goals: [GOAL], flows: [flow],
+        habits: [{
+          flow_id: 3,
+          flow_title: "Groceries",
+          result: {
+            outcome: "loaded" as const,
+            iterations: [{
+              index: 0, anchor_scope_id: 100, anchor_date: "2026-01-05",
+              window_end: "2026-01-06T00:00:00", status: "active" as const, instances: [],
+            }],
+            statuses: [],
+          },
+        }],
+      });
+      vi.mocked(invoke).mockImplementation((cmd: string) => {
+        if (cmd === "load_mindmap") return Promise.resolve(envelope);
+        if (cmd === "create_habit_instance_child") {
+          return Promise.resolve({ node_type: "task", node_id: 42 });
+        }
+        return Promise.resolve(null);
+      });
+      const { result } = await loadedHook();
+
+      let returned: { id: string; kind: string } | undefined;
+      await act(async () => {
+        returned = await result.current.createNode("habit-3-0-virtual", "task", "task", "buy milk");
+      });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("create_habit_instance_child", {
+        flowId: 3,
+        instance: { item_type: "flow_root", item_id: 3, iteration_scope_id: 100, cycle_id: 0 },
+        childType: "task",
+        title: "buy milk",
+      });
+      expect(returned?.id).toBe("task-42");
+      expect(returned?.kind).toBe("task");
     });
 
     it("throws for an invalid child kind", async () => {
@@ -1779,6 +1831,82 @@ describe("injectHabitInstances", () => {
     });
   });
 
+  describe("added children", () => {
+    /** An aspect holding the goal a flow targets, plus one real task parented on that goal. */
+    function boardWithTask(): MindmapNode {
+      return buildTree(
+        [{ id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false }],
+        [{ id: 5, title: "Fitness", parent_type: "domain", parent_id: 1, status: "active", time_scope: null, on_scope_exit: null, tag_ids: [], position: 0, is_private: false }],
+        [{ id: 12, title: "Buy milk", parent_type: "goal", parent_id: 5, status: "todo", time_scope: null, plan: null, on_scope_exit: null, tag_ids: [], position: 0, is_private: false, archival: "live", agentic: null, delegate_to: null }],
+        [],
+      );
+    }
+
+    function attachment(overrides: Partial<HabitInstanceChild> = {}): HabitInstanceChild {
+      return {
+        flow_id: 3, item_type: "flow_root", item_id: 3, iteration_scope_id: 100,
+        cycle_id: NO_CYCLE, child_type: "task", child_id: 12, ...overrides,
+      };
+    }
+
+    it("moves an added child out of the host and under the occurrence it hangs on", () => {
+      const root = boardWithTask();
+      const target = root.children[0]?.children[0];
+      expect(target?.children.map((n) => n.id)).toEqual(["task-12"]);
+
+      injectHabitInstances(
+        root, [mkFlow()], [[iter(0, "active"), iter(1, "active")]], LABELS, NOW,
+        [], [], [[]], [attachment()],
+      );
+
+      const iterations = target?.children.filter((n) => n.virtual === true) ?? [];
+      expect(iterations[0]?.children.map((n) => n.id)).toEqual(["task-12"]);
+      expect(iterations[1]?.children).toHaveLength(0);
+      expect(
+        target?.children.some((n) => n.id === "task-12"),
+        "the child is moved, not copied — it appears under the occurrence and nowhere else",
+      ).toBe(false);
+    });
+
+    it("leaves the child a real, editable node rather than a virtual one", () => {
+      const root = boardWithTask();
+      injectHabitInstances(
+        root, [mkFlow()], [[iter(0, "active")]], LABELS, NOW, [], [], [[]], [attachment()],
+      );
+      const child = root.children[0]?.children[0]?.children[0]?.children[0];
+      expect(child?.id).toBe("task-12");
+      expect(child?.virtual).toBeUndefined();
+      expect(child?.habitItem).toBeUndefined();
+    });
+
+    it("hangs a child on the one occurrence named, cycle pair and all", () => {
+      const root = boardWithTask();
+      injectHabitInstances(
+        root,
+        [mkFlow()],
+        [[iter(0, "active", [inst("flow_task", 4, { cycle_id: 7 }), inst("flow_task", 4, { cycle_id: 8 })])]],
+        LABELS, NOW,
+        [],
+        [{ id: 4, flow_id: 3, title: "Stretch", parent_type: "flow", parent_id: 3, position: 0, is_private: false }],
+        [[]],
+        [attachment({ item_type: "flow_task", item_id: 4, cycle_id: 8 })],
+      );
+      const occurrences = root.children[0]?.children[0]?.children[0]?.children ?? [];
+      expect(occurrences).toHaveLength(2);
+      expect(occurrences[0]?.children).toHaveLength(0);
+      expect(occurrences[1]?.children.map((n) => n.id)).toEqual(["task-12"]);
+    });
+
+    it("skips an attachment whose node is not in the tree rather than inventing one", () => {
+      const root = boardWithTask();
+      injectHabitInstances(
+        root, [mkFlow()], [[iter(0, "active")]], LABELS, NOW, [], [], [[]],
+        [attachment({ child_id: 999 })],
+      );
+      expect(root.children[0]?.children[0]?.children[0]?.children).toHaveLength(0);
+    });
+  });
+
   describe("a commitment habit's iterations", () => {
     function commitmentRoot(): MindmapNode {
       return buildTree(
@@ -1866,6 +1994,7 @@ describe("injectHabitInstances", () => {
       expect(item?.status).toBe("todo");
       expect(item?.verdict).toBeUndefined(); // only the commitment itself carries one
     });
+
 
     it("draws no iterations at all for a template holding a goal item, which a Commitment cannot hold", () => {
       const milestone: FlowGoal = { id: 9, flow_id: 3, title: "Milestone", parent_type: "flow", parent_id: 3, position: 0, is_private: false };

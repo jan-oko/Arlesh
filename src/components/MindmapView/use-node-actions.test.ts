@@ -17,6 +17,9 @@ vi.mock("@/api/goals", () => ({
 
 vi.mock("@/api/flows", () => ({
   setHabitItemStatus: vi.fn().mockResolvedValue(undefined),
+  // The completion guard reads a rejection for the unfinished children it names; a resolved write
+  // never reaches it, so every case here answers "not that refusal".
+  unfinishedChildren: vi.fn(() => null),
 }));
 
 // The stub renders the key and every interpolation value it was given, so a test can pin *which*
@@ -154,7 +157,7 @@ describe("useNodeActions — onStatusClick", () => {
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("habit-3-0-virtual"); });
     await vi.waitFor(() =>
-      expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_root", 3, 100, 0, "in_progress", expect.any(Number)),
+      expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_root", 3, 100, 0, "in_progress", expect.any(Number), undefined),
     );
     expect(updateTask).not.toHaveBeenCalled();
   });
@@ -164,7 +167,7 @@ describe("useNodeActions — onStatusClick", () => {
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("habit-3-1-virtual"); });
     await vi.waitFor(() =>
-      expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_root", 3, 101, 0, null, expect.any(Number)),
+      expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_root", 3, 101, 0, null, expect.any(Number), undefined),
     );
   });
 
@@ -173,7 +176,7 @@ describe("useNodeActions — onStatusClick", () => {
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("habititem-flow_task-7-0-virtual"); });
     await vi.waitFor(() =>
-      expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_task", 7, 100, 0, "done", expect.any(Number)),
+      expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_task", 7, 100, 0, "done", expect.any(Number), undefined),
     );
   });
 
@@ -182,7 +185,7 @@ describe("useNodeActions — onStatusClick", () => {
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("habititem-flow_goal-9-0-virtual"); });
     await vi.waitFor(() =>
-      expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_goal", 9, 100, 0, null, expect.any(Number)),
+      expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_goal", 9, 100, 0, null, expect.any(Number), undefined),
     );
   });
 
@@ -191,7 +194,7 @@ describe("useNodeActions — onStatusClick", () => {
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("habititem-flow_task-4-0-virtual"); });
     await vi.waitFor(() =>
-      expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_task", 4, 100, 0, "in_progress", expect.any(Number)),
+      expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_task", 4, 100, 0, "in_progress", expect.any(Number), undefined),
     );
     expect(updateTask).not.toHaveBeenCalled();
   });

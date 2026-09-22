@@ -74,5 +74,9 @@
   "commitmentNeedsScopeBody": "A commitment is a rule held over a window, and nothing above this one has one — so there is no window for it to inherit. Give it one here, or cancel and leave it exactly as it is.",
   "commitmentNeedsScopeMissing": "Pick a window, or cancel.",
   "createUnderRepetition": "A Habit repetition isn't a row of its own, so nothing can be created under it — add it to the Habit's template instead.",
-  "deleteRepetitionRefused": "A Habit repetition isn't a row of its own, so there is nothing to delete — change the Habit's template or its recurrence instead."
+  "deleteRepetitionRefused": "A Habit repetition isn't a row of its own, so there is nothing to delete — change the Habit's template or its recurrence instead.",
+  "occurrenceUnfinishedHeading_one": "\"{{title}}\" still holds {{count}} unfinished item — mark it done anyway?",
+  "occurrenceUnfinishedHeading_other": "\"{{title}}\" still holds {{count}} unfinished items — mark it done anyway?",
+  "occurrenceUnfinishedItem": "{{type}}: \"{{title}}\"",
+  "occurrenceUnfinishedAction": "Mark it done anyway"
 }

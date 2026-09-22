@@ -105,6 +105,9 @@ function listData(overrides: Partial<ReturnType<typeof useListData>> = {}) {
     createTask: vi.fn(() => Promise.resolve(n("task-new", "task", { status: "todo" }))),
     deleteTask: vi.fn(() => Promise.resolve()),
     removeNode: vi.fn(() => Promise.resolve()),
+    occurrencePrompt: null,
+    confirmOccurrence: vi.fn(),
+    cancelOccurrence: vi.fn(),
     ...overrides,
   };
 }

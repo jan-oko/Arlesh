@@ -1363,7 +1363,12 @@ async fn carry_attachments(
             )
             .await?;
     }
-    let _ = source;
+    // An added child of a Habit occurrence keeps that occurrence across a retype. The attachment
+    // names the row rather than living in it, so it is re-pointed at the new one here and swept
+    // off the old one by `delete_old_row` — the same shape as the tags above.
+    db.flows()
+        .repoint_instance_child(source.kind.as_str(), source.id, plan.target.as_str(), new_id)
+        .await?;
     Ok(())
 }
 
