@@ -1,5 +1,9 @@
 import type { MindmapNode } from "@/utils/tree-layout";
 import { isNodeBlocked } from "@/utils/tree-layout";
+import type { ScopeInterval, ScopeWindows } from "@/utils/scope-interval";
+import { NO_SCOPE_WINDOWS } from "@/utils/scope-interval";
+import type { ScopeFilter, ScopeSelection } from "@/utils/scope-match";
+import { ownWindow, passesScope, resolveScopeFilter } from "@/utils/scope-match";
 import { VERDICT } from "@/api/verdict";
 
 /** Status preset a filter is in. `all` disables status filtering; `backlog` inverts it, showing
@@ -48,6 +52,13 @@ export interface FilterState {
   archivedMode: ArchivedMode;
   /** Override for backlogged Tasks on top of the status preset — the Archived pill's twin. */
   backlogMode: BacklogMode;
+  /**
+   * The scope selector: one picked scope (or range), an axis and a match rule, or `null` for
+   * "any scope". It **joins** the derived Scope tokens rather than replacing them, and lives here
+   * — per tab, beside the other filters — because two tabs pointed at different weeks is most of
+   * the reason tabs exist.
+   */
+  scope: ScopeSelection | null;
 }
 
 /** The neutral, indicator-off filter — shows everything except nodes marked private. */
@@ -60,6 +71,7 @@ export const DEFAULT_FILTER: FilterState = {
   privateMode: false,
   archivedMode: "inactive",
   backlogMode: "inactive",
+  scope: null,
 };
 
 /** Goal statuses that read as resolved/inactive (hidden by Plan/Start). */
@@ -309,13 +321,29 @@ export function passesTags(node: MindmapNode, f: FilterState): boolean {
   return true;
 }
 
+/** What a node's ancestors contribute to its own match: the nearest container status, whether a
+ * backlogged Task is above it, and the nearest scoped ancestor's resolved window. One value rather
+ * than three loose parameters, because the three travel together down every walk — mirroring the
+ * backend's `filters::rules::Inherited`. */
+interface Inherited {
+  status: string;
+  underBacklog: boolean;
+  window: ScopeInterval | null;
+}
+
+const NOTHING_INHERITED: Inherited = { status: UNSET_STATUS, underBacklog: false, window: null };
+
 function selfMatches(
   node: MindmapNode,
   f: FilterState,
-  inheritedStatus: string,
-  underBacklog: boolean,
+  inherited: Inherited,
+  scope: ScopeFilter | null,
 ): boolean {
-  return passesStatus(node, f, inheritedStatus, underBacklog) && passesTags(node, f);
+  return (
+    passesStatus(node, f, inherited.status, inherited.underBacklog)
+    && passesTags(node, f)
+    && passesScope(node, inherited.window, scope)
+  );
 }
 
 /** A pruned tree plus the ids that survived it **only** because they were focus-exempt — the nodes
@@ -331,8 +359,12 @@ export interface FocusFilteredTree {
  * whose only children are notes is still hidden). Type/flow-hidden subtrees are dropped outright. The
  * root is always returned as a container (possibly empty) so the canvas has something to render.
  */
-export function filterTree(root: MindmapNode, f: FilterState): MindmapNode {
-  return pruneTree(root, f, new Set<string>()).root;
+export function filterTree(
+  root: MindmapNode,
+  f: FilterState,
+  windows: ScopeWindows = NO_SCOPE_WINDOWS,
+): MindmapNode {
+  return pruneTree(root, f, new Set<string>(), windows).root;
 }
 
 /**
@@ -346,30 +378,44 @@ export function filterTree(root: MindmapNode, f: FilterState): MindmapNode {
  * the filter already kept plus the chain itself, so revealing (say) a private Project as an ancestor
  * never spills the rest of its subtree into the view.
  */
-export function filterTreeWithFocus(root: MindmapNode, f: FilterState, exempt: ReadonlySet<string>): FocusFilteredTree {
-  return pruneTree(root, f, exempt);
+export function filterTreeWithFocus(
+  root: MindmapNode,
+  f: FilterState,
+  exempt: ReadonlySet<string>,
+  windows: ScopeWindows = NO_SCOPE_WINDOWS,
+): FocusFilteredTree {
+  return pruneTree(root, f, exempt, windows);
 }
 
-function pruneTree(root: MindmapNode, f: FilterState, exempt: ReadonlySet<string>): FocusFilteredTree {
+function pruneTree(
+  root: MindmapNode,
+  f: FilterState,
+  exempt: ReadonlySet<string>,
+  windows: ScopeWindows,
+): FocusFilteredTree {
   const exemptedIds = new Set<string>();
+  const scope = resolveScopeFilter(f.scope, windows);
 
-  function prune(node: MindmapNode, inheritedStatus: string, underBacklog: boolean): MindmapNode | null {
+  function prune(node: MindmapNode, inherited: Inherited): MindmapNode | null {
     const isExempt = exempt.has(node.id);
     const hardHidden = typeHardHidden(node, f);
     if (hardHidden && !isExempt) return null;
     // Only containers pass a status down — a Goal/Task always carries its own, and no container ever
     // sits beneath one, so their statuses must not leak into the chain.
-    const inheritedForChildren = STRUCTURAL_KINDS.has(node.kind)
-      ? node.status ?? inheritedStatus
-      : inheritedStatus;
-    // Backlog, unlike status, does propagate: everything under a set-aside Task is set aside too.
-    const backlogForChildren = underBacklog || isBacklogged(node);
+    const forChildren: Inherited = {
+      status: STRUCTURAL_KINDS.has(node.kind) ? node.status ?? inherited.status : inherited.status,
+      // Backlog, unlike status, does propagate: everything under a set-aside Task is set aside too.
+      underBacklog: inherited.underBacklog || isBacklogged(node),
+      // A Time Scope propagates in the same shape: the nearest scoped ancestor is whichever
+      // explicitly-scoped node was last on the way down.
+      window: ownWindow(node, windows) ?? inherited.window,
+    };
     const children: MindmapNode[] = [];
     let hasContentMatch = false;
     for (const child of node.children) {
       // A hard-hidden node is on screen only to carry the focused node: nothing else beneath it returns.
       if (hardHidden && !exempt.has(child.id)) continue;
-      const pruned = prune(child, inheritedForChildren, backlogForChildren);
+      const pruned = prune(child, forChildren);
       if (pruned === null) continue;
       children.push(pruned);
       // A child kept only by the exemption is not a match, so it must not keep its parent either —
@@ -382,7 +428,7 @@ function pruneTree(root: MindmapNode, f: FilterState, exempt: ReadonlySet<string
     }
     // Info is carried by its parent's decision (visibility already handled by typeHardHidden above).
     if (node.kind === "info") return { ...node, children };
-    if (selfMatches(node, f, inheritedStatus, underBacklog) || hasContentMatch) return { ...node, children };
+    if (selfMatches(node, f, inherited, scope) || hasContentMatch) return { ...node, children };
     if (isExempt) {
       exemptedIds.add(node.id);
       return { ...node, children };
@@ -390,5 +436,5 @@ function pruneTree(root: MindmapNode, f: FilterState, exempt: ReadonlySet<string
     return null;
   }
 
-  return { root: prune(root, UNSET_STATUS, false) ?? { ...root, children: [] }, exemptedIds };
+  return { root: prune(root, NOTHING_INHERITED) ?? { ...root, children: [] }, exemptedIds };
 }

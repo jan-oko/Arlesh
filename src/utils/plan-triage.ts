@@ -6,11 +6,9 @@
 import type { TimeScope } from "@/api/time-scope";
 import type { TaskListRow } from "@/utils/list-filter";
 import type { MindmapNode } from "@/utils/tree-layout";
-import type { ScopeInterval } from "@/utils/scope-interval";
-import { intervalContains, intervalsOverlap } from "@/utils/scope-interval";
-
-/** Every scope id resolved to its window, keyed by id. */
-export type ScopeWindows = ReadonlyMap<number, ScopeInterval>;
+import type { ScopeInterval, ScopeWindows } from "@/utils/scope-interval";
+import { intervalContains } from "@/utils/scope-interval";
+import { timeScopeWindow, windowMatches } from "@/utils/scope-match";
 
 /** Which containment invariant a move would break. Named, not phrased — the view words it. */
 export type PlanRefusal = "ownTimeScope" | "parentPlan";
@@ -38,20 +36,6 @@ export function nearestPlannedAncestor(row: TaskListRow): MindmapNode | null {
     if (ancestor !== undefined && ancestor.plan != null) return ancestor;
   }
   return null;
-}
-
-/**
- * A Time Scope's combined window — the start of its start boundary through the end of its end
- * boundary — or `null` when either endpoint has not been resolved yet.
- *
- * `null` is "not known", never "no constraint": every caller treats an unresolved window as a
- * reason to leave the task out rather than as permission to move it.
- */
-export function timeScopeWindow(scope: TimeScope, windows: ScopeWindows): ScopeInterval | null {
-  const start = windows.get(scope.start_id);
-  const end = windows.get(scope.end_id);
-  if (start === undefined || end === undefined) return null;
-  return { start: start.start, end: end.end };
 }
 
 /** Every scope id the triage has to resolve before it can answer: each row's own and inherited
@@ -107,6 +91,12 @@ export interface PlanPanes {
  *
  * A Task planned somewhere else entirely is in **neither** pane. It is not unscheduled, so it is
  * not a candidate, and it is not in this scope, so it is not what the scope holds.
+ *
+ * The two panes are `Plan × Within` and `Relevance × Overlapping` — two of the four combinations
+ * the top bar's scope selector offers, read through the same `windowMatches` core. They are
+ * **fixed** here and the selector does not reach them: the panes need *opposite* settings to be
+ * useful, which one control cannot express, and picking Plan × Within for both would empty the
+ * candidates side. The selector narrows the tree that feeds this, as every other filter does.
  */
 export function partitionForScope(
   rows: readonly TaskListRow[],
@@ -120,7 +110,7 @@ export function partitionForScope(
     const plan = row.node.plan;
     if (plan != null) {
       const planWindow = timeScopeWindow(plan, windows);
-      if (planWindow !== null && intervalContains(target, planWindow)) planned.push(row);
+      if (planWindow !== null && windowMatches(planWindow, target, "within")) planned.push(row);
       continue;
     }
     const relevance = effectiveTimeScope(row);
@@ -129,7 +119,7 @@ export function partitionForScope(
       continue;
     }
     const window = timeScopeWindow(relevance, windows);
-    if (window !== null && intervalsOverlap(window, target)) candidates.push(row);
+    if (window !== null && windowMatches(window, target, "overlapping")) candidates.push(row);
   }
   return { candidates, planned };
 }

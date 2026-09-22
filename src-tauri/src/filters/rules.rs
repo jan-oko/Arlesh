@@ -4,9 +4,15 @@
 //! Mindmap's tree and [`list`](super::list) applies them to a flat row and its ancestor chain, so
 //! the two cannot answer the same node differently.
 
-use crate::tasks::{lifecycle::Timing, model::Verdict};
+use crate::{
+    scopes::resolve,
+    tasks::{lifecycle::Timing, model::Verdict},
+};
 
-use super::model::{BoardFilter, NodeFacts, NodeKind, OverrideMode, Preset, TagFilter, TagMode};
+use super::model::{
+    BoardFilter, NodeFacts, NodeKind, OverrideMode, Preset, ScopeAxis, ScopeMatch, ScopeWindow,
+    TagFilter, TagMode,
+};
 
 /// Goal statuses that read as resolved, and so drop out of Plan and Start.
 const RESOLVED_GOAL: [&str; 3] = ["achieved", "frozen", "archived"];
@@ -329,14 +335,89 @@ pub fn matches_tag_group(filters: &[TagFilter], tag_ids: &[i64]) -> bool {
         .any(|f| has(f.tag_id))
 }
 
-/// Whether a node matches the filter on its own, before ancestor-keeping is considered.
-pub fn self_matches(
+/// Within and Overlapping, over two resolved windows — the whole of both match rules, in one
+/// place.
+///
+/// `Within` answers "what belongs to exactly this week"; `Overlapping` answers "what is relevant
+/// *during* this week", the season-scoped item that spans it included. Half-open windows are what
+/// make two adjacent scopes read as not overlapping, so next week's work is not this week's.
+///
+/// The frontend's twin is `windowMatches` in `src/utils/scope-match.ts`, which the Plan View's two
+/// panes call with fixed arguments (`Plan × Within` and `Relevance × Overlapping`).
+pub fn window_matches(item: ScopeWindow, target: ScopeWindow, rule: ScopeMatch) -> bool {
+    match rule {
+        ScopeMatch::Within => resolve::interval_contains(target.bounds(), item.bounds()),
+        ScopeMatch::Overlapping => resolve::intervals_overlap(item.bounds(), target.bounds()),
+    }
+}
+
+/// Whether `node` matches the scope selection, given the nearest scoped ancestor's window.
+///
+/// Only the kinds that have a window of their own to answer with are judged. A container has
+/// none, so — exactly as [`passes_tags`] treats a tag filter a Domain cannot answer — it passes
+/// here and shows, as always, only as the ancestor of a content match.
+pub fn passes_scope(
     node: &NodeFacts,
     filter: &BoardFilter,
-    inherited_status: &str,
-    under_backlog: bool,
+    inherited_window: Option<ScopeWindow>,
 ) -> bool {
-    passes_status(node, filter, inherited_status, under_backlog) && passes_tags(node, filter)
+    let Some(scope) = filter.scope else {
+        return true;
+    };
+    if !matches!(
+        node.kind,
+        NodeKind::Task | NodeKind::Goal | NodeKind::Commitment
+    ) {
+        return true;
+    }
+    match scope.axis {
+        // The **effective** window: the item's own, or the nearest scoped ancestor's.
+        ScopeAxis::Relevance => match node.window.or(inherited_window) {
+            Some(window) => window_matches(window, scope.window, scope.match_rule),
+            // Unscoped means *always relevant*, which is an unbounded window: it overlaps every
+            // scope and lies wholly inside none.
+            None => scope.match_rule == ScopeMatch::Overlapping,
+        },
+        // Only a Task is ever planned, and an unplanned item is not in the picked scope. Absence
+        // is an answer on this axis rather than an inapplicable question — the same reading the
+        // List View's Scope-state dimension already takes, where "unplanned" is one of its values.
+        ScopeAxis::Plan => match node.plan_window {
+            Some(plan) => window_matches(plan, scope.window, scope.match_rule),
+            None => false,
+        },
+    }
+}
+
+/// What a node's ancestors contribute to its own match.
+///
+/// One value rather than three loose parameters, because the three travel together down every
+/// walk: the tree threads them as it descends and the list reconstructs them from a row's chain.
+#[derive(Debug, Clone, Copy)]
+pub struct Inherited<'a> {
+    /// The nearest status-bearing container ancestor's status.
+    pub status: &'a str,
+    /// Whether a backlogged Task sits above the node.
+    pub under_backlog: bool,
+    /// The nearest scoped ancestor's window, for an item carrying no Time Scope of its own.
+    pub window: Option<ScopeWindow>,
+}
+
+impl Default for Inherited<'_> {
+    /// What a node with nothing above it inherits: the unset status, no backlog, no window.
+    fn default() -> Self {
+        Self {
+            status: UNSET_STATUS,
+            under_backlog: false,
+            window: None,
+        }
+    }
+}
+
+/// Whether a node matches the filter on its own, before ancestor-keeping is considered.
+pub fn self_matches(node: &NodeFacts, filter: &BoardFilter, inherited: Inherited<'_>) -> bool {
+    passes_status(node, filter, inherited.status, inherited.under_backlog)
+        && passes_tags(node, filter)
+        && passes_scope(node, filter, inherited.window)
 }
 
 #[cfg(test)]

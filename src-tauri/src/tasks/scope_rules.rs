@@ -159,6 +159,34 @@ pub(super) async fn scope_window<M: SessionMode>(
     Ok(resolve::scope_bounds(&scope)?)
 }
 
+/// Resolves each of `ids` to its half-open window, leaving out the ones that could not be read.
+///
+/// A **read** path, so one corrupt or missing scope row costs the filter what it can say about the
+/// items naming it rather than failing the whole board — the same policy [`scope_governance`]
+/// takes for a broken ancestry chain. Each break is logged rather than swallowed.
+///
+/// Reads only — nothing is persisted, so a pooled session is enough.
+#[tracing::instrument(skip(db, ids), fields(count = ids.len()))]
+pub async fn resolve_windows<M: SessionMode>(
+    db: &mut Db<M>,
+    ids: &[i64],
+) -> std::collections::HashMap<i64, Bounds> {
+    let mut windows = std::collections::HashMap::with_capacity(ids.len());
+    for &id in ids {
+        match scope_window(db, id).await {
+            Ok(bounds) => {
+                windows.insert(id, bounds);
+            }
+            Err(error) => tracing::warn!(
+                scope_id = id,
+                %error,
+                "scope could not be resolved for a filtered read"
+            ),
+        }
+    }
+    windows
+}
+
 /// Resolves a Time Scope's boundaries to its combined window: the start of the start boundary
 /// through the end of the end boundary.
 pub async fn time_scope_window<M: SessionMode>(

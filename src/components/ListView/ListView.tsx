@@ -12,6 +12,7 @@ import { storedAgenticState } from "@/utils/agentic";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useListFilterStore } from "@/stores/use-list-filter-store";
 import { filterCommitmentList, filterTaskListWithFocus } from "@/utils/list-filter";
+import { useScopeFilterWindows } from "@/hooks/use-scope-filter-windows";
 import type { StatusMode } from "@/utils/filter-tree";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { groupRowsByPath } from "@/utils/list-data";
@@ -125,13 +126,15 @@ export default function ListView() {
   // is only non-null for a row the filter already kept. Feeding that back in would be circular and
   // null in exactly the case the exemption exists for — the row your own edit just stopped matching.
   const focusExemptTaskId = useFocusExemption(selectedRowId, [sharedFilter, listFilter, subtreeRootId]);
+  // The scope selector compares resolved windows, which the board's rows carry only as scope ids.
+  const scopeWindows = useScopeFilterWindows(tree, sharedFilter.scope);
   const { rows: filteredRows, exemptedIds: focusExemptIds } = useMemo(
-    () => filterTaskListWithFocus(rows, sharedFilter, listFilter, focusExemptTaskId),
-    [rows, sharedFilter, listFilter, focusExemptTaskId],
+    () => filterTaskListWithFocus(rows, sharedFilter, listFilter, focusExemptTaskId, scopeWindows),
+    [rows, sharedFilter, listFilter, focusExemptTaskId, scopeWindows],
   );
   const filteredCommitments = useMemo(
-    () => filterCommitmentList(commitmentRows, sharedFilter, listFilter),
-    [commitmentRows, sharedFilter, listFilter],
+    () => filterCommitmentList(commitmentRows, sharedFilter, listFilter, scopeWindows),
+    [commitmentRows, sharedFilter, listFilter, scopeWindows],
   );
   // Split first, then grouped: with the setting on, the asynchronous work is pulled out of the
   // filtered set before any header is drawn, so each half is grouped by path on its own terms — the

@@ -69,6 +69,15 @@ pub fn interval_contains(outer: Bounds, inner: Bounds) -> bool {
     outer.0 <= inner.0 && inner.1 <= outer.1
 }
 
+/// Returns true when two half-open intervals share any instant.
+///
+/// Half-open is what makes two adjacent scopes — a week ending at Monday 02:00 and the week
+/// starting at Monday 02:00 — read as *not* overlapping, which is the answer a relevance question
+/// wants: next week's work is not this week's.
+pub fn intervals_overlap(a: Bounds, b: Bounds) -> bool {
+    a.0 < b.1 && b.0 < a.1
+}
+
 /// Parses an Exact-scope datetime string in [`EXACT_DATETIME_FORMAT`].
 pub fn parse_exact_datetime(id: i64, value: Option<&str>) -> Result<NaiveDateTime, ScopeError> {
     let raw = value.ok_or_else(|| ScopeError::Malformed(id, "missing exact datetime".into()))?;

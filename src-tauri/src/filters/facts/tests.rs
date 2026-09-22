@@ -130,7 +130,7 @@ fn ids(forest: &[FactNode]) -> Vec<String> {
 
 #[test]
 fn the_forest_follows_the_rows_own_parent_links() {
-    let forest = forest(&board());
+    let forest = forest(&board(), &ScopeWindows::new());
     assert_eq!(forest.len(), 1);
     assert_eq!(forest[0].facts.id, "domain-1");
     assert_eq!(
@@ -150,7 +150,7 @@ fn the_forest_follows_the_rows_own_parent_links() {
 
 #[test]
 fn an_in_progress_task_with_a_todo_child_says_so() {
-    let forest = forest(&board());
+    let forest = forest(&board(), &ScopeWindows::new());
     let task_20 = find(&forest, "task-20").expect("the task is on the board");
     assert!(task_20.facts.has_todo_child);
     let task_22 = find(&forest, "task-22").expect("the task is on the board");
@@ -173,7 +173,7 @@ fn find<'a>(forest: &'a [FactNode], id: &str) -> Option<&'a FactNode> {
 fn an_orphan_row_is_dropped_rather_than_promoted_to_a_root() {
     let mut load = board();
     load.tasks.push(task_row(99, "goal", 404, "todo"));
-    let forest = forest(&load);
+    let forest = forest(&load, &ScopeWindows::new());
     assert!(find(&forest, "task-99").is_none());
     assert_eq!(forest.len(), 1);
 }
@@ -199,7 +199,7 @@ fn an_explicit_block_reason_and_an_unmet_dependency_both_read_as_blocked() {
         dependency_id: 22,
     });
 
-    let forest = forest(&load);
+    let forest = forest(&load, &ScopeWindows::new());
     assert!(find(&forest, "goal-10").is_some_and(|node| node.facts.is_blocked));
     assert!(find(&forest, "task-21").is_some_and(|node| node.facts.is_blocked));
     assert!(find(&forest, "task-20").is_some_and(|node| !node.facts.is_blocked));
@@ -210,7 +210,7 @@ fn a_lifecycle_supplies_the_two_derived_facts_a_filter_reads() {
     let mut load = board();
     load.lifecycles
         .push(lifecycle("task", 22, Timing::Lapsed, Archival::Archived));
-    let forest = forest(&load);
+    let forest = forest(&load, &ScopeWindows::new());
     let task_22 = find(&forest, "task-22").expect("the task is on the board");
     assert_eq!(task_22.facts.timing, Some(Timing::Lapsed));
     assert!(task_22.facts.archived);
@@ -237,7 +237,7 @@ fn narrowing_cuts_the_derived_sections_to_match_the_nodes_that_survived() {
     load.lifecycles
         .push(lifecycle("task", 22, Timing::Active, Archival::Live));
 
-    narrow(&mut load, &BoardFilter::preset(Preset::Plan));
+    narrow(&mut load, &BoardFilter::preset(Preset::Plan), &ScopeWindows::new());
 
     // The done task is gone, and so is everything the payload said about it.
     assert!(load.tasks.iter().all(|task| task.id != 22));
@@ -254,7 +254,7 @@ fn narrowing_cuts_the_derived_sections_to_match_the_nodes_that_survived() {
 #[test]
 fn narrowing_to_do_keeps_the_containers_that_carry_an_in_progress_task() {
     let mut load = board();
-    narrow(&mut load, &BoardFilter::preset(Preset::Do));
+    narrow(&mut load, &BoardFilter::preset(Preset::Do), &ScopeWindows::new());
     assert_eq!(
         load.tasks.iter().map(|task| task.id).collect::<Vec<_>>(),
         [20]
@@ -277,13 +277,13 @@ fn a_backlogged_task_leaves_plan_and_comes_back_under_the_backlog_preset() {
     }
 
     let mut planned = load.clone();
-    narrow(&mut planned, &BoardFilter::preset(Preset::Plan));
+    narrow(&mut planned, &BoardFilter::preset(Preset::Plan), &ScopeWindows::new());
     assert!(planned.tasks.iter().all(|task| task.id != 21));
 
     // Task 20 is task 21's parent: it does not match Backlog itself, and comes back only as the
     // ancestor that reaches what does.
     let mut backlogged = load;
-    narrow(&mut backlogged, &BoardFilter::preset(Preset::Backlog));
+    narrow(&mut backlogged, &BoardFilter::preset(Preset::Backlog), &ScopeWindows::new());
     assert_eq!(
         backlogged
             .tasks
@@ -310,7 +310,7 @@ fn every_parent_spelling_a_row_can_use_resolves_to_a_node() {
     load.infos.push(info_row(42, "commitment", 30));
     load.infos.push(info_row(43, "domain", 2));
 
-    let forest = forest(&load);
+    let forest = forest(&load, &ScopeWindows::new());
     assert!(find(&forest, "domain-3").is_some_and(|node| node.facts.kind == NodeKind::Tag));
     assert!(find(&forest, "domain-4").is_some_and(|node| node.facts.kind == NodeKind::Domain));
     for id in ["commitment-31", "info-41", "info-42", "info-43"] {

@@ -1,7 +1,10 @@
 //! Each predicate on its own, at the boundaries the specification names.
 
 use super::*;
-use crate::filters::model::{BoardFilter, NodeFacts, NodeKind, OverrideMode, Preset, TagMode};
+use crate::filters::model::{
+    BoardFilter, NodeFacts, NodeKind, OverrideMode, Preset, ScopeAxis, ScopeMatch, ScopeWindow,
+    TagMode,
+};
 use crate::tasks::{lifecycle::Timing, model::Verdict};
 
 fn task(status: &str) -> NodeFacts {
@@ -383,7 +386,7 @@ fn self_matches_needs_both_the_status_and_the_tags() {
         ..BoardFilter::preset(Preset::Plan)
     };
     assert!(passes_status(&node, &filter, UNSET_STATUS, false));
-    assert!(!self_matches(&node, &filter, UNSET_STATUS, false));
+    assert!(!self_matches(&node, &filter, Inherited::default()));
 }
 
 #[test]
@@ -405,4 +408,158 @@ fn kinds_know_which_group_they_belong_to() {
     assert!(NodeKind::FlowGoal.is_flow());
     assert!(!NodeKind::HabitGroup.is_flow());
     assert_eq!(NodeFacts::new("x", NodeKind::Task).status_str(), "");
+}
+
+// ===========================================================================
+// The scope selector
+// ===========================================================================
+
+/// A window from two `YYYY-MM-DD` dates, taken at the 02:00 boundary the whole scope ladder runs
+/// on — so a "day" here is the same interval `canonical_bounds` resolves one to.
+fn window(start: &str, end: &str) -> ScopeWindow {
+    let at = |date: &str| {
+        crate::scopes::resolve::day_boundary(
+            date.parse::<chrono::NaiveDate>().expect("a date parses"),
+        )
+    };
+    ScopeWindow {
+        start: at(start),
+        end: at(end),
+    }
+}
+
+/// Monday 24 August through Monday 31 August — the W35 of the bead.
+fn week() -> ScopeWindow {
+    window("2026-08-24", "2026-08-31")
+}
+
+fn scoped(axis: ScopeAxis, rule: ScopeMatch, target: ScopeWindow) -> BoardFilter {
+    BoardFilter {
+        scope: Some(crate::filters::model::ScopeFilter {
+            window: target,
+            axis,
+            match_rule: rule,
+        }),
+        ..BoardFilter::default()
+    }
+}
+
+#[test]
+fn within_keeps_the_day_inside_the_week_and_drops_the_season_around_it() {
+    let filter = scoped(ScopeAxis::Relevance, ScopeMatch::Within, week());
+    let mut day = task("todo");
+    day.window = Some(window("2026-08-26", "2026-08-27"));
+    let mut season = task("todo");
+    season.window = Some(window("2026-06-01", "2026-09-01"));
+    assert!(passes_scope(&day, &filter, None));
+    assert!(!passes_scope(&season, &filter, None));
+}
+
+#[test]
+fn overlapping_keeps_both_the_day_inside_the_week_and_the_season_around_it() {
+    let filter = scoped(ScopeAxis::Relevance, ScopeMatch::Overlapping, week());
+    let mut day = task("todo");
+    day.window = Some(window("2026-08-26", "2026-08-27"));
+    let mut season = task("todo");
+    season.window = Some(window("2026-06-01", "2026-09-01"));
+    assert!(passes_scope(&day, &filter, None));
+    assert!(passes_scope(&season, &filter, None));
+}
+
+#[test]
+fn the_week_after_starts_where_this_one_ends_and_so_does_not_overlap_it() {
+    let filter = scoped(ScopeAxis::Relevance, ScopeMatch::Overlapping, week());
+    let mut next = task("todo");
+    next.window = Some(window("2026-08-31", "2026-09-07"));
+    assert!(!passes_scope(&next, &filter, None));
+}
+
+#[test]
+fn an_item_with_no_window_of_its_own_matches_through_its_nearest_scoped_ancestor() {
+    let inherited = Some(window("2026-08-26", "2026-08-27"));
+    let node = task("todo");
+    assert!(passes_scope(
+        &node,
+        &scoped(ScopeAxis::Relevance, ScopeMatch::Within, week()),
+        inherited
+    ));
+    assert!(!passes_scope(
+        &node,
+        &scoped(
+            ScopeAxis::Relevance,
+            ScopeMatch::Within,
+            window("2026-08-31", "2026-09-07")
+        ),
+        inherited
+    ));
+}
+
+#[test]
+fn an_items_own_window_beats_the_one_it_would_have_inherited() {
+    let mut node = task("todo");
+    node.window = Some(window("2026-09-03", "2026-09-04"));
+    let inherited = Some(window("2026-08-26", "2026-08-27"));
+    assert!(!passes_scope(
+        &node,
+        &scoped(ScopeAxis::Relevance, ScopeMatch::Within, week()),
+        inherited
+    ));
+}
+
+#[test]
+fn an_unscoped_item_overlaps_every_scope_and_is_wholly_inside_none() {
+    let node = task("todo");
+    assert!(passes_scope(
+        &node,
+        &scoped(ScopeAxis::Relevance, ScopeMatch::Overlapping, week()),
+        None
+    ));
+    assert!(!passes_scope(
+        &node,
+        &scoped(ScopeAxis::Relevance, ScopeMatch::Within, week()),
+        None
+    ));
+}
+
+#[test]
+fn the_plan_axis_reads_the_plan_and_never_the_time_scope() {
+    let filter = scoped(ScopeAxis::Plan, ScopeMatch::Within, week());
+    let mut planned = task("todo");
+    planned.window = Some(window("2026-06-01", "2026-09-01"));
+    planned.plan_window = Some(window("2026-08-26", "2026-08-27"));
+    let mut unplanned = task("todo");
+    unplanned.window = Some(window("2026-08-26", "2026-08-27"));
+    assert!(passes_scope(&planned, &filter, None));
+    assert!(
+        !passes_scope(&unplanned, &filter, None),
+        "an unplanned task is not in the picked scope, whatever its window says"
+    );
+}
+
+#[test]
+fn a_plan_is_never_inherited_from_an_ancestor() {
+    let filter = scoped(ScopeAxis::Plan, ScopeMatch::Overlapping, week());
+    let node = task("todo");
+    assert!(!passes_scope(
+        &node,
+        &filter,
+        Some(window("2026-08-26", "2026-08-27"))
+    ));
+}
+
+#[test]
+fn a_container_is_never_judged_on_a_filter_it_has_no_window_to_answer() {
+    for node in [project("active"), NodeFacts::new("domain-2", NodeKind::Domain)] {
+        assert!(passes_scope(
+            &node,
+            &scoped(ScopeAxis::Relevance, ScopeMatch::Within, week()),
+            None
+        ));
+    }
+}
+
+#[test]
+fn no_scope_selection_judges_nothing() {
+    let node = task("todo");
+    assert!(passes_scope(&node, &BoardFilter::default(), None));
 }

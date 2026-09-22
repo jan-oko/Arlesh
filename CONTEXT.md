@@ -114,6 +114,12 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 **Plan** — The specific Scope a Task is *scheduled into*. Tasks only (Goals have no Plan). Must fall within the task's Time Scope (the same scope or a subscope of it). Replaces the former single `scope_id` semantics of "planning".
 
+**Scope selector** — The top-bar control that narrows the board to one period: a Scope (single or a range) picked from the Scope Picker, an **Axis** and a **Match** rule. Held per Tab beside the other filters, as the picked scope's boundary ids rather than the window they resolve to. One selection at a time; clearing it is "Any scope". Joins the six derived Scope tokens rather than replacing them.
+
+**Axis** — Which of an item's two windows a scope selection compares: **Relevance**, its *effective* Time Scope (its own, or the nearest scoped ancestor's), or **Plan**, the Scope a Task is scheduled into. A Plan is never inherited, so an unplanned item — and every Goal and Commitment — matches nothing on the Plan axis.
+
+**Match** — How the item's window has to relate to the picked one: **Within** (the item's window ⊆ the picked one — "what belongs to exactly this week") or **Overlapping** (the two share any instant — "what is relevant during this week"). Evaluated on resolved datetime boundaries, half-open, so two adjacent scopes do not overlap.
+
 **Active** — A Scope is active when it contains the current datetime. A Task/Goal is active when its Time Scope is active; Unscoped items are always active.
 
 **On-exit behavior** — Set when a Task/Goal is given an *explicit* Time Scope (and inherited with the window otherwise): what happens once the item's window passes unfinished — **Archive** (the item **Lapses**, dropping from the active view) or **Keep** (the item stays, flagged **Overdue**). The single-occurrence form of a Habit's Consumption root (Archive = Destructive, Keep = Accumulating).
@@ -153,7 +159,8 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 - Scope containment is evaluated on **resolved datetime boundaries** (interval containment), so it holds uniformly across canonical, exact, and multi-scope-kind windows. Scope X is "within" scope F iff X's window ⊆ F's window.
 - A child item's explicit Time Scope must be **wholly contained** within its parent's Time Scope.
 - A Task's Plan must be wholly contained within that task's Time Scope, and within its parent's Plan.
-- Filtering by a scope returns every item whose scope is wholly contained within it.
+- Filtering by a scope applies one of **two** selectable rules, never one fixed rule. **Within** returns every item whose window is wholly contained in the picked scope; **Overlapping** returns every item whose window shares any instant with it. *(Amended 2026-09-22. "Wholly contained" was the only rule, and it answers "what belongs to exactly this week" — a real question, but not the one a planning pass asks. "What is relevant during this week" has to include the season-scoped task that spans it, which containment cannot express. So the rule became a **mode** on the [scope selector](docs/spec/filtering-logic.md), with Within preserved unchanged as one of its two values. Nothing about write-time containment moved: the three containment invariants above are still containment, and still the only rule there.)*
+- A scope filter matches on the item's **effective** window — its own, or the nearest scoped ancestor's — and on a Task's own **Plan**, which is never inherited. An Unscoped item is always relevant, so it Overlaps every scope and is Within none.
 - Flow/Habit instances (real copies and virtual instances) must satisfy containment against their **Target Node's** Time Scope. The target picker only offers scope-valid targets; editing the scope of an item that has flow children prompts the user to reconcile one side or the other.
 - A Gesture is the unit of undo, never a command. Two commands inside one gesture are undone together or not at all.
 - Only writes whose **source** is the user enter the Undo Stack. An MCP write is journaled and never undoable — Ctrl+Z reverses what the user did, never what an agent did.

@@ -4,6 +4,9 @@ import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { isNodeKind } from "@/utils/tree-layout";
 import type { FilterState, ArchivedMode, TagFilter, TagFilterMode } from "@/utils/filter-tree";
 import { DEFAULT_FILTER, filterTree } from "@/utils/filter-tree";
+import type { ScopeInterval, ScopeWindows } from "@/utils/scope-interval";
+import type { ScopeAxis, ScopeMatch, ScopeSelection } from "@/utils/scope-match";
+import { isScopeAxis, isScopeMatch } from "@/utils/scope-match";
 import type { ListFilterState, ListPreset } from "@/utils/list-filter";
 import {
   DEFAULT_LIST_FILTER, filterCommitmentList, filterTaskList, isListPreset,
@@ -41,7 +44,19 @@ interface CorpusNode {
   isHabitFlow?: boolean;
   isHabitOccurrence?: boolean;
   tagIds?: number[];
+  /** The node's **own** Time Scope, already resolved — the corpus states the rule in windows,
+   * because that is the form the rule is defined in. */
+  window?: ScopeInterval;
+  /** The Task's own Plan, already resolved. */
+  planWindow?: ScopeInterval;
   children?: CorpusNode[];
+}
+
+/** One scope selection as the corpus states it: a resolved window, an axis and a match rule. */
+interface CorpusScope {
+  window: ScopeInterval;
+  axis: ScopeAxis;
+  match: ScopeMatch;
 }
 
 /** One corpus filter. Every field but `preset` defaults, exactly as the persisted filter does. */
@@ -55,6 +70,7 @@ interface CorpusFilter {
   privateMode?: boolean;
   archived?: ArchivedMode;
   backlog?: ArchivedMode;
+  scope?: CorpusScope;
 }
 
 /** One case: a board, a filter, and what each of the three surfaces keeps. */
@@ -98,6 +114,20 @@ function ids(value: unknown, what: string): string[] {
   return value.map((entry, index) => str(entry, `${what}[${index}]`));
 }
 
+function parseInterval(value: unknown, what: string): ScopeInterval {
+  const raw = record(value, what);
+  return { start: str(raw.start, `${what}.start`), end: str(raw.end, `${what}.end`) };
+}
+
+function parseScope(value: unknown, what: string): CorpusScope {
+  const raw = record(value, what);
+  const axis = str(raw.axis, `${what}.axis`);
+  if (!isScopeAxis(axis)) fail(`${what}.axis is not an axis: ${axis}`);
+  const match = str(raw.match, `${what}.match`);
+  if (!isScopeMatch(match)) fail(`${what}.match is not a match rule: ${match}`);
+  return { window: parseInterval(raw.window, `${what}.window`), axis, match };
+}
+
 function parseNode(value: unknown, what: string): CorpusNode {
   const raw = record(value, what);
   const id = str(raw.id, `${what}.id`);
@@ -115,6 +145,10 @@ function parseNode(value: unknown, what: string): CorpusNode {
     ...(raw.timing !== undefined ? { timing: parseTiming(raw.timing, `${what}.timing`) } : {}),
     ...(raw.verdict !== undefined ? { verdict: parseVerdict(raw.verdict, `${what}.verdict`) } : {}),
     ...(raw.tagIds !== undefined ? { tagIds: parseTagIds(raw.tagIds, `${what}.tagIds`) } : {}),
+    ...(raw.window !== undefined ? { window: parseInterval(raw.window, `${what}.window`) } : {}),
+    ...(raw.planWindow !== undefined
+      ? { planWindow: parseInterval(raw.planWindow, `${what}.planWindow`) }
+      : {}),
     ...flag(raw.archived, "archived", what),
     ...flag(raw.backlogged, "backlogged", what),
     ...flag(raw.isPrivate, "isPrivate", what),
@@ -187,6 +221,7 @@ function parseFilter(value: unknown, what: string): CorpusFilter {
     ...flag(raw.privateMode, "privateMode", what),
     ...(raw.archived !== undefined ? { archived: parseOverride(raw.archived, `${what}.archived`) } : {}),
     ...(raw.backlog !== undefined ? { backlog: parseOverride(raw.backlog, `${what}.backlog`) } : {}),
+    ...(raw.scope !== undefined ? { scope: parseScope(raw.scope, `${what}.scope`) } : {}),
   };
 }
 
@@ -228,14 +263,43 @@ const HABIT_FLOW = {
   verdictWindowN: null, verdictWindowKind: null,
 } as const;
 
-function toMindmapNode(node: CorpusNode): MindmapNode {
+/**
+ * Hands each distinct window a scope id, and remembers the answer.
+ *
+ * The corpus states windows because the rule is about windows; the frontend's nodes carry
+ * **boundary scope ids** and resolve them through `useScopeWindows`, because that is what a board
+ * actually holds. So each window a case names is minted as a one-cell scope here, and the map of
+ * ids to windows stands in for what the app resolves at run time. A single scope uses its id for
+ * both boundaries, which is exactly how the Scope Picker writes one.
+ */
+class ScopeMinter {
+  private readonly ids = new Map<string, number>();
+  readonly windows = new Map<number, ScopeInterval>();
+
+  mint(window: ScopeInterval): number {
+    const key = `${window.start}|${window.end}`;
+    const existing = this.ids.get(key);
+    if (existing !== undefined) return existing;
+    const id = this.ids.size + 1;
+    this.ids.set(key, id);
+    this.windows.set(id, window);
+    return id;
+  }
+
+  timeScope(window: ScopeInterval): { start_id: number; end_id: number } {
+    const id = this.mint(window);
+    return { start_id: id, end_id: id };
+  }
+}
+
+function toMindmapNode(node: CorpusNode, scopes: ScopeMinter): MindmapNode {
   return {
     id: node.id,
     kind: node.kind,
     title: node.id,
     position: 0,
     tagIds: node.tagIds ?? [],
-    children: (node.children ?? []).map(toMindmapNode),
+    children: (node.children ?? []).map((child) => toMindmapNode(child, scopes)),
     ...(node.status !== undefined ? { status: node.status } : {}),
     ...(node.timing !== undefined ? { timing: node.timing } : {}),
     ...(node.verdict !== undefined ? { verdict: node.verdict } : {}),
@@ -245,11 +309,23 @@ function toMindmapNode(node: CorpusNode): MindmapNode {
     ...(node.isBlocked === true ? { blockReasons: ["blocked"] } : {}),
     ...(node.isHabitFlow === true ? { flow: HABIT_FLOW } : {}),
     ...(node.isHabitOccurrence === true ? { habitItem: OCCURRENCE } : {}),
+    ...(node.window !== undefined ? { timeScope: scopes.timeScope(node.window) } : {}),
+    ...(node.planWindow !== undefined ? { plan: scopes.timeScope(node.planWindow) } : {}),
+  };
+}
+
+function toScopeSelection(scope: CorpusScope, scopes: ScopeMinter): ScopeSelection {
+  const boundaries = scopes.timeScope(scope.window);
+  return {
+    startId: boundaries.start_id,
+    endId: boundaries.end_id,
+    axis: scope.axis,
+    match: scope.match,
   };
 }
 
 /** The shared filter a corpus filter names, with every unstated axis at its persisted default. */
-function toSharedFilter(filter: CorpusFilter): FilterState {
+function toSharedFilter(filter: CorpusFilter, scopes: ScopeMinter): FilterState {
   return {
     ...DEFAULT_FILTER,
     // Unblock is the List View's own option and never writes through to the shared preset — which
@@ -262,6 +338,7 @@ function toSharedFilter(filter: CorpusFilter): FilterState {
     ...(filter.privateMode !== undefined ? { privateMode: filter.privateMode } : {}),
     ...(filter.archived !== undefined ? { archivedMode: filter.archived } : {}),
     ...(filter.backlog !== undefined ? { backlogMode: filter.backlog } : {}),
+    ...(filter.scope !== undefined ? { scope: toScopeSelection(filter.scope, scopes) } : {}),
   };
 }
 
@@ -284,25 +361,41 @@ describe("preset conformance corpus", () => {
     }
   });
 
+  // Four combinations, and the disagreements a scope filter can hide are between *pairs* of them —
+  // Within against Overlapping on one axis, Relevance against Plan under one match. A combination
+  // with no case is one neither evaluator is held to. The Rust suite asserts the same.
+  it.each([
+    ["relevance", "within"],
+    ["relevance", "overlapping"],
+    ["plan", "within"],
+    ["plan", "overlapping"],
+  ])("covers %s x %s", (axis, match) => {
+    expect(
+      corpus.cases.some((c) => c.filter.scope?.axis === axis && c.filter.scope.match === match),
+    ).toBe(true);
+  });
+
   for (const testCase of corpus.cases) {
     describe(testCase.name, () => {
       const board = corpus.boards[testCase.board];
-      const root = toMindmapNode(board ?? fail(`no board named ${testCase.board}`));
-      const shared = toSharedFilter(testCase.filter);
+      const scopes = new ScopeMinter();
+      const root = toMindmapNode(board ?? fail(`no board named ${testCase.board}`), scopes);
+      const shared = toSharedFilter(testCase.filter, scopes);
       const listFilter = toListFilter(testCase.filter);
+      const windows: ScopeWindows = scopes.windows;
 
       it("keeps the stated nodes on the Mindmap", () => {
-        const kept = keptIds(filterTree(root, shared)).filter((id) => id !== root.id);
+        const kept = keptIds(filterTree(root, shared, windows)).filter((id) => id !== root.id);
         expect(kept.sort()).toEqual([...testCase.mindmap].sort());
       });
 
       it("keeps the stated task rows in the List View", () => {
-        const rows = filterTaskList(flattenTaskRows(root, []), shared, listFilter);
+        const rows = filterTaskList(flattenTaskRows(root, []), shared, listFilter, windows);
         expect(rows.map((row) => row.node.id).sort()).toEqual([...testCase.list].sort());
       });
 
       it("keeps the stated commitment rows in the List View", () => {
-        const rows = filterCommitmentList(flattenCommitmentRows(root), shared, listFilter);
+        const rows = filterCommitmentList(flattenCommitmentRows(root), shared, listFilter, windows);
         expect(rows.map((row) => row.node.id).sort()).toEqual([...testCase.commitments].sort());
       });
     });

@@ -1,5 +1,6 @@
 import type { FilterState } from "@/utils/filter-tree";
 import { DEFAULT_FILTER } from "@/utils/filter-tree";
+import { isScopeSelection } from "@/utils/scope-match";
 import type { ListFilterState } from "@/utils/list-filter";
 import { DEFAULT_LIST_FILTER, isListPreset, withCurrentPillDimensions } from "@/utils/list-filter";
 import type { ViewState } from "@/stores/use-view-store";
@@ -81,9 +82,16 @@ function readViewState(value: unknown): ViewState {
   return { view, mindmapOrientation, planScopeKind };
 }
 
-/** A stored mindmap filter, with every field this build knows about present. */
+/**
+ * A stored mindmap filter, with every field this build knows about present.
+ *
+ * The scope selection is re-read rather than trusted: it is the one field whose shape a stored
+ * blob could satisfy structurally and still be wrong — an axis or match rule this build does not
+ * know would narrow the board by a rule nothing can express, and no control could clear it.
+ */
 function readFilterState(value: unknown): FilterState {
-  return mergeFilterDefaults(value, DEFAULT_FILTER);
+  const merged = mergeFilterDefaults(value, DEFAULT_FILTER);
+  return { ...merged, scope: isScopeSelection(merged.scope) ? merged.scope : null };
 }
 
 /**

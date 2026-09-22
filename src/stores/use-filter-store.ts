@@ -1,6 +1,7 @@
 import { createStore, type StoreApi } from "zustand";
 import type { FilterState, StatusMode, TagFilterMode } from "@/utils/filter-tree";
 import { DEFAULT_FILTER, NEXT_OVERRIDE_MODE } from "@/utils/filter-tree";
+import type { ScopeSelection } from "@/utils/scope-match";
 import { tabStoreHook } from "@/stores/tab-stores-context";
 
 export interface FilterStore {
@@ -19,6 +20,8 @@ export interface FilterStore {
   togglePrivateMode: () => void;
   cycleArchivedMode: () => void;
   cycleBacklogMode: () => void;
+  /** Replaces the scope selection, or clears it with `null`. One at a time, by design. */
+  setScopeFilter: (selection: ScopeSelection | null) => void;
   reset: () => void;
 }
 
@@ -48,6 +51,7 @@ export function createFilterStore(seed: FilterState = DEFAULT_FILTER): StoreApi<
       set((s) => ({ filter: { ...s.filter, archivedMode: NEXT_OVERRIDE_MODE[s.filter.archivedMode] } })),
     cycleBacklogMode: () =>
       set((s) => ({ filter: { ...s.filter, backlogMode: NEXT_OVERRIDE_MODE[s.filter.backlogMode] } })),
+    setScopeFilter: (selection) => set((s) => ({ filter: { ...s.filter, scope: selection } })),
     reset: () => set({ filter: DEFAULT_FILTER }),
   }));
 }

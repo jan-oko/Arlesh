@@ -267,3 +267,41 @@ fn the_archived_pill_on_include_reaches_a_commitment_too() {
         ["commitment-1"]
     );
 }
+
+#[test]
+fn a_row_reads_its_scope_through_the_nearest_scoped_ancestor_not_the_outermost() {
+    let at = |date: &str| {
+        crate::scopes::resolve::day_boundary(
+            date.parse::<chrono::NaiveDate>().expect("a date parses"),
+        )
+    };
+    let window = |start: &str, end: &str| crate::filters::model::ScopeWindow {
+        start: at(start),
+        end: at(end),
+    };
+    let mut season = task("task-season", "todo");
+    season.window = Some(window("2026-06-01", "2026-09-01"));
+    let mut week = task("task-week", "todo");
+    week.window = Some(window("2026-08-24", "2026-08-31"));
+    let root = FactNode::with_children(
+        NodeFacts::new("domain-1", NodeKind::Domain),
+        vec![FactNode::with_children(
+            season,
+            vec![FactNode::with_children(
+                week,
+                vec![FactNode::leaf(task("task-leaf", "todo"))],
+            )],
+        )],
+    );
+    let filter = BoardFilter {
+        scope: Some(crate::filters::model::ScopeFilter {
+            window: window("2026-08-24", "2026-08-31"),
+            axis: crate::filters::model::ScopeAxis::Relevance,
+            match_rule: crate::filters::model::ScopeMatch::Within,
+        }),
+        ..BoardFilter::default()
+    };
+    // The leaf inherits the week, not the season two links up — so Within keeps it, and keeps the
+    // week itself, while the season that wholly contains the picked week does not fit inside it.
+    assert_eq!(rows_of(&root, &filter), vec!["task-week", "task-leaf"]);
+}

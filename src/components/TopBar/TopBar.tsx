@@ -14,6 +14,7 @@ import FilterPopover from "@/components/FilterPopover/FilterPopover";
 import FilterChips from "@/components/FilterChips/FilterChips";
 import Select from "@/components/Select/Select";
 import Switch from "@/components/Switch/Switch";
+import ScopeSelector from "./ScopeSelector";
 import SubtreeBreadcrumb from "./SubtreeBreadcrumb";
 import HabitCollapseSetting from "./HabitCollapseSetting";
 import styles from "./TopBar.module.css";
@@ -189,6 +190,10 @@ export default function TopBar() {
             onChange={selectPreset}
             ariaLabel={t("listView:statusPresetLabel")}
           />
+          {/* Beside the status preset, in every view: "which period" and "which status" are the
+              two questions a board is read under, and both belong where they can be seen without
+              opening anything. */}
+          <ScopeSelector />
         </div>
 
         {/* Where you are, and the whole way down to it. A slot rather than a sibling, because the

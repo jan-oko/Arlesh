@@ -15,7 +15,7 @@ use std::collections::BTreeSet;
 
 use super::{
     model::{BoardFilter, NodeFacts, NodeKind},
-    rules::{self, UNSET_STATUS},
+    rules::{self, Inherited},
 };
 
 /// One node of a fact tree: what the filter reads, plus its children.
@@ -49,7 +49,7 @@ impl FactNode {
 /// The honest answer, which [`prune_tree`] then softens for the one caller — the Mindmap's
 /// synthetic root — that needs a container to render into whatever the filter says.
 pub fn prune(root: &FactNode, filter: &BoardFilter) -> Option<FactNode> {
-    prune_at(root, filter, UNSET_STATUS, false)
+    prune_at(root, filter, Inherited::default())
 }
 
 /// Prunes `root`, returning it as a container even when nothing in it survived.
@@ -96,27 +96,31 @@ fn collect_ids(node: &FactNode, ids: &mut BTreeSet<String>) {
 fn prune_at(
     node: &FactNode,
     filter: &BoardFilter,
-    inherited_status: &str,
-    under_backlog: bool,
+    inherited: Inherited<'_>,
 ) -> Option<FactNode> {
     if rules::type_hard_hidden(&node.facts, filter) {
         return None;
     }
     // Only a container passes a status down. A Goal or Task always carries its own, and no
     // container ever sits beneath one, so their statuses must not leak into the chain.
-    let inherited_for_children = if node.facts.kind.is_structural() {
-        node.facts.status.as_deref().unwrap_or(inherited_status)
+    let status_for_children = if node.facts.kind.is_structural() {
+        node.facts.status.as_deref().unwrap_or(inherited.status)
     } else {
-        inherited_status
+        inherited.status
     };
-    // Backlog, unlike status, does propagate: everything under a set-aside Task is set aside too.
-    let backlog_for_children = under_backlog || node.facts.backlogged;
+    let for_children = Inherited {
+        status: status_for_children,
+        // Backlog, unlike status, does propagate: everything under a set-aside Task is set aside.
+        under_backlog: inherited.under_backlog || node.facts.backlogged,
+        // A Time Scope propagates in the same shape: the nearest scoped ancestor is whatever the
+        // last explicitly-scoped node on the way down was.
+        window: node.facts.window.or(inherited.window),
+    };
 
     let mut children = Vec::new();
     let mut has_content_match = false;
     for child in &node.children {
-        let Some(pruned) = prune_at(child, filter, inherited_for_children, backlog_for_children)
-        else {
+        let Some(pruned) = prune_at(child, filter, for_children) else {
             continue;
         };
         if child.facts.kind != NodeKind::Info {
@@ -130,9 +134,7 @@ fn prune_at(
     if node.facts.kind == NodeKind::Info {
         return Some(FactNode::with_children(node.facts.clone(), children));
     }
-    if has_content_match
-        || rules::self_matches(&node.facts, filter, inherited_status, under_backlog)
-    {
+    if has_content_match || rules::self_matches(&node.facts, filter, inherited) {
         return Some(FactNode::with_children(node.facts.clone(), children));
     }
     None

@@ -1,4 +1,5 @@
-//! Board filtering — the status presets, the tri-state override pills and the tag predicate.
+//! Board filtering — the status presets, the tri-state override pills, the tag predicate and the
+//! scope selector.
 //!
 //! This is the **definition** of what "Plan", "Start", "Do", "Backlog" and "Unblock" show. It was
 //! written in TypeScript first, where the Mindmap and the List View both needed it; it lives here
@@ -8,7 +9,9 @@
 //! # What is here and what is not
 //!
 //! The rules are pure functions of [`NodeFacts`](model::NodeFacts) — a small record carrying only
-//! what a filter reads off a node. Nothing here loads, queries or renders: [`facts`] turns a
+//! what a filter reads off a node, resolved scope windows included: whoever names a scope resolves
+//! it before it arrives, which is what keeps the scope selector's comparisons here rather than
+//! splitting them across a database call. Nothing here loads, queries or renders: [`facts`] turns a
 //! [`MindmapLoad`](crate::mindmap::model::MindmapLoad) into a tree of facts, [`tree`] prunes that
 //! tree the way the Mindmap does, and [`list`] answers a flat task/commitment row the way the List
 //! View does. The two surfaces share every predicate in [`rules`] and differ only in how they walk.

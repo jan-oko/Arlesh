@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
   effectiveTimeScope, nearestPlannedAncestor, partitionForScope, planRefusal, referencedScopeIds,
-  timeScopeWindow,
 } from "./plan-triage";
-import type { ScopeWindows } from "./plan-triage";
+import { timeScopeWindow } from "./scope-match";
+import type { ScopeWindows } from "./scope-interval";
 import type { TaskListRow } from "./list-filter";
 import type { MindmapNode, NodeKind } from "./tree-layout";
 

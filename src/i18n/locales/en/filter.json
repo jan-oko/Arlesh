@@ -27,5 +27,17 @@
     "inactive": "Backlog: default",
     "include": "Backlog: shown",
     "exclude": "Backlog: hidden"
-  }
+  },
+  "scopeLabel": "Scope filter",
+  "anyScope": "Any scope",
+  "clearScope": "Clear the scope filter",
+  "scopePicker": "Scope filter",
+  "scopeAxis": "Match on",
+  "scopeAxisRelevance": "Relevance",
+  "scopeAxisPlan": "Plan",
+  "scopeMatch": "Rule",
+  "scopeMatchWithin": "Within",
+  "scopeMatchOverlapping": "Overlapping",
+  "scopeApply": "Apply",
+  "scopeClear": "Clear"
 }

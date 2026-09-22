@@ -137,20 +137,25 @@ export default function PlanView() {
     () => ({ ...sharedFilter, backlogMode: showBacklogged ? "include" : "exclude" }),
     [sharedFilter, showBacklogged],
   );
-  // The List View's own pill dimensions are its own; what the three views share is this filter.
-  const visibleRows = useMemo(
-    () => filterTaskList(rows, filter, DEFAULT_LIST_FILTER),
-    [rows, filter],
-  );
-
+  // Resolved from the **unfiltered** rows: the shared filter now carries a scope selection of its
+  // own, which is itself a comparison over windows, so the windows have to exist before the filter
+  // can be applied rather than after it. A row the filter then drops cost one cached lookup.
   const targetScopeId = scope.scope?.id ?? null;
+  const scopeSelection = filter.scope;
   const scopeIds = useMemo(() => {
-    const ids = referencedScopeIds(visibleRows);
+    const ids = referencedScopeIds(rows);
     if (targetScopeId !== null) ids.push(targetScopeId);
+    if (scopeSelection !== null) ids.push(scopeSelection.startId, scopeSelection.endId);
     return ids;
-  }, [visibleRows, targetScopeId]);
+  }, [rows, targetScopeId, scopeSelection]);
   const windows = useScopeWindows(scopeIds);
   const targetWindow = targetScopeId === null ? null : windows.get(targetScopeId) ?? null;
+
+  // The List View's own pill dimensions are its own; what the three views share is this filter.
+  const visibleRows = useMemo(
+    () => filterTaskList(rows, filter, DEFAULT_LIST_FILTER, windows),
+    [rows, filter, windows],
+  );
 
   const panes = useMemo(
     () => (targetWindow === null ? NO_PANES : partitionForScope(visibleRows, targetWindow, windows)),

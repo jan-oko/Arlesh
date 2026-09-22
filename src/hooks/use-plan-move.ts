@@ -4,8 +4,7 @@ import { getErrorMessage } from "@/api/errors";
 import { useTranslation } from "react-i18next";
 import type { PendingToast } from "@/stores/use-mindmap-store";
 import type { TaskListRow } from "@/utils/list-filter";
-import type { ScopeInterval } from "@/utils/scope-interval";
-import type { ScopeWindows } from "@/utils/plan-triage";
+import type { ScopeInterval, ScopeWindows } from "@/utils/scope-interval";
 import { planRefusal } from "@/utils/plan-triage";
 
 interface PlanMoveOptions {

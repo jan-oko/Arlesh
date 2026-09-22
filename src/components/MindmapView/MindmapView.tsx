@@ -30,6 +30,7 @@ import { useViewStore } from "@/stores/use-view-store";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
 import { useSubtreeNav } from "@/hooks/use-subtree-nav";
 import { filterTreeWithFocus } from "@/utils/filter-tree";
+import { useScopeFilterWindows } from "@/hooks/use-scope-filter-windows";
 import { collapsedWithFoldedGroups, foldHabitRuns, isHabitGroupNode } from "@/utils/habit-collapse";
 import { subtreeToggle } from "@/utils/subtree-toggle";
 import { useHabitCollapseLabels } from "@/hooks/use-habit-collapse-labels";
@@ -134,10 +135,12 @@ export default function MindmapView() {
   // matching — completing a task under Plan no longer erases it out from under you. It ends when the
   // selection moves or the filter/subtree changes; see use-focus-exemption.
   const focusExemptNodeId = useFocusExemption(selectedNodeId, [filter, subtreeRootId]);
+  // The scope selector compares resolved windows, which the board's rows carry only as scope ids.
+  const scopeWindows = useScopeFilterWindows(tree, filter.scope);
   const { root: filteredRoot, exemptedIds: focusExemptIds } = useMemo(() => {
     const base = subtreeRootId !== null ? (findNode(tree, subtreeRootId) ?? tree) : tree;
-    return filterTreeWithFocus(base, filter, focusExemptPath(base, focusExemptNodeId));
-  }, [subtreeRootId, tree, filter, focusExemptNodeId]);
+    return filterTreeWithFocus(base, filter, focusExemptPath(base, focusExemptNodeId), scopeWindows);
+  }, [subtreeRootId, tree, filter, focusExemptNodeId, scopeWindows]);
 
   // Passed Habit iterations fold *after* the filter, never before it: a folded run is a way of
   // drawing iterations, not a node the filter could evaluate, so it stands for whichever of them

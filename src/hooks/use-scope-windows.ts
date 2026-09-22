@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { resolveScope } from "@/api/scopes";
-import type { ScopeInterval } from "@/utils/scope-interval";
-import type { ScopeWindows } from "@/utils/plan-triage";
+import type { ScopeInterval, ScopeWindows } from "@/utils/scope-interval";
 
 /**
  * Scopes are immutable once created, so a resolved window can be cached for the life of the

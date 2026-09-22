@@ -8,7 +8,7 @@
 use std::borrow::Cow;
 
 use super::{
-    model::{BoardFilter, NodeFacts, NodeKind, Preset},
+    model::{BoardFilter, NodeFacts, NodeKind, Preset, ScopeWindow},
     rules,
 };
 
@@ -31,6 +31,16 @@ impl<'a> Row<'a> {
     /// even when the row itself is not flagged.
     fn has_private_ancestor(&self) -> bool {
         self.ancestors.iter().any(|a| a.is_private)
+    }
+
+    /// The nearest scoped ancestor's window, which an item carrying no Time Scope of its own
+    /// reads instead. The tree walk threads this down as it descends; a flat row reconstructs it
+    /// by climbing its own chain, innermost first.
+    fn inherited_window(&self) -> Option<ScopeWindow> {
+        self.ancestors
+            .iter()
+            .rev()
+            .find_map(|ancestor| ancestor.window)
     }
 
     /// Whether any ancestor gates the whole subtree beneath it under this filter.
@@ -66,6 +76,9 @@ pub fn passes_row(row: Row<'_>, filter: &BoardFilter) -> bool {
             return false;
         }
     } else if !passes_row_preset(row, filter) {
+        return false;
+    }
+    if !rules::passes_scope(row.node, filter, row.inherited_window()) {
         return false;
     }
     rules::passes_tags(row.node, filter)
@@ -147,6 +160,9 @@ pub fn passes_commitment_row(row: Row<'_>, filter: &BoardFilter) -> bool {
         filter,
         rules::passes_commitment_preset(row.node, filter),
     ) {
+        return false;
+    }
+    if !rules::passes_scope(row.node, filter, row.inherited_window()) {
         return false;
     }
     rules::passes_tags(row.node, filter)

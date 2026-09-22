@@ -12,7 +12,14 @@
     "node frames each board — it is never a row and never appears in an expectation.",
     "",
     "`filter.preset` is the shared status preset. `filter.unblock` is the List View's sixth option,",
-    "which does not replace the preset: it leaves it where it was and adds `blocked rows only`."
+    "which does not replace the preset: it leaves it where it was and adds `blocked rows only`.",
+    "",
+    "`filter.scope` is the scope selector: one resolved window, an axis (`relevance` or `plan`)",
+    "and a match rule (`within` or `overlapping`). A node states its **own** resolved windows —",
+    "`window` for its Time Scope and `planWindow` for its Plan — and both evaluators derive the",
+    "*effective* relevance window by climbing, because that climb is the rule being pinned. A",
+    "node with no `window` and no scoped ancestor is Unscoped: always relevant, so an unbounded",
+    "window that overlaps everything and is wholly inside nothing."
   ],
   "cases": [
     {
@@ -762,6 +769,178 @@
       "commitments": [
         "commitment-under-unopened"
       ]
+    },
+    {
+      "name": "relevance overlapping keeps everything the week touches",
+      "spec": "filtering-logic.md — Overlapping keeps every item whose effective window shares an instant with the picked scope: the day inside the week, the season around it, the item that inherits that season, and the Unscoped item that is always relevant. The week after starts where this one ends, and half-open windows do not touch.",
+      "filter": {
+        "preset": "all",
+        "scope": {
+          "window": {
+            "start": "2026-08-24T02:00:00",
+            "end": "2026-08-31T02:00:00"
+          },
+          "axis": "relevance",
+          "match": "overlapping"
+        }
+      },
+      "board": "scoped",
+      "mindmap": [
+        "commitment-in-week",
+        "goal-season",
+        "goal-unscoped",
+        "task-done-in-week",
+        "task-in-week",
+        "task-inherits",
+        "task-planned-day",
+        "task-planned-elsewhere",
+        "task-planned-week",
+        "task-unscoped"
+      ],
+      "list": [
+        "task-done-in-week",
+        "task-in-week",
+        "task-inherits",
+        "task-planned-day",
+        "task-planned-elsewhere",
+        "task-planned-week",
+        "task-unscoped"
+      ],
+      "commitments": [
+        "commitment-in-week"
+      ]
+    },
+    {
+      "name": "relevance within keeps only what the week wholly holds",
+      "spec": "filtering-logic.md — Within keeps an item whose effective window lies wholly inside the picked scope. The season-scoped items fall out, the season-scoped goal stays only as the ancestor of the day-scoped ones, and an Unscoped item is inside nothing.",
+      "filter": {
+        "preset": "all",
+        "scope": {
+          "window": {
+            "start": "2026-08-24T02:00:00",
+            "end": "2026-08-31T02:00:00"
+          },
+          "axis": "relevance",
+          "match": "within"
+        }
+      },
+      "board": "scoped",
+      "mindmap": [
+        "commitment-in-week",
+        "goal-season",
+        "task-done-in-week",
+        "task-in-week"
+      ],
+      "list": [
+        "task-done-in-week",
+        "task-in-week"
+      ],
+      "commitments": [
+        "commitment-in-week"
+      ]
+    },
+    {
+      "name": "plan within reads the plan and ignores the time scope",
+      "spec": "filtering-logic.md — The Plan axis matches on a Task's Plan. A Goal or Commitment has none and so matches nothing; an unplanned Task is not in the picked scope; the season-scoped Tasks match or not purely on where they are scheduled.",
+      "filter": {
+        "preset": "all",
+        "scope": {
+          "window": {
+            "start": "2026-08-24T02:00:00",
+            "end": "2026-08-31T02:00:00"
+          },
+          "axis": "plan",
+          "match": "within"
+        }
+      },
+      "board": "scoped",
+      "mindmap": [
+        "goal-season",
+        "task-planned-day",
+        "task-planned-week"
+      ],
+      "list": [
+        "task-planned-day",
+        "task-planned-week"
+      ],
+      "commitments": []
+    },
+    {
+      "name": "plan within a day holds only the day's own plan",
+      "spec": "filtering-logic.md — Within is containment, not overlap: a Task planned into the whole week is not inside one of its days.",
+      "filter": {
+        "preset": "all",
+        "scope": {
+          "window": {
+            "start": "2026-08-26T02:00:00",
+            "end": "2026-08-27T02:00:00"
+          },
+          "axis": "plan",
+          "match": "within"
+        }
+      },
+      "board": "scoped",
+      "mindmap": [
+        "goal-season",
+        "task-planned-day"
+      ],
+      "list": [
+        "task-planned-day"
+      ],
+      "commitments": []
+    },
+    {
+      "name": "plan overlapping a day catches the week around it",
+      "spec": "filtering-logic.md — Overlapping on the Plan axis keeps a Task planned into any scope that shares an instant with the picked one, so the week-planned Task shows on one of its days.",
+      "filter": {
+        "preset": "all",
+        "scope": {
+          "window": {
+            "start": "2026-08-26T02:00:00",
+            "end": "2026-08-27T02:00:00"
+          },
+          "axis": "plan",
+          "match": "overlapping"
+        }
+      },
+      "board": "scoped",
+      "mindmap": [
+        "goal-season",
+        "task-planned-day",
+        "task-planned-week"
+      ],
+      "list": [
+        "task-planned-day",
+        "task-planned-week"
+      ],
+      "commitments": []
+    },
+    {
+      "name": "a scope selection narrows what the preset already kept",
+      "spec": "filtering-logic.md — The scope selector joins the derived Scope tokens and the status preset rather than replacing them: Plan drops the done task, and Within drops everything the week does not wholly hold.",
+      "filter": {
+        "preset": "plan",
+        "scope": {
+          "window": {
+            "start": "2026-08-24T02:00:00",
+            "end": "2026-08-31T02:00:00"
+          },
+          "axis": "relevance",
+          "match": "within"
+        }
+      },
+      "board": "scoped",
+      "mindmap": [
+        "commitment-in-week",
+        "goal-season",
+        "task-in-week"
+      ],
+      "list": [
+        "task-in-week"
+      ],
+      "commitments": [
+        "commitment-in-week"
+      ]
     }
   ],
   "boards": {
@@ -1190,6 +1369,115 @@
               "archived": true
             }
           ]
+        }
+      ]
+    },
+    "scoped": {
+      "id": "root",
+      "kind": "aspect",
+      "children": [
+        {
+          "id": "goal-season",
+          "kind": "goal",
+          "status": "active",
+          "window": {
+            "start": "2026-06-01T02:00:00",
+            "end": "2026-09-01T02:00:00"
+          },
+          "children": [
+            {
+              "id": "task-in-week",
+              "kind": "task",
+              "status": "todo",
+              "window": {
+                "start": "2026-08-26T02:00:00",
+                "end": "2026-08-27T02:00:00"
+              }
+            },
+            {
+              "id": "task-done-in-week",
+              "kind": "task",
+              "status": "done",
+              "window": {
+                "start": "2026-08-26T02:00:00",
+                "end": "2026-08-27T02:00:00"
+              }
+            },
+            {
+              "id": "task-inherits",
+              "kind": "task",
+              "status": "todo"
+            },
+            {
+              "id": "task-planned-day",
+              "kind": "task",
+              "status": "todo",
+              "window": {
+                "start": "2026-06-01T02:00:00",
+                "end": "2026-09-01T02:00:00"
+              },
+              "planWindow": {
+                "start": "2026-08-26T02:00:00",
+                "end": "2026-08-27T02:00:00"
+              }
+            },
+            {
+              "id": "task-planned-week",
+              "kind": "task",
+              "status": "todo",
+              "window": {
+                "start": "2026-06-01T02:00:00",
+                "end": "2026-09-01T02:00:00"
+              },
+              "planWindow": {
+                "start": "2026-08-24T02:00:00",
+                "end": "2026-08-31T02:00:00"
+              }
+            },
+            {
+              "id": "task-planned-elsewhere",
+              "kind": "task",
+              "status": "todo",
+              "window": {
+                "start": "2026-06-01T02:00:00",
+                "end": "2026-09-01T02:00:00"
+              },
+              "planWindow": {
+                "start": "2026-09-03T02:00:00",
+                "end": "2026-09-04T02:00:00"
+              }
+            }
+          ]
+        },
+        {
+          "id": "goal-unscoped",
+          "kind": "goal",
+          "status": "active",
+          "children": [
+            {
+              "id": "task-unscoped",
+              "kind": "task",
+              "status": "todo"
+            }
+          ]
+        },
+        {
+          "id": "task-next-week",
+          "kind": "task",
+          "status": "todo",
+          "window": {
+            "start": "2026-08-31T02:00:00",
+            "end": "2026-09-07T02:00:00"
+          }
+        },
+        {
+          "id": "commitment-in-week",
+          "kind": "commitment",
+          "verdict": "unresolved",
+          "window": {
+            "start": "2026-08-26T02:00:00",
+            "end": "2026-08-27T02:00:00"
+          }
         }
       ]
     }

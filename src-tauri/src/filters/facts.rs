@@ -20,12 +20,12 @@ use crate::{
     mindmap::model::MindmapLoad,
     tasks::{
         lifecycle::{Archival, ItemLifecycle},
-        model::TaskArchival,
+        model::{TaskArchival, TimeScope},
     },
 };
 
 use super::{
-    model::{BoardFilter, NodeFacts, NodeKind},
+    model::{BoardFilter, NodeFacts, NodeKind, ScopeWindow, ScopeWindows},
     tree::{self, FactNode},
 };
 
@@ -114,11 +114,54 @@ fn index_todo_parents(load: &MindmapLoad) -> HashSet<String> {
         .collect()
 }
 
+/// A Time Scope's combined window: the start of its start boundary through the end of its end
+/// boundary, the same pair [`crate::tasks::scope_rules::time_scope_window`] resolves.
+///
+/// `None` when either endpoint is missing from `windows` — "not known", never "no constraint". An
+/// item whose own window could not be resolved simply reads as carrying none, which the
+/// nearest-scoped-ancestor rule already has an answer for.
+fn time_scope_window(scope: &TimeScope, windows: &ScopeWindows) -> Option<ScopeWindow> {
+    let start = windows.get(&scope.start_id)?;
+    let end = windows.get(&scope.end_id)?;
+    Some(ScopeWindow::spanning(*start, *end))
+}
+
+/// Every scope id the board's items name: each Task's, Goal's and Commitment's Time Scope
+/// boundaries, and each Task's Plan.
+///
+/// The caller resolves them and hands the answers back as [`ScopeWindows`], which is what keeps
+/// this module — and the rules it feeds — free of the database.
+pub fn referenced_scope_ids(load: &MindmapLoad) -> Vec<i64> {
+    let mut ids = Vec::new();
+    let mut add = |scope: Option<&TimeScope>| {
+        if let Some(scope) = scope {
+            ids.push(scope.start_id);
+            ids.push(scope.end_id);
+        }
+    };
+    for goal in &load.goals {
+        add(goal.time_scope.as_ref());
+    }
+    for task in &load.tasks {
+        add(task.time_scope.as_ref());
+        add(task.plan.as_ref());
+    }
+    for commitment in &load.commitments {
+        add(commitment.time_scope.as_ref());
+    }
+    ids.sort_unstable();
+    ids.dedup();
+    ids
+}
+
 /// Builds the fact forest for `load`: one tree per Aspect, in the order the load lists them.
 ///
 /// A row whose parent is not on the board is dropped rather than promoted to a root. An orphan is
 /// a database inconsistency, and giving it a place on the board would hide that.
-pub fn forest(load: &MindmapLoad) -> Vec<FactNode> {
+///
+/// `windows` resolves the scope ids the items name — see [`referenced_scope_ids`]. Pass an empty
+/// map when no scope filter is in play and every node simply reads as carrying no window.
+pub fn forest(load: &MindmapLoad, windows: &ScopeWindows) -> Vec<FactNode> {
     let lifecycles = index_lifecycles(load);
     let blocked = index_blocked(load);
     let todo_parents = index_todo_parents(load);
@@ -139,6 +182,10 @@ pub fn forest(load: &MindmapLoad) -> Vec<FactNode> {
         node.is_private = goal.is_private;
         node.tag_ids.clone_from(&goal.tag_ids);
         node.is_blocked = blocked.contains(&node.id);
+        node.window = goal
+            .time_scope
+            .as_ref()
+            .and_then(|scope| time_scope_window(scope, windows));
         apply_lifecycle(&mut node, lifecycles.get(&("goal", goal.id)).copied());
         facts.push(node);
         parents.push(Some(content_parent_id(&goal.parent_type, goal.parent_id)));
@@ -151,6 +198,14 @@ pub fn forest(load: &MindmapLoad) -> Vec<FactNode> {
         node.tag_ids.clone_from(&task.tag_ids);
         node.is_blocked = blocked.contains(&node.id);
         node.has_todo_child = todo_parents.contains(&node.id);
+        node.window = task
+            .time_scope
+            .as_ref()
+            .and_then(|scope| time_scope_window(scope, windows));
+        node.plan_window = task
+            .plan
+            .as_ref()
+            .and_then(|scope| time_scope_window(scope, windows));
         apply_lifecycle(&mut node, lifecycles.get(&("task", task.id)).copied());
         facts.push(node);
         parents.push(Some(content_parent_id(&task.parent_type, task.parent_id)));
@@ -163,6 +218,10 @@ pub fn forest(load: &MindmapLoad) -> Vec<FactNode> {
         node.is_private = commitment.is_private;
         node.verdict = Some(commitment.verdict);
         node.tag_ids.clone_from(&commitment.tag_ids);
+        node.window = commitment
+            .time_scope
+            .as_ref()
+            .and_then(|scope| time_scope_window(scope, windows));
         apply_lifecycle(
             &mut node,
             lifecycles.get(&("commitment", commitment.id)).copied(),
@@ -190,8 +249,8 @@ pub fn forest(load: &MindmapLoad) -> Vec<FactNode> {
 /// dependencies — are cut to match, so nothing in the payload refers to a node the payload no
 /// longer carries. The flow sections pass through whole; see this module's own documentation for
 /// why a Flow is not something this can judge.
-pub fn narrow(load: &mut MindmapLoad, filter: &BoardFilter) {
-    let kept = tree::kept_ids_in_forest(&tree::prune_forest(&forest(load), filter));
+pub fn narrow(load: &mut MindmapLoad, filter: &BoardFilter, windows: &ScopeWindows) {
+    let kept = tree::kept_ids_in_forest(&tree::prune_forest(&forest(load, windows), filter));
     let keeps = |id: &str| kept.contains(id);
 
     load.domains.retain(|domain| keeps(&domain_id(domain.id)));

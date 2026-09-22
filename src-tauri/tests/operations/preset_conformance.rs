@@ -14,7 +14,10 @@ use std::collections::{BTreeSet, HashMap};
 
 use arlesh_lib::filters::{
     list,
-    model::{BoardFilter, NodeKind, OverrideMode, Preset, TagFilter, TagMode},
+    model::{
+        BoardFilter, NodeKind, OverrideMode, Preset, ScopeAxis, ScopeFilter, ScopeMatch, TagFilter,
+        TagMode,
+    },
     tree::{self, FactNode},
 };
 use serde::Deserialize;
@@ -66,6 +69,9 @@ struct CorpusFilter {
     archived: OverrideMode,
     #[serde(default)]
     backlog: OverrideMode,
+    /// The scope selector. Absent is "any scope", which is what every case written before it had.
+    #[serde(default)]
+    scope: Option<ScopeFilter>,
 }
 
 fn yes() -> bool {
@@ -98,6 +104,7 @@ impl From<&CorpusFilter> for BoardFilter {
             private_mode: filter.private_mode,
             archived: filter.archived,
             backlog: filter.backlog,
+            scope: filter.scope,
         }
     }
 }
@@ -198,4 +205,24 @@ fn every_preset_is_covered() {
         corpus.cases.iter().any(|case| case.filter.unblock),
         "no case covers Unblock"
     );
+}
+
+#[test]
+fn every_axis_and_match_combination_is_covered() {
+    let corpus: Corpus = serde_json::from_str(CORPUS).expect("the corpus parses");
+    // Four combinations, and the disagreements a scope filter can hide are between *pairs* of
+    // them — Within against Overlapping on the same axis, Relevance against Plan under the same
+    // match. A combination with no case is one neither evaluator is held to.
+    for axis in [ScopeAxis::Relevance, ScopeAxis::Plan] {
+        for rule in [ScopeMatch::Within, ScopeMatch::Overlapping] {
+            assert!(
+                corpus.cases.iter().any(|case| {
+                    case.filter
+                        .scope
+                        .is_some_and(|scope| scope.axis == axis && scope.match_rule == rule)
+                }),
+                "no case covers {axis:?} x {rule:?}"
+            );
+        }
+    }
 }

@@ -40,6 +40,17 @@ impl ArleshMcp {
     /// hides those. Pass the **same** filter on every page of a walk: pages are derived
     /// independently, so changing it partway is no different from the board changing underfoot.
     ///
+    /// **Scope.** `filter.scope` narrows to one period, and is the same selector the user has in
+    /// the top bar: `{"window": {"start": …, "end": …}, "axis": "relevance"|"plan", "match":
+    /// "within"|"overlapping"}`. Resolve the scope first with `arlesh_scopes` and pass its
+    /// `start`/`end`; a range is one window from the first scope's start to the last's end.
+    /// `relevance` reads the item's **effective** Time Scope — an item with none of its own reads
+    /// the nearest scoped ancestor's — and `plan` reads where a Task is scheduled, so an
+    /// unplanned item matches nothing on that axis. `within` keeps only items wholly inside the
+    /// window ("what belongs to exactly this week"); `overlapping` keeps everything that shares
+    /// any instant with it ("what is relevant during this week"), the season-scoped item spanning
+    /// it included.
+    ///
     /// Not read-only: deriving habit iterations materialises the scope rows their windows land on.
     /// It creates no tasks, goals or flows.
     #[tool(
@@ -94,7 +105,17 @@ impl ArleshMcp {
         // Narrowing before paging is what makes a filtered walk cheap: the budget is spent on
         // items the caller asked for rather than on ones it would have skipped.
         if let Some(filter) = &filter {
-            crate::filters::facts::narrow(&mut load, filter);
+            // The scope selector is the one axis that reads windows rather than flags, so the
+            // scopes the board names are resolved only when one is set — an unfiltered-by-scope
+            // read should not pay for a resolution nothing will look at.
+            let windows = match filter.scope {
+                Some(_) => {
+                    let ids = crate::filters::facts::referenced_scope_ids(&load);
+                    crate::tasks::scope_rules::resolve_windows(&mut db, &ids).await
+                }
+                None => crate::filters::model::ScopeWindows::new(),
+            };
+            crate::filters::facts::narrow(&mut load, filter, &windows);
         }
 
         if let Err(error) = db.commit().await {

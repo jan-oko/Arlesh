@@ -63,6 +63,14 @@ so `{"preset": "all"}` is the app's neutral filter and **hides private nodes**, 
 "everything the neutral filter shows" are different requests, and the presence of the field is
 what tells them apart.
 
+`filter.scope` carries the [scope selector](filtering-logic.md) — `{"window": {"start", "end"},
+"axis": "relevance"|"plan", "match": "within"|"overlapping"}` — so "what is relevant in W35" has
+one answer rather than two. It is the one field the wire spells differently from the app: the app
+persists the picked scope's **boundary ids** and resolves them on read, while an agent passes the
+resolved window, because the two name a scope through different things — the Scope Picker on one
+side, `arlesh_scopes` on the other — and the rule itself is defined over windows either way. That
+also keeps `crate::filters` free of the database: whoever names a scope resolves it first.
+
 The rules live in `src-tauri/src/filters/`. The frontend does **not** call into them: its filter
 pass is synchronous and runs per render, and a Tauri round trip in front of every selection move
 would be a regression. What holds the two evaluators together is `conformance/preset-filters.json`

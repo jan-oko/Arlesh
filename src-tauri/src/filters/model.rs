@@ -1,8 +1,14 @@
 //! The values a filter is expressed in, and the facts it reads off a node.
 
+use std::collections::HashMap;
+
+use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 
-use crate::tasks::{lifecycle::Timing, model::Verdict};
+use crate::{
+    scopes::resolve::Bounds,
+    tasks::{lifecycle::Timing, model::Verdict},
+};
 
 /// The status preset a board is being read under.
 ///
@@ -65,6 +71,101 @@ pub enum TagMode {
     Exclude,
 }
 
+/// A scope resolved to its half-open `[start, end)` window, in local wall-clock time.
+///
+/// The **window**, never the scope id. `docs/spec/time-scopes.md` makes the scope columns the
+/// invariant and the window a derivation of them, and `CONTEXT.md` evaluates every containment
+/// question on resolved datetime boundaries — so a window is the one form in which a Day, a
+/// Season, a range across two kinds and an Exact scope are all comparable. It is also what keeps
+/// [`crate::filters`] free of the database: whoever names a scope resolves it first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScopeWindow {
+    /// Inclusive start.
+    pub start: NaiveDateTime,
+    /// Exclusive end.
+    pub end: NaiveDateTime,
+}
+
+impl ScopeWindow {
+    /// The window as the `(start, end)` pair the scope resolver works in.
+    pub fn bounds(self) -> Bounds {
+        (self.start, self.end)
+    }
+
+    /// The window a pair of resolved boundary scopes spans: the start of the first through the end
+    /// of the last, which is how a Time Scope's two endpoints combine.
+    pub fn spanning(start: Bounds, end: Bounds) -> Self {
+        Self {
+            start: start.0,
+            end: end.1,
+        }
+    }
+}
+
+// Written by hand because `schemars`' chrono support is an optional feature this build does not
+// enable; the shape is the one its `NaiveDateTime` impl produces, in an object of two.
+impl schemars::JsonSchema for ScopeWindow {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "ScopeWindow".into()
+    }
+
+    fn schema_id() -> std::borrow::Cow<'static, str> {
+        concat!(module_path!(), "::ScopeWindow").into()
+    }
+
+    fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "type": "object",
+            "description": "A half-open [start, end) window as local wall-clock datetimes, YYYY-MM-DDTHH:MM:SS.",
+            "properties": {
+                "start": { "type": "string", "format": "partial-date-time" },
+                "end": { "type": "string", "format": "partial-date-time" }
+            },
+            "required": ["start", "end"]
+        })
+    }
+}
+
+/// Every scope id a board references, resolved to its window.
+pub type ScopeWindows = HashMap<i64, Bounds>;
+
+/// Which of an item's two windows a scope selection compares.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ScopeAxis {
+    /// The item's **effective Time Scope** — its own, or, when it has none, the nearest scoped
+    /// ancestor's. "What is relevant during this week."
+    Relevance,
+    /// The Task's **Plan** — where it is actually scheduled. "What is planned into next Tuesday."
+    Plan,
+}
+
+/// How an item's window has to relate to the picked one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ScopeMatch {
+    /// The item's window lies wholly inside the picked one. "What belongs to exactly this week."
+    Within,
+    /// The two windows share any instant. "What is relevant during this week", the season-scoped
+    /// item that spans it included.
+    Overlapping,
+}
+
+/// One scope selection: a window, the axis it is compared against, and the match rule.
+///
+/// One at a time — there is no union of scopes to reason about, and clearing it is what removes
+/// it. See `docs/spec/filtering-logic.md`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct ScopeFilter {
+    /// The picked scope, or range of scopes, resolved to one window.
+    pub window: ScopeWindow,
+    /// Which of the item's windows to compare.
+    pub axis: ScopeAxis,
+    /// Within, or Overlapping.
+    #[serde(rename = "match")]
+    pub match_rule: ScopeMatch,
+}
+
 /// One tag filter: a tag's domain id in one of the three modes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct TagFilter {
@@ -101,6 +202,14 @@ pub struct BoardFilter {
     pub archived: OverrideMode,
     /// The Backlog pill.
     pub backlog: OverrideMode,
+    /// The scope selector: one picked window, an axis and a match rule, or `None` for "any scope".
+    ///
+    /// Carried as a resolved window rather than as the boundary scope ids the app persists. The
+    /// two surfaces name a scope differently — the user through the Scope Picker, an agent through
+    /// `arlesh_scopes` — and the *rule* is defined over windows either way, so this is the form
+    /// both of them reduce to.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scope: Option<ScopeFilter>,
 }
 
 impl Default for BoardFilter {
@@ -116,6 +225,7 @@ impl Default for BoardFilter {
             private_mode: false,
             archived: OverrideMode::Inactive,
             backlog: OverrideMode::Inactive,
+            scope: None,
         }
     }
 }
@@ -227,6 +337,15 @@ pub struct NodeFacts {
     /// The tag domain ids attached to the node.
     #[serde(default)]
     pub tag_ids: Vec<i64>,
+    /// The node's **own** explicit Time Scope, resolved. `None` means it has none of its own and
+    /// reads the nearest scoped ancestor's, exactly as Timing, Resolution and containment do — so
+    /// the chain is walked where the surface walks it rather than baked in here.
+    #[serde(default)]
+    pub window: Option<ScopeWindow>,
+    /// The Task's own **Plan**, resolved. `None` means unplanned. Never inherited: a subtask of a
+    /// Task planned into Tuesday is not itself planned into Tuesday.
+    #[serde(default)]
+    pub plan_window: Option<ScopeWindow>,
 }
 
 impl NodeFacts {
@@ -246,6 +365,8 @@ impl NodeFacts {
             is_habit_flow: false,
             is_habit_occurrence: false,
             tag_ids: Vec::new(),
+            window: None,
+            plan_window: None,
         }
     }
 

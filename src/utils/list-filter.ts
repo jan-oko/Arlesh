@@ -4,6 +4,10 @@ import {
   typeHardHidden, passesTags, withArchivedOverride, isShelvedProject, isHiddenBacklog,
   isUnopenedOccurrence, passesCommitmentPreset,
 } from "@/utils/filter-tree";
+import type { ScopeWindows } from "@/utils/scope-interval";
+import { NO_SCOPE_WINDOWS } from "@/utils/scope-interval";
+import type { ScopeFilter } from "@/utils/scope-match";
+import { inheritedWindow, passesScope, resolveScopeFilter } from "@/utils/scope-match";
 import { TASK_STATUS, GOAL_STATUS, PROJECT_STATUS } from "@/utils/status-mapping";
 import type { Verdict } from "@/api/verdict";
 import { VERDICT, VERDICT_VALUES } from "@/api/verdict";
@@ -305,7 +309,13 @@ function unblockSharedFilter(shared: FilterState): FilterState {
 
 /** Whether one row survives the shared filter (status preset, tags, Info/Flow/Private) and the
  * List-View-exclusive filters. Unblock overrides the status preset to "blocked tasks only". */
-function rowPassesFilters(row: TaskListRow, shared: FilterState, listFilter: ListFilterState): boolean {
+function rowPassesFilters(
+  row: TaskListRow,
+  shared: FilterState,
+  listFilter: ListFilterState,
+  scope: ScopeFilter | null,
+  windows: ScopeWindows,
+): boolean {
   const effectiveShared = listFilter.preset === "unblock" ? unblockSharedFilter(shared) : shared;
   if (typeHardHidden(row.node, effectiveShared)) return false;
   if (!shared.privateMode && row.hasPrivateAncestor) return false;
@@ -314,6 +324,9 @@ function rowPassesFilters(row: TaskListRow, shared: FilterState, listFilter: Lis
   } else if (!passesListPreset(row, shared)) {
     return false;
   }
+  // The Mindmap threads the nearest scoped ancestor's window down as it descends; a flat row has
+  // no walk to thread, so it climbs its own chain for the same answer.
+  if (!passesScope(row.node, inheritedWindow(row.ancestors, windows), scope)) return false;
   if (!passesTags(row.node, shared)) return false;
   if (!matchesPillGroup(listFilter.pills.antecedent, ancestorRefs(row.ancestors))) return false;
   if (!matchesPillGroup(listFilter.pills.dependency, row.dependencyRefs)) return false;
@@ -350,8 +363,10 @@ export function filterCommitmentList(
   rows: readonly CommitmentListRow[],
   shared: FilterState,
   listFilter: ListFilterState,
+  windows: ScopeWindows = NO_SCOPE_WINDOWS,
 ): CommitmentListRow[] {
   if (listFilter.preset === "unblock" || listFilter.preset === "backlog") return [];
+  const scope = resolveScopeFilter(shared.scope, windows);
   return rows.filter((row) => {
     if (typeHardHidden(row.node, shared)) return false;
     if (!shared.privateMode && row.hasPrivateAncestor) return false;
@@ -360,6 +375,7 @@ export function filterCommitmentList(
     if (!withArchivedOverride(row.node, shared, passesCommitmentPreset(row.node, shared))) {
       return false;
     }
+    if (!passesScope(row.node, inheritedWindow(row.ancestors, windows), scope)) return false;
     if (!passesTags(row.node, shared)) return false;
     if (!matchesPillGroup(listFilter.pills.antecedent, ancestorRefs(row.ancestors))) return false;
     if (!matchesPillGroup(listFilter.pills.scopeState, row.scopeTokens)) return false;
@@ -376,8 +392,10 @@ export function filterTaskList(
   rows: readonly TaskListRow[],
   shared: FilterState,
   listFilter: ListFilterState,
+  windows: ScopeWindows = NO_SCOPE_WINDOWS,
 ): TaskListRow[] {
-  return rows.filter((row) => rowPassesFilters(row, shared, listFilter));
+  const scope = resolveScopeFilter(shared.scope, windows);
+  return rows.filter((row) => rowPassesFilters(row, shared, listFilter, scope, windows));
 }
 
 /** Filtered rows plus the ids kept **only** by the focus exemption — rendered dimmed. */
@@ -400,10 +418,12 @@ export function filterTaskListWithFocus(
   shared: FilterState,
   listFilter: ListFilterState,
   focusedId: string | null,
+  windows: ScopeWindows = NO_SCOPE_WINDOWS,
 ): FocusFilteredRows {
   const exemptedIds = new Set<string>();
+  const scope = resolveScopeFilter(shared.scope, windows);
   const kept = rows.filter((row) => {
-    if (rowPassesFilters(row, shared, listFilter)) return true;
+    if (rowPassesFilters(row, shared, listFilter, scope, windows)) return true;
     if (focusedId === null || row.node.id !== focusedId) return false;
     exemptedIds.add(row.node.id);
     return true;

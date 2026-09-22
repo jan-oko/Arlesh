@@ -15,6 +15,12 @@ export interface ScopeInterval {
   end: string;
 }
 
+/** Every scope id resolved to its window, keyed by id — what `useScopeWindows` produces. */
+export type ScopeWindows = ReadonlyMap<number, ScopeInterval>;
+
+/** No windows resolved yet. Shared rather than rebuilt, so a default argument is a stable value. */
+export const NO_SCOPE_WINDOWS: ScopeWindows = new Map<number, ScopeInterval>();
+
 /** Whether `inner` lies wholly inside `outer` — the frontend's reading of `interval_contains`. */
 export function intervalContains(outer: ScopeInterval, inner: ScopeInterval): boolean {
   return outer.start <= inner.start && inner.end <= outer.end;
