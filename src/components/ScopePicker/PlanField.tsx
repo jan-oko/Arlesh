@@ -6,16 +6,21 @@ import type { Scope } from "@/api/scopes";
 import type { TimeScope } from "@/api/time-scope";
 import { useScopePicker } from "@/hooks/use-scope-picker";
 import { useScopeLabels } from "@/hooks/use-scope-labels";
-import { openingForScopes } from "@/utils/scope-calendar";
+import { dayScopeDate, lastDayOfWindow, openingForScopes } from "@/utils/scope-calendar";
 import { formatScopeRange } from "@/utils/scope-format";
 import ScopePicker, { type ScopeConstraint } from "./ScopePicker";
 import styles from "./ScopeField.module.css";
 
-/** Converts an exclusive end datetime to the inclusive last date it covers. */
-function inclusiveEndDate(exclusiveEndIso: string): string {
-  const end = new Date(`${exclusiveEndIso}Z`);
-  end.setUTCMinutes(end.getUTCMinutes() - 1);
-  return end.toISOString().slice(0, 10);
+/**
+ * The inclusive Day range a resolved window constrains the picker to. Both ends read as Day
+ * scopes rather than calendar dates: a Day runs 02:00 -> 02:00, so a window starting at 00:30
+ * starts in the previous Day, and one ending at 02:00 ends with the Day before it.
+ */
+function constraintDates(startIso: string, endIso: string): { startDate: string; endDate: string } {
+  const [date, time] = startIso.split("T");
+  const startDate =
+    date === undefined || time === undefined ? startIso : dayScopeDate(date, Number(time.slice(0, 2)));
+  return { startDate, endDate: lastDayOfWindow(endIso) };
 }
 
 interface Props {
@@ -46,7 +51,7 @@ export default function PlanField({ value, timeScope, onChange }: Props) {
       resolveScope(timeScope.end_id),
     ]).then(([start, end]) => {
       if (active && start != null && end != null) {
-        setConstraint({ startDate: start.start.slice(0, 10), endDate: inclusiveEndDate(end.end) });
+        setConstraint(constraintDates(start.start, end.end));
       }
     });
     return () => {

@@ -6,6 +6,7 @@ import {
   ascendKind,
   browseAnchor,
   cellsForView,
+  currentDateIso,
   descendKind,
   isCellCurrent,
   viewHeader,
@@ -13,11 +14,6 @@ import {
   type ViewKind,
 } from "@/utils/scope-calendar";
 import styles from "./ScopePicker.module.css";
-
-/** The UTC calendar date of an instant, matching the UTC date math in `scope-calendar`. */
-function isoDateOf(now: Date): string {
-  return now.toISOString().slice(0, 10);
-}
 
 function isSelected(picker: UseScopePicker, ref: ScopeRef): boolean {
   if (picker.mode === "single") {
@@ -79,7 +75,7 @@ export default function ScopePicker({
   lockKind = false,
 }: ScopePickerProps) {
   const [viewKind, setViewKind] = useState<ViewKind>(initialKind);
-  const [anchor, setAnchor] = useState<string>(initialAnchor ?? isoDateOf(now));
+  const [anchor, setAnchor] = useState<string>(initialAnchor ?? currentDateIso(now));
 
   const cells = cellsForView(viewKind, anchor);
   const parentKind = lockKind ? null : ascendKind(viewKind);
