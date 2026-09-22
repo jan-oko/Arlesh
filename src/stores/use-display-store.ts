@@ -17,6 +17,15 @@ interface DisplayStore {
    */
   habitCollapseThreshold: number;
   setHabitCollapseThreshold: (value: number) => void;
+  /**
+   * Whether the List View collects the asynchronous work into its own section at the top.
+   *
+   * **Off by default.** Row order is something the tree already answers, and quietly rearranging it
+   * for everyone would be a change nobody asked for — so manual ordering is untouched, and no
+   * section is drawn, until this is turned on.
+   */
+  asynchronousFirst: boolean;
+  toggleAsynchronousFirst: () => void;
 }
 
 /** Keeps a stored or typed threshold inside the range the setting offers. */
@@ -37,7 +46,9 @@ function clampThreshold(value: number): number {
  * silently becoming per-tab with it — `legacyPathHeaderIcons` carries a pre-tabs choice across.
  *
  * The Habit-history collapse threshold joins them for the same reason: how much of a Habit's past
- * you want to see at once is a preference about reading the map, not about where one tab is.
+ * you want to see at once is a preference about reading the map, not about where one tab is. So
+ * does *Asynchronous first*: whether work that starts a wait should lead its run is a statement
+ * about how you like to read a list, and finding it off again in the next tab would read as a bug.
  */
 export const useDisplayStore = create<DisplayStore>()(
   persist(
@@ -46,6 +57,8 @@ export const useDisplayStore = create<DisplayStore>()(
       togglePathHeaderIcons: () => set((s) => ({ pathHeaderIcons: !s.pathHeaderIcons })),
       habitCollapseThreshold: DEFAULT_HABIT_COLLAPSE_THRESHOLD,
       setHabitCollapseThreshold: (value) => set({ habitCollapseThreshold: clampThreshold(value) }),
+      asynchronousFirst: false,
+      toggleAsynchronousFirst: () => set((s) => ({ asynchronousFirst: !s.asynchronousFirst })),
     }),
     { name: "arlesh-display" },
   ),

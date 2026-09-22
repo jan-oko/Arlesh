@@ -211,6 +211,13 @@ export interface MindmapNode {
    * persisted. Read together with `agentic` through `isAgentic`, never on its own: an explicit
    * `agentic: false` overrides an agentic ancestor. */
   inheritedAgentic?: boolean;
+  /** Whether doing this Task starts a **wait** rather than finishing something (Tasks only) —
+   * send the email, order the part, kick off the build.
+   *
+   * Deliberately **not** inherited, unlike `agentic`: "starts a wait" is a property of one
+   * concrete action, and a subtask of an asynchronous Task is usually the work you do *after* the
+   * wait. There is no `inheritedAsynchronous` for that reason, and there should not be one. */
+  asynchronous?: boolean;
   /** A Commitment's recorded Verdict (Commitments only) — `unresolved` / `kept` / `broken`.
    * Never derived from the window passing or from children completing: `unresolved` means the
    * user has not said, which is information in its own right. */

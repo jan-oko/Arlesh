@@ -40,6 +40,9 @@ export interface TaskSaveData {
   /** The task's own Agentic state. `"inherit"` is a real instruction — it clears a stored flag
    * and puts the task back to reading its ancestors — not an absent value. */
   agentic: TaskAgentic;
+  /** Whether doing this task starts a wait. A plain boolean — the flag does not inherit, so
+   * there is no third "unset" state for it to be in. */
+  asynchronous: boolean;
   isPrivate: boolean;
 }
 
@@ -74,6 +77,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   const [plan, setPlan] = useState<TimeScope | null>(node.plan ?? null);
   const [isBacklogged, setIsBacklogged] = useState(node.backlogged === true);
   const [agentic, setAgentic] = useState<TaskAgentic>(storedAgenticState(node.agentic));
+  const [isAsynchronous, setIsAsynchronous] = useState(node.asynchronous === true);
   const [isPrivate, setIsPrivate] = useState(node.isPrivate ?? false);
   const [initialDeps, setInitialDeps] = useState<Dependency[]>([]);
   const [currentDeps, setCurrentDeps] = useState<Dependency[]>([]);
@@ -125,6 +129,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
         plan,
         archival: isBacklogged ? TASK_ARCHIVAL.BACKLOG : TASK_ARCHIVAL.LIVE,
         agentic,
+        asynchronous: isAsynchronous,
         isPrivate,
       });
     } catch (err) {
@@ -213,6 +218,18 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
           checked={isBacklogged}
           onChange={setBacklogAndClearPlan}
           label={isBacklogged ? t("backlogOn") : t("backlogOff")}
+        />
+      </div>
+      {/* Beside Backlog rather than down in Advanced, where the Agentic control sits: this one is
+          a statement about the order the work wants to be done in, which is the same kind of
+          question as whether it is set aside at all — and it is the flag the List View's
+          "Asynchronous first" setting reads. */}
+      <div className={styles.label}>
+        {t("fieldAsynchronous")}
+        <Switch
+          checked={isAsynchronous}
+          onChange={setIsAsynchronous}
+          label={isAsynchronous ? t("asynchronousOn") : t("asynchronousOff")}
         />
       </div>
       <BlockReasonsField reasons={blockReasons} onChange={setBlockReasons} virtualBlockers={virtualBlockers} />

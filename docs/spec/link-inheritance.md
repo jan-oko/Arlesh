@@ -14,6 +14,7 @@ Inheritance behavior per link type:
 | Plan (scheduling)      | Task-only. Must be wholly contained within the task's Time Scope and within the parent's Plan. |
 | Delegation             | Override — child's explicit delegation replaces the inherited one |
 | Agentic (Tasks)        | Override — child's explicit value (agentic *or* not agentic) replaces the inherited one; inherits through unflagged kinds |
+| Asynchronous (Tasks)   | **None** — the flag stops at the Task it is set on. "Starts a wait" describes one concrete action, and a subtask of an asynchronous Task is usually the work done *after* the wait, so inheriting it would flag exactly the wrong rows |
 
 Inherited links are computed on read (ancestor traversal). To be revisited if performance becomes an issue.
 

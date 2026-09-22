@@ -744,6 +744,30 @@ describe("useKeyboardMindmap — filter shortcuts (Alt)", () => {
     expect(opts.onToggleAgentic).not.toHaveBeenCalled();
   });
 
+  it("plain W flips the anchor task's Asynchronous flag, leaving the rest of the selection alone", () => {
+    const opts = mindmapKeyboardContext({
+      selectedNodeId: "task-1",
+      selectedNodeIds: new Set(["task-1", "task-2"]),
+      findNodeById: (id: string) => (id === "task-1" ? makeTask("task-1") : undefined),
+    });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("w");
+    expect(opts.onToggleAsynchronous).toHaveBeenCalledTimes(1);
+    expect(opts.onToggleAsynchronous).toHaveBeenCalledWith("task-1");
+    expect(opts.onToggleAgentic).not.toHaveBeenCalled();
+  });
+
+  it("plain W does nothing on a goal — only a Task starts a wait by being done", () => {
+    const goal: MindmapNode = { id: "goal-1", kind: "goal", title: "Goal", position: 0, tagIds: [], children: [] };
+    const opts = mindmapKeyboardContext({
+      selectedNodeId: "goal-1",
+      findNodeById: (id: string) => (id === "goal-1" ? goal : undefined),
+    });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("w");
+    expect(opts.onToggleAsynchronous).not.toHaveBeenCalled();
+  });
+
   it("Alt+S selects the Start mode without starting a flow", () => {
     const opts = mindmapKeyboardContext({ selectedNodeId: "flow-1", findNodeById: (id: string) => (id === "flow-1" ? makeFlow("flow-1") : undefined) });
     renderHook(() => useKeyboardMindmap(opts));

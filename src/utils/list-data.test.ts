@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { flattenTaskRows, groupRowsByPath } from "./list-data";
-import type { ListRowEntry } from "./list-data";
+import type { PathGroupedEntry } from "./list-data";
 import type { MindmapNode, NodeKind } from "./tree-layout";
 import type { TaskDependencyEdge } from "@/api/tasks";
 
@@ -106,7 +106,7 @@ describe("flattenTaskRows", () => {
 
 /** What the list renders, in order: each header by the ancestors it names, each row by its id and
  * the depth it is indented to. */
-function rendered(entries: readonly ListRowEntry[]): string[] {
+function rendered(entries: readonly PathGroupedEntry[]): string[] {
   return entries.map((entry) =>
     entry.type === "path"
       ? `path:${entry.segments.map((s) => s.id).join(">")}`

@@ -133,6 +133,7 @@ fn task_request(project_id: i64, title: &str) -> CreateTaskRequest {
         // aside, and `archival: None` is what the stored invariant wants beside `plan: None`.
         archival: None,
         agentic: None,
+        asynchronous: None,
     }
 }
 
