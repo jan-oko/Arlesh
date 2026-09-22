@@ -6,6 +6,7 @@ import type { InstanceType, ConsumptionKind, BlockingMode, CatchupPolicy } from 
 import { getFlowRecurrence, habitCompletionCount } from "@/api/flows";
 import type { DurationSpec } from "@/api/time-scope";
 import VerdictWindowField from "@/components/CommitmentEditorModal/VerdictWindowField";
+import { dayScopeDate } from "@/utils/scope-calendar";
 import { getScope } from "@/api/scopes";
 import { getErrorMessage } from "@/api/errors";
 import EditorModal from "@/components/EditorModal/EditorModal";
@@ -108,11 +109,14 @@ function verdictWindowFields(
     : { verdictWindowN: window.n, verdictWindowKind: window.kind };
 }
 
-/** Local wall-clock today as `YYYY-MM-DD`, the default Recurrence start. */
+/**
+ * The local wall-clock Day scope's date, the default Recurrence start. A Day runs 02:00 -> 02:00,
+ * so before 02:00 the Day that is still running is yesterday's.
+ */
 function todayIso(): string {
   const d = new Date();
   const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return dayScopeDate(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`, d.getHours());
 }
 
 function targetFromNode(node: MindmapNode, candidates: MindmapNode[]): TargetSelection | null {
