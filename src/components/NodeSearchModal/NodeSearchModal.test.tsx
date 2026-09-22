@@ -67,6 +67,25 @@ describe("NodeSearchModal", () => {
     expect(screen.getByText("(Home › Plan)")).toBeInTheDocument();
   });
 
+  // The prefix comparison inside disambiguations() joins path segments with "\u0000", written as an
+  // escape rather than as a raw byte (a raw one costs the file its git diff). The separator has to be
+  // a character no title can contain: joined with a space, "A" + "B C" and "A B" + "C" are the same
+  // string, so info-1 would look like it still collided with info-3 and would walk a level further
+  // out than it needs to, showing "Q" it did not have to show.
+  it("compares path prefixes segment-wise, so titles that run together are not a collision", () => {
+    const dupes: SearchableNode[] = [
+      { id: "info-1", title: "Notes", kind: "info", path: ["A", "B C", "Q"] },
+      { id: "info-2", title: "Notes", kind: "info", path: ["A", "XX", "R"] },
+      { id: "info-3", title: "Notes", kind: "info", path: ["A B", "C", "S"] },
+    ];
+    render(<NodeSearchModal nodes={dupes} onSelect={vi.fn()} onClose={vi.fn()} />);
+    fireEvent.change(screen.getByPlaceholderText("common:searchNodesPlaceholder"), { target: { value: "notes" } });
+    expect(screen.getByText("(B C › A)")).toBeInTheDocument();
+    expect(screen.queryByText("(Q › B C › A)")).not.toBeInTheDocument();
+    expect(screen.getByText("(XX › A)")).toBeInTheDocument();
+    expect(screen.getByText("(A B)")).toBeInTheDocument();
+  });
+
   it("selects a node on click, passing its id", () => {
     const onSelect = vi.fn();
     render(<NodeSearchModal nodes={NODES} onSelect={onSelect} onClose={vi.fn()} />);
