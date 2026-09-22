@@ -15,7 +15,16 @@ interface Options {
   selectedNodeId: string | null;
   selectedNodeIds: ReadonlySet<string>;
   positions: Map<string, Position>;
-  tree: MindmapNode;
+  /**
+   * The tree `positions` was laid out from — **the drawn one**, not the loaded one.
+   *
+   * Movement is "go to my parent, my child or my sibling", so the candidates have to be read off
+   * the same tree the canvas drew, or a node the drawing invented has no relatives and a node it
+   * dropped is offered as one. The folded Habit-history nodes are exactly that invention: they
+   * exist only in the display tree, so reading candidates from the loaded tree left them
+   * unreachable — and left everything inside an opened run unable to get back out.
+   */
+  displayRoot: MindmapNode;
   orientation: Orientation;
   selectNode: (id: string | null) => void;
   setSelection: (ids: ReadonlySet<string>, anchorId: string) => void;
@@ -27,19 +36,19 @@ interface Result {
   extendSelection: (key: ArrowKey) => void;
 }
 
-export function useNavigateArrow({ selectedNodeId, selectedNodeIds, positions, tree, orientation, selectNode, setSelection }: Options): Result {
+export function useNavigateArrow({ selectedNodeId, selectedNodeIds, positions, displayRoot, orientation, selectNode, setSelection }: Options): Result {
   const navigateArrow = useCallback(
     (key: ArrowKey) => {
       if (selectedNodeId === null) return;
       // Along the branch axis: move among parent and children (whichever lies in that screen
       // direction). Along the sibling axis: move among siblings only.
       const candidates = isBranchAxisKey(key, orientation)
-        ? parentAndChildrenIds(tree, selectedNodeId)
-        : siblingIds(tree, selectedNodeId);
+        ? parentAndChildrenIds(displayRoot, selectedNodeId)
+        : siblingIds(displayRoot, selectedNodeId);
       const target = nearestInDirection(selectedNodeId, positions, key, candidates);
       if (target !== undefined) selectNode(target);
     },
-    [selectedNodeId, positions, tree, orientation, selectNode],
+    [selectedNodeId, positions, displayRoot, orientation, selectNode],
   );
 
   // The moving end of a shift-arrow selection sequence; the anchor (selectedNodeId) stays fixed.
@@ -52,16 +61,16 @@ export function useNavigateArrow({ selectedNodeId, selectedNodeIds, positions, t
   const extendSelection = useCallback(
     (key: ArrowKey) => {
       if (selectedNodeId === null) return;
-      const siblings = siblingIds(tree, selectedNodeId);
+      const siblings = siblingIds(displayRoot, selectedNodeId);
       const focus = extendFocusRef.current ?? selectedNodeId;
       const target = nearestInDirection(focus, positions, key, siblings);
       if (target === undefined) return;
-      const range = computeShiftSelectRange(tree, selectedNodeId, target);
+      const range = computeShiftSelectRange(displayRoot, selectedNodeId, target);
       if (range === null) return;
       extendFocusRef.current = target;
       setSelection(new Set(range), selectedNodeId);
     },
-    [selectedNodeId, tree, positions, setSelection],
+    [selectedNodeId, displayRoot, positions, setSelection],
   );
 
   return { navigateArrow, extendSelection };

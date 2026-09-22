@@ -3,13 +3,19 @@ import { GLOBAL_BINDINGS } from "./global-bindings";
 import type { GlobalContext } from "./global-bindings";
 import { matchesChord } from "./chord";
 
-function makeContext(): GlobalContext {
-  return { onToggleView: vi.fn(), onToggleHotkeys: vi.fn(), onToggleFullscreen: vi.fn(), onQuit: vi.fn() };
+function makeContext(overrides: Partial<GlobalContext> = {}): GlobalContext {
+  return {
+    onToggleView: vi.fn(),
+    onToggleHotkeys: vi.fn(),
+    onToggleFullscreen: vi.fn(),
+    onQuit: vi.fn(),
+    ...overrides,
+  };
 }
 
 function runFor(code: string, modifiers: Partial<KeyboardEventInit>, ctx: GlobalContext): boolean {
   const event = new KeyboardEvent("keydown", { code, ...modifiers });
-  const binding = GLOBAL_BINDINGS.find((b) => matchesChord(event, b.chord));
+  const binding = GLOBAL_BINDINGS.find((b) => matchesChord(event, b.chord) && (b.when === undefined || b.when(ctx)));
   if (binding === undefined) return false;
   binding.run(ctx);
   return true;
@@ -26,6 +32,22 @@ describe("GLOBAL_BINDINGS", () => {
     const ctx = makeContext();
     expect(runFor("Slash", { ctrlKey: true, shiftKey: true }, ctx)).toBe(true);
     expect(ctx.onToggleHotkeys).toHaveBeenCalledTimes(1);
+  });
+
+  // Carrying no guard, the same chord is what shuts the sheet again — and it stays reachable
+  // whatever the Mindmap has selected, which is the whole reason the recursive expand went
+  // elsewhere rather than sharing this chord.
+  it("when Ctrl+Shift+/ is pressed a second time, toggles the cheat-sheet shut", () => {
+    const ctx = makeContext();
+    expect(runFor("Slash", { ctrlKey: true, shiftKey: true }, ctx)).toBe(true);
+    expect(runFor("Slash", { ctrlKey: true, shiftKey: true }, ctx)).toBe(true);
+    expect(ctx.onToggleHotkeys).toHaveBeenCalledTimes(2);
+  });
+
+  it("when Ctrl+Alt+/ is pressed, matches nothing global — the Mindmap owns that chord", () => {
+    const ctx = makeContext();
+    expect(runFor("Slash", { ctrlKey: true, altKey: true }, ctx)).toBe(false);
+    expect(ctx.onToggleHotkeys).not.toHaveBeenCalled();
   });
 
   it("when F11 is pressed, shows the board alone", () => {

@@ -67,7 +67,7 @@ function makeTab({ id, title, customTitle, state }: PersistedTab): Tab {
   stores.filter.subscribe((s, previous) => { if (s.filter !== previous.filter) saveTabs(); });
   stores.listFilter.subscribe((s, previous) => { if (s.filter !== previous.filter) saveTabs(); });
   stores.mindmap.subscribe((s, previous) => {
-    if (s.subtreeRootId !== previous.subtreeRootId || s.expandedRunIds !== previous.expandedRunIds) saveTabs();
+    if (s.subtreeRootId !== previous.subtreeRootId || s.expandedHabitGroupIds !== previous.expandedHabitGroupIds) saveTabs();
   });
   return { id, title, customTitle, stores };
 }
