@@ -61,9 +61,10 @@ pub fn with_archived_override(node: &NodeFacts, filter: &BoardFilter, base: bool
 /// than kept on screen as the ancestor of live children. Plan and Start hide it; All and Do leave
 /// it alone; Backlog is the preset that exists to show it. The pill overrides all of that.
 ///
-/// **Do is a gap in the specification, not a decision.** `docs/spec/resources.md` names Plan,
-/// Start, All and the Backlog preset and says nothing about Do, so an in-progress Task that was
-/// set aside still shows there. Reproduced from the frontend; pinned by a corpus case.
+/// **Do is deliberate.** Backlog says *not planning this now* and Do asks *what is underway* —
+/// different questions a Task can answer yes to at once — so a backlogged in-progress Task still
+/// shows under Do. The tension is resolved where it starts instead: setting a Task In Progress
+/// takes it out of the Backlog (see [`crate::tasks`]), so the pair is rare rather than hidden.
 pub fn is_hidden_backlog(node: &NodeFacts, filter: &BoardFilter) -> bool {
     if !node.backlogged {
         return false;
@@ -90,9 +91,9 @@ pub fn is_hidden_backlog(node: &NodeFacts, filter: &BoardFilter) -> bool {
 /// their parent's first occurrence: keeping an unopened parent on screen as the ancestor of a
 /// child whose own window has opened would draw a row nobody asked for.
 ///
-/// **Backlog is a gap in the specification, not a decision.** `docs/spec/habits.md` names All as
-/// the preset that shows an unopened occurrence and Plan, Start and Do as the ones that hide it,
-/// leaving Backlog unsaid; the frontend hides it there too, and so does this.
+/// **Backlog hides it like the rest.** An unopened window is not work that was set aside, so the
+/// preset that exists to show what you put down has nothing to say about what has not started;
+/// `docs/spec/habits.md` names every preset but All.
 pub fn is_unopened_occurrence(node: &NodeFacts, filter: &BoardFilter) -> bool {
     if !node.is_habit_occurrence || node.timing != Some(Timing::Pending) {
         return false;
@@ -141,13 +142,9 @@ fn is_flow_hard_hidden(node: &NodeFacts, filter: &BoardFilter) -> bool {
 
 /// Whether `node` is hidden outright — its subtree removed, not kept as an ancestor.
 ///
-/// # Divergence from the specification
-///
-/// `docs/spec/mindmap-view.md` says the Archived pill "has no effect under **Do**". The `Exclude`
-/// branch below applies under every preset, Do included, so an effectively-archived in-progress
-/// Task is hidden from Do while the pill is on `Exclude`. That is what the frontend has always
-/// done, and reproducing it is the point of this module; it is recorded here rather than silently
-/// adopted as the rule.
+/// The Archived pill's `Exclude` branch below applies under **every** preset, Do included: it is
+/// one rule about archived items rather than a per-preset carve-out, so an effectively-archived
+/// in-progress Task is hidden from Do while the pill is on `Exclude`.
 pub fn type_hard_hidden(node: &NodeFacts, filter: &BoardFilter) -> bool {
     // Outside Private Mode, a private node and everything beneath it are dropped, whatever kind it
     // is.

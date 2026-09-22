@@ -11,6 +11,7 @@ import type { TaskAgentic } from "@/api/tasks";
 import { storedAgenticState } from "@/utils/agentic";
 import { updateGoal } from "@/api/goals";
 import { TASK_STATUS, GOAL_STATUS } from "@/utils/status-mapping";
+import { cameOutOfBacklog, nextTaskStatus } from "@/utils/task-status-cycle";
 import { CLIPBOARD_OP } from "@/stores/use-clipboard-store";
 import { withGesture } from "@/api/gesture";
 import { getErrorMessage } from "@/api/errors";
@@ -18,12 +19,6 @@ import { useOccurrenceCompletion } from "@/hooks/use-occurrence-completion";
 import type { OccurrencePrompt } from "@/hooks/use-occurrence-completion";
 
 const LOG_PREFIX = "[arlesh]";
-
-function nextTaskStatus(current: string): string {
-  if (current === TASK_STATUS.IN_PROGRESS) return TASK_STATUS.DONE;
-  if (current === TASK_STATUS.DONE) return TASK_STATUS.TODO;
-  return TASK_STATUS.IN_PROGRESS;
-}
 
 interface ClipboardEntry {
   operation: "cut" | "copy";
@@ -124,7 +119,14 @@ export function useNodeActions({
       if (node.kind !== "task") return;
       const dbId = parseInt(nodeId.split("-").pop() ?? "0", 10);
       void updateTask(dbId, { status: nextTaskStatus(node.status ?? TASK_STATUS.TODO) })
-        .then(() => reload())
+        .then(async (updated) => {
+          // Starting a set-aside task takes it out of the backlog, in the same write and so in the
+          // same undo step. The row that comes back says whether it did; it is never assumed.
+          if (cameOutOfBacklog(node, updated)) {
+            showToast({ nodeId, message: t("warnings:backlogClearedByStart") });
+          }
+          await reload();
+        })
         .catch((err: unknown) => {
           console.error(`${LOG_PREFIX} status cycle failed:`, err);
           showToast({ nodeId, message: t("warnings:statusChangeFailed", { message: getErrorMessage(err) }) });
@@ -157,17 +159,18 @@ export function useNodeActions({
       // The synthetic root is the "nothing was aimed at" case, and stays silent on purpose — the
       // same answer the typed chords give with no selection at all.
       if (node === undefined || !nodeId.includes("-")) return;
-      // `Tab` names no kind — the parent decides what its child is — so the question it can ask is
-      // whether this node holds anything at all. Exactly two answers are no: a Tag, which is a
-      // label rather than a container, and a node drawn rather than stored (a folded run of Habit
-      // history). Both used to be an `if (…) return` with nothing on screen.
+      // `Tab` names no kind — the parent decides what its child is — so the two refusals it can
+      // give are about that. A **Tag** does hold something (an Info note, and nothing else), but
+      // not the Domain a label's default child would be, and the kind it does hold has a chord of
+      // its own — so `Tab` points at it rather than creating something the backend would refuse.
+      if (node.kind === "tag") {
+        showToast({ nodeId, message: t("warnings:createUnderTagRefused") });
+        return;
+      }
+      // And a node drawn rather than stored — a folded run of Habit history — holds nothing at
+      // all. Both used to be an `if (…) return` with nothing on screen.
       if (!canParentAnyNewChild(node)) {
-        showToast({
-          nodeId,
-          message: node.kind === "tag"
-            ? t("warnings:createUnderTagRefused")
-            : t("warnings:createUnderRepetition"),
-        });
+        showToast({ nodeId, message: t("warnings:createUnderRepetition") });
         return;
       }
       void (async () => {

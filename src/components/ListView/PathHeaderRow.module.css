@@ -43,13 +43,6 @@
   font-weight: 600;
 }
 
-/* The parent's kind, stated once for the whole chain. Takes the emphasis the last segment carries,
-   since that is the node it stands for, and never shrinks when a long chain squeezes the row. */
-.icon {
-  flex: none;
-  color: var(--text-primary);
-}
-
 .separator {
   flex: none;
   color: var(--text-secondary);

@@ -635,6 +635,21 @@ describe("filterCommitmentList", () => {
     expect(kept(rows, sf({ statusMode: "plan" }))).toEqual([]);
     expect(kept(rows, sf({ statusMode: "all" }))).toEqual(["commitment-1"]);
   });
+
+  it("hides a commitment under a habit occurrence whose window has not opened", () => {
+    // habits.md hides an unopened occurrence together with its own subtree, and the band answers
+    // that rule like every other surface: the commitment never outlives the occurrence it hangs on.
+    const occurrence = { flowId: 1, itemType: "flow_goal", itemId: 1, scopeId: 1, cycleId: 0 } as const;
+    const rows = [
+      commitmentRow({
+        ancestors: [n("goal-occurrence", "goal", { status: "active", timing: "pending", habitItem: occurrence })],
+      }),
+    ];
+    // All is the one preset that shows the occurrence, so it is the one that keeps the commitment.
+    expect(kept(rows, sf({ statusMode: "all" }))).toEqual(["commitment-1"]);
+    expect(kept(rows, sf({ statusMode: "plan" }))).toEqual([]);
+    expect(kept(rows, sf({ statusMode: "do" }))).toEqual([]);
+  });
 });
 
 describe("filterTaskListWithFocus — the focus exemption", () => {
