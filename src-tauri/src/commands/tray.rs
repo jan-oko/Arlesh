@@ -247,6 +247,13 @@ struct SystemTray {
     title: String,
     /// The mark, in the ARGB32 the protocol asks for.
     icon: ksni::Icon,
+    /// The open windows, as label and title, for the entries between Show and Quit.
+    ///
+    /// Held rather than read inside [`ksni::Tray::menu`], which the bar calls on the D-Bus task
+    /// and while the service lock is held. Asking Tauri for a window's title from in there means
+    /// a round trip to the main thread taken under a lock that the refresh is already holding —
+    /// so the list is computed by [`refresh_menu`], outside it, and handed in.
+    windows: Vec<(String, String)>,
 }
 
 #[cfg(target_os = "linux")]
@@ -259,6 +266,7 @@ impl SystemTray {
         Ok(Self {
             app: app.clone(),
             title: tray_tooltip(app),
+            windows: windows::open_windows(app),
             icon: ksni::Icon {
                 width: side,
                 height: side,
@@ -296,9 +304,8 @@ impl ksni::Tray for SystemTray {
 
     /// Show, then one entry per open window, then Quit.
     ///
-    /// The windows are read **here**, when the menu is built, rather than held on the struct: the
-    /// bar rebuilds this whenever the item is updated, so a live read is the whole mechanism by
-    /// which the list stays current. See [`refresh_menu`].
+    /// Reads only what the struct already holds. The list is refreshed by [`refresh_menu`], which
+    /// gathers it outside the service lock and hands it in — see [`SystemTray::windows`].
     ///
     /// A window's entry shows and focuses that one window, where the click on the icon and Show
     /// both act on all of them. That is the division: the icon is the app, the menu reaches into
@@ -311,7 +318,7 @@ impl ksni::Tray for SystemTray {
         }
         .into()];
 
-        for (label, title) in windows::open_windows(&self.app) {
+        for (label, title) in self.windows.clone() {
             items.push(
                 ksni::menu::StandardItem {
                     label: title,
@@ -347,12 +354,16 @@ pub fn refresh_menu<R: Runtime>(app: &AppHandle<R>) {
         return;
     };
     let handle = handle.inner().clone();
-    // `update` is async — it takes the service lock and then waits for the bar to acknowledge — so
-    // it is spawned rather than awaited. Every caller is a window event or a command that has no
+    // Gathered here, before the lock: the titles come from Tauri, which answers them on the main
+    // thread, and asking for them from inside the update would be a round trip taken under the
+    // service lock that update itself holds.
+    let open = windows::open_windows(app);
+    // `update` is async — it takes that lock and then waits for the bar to acknowledge — so it is
+    // spawned rather than awaited. Every caller is a window event or a command that has no
     // business blocking on a desktop bar answering, and nothing downstream depends on the menu
     // having been redrawn by the time this returns.
     tauri::async_runtime::spawn(async move {
-        handle.update(|_tray| {}).await;
+        handle.update(|tray: &mut SystemTray| tray.windows = open).await;
     });
 }
 
