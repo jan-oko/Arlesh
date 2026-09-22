@@ -37,6 +37,10 @@ export const GLOBAL_BINDINGS: readonly Binding<GlobalContext>[] = [
     run: (c) => c.onQuit(),
   },
   {
+    // The chord the sheet has had since it shipped, and it keeps it: the Mindmap's recursive
+    // expand went to Ctrl+Alt+/ rather than split this one. Carrying no guard, it is reachable in
+    // every state — including with a cell selected, and including while the sheet is already open,
+    // which is what closes it again.
     id: "global.toggleHotkeys",
     section: "global",
     chord: { code: "Slash", ctrl: true, shift: true },

@@ -30,7 +30,8 @@ import { useViewStore } from "@/stores/use-view-store";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
 import { useSubtreeNav } from "@/hooks/use-subtree-nav";
 import { filterTreeWithFocus } from "@/utils/filter-tree";
-import { collapsedWithFoldedRuns, foldHabitRuns, isHabitRunNode } from "@/utils/habit-collapse";
+import { collapsedWithFoldedGroups, foldHabitRuns, isHabitGroupNode } from "@/utils/habit-collapse";
+import { subtreeToggle } from "@/utils/subtree-toggle";
 import { useHabitCollapseLabels } from "@/hooks/use-habit-collapse-labels";
 import { useDisplayStore } from "@/stores/use-display-store";
 import { focusExemptPath } from "@/utils/focus-exemption";
@@ -92,9 +93,9 @@ export default function MindmapView() {
   const { tree, isLoading, error, loadCondition, createNode, createChild, renameNode, retypeNode, reorderNode, moveNode, duplicateNode, removeNode, createCommitment, createFlow, reload } =
     useMindmapData();
   const {
-    selectedNodeId, selectedNodeIds, subtreeRootId, collapsedNodeIds, expandedRunIds, pendingToast,
+    selectedNodeId, selectedNodeIds, subtreeRootId, collapsedNodeIds, expandedHabitGroupIds, pendingToast,
     selectNode, addToSelection, setSelection, enterSubtree,
-    toggleCollapsed, toggleRunExpanded, showToast, clearToast,
+    toggleCollapsed, toggleGroupExpanded, expandSubtree, collapseSubtree, showToast, clearToast,
   } = useMindmapStore((s) => s);
   // App-wide, so a subtree cut in one tab pastes in another.
   const clipboard = useClipboardStore((s) => s.clipboard);
@@ -147,19 +148,35 @@ export default function MindmapView() {
     () => foldHabitRuns(filteredRoot, habitCollapseThreshold, collapseLabels),
     [filteredRoot, habitCollapseThreshold, collapseLabels],
   );
-  // A run node is folded until the user opens it, which the collapsed set cannot say on its own.
-  const collapsedWithRuns = useMemo(
-    () => collapsedWithFoldedRuns(displayRoot, collapsedNodeIds, expandedRunIds),
-    [displayRoot, collapsedNodeIds, expandedRunIds],
+  // A run and every scope level inside it are folded until the user opens them, which the
+  // collapsed set cannot say on its own.
+  const collapsedWithGroups = useMemo(
+    () => collapsedWithFoldedGroups(displayRoot, collapsedNodeIds, expandedHabitGroupIds),
+    [displayRoot, collapsedNodeIds, expandedHabitGroupIds],
   );
-  // Ctrl+/ on a folded run opens it; on anything else it collapses as it always has.
-  const toggleCollapsedOrRun = useCallback(
+  // Ctrl+/ on a folded run or one of its levels opens it; on anything else it collapses as it
+  // always has.
+  const toggleCollapsedOrGroup = useCallback(
     (id: string) => {
       const node = findNode(displayRoot, id);
-      if (node !== undefined && isHabitRunNode(node)) toggleRunExpanded(id);
+      if (node !== undefined && isHabitGroupNode(node)) toggleGroupExpanded(id);
       else toggleCollapsed(id);
     },
-    [displayRoot, toggleRunExpanded, toggleCollapsed],
+    [displayRoot, toggleGroupExpanded, toggleCollapsed],
+  );
+
+  // Ctrl+Alt+/ opens the cell and everything under it, or shuts them all again if the cell is
+  // already open. It reads the *drawn* tree, because the fold's nodes have no counterpart in the
+  // loaded one — and needs only one walk of it, because a run's levels and iterations are built
+  // eagerly and merely drawn shut. `collapsedWithGroups` is what tells it which way to go: it is
+  // the one set in which the two mechanisms have already been reconciled.
+  const toggleSubtreeCollapsed = useCallback(
+    (id: string) => {
+      const toggle = subtreeToggle(displayRoot, id, collapsedWithGroups);
+      if (toggle.direction === "expand") expandSubtree(toggle.collapsedIdsToClear, toggle.habitGroupIdsToOpen);
+      else collapseSubtree(toggle.collapsedIdsToAdd, toggle.habitGroupIdsToShut);
+    },
+    [displayRoot, collapsedWithGroups, expandSubtree, collapseSubtree],
   );
 
   const canvasRef = useRef<MindmapCanvasHandle>(null);
@@ -377,7 +394,7 @@ export default function MindmapView() {
   const { dragSourceId, dragTargetId, ghostPos, onDragStart } = useDrag({ tree, moveNode: guardedMoveNode });
 
   const { effectiveCollapsedIds, positions, subtreeLayout, placeholderPos } = useCanvasLayout({
-    displayRoot, tree, collapsedNodeIds: collapsedWithRuns, dragSourceId, dragTargetId, orientation: mindmapOrientation,
+    displayRoot, tree, collapsedNodeIds: collapsedWithGroups, dragSourceId, dragTargetId, orientation: mindmapOrientation,
   });
 
   // Follow the selection: when it *changes* to a node off the visible canvas (e.g. arrow navigation),
@@ -484,7 +501,9 @@ export default function MindmapView() {
     createNode, createChild, selectNode, setClipboard, setEditingNodeId, showToast, onNewFlow, onNewCommitment,
   });
 
-  const { navigateArrow, extendSelection } = useNavigateArrow({ selectedNodeId, selectedNodeIds, positions, tree, orientation: mindmapOrientation, selectNode, setSelection });
+  // `displayRoot`, not `tree`: arrow movement walks whatever the canvas drew, which includes the
+  // folded Habit-history nodes — they have no counterpart in the loaded tree at all.
+  const { navigateArrow, extendSelection } = useNavigateArrow({ selectedNodeId, selectedNodeIds, positions, displayRoot, orientation: mindmapOrientation, selectNode, setSelection });
 
   // Arrow keys with no node focused pan the view itself instead of moving a selection.
   const onPanCanvas = useCallback((key: "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown") => {
@@ -545,18 +564,20 @@ export default function MindmapView() {
 
   const { onContextAction } = useContextAction({
     findNodeById, enterSubtree, setEditingNodeId, setType,
-    setClipboard, clipboard, onPaste, toggleCollapsed: toggleCollapsedOrRun, onDelete, onNewFlow, onConvertToFlow, onStartFlow,
+    setClipboard, clipboard, onPaste, toggleCollapsed: toggleCollapsedOrGroup, onDelete, onNewFlow, onConvertToFlow, onStartFlow,
   });
 
   const handleCtrlClick = useCallback((id: string) => { addToSelection(id); }, [addToSelection]);
 
+  // Over `displayRoot` for the same reason arrow movement is: a range runs between two nodes on
+  // screen, and the loaded tree does not hold all of them.
   const handleShiftClick = useCallback((id: string) => {
     if (selectedNodeId === null) { selectNode(id); return; }
-    const range = computeShiftSelectRange(tree, selectedNodeId, id);
+    const range = computeShiftSelectRange(displayRoot, selectedNodeId, id);
     if (range !== null) {
       setSelection(new Set(range), selectedNodeId);
     }
-  }, [selectedNodeId, tree, selectNode, setSelection]);
+  }, [selectedNodeId, displayRoot, selectNode, setSelection]);
 
   const { onUndo, onRedo } = useUndo({ reload, showToast });
 
@@ -582,7 +603,8 @@ export default function MindmapView() {
     onOpenEditor: onDoubleClick,
     onStartFlow,
     onDelete,
-    onToggleCollapsed: toggleCollapsedOrRun,
+    onToggleCollapsed: toggleCollapsedOrGroup,
+    onToggleSubtreeCollapsed: toggleSubtreeCollapsed,
     onCycleStatus: onStatusClick,
     onCycleVerdict: cycleVerdict,
     onMarkBroken: markBroken,
@@ -636,7 +658,7 @@ export default function MindmapView() {
         dragSourceId={dragSourceId}
         hasClipboard={clipboard !== null}
         canvasOverlay={placeholderPos !== null && targetPos !== undefined ? (
-          <DragPlaceholder placeholderPos={placeholderPos} targetPos={targetPos} subtreeLayout={subtreeLayout} collapsedNodeIds={collapsedWithRuns} dragSourceId={dragSourceId} orientation={mindmapOrientation} tree={tree} />
+          <DragPlaceholder placeholderPos={placeholderPos} targetPos={targetPos} subtreeLayout={subtreeLayout} collapsedNodeIds={collapsedWithGroups} dragSourceId={dragSourceId} orientation={mindmapOrientation} tree={tree} />
         ) : undefined}
         onSelect={selectNode}
         onCtrlClick={handleCtrlClick}

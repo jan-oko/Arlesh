@@ -23,7 +23,8 @@ export function useHabitCollapseLabels(): HabitCollapseLabels {
   const scopes = useScopeLabels();
   return useMemo(
     () => ({
-      run: (tally) => t("collapse.run", { passed: tally.passed, done: tally.done, missed: tally.missed }),
+      run: (habit, tally) =>
+        t("collapse.run", { habit, passed: tally.passed, done: tally.done, missed: tally.missed }),
       level: (unit, tally) => t("collapse.level", { unit, done: tally.done, missed: tally.missed }),
       unit: (level, anchorDate) => unitLabel(level, anchorDate, scopes),
       span: (startIso, endIso) =>

@@ -94,6 +94,7 @@ export function mindmapKeyboardContext(overrides: Partial<MindmapOptions> = {}):
     onStartFlow: vi.fn(),
     onDelete: vi.fn(),
     onToggleCollapsed: vi.fn(),
+    onToggleSubtreeCollapsed: vi.fn(),
     onCycleStatus: vi.fn(),
     onCycleVerdict: vi.fn(),
     onMarkBroken: vi.fn(),

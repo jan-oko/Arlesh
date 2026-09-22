@@ -96,7 +96,7 @@ export function parseTabState(value: unknown): TabState {
     view: readViewState(source["view"]),
     filter: readFilterState(source["filter"]),
     listFilter: readListFilterState(source["listFilter"]),
-    expandedRunIds: readStringList(source["expandedRunIds"]),
+    expandedHabitGroupIds: readStringList(source["expandedHabitGroupIds"]),
   };
 }
 
@@ -137,7 +137,7 @@ export function legacyTabState(): TabState | null {
     view: readViewState(view),
     filter: readFilterState(filter?.["filter"]),
     listFilter: readListFilterState(listFilter?.["filter"]),
-    expandedRunIds: [],
+    expandedHabitGroupIds: [],
   };
 }
 

@@ -128,6 +128,10 @@ export interface FlowItemData {
 export interface HabitIterationMeta {
   /** The Habit this iteration belongs to; iterations fold only with their own flow's. */
   flowId: number;
+  /** That Habit's own title — "Journal", not the iteration's "Journal 2026-09-14". A folded run
+   * names the Habit it stands for, and this is the only place the renderer can read it: the run
+   * node is built from the iterations alone, and the Flow node may be filtered out of the tree. */
+  flowTitle: string;
   /** Zero-based ordinal from the Repetition Start, for ordering within a run. */
   index: number;
   /** The scope kind the iteration's window is one unit of, or `null` for a sub-day Phase window. */

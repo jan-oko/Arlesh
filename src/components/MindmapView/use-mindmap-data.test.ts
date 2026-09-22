@@ -1430,7 +1430,7 @@ describe("injectHabitInstances", () => {
 
     const virtuals = root.children[0]?.children[0]?.children ?? [];
     expect(virtuals[0]?.habitIteration).toEqual({
-      flowId: 3, index: 0, scopeKind: "week", anchorDate: "2026-01-01",
+      flowId: 3, flowTitle: "Exercise", index: 0, scopeKind: "week", anchorDate: "2026-01-01",
       windowEnd: "2026-01-02T00:00:00", passed: true, done: true,
     });
     expect(virtuals[1]?.habitIteration?.passed).toBe(false);

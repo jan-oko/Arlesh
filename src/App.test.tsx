@@ -6,6 +6,7 @@ import { useThemeStore } from "@/stores/use-theme-store";
 import { reloadTabs, useTabsStore } from "@/stores/use-tabs-store";
 import { closeWindow } from "@/api/window";
 import { useFullscreenStore } from "@/stores/use-fullscreen-store";
+import { useHotkeysStore } from "@/stores/use-hotkeys-store";
 
 vi.mock("@/components/TopBar/TopBar", () => ({ default: () => <div data-testid="top-bar" /> }));
 vi.mock("@/components/MindmapView/MindmapView", () => ({ default: () => <div data-testid="mindmap-view" /> }));
@@ -21,6 +22,7 @@ beforeEach(() => {
   useViewStore.setState({ view: "mindmap" });
   useThemeStore.setState({ theme: "dark" });
   useFullscreenStore.setState({ isFullscreen: false });
+  useHotkeysStore.setState({ isOpen: false });
   document.documentElement.removeAttribute("data-theme");
 });
 
@@ -134,6 +136,16 @@ describe("tab shortcuts", () => {
 
     expect(useTabsStore.getState().tabs).toHaveLength(2);
   });
+
+  it("Ctrl+Shift+/ both opens the cheat-sheet and closes it again", () => {
+    render(<App />);
+    fireEvent.keyDown(window, { code: "Slash", ctrlKey: true, shiftKey: true });
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { code: "Slash", ctrlKey: true, shiftKey: true });
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
 });
 
 describe("the board alone (fullscreen)", () => {
@@ -176,6 +188,7 @@ describe("the board alone (fullscreen)", () => {
 
     // What a restart actually restores: whatever was persisted. The mode deliberately is not.
     useFullscreenStore.setState({ isFullscreen: false });
+  useHotkeysStore.setState({ isOpen: false });
     render(<App />);
     expect(screen.getByRole("tablist")).toBeInTheDocument();
   });

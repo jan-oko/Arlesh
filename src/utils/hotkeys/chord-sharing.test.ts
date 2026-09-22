@@ -46,6 +46,33 @@ const SHARED_CHORDS: Readonly<Record<string, readonly string[]>> = {
 
 const ALL: readonly BindingMeta[] = [...GLOBAL_BINDINGS, ...TAB_BINDINGS, ...MINDMAP_BINDINGS, ...LIST_BINDINGS];
 
+/**
+ * The chords a view's table shares with an always-live one. There are none, and that is the point.
+ *
+ * `SHARED_CHORDS` above cannot see this kind of collision: it groups by section, and two sections
+ * are two *tables*, dispatched by two listeners from two `useHotkeys` calls. So ADR 0003's
+ * first-match rule does not order them — nothing does, and the loser would simply never fire.
+ * A pair that landed here would have to be strictly complementary, with at most one guard passing
+ * in any state the app can be in, and would need the state-by-state proof to go with it. The
+ * cheaper answer is almost always a free chord: the Mindmap's recursive expand took the unused
+ * `Ctrl+Alt+/` rather than split `Ctrl+Shift+/` with the cheat-sheet that already held it.
+ */
+const CROSS_TABLE_CHORDS: Readonly<Record<string, readonly string[]>> = {};
+
+/** Every chord an always-live table shares with `view`'s own, keyed the way the view's section is. */
+function crossTableGroups(section: string, view: readonly BindingMeta[]): Record<string, string[]> {
+  const alwaysLive = [...GLOBAL_BINDINGS, ...TAB_BINDINGS];
+  const groups: Record<string, string[]> = {};
+  for (const outer of alwaysLive) {
+    for (const inner of view) {
+      if (formatChord(outer.chord) !== formatChord(inner.chord)) continue;
+      const key = `${section} ${formatChord(outer.chord)}`;
+      (groups[key] ??= []).push(outer.id, inner.id);
+    }
+  }
+  return groups;
+}
+
 /** Every chord bound more than once within its section, mapped to its bindings in dispatch order. */
 function sharedChordGroups(bindings: readonly BindingMeta[]): Record<string, string[]> {
   const groups = new Map<string, string[]>();
@@ -141,5 +168,14 @@ describe("the Mindmap's two complementary pairs", () => {
     const convert = guardOf(MINDMAP_BINDINGS, "mindmap.convertToFlow")(context);
     const fullscreen = guardOf(MINDMAP_BINDINGS, "mindmap.toggleFullscreen")(context);
     expect(Number(convert) + Number(fullscreen)).toBe(1);
+  });
+});
+
+describe("chords a view shares with an always-live table", () => {
+  it("are exactly the ones declared here", () => {
+    expect({
+      ...crossTableGroups("mindmap", MINDMAP_BINDINGS),
+      ...crossTableGroups("listView", LIST_BINDINGS),
+    }).toEqual(CROSS_TABLE_CHORDS);
   });
 });
