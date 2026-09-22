@@ -137,18 +137,20 @@ export default function StepsView() {
 
   // The cursor is **derived**, not stored: a selected card the filter has since dropped, or one
   // that moved to another page, simply reads as no selection rather than as a stale highlight.
-  const cursor = useMemo((): StepCursor | null => {
+  function currentCursor(): StepCursor | null {
     if (selection === null) return null;
     if (selection.cell === "header") return HEADER_CURSOR;
     const index = pageChildren.findIndex((child) => child.id === selection.nodeId);
     return index === -1 ? null : childCursor(index);
-  }, [selection, pageChildren]);
+  }
+  const cursor = currentCursor();
 
-  const selectedNode = useMemo((): MindmapNode | null => {
+  function cursorNode(): MindmapNode | null {
     if (cursor === null) return null;
     if (cursor.cell === "header") return rawStepNode;
     return pageChildren[cursor.index] ?? null;
-  }, [cursor, rawStepNode, pageChildren]);
+  }
+  const selectedNode = cursorNode();
 
   const { cycleStatus, occurrencePrompt, confirmOccurrence, cancelOccurrence } = useStatusCycle({
     findNode: (id) => findNode(tree, id), reload, showToast,
@@ -163,14 +165,11 @@ export default function StepsView() {
   const { onUndo, onRedo } = useUndo({ reload, showToast });
 
   /** Puts the selection on a cell of the current page, by id. */
-  const selectCursor = useCallback(
-    (next: StepCursor, from: readonly MindmapNode[]) => {
-      if (next.cell === "header") { setSelection({ cell: "header" }); return; }
-      const node = from[next.index];
-      if (node !== undefined) setSelection({ cell: "child", nodeId: node.id });
-    },
-    [],
-  );
+  function selectCursor(next: StepCursor, from: readonly MindmapNode[]): void {
+    if (next.cell === "header") { setSelection({ cell: "header" }); return; }
+    const node = from[next.index];
+    if (node !== undefined) setSelection({ cell: "child", nodeId: node.id });
+  }
 
   /**
    * Descending. A card that cannot be entered **says so** rather than doing nothing — a gesture
@@ -196,25 +195,19 @@ export default function StepsView() {
     [tree, subtreeRootId, enterSubtree, showToast, t],
   );
 
-  const onNavigate = useCallback(
-    (direction: StepDirection) => {
-      selectCursor(moveCursor(cursor, direction, pageChildren.length, grid.columns), pageChildren);
-    },
-    [cursor, pageChildren, grid.columns, selectCursor],
-  );
+  function onNavigate(direction: StepDirection): void {
+    selectCursor(moveCursor(cursor, direction, pageChildren.length, grid.columns), pageChildren);
+  }
 
   // Turning a page moves the cursor onto the first card of the page you turned to, rather than
   // leaving it on a card that is no longer drawn.
-  const onStepPage = useCallback(
-    (direction: 1 | -1) => {
-      const next = clampPage(currentPage + direction, children.length, grid.pageSize);
-      if (next === currentPage) return;
-      setPage(next);
-      const landing = pageSlice(children, next, grid.pageSize)[0];
-      setSelection(landing === undefined ? null : { cell: "child", nodeId: landing.id });
-    },
-    [currentPage, children, grid.pageSize],
-  );
+  function onStepPage(direction: 1 | -1): void {
+    const next = clampPage(currentPage + direction, children.length, grid.pageSize);
+    if (next === currentPage) return;
+    setPage(next);
+    const landing = pageSlice(children, next, grid.pageSize)[0];
+    setSelection(landing === undefined ? null : { cell: "child", nodeId: landing.id });
+  }
 
   const onStepZoom = useCallback(
     (direction: 1 | -1) => { setZoom(steppedZoom(zoom, direction)); },
@@ -247,14 +240,14 @@ export default function StepsView() {
   }, [showToast, t]);
 
   /** What the bindings act on: nothing, the board itself, or one node. */
-  const target = useMemo((): StepsTarget => {
+  function keyboardTarget(): StepsTarget {
     if (cursor === null) return { kind: "none" };
     return selectedNode === null ? { kind: "board" } : { kind: "node", id: selectedNode.id };
-  }, [cursor, selectedNode]);
+  }
 
   useKeyboardStepsView({
     isInputActive: isInputCaptured || editorModal !== null || planPrompt !== null || occurrencePrompt !== null,
-    target,
+    target: keyboardTarget(),
     onRefuseBoard: refuseAtBoardRoot,
     onNavigate,
     onDescend,
