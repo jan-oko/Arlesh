@@ -26,6 +26,10 @@
     "editTask": "edit a task",
     "editGoal": "edit a goal",
     "editCommitment": "edit a commitment",
-    "editProject": "edit a project"
+    "editProject": "edit a project",
+    "plan_one": "plan 1 task",
+    "plan_other": "plan {{count}} tasks",
+    "unplan_one": "take 1 task out of a scope",
+    "unplan_other": "take {{count}} tasks out of a scope"
   }
 }

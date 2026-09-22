@@ -1,4 +1,5 @@
 import { invoke } from "./gesture";
+import type { ScopeRef } from "@/utils/scope-ref";
 
 /** Scope granularity, mirrored from the Rust `ScopeKind` (serde snake_case). */
 export type ScopeKind = "season" | "month" | "week" | "day" | "part_of_day" | "exact";
@@ -56,6 +57,23 @@ export async function getOrCreatePartScope(date: string, part: PartOfDay): Promi
  */
 export async function getOrCreateExactScope(start: string, end: string): Promise<Scope> {
   return invoke<Scope>("get_or_create_exact_scope", { start, end });
+}
+
+/**
+ * Materializes the calendar cell a {@link ScopeRef} names, creating the row if it does not exist.
+ *
+ * One door for every caller that turns a *place on the calendar* into a scope with an id: the Plan
+ * View's cursor when a pass steps to the next scope, and its subscope buckets when a row is dropped
+ * or keyed into one. Two spellings of get-or-create would eventually disagree about which cell a
+ * ref names, which is the one thing a plan must not be wrong about.
+ *
+ * An Exact window is rejected rather than created: it is not a cell, and nothing that calls this is
+ * asking for one.
+ */
+export async function getOrCreateForRef(ref: ScopeRef): Promise<Scope> {
+  if (ref.kind === "part_of_day") return getOrCreatePartScope(ref.date, ref.part);
+  if (ref.kind === "exact") throw new Error("an exact window is not a calendar cell");
+  return getOrCreateScope(ref.kind, ref.date);
 }
 
 /** Resolves a scope to its datetime window and whether it is currently active. */

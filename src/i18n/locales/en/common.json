@@ -27,7 +27,5 @@
   "tabWholeTree": "All",
   "renameTab": "Rename tab",
   "tabName": "Tab name",
-  "tabActions": "Tab actions",
-  "planPathGrouping": "Group by path",
-  "planSubscopeSplit": "Split planned by subscope"
+  "tabActions": "Tab actions"
 }

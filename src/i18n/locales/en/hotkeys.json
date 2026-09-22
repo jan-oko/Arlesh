@@ -64,7 +64,7 @@
   "toggleBacklog": "Put in / take out of the backlog",
   "toggleAgentic": "Mark Agentic / Not agentic",
   "toggleAsynchronous": "Mark Asynchronous / Not asynchronous",
-  "cycleVerdict": "Cycle the selected commitment's verdict (Unresolved \u2192 Kept \u2192 Broken)",
+  "cycleVerdict": "Cycle the selected commitment's verdict (Unresolved → Kept → Broken)",
   "markBroken": "Mark the selected commitment broken (again to clear it)",
   "createChildRow": "Create a child of the selected row",
   "createSiblingRow": "Create a sibling of the selected row",
@@ -73,5 +73,8 @@
   "planMoveAcross": "Plan the selected task into the scope, or take it back out",
   "planSwitchPane": "Move between the candidates and the scope",
   "planStepScope": "Fill the previous / next scope",
-  "planToggleBacklog": "Show or hide backlogged candidates"
+  "planToggleBacklog": "Show or hide backlogged candidates",
+  "planExtendSelection": "Extend the selection up or down",
+  "planSubscopeNumber": "Plan the selection into a subscope by its position (1 to 7)",
+  "planSubscopeLetter": "Plan the selection into a subscope by its initial, where one names it alone"
 }

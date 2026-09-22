@@ -33,6 +33,16 @@
   background: var(--surface);
 }
 
+/* The pane's name and its kebab, on one line: the options belong to the half they act on, and
+   putting them anywhere else means naming which half they mean. */
+.paneBar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
 .paneHeading {
   margin: 0;
   color: var(--text-secondary);
@@ -122,4 +132,55 @@
   font-family: var(--font-sans);
   font-size: var(--text-sm);
   opacity: 0.7;
+}
+
+/* A bucket of the split: a box for the *pointer* (it has to accept a drop) and never for the
+   keyboard, which walks the cards inside it as part of the pane's one flat run. */
+.section {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--node-radius);
+  gap: var(--space-2);
+}
+
+/* Where a drop would land. Dashed rather than solid so it never reads as the focus outline the
+   pane already carries. */
+.sectionOver,
+.paneOver {
+  outline: 2px dashed var(--node-border-selected);
+  outline-offset: 2px;
+}
+
+/* How the keyboard reaches a bucket, drawn where the bucket is named — a shortcut nobody can see
+   is a shortcut nobody uses. */
+.sectionKeys {
+  display: flex;
+  margin-left: auto;
+  gap: var(--space-1);
+}
+
+.key {
+  min-width: 1.1em;
+  padding: 0 4px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 3px;
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs, var(--text-sm));
+  line-height: 1.4;
+  text-align: center;
+}
+
+/* The run below hangs directly off the frame — the board's root, or the subtree you entered. It is
+   not a chain, so it is not drawn as one: no segments to click into, no glyph, nothing but the
+   name, centred to read as the top of the pane rather than as the first step of a path. */
+.rootHeader {
+  padding: var(--space-1) 0;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-align: center;
 }

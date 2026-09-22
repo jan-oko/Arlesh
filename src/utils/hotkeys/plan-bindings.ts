@@ -9,6 +9,7 @@ import { PLAN_MOVE_BINDINGS, type PlanMoveContext } from "./plan/move";
 import { PLAN_NAVIGATE_BINDINGS, type PlanNavigateContext } from "./plan/navigate";
 import { PLAN_SCOPE_BINDINGS, type PlanScopeContext } from "./plan/scope";
 import { PLAN_STATUS_PRESET_BINDINGS, type PlanStatusPresetContext } from "./plan/status-presets";
+import { PLAN_SUBSCOPE_BINDINGS, type PlanSubscopeContext } from "./plan/subscope";
 
 export type { PlanPane, PlanSelectionContext };
 
@@ -28,7 +29,8 @@ export interface PlanContext extends
   PlanMoveContext,
   PlanNavigateContext,
   PlanScopeContext,
-  PlanStatusPresetContext {}
+  PlanStatusPresetContext,
+  PlanSubscopeContext {}
 
 /**
  * The Plan View's bindings — the ones that are genuinely its own.
@@ -49,6 +51,7 @@ export const PLAN_BINDINGS: readonly Binding<PlanContext>[] = [
   ...PLAN_NAVIGATE_BINDINGS,
   ...PLAN_SCOPE_BINDINGS,
   ...PLAN_MOVE_BINDINGS,
+  ...PLAN_SUBSCOPE_BINDINGS,
   ...PLAN_BACKLOG_BINDINGS,
   ...PLAN_EDITOR_BINDINGS,
   ...PLAN_DESELECT_BINDINGS,

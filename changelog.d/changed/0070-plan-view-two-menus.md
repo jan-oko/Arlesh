@@ -1,0 +1,7 @@
+- **The Plan View's two halves each have their own menu, and a pass opens on what still needs placing.** The two switches that lived in the settings gear have moved out of it, into a kebab beside the heading of the pane each one acts on, with two new ones beside them. A control three rows up from the thing it changes has to name which half it means, and a settings popover is somewhere you go once rather than somewhere you reach for mid-pass.
+
+  **Candidates** holds *Show only planned to parent scope* and *Group by path*, both on. **Planned** holds *Split by subscope* and *Include premorning*, both off.
+
+  *Show only planned to parent scope* is what changes how a pass starts. The left-hand pane now opens on the work that is committed but not placed — filling a week, that is the work pinned to its month; filling a month's weeks, the work pinned to the month itself — and nothing else. That is the list that shrinks as you work. Untick it to see the unplanned pool underneath, which is the same list however long the pass runs.
+
+  *Group by path* is now the candidates pane's alone, and is on by default: that pane is read for where work lives, and the pane opposite it is read for when work is planned. A card no longer repeats the path the header above it just gave — the two used to sit on one line narrow enough to clip it — and a run of work that hangs straight off the root is headed by the root's own name instead of being the one run in the pane with nothing above it.

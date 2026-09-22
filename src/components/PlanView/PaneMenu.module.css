@@ -1,0 +1,49 @@
+.anchor {
+  position: relative;
+  display: flex;
+  flex: 0 0 auto;
+}
+
+.button {
+  padding: 0 var(--space-1);
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: var(--text-base);
+  line-height: 1;
+}
+
+.button:hover {
+  color: var(--text-primary);
+}
+
+/* Catches the click that closes the menu, under the menu and over everything else. */
+.backdrop {
+  position: fixed;
+  z-index: 40;
+  inset: 0;
+}
+
+.menu {
+  position: absolute;
+  z-index: 41;
+  top: calc(100% + var(--space-1));
+  right: 0;
+  min-width: 15rem;
+  padding: var(--space-2);
+  border: 1px solid var(--node-border);
+  border-radius: var(--node-radius);
+  background: var(--surface-raised);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 25%);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  /* The heading above is uppercased and letter-spaced; the options are ordinary sentences. */
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.row {
+  padding: var(--space-1) var(--space-1);
+  white-space: nowrap;
+}

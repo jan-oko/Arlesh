@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { getOrCreatePartScope, getOrCreateScope } from "@/api/scopes";
+import { getOrCreateForRef } from "@/api/scopes";
 import type { Scope } from "@/api/scopes";
 import { getErrorMessage } from "@/api/errors";
 import { useScopeLabels } from "@/hooks/use-scope-labels";
@@ -36,12 +36,9 @@ function todayIso(now: Date): string {
 }
 
 /** Materializes a cursor's cell, creating the scope row on demand — the same get-or-create the
- * Scope Picker resolves a selection through. */
+ * Scope Picker resolves a selection through, and the same one a drop into a subscope goes through. */
 async function materialize(cursor: PlanScopeCursor): Promise<Scope> {
-  const ref = cursorRef(cursor);
-  if (ref.kind === "part_of_day") return getOrCreatePartScope(ref.date, ref.part);
-  if (ref.kind === "exact") throw new Error("an exact window is not a scope a Plan pass can fill");
-  return getOrCreateScope(ref.kind, ref.date);
+  return getOrCreateForRef(cursorRef(cursor));
 }
 
 /**

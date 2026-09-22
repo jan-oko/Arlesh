@@ -107,28 +107,28 @@ describe("partitionForScope", () => {
   it("offers an unplanned task whose own window is the scope", () => {
     const rows = [row({ node: node("task-1", { timeScope: scope(1) }) })];
     const panes = partitionForScope(rows, WEEK, WINDOWS);
-    expect(panes.candidates.map((r) => r.node.id)).toEqual(["task-1"]);
+    expect(panes.unplanned.map((r) => r.node.id)).toEqual(["task-1"]);
     expect(panes.planned).toEqual([]);
   });
 
   it("offers an unplanned task whose window merely overlaps the scope", () => {
     const rows = [row({ node: node("task-1", { timeScope: { start_id: 2, end_id: 3 } }) })];
-    expect(partitionForScope(rows, WEEK, WINDOWS).candidates).toHaveLength(1);
+    expect(partitionForScope(rows, WEEK, WINDOWS).unplanned).toHaveLength(1);
   });
 
   it("offers an Unscoped task, which is always relevant", () => {
-    expect(partitionForScope([row()], WEEK, WINDOWS).candidates).toHaveLength(1);
+    expect(partitionForScope([row()], WEEK, WINDOWS).unplanned).toHaveLength(1);
   });
 
   it("offers a task relevant only through an inherited window", () => {
     const rows = [row({ ancestors: [node("goal-1", { timeScope: scope(1) }, "goal")] })];
-    expect(partitionForScope(rows, WEEK, WINDOWS).candidates).toHaveLength(1);
+    expect(partitionForScope(rows, WEEK, WINDOWS).unplanned).toHaveLength(1);
   });
 
   it("leaves out an unplanned task whose window is next week", () => {
     const rows = [row({ node: node("task-1", { timeScope: scope(3) }) })];
     const panes = partitionForScope(rows, WEEK, WINDOWS);
-    expect(panes.candidates).toEqual([]);
+    expect(panes.unplanned).toEqual([]);
     expect(panes.planned).toEqual([]);
   });
 
@@ -136,7 +136,7 @@ describe("partitionForScope", () => {
     const rows = [row({ node: node("task-1", { plan: scope(1) }) })];
     const panes = partitionForScope(rows, WEEK, WINDOWS);
     expect(panes.planned.map((r) => r.node.id)).toEqual(["task-1"]);
-    expect(panes.candidates).toEqual([]);
+    expect(panes.unplanned).toEqual([]);
   });
 
   it("counts a task planned into a day inside the scope as part of what the scope holds", () => {
@@ -147,15 +147,33 @@ describe("partitionForScope", () => {
   it("puts a task planned elsewhere in neither pane", () => {
     const rows = [row({ node: node("task-1", { timeScope: scope(4), plan: scope(3) }) })];
     const panes = partitionForScope(rows, WEEK, WINDOWS);
-    expect(panes.candidates).toEqual([]);
+    expect(panes.unplanned).toEqual([]);
     expect(panes.planned).toEqual([]);
+    expect(panes.coarser).toEqual([]);
+  });
+
+  // The month a week sits in: committed, but not to anywhere as fine as a week. That is the work a
+  // pass over this week exists to place, and the left-hand pane opens on exactly it.
+  it("puts a task planned to the month above the week on the coarser heap", () => {
+    const rows = [row({ node: node("task-1", { plan: scope(4) }) })];
+    const panes = partitionForScope(rows, WEEK, WINDOWS);
+    expect(panes.coarser.map((r) => r.node.id)).toEqual(["task-1"]);
+    expect(panes.planned).toEqual([]);
+    expect(panes.unplanned).toEqual([]);
+  });
+
+  it("does not call a plan that *is* the scope coarser than itself", () => {
+    const rows = [row({ node: node("task-1", { plan: scope(1) }) })];
+    const panes = partitionForScope(rows, WEEK, WINDOWS);
+    expect(panes.planned.map((r) => r.node.id)).toEqual(["task-1"]);
+    expect(panes.coarser).toEqual([]);
   });
 
   it("triages no virtual Habit occurrence", () => {
     const habitItem = { flowId: 1, itemType: "flow_task" as const, itemId: 1, scopeId: 1, cycleId: 0 };
     const rows = [row({ node: node("task-1", { virtual: true, habitItem }) })];
     const panes = partitionForScope(rows, WEEK, WINDOWS);
-    expect(panes.candidates).toEqual([]);
+    expect(panes.unplanned).toEqual([]);
     expect(panes.planned).toEqual([]);
   });
 });

@@ -85,53 +85,69 @@ function isTriageable(node: MindmapNode): boolean {
   return node.virtual !== true && node.habitItem === undefined;
 }
 
-/** The two panes of one triage pass. */
+/** What one triage pass makes of the board, in three heaps. */
 export interface PlanPanes {
   /** Unplanned Tasks whose effective Time Scope reaches into the scope being filled. */
-  candidates: TaskListRow[];
+  unplanned: TaskListRow[];
   /** Tasks already planned into the scope being filled. */
   planned: TaskListRow[];
+  /**
+   * Tasks planned **coarser** than the scope being filled: their Plan contains it without being
+   * contained by it — the month, while you are filling one of its weeks.
+   *
+   * They are committed, but not to anywhere as fine as this pass is placing at, so they are exactly
+   * "what still needs placing" and they belong with the candidates. Before the two kebab menus they
+   * were in neither pane, which is what made a pass over a week open on work it had no opinion
+   * about instead of on the month's own backlog of it.
+   */
+  coarser: TaskListRow[];
 }
 
 /**
- * Splits the rows into the two panes for `target`.
+ * Splits the rows into the heaps for `target`.
  *
- * **Candidates** are the unplanned work that is relevant *now*: a Task with no Plan at all whose
- * effective Time Scope overlaps the scope. An **Unscoped** task is always relevant and so is always
- * a candidate — the model says an unscoped item is always active, and a planning pass is exactly
- * where unscoped work should be offered.
+ * **Unplanned** is the work that is relevant *now*: a Task with no Plan at all whose effective Time
+ * Scope overlaps the scope. An **Unscoped** task is always relevant and so is always here — the
+ * model says an unscoped item is always active, and a planning pass is exactly where unscoped work
+ * should be offered.
  *
  * **Planned** is containment, not equality: a Task pinned to Tuesday is part of what this week
  * holds, and a week being filled has to show it or the right-hand pane would under-report the load
  * it exists to report.
  *
- * A Task planned somewhere else entirely is in **neither** pane. It is not unscheduled, so it is
- * not a candidate, and it is not in this scope, so it is not what the scope holds.
+ * **Coarser** is the other side of that comparison — containment the other way round, and strictly,
+ * so a plan that *is* this scope counts as planned rather than as coarser than itself.
+ *
+ * A Task planned somewhere else entirely is in **none** of them. It is not unscheduled, it is not
+ * in this scope, and it is not above it.
  */
 export function partitionForScope(
   rows: readonly TaskListRow[],
   target: ScopeInterval,
   windows: ScopeWindows,
 ): PlanPanes {
-  const candidates: TaskListRow[] = [];
+  const unplanned: TaskListRow[] = [];
   const planned: TaskListRow[] = [];
+  const coarser: TaskListRow[] = [];
   for (const row of rows) {
     if (!isTriageable(row.node)) continue;
     const plan = row.node.plan;
     if (plan != null) {
       const planWindow = timeScopeWindow(plan, windows);
-      if (planWindow !== null && intervalContains(target, planWindow)) planned.push(row);
+      if (planWindow === null) continue;
+      if (intervalContains(target, planWindow)) planned.push(row);
+      else if (intervalContains(planWindow, target)) coarser.push(row);
       continue;
     }
     const relevance = effectiveTimeScope(row);
     if (relevance === null) {
-      candidates.push(row);
+      unplanned.push(row);
       continue;
     }
     const window = timeScopeWindow(relevance, windows);
-    if (window !== null && intervalsOverlap(window, target)) candidates.push(row);
+    if (window !== null && intervalsOverlap(window, target)) unplanned.push(row);
   }
-  return { candidates, planned };
+  return { unplanned, planned, coarser };
 }
 
 /**

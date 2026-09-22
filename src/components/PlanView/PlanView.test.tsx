@@ -130,6 +130,11 @@ function mockRows(rows: TaskListRow[]): void {
   });
 }
 
+/** Lets the promise chain behind a write — open the Gesture, write, reload — settle. */
+async function settle(): Promise<void> {
+  for (let turn = 0; turn < 4; turn++) await act(async () => { await Promise.resolve(); });
+}
+
 /** Renders and lets the scope materialize and resolve before anything is asserted. */
 async function renderPlanView(): Promise<void> {
   render(<PlanView />);
@@ -148,9 +153,13 @@ beforeEach(() => {
   vi.clearAllMocks();
   clearScopeWindowCache();
   clearScopeRowCache();
-  // Both shape switches default off, so every test above this point sees the flat panes it was
-  // written against.
-  useDisplayStore.setState({ planPathGrouping: false, planSubscopeSplit: false });
+  // The kebab switches are set explicitly rather than left at their defaults: a pass opens on
+  // *what still needs placing*, which is a different left-hand pane from the one most of these
+  // tests are about. The ones that are about it set the switches back.
+  useDisplayStore.setState({
+    planCandidatesPathGrouping: false, planCandidatesParentOnly: false,
+    planSubscopeSplit: false, planIncludePremorning: false,
+  });
   useFilterStore.setState({ filter: { ...DEFAULT_FILTER } });
   useMindmapStore.setState({ subtreeRootId: null, pendingToast: null });
 });
@@ -315,22 +324,67 @@ function headingsIn(pane: "candidates" | "planned"): string[] {
   return [...section.querySelectorAll("h3")].map((el) => el.textContent ?? "");
 }
 
-describe("grouping the panes by path", () => {
+describe("grouping the candidates by path", () => {
   it("draws no header until the switch is on", async () => {
     mockRows([row(n("task-1", "task", { timeScope: { start_id: WEEK_ID, end_id: WEEK_ID } }), [n("dom", "domain")])]);
     await renderPlanView();
     expect(document.querySelectorAll("[data-path-header]").length).toBe(0);
   });
 
-  it("heads each run with its chain in both panes once it is", async () => {
+  // The switch is the *candidates* pane's, and it groups that pane alone: the pane opposite is read
+  // for when work is planned, which is the question its own menu answers.
+  it("heads each run with its chain in the candidates pane once it is", async () => {
     const home = n("dom", "domain");
-    useDisplayStore.setState({ planPathGrouping: true });
+    useDisplayStore.setState({ planCandidatesPathGrouping: true });
     mockRows([
       row(n("task-1", "task", { timeScope: { start_id: WEEK_ID, end_id: WEEK_ID } }), [home]),
       row(n("task-2", "task", { plan: { start_id: DAY_ID, end_id: DAY_ID } }), [home]),
     ]);
     await renderPlanView();
-    expect(document.querySelectorAll("[data-plan-pane] [data-path-header]").length).toBe(2);
+    expect(document.querySelectorAll('[data-plan-pane="candidates"] [data-path-header]').length).toBe(1);
+    expect(document.querySelectorAll('[data-plan-pane="planned"] [data-path-header]').length).toBe(0);
+  });
+
+  it("names the frame above a run that hangs straight off it, rather than leaving it the one unnamed run", async () => {
+    useDisplayStore.setState({ planCandidatesPathGrouping: true });
+    mockRows([row(n("task-1", "task", { timeScope: { start_id: WEEK_ID, end_id: WEEK_ID } }))]);
+    await renderPlanView();
+    const pane = document.querySelector('[data-plan-pane="candidates"]');
+    expect(pane?.textContent).toContain("root");
+  });
+
+  it("takes the path off the card once a header carries it", async () => {
+    const home = n("dom", "domain");
+    mockRows([row(n("task-1", "task", { timeScope: { start_id: WEEK_ID, end_id: WEEK_ID } }), [home])]);
+    await renderPlanView();
+    expect(document.querySelector('[data-plan-card-id="task-1"]')?.textContent).toContain("dom");
+
+    await act(async () => { useDisplayStore.setState({ planCandidatesPathGrouping: true }); });
+    expect(document.querySelector('[data-plan-card-id="task-1"]')?.textContent).not.toContain("dom");
+  });
+});
+
+describe("the two kebab menus", () => {
+  it("gives each half its own, and the window's settings popover neither", async () => {
+    mockRows([]);
+    await renderPlanView();
+    expect(screen.getAllByLabelText("paneOptions")).toHaveLength(2);
+  });
+
+  it("opens the pass on what still needs placing, and nothing else", async () => {
+    useDisplayStore.setState({ planCandidatesParentOnly: true });
+    mockRows([
+      // Unplanned and relevant — the pool, which is the same list however long the pass runs.
+      row(n("task-1", "task", { timeScope: { start_id: WEEK_ID, end_id: WEEK_ID } })),
+      // Planned to this week itself while its days are what is being filled: still needs placing.
+      row(n("task-2", "task", { plan: { start_id: WEEK_ID, end_id: WEEK_ID } })),
+    ]);
+    useDisplayStore.setState({ planSubscopeSplit: true });
+    await renderPlanView();
+    expect(cardsIn("candidates")).toEqual(["task-2"]);
+
+    await act(async () => { useDisplayStore.setState({ planCandidatesParentOnly: false }); });
+    expect(cardsIn("candidates")).toEqual(["task-2", "task-1"]);
   });
 });
 
@@ -345,7 +399,7 @@ describe("splitting the planned pane by subscope", () => {
     expect(cardsIn("planned")).toEqual(["task-2"]);
   });
 
-  it("leaves the candidates pane flat — unplanned work sits in no subscope", async () => {
+  it("leaves the candidates pane flat — the work waiting there sits in no subscope", async () => {
     useDisplayStore.setState({ planSubscopeSplit: true });
     mockRows([row(n("task-1", "task", { timeScope: { start_id: WEEK_ID, end_id: WEEK_ID } }))]);
     await renderPlanView();
@@ -366,28 +420,92 @@ describe("splitting the planned pane by subscope", () => {
     expect(cardsIn("planned")).toEqual(["task-early", "task-late"]);
   });
 
-  it("collects work planned to the scope itself under its own heading, first", async () => {
+  // The catch-all section is gone. Work pinned to the scope while its parts are what you are
+  // filling is work that still needs placing, and the side with the gestures is the left one.
+  it("moves work planned to the scope itself to the candidates side, out of every section", async () => {
     useDisplayStore.setState({ planSubscopeSplit: true });
     mockRows([
       row(n("task-loose", "task", { plan: { start_id: WEEK_ID, end_id: WEEK_ID } })),
       row(n("task-2", "task", { plan: { start_id: DAY_ID, end_id: DAY_ID } })),
     ]);
     await renderPlanView();
-    expect(headingsIn("planned")[0]).toContain("unbucketedHeading");
-    expect(cardsIn("planned")).toEqual(["task-loose", "task-2"]);
+    expect(cardsIn("candidates")).toEqual(["task-loose"]);
+    expect(cardsIn("planned")).toEqual(["task-2"]);
   });
 
-  it("keeps every planned task on screen with both switches on", async () => {
-    const home = n("dom", "domain");
-    useDisplayStore.setState({ planPathGrouping: true, planSubscopeSplit: true });
+  it("offers no plan-into-this-scope while the parts are what is being filled", async () => {
+    useDisplayStore.setState({ planSubscopeSplit: true });
+    mockRows([row(n("task-loose", "task", { plan: { start_id: WEEK_ID, end_id: WEEK_ID } }))]);
+    await renderPlanView();
+    expect(screen.queryByLabelText("planInto")).toBeNull();
+  });
+
+  it("plans the selection into the subscope a number names", async () => {
+    useDisplayStore.setState({ planSubscopeSplit: true });
+    mockRows([row(n("task-5", "task", { plan: { start_id: WEEK_ID, end_id: WEEK_ID } }))]);
+    await renderPlanView();
+    expect(cardsIn("candidates")).toEqual(["task-5"]);
+
+    fireEvent.keyDown(window, { code: "ArrowDown" });
+    await act(async () => { fireEvent.keyDown(window, { code: "Digit2" }); });
+    await settle();
+    // The second bucket of the week being filled is Monday the 21st.
+    expect(getOrCreateScope).toHaveBeenCalledWith("day", "2026-09-21");
+    expect(updateTask).toHaveBeenCalled();
+  });
+
+  it("plans by an unambiguous initial too, and leaves the colliding ones to their numbers", async () => {
+    useDisplayStore.setState({ planSubscopeSplit: true });
+    mockRows([row(n("task-5", "task", { plan: { start_id: WEEK_ID, end_id: WEEK_ID } }))]);
+    await renderPlanView();
+
+    fireEvent.keyDown(window, { code: "ArrowDown" });
+    // W is Wednesday's alone; T and S each name two days of the week and so name none.
+    await act(async () => { fireEvent.keyDown(window, { code: "KeyT" }); });
+    await settle();
+    expect(getOrCreateScope).not.toHaveBeenCalledWith("day", expect.anything());
+
+    await act(async () => { fireEvent.keyDown(window, { code: "KeyW" }); });
+    await settle();
+    expect(getOrCreateScope).toHaveBeenCalledWith("day", "2026-09-23");
+  });
+});
+
+describe("selecting more than one row", () => {
+  const relevant = { start_id: WEEK_ID, end_id: WEEK_ID };
+
+  it("extends the selection with Shift and plans the whole run in one go", async () => {
     mockRows([
-      row(n("task-loose", "task", { plan: { start_id: WEEK_ID, end_id: WEEK_ID } }), [home]),
-      row(n("task-2", "task", { plan: { start_id: DAY_ID, end_id: DAY_ID } }), [home]),
-      row(n("task-late", "task", { plan: { start_id: LATER_DAY_ID, end_id: LATER_DAY_ID } }), [home]),
+      row(n("task-1", "task", { timeScope: relevant })),
+      row(n("task-2", "task", { timeScope: relevant })),
+      row(n("task-3", "task", { timeScope: relevant })),
     ]);
     await renderPlanView();
-    expect(cardsIn("planned")).toEqual(["task-loose", "task-2", "task-late"]);
-    // The two groupings nest rather than compete: sections say when, path headers say where.
-    expect(document.querySelectorAll('[data-plan-pane="planned"] [data-path-header]').length).toBeGreaterThan(0);
+
+    fireEvent.keyDown(window, { code: "ArrowDown" });
+    fireEvent.keyDown(window, { code: "ArrowDown", shiftKey: true });
+    expect(document.querySelectorAll('[data-plan-pane="candidates"] [class*="cardSelected"]')).toHaveLength(2);
+
+    await act(async () => { fireEvent.keyDown(window, { code: "Enter" }); });
+    await settle();
+    expect(updateTask).toHaveBeenCalledTimes(2);
+    expect(updateTask).toHaveBeenCalledWith(1, { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
+    expect(updateTask).toHaveBeenCalledWith(2, { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
+  });
+
+  it("adds and removes one row at a time with Ctrl", async () => {
+    mockRows([
+      row(n("task-1", "task", { timeScope: relevant })),
+      row(n("task-2", "task", { timeScope: relevant })),
+      row(n("task-3", "task", { timeScope: relevant })),
+    ]);
+    await renderPlanView();
+
+    fireEvent.click(screen.getByText("task-1"));
+    fireEvent.click(screen.getByText("task-3"), { ctrlKey: true });
+    await act(async () => { fireEvent.keyDown(window, { code: "Enter" }); });
+    await settle();
+    expect(updateTask).toHaveBeenCalledTimes(2);
+    expect(updateTask).toHaveBeenCalledWith(3, { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
   });
 });
