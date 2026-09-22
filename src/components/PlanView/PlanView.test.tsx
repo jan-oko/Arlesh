@@ -14,16 +14,18 @@ import { useDisplayStore } from "@/stores/use-display-store";
 // The usual key-for-string stub, with one exception: a bucket's keyboard mnemonic is the initial
 // of its **rendered** name, so a stub that answered "planView:weekday.3" for Wednesday would give
 // every day of the week the same initial and take every letter away.
-const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string) => {
-      const weekday = /^planView:weekday\.([0-6])$/.exec(key);
-      return weekday === null ? key : WEEKDAY_NAMES[Number(weekday[1])] ?? key;
-    },
-  }),
-}));
+// The names live inside the factory because `vi.mock` is hoisted above everything else in the file.
+vi.mock("react-i18next", () => {
+  const weekdays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  return {
+    useTranslation: () => ({
+      t: (key: string) => {
+        const weekday = /^planView:weekday\.([0-6])$/.exec(key);
+        return weekday === null ? key : weekdays[Number(weekday[1])] ?? key;
+      },
+    }),
+  };
+});
 
 vi.mock("@/hooks/use-list-data");
 vi.mock("@/components/MindmapView/use-node-editor", () => ({
