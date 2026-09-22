@@ -111,7 +111,7 @@ impl ArleshMcp {
             let windows = match filter.scope {
                 Some(_) => {
                     let ids = crate::filters::facts::referenced_scope_ids(&load);
-                    crate::tasks::scope_rules::resolve_windows(&mut db, &ids).await
+                    crate::tasks::resolve_windows(&mut db, &ids).await
                 }
                 None => crate::filters::model::ScopeWindows::new(),
             };

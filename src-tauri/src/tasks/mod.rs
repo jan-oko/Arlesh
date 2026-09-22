@@ -36,7 +36,7 @@ use model::{
 };
 pub use scope_rules::{
     conflicts_for_new_time_scope, derive_all_scope_lifecycles, nearest_scoped_ancestor_window,
-    reparent_conflicts, time_scope_window, ReparentConflicts, ViolatingDescendant,
+    reparent_conflicts, resolve_windows, time_scope_window, ReparentConflicts, ViolatingDescendant,
 };
 
 // Internal row types that map directly to database columns via sqlx::FromRow.

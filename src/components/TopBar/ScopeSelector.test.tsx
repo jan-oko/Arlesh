@@ -48,8 +48,10 @@ describe("ScopeSelector", () => {
       filter: { ...DEFAULT_FILTER, scope: { startId: 7, endId: 7, axis: "relevance", match: "overlapping" } },
     });
     render(<ScopeSelector />);
+    // The label is `formatScopeRange`'s, so it names the year; the week's own word comes from a
+    // translation this test stubs out, and asserting on the stub would be asserting on the mock.
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "scopeLabel" })).toHaveTextContent("W35");
+      expect(screen.getByRole("button", { name: "scopeLabel" })).toHaveTextContent("2026");
     });
     fireEvent.click(screen.getByRole("button", { name: "clearScope" }));
     expect(useFilterStore.getState().filter.scope).toBeNull();
@@ -60,10 +62,11 @@ describe("ScopeSelector", () => {
     fireEvent.click(screen.getByRole("button", { name: "scopeLabel" }));
     fireEvent.click(screen.getByRole("button", { name: "scopeAxisPlan" }));
     fireEvent.click(screen.getByRole("button", { name: "scopeMatchWithin" }));
-    // The picker opens on the month view, whose cells are the weeks of that month — which is what
-    // a scope filter is usually pointed at.
-    const weeks = screen.getAllByRole("button", { name: /^Week \d+$/ });
-    fireEvent.click(weeks[0] ?? fail("the month view draws its weeks"));
+    // With no scope yet the picker opens on the month view: a year of months to pick from. Which
+    // year that is depends on the day the suite runs, so the cell is taken by shape, not by name.
+    const [firstMonth] = screen.getAllByRole("button", { name: /^\w+ \d{4}$/ });
+    if (firstMonth === undefined) throw new Error("the month view draws its cells");
+    fireEvent.click(firstMonth);
     fireEvent.click(screen.getByRole("button", { name: "scopeApply" }));
     await waitFor(() => {
       expect(useFilterStore.getState().filter.scope).toEqual({
@@ -92,7 +95,3 @@ describe("ScopeSelector", () => {
     });
   });
 });
-
-function fail(message: string): never {
-  throw new Error(message);
-}
