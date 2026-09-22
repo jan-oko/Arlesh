@@ -103,7 +103,7 @@ function select(id: string): void {
   act(() => { mindmapStore().getState().selectNode(id); });
 }
 
-function press(key: string, modifiers: { ctrlKey?: boolean; shiftKey?: boolean } = {}): void {
+function press(key: string, modifiers: { ctrlKey?: boolean; shiftKey?: boolean; altKey?: boolean } = {}): void {
   act(() => {
     fireEvent.keyDown(window, { key, code: key === "/" ? "Slash" : key, ...modifiers });
   });
