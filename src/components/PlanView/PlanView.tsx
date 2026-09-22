@@ -164,7 +164,6 @@ export default function PlanView() {
   // The two shape switches, app-wide like the List View's own (see `use-display-store`).
   const planPathGrouping = useDisplayStore((s) => s.planPathGrouping);
   // The same app-wide glyph choice the List View's headers read; one header, one setting.
-  const pathHeaderIcons = useDisplayStore((s) => s.pathHeaderIcons);
   const planSubscopeSplit = useDisplayStore((s) => s.planSubscopeSplit);
   const setPillSide = useListFilterStore((s) => s.setPillSide);
 
@@ -328,7 +327,6 @@ export default function PlanView() {
                       segments={entry.segments}
                       onEnterSubtree={enterSubtree}
                       onFilterByAntecedent={(id, side) => setPillSide("antecedent", id, side)}
-                      showKindIcon={pathHeaderIcons}
                       // The Plan View writes Plans and nothing else, so it offers no way to create
                       // a Task from a header — absent rather than present and always refusing.
                       onCreateTask={null}

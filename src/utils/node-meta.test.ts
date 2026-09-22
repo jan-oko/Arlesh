@@ -184,7 +184,21 @@ describe("typeAcceptsChildren", () => {
     expect(typeAcceptsChildren("domain", ["project"])).toBe(false);
   });
 
-  it("a tag holds only info children (it's a label, not a container)", () => {
+  it("the two rules about what hangs under a kind agree, for every real kind", () => {
+    // They lived apart and disagreed about a Tag: `ALLOWED_CHILD_KINDS` said "info notes", which
+    // the retype menu read, while `isValidDropTarget` refused everything, which every gesture
+    // read — so a Tag held a note when retyping and nothing when creating. Pinned here so neither
+    // can drift again. Flows keep a world of their own and are not in `ALLOWED_CHILD_KINDS`, so
+    // they are deliberately outside this.
+    const realKinds = ["aspect", "domain", "project", "goal", "task", "commitment", "info", "tag"] as const;
+    for (const parent of realKinds) {
+      for (const child of realKinds) {
+        expect(typeAcceptsChildren(parent, [child])).toBe(isValidDropTarget(child, parent));
+      }
+    }
+  });
+
+  it("a tag holds only info children (it's a label, and a note about it)", () => {
     expect(typeAcceptsChildren("tag", ["info"])).toBe(true);
     expect(typeAcceptsChildren("tag", [])).toBe(true);
     expect(typeAcceptsChildren("tag", ["goal"])).toBe(false);
@@ -276,8 +290,14 @@ describe("isValidDropTarget — info", () => {
     expect(isValidDropTarget("info", "info")).toBe(true);
   });
 
-  it("info cannot be dropped onto a tag", () => {
-    expect(isValidDropTarget("info", "tag")).toBe(false);
+  it("info can be dropped onto a tag — the one thing a label holds", () => {
+    expect(isValidDropTarget("info", "tag")).toBe(true);
+  });
+
+  it("but nothing else can", () => {
+    for (const kind of ["domain", "project", "goal", "task", "commitment", "tag", "flow"] as const) {
+      expect(isValidDropTarget(kind, "tag")).toBe(false);
+    }
   });
 
   it("task cannot be dropped onto an info node (info only accepts info children)", () => {
@@ -367,8 +387,10 @@ describe("validParentKinds", () => {
     expect(validParentKinds("task")).toEqual(["aspect", "domain", "project", "goal", "task", "commitment"]);
   });
 
-  it("lets an Info sit under everything but a Tag", () => {
-    expect(validParentKinds("info")).toEqual(["aspect", "domain", "project", "goal", "task", "commitment", "info"]);
+  it("lets an Info sit under everything, a Tag included", () => {
+    expect(validParentKinds("info")).toEqual([
+      "aspect", "domain", "project", "goal", "task", "commitment", "info", "tag",
+    ]);
   });
 
   // A flow item used to get an empty list, because the candidates were the real kinds only — so a
@@ -485,9 +507,13 @@ describe("canParentNewChild", () => {
   });
 
   describe("canParentAnyNewChild", () => {
-    it("says yes for a Project and no for a Tag, which is a label rather than a container", () => {
+    it("says yes for a Project, and for a Tag, which holds an Info note", () => {
       expect(canParentAnyNewChild(node("domain-1", "project"))).toBe(true);
-      expect(canParentAnyNewChild(node("domain-2", "tag"))).toBe(false);
+      // Yes to the question this asks — a Tag holds *something*. `Tab` is still refused on one,
+      // in the gesture, because the default child of a label would be a Domain.
+      expect(canParentAnyNewChild(node("domain-2", "tag"))).toBe(true);
+      expect(canParentNewChild(node("domain-2", "tag"), "info")).toBe(true);
+      expect(canParentNewChild(node("domain-2", "tag"), "task")).toBe(false);
     });
 
     it("says no for a folded run and yes for an occurrence, which holds children of its own", () => {
