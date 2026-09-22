@@ -150,8 +150,8 @@ it acts on has to name which half it means, and a settings popover is somewhere 
 somewhere you reach for mid-pass. A planning pass changes its mind about how it wants to read a pane
 while it is reading it.
 
-They stay **app-wide**, persisted beside *Path icons* and *Asynchronous first*, and deliberately did
-not become per-tab like the filters. A filter is a question about the board and belongs to the tab
+They stay **app-wide**, persisted beside *Asynchronous first*, and deliberately did not become
+per-tab like the filters. A filter is a question about the board and belongs to the tab
 asking it; these are questions about how the Plan View reads, and a pass that came up shaped
 differently because it was started from another tab would read as a bug rather than as a setting.
 
@@ -160,9 +160,8 @@ differently because it was started from another tab would read as a bug rather t
 
 **Group by path** draws a header above each contiguous run of rows sharing a location, spelling the
 chain — `Growth › CODE › ARLESH › Features`. It is the List View's header: clicking a segment enters
-that subtree, Ctrl-clicking files it as an Antecedent pill, and the *Path icons* switch governs its
-glyph here too. The Plan View offers no **+** on a header, because planning is the only thing this
-view writes.
+that subtree and Ctrl-clicking files it as an Antecedent pill. The Plan View offers no **+** on a
+header, because planning is the only thing this view writes.
 
 It is the **candidates pane's** switch and groups that pane alone. That pane is read for *where*
 work lives; the pane opposite it is read for *when*, which is the question its own menu answers, and

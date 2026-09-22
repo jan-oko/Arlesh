@@ -36,7 +36,7 @@ beforeEach(() => {
   useListFilterStore.setState({ filter: { ...DEFAULT_LIST_FILTER, pills: { ...DEFAULT_LIST_FILTER.pills } } });
   useMindmapStore.setState({ subtreeRootId: null, subtreeNav: null });
   useViewStore.setState({ view: "mindmap", mindmapOrientation: "horizontal" });
-  useDisplayStore.setState({ pathHeaderIcons: true, asynchronousFirst: false });
+  useDisplayStore.setState({ asynchronousFirst: false });
   useThemeStore.setState({ theme: "dark" });
   useCloseToTrayStore.setState({ closeToTray: true });
   mockUseFilterDisplay.mockReturnValue(EMPTY_DISPLAY);
@@ -201,18 +201,8 @@ describe("TopBar", () => {
       expect(screen.queryByRole("checkbox", { name: "common:verticalLayout" })).not.toBeInTheDocument();
     });
 
-    it("turns path-header glyphs off from the Path icons switch, which starts on", () => {
+    it("offers no Path icons switch — the path-header glyphs are gone", () => {
       useViewStore.setState({ view: "list" });
-      render(<TopBar />);
-      fireEvent.click(screen.getByRole("button", { name: "common:settings" }));
-      const iconSwitch = screen.getByRole("checkbox", { name: "common:pathIcons" });
-      expect(iconSwitch).toBeChecked();
-      fireEvent.click(iconSwitch);
-      expect(useDisplayStore.getState().pathHeaderIcons).toBe(false);
-      expect(iconSwitch).not.toBeChecked();
-    });
-
-    it("hides the Path icons switch on the Mindmap, which has no path headers", () => {
       render(<TopBar />);
       fireEvent.click(screen.getByRole("button", { name: "common:settings" }));
       expect(screen.queryByRole("checkbox", { name: "common:pathIcons" })).not.toBeInTheDocument();

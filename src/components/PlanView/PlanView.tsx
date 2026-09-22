@@ -130,8 +130,6 @@ export default function PlanView() {
   const toggleSubscopeSplit = useDisplayStore((s) => s.togglePlanSubscopeSplit);
   const includePremorning = useDisplayStore((s) => s.planIncludePremorning);
   const toggleIncludePremorning = useDisplayStore((s) => s.togglePlanIncludePremorning);
-  // The same app-wide glyph choice the List View's headers read; one header, one setting.
-  const pathHeaderIcons = useDisplayStore((s) => s.pathHeaderIcons);
   const setPillSide = useListFilterStore((s) => s.setPillSide);
 
   // Which *calendar cell* each plan names, which is a different question from the window it spans
@@ -445,7 +443,6 @@ export default function PlanView() {
             focused={pane === "candidates"}
             grouped={groupByPath}
             rootLabel={rootLabel}
-            pathHeaderIcons={pathHeaderIcons}
             selectedIds={live.ids}
             direction={plannedModel.sectioned ? null : "in"}
             sectionInfo={sectionInfo}
@@ -473,7 +470,6 @@ export default function PlanView() {
             focused={pane === "planned"}
             grouped={false}
             rootLabel={rootLabel}
-            pathHeaderIcons={pathHeaderIcons}
             selectedIds={live.ids}
             direction="out"
             sectionInfo={sectionInfo}

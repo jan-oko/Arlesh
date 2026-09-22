@@ -43,8 +43,6 @@ export default function TopBar() {
   const setView = useViewStore((s) => s.setView);
   const mindmapOrientation = useViewStore((s) => s.mindmapOrientation);
   const toggleMindmapOrientation = useViewStore((s) => s.toggleMindmapOrientation);
-  const pathHeaderIcons = useDisplayStore((s) => s.pathHeaderIcons);
-  const togglePathHeaderIcons = useDisplayStore((s) => s.togglePathHeaderIcons);
   const asynchronousFirst = useDisplayStore((s) => s.asynchronousFirst);
   const toggleAsynchronousFirst = useDisplayStore((s) => s.toggleAsynchronousFirst);
   const listPreset = useListFilterStore((s) => s.filter.preset);
@@ -107,21 +105,9 @@ export default function TopBar() {
                   )}
                   {/* Folded Habit history is drawn on the mindmap, so its threshold is gated to it. */}
                   {view === "mindmap" && <HabitCollapseSetting />}
-                  {/* Path headers exist only in List View, so their glyph switch is gated the same
-                      way the branch axis is gated to the mindmap — a control for something the
-                      current view cannot show is noise. */}
-                  {view === "list" && (
-                    <div className={styles.settingRow}>
-                      <Switch
-                        checked={pathHeaderIcons}
-                        onChange={togglePathHeaderIcons}
-                        label={t("common:pathIcons")}
-                      />
-                    </div>
-                  )}
                   {/* Row order is a List View matter — the Mindmap's sibling order is set by hand
                       with Alt+arrows and is never rearranged for you — so the switch is gated to
-                      the view it acts on, like the two above it. */}
+                      the view it acts on, as the branch axis is gated to the mindmap. */}
                   {view === "list" && (
                     <div className={styles.settingRow}>
                       <Switch

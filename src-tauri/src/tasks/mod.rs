@@ -475,7 +475,16 @@ impl TaskWrite {
         // direction is the one that needs consent, and `update_task` refuses it.
         let plans_a_backlogged_task =
             request.archival.is_none() && !stored.archival.allows_plan() && plan.is_some();
-        let archival = if plans_a_backlogged_task {
+        // Starting one does too, for the same reason read the other way round: you cannot be
+        // actively doing something you have deliberately put down. Unlike the Plan pair this is not
+        // an invariant — backlogging a task that is in progress stays allowed, and is how a
+        // set-aside task remembers where the work stood — so it fires on the *request* moving the
+        // task into progress, not on the merged status, and never on some other edit to a task that
+        // was already in progress. The caller raises the toast here as well.
+        let starts_a_backlogged_task = request.archival.is_none()
+            && stored.archival == TaskArchival::Backlog
+            && matches!(request.status, Some(TaskStatus::InProgress));
+        let archival = if plans_a_backlogged_task || starts_a_backlogged_task {
             TaskArchival::Live
         } else {
             request.archival.unwrap_or(stored.archival)
@@ -1403,7 +1412,8 @@ pub async fn create_task(
 /// [`TaskError::BacklogWithPlan`], which the command boundary reports as **needs confirmation**,
 /// and the caller answers by asking again with `plan: Some(None)` alongside the backlog. The
 /// opposite order is not refused at all — a request that *sets* a Plan on a backlogged task takes
-/// it out of the backlog on its way through [`TaskWrite::merge`].
+/// it out of the backlog on its way through [`TaskWrite::merge`], and so does one that sets its
+/// status to `in_progress`.
 ///
 /// Reads the stored row, merges the request over it, validates, then writes — all on one
 /// transactional session, so the row cannot move underneath the check. This is the **only** way to

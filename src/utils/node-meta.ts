@@ -229,7 +229,7 @@ export function isFlowKind(kind: NodeKind): boolean {
  *   task                       → task, commitment, info children
  *   commitment                 → task, commitment, info children
  *   info                       → info children only
- *   tag                        → no children (leaf)
+ *   tag                        → info children only (a label, annotated — nothing structural)
  *   aspect                     → cannot be moved (immutable)
  */
 export function isValidDropTarget(sourceKind: NodeKind, targetKind: NodeKind): boolean {
@@ -249,7 +249,11 @@ export function isValidDropTarget(sourceKind: NodeKind, targetKind: NodeKind): b
     return false; // a real node can never drop onto a flow or flow item
   }
 
-  if (targetKind === "tag") return false;
+  // A Tag is a label, and the one thing you hang on a label is a note about it. The backend has
+  // always said so — `infos.parent_type` names `tag` — and so does `ALLOWED_CHILD_KINDS.tag`; this
+  // arm used to refuse everything, which made the two rules in this file contradict each other.
+  // It still sits above the `info` arms, so every other kind is refused before they are reached.
+  if (targetKind === "tag") return sourceKind === "info";
   if (targetKind === "info") return sourceKind === "info";
   if (sourceKind === "info") return true;
   // A commitment lives anywhere a task can, plus inside another commitment; it holds only
@@ -382,9 +386,13 @@ export function canAdoptChildren(node: MindmapNode): boolean {
  * Whether **any** new child can be created under `node` at all.
  *
  * The question `Tab` asks, and the only form it can ask it in: `Tab` names no kind — the parent
- * decides what its child is — so there is nothing to put to {@link canParentNewChild}. Two kinds
- * of node answer no: a Tag, which is a label rather than a container, and anything drawn rather
- * than stored.
+ * decides what its child is — so there is nothing to put to {@link canParentNewChild}. What
+ * answers no is anything drawn rather than stored: a folded run of Habit history, the synthetic
+ * root, and any other virtual node.
+ *
+ * A **Tag** answers yes, because it holds an Info note — but `Tab` is still refused on one, in the
+ * gesture rather than here: `Tab` creates the parent's *default* child, which for a label would be
+ * a Domain, and the one kind a Tag does hold has a chord of its own (`Shift+I`).
  */
 export function canParentAnyNewChild(node: MindmapNode): boolean {
   return ALL_NODE_KINDS.some((kind) => canParentNewChild(node, kind));

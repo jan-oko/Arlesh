@@ -30,7 +30,6 @@ interface Props {
   grouped: boolean;
   /** What the frame is called — the board's root, or the subtree the tab has entered. */
   rootLabel: string;
-  pathHeaderIcons: boolean;
   selectedIds: ReadonlySet<string>;
   /** Which way a card in this pane moves, or `null` where no across-move is offered. */
   direction: "in" | "out" | null;
@@ -67,7 +66,7 @@ const WHOLE_PANE = "pane";
  * droppable) and not for the keyboard.
  */
 export default function PlanPane({
-  which, heading, options, model, focused, grouped, rootLabel, pathHeaderIcons, selectedIds,
+  which, heading, options, model, focused, grouped, rootLabel, selectedIds,
   direction, empty, sectionInfo, onFocus, onSelect, onMove, onOpenEditor, onEnterSubtree,
   onFilterByAntecedent, onDragStart, onDrop,
 }: Props) {
@@ -132,7 +131,6 @@ export default function PlanPane({
                   segments={entry.segments}
                   onEnterSubtree={onEnterSubtree}
                   onFilterByAntecedent={onFilterByAntecedent}
-                  showKindIcon={pathHeaderIcons}
                   // The Plan View writes Plans and nothing else, so it offers no way to create a
                   // Task from a header — absent rather than present and always refusing.
                   onCreateTask={null}

@@ -1,6 +1,5 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { legacyPathHeaderIcons } from "@/stores/tab-persistence";
 import {
   DEFAULT_HABIT_COLLAPSE_THRESHOLD,
   MAX_HABIT_COLLAPSE_THRESHOLD,
@@ -8,9 +7,6 @@ import {
 } from "@/utils/habit-collapse";
 
 interface DisplayStore {
-  /** Whether a List View path header opens with its nearest ancestor's kind glyph. Default on. */
-  pathHeaderIcons: boolean;
-  togglePathHeaderIcons: () => void;
   /**
    * How many consecutive passed Habit iterations it takes before the Mindmap folds them into one
    * node. Applies to every Habit; a run shorter than this draws its iterations directly.
@@ -82,27 +78,25 @@ function clampThreshold(value: number): number {
 /**
  * Display preferences that belong to the **app**, not to any one tab.
  *
- * Path glyphs are a matter of taste about how the List View reads, the way the theme is: turning
- * them off in one tab and finding them back on in the next would read as a bug. They used to live
- * in `use-view-store`, which became per-tab when tabs landed, so they moved out rather than
- * silently becoming per-tab with it — `legacyPathHeaderIcons` carries a pre-tabs choice across.
- *
- * The Habit-history collapse threshold joins them for the same reason: how much of a Habit's past
- * you want to see at once is a preference about reading the map, not about where one tab is. So
- * does *Asynchronous first*: whether work that starts a wait should lead its run is a statement
- * about how you like to read a list, and finding it off again in the next tab would read as a bug.
+ * The Habit-history collapse threshold is here for that reason: how much of a Habit's past you want
+ * to see at once is a preference about reading the map, not about where one tab is. So is
+ * *Asynchronous first*: whether work that starts a wait should lead its run is a statement about
+ * how you like to read a list, and finding it off again in the next tab would read as a bug.
  *
  * The Plan View's four kebab switches join them on the same reasoning, and deliberately did **not**
  * become per-tab when they moved out of the gear popover into the two panes' own menus. A filter is
  * a question about the board and belongs to the tab asking it; these are questions about how the
  * Plan View reads, and a pass that came up shaped differently because it was started from another
  * tab would read as a bug rather than as a setting.
+ *
+ * A stored blob may still carry `pathHeaderIcons`, the path-header glyph switch that used to live
+ * here, and `planPathGrouping`, the first cut of the Plan View's path switch. Nothing reads either
+ * any more; they are left where they lie rather than migrated away, because a key nobody asks about
+ * costs nothing and rewriting someone's stored settings to drop one does.
  */
 export const useDisplayStore = create<DisplayStore>()(
   persist(
     (set) => ({
-      pathHeaderIcons: legacyPathHeaderIcons() ?? true,
-      togglePathHeaderIcons: () => set((s) => ({ pathHeaderIcons: !s.pathHeaderIcons })),
       habitCollapseThreshold: DEFAULT_HABIT_COLLAPSE_THRESHOLD,
       setHabitCollapseThreshold: (value) => set({ habitCollapseThreshold: clampThreshold(value) }),
       asynchronousFirst: false,

@@ -4982,6 +4982,102 @@ async fn planning_a_backlogged_task_takes_it_out_of_the_backlog() {
 }
 
 #[tokio::test]
+async fn starting_a_backlogged_task_takes_it_out_of_the_backlog() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let task = new_task(
+        &pool,
+        CreateTaskRequest {
+            title: "Set aside".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            archival: Some(TaskArchival::Backlog),
+            ..Default::default()
+        },
+    )
+    .await;
+    assert_eq!(task.archival, TaskArchival::Backlog);
+
+    // One write, so one undo step: you cannot be actively doing something you have put down.
+    let started = try_update(
+        &pool,
+        task.id,
+        UpdateTaskRequest {
+            status: Some(TaskStatus::InProgress),
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("starting a backlogged task is never refused");
+    assert_eq!(started.archival, TaskArchival::Live);
+    assert_eq!(started.status, TaskStatus::InProgress.as_str());
+}
+
+#[tokio::test]
+async fn finishing_a_backlogged_task_leaves_it_in_the_backlog() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let task = new_task(
+        &pool,
+        CreateTaskRequest {
+            title: "Set aside".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            archival: Some(TaskArchival::Backlog),
+            ..Default::default()
+        },
+    )
+    .await;
+
+    // Only In Progress says the work is under way. Ticking a set-aside task off is not a claim
+    // that it ever came back into play.
+    let done = try_update(
+        &pool,
+        task.id,
+        UpdateTaskRequest {
+            status: Some(TaskStatus::Done),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(done.archival, TaskArchival::Backlog);
+}
+
+#[tokio::test]
+async fn a_request_naming_the_backlog_alongside_in_progress_is_taken_at_its_word() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let task = new_task(
+        &pool,
+        CreateTaskRequest {
+            title: "Under way".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            status: Some(TaskStatus::InProgress),
+            ..Default::default()
+        },
+    )
+    .await;
+
+    // The rule is one-directional, and not an invariant: a task already under way may still be
+    // set aside, and keeps its status so it says where the work stood when it is pulled back.
+    let set_aside = try_update(
+        &pool,
+        task.id,
+        UpdateTaskRequest {
+            status: Some(TaskStatus::InProgress),
+            archival: Some(TaskArchival::Backlog),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(set_aside.archival, TaskArchival::Backlog);
+    assert_eq!(set_aside.status, TaskStatus::InProgress.as_str());
+}
+
+#[tokio::test]
 async fn editing_a_backlogged_task_leaves_it_in_the_backlog() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;

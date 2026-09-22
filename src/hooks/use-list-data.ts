@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useMindmapData } from "@/components/MindmapView/use-mindmap-data";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { listAllTaskDependencies } from "@/api/tasks";
@@ -6,18 +7,13 @@ import type { TaskDependencyEdge } from "@/api/tasks";
 import { updateTask } from "@/api/tasks";
 import type { TaskAgentic } from "@/api/tasks";
 import { TASK_STATUS } from "@/utils/status-mapping";
+import { cameOutOfBacklog, nextTaskStatus } from "@/utils/task-status-cycle";
 import { findNode, collectTasksAndGoals } from "@/utils/mindmap-tree";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import type { CommitmentListRow, TaskListRow } from "@/utils/list-filter";
 import { flattenCommitmentRows, flattenTaskRows } from "@/utils/list-data";
 import { useOccurrenceCompletion } from "@/hooks/use-occurrence-completion";
 import type { OccurrencePrompt } from "@/hooks/use-occurrence-completion";
-
-function nextTaskStatus(current: string): string {
-  if (current === TASK_STATUS.IN_PROGRESS) return TASK_STATUS.DONE;
-  if (current === TASK_STATUS.DONE) return TASK_STATUS.TODO;
-  return TASK_STATUS.IN_PROGRESS;
-}
 
 interface ListData {
   tree: MindmapNode;
@@ -54,8 +50,10 @@ interface ListData {
 /** List View's data source: reuses the Mindmap's own tree (so the two views never drift out of
  * sync), plus the raw dependency edges the tree doesn't carry, flattened to one row per Task. */
 export function useListData(): ListData {
+  const { t } = useTranslation(["warnings"]);
   const { tree, isLoading, error, reload, renameNode, createNode, removeNode } = useMindmapData();
   const subtreeRootId = useMindmapStore((s) => s.subtreeRootId);
+  const showToast = useMindmapStore((s) => s.showToast);
   const { prompt: occurrencePrompt, setOccurrenceStatus, confirm: confirmOccurrence,
     cancel: cancelOccurrence } = useOccurrenceCompletion(reload);
   const [taskDeps, setTaskDeps] = useState<TaskDependencyEdge[]>([]);
@@ -92,9 +90,16 @@ export function useListData(): ListData {
         return;
       }
       const dbId = parseInt(nodeId.split("-").pop() ?? "", 10);
-      void updateTask(dbId, { status: nextTaskStatus(node.status ?? TASK_STATUS.TODO) }).then(() => reload());
+      void updateTask(dbId, { status: nextTaskStatus(node.status ?? TASK_STATUS.TODO) }).then(async (updated) => {
+        // Starting a set-aside task takes it out of the backlog, in the same write and so in the
+        // same undo step. The row that comes back says whether it did; it is never assumed.
+        if (cameOutOfBacklog(node, updated)) {
+          showToast({ nodeId, message: t("warnings:backlogClearedByStart") });
+        }
+        await reload();
+      });
     },
-    [tree, reload, setOccurrenceStatus],
+    [tree, reload, setOccurrenceStatus, showToast, t],
   );
 
   const createTask = useCallback(
