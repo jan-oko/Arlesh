@@ -1,0 +1,120 @@
+name: Changelog
+
+# Brings CHANGELOG.md's [Unreleased] section back into step with changelog.d/ after a merge,
+# and commits the result. This is the master half of the fragment convention, and until now it
+# was a step somebody had to remember.
+#
+# A branch must never do it. A branch that reassembled CHANGELOG.md would put back exactly the
+# merge conflict fragments exist to remove — five of five master-merges measured on 2026-09-20,
+# every one the same shape; see the header of scripts/assemble-changelog.mjs. So the assembled
+# file can only come into step on master, after the merge, and nobody was doing it: master sat
+# red between merge batches on a `changelog:check` step that ran BEFORE lint, tsc and vitest in
+# the same job and took all three down with it, so a red master said nothing at all about the
+# code. It happened twice on 2026-09-22 alone, both times fixed by hand.
+#
+# Racing a human push is not the hazard it looks like. The assembler is a pure function of the
+# fragments present in the tree, so overlapping writers converge rather than fight: the job
+# re-reads origin/master immediately before it writes, and re-assembles if master moved under it.
+#
+# It has to stay cheap — the repo is private and every minute in here is billed. No apt, no Rust
+# toolchain, and no `npm ci`: scripts/assemble-changelog.mjs imports nothing but node builtins,
+# so `npm run changelog` runs against a bare checkout. The day it grows a dependency this fails
+# with a missing-module error rather than quietly doing nothing. About twenty seconds.
+
+on:
+  push:
+    branches: [master]
+  # For repairing master by hand if this ever fails, without needing an empty commit to push.
+  workflow_dispatch:
+
+# Serialize rather than supersede. ci.yml never cancels a master run because every master commit
+# is owed its own verdict; there are no verdicts here, only one derived file, and a second merge
+# arriving mid-run has nothing to learn from the first finishing. Queued rather than cancelled
+# because the run that waits is the run that sees every fragment.
+concurrency:
+  group: changelog-master
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  assemble:
+    name: reassemble CHANGELOG.md
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: master
+          # The push below needs a credential master's protection will accept, and the default
+          # GITHUB_TOKEN is not one. Measured on 2026-09-22 against a throwaway branch carrying
+          # master's exact protection — same two required contexts, strict, enforce_admins off:
+          #
+          #   remote: error: GH006: Protected branch update failed for refs/heads/...
+          #   remote: - Changes must be made through a pull request.
+          #   remote: - 2 of 2 required status checks are expected.
+          #   ! [remote rejected] HEAD -> ... (protected branch hook declined)
+          #
+          # `enforce_admins: false` does not rescue it. That setting exempts repository
+          # administrators, and the bot is not one — it is an app installation holding the
+          # `contents: write` granted above, so it has no administrator status to bypass with.
+          # The same push from a PAT belonging to an administrator lands.
+          #
+          # So CHANGELOG_PUSH_TOKEN is that PAT, and the fallback below keeps this file honest
+          # rather than working: with no secret set the push is rejected and this job goes red in
+          # twenty cheap seconds, which is the truth, instead of silently doing nothing and
+          # leaving master to drift again. Nothing here weakens master's protection.
+          token: ${{ secrets.CHANGELOG_PUSH_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      # The loop guard is `[skip ci]` in the commit message, not a condition on the run: this is
+      # a push to master, and this workflow triggers on pushes to master.
+      #
+      # It is chosen over `if: github.actor != 'github-actions[bot]'` because it is the guard that
+      # survives the token. A push made with the default GITHUB_TOKEN starts no workflow run at
+      # all — GitHub's own recursion guard — so under that token any marker is redundant; but that
+      # token is precisely the one master's protection rejects, so the push is made with a PAT,
+      # and a PAT's push triggers workflows exactly as a person's does. `[skip ci]` is the only
+      # guard that still holds once the credential is a human's.
+      #
+      # It skips ci.yml as well, which is correct: the commit changes one derived file, assembled
+      # from fragments that ci.yml already gated on their way in, and no test reads it.
+      - name: Assemble and commit
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          # Three attempts, because a rejected push would be a red master — the exact symptom
+          # this file exists to remove. Each attempt re-reads the real tip and regenerates
+          # against it, so a merge that landed mid-run is folded in rather than clobbered.
+          for attempt in 1 2 3; do
+            git fetch --quiet origin master
+            git reset --hard --quiet FETCH_HEAD
+            npm run changelog
+            if git diff --quiet -- CHANGELOG.md; then
+              echo "CHANGELOG.md is in step with changelog.d/ — nothing to commit."
+              exit 0
+            fi
+            git commit --quiet -m "Reassemble the changelog from changelog.d/ [skip ci]" -- CHANGELOG.md
+            if git push origin HEAD:master; then
+              echo "Pushed the reassembled [Unreleased] section."
+              exit 0
+            fi
+            echo "::notice::master moved while this ran; re-assembling against the new tip (attempt ${attempt} of 3)."
+          done
+
+          echo "::error::Could not push the reassembled CHANGELOG.md. If the log above says GH006, master's protection has rejected the credential — see the note on the checkout step: this needs CHANGELOG_PUSH_TOKEN, a PAT belonging to a repository administrator."
+          exit 1
+
+      # The assertion that used to sit in ci.yml's web lane, moved rather than dropped. There it
+      # ran before the assembler ever had its chance, so it went red on every merge that carried a
+      # fragment and, sitting ahead of lint, tsc and vitest in the same job, stopped any of them
+      # running. Here it is a postcondition: whatever the step above did or declined to do,
+      # master's CHANGELOG.md and its fragments agree — or this goes red, loudly, on master.
+      - name: npm run changelog:check
+        run: npm run changelog:check
