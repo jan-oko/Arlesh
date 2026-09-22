@@ -441,8 +441,11 @@ pub struct UpdateTaskRequest {
     /// Archival state to set (None leaves unchanged).
     ///
     /// Left unset, a request that *sets* a Plan on a backlogged task silently resolves the
-    /// conflict in the Plan's favour — see [`UpdateTaskRequest`]'s merge. Set to `Backlog` on a
-    /// task that keeps its Plan, the write is refused until the caller also clears the Plan.
+    /// conflict in the Plan's favour — see [`UpdateTaskRequest`]'s merge — and so does one that
+    /// sets the task's status to `InProgress`, since work under way is not work set aside. Set to
+    /// `Backlog` on a task that keeps its Plan, the write is refused until the caller also clears
+    /// the Plan; set to `Backlog` alongside `InProgress`, it is taken at its word, because a task
+    /// already under way may still be put down and keeps its status when it is.
     pub archival: Option<TaskArchival>,
     /// New parent entity type for re-parenting (must be set together with parent_id).
     pub parent_type: Option<String>,

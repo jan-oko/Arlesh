@@ -24,6 +24,12 @@ export const PASTE_REFUSAL = {
   COMMITMENT: "commitment",
   /** A COPY of a flow item into another Flow: its Cycle Scope offsets into its own Flow's window. */
   OTHER_FLOW: "otherFlow",
+  /**
+   * A Flow hanging *underneath* a copied node. The backend's duplication walk does not descend
+   * into a Flow (`src-tauri/src/duplicate/mod.rs`), so the pasted subtree is smaller than the one
+   * that was copied — the only skip here that is not about a node the user put on the clipboard.
+   */
+  FLOW_UNDER: "flowUnder",
 } as const;
 
 /** Which of the refusals happened. */
@@ -43,17 +49,32 @@ export interface HereRefusal {
   validParents: readonly NodeKind[];
 }
 
+/**
+ * One Flow left behind underneath a copied node, carrying its title.
+ *
+ * It is the one refusal that names a node instead of counting one. Every other skip is about a
+ * node the user selected and can still see highlighted, so a count identifies it; a Flow under a
+ * copied node was never on the clipboard and is invisible in the paste, so a bare count would
+ * leave the user searching the copy for whatever is missing.
+ */
+export interface FlowUnderRefusal {
+  reason: typeof PASTE_REFUSAL.FLOW_UNDER;
+  /** The Flow's title, as the sentence reads it out. */
+  title: string;
+}
+
 /** A refusal about the node itself: no destination would have changed the answer. */
 export interface NodeRefusal {
-  reason: Exclude<PasteRefusalReason, typeof PASTE_REFUSAL.HERE>;
+  reason: Exclude<PasteRefusalReason, typeof PASTE_REFUSAL.HERE | typeof PASTE_REFUSAL.FLOW_UNDER>;
 }
 
 /** One reason a single node was left behind by a paste. */
-export type PasteRefusal = HereRefusal | NodeRefusal;
+export type PasteRefusal = HereRefusal | FlowUnderRefusal | NodeRefusal;
 
 /**
  * The `warnings` key each refusal about the node reports itself with. Every one is pluralised,
- * because such a refusal counts the nodes it applies to rather than naming them.
+ * because each counts the nodes it applies to — the left-behind Flow counts them *and* names them,
+ * but the count still governs the sentence.
  *
  * The destination refusal is not in this shape — it picks between two sentences, so it goes
  * through {@link pasteRefusalKey} like the rest.
@@ -65,6 +86,7 @@ export const PASTE_REFUSAL_KEY = {
   here: "pasteSkippedHere",
   commitment: "pasteSkippedCommitment",
   otherFlow: "pasteSkippedOtherFlow",
+  flowUnder: "pasteSkippedFlowUnder",
 } as const satisfies Record<PasteRefusalReason, string>;
 
 /** A `warnings` key one refusal line can be said with. */
@@ -73,9 +95,20 @@ export type PasteRefusalMessageKey =
   | "pasteSkippedHereInFlow";
 
 /**
+ * How many left-behind Flows one sentence names before it counts the rest as "and N more".
+ *
+ * Naming is the point — see {@link FlowUnderRefusal} — but a toast is a viewport strip, and a
+ * Domain that collects a year of Habits would fill it with a list nobody reads. Three names is
+ * what a glance takes; past that the count is the honest summary and the copy itself is where the
+ * rest are found.
+ */
+export const NAMED_FLOWS_LIMIT = 3;
+
+/**
  * Report order, fixed so the same mixed selection always produces the same sentence. Destination
  * first because it is the one the user can act on where they are standing; the stale clipboard last
- * because it is about a gesture already finished.
+ * because it is about a gesture already finished. The left-behind Flow sits just above it, since
+ * it too is about what the paste has already done rather than about where it was aimed.
  */
 const REFUSAL_ORDER: readonly PasteRefusalReason[] = [
   PASTE_REFUSAL.HERE,
@@ -83,6 +116,7 @@ const REFUSAL_ORDER: readonly PasteRefusalReason[] = [
   PASTE_REFUSAL.REPETITION,
   PASTE_REFUSAL.COMMITMENT,
   PASTE_REFUSAL.OTHER_FLOW,
+  PASTE_REFUSAL.FLOW_UNDER,
   PASTE_REFUSAL.GONE,
 ];
 
@@ -123,8 +157,63 @@ export function pasteRefusal(
   return null;
 }
 
+/**
+ * The Flows a copy of `nodeIds` will leave behind: every Flow with a selected node *above* it.
+ *
+ * A Flow put on the clipboard directly is copied — `duplicate_flow` clones the template and its
+ * Recurrence — but the subtree walk behind a Goal, Task, Project or Domain does not descend into
+ * one, so a Habit hanging inside the copied subtree is simply absent from the paste. That is the
+ * silent half of the skip this whole vocabulary exists to end, and the only one the selection
+ * gives no hint of.
+ *
+ * Read off the tree rather than off the selection for two reasons. The walk is one pre-order pass
+ * from the root, so the same selection always names the Flows in the same order however the
+ * clipboard was assembled; and a Flow under *two* selected nodes — a Goal and its Task, both
+ * picked — is reached once, so one loss is reported once.
+ *
+ * The walk stops at a Flow. Nothing under one is separately at risk: a flow item goes wherever its
+ * Flow goes, and a Habit's repetitions are drawn from the template rather than stored.
+ *
+ * Only a **copy** loses them. A cut re-points one parent link and the whole subtree follows, Flows
+ * included, so the caller asks this only when the clipboard holds a copy.
+ */
+export function flowsLeftBehind(tree: MindmapNode, nodeIds: readonly string[]): FlowUnderRefusal[] {
+  const selected = new Set(nodeIds);
+  const leftBehind: FlowUnderRefusal[] = [];
+  const walk = (node: MindmapNode, underACopiedNode: boolean): void => {
+    if (node.kind === "flow") {
+      if (underACopiedNode) leftBehind.push({ reason: PASTE_REFUSAL.FLOW_UNDER, title: node.title });
+      return;
+    }
+    const inside = underACopiedNode || selected.has(node.id);
+    for (const child of node.children) walk(child, inside);
+  };
+  walk(tree, false);
+  return leftBehind;
+}
+
+/**
+ * Every Flow one paste left behind, folded into a single line the sentence can read out.
+ *
+ * It is the one line that carries titles rather than a count alone, and the only one whose
+ * contents can outgrow a toast — hence the split between the names it says and the number it
+ * only counts. `unnamed` is `0` whenever the line names them all.
+ */
+export interface FlowUnderCount {
+  reason: typeof PASTE_REFUSAL.FLOW_UNDER;
+  /** How many Flows were left behind altogether, named or not. */
+  count: number;
+  /** The titles the sentence reads out, at most {@link NAMED_FLOWS_LIMIT} of them. */
+  named: readonly string[];
+  /** How many more there were than the sentence names. */
+  unnamed: number;
+}
+
 /** One refusal and how many of the pasted nodes hit it. */
-export type PasteRefusalCount = PasteRefusal & { count: number };
+export type PasteRefusalCount =
+  | (HereRefusal & { count: number })
+  | (NodeRefusal & { count: number })
+  | FlowUnderCount;
 
 /**
  * The refusals a paste collected, counted and in report order. Reasons nothing hit are dropped, so
@@ -137,10 +226,34 @@ export function countPasteRefusals(refusals: readonly PasteRefusal[]): PasteRefu
       counts.push(...countByRefusedKind(refusals));
       continue;
     }
+    if (reason === PASTE_REFUSAL.FLOW_UNDER) {
+      const line = countLeftBehindFlows(refusals);
+      if (line !== null) counts.push(line);
+      continue;
+    }
     const count = refusals.filter((candidate) => candidate.reason === reason).length;
     if (count > 0) counts.push({ reason, count });
   }
   return counts;
+}
+
+/**
+ * The left-behind Flows as one line, or `null` when none were left behind.
+ *
+ * The cap is applied here rather than where the sentence is built, so the decision about how much
+ * a toast can say lives beside the reason it is being said at all.
+ */
+function countLeftBehindFlows(refusals: readonly PasteRefusal[]): FlowUnderCount | null {
+  const titles = refusals
+    .filter((candidate): candidate is FlowUnderRefusal => candidate.reason === PASTE_REFUSAL.FLOW_UNDER)
+    .map((candidate) => candidate.title);
+  if (titles.length === 0) return null;
+  return {
+    reason: PASTE_REFUSAL.FLOW_UNDER,
+    count: titles.length,
+    named: titles.slice(0, NAMED_FLOWS_LIMIT),
+    unnamed: Math.max(0, titles.length - NAMED_FLOWS_LIMIT),
+  };
 }
 
 /**

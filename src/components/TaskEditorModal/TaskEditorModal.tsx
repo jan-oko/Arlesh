@@ -158,6 +158,15 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
     if (next !== null) setIsBacklogged(false);
   }
 
+  // Starting a set-aside task takes it out of the backlog — you cannot be actively doing something
+  // you have put down — and the backend does exactly this to a bare status change. Here the switch
+  // moves in front of the user instead, so the save is not the first they hear of it. Only this
+  // direction: a task already in progress may still be set aside, and keeps its status when it is.
+  function setStatusAndClearBacklog(next: string) {
+    setStatus(next);
+    if (next === TASK_STATUS.IN_PROGRESS) setIsBacklogged(false);
+  }
+
   function handleKeyDown(event: React.KeyboardEvent) {
     if (event.key === "Enter" && !event.shiftKey && event.target === titleRef.current) { event.preventDefault(); void handleSave(); }
     if (event.key === "Escape") onClose();
@@ -199,7 +208,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
         {t("fieldStatus")}
         <div className={styles.statusPills}>
           {TASK_STATUSES.map((s) => (
-            <button key={s} type="button" className={`${styles.statusPill}${status === s ? ` ${styles.statusPillActive}` : ""}`} onClick={() => setStatus(s)}>
+            <button key={s} type="button" className={`${styles.statusPill}${status === s ? ` ${styles.statusPillActive}` : ""}`} onClick={() => setStatusAndClearBacklog(s)}>
               {t(`status:task.${s}`)}
             </button>
           ))}
