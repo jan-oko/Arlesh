@@ -80,7 +80,11 @@ export default function PlanScopeBar({
             <>
               <div className={styles.backdrop} onClick={() => setPickerOpen(false)} />
               <div className={styles.picker}>
-                <ScopePicker picker={picker} initialKind={cursor.kind} today={cursor.date} lockKind />
+                {/* `initialAnchor`, not `now`: the picker opens on the scope the bar is showing,
+                    while "which cell is current" stays the real instant. They were one prop until
+                    the picker learned to mark the current part of day, and conflating them here
+                    would have marked a browsed-to week as the current one. */}
+                <ScopePicker picker={picker} initialKind={cursor.kind} initialAnchor={cursor.date} lockKind />
               </div>
             </>
           )}

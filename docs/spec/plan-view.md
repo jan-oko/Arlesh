@@ -79,7 +79,10 @@ place on a calendar, and "the next exact scope" has no meaning.
 The header carries the kind selector, the scope in words with a step either side of it, and the
 Backlog switch. Clicking the scope opens the app's own **Scope Picker** as a jump picker, locked to
 the kind being filled — the kind is the selector's question, and descending into a week from the
-month view would answer it a second way, leaving the selector beside it saying something else.
+month view would answer it a second way, leaving the selector beside it saying something else. It
+opens **anchored on the scope the bar is showing**, not on today, so jumping starts from where you
+already are; which cell it marks as *current* is still the real instant, so browsing forward does
+not relabel the week you landed on as the current one.
 
 Stepping walks from the materialized scope's own start date rather than from wherever the cursor
 happened to sit inside it, so a month stepped from the 31st lands on the next month. Walking parts
