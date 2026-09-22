@@ -23,7 +23,7 @@ There are four domain subtypes:
 
 **Domains** — general-purpose organizational containers. Can parent Goals, Tasks, Tags, or other Domains.
 
-**Tags** — flat leaf nodes used as resource markers. Each Tag has a title and a `domain_id` parent. Tags cannot parent other Tags. Tags appear in filtering as a first-class primitive.
+**Tags** — flat leaf nodes used as resource markers. Each Tag has a title and a `domain_id` parent. Tags cannot parent other Tags, and hold no structural children — with one exception: a Tag may hold **Info notes**, which is what a label carries when it needs explaining (`Shift+I`, or dropping a note onto it). `Tab` on a Tag is still refused, because the child it would create is a Domain. Tags appear in filtering as a first-class primitive.
 
 ## Knowledge Base
 
