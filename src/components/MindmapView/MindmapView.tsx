@@ -163,7 +163,7 @@ export default function MindmapView() {
     [displayRoot, toggleGroupExpanded, toggleCollapsed],
   );
 
-  // Ctrl+Shift+/ opens the cell and everything under it, or shuts them all again if the cell is
+  // Ctrl+Alt+/ opens the cell and everything under it, or shuts them all again if the cell is
   // already open. It reads the *drawn* tree, because the fold's nodes have no counterpart in the
   // loaded one — and needs only one walk of it, because a run's levels and iterations are built
   // eagerly and merely drawn shut. `collapsedWithGroups` is what tells it which way to go: it is

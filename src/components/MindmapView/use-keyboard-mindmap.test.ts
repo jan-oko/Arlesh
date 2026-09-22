@@ -317,7 +317,7 @@ describe("useKeyboardMindmap — Ctrl+O (node search)", () => {
   });
 });
 
-describe("useKeyboardMindmap — Ctrl+/ (toggle collapsed)", () => {
+describe("useKeyboardMindmap — Ctrl+/ and Ctrl+Alt+/ (toggle collapsed)", () => {
   it("Ctrl+/ calls onToggleCollapsed with the selected node id", () => {
     const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
@@ -325,11 +325,21 @@ describe("useKeyboardMindmap — Ctrl+/ (toggle collapsed)", () => {
     expect(opts.onToggleCollapsed).toHaveBeenCalledWith("task-1");
   });
 
-  it("Ctrl+Shift+/ toggles the selected node's whole subtree instead of the node alone", () => {
+  it("Ctrl+Alt+/ toggles the selected node's whole subtree instead of the node alone", () => {
+    const opts = mindmapKeyboardContext();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("/", { ctrlKey: true, altKey: true });
+    expect(opts.onToggleSubtreeCollapsed).toHaveBeenCalledWith("task-1");
+    expect(opts.onToggleCollapsed).not.toHaveBeenCalled();
+  });
+
+  // Ctrl+Shift+/ is the cheat-sheet's, and the Mindmap does not touch it: the recursive expand sits
+  // on Ctrl+Alt+/ precisely so that neither binding has to guard against the other.
+  it("Ctrl+Shift+/ collapses nothing — it belongs to the cheat-sheet", () => {
     const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("/", { ctrlKey: true, shiftKey: true });
-    expect(opts.onToggleSubtreeCollapsed).toHaveBeenCalledWith("task-1");
+    expect(opts.onToggleSubtreeCollapsed).not.toHaveBeenCalled();
     expect(opts.onToggleCollapsed).not.toHaveBeenCalled();
   });
 
@@ -337,7 +347,7 @@ describe("useKeyboardMindmap — Ctrl+/ (toggle collapsed)", () => {
     const opts = mindmapKeyboardContext({ selectedNodeId: null, selectedNodeIds: new Set() });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("/", { ctrlKey: true });
-    fireKey("/", { ctrlKey: true, shiftKey: true });
+    fireKey("/", { ctrlKey: true, altKey: true });
     expect(opts.onToggleCollapsed).not.toHaveBeenCalled();
     expect(opts.onToggleSubtreeCollapsed).not.toHaveBeenCalled();
   });

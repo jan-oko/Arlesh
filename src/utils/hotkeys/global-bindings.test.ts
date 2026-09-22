@@ -28,24 +28,25 @@ describe("GLOBAL_BINDINGS", () => {
     expect(ctx.onToggleView).toHaveBeenCalledTimes(1);
   });
 
-  it("when Ctrl+Alt+/ is pressed, toggles the cheat-sheet", () => {
+  it("when Ctrl+Shift+/ is pressed, toggles the cheat-sheet", () => {
     const ctx = makeContext();
-    expect(runFor("Slash", { ctrlKey: true, altKey: true }, ctx)).toBe(true);
+    expect(runFor("Slash", { ctrlKey: true, shiftKey: true }, ctx)).toBe(true);
     expect(ctx.onToggleHotkeys).toHaveBeenCalledTimes(1);
   });
 
   // Carrying no guard, the same chord is what shuts the sheet again — and it stays reachable
-  // whatever the Mindmap has selected, which Ctrl+Shift+/ did not.
-  it("when Ctrl+Alt+/ is pressed a second time, toggles the cheat-sheet shut", () => {
+  // whatever the Mindmap has selected, which is the whole reason the recursive expand went
+  // elsewhere rather than sharing this chord.
+  it("when Ctrl+Shift+/ is pressed a second time, toggles the cheat-sheet shut", () => {
     const ctx = makeContext();
-    expect(runFor("Slash", { ctrlKey: true, altKey: true }, ctx)).toBe(true);
-    expect(runFor("Slash", { ctrlKey: true, altKey: true }, ctx)).toBe(true);
+    expect(runFor("Slash", { ctrlKey: true, shiftKey: true }, ctx)).toBe(true);
+    expect(runFor("Slash", { ctrlKey: true, shiftKey: true }, ctx)).toBe(true);
     expect(ctx.onToggleHotkeys).toHaveBeenCalledTimes(2);
   });
 
-  it("when Ctrl+Shift+/ is pressed, matches nothing global — the Mindmap owns that chord", () => {
+  it("when Ctrl+Alt+/ is pressed, matches nothing global — the Mindmap owns that chord", () => {
     const ctx = makeContext();
-    expect(runFor("Slash", { ctrlKey: true, shiftKey: true }, ctx)).toBe(false);
+    expect(runFor("Slash", { ctrlKey: true, altKey: true }, ctx)).toBe(false);
     expect(ctx.onToggleHotkeys).not.toHaveBeenCalled();
   });
 

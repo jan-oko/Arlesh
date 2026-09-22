@@ -1,3 +1,0 @@
-- **The keyboard cheat-sheet moved to `Ctrl+Alt+/`.** `Ctrl+Shift+/` now belongs to the Mindmap alone, where it opens or shuts a cell and everything under it, so the shortcut list needed a key of its own. `Ctrl+Alt+/` brings it up from anywhere, whatever is selected and whichever view you are in, and pressing it again puts it away; `Escape` still closes it, and the gear popover's **Keyboard shortcuts** entry still opens it.
-
-  The point of the new chord is that nothing can take it away: the list was briefly reachable only with nothing selected in the Mindmap, which is precisely the moment you are least likely to be in when you want to look a shortcut up.

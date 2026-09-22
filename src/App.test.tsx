@@ -129,7 +129,7 @@ describe("tab shortcuts", () => {
 
   it("stays live while the cheat-sheet is open, unlike a view binding", () => {
     render(<App />);
-    fireEvent.keyDown(window, { code: "Slash", ctrlKey: true, altKey: true });
+    fireEvent.keyDown(window, { code: "Slash", ctrlKey: true, shiftKey: true });
     expect(screen.getByRole("dialog")).toBeInTheDocument();
 
     fireEvent.keyDown(window, { code: "KeyT", ctrlKey: true });
@@ -137,12 +137,12 @@ describe("tab shortcuts", () => {
     expect(useTabsStore.getState().tabs).toHaveLength(2);
   });
 
-  it("Ctrl+Alt+/ both opens the cheat-sheet and closes it again", () => {
+  it("Ctrl+Shift+/ both opens the cheat-sheet and closes it again", () => {
     render(<App />);
-    fireEvent.keyDown(window, { code: "Slash", ctrlKey: true, altKey: true });
+    fireEvent.keyDown(window, { code: "Slash", ctrlKey: true, shiftKey: true });
     expect(screen.getByRole("dialog")).toBeInTheDocument();
 
-    fireEvent.keyDown(window, { code: "Slash", ctrlKey: true, altKey: true });
+    fireEvent.keyDown(window, { code: "Slash", ctrlKey: true, shiftKey: true });
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });

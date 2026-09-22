@@ -54,8 +54,8 @@ const ALL: readonly BindingMeta[] = [...GLOBAL_BINDINGS, ...TAB_BINDINGS, ...MIN
  * first-match rule does not order them — nothing does, and the loser would simply never fire.
  * A pair that landed here would have to be strictly complementary, with at most one guard passing
  * in any state the app can be in, and would need the state-by-state proof to go with it. The
- * cheaper answer is almost always a free chord: the cheat-sheet moved off `Ctrl+Shift+/` onto the
- * unused `Ctrl+Alt+/` rather than split that chord with the Mindmap's recursive expand.
+ * cheaper answer is almost always a free chord: the Mindmap's recursive expand took the unused
+ * `Ctrl+Alt+/` rather than split `Ctrl+Shift+/` with the cheat-sheet that already held it.
  */
 const CROSS_TABLE_CHORDS: Readonly<Record<string, readonly string[]>> = {};
 

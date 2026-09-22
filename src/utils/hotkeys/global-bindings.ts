@@ -37,12 +37,13 @@ export const GLOBAL_BINDINGS: readonly Binding<GlobalContext>[] = [
     run: (c) => c.onQuit(),
   },
   {
-    // Ctrl+Alt is unused everywhere else, so the sheet is reachable in any state — which is the
-    // whole point of a cheat-sheet. It sits beside the Mindmap's Ctrl+Shift+/ recursive expand
-    // without colliding with it, and, carrying no guard, it is also what closes the sheet again.
+    // The chord the sheet has had since it shipped, and it keeps it: the Mindmap's recursive
+    // expand went to Ctrl+Alt+/ rather than split this one. Carrying no guard, it is reachable in
+    // every state — including with a cell selected, and including while the sheet is already open,
+    // which is what closes it again.
     id: "global.toggleHotkeys",
     section: "global",
-    chord: { code: "Slash", ctrl: true, alt: true },
+    chord: { code: "Slash", ctrl: true, shift: true },
     labelKey: "toggleHotkeys",
     run: (c) => c.onToggleHotkeys(),
   },

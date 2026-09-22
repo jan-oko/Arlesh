@@ -274,7 +274,7 @@ describe("opening a folded run", () => {
 });
 
 /**
- * Ctrl+Shift+/ opens a whole subtree at once. Over the fold that means every scope level *and*
+ * Ctrl+Alt+/ opens a whole subtree at once. Over the fold that means every scope level *and*
  * every iteration behind them, which is the case Ctrl+/ deliberately will not do: opening a run one
  * level at a time is right when you are looking for the shape of the history, and wrong when you
  * want the days themselves and would otherwise open four seasons, twelve months and fifty-two
@@ -285,7 +285,7 @@ describe("expanding a folded Habit run and everything under it", () => {
     const { container } = render(<MindmapView />);
     select(RUN);
 
-    press("/", { ctrlKey: true, shiftKey: true });
+    press("/", { ctrlKey: true, altKey: true });
 
     expect(container.querySelectorAll("[data-node-id^='habitrun-7-week-']")).toHaveLength(2);
     for (const index of [0, 1, 2, 3]) {
@@ -298,7 +298,7 @@ describe("expanding a folded Habit run and everything under it", () => {
     act(() => { mindmapStore().setState({ collapsedNodeIds: new Set(["goal-5"]) }); });
     select("goal-5");
 
-    press("/", { ctrlKey: true, shiftKey: true });
+    press("/", { ctrlKey: true, altKey: true });
 
     expect(container.querySelector("[data-node-id='task-9']")).not.toBeNull();
     expect(container.querySelector("[data-node-id='habit-7-3-virtual']")).not.toBeNull();
@@ -309,7 +309,7 @@ describe("expanding a folded Habit run and everything under it", () => {
     act(() => { mindmapStore().setState({ collapsedNodeIds: new Set(["task-9"]) }); });
     select("task-9");
 
-    press("/", { ctrlKey: true, shiftKey: true });
+    press("/", { ctrlKey: true, altKey: true });
 
     expect(container.querySelector("[data-node-id^='habitrun-7-week-']")).toBeNull();
   });
@@ -333,7 +333,7 @@ describe("collapsing a subtree with the same chord", () => {
   }
 
   function pressChord(): void {
-    press("/", { ctrlKey: true, shiftKey: true });
+    press("/", { ctrlKey: true, altKey: true });
   }
 
   it("puts the board back exactly as it was, over both mechanisms at once", () => {
