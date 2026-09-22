@@ -1,34 +1,34 @@
 import { describe, expect, it } from "vitest";
-import { isTornOff } from "./tab-drag";
+import { tabDrop } from "./tab-drag";
 
-/** A strip across the top of an 800-pixel-wide window. */
-const STRIP = { left: 0, top: 0, right: 800, bottom: 32 };
+const OWN = "main";
 
 describe("a drag that started on a tab", () => {
-  it("tears the tab off when it ends over the board below the strip", () => {
-    expect(isTornOff({ x: 400, y: 300 }, STRIP, false)).toBe(true);
+  it("is a reorder when the strip took the drop", () => {
+    expect(tabDrop("board-a", OWN, true)).toEqual({ kind: "reorder" });
   });
 
-  it("tears the tab off when it ends past the side of the window", () => {
-    expect(isTornOff({ x: 1200, y: 16 }, STRIP, false)).toBe(true);
+  it("moves the tab when it was released over another window", () => {
+    expect(tabDrop("board-a", OWN, false)).toEqual({ kind: "move", label: "board-a" });
   });
 
-  it("does not tear the tab off when the strip took the drop, which is a reorder", () => {
-    expect(isTornOff({ x: 400, y: 300 }, STRIP, true)).toBe(false);
+  it("tears the tab off when it was released over no window at all", () => {
+    expect(tabDrop(null, OWN, false)).toEqual({ kind: "tearOff" });
   });
 
-  it("does nothing when the drag ends on the empty part of the strip", () => {
-    expect(isTornOff({ x: 700, y: 16 }, STRIP, false)).toBe(false);
+  it("does nothing when it was released over the window it came from", () => {
+    // Its board, the empty part of its strip, its title bar: all the same gesture, which went
+    // nowhere. A window cannot hand a tab to itself.
+    expect(tabDrop(OWN, OWN, false)).toEqual({ kind: "nothing" });
   });
 
-  it("does nothing when the platform reports no coordinates at all", () => {
-    // A drag end with no position comes through as (0, 0), which is inside the strip. Reading that
-    // as "went nowhere" is the safe way round: a window that never appeared costs one more try.
-    expect(isTornOff({ x: 0, y: 0 }, STRIP, false)).toBe(false);
+  it("does nothing when the platform could not say where the pointer was", () => {
+    // Deliberately not read as "the desktop". A gesture that has to be repeated costs a keystroke;
+    // a window that appears from nowhere costs finding it and closing it.
+    expect(tabDrop(undefined, OWN, false)).toEqual({ kind: "nothing" });
   });
 
-  it("counts the strip's own edge as inside it", () => {
-    expect(isTornOff({ x: 800, y: 32 }, STRIP, false)).toBe(false);
-    expect(isTornOff({ x: 801, y: 33 }, STRIP, false)).toBe(true);
+  it("still reorders when the strip took the drop and the position is unknown", () => {
+    expect(tabDrop(undefined, OWN, true)).toEqual({ kind: "reorder" });
   });
 });

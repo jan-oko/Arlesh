@@ -294,3 +294,74 @@ fn a_window_with_nothing_to_add_keeps_its_plain_title() {
     assert_eq!(titled_by_tab("Arlesh", ""), "Arlesh");
     assert_eq!(titled_by_tab("Arlesh", "   "), "Arlesh");
 }
+
+// -------------------------------------------------------------------------------------------
+// Which window a tab was dropped on.
+// -------------------------------------------------------------------------------------------
+
+/// A window at `(x, y)`, 800 by 600.
+fn window_at_rect(label: &str, x: i32, y: i32) -> (String, WindowRect) {
+    (
+        label.to_string(),
+        WindowRect {
+            x,
+            y,
+            width: 800,
+            height: 600,
+        },
+    )
+}
+
+#[test]
+fn a_drop_inside_a_window_finds_it() {
+    let windows = [window_at_rect("main", 0, 0)];
+
+    assert_eq!(window_at((400, 300), &windows).as_deref(), Some("main"));
+}
+
+#[test]
+fn a_drop_on_the_desktop_finds_nothing_which_is_the_tear_off() {
+    let windows = [window_at_rect("main", 0, 0)];
+
+    assert_eq!(window_at((2000, 300), &windows), None);
+}
+
+#[test]
+fn a_drop_finds_the_window_it_is_over_and_not_its_neighbour() {
+    let windows = [window_at_rect("main", 0, 0), window_at_rect("board-a", 900, 0)];
+
+    assert_eq!(window_at((1000, 300), &windows).as_deref(), Some("board-a"));
+}
+
+#[test]
+fn overlapping_windows_are_decided_by_which_was_focused_last() {
+    // Both hold the point. The list is most-recently-focused first, standing in for a z-order
+    // neither Tauri nor tao exposes.
+    let front = [window_at_rect("board-a", 100, 100), window_at_rect("main", 0, 0)];
+    let behind = [window_at_rect("main", 0, 0), window_at_rect("board-a", 100, 100)];
+
+    assert_eq!(window_at((400, 300), &front).as_deref(), Some("board-a"));
+    assert_eq!(window_at((400, 300), &behind).as_deref(), Some("main"));
+}
+
+#[test]
+fn a_drop_on_a_windows_own_edge_counts_as_inside_it() {
+    let windows = [window_at_rect("main", 0, 0)];
+
+    assert_eq!(window_at((0, 0), &windows).as_deref(), Some("main"));
+    assert_eq!(window_at((800, 600), &windows).as_deref(), Some("main"));
+    assert_eq!(window_at((801, 601), &windows), None);
+}
+
+#[test]
+fn a_drop_on_a_window_at_a_negative_offset_finds_it() {
+    // A second monitor left of the primary puts a window at a negative x, which is ordinary.
+    let windows = [window_at_rect("board-a", -1920, 0)];
+
+    assert_eq!(window_at((-1500, 300), &windows).as_deref(), Some("board-a"));
+}
+
+#[test]
+fn no_windows_at_all_finds_nothing_rather_than_guessing() {
+    assert_eq!(window_at((400, 300), &[]), None);
+}

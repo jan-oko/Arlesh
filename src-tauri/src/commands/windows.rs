@@ -67,6 +67,42 @@ impl Ordinals {
     }
 }
 
+/// Which window was focused most recently, most recent first.
+///
+/// Managed state, and the app's stand-in for a **z-order** that neither Tauri nor tao exposes. It
+/// is only ever consulted to decide which of two overlapping windows a tab was dropped into, and
+/// for that the window you last interacted with is all but always the one in front. See
+/// [`crate::windows::window_at`].
+#[derive(Debug, Default)]
+pub struct FocusOrder(Mutex<Vec<String>>);
+
+impl FocusOrder {
+    /// Moves `label` to the front, for a window that has just taken the focus.
+    pub fn focused(&self, label: &str) {
+        if let Ok(mut order) = self.0.lock() {
+            order.retain(|candidate| candidate != label);
+            order.insert(0, label.to_string());
+        }
+    }
+
+    /// The labels, most recently focused first, with everything else after them.
+    fn ranked(&self, labels: Vec<String>) -> Vec<String> {
+        let Ok(order) = self.0.lock() else {
+            return labels;
+        };
+        let mut ranked = labels;
+        // A window that has never been focused sorts last, in the order it came in. `usize::MAX`
+        // is the rank of "never", which is exactly where an unfocused window belongs.
+        ranked.sort_by_key(|label| {
+            order
+                .iter()
+                .position(|candidate| candidate == label)
+                .unwrap_or(usize::MAX)
+        });
+        ranked
+    }
+}
+
 /// `app`'s ordinal registry, or 1 for a runtime that has none — a test host, and one window.
 fn ordinal_of<R: Runtime>(app: &AppHandle<R>, label: &str) -> u32 {
     app.try_state::<Ordinals>()
@@ -128,6 +164,23 @@ impl SessionStore {
 fn rect_of<R: Runtime>(window: &WebviewWindow<R>) -> Option<WindowRect> {
     let position = window.outer_position().ok()?;
     let size = window.inner_size().ok()?;
+    Some(WindowRect {
+        x: position.x,
+        y: position.y,
+        width: size.width,
+        height: size.height,
+    })
+}
+
+/// A window's rectangle **including its decorations**, for deciding what the pointer is over.
+///
+/// Deliberately not [`rect_of`], which pairs the outer position with the *inner* size because that
+/// is the pair a restore needs — `set_size` is given an inner size. Hit-testing wants the shape the
+/// user sees, title bar and border included, or the bottom edge of every window would be dead to a
+/// drop by the height of its frame.
+fn outer_rect_of<R: Runtime>(window: &WebviewWindow<R>) -> Option<WindowRect> {
+    let position = window.outer_position().ok()?;
+    let size = window.outer_size().ok()?;
     Some(WindowRect {
         x: position.x,
         y: position.y,
@@ -363,6 +416,44 @@ fn base_title<R: Runtime>(app: &AppHandle<R>) -> String {
         .first()
         .map(|config| config.title.clone())
         .unwrap_or_else(|| "Arlesh".to_string())
+}
+
+/// Which window the pointer was over when a dragged tab was let go.
+///
+/// The one piece of machinery a cross-window tab drag needs that did not already exist. An HTML
+/// drag cannot cross a window boundary — see [`crate::windows::window_at`] — so the source window
+/// asks this, and then hands the tab over exactly as the menu entry does.
+///
+/// `None` covers two different things, and the frontend tells them apart by what it gets back:
+/// released over no window at all (the tear-off), and a cursor position the platform would not
+/// give us. The second returns an error rather than `None`, so a drag whose position is unknown
+/// does nothing instead of conjuring a window the user did not ask for.
+#[tauri::command]
+pub async fn window_at_cursor<R: Runtime>(app: AppHandle<R>) -> Result<Option<String>, WireError> {
+    let cursor = app
+        .cursor_position()
+        .map_err(|error| WireError::internal(error.to_string()))?;
+    // Physical throughout, as everything in this module is: the cursor, the window rectangles and
+    // the saved session all speak the same coordinates, so nothing has to be converted.
+    let point = (cursor.x as i32, cursor.y as i32);
+
+    let session = match app.try_state::<SessionStore>() {
+        Some(store) => store.session(),
+        None => WindowSession::bootstrap(),
+    };
+    let labels = match app.try_state::<FocusOrder>() {
+        Some(order) => order.ranked(open_labels(&app, &session)),
+        None => open_labels(&app, &session),
+    };
+    let rects: Vec<(String, WindowRect)> = labels
+        .into_iter()
+        .filter_map(|label| {
+            let window = app.get_webview_window(&label)?;
+            Some((label, outer_rect_of(&window)?))
+        })
+        .collect();
+
+    Ok(windows::window_at(point, &rects))
 }
 
 /// Every open window, in the order they were opened, with the number and title the tray lists.

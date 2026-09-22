@@ -99,6 +99,9 @@ pub fn run() {
             // The numbers the windows wear, seeded as they are rebuilt. Managed before `restore`
             // so a restored window's saved number is the one it keeps.
             app.manage(commands::windows::Ordinals::default());
+            // Which window was focused last, which is the app's stand-in for a z-order nothing
+            // exposes — it decides which of two overlapping windows a dragged tab lands in.
+            app.manage(commands::windows::FocusOrder::default());
             commands::windows::restore(app.handle())?;
 
             // The tray goes up last, so that everything its Quit has to release cleanly — the
@@ -221,6 +224,7 @@ pub fn run() {
             commands::windows::board_windows,
             commands::windows::focus_board_window,
             commands::windows::set_window_title,
+            commands::windows::window_at_cursor,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

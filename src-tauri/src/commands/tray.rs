@@ -125,6 +125,13 @@ pub fn on_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
                 windows::snapshot(app);
             }
         }
+        // The window in front changed. Nothing in the tray cares, but a tab dropped where two
+        // windows overlap does: the most recently focused of them is taken to be the one on top.
+        WindowEvent::Focused(true) => {
+            if let Some(order) = app.try_state::<windows::FocusOrder>() {
+                order.focused(window.label());
+            }
+        }
         // Not during a quit: every window is destroyed in turn, and the session was written
         // down intact before the first of them went.
         WindowEvent::Destroyed if !quit_requested(app) => {

@@ -180,14 +180,28 @@ first window's**, and then left alone. It is the strip the only window a pre-win
 had was showing, and it opens in the window that would have had it. A torn-off window with no
 stored strip of its own starts fresh rather than borrowing somebody else's.
 
-**Tearing a tab off.** Dragging a tab **out of the strip** takes it into a window of its own — the
-browser gesture, and the one most people will reach for. A drag that ends inside the strip is a
-reorder, and a drag that ends on the strip's empty space is a drag that went nowhere; only a drag
-that ends outside the strip's rectangle tears off. That last condition is also what makes the
-failure safe: a platform that reports no position for the end of a drag hands the app `(0, 0)`,
-which is inside the strip, so the gesture reads as "went nowhere" and no window appears. A tear-off
-that did not happen costs one more attempt; a window that appears from a drag nobody made is a
-window to go and close.
+**Dragging a tab out, and dragging it back.** A drag that ends **on the strip** is a reorder. A
+drag that ends anywhere else is decided by **where the pointer was let go**: over another window the
+tab moves into that window, over the desktop it becomes a window of its own. Out and back are one
+gesture, in both directions.
+
+The target cannot come from the drag. HTML drag-and-drop is **per-webview**: the target window's
+webview never sees a dragover from a drag that began in another, so there is no drop event to
+listen for and no amount of work on the drag itself would produce one. It is resolved by
+**geometry** instead — the frontend asks the backend which window the pointer is over, and the move
+that follows is the same one the menu entry performs. Only the target resolution is new.
+
+Two overlapping windows under the pointer are decided by **which was focused most recently**, which
+stands in for a z-order neither Tauri nor tao exposes. The window you last interacted with is all
+but always the one in front, so it is right nearly every time and defensible the rest; taking
+whichever window the iteration reached first would be a coin toss wearing a rule.
+
+A position the platform **will not give up** does nothing, and is deliberately not read as "the
+desktop". A gesture that has to be repeated costs a keystroke; a window that appears from a drag
+nobody made costs finding it and closing it.
+
+Released over **its own window** — the board, the strip's empty space, the title bar — is also
+nothing: a window cannot hand a tab to itself.
 
 The tab menu offers **Move tab to new window** as well, for anyone who would rather not drag, and
 `Ctrl+Alt+N` does the same from the keyboard. The menu entry is **absent** when the tab is the
@@ -195,12 +209,16 @@ window's only one; the chord **refuses out loud** instead. That is not an incons
 leave out an entry that does not apply and the user simply never sees it, where a key that did
 nothing would read as broken.
 
-**Moving a tab back** is the menu alone: **Move tab to "…"**, one entry per other open window, named
-by what that window's active tab is called. A drag cannot do it. An HTML drag is captured by the
-window it began in, and no other window hears about it — so a gesture that looked symmetrical would
-work in one direction and silently fail in the other, which is worse than a gesture that is honestly
-asymmetrical. Each window is named by its active tab because that is the one thing about another
-window the user can see from here: a window's label is a UUID and a window has no title of its own.
+**The menu offers the same two moves**, for anyone who would rather not drag: **Move tab to new
+window**, and **Move tab to "…"** once per other open window. Each window is named by its active
+tab, because that is the one thing about another window the user can see from here.
+
+**The window's last tab** behaves differently between the two, and on purpose. Dragged *into
+another window*, the source window **closes** — its only content is now somewhere else, and an
+empty window is not a state the app has. Torn off *to the desktop*, it is **refused out loud**,
+because that would put the only tab in a new window and leave the old one empty: the whole gesture
+amounts to moving the window, which is not what was asked for. Same tab, two answers, because the
+tab ends up in two different places.
 
 The tab travels as the same thing it is stored as, so a tab that moves and a tab that comes back
 after a restart are one tab arriving by two routes. Tearing off writes it to the new window's key

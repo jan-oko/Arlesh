@@ -5,6 +5,11 @@
   how a tab comes back. Closing a window's last tab closes that window; closing a window that is
   not the last one simply closes it, and only the final close is governed by *Close to tray*.
 
+  Dragging works both ways: drop a tab on another window and it moves there, drop it on the
+  desktop and it becomes a window of its own. Windows are numbered — `Arlesh 2 — Bugfixes` — and
+  the tray's menu lists them, so you can bring back one window rather than all of them. A window
+  keeps its number for as long as it is open.
+
   From the keyboard: **Ctrl+N** opens a new window, beside Ctrl+T's new tab, starting at the
   subtree you are looking at. **Ctrl+Alt+N** takes the current tab into a new window — the same
   thing, but with what you are holding. Both are on the cheat-sheet.

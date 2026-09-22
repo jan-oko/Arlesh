@@ -21,5 +21,7 @@ export function windowApi() {
     boardWindowLabels: vi.fn(() => Promise.resolve(["main"])),
     focusBoardWindow: vi.fn(() => Promise.resolve()),
     setWindowTitle: vi.fn(() => Promise.resolve()),
+    // jsdom has no desktop, so nothing is under the pointer. A drag in a test is a reorder.
+    windowAtCursor: vi.fn(() => Promise.resolve(null)),
   };
 }

@@ -7,7 +7,10 @@ import { useTabRename } from "@/hooks/use-tab-rename";
 import { useBoardWindows } from "@/hooks/use-board-windows";
 import { useInputCapture } from "@/hooks/use-input-capture";
 import { tabLabel } from "@/utils/tab-label";
-import { isTornOff } from "@/utils/tab-drag";
+import { tabDrop } from "@/utils/tab-drag";
+import type { DropTarget } from "@/utils/tab-drag";
+import { windowAtCursor } from "@/api/window";
+import { currentWindowLabel } from "@/api/window-label";
 import TabContextMenu from "@/components/TabContextMenu/TabContextMenu";
 import styles from "./TabStrip.module.css";
 
@@ -31,10 +34,14 @@ interface MenuAt {
  * it. One showing the whole tree is labelled for that rather than left nameless. Closing is offered
  * three times — an ×, a middle-click and the menu — because each is a gesture somebody already has.
  *
- * A drag **inside** the strip reorders. A drag that ends **outside** it takes the tab into a window
- * of its own, which is the browser gesture, and the menu offers the same thing for anyone who would
- * rather not drag. The way back is the menu alone: a drag is captured by the window it began in and
- * never reaches another, so a tab returns by being handed over rather than dropped.
+ * A drag **inside** the strip reorders. A drag that ends **outside** it is decided by where the
+ * pointer was let go: over another window the tab moves into it, over the desktop it becomes a
+ * window of its own. Drag-out and drag-back are one gesture, in both directions.
+ *
+ * The target cannot come from the drag itself — HTML drag-and-drop is per-webview and the other
+ * window never hears about it — so it is resolved by geometry on the backend. `utils/tab-drag`
+ * holds what to do with the answer, and the menu offers the same two moves for anyone who would
+ * rather not drag.
  */
 export default function TabStrip() {
   const { t } = useTranslation(["common"]);
@@ -48,7 +55,7 @@ export default function TabStrip() {
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const [menuAt, setMenuAt] = useState<MenuAt | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const stripRef = useRef<HTMLDivElement>(null);
+
   // Whether the drag now ending was taken by the strip. A drop is a reorder and has already
   // happened; anything else that ends outside the strip is a tear-off. See `utils/tab-drag`.
   const droppedOnStrip = useRef(false);
@@ -72,14 +79,28 @@ export default function TabStrip() {
     setDraggingIndex(null);
   }
 
-  /** The end of a drag: a reorder the strip already made, a tear-off, or nothing at all. */
-  function endDrag(tabId: string, point: { x: number; y: number }) {
-    const bounds = stripRef.current?.getBoundingClientRect();
-    const tornOff =
-      bounds !== undefined && isTornOff(point, bounds, droppedOnStrip.current);
+  /**
+   * The end of a drag: a reorder the strip already made, a move into another window, a tear-off,
+   * or nothing.
+   *
+   * Which of those it is depends on where the pointer was let go, and only the backend can say —
+   * an HTML drag never reaches another window. So the answer is asked for here and read by
+   * `tabDrop`, which is where the decision lives.
+   */
+  function endDrag(tabId: string) {
+    const onStrip = droppedOnStrip.current;
     droppedOnStrip.current = false;
     setDraggingIndex(null);
-    if (tornOff) tearOffTab(tabId);
+    // A reorder is already done and needs nothing asked of anybody.
+    if (onStrip) return;
+
+    void windowAtCursor()
+      .catch((): DropTarget => undefined)
+      .then((target) => {
+        const drop = tabDrop(target, currentWindowLabel(), false);
+        if (drop.kind === "move") moveTabToWindow(tabId, drop.label);
+        if (drop.kind === "tearOff") tearOffTab(tabId);
+      });
   }
 
   /** Opens the tab menu, having asked which other windows there are to offer. */
@@ -91,7 +112,7 @@ export default function TabStrip() {
   const wholeTree = t("common:tabWholeTree");
 
   return (
-    <div ref={stripRef} className={styles.strip} role="tablist" aria-label={t("common:tabs")}>
+    <div className={styles.strip} role="tablist" aria-label={t("common:tabs")}>
       {tabs.map((tab, index) => {
         const label = tabLabel(tab, wholeTree);
         return (
@@ -100,7 +121,7 @@ export default function TabStrip() {
             className={`${styles.tab}${tab.id === activeTabId ? ` ${styles.tabActive}` : ""}${draggingIndex === index ? ` ${styles.tabDragging}` : ""}`}
             draggable={editingId !== tab.id}
             onDragStart={() => { droppedOnStrip.current = false; setDraggingIndex(index); }}
-            onDragEnd={(e) => endDrag(tab.id, { x: e.clientX, y: e.clientY })}
+            onDragEnd={() => endDrag(tab.id)}
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => { e.preventDefault(); drop(index); }}
             onAuxClick={(e) => { if (e.button === MIDDLE_BUTTON) { e.preventDefault(); closeTab(tab.id); } }}

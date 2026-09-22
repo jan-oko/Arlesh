@@ -51,6 +51,17 @@ export async function focusBoardWindow(label: string): Promise<void> {
 }
 
 /**
+ * Which window the pointer is over, for a tab that has just been dropped.
+ *
+ * `null` means no window — the desktop, which is the tear-off. It **throws** when the platform
+ * would not give up the cursor position, which is a different thing and must not be read as the
+ * desktop: see `utils/tab-drag`.
+ */
+export async function windowAtCursor(): Promise<string | null> {
+  return invoke<string | null>("window_at_cursor");
+}
+
+/**
  * Tells the backend what this window's active tab is called, for the title and the tray menu.
  *
  * Only the tab name crosses: the window's **number** is fixed for its life and is the backend's,

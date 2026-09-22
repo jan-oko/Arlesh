@@ -67,6 +67,15 @@ impl WindowRect {
         i64::from(self.y) + i64::from(self.height)
     }
 
+    /// Whether `point` is inside this rectangle, edges included.
+    fn holds(&self, point: (i32, i32)) -> bool {
+        let (x, y) = point;
+        i64::from(x) >= i64::from(self.x)
+            && i64::from(x) <= self.right()
+            && i64::from(y) >= i64::from(self.y)
+            && i64::from(y) <= self.bottom()
+    }
+
     /// How many pixels of this rectangle and `other` overlap horizontally, and vertically.
     fn overlap(&self, other: &Self) -> (i64, i64) {
         let horizontal =
@@ -173,6 +182,29 @@ pub fn titled_by_tab(base_title: &str, tab: &str) -> String {
         return base_title.to_string();
     }
     format!("{base_title} — {tab}")
+}
+
+/// Which window a tab was dropped on, given where the pointer was let go.
+///
+/// This is what makes dragging a tab **into another window** possible at all. An HTML drag cannot
+/// cross a window boundary — the drop is per-webview, and the target window's webview never sees a
+/// dragover from a drag that began in another — so the gesture is resolved by **geometry** instead:
+/// the source window knows where the pointer was released on the desktop, and this knows where
+/// every window is. The move that follows is the same one the menu entry already performs.
+///
+/// `windows` is **most recently focused first**, and the first match wins. That ordering is doing
+/// the work of z-order, which neither Tauri nor tao exposes: the window you last interacted with is
+/// all but always the one on top, so with two windows overlapping under the pointer it is the right
+/// answer nearly every time and a defensible one the rest. The alternative — taking whichever
+/// window the iteration happened to reach first — would be a coin toss wearing a rule.
+///
+/// `None` is "released over no window at all", which the caller reads as the tear-off: dragging a
+/// tab out to the desktop and dragging it into another window are then one gesture rather than two.
+pub fn window_at(point: (i32, i32), windows: &[(String, WindowRect)]) -> Option<String> {
+    windows
+        .iter()
+        .find(|(_, rect)| rect.holds(point))
+        .map(|(label, _)| label.clone())
 }
 
 /// Where a restored window should be put.
