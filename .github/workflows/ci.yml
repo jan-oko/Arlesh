@@ -182,6 +182,10 @@ jobs:
             libayatana-appindicator3-dev \
             libssl-dev
 
+      # Reads /rust-toolchain.toml, so this prints the pinned toolchain rather than
+      # whatever the image calls `stable` — which is the only visible proof in the
+      # log that the pin resolved. It runs at the root, like every rustup call in
+      # this lane, which is why the pin lives there and not in src-tauri.
       - name: Show toolchain
         run: |
           rustc --version
@@ -198,7 +202,10 @@ jobs:
           tool: cargo-llvm-cov
 
       # Caches ~/.cargo/{registry,git} and src-tauri/target, keyed on Cargo.lock,
-      # the rustc version and this key. It prunes the intermediate artifacts that
+      # the rustc version and this key. That rustc version is now ours rather than
+      # the image's: rust-cache probes `rustc -vV` at the root, where
+      # /rust-toolchain.toml governs, so the cache rolls when we bump the pin — a
+      # commit — instead of whenever GitHub rebuilds the runner image. It prunes the intermediate artifacts that
       # make a warm Rust tree enormous, which is what keeps this inside GitHub's
       # 10 GB per-repo cache budget. One key now, where there used to be two:
       # with `cargo test` folded into cargo-llvm-cov there is only one set of
@@ -226,6 +233,33 @@ jobs:
         run: |
           mkdir -p dist
           printf '<!doctype html><title>arlesh ci</title>' > dist/index.html
+
+      # `#![deny(clippy::all)]` sits at the top of src/lib.rs and has been inert
+      # since the day it was written: plain rustc parses the `clippy::` tool lints
+      # and ignores them, so the attribute only means anything on a run that is
+      # actually clippy. This is that run. `-D warnings` covers the rest — clippy's
+      # warn-by-default lints outside `all`, and rustc's own, across the test and
+      # bench targets that `--all-targets` pulls in.
+      #
+      # Unlike the inline-test-module guard, this cannot sit at the top of the lane
+      # where a violation fails in seconds. Clippy is a compiler front end: it needs
+      # the toolchain, the apt packages (webkit2gtk-sys's build script shells out to
+      # pkg-config and fails without the dev headers), the warm rust-cache, and the
+      # `dist/` stub above — a lint run still expands `tauri::generate_context!`,
+      # which embeds the frontend bundle. So it goes as early as it can: last of the
+      # cheap steps, ahead of the instrumented build below, which a lint-only
+      # failure now skips entirely.
+      #
+      # It shares no artifacts with that build. Coverage compiles under
+      # cargo-llvm-cov's RUSTFLAGS into target/llvm-cov-target; this compiles
+      # unflagged and check-only into target/debug — two fingerprints, exactly as
+      # the cache-key comment above describes. There is no `rustup component add`
+      # for it: /rust-toolchain.toml pins the toolchain and names clippy among its
+      # components, so it arrives with the compiler rather than depending on which
+      # profile the runner image happened to install.
+      - name: cargo clippy
+        working-directory: src-tauri
+        run: cargo clippy --locked --all-targets -- -D warnings
 
       # One instrumented build, three consumers. `show-env` emits the RUSTFLAGS
       # and profile paths cargo-llvm-cov would use, so the test run and the

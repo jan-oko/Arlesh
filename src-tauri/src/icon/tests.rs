@@ -15,7 +15,9 @@ fn the_app_icon_is_in_colour_rather_than_a_silhouette() {
 
     let coloured = icon
         .rgba()
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .any(|pixel| pixel[3] > 0 && (pixel[0] != pixel[1] || pixel[1] != pixel[2]));
 
     assert!(coloured, "the app icon should be the logo, in its own colours");
@@ -50,7 +52,7 @@ fn the_tray_mark_is_white_everywhere_and_carries_its_shape_in_alpha() {
     let mark = tray().expect("the tray mark must render");
     let rgba = mark.rgba();
 
-    for pixel in rgba.chunks_exact(4) {
+    for pixel in rgba.as_chunks::<4>().0 {
         assert_eq!(
             &pixel[..3],
             &[255, 255, 255],
@@ -58,11 +60,11 @@ fn the_tray_mark_is_white_everywhere_and_carries_its_shape_in_alpha() {
         );
     }
     assert!(
-        rgba.chunks_exact(4).any(|pixel| pixel[3] == 255),
+        rgba.as_chunks::<4>().0.iter().any(|pixel| pixel[3] == 255),
         "the tray mark must actually draw something"
     );
     assert!(
-        rgba.chunks_exact(4).any(|pixel| pixel[3] == 0),
+        rgba.as_chunks::<4>().0.iter().any(|pixel| pixel[3] == 0),
         "the tray mark must be a silhouette, not a filled square"
     );
 }
@@ -133,8 +135,8 @@ fn the_tray_mark_in_argb_is_the_same_square_with_alpha_leading() {
 
     assert_eq!(size, TRAY_ICON_SIZE);
     assert_eq!(argb.len(), (size as usize) * (size as usize) * 4);
-    for (from, to) in rgba.chunks_exact(4).zip(argb.chunks_exact(4)) {
-        assert_eq!(to, [from[3], from[0], from[1], from[2]]);
+    for (from, to) in rgba.as_chunks::<4>().0.iter().zip(argb.as_chunks::<4>().0) {
+        assert_eq!(to, &[from[3], from[0], from[1], from[2]]);
     }
 }
 
@@ -143,11 +145,11 @@ fn the_tray_mark_in_argb_still_carries_its_shape_in_the_leading_byte() {
     let (_size, argb) = tray_argb32().expect("the tray mark must render");
 
     assert!(
-        argb.chunks_exact(4).any(|pixel| pixel[0] == 255),
+        argb.as_chunks::<4>().0.iter().any(|pixel| pixel[0] == 255),
         "the mark must actually draw something"
     );
     assert!(
-        argb.chunks_exact(4).any(|pixel| pixel[0] == 0),
+        argb.as_chunks::<4>().0.iter().any(|pixel| pixel[0] == 0),
         "the mark must be a silhouette, not a filled square"
     );
 }
