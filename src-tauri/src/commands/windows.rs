@@ -22,11 +22,57 @@
 
 use tauri::{AppHandle, Manager, Runtime, WebviewWindow, WebviewWindowBuilder};
 
+use std::collections::HashMap;
+use std::sync::Mutex;
+
 use crate::{
     error::WireError,
     icon,
     windows::{self, Placement, WindowRecord, WindowRect, WindowSession},
 };
+
+/// The number each open window wears, by label.
+///
+/// Managed state, seeded from the restored session and extended as windows are opened. It is the
+/// live answer; [`WindowRecord::ordinal`] is how it survives a restart. A map rather than a field
+/// on the window because Tauri's window carries no room for one, and deriving it back out of the
+/// title would make the title the source of truth for the number that composes it.
+#[derive(Debug, Default)]
+pub struct Ordinals(Mutex<HashMap<String, u32>>);
+
+impl Ordinals {
+    /// Records `label`'s number.
+    fn set(&self, label: &str, ordinal: u32) {
+        if let Ok(mut map) = self.0.lock() {
+            map.insert(label.to_string(), ordinal);
+        }
+    }
+
+    /// `label`'s number, or 1 for a window nothing recorded — the number that shows no number.
+    fn get(&self, label: &str) -> u32 {
+        self.0
+            .lock()
+            .ok()
+            .and_then(|map| map.get(label).copied())
+            .unwrap_or(1)
+    }
+
+    /// Every number in play, which is what a new window's must come after.
+    fn highest(&self) -> u32 {
+        self.0
+            .lock()
+            .ok()
+            .and_then(|map| map.values().copied().max())
+            .unwrap_or(0)
+    }
+}
+
+/// `app`'s ordinal registry, or 1 for a runtime that has none — a test host, and one window.
+fn ordinal_of<R: Runtime>(app: &AppHandle<R>, label: &str) -> u32 {
+    app.try_state::<Ordinals>()
+        .map(|ordinals| ordinals.get(label))
+        .unwrap_or(1)
+}
 
 /// How far a torn-off window is offset from the window it was torn out of, in physical pixels.
 ///
@@ -145,9 +191,11 @@ pub fn snapshot<R: Runtime>(app: &AppHandle<R>) {
         .into_iter()
         .filter_map(|label| {
             let window = app.get_webview_window(&label)?;
+            let ordinal = ordinal_of(app, &label);
             Some(WindowRecord {
                 label,
                 rect: rect_of(&window),
+                ordinal,
             })
         })
         .collect();
@@ -166,11 +214,12 @@ fn app_icon<R: Runtime>(app: &AppHandle<R>) -> anyhow::Result<tauri::image::Imag
     }
 }
 
-/// Builds one window from the config template, at `placed`, and shows it.
+/// Builds one window from the config template, at `placed`, numbered `ordinal`, and shows it.
 fn build<R: Runtime>(
     app: &AppHandle<R>,
     label: &str,
     placed: Placement,
+    ordinal: u32,
 ) -> anyhow::Result<WebviewWindow<R>> {
     let mut config = app
         .config()
@@ -180,6 +229,9 @@ fn build<R: Runtime>(
         .cloned()
         .unwrap_or_default();
     config.label = label.to_string();
+    // The number goes on at build time, off the config's own title, so a branch instance keeps the
+    // title `scripts/branch-instance.sh` gave it and gains the number after it.
+    config.title = windows::window_title(&config.title, ordinal);
     // Built hidden and shown once placed, so a restored window never appears at the default spot
     // and then jumps to its own.
     config.visible = false;
@@ -202,6 +254,9 @@ fn build<R: Runtime>(
         Err(error) => tracing::warn!(error = %error, "could not load the window icon"),
     }
     window.show()?;
+    if let Some(ordinals) = app.try_state::<Ordinals>() {
+        ordinals.set(label, ordinal);
+    }
     Ok(window)
 }
 
@@ -223,7 +278,7 @@ pub fn restore<R: Runtime>(app: &AppHandle<R>) -> anyhow::Result<()> {
 
     for record in &session.windows {
         let placed = windows::placement(record.rect, &displays);
-        match build(app, &record.label, placed) {
+        match build(app, &record.label, placed, record.ordinal) {
             Ok(_) => opened += 1,
             Err(error) => {
                 tracing::error!(error = %error, label = %record.label, "a saved window could not be reopened");
@@ -240,6 +295,7 @@ pub fn restore<R: Runtime>(app: &AppHandle<R>) -> anyhow::Result<()> {
                 size: None,
                 position: None,
             },
+            1,
         )?;
     }
 
@@ -264,9 +320,67 @@ pub async fn open_board_window<R: Runtime>(
         )));
     }
     let placed = torn_off_placement(&app, &window);
-    build(&app, &label, placed).map_err(|error| WireError::internal(error.to_string()))?;
+    // One more than any window has worn, so a closed window's number is never handed out again —
+    // see `windows::next_ordinal`. The live registry is asked rather than the saved session,
+    // because a window opened and closed since the last save is still a number that was used.
+    let ordinal = app
+        .try_state::<Ordinals>()
+        .map(|ordinals| ordinals.highest() + 1)
+        .unwrap_or(1);
+    build(&app, &label, placed, ordinal).map_err(|error| WireError::internal(error.to_string()))?;
     snapshot(&app);
+    // A window the tray's menu does not list is a window the menu cannot reach.
+    crate::commands::tray::refresh_menu(&app);
     Ok(())
+}
+
+/// Puts the active tab's name in the window's title, after the window's own number.
+///
+/// Called by the frontend whenever the active tab changes or is renamed, because only the frontend
+/// knows what a tab is called. The **number** stays the backend's: it is fixed for the window's
+/// life and the frontend has no business deciding it, so what crosses the boundary is the tab
+/// name alone and the two are composed here.
+#[tauri::command]
+pub async fn set_window_title<R: Runtime>(
+    app: AppHandle<R>,
+    window: WebviewWindow<R>,
+    tab: String,
+) -> Result<(), WireError> {
+    let base = windows::window_title(&base_title(&app), ordinal_of(&app, window.label()));
+    window
+        .set_title(&windows::titled_by_tab(&base, &tab))
+        .map_err(|error| WireError::internal(error.to_string()))?;
+    // The menu lists a window by its title, so a title that changed leaves the menu out of date.
+    crate::commands::tray::refresh_menu(&app);
+    Ok(())
+}
+
+/// The app's own name, as the config gives it — which a branch instance overrides.
+fn base_title<R: Runtime>(app: &AppHandle<R>) -> String {
+    app.config()
+        .app
+        .windows
+        .first()
+        .map(|config| config.title.clone())
+        .unwrap_or_else(|| "Arlesh".to_string())
+}
+
+/// Every open window, in the order they were opened, with the number and title the tray lists.
+pub fn open_windows<R: Runtime>(app: &AppHandle<R>) -> Vec<(String, String)> {
+    let session = match app.try_state::<SessionStore>() {
+        Some(store) => store.session(),
+        None => WindowSession::bootstrap(),
+    };
+    open_labels(app, &session)
+        .into_iter()
+        .filter_map(|label| {
+            let window = app.get_webview_window(&label)?;
+            // The window's own title, which already carries its number and its active tab. Asking
+            // the window rather than recomposing it keeps one answer to what a window is called.
+            let title = window.title().ok().filter(|title| !title.is_empty())?;
+            Some((label, title))
+        })
+        .collect()
 }
 
 /// Where a window torn out of `from` should appear: beside it, if that is somewhere reachable.

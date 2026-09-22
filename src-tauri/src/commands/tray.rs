@@ -53,7 +53,14 @@ const TRAY_ID: &str = "arlesh-tray";
 /// What the tray says when nothing better is available.
 const FALLBACK_TOOLTIP: &str = "Arlesh";
 
-/// What the two menu items read on the bar. Both trays build the same menu from these.
+/// The id a per-window entry carries, with the window's label after this prefix.
+///
+/// Only Tauri's menu needs it; Linux's carries a callback per item. It is declared here anyway
+/// because it is part of the menu's shape, which both trays share.
+#[cfg(not(target_os = "linux"))]
+const WINDOW_ITEM_PREFIX: &str = "window:";
+
+/// What the two fixed menu items read on the bar. Both trays build the same menu from these.
 const SHOW_LABEL: &str = "Show";
 /// See [`SHOW_LABEL`].
 const QUIT_LABEL: &str = "Quit";
@@ -120,7 +127,11 @@ pub fn on_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
         }
         // Not during a quit: every window is destroyed in turn, and the session was written
         // down intact before the first of them went.
-        WindowEvent::Destroyed if !quit_requested(app) => windows::snapshot(app),
+        WindowEvent::Destroyed if !quit_requested(app) => {
+            windows::snapshot(app);
+            // One fewer window to list, and the entries are the only way to reach one.
+            refresh_menu(app);
+        }
         _ => {}
     }
 }
@@ -132,12 +143,53 @@ fn quit_requested<R: Runtime>(app: &AppHandle<R>) -> bool {
         .unwrap_or(false)
 }
 
-/// Puts the icon and its two-item menu in the tray, through Tauri's own tray.
+/// The tray menu: Show, Quit, and one entry per open window.
+///
+/// Rebuilt rather than mutated, because a menu is a list and the list changes; see
+/// [`refresh_menu`] for when.
+#[cfg(not(target_os = "linux"))]
+fn window_menu<R: Runtime>(
+    app: &AppHandle<R>,
+    show: &MenuItem<R>,
+    quit: &MenuItem<R>,
+) -> anyhow::Result<Menu<R>> {
+    let menu = Menu::new(app)?;
+    menu.append(show)?;
+    for (label, title) in windows::open_windows(app) {
+        let id = format!("{WINDOW_ITEM_PREFIX}{label}");
+        menu.append(&MenuItem::with_id(app, id, title, true, None::<&str>)?)?;
+    }
+    menu.append(quit)?;
+    Ok(menu)
+}
+
+/// Rebuilds the tray menu so it lists the windows that are open **now**.
+///
+/// A menu built once at startup would list that moment's windows forever, and the entries are the
+/// only way to reach one window rather than all of them. It is called wherever the set of windows
+/// can have changed, which is the same set of moments the window session is written down at.
+#[cfg(not(target_os = "linux"))]
+pub fn refresh_menu<R: Runtime>(app: &AppHandle<R>) {
+    let Some(tray) = app.tray_by_id(TRAY_ID) else {
+        return;
+    };
+    let rebuild = || -> anyhow::Result<()> {
+        let show = MenuItem::with_id(app, SHOW_ITEM, SHOW_LABEL, true, None::<&str>)?;
+        let quit = MenuItem::with_id(app, QUIT_ITEM, QUIT_LABEL, true, None::<&str>)?;
+        tray.set_menu(Some(window_menu(app, &show, &quit)?))?;
+        Ok(())
+    };
+    if let Err(error) = rebuild() {
+        tracing::warn!(error = %error, "could not rebuild the tray menu");
+    }
+}
+
+/// Puts the icon and its menu in the tray, through Tauri's own tray.
 #[cfg(not(target_os = "linux"))]
 fn build_tray(app: &AppHandle) -> anyhow::Result<()> {
     let show = MenuItem::with_id(app, SHOW_ITEM, SHOW_LABEL, true, None::<&str>)?;
     let quit = MenuItem::with_id(app, QUIT_ITEM, QUIT_LABEL, true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show, &quit])?;
+    let menu = window_menu(app, &show, &quit)?;
 
     TrayIconBuilder::with_id(TRAY_ID)
         // The white silhouette, not the colour logo: see `crate::icon`.
@@ -235,21 +287,57 @@ impl ksni::Tray for SystemTray {
         on_main_thread(&self.app, toggle_windows);
     }
 
+    /// Show, then one entry per open window, then Quit.
+    ///
+    /// The windows are read **here**, when the menu is built, rather than held on the struct: the
+    /// bar rebuilds this whenever the item is updated, so a live read is the whole mechanism by
+    /// which the list stays current. See [`refresh_menu`].
+    ///
+    /// A window's entry shows and focuses that one window, where the click on the icon and Show
+    /// both act on all of them. That is the division: the icon is the app, the menu reaches into
+    /// it.
     fn menu(&self) -> Vec<ksni::MenuItem<Self>> {
-        vec![
-            ksni::menu::StandardItem {
-                label: SHOW_LABEL.to_string(),
-                activate: Box::new(|tray: &mut Self| on_main_thread(&tray.app, show_windows)),
-                ..Default::default()
-            }
-            .into(),
+        let mut items: Vec<ksni::MenuItem<Self>> = vec![ksni::menu::StandardItem {
+            label: SHOW_LABEL.to_string(),
+            activate: Box::new(|tray: &mut Self| on_main_thread(&tray.app, show_windows)),
+            ..Default::default()
+        }
+        .into()];
+
+        for (label, title) in windows::open_windows(&self.app) {
+            items.push(
+                ksni::menu::StandardItem {
+                    label: title,
+                    activate: Box::new(move |tray: &mut Self| {
+                        let label = label.clone();
+                        on_main_thread(&tray.app, move |app| reveal_window(app, &label));
+                    }),
+                    ..Default::default()
+                }
+                .into(),
+            );
+        }
+
+        items.push(
             ksni::menu::StandardItem {
                 label: QUIT_LABEL.to_string(),
                 activate: Box::new(|tray: &mut Self| on_main_thread(&tray.app, quit)),
                 ..Default::default()
             }
             .into(),
-        ]
+        );
+        items
+    }
+}
+
+/// Asks the bar to re-read the item, which is what makes it re-read the menu.
+///
+/// The window list lives in [`ksni::Tray::menu`] and is read fresh every time the bar asks for it,
+/// so nothing here has to compose the entries — this only says "ask again".
+#[cfg(target_os = "linux")]
+pub fn refresh_menu<R: Runtime>(app: &AppHandle<R>) {
+    if let Some(handle) = app.try_state::<ksni::Handle<SystemTray>>() {
+        handle.update(|_tray| {});
     }
 }
 
@@ -298,6 +386,9 @@ fn on_menu_event(app: &AppHandle, event: MenuEvent) {
     match event.id().as_ref() {
         SHOW_ITEM => show_windows(app),
         QUIT_ITEM => quit(app),
+        id if id.starts_with(WINDOW_ITEM_PREFIX) => {
+            reveal_window(app, &id[WINDOW_ITEM_PREFIX.len()..]);
+        }
         // Every other menu in the app comes through here too, so an unrecognised id is ordinary.
         _ => {}
     }
@@ -330,6 +421,23 @@ pub fn show_windows(app: &AppHandle) {
         if let Err(error) = window.set_focus() {
             tracing::warn!(error = %error, "could not focus a window");
         }
+    }
+}
+
+/// Shows one window and puts the keyboard in it, for a click on its own tray entry.
+///
+/// The one place anything in the tray acts on a single window. The icon holds the app, so a click
+/// on it toggles them all; the menu is how you reach past that to the window you want.
+fn reveal_window<R: Runtime>(app: &AppHandle<R>, label: &str) {
+    let Some(window) = app.get_webview_window(label) else {
+        return;
+    };
+    if let Err(error) = window.show() {
+        tracing::warn!(error = %error, label = %label, "could not show the window");
+        return;
+    }
+    if let Err(error) = window.set_focus() {
+        tracing::warn!(error = %error, label = %label, "could not focus the window");
     }
 }
 

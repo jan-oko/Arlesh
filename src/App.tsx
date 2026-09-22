@@ -13,6 +13,7 @@ import { useTabCommands } from "@/hooks/use-tab-commands";
 import { useCloseToTraySync } from "@/hooks/use-close-to-tray";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
 import { useForgetClosedWindows, useTabInbox } from "@/hooks/use-window-session";
+import { useWindowTitle } from "@/hooks/use-window-title";
 import { TAB_BINDINGS } from "@/utils/hotkeys/tab-bindings";
 import styles from "./App.module.css";
 
@@ -35,6 +36,7 @@ export default function App() {
   // are no longer open.
   useTabInbox();
   useForgetClosedWindows();
+  useWindowTitle();
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;

@@ -121,10 +121,29 @@ malformed stored value falls back to on rather than being read as falsy.
 gesture for the thing done most often. It is one answer for the whole app rather than one per
 window: the tray holds Arlesh, not a window, and a click that hid one window and showed another
 would be a gesture with no stable meaning. Any window showing means the app is on screen, so the
-click puts it away; none showing brings them all back. The right button opens a menu offering
-**Show** and **Quit**: nothing the menu cannot do that a click can, nothing missing that is needed.
-**Ctrl+Q** quits from the keyboard and appears in the cheat-sheet. The windows return where and how
-they were left, since hiding never destroys them. Quit is a real shutdown — the database session factory and
+click puts it away; none showing brings them all back. **Ctrl+Q** quits from the keyboard and
+appears in the cheat-sheet. The windows return where and how they were left, since hiding never
+destroys them.
+
+The right button opens a menu: **Show**, then **one entry per open window**, then **Quit**. That is
+the division — the icon is the app and acts on all of it, the menu is how you reach past that into
+one window. An entry shows and focuses its window alone. The menu is rebuilt whenever the set of
+windows or their titles changes, because a menu that listed the windows of startup forever would
+be worse than no menu at all.
+
+**Windows are numbered, and a window keeps its number for life.** The title reads `Arlesh 2 —
+Bugfixes`: the number, which is fixed, and the active tab, which is what you actually recognise the
+window by. The **first** window is just `Arlesh` — "Arlesh 1" promises a second that may never
+exist, and the number is there to tell several apart, so it earns its place only once there are
+several.
+
+Numbers are **never reused and never shifted**. Close window 2 of three and the next window opened
+is 4, not 2, and window 3 stays 3. A number that moved when something else closed would make the
+menu entry you learned point somewhere else a minute later, which is the one thing the number
+exists to prevent; a gap in the numbering is a thing you notice and ignore. The number is the
+backend's — it is fixed for the window's life and survives a restart with the session — and the
+tab name is the frontend's, so what crosses between them is the tab name alone and the two are
+composed on the backend side. Two places knowing how a window is named is one too many. Quit is a real shutdown — the database session factory and
 the MCP listener are released with the app, not abandoned.
 
 **On Linux the tray icon is Arlesh's own, not Tauri's.** A Linux tray is a protocol, not a widget:

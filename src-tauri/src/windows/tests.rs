@@ -224,3 +224,73 @@ fn a_write_that_cannot_land_is_survivable() {
     std::fs::write(&blocker, "x").expect("write");
     write_session(&blocker.join("windows.json"), &WindowSession::bootstrap());
 }
+
+// -------------------------------------------------------------------------------------------
+// Numbering the windows.
+// -------------------------------------------------------------------------------------------
+
+/// A session holding windows with these ordinals.
+fn session_of(ordinals: &[u32]) -> WindowSession {
+    WindowSession {
+        windows: ordinals
+            .iter()
+            .enumerate()
+            .map(|(index, ordinal)| WindowRecord {
+                label: format!("w{index}"),
+                rect: None,
+                ordinal: *ordinal,
+            })
+            .collect(),
+    }
+}
+
+#[test]
+fn the_first_window_of_an_empty_session_is_numbered_one() {
+    assert_eq!(next_ordinal(&WindowSession::default()), 1);
+}
+
+#[test]
+fn a_new_window_takes_the_next_number_after_the_highest() {
+    assert_eq!(next_ordinal(&session_of(&[1, 2])), 3);
+}
+
+#[test]
+fn a_closed_windows_number_is_not_handed_out_again() {
+    // Windows 1 and 3 are open; 2 was closed. The next is 4, because reusing 2 would make the
+    // menu entry the user learned point at a different window.
+    assert_eq!(next_ordinal(&session_of(&[1, 3])), 4);
+}
+
+#[test]
+fn the_bootstrap_session_starts_the_numbering_at_one() {
+    assert_eq!(WindowSession::bootstrap().windows[0].ordinal, 1);
+    assert_eq!(next_ordinal(&WindowSession::bootstrap()), 2);
+}
+
+#[test]
+fn the_first_window_is_not_numbered_in_its_title() {
+    assert_eq!(window_title("Arlesh", 1), "Arlesh");
+}
+
+#[test]
+fn every_later_window_carries_its_number() {
+    assert_eq!(window_title("Arlesh", 2), "Arlesh 2");
+    assert_eq!(window_title("Arlesh", 11), "Arlesh 11");
+}
+
+#[test]
+fn a_branch_instances_own_title_keeps_the_numbering() {
+    // `scripts/branch-instance.sh` titles a branch's windows after its branch.
+    assert_eq!(window_title("Arlesh (fxo)", 2), "Arlesh (fxo) 2");
+}
+
+#[test]
+fn the_tray_lists_a_window_by_its_title_and_its_active_tab() {
+    assert_eq!(titled_by_tab("Arlesh 2", "Bugfixes"), "Arlesh 2 — Bugfixes");
+}
+
+#[test]
+fn a_window_with_nothing_to_add_keeps_its_plain_title() {
+    assert_eq!(titled_by_tab("Arlesh", ""), "Arlesh");
+    assert_eq!(titled_by_tab("Arlesh", "   "), "Arlesh");
+}

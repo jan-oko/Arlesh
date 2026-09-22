@@ -95,6 +95,14 @@ pub struct WindowRecord {
     /// Where it was, or `None` for a window whose geometry could not be read.
     #[serde(default)]
     pub rect: Option<WindowRect>,
+    /// The number this window wears, in its title and in the tray menu. See [`next_ordinal`].
+    #[serde(default = "first_ordinal")]
+    pub ordinal: u32,
+}
+
+/// What a record with no stored ordinal is read as — a session saved before windows were numbered.
+fn first_ordinal() -> u32 {
+    1
 }
 
 /// Every window that was open when the session was last saved, in the order they were opened.
@@ -112,6 +120,7 @@ impl WindowSession {
             windows: vec![WindowRecord {
                 label: BOOTSTRAP_LABEL.to_string(),
                 rect: None,
+                ordinal: first_ordinal(),
             }],
         }
     }
@@ -120,6 +129,50 @@ impl WindowSession {
     pub fn holds(&self, label: &str) -> bool {
         self.windows.iter().any(|window| window.label == label)
     }
+}
+
+/// The number a new window should wear: one more than the highest any window has ever worn here.
+///
+/// **Fixed for the window's life, never renumbered.** A number that shifted when an earlier window
+/// closed would make "Arlesh 2" in the tray menu mean a different window from one minute to the
+/// next, and the whole point of the number is to be the name you reach for. So closing a window
+/// leaves a gap, which is the cheaper of the two costs: a gap is a thing you notice and ignore,
+/// where a renumbering is a thing you act on and get wrong.
+///
+/// It is the highest *seen* rather than the count, so a session of windows 1 and 3 numbers the
+/// next one 4 and not 3 — reusing a closed window's number is renumbering by another route.
+pub fn next_ordinal(session: &WindowSession) -> u32 {
+    session
+        .windows
+        .iter()
+        .map(|window| window.ordinal)
+        .max()
+        .unwrap_or(0)
+        + 1
+}
+
+/// What a window is called: the app's name, and its number once there has been more than one.
+///
+/// The first window is just "Arlesh". "Arlesh 1" would promise a second that may never exist, and
+/// the overwhelmingly common case is one window — the number is there to tell several apart, so it
+/// earns its place only once there are several. A window that is *numbered* keeps its number even
+/// when it ends up alone, because the alternative is renumbering.
+pub fn window_title(base: &str, ordinal: u32) -> String {
+    if ordinal <= 1 {
+        return base.to_string();
+    }
+    format!("{base} {ordinal}")
+}
+
+/// That title with the active tab appended, which is what the tray menu lists a window by.
+///
+/// The tab is what the user actually recognises a window by; the number is what stays put while
+/// the tab changes. An empty tab name leaves the title alone rather than trailing a separator.
+pub fn titled_by_tab(base_title: &str, tab: &str) -> String {
+    if tab.trim().is_empty() {
+        return base_title.to_string();
+    }
+    format!("{base_title} — {tab}")
 }
 
 /// Where a restored window should be put.

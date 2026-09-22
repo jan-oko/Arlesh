@@ -49,3 +49,14 @@ export async function boardWindowLabels(): Promise<string[]> {
 export async function focusBoardWindow(label: string): Promise<void> {
   await invoke<null>("focus_board_window", { label });
 }
+
+/**
+ * Tells the backend what this window's active tab is called, for the title and the tray menu.
+ *
+ * Only the tab name crosses: the window's **number** is fixed for its life and is the backend's,
+ * so the two are composed on that side. A frontend that built the whole title would need to be
+ * told the number, and then two places would know how a window is named.
+ */
+export async function setWindowTitle(tab: string): Promise<void> {
+  await invoke<null>("set_window_title", { tab });
+}
