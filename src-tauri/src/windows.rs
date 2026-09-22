@@ -200,7 +200,10 @@ pub fn titled_by_tab(base_title: &str, tab: &str) -> String {
 ///
 /// `None` is "released over no window at all", which the caller reads as the tear-off: dragging a
 /// tab out to the desktop and dragging it into another window are then one gesture rather than two.
-pub fn window_at(point: (i32, i32), windows: &[(String, WindowRect)]) -> Option<String> {
+///
+/// Named for what it answers rather than `window_at`, which this module's tests already use for a
+/// helper that builds a rectangle — two meanings of "at" in one file is one too many.
+pub fn window_under(point: (i32, i32), windows: &[(String, WindowRect)]) -> Option<String> {
     windows
         .iter()
         .find(|(_, rect)| rect.holds(point))

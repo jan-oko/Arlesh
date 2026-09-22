@@ -421,7 +421,7 @@ fn base_title<R: Runtime>(app: &AppHandle<R>) -> String {
 /// Which window the pointer was over when a dragged tab was let go.
 ///
 /// The one piece of machinery a cross-window tab drag needs that did not already exist. An HTML
-/// drag cannot cross a window boundary — see [`crate::windows::window_at`] — so the source window
+/// drag cannot cross a window boundary — see [`crate::windows::window_under`] — so the source window
 /// asks this, and then hands the tab over exactly as the menu entry does.
 ///
 /// `None` covers two different things, and the frontend tells them apart by what it gets back:
@@ -453,7 +453,7 @@ pub async fn window_at_cursor<R: Runtime>(app: AppHandle<R>) -> Result<Option<St
         })
         .collect();
 
-    Ok(windows::window_at(point, &rects))
+    Ok(windows::window_under(point, &rects))
 }
 
 /// Every open window, in the order they were opened, with the number and title the tray lists.
