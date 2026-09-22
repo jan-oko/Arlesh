@@ -1,7 +1,8 @@
 import { useEffect } from "react";
 import { onTabMoved } from "@/api/board";
 import type { UnlistenFn } from "@tauri-apps/api/event";
-import { boardWindowLabels, currentWindowLabel } from "@/api/window";
+import { boardWindowLabels } from "@/api/window";
+import { currentWindowLabel } from "@/api/window-label";
 import { forgetPersistedTabs, persistedWindowLabels } from "@/stores/tab-persistence";
 import { useTabsStore } from "@/stores/use-tabs-store";
 

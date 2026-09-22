@@ -6,7 +6,7 @@ import type { PersistedTab } from "@/stores/tab-persistence";
 import {
   freshTabState, legacyTabState, readPersistedTabs, writePersistedTabs,
 } from "@/stores/tab-persistence";
-import { BOOTSTRAP_WINDOW_LABEL, currentWindowLabel } from "@/api/window";
+import { BOOTSTRAP_WINDOW_LABEL, currentWindowLabel } from "@/api/window-label";
 
 /**
  * Which window this store is the tab strip of.

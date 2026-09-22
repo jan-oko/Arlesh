@@ -3,7 +3,7 @@ import {
   forgetPersistedTabs, parsePersistedTab, parseTabState, persistedWindowLabels, readPersistedTabs,
   TABS_STORAGE_KEY, windowTabsKey, writePersistedTabs,
 } from "./tab-persistence";
-import { BOOTSTRAP_WINDOW_LABEL } from "@/api/window";
+import { BOOTSTRAP_WINDOW_LABEL } from "@/api/window-label";
 import { reloadTabs, useTabsStore } from "./use-tabs-store";
 import { DEFAULT_TAB_STATE } from "./tab-stores";
 import { DEFAULT_FILTER } from "@/utils/filter-tree";

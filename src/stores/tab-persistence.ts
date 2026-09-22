@@ -6,7 +6,7 @@ import type { ViewState } from "@/stores/use-view-store";
 import type { TabState } from "@/stores/tab-stores";
 import { DEFAULT_TAB_STATE } from "@/stores/tab-stores";
 import { mergeFilterDefaults } from "@/stores/persist-merge";
-import { BOOTSTRAP_WINDOW_LABEL } from "@/api/window";
+import { BOOTSTRAP_WINDOW_LABEL } from "@/api/window-label";
 
 /**
  * Where a window's tab strip is written down: one key per window, named after its label.

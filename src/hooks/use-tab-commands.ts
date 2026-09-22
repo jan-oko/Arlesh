@@ -1,7 +1,8 @@
 import { useCallback, useMemo } from "react";
 import { persistTab, useTabsStore } from "@/stores/use-tabs-store";
 import { forgetPersistedTabs, freshTabState, writePersistedTabs } from "@/stores/tab-persistence";
-import { closeWindow, newWindowLabel, openBoardWindow, focusBoardWindow } from "@/api/window";
+import { closeWindow, openBoardWindow, focusBoardWindow } from "@/api/window";
+import { newWindowLabel } from "@/api/window-label";
 import { sendTabToWindow } from "@/api/board";
 
 /** Everything the tab shortcuts and the strip's controls do. */

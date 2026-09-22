@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { boardWindowLabels, currentWindowLabel } from "@/api/window";
+import { boardWindowLabels } from "@/api/window";
+import { currentWindowLabel } from "@/api/window-label";
 import { readPersistedTabs } from "@/stores/tab-persistence";
 import { tabLabel } from "@/utils/tab-label";
 
