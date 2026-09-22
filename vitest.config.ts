@@ -7,6 +7,10 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": resolve(__dirname, "./src"),
+      // The cross-language conformance corpus, which `src-tauri/tests/` reads too. It is outside
+      // `src/` because it belongs to neither language, and it gets an alias of its own so that
+      // reaching it is never spelled as a climb out of the source tree.
+      "@conformance": resolve(__dirname, "./conformance"),
     },
   },
   test: {

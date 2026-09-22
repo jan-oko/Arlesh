@@ -287,10 +287,27 @@ function passesListPreset(row: TaskListRow, f: FilterState): boolean {
   }
 }
 
+/**
+ * The shared filter as Unblock reads it: the same tags, Info/Flow/Private toggles and Archived/Backlog
+ * pills, with the status preset neutralised to All.
+ *
+ * Unblock is not a sixth preset a user combines with the one they had — the List View dropdown holds
+ * a single value, and picking Unblock *is* the whole question ("what is blocking me?"). The preset
+ * left in the shared FilterState belongs to the Mindmap, which keeps it, and it must not answer here:
+ * Start hard-hides a blocked task together with its subtree, which is precisely the set Unblock
+ * exists to show, so reading it left Unblock-over-Start an empty list. Neutralising the preset also
+ * keeps the row's own rules and its ancestors' in step, since {@link passesListPreset} — and with it
+ * every preset-driven ancestor walk — is skipped under Unblock too.
+ */
+function unblockSharedFilter(shared: FilterState): FilterState {
+  return { ...shared, statusMode: "all" };
+}
+
 /** Whether one row survives the shared filter (status preset, tags, Info/Flow/Private) and the
  * List-View-exclusive filters. Unblock overrides the status preset to "blocked tasks only". */
 function rowPassesFilters(row: TaskListRow, shared: FilterState, listFilter: ListFilterState): boolean {
-  if (typeHardHidden(row.node, shared)) return false;
+  const effectiveShared = listFilter.preset === "unblock" ? unblockSharedFilter(shared) : shared;
+  if (typeHardHidden(row.node, effectiveShared)) return false;
   if (!shared.privateMode && row.hasPrivateAncestor) return false;
   if (listFilter.preset === "unblock") {
     if (!row.isBlocked) return false;

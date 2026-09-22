@@ -16,6 +16,7 @@ import { LIST_SEARCH_BINDINGS, type ListSearchContext } from "./list/search";
 import { LIST_STATUS_BINDINGS, type ListStatusContext } from "./list/status";
 import { LIST_STATUS_PRESET_BINDINGS, type ListStatusPresetContext } from "./list/status-presets";
 import { LIST_SUBTREE_BINDINGS, type ListSubtreeContext } from "./list/subtree";
+import { LIST_UNBLOCK_PRESET_BINDINGS, type ListUnblockPresetContext } from "./list/unblock-preset";
 
 export type { ListSelectionContext };
 export { SCROLL_DOWN_CODE, SCROLL_UP_CODE } from "./list/scroll";
@@ -43,7 +44,8 @@ export interface ListContext extends
   ListSearchContext,
   ListStatusContext,
   ListStatusPresetContext,
-  ListSubtreeContext {}
+  ListSubtreeContext,
+  ListUnblockPresetContext {}
 
 /**
  * List View's bindings, mirroring the Mindmap's where they translate to a flat list.
@@ -58,6 +60,7 @@ export const LIST_BINDINGS: readonly Binding<ListContext>[] = [
   ...LIST_FILTER_BINDINGS,
   ...LIST_FULLSCREEN_BINDINGS,
   ...LIST_STATUS_PRESET_BINDINGS,
+  ...LIST_UNBLOCK_PRESET_BINDINGS,
   ...LIST_NAVIGATE_BINDINGS,
   ...LIST_SCROLL_BINDINGS,
   ...LIST_STATUS_BINDINGS,

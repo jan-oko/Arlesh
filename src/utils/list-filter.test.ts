@@ -160,6 +160,32 @@ describe("filterTaskList", () => {
       .toEqual(["task-blocked"]);
   });
 
+  it("unblock preset shows blocked tasks while Start is the shared preset", () => {
+    const rows = [
+      row({ node: n("task-blocked", "task", { status: "todo", blockReasons: ["waiting"] }), isBlocked: true }),
+      row({ node: n("task-open", "task", { status: "todo" }), isBlocked: false }),
+    ];
+    expect(filterTaskList(rows, sf({ statusMode: "start" }), lf({ preset: "unblock" })).map((r) => r.node.id))
+      .toEqual(["task-blocked"]);
+  });
+
+  it("unblock preset shows a backlogged blocked task the shared Start preset would have set aside", () => {
+    const rows = [row({
+      node: n("task-blocked", "task", { status: "todo", backlogged: true, blockReasons: ["waiting"] }),
+      isBlocked: true,
+    })];
+    expect(filterTaskList(rows, sf({ statusMode: "start" }), lf({ preset: "unblock" })).map((r) => r.node.id))
+      .toEqual(["task-blocked"]);
+  });
+
+  it("unblock preset still hard-hides a private blocked task while Private Mode is off", () => {
+    const rows = [row({
+      node: n("task-blocked", "task", { status: "todo", isPrivate: true, blockReasons: ["waiting"] }),
+      isBlocked: true,
+    })];
+    expect(filterTaskList(rows, sf({ statusMode: "start", privateMode: false }), lf({ preset: "unblock" }))).toEqual([]);
+  });
+
   it("hard-hides a private task while Private Mode is off", () => {
     const rows = [row({ node: n("task-private", "task", { status: "todo", isPrivate: true }) })];
     expect(filterTaskList(rows, sf({ privateMode: false }), lf())).toHaveLength(0);

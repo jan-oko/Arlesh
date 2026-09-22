@@ -49,6 +49,7 @@ export function listKeyboardContext(overrides: Partial<ListOptions> = {}): ListO
     onDeselect: vi.fn(),
     onToggleFilter: vi.fn(),
     onSetStatusMode: vi.fn(),
+    onSetUnblockPreset: vi.fn(),
     onOpenSearch: vi.fn(),
     onExitSubtree: vi.fn(),
     onExitToRoot: vi.fn(),

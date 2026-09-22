@@ -54,6 +54,14 @@ describe("useKeyboardListView", () => {
     expect(options.onSetStatusMode).toHaveBeenCalledWith(mode);
   });
 
+  it("Alt+U selects the List View's Unblock preset without writing a shared status mode", () => {
+    const options = listKeyboardContext();
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    fireKey("u", { altKey: true });
+    expect(options.onSetUnblockPreset).toHaveBeenCalledTimes(1);
+    expect(options.onSetStatusMode).not.toHaveBeenCalled();
+  });
+
   it("plain B toggles the selected row's backlog", () => {
     const options = listKeyboardContext();
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
