@@ -99,11 +99,6 @@
   text-transform: uppercase;
 }
 
-.subtitle {
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-}
-
 .kind {
   color: var(--text-secondary);
   font-size: var(--text-sm);
