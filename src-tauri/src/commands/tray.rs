@@ -363,7 +363,9 @@ pub fn refresh_menu<R: Runtime>(app: &AppHandle<R>) {
     // business blocking on a desktop bar answering, and nothing downstream depends on the menu
     // having been redrawn by the time this returns.
     tauri::async_runtime::spawn(async move {
-        handle.update(|tray: &mut SystemTray| tray.windows = open).await;
+        handle
+            .update(|tray: &mut SystemTray| tray.windows = open)
+            .await;
     });
 }
 

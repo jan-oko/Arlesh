@@ -328,7 +328,10 @@ fn a_drop_on_the_desktop_finds_nothing_which_is_the_tear_off() {
 
 #[test]
 fn a_drop_finds_the_window_it_is_over_and_not_its_neighbour() {
-    let windows = [window_at_rect("main", 0, 0), window_at_rect("board-a", 900, 0)];
+    let windows = [
+        window_at_rect("main", 0, 0),
+        window_at_rect("board-a", 900, 0),
+    ];
 
     assert_eq!(window_at((1000, 300), &windows).as_deref(), Some("board-a"));
 }
@@ -337,8 +340,14 @@ fn a_drop_finds_the_window_it_is_over_and_not_its_neighbour() {
 fn overlapping_windows_are_decided_by_which_was_focused_last() {
     // Both hold the point. The list is most-recently-focused first, standing in for a z-order
     // neither Tauri nor tao exposes.
-    let front = [window_at_rect("board-a", 100, 100), window_at_rect("main", 0, 0)];
-    let behind = [window_at_rect("main", 0, 0), window_at_rect("board-a", 100, 100)];
+    let front = [
+        window_at_rect("board-a", 100, 100),
+        window_at_rect("main", 0, 0),
+    ];
+    let behind = [
+        window_at_rect("main", 0, 0),
+        window_at_rect("board-a", 100, 100),
+    ];
 
     assert_eq!(window_at((400, 300), &front).as_deref(), Some("board-a"));
     assert_eq!(window_at((400, 300), &behind).as_deref(), Some("main"));
@@ -358,7 +367,10 @@ fn a_drop_on_a_window_at_a_negative_offset_finds_it() {
     // A second monitor left of the primary puts a window at a negative x, which is ordinary.
     let windows = [window_at_rect("board-a", -1920, 0)];
 
-    assert_eq!(window_at((-1500, 300), &windows).as_deref(), Some("board-a"));
+    assert_eq!(
+        window_at((-1500, 300), &windows).as_deref(),
+        Some("board-a")
+    );
 }
 
 #[test]

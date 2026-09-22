@@ -320,7 +320,10 @@ async fn an_abort_still_announces_an_agents_write_it_could_not_take_back() {
     open(&app).await;
     create_task(&app, project_id, "Never mind").await;
     {
-        let mut db = helpers::session_factory(&pool).begin().await.expect("begin");
+        let mut db = helpers::session_factory(&pool)
+            .begin()
+            .await
+            .expect("begin");
         let previous = db
             .undo()
             .set_source(WriteSource::Mcp)
@@ -333,7 +336,10 @@ async fn an_abort_still_announces_an_agents_write_it_could_not_take_back() {
             )
             .await
             .expect("set beads id");
-        db.undo().set_source(previous).await.expect("restore source");
+        db.undo()
+            .set_source(previous)
+            .await
+            .expect("restore source");
         db.commit().await.expect("commit");
     }
 
