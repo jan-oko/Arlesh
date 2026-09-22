@@ -76,3 +76,33 @@ export function useSubtreeNav(tree: MindmapNode): SubtreeNavHandles {
 
   return { subtreeRootId, parentSubtreeId, onExitSubtree, onExitToRoot };
 }
+
+/** The two "go up" actions on their own, derived from the published descriptor rather than a tree. */
+export interface SubtreeExits {
+  subtreeRootId: string | null;
+  onExitSubtree: () => void;
+  onExitToRoot: () => void;
+}
+
+/**
+ * The subtree exits **without a tree**, for `ActiveTab` — which owns the global bindings and loads
+ * no board of its own.
+ *
+ * `useSubtreeNav` above both *publishes* the descriptor (which needs the tree, to walk down to the
+ * root and name every level above it) and consumes it. Only the publishing half needs the tree, so
+ * a consumer that just wants the two exits reads the descriptor whichever view already published
+ * it — exactly as the top bar's breadcrumb does. With no descriptor published there is no subtree
+ * to leave, and the bindings are guarded on `subtreeRootId` anyway.
+ */
+export function useSubtreeExits(): SubtreeExits {
+  const subtreeRootId = useMindmapStore((s) => s.subtreeRootId);
+  const subtreeNav = useMindmapStore((s) => s.subtreeNav);
+  const exitSubtree = useMindmapStore((s) => s.exitSubtree);
+  const onExitToRoot = useMindmapStore((s) => s.exitToRoot);
+
+  const ancestors = subtreeNav?.ancestors ?? [];
+  const parentSubtreeId = ancestors[ancestors.length - 1]?.id ?? null;
+  const onExitSubtree = useCallback(() => exitSubtree(parentSubtreeId), [exitSubtree, parentSubtreeId]);
+
+  return { subtreeRootId, onExitSubtree, onExitToRoot };
+}

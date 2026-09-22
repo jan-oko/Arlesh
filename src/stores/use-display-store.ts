@@ -26,6 +26,25 @@ interface DisplayStore {
    */
   asynchronousFirst: boolean;
   toggleAsynchronousFirst: () => void;
+  /**
+   * Whether the Plan View's two panes draw a path header above each run of rows sharing a
+   * location, as the List View does.
+   *
+   * **Off by default**, and a switch of its own rather than half of one with the split below. They
+   * answer different questions — *where the work lives* against *when it is planned* — and a
+   * planning pass wants them in different combinations.
+   */
+  planPathGrouping: boolean;
+  togglePlanPathGrouping: () => void;
+  /**
+   * Whether the Plan View's **planned** pane splits into one section per subscope: the weeks of a
+   * month, the days of a week, the bands of a day.
+   *
+   * **Off by default.** The candidates pane is never split — unplanned work sits in no subscope,
+   * so there is no bucket to put it in.
+   */
+  planSubscopeSplit: boolean;
+  togglePlanSubscopeSplit: () => void;
 }
 
 /** Keeps a stored or typed threshold inside the range the setting offers. */
@@ -49,6 +68,7 @@ function clampThreshold(value: number): number {
  * you want to see at once is a preference about reading the map, not about where one tab is. So
  * does *Asynchronous first*: whether work that starts a wait should lead its run is a statement
  * about how you like to read a list, and finding it off again in the next tab would read as a bug.
+ * The Plan View's two shape switches join them on the same reasoning.
  */
 export const useDisplayStore = create<DisplayStore>()(
   persist(
@@ -59,6 +79,10 @@ export const useDisplayStore = create<DisplayStore>()(
       setHabitCollapseThreshold: (value) => set({ habitCollapseThreshold: clampThreshold(value) }),
       asynchronousFirst: false,
       toggleAsynchronousFirst: () => set((s) => ({ asynchronousFirst: !s.asynchronousFirst })),
+      planPathGrouping: false,
+      togglePlanPathGrouping: () => set((s) => ({ planPathGrouping: !s.planPathGrouping })),
+      planSubscopeSplit: false,
+      togglePlanSubscopeSplit: () => set((s) => ({ planSubscopeSplit: !s.planSubscopeSplit })),
     }),
     { name: "arlesh-display" },
   ),

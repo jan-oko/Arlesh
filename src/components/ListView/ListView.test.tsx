@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import ListView from "./ListView";
+import { useGlobalHotkeys } from "@/hooks/use-global-hotkeys";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useListFilterStore } from "@/stores/use-list-filter-store";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
@@ -45,6 +46,19 @@ vi.mock("@/api/flows", async (importOriginal) => ({
 }));
 vi.mock("@/hooks/use-tag-names", () => ({ useTagNames: () => new Map() }));
 vi.mock("@/hooks/use-scope-range-label", () => ({ useScopeRangeLabel: () => null }));
+
+/**
+ * The List View as the app actually mounts it: its own binding table **and** the global one.
+ *
+ * The two are never apart in the running app, and several chords the list responds to are declared
+ * globally — the subtree exits, `Ctrl+O`, `Alt+F` — while the thing they affect (the search modal,
+ * the filter popover, the rows) is drawn by the view. Rendering the view alone would assert on half
+ * a mechanism and quietly pass whatever the other half did.
+ */
+function ListViewInApp() {
+  useGlobalHotkeys();
+  return <ListView />;
+}
 
 function n(id: string, kind: NodeKind, extra: Partial<MindmapNode> = {}): MindmapNode {
   return { id, kind, title: id, position: 0, tagIds: [], children: [], ...extra };
@@ -182,7 +196,7 @@ describe("ListView — Asynchronous first", () => {
 
   it("leaves row order exactly as the tree gave it, and draws no section, while the setting is off", () => {
     mockUseListData.mockReturnValue(listData({ rows: nestedRows() }));
-    const { container } = render(<ListView />);
+    const { container } = render(<ListViewInApp />);
     expect(renderedTitles(container)).toEqual(["task-parent", "task-first", "task-wait", "task-last"]);
     expect(screen.queryByText("listView:asynchronousHeading")).not.toBeInTheDocument();
   });
@@ -190,7 +204,7 @@ describe("ListView — Asynchronous first", () => {
   it("lifts the asynchronous row into a section at the top once the setting is on", () => {
     useDisplayStore.setState({ asynchronousFirst: true });
     mockUseListData.mockReturnValue(listData({ rows: nestedRows() }));
-    const { container } = render(<ListView />);
+    const { container } = render(<ListViewInApp />);
     expect(screen.getByText("listView:asynchronousHeading")).toBeInTheDocument();
     expect(renderedTitles(container)).toEqual(["task-wait", "task-parent", "task-first", "task-last"]);
   });
@@ -198,7 +212,7 @@ describe("ListView — Asynchronous first", () => {
   it("names the parent the lifted row left behind in the section's own path header", () => {
     useDisplayStore.setState({ asynchronousFirst: true });
     mockUseListData.mockReturnValue(listData({ rows: nestedRows() }));
-    const { container } = render(<ListView />);
+    const { container } = render(<ListViewInApp />);
     expect(renderedHeaders(container)).toEqual([
       "aspect-1 > goal-1 > task-parent",
       "aspect-1 > goal-1",
@@ -208,7 +222,7 @@ describe("ListView — Asynchronous first", () => {
   it("moves the row rather than duplicating it", () => {
     useDisplayStore.setState({ asynchronousFirst: true });
     mockUseListData.mockReturnValue(listData({ rows: nestedRows() }));
-    const { container } = render(<ListView />);
+    const { container } = render(<ListViewInApp />);
     expect(renderedTitles(container).filter((title) => title === "task-wait")).toHaveLength(1);
   });
 
@@ -222,7 +236,7 @@ describe("ListView — Asynchronous first", () => {
         row({ node: n("task-child", "task", { status: "todo" }), ancestors: [aspect(), goal(), waiting] }),
       ],
     }));
-    const { container } = render(<ListView />);
+    const { container } = render(<ListViewInApp />);
     expect(renderedTitles(container)).toEqual(["task-wait", "task-child", "task-plain"]);
     expect(renderedDepths(container)).toEqual(["0", "1", "0"]);
   });
@@ -242,7 +256,7 @@ describe("ListView — Asynchronous first", () => {
         }),
       ],
     }));
-    const { container } = render(<ListView />);
+    const { container } = render(<ListViewInApp />);
     expect(renderedTitles(container)).toEqual(["task-outer", "task-middle", "task-inner"]);
     expect(renderedDepths(container)).toEqual(["0", "1", "2"]);
     expect(renderedHeaders(container)).toEqual(["aspect-1 > goal-1"]);
@@ -253,7 +267,7 @@ describe("ListView — Asynchronous first", () => {
     mockUseListData.mockReturnValue(listData({
       rows: [row({ node: n("task-plain", "task", { status: "todo" }), ancestors: [aspect(), goal()] })],
     }));
-    const { container } = render(<ListView />);
+    const { container } = render(<ListViewInApp />);
     expect(screen.queryByText("listView:asynchronousHeading")).not.toBeInTheDocument();
     expect(renderedHeaders(container)).toEqual(["aspect-1 > goal-1"]);
   });
@@ -269,7 +283,7 @@ describe("ListView — Asynchronous first", () => {
         }),
       ],
     }));
-    const { container } = render(<ListView />);
+    const { container } = render(<ListViewInApp />);
     expect(screen.getByText("listView:asynchronousHeading")).toBeInTheDocument();
     expect(renderedHeaders(container)).toEqual(["aspect-1 > goal-1"]);
     expect(renderedTitles(container)).toEqual(["task-wait"]);
@@ -284,10 +298,10 @@ describe("ListView — Asynchronous first", () => {
       row({ node, ancestors: [aspect(), goal()], isAsynchronous: true });
     const neighbour = row({ node: n("task-plain", "task", { status: "todo" }), ancestors: [aspect(), goal()] });
     mockUseListData.mockReturnValue(listData({ rows: [waiting(todo), neighbour] }));
-    const view = render(<ListView />);
+    const view = render(<ListViewInApp />);
     fireEvent.click(screen.getByText("task-wait"));
     mockUseListData.mockReturnValue(listData({ rows: [waiting(done), neighbour] }));
-    view.rerender(<ListView />);
+    view.rerender(<ListViewInApp />);
     expect(renderedTitles(view.container)).toEqual(["task-wait", "task-plain"]);
     expect(view.container.querySelector("[class*='cardFocusExempt']")?.textContent).toContain("task-wait");
   });
@@ -295,7 +309,7 @@ describe("ListView — Asynchronous first", () => {
   it("closes the section with a rule, between its last row and the first ordinary header", () => {
     useDisplayStore.setState({ asynchronousFirst: true });
     mockUseListData.mockReturnValue(listData({ rows: nestedRows() }));
-    const { container } = render(<ListView />);
+    const { container } = render(<ListViewInApp />);
     expect(renderedBlocks(container)).toEqual([
       "section:listView:asynchronousHeading",
       "header:aspect-1 > goal-1 > task-parent",
@@ -319,7 +333,7 @@ describe("ListView — Asynchronous first", () => {
         }),
       ],
     }));
-    const { container } = render(<ListView />);
+    const { container } = render(<ListViewInApp />);
     expect(renderedBlocks(container)).toEqual([
       "section:listView:asynchronousHeading",
       "header:aspect-1 > goal-1",
@@ -332,7 +346,7 @@ describe("ListView — Asynchronous first", () => {
     mockUseListData.mockReturnValue(listData({
       rows: [row({ node: n("task-plain", "task", { status: "todo" }), ancestors: [aspect(), goal()] })],
     }));
-    const { container } = render(<ListView />);
+    const { container } = render(<ListViewInApp />);
     expect(renderedBlocks(container)).toEqual([
       "header:aspect-1 > goal-1",
       "row:task-plain",
@@ -352,7 +366,7 @@ describe("ListView — Asynchronous first", () => {
         }),
       ],
     }));
-    const { container } = render(<ListView />);
+    const { container } = render(<ListViewInApp />);
     const selected: string[] = [];
     for (let step = 0; step < 3; step++) {
       fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
@@ -366,19 +380,19 @@ describe("ListView — Asynchronous first", () => {
 
 describe("ListView", () => {
   it("renders a task row", () => {
-    render(<ListView />);
+    render(<ListViewInApp />);
     expect(screen.getByText("task-1")).toBeInTheDocument();
   });
 
   it("shows the loading state", () => {
     mockUseListData.mockReturnValue(listData({ rows: [], isLoading: true }));
-    render(<ListView />);
+    render(<ListViewInApp />);
     expect(screen.getByText("common:loading")).toBeInTheDocument();
   });
 
   it("shows the empty state when no rows pass the filter", () => {
     mockUseListData.mockReturnValue(listData({ rows: [] }));
-    render(<ListView />);
+    render(<ListViewInApp />);
     expect(screen.getByText("listView:empty")).toBeInTheDocument();
   });
 
@@ -390,13 +404,13 @@ describe("ListView", () => {
         row({ node: n("task-blocked", "task", { status: "todo" }), isBlocked: true }),
       ],
     }));
-    render(<ListView />);
+    render(<ListViewInApp />);
     expect(screen.queryByText("task-open")).not.toBeInTheDocument();
     expect(screen.getByText("task-blocked")).toBeInTheDocument();
   });
 
   it("names a run's whole chain in a path header above it", () => {
-    render(<ListView />);
+    render(<ListViewInApp />);
     expect(screen.getByText("aspect-1")).toBeInTheDocument();
     // "goal-1" reads once, as the last path segment: the row card carries no parent label.
     expect(screen.getAllByText("goal-1")).toHaveLength(1);
@@ -406,7 +420,7 @@ describe("ListView", () => {
     mockUseListData.mockReturnValue(listData({
       rows: [row({ ancestors: [], goalRef: null, goalStatus: null })],
     }));
-    render(<ListView />);
+    render(<ListViewInApp />);
     expect(screen.getByText("task-1")).toBeInTheDocument();
     expect(screen.queryByTitle("pathSegmentActions")).not.toBeInTheDocument();
   });
@@ -414,7 +428,7 @@ describe("ListView", () => {
   // The chain is read for where it ends, so the header is marked with the kind of its nearest
   // ancestor — the node the rows below hang directly from — once, not once per step.
   it("marks a path header with the node kind of the nearest ancestor", () => {
-    render(<ListView />);
+    render(<ListViewInApp />);
     const [firstSegment] = screen.getAllByTitle("pathSegmentActions");
     const header = firstSegment?.parentElement;
     if (header === null || header === undefined) throw new Error("expected a path header");
@@ -424,7 +438,7 @@ describe("ListView", () => {
 
   it("drops the glyph when the settings popover's Path icons switch is off, keeping the chain", () => {
     useDisplayStore.setState({ pathHeaderIcons: false });
-    render(<ListView />);
+    render(<ListViewInApp />);
     const [firstSegment] = screen.getAllByTitle("pathSegmentActions");
     const header = firstSegment?.parentElement;
     if (header === null || header === undefined) throw new Error("expected a path header");
@@ -438,7 +452,7 @@ describe("ListView", () => {
     mockUseListData.mockReturnValue(listData({
       rows: [row({ ancestors: [n("aspect-1", "aspect")], goalRef: null, goalStatus: null })],
     }));
-    render(<ListView />);
+    render(<ListViewInApp />);
     const [firstSegment] = screen.getAllByTitle("pathSegmentActions");
     const header = firstSegment?.parentElement;
     if (header === null || header === undefined) throw new Error("expected a path header");
@@ -457,7 +471,7 @@ describe("ListView", () => {
         }),
       ],
     }));
-    render(<ListView />);
+    render(<ListViewInApp />);
     // The Do preset filters the parent out as a row, so it moves into the header instead.
     expect(screen.getAllByTitle("pathSegmentActions").map((segment) => segment.textContent))
       .toEqual(["aspect-1", "goal-1", "task-parent"]);
@@ -491,26 +505,26 @@ describe("ListView", () => {
 
     it("indents each row once per ancestor shown above it", () => {
       mockUseListData.mockReturnValue(listData({ rows: nestedRows() }));
-      const { container } = render(<ListView />);
+      const { container } = render(<ListViewInApp />);
       expect(renderedDepths(container)).toEqual(["0", "1", "2"]);
     });
 
     it("sits a subtask flush when the filter hides its parent, rather than indenting under nothing", () => {
       useFilterStore.setState({ filter: { ...DEFAULT_FILTER, statusMode: "do" } });
       mockUseListData.mockReturnValue(listData({ rows: nestedRows() }));
-      const { container } = render(<ListView />);
+      const { container } = render(<ListViewInApp />);
       // Do drops the to-do eldest, so the child it leaves at the top of the run indents under nothing.
       expect(renderedDepths(container)).toEqual(["0", "1"]);
     });
 
     it("leaves a flat list unindented, costing it no horizontal room", () => {
-      const { container } = render(<ListView />);
+      const { container } = render(<ListViewInApp />);
       expect(renderedDepths(container)).toEqual(["0"]);
     });
 
     it("ArrowDown walks indented rows in the order they are drawn", () => {
       mockUseListData.mockReturnValue(listData({ rows: nestedRows() }));
-      const { container } = render(<ListView />);
+      const { container } = render(<ListViewInApp />);
       const selectedIndexes: number[] = [];
       for (let step = 0; step < 3; step++) {
         fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
@@ -533,7 +547,7 @@ describe("ListView", () => {
 
   it("clicking a path segment enters that segment's subtree, exactly as Ctrl+O does", () => {
     mockUseListData.mockReturnValue(withPathTree());
-    render(<ListView />);
+    render(<ListViewInApp />);
     const [aspectSegment] = screen.getAllByTitle("pathSegmentActions");
     if (aspectSegment === undefined) throw new Error("expected a path header segment");
     fireEvent.click(aspectSegment);
@@ -547,7 +561,7 @@ describe("ListView", () => {
 
   it("clicking a path segment touches no filter at all", () => {
     mockUseListData.mockReturnValue(withPathTree());
-    render(<ListView />);
+    render(<ListViewInApp />);
     const [aspectSegment] = screen.getAllByTitle("pathSegmentActions");
     if (aspectSegment === undefined) throw new Error("expected a path header segment");
     fireEvent.click(aspectSegment);
@@ -563,7 +577,7 @@ describe("ListView", () => {
     /** The first segment of the header — `aspect-1`, which the tree in `withPathTree` really holds. */
     function firstSegment() {
       mockUseListData.mockReturnValue(withPathTree());
-      render(<ListView />);
+      render(<ListViewInApp />);
       const [segment] = screen.getAllByTitle("pathSegmentActions");
       if (segment === undefined) throw new Error("expected a path header segment");
       return segment;
@@ -621,20 +635,20 @@ describe("ListView", () => {
   });
 
   it("no longer offers a Goal-visibility toggle", () => {
-    render(<ListView />);
+    render(<ListViewInApp />);
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
   });
 
   // Parent was retired as a pill dimension: the path header above the run already names a row's
   // parent, so a label on the card restated what was on screen a line above it.
   it("shows no parent label on a task card", () => {
-    render(<ListView />);
+    render(<ListViewInApp />);
     expect(screen.queryByTitle("filterByParent")).not.toBeInTheDocument();
   });
 
   it("clicking a task's tag pill adds a shared tag filter", () => {
     mockUseListData.mockReturnValue(listData({ rows: [row({ node: n("task-1", "task", { status: "todo", tagIds: [7] }) })] }));
-    render(<ListView />);
+    render(<ListViewInApp />);
     fireEvent.click(screen.getByTitle("filterByTag"));
     expect(useFilterStore.getState().filter.tagFilters).toEqual([{ tagId: 7, mode: "any" }]);
   });
@@ -676,7 +690,7 @@ describe("ListView", () => {
 
     it("Ctrl+O opens the node search over every node kind", () => {
       mockUseListData.mockReturnValue(searchable());
-      render(<ListView />);
+      render(<ListViewInApp />);
       expect(screen.queryByPlaceholderText("common:searchNodesPlaceholder")).not.toBeInTheDocument();
       openSearch("arlesh");
       expect(screen.getByText("ARLESH")).toBeInTheDocument();
@@ -684,7 +698,7 @@ describe("ListView", () => {
 
     it("picking a search result enters that node's subtree", () => {
       mockUseListData.mockReturnValue(searchable());
-      render(<ListView />);
+      render(<ListViewInApp />);
       openSearch("arlesh");
       fireEvent.mouseDown(screen.getByText("ARLESH"));
       expect(useMindmapStore.getState().subtreeRootId).toBe("project-1");
@@ -693,7 +707,7 @@ describe("ListView", () => {
 
     it("picking a search result touches no filter at all", () => {
       mockUseListData.mockReturnValue(searchable());
-      render(<ListView />);
+      render(<ListViewInApp />);
       openSearch("arlesh");
       fireEvent.mouseDown(screen.getByText("ARLESH"));
       expect(useListFilterStore.getState().filter).toEqual(DEFAULT_LIST_FILTER);
@@ -702,7 +716,7 @@ describe("ListView", () => {
 
     it("entering a subtree publishes the chain the top bar's breadcrumb renders from", () => {
       mockUseListData.mockReturnValue(searchable());
-      render(<ListView />);
+      render(<ListViewInApp />);
       openSearch("arlesh");
       fireEvent.mouseDown(screen.getByText("ARLESH"));
       // The Mindmap is unmounted here, so the List View has to be the one publishing this.
@@ -721,7 +735,7 @@ describe("ListView", () => {
 
     it("Shift+Escape goes up one level, not straight out", () => {
       mockUseListData.mockReturnValue(searchable());
-      render(<ListView />);
+      render(<ListViewInApp />);
       openSearch("deeper");
       fireEvent.mouseDown(screen.getByText("Deeper"));
       fireEvent.keyDown(window, { key: "Escape", code: "Escape", shiftKey: true });
@@ -732,7 +746,7 @@ describe("ListView", () => {
 
     it("Ctrl+Escape goes straight back to the root from any depth", () => {
       mockUseListData.mockReturnValue(searchable());
-      render(<ListView />);
+      render(<ListViewInApp />);
       openSearch("deeper");
       fireEvent.mouseDown(screen.getByText("Deeper"));
       fireEvent.keyDown(window, { key: "Escape", code: "Escape", ctrlKey: true });
@@ -741,7 +755,7 @@ describe("ListView", () => {
 
     it("bare Escape deselects without leaving the subtree", () => {
       mockUseListData.mockReturnValue(searchable());
-      render(<ListView />);
+      render(<ListViewInApp />);
       openSearch("arlesh");
       fireEvent.mouseDown(screen.getByText("ARLESH"));
       fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
@@ -751,7 +765,7 @@ describe("ListView", () => {
 
     it("Escape closes the node search without entering anything", () => {
       mockUseListData.mockReturnValue(searchable());
-      render(<ListView />);
+      render(<ListViewInApp />);
       const input = openSearch("arlesh");
       fireEvent.keyDown(input, { key: "Escape" });
       expect(screen.queryByPlaceholderText("common:searchNodesPlaceholder")).not.toBeInTheDocument();
@@ -760,7 +774,7 @@ describe("ListView", () => {
 
     it("ArrowDown selects the first row when nothing is selected, then moves to the next", () => {
       mockUseListData.mockReturnValue(twoRows());
-      const { container } = render(<ListView />);
+      const { container } = render(<ListViewInApp />);
       fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
       const cards = container.querySelectorAll("[class*='card']");
       expect(cards[0]?.className).toMatch(/cardSelected/);
@@ -770,7 +784,7 @@ describe("ListView", () => {
 
     it("ArrowUp selects the last row when nothing is selected", () => {
       mockUseListData.mockReturnValue(twoRows());
-      const { container } = render(<ListView />);
+      const { container } = render(<ListViewInApp />);
       fireEvent.keyDown(window, { key: "ArrowUp", code: "ArrowUp" });
       expect(container.querySelectorAll("[class*='card']")[1]?.className).toMatch(/cardSelected/);
     });
@@ -778,7 +792,7 @@ describe("ListView", () => {
     it("Enter cycles the selected row's status", () => {
       const data = twoRows();
       mockUseListData.mockReturnValue(data);
-      render(<ListView />);
+      render(<ListViewInApp />);
       fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
       fireEvent.keyDown(window, { key: "Enter", code: "Enter" });
       expect(data.onCycleStatus).toHaveBeenCalledWith("task-a");
@@ -787,7 +801,7 @@ describe("ListView", () => {
     it("Enter does nothing for a blocked selected row", () => {
       const data = listData({ rows: [row({ isBlocked: true })] });
       mockUseListData.mockReturnValue(data);
-      render(<ListView />);
+      render(<ListViewInApp />);
       fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
       fireEvent.keyDown(window, { key: "Enter", code: "Enter" });
       expect(data.onCycleStatus).not.toHaveBeenCalled();
@@ -795,7 +809,7 @@ describe("ListView", () => {
 
     it("R starts an inline rename of the selected row", () => {
       mockUseListData.mockReturnValue(twoRows());
-      render(<ListView />);
+      render(<ListViewInApp />);
       fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
       fireEvent.keyDown(window, { key: "r", code: "KeyR" });
       expect(screen.getByRole("textbox")).toHaveValue("task-a");
@@ -804,7 +818,7 @@ describe("ListView", () => {
     it("committing a rename calls renameNode with the task kind", () => {
       const data = twoRows();
       mockUseListData.mockReturnValue(data);
-      render(<ListView />);
+      render(<ListViewInApp />);
       fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
       fireEvent.keyDown(window, { key: "r", code: "KeyR" });
       const input = screen.getByRole("textbox");
@@ -815,7 +829,7 @@ describe("ListView", () => {
 
     it("Escape deselects the current row", () => {
       mockUseListData.mockReturnValue(twoRows());
-      const { container } = render(<ListView />);
+      const { container } = render(<ListViewInApp />);
       fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
       expect(container.querySelector("[class*='cardSelected']")).not.toBeNull();
       fireEvent.keyDown(window, { key: "Escape", code: "Escape" });
@@ -823,13 +837,13 @@ describe("ListView", () => {
     });
 
     it("Alt+F toggles the filter popover", () => {
-      render(<ListView />);
+      render(<ListViewInApp />);
       fireEvent.keyDown(window, { key: "f", code: "KeyF", altKey: true });
       expect(useFilterStore.getState().popoverOpen).toBe(true);
     });
 
     it("Alt+P sets the Plan status preset in both stores", () => {
-      render(<ListView />);
+      render(<ListViewInApp />);
       fireEvent.keyDown(window, { key: "p", code: "KeyP", altKey: true });
       expect(useFilterStore.getState().filter.statusMode).toBe("plan");
       expect(useListFilterStore.getState().filter.preset).toBe("plan");
@@ -837,7 +851,7 @@ describe("ListView", () => {
 
     it("navigation skips path header entries, selecting only task rows", () => {
       mockUseListData.mockReturnValue(twoRows());
-      const { container } = render(<ListView />);
+      const { container } = render(<ListViewInApp />);
       fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
       // Path headers aren't TaskRow cards at all, so the selection must land on the first task card.
       const selected = container.querySelector("[class*='cardSelected']");
@@ -885,7 +899,7 @@ describe("ListView", () => {
 
     it("brings each newly selected row into view as the arrows move", () => {
       mockUseListData.mockReturnValue(twoRows());
-      render(<ListView />);
+      render(<ListViewInApp />);
       fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
       fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
       expect(intoViewRows).toEqual(["task-a", "task-b"]);
@@ -897,14 +911,14 @@ describe("ListView", () => {
         rows: [row()],
         tree: treeWith(n("commitment-1", "commitment", { verdict: "unresolved" })),
       }));
-      render(<ListView />);
+      render(<ListViewInApp />);
       fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
       expect(intoViewRows).toEqual(["commitment-1"]);
     });
 
     it("J scrolls down a fixed step and leaves the selection where it is", () => {
       mockUseListData.mockReturnValue(twoRows());
-      const { container } = render(<ListView />);
+      const { container } = render(<ListViewInApp />);
       fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
       intoViewRows = [];
 
@@ -919,7 +933,7 @@ describe("ListView", () => {
 
     it("K scrolls up by the same step", () => {
       mockUseListData.mockReturnValue(twoRows());
-      render(<ListView />);
+      render(<ListViewInApp />);
       fireEvent.keyDown(window, { key: "k", code: "KeyK" });
       fireEvent.keyUp(window, { key: "k", code: "KeyK" });
       expect(scrollByCalls).toEqual([{ top: -LIST_SCROLL_STEP_PX, behavior: "auto" }]);
@@ -929,7 +943,7 @@ describe("ListView", () => {
       // The press starts a continuous scroll at a speed this app sets; if the repeats were acted on
       // too they would restart it, and the pace would be the OS's key-repeat setting again.
       mockUseListData.mockReturnValue(twoRows());
-      render(<ListView />);
+      render(<ListViewInApp />);
       fireEvent.keyDown(window, { key: "j", code: "KeyJ" });
       fireEvent.keyDown(window, { key: "j", code: "KeyJ", repeat: true });
       fireEvent.keyDown(window, { key: "j", code: "KeyJ", repeat: true });
@@ -939,7 +953,7 @@ describe("ListView", () => {
 
     it("scrolls with no selection at all", () => {
       mockUseListData.mockReturnValue(twoRows());
-      const { container } = render(<ListView />);
+      const { container } = render(<ListViewInApp />);
       fireEvent.keyDown(window, { key: "j", code: "KeyJ" });
       fireEvent.keyUp(window, { key: "j", code: "KeyJ" });
       expect(scrollByCalls).toHaveLength(1);
@@ -948,7 +962,7 @@ describe("ListView", () => {
 
     it("re-anchors on the selection when the arrows move it after a J scroll", () => {
       mockUseListData.mockReturnValue(twoRows());
-      render(<ListView />);
+      render(<ListViewInApp />);
       fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
       fireEvent.keyDown(window, { key: "j", code: "KeyJ" });
       fireEvent.keyUp(window, { key: "j", code: "KeyJ" });
@@ -968,10 +982,10 @@ describe("ListView", () => {
     function completeSelectedTaskUnderPlan() {
       useFilterStore.setState({ filter: { ...DEFAULT_FILTER, statusMode: "plan" } });
       mockUseListData.mockReturnValue(listData({ rows: [todo(), neighbour()] }));
-      const view = render(<ListView />);
+      const view = render(<ListViewInApp />);
       fireEvent.click(screen.getByText("task-1"));
       mockUseListData.mockReturnValue(listData({ rows: [done(), neighbour()] }));
-      view.rerender(<ListView />);
+      view.rerender(<ListViewInApp />);
       return view;
     }
 
@@ -1024,7 +1038,7 @@ describe("ListView — the commitments section", () => {
 
   it("renders commitments as their own section above the task rows", () => {
     mockUseListData.mockReturnValue(listData({ commitmentRows: [commitmentRow()], rows: [row()], tree: treeWith(n("commitment-1", "commitment", { verdict: "unresolved" }), n("task-1", "task")) }));
-    render(<ListView />);
+    render(<ListViewInApp />);
 
     expect(screen.getByRole("region", { name: "listView:commitmentsHeading" })).toBeInTheDocument();
     // The band reads first: a commitment is a standing rule, not work scattered through the list.
@@ -1033,13 +1047,13 @@ describe("ListView — the commitments section", () => {
 
   it("shows no section at all when no commitment matches", () => {
     mockUseListData.mockReturnValue(listData({ commitmentRows: [], rows: [row()] }));
-    render(<ListView />);
+    render(<ListViewInApp />);
     expect(screen.queryByRole("region", { name: "listView:commitmentsHeading" })).not.toBeInTheDocument();
   });
 
   it("records Kept when the tick is clicked", () => {
     mockUseListData.mockReturnValue(listData({ commitmentRows: [commitmentRow()], rows: [], tree: treeWith(n("commitment-1", "commitment", { verdict: "unresolved" })) }));
-    render(<ListView />);
+    render(<ListViewInApp />);
 
     fireEvent.click(screen.getByRole("button", { name: "markKept" }));
     expect(updateCommitment).toHaveBeenCalledWith(1, { verdict: "kept" });
@@ -1047,7 +1061,7 @@ describe("ListView — the commitments section", () => {
 
   it("records Broken when the cross is clicked", () => {
     mockUseListData.mockReturnValue(listData({ commitmentRows: [commitmentRow()], rows: [], tree: treeWith(n("commitment-1", "commitment", { verdict: "unresolved" })) }));
-    render(<ListView />);
+    render(<ListViewInApp />);
 
     fireEvent.click(screen.getByRole("button", { name: "markBroken" }));
     expect(updateCommitment).toHaveBeenCalledWith(1, { verdict: "broken" });
@@ -1060,7 +1074,7 @@ describe("ListView — the commitments section", () => {
       rows: [],
       tree: treeWith(n("commitment-1", "commitment", { verdict: "kept" })),
     }));
-    render(<ListView />);
+    render(<ListViewInApp />);
 
     fireEvent.click(screen.getByRole("button", { name: "clearVerdict" }));
     expect(updateCommitment).toHaveBeenCalledWith(1, { verdict: "unresolved" });
@@ -1074,7 +1088,7 @@ describe("ListView — the commitments section", () => {
       rows: [],
       tree: treeWith(n("commitment-1", "commitment", { verdict: "kept" })),
     }));
-    render(<ListView />);
+    render(<ListViewInApp />);
 
     fireEvent.click(screen.getByRole("button", { name: "markBroken" }));
     expect(updateCommitment).toHaveBeenCalledWith(1, { verdict: "broken" });
@@ -1084,7 +1098,7 @@ describe("ListView — the commitments section", () => {
   function pressOnCommitment(verdict: Verdict, key: { key: string; code: string }) {
     const node = n("commitment-1", "commitment", { verdict, timing: "active" });
     mockUseListData.mockReturnValue(listData({ commitmentRows: [commitmentRow({ node })], rows: [], tree: treeWith(node) }));
-    render(<ListView />);
+    render(<ListViewInApp />);
     fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
     fireEvent.keyDown(window, key);
   }
@@ -1119,7 +1133,7 @@ describe("ListView — the commitments section", () => {
       rows: [],
       tree: treeWith(iteration),
     }));
-    render(<ListView />);
+    render(<ListViewInApp />);
 
     fireEvent.click(screen.getByRole("button", { name: "markBroken" }));
     expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_root", 3, 100, 0, "broken", expect.any(Number));
@@ -1129,7 +1143,7 @@ describe("ListView — the commitments section", () => {
   it("leaves Enter meaning 'cycle the status' when the selected row is a task", () => {
     const data = listData({ commitmentRows: [], rows: [row()] });
     mockUseListData.mockReturnValue(data);
-    render(<ListView />);
+    render(<ListViewInApp />);
 
     fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
     fireEvent.keyDown(window, { key: "Enter", code: "Enter" });
@@ -1166,14 +1180,14 @@ describe("ListView — creating tasks", () => {
 
   it("Tab creates a child of the selected row", async () => {
     const { createTask } = setup();
-    render(<ListView />);
+    render(<ListViewInApp />);
     await gestureFromAnchor("Tab");
     expect(createTask).toHaveBeenCalledWith("task-a", "task", undefined);
   });
 
   it("Shift+Enter creates a sibling, under whatever the selected row hangs from", async () => {
     const { createTask } = setup();
-    render(<ListView />);
+    render(<ListViewInApp />);
     await gestureFromAnchor("Enter", true);
     expect(createTask).toHaveBeenCalledWith("goal-1", "goal", "inherit");
   });
@@ -1184,7 +1198,7 @@ describe("ListView — creating tasks", () => {
     const { createTask } = setup({
       rows: [row({ node: n("task-a", "task", { status: "in_progress", agentic: true }), isAgentic: true })],
     });
-    render(<ListView />);
+    render(<ListViewInApp />);
     await gestureFromAnchor("Enter", true);
     expect(createTask).toHaveBeenCalledWith("goal-1", "goal", "yes");
   });
@@ -1195,14 +1209,14 @@ describe("ListView — creating tasks", () => {
     const { createTask } = setup({
       rows: [row({ node: n("task-a", "task", { status: "in_progress" }), isAgentic: true })],
     });
-    render(<ListView />);
+    render(<ListViewInApp />);
     await gestureFromAnchor("Enter", true);
     expect(createTask).toHaveBeenCalledWith("goal-1", "goal", "inherit");
   });
 
   it("does nothing with no row selected — there is no parent to read", async () => {
     const { createTask } = setup();
-    render(<ListView />);
+    render(<ListViewInApp />);
     await act(async () => { fireEvent.keyDown(window, { key: "Tab", code: "Tab" }); });
     expect(createTask).not.toHaveBeenCalled();
   });
@@ -1210,7 +1224,7 @@ describe("ListView — creating tasks", () => {
   // The answer to "nothing selected means no parent": the header already names where the run lives.
   it("the path header's + creates under the chain's last node", () => {
     const { createTask } = setup();
-    render(<ListView />);
+    render(<ListViewInApp />);
     fireEvent.click(screen.getByTitle("createTaskHere"));
     expect(createTask).toHaveBeenCalledWith("goal-1", "goal", undefined);
   });
@@ -1219,25 +1233,25 @@ describe("ListView — creating tasks", () => {
     setup({
       rows: [row({ ancestors: [n("flow-1", "flow")], goalRef: null, goalStatus: null })],
     });
-    render(<ListView />);
+    render(<ListViewInApp />);
     expect(screen.queryByTitle("createTaskHere")).not.toBeInTheDocument();
   });
 
   it("opens the new row in inline rename, so the title can be typed straight away", async () => {
     setup();
-    const view = render(<ListView />);
+    const view = render(<ListViewInApp />);
     await gestureFromAnchor("Tab");
     mockUseListData.mockReturnValue(listData({ rows: [anchor(), createdChild("todo")] }));
-    view.rerender(<ListView />);
+    view.rerender(<ListViewInApp />);
     expect(screen.getByDisplayValue("task-new")).toBeInTheDocument();
   });
 
   it("discards the new task entirely when that first rename is escaped", async () => {
     const { deleteTask, createTask } = setup();
-    const view = render(<ListView />);
+    const view = render(<ListViewInApp />);
     await gestureFromAnchor("Tab");
     mockUseListData.mockReturnValue(listData({ rows: [anchor(), createdChild("todo")], createTask, deleteTask }));
-    view.rerender(<ListView />);
+    view.rerender(<ListViewInApp />);
 
     fireEvent.keyDown(screen.getByDisplayValue("task-new"), { key: "Escape", code: "Escape" });
 
@@ -1246,11 +1260,11 @@ describe("ListView — creating tasks", () => {
 
   it("indents the new row under the row it was created from", async () => {
     setup();
-    const view = render(<ListView />);
+    const view = render(<ListViewInApp />);
     await gestureFromAnchor("Tab");
     mockUseListData.mockReturnValue(listData({ rows: [anchor(), createdChild("todo")] }));
     const { container } = view;
-    view.rerender(<ListView />);
+    view.rerender(<ListViewInApp />);
     const card = container.querySelector("[data-row-id='task-new']");
     expect(card?.getAttribute("style")).toContain("--row-depth: 1");
   });
@@ -1261,10 +1275,10 @@ describe("ListView — creating tasks", () => {
       useFilterStore.setState({ filter: { ...DEFAULT_FILTER, statusMode: "do" } });
       useListFilterStore.setState({ filter: { ...DEFAULT_LIST_FILTER, preset: "do" } });
       const handles = setup();
-      const view = render(<ListView />);
+      const view = render(<ListViewInApp />);
       await gestureFromAnchor("Tab");
       mockUseListData.mockReturnValue(listData({ rows: [anchor(), createdChild("todo")], ...handles }));
-      view.rerender(<ListView />);
+      view.rerender(<ListViewInApp />);
       fireEvent.keyDown(screen.getByDisplayValue("task-new"), { key: "Enter", code: "Enter" });
       return { view, handles };
     }
@@ -1277,7 +1291,7 @@ describe("ListView — creating tasks", () => {
     it("keeps it when its status is cycled to one the filter also refuses", async () => {
       const { view, handles } = await createToDoUnderDo();
       mockUseListData.mockReturnValue(listData({ rows: [anchor(), createdChild("done")], ...handles }));
-      view.rerender(<ListView />);
+      view.rerender(<ListViewInApp />);
       expect(screen.getByText("task-new")).toBeInTheDocument();
     });
 
@@ -1328,7 +1342,7 @@ describe("ListView — deleting a row", () => {
 
   it("asks before it writes anything", () => {
     const { removeNode } = twoSiblings();
-    render(<ListView />);
+    render(<ListViewInApp />);
     deleteRow("task-a");
     expect(screen.getByText("warnings:deleteHeading")).toBeInTheDocument();
     expect(removeNode).not.toHaveBeenCalled();
@@ -1336,7 +1350,7 @@ describe("ListView — deleting a row", () => {
 
   it("writes nothing when the confirmation is cancelled", () => {
     const { removeNode } = twoSiblings();
-    render(<ListView />);
+    render(<ListViewInApp />);
     deleteRow("task-a");
     fireEvent.click(screen.getByText("common:cancel"));
     expect(screen.queryByText("warnings:deleteHeading")).not.toBeInTheDocument();
@@ -1345,7 +1359,7 @@ describe("ListView — deleting a row", () => {
 
   it("deletes the row on confirmation", async () => {
     const { removeNode } = twoSiblings();
-    render(<ListView />);
+    render(<ListViewInApp />);
     deleteRow("task-a");
     await confirm();
     expect(removeNode).toHaveBeenCalledWith([{ id: "task-a", kind: "task" }]);
@@ -1357,7 +1371,7 @@ describe("ListView — deleting a row", () => {
       [taskA([childOfA()]), taskB()],
       [row({ node: taskA([childOfA()]) }), row({ node: taskB() })],
     );
-    render(<ListView />);
+    render(<ListViewInApp />);
     deleteRow("task-a");
     expect(screen.getByText("warnings:deleteWithChildren")).toBeInTheDocument();
     await confirm();
@@ -1369,7 +1383,7 @@ describe("ListView — deleting a row", () => {
 
   it("does nothing with no row selected", () => {
     const { removeNode } = twoSiblings();
-    render(<ListView />);
+    render(<ListViewInApp />);
     fireEvent.keyDown(window, { key: "Delete", code: "Delete" });
     expect(screen.queryByText("warnings:deleteHeading")).not.toBeInTheDocument();
     expect(removeNode).not.toHaveBeenCalled();
@@ -1384,7 +1398,7 @@ describe("ListView — deleting a row", () => {
       habitItem: { flowId: 1, itemType: "flow_task", itemId: 2, scopeId: 3, cycleId: 4 },
     });
     const { removeNode } = setup([occurrence], [row({ node: occurrence })]);
-    render(<ListView />);
+    render(<ListViewInApp />);
     deleteRow("habititem-flow_task-2-1-0-virtual");
     expect(screen.queryByText("warnings:deleteHeading")).not.toBeInTheDocument();
     expect(removeNode).not.toHaveBeenCalled();
@@ -1399,7 +1413,7 @@ describe("ListView — deleting a row", () => {
 
     it("moves to the row below the one that went", async () => {
       twoSiblings();
-      const { container } = render(<ListView />);
+      const { container } = render(<ListViewInApp />);
       deleteRow("task-a");
       await confirm();
       expect(selectedTitle(container)).toContain("task-b");
@@ -1407,7 +1421,7 @@ describe("ListView — deleting a row", () => {
 
     it("moves to the row above when the deleted one was last", async () => {
       twoSiblings();
-      const { container } = render(<ListView />);
+      const { container } = render(<ListViewInApp />);
       deleteRow("task-b");
       await confirm();
       expect(selectedTitle(container)).toContain("task-a");
@@ -1427,7 +1441,7 @@ describe("ListView — deleting a row", () => {
           row({ node: taskB() }),
         ],
       );
-      const { container } = render(<ListView />);
+      const { container } = render(<ListViewInApp />);
       deleteRow("task-a");
       await confirm();
       expect(selectedTitle(container)).toContain("task-b");
@@ -1435,7 +1449,7 @@ describe("ListView — deleting a row", () => {
 
     it("clears the selection when the list had nothing else in it", async () => {
       setup([taskA()], [row({ node: taskA() })]);
-      const { container } = render(<ListView />);
+      const { container } = render(<ListViewInApp />);
       deleteRow("task-a");
       await confirm();
       expect(container.querySelector("[class*='cardSelected']")).toBeNull();

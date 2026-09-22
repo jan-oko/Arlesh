@@ -12,6 +12,7 @@
   "filter": "Filter",
   "viewMindmap": "Mindmap",
   "viewList": "List",
+  "viewPlan": "Plan",
   "searchNodesPlaceholder": "Search…",
   "noResults": "No results",
   "loading": "Loading…",
@@ -26,5 +27,7 @@
   "tabWholeTree": "All",
   "renameTab": "Rename tab",
   "tabName": "Tab name",
-  "tabActions": "Tab actions"
+  "tabActions": "Tab actions",
+  "planPathGrouping": "Group by path",
+  "planSubscopeSplit": "Split planned by subscope"
 }

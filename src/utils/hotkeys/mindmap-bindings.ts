@@ -10,17 +10,14 @@ import { MINDMAP_DELETE_BINDINGS, type MindmapDeleteContext } from "./mindmap/de
 import { MINDMAP_DESELECT_BINDINGS, type MindmapDeselectContext } from "./mindmap/deselect";
 import { MINDMAP_EDITOR_BINDINGS, type MindmapEditorContext } from "./mindmap/editor";
 import { MINDMAP_ENTER_BINDINGS, type MindmapEnterContext } from "./mindmap/enter";
-import { MINDMAP_FILTER_BINDINGS, type MindmapFilterContext } from "./mindmap/filter";
 import { MINDMAP_FLAGS_BINDINGS, type MindmapFlagsContext } from "./mindmap/flags";
 import { MINDMAP_FULLSCREEN_BINDINGS, type MindmapFullscreenContext } from "./mindmap/fullscreen";
 import { MINDMAP_HISTORY_BINDINGS, type MindmapHistoryContext } from "./mindmap/history";
 import { MINDMAP_NAVIGATE_BINDINGS, type MindmapNavigateContext } from "./mindmap/navigate";
 import { MINDMAP_RENAME_BINDINGS, type MindmapRenameContext } from "./mindmap/rename";
 import { MINDMAP_REORDER_BINDINGS, type MindmapReorderContext } from "./mindmap/reorder";
-import { MINDMAP_SEARCH_BINDINGS, type MindmapSearchContext } from "./mindmap/search";
 import { MINDMAP_START_FLOW_BINDINGS, type MindmapStartFlowContext } from "./mindmap/start-flow";
 import { MINDMAP_STATUS_PRESET_BINDINGS, type MindmapStatusPresetContext } from "./mindmap/status-presets";
-import { MINDMAP_SUBTREE_BINDINGS, type MindmapSubtreeContext } from "./mindmap/subtree";
 import { MINDMAP_TYPE_CYCLE_BINDINGS, type MindmapTypeCycleContext } from "./mindmap/type-cycle";
 import { MINDMAP_ZOOM_BINDINGS, type MindmapZoomContext } from "./mindmap/zoom";
 
@@ -47,17 +44,14 @@ export interface MindmapContext extends
   MindmapDeselectContext,
   MindmapEditorContext,
   MindmapEnterContext,
-  MindmapFilterContext,
   MindmapFlagsContext,
   MindmapFullscreenContext,
   MindmapHistoryContext,
   MindmapNavigateContext,
   MindmapRenameContext,
   MindmapReorderContext,
-  MindmapSearchContext,
   MindmapStartFlowContext,
   MindmapStatusPresetContext,
-  MindmapSubtreeContext,
   MindmapTypeCycleContext,
   MindmapZoomContext {}
 
@@ -74,7 +68,6 @@ export interface MindmapContext extends
  * existing chord is a red test rather than a silent no-op.
  */
 export const MINDMAP_BINDINGS: readonly Binding<MindmapContext>[] = [
-  ...MINDMAP_FILTER_BINDINGS,
   ...MINDMAP_STATUS_PRESET_BINDINGS,
   ...MINDMAP_TYPE_CYCLE_BINDINGS,
   ...MINDMAP_REORDER_BINDINGS,
@@ -86,7 +79,6 @@ export const MINDMAP_BINDINGS: readonly Binding<MindmapContext>[] = [
   ...MINDMAP_DELETE_BINDINGS,
   ...MINDMAP_COLLAPSE_BINDINGS,
   ...MINDMAP_ZOOM_BINDINGS,
-  ...MINDMAP_SUBTREE_BINDINGS,
   ...MINDMAP_DESELECT_BINDINGS,
   ...MINDMAP_CLIPBOARD_BINDINGS,
   ...MINDMAP_START_FLOW_BINDINGS,
@@ -95,6 +87,5 @@ export const MINDMAP_BINDINGS: readonly Binding<MindmapContext>[] = [
   ...MINDMAP_FULLSCREEN_BINDINGS,
   ...MINDMAP_EDITOR_BINDINGS,
   ...MINDMAP_FLAGS_BINDINGS,
-  ...MINDMAP_SEARCH_BINDINGS,
   ...MINDMAP_HISTORY_BINDINGS,
 ];

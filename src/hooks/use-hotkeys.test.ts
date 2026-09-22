@@ -19,7 +19,7 @@ function makeContext(overrides: Partial<TestContext> = {}): TestContext {
 
 const BINDINGS: readonly Binding<TestContext>[] = [
   {
-    id: "test.first", section: "global", chord: { code: "ArrowUp" }, labelKey: "toggleView",
+    id: "test.first", section: "global", chord: { code: "ArrowUp" }, labelKey: "viewList",
     when: (c) => c.selected !== null, run: (c) => c.onFirst(),
   },
   {
