@@ -10,15 +10,26 @@ fn project_status_as_str_covers_all_variants() {
 
 #[test]
 fn project_status_from_db_roundtrips_every_variant() {
-    for status in [ProjectStatus::Active, ProjectStatus::Achieved, ProjectStatus::Frozen, ProjectStatus::Archived] {
+    for status in [
+        ProjectStatus::Active,
+        ProjectStatus::Achieved,
+        ProjectStatus::Frozen,
+        ProjectStatus::Archived,
+    ] {
         assert_eq!(ProjectStatus::from_db(status.as_str()), Some(status));
     }
 }
 
 #[test]
 fn domain_subtype_from_db_parses_every_writable_subtype() {
-    assert_eq!(DomainSubtype::from_db("project"), Some(DomainSubtype::Project));
-    assert_eq!(DomainSubtype::from_db("domain"), Some(DomainSubtype::Domain));
+    assert_eq!(
+        DomainSubtype::from_db("project"),
+        Some(DomainSubtype::Project)
+    );
+    assert_eq!(
+        DomainSubtype::from_db("domain"),
+        Some(DomainSubtype::Domain)
+    );
     assert_eq!(DomainSubtype::from_db("tag"), Some(DomainSubtype::Tag));
 }
 

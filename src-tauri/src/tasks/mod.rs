@@ -29,14 +29,14 @@ pub use commitments::{
 };
 use error::TaskError;
 use model::CommitmentId;
-pub use scope_rules::{
-    conflicts_for_new_time_scope, derive_all_scope_lifecycles, nearest_scoped_ancestor_window,
-    reparent_conflicts, time_scope_window, ReparentConflicts, ViolatingDescendant,
-};
 use model::{
     CreateGoalRequest, CreateTaskRequest, Dependency, DurationSpec, Goal, GoalId, GoalStatus,
     OnScopeExit, Task, TaskArchival, TaskDependencyEdge, TaskId, TaskStatus, TaskWithBlockers,
     TimeScope, UpdateGoalRequest, UpdateTaskRequest,
+};
+pub use scope_rules::{
+    conflicts_for_new_time_scope, derive_all_scope_lifecycles, nearest_scoped_ancestor_window,
+    reparent_conflicts, time_scope_window, ReparentConflicts, ViolatingDescendant,
 };
 
 // Internal row types that map directly to database columns via sqlx::FromRow.
@@ -89,7 +89,10 @@ fn reject_backlog_with_plan(
 
 /// The millisecond timestamp a freshly inserted row takes as its sort position.
 fn insertion_position() -> i64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as i64
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64
 }
 
 /// Deletes every info that hangs (directly or transitively) under `(parent_type, parent_id)`.
@@ -137,13 +140,19 @@ async fn delete_node_subtree(
         let goal_children = db.goals().child_ids(&node_type, node_id).await?;
         stack.extend(goal_children.into_iter().map(|id| ("goal".to_string(), id)));
         let commitment_children = db.commitments().child_ids(&node_type, node_id).await?;
-        stack.extend(commitment_children.into_iter().map(|id| ("commitment".to_string(), id)));
+        stack.extend(
+            commitment_children
+                .into_iter()
+                .map(|id| ("commitment".to_string(), id)),
+        );
     }
     for (node_type, node_id) in &nodes {
         // The node may be an added child of a Habit occurrence. Its attachment names the row, so
         // it goes when the row goes — see `delete_infos_under` for why an orphan is not merely
         // untidy.
-        db.flows().detach_instance_child(node_type, *node_id).await?;
+        db.flows()
+            .detach_instance_child(node_type, *node_id)
+            .await?;
         delete_infos_under(db, node_type, *node_id).await?;
         // Block reasons hang off a polymorphic owner link with no foreign key, like infos. A
         // Commitment never has any, and asking for none costs one statement against the risk of
@@ -359,8 +368,9 @@ impl GoalWrite {
             (Some(parent_type), Some(parent_id)) => Some((parent_type, parent_id)),
             _ => None,
         };
-        let (parent_type, parent_id) =
-            reparent.clone().unwrap_or((stored.parent_type, stored.parent_id));
+        let (parent_type, parent_id) = reparent
+            .clone()
+            .unwrap_or((stored.parent_type, stored.parent_id));
         let status = request
             .status
             .as_ref()
@@ -429,8 +439,9 @@ impl TaskWrite {
             _ => None,
         };
         // Validate against the effective parent — the new one when reparenting.
-        let (parent_type, parent_id) =
-            reparent.clone().unwrap_or((stored.parent_type, stored.parent_id));
+        let (parent_type, parent_id) = reparent
+            .clone()
+            .unwrap_or((stored.parent_type, stored.parent_id));
         let status = request
             .status
             .as_ref()
@@ -517,7 +528,11 @@ impl<'session> GoalOperator<'session> {
     /// boundary, and a method that began its own could never join one. See [`create_goal`] for the
     /// transactional shape.
     async fn insert(&mut self, request: CreateGoalRequest) -> Result<Goal, TaskError> {
-        let status = request.status.as_ref().map(|s| s.as_str()).unwrap_or("active");
+        let status = request
+            .status
+            .as_ref()
+            .map(|s| s.as_str())
+            .unwrap_or("active");
         let (ts_start, ts_end, ts_n, ts_kind) = time_scope_columns(&request.time_scope);
         let on_exit = on_scope_exit_column(&request.time_scope, request.on_scope_exit);
         let id = sqlx::query(
@@ -555,7 +570,10 @@ impl<'session> GoalOperator<'session> {
             .await?
             .ok_or(TaskError::GoalNotFound(id.0))?;
         let tag_ids = fetch_goal_tag_ids(&mut *self.connection, id.0).await?;
-        Ok(Goal { tag_ids, ..row.into() })
+        Ok(Goal {
+            tag_ids,
+            ..row.into()
+        })
     }
 
     /// The six ancestry fields of a goal, as one step of an [`ancestry::climb`].
@@ -607,7 +625,10 @@ impl<'session> GoalOperator<'session> {
         let mut goals = Vec::with_capacity(rows.len());
         for row in rows {
             let tag_ids = fetch_goal_tag_ids(&mut *self.connection, row.id).await?;
-            goals.push(Goal { tag_ids, ..row.into() });
+            goals.push(Goal {
+                tag_ids,
+                ..row.into()
+            });
         }
         Ok(goals)
     }
@@ -645,14 +666,12 @@ impl<'session> GoalOperator<'session> {
         let on_exit = on_scope_exit_column(&write.time_scope, write.on_scope_exit);
 
         if let Some((new_parent_type, new_parent_id)) = &write.reparent {
-            sqlx::query(
-                "UPDATE goals SET parent_type = ?, parent_id = ? WHERE id = ?",
-            )
-            .bind(new_parent_type)
-            .bind(new_parent_id)
-            .bind(id.0)
-            .execute(&mut *self.connection)
-            .await?;
+            sqlx::query("UPDATE goals SET parent_type = ?, parent_id = ? WHERE id = ?")
+                .bind(new_parent_type)
+                .bind(new_parent_id)
+                .bind(id.0)
+                .execute(&mut *self.connection)
+                .await?;
         }
 
         sqlx::query(
@@ -741,13 +760,11 @@ impl<'session> GoalOperator<'session> {
 
     /// Attaches a tag to a goal.
     pub async fn add_tag(&mut self, goal_id: GoalId, tag_id: i64) -> Result<(), TaskError> {
-        sqlx::query(
-            "INSERT OR IGNORE INTO tags_on_goals (goal_id, tag_id) VALUES (?, ?)",
-        )
-        .bind(goal_id.0)
-        .bind(tag_id)
-        .execute(&mut *self.connection)
-        .await?;
+        sqlx::query("INSERT OR IGNORE INTO tags_on_goals (goal_id, tag_id) VALUES (?, ?)")
+            .bind(goal_id.0)
+            .bind(tag_id)
+            .execute(&mut *self.connection)
+            .await?;
         Ok(())
     }
 
@@ -792,7 +809,11 @@ impl<'session> TaskOperator<'session> {
     /// boundary, and a method that began its own could never join one. See [`create_task`] for the
     /// transactional shape.
     async fn insert(&mut self, request: CreateTaskRequest) -> Result<Task, TaskError> {
-        let status = request.status.as_ref().map(|s| s.as_str()).unwrap_or("todo");
+        let status = request
+            .status
+            .as_ref()
+            .map(|s| s.as_str())
+            .unwrap_or("todo");
         let (ts_start, ts_end, ts_n, ts_kind) = time_scope_columns(&request.time_scope);
         let on_exit = on_scope_exit_column(&request.time_scope, request.on_scope_exit);
         let (plan_start, plan_end, _, _) = time_scope_columns(&request.plan);
@@ -840,7 +861,10 @@ impl<'session> TaskOperator<'session> {
             .await?
             .ok_or(TaskError::TaskNotFound(id.0))?;
         let tag_ids = fetch_task_tag_ids(&mut *self.connection, id.0).await?;
-        Ok(Task { tag_ids, ..row.into() })
+        Ok(Task {
+            tag_ids,
+            ..row.into()
+        })
     }
 
     /// The six ancestry fields of a task, as one step of an [`ancestry::climb`].
@@ -883,7 +907,10 @@ impl<'session> TaskOperator<'session> {
         let mut tasks = Vec::with_capacity(rows.len());
         for row in rows {
             let tag_ids = fetch_task_tag_ids(&mut *self.connection, row.id).await?;
-            tasks.push(Task { tag_ids, ..row.into() });
+            tasks.push(Task {
+                tag_ids,
+                ..row.into()
+            });
         }
         Ok(tasks)
     }
@@ -922,14 +949,12 @@ impl<'session> TaskOperator<'session> {
         let (plan_start, plan_end, _, _) = time_scope_columns(&write.plan);
 
         if let Some((new_parent_type, new_parent_id)) = &write.reparent {
-            sqlx::query(
-                "UPDATE tasks SET parent_type = ?, parent_id = ? WHERE id = ?",
-            )
-            .bind(new_parent_type)
-            .bind(new_parent_id)
-            .bind(id.0)
-            .execute(&mut *self.connection)
-            .await?;
+            sqlx::query("UPDATE tasks SET parent_type = ?, parent_id = ? WHERE id = ?")
+                .bind(new_parent_type)
+                .bind(new_parent_id)
+                .bind(id.0)
+                .execute(&mut *self.connection)
+                .await?;
         }
 
         sqlx::query(
@@ -986,7 +1011,10 @@ impl<'session> TaskOperator<'session> {
         dependency: Dependency,
     ) -> Result<(), TaskError> {
         if let Dependency::Task { id: dependency_id } = dependency {
-            if self.would_create_cycle(task_id, TaskId(dependency_id)).await? {
+            if self
+                .would_create_cycle(task_id, TaskId(dependency_id))
+                .await?
+            {
                 return Err(TaskError::CircularDependency);
             }
         }
@@ -1021,7 +1049,10 @@ impl<'session> TaskOperator<'session> {
     }
 
     /// Lists all dependencies for a task.
-    pub async fn list_dependencies(&mut self, task_id: TaskId) -> Result<Vec<Dependency>, TaskError> {
+    pub async fn list_dependencies(
+        &mut self,
+        task_id: TaskId,
+    ) -> Result<Vec<Dependency>, TaskError> {
         #[derive(sqlx::FromRow)]
         struct DependencyRow {
             dependency_type: String,
@@ -1037,8 +1068,12 @@ impl<'session> TaskOperator<'session> {
         let dependencies = rows
             .into_iter()
             .map(|row| match row.dependency_type.as_str() {
-                "task" => Dependency::Task { id: row.dependency_id },
-                _ => Dependency::Goal { id: row.dependency_id },
+                "task" => Dependency::Task {
+                    id: row.dependency_id,
+                },
+                _ => Dependency::Goal {
+                    id: row.dependency_id,
+                },
             })
             .collect();
         Ok(dependencies)
@@ -1046,18 +1081,19 @@ impl<'session> TaskOperator<'session> {
 
     /// Lists every task-dependency edge across all tasks (for the mindmap bulk load).
     pub async fn list_all_dependencies(&mut self) -> Result<Vec<TaskDependencyEdge>, TaskError> {
-        let rows: Vec<(i64, String, i64)> = sqlx::query_as(
-            "SELECT task_id, dependency_type, dependency_id FROM task_dependencies",
-        )
-        .fetch_all(&mut *self.connection)
-        .await?;
+        let rows: Vec<(i64, String, i64)> =
+            sqlx::query_as("SELECT task_id, dependency_type, dependency_id FROM task_dependencies")
+                .fetch_all(&mut *self.connection)
+                .await?;
         Ok(rows
             .into_iter()
-            .map(|(task_id, dependency_type, dependency_id)| TaskDependencyEdge {
-                task_id,
-                dependency_type,
-                dependency_id,
-            })
+            .map(
+                |(task_id, dependency_type, dependency_id)| TaskDependencyEdge {
+                    task_id,
+                    dependency_type,
+                    dependency_id,
+                },
+            )
             .collect())
     }
 
@@ -1126,11 +1162,13 @@ impl<'session> TaskOperator<'session> {
     /// cannot be depended on at all: only a task or a goal can, so becoming a domain, project or
     /// tag ends those edges rather than moving them.
     async fn drop_dependents(&mut self, node_type: &str, node_id: i64) -> Result<(), TaskError> {
-        sqlx::query("DELETE FROM task_dependencies WHERE dependency_type = ? AND dependency_id = ?")
-            .bind(node_type)
-            .bind(node_id)
-            .execute(&mut *self.connection)
-            .await?;
+        sqlx::query(
+            "DELETE FROM task_dependencies WHERE dependency_type = ? AND dependency_id = ?",
+        )
+        .bind(node_type)
+        .bind(node_id)
+        .execute(&mut *self.connection)
+        .await?;
         Ok(())
     }
 
@@ -1181,13 +1219,11 @@ impl<'session> TaskOperator<'session> {
 
     /// Attaches a tag to a task.
     pub async fn add_tag(&mut self, task_id: TaskId, tag_id: i64) -> Result<(), TaskError> {
-        sqlx::query(
-            "INSERT OR IGNORE INTO tags_on_tasks (task_id, tag_id) VALUES (?, ?)",
-        )
-        .bind(task_id.0)
-        .bind(tag_id)
-        .execute(&mut *self.connection)
-        .await?;
+        sqlx::query("INSERT OR IGNORE INTO tags_on_tasks (task_id, tag_id) VALUES (?, ?)")
+            .bind(task_id.0)
+            .bind(tag_id)
+            .execute(&mut *self.connection)
+            .await?;
         Ok(())
     }
 
@@ -1487,7 +1523,10 @@ pub async fn get_task_with_blockers<M: SessionMode>(
         }
     }
 
-    Ok(TaskWithBlockers { task, block_reasons: reasons })
+    Ok(TaskWithBlockers {
+        task,
+        block_reasons: reasons,
+    })
 }
 
 fn dependency_parts(dependency: &Dependency) -> (&'static str, i64) {

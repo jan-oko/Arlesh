@@ -26,8 +26,8 @@
 use std::sync::Mutex;
 
 use super::model::{StackedGesture, UndoStatus};
-use super::MAX_JOURNALLED_GESTURES;
 use super::statement::Replay;
+use super::MAX_JOURNALLED_GESTURES;
 
 /// One of the two stacks.
 ///

@@ -8,7 +8,10 @@ fn naming_only_a_preset_leaves_every_other_axis_at_the_apps_own_default() {
         serde_json::from_str(r#"{"preset":"start"}"#).expect("a preset alone is a filter");
     assert_eq!(filter, BoardFilter::preset(Preset::Start));
     assert!(filter.include_flows && filter.show_info && filter.show_flow);
-    assert!(!filter.private_mode, "the app's default hides private nodes");
+    assert!(
+        !filter.private_mode,
+        "the app's default hides private nodes"
+    );
 }
 
 #[test]

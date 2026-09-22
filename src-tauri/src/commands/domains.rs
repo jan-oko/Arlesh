@@ -46,7 +46,10 @@ pub async fn list_domains(
     subtype: Option<DomainSubtype>,
 ) -> Result<Vec<Domain>, WireError> {
     let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.domains().list(subtype).await.map_err(WireError::from_error)
+    db.domains()
+        .list(subtype)
+        .await
+        .map_err(WireError::from_error)
 }
 
 /// Updates an existing domain.

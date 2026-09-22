@@ -26,9 +26,7 @@ use super::ancestry;
 use super::commitments;
 use super::error::TaskError;
 use super::lifecycle::{derive_commitment_state, derive_item_state, Archival, ItemLifecycle};
-use super::model::{
-    CommitmentId, GoalId, GoalStatus, OnScopeExit, TaskId, TaskStatus, TimeScope,
-};
+use super::model::{CommitmentId, GoalId, GoalStatus, OnScopeExit, TaskId, TaskStatus, TimeScope};
 
 /// Maps a Goal's stored status to its baseline Archival value, for [`derive_item_state`]'s `stored`
 /// parameter. `Achieved` intentionally maps to `Live`, not `Archived` — achievement is a separate,
@@ -112,7 +110,10 @@ pub async fn derive_all_scope_lifecycles<M: SessionMode>(
             None => (None, None),
         };
         let parsed_status = GoalStatus::from_db(&goal.status);
-        let resolved = matches!(parsed_status, Some(GoalStatus::Achieved) | Some(GoalStatus::Archived));
+        let resolved = matches!(
+            parsed_status,
+            Some(GoalStatus::Achieved) | Some(GoalStatus::Archived)
+        );
         let stored = Some(goal_stored_archival(&goal.status));
         let state = derive_item_state(window, on_exit, resolved, stored, now);
         out.push(ItemLifecycle {
@@ -207,7 +208,11 @@ fn check_containment(windows: ContainmentWindows) -> Result<(), TaskError> {
         reject_unless_contained(own, plan, "plan is not within the task's time scope")?;
     }
     if let (Some(ancestor), Some(own)) = (windows.ancestor_scope, windows.own_scope) {
-        reject_unless_contained(ancestor, own, "time scope is not within the parent's time scope")?;
+        reject_unless_contained(
+            ancestor,
+            own,
+            "time scope is not within the parent's time scope",
+        )?;
     }
     if let (Some(ancestor), Some(plan)) = (windows.ancestor_plan, windows.plan) {
         reject_unless_contained(ancestor, plan, "plan is not within the parent task's plan")?;
@@ -252,7 +257,10 @@ pub(super) async fn nearest_scoped_ancestor_time_scope<M: SessionMode>(
     parent_id: i64,
 ) -> Result<Option<TimeScope>, TaskError> {
     let chain = ancestry::climb(db, parent_type, parent_id).await?;
-    Ok(chain.nearest_scoped().or_reject()?.map(|(time_scope, _)| time_scope.clone()))
+    Ok(chain
+        .nearest_scoped()
+        .or_reject()?
+        .map(|(time_scope, _)| time_scope.clone()))
 }
 
 /// The chain a write is validated against.
@@ -354,7 +362,11 @@ pub(super) async fn validate_goal_containment<M: SessionMode>(
     let own_scope = Some(time_scope_window(db, own).await?);
     let ancestor_scope = resolve_optional(db, ancestor_scope).await?;
 
-    check_containment(ContainmentWindows { own_scope, ancestor_scope, ..Default::default() })
+    check_containment(ContainmentWindows {
+        own_scope,
+        ancestor_scope,
+        ..Default::default()
+    })
 }
 
 /// Rejects a commitment write that leaves it with no **effective** window, or with one that
@@ -390,7 +402,11 @@ pub(super) async fn validate_commitment_scope<M: SessionMode>(
 
     let own_scope = Some(time_scope_window(db, own).await?);
     let ancestor_scope = resolve_optional(db, ancestor).await?;
-    check_containment(ContainmentWindows { own_scope, ancestor_scope, ..Default::default() })
+    check_containment(ContainmentWindows {
+        own_scope,
+        ancestor_scope,
+        ..Default::default()
+    })
 }
 
 /// Returns the direct task, goal and commitment children of a node, as `(node_type, node_id)`
@@ -406,7 +422,11 @@ async fn child_items<M: SessionMode>(
     let goal_ids = db.goals().child_ids(node_type, node_id).await?;
     children.extend(goal_ids.into_iter().map(|id| ("goal".to_string(), id)));
     let commitment_ids = db.commitments().child_ids(node_type, node_id).await?;
-    children.extend(commitment_ids.into_iter().map(|id| ("commitment".to_string(), id)));
+    children.extend(
+        commitment_ids
+            .into_iter()
+            .map(|id| ("commitment".to_string(), id)),
+    );
     Ok(children)
 }
 
@@ -418,7 +438,11 @@ async fn item_time_scope<M: SessionMode>(
     match node_type {
         "task" => Ok(db.tasks().get(TaskId(node_id)).await?.time_scope),
         "goal" => Ok(db.goals().get(GoalId(node_id)).await?.time_scope),
-        "commitment" => Ok(db.commitments().get(CommitmentId(node_id)).await?.time_scope),
+        "commitment" => Ok(db
+            .commitments()
+            .get(CommitmentId(node_id))
+            .await?
+            .time_scope),
         _ => Ok(None),
     }
 }
@@ -474,17 +498,26 @@ pub async fn reparent_conflicts<M: SessionMode>(
     let Some(ancestor) =
         nearest_scoped_ancestor_time_scope(db, new_parent_type, new_parent_id).await?
     else {
-        return Ok(ReparentConflicts { ancestor_time_scope: None, conflicts: Vec::new() });
+        return Ok(ReparentConflicts {
+            ancestor_time_scope: None,
+            conflicts: Vec::new(),
+        });
     };
     let window = time_scope_window(db, &ancestor).await?;
     let mut conflicts = Vec::new();
     if let Some(node_ts) = item_time_scope(db, node_type, node_id).await? {
         if !resolve::interval_contains(window, time_scope_window(db, &node_ts).await?) {
-            conflicts.push(ViolatingDescendant { node_type: node_type.to_string(), node_id });
+            conflicts.push(ViolatingDescendant {
+                node_type: node_type.to_string(),
+                node_id,
+            });
         }
     }
     conflicts.extend(descendants_violating_window(db, node_type, node_id, window).await?);
-    Ok(ReparentConflicts { ancestor_time_scope: Some(ancestor), conflicts })
+    Ok(ReparentConflicts {
+        ancestor_time_scope: Some(ancestor),
+        conflicts,
+    })
 }
 
 /// Resolves a candidate Time Scope for a node and returns the descendants it would orphan.

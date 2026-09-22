@@ -219,11 +219,17 @@ async fn undoing_a_created_task_removes_it_and_redoing_puts_it_back_at_the_same_
         ["tasks"],
         "a create writes the row and then its sort position, both on `tasks`"
     );
-    assert!(undone.inserted >= 1, "one of them is the row itself: {undone:?}");
+    assert!(
+        undone.inserted >= 1,
+        "one of them is the row itself: {undone:?}"
+    );
     assert_eq!(board(&pool).await, before, "undo must restore the board");
 
     let redone = redo(&app).await.expect("there is something to redo");
-    assert_eq!(redone.gesture, undone.gesture, "redo reapplies what undo took");
+    assert_eq!(
+        redone.gesture, undone.gesture,
+        "redo reapplies what undo took"
+    );
     assert_eq!(
         board(&pool).await,
         after_gesture,
@@ -250,9 +256,10 @@ async fn undoing_a_deleted_goal_brings_its_subtree_back_whole() {
     // A goal with everything hanging off it that a row-level undo could plausibly drop: a child
     // goal, a task, tags on both, block reasons (whose owner is polymorphic and so has no foreign
     // key to cascade), and a dependency on a task *outside* the subtree.
-    let outside = task_commands::create_task(app.state(), task_request("project", project_id, "out"))
-        .await
-        .expect("create outside task");
+    let outside =
+        task_commands::create_task(app.state(), task_request("project", project_id, "out"))
+            .await
+            .expect("create outside task");
     let goal = task_commands::create_goal(app.state(), goal_request("project", project_id, "goal"))
         .await
         .expect("create goal");
@@ -350,7 +357,10 @@ async fn a_gesture_spanning_several_commands_is_reversed_by_one_undo() {
         "all five creates belong to one gesture, got {summary:?}"
     );
 
-    assert_eq!(undo(&app).await.map(|undone| undone.gesture), Some(summary.gesture));
+    assert_eq!(
+        undo(&app).await.map(|undone| undone.gesture),
+        Some(summary.gesture)
+    );
     assert_eq!(
         board(&pool).await,
         before,
@@ -364,9 +374,10 @@ async fn undo_then_redo_returns_the_board_to_what_the_gesture_made_of_it() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
     let project_id = make_project(&pool).await;
-    let task = task_commands::create_task(app.state(), task_request("project", project_id, "before"))
-        .await
-        .expect("create task");
+    let task =
+        task_commands::create_task(app.state(), task_request("project", project_id, "before"))
+            .await
+            .expect("create task");
     let before = board(&pool).await;
 
     open_gesture(&app).await;
@@ -382,7 +393,10 @@ async fn undo_then_redo_returns_the_board_to_what_the_gesture_made_of_it() {
     .expect("update task");
     close_gesture(&app).await;
     let after_gesture = board(&pool).await;
-    assert_ne!(before, after_gesture, "the update must have changed something");
+    assert_ne!(
+        before, after_gesture,
+        "the update must have changed something"
+    );
 
     undo(&app).await.expect("undo");
     assert_eq!(board(&pool).await, before);
@@ -404,7 +418,11 @@ async fn undo_and_redo_on_an_empty_stack_do_nothing_and_do_not_fail() {
 
     assert_eq!(undo(&app).await, None);
     assert_eq!(redo(&app).await, None);
-    assert_eq!(board(&pool).await, before, "a press with nothing to act on is not a mistake");
+    assert_eq!(
+        board(&pool).await,
+        before,
+        "a press with nothing to act on is not a mistake"
+    );
 }
 
 #[tokio::test]
@@ -519,7 +537,12 @@ async fn an_mcp_write_between_the_users_change_and_their_undo_is_not_reversed() 
         }))
         .await
         .expect("the beads tool returned no result");
-    assert_ne!(result.is_error, Some(true), "{:?}", result.structured_content);
+    assert_ne!(
+        result.is_error,
+        Some(true),
+        "{:?}",
+        result.structured_content
+    );
 
     undo(&app).await.expect("undo");
 
@@ -568,7 +591,12 @@ async fn an_mcp_write_made_while_a_user_gesture_is_open_is_not_reversed_with_it(
         }))
         .await
         .expect("the beads tool returned no result");
-    assert_ne!(result.is_error, Some(true), "{:?}", result.structured_content);
+    assert_ne!(
+        result.is_error,
+        Some(true),
+        "{:?}",
+        result.structured_content
+    );
     let summary = close_gesture(&app).await.expect("the gesture is undoable");
 
     // The filter has to be doing real work for the rest of this test to mean anything: the agent's
@@ -643,12 +671,18 @@ async fn neither_undo_nor_redo_writes_a_journal_entry() {
         .context()
         .await
         .expect("read context");
-    assert!(!context.suppressed, "suppression must not outlive the replay");
+    assert!(
+        !context.suppressed,
+        "suppression must not outlive the replay"
+    );
 
     open_gesture(&app).await;
-    task_commands::create_task(app.state(), task_request("project", project_id, "still recorded"))
-        .await
-        .expect("create task");
+    task_commands::create_task(
+        app.state(),
+        task_request("project", project_id, "still recorded"),
+    )
+    .await
+    .expect("create task");
     assert!(
         close_gesture(&app).await.is_some(),
         "the journal must still be recording after a replay"
@@ -694,7 +728,10 @@ async fn undoing_an_edit_that_cleared_agentic_puts_the_flag_back() {
     task_commands::update_task(
         app.state(),
         task.id,
-        UpdateTaskRequest { agentic: Some(TaskAgentic::Inherit), ..Default::default() },
+        UpdateTaskRequest {
+            agentic: Some(TaskAgentic::Inherit),
+            ..Default::default()
+        },
     )
     .await
     .expect("clear the flag back to inheriting");
@@ -709,7 +746,11 @@ async fn undoing_an_edit_that_cleared_agentic_puts_the_flag_back() {
     );
 
     redo(&app).await.expect("there is something to redo");
-    assert_eq!(agentic(&pool, task.id).await, None, "and redo must clear it again");
+    assert_eq!(
+        agentic(&pool, task.id).await,
+        None,
+        "and redo must clear it again"
+    );
 }
 
 /// The `bd` issue link as the database holds it, read straight off the table.
@@ -747,9 +788,15 @@ async fn undoing_a_cleared_issue_link_puts_the_id_back() {
     assert_eq!(beads_id(&pool, task.id).await, Some("Arlesh-ncy".into()));
 
     open_gesture(&app).await;
-    clear_beads_id(app.state(), "task".into(), task.id).await.expect("clear the link");
+    clear_beads_id(app.state(), "task".into(), task.id)
+        .await
+        .expect("clear the link");
     close_gesture(&app).await;
-    assert_eq!(beads_id(&pool, task.id).await, None, "the × writes NULL, not an empty string");
+    assert_eq!(
+        beads_id(&pool, task.id).await,
+        None,
+        "the × writes NULL, not an empty string"
+    );
 
     undo(&app).await.expect("there is something to undo");
     assert_eq!(
@@ -760,7 +807,11 @@ async fn undoing_a_cleared_issue_link_puts_the_id_back() {
     );
 
     redo(&app).await.expect("there is something to redo");
-    assert_eq!(beads_id(&pool, task.id).await, None, "and redo drops it again");
+    assert_eq!(
+        beads_id(&pool, task.id).await,
+        None,
+        "and redo drops it again"
+    );
 }
 
 #[tokio::test]
@@ -809,7 +860,12 @@ async fn undoing_a_cleared_habit_completion_brings_it_back_on_the_occurrence_it_
         .await
         .expect("connect")
         .flows()
-        .set_cycles(flow.id, FlowItemType::FlowTask, item.id, &[pair(1), pair(4)])
+        .set_cycles(
+            flow.id,
+            FlowItemType::FlowTask,
+            item.id,
+            &[pair(1), pair(4)],
+        )
         .await
         .expect("set cycles");
     let pairs: Vec<i64> = sqlx::query_scalar(
@@ -895,9 +951,10 @@ async fn an_undo_that_cannot_be_applied_changes_nothing_and_leaves_the_gesture_o
     let app = helpers::command_host(&pool);
     let project_id = make_project(&pool).await;
     let tag_id = make_tag(&pool, "doomed-tag").await;
-    let task = task_commands::create_task(app.state(), task_request("project", project_id, "tagged"))
-        .await
-        .expect("create task");
+    let task =
+        task_commands::create_task(app.state(), task_request("project", project_id, "tagged"))
+            .await
+            .expect("create task");
     task_commands::add_tag_to_task(app.state(), task.id, tag_id)
         .await
         .expect("tag the task");
@@ -972,7 +1029,10 @@ async fn undoing_an_edit_that_unflagged_asynchronous_puts_the_flag_back() {
     task_commands::update_task(
         app.state(),
         task.id,
-        UpdateTaskRequest { asynchronous: Some(false), ..Default::default() },
+        UpdateTaskRequest {
+            asynchronous: Some(false),
+            ..Default::default()
+        },
     )
     .await
     .expect("unflag the task");
@@ -987,5 +1047,8 @@ async fn undoing_an_edit_that_unflagged_asynchronous_puts_the_flag_back() {
     );
 
     redo(&app).await.expect("there is something to redo");
-    assert!(!asynchronous(&pool, task.id).await, "and redo must clear it again");
+    assert!(
+        !asynchronous(&pool, task.id).await,
+        "and redo must clear it again"
+    );
 }

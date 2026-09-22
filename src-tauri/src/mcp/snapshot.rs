@@ -44,7 +44,11 @@ impl ArleshMcp {
     /// It creates no tasks, goals or flows.
     #[tool(
         name = "arlesh_snapshot",
-        annotations(title = "Arlesh snapshot", read_only_hint = false, destructive_hint = false)
+        annotations(
+            title = "Arlesh snapshot",
+            read_only_hint = false,
+            destructive_hint = false
+        )
     )]
     pub async fn snapshot(
         &self,

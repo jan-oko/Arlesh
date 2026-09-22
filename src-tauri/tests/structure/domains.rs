@@ -19,7 +19,8 @@ async fn create_project_under_aspect() {
     let aspect_id = green_aspect_id(&pool).await;
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
 
-    let project = db.domains()
+    let project = db
+        .domains()
         .create(CreateDomainRequest {
             title: "Rust Learning".into(),
             description: Some("Learn Rust".into()),
@@ -44,7 +45,8 @@ async fn cannot_create_aspect() {
     let pool = helpers::test_pool().await;
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
 
-    let err = db.domains()
+    let err = db
+        .domains()
         .create(CreateDomainRequest {
             title: "New Aspect".into(),
             description: None,
@@ -83,7 +85,8 @@ async fn tag_cannot_be_parent_of_another_tag() {
     let aspect_id = green_aspect_id(&pool).await;
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
 
-    let tag = db.domains()
+    let tag = db
+        .domains()
         .create(CreateDomainRequest {
             title: "rust".into(),
             description: None,
@@ -95,7 +98,8 @@ async fn tag_cannot_be_parent_of_another_tag() {
         .await
         .unwrap();
 
-    let err = db.domains()
+    let err = db
+        .domains()
         .create(CreateDomainRequest {
             title: "child-tag".into(),
             description: None,
@@ -108,7 +112,10 @@ async fn tag_cannot_be_parent_of_another_tag() {
         .unwrap_err();
 
     assert!(
-        matches!(err, arlesh_lib::domains::error::DomainError::TagCannotHaveChildren),
+        matches!(
+            err,
+            arlesh_lib::domains::error::DomainError::TagCannotHaveChildren
+        ),
         "expected TagCannotHaveChildren, got {:?}",
         err
     );
@@ -120,7 +127,8 @@ async fn project_requires_aspect_or_project_parent() {
     let aspect_id = green_aspect_id(&pool).await;
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
 
-    let domain = db.domains()
+    let domain = db
+        .domains()
         .create(CreateDomainRequest {
             title: "General".into(),
             description: None,
@@ -132,7 +140,8 @@ async fn project_requires_aspect_or_project_parent() {
         .await
         .unwrap();
 
-    let err = db.domains()
+    let err = db
+        .domains()
         .create(CreateDomainRequest {
             title: "Bad Project".into(),
             description: None,
@@ -145,7 +154,10 @@ async fn project_requires_aspect_or_project_parent() {
         .unwrap_err();
 
     assert!(
-        matches!(err, arlesh_lib::domains::error::DomainError::InvalidParent(_)),
+        matches!(
+            err,
+            arlesh_lib::domains::error::DomainError::InvalidParent(_)
+        ),
         "expected InvalidParent, got {:?}",
         err
     );
@@ -157,7 +169,8 @@ async fn update_domain() {
     let aspect_id = green_aspect_id(&pool).await;
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
 
-    let project = db.domains()
+    let project = db
+        .domains()
         .create(CreateDomainRequest {
             title: "Old Title".into(),
             description: None,
@@ -169,7 +182,8 @@ async fn update_domain() {
         .await
         .unwrap();
 
-    let updated = db.domains()
+    let updated = db
+        .domains()
         .update(
             project.id.into(),
             UpdateDomainRequest {
@@ -196,7 +210,8 @@ async fn list_all_domains_includes_aspects_and_created() {
     let aspect_id = green_aspect_id(&pool).await;
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
 
-    let project = db.domains()
+    let project = db
+        .domains()
         .create(CreateDomainRequest {
             title: "Listed Project".into(),
             description: None,
@@ -221,7 +236,8 @@ async fn list_domains_by_subtype() {
     let aspect_id = green_aspect_id(&pool).await;
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
 
-    let project = db.domains()
+    let project = db
+        .domains()
         .create(CreateDomainRequest {
             title: "Only Project".into(),
             description: None,
@@ -233,18 +249,23 @@ async fn list_domains_by_subtype() {
         .await
         .unwrap();
 
-    db.domains().create(CreateDomainRequest {
-        title: "A Domain".into(),
-        description: None,
-        subtype: DomainSubtype::Domain,
-        parent_id: Some(aspect_id),
-        status: None,
-        knowledge_base_directory: None,
-    })
-    .await
-    .unwrap();
+    db.domains()
+        .create(CreateDomainRequest {
+            title: "A Domain".into(),
+            description: None,
+            subtype: DomainSubtype::Domain,
+            parent_id: Some(aspect_id),
+            status: None,
+            knowledge_base_directory: None,
+        })
+        .await
+        .unwrap();
 
-    let projects = db.domains().list(Some(DomainSubtype::Project)).await.unwrap();
+    let projects = db
+        .domains()
+        .list(Some(DomainSubtype::Project))
+        .await
+        .unwrap();
     assert!(projects.iter().all(|d| d.subtype == "project"));
     assert!(projects.iter().any(|d| d.id == project.id));
 }
@@ -255,7 +276,8 @@ async fn convert_project_subtype_to_domain() {
     let aspect_id = green_aspect_id(&pool).await;
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
 
-    let project = db.domains()
+    let project = db
+        .domains()
         .create(CreateDomainRequest {
             title: "Becoming Domain".into(),
             description: None,
@@ -269,7 +291,8 @@ async fn convert_project_subtype_to_domain() {
 
     assert_eq!(project.subtype, "project");
 
-    let converted = db.domains()
+    let converted = db
+        .domains()
         .update(
             project.id.into(),
             UpdateDomainRequest {
@@ -295,7 +318,8 @@ async fn delete_domain() {
     let aspect_id = green_aspect_id(&pool).await;
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
 
-    let domain = db.domains()
+    let domain = db
+        .domains()
         .create(CreateDomainRequest {
             title: "Doomed Domain".into(),
             description: None,
@@ -323,7 +347,8 @@ async fn cannot_update_aspect() {
     let aspect_id = green_aspect_id(&pool).await;
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
 
-    let err = db.domains()
+    let err = db
+        .domains()
         .update(
             aspect_id.into(),
             UpdateDomainRequest {
@@ -353,7 +378,8 @@ async fn cannot_change_subtype_to_aspect() {
     let aspect_id = green_aspect_id(&pool).await;
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
 
-    let domain = db.domains()
+    let domain = db
+        .domains()
         .create(CreateDomainRequest {
             title: "Aspiring Domain".into(),
             description: None,
@@ -365,7 +391,8 @@ async fn cannot_change_subtype_to_aspect() {
         .await
         .unwrap();
 
-    let err = db.domains()
+    let err = db
+        .domains()
         .update(
             domain.id.into(),
             UpdateDomainRequest {
@@ -394,7 +421,8 @@ async fn project_without_parent_is_rejected() {
     let pool = helpers::test_pool().await;
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
 
-    let err = db.domains()
+    let err = db
+        .domains()
         .create(CreateDomainRequest {
             title: "Parentless Project".into(),
             description: None,
@@ -407,7 +435,10 @@ async fn project_without_parent_is_rejected() {
         .unwrap_err();
 
     assert!(
-        matches!(err, arlesh_lib::domains::error::DomainError::InvalidParent(_)),
+        matches!(
+            err,
+            arlesh_lib::domains::error::DomainError::InvalidParent(_)
+        ),
         "expected InvalidParent, got {:?}",
         err
     );
@@ -419,7 +450,8 @@ async fn convert_domain_subtype_to_project() {
     let aspect_id = green_aspect_id(&pool).await;
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
 
-    let domain = db.domains()
+    let domain = db
+        .domains()
         .create(CreateDomainRequest {
             title: "Will Become Project".into(),
             description: None,
@@ -431,7 +463,8 @@ async fn convert_domain_subtype_to_project() {
         .await
         .unwrap();
 
-    let converted = db.domains()
+    let converted = db
+        .domains()
         .update(
             domain.id.into(),
             UpdateDomainRequest {
@@ -457,7 +490,8 @@ async fn convert_domain_subtype_to_tag() {
     let aspect_id = green_aspect_id(&pool).await;
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
 
-    let domain = db.domains()
+    let domain = db
+        .domains()
         .create(CreateDomainRequest {
             title: "Will Become Tag".into(),
             description: None,
@@ -469,7 +503,8 @@ async fn convert_domain_subtype_to_tag() {
         .await
         .unwrap();
 
-    let converted = db.domains()
+    let converted = db
+        .domains()
         .update(
             domain.id.into(),
             UpdateDomainRequest {
@@ -511,7 +546,8 @@ async fn project_status_achieved_and_archived() {
     let aspect_id = green_aspect_id(&pool).await;
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
 
-    let project = db.domains()
+    let project = db
+        .domains()
         .create(CreateDomainRequest {
             title: "Status Project".into(),
             description: None,
@@ -525,7 +561,8 @@ async fn project_status_achieved_and_archived() {
 
     assert_eq!(project.status.as_deref(), Some("achieved"));
 
-    let archived = db.domains()
+    let archived = db
+        .domains()
         .update(
             project.id.into(),
             UpdateDomainRequest {
@@ -611,7 +648,11 @@ async fn a_project_created_without_a_status_defaults_to_active() {
         .await
         .unwrap();
 
-    assert_eq!(project.status.as_deref(), Some("active"), "a new Project must default to active");
+    assert_eq!(
+        project.status.as_deref(),
+        Some("active"),
+        "a new Project must default to active"
+    );
 }
 
 /// Only a Project carries a status — a Domain or Tag keeps NULL, since the status vocabulary
@@ -635,7 +676,10 @@ async fn a_domain_created_without_a_status_keeps_none() {
             })
             .await
             .unwrap();
-        assert_eq!(created.status, None, "{subtype:?} must not be given a status");
+        assert_eq!(
+            created.status, None,
+            "{subtype:?} must not be given a status"
+        );
     }
 }
 
@@ -672,12 +716,26 @@ async fn set_beads_id_is_carried_by_every_domain_read() {
         .unwrap();
 
     assert_eq!(
-        db.domains().get(project.id.into()).await.unwrap().beads_id.as_deref(),
+        db.domains()
+            .get(project.id.into())
+            .await
+            .unwrap()
+            .beads_id
+            .as_deref(),
         Some("Arlesh-5fs")
     );
-    let listed = db.domains().list(Some(DomainSubtype::Project)).await.unwrap();
+    let listed = db
+        .domains()
+        .list(Some(DomainSubtype::Project))
+        .await
+        .unwrap();
     assert_eq!(
-        listed.iter().find(|d| d.id == project.id).unwrap().beads_id.as_deref(),
+        listed
+            .iter()
+            .find(|d| d.id == project.id)
+            .unwrap()
+            .beads_id
+            .as_deref(),
         Some("Arlesh-5fs"),
         "a list read must carry the link too, not just a by-id read"
     );
@@ -706,9 +764,15 @@ async fn set_beads_id_clears_a_domain_link_when_given_none() {
         .await
         .unwrap();
 
-    db.domains().set_beads_id(project.id.into(), None).await.unwrap();
+    db.domains()
+        .set_beads_id(project.id.into(), None)
+        .await
+        .unwrap();
 
-    assert_eq!(db.domains().get(project.id.into()).await.unwrap().beads_id, None);
+    assert_eq!(
+        db.domains().get(project.id.into()).await.unwrap().beads_id,
+        None
+    );
 }
 
 #[tokio::test]
@@ -723,7 +787,10 @@ async fn set_beads_id_rejects_an_unknown_domain() {
         .unwrap_err();
 
     assert!(
-        matches!(err, arlesh_lib::domains::error::DomainError::NotFound(999_999)),
+        matches!(
+            err,
+            arlesh_lib::domains::error::DomainError::NotFound(999_999)
+        ),
         "expected NotFound, got {err:?}"
     );
 }
@@ -792,16 +859,26 @@ async fn the_update_domain_command_cannot_touch_beads_id() {
     let untouched = arlesh_lib::commands::domains::update_domain(
         app.state(),
         unlinked_id,
-        UpdateDomainRequest { title: Some("Also renamed".into()), ..Default::default() },
+        UpdateDomainRequest {
+            title: Some("Also renamed".into()),
+            ..Default::default()
+        },
     )
     .await
     .unwrap();
-    assert_eq!(untouched.beads_id, None, "and it must not be able to set one");
+    assert_eq!(
+        untouched.beads_id, None,
+        "and it must not be able to set one"
+    );
 
     let stored: Option<String> = sqlx::query_scalar("SELECT beads_id FROM domains WHERE id = ?")
         .bind(linked_id)
         .fetch_one(&pool)
         .await
         .unwrap();
-    assert_eq!(stored.as_deref(), Some("Arlesh-5fs"), "and the stored row must agree");
+    assert_eq!(
+        stored.as_deref(),
+        Some("Arlesh-5fs"),
+        "and the stored row must agree"
+    );
 }

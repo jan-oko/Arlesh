@@ -108,13 +108,19 @@ impl RetypeKind {
                     | ChildKind::Flow
             ),
             Self::Task => {
-                matches!(child, ChildKind::Task | ChildKind::Commitment | ChildKind::Info)
+                matches!(
+                    child,
+                    ChildKind::Task | ChildKind::Commitment | ChildKind::Info
+                )
             }
             // The supporting steps under a rule ("phone on charger"), and the finer-grained
             // rules inside it ("no social media this month" holding each day's). Not a Goal:
             // a desired state is not something you hold to over a window.
             Self::Commitment => {
-                matches!(child, ChildKind::Task | ChildKind::Commitment | ChildKind::Info)
+                matches!(
+                    child,
+                    ChildKind::Task | ChildKind::Commitment | ChildKind::Info
+                )
             }
             // Mirrors `ALLOWED_CHILD_KINDS.info` in `src/utils/node-meta.ts`: an info nests only
             // under another info.
@@ -380,7 +386,9 @@ impl TransferPlan {
     /// notification for fields) is the documented fallback if the prompt proves too noisy in
     /// practice.
     pub fn loses_anything(&self) -> bool {
-        !self.lost_children.is_empty() || !self.lost_fields.is_empty() || self.parent_climb.is_some()
+        !self.lost_children.is_empty()
+            || !self.lost_fields.is_empty()
+            || self.parent_climb.is_some()
     }
 
     /// Gives the retyped node a Time Scope of its own, chosen after the plan was made.
@@ -420,7 +428,11 @@ impl TransferPlan {
 /// Pure: the caller reads the rows, this decides, the caller writes. Same-kind input is not
 /// rejected here — it simply plans a retype that carries everything, and the command
 /// short-circuits it.
-pub fn plan_retype(source: &SourceNode, children: &[ChildNode], target: RetypeKind) -> TransferPlan {
+pub fn plan_retype(
+    source: &SourceNode,
+    children: &[ChildNode],
+    target: RetypeKind,
+) -> TransferPlan {
     let (moved_children, lost_children) = children
         .iter()
         .cloned()
@@ -452,8 +464,10 @@ fn carry_fields(
 ) -> Carried {
     // Three kinds carry a window, tags and a Time Scope; only two of them can be depended on or
     // blocked, so the two flags are separate rather than one "content node" test.
-    let scoped_target =
-        matches!(target, RetypeKind::Goal | RetypeKind::Task | RetypeKind::Commitment);
+    let scoped_target = matches!(
+        target,
+        RetypeKind::Goal | RetypeKind::Task | RetypeKind::Commitment
+    );
     let graph_target = matches!(target, RetypeKind::Goal | RetypeKind::Task);
     let domain_target = target.is_domain_table();
     // `Domain.description` and `Info.details` are the same domain concept, so both count as
@@ -895,7 +909,10 @@ fn category_of(kind: &str) -> ParentCategory {
 /// Whether `target`'s parent link accepts a parent in this category.
 fn accepts_category(target: RetypeKind, category: ParentCategory) -> bool {
     match target {
-        RetypeKind::Goal => matches!(category, ParentCategory::DomainsTable | ParentCategory::Goal),
+        RetypeKind::Goal => matches!(
+            category,
+            ParentCategory::DomainsTable | ParentCategory::Goal
+        ),
         RetypeKind::Task => matches!(
             category,
             ParentCategory::DomainsTable
@@ -973,7 +990,10 @@ async fn climb_to_acceptable_parent<M: SessionMode>(
                 kind: next_kind.clone(),
                 id: next_id,
             };
-            let landing = Parent { id: Some(next_id), kind: next_kind };
+            let landing = Parent {
+                id: Some(next_id),
+                kind: next_kind,
+            };
             return Ok((landing, Some(ParentClimb { from, to })));
         }
         kind = next_kind;
@@ -1014,7 +1034,11 @@ async fn next_parent_of<M: SessionMode>(
 }
 
 /// This row's display title, across every kind a parent can be.
-async fn fetch_title<M: SessionMode>(db: &mut Db<M>, kind: &str, id: i64) -> Result<String, AppError> {
+async fn fetch_title<M: SessionMode>(
+    db: &mut Db<M>,
+    kind: &str,
+    id: i64,
+) -> Result<String, AppError> {
     Ok(match kind {
         "goal" => db.goals().get(GoalId(id)).await?.title,
         "task" => db.tasks().get(TaskId(id)).await?.title,
@@ -1347,7 +1371,9 @@ async fn carry_attachments(
             RetypeKind::Goal => db.goals().add_tag(GoalId(new_id), *tag_id).await?,
             RetypeKind::Task => db.tasks().add_tag(TaskId(new_id), *tag_id).await?,
             RetypeKind::Commitment => {
-                db.commitments().add_tag(CommitmentId(new_id), *tag_id).await?
+                db.commitments()
+                    .add_tag(CommitmentId(new_id), *tag_id)
+                    .await?
             }
             // Only the three content kinds have a tag join table, so the plan carries no tags to
             // any other kind and this arm never runs.
@@ -1356,18 +1382,19 @@ async fn carry_attachments(
     }
     if !plan.carried.block_reasons.is_empty() {
         db.block_reasons()
-            .set(
-                plan.target.as_str(),
-                new_id,
-                &plan.carried.block_reasons,
-            )
+            .set(plan.target.as_str(), new_id, &plan.carried.block_reasons)
             .await?;
     }
     // An added child of a Habit occurrence keeps that occurrence across a retype. The attachment
     // names the row rather than living in it, so it is re-pointed at the new one here and swept
     // off the old one by `delete_old_row` — the same shape as the tags above.
     db.flows()
-        .repoint_instance_child(source.kind.as_str(), source.id, plan.target.as_str(), new_id)
+        .repoint_instance_child(
+            source.kind.as_str(),
+            source.id,
+            plan.target.as_str(),
+            new_id,
+        )
         .await?;
     Ok(())
 }

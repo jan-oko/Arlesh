@@ -142,7 +142,9 @@ impl Section {
 
     /// The section a cursor names, or `None` if it names nothing.
     fn parse(name: &str) -> Option<Self> {
-        SECTIONS.into_iter().find(|section| section.as_str() == name)
+        SECTIONS
+            .into_iter()
+            .find(|section| section.as_str() == name)
     }
 }
 
@@ -158,10 +160,7 @@ pub struct Cursor {
 impl Cursor {
     /// The cursor a first page starts from.
     pub fn start(sections: &[Section]) -> Option<Self> {
-        sections.first().map(|&section| Self {
-            section,
-            offset: 0,
-        })
+        sections.first().map(|&section| Self { section, offset: 0 })
     }
 
     /// Reads the `section:offset` form a previous page handed out.
