@@ -9,11 +9,19 @@
 }
 
 /* The children's area. It is measured, and the measurement is what decides the page size — a Step
-   paginates rather than scrolling, so nothing here ever overflows. */
+   paginates rather than scrolling, so nothing here ever overflows.
+
+   `flex: 1 1 0` rather than `1 1 auto` is load-bearing, not tidying: with a content-derived basis
+   the area's height would depend on the cards in it, and the cards in it depend on the measured
+   height, so the grid would chase its own tail on the first frame. A zero basis makes the height
+   purely what the Step has left to give. `overflow: hidden` is the backstop for the one frame
+   before the observer reports, and for a rounding error that would otherwise show a scrollbar in
+   the view whose whole point is not having one. */
 .children {
   display: grid;
+  overflow: hidden;
   min-height: 0;
-  flex: 1 1 auto;
+  flex: 1 1 0;
   align-content: start;
   justify-content: start;
   gap: var(--step-card-gap);
@@ -23,7 +31,7 @@
 .empty {
   display: flex;
   min-height: 0;
-  flex: 1 1 auto;
+  flex: 1 1 0;
   flex-direction: column;
   align-items: flex-start;
   justify-content: center;
