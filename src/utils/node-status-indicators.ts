@@ -10,6 +10,7 @@ export type StatusIndicatorType =
   | "frozen"
   | "backlog"
   | "agentic"
+  | "asynchronous"
   | "info"
   | "flowInstance"
   | "tags";
@@ -74,6 +75,12 @@ export function deriveStatusIndicators(node: MindmapNode): StatusIndicator[] {
   // branch marked in one edit would otherwise look unmarked everywhere below the node it was set on.
   if (isAgentic(node)) {
     indicators.push({ type: "agentic" });
+  }
+  // Read off the node's own flag and nothing else. Agentic is badged through `isAgentic` because it
+  // inherits; this one does not, so a subtask of a Task that starts a wait shows no hourglass — it
+  // is usually the work done *after* the wait, and badging it would say the opposite.
+  if (node.asynchronous === true) {
+    indicators.push({ type: "asynchronous" });
   }
   // No verdict badge. A Commitment's glyph carries its Verdict itself — hollow while the answer
   // is owed, solid once given, cleft when broken, struck through when the Verdict Window ran out

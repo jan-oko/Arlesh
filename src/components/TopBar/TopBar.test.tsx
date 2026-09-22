@@ -28,6 +28,7 @@ const EMPTY_DISPLAY = {
   displayProjectStatus: (v: string) => v, displayVerdict: (v: string) => v,
   displayScopeState: (v: string) => v, displayBlocked: (v: string) => v,
   displayAgentic: (v: string) => v,
+  displayAsynchronous: (v: string) => v,
 };
 
 beforeEach(() => {
@@ -35,7 +36,7 @@ beforeEach(() => {
   useListFilterStore.setState({ filter: { ...DEFAULT_LIST_FILTER, pills: { ...DEFAULT_LIST_FILTER.pills } } });
   useMindmapStore.setState({ subtreeRootId: null, subtreeNav: null });
   useViewStore.setState({ view: "mindmap", mindmapOrientation: "horizontal" });
-  useDisplayStore.setState({ pathHeaderIcons: true });
+  useDisplayStore.setState({ pathHeaderIcons: true, asynchronousFirst: false });
   useThemeStore.setState({ theme: "dark" });
   useCloseToTrayStore.setState({ closeToTray: true });
   mockUseFilterDisplay.mockReturnValue(EMPTY_DISPLAY);
@@ -215,6 +216,25 @@ describe("TopBar", () => {
       render(<TopBar />);
       fireEvent.click(screen.getByRole("button", { name: "common:settings" }));
       expect(screen.queryByRole("checkbox", { name: "common:pathIcons" })).not.toBeInTheDocument();
+    });
+
+    it("turns Asynchronous first on from a switch that starts off", () => {
+      // Off by default: row order is something the tree already answers, and rearranging it for
+      // everyone would be a change nobody asked for.
+      useViewStore.setState({ view: "list" });
+      render(<TopBar />);
+      fireEvent.click(screen.getByRole("button", { name: "common:settings" }));
+      const asyncSwitch = screen.getByRole("checkbox", { name: "common:asynchronousFirst" });
+      expect(asyncSwitch).not.toBeChecked();
+      fireEvent.click(asyncSwitch);
+      expect(useDisplayStore.getState().asynchronousFirst).toBe(true);
+      expect(asyncSwitch).toBeChecked();
+    });
+
+    it("hides Asynchronous first on the Mindmap, whose sibling order is set by hand", () => {
+      render(<TopBar />);
+      fireEvent.click(screen.getByRole("button", { name: "common:settings" }));
+      expect(screen.queryByRole("checkbox", { name: "common:asynchronousFirst" })).not.toBeInTheDocument();
     });
   });
 

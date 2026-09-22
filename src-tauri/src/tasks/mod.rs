@@ -187,6 +187,7 @@ struct TaskRow {
     status: String,
     delegate_to: Option<i64>,
     agentic: Option<bool>,
+    asynchronous: bool,
     time_scope_start_id: Option<i64>,
     time_scope_end_id: Option<i64>,
     time_scope_duration_n: Option<i64>,
@@ -210,6 +211,7 @@ impl From<TaskRow> for Task {
             status: row.status,
             delegate_to: row.delegate_to,
             agentic: row.agentic,
+            asynchronous: row.asynchronous,
             time_scope: time_scope_from_row(
                 row.time_scope_start_id,
                 row.time_scope_end_id,
@@ -402,6 +404,8 @@ struct TaskWrite {
     delegate_to: Option<i64>,
     /// Final Agentic column: `None` is the NULL that inherits from the nearest flagged ancestor.
     agentic: Option<bool>,
+    /// Final Asynchronous column: whether doing this task starts a wait.
+    asynchronous: bool,
     /// Final Time Scope, or `None` for unscoped.
     time_scope: Option<TimeScope>,
     /// Requested on-exit behavior; dropped by [`on_scope_exit_column`] when unscoped.
@@ -443,6 +447,9 @@ impl TaskWrite {
             Some(new_agentic) => new_agentic.as_column(),
             None => stored.agentic,
         };
+        // One `Option` deep, not two: the column is a plain boolean, so there is no third state an
+        // absent field could be confused with.
+        let asynchronous = request.asynchronous.unwrap_or(stored.asynchronous);
         let time_scope = match request.time_scope {
             Some(new_time_scope) => new_time_scope,
             None => stored.time_scope,
@@ -470,6 +477,7 @@ impl TaskWrite {
             status,
             delegate_to,
             agentic,
+            asynchronous,
             time_scope,
             on_scope_exit: request.on_scope_exit.unwrap_or(stored.on_scope_exit),
             plan,
@@ -790,13 +798,14 @@ impl<'session> TaskOperator<'session> {
         let (plan_start, plan_end, _, _) = time_scope_columns(&request.plan);
         let archival = request.archival.unwrap_or_default();
         let agentic = request.agentic.unwrap_or_default().as_column();
+        let asynchronous = request.asynchronous.unwrap_or(false);
         let id = sqlx::query(
             "INSERT INTO tasks
                 (title, parent_type, parent_id, status,
                  time_scope_start_id, time_scope_end_id, time_scope_duration_n,
                  time_scope_duration_kind, on_scope_exit, plan_start_id, plan_end_id, archival,
-                 agentic)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                 agentic, asynchronous)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&request.title)
         .bind(&request.parent_type)
@@ -811,6 +820,7 @@ impl<'session> TaskOperator<'session> {
         .bind(plan_end)
         .bind(archival.as_str())
         .bind(agentic)
+        .bind(asynchronous)
         .execute(&mut *self.connection)
         .await?
         .last_insert_rowid();
@@ -926,7 +936,7 @@ impl<'session> TaskOperator<'session> {
             "UPDATE tasks SET title=?, status=?, delegate_to=?,
                 time_scope_start_id=?, time_scope_end_id=?, time_scope_duration_n=?,
                 time_scope_duration_kind=?, on_scope_exit=?, plan_start_id=?, plan_end_id=?,
-                archival=?, agentic=?, position=?, is_private=? WHERE id=?",
+                archival=?, agentic=?, asynchronous=?, position=?, is_private=? WHERE id=?",
         )
         .bind(&write.title)
         .bind(&write.status)
@@ -940,6 +950,7 @@ impl<'session> TaskOperator<'session> {
         .bind(plan_end)
         .bind(write.archival.as_str())
         .bind(write.agentic)
+        .bind(write.asynchronous)
         .bind(write.position)
         .bind(write.is_private)
         .bind(id.0)

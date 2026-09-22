@@ -47,6 +47,8 @@ function pillDisplay(
       return { label: display.displayBlocked(value), color: null };
     case "agentic":
       return { label: display.displayAgentic(value), color: null };
+    case "asynchronous":
+      return { label: display.displayAsynchronous(value), color: null };
   }
 }
 

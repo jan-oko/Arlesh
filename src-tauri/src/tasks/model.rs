@@ -277,6 +277,14 @@ pub struct Task {
     /// ancestor; `Some` is an explicit value that replaces what would have been inherited.
     /// Independent of `delegate_to` — a task may be both.
     pub agentic: Option<bool>,
+    /// Whether doing this task starts a **wait** rather than finishing something — send the
+    /// email, order the part, kick off the build.
+    ///
+    /// A plain `bool`, deliberately unlike [`Self::agentic`]: the flag does not inherit, so there
+    /// is no third state for an unset value to mean. "Starts a wait" is a property of one concrete
+    /// action, and a subtask of an asynchronous task is usually the work you do *after* the wait.
+    #[serde(default)]
+    pub asynchronous: bool,
     /// Relevance window (if set). A null value inherits the nearest scoped ancestor.
     pub time_scope: Option<TimeScope>,
     /// On-exit behavior; present iff `time_scope` is (inherited with the window otherwise).
@@ -395,6 +403,9 @@ pub struct CreateTaskRequest {
     /// Initial Agentic state (defaults to Inherit, the stored NULL).
     #[serde(default)]
     pub agentic: Option<TaskAgentic>,
+    /// Whether the new task is Asynchronous (defaults to `false` — nothing arrives flagged).
+    #[serde(default)]
+    pub asynchronous: Option<bool>,
 }
 
 /// Request body for updating a task.
@@ -411,6 +422,12 @@ pub struct UpdateTaskRequest {
     /// writes the NULL that puts the task back to inheriting. The three states are named rather
     /// than nested in a second `Option` — see [`TaskAgentic`] for why that shape is wrong here.
     pub agentic: Option<TaskAgentic>,
+    /// Asynchronous flag to set; `None` leaves it unchanged.
+    ///
+    /// One `Option` deep, where [`Self::agentic`] needs a named three-state enum: the column is a
+    /// plain boolean with no NULL to clear it to, so "leave alone" and "set" are the only two
+    /// things a request can say about it.
+    pub asynchronous: Option<bool>,
     /// Relevance window to set (None leaves unchanged, Some(None) clears it).
     #[serde(default, deserialize_with = "crate::wire::null_clears")]
     pub time_scope: Option<Option<TimeScope>>,

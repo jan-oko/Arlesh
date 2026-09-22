@@ -56,7 +56,7 @@ function mkGoal(overrides: Partial<Goal> = {}): Goal {
 function mkTask(overrides: Partial<Task> = {}): Task {
   return {
     id: 1, title: "Task", parent_type: "goal", parent_id: 1,
-    status: "todo", delegate_to: null, agentic: null, time_scope: null, on_scope_exit: null, plan: null, archival: "live", tag_ids: [], position: 0, is_private: false,
+    status: "todo", delegate_to: null, agentic: null, asynchronous: false, time_scope: null, on_scope_exit: null, plan: null, archival: "live", tag_ids: [], position: 0, is_private: false,
     ...overrides,
   };
 }
@@ -1837,7 +1837,7 @@ describe("injectHabitInstances", () => {
       return buildTree(
         [{ id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false }],
         [{ id: 5, title: "Fitness", parent_type: "domain", parent_id: 1, status: "active", time_scope: null, on_scope_exit: null, tag_ids: [], position: 0, is_private: false }],
-        [{ id: 12, title: "Buy milk", parent_type: "goal", parent_id: 5, status: "todo", time_scope: null, plan: null, on_scope_exit: null, tag_ids: [], position: 0, is_private: false, archival: "live", agentic: null, delegate_to: null }],
+        [{ id: 12, title: "Buy milk", parent_type: "goal", parent_id: 5, status: "todo", time_scope: null, plan: null, on_scope_exit: null, tag_ids: [], position: 0, is_private: false, archival: "live", agentic: null, asynchronous: false, delegate_to: null }],
         [],
       );
     }

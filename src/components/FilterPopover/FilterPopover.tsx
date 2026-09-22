@@ -6,7 +6,7 @@ import { useViewStore } from "@/stores/use-view-store";
 import { useFilterDisplay } from "@/hooks/use-filter-display";
 import {
   TASK_STATUS_VALUES, GOAL_STATUS_VALUES, PROJECT_STATUS_VALUES, VERDICT_FILTER_VALUES,
-  SCOPE_STATE_VALUES, BLOCKED_VALUES, AGENTIC_VALUES,
+  SCOPE_STATE_VALUES, BLOCKED_VALUES, AGENTIC_VALUES, ASYNCHRONOUS_VALUES,
 } from "@/utils/list-filter";
 import type { PillDimension } from "@/utils/list-filter";
 import type { OverrideMode } from "@/utils/filter-tree";
@@ -182,6 +182,9 @@ export default function FilterPopover() {
           </PillFilterSection>
           <PillFilterSection label={t("listView:agenticLabel")}>
             <FixedValueAdder values={AGENTIC_VALUES} added={addedSet("agentic")} labelFor={display.displayAgentic} onAdd={(v) => addPill("agentic", v)} />
+          </PillFilterSection>
+          <PillFilterSection label={t("listView:asynchronousLabel")}>
+            <FixedValueAdder values={ASYNCHRONOUS_VALUES} added={addedSet("asynchronous")} labelFor={display.displayAsynchronous} onAdd={(v) => addPill("asynchronous", v)} />
           </PillFilterSection>
         </div>
       )}
