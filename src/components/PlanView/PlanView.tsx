@@ -1,14 +1,17 @@
-import { useCallback, useMemo, useState } from "react";
+import { Fragment, useCallback, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useListData } from "@/hooks/use-list-data";
 import { usePlanScope } from "@/hooks/use-plan-scope";
 import { usePlanMove } from "@/hooks/use-plan-move";
 import { useScopeWindows } from "@/hooks/use-scope-windows";
+import { useScopeRows } from "@/hooks/use-scope-rows";
 import { useSubtreeNav } from "@/hooks/use-subtree-nav";
 import { useUndo } from "@/hooks/use-undo";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
 import { useFilterStore } from "@/stores/use-filter-store";
+import { useDisplayStore } from "@/stores/use-display-store";
+import { useListFilterStore } from "@/stores/use-list-filter-store";
 import { useFullscreenStore } from "@/stores/use-fullscreen-store";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { useNodeEditor } from "@/components/MindmapView/use-node-editor";
@@ -18,11 +21,16 @@ import type { TaskListRow } from "@/utils/list-filter";
 import { DEFAULT_LIST_FILTER, filterTaskList } from "@/utils/list-filter";
 import { collectSearchableNodes } from "@/utils/mindmap-tree";
 import { partitionForScope, referencedScopeIds } from "@/utils/plan-triage";
+import { buildPlanSections } from "@/utils/plan-sections";
+import type { PlanSection } from "@/utils/plan-sections";
+import { groupRowsByPath } from "@/utils/list-data";
+import type { PathGroupedEntry } from "@/utils/list-data";
 import type { PlanPanes } from "@/utils/plan-triage";
 import type { PlanPane } from "@/utils/hotkeys/plan-bindings";
 import AnchoredToast from "@/components/AnchoredToast/AnchoredToast";
 import NodeSearchModal from "@/components/NodeSearchModal/NodeSearchModal";
 import TaskEditorModal from "@/components/TaskEditorModal/TaskEditorModal";
+import PathHeaderRow from "@/components/ListView/PathHeaderRow";
 import PlanScopeBar from "./PlanScopeBar";
 import PlanTaskCard from "./PlanTaskCard";
 import { useKeyboardPlanView } from "./use-keyboard-plan-view";
@@ -37,6 +45,47 @@ function nextIndex(current: number, direction: 1 | -1, length: number): number |
   const moved = current + direction;
   if (moved < 0 || moved >= length) return current;
   return moved;
+}
+
+/**
+ * One drawn run of a pane: an optional section header, and the entries under it.
+ *
+ * A block is flat on purpose. The keyboard walks a pane as one ordered list of task rows, so
+ * headers have to be *entries in the stream* rather than wrappers around one — the same reasoning
+ * the List View's path headers and asynchronous markers are built on. Nothing a block draws is
+ * landable; `rows` below is what the selection moves through.
+ */
+interface PaneBlock {
+  key: string;
+  section: PlanSection | null;
+  entries: PathGroupedEntry[];
+}
+
+/** A pane, ready to draw, plus the row order the keyboard walks. */
+interface PaneModel {
+  blocks: PaneBlock[];
+  /** Every task row in the pane, in the order it is drawn. Headers are not in here. */
+  rows: TaskListRow[];
+  /** Whether sections are drawn, which decides if an empty pane says so or shows empty buckets. */
+  sectioned: boolean;
+}
+
+/** Path headers are the caller's choice; without them a run is just its rows. */
+function entriesFor(rows: readonly TaskListRow[], grouped: boolean): PathGroupedEntry[] {
+  if (grouped) return groupRowsByPath(rows);
+  return rows.map((row) => ({ type: "task", row, visibleDepth: 0 }));
+}
+
+/** Assembles a pane from its sections, or from one flat run when it is not split. */
+function paneModel(sections: PlanSection[] | null, rows: readonly TaskListRow[], grouped: boolean): PaneModel {
+  if (sections === null) {
+    return { blocks: [{ key: "all", section: null, entries: entriesFor(rows, grouped) }], rows: [...rows], sectioned: false };
+  }
+  return {
+    blocks: sections.map((section) => ({ key: section.key, section, entries: entriesFor(section.rows, grouped) })),
+    rows: sections.flatMap((section) => section.rows),
+    sectioned: true,
+  };
 }
 
 /**
@@ -112,7 +161,53 @@ export default function PlanView() {
     targetScopeId, targetWindow, targetLabel: scope.label, windows, reload, showToast,
   });
 
-  const paneRows = pane === "candidates" ? panes.candidates : panes.planned;
+  // The two shape switches, app-wide like the List View's own (see `use-display-store`).
+  const planPathGrouping = useDisplayStore((s) => s.planPathGrouping);
+  // The same app-wide glyph choice the List View's headers read; one header, one setting.
+  const pathHeaderIcons = useDisplayStore((s) => s.pathHeaderIcons);
+  const planSubscopeSplit = useDisplayStore((s) => s.planSubscopeSplit);
+  const setPillSide = useListFilterStore((s) => s.setPillSide);
+
+  // Which *calendar cell* each plan names, which is a different question from the window it spans
+  // and is answered in dates rather than instants — see `plan-sections`. Only asked for while the
+  // split is on, so the pane costs nothing extra with the switch off.
+  const sectionScopeIds = useMemo(() => {
+    if (!planSubscopeSplit || targetScopeId === null) return [];
+    const ids = [targetScopeId];
+    for (const row of panes.planned) {
+      const plan = row.node.plan;
+      if (plan != null) ids.push(plan.start_id, plan.end_id);
+    }
+    return ids;
+  }, [planSubscopeSplit, targetScopeId, panes.planned]);
+  const scopeRows = useScopeRows(sectionScopeIds);
+
+  const plannedSections = useMemo(() => {
+    if (!planSubscopeSplit || targetScopeId === null) return null;
+    const target = scopeRows.get(targetScopeId);
+    // Until the scope being filled has been read back there is nothing to split by, and the pane
+    // draws flat rather than inventing buckets.
+    if (target === undefined) return null;
+    return buildPlanSections(panes.planned, target, scopeRows);
+  }, [planSubscopeSplit, targetScopeId, scopeRows, panes.planned]);
+
+  const candidatesModel = useMemo(
+    () => paneModel(null, panes.candidates, planPathGrouping),
+    [panes.candidates, planPathGrouping],
+  );
+  const plannedModel = useMemo(
+    () => paneModel(plannedSections, panes.planned, planPathGrouping),
+    [plannedSections, panes.planned, planPathGrouping],
+  );
+
+  // The keyboard walks what is drawn. With the split on, the planned pane's order is its sections'
+  // order, which is not the triage's — so the flat array the selection moves through has to come
+  // from the model rather than from `panes`, or Down would jump between buckets.
+  const paneRowsOf = useCallback(
+    (which: PlanPane) => (which === "candidates" ? candidatesModel.rows : plannedModel.rows),
+    [candidatesModel, plannedModel],
+  );
+  const paneRows = paneRowsOf(pane);
 
   const onNavigate = useCallback(
     (direction: 1 | -1) => {
@@ -130,17 +225,19 @@ export default function PlanView() {
     (next: PlanPane) => {
       if (next === pane) return;
       const current = paneRows.findIndex((row) => row.node.id === selectedTaskId);
-      const target = next === "candidates" ? panes.candidates : panes.planned;
+      const target = paneRowsOf(next);
       const landing = Math.min(Math.max(current, 0), target.length - 1);
       setPane(next);
       setSelectedTaskId(target.length === 0 ? null : target[landing]?.node.id ?? null);
     },
-    [pane, paneRows, panes, selectedTaskId],
+    [pane, paneRows, paneRowsOf, selectedTaskId],
   );
 
   const move = useCallback(
     (row: TaskListRow, from: PlanPane) => {
-      const list = from === "candidates" ? panes.candidates : panes.planned;
+      // The successor is the next card *on screen*, which under a split is the next one in its
+      // section rather than the next one the triage produced.
+      const list = paneRowsOf(from);
       const index = list.findIndex((candidate) => candidate.node.id === row.node.id);
       const successor = list[index + 1] ?? list[index - 1] ?? null;
       void (from === "candidates" ? planInto(row) : unplan(row)).then((moved) => {
@@ -149,7 +246,7 @@ export default function PlanView() {
         if (moved) setSelectedTaskId(successor?.node.id ?? null);
       });
     },
-    [panes, planInto, unplan],
+    [paneRowsOf, planInto, unplan],
   );
 
   const onMoveAcross = useCallback(
@@ -181,7 +278,33 @@ export default function PlanView() {
   if (isLoading) return <div className={styles.centered}>{t("common:loading")}</div>;
   if (error !== null) return <div className={styles.centered}>{t("common:error", { message: error })}</div>;
 
-  function renderPane(which: PlanPane, heading: string, list: readonly TaskListRow[], empty: ReactNode) {
+  function sectionHeading(section: PlanSection) {
+    if (section.unbucketed) {
+      return (
+        <h3 className={`${styles.sectionHeading} ${styles.sectionLoose}`}>
+          {t("planView:unbucketedHeading")}
+        </h3>
+      );
+    }
+    return (
+      <h3 className={styles.sectionHeading}>
+        <span className={styles.sectionName}>{section.label}</span>
+        {/* A month's first and last weeks usually poke outside it. They are drawn and said to be
+            partial, with their dates, rather than dropped — a bucket left out would hide whatever
+            is planned into it from this scope's view entirely. */}
+        {section.partial && section.range !== null && (
+          <span className={styles.sectionPartial}>
+            {t("planView:subscopePartial", { start: section.range.startDate, end: section.range.endDate })}
+          </span>
+        )}
+      </h3>
+    );
+  }
+
+  function renderPane(which: PlanPane, heading: string, model: PaneModel, empty: ReactNode) {
+    // With the split on, an empty pane still has buckets to show: an empty week is the answer to
+    // "what is in this month" just as much as a full one.
+    const showEmpty = model.rows.length === 0 && !model.sectioned;
     return (
       <section
         className={`${styles.pane}${pane === which ? ` ${styles.paneFocused}` : ""}`}
@@ -190,18 +313,39 @@ export default function PlanView() {
         onClick={() => setPane(which)}
       >
         <h2 className={styles.paneHeading}>{heading}</h2>
-        {list.length === 0 ? empty : (
+        {showEmpty ? empty : (
           <div className={styles.cards}>
-            {list.map((row) => (
-              <PlanTaskCard
-                key={row.node.id}
-                row={row}
-                isSelected={row.node.id === selectedTaskId}
-                direction={which === "candidates" ? "in" : "out"}
-                onSelect={(id) => { setPane(which); setSelectedTaskId(id); }}
-                onMove={(moved) => move(moved, which)}
-                onOpenEditor={onDoubleClick}
-              />
+            {model.blocks.map((block) => (
+              <Fragment key={block.key}>
+                {block.section !== null && sectionHeading(block.section)}
+                {block.section !== null && block.entries.length === 0 && (
+                  <p className={styles.sectionEmpty}>{t("planView:subscopeEmpty")}</p>
+                )}
+                {block.entries.map((entry, index) => (
+                  entry.type === "path" ? (
+                    <PathHeaderRow
+                      key={`path-${block.key}-${index}-${entry.pathKey}`}
+                      segments={entry.segments}
+                      onEnterSubtree={enterSubtree}
+                      onFilterByAntecedent={(id, side) => setPillSide("antecedent", id, side)}
+                      showKindIcon={pathHeaderIcons}
+                      // The Plan View writes Plans and nothing else, so it offers no way to create
+                      // a Task from a header — absent rather than present and always refusing.
+                      onCreateTask={null}
+                    />
+                  ) : (
+                    <PlanTaskCard
+                      key={entry.row.node.id}
+                      row={entry.row}
+                      isSelected={entry.row.node.id === selectedTaskId}
+                      direction={which === "candidates" ? "in" : "out"}
+                      onSelect={(id) => { setPane(which); setSelectedTaskId(id); }}
+                      onMove={(moved) => move(moved, which)}
+                      onOpenEditor={onDoubleClick}
+                    />
+                  )
+                ))}
+              </Fragment>
             ))}
           </div>
         )}
@@ -230,7 +374,7 @@ export default function PlanView() {
           {renderPane(
             "candidates",
             t("planView:candidatesHeading"),
-            panes.candidates,
+            candidatesModel,
             <p className={styles.empty}>
               {t("planView:candidatesEmpty")}
               {!showBacklogged && <span className={styles.hint}>{t("planView:candidatesEmptyBacklogHint")}</span>}
@@ -239,7 +383,7 @@ export default function PlanView() {
           {renderPane(
             "planned",
             t("planView:plannedHeading"),
-            panes.planned,
+            plannedModel,
             <p className={styles.empty}>{t("planView:plannedEmpty")}</p>,
           )}
         </div>

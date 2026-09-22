@@ -46,6 +46,10 @@ export default function TopBar() {
   const pathHeaderIcons = useDisplayStore((s) => s.pathHeaderIcons);
   const togglePathHeaderIcons = useDisplayStore((s) => s.togglePathHeaderIcons);
   const asynchronousFirst = useDisplayStore((s) => s.asynchronousFirst);
+  const planPathGrouping = useDisplayStore((s) => s.planPathGrouping);
+  const togglePlanPathGrouping = useDisplayStore((s) => s.togglePlanPathGrouping);
+  const planSubscopeSplit = useDisplayStore((s) => s.planSubscopeSplit);
+  const togglePlanSubscopeSplit = useDisplayStore((s) => s.togglePlanSubscopeSplit);
   const toggleAsynchronousFirst = useDisplayStore((s) => s.toggleAsynchronousFirst);
   const listPreset = useListFilterStore((s) => s.filter.preset);
   const setListPreset = useListFilterStore((s) => s.setPreset);
@@ -130,6 +134,27 @@ export default function TopBar() {
                         label={t("common:asynchronousFirst")}
                       />
                     </div>
+                  )}
+                  {/* Two switches, not one: where the work lives and when it is planned are
+                      different questions, and a planning pass wants them in different
+                      combinations. Gated to the Plan View like every switch above them. */}
+                  {view === "plan" && (
+                    <>
+                      <div className={styles.settingRow}>
+                        <Switch
+                          checked={planPathGrouping}
+                          onChange={togglePlanPathGrouping}
+                          label={t("common:planPathGrouping")}
+                        />
+                      </div>
+                      <div className={styles.settingRow}>
+                        <Switch
+                          checked={planSubscopeSplit}
+                          onChange={togglePlanSubscopeSplit}
+                          label={t("common:planSubscopeSplit")}
+                        />
+                      </div>
+                    </>
                   )}
                   <div className={styles.settingRow}>
                     <button

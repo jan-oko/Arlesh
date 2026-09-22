@@ -25,5 +25,8 @@
   "refusedParentPlan": "“{{title}}” cannot be planned into {{scope}}: its parent task's Plan does not cover it.",
   "unbacklogged": "“{{title}}” is planned into {{scope}}, and is no longer in the Backlog.",
   "moveFailed": "“{{title}}” could not be moved: {{message}}",
-  "noPath": "Directly under the root"
+  "noPath": "Directly under the root",
+  "unbucketedHeading": "Planned to this scope itself",
+  "subscopePartial": "partial · {{start}} – {{end}}",
+  "subscopeEmpty": "Nothing planned here"
 }
