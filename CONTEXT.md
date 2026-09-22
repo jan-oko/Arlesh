@@ -80,6 +80,8 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 **Tab** — One place in the board you are looking at, held open alongside others. A Tab **owns** everything about a view of the board: its **subtree root**, which View it shows (Mindmap or List), its branch orientation, its Mindmap filter set and its List View filter set, its selection, its collapsed nodes and its pan/zoom. Switching Tabs swaps all of it at once, and nothing a Tab owns is visible to, or changed by, another Tab. What is **app-wide** and shared across every Tab: the theme, the **Clipboard**, the Undo/Redo stacks, the path-glyph display preference, and the board itself. A Tab's root, view, orientation and both filter sets are restored on reopening; its selection, collapsed nodes and pan/zoom are not — those are working state.
 
+**Step** — The node you are standing on plus its direct children: one screenful of the **Steps View**. You **descend** into a card and **climb** back out, and the metaphor is a staircase. Deliberately not *level*, which already means a scope level (day → week → month → season) with "level node" as a concrete thing in Habits. A Step's header card is the node itself, drawn so it can be acted on without leaving the level; at the true root it stands for the whole board and has no node behind it.
+
 **Tab label** — What a Tab is called in the strip: the title of the subtree it is rooted at, or a fixed label for a Tab showing the whole tree. Stored with the Tab rather than looked up, since an inactive Tab has no view mounted to resolve a title; refreshed whenever that Tab is visited.
 
 ## Status values
