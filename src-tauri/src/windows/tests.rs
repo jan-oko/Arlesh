@@ -151,7 +151,8 @@ struct Scratch(std::path::PathBuf);
 
 impl Scratch {
     fn new(name: &str) -> Self {
-        let path = std::env::temp_dir().join(format!("arlesh-windows-{name}-{}", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("arlesh-windows-{name}-{}", std::process::id()));
         std::fs::create_dir_all(&path).expect("create the scratch directory");
         Self(path)
     }

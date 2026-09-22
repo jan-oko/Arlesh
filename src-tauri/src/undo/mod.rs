@@ -156,10 +156,10 @@ pub async fn close_gesture(
     let Some(gesture) = db.undo().close_gesture().await? else {
         return Ok(GestureClose::default());
     };
+    // Two questions, and they are not the same one: what the user can take back, and whether the
+    // board moved at all. An agent's write answers no to the first and yes to the second.
+    let wrote = db.undo().wrote_anything(&gesture).await?;
     let entries = db.undo().entries_for(&gesture).await?;
-    // Asked before the entries are consumed, and of *all* of them: the Undo Stack wants the user's
-    // writes, and the other windows want to know about anybody's.
-    let wrote = !entries.is_empty();
 
     let Some(stacked) = StackedGesture::new(gesture, entries) else {
         return Ok(GestureClose {
@@ -418,6 +418,22 @@ impl<'session> UndoOperator<'session> {
         .await?;
 
         rows.into_iter().map(JournalRow::into_entry).collect()
+    }
+
+    /// Whether a Gesture wrote to the board at all — **whoever** made the writes.
+    ///
+    /// Deliberately not [`UndoOperator::entries_for`] with the filter dropped: the two questions
+    /// have different answers and different customers. The Undo Stack wants the user's writes,
+    /// because Ctrl+Z is a history of the user; the other windows want anybody's, because a window
+    /// showing a node an agent has just relabelled is wrong regardless of who relabelled it. See
+    /// [`crate::board`].
+    pub async fn wrote_anything(&mut self, gesture: &GestureId) -> Result<bool, UndoError> {
+        let wrote: bool =
+            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM undo_journal WHERE gesture_id = ?)")
+                .bind(&gesture.0)
+                .fetch_one(&mut *self.connection)
+                .await?;
+        Ok(wrote)
     }
 
     /// Applies `entries` in `direction`, with journalling suppressed for the duration.

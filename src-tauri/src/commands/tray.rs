@@ -39,15 +39,13 @@ use tauri::{
     menu::{Menu, MenuEvent, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
-use tauri::{AppHandle, Manager, State, WindowEvent};
+use tauri::{AppHandle, Manager, Runtime, State, Window, WindowEvent};
 
 use crate::{
+    commands::windows,
     icon,
     tray::{activate_action, ActivateAction, CloseAction, ClosePreference},
 };
-
-/// The label of the window the tray shows, hides and quits.
-const MAIN_WINDOW: &str = "main";
 
 /// The tray icon's own id, which is a different namespace from the window's label.
 const TRAY_ID: &str = "arlesh-tray";
@@ -68,7 +66,7 @@ const SHOW_ITEM: &str = "show";
 #[cfg(not(target_os = "linux"))]
 const QUIT_ITEM: &str = "quit";
 
-/// Builds the tray icon and, if it went up, takes over the main window's close button.
+/// Builds the tray icon and, if it went up, lets the close button start meaning "hide".
 ///
 /// Called once from the setup hook. It also manages the [`ClosePreference`], so that the decision
 /// and the surfaces that consult it are installed together — a tray whose Quit could not reach the
@@ -76,29 +74,62 @@ const QUIT_ITEM: &str = "quit";
 ///
 /// Infallible on purpose, the same bargain [`crate::mcp::serve`] makes with an occupied port: a
 /// desktop with no tray host is an ordinary condition, and it must not take the window down with
-/// it. What it costs is the feature, not the app — with no tray to restore the window from, the
-/// close handler is never attached and closing goes on meaning quit, which is where Arlesh started.
+/// it. What it costs is the feature, not the app — a preference that never hears the tray went up
+/// reads as off, so closing goes on meaning quit, which is where Arlesh started.
 pub fn install(app: &AppHandle) {
-    app.manage(ClosePreference::default());
+    let preference = ClosePreference::default();
 
     if let Err(error) = build_tray(app) {
         tracing::error!(error = %error, "no tray icon; the close button keeps quitting");
+        app.manage(preference);
         return;
     }
 
-    let handle = app.clone();
-    if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
-        window.on_window_event(move |event| {
-            if let WindowEvent::CloseRequested { api, .. } = event {
-                if resolve_close(&handle) == CloseAction::HideToTray {
-                    api.prevent_close();
-                    hide_window(&handle);
-                }
-            }
-        });
-    }
+    preference.mark_tray_available();
+    app.manage(preference);
+    tracing::info!("tray icon ready; closing the last window hides it by default");
+}
 
-    tracing::info!("tray icon ready; closing the window hides it by default");
+/// Every window's close button, and the moment a closed window stops existing.
+///
+/// Registered once, on the builder, rather than per window: a torn-off window is a window like any
+/// other and must behave like one, and a handler attached at creation time would have to be
+/// remembered by every future path that creates one.
+///
+/// Two events, two jobs. **CloseRequested** is where the close-to-tray decision is made, and where
+/// a session that is about to lose its last window is written down while that window is still
+/// there to be read. **Destroyed** is where a window that really went is taken out of the session
+/// — but not during a quit, when every window is destroyed in turn and the session was already
+/// saved intact.
+pub fn on_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
+    let app = window.app_handle();
+    match event {
+        WindowEvent::CloseRequested { api, .. } => {
+            let is_last = app.webview_windows().len() <= 1;
+            if resolve_close(app, is_last) == CloseAction::HideToTray {
+                api.prevent_close();
+                hide_windows(app);
+                windows::snapshot(app);
+                return;
+            }
+            if is_last {
+                // The last window's geometry is only readable while it still exists, and the
+                // destruction that follows reports no windows at all.
+                windows::snapshot(app);
+            }
+        }
+        // Not during a quit: every window is destroyed in turn, and the session was written
+        // down intact before the first of them went.
+        WindowEvent::Destroyed if !quit_requested(app) => windows::snapshot(app),
+        _ => {}
+    }
+}
+
+/// Whether a deliberate quit is under way, and so whether a destruction means anything.
+fn quit_requested<R: Runtime>(app: &AppHandle<R>) -> bool {
+    app.try_state::<ClosePreference>()
+        .map(|preference| preference.quit_requested())
+        .unwrap_or(false)
 }
 
 /// Puts the icon and its two-item menu in the tray, through Tauri's own tray.
@@ -201,14 +232,14 @@ impl ksni::Tray for SystemTray {
 
     /// A plain left click. The whole reason this item exists rather than Tauri's.
     fn activate(&mut self, _x: i32, _y: i32) {
-        on_main_thread(&self.app, toggle_window);
+        on_main_thread(&self.app, toggle_windows);
     }
 
     fn menu(&self) -> Vec<ksni::MenuItem<Self>> {
         vec![
             ksni::menu::StandardItem {
                 label: SHOW_LABEL.to_string(),
-                activate: Box::new(|tray: &mut Self| on_main_thread(&tray.app, show_window)),
+                activate: Box::new(|tray: &mut Self| on_main_thread(&tray.app, show_windows)),
                 ..Default::default()
             }
             .into(),
@@ -235,42 +266,29 @@ fn on_main_thread(app: &AppHandle, action: impl FnOnce(&AppHandle) + Send + 'sta
     }
 }
 
-/// What the tray icon says on hover: the main window's title, else [`FALLBACK_TOOLTIP`].
+/// What the tray icon says on hover: a window's title, else [`FALLBACK_TOOLTIP`].
+///
+/// Any window's, because they all carry the same one — `scripts/branch-instance.sh` titles a
+/// branch's windows after its branch, and with several instances up their tray icons are otherwise
+/// indistinguishable.
 fn tray_tooltip(app: &AppHandle) -> String {
-    app.get_webview_window(MAIN_WINDOW)
-        .and_then(|window| window.title().ok())
+    app.webview_windows()
+        .values()
+        .find_map(|window| window.title().ok())
         .filter(|title| !title.is_empty())
         .unwrap_or_else(|| FALLBACK_TOOLTIP.to_string())
-}
-
-/// The window's icon: Tauri's bundled one where a bundle exists, else the embedded PNG.
-fn app_icon(app: &AppHandle) -> anyhow::Result<tauri::image::Image<'static>> {
-    match app.default_window_icon().cloned() {
-        // `to_owned` is what lifts a borrowed bundle icon out of the app it came from.
-        Some(icon) => Ok(icon.to_owned()),
-        None => icon::embedded(),
-    }
-}
-
-/// Applies [`app_icon`] to the main window, which a `cargo run` build would otherwise leave bare.
-pub fn set_window_icon(app: &AppHandle) -> anyhow::Result<()> {
-    let Some(window) = app.get_webview_window(MAIN_WINDOW) else {
-        return Ok(());
-    };
-    window.set_icon(app_icon(app)?)?;
-    Ok(())
 }
 
 /// What this close request means, according to the managed [`ClosePreference`].
 ///
 /// A missing preference means the setup hook did not install one, and the honest answer is then
 /// the old behaviour: let the window close rather than trap the user in an app with no tray.
-fn resolve_close(app: &AppHandle) -> CloseAction {
+fn resolve_close<R: Runtime>(app: &AppHandle<R>, is_last_window: bool) -> CloseAction {
     match app.try_state::<ClosePreference>() {
-        Some(preference) => preference.action(),
+        Some(preference) => preference.action(is_last_window),
         None => {
             tracing::warn!("no close preference is managed; closing the window quits");
-            CloseAction::Quit
+            CloseAction::Close
         }
     }
 }
@@ -278,7 +296,7 @@ fn resolve_close(app: &AppHandle) -> CloseAction {
 #[cfg(not(target_os = "linux"))]
 fn on_menu_event(app: &AppHandle, event: MenuEvent) {
     match event.id().as_ref() {
-        SHOW_ITEM => show_window(app),
+        SHOW_ITEM => show_windows(app),
         QUIT_ITEM => quit(app),
         // Every other menu in the app comes through here too, so an unrecognised id is ordinary.
         _ => {}
@@ -294,59 +312,70 @@ fn on_tray_icon_event(app: &AppHandle, event: TrayIconEvent) {
         ..
     } = event
     {
-        toggle_window(app);
+        toggle_windows(app);
     }
 }
 
-/// Shows the main window and puts the keyboard back in it.
-pub fn show_window(app: &AppHandle) {
-    let Some(window) = app.get_webview_window(MAIN_WINDOW) else {
-        return;
-    };
-    if let Err(error) = window.show() {
-        tracing::warn!(error = %error, "could not show the window");
-        return;
-    }
-    if let Err(error) = window.set_focus() {
-        tracing::warn!(error = %error, "could not focus the window");
-    }
-}
-
-/// Hides the main window, leaving the process — and the MCP endpoint — running.
-fn hide_window(app: &AppHandle) {
-    let Some(window) = app.get_webview_window(MAIN_WINDOW) else {
-        return;
-    };
-    if let Err(error) = window.hide() {
-        tracing::warn!(error = %error, "could not hide the window to the tray");
+/// Shows every window and puts the keyboard into the last one to come back.
+///
+/// Every window, because the tray holds the app rather than a window: a two-monitor arrangement
+/// put away with one click has to come back with one click, and there is no window among them that
+/// is more "the app" than the others.
+pub fn show_windows(app: &AppHandle) {
+    for window in app.webview_windows().values() {
+        if let Err(error) = window.show() {
+            tracing::warn!(error = %error, "could not show a window");
+            continue;
+        }
+        if let Err(error) = window.set_focus() {
+            tracing::warn!(error = %error, "could not focus a window");
+        }
     }
 }
 
-/// Hides the window when it is showing and shows it when it is not.
+/// Hides every window, leaving the process — and the MCP endpoint — running.
+fn hide_windows<R: Runtime>(app: &AppHandle<R>) {
+    for window in app.webview_windows().values() {
+        if let Err(error) = window.hide() {
+            tracing::warn!(error = %error, "could not hide a window to the tray");
+        }
+    }
+}
+
+/// Puts the windows away when any of them is showing, and brings them back when none is.
 ///
 /// What the decision is, and why an unreadable visibility shows rather than hides, is
-/// [`activate_action`].
-fn toggle_window(app: &AppHandle) {
-    let Some(window) = app.get_webview_window(MAIN_WINDOW) else {
-        return;
-    };
-    let visible = window.is_visible().map_err(|error| {
-        tracing::warn!(error = %error, "could not read window visibility; showing it");
-    });
+/// [`activate_action`]. It is asked once for the app rather than once per window, so that one
+/// click never hides one window and shows another.
+fn toggle_windows(app: &AppHandle) {
+    let mut any_visible = None;
+    for window in app.webview_windows().values() {
+        match window.is_visible() {
+            Ok(visible) => any_visible = Some(any_visible.unwrap_or(false) || visible),
+            Err(error) => {
+                tracing::warn!(error = %error, "could not read a window's visibility");
+            }
+        }
+    }
 
-    match activate_action(visible.ok()) {
-        ActivateAction::Hide => hide_window(app),
-        ActivateAction::Show => show_window(app),
+    match activate_action(any_visible) {
+        ActivateAction::Hide => hide_windows(app),
+        ActivateAction::Show => show_windows(app),
     }
 }
 
 /// Ends the process, the way closing the window used to.
 ///
-/// The preference is marked first so that any close arriving as part of this shutdown is let
-/// through instead of being turned back into a hide. `exit` unwinds Tauri's own shutdown — the
-/// managed [`SessionFactory`](crate::database::session::SessionFactory) and the async runtime the
-/// MCP listener lives on are dropped with the app — where `process::exit` would abandon both.
+/// The session is written down **before** the quit is marked, while every window is still open and
+/// still has a position to read. After that the windows are destroyed one at a time, and those
+/// destructions are deliberately ignored — see [`on_window_event`] — so that a quit records the
+/// arrangement the user quit with rather than the empty desktop it ends on.
+///
+/// `exit` unwinds Tauri's own shutdown — the managed
+/// [`SessionFactory`](crate::database::session::SessionFactory) and the async runtime the MCP
+/// listener lives on are dropped with the app — where `process::exit` would abandon both.
 pub fn quit(app: &AppHandle) {
+    windows::snapshot(app);
     if let Some(preference) = app.try_state::<ClosePreference>() {
         preference.request_quit();
     }

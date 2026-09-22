@@ -104,19 +104,19 @@ async fn open_gesture(app: &App<MockRuntime>) {
 }
 
 async fn close_gesture(app: &App<MockRuntime>) -> Option<GestureSummary> {
-    undo_commands::close_gesture(app.state(), app.state())
+    undo_commands::close_gesture(helpers::window(app), app.state(), app.state())
         .await
         .expect("close gesture")
 }
 
 async fn undo(app: &App<MockRuntime>) -> Option<GestureSummary> {
-    undo_commands::undo(app.state(), app.state())
+    undo_commands::undo(helpers::window(app), app.state(), app.state())
         .await
         .expect("undo")
 }
 
 async fn redo(app: &App<MockRuntime>) -> Option<GestureSummary> {
-    undo_commands::redo(app.state(), app.state())
+    undo_commands::redo(helpers::window(app), app.state(), app.state())
         .await
         .expect("redo")
 }
@@ -974,7 +974,7 @@ async fn an_undo_that_cannot_be_applied_changes_nothing_and_leaves_the_gesture_o
         .expect("delete the task");
     let before = board(&pool).await;
 
-    let error = undo_commands::undo(app.state(), app.state())
+    let error = undo_commands::undo(helpers::window(&app), app.state(), app.state())
         .await
         .expect_err("the inverse cannot be applied");
     let reported = serde_json::to_value(&error).expect("the error serialises to the frontend");

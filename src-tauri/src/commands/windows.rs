@@ -20,10 +20,11 @@
 //! somewhere else. Windows are built hidden and shown once placed, so restoring never shows a
 //! window jumping from the default spot to its own.
 
-use tauri::{AppHandle, Manager, Runtime, WebviewWindow, WebviewWindowBuilder, Window};
+use tauri::{AppHandle, Manager, Runtime, WebviewWindow, WebviewWindowBuilder};
 
 use crate::{
     error::WireError,
+    icon,
     windows::{self, Placement, WindowRecord, WindowRect, WindowSession},
 };
 
@@ -153,6 +154,18 @@ pub fn snapshot<R: Runtime>(app: &AppHandle<R>) {
     store.save(open);
 }
 
+/// A window's icon: Tauri's bundled one where a bundle exists, else the embedded PNG.
+///
+/// Applied per window rather than once to "the main one", because every window is the same thing —
+/// and a `cargo run` build, which has no bundle, would otherwise leave every one of them bare.
+fn app_icon<R: Runtime>(app: &AppHandle<R>) -> anyhow::Result<tauri::image::Image<'static>> {
+    match app.default_window_icon().cloned() {
+        // `to_owned` is what lifts a borrowed bundle icon out of the app it came from.
+        Some(icon) => Ok(icon.to_owned()),
+        None => icon::embedded(),
+    }
+}
+
 /// Builds one window from the config template, at `placed`, and shows it.
 fn build<R: Runtime>(
     app: &AppHandle<R>,
@@ -178,6 +191,15 @@ fn build<R: Runtime>(
     }
     if let Some((x, y)) = placed.position {
         window.set_position(tauri::PhysicalPosition::new(x, y))?;
+    }
+    // An icon that will not load is a cosmetic failure and never a reason to withhold the window.
+    match app_icon(app) {
+        Ok(icon) => {
+            if let Err(error) = window.set_icon(icon) {
+                tracing::warn!(error = %error, label = %label, "could not set a window icon");
+            }
+        }
+        Err(error) => tracing::warn!(error = %error, "could not load the window icon"),
     }
     window.show()?;
     Ok(window)
@@ -233,7 +255,7 @@ pub fn restore<R: Runtime>(app: &AppHandle<R>) -> anyhow::Result<()> {
 #[tauri::command]
 pub async fn open_board_window<R: Runtime>(
     app: AppHandle<R>,
-    window: Window<R>,
+    window: WebviewWindow<R>,
     label: String,
 ) -> Result<(), WireError> {
     if app.get_webview_window(&label).is_some() {
@@ -248,7 +270,7 @@ pub async fn open_board_window<R: Runtime>(
 }
 
 /// Where a window torn out of `from` should appear: beside it, if that is somewhere reachable.
-fn torn_off_placement<R: Runtime>(app: &AppHandle<R>, from: &Window<R>) -> Placement {
+fn torn_off_placement<R: Runtime>(app: &AppHandle<R>, from: &WebviewWindow<R>) -> Placement {
     let Ok(position) = from.outer_position() else {
         return Placement {
             size: None,

@@ -12,9 +12,10 @@
 //! have to track the stacks itself — [`undo_status`] is there to label and disable a control, not
 //! to guard the call. Pressing Ctrl+Z with nothing to undo returns `None` and changes nothing.
 
-use tauri::State;
+use tauri::{Manager, Runtime, State, WebviewWindow};
 
 use crate::{
+    commands::board::announce,
     database::session::SessionFactory,
     error::WireError,
     undo::{
@@ -42,16 +43,31 @@ pub async fn open_gesture(factory: State<'_, SessionFactory>) -> Result<GestureI
 /// can undo, and `None` otherwise — a nested close, or a Gesture whose only writes were an agent's
 /// or none at all. A Gesture that ends here becomes the next Ctrl+Z and clears the Redo Stack.
 ///
+/// It is also where a change **announces itself to the other windows**, when the journal says the
+/// Gesture wrote anything at all. This is the command boundary after the commit: the Gesture is
+/// over, its transaction has landed, and the journal rows exist. Doing it here rather than at the
+/// end of each of the 83 mutating commands is the whole of [`crate::board`]'s argument — a command
+/// that wrote nothing to the journal wrote nothing to the board, so no per-command obligation is
+/// left to forget.
+///
+/// The window that issued the command is excluded, because it reloads on the way back from the
+/// command itself — which is the path this reuses rather than replacing.
+///
 /// Fails when nothing is open rather than doing nothing, so that a broken pairing is visible at
 /// the call site that broke it instead of at the next gesture, which would be closed early by it.
 #[tauri::command]
-pub async fn close_gesture(
+pub async fn close_gesture<R: Runtime>(
+    window: WebviewWindow<R>,
     factory: State<'_, SessionFactory>,
     stacks: State<'_, UndoStacks>,
 ) -> Result<Option<GestureSummary>, WireError> {
-    engine::close_gesture(&factory, &stacks)
+    let closed = engine::close_gesture(&factory, &stacks)
         .await
-        .map_err(WireError::from_error)
+        .map_err(WireError::from_error)?;
+    if closed.wrote {
+        announce(window.app_handle(), Some(window.label()));
+    }
+    Ok(closed.undoable)
 }
 
 /// Reverses the most recent user Gesture, and returns what it reversed.
@@ -61,26 +77,43 @@ pub async fn close_gesture(
 /// in one transaction, so there is no third outcome — and the Gesture stays on the stack, so the
 /// same press can be tried again once whatever blocked it is gone.
 #[tauri::command]
-pub async fn undo(
+pub async fn undo<R: Runtime>(
+    window: WebviewWindow<R>,
     factory: State<'_, SessionFactory>,
     stacks: State<'_, UndoStacks>,
 ) -> Result<Option<GestureSummary>, WireError> {
-    engine::undo(&factory, &stacks)
+    let applied = engine::undo(&factory, &stacks)
         .await
-        .map_err(WireError::from_error)
+        .map_err(WireError::from_error)?;
+    announce_replay(&window, applied.as_ref());
+    Ok(applied)
 }
 
 /// Reapplies the most recently undone Gesture, and returns what it reapplied.
 ///
 /// `None` and the error case mean exactly what they do for [`undo`].
 #[tauri::command]
-pub async fn redo(
+pub async fn redo<R: Runtime>(
+    window: WebviewWindow<R>,
     factory: State<'_, SessionFactory>,
     stacks: State<'_, UndoStacks>,
 ) -> Result<Option<GestureSummary>, WireError> {
-    engine::redo(&factory, &stacks)
+    let applied = engine::redo(&factory, &stacks)
         .await
-        .map_err(WireError::from_error)
+        .map_err(WireError::from_error)?;
+    announce_replay(&window, applied.as_ref());
+    Ok(applied)
+}
+
+/// Tells the other windows about an undo or a redo that actually applied.
+///
+/// A replay is the one write the journal cannot report, because it runs with journalling
+/// suppressed — reversing a change must not itself become a change to reverse. So the two commands
+/// that make one say so directly. `None` is an empty stack: nothing happened, and nobody is told.
+fn announce_replay<R: Runtime>(window: &WebviewWindow<R>, applied: Option<&GestureSummary>) {
+    if applied.is_some() {
+        announce(window.app_handle(), Some(window.label()));
+    }
 }
 
 /// What the next undo and the next redo would be, or `None` for each empty stack.

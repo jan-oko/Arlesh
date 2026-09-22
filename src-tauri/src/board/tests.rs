@@ -25,7 +25,10 @@ fn a_change_from_outside_every_window_reaches_all_of_them() {
 #[test]
 fn an_origin_that_has_already_closed_takes_nobody_with_it() {
     let open = labels(&["main", "board-a"]);
-    assert_eq!(recipients(&open, Some("board-gone")), vec!["main", "board-a"]);
+    assert_eq!(
+        recipients(&open, Some("board-gone")),
+        vec!["main", "board-a"]
+    );
 }
 
 #[test]

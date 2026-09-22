@@ -69,8 +69,10 @@ impl WindowRect {
 
     /// How many pixels of this rectangle and `other` overlap horizontally, and vertically.
     fn overlap(&self, other: &Self) -> (i64, i64) {
-        let horizontal = self.right().min(other.right()) - i64::from(self.x).max(i64::from(other.x));
-        let vertical = self.bottom().min(other.bottom()) - i64::from(self.y).max(i64::from(other.y));
+        let horizontal =
+            self.right().min(other.right()) - i64::from(self.x).max(i64::from(other.x));
+        let vertical =
+            self.bottom().min(other.bottom()) - i64::from(self.y).max(i64::from(other.y));
         (horizontal.max(0), vertical.max(0))
     }
 
