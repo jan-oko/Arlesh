@@ -51,6 +51,7 @@ import StartFlowModal, { type StartFlowData } from "@/components/StartFlowModal/
 import { startFlow, convertToFlow } from "@/api/flows";
 import ConvertToFlowModal from "@/components/ConvertToFlowModal/ConvertToFlowModal";
 import WarningConfirmModal from "@/components/WarningConfirmModal/WarningConfirmModal";
+import UnfinishedChildrenModal from "@/components/UnfinishedChildrenModal/UnfinishedChildrenModal";
 import BacklogConfirmModal from "@/components/BacklogConfirmModal/BacklogConfirmModal";
 import { useTaskBacklog } from "@/hooks/use-task-backlog";
 import { useCommitmentVerdict } from "@/hooks/use-commitment-verdict";
@@ -473,7 +474,10 @@ export default function MindmapView() {
   }, [deleteTargets, tree, removeNode, selectNode]);
 
 
-  const { onStatusClick, onCommitEdit, onCreateChild, onCreateTypedChild, onCreateSibling, onInsertParent, onDelete, onPaste } = useNodeActions({
+  const {
+    onStatusClick, onCommitEdit, onCreateChild, onCreateTypedChild, onCreateSibling, onInsertParent,
+    onDelete, onPaste, occurrencePrompt, confirmOccurrence, cancelOccurrence,
+  } = useNodeActions({
     tree, clipboard, moveNode, duplicateNode, onRequestDelete: setDeleteTargets, reload, renameNode,
     createNode, createChild, selectNode, setClipboard, setEditingNodeId, showToast, onNewFlow, onNewCommitment,
   });
@@ -720,6 +724,14 @@ export default function MindmapView() {
           consequences={warningModal.consequences}
           actions={retypeActions}
           onCancel={() => setWarningModal(null)}
+        />
+      )}
+
+      {occurrencePrompt !== null && (
+        <UnfinishedChildrenModal
+          prompt={occurrencePrompt}
+          onConfirm={confirmOccurrence}
+          onCancel={cancelOccurrence}
         />
       )}
 

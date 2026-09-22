@@ -255,9 +255,39 @@ pub(super) async fn nearest_scoped_ancestor_time_scope<M: SessionMode>(
     Ok(chain.nearest_scoped().or_reject()?.map(|(time_scope, _)| time_scope.clone()))
 }
 
+/// The chain a write is validated against.
+///
+/// Ordinarily the prospective parent's, climbed from there. A node that is an **added child of a
+/// Habit occurrence** is the exception: its parent columns hold the occurrence's host rather than
+/// the occurrence — a virtual instance has no row for them to point at — so validating against
+/// them would check the child against the host's window instead of the one it was written on. Such
+/// a node is checked against a chain of exactly one link, the occurrence, which has nothing above
+/// it to inherit from.
+///
+/// `node` is `None` on a create, where there is no row yet and so nothing yet attached. The
+/// attachment is written immediately after the row, in the same transaction, and every write to it
+/// afterwards passes `Some`.
+async fn write_chain<M: SessionMode>(
+    db: &mut Db<M>,
+    node: Option<(ancestry::NodeKind, i64)>,
+    parent_type: &str,
+    parent_id: i64,
+) -> Result<ancestry::AncestryChain, TaskError> {
+    if let Some((kind, id)) = node {
+        if let Some(occurrence) = ancestry::occurrence_of(db, kind, id).await? {
+            return Ok(ancestry::AncestryChain {
+                links: vec![occurrence],
+                end: ancestry::ChainEnd::Root,
+            });
+        }
+    }
+    ancestry::climb(db, parent_type, parent_id).await
+}
+
 /// Rejects a task write that breaks a containment invariant: Plan ⊆ own Time Scope, own Time
 /// Scope ⊆ nearest scoped ancestor, and Plan ⊆ nearest planned ancestor. `parent_type`/`parent_id`
-/// is the task's effective parent (the new one when reparenting).
+/// is the task's effective parent (the new one when reparenting), and `id` the task being written
+/// when it already exists — see [`write_chain`].
 ///
 /// **Climbs once.** The old shape walked the chain twice — once for the scoped ancestor and once
 /// for the planned one — and resolved the item's own Time Scope up to twice more on top. Here
@@ -269,6 +299,7 @@ pub(super) async fn nearest_scoped_ancestor_time_scope<M: SessionMode>(
 /// of the ancestry and so cannot be refused by it.
 pub(super) async fn validate_task_containment<M: SessionMode>(
     db: &mut Db<M>,
+    id: Option<TaskId>,
     parent_type: &str,
     parent_id: i64,
     time_scope: &Option<TimeScope>,
@@ -277,7 +308,8 @@ pub(super) async fn validate_task_containment<M: SessionMode>(
     if time_scope.is_none() && plan.is_none() {
         return Ok(());
     }
-    let chain = ancestry::climb(db, parent_type, parent_id).await?;
+    let node = id.map(|id| (ancestry::NodeKind::Task, id.0));
+    let chain = write_chain(db, node, parent_type, parent_id).await?;
     let ancestor_scope = match time_scope {
         Some(_) => chain.nearest_scoped().or_reject()?.map(|(scope, _)| scope),
         None => None,
@@ -307,6 +339,7 @@ pub(super) async fn validate_task_containment<M: SessionMode>(
 /// the same check reduces to rule two on its own.
 pub(super) async fn validate_goal_containment<M: SessionMode>(
     db: &mut Db<M>,
+    id: Option<GoalId>,
     parent_type: &str,
     parent_id: i64,
     time_scope: &Option<TimeScope>,
@@ -314,7 +347,8 @@ pub(super) async fn validate_goal_containment<M: SessionMode>(
     let Some(own) = time_scope else {
         return Ok(());
     };
-    let chain = ancestry::climb(db, parent_type, parent_id).await?;
+    let node = id.map(|id| (ancestry::NodeKind::Goal, id.0));
+    let chain = write_chain(db, node, parent_type, parent_id).await?;
     let ancestor_scope = chain.nearest_scoped().or_reject()?.map(|(scope, _)| scope);
 
     let own_scope = Some(time_scope_window(db, own).await?);
@@ -337,11 +371,13 @@ pub(super) async fn validate_goal_containment<M: SessionMode>(
 /// structurally absent.
 pub(super) async fn validate_commitment_scope<M: SessionMode>(
     db: &mut Db<M>,
+    id: Option<CommitmentId>,
     parent_type: &str,
     parent_id: i64,
     time_scope: &Option<TimeScope>,
 ) -> Result<(), TaskError> {
-    let chain = ancestry::climb(db, parent_type, parent_id).await?;
+    let node = id.map(|id| (ancestry::NodeKind::Commitment, id.0));
+    let chain = write_chain(db, node, parent_type, parent_id).await?;
     let ancestor = chain.nearest_scoped().or_reject()?.map(|(scope, _)| scope);
 
     let Some(own) = time_scope else {

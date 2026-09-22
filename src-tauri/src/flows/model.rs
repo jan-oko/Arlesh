@@ -660,5 +660,67 @@ pub struct HabitItemStatus {
     pub status: String,
 }
 
+/// Which table an occurrence's added child lives in — anything a Task can parent.
+///
+/// A string on the wire rather than an enum with a `from_db`, because it is exactly the
+/// `node_type` every other polymorphic reference in the payload already speaks, and a second
+/// vocabulary for the same four words would be one to translate at every boundary.
+pub const CHILD_KINDS: [&str; 4] = ["task", "goal", "commitment", "info"];
+
+/// One real node attached to a single virtual Habit occurrence.
+///
+/// The occurrence is named by the same `(item_type, item_id, iteration_scope_id, cycle_id)`
+/// quadruple a [`HabitItemStatus`] is keyed by, so an added child and a recorded status describe
+/// the same thing when they agree on those four fields. `child_type`/`child_id` name the real row,
+/// which is an ordinary Task, Goal, Commitment or Info in every other respect.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, sqlx::FromRow)]
+pub struct HabitInstanceChild {
+    /// The Habit the occurrence belongs to.
+    pub flow_id: i64,
+    /// Which instance of the iteration holds it (`flow_goal`, `flow_task`, or `flow_root`).
+    pub item_type: String,
+    /// The instance's id (a flow item id, or the flow id for `flow_root`).
+    pub item_id: i64,
+    /// The iteration scope the occurrence belongs to.
+    pub iteration_scope_id: i64,
+    /// Which of the item's cycle pairs drew the occurrence, or [`NO_CYCLE`].
+    pub cycle_id: i64,
+    /// Which table the child row lives in — one of [`CHILD_KINDS`].
+    pub child_type: String,
+    /// The child row's id.
+    pub child_id: i64,
+}
+
+/// The occurrence an added child hangs on, as everything above the child needs to read it.
+///
+/// Deliberately not a [`HabitInstanceChild`]: what a reader of the child wants is not the key of
+/// the occurrence but its **window** and what it renders as, which is what governs the child's
+/// containment and its Archival. The window is the pair of boundary scopes the attachment settled
+/// when it was written, so reading it resolves nothing and mints nothing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChildAttachment {
+    /// The Habit whose occurrence holds the child.
+    pub flow_id: i64,
+    /// What the occurrence renders as — the flow's Instance Type (`goal`/`task`/`commitment`).
+    pub instance_type: String,
+    /// The occurrence's window.
+    pub window: TimeScope,
+}
+
+/// An added child that is not finished, as the completion guard names it back to the caller.
+///
+/// The title travels with the reference because a refusal the user can only accept blind is not
+/// consent: "this occurrence still holds *Buy milk*" is answerable where "this occurrence still
+/// holds 1 thing" is not.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct UnfinishedChild {
+    /// Which table the child row lives in — one of [`CHILD_KINDS`].
+    pub child_type: String,
+    /// The child row's id.
+    pub child_id: i64,
+    /// The child's display title (an Info's body).
+    pub title: String,
+}
+
 #[cfg(test)]
 mod tests;

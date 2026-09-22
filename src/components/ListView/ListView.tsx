@@ -27,6 +27,7 @@ import CommitmentRow from "./CommitmentRow";
 import PathHeaderRow from "./PathHeaderRow";
 import AnchoredToast from "@/components/AnchoredToast/AnchoredToast";
 import BacklogConfirmModal from "@/components/BacklogConfirmModal/BacklogConfirmModal";
+import UnfinishedChildrenModal from "@/components/UnfinishedChildrenModal/UnfinishedChildrenModal";
 import DeleteConfirmModal from "@/components/DeleteConfirmModal/DeleteConfirmModal";
 import styles from "./ListView.module.css";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
@@ -41,7 +42,8 @@ import { useDisplayStore } from "@/stores/use-display-store";
 export default function ListView() {
   const { t } = useTranslation(["common", "listView", "editor"]);
   const { tree, rows, commitmentRows, allTasksAndGoals, isLoading, error, reload, onCycleStatus, renameNode,
-    createTask, deleteTask, removeNode } = useListData();
+    createTask, deleteTask, removeNode,
+    occurrencePrompt, confirmOccurrence, cancelOccurrence } = useListData();
 
   const sharedFilter = useFilterStore((s) => s.filter);
   // The cheat-sheet overlay gates background shortcuts the same way an open modal does.
@@ -228,7 +230,7 @@ export default function ListView() {
 
   useKeyboardListView({
     // The prompt swallows the row keys while it is open, as the editor modal already does.
-    isInputActive: isInputCaptured || planPrompt !== null,
+    isInputActive: isInputCaptured || planPrompt !== null || occurrencePrompt !== null,
     selectedTaskId,
     selectedCommitmentId,
     selectedRowId: activeSelectedId,
@@ -363,6 +365,14 @@ export default function ListView() {
           error={deleteError}
           onConfirm={confirmDelete}
           onCancel={cancelDelete}
+        />
+      )}
+
+      {occurrencePrompt !== null && (
+        <UnfinishedChildrenModal
+          prompt={occurrencePrompt}
+          onConfirm={confirmOccurrence}
+          onCancel={cancelOccurrence}
         />
       )}
 

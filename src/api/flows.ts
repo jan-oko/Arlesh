@@ -1,4 +1,5 @@
 import { invoke } from "./gesture";
+import { isWireError } from "@/api/errors";
 import type { TimeScope } from "@/api/time-scope";
 import type { Timing } from "@/api/scope-lifecycle";
 
@@ -315,11 +316,89 @@ export async function setHabitItemStatus(
   cycleId: number,
   status: string | null,
   resolvedAtMs: number,
+  confirmed?: boolean,
 ): Promise<void> {
   const instance = {
     item_type: itemType, item_id: itemId, iteration_scope_id: iterationScopeId, cycle_id: cycleId,
   };
-  return invoke<void>("set_habit_item_status", { flowId, instance, status, resolvedAtMs });
+  return invoke<void>("set_habit_item_status", { flowId, instance, status, resolvedAtMs, confirmed });
+}
+
+/** The kinds an occurrence can hold — everything a Task can parent. */
+export type HabitChildKind = "task" | "goal" | "commitment" | "info";
+
+/**
+ * One node attached to a single virtual Habit occurrence.
+ *
+ * The attachment only: the node itself is an ordinary Task, Goal, Commitment or Info and arrives
+ * in its own list. This says which occurrence it hangs on — the one thing its own row cannot,
+ * since a virtual instance has no id for a parent link to point at.
+ */
+export interface HabitInstanceChild {
+  flow_id: number;
+  item_type: HabitInstanceType;
+  item_id: number;
+  iteration_scope_id: number;
+  cycle_id: number;
+  child_type: HabitChildKind;
+  child_id: number;
+}
+
+/**
+ * Creates a node and attaches it to one occurrence, in a single backend call.
+ *
+ * The child belongs to that occurrence and no other: next week's is not carrying it. It is a real,
+ * fully editable node — scope it, tag it, plan it, complete it — and it may hold children of its
+ * own in the ordinary way.
+ */
+export async function createHabitInstanceChild(
+  flowId: number,
+  itemType: HabitInstanceType,
+  itemId: number,
+  iterationScopeId: number,
+  cycleId: number,
+  childType: HabitChildKind,
+  title: string,
+): Promise<TargetRef> {
+  const instance = {
+    item_type: itemType, item_id: itemId, iteration_scope_id: iterationScopeId, cycle_id: cycleId,
+  };
+  return invoke<TargetRef>("create_habit_instance_child", { flowId, instance, childType, title });
+}
+
+/** An added child that is not finished, as the completion guard names it. */
+export interface UnfinishedChild {
+  child_type: HabitChildKind;
+  child_id: number;
+  title: string;
+}
+
+function isUnfinishedChild(value: unknown): value is UnfinishedChild {
+  if (typeof value !== "object" || value === null) return false;
+  if (!("child_type" in value) || !("child_id" in value) || !("title" in value)) return false;
+  return (
+    typeof value.child_type === "string" &&
+    typeof value.child_id === "number" &&
+    typeof value.title === "string"
+  );
+}
+
+/**
+ * Narrows a rejection to the refusal marking an occurrence done raises while it still holds
+ * unfinished added children.
+ *
+ * Returns them, named, so the prompt can say what is about to be closed over — a confirmation the
+ * user can only accept blind is not consent. `null` for any other rejection, which the caller must
+ * surface as a real failure rather than as a question.
+ */
+export function unfinishedChildren(error: unknown): UnfinishedChild[] | null {
+  if (!isWireError(error) || error.kind !== "needs_confirmation") return null;
+  const { details } = error;
+  if (typeof details !== "object" || details === null) return null;
+  if (!("children" in details)) return null;
+  const { children } = details;
+  if (!Array.isArray(children) || !children.every(isUnfinishedChild)) return null;
+  return children;
 }
 
 /** Number of distinct completed iterations of a Habit (divergence check for reconciliation). */
