@@ -246,7 +246,13 @@ async fn update_info_body() {
 
     let updated = db
         .infos()
-        .update(info.id.into(), UpdateInfoRequest { body: Some("New text".into()), ..Default::default() })
+        .update(
+            info.id.into(),
+            UpdateInfoRequest {
+                body: Some("New text".into()),
+                ..Default::default()
+            },
+        )
         .await
         .unwrap();
 
@@ -275,7 +281,13 @@ async fn update_info_position() {
 
     let updated = db
         .infos()
-        .update(info.id.into(), UpdateInfoRequest { position: Some(10), ..Default::default() })
+        .update(
+            info.id.into(),
+            UpdateInfoRequest {
+                position: Some(10),
+                ..Default::default()
+            },
+        )
         .await
         .unwrap();
 
@@ -304,7 +316,13 @@ async fn update_info_private_round_trips() {
 
     let marked = db
         .infos()
-        .update(info.id.into(), UpdateInfoRequest { is_private: Some(true), ..Default::default() })
+        .update(
+            info.id.into(),
+            UpdateInfoRequest {
+                is_private: Some(true),
+                ..Default::default()
+            },
+        )
         .await
         .unwrap();
     assert!(marked.is_private);
@@ -312,7 +330,13 @@ async fn update_info_private_round_trips() {
 
     let cleared = db
         .infos()
-        .update(info.id.into(), UpdateInfoRequest { is_private: Some(false), ..Default::default() })
+        .update(
+            info.id.into(),
+            UpdateInfoRequest {
+                is_private: Some(false),
+                ..Default::default()
+            },
+        )
         .await
         .unwrap();
     assert!(!cleared.is_private);
@@ -416,7 +440,13 @@ async fn details_round_trip_set_and_clear() {
     // Update the details.
     let updated = db
         .infos()
-        .update(info.id.into(), UpdateInfoRequest { details: Some(Some("new trace".into())), ..Default::default() })
+        .update(
+            info.id.into(),
+            UpdateInfoRequest {
+                details: Some(Some("new trace".into())),
+                ..Default::default()
+            },
+        )
         .await
         .unwrap();
     assert_eq!(updated.details.as_deref(), Some("new trace"));
@@ -425,7 +455,13 @@ async fn details_round_trip_set_and_clear() {
     // Clear the details.
     let cleared = db
         .infos()
-        .update(info.id.into(), UpdateInfoRequest { details: Some(None), ..Default::default() })
+        .update(
+            info.id.into(),
+            UpdateInfoRequest {
+                details: Some(None),
+                ..Default::default()
+            },
+        )
         .await
         .unwrap();
     assert_eq!(cleared.details, None);
@@ -494,9 +530,16 @@ async fn the_update_info_command_commits_every_field_it_touches() {
 #[test]
 fn an_explicit_null_details_in_an_update_payload_clears_them() {
     let absent: UpdateInfoRequest = serde_json::from_str(r#"{"body":"Renamed"}"#).unwrap();
-    assert_eq!(absent.details, None, "an absent key leaves the details alone");
+    assert_eq!(
+        absent.details, None,
+        "an absent key leaves the details alone"
+    );
     let nulled: UpdateInfoRequest = serde_json::from_str(r#"{"details":null}"#).unwrap();
-    assert_eq!(nulled.details, Some(None), "an explicit null clears the details");
+    assert_eq!(
+        nulled.details,
+        Some(None),
+        "an explicit null clears the details"
+    );
     let set: UpdateInfoRequest = serde_json::from_str(r#"{"details":"More"}"#).unwrap();
     assert_eq!(set.details, Some(Some("More".to_string())));
 }

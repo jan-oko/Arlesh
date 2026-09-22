@@ -101,7 +101,10 @@ pub fn instance_timing(
     if start > now {
         return InstanceTiming::Pending;
     }
-    if matches!(iteration_status, IterationStatus::Lapsed | IterationStatus::Missed) {
+    if matches!(
+        iteration_status,
+        IterationStatus::Lapsed | IterationStatus::Missed
+    ) {
         return InstanceTiming::Lapsed;
     }
     if consumption == Consumption::Destructive && end <= now {
@@ -156,7 +159,10 @@ pub fn expire_unanswered(
                     .get(&iteration.index)
                     .is_some_and(|deadline| now >= *deadline);
             if expired {
-                HabitIteration { status: IterationStatus::Expired, ..iteration }
+                HabitIteration {
+                    status: IterationStatus::Expired,
+                    ..iteration
+                }
             } else {
                 iteration
             }
@@ -252,7 +258,9 @@ fn classify_blocking_latest(
         };
         result.push(iteration(slot, IterationStatus::Done));
         // Jump to the slot the completion instant falls in; the gap between becomes Missed.
-        let target = slot_at(slots, *resolved_on).unwrap_or(cursor).max(cursor + 1);
+        let target = slot_at(slots, *resolved_on)
+            .unwrap_or(cursor)
+            .max(cursor + 1);
         for missed in &slots[cursor + 1..target.min(slots.len())] {
             result.push(iteration(missed, IterationStatus::Missed));
         }

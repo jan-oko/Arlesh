@@ -140,7 +140,11 @@ fn an_occurrence_whose_window_has_not_opened_is_pending_under_every_consumption(
         Consumption::Overlapping,
         Consumption::Blocking(Catchup::Next),
     ] {
-        for status in [IterationStatus::Active, IterationStatus::Lapsed, IterationStatus::Missed] {
+        for status in [
+            IterationStatus::Active,
+            IterationStatus::Lapsed,
+            IterationStatus::Missed,
+        ] {
             assert_eq!(
                 instance_timing(consumption, status, window(MORNING), dawn),
                 InstanceTiming::Pending,
@@ -152,9 +156,10 @@ fn an_occurrence_whose_window_has_not_opened_is_pending_under_every_consumption(
 
 #[test]
 fn an_accumulating_occurrence_survives_its_own_window() {
-    for consumption in
-        [Consumption::Overlapping, Consumption::Blocking(Catchup::Next)]
-    {
+    for consumption in [
+        Consumption::Overlapping,
+        Consumption::Blocking(Catchup::Next),
+    ] {
         assert_eq!(
             instance_timing(
                 consumption,
@@ -185,7 +190,11 @@ fn a_lapsed_or_missed_iteration_carries_its_occurrences_with_it() {
 fn an_active_or_done_iteration_leaves_an_unexpired_occurrence_open() {
     let started = (at("2026-01-05T00:00:00"), at("2026-01-09T00:00:00"));
     let now = at("2026-01-05T09:00:00");
-    for status in [IterationStatus::Active, IterationStatus::Done, IterationStatus::Expired] {
+    for status in [
+        IterationStatus::Active,
+        IterationStatus::Done,
+        IterationStatus::Expired,
+    ] {
         assert_eq!(
             instance_timing(Consumption::Destructive, status, started, now),
             InstanceTiming::Active,

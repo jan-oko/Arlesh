@@ -1,8 +1,7 @@
 use super::{WireError, WireErrorKind};
 use crate::{
     domains::error::DomainError, error::AppError, flows::error::FlowError,
-    knowledge_base::error::KnowledgeBaseError, scopes::error::ScopeError,
-    tasks::error::TaskError,
+    knowledge_base::error::KnowledgeBaseError, scopes::error::ScopeError, tasks::error::TaskError,
 };
 
 fn kind_of(error: impl Into<AppError>) -> WireErrorKind {

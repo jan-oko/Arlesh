@@ -50,7 +50,8 @@ impl<'session> DomainOperator<'session> {
         if request.subtype == DomainSubtype::Aspect {
             return Err(DomainError::FixedAspect);
         }
-        self.validate_parent(&request.subtype, request.parent_id).await?;
+        self.validate_parent(&request.subtype, request.parent_id)
+            .await?;
 
         let subtype_str = subtype_to_str(&request.subtype);
         // A Project with no status already *reads* as Active everywhere (`UNSET_STATUS` in
@@ -103,17 +104,18 @@ impl<'session> DomainOperator<'session> {
     }
 
     /// Lists all domains, optionally filtered to a specific subtype.
-    pub async fn list(&mut self, subtype: Option<DomainSubtype>) -> Result<Vec<Domain>, DomainError> {
+    pub async fn list(
+        &mut self,
+        subtype: Option<DomainSubtype>,
+    ) -> Result<Vec<Domain>, DomainError> {
         match subtype {
-            Some(subtype_value) => {
-                sqlx::query_as::<_, Domain>(
-                    "SELECT * FROM domains WHERE subtype = ? ORDER BY position ASC",
-                )
-                .bind(subtype_to_str(&subtype_value))
-                .fetch_all(&mut *self.connection)
-                .await
-                .map_err(Into::into)
-            }
+            Some(subtype_value) => sqlx::query_as::<_, Domain>(
+                "SELECT * FROM domains WHERE subtype = ? ORDER BY position ASC",
+            )
+            .bind(subtype_to_str(&subtype_value))
+            .fetch_all(&mut *self.connection)
+            .await
+            .map_err(Into::into),
             None => sqlx::query_as::<_, Domain>("SELECT * FROM domains ORDER BY position ASC")
                 .fetch_all(&mut *self.connection)
                 .await

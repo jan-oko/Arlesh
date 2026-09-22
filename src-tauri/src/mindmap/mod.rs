@@ -24,7 +24,7 @@ use crate::{
     flows::{
         self,
         error::FlowError,
-        model::{Flow, FlowId, HabitIteration, HabitItemStatus},
+        model::{Flow, FlowId, HabitItemStatus, HabitIteration},
     },
 };
 
@@ -91,7 +91,11 @@ pub async fn load(db: &mut Db<Transactional>, now: NaiveDateTime) -> Result<Mind
 /// message travels to the frontend on the entry, and is logged here at `warn` so a failure is
 /// visible in the log even if the user dismisses the notice.
 #[tracing::instrument(skip(db, flow), fields(flow_id = flow.id))]
-async fn habit_entry(db: &mut Db<Transactional>, flow: &Flow, now: NaiveDateTime) -> FlowHabitEntry {
+async fn habit_entry(
+    db: &mut Db<Transactional>,
+    flow: &Flow,
+    now: NaiveDateTime,
+) -> FlowHabitEntry {
     let result = match habit_payload(db, FlowId(flow.id), now).await {
         Ok((iterations, statuses)) => FlowHabitResult::Loaded {
             iterations,

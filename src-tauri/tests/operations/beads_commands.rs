@@ -71,7 +71,11 @@ async fn one_day(pool: &sqlx::SqlitePool) -> TimeScope {
         .get_or_create(ScopeKind::Day, NaiveDate::from_ymd_opt(2026, 7, 1).unwrap())
         .await
         .unwrap();
-    TimeScope { start_id: scope.id, end_id: scope.id, duration: None }
+    TimeScope {
+        start_id: scope.id,
+        end_id: scope.id,
+        duration: None,
+    }
 }
 
 /// The `beads_id` column as the database holds it, read straight off the table.
@@ -126,13 +130,22 @@ async fn linked_nodes(pool: &sqlx::SqlitePool) -> (i64, i64, i64, i64) {
     )
     .await
     .unwrap();
-    db.tasks().set_beads_id(TaskId(task.id), Some("Arlesh-ta1".into())).await.unwrap();
-    db.goals().set_beads_id(GoalId(goal.id), Some("Arlesh-go1".into())).await.unwrap();
+    db.tasks()
+        .set_beads_id(TaskId(task.id), Some("Arlesh-ta1".into()))
+        .await
+        .unwrap();
+    db.goals()
+        .set_beads_id(GoalId(goal.id), Some("Arlesh-go1".into()))
+        .await
+        .unwrap();
     db.commitments()
         .set_beads_id(CommitmentId(commitment.id), Some("Arlesh-co1".into()))
         .await
         .unwrap();
-    db.domains().set_beads_id(DomainId(project_id), Some("Arlesh-pr1".into())).await.unwrap();
+    db.domains()
+        .set_beads_id(DomainId(project_id), Some("Arlesh-pr1".into()))
+        .await
+        .unwrap();
     db.commit().await.unwrap();
 
     (task.id, goal.id, commitment.id, project_id)
@@ -176,15 +189,23 @@ async fn clearing_one_node_leaves_every_other_link_alone() {
     let app = helpers::command_host(&pool);
     let (task_id, goal_id, commitment_id, project_id) = linked_nodes(&pool).await;
 
-    clear_beads_id(app.state(), "task".into(), task_id).await.unwrap();
+    clear_beads_id(app.state(), "task".into(), task_id)
+        .await
+        .unwrap();
 
     assert_eq!(stored_beads_id(&pool, "tasks", task_id).await, None);
-    assert_eq!(stored_beads_id(&pool, "goals", goal_id).await, Some("Arlesh-go1".into()));
+    assert_eq!(
+        stored_beads_id(&pool, "goals", goal_id).await,
+        Some("Arlesh-go1".into())
+    );
     assert_eq!(
         stored_beads_id(&pool, "commitments", commitment_id).await,
         Some("Arlesh-co1".into())
     );
-    assert_eq!(stored_beads_id(&pool, "domains", project_id).await, Some("Arlesh-pr1".into()));
+    assert_eq!(
+        stored_beads_id(&pool, "domains", project_id).await,
+        Some("Arlesh-pr1".into())
+    );
 }
 
 #[tokio::test]
@@ -228,7 +249,10 @@ async fn clearing_a_domain_that_is_not_a_project_is_refused_and_writes_nothing()
     // so the only way to set up the case is to write the column the command is meant to refuse.
     {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-        db.domains().set_beads_id(DomainId(tag_id), Some("Arlesh-tag".into())).await.unwrap();
+        db.domains()
+            .set_beads_id(DomainId(tag_id), Some("Arlesh-tag".into()))
+            .await
+            .unwrap();
         db.commit().await.unwrap();
     }
 

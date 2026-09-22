@@ -258,8 +258,16 @@ impl JournalRow {
             table: self.table_name,
             row_id: self.row_id,
             operation: self.operation.parse()?,
-            before: self.before_image.as_deref().map(RowImage::parse).transpose()?,
-            after: self.after_image.as_deref().map(RowImage::parse).transpose()?,
+            before: self
+                .before_image
+                .as_deref()
+                .map(RowImage::parse)
+                .transpose()?,
+            after: self
+                .after_image
+                .as_deref()
+                .map(RowImage::parse)
+                .transpose()?,
         })
     }
 }

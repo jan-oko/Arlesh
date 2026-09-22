@@ -69,7 +69,11 @@ pub enum Resolution {
 
 /// Derives an item's Resolution. Returns `None` unless `timing` is `Lapsed` — Resolution has no
 /// meaning for a Pending or Active item.
-pub fn derive_resolution(timing: Timing, resolved: bool, on_exit: Option<OnScopeExit>) -> Option<Resolution> {
+pub fn derive_resolution(
+    timing: Timing,
+    resolved: bool,
+    on_exit: Option<OnScopeExit>,
+) -> Option<Resolution> {
     if timing != Timing::Lapsed {
         return None;
     }
@@ -170,11 +174,20 @@ fn is_deliberate(stored: Option<Archival>) -> bool {
 /// all. That uniformity is a deliberate choice over letting Backlog win; inverting it later is a
 /// one-line change, localised here.
 pub fn derive_archival(stored: Option<Archival>, resolution: Option<Resolution>) -> ArchivalResult {
-    let forced = matches!(resolution, Some(Resolution::Completed) | Some(Resolution::Missed));
+    let forced = matches!(
+        resolution,
+        Some(Resolution::Completed) | Some(Resolution::Missed)
+    );
     if forced {
-        ArchivalResult { effective: Archival::Archived, conflict: is_deliberate(stored) }
+        ArchivalResult {
+            effective: Archival::Archived,
+            conflict: is_deliberate(stored),
+        }
     } else {
-        ArchivalResult { effective: stored.unwrap_or(Archival::Live), conflict: false }
+        ArchivalResult {
+            effective: stored.unwrap_or(Archival::Live),
+            conflict: false,
+        }
     }
 }
 
@@ -203,8 +216,16 @@ pub fn derive_item_state(
 ) -> DerivedState {
     let timing = derive_timing(window, now);
     let resolution = derive_resolution(timing, resolved, on_exit);
-    let ArchivalResult { effective, conflict } = derive_archival(stored, resolution);
-    DerivedState { timing, resolution, archival: effective, archival_conflict: conflict }
+    let ArchivalResult {
+        effective,
+        conflict,
+    } = derive_archival(stored, resolution);
+    DerivedState {
+        timing,
+        resolution,
+        archival: effective,
+        archival_conflict: conflict,
+    }
 }
 
 /// One item's fully-derived lifecycle state, keyed by node reference for the frontend.
@@ -270,7 +291,9 @@ fn advance_by(at: NaiveDateTime, n: i64, kind: &str) -> Option<NaiveDateTime> {
         "day" => at.checked_add_signed(chrono::Duration::try_days(n)?),
         "week" => at.checked_add_signed(chrono::Duration::try_weeks(n)?),
         "month" => at.checked_add_months(chrono::Months::new(u32::try_from(n).ok()?)),
-        "season" => at.checked_add_months(chrono::Months::new(u32::try_from(n.checked_mul(3)?).ok()?)),
+        "season" => {
+            at.checked_add_months(chrono::Months::new(u32::try_from(n.checked_mul(3)?).ok()?))
+        }
         _ => None,
     }
 }
@@ -320,8 +343,16 @@ pub fn derive_commitment_state(
     let settled = verdict.is_resolved() && timing == Timing::Lapsed;
     let expired = !verdict.is_resolved()
         && verdict_deadline(window, verdict_window).is_some_and(|deadline| now >= deadline);
-    let archival = if settled || expired { Archival::Archived } else { Archival::Live };
-    CommitmentState { timing, verdict, archival }
+    let archival = if settled || expired {
+        Archival::Archived
+    } else {
+        Archival::Live
+    };
+    CommitmentState {
+        timing,
+        verdict,
+        archival,
+    }
 }
 
 #[cfg(test)]

@@ -18,18 +18,21 @@ use crate::helpers;
 
 use arlesh_lib::{
     commands::retype::retype_node,
-    domains::model::{CreateDomainRequest, DomainId, DomainSubtype, ProjectStatus, UpdateDomainRequest},
+    domains::model::{
+        CreateDomainRequest, DomainId, DomainSubtype, ProjectStatus, UpdateDomainRequest,
+    },
     flows::model::CreateFlowRequest,
     infos::model::CreateInfoRequest,
     scopes::model::ScopeKind,
     tasks::{
-        add_task_dependency, create_commitment, create_goal, create_task, update_goal, update_task,
+        add_task_dependency, create_commitment, create_goal, create_task,
         model::{
             CommitmentId, CreateCommitmentRequest, CreateGoalRequest, CreateTaskRequest,
             Dependency, DurationSpec, GoalId, GoalStatus, OnScopeExit, TaskArchival, TaskId,
             TaskStatus, TimeScope, UpdateGoalRequest, UpdateTaskRequest, Verdict,
         },
         retype::{apply_retype, plan_node_retype, RetypeKind, StrandedChildren},
+        update_goal, update_task,
     },
 };
 use chrono::NaiveDate;
@@ -202,7 +205,12 @@ fn lost_child_kinds_and_ids(wire: &serde_json::Value) -> Vec<(String, i64)> {
         .as_array()
         .unwrap()
         .iter()
-        .map(|entry| (entry["kind"].as_str().unwrap().to_string(), entry["id"].as_i64().unwrap()))
+        .map(|entry| {
+            (
+                entry["kind"].as_str().unwrap().to_string(),
+                entry["id"].as_i64().unwrap(),
+            )
+        })
         .collect()
 }
 
@@ -225,7 +233,11 @@ async fn retyping_a_goal_to_a_domain_carries_only_identity_fields_and_drops_the_
             parent_type: "project".into(),
             parent_id: project_id,
             status: Some(GoalStatus::Frozen),
-            time_scope: Some(TimeScope { start_id: scope_id, end_id: scope_id, duration: None }),
+            time_scope: Some(TimeScope {
+                start_id: scope_id,
+                end_id: scope_id,
+                duration: None,
+            }),
             on_scope_exit: Some(OnScopeExit::Archive),
         },
     )
@@ -234,12 +246,18 @@ async fn retyping_a_goal_to_a_domain_carries_only_identity_fields_and_drops_the_
     update_goal(
         &mut db,
         GoalId(goal.id),
-        UpdateGoalRequest { is_private: Some(true), ..Default::default() },
+        UpdateGoalRequest {
+            is_private: Some(true),
+            ..Default::default()
+        },
     )
     .await
     .unwrap();
     db.goals().add_tag(GoalId(goal.id), tag_id).await.unwrap();
-    db.block_reasons().set("goal", goal.id, &["stuck".to_string()]).await.unwrap();
+    db.block_reasons()
+        .set("goal", goal.id, &["stuck".to_string()])
+        .await
+        .unwrap();
     let dependent = create_task(
         &mut db,
         CreateTaskRequest {
@@ -251,9 +269,13 @@ async fn retyping_a_goal_to_a_domain_carries_only_identity_fields_and_drops_the_
     )
     .await
     .unwrap();
-    add_task_dependency(&mut db, TaskId(dependent.id), Dependency::Goal { id: goal.id })
-        .await
-        .unwrap();
+    add_task_dependency(
+        &mut db,
+        TaskId(dependent.id),
+        Dependency::Goal { id: goal.id },
+    )
+    .await
+    .unwrap();
     db.commit().await.unwrap();
 
     let source_position: i64 = sqlx::query_scalar("SELECT position FROM goals WHERE id = ?")
@@ -263,16 +285,33 @@ async fn retyping_a_goal_to_a_domain_carries_only_identity_fields_and_drops_the_
         .unwrap();
 
     let app = helpers::command_host(&pool);
-    let refused = retype_node(app.state(), "goal".into(), goal.id, "domain".into(), None, None)
-        .await
-        .expect_err("a domain has no status, scope, tag or dependents column");
+    let refused = retype_node(
+        app.state(),
+        "goal".into(),
+        goal.id,
+        "domain".into(),
+        None,
+        None,
+    )
+    .await
+    .expect_err("a domain has no status, scope, tag or dependents column");
     let wire = serde_json::to_value(&refused).unwrap();
     assert_eq!(
         lost_field_names(&wire),
-        vec!["status", "time_scope", "tags", "block_reasons", "dependents"],
+        vec![
+            "status",
+            "time_scope",
+            "tags",
+            "block_reasons",
+            "dependents"
+        ],
         "every column-less field, named in the module's declaration order"
     );
-    assert_eq!(count_where(&pool, "goals", "id", goal.id).await, 1, "the refusal writes nothing");
+    assert_eq!(
+        count_where(&pool, "goals", "id", goal.id).await,
+        1,
+        "the refusal writes nothing"
+    );
 
     let retyped = retype_node(
         app.state(),
@@ -288,15 +327,37 @@ async fn retyping_a_goal_to_a_domain_carries_only_identity_fields_and_drops_the_
     let row = domain_row(&pool, retyped.id).await;
     assert_eq!(row.title, "Learn Rust");
     assert_eq!(row.subtype, "domain");
-    assert_eq!(row.position, source_position, "position carries even across tables");
-    assert!(row.is_private, "privacy carries — the flow-item precedent drops it, this must not");
+    assert_eq!(
+        row.position, source_position,
+        "position carries even across tables"
+    );
+    assert!(
+        row.is_private,
+        "privacy carries — the flow-item precedent drops it, this must not"
+    );
     assert_eq!(row.description, None, "a goal never had one to carry");
-    assert_eq!(row.knowledge_base_directory, None, "only a project target would take it, and did not get one anyway");
-    assert_eq!(row.status, None, "a frozen status has nowhere to go on a domain");
+    assert_eq!(
+        row.knowledge_base_directory, None,
+        "only a project target would take it, and did not get one anyway"
+    );
+    assert_eq!(
+        row.status, None,
+        "a frozen status has nowhere to go on a domain"
+    );
 
-    assert_eq!(count_where(&pool, "goals", "id", goal.id).await, 0, "the goal row is gone");
-    assert_eq!(count_where(&pool, "tags_on_goals", "goal_id", goal.id).await, 0);
-    assert_eq!(count_where(&pool, "block_reasons", "owner_id", goal.id).await, 0);
+    assert_eq!(
+        count_where(&pool, "goals", "id", goal.id).await,
+        0,
+        "the goal row is gone"
+    );
+    assert_eq!(
+        count_where(&pool, "tags_on_goals", "goal_id", goal.id).await,
+        0
+    );
+    assert_eq!(
+        count_where(&pool, "block_reasons", "owner_id", goal.id).await,
+        0
+    );
     assert_eq!(
         dependency_rows(&pool).await,
         Vec::new(),
@@ -332,8 +393,16 @@ async fn retyping_a_task_to_a_project_drops_its_task_only_fields_and_ends_both_d
             parent_type: "project".into(),
             parent_id: project_id,
             status: Some(TaskStatus::Done),
-            time_scope: Some(TimeScope { start_id: scope_id, end_id: scope_id, duration: None }),
-            plan: Some(TimeScope { start_id: scope_id, end_id: scope_id, duration: None }),
+            time_scope: Some(TimeScope {
+                start_id: scope_id,
+                end_id: scope_id,
+                duration: None,
+            }),
+            plan: Some(TimeScope {
+                start_id: scope_id,
+                end_id: scope_id,
+                duration: None,
+            }),
             ..Default::default()
         },
     )
@@ -351,9 +420,14 @@ async fn retyping_a_task_to_a_project_drops_its_task_only_fields_and_ends_both_d
     .await
     .unwrap();
     db.tasks().add_tag(TaskId(task.id), tag_id).await.unwrap();
-    db.block_reasons().set("task", task.id, &["blocked on Ana".to_string()]).await.unwrap();
+    db.block_reasons()
+        .set("task", task.id, &["blocked on Ana".to_string()])
+        .await
+        .unwrap();
     // Outbound: the task being retyped depends on `other`.
-    add_task_dependency(&mut db, TaskId(task.id), Dependency::Task { id: other.id }).await.unwrap();
+    add_task_dependency(&mut db, TaskId(task.id), Dependency::Task { id: other.id })
+        .await
+        .unwrap();
     // Inbound: `dependent` depends on the task being retyped.
     let dependent = create_task(
         &mut db,
@@ -366,9 +440,13 @@ async fn retyping_a_task_to_a_project_drops_its_task_only_fields_and_ends_both_d
     )
     .await
     .unwrap();
-    add_task_dependency(&mut db, TaskId(dependent.id), Dependency::Task { id: task.id })
-        .await
-        .unwrap();
+    add_task_dependency(
+        &mut db,
+        TaskId(dependent.id),
+        Dependency::Task { id: task.id },
+    )
+    .await
+    .unwrap();
     db.commit().await.unwrap();
 
     let source_position: i64 = sqlx::query_scalar("SELECT position FROM tasks WHERE id = ?")
@@ -378,13 +456,28 @@ async fn retyping_a_task_to_a_project_drops_its_task_only_fields_and_ends_both_d
         .unwrap();
 
     let app = helpers::command_host(&pool);
-    let refused = retype_node(app.state(), "task".into(), task.id, "project".into(), None, None)
-        .await
-        .expect_err("a project holds none of a task's scheduling machinery");
+    let refused = retype_node(
+        app.state(),
+        "task".into(),
+        task.id,
+        "project".into(),
+        None,
+        None,
+    )
+    .await
+    .expect_err("a project holds none of a task's scheduling machinery");
     let wire = serde_json::to_value(&refused).unwrap();
     assert_eq!(
         lost_field_names(&wire),
-        vec!["time_scope", "plan", "delegate_to", "tags", "block_reasons", "dependents", "dependencies"],
+        vec![
+            "time_scope",
+            "plan",
+            "delegate_to",
+            "tags",
+            "block_reasons",
+            "dependents",
+            "dependencies"
+        ],
     );
 
     let retyped = retype_node(
@@ -401,15 +494,28 @@ async fn retyping_a_task_to_a_project_drops_its_task_only_fields_and_ends_both_d
     let row = domain_row(&pool, retyped.id).await;
     assert_eq!(row.title, "Draft the spec");
     assert_eq!(row.subtype, "project");
-    assert_eq!(row.status.as_deref(), Some("achieved"), "a done task is the nearest thing to an achieved project");
+    assert_eq!(
+        row.status.as_deref(),
+        Some("achieved"),
+        "a done task is the nearest thing to an achieved project"
+    );
     assert_eq!(row.position, source_position);
     assert!(row.is_private);
     assert_eq!(row.description, None, "a task never had one to carry");
-    assert_eq!(row.knowledge_base_directory, None, "a task never had a directory to give it");
+    assert_eq!(
+        row.knowledge_base_directory, None,
+        "a task never had a directory to give it"
+    );
 
     assert_eq!(count_where(&pool, "tasks", "id", task.id).await, 0);
-    assert_eq!(count_where(&pool, "tags_on_tasks", "task_id", task.id).await, 0);
-    assert_eq!(count_where(&pool, "block_reasons", "owner_id", task.id).await, 0);
+    assert_eq!(
+        count_where(&pool, "tags_on_tasks", "task_id", task.id).await,
+        0
+    );
+    assert_eq!(
+        count_where(&pool, "block_reasons", "owner_id", task.id).await,
+        0
+    );
     assert_eq!(
         dependency_rows(&pool).await,
         Vec::new(),
@@ -437,7 +543,13 @@ async fn a_domain_table_retype_rewrites_no_row_and_the_row_keeps_its_identity_th
         .await
         .unwrap();
     db.domains()
-        .update(DomainId(created.id), UpdateDomainRequest { is_private: Some(true), ..Default::default() })
+        .update(
+            DomainId(created.id),
+            UpdateDomainRequest {
+                is_private: Some(true),
+                ..Default::default()
+            },
+        )
         .await
         .unwrap();
     drop(db); // release the pool's one connection before reading through it below
@@ -446,10 +558,20 @@ async fn a_domain_table_retype_rewrites_no_row_and_the_row_keeps_its_identity_th
 
     let app = helpers::command_host(&pool);
 
-    let hop1 = retype_node(app.state(), "project".into(), created.id, "tag".into(), None, None)
-        .await
-        .expect("a subtype-only move loses nothing, so no acknowledgement is asked for");
-    assert_eq!(hop1.id, created.id, "the row keeps its identity — no row is rewritten");
+    let hop1 = retype_node(
+        app.state(),
+        "project".into(),
+        created.id,
+        "tag".into(),
+        None,
+        None,
+    )
+    .await
+    .expect("a subtype-only move loses nothing, so no acknowledgement is asked for");
+    assert_eq!(
+        hop1.id, created.id,
+        "the row keeps its identity — no row is rewritten"
+    );
     let after1 = domain_row(&pool, created.id).await;
     assert_eq!(after1.subtype, "tag");
     assert_eq!(after1.description, before.description);
@@ -461,13 +583,34 @@ async fn a_domain_table_retype_rewrites_no_row_and_the_row_keeps_its_identity_th
     assert_eq!(after1.is_private, before.is_private);
     assert_eq!(after1.position, before.position);
 
-    let hop2 = retype_node(app.state(), "tag".into(), created.id, "domain".into(), None, None).await.unwrap();
+    let hop2 = retype_node(
+        app.state(),
+        "tag".into(),
+        created.id,
+        "domain".into(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
     assert_eq!(hop2.id, created.id);
     let after2 = domain_row(&pool, created.id).await;
     assert_eq!(after2.subtype, "domain");
-    assert_eq!(after2.knowledge_base_directory, before.knowledge_base_directory);
+    assert_eq!(
+        after2.knowledge_base_directory,
+        before.knowledge_base_directory
+    );
 
-    let hop3 = retype_node(app.state(), "domain".into(), created.id, "project".into(), None, None).await.unwrap();
+    let hop3 = retype_node(
+        app.state(),
+        "domain".into(),
+        created.id,
+        "project".into(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
     assert_eq!(hop3.id, created.id);
     let after3 = domain_row(&pool, created.id).await;
     assert_eq!(after3.subtype, "project");
@@ -501,17 +644,31 @@ async fn retyping_a_task_to_a_goal_carries_its_tags_and_reasons_and_repoints_wha
             parent_type: "project".into(),
             parent_id: project_id,
             status: Some(TaskStatus::InProgress),
-            plan: Some(TimeScope { start_id: scope_id, end_id: scope_id, duration: None }),
+            plan: Some(TimeScope {
+                start_id: scope_id,
+                end_id: scope_id,
+                duration: None,
+            }),
             ..Default::default()
         },
     )
     .await
     .unwrap();
-    update_task(&mut db, TaskId(task.id), UpdateTaskRequest { delegate_to: Some(Some(person_id)), ..Default::default() })
+    update_task(
+        &mut db,
+        TaskId(task.id),
+        UpdateTaskRequest {
+            delegate_to: Some(Some(person_id)),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    db.tasks().add_tag(TaskId(task.id), tag_id).await.unwrap();
+    db.block_reasons()
+        .set("task", task.id, &["waiting on Ben".to_string()])
         .await
         .unwrap();
-    db.tasks().add_tag(TaskId(task.id), tag_id).await.unwrap();
-    db.block_reasons().set("task", task.id, &["waiting on Ben".to_string()]).await.unwrap();
     let dependent = create_task(
         &mut db,
         CreateTaskRequest {
@@ -523,15 +680,26 @@ async fn retyping_a_task_to_a_goal_carries_its_tags_and_reasons_and_repoints_wha
     )
     .await
     .unwrap();
-    add_task_dependency(&mut db, TaskId(dependent.id), Dependency::Task { id: task.id })
-        .await
-        .unwrap();
+    add_task_dependency(
+        &mut db,
+        TaskId(dependent.id),
+        Dependency::Task { id: task.id },
+    )
+    .await
+    .unwrap();
     db.commit().await.unwrap();
 
     let app = helpers::command_host(&pool);
-    let refused = retype_node(app.state(), "task".into(), task.id, "goal".into(), None, None)
-        .await
-        .expect_err("a goal has neither a Plan nor a delegate");
+    let refused = retype_node(
+        app.state(),
+        "task".into(),
+        task.id,
+        "goal".into(),
+        None,
+        None,
+    )
+    .await
+    .expect_err("a goal has neither a Plan nor a delegate");
     let wire = serde_json::to_value(&refused).unwrap();
     assert_eq!(lost_field_names(&wire), vec!["plan", "delegate_to"]);
 
@@ -546,20 +714,26 @@ async fn retyping_a_task_to_a_goal_carries_its_tags_and_reasons_and_repoints_wha
     .await
     .unwrap();
 
-    let mut tags: Vec<i64> = sqlx::query_scalar("SELECT tag_id FROM tags_on_goals WHERE goal_id = ?")
-        .bind(retyped.id)
-        .fetch_all(&pool)
-        .await
-        .unwrap();
-    tags.sort_unstable();
-    assert_eq!(tags, vec![tag_id], "the tag followed its owner onto the goal join table");
-
-    let reasons: Vec<String> =
-        sqlx::query_scalar("SELECT reason FROM block_reasons WHERE owner_type = 'goal' AND owner_id = ?")
+    let mut tags: Vec<i64> =
+        sqlx::query_scalar("SELECT tag_id FROM tags_on_goals WHERE goal_id = ?")
             .bind(retyped.id)
             .fetch_all(&pool)
             .await
             .unwrap();
+    tags.sort_unstable();
+    assert_eq!(
+        tags,
+        vec![tag_id],
+        "the tag followed its owner onto the goal join table"
+    );
+
+    let reasons: Vec<String> = sqlx::query_scalar(
+        "SELECT reason FROM block_reasons WHERE owner_type = 'goal' AND owner_id = ?",
+    )
+    .bind(retyped.id)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
     assert_eq!(reasons, vec!["waiting on Ben".to_string()]);
 
     assert_eq!(
@@ -569,7 +743,10 @@ async fn retyping_a_task_to_a_goal_carries_its_tags_and_reasons_and_repoints_wha
     );
 
     assert_eq!(count_where(&pool, "tasks", "id", task.id).await, 0);
-    assert_eq!(count_where(&pool, "tags_on_tasks", "task_id", task.id).await, 0);
+    assert_eq!(
+        count_where(&pool, "tags_on_tasks", "task_id", task.id).await,
+        0
+    );
     // Filtered by `owner_type` too, not just `owner_id`: goals and tasks are separate tables with
     // their own independent rowid sequences, so the new goal's id can coincide with the old task's.
     let leftover_task_reasons: i64 = sqlx::query_scalar(
@@ -579,7 +756,10 @@ async fn retyping_a_task_to_a_goal_carries_its_tags_and_reasons_and_repoints_wha
     .fetch_one(&pool)
     .await
     .unwrap();
-    assert_eq!(leftover_task_reasons, 0, "no block reason was left behind on the deleted task");
+    assert_eq!(
+        leftover_task_reasons, 0,
+        "no block reason was left behind on the deleted task"
+    );
 }
 
 // ===========================================================================
@@ -655,11 +835,21 @@ async fn the_retype_node_command_deletes_stranded_children_and_their_own_descend
     db.commit().await.unwrap();
 
     let app = helpers::command_host(&pool);
-    let refused = retype_node(app.state(), "goal".into(), goal.id, "task".into(), None, None)
-        .await
-        .expect_err("a task cannot hold a sub-goal");
+    let refused = retype_node(
+        app.state(),
+        "goal".into(),
+        goal.id,
+        "task".into(),
+        None,
+        None,
+    )
+    .await
+    .expect_err("a task cannot hold a sub-goal");
     let wire = serde_json::to_value(&refused).unwrap();
-    assert_eq!(lost_child_kinds_and_ids(&wire), vec![("goal".to_string(), sub_goal.id)]);
+    assert_eq!(
+        lost_child_kinds_and_ids(&wire),
+        vec![("goal".to_string(), sub_goal.id)]
+    );
 
     let retyped = retype_node(
         app.state(),
@@ -672,7 +862,11 @@ async fn the_retype_node_command_deletes_stranded_children_and_their_own_descend
     .await
     .unwrap();
 
-    assert_eq!(count_where(&pool, "goals", "id", sub_goal.id).await, 0, "the stranded sub-goal is gone");
+    assert_eq!(
+        count_where(&pool, "goals", "id", sub_goal.id).await,
+        0,
+        "the stranded sub-goal is gone"
+    );
     assert_eq!(
         count_where(&pool, "tasks", "id", grandchild_task.id).await,
         0,
@@ -683,7 +877,11 @@ async fn the_retype_node_command_deletes_stranded_children_and_their_own_descend
         0,
         "and its own descendant info too"
     );
-    assert_eq!(count_where(&pool, "goals", "id", goal.id).await, 0, "the retyped goal row itself is gone");
+    assert_eq!(
+        count_where(&pool, "goals", "id", goal.id).await,
+        0,
+        "the retyped goal row itself is gone"
+    );
 
     let (parent_type, parent_id) = task_parent(&pool, surviving_task.id).await;
     assert_eq!(
@@ -759,13 +957,23 @@ async fn the_retype_node_command_reparents_every_kind_of_stranded_child_and_leav
     db.commit().await.unwrap();
 
     let app = helpers::command_host(&pool);
-    let refused = retype_node(app.state(), "goal".into(), goal.id, "task".into(), None, None)
-        .await
-        .expect_err("a task can hold neither a sub-goal nor a flow");
+    let refused = retype_node(
+        app.state(),
+        "goal".into(),
+        goal.id,
+        "task".into(),
+        None,
+        None,
+    )
+    .await
+    .expect_err("a task can hold neither a sub-goal nor a flow");
     let wire = serde_json::to_value(&refused).unwrap();
     assert_eq!(
         lost_child_kinds_and_ids(&wire),
-        vec![("goal".to_string(), sub_goal.id), ("flow".to_string(), flow_child.id)]
+        vec![
+            ("goal".to_string(), sub_goal.id),
+            ("flow".to_string(), flow_child.id)
+        ]
     );
 
     let retyped = retype_node(
@@ -801,9 +1009,16 @@ async fn the_retype_node_command_reparents_every_kind_of_stranded_child_and_leav
     );
 
     // The non-stranded child was adopted onto the new task normally.
-    assert_eq!(task_parent(&pool, surviving_task.id).await, ("task".to_string(), retyped.id));
+    assert_eq!(
+        task_parent(&pool, surviving_task.id).await,
+        ("task".to_string(), retyped.id)
+    );
 
-    assert_eq!(count_where(&pool, "goals", "id", goal.id).await, 0, "the old goal row is gone");
+    assert_eq!(
+        count_where(&pool, "goals", "id", goal.id).await,
+        0,
+        "the old goal row is gone"
+    );
 }
 
 // ===========================================================================
@@ -850,14 +1065,21 @@ async fn a_domain_table_retype_that_deletes_stranded_children_rolls_back_atomica
     // caller and fails where the command's `?` would fire — after the subtype update and the
     // stranded child's deletion have both landed inside the transaction.
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-    let planned =
-        plan_node_retype(&mut db, RetypeKind::Domain, container.id, RetypeKind::Tag).await.unwrap();
-    apply_retype(&mut db, &planned, StrandedChildren::Delete).await.unwrap();
+    let planned = plan_node_retype(&mut db, RetypeKind::Domain, container.id, RetypeKind::Tag)
+        .await
+        .unwrap();
+    apply_retype(&mut db, &planned, StrandedChildren::Delete)
+        .await
+        .unwrap();
 
     // The retype really did get past the delete inside the transaction — otherwise the
     // assertions below would hold vacuously.
     assert_eq!(
-        db.domains().get(DomainId(container.id)).await.unwrap().subtype,
+        db.domains()
+            .get(DomainId(container.id))
+            .await
+            .unwrap()
+            .subtype,
         "tag",
         "the subtype update landed inside the transaction"
     );
@@ -876,7 +1098,11 @@ async fn a_domain_table_retype_that_deletes_stranded_children_rolls_back_atomica
 
     let row = domain_row(&pool, container.id).await;
     assert_eq!(row.subtype, "domain", "the subtype update was rolled back");
-    assert_eq!(count_where(&pool, "domains", "id", leaf_tag.id).await, 1, "the deleted leaf is back");
+    assert_eq!(
+        count_where(&pool, "domains", "id", leaf_tag.id).await,
+        1,
+        "the deleted leaf is back"
+    );
 }
 
 /// Reads a `beads_id` straight off the pool.
@@ -913,9 +1139,16 @@ async fn retyping_a_tracked_task_to_a_goal_keeps_its_issue_link() {
     db.commit().await.unwrap();
 
     let app = helpers::command_host(&pool);
-    let retyped = retype_node(app.state(), "task".into(), task.id, "goal".into(), None, None)
-        .await
-        .unwrap();
+    let retyped = retype_node(
+        app.state(),
+        "task".into(),
+        task.id,
+        "goal".into(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
 
     // The retype rebuilds the node as a new row, so the link has to be written onto it
     // explicitly — the create requests have no field for it, by design.
@@ -956,9 +1189,16 @@ async fn retyping_a_tracked_task_to_a_project_keeps_its_issue_link() {
 
     // Crossing tables — `tasks` to `domains` — is the case most likely to drop it.
     let app = helpers::command_host(&pool);
-    let retyped = retype_node(app.state(), "task".into(), task.id, "project".into(), None, None)
-        .await
-        .unwrap();
+    let retyped = retype_node(
+        app.state(),
+        "task".into(),
+        task.id,
+        "project".into(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
 
     assert_eq!(
         stored_beads_id(&pool, "domains", retyped.id).await,
@@ -991,7 +1231,15 @@ async fn retyping_a_tracked_task_to_a_note_reports_the_link_as_lost_and_clears_i
 
     // `infos` has no column for the link, so this is a real loss and the command must ask first.
     let app = helpers::command_host(&pool);
-    let refused = retype_node(app.state(), "task".into(), task.id, "info".into(), None, None).await;
+    let refused = retype_node(
+        app.state(),
+        "task".into(),
+        task.id,
+        "info".into(),
+        None,
+        None,
+    )
+    .await;
     assert!(
         refused.is_err(),
         "losing an issue link must require acknowledgement"
@@ -1002,7 +1250,12 @@ async fn retyping_a_tracked_task_to_a_note_reports_the_link_as_lost_and_clears_i
         .await
         .unwrap();
     drop(db);
-    let lost: Vec<&str> = plan.plan.lost_fields.iter().map(|lost| lost.field).collect();
+    let lost: Vec<&str> = plan
+        .plan
+        .lost_fields
+        .iter()
+        .map(|lost| lost.field)
+        .collect();
     assert!(
         lost.contains(&"beads_id"),
         "the prompt should name the issue link among what it drops, got {lost:?}"
@@ -1020,10 +1273,17 @@ async fn one_day(pool: &sqlx::SqlitePool, day: u32) -> TimeScope {
         .await
         .unwrap()
         .scopes()
-        .get_or_create(ScopeKind::Day, NaiveDate::from_ymd_opt(2026, 7, day).unwrap())
+        .get_or_create(
+            ScopeKind::Day,
+            NaiveDate::from_ymd_opt(2026, 7, day).unwrap(),
+        )
         .await
         .unwrap();
-    TimeScope { start_id: scope.id, end_id: scope.id, duration: None }
+    TimeScope {
+        start_id: scope.id,
+        end_id: scope.id,
+        duration: None,
+    }
 }
 
 #[tokio::test]
@@ -1049,14 +1309,24 @@ async fn a_scoped_task_becomes_a_commitment_carrying_its_window_tags_and_issue_l
         .await
         .unwrap();
         db.tasks().add_tag(TaskId(task.id), tag_id).await.unwrap();
-        db.tasks().set_beads_id(TaskId(task.id), Some("Arlesh-cyo".into())).await.unwrap();
+        db.tasks()
+            .set_beads_id(TaskId(task.id), Some("Arlesh-cyo".into()))
+            .await
+            .unwrap();
         db.commit().await.unwrap();
         task
     };
 
-    let retyped = retype_node(app.state(), "task".into(), task.id, "commitment".into(), None, None)
-        .await
-        .expect("an unplanned, undelegated task loses nothing on the way in");
+    let retyped = retype_node(
+        app.state(),
+        "task".into(),
+        task.id,
+        "commitment".into(),
+        None,
+        None,
+    )
+    .await
+    .expect("an unplanned, undelegated task loses nothing on the way in");
 
     assert_eq!(retyped.kind, RetypeKind::Commitment);
     let commitment = helpers::session_factory(&pool)
@@ -1070,8 +1340,16 @@ async fn a_scoped_task_becomes_a_commitment_carrying_its_window_tags_and_issue_l
     assert_eq!(commitment.title, "Asleep by 23:00");
     assert_eq!(commitment.time_scope, Some(tonight));
     assert_eq!(commitment.tag_ids, vec![tag_id]);
-    assert_eq!(commitment.beads_id, Some("Arlesh-cyo".to_string()), "a tracked node stays tracked");
-    assert_eq!(commitment.verdict, Verdict::Unresolved, "no status is translated into a verdict");
+    assert_eq!(
+        commitment.beads_id,
+        Some("Arlesh-cyo".to_string()),
+        "a tracked node stays tracked"
+    );
+    assert_eq!(
+        commitment.verdict,
+        Verdict::Unresolved,
+        "no status is translated into a verdict"
+    );
 
     let gone: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tasks WHERE id = ?")
         .bind(task.id)
@@ -1109,8 +1387,19 @@ async fn a_planned_task_cannot_become_a_commitment_until_the_caller_has_been_tol
         task
     };
 
-    let refused = retype_node(app.state(), "task".into(), task.id, "commitment".into(), None, None).await;
-    assert!(refused.is_err(), "the Plan must be named before it is dropped");
+    let refused = retype_node(
+        app.state(),
+        "task".into(),
+        task.id,
+        "commitment".into(),
+        None,
+        None,
+    )
+    .await;
+    assert!(
+        refused.is_err(),
+        "the Plan must be named before it is dropped"
+    );
 
     let accepted = retype_node(
         app.state(),
@@ -1150,8 +1439,19 @@ async fn an_unscoped_task_with_no_scoped_ancestor_cannot_become_a_commitment() {
         task
     };
 
-    let refused = retype_node(app.state(), "task".into(), task.id, "commitment".into(), None, None).await;
-    assert!(refused.is_err(), "a commitment that could never come due is not written");
+    let refused = retype_node(
+        app.state(),
+        "task".into(),
+        task.id,
+        "commitment".into(),
+        None,
+        None,
+    )
+    .await;
+    assert!(
+        refused.is_err(),
+        "a commitment that could never come due is not written"
+    );
 
     let survivors: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tasks WHERE id = ?")
         .bind(task.id)
@@ -1163,7 +1463,10 @@ async fn an_unscoped_task_with_no_scoped_ancestor_cannot_become_a_commitment() {
         .await
         .unwrap();
     assert_eq!(survivors, 1, "the task is untouched");
-    assert_eq!(commitments, 0, "and no half-written commitment was left behind");
+    assert_eq!(
+        commitments, 0,
+        "and no half-written commitment was left behind"
+    );
 }
 
 #[tokio::test]
@@ -1220,7 +1523,10 @@ async fn an_unscoped_task_becomes_a_commitment_when_the_caller_supplies_the_wind
         .fetch_one(&pool)
         .await
         .unwrap();
-    assert_eq!(survivors, 0, "the task became the commitment rather than sitting beside it");
+    assert_eq!(
+        survivors, 0,
+        "the task became the commitment rather than sitting beside it"
+    );
 }
 
 #[tokio::test]
@@ -1261,9 +1567,16 @@ async fn a_task_under_a_scoped_goal_becomes_a_commitment_without_being_asked_for
         task
     };
 
-    let retyped = retype_node(app.state(), "task".into(), task.id, "commitment".into(), None, None)
-        .await
-        .expect("an inherited window is an effective window");
+    let retyped = retype_node(
+        app.state(),
+        "task".into(),
+        task.id,
+        "commitment".into(),
+        None,
+        None,
+    )
+    .await
+    .expect("an inherited window is an effective window");
 
     let commitment = helpers::session_factory(&pool)
         .connect()
@@ -1296,7 +1609,10 @@ async fn a_judged_commitment_becoming_a_task_reports_the_verdict_it_would_lose()
                 parent_id: project_id,
                 verdict: Some(Verdict::Broken),
                 time_scope: Some(tonight),
-                verdict_window: Some(DurationSpec { n: 2, kind: "day".into() }),
+                verdict_window: Some(DurationSpec {
+                    n: 2,
+                    kind: "day".into(),
+                }),
             },
         )
         .await
@@ -1305,9 +1621,19 @@ async fn a_judged_commitment_becoming_a_task_reports_the_verdict_it_would_lose()
         commitment
     };
 
-    let refused =
-        retype_node(app.state(), "commitment".into(), commitment.id, "task".into(), None, None).await;
-    assert!(refused.is_err(), "a recorded verdict is not discarded unasked");
+    let refused = retype_node(
+        app.state(),
+        "commitment".into(),
+        commitment.id,
+        "task".into(),
+        None,
+        None,
+    )
+    .await;
+    assert!(
+        refused.is_err(),
+        "a recorded verdict is not discarded unasked"
+    );
 
     let retyped = retype_node(
         app.state(),
@@ -1329,7 +1655,10 @@ async fn a_judged_commitment_becoming_a_task_reports_the_verdict_it_would_lose()
         .get(TaskId(retyped.id))
         .await
         .unwrap();
-    assert_eq!(task.status, "todo", "no verdict is translated into a status");
+    assert_eq!(
+        task.status, "todo",
+        "no verdict is translated into a status"
+    );
     assert!(task.plan.is_none());
 }
 
@@ -1385,7 +1714,11 @@ async fn a_commitments_task_children_move_with_it_and_its_goal_siblings_never_ar
             .fetch_one(&pool)
             .await
             .unwrap();
-    assert_eq!(child_parent, ("task".to_string(), retyped.id), "a task child follows a task");
+    assert_eq!(
+        child_parent,
+        ("task".to_string(), retyped.id),
+        "a task child follows a task"
+    );
 }
 
 #[tokio::test]
@@ -1443,7 +1776,10 @@ async fn a_commitment_becoming_a_tag_deletes_the_children_a_label_cannot_hold() 
         .fetch_one(&pool)
         .await
         .unwrap();
-    assert_eq!(left, 0, "the commitment became a label and its child went with the choice");
+    assert_eq!(
+        left, 0,
+        "the commitment became a label and its child went with the choice"
+    );
 }
 
 #[tokio::test]
@@ -1500,7 +1836,11 @@ async fn a_stranded_child_commitment_moves_up_to_its_grandparent_when_the_caller
     .fetch_one(&pool)
     .await
     .unwrap();
-    assert_eq!(parent, ("project".to_string(), project_id), "it moved up rather than vanishing");
+    assert_eq!(
+        parent,
+        ("project".to_string(), project_id),
+        "it moved up rather than vanishing"
+    );
 }
 
 #[tokio::test]
@@ -1559,7 +1899,11 @@ async fn a_goal_holds_a_commitment_child_through_a_retype() {
     .fetch_one(&pool)
     .await
     .unwrap();
-    assert_eq!(parent, ("goal".to_string(), retyped.id), "the goal adopted it");
+    assert_eq!(
+        parent,
+        ("goal".to_string(), retyped.id),
+        "the goal adopted it"
+    );
 }
 
 #[tokio::test]
@@ -1601,8 +1945,19 @@ async fn a_task_under_a_commitment_climbs_past_it_when_it_becomes_a_goal() {
         task
     };
 
-    let refused = retype_node(app.state(), "task".into(), task.id, "goal".into(), None, None).await;
-    assert!(refused.is_err(), "a node leaving the parent it sits under is never silent");
+    let refused = retype_node(
+        app.state(),
+        "task".into(),
+        task.id,
+        "goal".into(),
+        None,
+        None,
+    )
+    .await;
+    assert!(
+        refused.is_err(),
+        "a node leaving the parent it sits under is never silent"
+    );
 
     let retyped = retype_node(
         app.state(),
@@ -1621,7 +1976,11 @@ async fn a_task_under_a_commitment_climbs_past_it_when_it_becomes_a_goal() {
             .fetch_one(&pool)
             .await
             .unwrap();
-    assert_eq!(parent, ("project".to_string(), project_id), "it climbed past the commitment");
+    assert_eq!(
+        parent,
+        ("project".to_string(), project_id),
+        "it climbed past the commitment"
+    );
 }
 
 // ===========================================================================
@@ -1651,9 +2010,16 @@ async fn retyping_a_backlogged_task_to_a_goal_names_the_backlog_as_lost_and_then
     // A goal has no backlog, and Frozen is not where a backlog lands, so the state goes. The
     // command must name it before it does that.
     let app = helpers::command_host(&pool);
-    let refused = retype_node(app.state(), "task".into(), task.id, "goal".into(), None, None)
-        .await
-        .expect_err("dropping the backlog must require acknowledgement");
+    let refused = retype_node(
+        app.state(),
+        "task".into(),
+        task.id,
+        "goal".into(),
+        None,
+        None,
+    )
+    .await
+    .expect_err("dropping the backlog must require acknowledgement");
     let wire = serde_json::to_value(&refused).unwrap();
     assert_eq!(lost_field_names(&wire), vec!["archival"]);
     assert_eq!(
@@ -1698,9 +2064,16 @@ async fn retyping_a_task_nobody_set_aside_says_nothing_about_the_backlog() {
 
     // `Live` is nobody's decision, so it is not a loss and must not raise a prompt of its own.
     let app = helpers::command_host(&pool);
-    let retyped = retype_node(app.state(), "task".into(), task.id, "goal".into(), None, None)
-        .await
-        .expect("a live task becoming a goal loses nothing");
+    let retyped = retype_node(
+        app.state(),
+        "task".into(),
+        task.id,
+        "goal".into(),
+        None,
+        None,
+    )
+    .await
+    .expect("a live task becoming a goal loses nothing");
 
     assert_eq!(retyped.kind, RetypeKind::Goal);
 }
@@ -1734,9 +2107,16 @@ async fn retyping_a_backlogged_task_to_a_commitment_names_the_backlog_as_lost() 
         task
     };
 
-    let refused = retype_node(app.state(), "task".into(), task.id, "commitment".into(), None, None)
-        .await
-        .expect_err("a dropped Backlog is named before it is dropped");
+    let refused = retype_node(
+        app.state(),
+        "task".into(),
+        task.id,
+        "commitment".into(),
+        None,
+        None,
+    )
+    .await
+    .expect_err("a dropped Backlog is named before it is dropped");
     let wire = serde_json::to_value(&refused).unwrap();
     assert_eq!(lost_field_names(&wire), vec!["archival"]);
     assert_eq!(

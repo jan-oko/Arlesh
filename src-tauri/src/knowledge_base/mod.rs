@@ -28,18 +28,19 @@ impl<'session> PersonOperator<'session> {
     ///
     /// A single `INSERT` (followed by a read of the created row), so it is atomic on its own —
     /// SQLite gives statement-level atomicity to a single write.
-    pub async fn create(&mut self, request: CreatePersonRequest) -> Result<Person, KnowledgeBaseError> {
+    pub async fn create(
+        &mut self,
+        request: CreatePersonRequest,
+    ) -> Result<Person, KnowledgeBaseError> {
         let aliases = serde_json::to_string(&request.aliases.unwrap_or_default())
             .unwrap_or_else(|_| "[]".into());
-        let id = sqlx::query(
-            "INSERT INTO people (name, aliases, linked_note) VALUES (?, ?, ?)",
-        )
-        .bind(&request.name)
-        .bind(&aliases)
-        .bind(&request.linked_note)
-        .execute(&mut *self.connection)
-        .await?
-        .last_insert_rowid();
+        let id = sqlx::query("INSERT INTO people (name, aliases, linked_note) VALUES (?, ?, ?)")
+            .bind(&request.name)
+            .bind(&aliases)
+            .bind(&request.linked_note)
+            .execute(&mut *self.connection)
+            .await?
+            .last_insert_rowid();
         self.get(PersonId(id)).await
     }
 
@@ -117,7 +118,10 @@ impl<'session> EventOperator<'session> {
     /// Creates a new event.
     ///
     /// A single `INSERT` (followed by a read of the created row), so it is atomic on its own.
-    pub async fn create(&mut self, request: CreateEventRequest) -> Result<Event, KnowledgeBaseError> {
+    pub async fn create(
+        &mut self,
+        request: CreateEventRequest,
+    ) -> Result<Event, KnowledgeBaseError> {
         let id = sqlx::query(
             "INSERT INTO events (title, scope_id, event_time, linked_note) VALUES (?, ?, ?, ?)",
         )
@@ -177,7 +181,10 @@ impl<'session> ThreadOperator<'session> {
     /// Creates a new thread.
     ///
     /// A single `INSERT` (followed by a read of the created row), so it is atomic on its own.
-    pub async fn create(&mut self, request: CreateThreadRequest) -> Result<Thread, KnowledgeBaseError> {
+    pub async fn create(
+        &mut self,
+        request: CreateThreadRequest,
+    ) -> Result<Thread, KnowledgeBaseError> {
         let id = sqlx::query("INSERT INTO threads (title, linked_note) VALUES (?, ?)")
             .bind(&request.title)
             .bind(&request.linked_note)

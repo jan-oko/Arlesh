@@ -105,7 +105,10 @@ async fn make_info(
         db.infos()
             .update(
                 InfoId(info.id),
-                UpdateInfoRequest { is_private: Some(true), ..Default::default() },
+                UpdateInfoRequest {
+                    is_private: Some(true),
+                    ..Default::default()
+                },
             )
             .await
             .unwrap();
@@ -140,31 +143,56 @@ async fn retyping_a_private_info_to_a_task_keeps_it_private() {
     let project = make_project(&pool, aspect, "Ops").await;
     let info_id = make_info(&pool, "project", project, "Secret note", None, true, 0).await;
 
-    let retyped =
-        retype_committed(&pool, RetypeKind::Info, info_id, RetypeKind::Task, StrandedChildren::Reparent).await;
+    let retyped = retype_committed(
+        &pool,
+        RetypeKind::Info,
+        info_id,
+        RetypeKind::Task,
+        StrandedChildren::Reparent,
+    )
+    .await;
 
     let is_private: bool = sqlx::query_scalar("SELECT is_private FROM tasks WHERE id = ?")
         .bind(retyped.id)
         .fetch_one(&pool)
         .await
         .unwrap();
-    assert!(is_private, "privacy must carry from an info to the task it becomes");
+    assert!(
+        is_private,
+        "privacy must carry from an info to the task it becomes"
+    );
 }
 
 #[tokio::test]
 async fn retyping_an_info_to_a_project_carries_its_details_into_the_description() {
     let pool = helpers::test_pool().await;
     let aspect = aspect_id(&pool).await;
-    let info_id = make_info(&pool, "aspect", aspect, "Reading list", Some("Long-form notes"), false, 0).await;
+    let info_id = make_info(
+        &pool,
+        "aspect",
+        aspect,
+        "Reading list",
+        Some("Long-form notes"),
+        false,
+        0,
+    )
+    .await;
 
-    let retyped =
-        retype_committed(&pool, RetypeKind::Info, info_id, RetypeKind::Project, StrandedChildren::Reparent).await;
+    let retyped = retype_committed(
+        &pool,
+        RetypeKind::Info,
+        info_id,
+        RetypeKind::Project,
+        StrandedChildren::Reparent,
+    )
+    .await;
 
-    let description: Option<String> = sqlx::query_scalar("SELECT description FROM domains WHERE id = ?")
-        .bind(retyped.id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let description: Option<String> =
+        sqlx::query_scalar("SELECT description FROM domains WHERE id = ?")
+            .bind(retyped.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(
         description.as_deref(),
         Some("Long-form notes"),
@@ -175,7 +203,8 @@ async fn retyping_an_info_to_a_project_carries_its_details_into_the_description(
 // --- consequence #3: the mislabelled polymorphic parent_type ---
 
 #[tokio::test]
-async fn retyping_an_info_nested_under_an_info_to_a_goal_climbs_to_the_project_and_never_points_at_the_info() {
+async fn retyping_an_info_nested_under_an_info_to_a_goal_climbs_to_the_project_and_never_points_at_the_info(
+) {
     let pool = helpers::test_pool().await;
     let aspect = aspect_id(&pool).await;
     let project = make_project(&pool, aspect, "Ops").await;
@@ -186,9 +215,16 @@ async fn retyping_an_info_nested_under_an_info_to_a_goal_climbs_to_the_project_a
 
     // First call: no acknowledgement yet, so the command must refuse and name the climb —
     // the corruption this whole design exists to prevent must never happen silently.
-    let refused = retype_node(app.state(), "info".into(), inner_info, "goal".into(), None, None)
-        .await
-        .expect_err("a goal cannot hang under an info, so the command must ask before climbing");
+    let refused = retype_node(
+        app.state(),
+        "info".into(),
+        inner_info,
+        "goal".into(),
+        None,
+        None,
+    )
+    .await
+    .expect_err("a goal cannot hang under an info, so the command must ask before climbing");
 
     let wire = serde_json::to_value(&refused).unwrap();
     assert_eq!(wire["kind"], serde_json::json!("needs_confirmation"));
@@ -275,11 +311,15 @@ async fn a_stranded_childs_delete_failing_rolls_back_the_whole_retype() {
         "the nested domain still has a child of its own, so deleting it must fail"
     );
 
-    let new_info_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM infos WHERE body = 'Doomed Project'")
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-    assert_eq!(new_info_count, 0, "create_node's insert must have rolled back — no duplicate node");
+    let new_info_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM infos WHERE body = 'Doomed Project'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        new_info_count, 0,
+        "create_node's insert must have rolled back — no duplicate node"
+    );
 
     let (note_parent_type, note_parent_id): (String, i64) =
         sqlx::query_as("SELECT parent_type, parent_id FROM infos WHERE id = ?")
@@ -299,7 +339,10 @@ async fn a_stranded_childs_delete_failing_rolls_back_the_whole_retype() {
             .fetch_one(&pool)
             .await
             .unwrap();
-    assert_eq!(project_row_survives, 1, "the source row must survive the rollback");
+    assert_eq!(
+        project_row_survives, 1,
+        "the source row must survive the rollback"
+    );
 
     let nested_domain_survives: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM domains WHERE id = ? AND parent_id = ?")
@@ -308,5 +351,8 @@ async fn a_stranded_childs_delete_failing_rolls_back_the_whole_retype() {
             .fetch_one(&pool)
             .await
             .unwrap();
-    assert_eq!(nested_domain_survives, 1, "the stranded domain must not have been half-deleted");
+    assert_eq!(
+        nested_domain_survives, 1,
+        "the stranded domain must not have been half-deleted"
+    );
 }

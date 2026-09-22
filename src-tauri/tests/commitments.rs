@@ -59,7 +59,11 @@ async fn window(pool: &sqlx::SqlitePool, kind: ScopeKind, date: NaiveDate) -> Ti
         .get_or_create(kind, date)
         .await
         .unwrap();
-    TimeScope { start_id: scope.id, end_id: scope.id, duration: None }
+    TimeScope {
+        start_id: scope.id,
+        end_id: scope.id,
+        duration: None,
+    }
 }
 
 fn july(day: u32) -> NaiveDate {
@@ -121,7 +125,11 @@ async fn a_commitment_with_a_window_of_its_own_is_created() {
     .unwrap();
 
     assert_eq!(commitment.time_scope, Some(tonight));
-    assert_eq!(commitment.verdict, Verdict::Unresolved, "nobody has judged it yet");
+    assert_eq!(
+        commitment.verdict,
+        Verdict::Unresolved,
+        "nobody has judged it yet"
+    );
 }
 
 #[tokio::test]
@@ -143,7 +151,10 @@ async fn a_commitment_with_no_scoped_ancestor_at_all_is_refused() {
     )
     .await;
 
-    assert!(matches!(refused, Err(TaskError::CommitmentUnscoped)), "got {refused:?}");
+    assert!(
+        matches!(refused, Err(TaskError::CommitmentUnscoped)),
+        "got {refused:?}"
+    );
 }
 
 #[tokio::test]
@@ -204,11 +215,17 @@ async fn clearing_the_last_window_above_a_commitment_is_refused() {
     let refused = update(
         &pool,
         commitment.id,
-        UpdateCommitmentRequest { time_scope: Some(None), ..Default::default() },
+        UpdateCommitmentRequest {
+            time_scope: Some(None),
+            ..Default::default()
+        },
     )
     .await;
 
-    assert!(matches!(refused, Err(TaskError::CommitmentUnscoped)), "got {refused:?}");
+    assert!(
+        matches!(refused, Err(TaskError::CommitmentUnscoped)),
+        "got {refused:?}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -222,7 +239,12 @@ async fn a_child_commitments_window_must_fit_inside_its_parents() {
     let project_id = make_project(&pool).await;
     let july_month = window(&pool, ScopeKind::Month, july(15)).await;
     let inside = window(&pool, ScopeKind::Day, july(15)).await;
-    let outside = window(&pool, ScopeKind::Day, NaiveDate::from_ymd_opt(2026, 8, 20).unwrap()).await;
+    let outside = window(
+        &pool,
+        ScopeKind::Day,
+        NaiveDate::from_ymd_opt(2026, 8, 20).unwrap(),
+    )
+    .await;
 
     let month = create(
         &pool,
@@ -261,7 +283,10 @@ async fn a_child_commitments_window_must_fit_inside_its_parents() {
         },
     )
     .await;
-    assert!(matches!(escapes, Err(TaskError::ScopeContainment(_))), "got {escapes:?}");
+    assert!(
+        matches!(escapes, Err(TaskError::ScopeContainment(_))),
+        "got {escapes:?}"
+    );
 }
 
 #[tokio::test]
@@ -303,12 +328,18 @@ async fn a_commitment_holds_task_children_that_inherit_its_window() {
     };
 
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
-    let lifecycles = derive_all_scope_lifecycles(&mut db, at("2026-07-01T09:00:00")).await.unwrap();
+    let lifecycles = derive_all_scope_lifecycles(&mut db, at("2026-07-01T09:00:00"))
+        .await
+        .unwrap();
     let task_state = lifecycles
         .iter()
         .find(|entry| entry.node_type == "task" && entry.node_id == task.id)
         .expect("the task has a derived lifecycle");
-    assert_eq!(task_state.timing, Timing::Active, "it inherited tonight's window");
+    assert_eq!(
+        task_state.timing,
+        Timing::Active,
+        "it inherited tonight's window"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -338,7 +369,10 @@ async fn a_recorded_verdict_survives_a_round_trip_and_can_be_taken_back() {
         let written = update(
             &pool,
             commitment.id,
-            UpdateCommitmentRequest { verdict: Some(verdict), ..Default::default() },
+            UpdateCommitmentRequest {
+                verdict: Some(verdict),
+                ..Default::default()
+            },
         )
         .await
         .unwrap();
@@ -359,7 +393,10 @@ async fn an_unjudged_commitment_archives_only_once_its_verdict_window_has_run_ou
             parent_type: "project".into(),
             parent_id: project_id,
             time_scope: Some(tonight),
-            verdict_window: Some(DurationSpec { n: 2, kind: "day".into() }),
+            verdict_window: Some(DurationSpec {
+                n: 2,
+                kind: "day".into(),
+            }),
             ..Default::default()
         },
     )
@@ -389,7 +426,10 @@ async fn an_unjudged_commitment_archives_only_once_its_verdict_window_has_run_ou
     let too_late = state_at("2026-07-05T09:00:00").await;
     assert_eq!(too_late.archival, Archival::Archived);
     assert_eq!(too_late.verdict, Some(Verdict::Unresolved));
-    assert_eq!(too_late.resolution, None, "a Commitment answers with a verdict, not a resolution");
+    assert_eq!(
+        too_late.resolution, None,
+        "a Commitment answers with a verdict, not a resolution"
+    );
 }
 
 #[tokio::test]
@@ -408,7 +448,10 @@ async fn a_child_commitment_inherits_the_verdict_window_of_the_nearest_ancestor_
             parent_type: "project".into(),
             parent_id: project_id,
             time_scope: Some(july_month),
-            verdict_window: Some(DurationSpec { n: 1, kind: "day".into() }),
+            verdict_window: Some(DurationSpec {
+                n: 1,
+                kind: "day".into(),
+            }),
             ..Default::default()
         },
     )
@@ -431,7 +474,9 @@ async fn a_child_commitment_inherits_the_verdict_window_of_the_nearest_ancestor_
 
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
     // 17 July: one day past the child's 15 July window plus its inherited one-day grace.
-    let lifecycles = derive_all_scope_lifecycles(&mut db, at("2026-07-17T09:00:00")).await.unwrap();
+    let lifecycles = derive_all_scope_lifecycles(&mut db, at("2026-07-17T09:00:00"))
+        .await
+        .unwrap();
     let child_state = lifecycles
         .iter()
         .find(|entry| entry.node_type == "commitment" && entry.node_id == child.id)
@@ -441,8 +486,16 @@ async fn a_child_commitment_inherits_the_verdict_window_of_the_nearest_ancestor_
         .find(|entry| entry.node_type == "commitment" && entry.node_id == parent.id)
         .expect("the parent has a derived lifecycle");
 
-    assert_eq!(child_state.archival, Archival::Archived, "the inherited grace has run out");
-    assert_eq!(parent_state.archival, Archival::Live, "July has not finished yet");
+    assert_eq!(
+        child_state.archival,
+        Archival::Archived,
+        "the inherited grace has run out"
+    );
+    assert_eq!(
+        parent_state.archival,
+        Archival::Live,
+        "July has not finished yet"
+    );
 }
 
 #[tokio::test]
@@ -547,7 +600,9 @@ async fn deleting_a_commitment_takes_its_whole_subtree_with_it() {
 
     {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-        delete_commitment(&mut db, CommitmentId(parent.id)).await.unwrap();
+        delete_commitment(&mut db, CommitmentId(parent.id))
+            .await
+            .unwrap();
         db.commit().await.unwrap();
     }
 
@@ -610,7 +665,10 @@ async fn a_commitment_carries_tags_and_an_issue_link() {
     let id = CommitmentId(commitment.id);
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
     db.commitments().add_tag(id, tag_id).await.unwrap();
-    db.commitments().set_beads_id(id, Some("Arlesh-cyo".into())).await.unwrap();
+    db.commitments()
+        .set_beads_id(id, Some("Arlesh-cyo".into()))
+        .await
+        .unwrap();
     let reread = db.commitments().get(id).await.unwrap();
     assert_eq!(reread.tag_ids, vec![tag_id]);
     assert_eq!(reread.beads_id, Some("Arlesh-cyo".to_string()));
@@ -627,7 +685,10 @@ async fn linking_an_issue_to_a_commitment_that_does_not_exist_is_an_error_not_a_
         .commitments()
         .set_beads_id(CommitmentId(4242), Some("Arlesh-cyo".into()))
         .await;
-    assert!(matches!(refused, Err(TaskError::CommitmentNotFound(4242))), "got {refused:?}");
+    assert!(
+        matches!(refused, Err(TaskError::CommitmentNotFound(4242))),
+        "got {refused:?}"
+    );
 }
 
 #[tokio::test]
@@ -635,7 +696,10 @@ async fn reading_a_commitment_that_does_not_exist_names_the_id() {
     let pool = helpers::test_pool().await;
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
     let missing = db.commitments().get(CommitmentId(77)).await;
-    assert!(matches!(missing, Err(TaskError::CommitmentNotFound(77))), "got {missing:?}");
+    assert!(
+        matches!(missing, Err(TaskError::CommitmentNotFound(77))),
+        "got {missing:?}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -692,12 +756,29 @@ async fn a_commitment_can_be_marked_private_and_reparented_under_another_commitm
     assert_eq!(moved.position, 5);
 
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
-    db.commitments().set_private(CommitmentId(day.id), true).await.unwrap();
-    assert!(db.commitments().get(CommitmentId(day.id)).await.unwrap().is_private);
+    db.commitments()
+        .set_private(CommitmentId(day.id), true)
+        .await
+        .unwrap();
+    assert!(
+        db.commitments()
+            .get(CommitmentId(day.id))
+            .await
+            .unwrap()
+            .is_private
+    );
 
     let listed = db.commitments().list().await.unwrap();
-    assert_eq!(listed.len(), 2, "both commitments are listed, in position order");
-    let children = db.commitments().child_ids("commitment", month.id).await.unwrap();
+    assert_eq!(
+        listed.len(),
+        2,
+        "both commitments are listed, in position order"
+    );
+    let children = db
+        .commitments()
+        .child_ids("commitment", month.id)
+        .await
+        .unwrap();
     assert_eq!(children, vec![day.id]);
 }
 
@@ -740,12 +821,18 @@ async fn a_commitment_under_a_scoped_task_inherits_that_window_and_no_verdict_wi
     .unwrap();
 
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
-    let lifecycles = derive_all_scope_lifecycles(&mut db, at("2026-07-09T00:00:00")).await.unwrap();
+    let lifecycles = derive_all_scope_lifecycles(&mut db, at("2026-07-09T00:00:00"))
+        .await
+        .unwrap();
     let state = lifecycles
         .iter()
         .find(|entry| entry.node_type == "commitment" && entry.node_id == commitment.id)
         .expect("the commitment has a derived lifecycle");
-    assert_eq!(state.timing, Timing::Lapsed, "it inherited the task's window");
+    assert_eq!(
+        state.timing,
+        Timing::Lapsed,
+        "it inherited the task's window"
+    );
     assert_eq!(
         state.archival,
         Archival::Live,
@@ -798,7 +885,10 @@ async fn the_editors_clear_payload_empties_a_commitments_own_window() {
     )
     .await
     .unwrap();
-    assert!(commitment.time_scope.is_some(), "the scope was set and saved");
+    assert!(
+        commitment.time_scope.is_some(),
+        "the scope was set and saved"
+    );
 
     // Exactly what `updateCommitment` puts on the wire when the editor's scope field is emptied.
     let payload: UpdateCommitmentRequest = serde_json::from_str(
@@ -808,7 +898,10 @@ async fn the_editors_clear_payload_empties_a_commitments_own_window() {
     .unwrap();
 
     let cleared = update(&pool, commitment.id, payload).await.unwrap();
-    assert_eq!(cleared.time_scope, None, "the emptied scope is emptied in the row");
+    assert_eq!(
+        cleared.time_scope, None,
+        "the emptied scope is emptied in the row"
+    );
 
     let stored: Option<i64> =
         sqlx::query_scalar("SELECT time_scope_start_id FROM commitments WHERE id = ?")
@@ -832,13 +925,19 @@ async fn the_editors_clear_payload_empties_a_commitments_verdict_window() {
             parent_type: "project".into(),
             parent_id: project_id,
             time_scope: Some(tonight),
-            verdict_window: Some(DurationSpec { n: 2, kind: "day".into() }),
+            verdict_window: Some(DurationSpec {
+                n: 2,
+                kind: "day".into(),
+            }),
             ..Default::default()
         },
     )
     .await
     .unwrap();
-    assert!(commitment.verdict_window.is_some(), "the Verdict Window was set and saved");
+    assert!(
+        commitment.verdict_window.is_some(),
+        "the Verdict Window was set and saved"
+    );
 
     let payload: UpdateCommitmentRequest = serde_json::from_str(
         r#"{"title":"Asleep by 23:00","verdict":"unresolved","verdict_window":null,
@@ -847,7 +946,10 @@ async fn the_editors_clear_payload_empties_a_commitments_verdict_window() {
     .unwrap();
 
     let cleared = update(&pool, commitment.id, payload).await.unwrap();
-    assert_eq!(cleared.verdict_window, None, "the emptied Verdict Window goes back to inheriting");
+    assert_eq!(
+        cleared.verdict_window, None,
+        "the emptied Verdict Window goes back to inheriting"
+    );
 
     let stored: Option<i64> =
         sqlx::query_scalar("SELECT verdict_window_n FROM commitments WHERE id = ?")
@@ -861,22 +963,49 @@ async fn the_editors_clear_payload_empties_a_commitments_verdict_window() {
 #[test]
 fn an_explicit_null_time_scope_in_a_commitment_update_payload_clears_it() {
     let absent: UpdateCommitmentRequest = serde_json::from_str(r#"{"title":"Renamed"}"#).unwrap();
-    assert_eq!(absent.time_scope, None, "an absent key leaves the window alone");
+    assert_eq!(
+        absent.time_scope, None,
+        "an absent key leaves the window alone"
+    );
     let nulled: UpdateCommitmentRequest = serde_json::from_str(r#"{"time_scope":null}"#).unwrap();
-    assert_eq!(nulled.time_scope, Some(None), "an explicit null clears the window");
+    assert_eq!(
+        nulled.time_scope,
+        Some(None),
+        "an explicit null clears the window"
+    );
     let set: UpdateCommitmentRequest =
         serde_json::from_str(r#"{"time_scope":{"start_id":1,"end_id":2}}"#).unwrap();
-    assert_eq!(set.time_scope, Some(Some(TimeScope { start_id: 1, end_id: 2, duration: None })));
+    assert_eq!(
+        set.time_scope,
+        Some(Some(TimeScope {
+            start_id: 1,
+            end_id: 2,
+            duration: None
+        }))
+    );
 }
 
 #[test]
 fn an_explicit_null_verdict_window_in_a_commitment_update_payload_clears_it() {
     let absent: UpdateCommitmentRequest = serde_json::from_str(r#"{"title":"Renamed"}"#).unwrap();
-    assert_eq!(absent.verdict_window, None, "an absent key leaves the Verdict Window alone");
+    assert_eq!(
+        absent.verdict_window, None,
+        "an absent key leaves the Verdict Window alone"
+    );
     let nulled: UpdateCommitmentRequest =
         serde_json::from_str(r#"{"verdict_window":null}"#).unwrap();
-    assert_eq!(nulled.verdict_window, Some(None), "an explicit null clears the Verdict Window");
+    assert_eq!(
+        nulled.verdict_window,
+        Some(None),
+        "an explicit null clears the Verdict Window"
+    );
     let set: UpdateCommitmentRequest =
         serde_json::from_str(r#"{"verdict_window":{"n":3,"kind":"day"}}"#).unwrap();
-    assert_eq!(set.verdict_window, Some(Some(DurationSpec { n: 3, kind: "day".into() })));
+    assert_eq!(
+        set.verdict_window,
+        Some(Some(DurationSpec {
+            n: 3,
+            kind: "day".into()
+        }))
+    );
 }

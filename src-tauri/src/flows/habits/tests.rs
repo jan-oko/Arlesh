@@ -63,7 +63,10 @@ fn blocking_next_shows_one_open_iteration_after_the_done_prefix() {
     let now = at("2026-01-22T00:00:00");
     let result = classify_iterations(&slots, Consumption::Blocking(Catchup::Next), &resolved, now);
     // W1 is the single open iteration; W2/W3 are withheld (ellipsis).
-    assert_eq!(statuses(&result), vec![(0, IterationStatus::Done), (1, IterationStatus::Active)]);
+    assert_eq!(
+        statuses(&result),
+        vec![(0, IterationStatus::Done), (1, IterationStatus::Active)]
+    );
 }
 
 #[test]
@@ -72,7 +75,12 @@ fn blocking_latest_marks_skipped_iterations_missed_on_a_late_completion() {
     // W0 completed late — during W2's window (2026-01-19..26).
     let resolved = HashMap::from([(0, at("2026-01-20T00:00:00"))]);
     let now = at("2026-01-22T00:00:00");
-    let result = classify_iterations(&slots, Consumption::Blocking(Catchup::Latest), &resolved, now);
+    let result = classify_iterations(
+        &slots,
+        Consumption::Blocking(Catchup::Latest),
+        &resolved,
+        now,
+    );
     // W0 done; jump to W2 (contains the completion instant) → W1 missed; W2 now open.
     assert_eq!(
         statuses(&result),
@@ -89,8 +97,12 @@ fn blocking_all_pending_releases_the_backlog_up_to_the_completion_instant() {
     let slots = four_weeks();
     let resolved = HashMap::from([(0, at("2026-01-20T00:00:00"))]); // W0 completed during W2
     let now = at("2026-01-22T00:00:00");
-    let result =
-        classify_iterations(&slots, Consumption::Blocking(Catchup::AllPending), &resolved, now);
+    let result = classify_iterations(
+        &slots,
+        Consumption::Blocking(Catchup::AllPending),
+        &resolved,
+        now,
+    );
     // Backlog W1, W2 released as pending (Active) rather than missed; W3 stays withheld.
     assert_eq!(
         statuses(&result),
@@ -109,7 +121,11 @@ fn blocking_holds_at_the_first_iteration_until_it_is_done() {
     let now = at("2026-01-22T00:00:00");
     for catchup in [Catchup::Next, Catchup::Latest, Catchup::AllPending] {
         let result = classify_iterations(&slots, Consumption::Blocking(catchup), &resolved, now);
-        assert_eq!(statuses(&result), vec![(0, IterationStatus::Active)], "catchup {catchup:?}");
+        assert_eq!(
+            statuses(&result),
+            vec![(0, IterationStatus::Active)],
+            "catchup {catchup:?}"
+        );
     }
 }
 
@@ -136,8 +152,7 @@ fn expiring_an_iteration_leaves_its_window_end_alone() {
     let slots = four_weeks();
     let resolved = HashMap::new();
     let now = at("2026-02-10T00:00:00");
-    let iterations =
-        classify_iterations(&slots[..1], Consumption::Overlapping, &resolved, now);
+    let iterations = classify_iterations(&slots[..1], Consumption::Overlapping, &resolved, now);
     let deadlines = HashMap::from([(0, at("2026-01-19T00:00:00"))]);
     let expired = expire_unanswered(iterations, &deadlines, now);
     assert_eq!(expired[0].status, IterationStatus::Expired);

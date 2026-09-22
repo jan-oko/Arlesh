@@ -216,8 +216,16 @@ fn visit_order(template: &FlowTemplate, flow_id: i64) -> Vec<Visit> {
                 pairs.iter().map(|cycle| Some(cycle.id)).collect()
             };
 
-            stack.push((child.kind.as_str().to_string(), child.id, Some(visits.len())));
-            visits.push(Visit { item: index, parent: parent_visit, pairs });
+            stack.push((
+                child.kind.as_str().to_string(),
+                child.id,
+                Some(visits.len()),
+            ));
+            visits.push(Visit {
+                item: index,
+                parent: parent_visit,
+                pairs,
+            });
         }
     }
 
@@ -311,7 +319,10 @@ pub(crate) fn render(
                 continue;
             }
             for (_, blocker) in &blockers {
-                edges.push(PlannedEdge { dependent: *dependent, blocker: *blocker });
+                edges.push(PlannedEdge {
+                    dependent: *dependent,
+                    blocker: *blocker,
+                });
             }
         }
     }

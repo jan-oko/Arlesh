@@ -260,7 +260,10 @@ fn narrowing_to_do_keeps_the_containers_that_carry_an_in_progress_task() {
         [20]
     );
     assert_eq!(
-        load.domains.iter().map(|domain| domain.id).collect::<Vec<_>>(),
+        load.domains
+            .iter()
+            .map(|domain| domain.id)
+            .collect::<Vec<_>>(),
         [1, 2]
     );
     assert_eq!(load.goals.len(), 1);
@@ -282,17 +285,25 @@ fn a_backlogged_task_leaves_plan_and_comes_back_under_the_backlog_preset() {
     let mut backlogged = load;
     narrow(&mut backlogged, &BoardFilter::preset(Preset::Backlog));
     assert_eq!(
-        backlogged.tasks.iter().map(|task| task.id).collect::<Vec<_>>(),
+        backlogged
+            .tasks
+            .iter()
+            .map(|task| task.id)
+            .collect::<Vec<_>>(),
         [20, 21]
     );
-    assert!(backlogged.commitments.is_empty(), "a Commitment has no Backlog state");
+    assert!(
+        backlogged.commitments.is_empty(),
+        "a Commitment has no Backlog state"
+    );
 }
 
 #[test]
 fn every_parent_spelling_a_row_can_use_resolves_to_a_node() {
     let mut load = board();
     load.domains.push(domain_row(3, "tag", Some(1), None));
-    load.domains.push(domain_row(4, "unrecognised", Some(1), None));
+    load.domains
+        .push(domain_row(4, "unrecognised", Some(1), None));
     load.commitments
         .push(commitment_row(31, "task", 21, Verdict::Kept));
     load.infos.push(info_row(41, "info", 40));

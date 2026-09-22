@@ -124,8 +124,9 @@ impl CommitmentWrite {
             (Some(parent_type), Some(parent_id)) => Some((parent_type, parent_id)),
             _ => None,
         };
-        let (parent_type, parent_id) =
-            reparent.clone().unwrap_or((stored.parent_type, stored.parent_id));
+        let (parent_type, parent_id) = reparent
+            .clone()
+            .unwrap_or((stored.parent_type, stored.parent_id));
         Self {
             reparent,
             parent_type,
@@ -208,7 +209,10 @@ impl<'session> CommitmentOperator<'session> {
             .await?
             .ok_or(TaskError::CommitmentNotFound(id.0))?;
         let tag_ids = self.tag_ids(id).await?;
-        Ok(Commitment { tag_ids, ..row.into() })
+        Ok(Commitment {
+            tag_ids,
+            ..row.into()
+        })
     }
 
     /// The tag domain ids attached to one commitment, in id order.
@@ -257,7 +261,10 @@ impl<'session> CommitmentOperator<'session> {
         let mut commitments = Vec::with_capacity(rows.len());
         for row in rows {
             let tag_ids = self.tag_ids(CommitmentId(row.id)).await?;
-            commitments.push(Commitment { tag_ids, ..row.into() });
+            commitments.push(Commitment {
+                tag_ids,
+                ..row.into()
+            });
         }
         Ok(commitments)
     }
@@ -272,11 +279,13 @@ impl<'session> CommitmentOperator<'session> {
         parent_id: i64,
     ) -> Result<Vec<i64>, TaskError> {
         Ok(
-            sqlx::query_scalar("SELECT id FROM commitments WHERE parent_type = ? AND parent_id = ?")
-                .bind(parent_type)
-                .bind(parent_id)
-                .fetch_all(&mut *self.connection)
-                .await?,
+            sqlx::query_scalar(
+                "SELECT id FROM commitments WHERE parent_type = ? AND parent_id = ?",
+            )
+            .bind(parent_type)
+            .bind(parent_id)
+            .fetch_all(&mut *self.connection)
+            .await?,
         )
     }
 

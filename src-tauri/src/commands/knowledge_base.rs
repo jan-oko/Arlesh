@@ -21,7 +21,10 @@ pub async fn create_person(
     request: CreatePersonRequest,
 ) -> Result<Person, WireError> {
     let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.people().create(request).await.map_err(WireError::from_error)
+    db.people()
+        .create(request)
+        .await
+        .map_err(WireError::from_error)
 }
 
 /// Fetches a person by id.
@@ -78,7 +81,10 @@ pub async fn create_event(
     request: CreateEventRequest,
 ) -> Result<Event, WireError> {
     let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.events().create(request).await.map_err(WireError::from_error)
+    db.events()
+        .create(request)
+        .await
+        .map_err(WireError::from_error)
 }
 
 /// Lists all events.
@@ -97,7 +103,10 @@ pub async fn create_thread(
     request: CreateThreadRequest,
 ) -> Result<Thread, WireError> {
     let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.threads().create(request).await.map_err(WireError::from_error)
+    db.threads()
+        .create(request)
+        .await
+        .map_err(WireError::from_error)
 }
 
 /// Lists all threads.

@@ -23,8 +23,11 @@ fn at(text: &str) -> NaiveDateTime {
 
 #[test]
 fn resolve_reports_iso_half_open_bounds() {
-    let resolved = resolve(&scope("day", "2026-06-20", "2026-06-20"), at("2026-06-20T09:00:00"))
-        .unwrap();
+    let resolved = resolve(
+        &scope("day", "2026-06-20", "2026-06-20"),
+        at("2026-06-20T09:00:00"),
+    )
+    .unwrap();
     assert_eq!(resolved.start, "2026-06-20T00:00:00");
     assert_eq!(resolved.end, "2026-06-21T00:00:00");
 }
@@ -40,6 +43,9 @@ fn resolve_marks_active_only_inside_the_window() {
 
 #[test]
 fn resolve_propagates_malformed_scope_errors() {
-    assert!(resolve(&scope("decade", "2026-06-20", "2026-06-20"), at("2026-06-20T09:00:00"))
-        .is_err());
+    assert!(resolve(
+        &scope("decade", "2026-06-20", "2026-06-20"),
+        at("2026-06-20T09:00:00")
+    )
+    .is_err());
 }
