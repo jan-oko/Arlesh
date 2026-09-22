@@ -73,7 +73,11 @@ export function useListCreate({
       // Refused out loud rather than relocated or ignored, on the Mindmap's rule: putting the Task
       // somewhere other than where it was asked for is worse than not creating it, and saying
       // nothing would read as a broken key.
-      if (parent.virtual === true) {
+      // A virtual node with no occurrence behind it — a collapsed run of passed iterations — is
+      // drawn, not stored, and is nobody's parent. An **occurrence** is different: it holds real
+      // children of its own, attached to that iteration alone, and takes them through the same
+      // gesture as anything else.
+      if (parent.virtual === true && parent.habitItem === undefined) {
         showToast({ nodeId: parent.id, message: t("warnings:createUnderRepetition") });
         return;
       }

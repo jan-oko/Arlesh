@@ -19,6 +19,7 @@
 use std::collections::HashSet;
 
 use crate::database::session::{Db, SessionMode};
+use crate::flows::model::ChildAttachment;
 
 use super::error::TaskError;
 use super::model::{CommitmentId, DurationSpec, GoalId, OnScopeExit, TaskId, TimeScope};
@@ -43,6 +44,15 @@ impl NodeKind {
             "goal" => Some(Self::Goal),
             "commitment" => Some(Self::Commitment),
             _ => None,
+        }
+    }
+
+    /// How the kind spells itself in a `parent_type` column.
+    pub(super) fn as_db(self) -> &'static str {
+        match self {
+            Self::Task => "task",
+            Self::Goal => "goal",
+            Self::Commitment => "commitment",
         }
     }
 }
@@ -277,6 +287,53 @@ impl AncestryChain {
     }
 }
 
+/// One virtual Habit occurrence, as the chain link an added child of it climbs into.
+///
+/// A virtual instance has no row, so it can never *be* read as a link — it is built from the
+/// attachment instead. Three fields carry its meaning and the rest are structurally absent:
+///
+/// - `time_scope` is the occurrence's window, which is what the child's own Time Scope must sit
+///   within and what governs the child when it has none of its own;
+/// - `on_scope_exit` is [`OnScopeExit::Archive`], which is how an added child archives *with* its
+///   occurrence when the window passes, rather than lingering after the thing it was written on;
+/// - `plan` is `None`: an occurrence's Cycle Plan is resolved per iteration by the renderer, and a
+///   second resolution here could disagree with it. Plan ⊆ own Time Scope ⊆ occurrence window
+///   still holds through the other two rules.
+///
+/// Its `parent` is the flow, which is not a scoped kind, so the chain ends here — an occurrence
+/// has nothing above it that a child could inherit.
+pub(super) fn occurrence_link(attachment: ChildAttachment) -> AncestryLink {
+    let kind = match attachment.instance_type.as_str() {
+        "goal" => NodeKind::Goal,
+        "commitment" => NodeKind::Commitment,
+        // Every other Instance Type materialises as a Task, which is also what an unrecognised
+        // one falls back to everywhere else in the renderer.
+        _ => NodeKind::Task,
+    };
+    AncestryLink {
+        kind,
+        id: attachment.flow_id,
+        parent: NodeRef::new("flow", attachment.flow_id),
+        time_scope: Some(attachment.window),
+        plan: None,
+        on_scope_exit: Some(OnScopeExit::Archive),
+        verdict_window: None,
+    }
+}
+
+/// The occurrence a node hangs on, as a chain link, when the node is an added child of one.
+///
+/// Read through the flow operator rather than by a query written here, so the attachment's shape
+/// stays in the module that owns the table.
+pub(super) async fn occurrence_of<M: SessionMode>(
+    db: &mut Db<M>,
+    kind: NodeKind,
+    id: i64,
+) -> Result<Option<AncestryLink>, TaskError> {
+    let attachment = db.flows().child_attachment(kind.as_db(), id).await?;
+    Ok(attachment.map(occurrence_link))
+}
+
 /// Reads the ancestry of `(start_type, start_id)` into memory, nearest link first.
 ///
 /// Reaches two resources, so it is a free function over the session rather than a method on
@@ -327,6 +384,17 @@ pub(super) async fn climb<M: SessionMode>(
             }
             Err(error) => return Err(error),
         };
+        // An added child of a Habit occurrence climbs into that occurrence, not into the row its
+        // parent columns name. Those columns hold the occurrence's host — the node the occurrence
+        // itself renders under — because a virtual instance has no id for them to point at, and
+        // following them would check the child against the wrong window and archive it on the
+        // wrong day. Asked per link rather than once at the start, because a child of an added
+        // child reaches the occurrence two steps up.
+        if let Some(occurrence) = occurrence_of(db, kind, next.node_id).await? {
+            links.push(link);
+            links.push(occurrence);
+            return Ok(AncestryChain { links, end: ChainEnd::Root });
+        }
         next = link.parent.clone();
         links.push(link);
     }
