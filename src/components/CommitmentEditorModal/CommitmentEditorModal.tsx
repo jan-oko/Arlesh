@@ -7,6 +7,7 @@ import type { TimeScope, DurationSpec } from "@/api/time-scope";
 import type { Verdict } from "@/api/verdict";
 import { VERDICT, VERDICT_VALUES } from "@/api/verdict";
 import { getErrorMessage } from "@/api/errors";
+import { withAtomicGesture } from "@/api/gesture";
 import EditorModal from "@/components/EditorModal/EditorModal";
 import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
 import BeadsIdField from "@/components/EditorModal/BeadsIdField";
@@ -50,7 +51,7 @@ interface Props {
  */
 export default function CommitmentEditorModal({ node, allTags, domainNames, heading, onSave, onClearBeadsId, onClose }: Props) {
   useInputCapture();
-  const { t } = useTranslation(["editor", "status"]);
+  const { t } = useTranslation(["editor", "status", "undo"]);
   const [title, setTitle] = useState(node.title);
   const [verdict, setVerdict] = useState<Verdict>(node.verdict ?? VERDICT.UNRESOLVED);
   const [tagIds, setTagIds] = useState<number[]>(node.tagIds);
@@ -69,10 +70,15 @@ export default function CommitmentEditorModal({ node, allTags, domainNames, head
     setIsSaving(true);
     setSaveError(null);
     try {
-      // Before the update, not after: a refused clear then leaves the node exactly as it was,
-      // rather than half-saved, and the refusal reaches the save error line below the fields.
-      await beadsClear.commitClear();
-      await onSave({ title: title.trim(), verdict, tagIds, timeScope, verdictWindow, isPrivate });
+      // One Gesture, all or nothing: the beads clear, the update and the tags are several commands
+      // but one thing the user filled in, so they are one Ctrl+Z — and a refusal partway takes
+      // back the ones that landed rather than leaving a form half-applied.
+      await withAtomicGesture(t("undo:gestures.editCommitment"), async () => {
+        // Before the update, not after: a refused clear then leaves the node exactly as it was,
+        // rather than half-saved, and the refusal reaches the save error line below the fields.
+        await beadsClear.commitClear();
+        await onSave({ title: title.trim(), verdict, tagIds, timeScope, verdictWindow, isPrivate });
+      });
     } catch (err) {
       // A commitment that can never come due is not written — whether that is a new one saved
       // with no window in reach, or an edit clearing the last window above an existing one. The

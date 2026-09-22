@@ -1,6 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
-import { gestureName, invoke, redo, undo, undoStatus, withGesture } from "./gesture";
+import {
+  gestureName,
+  invoke,
+  redo,
+  undo,
+  undoStatus,
+  withAtomicGesture,
+  withGesture,
+} from "./gesture";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
@@ -12,6 +20,8 @@ interface Backend {
   started: number;
   /** How many closes came back, so an unbalanced open is visible. */
   closed: number;
+  /** How many Gestures were taken back rather than committed. */
+  aborted: number;
   /** Every command issued, protocol included. */
   commands: string[];
   /** The ids of the Gestures this test started, in order. */
@@ -27,8 +37,17 @@ let nextGestureNumber = 1;
  * a running Gesture joins it and only the outermost close ends it. Everything the frontend claims
  * about grouping rests on that, so the fake has to model it rather than count calls.
  */
-function installBackend(options: { openFails?: boolean; failCommand?: string } = {}): Backend {
-  const backend: Backend = { gestureOf: [], started: 0, closed: 0, commands: [], ids: [] };
+function installBackend(
+  options: { openFails?: boolean; failCommand?: string; abortFails?: boolean } = {},
+): Backend {
+  const backend: Backend = {
+    gestureOf: [],
+    started: 0,
+    closed: 0,
+    aborted: 0,
+    commands: [],
+    ids: [],
+  };
   let depth = 0;
   let current: string | null = null;
 
@@ -47,6 +66,13 @@ function installBackend(options: { openFails?: boolean; failCommand?: string } =
     }
     if (command === "close_gesture") {
       backend.closed += 1;
+      depth -= 1;
+      if (depth === 0) current = null;
+      return Promise.resolve(null);
+    }
+    if (command === "abort_gesture") {
+      if (options.abortFails === true) return Promise.reject(new Error("could not take it back"));
+      backend.aborted += 1;
       depth -= 1;
       if (depth === 0) current = null;
       return Promise.resolve(null);
@@ -177,6 +203,83 @@ describe("withGesture", () => {
 
     expect(backend.gestureOf).toEqual([null]);
     expect(backend.closed).toBe(0);
+  });
+});
+
+describe("withAtomicGesture", () => {
+  it("puts every command it wraps in one gesture and commits it", async () => {
+    const backend = installBackend();
+
+    await withAtomicGesture("edit a task", async () => {
+      await invoke("update_task");
+      await invoke("set_block_reasons");
+      await invoke("add_tag_to_task");
+    });
+
+    expect(backend.started).toBe(1);
+    expect(new Set(backend.gestureOf)).toEqual(new Set(backend.ids));
+    // The wrapper's close plus one per command: nothing was taken back.
+    expect(backend.closed).toBe(4);
+    expect(backend.aborted).toBe(0);
+  });
+
+  it("takes the gesture back when a command inside it throws, and rethrows", async () => {
+    const backend = installBackend({ failCommand: "add_task_dependency" });
+
+    await expect(
+      withAtomicGesture("edit a task", async () => {
+        await invoke("update_task");
+        await invoke("add_task_dependency");
+      }),
+    ).rejects.toThrow("command blew up");
+
+    // A save is one thing the user filled in, so the writes that did land are taken back rather
+    // than left as a half-applied form the user can see.
+    expect(backend.aborted).toBe(1);
+    expect(backend.commands).toContain("abort_gesture");
+  });
+
+  it("names the gesture, so a successful save reads as one step", async () => {
+    const backend = installBackend();
+
+    await withAtomicGesture("edit a goal", async () => {
+      await invoke("update_goal");
+    });
+
+    expect(gestureName(backend.ids[0] ?? "")).toBe("edit a goal");
+  });
+
+  it("returns what its body returned", async () => {
+    installBackend();
+
+    await expect(withAtomicGesture("edit a project", async () => Promise.resolve(7))).resolves.toBe(
+      7,
+    );
+  });
+
+  it("runs the body anyway when the gesture cannot be opened", async () => {
+    const backend = installBackend({ openFails: true });
+
+    await expect(
+      withAtomicGesture("edit a task", async () => {
+        await invoke("update_task");
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(backend.gestureOf).toEqual([null]);
+    expect(backend.commands).not.toContain("abort_gesture");
+  });
+
+  it("lets the body's error through when the abort itself fails", async () => {
+    installBackend({ failCommand: "update_task", abortFails: true });
+
+    // The error the user needs to read is the one that refused the save, not a second one about
+    // undo bookkeeping.
+    await expect(
+      withAtomicGesture("edit a task", async () => {
+        await invoke("update_task");
+      }),
+    ).rejects.toThrow("command blew up");
   });
 });
 
