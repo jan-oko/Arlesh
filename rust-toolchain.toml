@@ -24,13 +24,21 @@
 # default toolchain instead, which is the same class of bug this file exists to
 # remove.
 #
-# `components` makes the pin self-sufficient. clippy and rustfmt come with the
-# `default` profile but not `minimal`, and a gate must not depend on which
-# profile a given machine happens to have been set up with; `minimal` plus the
-# two named keeps the download to what is actually used. llvm-tools-preview
-# stays a CI step rather than a component here: it is coverage tooling that only
-# the CI lane needs, and it is added at the root, where this pin now governs it.
+# `components` makes the pin self-sufficient: `minimal` plus exactly what the
+# gates need, so nothing depends on which profile a given machine was set up
+# with and the download stays no larger than it has to be.
+#
+#   clippy, rustfmt      the two CI gates. Both ship with the `default` profile
+#                        and neither ships with `minimal`.
+#   llvm-tools-preview   llvm-profdata and llvm-cov, for the coverage lane. These
+#                        must come from the same toolchain that instruments the
+#                        binaries — reaching for the system LLVM instead is the
+#                        usual way to get "malformed instrumentation profile
+#                        data". Naming it here rather than `rustup component add`
+#                        -ing it in CI is what guarantees that: the component and
+#                        the compiler are now the same decision, and cannot drift
+#                        apart by being resolved in different working directories.
 [toolchain]
 channel = "1.98.1"
 profile = "minimal"
-components = ["clippy", "rustfmt"]
+components = ["clippy", "rustfmt", "llvm-tools-preview"]

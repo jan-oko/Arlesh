@@ -62,7 +62,12 @@ fn goal_status_as_str_covers_all_variants() {
 
 #[test]
 fn goal_status_from_db_roundtrips_every_variant() {
-    for status in [GoalStatus::Active, GoalStatus::Achieved, GoalStatus::Frozen, GoalStatus::Archived] {
+    for status in [
+        GoalStatus::Active,
+        GoalStatus::Achieved,
+        GoalStatus::Frozen,
+        GoalStatus::Archived,
+    ] {
         assert_eq!(GoalStatus::from_db(status.as_str()), Some(status));
     }
 }

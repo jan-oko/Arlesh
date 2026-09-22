@@ -60,12 +60,7 @@ fn domain_kind(subtype: &str) -> NodeKind {
 fn index_lifecycles(load: &MindmapLoad) -> HashMap<(&str, i64), &ItemLifecycle> {
     load.lifecycles
         .iter()
-        .map(|lifecycle| {
-            (
-                (lifecycle.node_type.as_str(), lifecycle.node_id),
-                lifecycle,
-            )
-        })
+        .map(|lifecycle| ((lifecycle.node_type.as_str(), lifecycle.node_id), lifecycle))
         .collect()
 }
 
@@ -200,11 +195,14 @@ pub fn narrow(load: &mut MindmapLoad, filter: &BoardFilter) {
     let keeps = |id: &str| kept.contains(id);
 
     load.domains.retain(|domain| keeps(&domain_id(domain.id)));
-    load.goals.retain(|goal| keeps(&format!("goal-{}", goal.id)));
-    load.tasks.retain(|task| keeps(&format!("task-{}", task.id)));
+    load.goals
+        .retain(|goal| keeps(&format!("goal-{}", goal.id)));
+    load.tasks
+        .retain(|task| keeps(&format!("task-{}", task.id)));
     load.commitments
         .retain(|commitment| keeps(&format!("commitment-{}", commitment.id)));
-    load.infos.retain(|info| keeps(&format!("info-{}", info.id)));
+    load.infos
+        .retain(|info| keeps(&format!("info-{}", info.id)));
 
     load.lifecycles
         .retain(|lifecycle| keeps(&format!("{}-{}", lifecycle.node_type, lifecycle.node_id)));

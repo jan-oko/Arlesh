@@ -19,7 +19,10 @@ pub async fn create_info(
     request: CreateInfoRequest,
 ) -> Result<Info, WireError> {
     let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.infos().create(request).await.map_err(WireError::from_error)
+    db.infos()
+        .create(request)
+        .await
+        .map_err(WireError::from_error)
 }
 
 /// Lists all info nodes.

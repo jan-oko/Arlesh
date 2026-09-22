@@ -91,9 +91,15 @@ pub async fn reparent_scope_conflicts(
     new_parent_id: i64,
 ) -> Result<ReparentConflicts, WireError> {
     let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    crate::tasks::reparent_conflicts(&mut db, &node_type, node_id, &new_parent_type, new_parent_id)
-        .await
-        .map_err(WireError::from_error)
+    crate::tasks::reparent_conflicts(
+        &mut db,
+        &node_type,
+        node_id,
+        &new_parent_type,
+        new_parent_id,
+    )
+    .await
+    .map_err(WireError::from_error)
 }
 
 /// Deletes a task.
@@ -214,7 +220,10 @@ pub async fn create_goal(
 #[tauri::command]
 pub async fn get_goal(factory: State<'_, SessionFactory>, id: i64) -> Result<Goal, WireError> {
     let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.goals().get(GoalId(id)).await.map_err(WireError::from_error)
+    db.goals()
+        .get(GoalId(id))
+        .await
+        .map_err(WireError::from_error)
 }
 
 /// Lists all goals.

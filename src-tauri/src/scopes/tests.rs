@@ -108,27 +108,42 @@ fn bounds_season_winter_january_traces_to_december() {
 
 #[test]
 fn label_day_formats_as_iso() {
-    assert_eq!(scope_label(CanonicalKind::Day, d(2026, 6, 20)), "2026-06-20");
+    assert_eq!(
+        scope_label(CanonicalKind::Day, d(2026, 6, 20)),
+        "2026-06-20"
+    );
 }
 
 #[test]
 fn label_month_is_full_name_and_year() {
-    assert_eq!(scope_label(CanonicalKind::Month, d(2026, 6, 15)), "June 2026");
+    assert_eq!(
+        scope_label(CanonicalKind::Month, d(2026, 6, 15)),
+        "June 2026"
+    );
 }
 
 #[test]
 fn label_season_summer() {
-    assert_eq!(scope_label(CanonicalKind::Season, d(2026, 7, 1)), "Summer 2026");
+    assert_eq!(
+        scope_label(CanonicalKind::Season, d(2026, 7, 1)),
+        "Summer 2026"
+    );
 }
 
 #[test]
 fn label_season_winter_december_uses_start_year() {
-    assert_eq!(scope_label(CanonicalKind::Season, d(2026, 12, 1)), "Winter 2026");
+    assert_eq!(
+        scope_label(CanonicalKind::Season, d(2026, 12, 1)),
+        "Winter 2026"
+    );
 }
 
 #[test]
 fn label_season_winter_january_uses_previous_year() {
-    assert_eq!(scope_label(CanonicalKind::Season, d(2027, 1, 15)), "Winter 2026");
+    assert_eq!(
+        scope_label(CanonicalKind::Season, d(2027, 1, 15)),
+        "Winter 2026"
+    );
 }
 
 #[test]
@@ -150,7 +165,10 @@ fn week_number_jan1_is_1() {
 #[test]
 fn week_number_mid_year_in_expected_range() {
     let w = week_number(d(2026, 6, 20));
-    assert!((24..=26).contains(&w), "week {w} out of expected range 24–26");
+    assert!(
+        (24..=26).contains(&w),
+        "week {w} out of expected range 24–26"
+    );
 }
 
 // --- season_name_and_year ---

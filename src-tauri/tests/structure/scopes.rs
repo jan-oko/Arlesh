@@ -14,7 +14,11 @@ async fn get_or_create_day_populates_containment() {
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
     let date = NaiveDate::from_ymd_opt(2026, 6, 20).unwrap();
 
-    let day = db.scopes().get_or_create(ScopeKind::Day, date).await.unwrap();
+    let day = db
+        .scopes()
+        .get_or_create(ScopeKind::Day, date)
+        .await
+        .unwrap();
     db.commit().await.unwrap();
 
     assert_eq!(day.kind, "day");
@@ -31,7 +35,11 @@ async fn week_scope_has_correct_sunday_to_saturday_bounds() {
     // 2026-06-20 is a Saturday; week should start 2026-06-14 (Sunday)
     let date = NaiveDate::from_ymd_opt(2026, 6, 20).unwrap();
 
-    let week = db.scopes().get_or_create(ScopeKind::Week, date).await.unwrap();
+    let week = db
+        .scopes()
+        .get_or_create(ScopeKind::Week, date)
+        .await
+        .unwrap();
     db.commit().await.unwrap();
 
     assert_eq!(week.start_date, "2026-06-14");
@@ -44,7 +52,11 @@ async fn month_scope_has_correct_bounds() {
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
     let date = NaiveDate::from_ymd_opt(2026, 6, 15).unwrap();
 
-    let month = db.scopes().get_or_create(ScopeKind::Month, date).await.unwrap();
+    let month = db
+        .scopes()
+        .get_or_create(ScopeKind::Month, date)
+        .await
+        .unwrap();
     db.commit().await.unwrap();
 
     assert_eq!(month.start_date, "2026-06-01");
@@ -58,7 +70,11 @@ async fn season_is_summer_for_june() {
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
     let date = NaiveDate::from_ymd_opt(2026, 6, 20).unwrap();
 
-    let season = db.scopes().get_or_create(ScopeKind::Season, date).await.unwrap();
+    let season = db
+        .scopes()
+        .get_or_create(ScopeKind::Season, date)
+        .await
+        .unwrap();
     db.commit().await.unwrap();
 
     assert_eq!(season.label, "Summer 2026");
@@ -72,8 +88,16 @@ async fn get_or_create_is_idempotent() {
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
     let date = NaiveDate::from_ymd_opt(2026, 6, 20).unwrap();
 
-    let first = db.scopes().get_or_create(ScopeKind::Day, date).await.unwrap();
-    let second = db.scopes().get_or_create(ScopeKind::Day, date).await.unwrap();
+    let first = db
+        .scopes()
+        .get_or_create(ScopeKind::Day, date)
+        .await
+        .unwrap();
+    let second = db
+        .scopes()
+        .get_or_create(ScopeKind::Day, date)
+        .await
+        .unwrap();
     db.commit().await.unwrap();
 
     assert_eq!(first.id, second.id);
@@ -86,7 +110,11 @@ async fn winter_season_spans_dec_to_feb() {
     // Dec 2026 → Winter 2026 (starts Dec 1 2026, ends Feb 28 2027)
     let date = NaiveDate::from_ymd_opt(2026, 12, 1).unwrap();
 
-    let season = db.scopes().get_or_create(ScopeKind::Season, date).await.unwrap();
+    let season = db
+        .scopes()
+        .get_or_create(ScopeKind::Season, date)
+        .await
+        .unwrap();
     db.commit().await.unwrap();
 
     assert_eq!(season.label, "Winter 2026");
@@ -100,7 +128,11 @@ async fn december_month_scope_spans_into_next_year() {
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
     let date = NaiveDate::from_ymd_opt(2026, 12, 15).unwrap();
 
-    let month = db.scopes().get_or_create(ScopeKind::Month, date).await.unwrap();
+    let month = db
+        .scopes()
+        .get_or_create(ScopeKind::Month, date)
+        .await
+        .unwrap();
     db.commit().await.unwrap();
 
     assert_eq!(month.start_date, "2026-12-01");
@@ -114,7 +146,11 @@ async fn get_or_create_part_populates_day_and_containment() {
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
     let date = NaiveDate::from_ymd_opt(2026, 6, 20).unwrap();
 
-    let morning = db.scopes().get_or_create_part(date, PartOfDay::Morning).await.unwrap();
+    let morning = db
+        .scopes()
+        .get_or_create_part(date, PartOfDay::Morning)
+        .await
+        .unwrap();
     db.commit().await.unwrap();
 
     assert_eq!(morning.kind, "part_of_day");
@@ -132,7 +168,11 @@ async fn night_part_ends_on_the_following_day() {
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
     let date = NaiveDate::from_ymd_opt(2026, 6, 20).unwrap();
 
-    let night = db.scopes().get_or_create_part(date, PartOfDay::Night).await.unwrap();
+    let night = db
+        .scopes()
+        .get_or_create_part(date, PartOfDay::Night)
+        .await
+        .unwrap();
     db.commit().await.unwrap();
 
     assert_eq!(night.start_date, "2026-06-20");
@@ -145,13 +185,28 @@ async fn get_or_create_part_is_idempotent_per_part() {
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
     let date = NaiveDate::from_ymd_opt(2026, 6, 20).unwrap();
 
-    let first = db.scopes().get_or_create_part(date, PartOfDay::Noon).await.unwrap();
-    let second = db.scopes().get_or_create_part(date, PartOfDay::Noon).await.unwrap();
-    let other = db.scopes().get_or_create_part(date, PartOfDay::Evening).await.unwrap();
+    let first = db
+        .scopes()
+        .get_or_create_part(date, PartOfDay::Noon)
+        .await
+        .unwrap();
+    let second = db
+        .scopes()
+        .get_or_create_part(date, PartOfDay::Noon)
+        .await
+        .unwrap();
+    let other = db
+        .scopes()
+        .get_or_create_part(date, PartOfDay::Evening)
+        .await
+        .unwrap();
     db.commit().await.unwrap();
 
     assert_eq!(first.id, second.id);
-    assert_ne!(first.id, other.id, "different parts of the same day are distinct scopes");
+    assert_ne!(
+        first.id, other.id,
+        "different parts of the same day are distinct scopes"
+    );
 }
 
 #[tokio::test]

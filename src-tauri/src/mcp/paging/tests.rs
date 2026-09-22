@@ -20,10 +20,7 @@ fn first_cursor(available: &[SectionItems]) -> Cursor {
 }
 
 /// Follows the cursor to exhaustion, returning every item of every section in page order.
-fn walk_to_exhaustion(
-    available: &[SectionItems],
-    budget: usize,
-) -> (Vec<(Section, Value)>, usize) {
+fn walk_to_exhaustion(available: &[SectionItems], budget: usize) -> (Vec<(Section, Value)>, usize) {
     let mut seen = Vec::new();
     let mut cursor = first_cursor(available);
     let mut pages = 0;
@@ -55,7 +52,10 @@ fn everything(available: &[SectionItems]) -> Vec<(Section, Value)> {
 
 #[test]
 fn a_payload_under_budget_is_one_page_with_no_cursor() {
-    let available = vec![section(Section::Domains, 3, 10), section(Section::Tasks, 2, 10)];
+    let available = vec![
+        section(Section::Domains, 3, 10),
+        section(Section::Tasks, 2, 10),
+    ];
 
     let page = take_page(&available, first_cursor(&available), 40_000).unwrap();
 
@@ -87,7 +87,9 @@ fn a_section_larger_than_the_budget_splits_and_resumes() {
     let available = vec![section(Section::Tasks, 30, 200)];
 
     let first = take_page(&available, first_cursor(&available), 1_000).unwrap();
-    let resume = first.next.expect("30 big items cannot fit in 1000 characters");
+    let resume = first
+        .next
+        .expect("30 big items cannot fit in 1000 characters");
 
     assert_eq!(resume.section, Section::Tasks);
     assert!(resume.offset > 0 && resume.offset < 30, "split mid-section");
@@ -141,7 +143,13 @@ fn a_cursor_round_trips_through_its_token() {
 
 #[test]
 fn a_malformed_cursor_is_rejected_rather_than_guessed_at() {
-    for bad in ["lifecycles", "nosuchsection:0", "tasks:-1", "tasks:many", ""] {
+    for bad in [
+        "lifecycles",
+        "nosuchsection:0",
+        "tasks:-1",
+        "tasks:many",
+        "",
+    ] {
         let rejected = Cursor::parse(bad);
         assert!(rejected.is_err(), "\"{bad}\" should not parse");
     }

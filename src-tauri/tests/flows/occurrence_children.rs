@@ -66,7 +66,9 @@ async fn habit_with_one_day(
     pool: &sqlx::SqlitePool,
     app: &tauri::App<tauri::test::MockRuntime>,
 ) -> (i64, i64) {
-    let flow = flow_commands::create_flow(app.state(), daily_habit("Groceries")).await.unwrap();
+    let flow = flow_commands::create_flow(app.state(), daily_habit("Groceries"))
+        .await
+        .unwrap();
     let start = scope_id(pool, ScopeKind::Day, ymd(2026, 1, 5)).await;
     flow_commands::set_flow_recurrence(
         app.state(),
@@ -105,7 +107,9 @@ async fn an_occurrence_takes_a_child_of_every_kind_a_task_can_parent() {
         assert_eq!(child.node_type, kind);
     }
 
-    let children = flow_commands::list_habit_instance_children(app.state(), flow_id).await.unwrap();
+    let children = flow_commands::list_habit_instance_children(app.state(), flow_id)
+        .await
+        .unwrap();
     assert_eq!(
         children.len(),
         4,
@@ -215,8 +219,13 @@ async fn completing_an_occurrence_that_still_holds_work_asks_first_and_names_it(
         "the refusal names what is about to be closed over, so the answer is not blind: {details}"
     );
 
-    let statuses = flow_commands::list_habit_item_statuses(app.state(), flow_id).await.unwrap();
-    assert!(statuses.is_empty(), "declining leaves the occurrence exactly as it was");
+    let statuses = flow_commands::list_habit_item_statuses(app.state(), flow_id)
+        .await
+        .unwrap();
+    assert!(
+        statuses.is_empty(),
+        "declining leaves the occurrence exactly as it was"
+    );
 }
 
 #[tokio::test]
@@ -245,7 +254,9 @@ async fn confirming_closes_the_occurrence_and_leaves_the_child_alone() {
     .await
     .unwrap();
 
-    let statuses = flow_commands::list_habit_item_statuses(app.state(), flow_id).await.unwrap();
+    let statuses = flow_commands::list_habit_item_statuses(app.state(), flow_id)
+        .await
+        .unwrap();
     assert_eq!(statuses.len(), 1, "the occurrence is done");
     let still_there = flow_commands::list_habit_instance_children(app.state(), flow_id)
         .await
@@ -346,7 +357,11 @@ async fn a_childs_window_must_sit_inside_the_occurrences() {
         &mut db,
         TaskId(child.node_id),
         UpdateTaskRequest {
-            time_scope: Some(Some(TimeScope { start_id: outside, end_id: outside, duration: None })),
+            time_scope: Some(Some(TimeScope {
+                start_id: outside,
+                end_id: outside,
+                duration: None,
+            })),
             ..Default::default()
         },
     )
@@ -362,7 +377,11 @@ async fn a_childs_window_must_sit_inside_the_occurrences() {
         &mut db,
         TaskId(child.node_id),
         UpdateTaskRequest {
-            time_scope: Some(Some(TimeScope { start_id: start, end_id: start, duration: None })),
+            time_scope: Some(Some(TimeScope {
+                start_id: start,
+                end_id: start,
+                duration: None,
+            })),
             ..Default::default()
         },
     )
@@ -377,7 +396,9 @@ async fn an_added_child_makes_its_occurrence_divergent() {
     let app = helpers::command_host(&pool);
     let (flow_id, start) = habit_with_one_day(&pool, &app).await;
     assert_eq!(
-        flow_commands::habit_completion_count(app.state(), flow_id).await.unwrap(),
+        flow_commands::habit_completion_count(app.state(), flow_id)
+            .await
+            .unwrap(),
         0
     );
 
@@ -392,7 +413,9 @@ async fn an_added_child_makes_its_occurrence_divergent() {
     .unwrap();
 
     assert_eq!(
-        flow_commands::habit_completion_count(app.state(), flow_id).await.unwrap(),
+        flow_commands::habit_completion_count(app.state(), flow_id)
+            .await
+            .unwrap(),
         1,
         "editing the habit now prompts instead of silently regenerating over the child"
     );
@@ -413,10 +436,15 @@ async fn delete_and_regenerate_takes_the_added_children_with_it() {
     .await
     .unwrap();
 
-    flow_commands::clear_habit_modifications(app.state(), flow_id).await.unwrap();
+    flow_commands::clear_habit_modifications(app.state(), flow_id)
+        .await
+        .unwrap();
 
     assert!(
-        flow_commands::list_habit_instance_children(app.state(), flow_id).await.unwrap().is_empty(),
+        flow_commands::list_habit_instance_children(app.state(), flow_id)
+            .await
+            .unwrap()
+            .is_empty(),
         "the instances they hung off are gone, so nothing is left dangling"
     );
     let task: Option<i64> = sqlx::query_scalar("SELECT id FROM tasks WHERE id = ?")
@@ -424,7 +452,10 @@ async fn delete_and_regenerate_takes_the_added_children_with_it() {
         .fetch_optional(&pool)
         .await
         .unwrap();
-    assert!(task.is_none(), "the row goes too — the prompt is what warned about this");
+    assert!(
+        task.is_none(),
+        "the row goes too — the prompt is what warned about this"
+    );
 }
 
 #[tokio::test]
@@ -454,13 +485,24 @@ async fn deleting_an_added_child_never_reaches_the_template() {
     .unwrap();
 
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-    arlesh_lib::tasks::delete_task(&mut db, TaskId(child.node_id)).await.unwrap();
+    arlesh_lib::tasks::delete_task(&mut db, TaskId(child.node_id))
+        .await
+        .unwrap();
     db.commit().await.unwrap();
 
-    let template = flow_commands::list_flow_tasks(app.state(), flow_id).await.unwrap();
-    assert_eq!(template.len(), 1, "the template is untouched by anything done to a child");
+    let template = flow_commands::list_flow_tasks(app.state(), flow_id)
+        .await
+        .unwrap();
+    assert_eq!(
+        template.len(),
+        1,
+        "the template is untouched by anything done to a child"
+    );
     assert!(
-        flow_commands::list_habit_instance_children(app.state(), flow_id).await.unwrap().is_empty(),
+        flow_commands::list_habit_instance_children(app.state(), flow_id)
+            .await
+            .unwrap()
+            .is_empty(),
         "and the attachment goes with the row, so a recycled id cannot inherit it"
     );
 }
@@ -502,7 +544,11 @@ async fn a_child_archives_with_the_occurrence_whose_window_has_passed() {
             .map(|l| format!("{:?}", l.archival))
             .unwrap()
     };
-    assert_eq!(archival(&inside), "Live", "the occurrence's day is still open");
+    assert_eq!(
+        archival(&inside),
+        "Live",
+        "the occurrence's day is still open"
+    );
     assert_eq!(
         archival(&after),
         "Archived",
@@ -553,16 +599,26 @@ async fn an_added_child_holds_children_of_its_own_in_the_ordinary_way() {
         &mut db,
         TaskId(nested.id),
         UpdateTaskRequest {
-            time_scope: Some(Some(TimeScope { start_id: outside, end_id: outside, duration: None })),
+            time_scope: Some(Some(TimeScope {
+                start_id: outside,
+                end_id: outside,
+                duration: None,
+            })),
             ..Default::default()
         },
     )
     .await;
-    assert!(refused.is_err(), "the occurrence governs its whole subtree, not just its first level");
+    assert!(
+        refused.is_err(),
+        "the occurrence governs its whole subtree, not just its first level"
+    );
     drop(db);
 
     assert_eq!(
-        flow_commands::list_habit_instance_children(app.state(), flow_id).await.unwrap().len(),
+        flow_commands::list_habit_instance_children(app.state(), flow_id)
+            .await
+            .unwrap()
+            .len(),
         1,
         "only the first level is attached; everything under it is an ordinary parent link"
     );

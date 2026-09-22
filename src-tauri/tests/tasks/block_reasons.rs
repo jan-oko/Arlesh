@@ -42,19 +42,37 @@ async fn list_all_returns_reasons_for_every_owner() {
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
     let task = create_task(
         &mut db,
-        CreateTaskRequest { title: "T".into(), parent_type: "project".into(), parent_id: project_id, status: None, ..Default::default() },
+        CreateTaskRequest {
+            title: "T".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            status: None,
+            ..Default::default()
+        },
     )
     .await
     .unwrap();
     let goal = create_goal(
         &mut db,
-        CreateGoalRequest { title: "G".into(), parent_type: "project".into(), parent_id: project_id, status: None, ..Default::default() },
+        CreateGoalRequest {
+            title: "G".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            status: None,
+            ..Default::default()
+        },
     )
     .await
     .unwrap();
 
-    db.block_reasons().set("task", task.id, &["a".into(), "b".into()]).await.unwrap();
-    db.block_reasons().set("goal", goal.id, &["x".into()]).await.unwrap();
+    db.block_reasons()
+        .set("task", task.id, &["a".into(), "b".into()])
+        .await
+        .unwrap();
+    db.block_reasons()
+        .set("goal", goal.id, &["x".into()])
+        .await
+        .unwrap();
 
     let all = db.block_reasons().list_all().await.unwrap();
     db.commit().await.unwrap();
@@ -74,15 +92,29 @@ async fn deleting_a_task_removes_its_block_reasons() {
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
     let task = create_task(
         &mut db,
-        CreateTaskRequest { title: "T".into(), parent_type: "project".into(), parent_id: project_id, status: None, ..Default::default() },
+        CreateTaskRequest {
+            title: "T".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            status: None,
+            ..Default::default()
+        },
     )
     .await
     .unwrap();
-    db.block_reasons().set("task", task.id, &["stuck".into()]).await.unwrap();
+    db.block_reasons()
+        .set("task", task.id, &["stuck".into()])
+        .await
+        .unwrap();
 
     delete_task(&mut db, task.id.into()).await.unwrap();
 
-    assert!(db.block_reasons().list_for("task", task.id).await.unwrap().is_empty());
+    assert!(db
+        .block_reasons()
+        .list_for("task", task.id)
+        .await
+        .unwrap()
+        .is_empty());
     assert!(db.block_reasons().list_all().await.unwrap().is_empty());
     db.commit().await.unwrap();
 }
@@ -92,7 +124,13 @@ async fn make_task(pool: &sqlx::SqlitePool, project_id: i64) -> i64 {
     let mut db = helpers::session_factory(pool).begin().await.unwrap();
     let id = create_task(
         &mut db,
-        CreateTaskRequest { title: "T".into(), parent_type: "project".into(), parent_id: project_id, status: None, ..Default::default() },
+        CreateTaskRequest {
+            title: "T".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            status: None,
+            ..Default::default()
+        },
     )
     .await
     .unwrap()
@@ -145,7 +183,14 @@ async fn set_over_a_committed_session_replaces_the_list() {
 
     // And that is what a later pooled session reads back, which is the `list_all_block_reasons` path.
     let mut db = factory.connect().await.unwrap();
-    assert_eq!(db.block_reasons().list_for("task", task_id).await.unwrap().len(), 2);
+    assert_eq!(
+        db.block_reasons()
+            .list_for("task", task_id)
+            .await
+            .unwrap()
+            .len(),
+        2
+    );
     assert_eq!(db.block_reasons().list_all().await.unwrap().len(), 2);
 }
 
@@ -157,7 +202,10 @@ async fn set_over_a_session_dropped_without_commit_leaves_the_previous_list_inta
     let factory = SessionFactory::new(pool.clone());
 
     let mut db = factory.begin().await.unwrap();
-    db.block_reasons().set("task", task_id, &["original".into()]).await.unwrap();
+    db.block_reasons()
+        .set("task", task_id, &["original".into()])
+        .await
+        .unwrap();
     db.commit().await.unwrap();
 
     {
@@ -197,7 +245,10 @@ async fn set_over_a_session_skips_blank_reasons_and_renumbers_positions() {
     assert_eq!(all[0].reason, "a");
     assert_eq!(all[0].position, 0);
     assert_eq!(all[1].reason, "b");
-    assert_eq!(all[1].position, 1, "positions must be contiguous after a blank is skipped");
+    assert_eq!(
+        all[1].position, 1,
+        "positions must be contiguous after a blank is skipped"
+    );
 }
 
 #[tokio::test]
@@ -209,13 +260,25 @@ async fn delete_for_over_a_session_removes_only_that_owner() {
     let factory = SessionFactory::new(pool.clone());
 
     let mut db = factory.begin().await.unwrap();
-    db.block_reasons().set("task", task_id, &["gone".into()]).await.unwrap();
-    db.block_reasons().set("task", other_task_id, &["kept".into()]).await.unwrap();
-    db.block_reasons().delete_for("task", task_id).await.unwrap();
+    db.block_reasons()
+        .set("task", task_id, &["gone".into()])
+        .await
+        .unwrap();
+    db.block_reasons()
+        .set("task", other_task_id, &["kept".into()])
+        .await
+        .unwrap();
+    db.block_reasons()
+        .delete_for("task", task_id)
+        .await
+        .unwrap();
     db.commit().await.unwrap();
 
     assert!(reasons_on_disk(&pool, task_id).await.is_empty());
-    assert_eq!(reasons_on_disk(&pool, other_task_id).await, vec!["kept".to_string()]);
+    assert_eq!(
+        reasons_on_disk(&pool, other_task_id).await,
+        vec!["kept".to_string()]
+    );
 }
 
 // The two tests above exercise the session, not the command. They cannot catch the one mistake the

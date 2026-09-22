@@ -19,11 +19,10 @@ async fn run_migrations_seeds_aspects() {
     let pool = database::connect("sqlite::memory:").await.unwrap();
     database::run_migrations(&pool).await.unwrap();
 
-    let count: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM domains WHERE subtype = 'aspect'")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM domains WHERE subtype = 'aspect'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
 
     assert_eq!(count, 6);
 }
@@ -32,11 +31,10 @@ async fn run_migrations_seeds_aspects() {
 async fn connect_and_migrate_seeds_aspects() {
     let pool = helpers::test_pool().await;
 
-    let count: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM domains WHERE subtype = 'aspect'")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM domains WHERE subtype = 'aspect'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
 
     assert_eq!(count, 6, "expected 6 seeded aspects");
 }
