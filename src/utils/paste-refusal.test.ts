@@ -384,7 +384,7 @@ describe("the destination refusal, rendered", () => {
     expect(render("tag", "goal", 1)).toBe("1 Tag can't sit under Goal — only under Aspect, Domain, Project.");
   });
 
-  it("names a Task refused by a Tag, which holds nothing", () => {
+  it("names a Task refused by a Tag, which holds only notes", () => {
     expect(render("task", "tag", 1)).toBe(
       "1 Task can't sit under Tag — only under Aspect, Domain, Project, Goal, Task, Commitment.",
     );
@@ -396,9 +396,11 @@ describe("the destination refusal, rendered", () => {
     );
   });
 
-  it("names an Info refused by a Tag, the one parent an Info cannot have", () => {
-    expect(render("info", "tag", 1)).toBe(
-      "1 Info can't sit under Tag — only under Aspect, Domain, Project, Goal, Task, Commitment, Info.",
+  // An Info may sit under a Tag, so a Tag is one of the places the sentence has to offer. The
+  // Task and Goal refusals above still end without one: a label holds notes and nothing else.
+  it("names a Tag among the parents an Info may have", () => {
+    expect(render("info", "flow", 1)).toBe(
+      "1 Info can't sit under Flow — only under Aspect, Domain, Project, Goal, Task, Commitment, Info, Tag.",
     );
   });
 

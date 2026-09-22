@@ -116,17 +116,15 @@ fn passes_row_preset(row: Row<'_>, filter: &BoardFilter) -> bool {
 /// Two presets empty it outright: **Unblock**, because a Commitment is never blocked, and
 /// **Backlog**, because a Commitment has no Backlog state to be in.
 ///
-/// # Divergences from the specification
+/// The ancestor walk is literally the task rows' — `Row::has_gating_ancestor`, shared so the two
+/// cannot drift apart. A Commitment hangs off the same tree, so a branch hidden as a whole subtree
+/// (a shelved Project, a backlogged Task, an unopened Habit occurrence) takes the commitments
+/// inside it with it; a band still showing one from a branch the list has dropped would be
+/// describing a different board.
 ///
-/// Two, both reproduced from the shipped frontend rather than adopted as rules:
-///
-/// - The band walks its ancestors for a shelved Project and a backlogged Task, but **not** for an
-///   unopened Habit occurrence, which `docs/spec/habits.md` says is hidden "together with its own
-///   subtree". A Commitment under one therefore stays in the band while the Mindmap and the task
-///   rows both drop it.
-/// - `docs/spec/mindmap-view.md` says the Archived pill has no effect under Do. The
-///   [`rules::with_archived_override`] below runs under every preset, so `Include` force-shows an
-///   archived Commitment there.
+/// The Archived pill applies here under every preset, Do included: `Include` force-shows an
+/// archived Commitment through [`rules::with_archived_override`], as `docs/spec/mindmap-view.md`
+/// says it does.
 pub fn passes_commitment_row(row: Row<'_>, filter: &BoardFilter) -> bool {
     if filter.unblock || filter.preset == Preset::Backlog {
         return false;
@@ -137,9 +135,7 @@ pub fn passes_commitment_row(row: Row<'_>, filter: &BoardFilter) -> bool {
     if !filter.private_mode && row.has_private_ancestor() {
         return false;
     }
-    if row.ancestors.iter().any(|ancestor| {
-        rules::is_shelved_project(ancestor, filter) || rules::is_hidden_backlog(ancestor, filter)
-    }) {
+    if row.has_gating_ancestor(filter) {
         return false;
     }
     if !rules::with_archived_override(
