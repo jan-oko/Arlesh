@@ -32,6 +32,11 @@
 //! caller can know where the boundary belongs. So the frontend may open a gesture around every
 //! command it invokes and additionally around a run of them, and the run wins.
 //!
+//! A caller that means the run to be **all or nothing** ends it with [`abort_gesture`] instead of
+//! [`close_gesture`] when it fails: the Gesture's writes are replayed in reverse and it reaches
+//! neither stack, because a half-applied form is a state nobody asked for where a half-finished
+//! paste is still five nodes the user can see and take back.
+//!
 //! ## Where this is weak, and how it fails
 //!
 //! The protocol is the one part of the design that a caller can forget, and it is worth being
@@ -148,6 +153,77 @@ pub async fn close_gesture(
     stacks.record(stacked);
     tracing::info!(gesture = %summary.gesture, rows = summary.rows, "gesture is undoable");
     Ok(Some(summary))
+}
+
+/// Closes one open Gesture and **takes back** everything it wrote, instead of offering it as a
+/// step the user could reverse.
+///
+/// This is what makes a run of commands all-or-nothing. [`close_gesture`] commits: a Gesture that
+/// threw halfway through still becomes a single Ctrl+Z, which is right for a paste — five nodes
+/// pasted and a sixth refused is still five nodes the user can see and take back — and wrong for
+/// an editor's Save, where the fields are one thing the user filled in and a half-applied form is
+/// a state they never asked for. A caller that means the second one aborts.
+///
+/// Returns what it took back, or `None` when nothing was written or the close was a nested one.
+/// **A nested abort cannot take anything back**: the outermost open owns the boundary (see the
+/// module docs), so all this does at depth is close its own open and leave the gesture running.
+/// Nothing in the app nests an abort inside another Gesture, and this is the documented shape
+/// rather than a case with behaviour of its own.
+///
+/// The reversal is the undo engine's, so it is one transaction and all-or-nothing itself. It is
+/// applied with journalling suppressed and the aborted entries are then dropped from the journal,
+/// because the net effect on the board was nothing and a journal that still claimed the writes —
+/// with no reversal recorded after them, suppression having seen to that — would be a history of
+/// a board that never existed.
+///
+/// Neither stack is touched on the way through: an aborted Gesture is not an undo step and, never
+/// having reached the Undo Stack, it does not clear the Redo Stack either. The **one** exception
+/// is a reversal that fails. The writes then stand, and the honest thing is to offer them as a
+/// step the user can reverse by hand rather than strand them outside the stacks entirely — so the
+/// Gesture is recorded as [`close_gesture`] would have recorded it, and the error says so.
+#[tracing::instrument(skip(factory, stacks))]
+pub async fn abort_gesture(
+    factory: &SessionFactory,
+    stacks: &UndoStacks,
+) -> Result<Option<GestureSummary>, UndoError> {
+    // Scoped so the pooled session is back in the pool before `take_back` asks for a
+    // transactional one: a single-connection pool would otherwise wait on itself forever.
+    let stacked = {
+        let mut db = factory.connect().await?;
+        let Some(gesture) = db.undo().close_gesture().await? else {
+            return Ok(None);
+        };
+        let entries = db.undo().entries_for(&gesture).await?;
+        StackedGesture::new(gesture, entries)
+    };
+
+    let Some(stacked) = stacked else {
+        return Ok(None);
+    };
+    let summary = stacked.summary();
+
+    match take_back(factory, &stacked).await {
+        Ok(()) => {
+            tracing::info!(gesture = %summary.gesture, rows = summary.rows, "gesture aborted");
+            Ok(Some(summary))
+        }
+        Err(cause) => {
+            stacks.record(stacked);
+            Err(UndoError::AbortFailed {
+                gesture: summary.gesture,
+                cause: Box::new(cause),
+            })
+        }
+    }
+}
+
+/// Reverses `gesture`'s entries and drops them from the journal, in one transaction.
+async fn take_back(factory: &SessionFactory, gesture: &StackedGesture) -> Result<(), UndoError> {
+    let mut db = factory.begin().await?;
+    db.undo().replay(gesture.entries(), Replay::Inverse).await?;
+    db.undo().discard(gesture.gesture()).await?;
+    db.commit().await?;
+    Ok(())
 }
 
 /// Reverses the most recent user Gesture, or does nothing when there is none.
@@ -392,6 +468,26 @@ impl<'session> UndoOperator<'session> {
         .await?;
 
         rows.into_iter().map(JournalRow::into_entry).collect()
+    }
+
+    /// Drops `gesture`'s `user` entries from the journal, and returns how many it removed.
+    ///
+    /// For an aborted Gesture, whose writes have just been reversed with journalling suppressed:
+    /// leaving the forward entries there would leave the journal asserting changes the board no
+    /// longer carries, with nothing after them to say they were taken back.
+    ///
+    /// Filtered by source for the same reason [`entries_for`](Self::entries_for) is — an agent's
+    /// write that landed while this Gesture was open is not the Gesture's to reverse, so it is not
+    /// the Gesture's to erase either.
+    #[tracing::instrument(skip(self))]
+    pub async fn discard(&mut self, gesture: &GestureId) -> Result<u64, UndoError> {
+        let removed = sqlx::query("DELETE FROM undo_journal WHERE gesture_id = ? AND source = ?")
+            .bind(&gesture.0)
+            .bind(WriteSource::User.as_str())
+            .execute(&mut *self.connection)
+            .await?
+            .rows_affected();
+        Ok(removed)
     }
 
     /// Applies `entries` in `direction`, with journalling suppressed for the duration.
