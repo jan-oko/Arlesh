@@ -26,5 +26,8 @@
   "tabWholeTree": "All",
   "renameTab": "Rename tab",
   "tabName": "Tab name",
-  "tabActions": "Tab actions"
+  "tabActions": "Tab actions",
+  "tearOffTab": "Move tab to new window",
+  "moveTabToWindow": "Move tab to “{{name}}”",
+  "windowUnnamed": "Another window"
 }

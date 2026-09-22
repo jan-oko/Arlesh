@@ -4,8 +4,10 @@ import { useTranslation } from "react-i18next";
 import { useTabsStore } from "@/stores/use-tabs-store";
 import { useTabCommands } from "@/hooks/use-tab-commands";
 import { useTabRename } from "@/hooks/use-tab-rename";
+import { useBoardWindows } from "@/hooks/use-board-windows";
 import { useInputCapture } from "@/hooks/use-input-capture";
 import { tabLabel } from "@/utils/tab-label";
+import { isTornOff } from "@/utils/tab-drag";
 import TabContextMenu from "@/components/TabContextMenu/TabContextMenu";
 import styles from "./TabStrip.module.css";
 
@@ -28,6 +30,11 @@ interface MenuAt {
  * for that — in which case the name wins and the derived label keeps being maintained underneath
  * it. One showing the whole tree is labelled for that rather than left nameless. Closing is offered
  * three times — an ×, a middle-click and the menu — because each is a gesture somebody already has.
+ *
+ * A drag **inside** the strip reorders. A drag that ends **outside** it takes the tab into a window
+ * of its own, which is the browser gesture, and the menu offers the same thing for anyone who would
+ * rather not drag. The way back is the menu alone: a drag is captured by the window it began in and
+ * never reaches another, so a tab returns by being handed over rather than dropped.
  */
 export default function TabStrip() {
   const { t } = useTranslation(["common"]);
@@ -35,11 +42,16 @@ export default function TabStrip() {
   const activeTabId = useTabsStore((s) => s.activeTabId);
   const activateTab = useTabsStore((s) => s.activateTab);
   const moveTab = useTabsStore((s) => s.moveTab);
-  const { openTab, closeTab } = useTabCommands();
+  const { openTab, closeTab, tearOffTab, moveTabToWindow } = useTabCommands();
   const { editingId, start, commit, cancel } = useTabRename();
+  const { windows, refresh: refreshWindows } = useBoardWindows();
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const [menuAt, setMenuAt] = useState<MenuAt | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const stripRef = useRef<HTMLDivElement>(null);
+  // Whether the drag now ending was taken by the strip. A drop is a reorder and has already
+  // happened; anything else that ends outside the strip is a tear-off. See `utils/tab-drag`.
+  const droppedOnStrip = useRef(false);
 
   // A rename is a text field in the strip, so the app's own single-key bindings must stand down
   // while it is open — the same contract the Mindmap's inline title editor honours.
@@ -55,14 +67,31 @@ export default function TabStrip() {
   }, [editingId]);
 
   function drop(toIndex: number) {
+    droppedOnStrip.current = true;
     if (draggingIndex !== null) moveTab(draggingIndex, toIndex);
     setDraggingIndex(null);
+  }
+
+  /** The end of a drag: a reorder the strip already made, a tear-off, or nothing at all. */
+  function endDrag(tabId: string, point: { x: number; y: number }) {
+    const bounds = stripRef.current?.getBoundingClientRect();
+    const tornOff =
+      bounds !== undefined && isTornOff(point, bounds, droppedOnStrip.current);
+    droppedOnStrip.current = false;
+    setDraggingIndex(null);
+    if (tornOff) tearOffTab(tabId);
+  }
+
+  /** Opens the tab menu, having asked which other windows there are to offer. */
+  function openMenu(at: MenuAt) {
+    refreshWindows();
+    setMenuAt(at);
   }
 
   const wholeTree = t("common:tabWholeTree");
 
   return (
-    <div className={styles.strip} role="tablist" aria-label={t("common:tabs")}>
+    <div ref={stripRef} className={styles.strip} role="tablist" aria-label={t("common:tabs")}>
       {tabs.map((tab, index) => {
         const label = tabLabel(tab, wholeTree);
         return (
@@ -70,12 +99,12 @@ export default function TabStrip() {
             key={tab.id}
             className={`${styles.tab}${tab.id === activeTabId ? ` ${styles.tabActive}` : ""}${draggingIndex === index ? ` ${styles.tabDragging}` : ""}`}
             draggable={editingId !== tab.id}
-            onDragStart={() => setDraggingIndex(index)}
-            onDragEnd={() => setDraggingIndex(null)}
+            onDragStart={() => { droppedOnStrip.current = false; setDraggingIndex(index); }}
+            onDragEnd={(e) => endDrag(tab.id, { x: e.clientX, y: e.clientY })}
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => { e.preventDefault(); drop(index); }}
             onAuxClick={(e) => { if (e.button === MIDDLE_BUTTON) { e.preventDefault(); closeTab(tab.id); } }}
-            onContextMenu={(e) => { e.preventDefault(); setMenuAt({ tabId: tab.id, x: e.clientX, y: e.clientY }); }}
+            onContextMenu={(e) => { e.preventDefault(); openMenu({ tabId: tab.id, x: e.clientX, y: e.clientY }); }}
           >
             {editingId === tab.id ? (
               <input
@@ -124,6 +153,11 @@ export default function TabStrip() {
           x={menuAt.x}
           y={menuAt.y}
           onRename={() => start(menuAt.tabId)}
+          // Tearing off the only tab would move the window rather than divide it, so the entry is
+          // absent rather than present and inert.
+          onTearOff={tabs.length > 1 ? () => tearOffTab(menuAt.tabId) : null}
+          windows={windows}
+          onMoveToWindow={(label) => moveTabToWindow(menuAt.tabId, label)}
           onCloseTab={() => closeTab(menuAt.tabId)}
           onDismiss={() => setMenuAt(null)}
         />,

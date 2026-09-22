@@ -4,7 +4,7 @@ import { useTabCommands } from "./use-tab-commands";
 import { reloadTabs, useTabsStore } from "@/stores/use-tabs-store";
 import { closeWindow } from "@/api/window";
 
-vi.mock("@/api/window", () => ({ closeWindow: vi.fn(() => Promise.resolve()) }));
+vi.mock("@/api/window", async () => (await import("@/test/window-api-mock")).windowApi());
 
 const mockCloseWindow = vi.mocked(closeWindow);
 

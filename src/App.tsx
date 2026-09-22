@@ -11,6 +11,7 @@ import { TabStoresContext } from "@/stores/tab-stores-context";
 import { useHotkeys } from "@/hooks/use-hotkeys";
 import { useTabCommands } from "@/hooks/use-tab-commands";
 import { useCloseToTraySync } from "@/hooks/use-close-to-tray";
+import { useForgetClosedWindows, useTabInbox } from "@/hooks/use-window-session";
 import { TAB_BINDINGS } from "@/utils/hotkeys/tab-bindings";
 import styles from "./App.module.css";
 
@@ -24,6 +25,11 @@ export default function App() {
   const { openTab, closeTab, nextTab, previousTab, jumpToTab } = useTabCommands();
 
   useCloseToTraySync();
+  // Every window is the same thing, so this is all it takes to be one of several: accept a tab
+  // another window hands over, and — in the first window only — forget the tabs of windows that
+  // are no longer open.
+  useTabInbox();
+  useForgetClosedWindows();
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;

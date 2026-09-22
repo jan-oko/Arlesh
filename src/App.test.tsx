@@ -11,7 +11,7 @@ import { useHotkeysStore } from "@/stores/use-hotkeys-store";
 vi.mock("@/components/TopBar/TopBar", () => ({ default: () => <div data-testid="top-bar" /> }));
 vi.mock("@/components/MindmapView/MindmapView", () => ({ default: () => <div data-testid="mindmap-view" /> }));
 vi.mock("@/components/ListView/ListView", () => ({ default: () => <div data-testid="list-view" /> }));
-vi.mock("@/api/window", () => ({ closeWindow: vi.fn(() => Promise.resolve()) }));
+vi.mock("@/api/window", async () => (await import("@/test/window-api-mock")).windowApi());
 
 const mockCloseWindow = vi.mocked(closeWindow);
 

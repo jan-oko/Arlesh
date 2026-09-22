@@ -16,6 +16,7 @@ import { asRetypeKind, retypeNode as backendRetype } from "@/api/retype";
 import type { StrandedChildren } from "@/api/retype";
 import { loadMindmap, habitIterations, habitStatuses } from "@/api/mindmap";
 import { withGesture } from "@/api/gesture";
+import { useBoardChanged } from "@/hooks/use-board-changed";
 import type { MindmapLoad } from "@/api/mindmap";
 import {
   createFlow, updateFlow, deleteFlow,
@@ -1686,6 +1687,11 @@ export function useMindmapData(): MindmapData {
   // focus with it, so raising the spinner here makes every mutation flash the whole view.
   // Only the initial mount passes `true`.
   const reload = useCallback(() => load(false), [load]);
+
+  // An edit in another window ends in exactly this reload. Two views of one board that silently
+  // disagree are worse than one view, and the cheapest way to have none is to reuse the refresh
+  // every local mutation already ends in. See `use-board-changed`.
+  useBoardChanged(reload);
 
   return {
     tree,

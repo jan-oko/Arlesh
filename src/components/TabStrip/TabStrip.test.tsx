@@ -9,7 +9,7 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock("@/api/window", () => ({ closeWindow: vi.fn(() => Promise.resolve()) }));
+vi.mock("@/api/window", async () => (await import("@/test/window-api-mock")).windowApi());
 
 const mockCloseWindow = vi.mocked(closeWindow);
 
