@@ -17,6 +17,9 @@ import {
   addScopePeriods,
   partContaining,
   currentPartRef,
+  currentDateIso,
+  dayScopeDate,
+  lastDayOfWindow,
   isCellCurrent,
   openingForRef,
   openingForRefs,
@@ -203,6 +206,37 @@ describe("currentPartRef", () => {
   });
 });
 
+describe("the 02:00 day boundary", () => {
+  it("at 00:30 today is still the previous calendar date", () => {
+    expect(currentDateIso(new Date("2026-06-15T00:30:00Z"))).toBe("2026-06-14");
+  });
+
+  it("at 01:59 today is still the previous calendar date, and at 02:00 it is not", () => {
+    expect(currentDateIso(new Date("2026-06-15T01:59:00Z"))).toBe("2026-06-14");
+    expect(currentDateIso(new Date("2026-06-15T02:00:00Z"))).toBe("2026-06-15");
+  });
+
+  it("names the date the clock reads for the rest of the day", () => {
+    expect(currentDateIso(new Date("2026-06-15T10:00:00Z"))).toBe("2026-06-15");
+    expect(currentDateIso(new Date("2026-06-15T23:59:00Z"))).toBe("2026-06-15");
+  });
+
+  it("rolls an hour back to the previous day only below the boundary", () => {
+    expect(dayScopeDate("2026-06-15", 0)).toBe("2026-06-14");
+    expect(dayScopeDate("2026-06-15", 1)).toBe("2026-06-14");
+    expect(dayScopeDate("2026-06-15", 2)).toBe("2026-06-15");
+    expect(dayScopeDate("2026-06-15", 22)).toBe("2026-06-15");
+  });
+
+  it("closes a window ending at 02:00 on the previous day", () => {
+    // A Day's own window, and its Night's, both end at 02:00 the next morning.
+    expect(lastDayOfWindow("2026-06-16T02:00:00")).toBe("2026-06-15");
+    expect(lastDayOfWindow("2026-06-16T00:00:00")).toBe("2026-06-15");
+    expect(lastDayOfWindow("2026-06-16T06:00:00")).toBe("2026-06-16");
+    expect(lastDayOfWindow("2026-06-16T02:30:00")).toBe("2026-06-16");
+  });
+});
+
 describe("isCellCurrent", () => {
   it("marks exactly one part of day, on the date that part belongs to", () => {
     const now = new Date("2026-06-15T10:00:00Z");
@@ -222,6 +256,18 @@ describe("isCellCurrent", () => {
     const now = new Date("2026-06-15T10:00:00Z");
     const current = monthCells(2026).filter((cell) => isCellCurrent(cell, now));
     expect(current.map((cell) => cell.label)).toEqual(["June 2026"]);
+  });
+
+  it("at 00:30 on the 1st marks the previous month, because the day has not turned over", () => {
+    const now = new Date("2026-07-01T00:30:00Z");
+    const current = monthCells(2026).filter((cell) => isCellCurrent(cell, now));
+    expect(current.map((cell) => cell.label)).toEqual(["June 2026"]);
+  });
+
+  it("at 00:30 marks the previous day's cell in the day view", () => {
+    const now = new Date("2026-06-15T00:30:00Z");
+    const current = dayCells("2026-06-15").filter((cell) => isCellCurrent(cell, now));
+    expect(current.map((cell) => cell.label)).toEqual(["14"]);
   });
 });
 

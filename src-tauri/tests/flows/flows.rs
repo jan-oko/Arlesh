@@ -3775,11 +3775,11 @@ async fn a_commitment_habits_iterations_stop_offering_a_verdict_once_the_window_
         "last night's verdict can still be recorded this morning",
     );
 
-    // The 8th: out of time.
+    // The 8th, from 02:00 when the day itself begins: out of time.
     let run_out = {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let iterations =
-            generate_habit_iterations(&mut db, FlowId(flow.id), at("2026-01-08T00:00:00"))
+            generate_habit_iterations(&mut db, FlowId(flow.id), at("2026-01-08T02:00:00"))
                 .await
                 .unwrap();
         db.commit().await.unwrap();
@@ -4202,6 +4202,55 @@ async fn scope_shape(pool: &sqlx::SqlitePool, scope_id: i64) -> (String, Option<
         .fetch_one(pool)
         .await
         .unwrap()
+}
+
+#[tokio::test]
+async fn a_daily_habit_turns_over_at_02_00_not_at_midnight() {
+    // The bead's reported symptom. A Day runs 02:00 -> 02:00, so at 01:30 the day that began
+    // yesterday is still the open iteration and tomorrow's has not been generated; the turnover
+    // happens an hour later, at 02:30.
+    let pool = helpers::test_pool().await;
+    let start = ymd(2026, 1, 5);
+    let (flow_id, _item_id) =
+        habit_with_cycles(&pool, "day", None, &[], start, ConsumptionKind::Destructive).await;
+
+    let half_past_one = iterations_at(
+        &pool,
+        flow_id,
+        ymd(2026, 1, 6).and_hms_opt(1, 30, 0).unwrap(),
+    )
+    .await;
+    assert_eq!(
+        half_past_one.len(),
+        1,
+        "at 01:30 the 6th has not begun, so only the 5th's iteration exists",
+    );
+    assert_eq!(
+        half_past_one[0].status,
+        arlesh_lib::flows::model::IterationStatus::Active,
+        "the 5th's window runs to 02:00 on the 6th, so it is still open",
+    );
+
+    let half_past_two = iterations_at(
+        &pool,
+        flow_id,
+        ymd(2026, 1, 6).and_hms_opt(2, 30, 0).unwrap(),
+    )
+    .await;
+    assert_eq!(
+        half_past_two.len(),
+        2,
+        "at 02:30 the 6th has begun and its iteration is generated",
+    );
+    assert_eq!(
+        half_past_two[0].status,
+        arlesh_lib::flows::model::IterationStatus::Lapsed,
+        "and the 5th's has passed unfinished: Destructive archives it",
+    );
+    assert_eq!(
+        half_past_two[1].status,
+        arlesh_lib::flows::model::IterationStatus::Active,
+    );
 }
 
 #[tokio::test]

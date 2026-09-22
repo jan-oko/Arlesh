@@ -88,6 +88,41 @@ export function previousDay(iso: string): string {
   return addDays(iso, -1);
 }
 
+/**
+ * The wall-clock hour the whole scope ladder turns over on. A Day runs 02:00 -> 02:00, and
+ * Season, Month and Week start and end on the same seam, so every scope contains exactly its own
+ * parts — Night (22:00-02:00) included. Mirrors the Rust `DAY_BOUNDARY_HOUR`.
+ */
+export const DAY_BOUNDARY_HOUR = 2;
+
+/** `DAY_BOUNDARY_HOUR` as an `HH:MM:SS` wall-clock time, for comparing against a window's end. */
+const BOUNDARY_TIME = `${String(DAY_BOUNDARY_HOUR).padStart(2, "0")}:00:00`;
+
+/**
+ * The date of the Day scope holding a calendar `date` at wall-clock `hour`: before
+ * `DAY_BOUNDARY_HOUR` that is the **previous** date, because the Day still running began
+ * yesterday. At 00:30 on the 17th you are in the 16th.
+ */
+export function dayScopeDate(date: string, hour: number): string {
+  return hour < DAY_BOUNDARY_HOUR ? previousDay(date) : date;
+}
+
+/** The date of the Day scope holding the instant `now` — "today", by the 02:00 boundary. */
+export function currentDateIso(now: Date): string {
+  return dayScopeDate(isoDate(now), now.getUTCHours());
+}
+
+/**
+ * The last Day a half-open window covers, given its exclusive end. An end at or before the day
+ * boundary closes the previous Day: a Day's own window ends at 02:00 the next morning, and so
+ * does its Night's.
+ */
+export function lastDayOfWindow(exclusiveEnd: string): string {
+  const [date, time] = exclusiveEnd.split("T");
+  if (date === undefined) return exclusiveEnd;
+  return time === undefined || time <= BOUNDARY_TIME ? previousDay(date) : date;
+}
+
 /** Season name and display year for a date, matching the Rust scope model. */
 export function seasonOf(iso: string): { name: string; year: number } {
   const d = parse(iso);
@@ -217,19 +252,17 @@ export function partContaining(hour: number): PartOfDay {
  * is why currency is a property of (instant, date, part), not of the part alone.
  */
 export function currentPartRef(now: Date): { date: string; part: PartOfDay } {
-  const hour = now.getUTCHours();
-  const part = partContaining(hour);
-  const date = isoDate(now);
-  return hour < 2 ? { date: previousDay(date), part } : { date, part };
+  return { date: currentDateIso(now), part: partContaining(now.getUTCHours()) };
 }
 
 /**
  * Whether a cell is the period holding `now` — the current-period marker. Every view but
- * part-of-day marks the cell whose dates contain today; a part-of-day cell is current only when it
- * is the one part (on the one date) holding the instant, Night's midnight wrap included.
+ * part-of-day marks the cell whose dates contain the current Day, which before 02:00 is still
+ * yesterday's; a part-of-day cell is current only when it is the one part (on the one date)
+ * holding the instant, Night's midnight wrap included.
  */
 export function isCellCurrent(cell: ScopeCell, now: Date): boolean {
-  if (cell.ref.kind !== "part_of_day") return cellContainsDate(cell, isoDate(now));
+  if (cell.ref.kind !== "part_of_day") return cellContainsDate(cell, currentDateIso(now));
   const current = currentPartRef(now);
   return cell.ref.date === current.date && cell.ref.part === current.part;
 }

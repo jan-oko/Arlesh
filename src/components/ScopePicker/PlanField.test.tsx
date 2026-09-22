@@ -76,8 +76,8 @@ describe("PlanField", () => {
 
   it("resolves the Time Scope window to constrain the picker when opened", async () => {
     vi.mocked(resolveScope).mockResolvedValue({
-      start: "2026-06-01T00:00:00",
-      end: "2026-07-01T00:00:00",
+      start: "2026-06-01T02:00:00",
+      end: "2026-07-01T02:00:00",
       active: false,
     });
     render(<PlanField value={null} timeScope={single(5)} onChange={vi.fn()} />);
