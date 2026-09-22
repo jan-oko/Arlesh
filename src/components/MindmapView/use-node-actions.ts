@@ -1,8 +1,10 @@
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
-import { findNode, findParent, collectAllNodeIds, owningFlowId } from "@/utils/mindmap-tree";
+import { findNode, findParent, collectAllNodeIds } from "@/utils/mindmap-tree";
 import { isValidDropTarget, validParentKinds } from "@/utils/node-meta";
+import { pasteRefusal, countPasteRefusals, pasteRefusalKey, PASTE_REFUSAL } from "@/utils/paste-refusal";
+import type { PasteRefusal, PasteRefusalCount } from "@/utils/paste-refusal";
 import type { TypedChildKind } from "@/utils/node-meta";
 import { updateTask } from "@/api/tasks";
 import type { TaskAgentic } from "@/api/tasks";
@@ -198,13 +200,59 @@ export function useNodeActions({
 
   const onDelete = useCallback(
     (nodeIds: string[]) => {
-      const valid = nodeIds.filter((id) => {
-        const node = findNode(tree, id);
-        return node !== undefined && node.kind !== "aspect";
-      });
-      if (valid.length > 0) onRequestDelete(valid);
+      const nodes = nodeIds
+        .map((id) => findNode(tree, id))
+        .filter((node): node is MindmapNode => node !== undefined);
+
+      // A virtual Habit repetition is derived at load time, so there is no row to delete — and the
+      // Habit's template behind it is emphatically not what `Delete` on one occurrence should take
+      // away. It is refused here, in the List View's words (`useListDelete` raises the same key),
+      // because one gesture on one kind of node must not read two ways depending on the surface.
+      // Refusing this early is the whole point: the guard used to stop at `kind !== "aspect"`, so a
+      // repetition raised the confirmation and then reached `dbIdFromNodeId`, which rejects the
+      // `-virtual` tail — the user answered a dialog that could only end in "delete failed".
+      //
+      // One repetition anywhere in the selection refuses the **whole** gesture, rather than taking
+      // the real nodes and naming what was skipped the way `onPaste` does. Two reasons, and the
+      // second decides it. A delete is destructive where a paste is additive, so acting on half of
+      // a selection the user did not mean costs data rather than a stray copy. And the notice would
+      // not be read: it is a viewport toast that fades after three seconds, and confirming a delete
+      // puts the modal's overlay over the top of it — "deleted the rest, mentioned the skip" would
+      // be a silent skip wearing a message, which is the thing the rule exists to forbid.
+      const repetition = nodes.find((node) => node.virtual === true);
+      if (repetition !== undefined) {
+        showToast({ nodeId: repetition.id, message: t("warnings:deleteRepetitionRefused") });
+        return;
+      }
+
+      const valid = nodes.filter((node) => node.kind !== "aspect");
+      if (valid.length > 0) onRequestDelete(valid.map((node) => node.id));
     },
-    [tree, onRequestDelete],
+    [tree, onRequestDelete, showToast, t],
+  );
+
+  /**
+   * One refusal line, as a sentence.
+   *
+   * A refusal about the node reads the same however it arose, so it takes the count alone. The
+   * destination refusal is the one that has to be built, because it is the only one that used to
+   * say nothing: it names the kind that was refused, what it was dropped on, and — from
+   * `validParentKinds`, which is the drop rule read the other way round — where it would have gone.
+   * The count's noun is the kind itself, whose plural comes from `nodeKinds`, which is why the
+   * frame in `warnings` needs no plural of its own.
+   */
+  const refusalSentence = useCallback(
+    (line: PasteRefusalCount, parentKind: NodeKind): string => {
+      const key = pasteRefusalKey(line);
+      if (line.reason !== PASTE_REFUSAL.HERE) return t(key, { count: line.count });
+      return t(key, {
+        count: line.count,
+        child: t(`nodeKinds:${line.child}`, { count: line.count }),
+        parent: t(`nodeKinds:${parentKind}`),
+        parents: line.validParents.map((kind) => t(`nodeKinds:${kind}`)).join(", "),
+      });
+    },
+    [t],
   );
 
   const onPaste = useCallback(
@@ -214,31 +262,27 @@ export function useNodeActions({
       if (targetNode === undefined) return;
       const isCopy = clipboard.operation === CLIPBOARD_OP.COPY;
 
-      // A node is pasteable here if drag-and-drop would allow the same reparent (e.g. aspects are
-      // fixed and can't be reparented) and it isn't a derived, DB-less virtual node. A COPY refuses
-      // two more things. A Commitment, which has no duplicate command: its would have to decide
-      // what a copy of a recorded Verdict means, and nobody has. And a flow item pasted into a
-      // *different* flow, because its Cycle Scope is an offset into its own flow's window and
-      // another window does not share it. Refused here rather than in `duplicateNode` so it is
-      // *said* — the skipped-paste toast names the count, instead of the copy failing where
-      // nothing is watching.
+      // Every reason a node is left behind lives in `pasteRefusal`, which the drag-and-drop rule is
+      // only one of: an Aspect is fixed wherever you point, a Habit repetition has no row behind it
+      // to copy, a Commitment has no duplicate at all (what a copy of a recorded Verdict means has
+      // never been decided), and a flow item's Cycle Scope is an offset into its own Flow's window,
+      // which another Flow's does not share. Refused here rather than in `duplicateNode` so each one
+      // is *said*, instead of the copy failing where nothing is watching.
+      const refusals: PasteRefusal[] = [];
       const nodeIds = clipboard.nodeIds.filter((id) => {
-        const node = findNode(tree, id);
-        if (node === undefined || node.virtual === true) return false;
-        if (!isValidDropTarget(node.kind, targetNode.kind)) return false;
-        if (isCopy && node.kind === "commitment") return false;
-        if (
-          isCopy &&
-          (node.kind === "flow_goal" || node.kind === "flow_task") &&
-          owningFlowId(tree, id) !== owningFlowId(tree, targetId)
-        ) {
-          return false;
-        }
-        return true;
+        const refusal = pasteRefusal(tree, id, targetNode, isCopy);
+        if (refusal === null) return true;
+        refusals.push(refusal);
+        return false;
       });
-      const skippedCount = clipboard.nodeIds.length - nodeIds.length;
-      if (skippedCount > 0) {
-        showToast({ nodeId: targetId, message: t("pasteSkipped", { count: skippedCount }) });
+      // One toast carrying every reason, never one call per reason: the store holds a single pending
+      // toast, so a second `showToast` would overwrite the first and the node it spoke for would be
+      // dropped in silence — exactly what this message exists to prevent.
+      if (refusals.length > 0) {
+        const message = countPasteRefusals(refusals)
+          .map((line) => refusalSentence(line, targetNode.kind))
+          .join(" ");
+        showToast({ nodeId: targetId, message });
       }
       if (nodeIds.length === 0) return;
       const selectedSet = new Set(nodeIds);
@@ -283,7 +327,7 @@ export function useNodeActions({
         console.error(`${LOG_PREFIX} paste failed:`, err);
       });
     },
-    [clipboard, tree, moveNode, duplicateNode, setClipboard, showToast, t],
+    [clipboard, tree, moveNode, duplicateNode, setClipboard, showToast, refusalSentence, t],
   );
 
   const onCreateSibling = useCallback(

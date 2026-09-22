@@ -96,6 +96,18 @@ pub enum SnapshotOperation {
         /// Omit for the first page. Never construct one by hand — its form is not a promise.
         #[serde(default)]
         cursor: Option<String>,
+        /// Read the board under one of the List View's status presets, instead of whole.
+        ///
+        /// `{"preset": "start"}` answers "what can I begin now?" with the rules the user is
+        /// looking at, rather than an approximation assembled from `lifecycles`. Omit it — the
+        /// default — for every node on the board.
+        ///
+        /// It narrows the domain, goal, task, commitment and info sections, and the lifecycles,
+        /// block reasons and dependencies derived from them. The flow sections are never narrowed:
+        /// a Flow's subtree and a Habit's occurrences are assembled from these rows rather than
+        /// being rows themselves, so there is nothing for a preset to judge.
+        #[serde(default)]
+        filter: Option<crate::filters::model::BoardFilter>,
     },
 }
 
@@ -212,8 +224,8 @@ pub enum BeadsNode {
 pub enum BeadsOperation {
     /// Links a Task, Goal, Commitment or Project to a `bd` issue, or clears the link.
     ///
-    /// This is the only way the link can be set: no Tauri command writes it and the UI renders it
-    /// read-only, so an issue id in Arlesh always came from here.
+    /// This is the only way the link can be *set*: the one Tauri command that writes the column
+    /// only ever clears it, so an issue id in Arlesh always came from here.
     Set {
         /// Which kind of resource to link.
         node_type: BeadsNode,

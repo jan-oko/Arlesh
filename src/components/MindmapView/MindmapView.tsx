@@ -6,6 +6,7 @@ import { useDrag } from "./use-drag";
 import { useCanvasLayout } from "./use-canvas-layout";
 import { useNodeTypeManager } from "./use-node-type-manager";
 import { useNodeEditor } from "./use-node-editor";
+import { BEADS_NODE_TYPE } from "@/api/beads";
 import { useNodeActions } from "./use-node-actions";
 import { useContextAction } from "./use-context-action";
 import { useNavigateArrow } from "./use-navigate-arrow";
@@ -177,7 +178,8 @@ export default function MindmapView() {
 
   const {
     editorModal, setEditorModal, allTags, domainNames, availableForDep, onDoubleClick,
-    onTaskSave, onGoalSave, onCommitmentSave, onSimpleSave, onProjectSave, onInfoSave, onFlowSave, onFlowItemSave,
+    onTaskSave, onGoalSave, onCommitmentSave, onSimpleSave, onProjectSave, onInfoSave,
+    onClearBeadsId, onFlowSave, onFlowItemSave,
     checkScopeClamp, confirmScopeClamp, scopeClampRequest, resolveScopeClamp,
   } = useNodeEditor({ tree, allTasksAndGoals, reload });
 
@@ -649,19 +651,19 @@ export default function MindmapView() {
       <AnchoredToast toast={pendingToast} onDismiss={clearToast} />
 
       {editorModal !== null && editorModal.node.kind === "task" && (
-        <TaskEditorModal node={editorModal.node} allTags={allTags} domainNames={domainNames} availableForDep={availableForDep} onSave={onTaskSave} onCheckScopeClamp={checkScopeClamp} onClose={() => setEditorModal(null)} />
+        <TaskEditorModal node={editorModal.node} allTags={allTags} domainNames={domainNames} availableForDep={availableForDep} onSave={onTaskSave} onClearBeadsId={() => onClearBeadsId(BEADS_NODE_TYPE.TASK)} onCheckScopeClamp={checkScopeClamp} onClose={() => setEditorModal(null)} />
       )}
       {editorModal !== null && editorModal.node.kind === "goal" && (
-        <GoalEditorModal node={editorModal.node} allTags={allTags} domainNames={domainNames} onSave={onGoalSave} onCheckScopeClamp={checkScopeClamp} onClose={() => setEditorModal(null)} />
+        <GoalEditorModal node={editorModal.node} allTags={allTags} domainNames={domainNames} onSave={onGoalSave} onClearBeadsId={() => onClearBeadsId(BEADS_NODE_TYPE.GOAL)} onCheckScopeClamp={checkScopeClamp} onClose={() => setEditorModal(null)} />
       )}
       {editorModal !== null && editorModal.node.kind === "commitment" && (
-        <CommitmentEditorModal node={editorModal.node} allTags={allTags} domainNames={domainNames} onSave={onCommitmentSave} onClose={() => setEditorModal(null)} />
+        <CommitmentEditorModal node={editorModal.node} allTags={allTags} domainNames={domainNames} onSave={onCommitmentSave} onClearBeadsId={() => onClearBeadsId(BEADS_NODE_TYPE.COMMITMENT)} onClose={() => setEditorModal(null)} />
       )}
       {editorModal !== null && editorModal.node.kind === "domain" && (
         <TitleEditorModal heading={t("editor:editDomain")} title={editorModal.node.title} isPrivate={editorModal.node.isPrivate ?? false} onSave={onSimpleSave} onClose={() => setEditorModal(null)} />
       )}
       {editorModal !== null && editorModal.node.kind === "project" && (
-        <ProjectEditorModal node={editorModal.node} onSave={onProjectSave} onClose={() => setEditorModal(null)} />
+        <ProjectEditorModal node={editorModal.node} onSave={onProjectSave} onClearBeadsId={() => onClearBeadsId(BEADS_NODE_TYPE.PROJECT)} onClose={() => setEditorModal(null)} />
       )}
       {editorModal !== null && editorModal.node.kind === "tag" && (
         <TitleEditorModal heading={t("editor:editTag")} title={editorModal.node.title} isPrivate={editorModal.node.isPrivate ?? false} onSave={onSimpleSave} onClose={() => setEditorModal(null)} />

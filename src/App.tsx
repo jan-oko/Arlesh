@@ -10,6 +10,7 @@ import { useTabsStore } from "@/stores/use-tabs-store";
 import { TabStoresContext } from "@/stores/tab-stores-context";
 import { useHotkeys } from "@/hooks/use-hotkeys";
 import { useTabCommands } from "@/hooks/use-tab-commands";
+import { useCloseToTraySync } from "@/hooks/use-close-to-tray";
 import { TAB_BINDINGS } from "@/utils/hotkeys/tab-bindings";
 import styles from "./App.module.css";
 
@@ -21,6 +22,8 @@ export default function App() {
   const tabs = useTabsStore((s) => s.tabs);
   const activeTabId = useTabsStore((s) => s.activeTabId);
   const { openTab, closeTab, nextTab, previousTab, jumpToTab } = useTabCommands();
+
+  useCloseToTraySync();
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;

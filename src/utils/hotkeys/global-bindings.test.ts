@@ -4,7 +4,7 @@ import type { GlobalContext } from "./global-bindings";
 import { matchesChord } from "./chord";
 
 function makeContext(): GlobalContext {
-  return { onToggleView: vi.fn(), onToggleHotkeys: vi.fn(), onToggleFullscreen: vi.fn() };
+  return { onToggleView: vi.fn(), onToggleHotkeys: vi.fn(), onToggleFullscreen: vi.fn(), onQuit: vi.fn() };
 }
 
 function runFor(code: string, modifiers: Partial<KeyboardEventInit>, ctx: GlobalContext): boolean {
@@ -32,6 +32,23 @@ describe("GLOBAL_BINDINGS", () => {
     const ctx = makeContext();
     expect(runFor("F11", {}, ctx)).toBe(true);
     expect(ctx.onToggleFullscreen).toHaveBeenCalledTimes(1);
+  });
+
+  it("when Ctrl+Q is pressed, quits the app", () => {
+    const ctx = makeContext();
+    expect(runFor("KeyQ", { ctrlKey: true }, ctx)).toBe(true);
+    expect(ctx.onQuit).toHaveBeenCalledTimes(1);
+  });
+
+  it("when Q is pressed on its own, quits nothing", () => {
+    const ctx = makeContext();
+    expect(runFor("KeyQ", {}, ctx)).toBe(false);
+    expect(ctx.onQuit).not.toHaveBeenCalled();
+  });
+
+  it("does not repeat the quit while Ctrl+Q is held", () => {
+    const quit = GLOBAL_BINDINGS.find((b) => b.id === "global.quit");
+    expect(quit?.allowRepeat).toBe(false);
   });
 
   it("when Alt+Shift+L is pressed, matches nothing", () => {

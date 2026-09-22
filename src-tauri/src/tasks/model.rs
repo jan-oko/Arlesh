@@ -296,7 +296,7 @@ pub struct Task {
     /// The `bd` issue tracking this task, if any (e.g. `"Arlesh-5fs"`). Sourced only from the MCP
     /// server, through [`TaskOperator::set_beads_id`](crate::tasks::TaskOperator::set_beads_id);
     /// [`UpdateTaskRequest`] deliberately has no field for it. Duplicating a node propagates
-    /// the id it already has.
+    /// the id it already has, and the Issue row's × drops the link — neither writes a new one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub beads_id: Option<String>,
 }
@@ -348,7 +348,7 @@ pub struct Goal {
     /// The `bd` issue tracking this goal, if any (e.g. `"Arlesh-5fs"`). Sourced only from the MCP
     /// server, through [`GoalOperator::set_beads_id`](crate::tasks::GoalOperator::set_beads_id);
     /// [`UpdateGoalRequest`] deliberately has no field for it. Duplicating a node propagates
-    /// the id it already has.
+    /// the id it already has, and the Issue row's × drops the link — neither writes a new one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub beads_id: Option<String>,
 }
@@ -582,8 +582,9 @@ pub struct Commitment {
     pub position: i64,
     /// Whether this node is private (hidden unless Private Mode is on).
     pub is_private: bool,
-    /// The `bd` issue tracking this commitment, if any. Written only by the MCP server, through
-    /// [`CommitmentOperator::set_beads_id`](crate::tasks::CommitmentOperator::set_beads_id).
+    /// The `bd` issue tracking this commitment, if any. Sourced only from the MCP server, through
+    /// [`CommitmentOperator::set_beads_id`](crate::tasks::CommitmentOperator::set_beads_id); the
+    /// UI can drop the link but never write one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub beads_id: Option<String>,
 }

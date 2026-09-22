@@ -9,7 +9,7 @@ import { DEFAULT_FILTER } from "@/utils/filter-tree";
 import { DEFAULT_LIST_FILTER } from "@/utils/list-filter";
 import type { CommitmentListRow, TaskListRow } from "@/utils/list-filter";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
-import type { Verdict } from "@/api/commitments";
+import type { Verdict } from "@/api/verdict";
 import { useListData } from "@/hooks/use-list-data";
 import { LIST_SCROLL_STEP_PX } from "@/hooks/use-list-scroll";
 

@@ -1,12 +1,11 @@
 import { useEffect } from "react";
+import { dismissDelay, TOAST_FADE_MS } from "@/utils/toast-timing";
 import styles from "./StatusToast.module.css";
 
 interface Props {
   message: string;
   onDismiss: () => void;
 }
-
-const AUTO_DISMISS_MS = 3000;
 
 /**
  * A transient notice about the thing the user just acted on — a retype status remap, a refused
@@ -19,10 +18,19 @@ const AUTO_DISMISS_MS = 3000;
  * the selected one, already on screen and already highlighted. See the stylesheet.
  */
 export default function StatusToast({ message, onDismiss }: Props) {
-  useEffect(() => {
-    const timer = setTimeout(onDismiss, AUTO_DISMISS_MS);
-    return () => clearTimeout(timer);
-  }, [onDismiss]);
+  const delay = dismissDelay(message);
 
-  return <div className={styles.toast}>{message}</div>;
+  useEffect(() => {
+    const timer = setTimeout(onDismiss, delay);
+    return () => clearTimeout(timer);
+  }, [onDismiss, delay]);
+
+  // The one inline style, and deliberately not a coordinate: the fade has to start when this
+  // particular message has been read, or a longer toast would sit invisible until it unmounted.
+  // It overrides only the delay of the stylesheet's `animation` shorthand.
+  return (
+    <div className={styles.toast} style={{ animationDelay: `${(delay - TOAST_FADE_MS) / 1000}s` }}>
+      {message}
+    </div>
+  );
 }

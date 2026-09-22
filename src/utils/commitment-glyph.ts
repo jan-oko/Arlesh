@@ -1,5 +1,5 @@
-import type { Verdict } from "@/api/commitments";
-import { VERDICT } from "@/api/commitments";
+import type { Verdict } from "@/api/verdict";
+import { VERDICT } from "@/api/verdict";
 
 /**
  * The four states a Commitment's glyph draws, in the order a commitment passes through them.

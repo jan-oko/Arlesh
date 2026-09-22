@@ -5,6 +5,7 @@ export interface GlobalContext {
   onToggleView: () => void;
   onToggleHotkeys: () => void;
   onToggleFullscreen: () => void;
+  onQuit: () => void;
 }
 
 /** Bindings that apply everywhere, regardless of which view is showing. */
@@ -24,6 +25,16 @@ export const GLOBAL_BINDINGS: readonly Binding<GlobalContext>[] = [
     chord: { code: "F11" },
     labelKey: "toggleFullscreen",
     run: (c) => c.onToggleFullscreen(),
+  },
+  {
+    // Quitting has to be reachable without the mouse, because with close-to-tray on the close
+    // button no longer does it. Ctrl+Q is where every desktop app puts this.
+    id: "global.quit",
+    section: "global",
+    chord: { code: "KeyQ", ctrl: true },
+    labelKey: "quitApp",
+    allowRepeat: false,
+    run: (c) => c.onQuit(),
   },
   {
     id: "global.toggleHotkeys",

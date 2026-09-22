@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeNodeDimensions, estimateWrappedLineCount, getNodeSize, validTypesForCycling, typeAcceptsChildren, isValidDropTarget, computeEditHeight, validParentKinds, canParentNewTask, TYPED_CHILD_KINDS } from "./node-meta";
+import { computeNodeDimensions, estimateWrappedLineCount, getNodeSize, validTypesForCycling, typeAcceptsChildren, isValidDropTarget, computeEditHeight, validParentKinds, isFlowKind, canParentNewTask, TYPED_CHILD_KINDS } from "./node-meta";
 import type { MindmapNode } from "./tree-layout";
 
 describe("computeNodeDimensions", () => {
@@ -368,6 +368,19 @@ describe("validParentKinds", () => {
 
   it("lets an Info sit under everything but a Tag", () => {
     expect(validParentKinds("info")).toEqual(["aspect", "domain", "project", "goal", "task", "commitment", "info"]);
+  });
+
+  // A flow item used to get an empty list, because the candidates were the real kinds only — so a
+  // refusal could say a flow item cannot sit here without being able to say where it does sit.
+  it("puts a flow item inside a Flow, which is the only place one lives", () => {
+    expect(validParentKinds("flow_task")).toEqual(["flow", "flow_goal", "flow_task"]);
+    expect(validParentKinds("flow_goal")).toEqual(["flow", "flow_goal"]);
+  });
+
+  it("keeps the flow world out of every real kind's answer", () => {
+    for (const child of ["domain", "project", "goal", "task", "commitment", "info", "tag", "flow"] as const) {
+      expect(validParentKinds(child).some(isFlowKind)).toBe(false);
+    }
   });
 
   it("agrees with isValidDropTarget for every kind it lists and every kind it omits", () => {

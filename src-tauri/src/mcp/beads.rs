@@ -1,9 +1,11 @@
 //! The issue-link tool — the only write on this server.
 //!
-//! A Task, Goal, Commitment or Project can carry the id of the `bd` issue that tracks it. Nothing else can set
-//! it: no Tauri command writes the column and the UI renders it read-only, so an issue id in
-//! Arlesh always arrived through here. That is the whole point of the field — it records a link an
-//! agent established, and the app displays it without pretending the user maintains it.
+//! A Task, Goal, Commitment or Project can carry the id of the `bd` issue that tracks it. Nothing else can
+//! *set* it: the only Tauri command that writes the column
+//! ([`clear_beads_id`](crate::commands::beads::clear_beads_id)) writes null and nothing else, so an
+//! issue id in Arlesh always arrived through here. That is the whole point of the field — it
+//! records a link an agent established, and the app displays it without pretending the user
+//! maintains it. The user can drop that link, which needs no id; they cannot write one.
 
 use rmcp::{
     handler::server::wrapper::Parameters,
@@ -66,7 +68,7 @@ impl ArleshMcp {
         // column and would otherwise need no transaction at all. The write has to be **tagged**:
         // the Undo Journal's ambient source is one row shared by every connection, so the only
         // thing that makes "the source is mcp" true for exactly these statements is holding
-        // SQLite's single writer lock from the moment it is set until it is put back — which is
+        // SQLite's single writer lock from before it is set until it is put back — which is
         // what a transaction is. The restore is also what stops an agent's tag outliving the
         // write; on any failure below the session drops and rolls the tag back with everything
         // else.

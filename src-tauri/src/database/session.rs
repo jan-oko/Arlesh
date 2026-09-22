@@ -12,6 +12,21 @@
 //! distinct types, so an operation that requires atomicity says so in its signature and cannot
 //! be handed a pooled session by mistake.
 //!
+//! # A transactional session is a writer
+//!
+//! `begin` is the mode for operations that write, and it takes SQLite's single writer lock at the
+//! `BEGIN`, before its first statement. That is not an optimisation, it is what makes the mode
+//! usable at all: a transaction that reads first and writes later cannot *become* a writer once
+//! another connection is one. SQLite refuses that upgrade with `SQLITE_BUSY` immediately and
+//! skips the busy handler, because a transaction already holding a read lock cannot be made to
+//! wait without risking deadlock — so no timeout, retry or journal mode rescues it. The only
+//! remedy is to be the writer from the start, which is what `BEGIN IMMEDIATE` says.
+//!
+//! The cost is that two transactional sessions serialise: the second waits at its `BEGIN` for the
+//! first to commit, up to the busy timeout [`crate::database`] sets. That is the honest price of
+//! a single-writer database, paid as a queue instead of as a failure. Reads pay nothing — a
+//! `Db<Pooled>` opens no transaction, and under WAL it never waits on a writer.
+//!
 //! See `docs/adr/0004-database-sessions-and-resource-operators.md`.
 
 use std::ops::DerefMut;
@@ -279,13 +294,26 @@ impl SessionFactory {
         Ok(Db { handle })
     }
 
-    /// Checks one connection out of the pool and opens a transaction on it.
+    /// Checks one connection out of the pool and opens a write transaction on it.
     ///
     /// Everything written through the resulting session lands atomically, or not at all:
     /// [`Db::commit`] applies it, and dropping the session without committing discards it.
+    ///
+    /// The transaction is **immediate**: the writer lock is taken here, at the `BEGIN`, rather
+    /// than at the session's first write. A deferred `BEGIN` — sqlx's default, and what this was
+    /// until `Arlesh-odd` — defers the lock to the first write, by which time the session is
+    /// holding a read lock and SQLite will refuse the upgrade outright if anyone else is writing.
+    /// That refusal is not retryable, so the read-then-write shape every composite operation has
+    /// (`load_mindmap` reads thirteen lists before it mints a single scope row) was one
+    /// concurrent writer away from failing. See this module's header.
+    ///
+    /// So `begin` can now **wait**, for as long as another writer holds the lock and no longer
+    /// than the busy timeout [`crate::database`] sets. There is no second, read-only entry point
+    /// beside it: a session that only reads wants [`Self::connect`], which is what its own doc
+    /// already says.
     #[tracing::instrument(skip(self))]
     pub async fn begin(&self) -> Result<Db<Transactional>, sqlx::Error> {
-        let handle = self.pool.begin().await?;
+        let handle = self.pool.begin_with("BEGIN IMMEDIATE").await?;
         Ok(Db { handle })
     }
 }

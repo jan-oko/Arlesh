@@ -30,7 +30,7 @@ The root of the map is "Arlesh" (top level). Aspect cells are its direct childre
 - `E` — open the selected cell's editor; `Double-click` does the same
 - `B` — put the selected Task in the Backlog, or take it out (real Tasks only — a virtual Habit occurrence has no row of its own to set aside, so the binding is inactive on one rather than silently doing nothing)
 - `A` — toggle the selected Task's Agentic flag: whatever it reads as now, one press writes the opposite (**Agentic ↔ Not agentic**); *Inherit* is resolved through, never written, so returning a Task to it means opening the editor (real Tasks only, on the same reasoning as `B`). Bare letters are flags on the selected Task, `Alt`+letter is a status preset, so `A` and `Alt+A` (the **All** preset) coexist exactly as `B` and `Alt+B` do — chord matching is strict about modifiers
-- `Delete` — delete the selection
+- `Delete` — delete the selection. A **virtual Habit occurrence** is refused out loud, in the same words the List View uses: it is derived at load time, so there is no row to delete, and the Habit's template behind it is emphatically not what `Delete` on one occurrence should take away. The refusal comes *before* the confirmation, not inside it — a dialog whose only possible outcome is "delete failed" is worse than no dialog. One occurrence anywhere in a **multi-selection refuses the whole gesture**, rather than deleting the real nodes and naming what was skipped the way paste does: a delete is destructive where a paste is additive, so acting on half of a selection you did not mean costs data, and the notice would be raised underneath the confirmation's own overlay and fade unread — a silent skip wearing a message. Adjust the selection and press again
 - `Ctrl+/` — collapse or expand the selected cell, including opening and re-folding a Habit's collapsed history (see *Habits*)
 - `Ctrl+X` / `Ctrl+C` / `Ctrl+V` — cut / copy / paste
 - `C` — center the view on the selection; `Ctrl+=` / `Ctrl+-` (and numpad `+`/`-`) — zoom
@@ -103,8 +103,25 @@ that is the model to reach for if this proves wrong.)
 
 Projects, Domains, Tags, Goals, Tasks, Infos, **Flows and flow items** are duplicable. Aspects,
 Commitments and virtual Habit instances are not, and a Flow hanging under a copied node is still not
-copied with it. A paste whose selection includes any of these pastes the rest and reports how many it
-skipped in a toast. Otherwise a copy is refused exactly where a move would be, by the same
+copied with it. A paste whose selection includes any of these pastes the rest and says in a toast what
+it skipped — **grouped by reason, one sentence per reason**, because only one of the reasons is about
+the destination. An Aspect is fixed wherever you point it, a Habit repetition has no row behind it to
+copy, and a Commitment or a flow item leaving its own Flow has no duplicate at all though cut still
+moves it; telling the user any of these "couldn't be pasted here" sends them to change a destination
+that was never the problem. A mixed selection reports every reason it hit, in **one** toast: the view
+holds a single pending toast, so a second would overwrite the first and skip a node in silence. A
+toast stays up long enough to be read, which is a function of how much it says, not a fixed three
+seconds.
+
+The refusal that **is** about the destination names the kind it refused, what that kind was dropped
+on, and — read off the drop-target rule itself, never off a list kept beside it — every kind that
+*would* have taken it: "1 Goal can't sit under Task — only under Aspect, Domain, Project, Goal." It
+is counted **per kind**, so a Goal and a Project refused by the same Task get a sentence each; one
+count over both would state a rule true of neither. A flow item is told about its Flow instead of
+being given that list, because a flow item's legal parents carry the same labels real nodes do and
+the list would read as a claim about Tasks and Goals in general.
+
+Otherwise a copy is refused exactly where a move would be, by the same
 drop-target rule; it lands at the end of the target's children; it is atomic, so a failure part-way
 leaves the tree untouched rather than half a subtree; and it leaves the clipboard intact, so the same
 subtree can be pasted into several places.

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import StatusToast from "./StatusToast";
+import { dismissDelay } from "@/utils/toast-timing";
 
 const defaultProps = {
   message: "Status updated",
@@ -32,7 +33,12 @@ describe("StatusToast", () => {
   it("carries no inline coordinate, so no anchor position can push it off screen", () => {
     render(<StatusToast {...defaultProps} />);
     const toast = screen.getByText("Status updated");
-    expect(toast.getAttribute("style")).toBeNull();
+    // The element does carry one inline style — when its fade starts — so what is pinned is the
+    // absence of a *position*, which is what the bug was made of.
+    expect(toast.style.left).toBe("");
+    expect(toast.style.top).toBe("");
+    expect(toast.style.right).toBe("");
+    expect(toast.style.bottom).toBe("");
   });
 
   // The message that exposed the bug: a refusal names the kind, its parent and every parent the
@@ -60,5 +66,21 @@ describe("StatusToast", () => {
     unmount();
     vi.advanceTimersByTime(3000);
     expect(defaultProps.onDismiss).not.toHaveBeenCalled();
+  });
+});
+
+// A long message needs longer on screen than the fixed three seconds every toast used to get, and
+// the fade has to wait for it — otherwise the toast is invisible for the time it gained.
+describe("StatusToast — a message long enough to need reading", () => {
+  const long = "1 Goal can't sit under Task — only under Aspect, Domain, Project, Goal.";
+
+  it("stays past three seconds and starts its fade only when its time is nearly up", () => {
+    const onDismiss = vi.fn();
+    render(<StatusToast message={long} onDismiss={onDismiss} />);
+    expect(screen.getByText(long).style.animationDelay).toBe(`${(dismissDelay(long) - 400) / 1000}s`);
+    vi.advanceTimersByTime(3000);
+    expect(onDismiss).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(dismissDelay(long) - 3000);
+    expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 });
