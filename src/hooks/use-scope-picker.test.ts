@@ -91,3 +91,33 @@ describe("useScopePicker — range mode", () => {
     expect(ts).toBeNull();
   });
 });
+
+describe("useScopePicker — seeding", () => {
+  it("seeds a range picker from a stored window and resolves it back unchanged", async () => {
+    const { result } = renderHook(() => useScopePicker("range"));
+    act(() => result.current.seed([week("2026-06-14"), week("2026-06-28")]));
+    expect(result.current.range).toEqual({ start: week("2026-06-14"), end: week("2026-06-28") });
+    expect(await result.current.resolve()).toEqual({ start_id: 1, end_id: 2 });
+  });
+
+  it("makes a seeded range closed, so the next click starts a new one", () => {
+    const { result } = renderHook(() => useScopePicker("range"));
+    act(() => result.current.seed([week("2026-06-14"), week("2026-06-14")]));
+    act(() => result.current.handleClick(week("2026-06-28")));
+    expect(result.current.range).toEqual({ start: week("2026-06-28"), end: null });
+  });
+
+  it("seeds a single picker with the first cell", () => {
+    const { result } = renderHook(() => useScopePicker("single"));
+    act(() => result.current.seed([week("2026-06-14")]));
+    expect(result.current.single).toEqual(week("2026-06-14"));
+  });
+
+  it("seeding an empty list clears the selection", async () => {
+    const { result } = renderHook(() => useScopePicker("range"));
+    act(() => result.current.handleClick(week("2026-06-14")));
+    act(() => result.current.seed([]));
+    expect(result.current.range).toEqual({ start: null, end: null });
+    expect(await result.current.resolve()).toBeNull();
+  });
+});
