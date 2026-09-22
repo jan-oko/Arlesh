@@ -2,7 +2,7 @@ import type { Binding } from "@/utils/hotkeys/chord";
 import type { MindmapSelectionContext } from "./selection";
 import { selectedNode } from "./selection";
 
-/** What the two flags on a Task act on. */
+/** What the flags on a Task act on. */
 export interface MindmapFlagsContext extends MindmapSelectionContext {
   /** Puts the anchor Task in the backlog, or takes it out. Acts on the anchor, never the whole
    * multi-selection — setting work aside is a judgement about one thing at a time. */
@@ -10,9 +10,12 @@ export interface MindmapFlagsContext extends MindmapSelectionContext {
   /** Flips the anchor Task between Agentic and Not agentic, whichever it currently reads as. The
    * anchor only, for the same reason Backlog acts on one node. */
   onToggleAgentic: (id: string) => void;
+  /** Flips the anchor Task's Asynchronous flag: whether doing it starts a wait. The anchor only,
+   * for the same reason the other two act on one node. */
+  onToggleAsynchronous: (id: string) => void;
 }
 
-/** A real Task, not a virtual Habit instance — the two flags are columns on a task row. */
+/** A real Task, not a virtual Habit instance — these flags are columns on a task row. */
 function isFlaggableTask(c: MindmapSelectionContext): boolean {
   const node = selectedNode(c);
   return node !== undefined && node.kind === "task" && node.habitItem === undefined;
@@ -37,5 +40,17 @@ export const MINDMAP_FLAGS_BINDINGS: readonly Binding<MindmapFlagsContext>[] = [
     labelKey: "toggleAgentic",
     when: isFlaggableTask,
     run: (c) => { if (c.selectedNodeId !== null) c.onToggleAgentic(c.selectedNodeId); },
+  },
+  {
+    // W for **wait**, the thing an asynchronous Task starts. Bare, beside A and B, on the same
+    // rule: a flag on the selected Task is a bare letter, Alt+letter is a status preset. Nothing
+    // else binds W in either section.
+    //
+    // Excluded for the same reason the other two are: a virtual Habit instance has no task row
+    // to flag.
+    id: "mindmap.toggleAsynchronous", section: "mindmap", chord: { code: "KeyW" },
+    labelKey: "toggleAsynchronous",
+    when: isFlaggableTask,
+    run: (c) => { if (c.selectedNodeId !== null) c.onToggleAsynchronous(c.selectedNodeId); },
   },
 ];

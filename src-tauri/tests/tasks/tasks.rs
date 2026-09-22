@@ -562,6 +562,112 @@ async fn agentic_is_set_kept_and_cleared_back_to_inheriting() {
     assert_eq!(stored, None, "inheriting is the stored NULL, not a stored false");
 }
 
+/// The Asynchronous flag's round trip: off on arrival, set, kept through an unrelated edit, and
+/// turned off again. Unflagging is the interesting half — with a plain boolean, `Some(false)` has
+/// to be a real answer and only an absent field may leave the column alone.
+#[tokio::test]
+async fn asynchronous_is_set_kept_and_cleared_again() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+
+    let task = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
+            title: "Order the casting".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            ..Default::default()
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
+        .unwrap();
+    assert!(!task.asynchronous, "nothing arrives flagged");
+
+    let flagged = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = update_task(&mut db,
+            task.id.into(),
+            UpdateTaskRequest { asynchronous: Some(true), ..Default::default() },
+        ).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
+        .unwrap();
+    assert!(flagged.asynchronous);
+
+    let renamed = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = update_task(&mut db,
+            task.id.into(),
+            UpdateTaskRequest { title: Some("Order the bell casting".into()), ..Default::default() },
+        ).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
+        .unwrap();
+    assert!(renamed.asynchronous, "an edit that says nothing leaves the flag alone");
+
+    let cleared = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = update_task(&mut db,
+            task.id.into(),
+            UpdateTaskRequest { asynchronous: Some(false), ..Default::default() },
+        ).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
+        .unwrap();
+    assert!(!cleared.asynchronous);
+
+    let stored: bool = sqlx::query_scalar("SELECT asynchronous FROM tasks WHERE id = ?")
+        .bind(task.id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert!(!stored, "the column holds the boolean, with no NULL third state to fall into");
+}
+
+/// Asynchronous does not inherit — deliberately unlike Agentic. A subtask of a Task that starts a
+/// wait is usually the work you do *after* the wait, so the flag stops at the row it is set on.
+#[tokio::test]
+async fn a_child_of_an_asynchronous_task_is_not_itself_asynchronous() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+
+    let parent = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
+            title: "Send the brief".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            asynchronous: Some(true),
+            ..Default::default()
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
+        .unwrap();
+    assert!(parent.asynchronous);
+
+    let child = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let __r = create_task(&mut db, CreateTaskRequest {
+            title: "Read the reply".into(),
+            parent_type: "task".into(),
+            parent_id: parent.id,
+            ..Default::default()
+        }).await;
+        if __r.is_ok() { db.commit().await.unwrap(); }
+        __r
+    }
+        .unwrap();
+    assert!(
+        !child.asynchronous,
+        "the flag is a property of one concrete action, not of a branch"
+    );
+}
+
 /// Agentic and Delegation are independent: a task can be both, and setting one never moves the
 /// other.
 #[tokio::test]

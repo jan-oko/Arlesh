@@ -34,6 +34,9 @@ export interface Task {
   // This task's own flag: true/false when it says so itself, null when it inherits the nearest
   // flagged ancestor's. Independent of delegate_to — a task can be both.
   agentic: boolean | null;
+  // Whether doing this task starts a wait rather than finishing something. A plain boolean, not a
+  // third state: the flag does not inherit, so there is nothing for a null to carry.
+  asynchronous: boolean;
   time_scope: TimeScope | null;
   // Present iff time_scope is (inherited with the window otherwise).
   on_scope_exit: OnScopeExit | null;
@@ -58,6 +61,7 @@ export interface CreateTaskRequest {
   plan?: TimeScope;
   archival?: TaskArchival;
   agentic?: TaskAgentic;
+  asynchronous?: boolean;
 }
 
 export interface UpdateTaskRequest {
@@ -66,6 +70,8 @@ export interface UpdateTaskRequest {
   delegate_to?: number | null;
   // Absent = leave unchanged; "inherit" puts the task back to reading its ancestors.
   agentic?: TaskAgentic;
+  // Absent = leave unchanged; false is a real answer that unflags the task.
+  asynchronous?: boolean;
   // Absent = leave unchanged, null = clear, value = set.
   time_scope?: TimeScope | null;
   // Forced null when the scope is cleared; defaulted to "keep" when a scope is set without one.

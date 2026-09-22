@@ -42,12 +42,12 @@ export function pillSide(mode: PillMode): PillSide {
 export type PillDimension =
   | "antecedent" | "dependency"
   | "taskStatus" | "goalStatus" | "projectStatus" | "verdict"
-  | "scopeState" | "blocked" | "agentic";
+  | "scopeState" | "blocked" | "agentic" | "asynchronous";
 
 export const PILL_DIMENSIONS: PillDimension[] = [
   "antecedent", "dependency",
   "taskStatus", "goalStatus", "projectStatus", "verdict",
-  "scopeState", "blocked", "agentic",
+  "scopeState", "blocked", "agentic", "asynchronous",
 ];
 
 /** List View's own preset selector: All/Plan/Start/Do write through to the shared status preset;
@@ -68,6 +68,9 @@ export const BLOCKED_VALUES = ["blocked", "not_blocked"] as const;
 /** The Agentic dimension's two values. A task reads as one or the other and never neither: an
  * unflagged task under an agentic one is agentic, and every other task is not. */
 export const AGENTIC_VALUES = ["agentic", "not_agentic"] as const;
+/** The Asynchronous dimension's two values. A task reads as one or the other and never neither:
+ * the flag is a plain boolean on the row itself, with no inherited third answer. */
+export const ASYNCHRONOUS_VALUES = ["asynchronous", "not_asynchronous"] as const;
 
 export type TaskStatusValue = (typeof TASK_STATUS_VALUES)[number];
 export type GoalStatusValue = (typeof GOAL_STATUS_VALUES)[number];
@@ -75,6 +78,7 @@ export type ProjectStatusValue = (typeof PROJECT_STATUS_VALUES)[number];
 export type ScopeStateValue = (typeof SCOPE_STATE_VALUES)[number];
 export type BlockedValue = (typeof BLOCKED_VALUES)[number];
 export type AgenticValue = (typeof AGENTIC_VALUES)[number];
+export type AsynchronousValue = (typeof ASYNCHRONOUS_VALUES)[number];
 
 export function isTaskStatusValue(value: string): value is TaskStatusValue {
   return (TASK_STATUS_VALUES as readonly string[]).includes(value);
@@ -104,6 +108,10 @@ export function isAgenticValue(value: string): value is AgenticValue {
   return (AGENTIC_VALUES as readonly string[]).includes(value);
 }
 
+export function isAsynchronousValue(value: string): value is AsynchronousValue {
+  return (ASYNCHRONOUS_VALUES as readonly string[]).includes(value);
+}
+
 export interface ListFilterState {
   preset: ListPreset;
   pills: Record<PillDimension, PillFilter[]>;
@@ -114,7 +122,7 @@ export const DEFAULT_LIST_FILTER: ListFilterState = {
   pills: {
     antecedent: [], dependency: [],
     taskStatus: [], goalStatus: [], projectStatus: [], verdict: [],
-    scopeState: [], blocked: [], agentic: [],
+    scopeState: [], blocked: [], agentic: [], asynchronous: [],
   },
 };
 
@@ -169,6 +177,9 @@ export interface TaskListRow {
   /** Whether the task reads as Agentic — its own flag, or the nearest flagged ancestor's. Resolved
    * once when the row is built, the same way the row's blocked-ness is. */
   isAgentic: boolean;
+  /** Whether doing this task starts a wait. Its own flag and nothing else — the value does not
+   * inherit, so unlike `isAgentic` there is no chain to resolve. */
+  isAsynchronous: boolean;
   /** Whether any ancestor (Project/Goal/Domain/Aspect) is marked private — outside Private Mode the
    * subtree is hidden as a unit even when the task itself isn't flagged (mirrors the Mindmap's
    * tree-pruning). */
@@ -312,6 +323,7 @@ function rowPassesFilters(row: TaskListRow, shared: FilterState, listFilter: Lis
   if (!matchesPillGroup(listFilter.pills.scopeState, row.scopeTokens)) return false;
   if (!matchesPillGroup(listFilter.pills.blocked, [row.isBlocked ? "blocked" : "not_blocked"])) return false;
   if (!matchesPillGroup(listFilter.pills.agentic, [row.isAgentic ? "agentic" : "not_agentic"])) return false;
+  if (!matchesPillGroup(listFilter.pills.asynchronous, [row.isAsynchronous ? "asynchronous" : "not_asynchronous"])) return false;
   return true;
 }
 

@@ -28,6 +28,7 @@ const EMPTY_DISPLAY = {
   displayProjectStatus: (v: string) => v, displayVerdict: (v: string) => v,
   displayScopeState: (v: string) => v, displayBlocked: (v: string) => v,
   displayAgentic: (v: string) => v,
+  displayAsynchronous: (v: string) => v,
 };
 
 function n(id: string, kind: NodeKind, extra: Partial<MindmapNode> = {}, children: MindmapNode[] = []): MindmapNode {

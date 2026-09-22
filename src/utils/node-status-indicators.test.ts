@@ -45,6 +45,30 @@ describe("deriveStatusIndicators — Agentic", () => {
   });
 });
 
+describe("deriveStatusIndicators — Asynchronous", () => {
+  it("badges a task whose doing starts a wait", () => {
+    expect(types(node("task", { status: "todo", asynchronous: true }))).toContain("asynchronous");
+  });
+
+  it("does not badge an unflagged task", () => {
+    expect(types(node("task", { status: "todo" }))).not.toContain("asynchronous");
+  });
+
+  it("does not badge a child of an asynchronous task — the flag does not inherit", () => {
+    // Deliberately unlike Agentic. A subtask of a Task that starts a wait is usually the work you
+    // do *after* the wait, so badging it would say the opposite of the truth.
+    const parent = node("task", { status: "todo", asynchronous: true });
+    const child = node("task", { status: "todo" });
+    expect(types({ ...parent, children: [child] })).toContain("asynchronous");
+    expect(types(child)).not.toContain("asynchronous");
+  });
+
+  it("sits alongside the other badges rather than replacing any of them", () => {
+    const flagged = node("task", { status: "todo", agentic: true, asynchronous: true, tagIds: [3] });
+    expect(types(flagged)).toEqual(["agentic", "asynchronous", "tags"]);
+  });
+});
+
 describe("deriveStatusIndicators", () => {
   it("returns no indicators for a bare task", () => {
     expect(deriveStatusIndicators(node("task", { status: "todo" }))).toEqual([]);

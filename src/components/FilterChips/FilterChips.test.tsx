@@ -28,6 +28,7 @@ const DISPLAY = {
   displayScopeState: (v: string) => `scope.${v}`,
   displayBlocked: (v: string) => `blocked.${v}`,
   displayAgentic: (v: string) => `agentic.${v}`,
+  displayAsynchronous: (v: string) => `asynchronous.${v}`,
 };
 
 beforeEach(() => {
