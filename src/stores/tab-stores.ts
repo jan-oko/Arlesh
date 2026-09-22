@@ -61,10 +61,10 @@ export function createTabStores(state: TabState = DEFAULT_TAB_STATE): TabStores 
 
 /** What to write down for a tab, read straight off its live stores. */
 export function readTabState(stores: TabStores): TabState {
-  const { view, mindmapOrientation } = stores.view.getState();
+  const { view, mindmapOrientation, planScopeKind } = stores.view.getState();
   return {
     subtreeRootId: stores.mindmap.getState().subtreeRootId,
-    view: { view, mindmapOrientation },
+    view: { view, mindmapOrientation, planScopeKind },
     filter: stores.filter.getState().filter,
     listFilter: stores.listFilter.getState().filter,
     expandedHabitGroupIds: [...stores.mindmap.getState().expandedHabitGroupIds],

@@ -3,6 +3,8 @@ import { DEFAULT_FILTER } from "@/utils/filter-tree";
 import type { ListFilterState } from "@/utils/list-filter";
 import { DEFAULT_LIST_FILTER, isListPreset, withCurrentPillDimensions } from "@/utils/list-filter";
 import type { ViewState } from "@/stores/use-view-store";
+import { DEFAULT_VIEW_STATE, isView } from "@/stores/use-view-store";
+import { isPlanScopeKind } from "@/utils/plan-scope";
 import type { TabState } from "@/stores/tab-stores";
 import { DEFAULT_TAB_STATE } from "@/stores/tab-stores";
 import { mergeFilterDefaults } from "@/stores/persist-merge";
@@ -90,11 +92,21 @@ function readStringList(value: unknown): string[] {
   return value.filter((item): item is string => typeof item === "string");
 }
 
+/**
+ * A stored view state, field by field. A `view` this build does not know — a tab left on a view
+ * that has since been renamed or removed — falls back to the default rather than leaving the tab
+ * rendering nothing at all; the same holds for a scope kind the Plan View cannot fill.
+ */
 function readViewState(value: unknown): ViewState {
   const source = isRecord(value) ? value : {};
-  const view = source["view"] === "list" ? "list" : "mindmap";
+  const storedView = source["view"];
+  const view = typeof storedView === "string" && isView(storedView) ? storedView : DEFAULT_VIEW_STATE.view;
   const mindmapOrientation = source["mindmapOrientation"] === "vertical" ? "vertical" : "horizontal";
-  return { view, mindmapOrientation };
+  const storedKind = source["planScopeKind"];
+  const planScopeKind = typeof storedKind === "string" && isPlanScopeKind(storedKind)
+    ? storedKind
+    : DEFAULT_VIEW_STATE.planScopeKind;
+  return { view, mindmapOrientation, planScopeKind };
 }
 
 /** A stored mindmap filter, with every field this build knows about present. */

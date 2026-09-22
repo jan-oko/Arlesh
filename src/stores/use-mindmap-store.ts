@@ -41,6 +41,15 @@ export interface MindmapStore {
   expandedHabitGroupIds: ReadonlySet<string>;
   pendingToast: PendingToast | null;
   subtreeNav: SubtreeNav | null;
+  /**
+   * Whether the node search is open. Per tab, and **not** persisted — it is working state.
+   *
+   * The flag lives here rather than in a view's own `useState` because `Ctrl+O` is a global
+   * binding: the global table's context comes from `ActiveTab`, which holds no tree and so cannot
+   * build the search list itself. The chord raises the flag; whichever view is mounted draws the
+   * modal, because that is where the loaded tree already is.
+   */
+  searchOpen: boolean;
 
   selectNode: (id: string | null) => void;
   addToSelection: (id: string) => void;
@@ -73,6 +82,8 @@ export interface MindmapStore {
   collapseSubtree: (collapsedIdsToAdd: ReadonlySet<string>, habitGroupIdsToShut: ReadonlySet<string>) => void;
   showToast: (toast: PendingToast) => void;
   clearToast: () => void;
+  openSearch: () => void;
+  closeSearch: () => void;
   setSubtreeNav: (nav: SubtreeNav | null) => void;
 }
 
@@ -96,6 +107,7 @@ export function createMindmapStore(
     expandedHabitGroupIds,
     pendingToast: null,
     subtreeNav: null,
+    searchOpen: false,
 
     selectNode: (id) =>
       set({
@@ -172,6 +184,9 @@ export function createMindmapStore(
 
     showToast: (toast) => set({ pendingToast: toast }),
     clearToast: () => set({ pendingToast: null }),
+
+    openSearch: () => set({ searchOpen: true }),
+    closeSearch: () => set({ searchOpen: false }),
   }));
 }
 

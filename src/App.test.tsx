@@ -11,6 +11,7 @@ import { useHotkeysStore } from "@/stores/use-hotkeys-store";
 vi.mock("@/components/TopBar/TopBar", () => ({ default: () => <div data-testid="top-bar" /> }));
 vi.mock("@/components/MindmapView/MindmapView", () => ({ default: () => <div data-testid="mindmap-view" /> }));
 vi.mock("@/components/ListView/ListView", () => ({ default: () => <div data-testid="list-view" /> }));
+vi.mock("@/components/PlanView/PlanView", () => ({ default: () => <div data-testid="plan-view" /> }));
 vi.mock("@/api/window", async () => (await import("@/test/window-api-mock")).windowApi());
 
 const mockCloseWindow = vi.mocked(closeWindow);
@@ -40,20 +41,48 @@ describe("App", () => {
     expect(screen.queryByTestId("mindmap-view")).not.toBeInTheDocument();
   });
 
-  it("Alt+L toggles between views", () => {
+  it("renders the Plan view once the store switches to it", () => {
+    useViewStore.setState({ view: "plan" });
     render(<App />);
-    fireEvent.keyDown(window, { code: "KeyL", altKey: true });
+    expect(screen.getByTestId("plan-view")).toBeInTheDocument();
+    expect(screen.queryByTestId("mindmap-view")).not.toBeInTheDocument();
+  });
+
+  // One chord per view, not a cycle: Ctrl+L names the List and says nothing about where you were.
+  it("Ctrl+L shows the List and leaves it showing when pressed again", () => {
+    render(<App />);
+    fireEvent.keyDown(window, { code: "KeyL", ctrlKey: true });
     expect(useViewStore.getState().view).toBe("list");
-    fireEvent.keyDown(window, { code: "KeyL", altKey: true });
+    fireEvent.keyDown(window, { code: "KeyL", ctrlKey: true });
+    expect(useViewStore.getState().view).toBe("list");
+  });
+
+  it("Ctrl+M shows the Mindmap from wherever you were", () => {
+    useViewStore.setState({ view: "list" });
+    render(<App />);
+    fireEvent.keyDown(window, { code: "KeyM", ctrlKey: true });
     expect(useViewStore.getState().view).toBe("mindmap");
   });
 
-  it("does not toggle while typing in an input", () => {
+  it("Ctrl+P shows the Plan view", () => {
+    render(<App />);
+    fireEvent.keyDown(window, { code: "KeyP", ctrlKey: true });
+    expect(useViewStore.getState().view).toBe("plan");
+  });
+
+  // The dispatcher returns early on a typing target, so a save or print reflex inside a rename box
+  // or an editor field is still just a reflex — it never reaches the switcher. Worth pinning:
+  // Ctrl+S and Ctrl+P are exactly what someone will try while a field has the keyboard.
+  it.each([
+    { code: "KeyL", name: "Ctrl+L" },
+    { code: "KeyP", name: "Ctrl+P" },
+    { code: "KeyS", name: "Ctrl+S" },
+  ])("does not switch views on $name while typing in an input", ({ code }) => {
     render(<App />);
     const input = document.createElement("input");
     document.body.appendChild(input);
     input.focus();
-    fireEvent.keyDown(input, { code: "KeyL", altKey: true });
+    fireEvent.keyDown(input, { code, ctrlKey: true });
     expect(useViewStore.getState().view).toBe("mindmap");
     document.body.removeChild(input);
   });

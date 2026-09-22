@@ -78,7 +78,7 @@ describe("seeding a tab", () => {
   it("starts it where the restored state says, rather than at the defaults", () => {
     const stores = createTabStores({
       subtreeRootId: "project-7",
-      view: { view: "list", mindmapOrientation: "vertical" },
+      view: { view: "list", mindmapOrientation: "vertical", planScopeKind: "day" },
       filter: { ...DEFAULT_FILTER, statusMode: "start" },
       listFilter: { ...DEFAULT_LIST_FILTER, preset: "unblock" },
       expandedHabitGroupIds: ["habitrun-4-virtual"],
@@ -86,6 +86,7 @@ describe("seeding a tab", () => {
 
     expect(stores.mindmap.getState().subtreeRootId).toBe("project-7");
     expect(stores.view.getState().view).toBe("list");
+    expect(stores.view.getState().planScopeKind).toBe("day");
     expect(stores.filter.getState().filter.statusMode).toBe("start");
     expect(stores.listFilter.getState().filter.preset).toBe("unblock");
     expect(stores.mindmap.getState().expandedHabitGroupIds).toEqual(new Set(["habitrun-4-virtual"]));

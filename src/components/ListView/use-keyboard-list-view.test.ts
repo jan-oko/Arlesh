@@ -34,13 +34,6 @@ describe("useKeyboardListView", () => {
     expect(removeSpy).toHaveBeenCalledWith("keydown", expect.any(Function), { capture: true });
   });
 
-  it("Alt+F toggles the filter menu", () => {
-    const options = listKeyboardContext();
-    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
-    fireKey("f", { altKey: true });
-    expect(options.onToggleFilter).toHaveBeenCalledTimes(1);
-  });
-
   it.each([
     ["a", "all"],
     ["p", "plan"],
@@ -159,72 +152,8 @@ describe("useKeyboardListView", () => {
     expect(options.onStartRename).toHaveBeenCalledWith("task-1");
   });
 
-  it("Ctrl+O opens the node search", () => {
-    const options = listKeyboardContext();
-    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
-    fireKey("o", { ctrlKey: true });
-    expect(options.onOpenSearch).toHaveBeenCalledTimes(1);
-  });
-
-  it("Ctrl+O opens the node search with nothing selected", () => {
-    const options = listKeyboardContext({ selectedTaskId: null });
-    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
-    fireKey("o", { ctrlKey: true });
-    expect(options.onOpenSearch).toHaveBeenCalledTimes(1);
-  });
-
-  it("Ctrl+O touches neither the selection nor the status preset", () => {
-    const options = listKeyboardContext();
-    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
-    fireKey("o", { ctrlKey: true });
-    expect(options.onDeselect).not.toHaveBeenCalled();
-    expect(options.onNavigate).not.toHaveBeenCalled();
-    expect(options.onSetStatusMode).not.toHaveBeenCalled();
-  });
-
-  it("plain O does not open the node search", () => {
-    const options = listKeyboardContext();
-    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
-    fireKey("o");
-    expect(options.onOpenSearch).not.toHaveBeenCalled();
-  });
-
-  it("Shift+Escape goes up one subtree level while inside a subtree", () => {
-    const options = listKeyboardContext({ subtreeRootId: "project-1" });
-    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
-    fireKey("Escape", { shiftKey: true });
-    expect(options.onExitSubtree).toHaveBeenCalledTimes(1);
-    expect(options.onExitToRoot).not.toHaveBeenCalled();
-    expect(options.onDeselect).not.toHaveBeenCalled();
-  });
-
-  it("Ctrl+Escape goes straight back to the root while inside a subtree", () => {
-    const options = listKeyboardContext({ subtreeRootId: "project-1" });
-    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
-    fireKey("Escape", { ctrlKey: true });
-    expect(options.onExitToRoot).toHaveBeenCalledTimes(1);
-    expect(options.onExitSubtree).not.toHaveBeenCalled();
-    expect(options.onDeselect).not.toHaveBeenCalled();
-  });
-
-  it("the subtree-exit chords do nothing at the true root", () => {
-    const options = listKeyboardContext({ subtreeRootId: null });
-    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
-    fireKey("Escape", { shiftKey: true });
-    fireKey("Escape", { ctrlKey: true });
-    expect(options.onExitSubtree).not.toHaveBeenCalled();
-    expect(options.onExitToRoot).not.toHaveBeenCalled();
-  });
-
-  it("bare Escape still deselects rather than leaving the subtree", () => {
-    const options = listKeyboardContext({ subtreeRootId: "project-1" });
-    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
-    fireKey("Escape");
-    expect(options.onDeselect).toHaveBeenCalledTimes(1);
-    expect(options.onExitSubtree).not.toHaveBeenCalled();
-    expect(options.onExitToRoot).not.toHaveBeenCalled();
-  });
-
+  // Bare Escape stayed in this table on purpose: it needs the view's own selection, which is why
+  // it was not promoted alongside its two modified siblings.
   it("Escape deselects when something is selected", () => {
     const options = listKeyboardContext();
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
@@ -245,13 +174,9 @@ describe("useKeyboardListView", () => {
     fireKey("e");
     fireKey("r");
     fireKey("ArrowDown");
-    fireKey("f", { altKey: true });
-    fireKey("o", { ctrlKey: true });
     expect(options.onOpenEditor).not.toHaveBeenCalled();
     expect(options.onStartRename).not.toHaveBeenCalled();
     expect(options.onNavigate).not.toHaveBeenCalled();
-    expect(options.onToggleFilter).not.toHaveBeenCalled();
-    expect(options.onOpenSearch).not.toHaveBeenCalled();
   });
 
   it("E/R with no selection do nothing", () => {
@@ -327,13 +252,6 @@ describe("useKeyboardListView — f shows the board alone", () => {
     expect(opts.onToggleFullscreen).not.toHaveBeenCalled();
   });
 
-  it("Alt+F still reaches the filter, not the board-alone mode", () => {
-    const opts = listKeyboardContext({ selectedTaskId: null, selectedCommitmentId: null, selectedRowId: null });
-    renderHook(() => useKeyboardListView(opts));
-    fireKey("f", { altKey: true });
-    expect(opts.onToggleFilter).toHaveBeenCalledTimes(1);
-    expect(opts.onToggleFullscreen).not.toHaveBeenCalled();
-  });
 });
 
 describe("useKeyboardListView — creating rows", () => {

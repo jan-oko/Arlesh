@@ -12,6 +12,7 @@
   "filter": "Filter",
   "viewMindmap": "Mindmap",
   "viewList": "List",
+  "viewPlan": "Plan",
   "searchNodesPlaceholder": "Search…",
   "noResults": "No results",
   "loading": "Loading…",
@@ -29,5 +30,7 @@
   "tabActions": "Tab actions",
   "tearOffTab": "Move tab to new window",
   "moveTabToWindow": "Move tab to “{{name}}”",
-  "windowUnnamed": "Another window"
+  "windowUnnamed": "Another window",
+  "planPathGrouping": "Group by path",
+  "planSubscopeSplit": "Split planned by subscope"
 }

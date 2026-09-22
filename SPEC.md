@@ -32,7 +32,7 @@ is the front door — start here, then take one hop.
 
 ### Views
 
-The three surfaces the board is read and edited through. They share one tree and one filter model,
+The surfaces the board is read and edited through. They share one tree and one filter model,
 so a change to what a node *is* belongs above, and a change to how it is *shown* belongs here.
 
 | Area | What is in it |
@@ -40,6 +40,7 @@ so a change to what a node *is* belongs above, and a change to how it is *shown*
 | [Tabs](docs/spec/tabs.md) | The tab strip, what a tab owns, persistence |
 | [Mindmap (Tree View)](docs/spec/mindmap-view.md) | The canvas, nodes and badges, the top bar, keyboard interactions, retyping |
 | [List View](docs/spec/list-view.md) | Rows and cards, the Commitments band, path headers, keyboard interactions, its own pill dimensions |
+| [Plan View](docs/spec/plan-view.md) | Scope-by-scope triage: the two panes, the Backlog switch, the containment refusal, walking the scopes |
 
 ### Everything else
 
