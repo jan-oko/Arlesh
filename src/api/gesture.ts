@@ -177,6 +177,8 @@ export async function withGesture<T>(name: string, run: () => Promise<T>): Promi
 export async function withAtomicGesture<T>(name: string, run: () => Promise<T>): Promise<T> {
   const gesture = await openGesture();
   if (gesture !== null) rememberName(gesture, name);
+  // The catch is here to *record* the outcome, not to handle it: the close and the abort are two
+  // different endings for the same Gesture, and only the `finally` can promise one of them runs.
   let failed = false;
   try {
     return await run();
