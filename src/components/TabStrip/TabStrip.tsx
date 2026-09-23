@@ -10,6 +10,7 @@ import { tabLabel } from "@/utils/tab-label";
 import { useTabClaims, useTabDropTarget, claimDropped } from "@/hooks/use-tab-drop-target";
 import { carriesTab, encodeTabDrag, tearsOff, TAB_DRAG_TYPE } from "@/utils/tab-drag";
 import { currentWindowLabel } from "@/api/window-label";
+import { traceDrag } from "@/utils/drag-trace";
 import TabContextMenu from "@/components/TabContextMenu/TabContextMenu";
 import styles from "./TabStrip.module.css";
 
@@ -73,6 +74,7 @@ export default function TabStrip() {
   function startDrag(event: React.DragEvent, tabId: string, index: number) {
     event.dataTransfer.setData(TAB_DRAG_TYPE, encodeTabDrag({ tabId, window: currentWindowLabel() }));
     event.dataTransfer.effectAllowed = "move";
+    traceDrag("dragstart", { tabId, types: [...event.dataTransfer.types] });
     setDraggingIndex(index);
   }
 
@@ -93,6 +95,7 @@ export default function TabStrip() {
     if (!carriesTab([...event.dataTransfer.types])) return;
     event.preventDefault();
     const dropped = claimDropped(event.dataTransfer.getData(TAB_DRAG_TYPE));
+    traceDrag("drop on a tab", { toIndex, dropped });
     if (dropped.kind === "own") {
       const fromIndex = tabs.findIndex((tab) => tab.id === dropped.tabId);
       if (fromIndex !== -1) moveTab(fromIndex, toIndex);
@@ -108,6 +111,7 @@ export default function TabStrip() {
    * becomes a window of its own.
    */
   function endDrag(event: React.DragEvent, tabId: string) {
+    traceDrag("dragend", { tabId, dropEffect: event.dataTransfer.dropEffect, tearsOff: tearsOff(event.dataTransfer.dropEffect) });
     setDraggingIndex(null);
     if (tearsOff(event.dataTransfer.dropEffect)) tearOffTab(tabId);
   }

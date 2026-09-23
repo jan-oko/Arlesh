@@ -185,6 +185,29 @@ describe("tearing a tab off into its own window", () => {
 });
 
 describe("moving a tab into another window", () => {
+  it("lets go of the tab before handing it over, so it is never in two windows", () => {
+    // The send never settles: the removal must not wait on it. Waiting on it is what left the tab
+    // in both windows when a drag between windows ended on WebKitGTK.
+    mockSendTab.mockReturnValue(new Promise(() => {}));
+    const { result } = renderHook(() => useTabCommands());
+    act(() => result.current.openTab());
+    const moved = useTabsStore.getState().activeTabId;
+
+    act(() => result.current.moveTabToWindow(moved, "board-a"));
+
+    expect(mockSendTab).toHaveBeenCalledWith("board-a", expect.objectContaining({ id: moved }));
+    expect(useTabsStore.getState().tabs.some((tab) => tab.id === moved)).toBe(false);
+  });
+
+  it("does nothing for a tab this window no longer holds, and keeps the window open", () => {
+    const { result } = renderHook(() => useTabCommands());
+
+    act(() => result.current.moveTabToWindow("gone", "board-a"));
+
+    expect(mockSendTab).not.toHaveBeenCalled();
+    expect(mockCloseWindow).not.toHaveBeenCalled();
+  });
+
   it("hands the tab over and then takes it out of this one", async () => {
     const { result } = renderHook(() => useTabCommands());
     act(() => result.current.openTab());
@@ -212,7 +235,7 @@ describe("moving a tab into another window", () => {
     expect(mockCloseWindow).toHaveBeenCalledOnce();
   });
 
-  it("leaves the tab where it was when the hand-over fails", async () => {
+  it("gives the tab back when the hand-over fails", async () => {
     mockSendTab.mockRejectedValue(new Error("no such window"));
     vi.spyOn(console, "error").mockImplementation(() => {});
     const { result } = renderHook(() => useTabCommands());

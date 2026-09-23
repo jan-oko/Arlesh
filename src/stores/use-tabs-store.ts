@@ -213,11 +213,13 @@ export const useTabsStore = create<TabsStore>()((set, get) => ({
   // arriving tab takes a new id, because two tabs with one id is the worse of the two problems.
   adoptTab: (tab) => {
     set((s) => {
-      const id = s.tabs.some((candidate) => candidate.id === tab.id) ? newTabId() : tab.id;
+      // A tab that is already here is the same tab arriving twice — a hand-over retried, or one
+      // delivered twice — and adopting it again would make two of one tab. It is shown, not added.
+      if (s.tabs.some((candidate) => candidate.id === tab.id)) return { activeTabId: tab.id };
       const at = s.tabs.findIndex((candidate) => candidate.id === s.activeTabId);
       const tabs = [...s.tabs];
-      tabs.splice(at + 1, 0, makeTab({ ...tab, id }));
-      return { tabs, activeTabId: id };
+      tabs.splice(at + 1, 0, makeTab(tab));
+      return { tabs, activeTabId: tab.id };
     });
   },
 }));

@@ -3,6 +3,7 @@ import type { UnlistenFn } from "@tauri-apps/api/event";
 import { claimTab, onTabClaimed } from "@/api/board";
 import { currentWindowLabel } from "@/api/window-label";
 import { carriesTab, decodeTabDrag, tabDrop, TAB_DRAG_TYPE } from "@/utils/tab-drag";
+import { traceDrag } from "@/utils/drag-trace";
 
 /**
  * Makes this whole window a place a dragged tab can be dropped.
@@ -28,7 +29,8 @@ export function useTabDropTarget(): void {
       if (event.defaultPrevented || event.dataTransfer === null) return;
       if (!carriesTab([...event.dataTransfer.types])) return;
       event.preventDefault();
-      claimDropped(event.dataTransfer.getData(TAB_DRAG_TYPE));
+      const dropped = claimDropped(event.dataTransfer.getData(TAB_DRAG_TYPE));
+      traceDrag("drop on the window", { dropped });
     }
 
     window.addEventListener("dragover", accept);
@@ -56,7 +58,9 @@ export function claimDropped(raw: string): DroppedTab {
   const own = currentWindowLabel();
   const drop = tabDrop(payload, own);
   if (drop.kind === "own") return { kind: "own", tabId: payload.tabId };
+  traceDrag("claim sent", { to: drop.from, tabId: drop.tabId });
   void claimTab(drop.from, { tabId: drop.tabId, into: own }).catch((error: unknown) => {
+    traceDrag("claim failed", { to: drop.from, error: String(error) });
     console.error("[arlesh] could not ask for the dragged tab:", error);
   });
   return { kind: "claimed" };
@@ -81,7 +85,10 @@ export function useTabClaims(moveTab: (tabId: string, into: string) => void): vo
     let subscribed = true;
     let unlisten: UnlistenFn | null = null;
 
-    void onTabClaimed((claim) => latest.current(claim.tabId, claim.into)).then((stop) => {
+    void onTabClaimed((claim) => {
+      traceDrag("claim received", { ...claim });
+      latest.current(claim.tabId, claim.into);
+    }).then((stop) => {
       if (subscribed) unlisten = stop;
       else stop();
     });

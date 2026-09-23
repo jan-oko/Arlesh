@@ -390,7 +390,7 @@ describe("a tab handed over by another window", () => {
     expect(activeTabId).toBe("tab-9");
   });
 
-  it("takes a fresh id when the window already has one with that id", () => {
+  it("does not add a tab it already holds, so a hand-over delivered twice makes one tab", () => {
     reloadTabs();
     const existing = useTabsStore.getState().tabs[0];
 
@@ -398,8 +398,8 @@ describe("a tab handed over by another window", () => {
       id: existing?.id ?? "", title: "Back again", customTitle: null, state: DEFAULT_TAB_STATE,
     });
 
-    const { tabs } = useTabsStore.getState();
-    expect(tabs).toHaveLength(2);
-    expect(new Set(tabs.map((tab) => tab.id)).size).toBe(2);
+    const { tabs, activeTabId } = useTabsStore.getState();
+    expect(tabs).toHaveLength(1);
+    expect(activeTabId).toBe(existing?.id);
   });
 });

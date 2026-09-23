@@ -5,6 +5,7 @@ import { forgetPersistedTabs, freshTabState, writePersistedTabs } from "@/stores
 import { closeWindow, openBoardWindow, focusBoardWindow } from "@/api/window";
 import { newWindowLabel } from "@/api/window-label";
 import { sendTabToWindow } from "@/api/board";
+import { traceDrag } from "@/utils/drag-trace";
 
 /** Everything the tab shortcuts and the strip's controls do. */
 export interface TabCommands {
@@ -116,23 +117,41 @@ export function useTabCommands(): TabCommands {
     [tabs, close, adoptTab, t],
   );
 
-  // Sent first, removed second: a hand-over that never arrives leaves the tab exactly where it
-  // was, which is the only failure worth designing for here.
+  // Removed first, sent second, and given back if the send fails. The other way round — send,
+  // then remove once the send resolved — left the tab in **both** windows whenever the removal
+  // did not follow, which on WebKitGTK is what a drag between windows produced. A tab can be in
+  // one window at a time, so the window giving it up lets go before it is handed over.
+  //
+  // The tab is read from the store as it is **now**, not from the strip this callback closed
+  // over: a claim arrives from another window at any moment, and a stale strip could hand over a
+  // tab that has already gone. A tab that is not here any more is not this window's to move.
   const moveTabToWindow = useCallback(
     (id: string, label: string) => {
-      const tab = tabs.find((candidate) => candidate.id === id);
-      if (tab === undefined) return;
+      const strip = useTabsStore.getState().tabs;
+      const tab = strip.find((candidate) => candidate.id === id);
+      if (tab === undefined) {
+        traceDrag("move skipped: tab not here", { tabId: id, to: label });
+        return;
+      }
+      const persisted = persistTab(tab);
+      // The last tab cannot be removed from a strip; its window closes once the tab has arrived.
+      const isLast = strip.length <= 1;
+      if (!isLast) close(id);
+      traceDrag("tab sent", { tabId: id, to: label, removedFirst: !isLast });
 
-      void sendTabToWindow(label, persistTab(tab))
+      void sendTabToWindow(label, persisted)
         .then(() => {
-          if (!close(id)) void closeWindow();
+          traceDrag("tab send resolved", { tabId: id, to: label });
+          if (isLast) void closeWindow();
           return focusBoardWindow(label);
         })
         .catch((error: unknown) => {
+          traceDrag("tab send failed", { tabId: id, to: label, error: String(error) });
           console.error("[arlesh] could not move the tab to the other window:", error);
+          if (!isLast) adoptTab(persisted);
         });
     },
-    [tabs, close],
+    [close, adoptTab],
   );
 
   const nextTab = useCallback(() => cycleTab(1), [cycleTab]);
