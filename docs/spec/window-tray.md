@@ -91,6 +91,12 @@ Gesture protocol at all; the endpoint gets a way to announce of its own, which a
 that was already wrong: an agent setting a `beads_id` used to leave an open window showing the old
 value.
 
+**Every window listens for events addressed to itself, by its own label.** Tauri's `listen` with
+no target hears every event whatever window it was sent to, so without the label an announcement
+sent once to each other window reached every window once per other window — each change reloaded
+every window, the one that made it included, N−1 times — and a tab handed to one window was adopted
+by all of them. The same holds for the tab hand-over and the drag claim.
+
 **The window that made the change is not told.** It reloads on the way back from its own command,
 which is the path this reuses; telling it as well would buy a second identical read of the board for
 every edit.

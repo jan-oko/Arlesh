@@ -1,5 +1,6 @@
 import { emitTo, listen } from "@tauri-apps/api/event";
-import type { UnlistenFn } from "@tauri-apps/api/event";
+import type { Event, UnlistenFn } from "@tauri-apps/api/event";
+import { currentWindowLabel } from "@/api/window-label";
 import type { PersistedTab } from "@/stores/tab-persistence";
 import { parsePersistedTab } from "@/stores/tab-persistence";
 
@@ -43,6 +44,20 @@ export interface TabClaim {
 function unsubscribed(): void {}
 
 /**
+ * Listens for `event` sent to **this window**, and only to it.
+ *
+ * Tauri's `listen` with no target listens to every target: its backend delivers an event to a
+ * listener registered for "any" target whatever the emit was addressed to (`match_any_or_filter`
+ * in tauri's `event/listener.rs`). So an `emitTo` one window meant for another reached **every**
+ * window listening — a tab handed to one window was adopted by all of them, and each board change,
+ * announced once per other window, made every window reload once per other window. Naming this
+ * window's label as the target is what makes `emitTo` mean "to that window".
+ */
+function listenHere<T>(event: string, handler: (event: Event<T>) => void): Promise<UnlistenFn> {
+  return listen<T>(event, handler, { target: currentWindowLabel() });
+}
+
+/**
  * Calls `onChanged` whenever another window commits a change to the board.
  *
  * Resolves to the unsubscribe. A webview with no Tauri host hears nothing and says so by resolving
@@ -50,7 +65,7 @@ function unsubscribed(): void {}
  * and there are no other windows to be told about.
  */
 export async function onBoardChanged(onChanged: () => void): Promise<UnlistenFn> {
-  return listen(BOARD_CHANGED, () => onChanged()).catch(() => unsubscribed);
+  return listenHere(BOARD_CHANGED, () => onChanged()).catch(() => unsubscribed);
 }
 
 /** Hands `tab` to the window labelled `label`. */
@@ -66,7 +81,7 @@ export async function sendTabToWindow(label: string, tab: PersistedTab): Promise
  * that nothing can explain.
  */
 export async function onTabMoved(onTab: (tab: PersistedTab) => void): Promise<UnlistenFn> {
-  return listen(TAB_MOVED, (event) => {
+  return listenHere<unknown>(TAB_MOVED, (event) => {
     const tab = parsePersistedTab(event.payload);
     if (tab !== null) onTab(tab);
   }).catch(() => unsubscribed);
@@ -86,7 +101,7 @@ function isTabClaim(value: unknown): value is TabClaim {
 
 /** Calls `onClaim` with each request another window makes for one of this window's tabs. */
 export async function onTabClaimed(onClaim: (claim: TabClaim) => void): Promise<UnlistenFn> {
-  return listen(TAB_CLAIMED, (event) => {
+  return listenHere<unknown>(TAB_CLAIMED, (event) => {
     if (isTabClaim(event.payload)) onClaim(event.payload);
   }).catch(() => unsubscribed);
 }
