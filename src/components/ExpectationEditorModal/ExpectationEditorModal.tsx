@@ -132,6 +132,7 @@ export default function ExpectationEditorModal({ node, heading, lead, onSave, on
           onChange={setCheckEvery}
           label={t("expectation:fieldCheckEvery")}
           emptyLabel={t("expectation:checkEveryNone")}
+          subDay
         />
       </div>
       {checkEvery !== null && (

@@ -146,3 +146,27 @@ fn a_spawned_waits_first_check_is_one_interval_after_it_began() {
     };
     assert_eq!(spawned_check_due(&released, &every(2, "day"), now), None);
 }
+
+#[test]
+fn a_check_can_come_round_every_few_hours_or_minutes() {
+    assert_eq!(
+        advance_check(at("2026-07-05T23:30:00"), &every(3, "hour")),
+        Some(at("2026-07-06T02:30:00"))
+    );
+    assert_eq!(
+        advance_check(at("2026-07-05T09:00:00"), &every(45, "minute")),
+        Some(at("2026-07-05T09:45:00"))
+    );
+    // Every 90 minutes from 00:45 lands at 02:15: past the boundary, so on the next Day.
+    let due = next_check_due(
+        &every(90, "minute"),
+        at("2026-07-05T00:00:00"),
+        Some(at("2026-07-05T00:45:00")),
+    );
+    assert_eq!(due, Some(at("2026-07-05T02:15:00")));
+    assert_eq!(due.map(day_of), NaiveDate::from_ymd_opt(2026, 7, 5));
+    assert_eq!(
+        day_of(at("2026-07-05T01:15:00")),
+        NaiveDate::from_ymd_opt(2026, 7, 4).expect("a date")
+    );
+}

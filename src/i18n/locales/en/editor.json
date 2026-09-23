@@ -106,5 +106,7 @@
   "delegateToAgent": "Delegate to agent",
   "scopeClose": "Close",
   "scopeEdit": "Edit",
-  "startingPicker": "Starting day"
+  "startingPicker": "Starting day",
+  "kindHour": "Hour",
+  "kindMinute": "Minute"
 }

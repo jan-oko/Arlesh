@@ -45,6 +45,18 @@ pub(crate) fn instant_from_column(value: Option<String>) -> Option<NaiveDateTime
     NaiveDateTime::parse_from_str(value.as_deref()?, INSTANT_FORMAT).ok()
 }
 
+/// `at` moved on by one Check every. Beside the four scope kinds a Duration counts in, a check can
+/// come round every N **hours** or **minutes** — a finer interval than any scope, which only a
+/// check needs, so it is counted here rather than taught to every Duration. A sub-day check still
+/// falls on the 02:00 Day ladder through [`day_of`].
+pub fn advance_check(at: NaiveDateTime, every: &DurationSpec) -> Option<NaiveDateTime> {
+    match every.kind.as_str() {
+        "hour" => at.checked_add_signed(chrono::Duration::try_hours(every.n)?),
+        "minute" => at.checked_add_signed(chrono::Duration::try_minutes(every.n)?),
+        _ => advance_by(at, every.n, &every.kind),
+    }
+}
+
 /// When the next check on a wait falls due: at `starting` until a check is made, then one
 /// `every` after the last one. `None` for a Duration this calendar cannot count.
 pub fn next_check_due(
@@ -54,7 +66,7 @@ pub fn next_check_due(
 ) -> Option<NaiveDateTime> {
     match last_check_at {
         None => Some(starting),
-        Some(last) => advance_by(last, every.n, &every.kind),
+        Some(last) => advance_check(last, every),
     }
 }
 
@@ -110,7 +122,7 @@ pub fn spawned_check_due(
         return None;
     }
     let starting = match wait.spawned_at {
-        Some(began) => advance_by(began, every.n, &every.kind)?,
+        Some(began) => advance_check(began, every)?,
         None => now,
     };
     let last = wait

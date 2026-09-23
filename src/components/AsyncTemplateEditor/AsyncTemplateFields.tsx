@@ -61,6 +61,7 @@ export default function AsyncTemplateFields({ value, onChange, titlePlaceholder,
           onChange={(next) => onChange(withDuration(value, "check_every", next))}
           label={t("expectation:fieldCheckEvery")}
           emptyLabel={t("expectation:checkEveryNone")}
+          subDay
         />
       </div>
       {allTags !== undefined && domainNames !== undefined && (

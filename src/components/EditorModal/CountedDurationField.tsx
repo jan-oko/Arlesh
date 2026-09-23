@@ -11,6 +11,12 @@ const KINDS = [
   { value: "season", labelKey: "kindSeason" },
 ] as const;
 
+/** The finer level only a Check every offers: every N hours or minutes. */
+const SUB_DAY_KINDS = [
+  { value: "hour", labelKey: "kindHour" },
+  { value: "minute", labelKey: "kindMinute" },
+] as const;
+
 interface Props {
   value: DurationSpec | null;
   onChange: (value: DurationSpec | null) => void;
@@ -18,17 +24,19 @@ interface Props {
   label: string;
   /** What an empty count means, shown in the empty input. */
   emptyLabel: string;
+  /** Offer hours and minutes too — for Check every, which can come round within a Day. */
+  subDay?: boolean;
 }
 
 /**
- * A simple counted scope — N days, weeks, months or seasons — the shape a wait's Check every and an
- * Expectation template's Time Scope rule both take. An empty count is no value at all.
+ * A simple count of a kind — N days, weeks, months or seasons, and for a Check every also N hours or
+ * minutes — the shape a wait's Check every and an Expectation template's Time Scope rule both take. An empty count is no value at all.
  *
  * **Clear** is the way back to no value, as it is on the Time Scope field. Without it the only
  * route was to delete the digits by hand: the number input's spinner stops at 1, so stepping down
  * never reached "none", and a set Check every looked permanent.
  */
-export default function CountedDurationField({ value, onChange, label, emptyLabel }: Props) {
+export default function CountedDurationField({ value, onChange, label, emptyLabel, subDay = false }: Props) {
   const { t } = useTranslation("editor");
   const kind = value?.kind ?? "day";
 
@@ -48,7 +56,7 @@ export default function CountedDurationField({ value, onChange, label, emptyLabe
         aria-label={label}
         onChange={(e) => setCount(e.target.value)}
       />
-      {KINDS.map((option) => (
+      {[...KINDS, ...(subDay ? SUB_DAY_KINDS : [])].map((option) => (
         <button
           key={option.value}
           type="button"

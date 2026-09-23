@@ -17,3 +17,16 @@ describe("CountedDurationField", () => {
     expect(screen.queryByRole("button", { name: "scopeClear" })).toBeNull();
   });
 });
+
+describe("CountedDurationField — hours and minutes", () => {
+  it("offers hours and minutes only when asked, and sets them as the kind", () => {
+    const onChange = vi.fn();
+    const { rerender } = render(<CountedDurationField value={{ n: 3, kind: "day" }} onChange={onChange} label="every" emptyLabel="never" />);
+    expect(screen.queryByRole("button", { name: "kindHour" })).toBeNull();
+    rerender(<CountedDurationField value={{ n: 3, kind: "day" }} onChange={onChange} label="every" emptyLabel="never" subDay />);
+    fireEvent.click(screen.getByRole("button", { name: "kindHour" }));
+    expect(onChange).toHaveBeenLastCalledWith({ n: 3, kind: "hour" });
+    fireEvent.click(screen.getByRole("button", { name: "kindMinute" }));
+    expect(onChange).toHaveBeenLastCalledWith({ n: 3, kind: "minute" });
+  });
+});
