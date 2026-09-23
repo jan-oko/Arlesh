@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useInputCapture } from "@/hooks/use-input-capture";
 import styles from "./Select.module.css";
 
 const CHEVRON = "▾";
@@ -21,6 +22,12 @@ export default function Select({ value, options, onChange, ariaLabel }: Props) {
   const [open, setOpen] = useState(false);
   const [highlighted, setHighlighted] = useState(0);
   const triggerRef = useRef<HTMLButtonElement>(null);
+
+  // An open menu holds the keyboard, exactly as a modal or an inline rename does. Without this its
+  // arrow keys reach the board underneath as well — the dispatcher behind the view bindings is a
+  // separate window listener, so this component's `preventDefault` never reaches it — and picking
+  // an option would quietly walk the selection on the view you were about to leave.
+  useInputCapture(open);
 
   const selectedIndex = Math.max(0, options.findIndex((o) => o.value === value));
   const selectedLabel = options.find((o) => o.value === value)?.label ?? value;

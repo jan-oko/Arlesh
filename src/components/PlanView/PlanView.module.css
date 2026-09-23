@@ -1,6 +1,12 @@
 .container {
   display: flex;
-  height: calc(100% - var(--topbar-height));
+  /* The view fills whatever the shell has left, rather than subtracting the top bar's height from
+     the window's. `ActiveTab` renders the bar and the view as siblings in the shell's flex column,
+     so the leftover space is already the right answer — and subtracting a bar that F11 has stopped
+     drawing is where the white strip along the bottom came from. A zero basis rather than `auto`
+     so the height never depends on the content inside it. */
+  min-height: 0;
+  flex: 1 1 0;
   flex-direction: column;
   box-sizing: border-box;
   padding: var(--space-4);

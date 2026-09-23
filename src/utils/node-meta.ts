@@ -426,3 +426,22 @@ export function canParentAnyNewChild(node: MindmapNode): boolean {
 export function canParentNewTask(node: MindmapNode): boolean {
   return canParentNewChild(node, "task");
 }
+
+/**
+ * Whether `node` has an editor to open at all.
+ *
+ * Three kinds of node have none. An **Aspect** is fixed — six built-in roots, not user-managed. A
+ * folded run of Habit history is a **drawing**, with nothing behind it to edit. And a **virtual
+ * Habit instance** is rendered from its template rather than stored: its window is derived from the
+ * flow's Duration and the item's Cycle, and a save would compute a database id from a `-virtual`
+ * id tail and write nothing.
+ *
+ * It lives here, beside the other node-aware predicates, because it was previously encoded twice —
+ * once as a silent `return` in the gesture and once as a `null` branch in the modal fan-out. Two
+ * encodings of one fact is how the Steps View shipped a card that set an editor open, rendered no
+ * modal, and left the keyboard captured with nothing on screen to release it.
+ */
+export function hasNodeEditor(node: MindmapNode): boolean {
+  if (node.kind === "aspect" || node.kind === "habit_group") return false;
+  return node.habitItem === undefined;
+}

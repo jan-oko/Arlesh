@@ -1,4 +1,8 @@
 .card {
+  /* Washed in its aspect's colour, flat — the same wash as a Steps card, and no longer faded by how
+     deep the row's node sits. `aspect-wash.module.css` says why that keeps every aspect legible. */
+  composes: wash from "@/styles/aspect-wash.module.css";
+  --card-base: var(--surface-raised);
   /* One step per ancestor that is itself a row above this one. Capped, so a deep chain still leaves
      the titles room; zero at depth 0, so a list with nothing nested is exactly as wide as before. */
   --row-indent: calc(min(var(--row-depth, 0), 6) * var(--space-6));
@@ -6,11 +10,6 @@
   align-items: flex-start;
   gap: var(--space-4);
   padding: var(--space-4);
-  background: color-mix(
-    in srgb,
-    var(--card-tint, var(--surface-raised)) calc(var(--card-tint-opacity, 0) * 100%),
-    var(--surface-raised)
-  );
   border: 1px solid var(--node-border);
   border-radius: 10px;
   transition: border-color 0.12s ease, box-shadow 0.12s ease, background-color 0.12s ease;
@@ -117,7 +116,7 @@
   border: 1px solid var(--node-border);
   border-radius: 999px;
   padding: 1px var(--space-2);
-  color: var(--text-secondary);
+  color: var(--card-text-muted);
   font-family: var(--font-sans);
   font-size: var(--text-sm);
   cursor: pointer;

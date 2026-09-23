@@ -55,7 +55,10 @@ export function useExpectationActions({ findNode, reload, showToast }: Options):
         return;
       }
       const expectationId = expectationRowOf(node);
-      if (expectationId === null) return;
+      if (expectationId === null) {
+        showToast({ nodeId, message: t("notAWait") });
+        return;
+      }
       if (node.kind === "expectation" && (node.checkBy ?? null) === null) {
         showToast({ nodeId, message: t("noCheckBy") });
         return;
@@ -73,7 +76,10 @@ export function useExpectationActions({ findNode, reload, showToast }: Options):
         showToast({ nodeId, message: t("delegationWaitReleasedByTask") });
         return;
       }
-      if (node.kind !== "expectation") return;
+      if (node.kind !== "expectation") {
+        showToast({ nodeId, message: t("notAWait") });
+        return;
+      }
       const next = node.status === EXPECTATION_STATUS.RELEASED ? EXPECTATION_STATUS.PENDING : EXPECTATION_STATUS.RELEASED;
       void updateExpectation(rowIdOf(node), { status: next }).then(() => reload(), fail(nodeId));
     },

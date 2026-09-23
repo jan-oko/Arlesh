@@ -40,7 +40,7 @@ import { addTagToGoal, removeTagFromGoal, updateGoal } from "@/api/goals";
 import { addTagToCommitment, removeTagFromCommitment, updateCommitment } from "@/api/commitments";
 import type { TimeScope } from "@/api/time-scope";
 import { findNode } from "@/utils/mindmap-tree";
-import { expectationNodeId } from "@/utils/node-uuid";
+import { editorOwnerOf } from "@/utils/editor-owner";
 import { rowIdOf } from "@/utils/node-identity";
 import { DOMAIN_SUBTYPE } from "@/api/domains";
 import { TASK_STATUS } from "@/utils/status-mapping";
@@ -78,7 +78,14 @@ interface Options {
   reload: () => Promise<void>;
 }
 
-interface Result {
+/**
+ * Everything the editor plumbing hands back: the open modal, and the save path for every kind.
+ *
+ * Exported as a name of its own because `NodeEditorModals` takes the whole of it as one prop —
+ * a component that renders the editor for *any* kind needs every handler in here, and spelling
+ * them out one by one at the call site would put fifteen props between a view and its editor.
+ */
+export interface NodeEditorHandles {
   editorModal: EditorModalState | null;
   setEditorModal: (m: EditorModalState | null) => void;
   allTags: Domain[];
@@ -104,7 +111,7 @@ interface Result {
   resolveScopeClamp: (proceed: boolean) => void;
 }
 
-export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Result {
+export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): NodeEditorHandles {
   const { t } = useTranslation("warnings");
   const { t: tUndo } = useTranslation("undo");
   const showToast = useMindmapStore((s) => s.showToast);
@@ -172,14 +179,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
         showToast({ nodeId, message: t("editRepetitionRefused") });
         return;
       }
-      // A derived wait has no row of its own to edit, so the editor that owns what it draws opens
-      // instead: a check task's check-by is its Expectation's, and a delegated Task's wait is the
-      // Task's own — rather than a key that does nothing.
-      const owner = node.expectationCheck !== undefined
-        ? findNode(tree, expectationNodeId(node.expectationCheck.expectationId))
-        : node.delegationWait !== undefined
-          ? findNode(tree, `task-${node.delegationWait.taskId}`)
-          : node;
+      const owner = editorOwnerOf(tree, node);
       if (owner === undefined) return;
       setEditorModal({ nodeId: owner.id, node: owner });
     },

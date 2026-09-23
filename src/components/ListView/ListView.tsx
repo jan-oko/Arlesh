@@ -40,6 +40,7 @@ import { useIsInputCaptured } from "@/hooks/use-input-capture";
 import { useFocusExemption } from "@/hooks/use-focus-exemption";
 import { useListCreate } from "@/hooks/use-list-create";
 import { useListDelete } from "@/hooks/use-list-delete";
+import { neighbourAfterDelete } from "@/utils/neighbour-after-delete";
 import { useSubtreeNav } from "@/hooks/use-subtree-nav";
 import { useListScroll } from "@/hooks/use-list-scroll";
 import { useFullscreenStore } from "@/stores/use-fullscreen-store";
@@ -238,18 +239,8 @@ export default function ListView() {
    * would leave nothing selected most of the time. Stepping along the list is what the arrows
    * already do, and it is where a reader's eye is.
    */
-  function neighbourAfterDelete(id: string, deletedIds: ReadonlySet<string>): string | null {
-    const index = navigableIds.indexOf(id);
-    if (index === -1) return null;
-    const survives = (candidate: string | undefined): boolean =>
-      candidate !== undefined && !deletedIds.has(candidate);
-    for (let i = index + 1; i < navigableIds.length; i++) {
-      if (survives(navigableIds[i])) return navigableIds[i] ?? null;
-    }
-    for (let i = index - 1; i >= 0; i--) {
-      if (survives(navigableIds[i])) return navigableIds[i] ?? null;
-    }
-    return null;
+  function rowAfterDelete(id: string, deletedIds: ReadonlySet<string>): string | null {
+    return neighbourAfterDelete(navigableIds, id, deletedIds);
   }
 
   function handleSetStatusPreset(mode: StatusMode) {
@@ -263,7 +254,7 @@ export default function ListView() {
     useListDelete({
       findNode: (id) => findNode(tree, id),
       removeNode,
-      neighbourAfterDelete,
+      neighbourAfterDelete: rowAfterDelete,
       selectRow: setSelectedRowId,
       showToast,
     });

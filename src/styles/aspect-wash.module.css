@@ -1,0 +1,41 @@
+/* **A card washed in its aspect's colour** — shared by the Steps View's cards and the List View's
+   rows, so a node reads as the same part of the board on either surface.
+
+   A composing class sets two things:
+     --card-base    the surface the card would have without any colour (required)
+     --card-aspect  the aspect's colour, set from the node (see `aspectWashStyle`); left unset
+                    outside any aspect, which mixes the base into itself — a no-op, not a hole
+
+   It is **not the aspect colour itself**, and that distinction is the whole of what makes it
+   legible. The rule this replaces painted the colour on at an opacity that fell off with depth, so an
+   Aspect's own card came out at full strength with body text over it and was unreadable. Mixing a
+   fixed small share of the hue (`--card-aspect-strength`, per theme) into the base keeps every card
+   close to a surface the theme already guarantees the primary text against. For the six seeded
+   aspects the primary text bottoms out at 8.28:1 (a Self row in dark) and 9.82:1 in light (a Flow
+   row).
+
+   That margin does **not** carry muted text, whose margin was thin to begin with: the global
+   `--text-secondary` fell to 3.30:1 on a Steel card in dark. So the wash also derives the card's
+   own muted colour, `--card-text-muted-mix` of the way from this surface toward the primary text
+   (65% in dark, 72% in light, where the wash is stronger). Its floor is 4.53:1 in dark (a Self row)
+   and 5.03:1 in light (a Flow row) — all over AA's 4.5:1. The numbers per aspect are in
+   `docs/spec/steps-view.md`.
+
+   The first `background` is the fallback for an engine without `color-mix`: a readable card that
+   merely loses the colour. */
+.wash {
+  --card-surface: color-mix(
+    in srgb,
+    var(--card-aspect, var(--card-base)) var(--card-aspect-strength),
+    var(--card-base)
+  );
+  --card-text-muted: color-mix(in srgb, var(--node-text) var(--card-text-muted-mix), var(--card-surface));
+  /* The card's **strong** text — its title and field values — derived the same way, 85% of the way
+     toward the primary text. Full-strength text on a washed card read as a band laid over it: the
+     one line at the top was the only thing on the card not taken from the card. At 85% it holds
+     6.50:1 at worst (a Self row in dark) and 7.06:1 in light (a Flow row), well over AA. */
+  --card-text-strong: color-mix(in srgb, var(--node-text) 85%, var(--card-surface));
+
+  background: var(--card-base);
+  background: var(--card-surface);
+}

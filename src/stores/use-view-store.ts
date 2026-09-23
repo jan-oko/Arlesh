@@ -2,6 +2,8 @@ import { createStore, type StoreApi } from "zustand";
 import { tabStoreHook } from "@/stores/tab-stores-context";
 import type { Orientation } from "@/utils/tree-layout";
 import type { ViewKind } from "@/utils/scope-calendar";
+import type { StepsZoom } from "@/utils/steps-grid";
+import { DEFAULT_STEPS_ZOOM } from "@/utils/steps-grid";
 
 /**
  * Which of the board's surfaces a tab is showing.
@@ -9,10 +11,10 @@ import type { ViewKind } from "@/utils/scope-calendar";
  * Adding one is a union member plus a chord — deliberately, because the alternative considered was
  * an ordered cycle, and a cycle makes every view's shortcut depend on how many other views exist.
  */
-export type View = "mindmap" | "list" | "plan";
+export type View = "mindmap" | "list" | "plan" | "steps";
 
 /** Every view, in the order the top bar draws them and the cheat-sheet lists them. */
-export const ALL_VIEWS: readonly View[] = ["mindmap", "list", "plan"];
+export const ALL_VIEWS: readonly View[] = ["mindmap", "list", "plan", "steps"];
 
 /** Type guard for a stored or selected view. */
 export function isView(value: string): value is View {
@@ -31,18 +33,29 @@ export interface ViewState {
    * filled" is a stale week by the next morning.
    */
   planScopeKind: ViewKind;
+  /**
+   * How big a Steps card is drawn, and therefore how many fit on one Step's page.
+   *
+   * Per tab, like the Mindmap's branch axis and for the same reason: one tab walking a wide branch
+   * wants small cards while another reads a Task's fields at full size. The *page* is not stored
+   * beside it — it is derived from this and the viewport, so the two can never contradict each
+   * other across a window resize.
+   */
+  stepsZoom: StepsZoom;
 }
 
 export interface ViewStore extends ViewState {
   setView: (view: View) => void;
   toggleMindmapOrientation: () => void;
   setPlanScopeKind: (kind: ViewKind) => void;
+  setStepsZoom: (zoom: StepsZoom) => void;
 }
 
 export const DEFAULT_VIEW_STATE: ViewState = {
   view: "mindmap",
   mindmapOrientation: "horizontal",
   planScopeKind: "week",
+  stepsZoom: DEFAULT_STEPS_ZOOM,
 };
 
 /**
@@ -64,6 +77,7 @@ export function createViewStore(seed: ViewState = DEFAULT_VIEW_STATE): StoreApi<
     toggleMindmapOrientation: () =>
       set((s) => ({ mindmapOrientation: s.mindmapOrientation === "horizontal" ? "vertical" : "horizontal" })),
     setPlanScopeKind: (planScopeKind) => set({ planScopeKind }),
+    setStepsZoom: (stepsZoom) => set({ stepsZoom }),
   }));
 }
 
