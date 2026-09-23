@@ -24,7 +24,8 @@ same process. Agents and the app still see exactly one board.
 happens when the app is about to have no window left — that is the only close that could cost
 anything, because it is the only one that would take the process and the MCP endpoint with it.
 Hiding a window to the tray while others stayed open would hand the user a menu entry instead of
-the window they asked to be rid of. Closing a window's **last tab** closes that window, so there is
+the window they asked to be rid of. Closing a window's **last tab** — `Ctrl+W` among the ways — closes that window through this same
+close request, so it is decided exactly as the close button is, and there is
 never an empty one left over.
 
 **Each window keeps its own tabs and filters**; the theme, the clipboard and the Undo/Redo stacks

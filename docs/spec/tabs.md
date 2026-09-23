@@ -63,7 +63,12 @@ binding is (`src/utils/hotkeys/`), so the cheat-sheet lists them with the rest:
   — the menu can hide an entry that does not apply, a chord cannot, and an inert key is what the
   refusal policy exists to stop.
 - `Ctrl+W` — close the tab. Closing the **last** tab closes the window, so there is never an empty
-  one left over. The app takes `Ctrl+W` and `Ctrl+N` itself (capture-phase, `preventDefault`);
+  one left over — through the same close request as the window's own close button, so it means
+  exactly what that button means: another window still open, this one simply closes; the **last**
+  window hides to the tray with *Close to tray* on, and quits with it off or with no tray (see
+  [Windows & Tray](window-tray.md)). The ×, a middle-click and the menu's **Close tab** do the same.
+  Closing a window from the frontend needs `core:window:allow-close`, which Tauri's `core:default`
+  does not grant; without it every one of these did nothing at all. The app takes `Ctrl+W` and `Ctrl+N` itself (capture-phase, `preventDefault`);
   Arlesh declares no native menu accelerator that would claim either first.
 - `Ctrl+Tab` / `Ctrl+Shift+Tab` — cycle forward and back, wrapping at both ends
 - `Ctrl+1`–`Ctrl+9` — jump to a tab by position
@@ -238,12 +243,19 @@ nothing would read as broken.
 window**, and **Move tab to "…"** once per other open window. Each window is named by its active
 tab, because that is the one thing about another window the user can see from here.
 
-**The window's last tab** behaves differently between the two, and on purpose. Dragged *into
-another window*, the source window **closes** — its only content is now somewhere else, and an
-empty window is not a state the app has. Torn off *to the desktop*, it is **refused out loud**,
-because that would put the only tab in a new window and leave the old one empty: the whole gesture
-amounts to moving the window, which is not what was asked for. Same tab, two answers, because the
-tab ends up in two different places.
+**The window's last tab**, in all three ways a tab can leave:
+
+- **Closed** (`Ctrl+W`, ×, middle-click, **Close tab**) — the window closes, as its close button
+  would close it; the last window of all hides to the tray or quits by the same rule.
+- **Moved into another window** (dragged there, or **Move tab to "…"**) — the tab arrives there and
+  the source window **closes**: its only content is now somewhere else, and an empty window is not
+  a state the app has.
+- **Torn off to a new window** (dragged out, or `Ctrl+Alt+N`) — **refused out loud**, and the menu
+  leaves the entry out. It would put the only tab in a new window and leave the old one empty: the
+  whole gesture amounts to moving the window, which is not what was asked for.
+
+Same tab, different answers, because it ends up in different places. Whether the torn-off case
+should instead close the old window, as the move does, is an open decision.
 
 The tab travels as the same thing it is stored as, so a tab that moves and a tab that comes back
 after a restart are one tab arriving by two routes. Tearing off writes it to the new window's key
