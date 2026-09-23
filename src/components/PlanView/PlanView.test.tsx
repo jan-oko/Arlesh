@@ -484,6 +484,27 @@ describe("going up to the parent scope", () => {
     expect(useViewStore.getState().planScopeKind).toBe("month");
   });
 
+  it("fills the month once \\ is pressed on a week, as the button does", async () => {
+    mockRows([]);
+    await renderPlanView();
+
+    await act(async () => { fireEvent.keyDown(window, { code: "Backslash" }); });
+    await settle();
+    expect(getOrCreateScope).toHaveBeenCalledWith("month", "2026-09-20");
+    expect(useViewStore.getState().planScopeKind).toBe("month");
+  });
+
+  // Where the button is disabled the key must not be a silent no-op: it says why, out loud.
+  it("refuses \\ on a Season with the same reason the disabled button gives", async () => {
+    useViewStore.setState({ planScopeKind: "season" });
+    mockRows([]);
+    await renderPlanView();
+
+    await act(async () => { fireEvent.keyDown(window, { code: "Backslash" }); });
+    expect(screen.getByText("planView:upScopeAtTop")).toBeInTheDocument();
+    expect(useViewStore.getState().planScopeKind).toBe("season");
+  });
+
   it("disables Up on a Season and says why on hover", async () => {
     useViewStore.setState({ planScopeKind: "season" });
     mockRows([]);

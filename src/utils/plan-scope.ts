@@ -91,6 +91,18 @@ export function cursorAtNow(kind: ViewKind, todayIso: string, hour: number): Pla
 }
 
 /**
+ * Why Up cannot go anywhere: the scope is at the **top** of the ladder (a Season — or an Exact
+ * window, which is not on the ladder at all), or it is still **resolving** and its parent is not
+ * known yet.
+ */
+export type UpRefusal = "top" | "resolving";
+
+/** The `planView` string that says an {@link UpRefusal} — one sentence for the tooltip and the key. */
+export function upRefusalKey(refusal: UpRefusal): "upScopeAtTop" | "upScopeResolving" {
+  return refusal === "top" ? "upScopeAtTop" : "upScopeResolving";
+}
+
+/**
  * The calendar cells one rung **above** `scope` that it sits in — its **parent scope**, as the
  * candidates pane asks "planned to the parent scope".
  *

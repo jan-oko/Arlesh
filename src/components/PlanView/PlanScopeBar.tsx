@@ -7,7 +7,8 @@ import type { UseScopePicker } from "@/hooks/use-scope-picker";
 import type { ViewKind } from "@/utils/scope-calendar";
 import type { ScopeRef } from "@/utils/scope-ref";
 import type { PlanScopeCursor } from "@/utils/plan-scope";
-import { PLAN_SCOPE_KINDS, cursorRef, isPlanScopeKind } from "@/utils/plan-scope";
+import { PLAN_SCOPE_KINDS, cursorRef, isPlanScopeKind, upRefusalKey } from "@/utils/plan-scope";
+import type { UpRefusal } from "@/utils/plan-scope";
 import styles from "./PlanScopeBar.module.css";
 
 const UP = "↑";
@@ -24,6 +25,8 @@ interface Props {
   onJumpTo: (ref: ScopeRef) => void;
   /** The kind one rung up, or `null` where there is none — a Season — or it is not known yet. */
   parentKind: ViewKind | null;
+  /** Why Up is unavailable, or `null` when it is available — what the disabled button says. */
+  upRefusal: UpRefusal | null;
   onUp: () => void;
   onToggleBacklogged: () => void;
 }
@@ -39,7 +42,7 @@ interface Props {
  * clicks go straight back out as a jump.
  */
 export default function PlanScopeBar({
-  cursor, label, showBacklogged, onSetKind, onStep, onJumpTo, parentKind, onUp, onToggleBacklogged,
+  cursor, label, showBacklogged, onSetKind, onStep, onJumpTo, parentKind, upRefusal, onUp, onToggleBacklogged,
 }: Props) {
   const { t } = useTranslation("planView");
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -59,11 +62,9 @@ export default function PlanScopeBar({
     resolve: () => Promise.resolve(null),
   };
 
-  // A Season is the top of the ladder, which is a reason worth saying on hover; a scope still being
-  // materialized has a parent that is simply not known yet, and says what Up is for instead.
-  const upTitle = parentKind !== null
+  const upTitle = upRefusal === null && parentKind !== null
     ? t("upScopeTo", { kind: t(`kind.${parentKind}`) })
-    : cursor.kind === "season" ? t("upScopeAtTop") : t("upScope");
+    : t(upRefusalKey(upRefusal ?? "resolving"));
 
   return (
     <header className={styles.bar}>
@@ -82,7 +83,7 @@ export default function PlanScopeBar({
             type="button"
             className={styles.step}
             aria-label={t("upScope")}
-            disabled={parentKind === null}
+            disabled={upRefusal !== null}
             onClick={onUp}
           >
             {UP}

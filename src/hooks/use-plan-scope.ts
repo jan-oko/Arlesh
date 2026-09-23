@@ -9,6 +9,7 @@ import type { ViewKind } from "@/utils/scope-calendar";
 import type { ScopeRef } from "@/utils/scope-ref";
 import type { PlanScopeCursor } from "@/utils/plan-scope";
 import { cursorAtNow, cursorFromRef, cursorRef, parentRefs, stepCursor } from "@/utils/plan-scope";
+import type { UpRefusal } from "@/utils/plan-scope";
 
 /** The scope a Plan pass is filling, and the ways to move to another one. */
 export interface PlanScopeHandles {
@@ -31,7 +32,9 @@ export interface PlanScopeHandles {
    * Season) or while the scope is still being materialized.
    */
   parentKind: ViewKind | null;
-  /** Fills the parent scope instead. Does nothing where `parentKind` is `null`. */
+  /** Why there is no Up right now, or `null` when there is one. The button and the key both say it. */
+  upRefusal: UpRefusal | null;
+  /** Fills the parent scope instead. Does nothing where `upRefusal` is set. */
   goUp: () => void;
 }
 
@@ -141,6 +144,7 @@ export function usePlanScope(now: Date = new Date()): PlanScopeHandles {
     step,
     jumpTo,
     parentKind: up?.kind ?? null,
+    upRefusal: up !== null ? null : scope === null ? "resolving" : "top",
     goUp,
   };
 }

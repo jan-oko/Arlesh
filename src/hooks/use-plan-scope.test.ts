@@ -77,6 +77,7 @@ describe("going up to the parent scope", () => {
   it("offers no Up from a Season, the top of the ladder", async () => {
     const { result } = await renderAt("season");
     expect(result.current.parentKind).toBeNull();
+    expect(result.current.upRefusal).toBe("top");
 
     act(() => result.current.goUp());
     expect(result.current.cursor.kind).toBe("season");
@@ -87,5 +88,6 @@ describe("going up to the parent scope", () => {
     useViewStore.setState({ planScopeKind: "week" });
     const { result } = renderHook(() => usePlanScope(NOW));
     expect(result.current.parentKind).toBeNull();
+    expect(result.current.upRefusal).toBe("resolving");
   });
 });

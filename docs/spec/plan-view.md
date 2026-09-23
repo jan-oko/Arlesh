@@ -253,8 +253,10 @@ shows. A **week at a month's edge** has two parents; Up goes to the month holdin
 because that asks what was committed above the week, and Up asks where to stand, which is one place.
 On a **Season** Up is disabled and says on hover that a Season is the top of the ladder — the same
 structural reason *Show only planned to parent scope* is inert there. It is disabled for the moment
-the scope is still being materialized, too, since its parent is not known yet. It has no key: `\`,
-free in every table and beside `[` `]`, is the proposed one, awaiting a yes.
+the scope is still being materialized, too, since its parent is not known yet. **`\`** does the same, and where the button is disabled the key does not do nothing: it
+says the button's reason in a toast, because a press with no visible effect reads as a key that is
+not bound. `\` was free in every table and sits beside `[` `]` on a US layout — the third key of
+the cluster, for the one step that leaves the bracket axis.
 
 Stepping walks from the materialized scope's own start date rather than from wherever the cursor
 happened to sit inside it, so a month stepped from the 31st lands on the next month. Walking parts
@@ -321,6 +323,7 @@ move looking like a failure.
   the planned pane split there is no move into the scope, and `Enter` from the left says so
 - `1`–`7`, and an unambiguous initial — plan the selection into that subscope
 - `[` / `]` — fill the previous / next scope
+- `\` — fill the parent scope; on a Season, says why there is none
 - `Shift+B` — show or hide backlogged candidates. Shifted deliberately: bare `B` backlogs the
   selected Task in the List View, and a key that sets one task aside must not reveal a whole
   category of them elsewhere

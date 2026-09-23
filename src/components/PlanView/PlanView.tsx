@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useListData } from "@/hooks/use-list-data";
 import { usePlanScope } from "@/hooks/use-plan-scope";
 import { usePlanParents } from "@/hooks/use-plan-parents";
+import { upRefusalKey } from "@/utils/plan-scope";
 import { usePlanMove } from "@/hooks/use-plan-move";
 import { useScopeWindows } from "@/hooks/use-scope-windows";
 import { useScopeRows } from "@/hooks/use-scope-rows";
@@ -44,6 +45,9 @@ import type { PaneOption } from "./PaneMenu";
 import type { SelectModifiers } from "./PlanTaskCard";
 import { useKeyboardPlanView } from "./use-keyboard-plan-view";
 import styles from "./PlanView.module.css";
+
+/** What the Up refusal anchors to: the scope, not a node — so the toast takes the fixed spot. */
+const UP_TOAST_ANCHOR = "planView:up";
 
 const NO_PANES: PlanPanes = { unplanned: [], planned: [], parentPlanned: [] };
 
@@ -393,6 +397,16 @@ export default function PlanView() {
     [paneRowsOf, planSelectionInto, moveAcross],
   );
 
+  // The key does what the button does, and where the button is disabled the key says why rather
+  // than doing nothing: a press with no visible effect reads as a key that is not bound.
+  const upScope = useCallback(() => {
+    if (scope.upRefusal === null) {
+      scope.goUp();
+      return;
+    }
+    showToast({ nodeId: UP_TOAST_ANCHOR, message: t(`planView:${upRefusalKey(scope.upRefusal)}`) });
+  }, [scope, showToast, t]);
+
   useKeyboardPlanView({
     isInputActive: isInputCaptured || editorModal !== null,
     pane,
@@ -404,6 +418,7 @@ export default function PlanView() {
     hasSubscopeKey: (key: string) => sectionsByKey.has(key),
     onPlanIntoSubscope,
     onStepScope: scope.step,
+    onUpScope: upScope,
     onToggleBacklogCandidates: () => setShowBacklogged((on) => !on),
     onSetStatusMode: setStatusMode,
     onOpenEditor: onDoubleClick,
@@ -445,6 +460,7 @@ export default function PlanView() {
         onStep={scope.step}
         onJumpTo={scope.jumpTo}
         parentKind={scope.parentKind}
+        upRefusal={scope.upRefusal}
         onUp={scope.goUp}
         onToggleBacklogged={() => setShowBacklogged((on) => !on)}
       />
