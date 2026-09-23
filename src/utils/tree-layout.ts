@@ -3,6 +3,7 @@ import type { TimeScope } from "@/api/time-scope";
 import type { InstanceType, FlowItemType, FlowItemRef, HabitInstanceType } from "@/api/flows";
 import type { OnScopeExit, Timing, Resolution } from "@/api/scope-lifecycle";
 import type { Verdict } from "@/api/verdict";
+import type { Delegate } from "@/api/tasks";
 import type { DurationSpec } from "@/api/time-scope";
 import type { CanonicalKind } from "@/utils/scope-ref";
 
@@ -217,6 +218,9 @@ export interface MindmapNode {
    * persisted. Read together with `agentic` through `isAgentic`, never on its own: an explicit
    * `agentic: false` overrides an agentic ancestor. */
   inheritedAgentic?: boolean;
+  /** Who holds this Task, when it is delegated (Tasks only): a Person or the Agent. The task's
+   * **own** stored delegate — absent or `null` when it has none of its own. */
+  delegate?: Delegate | null;
   /** Whether doing this Task starts a **wait** rather than finishing something (Tasks only) —
    * send the email, order the part, kick off the build.
    *

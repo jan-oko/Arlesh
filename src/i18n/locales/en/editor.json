@@ -118,5 +118,6 @@
   "agenticYes": "Agentic",
   "agenticNo": "Not agentic",
   "agenticInheritedOn": "Inherited from an agentic parent",
-  "agenticInheritedOff": "Nothing above this task is agentic"
+  "agenticInheritedOff": "Nothing above this task is agentic",
+  "delegateToAgent": "Delegate to agent"
 }
