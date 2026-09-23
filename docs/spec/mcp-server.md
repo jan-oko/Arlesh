@@ -44,10 +44,12 @@ lifecycle. The verdict is recorded, never inferred, and `unresolved` means the u
 rather than "not done" — an agent that reads it as an unfinished task has misread the board.
 
 An Expectation — a wait tasks can depend on — arrives in its own `expectations` section, read-only,
-with its `status` (`pending` / `released`), its `archival` and its optional `check_by` (boundary
-scope ids, like a time scope). Its lifecycle entry (`node_type: "expectation"`) times the check-by.
-The two derived nodes the views draw — a wait's check task and a delegated task's wait — are not
-in the payload: they are read off these rows and the task rows. Querying waits is `Arlesh-rz0`'s.
+with its `status` (`pending` / `released`), its `archival` and its optional `check_every` (a count
+and a kind), `check_starting` and `last_check_at`. The day each checked wait's next check is due is
+in `expectation_checks`. A task's `async_template` makes it asynchronous; the wait completing it
+spawned is in `spawned_waits`, keyed by the task, with its own lifecycle entries (`spawned_wait`,
+`spawned_check`). The derived nodes the views draw — a wait's check task, a delegated task's wait,
+a spawned wait — are not rows of their own: they are read off these sections and the task rows. Querying waits is `Arlesh-rz0`'s.
 
 Tasks, Goals and Commitments carry `time_scope` and `plan` as boundary **scope ids**, not dates, so reading a
 snapshot means resolving those ids — `arlesh_scopes.resolve_many` does a batch in one call against

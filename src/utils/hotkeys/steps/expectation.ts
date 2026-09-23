@@ -4,7 +4,7 @@ import { hasSelection, withNode } from "./selection";
 
 /** What the two Expectation gestures act on. */
 export interface StepsExpectationContext extends StepsSelectionContext {
-  /** Completes the check on the selected wait or its check task: clears the check-by. */
+  /** Completes the check on the selected wait or its check task; the next falls due one interval later. */
   onCompleteCheck: (id: string) => void;
   /** Releases the selected wait, or takes the release back. */
   onToggleRelease: (id: string) => void;

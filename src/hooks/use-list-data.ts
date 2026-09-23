@@ -29,7 +29,7 @@ interface ListData {
   listRoot: MindmapNode;
   /** Releases a wait, or takes a release back. */
   toggleRelease: (nodeId: string) => void;
-  /** Completes a wait's check: clears its check-by. */
+  /** Completes a wait's check: records it, and the next falls due one interval later. */
   completeCheck: (nodeId: string) => void;
   /** Every Task/Goal node, for the shared task/goal editor plumbing (dependency picker, etc.). */
   allTasksAndGoals: MindmapNode[];
@@ -95,7 +95,7 @@ export function useListData(): ListData {
     (nodeId: string) => {
       const node = findNode(tree, nodeId);
       if (node === undefined || node.kind !== "task") return;
-      // A wait's check task has no status of its own: completing it clears the check-by.
+      // A wait's check task has no status of its own: completing it records the check.
       if (node.expectationCheck !== undefined) {
         completeCheck(nodeId);
         return;

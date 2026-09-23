@@ -7,7 +7,7 @@ export interface ListExpectationContext extends ListSelectionContext {
   isSelectedCheckTask: boolean;
   /** Releases the selected Expectation, or takes a release back. */
   onToggleRelease: (id: string) => void;
-  /** Completes the check: clears the check-by of the selected wait, or of the check task's wait. */
+  /** Completes the check on the selected wait, or on the check task's wait. */
   onCompleteCheck: (id: string) => void;
   /** Selects the List View's **Expectations** option, leaving the shared status preset untouched. */
   onSetExpectationsPreset: () => void;

@@ -73,7 +73,8 @@ function applyLifecycles(node: MindmapNode, byId: Map<string, ItemLifecycle>): v
 
 /**
  * Each lifecycle keyed by the node id it stamps. A wait sends two: `expectation` times its own
- * Time Scope, and `expectation_check` its check-by, which is what its virtual check task reads.
+ * Time Scope, and `expectation_check` its next check, which is what its virtual check task reads.
+ * A spawned wait sends `spawned_wait` and `spawned_check`, keyed by the Task that spawned it.
  */
 function lifecycleMap(lifecycles: ItemLifecycle[]): Map<string, ItemLifecycle> {
   return new Map(lifecycles.map((l): [string, ItemLifecycle] => {
@@ -921,7 +922,7 @@ export function buildTree(
   }
 
   // A delegated Task waits on its delegate finishing: a virtual, pending Expectation beneath it
-  // for as long as it is not done. It has no row and no check-by, and only the Task being done
+  // for as long as it is not done. It has no row and no Check every, and only the Task being done
   // releases it — which is simply the moment it stops being drawn.
   for (const task of tasks) {
     if (task.delegate_to === null || task.status === TASK_STATUS.DONE) continue;

@@ -2,8 +2,8 @@
 //!
 //! Thin, like every other command module: open a session, delegate, commit. Releasing and taking
 //! a release back are ordinary [`update_expectation`] writes of the status; the one write with a
-//! command of its own is completing the virtual check task, which clears the check-by and refuses
-//! when there is none.
+//! command of its own is completing the virtual check task, which records the check and refuses
+//! when there is none due.
 
 use tauri::State;
 
@@ -16,7 +16,7 @@ use crate::{
     },
 };
 
-/// Creates a new expectation: pending, live, with the check-by the request names, if any.
+/// Creates a new expectation: pending, live, with the Check every the request names, if any.
 #[tauri::command]
 pub async fn create_expectation(
     factory: State<'_, SessionFactory>,

@@ -63,7 +63,7 @@ function fieldsForKind(node: MindmapNode): readonly StepFieldKind[] {
     // drawn anywhere, so that stays.
     case "commitment":
       return ["verdictWindow", "timeScope", "plan"];
-    // No Status: the ring is the status — open while pending, solid once released. The check-by
+    // No Status: the ring is the status — open while pending, solid once released. Check every
     // is drawn nowhere else.
     case "expectation":
       return ["timeScope", "checkEvery"];

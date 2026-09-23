@@ -72,7 +72,7 @@
   "toggleAsynchronous": "Mark Asynchronous / Not asynchronous",
   "cycleVerdict": "Cycle the selected commitment's verdict (Unresolved → Kept → Broken)",
   "markBroken": "Mark the selected commitment broken (again to clear it)",
-  "completeCheck": "Complete the check on the selected expectation (clears its check-by)",
+  "completeCheck": "Complete the check on the selected expectation; the next falls due one interval later",
   "toggleRelease": "Release the selected expectation (again to take it back)",
   "createChildRow": "Create a child of the selected row",
   "createSiblingRow": "Create a sibling of the selected row",
@@ -99,5 +99,5 @@
   "stepsZoomOut": "Smaller cards (more to a page)",
   "stepsCreateChild": "Create a child of the selected card (on a card: step into it)",
   "stepsCreateSibling": "Create a card beside the selected one, on this Step",
-  "bindWait": "Mark the selected task asynchronous and name the wait it starts"
+  "bindWait": "Edit what the selected task will wait on once done (its Expectation template)"
 }

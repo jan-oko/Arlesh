@@ -5,7 +5,7 @@
   "identifier": "com.atai.arlesh",
   "build": {
     "beforeDevCommand": "npm run dev",
-    "devUrl": "http://localhost:14221",
+    "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"
   },
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Arlesh \u2014 expectations",
+        "title": "Arlesh",
         "width": 800,
         "height": 600,
         "create": false,

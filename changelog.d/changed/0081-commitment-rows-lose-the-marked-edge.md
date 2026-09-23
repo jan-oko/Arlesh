@@ -1,0 +1,1 @@
+- **Unjudged Commitment rows no longer carry a marked left edge.** It looked like a selection; the row's glyph already says the verdict is unresolved.

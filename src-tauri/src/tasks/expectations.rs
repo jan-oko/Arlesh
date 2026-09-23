@@ -358,7 +358,7 @@ impl<'session> ExpectationOperator<'session> {
     }
 }
 
-/// Creates an expectation. Pending, live, and with whatever check-by and Time Scope the request
+/// Creates an expectation. Pending, live, and with whatever Check every and Time Scope the request
 /// names — none, unless it names them. A Time Scope escaping the nearest scoped ancestor's window is
 /// refused, as it is for a Task.
 #[tracing::instrument(skip(db))]
@@ -376,7 +376,7 @@ pub async fn create_expectation(
     db.expectations().insert(request, now()).await
 }
 
-/// Updates an expectation — title, status, archival, check-by, parent, position or privacy.
+/// Updates an expectation — title, status, archival, Check every, parent, position or privacy.
 ///
 /// Releasing is an ordinary write of [`ExpectationStatus::Released`], and taking it back is one of
 /// `Pending`, so a misclick is undone by the same call that made it.

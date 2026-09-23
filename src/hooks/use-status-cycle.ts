@@ -60,7 +60,7 @@ export function useStatusCycle({ findNode, reload, showToast }: Options): Status
       const node = findNode(nodeId);
       if (node === undefined) return;
       // A wait's glyph releases it (or takes the release back); its check task's completes the
-      // check, which clears the check-by and stores nothing else.
+      // check, which records when and stores nothing else.
       if (node.expectationCheck !== undefined) { completeCheck(nodeId); return; }
       if (node.kind === "expectation") { toggleRelease(nodeId); return; }
       // A virtual Habit instance (an item, or the iteration root `flow_root`) advances just itself:

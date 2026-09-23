@@ -207,7 +207,7 @@ pub fn forest(load: &MindmapLoad) -> Vec<FactNode> {
         facts.push(node);
         parents.push(Some(content_parent_id(&task.parent_type, task.parent_id)));
         // A delegated Task waits on its delegate finishing: a virtual, pending Expectation beneath
-        // it, for as long as the Task is not done. Nothing stores it, and it has no check-by.
+        // it, for as long as the Task is not done. Nothing stores it, and it has no Check every.
         if task.delegate_to.is_some() && TaskStatus::from_db(&task.status) != Some(TaskStatus::Done)
         {
             let mut wait = NodeFacts::new(delegation_wait_id(task.id), NodeKind::Expectation);
@@ -332,7 +332,7 @@ pub fn narrow(load: &mut MindmapLoad, filter: &BoardFilter) {
     load.infos
         .retain(|info| keeps(&format!("info-{}", info.id)));
 
-    // A wait's check-by entry travels with the wait it belongs to.
+    // A wait's check entry travels with the wait it belongs to.
     // A wait's check entry travels with its wait, and a spawned wait's entries with its task.
     load.lifecycles.retain(|lifecycle| {
         let owner = match lifecycle.node_type.as_str() {

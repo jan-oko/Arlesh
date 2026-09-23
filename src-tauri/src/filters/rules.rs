@@ -214,7 +214,7 @@ pub fn is_live_expectation(node: &NodeFacts) -> bool {
 ///
 /// A wait is not work, so it answers to its own rule. **All** shows every one. A **pending**, live
 /// one shows under **Plan** — it is part of what is in play — and under **Start** only when it has
-/// no check-by: with one, the virtual check task beneath it is the thing to start, and that task
+/// no Check every: with one, the virtual check task beneath it is the thing to start, and that task
 /// answers the ordinary Task rules. **Do** and **Backlog** show none: nothing about a wait is
 /// underway on your side, and a wait cannot be set aside. A **released** or **archived** one shows
 /// under All only.

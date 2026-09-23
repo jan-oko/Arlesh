@@ -19,7 +19,7 @@ export interface Expectation {
   // ISO `YYYY-MM-DDTHH:MM:SS`, local time.
   check_starting?: string;
   last_check_at?: string;
-  /** Its own relevance window, like a Task's — separate from the check-by. */
+  /** Its own relevance window, like a Task's — separate from its Check every. */
   time_scope: TimeScope | null;
   tag_ids: number[];
   position: number;

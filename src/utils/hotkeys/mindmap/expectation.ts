@@ -4,8 +4,8 @@ import { selectedNode } from "./selection";
 
 /** What the two Expectation gestures act on. */
 export interface MindmapExpectationContext extends MindmapSelectionContext {
-  /** Completes the check on a wait: clears the check-by of the selected Expectation, or of the one
-   * the selected virtual check task belongs to. The Expectation stays pending. */
+  /** Completes the check on a wait — the selected Expectation, or the one
+   * the selected virtual check task belongs to. The next check falls due one interval later. */
   onCompleteCheck: (id: string) => void;
   /** Releases the selected Expectation, or takes a release back. */
   onToggleRelease: (id: string) => void;

@@ -233,7 +233,8 @@ pub fn derive_item_state(
 /// One item's fully-derived lifecycle state, keyed by node reference for the frontend.
 #[derive(Debug, Clone, Serialize)]
 pub struct ItemLifecycle {
-    /// `"task"`, `"goal"`, `"commitment"` or `"expectation"` — the last describing its check-by.
+    /// `"task"`, `"goal"`, `"commitment"` or `"expectation"`; `"expectation_check"`,
+    /// `"spawned_wait"` and `"spawned_check"` time a wait's next check and a spawned wait.
     pub node_type: String,
     /// The item's id.
     pub node_id: i64,

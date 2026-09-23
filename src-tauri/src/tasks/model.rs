@@ -872,7 +872,7 @@ impl ExpectationArchival {
 /// It carries a Time Scope and tags, like a Task. Note what is absent, since the absences are the
 /// design: no Plan and no On-exit behaviour (a wait is not something you schedule, and it is never
 /// Missed), no beads id, no block reasons and no dependencies of its own — it depends on nothing,
-/// only Tasks depend on it. Beside its Time Scope it carries the optional **check-by**.
+/// only Tasks depend on it. Beside its Time Scope it carries the optional **Check every**.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Expectation {
     /// Primary key.
