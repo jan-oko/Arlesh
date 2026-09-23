@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { getOrCreateScope, getScope } from "@/api/scopes";
@@ -6,9 +6,9 @@ import type { Scope } from "@/api/scopes";
 import type { TimeScope } from "@/api/time-scope";
 import { useScopePicker } from "@/hooks/use-scope-picker";
 import { useScopeLabels } from "@/hooks/use-scope-labels";
-import { addScopePeriods, openingForScopes } from "@/utils/scope-calendar";
+import { addScopePeriods, openingForRefs } from "@/utils/scope-calendar";
 import { formatScopeRange } from "@/utils/scope-format";
-import type { CanonicalKind } from "@/utils/scope-ref";
+import { refsForScopes, type CanonicalKind } from "@/utils/scope-ref";
 import ScopePicker from "./ScopePicker";
 import styles from "./ScopeField.module.css";
 
@@ -61,8 +61,17 @@ export default function TimeScopeField({ value, onChange }: Props) {
 
   const endpoints = fetched !== null && fetched.key === boundariesKey ? fetched.scopes : null;
   const rangeLabel = endpoints === null ? null : formatScopeRange(endpoints[0], endpoints[1], labels);
+  // The cells the stored scope occupies drive both where the picker opens and what it has
+  // selected, so the period on screen is the period Apply would re-apply.
+  const valueRefs = useMemo(() => (endpoints === null ? [] : refsForScopes(endpoints)), [endpoints]);
   // Open on the scope already chosen; with none (or one that names no cell), open on Month.
-  const opening = endpoints === null ? null : openingForScopes(endpoints);
+  const opening = openingForRefs(valueRefs);
+
+  const seed = rangePicker.seed;
+  useEffect(() => {
+    if (!open) return;
+    seed(valueRefs);
+  }, [open, valueRefs, seed]);
 
   const summary =
     value === null
@@ -73,7 +82,9 @@ export default function TimeScopeField({ value, onChange }: Props) {
 
   async function applyBoundaries() {
     const timeScope = await rangePicker.resolve();
-    onChange(timeScope);
+    // An empty selection means the question went unanswered, not that there is no scope: Apply
+    // only ever commits a selection, and Clear is the only way to remove one.
+    if (timeScope !== null) onChange(timeScope);
     setOpen(false);
   }
 

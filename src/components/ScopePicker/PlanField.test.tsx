@@ -85,3 +85,48 @@ describe("PlanField", () => {
     await waitFor(() => expect(resolveScope).toHaveBeenCalledWith(5));
   });
 });
+
+describe("PlanField — the opening is the selection", () => {
+  it("draws the cell it opens on as selected and re-applies it untouched", async () => {
+    const onChange = vi.fn();
+    render(<PlanField value={single(7)} timeScope={null} onChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "edit plan" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "June 2026" })).toHaveAttribute("aria-pressed", "true"),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "scopeApply" }));
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith({ start_id: 42, end_id: 42 }));
+    expect(onChange).not.toHaveBeenCalledWith(null);
+  });
+
+  it("round-trips a two-endpoint plan", async () => {
+    const onChange = vi.fn();
+    vi.mocked(getScope).mockImplementation((id) =>
+      Promise.resolve(
+        mkScope(id, { kind: "month", start_date: id === 1 ? "2026-06-01" : "2026-08-01" }),
+      ),
+    );
+    vi.mocked(getOrCreateScope).mockImplementation((_kind, date) =>
+      Promise.resolve(mkScope(date === "2026-06-01" ? 101 : 202, { kind: "month", start_date: date })),
+    );
+    render(<PlanField value={{ start_id: 1, end_id: 2 }} timeScope={null} onChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "edit plan" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "June 2026" })).toHaveAttribute("aria-pressed", "true"),
+    );
+    expect(screen.getByRole("button", { name: "August 2026" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByRole("button", { name: "scopeApply" }));
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith({ start_id: 101, end_id: 202 }));
+  });
+
+  it("applying with nothing selected on an unplanned task changes nothing", async () => {
+    const onChange = vi.fn();
+    render(<PlanField value={null} timeScope={null} onChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "edit plan" }));
+    fireEvent.click(screen.getByRole("button", { name: "scopeApply" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("group", { name: "plan picker" })).not.toBeInTheDocument(),
+    );
+    expect(onChange).not.toHaveBeenCalled();
+  });
+});
