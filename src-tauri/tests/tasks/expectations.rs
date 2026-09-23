@@ -322,6 +322,8 @@ async fn deleting_a_task_takes_the_expectation_beneath_it() {
         db.expectations().get(ExpectationId(wait.id)).await,
         Err(TaskError::ExpectationNotFound(_))
     ));
+    // The pool holds one connection: give it back before asking on another.
+    drop(db);
     assert_eq!(inbound_edges(&pool, wait.id).await, 0);
 }
 
