@@ -5351,15 +5351,12 @@ fn an_explicit_null_on_scope_exit_in_a_goal_update_payload_clears_it() {
 async fn a_task_plan_is_placed_against_now_on_the_two_oclock_day_boundary() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
-    let week = {
-        let mut db = helpers::session_factory(&pool).connect().await.unwrap();
-        arlesh_lib::scopes::model::Scope::containing(
-            ScopeKind::Week,
-            NaiveDate::from_ymd_opt(2026, 7, 1).unwrap(),
-        )
-        .unwrap()
-        .id
-    };
+    let week = arlesh_lib::scopes::model::Scope::containing(
+        ScopeKind::Week,
+        NaiveDate::from_ymd_opt(2026, 7, 1).unwrap(),
+    )
+    .unwrap()
+    .id;
     let friday = day_scope(&pool, 2026, 7, 3).await;
     let planned = new_task(
         &pool,
