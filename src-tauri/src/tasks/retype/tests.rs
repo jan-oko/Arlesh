@@ -165,7 +165,7 @@ fn a_task_becoming_a_commitment_loses_its_plan_delegate_and_block_reasons() {
     let source = SourceNode {
         time_scope: Some(window(3, 9)),
         plan: Some(window(4, 4)),
-        delegate_to: Some(12),
+        delegate_to: Some(Delegate::Person { id: 12 }),
         block_reasons: vec!["waiting on Ana".into()],
         dependents: 2,
         depends_on: 1,
@@ -493,7 +493,7 @@ fn a_task_becoming_a_goal_loses_its_plan_and_its_delegate() {
         time_scope: Some(window(3, 5)),
         on_scope_exit: Some(OnScopeExit::Keep),
         plan: Some(window(4, 4)),
-        delegate_to: Some(12),
+        delegate_to: Some(Delegate::Person { id: 12 }),
         ..task(1)
     };
 
@@ -795,7 +795,7 @@ fn retyping_to_the_same_kind_carries_everything() {
     let source = SourceNode {
         time_scope: Some(window(3, 5)),
         plan: Some(window(4, 4)),
-        delegate_to: Some(2),
+        delegate_to: Some(Delegate::Person { id: 2 }),
         tag_ids: vec![7],
         ..task(1)
     };
@@ -1259,7 +1259,7 @@ fn the_flag_and_the_delegate_are_lost_independently_of_each_other() {
     // They are separate facts about the task: one says the work suits an agent, the other
     // says who holds it. A retype that drops both names both.
     let both = SourceNode {
-        delegate_to: Some(12),
+        delegate_to: Some(Delegate::Person { id: 12 }),
         ..agentic_task(1)
     };
     let plan = plan_retype(&both, &[], RetypeKind::Goal);

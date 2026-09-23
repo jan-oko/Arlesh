@@ -1007,7 +1007,9 @@ async fn a_task_can_be_agentic_and_delegated_at_once() {
             &mut db,
             task.id.into(),
             UpdateTaskRequest {
-                delegate_to: Some(Some(person)),
+                delegate_to: Some(Some(arlesh_lib::tasks::model::Delegate::Person {
+                    id: person,
+                })),
                 ..Default::default()
             },
         )
@@ -1020,7 +1022,103 @@ async fn a_task_can_be_agentic_and_delegated_at_once() {
     .unwrap();
 
     assert_eq!(delegated.agentic, Some(true));
-    assert_eq!(delegated.delegate_to, Some(person));
+    assert_eq!(
+        delegated.delegate_to,
+        Some(arlesh_lib::tasks::model::Delegate::Person { id: person })
+    );
+}
+
+/// Applies one update request, read from its wire JSON, the way an IPC call arrives.
+async fn update_task_from_wire(
+    pool: &sqlx::SqlitePool,
+    task_id: i64,
+    wire: &str,
+) -> arlesh_lib::tasks::model::Task {
+    let request: UpdateTaskRequest = serde_json::from_str(wire).unwrap();
+    let mut db = helpers::session_factory(pool).begin().await.unwrap();
+    let task = update_task(&mut db, task_id.into(), request).await.unwrap();
+    db.commit().await.unwrap();
+    task
+}
+
+/// The one-click delegate button's two halves, exactly as the frontend sends them: `{"kind":
+/// "agent"}` to delegate, and an explicit `null` to take it back. The toggle-off half is the one
+/// that used to be silently ignored on the wire (Arlesh-atb), so it is exercised from JSON rather
+/// than from a hand-built request.
+#[tokio::test]
+async fn a_task_is_delegated_to_the_agent_and_back_over_the_wire() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let task = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let task = create_task(
+            &mut db,
+            CreateTaskRequest {
+                title: "Draft the migration".into(),
+                parent_type: "project".into(),
+                parent_id: project_id,
+                agentic: Some(TaskAgentic::Yes),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        db.commit().await.unwrap();
+        task
+    };
+
+    let delegated =
+        update_task_from_wire(&pool, task.id, r#"{"delegate_to":{"kind":"agent"}}"#).await;
+    assert_eq!(
+        delegated.delegate_to,
+        Some(arlesh_lib::tasks::model::Delegate::Agent)
+    );
+    let stored: (Option<String>, Option<i64>) =
+        sqlx::query_as("SELECT delegate_kind, delegate_id FROM tasks WHERE id = ?")
+            .bind(task.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(stored, (Some("agent".to_string()), None));
+
+    let cleared = update_task_from_wire(&pool, task.id, r#"{"delegate_to":null}"#).await;
+    assert_eq!(
+        cleared.delegate_to, None,
+        "an explicit null clears the Agent"
+    );
+    assert_eq!(cleared.agentic, Some(true), "and leaves the flag alone");
+}
+
+/// Delegating to a Person who does not exist is refused, exactly as it was when the column was a
+/// plain foreign key: `delegate_id` still references `people`.
+#[tokio::test]
+async fn delegating_to_a_person_who_does_not_exist_is_refused() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    let task = create_task(
+        &mut db,
+        CreateTaskRequest {
+            title: "Orphan".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let refused = update_task(
+        &mut db,
+        task.id.into(),
+        UpdateTaskRequest {
+            delegate_to: Some(Some(arlesh_lib::tasks::model::Delegate::Person {
+                id: 9_999,
+            })),
+            ..Default::default()
+        },
+    )
+    .await;
+    assert!(refused.is_err(), "a delegate must name a real Person");
 }
 
 #[tokio::test]
@@ -5230,8 +5328,18 @@ fn an_explicit_null_delegate_in_a_task_update_payload_clears_it() {
         Some(None),
         "an explicit null clears the delegate"
     );
-    let set: UpdateTaskRequest = serde_json::from_str(r#"{"delegate_to":7}"#).unwrap();
-    assert_eq!(set.delegate_to, Some(Some(7)));
+    let set: UpdateTaskRequest =
+        serde_json::from_str(r#"{"delegate_to":{"kind":"person","id":7}}"#).unwrap();
+    assert_eq!(
+        set.delegate_to,
+        Some(Some(arlesh_lib::tasks::model::Delegate::Person { id: 7 }))
+    );
+    let agent: UpdateTaskRequest =
+        serde_json::from_str(r#"{"delegate_to":{"kind":"agent"}}"#).unwrap();
+    assert_eq!(
+        agent.delegate_to,
+        Some(Some(arlesh_lib::tasks::model::Delegate::Agent))
+    );
 }
 
 #[test]
