@@ -23,8 +23,13 @@
   line-height: 1;
 }
 
-.step:hover {
+.step:hover:not(:disabled) {
   border-color: var(--node-border-selected);
+}
+
+.step:disabled {
+  cursor: default;
+  opacity: 0.4;
 }
 
 .anchor {

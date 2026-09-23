@@ -10,6 +10,7 @@ import type { PlanScopeCursor } from "@/utils/plan-scope";
 import { PLAN_SCOPE_KINDS, cursorRef, isPlanScopeKind } from "@/utils/plan-scope";
 import styles from "./PlanScopeBar.module.css";
 
+const UP = "↑";
 const PREVIOUS = "‹";
 const NEXT = "›";
 
@@ -21,6 +22,9 @@ interface Props {
   onSetKind: (kind: ViewKind) => void;
   onStep: (direction: 1 | -1) => void;
   onJumpTo: (ref: ScopeRef) => void;
+  /** The kind one rung up, or `null` where there is none — a Season — or it is not known yet. */
+  parentKind: ViewKind | null;
+  onUp: () => void;
   onToggleBacklogged: () => void;
 }
 
@@ -35,7 +39,7 @@ interface Props {
  * clicks go straight back out as a jump.
  */
 export default function PlanScopeBar({
-  cursor, label, showBacklogged, onSetKind, onStep, onJumpTo, onToggleBacklogged,
+  cursor, label, showBacklogged, onSetKind, onStep, onJumpTo, parentKind, onUp, onToggleBacklogged,
 }: Props) {
   const { t } = useTranslation("planView");
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -55,6 +59,12 @@ export default function PlanScopeBar({
     resolve: () => Promise.resolve(null),
   };
 
+  // A Season is the top of the ladder, which is a reason worth saying on hover; a scope still being
+  // materialized has a parent that is simply not known yet, and says what Up is for instead.
+  const upTitle = parentKind !== null
+    ? t("upScopeTo", { kind: t(`kind.${parentKind}`) })
+    : cursor.kind === "season" ? t("upScopeAtTop") : t("upScope");
+
   return (
     <header className={styles.bar}>
       <Select
@@ -65,6 +75,19 @@ export default function PlanScopeBar({
       />
 
       <div className={styles.stepper}>
+        {/* The title sits on a wrapper: a disabled button receives no pointer events, and the
+            reason it is disabled is exactly what the hover has to say. */}
+        <span title={upTitle}>
+          <button
+            type="button"
+            className={styles.step}
+            aria-label={t("upScope")}
+            disabled={parentKind === null}
+            onClick={onUp}
+          >
+            {UP}
+          </button>
+        </span>
         <button type="button" className={styles.step} aria-label={t("previousScope")} onClick={() => onStep(-1)}>
           {PREVIOUS}
         </button>

@@ -245,6 +245,17 @@ headers are entries in that stream rather than wrappers around it, and none of t
 `Down` steps from the last card of one bucket to the first card of the next. Crossing panes still
 keeps your place by index, against the drawn order on both sides.
 
+**Up** — a button beside the step back — fills the scope's **parent** instead: a part of day's
+Day, a Day's Week, a Week's Month, a Month's Season (see [The parent scope](#the-parent-scope)).
+The kind selector changes with it, exactly as choosing the kind would, since the kind is what it
+shows. A **week at a month's edge** has two parents; Up goes to the month holding the week's
+**first day**, the natural reading of "the week's month". The candidates pane still counts both,
+because that asks what was committed above the week, and Up asks where to stand, which is one place.
+On a **Season** Up is disabled and says on hover that a Season is the top of the ladder — the same
+structural reason *Show only planned to parent scope* is inert there. It is disabled for the moment
+the scope is still being materialized, too, since its parent is not known yet. It has no key: `\`,
+free in every table and beside `[` `]`, is the proposed one, awaiting a yes.
+
 Stepping walks from the materialized scope's own start date rather than from wherever the cursor
 happened to sit inside it, so a month stepped from the 31st lands on the next month. Walking parts
 of a day rolls over into the next or previous day at either end of the sequence.

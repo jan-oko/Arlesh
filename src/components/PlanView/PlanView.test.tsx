@@ -469,6 +469,30 @@ describe("the two kebab menus", () => {
   });
 });
 
+describe("going up to the parent scope", () => {
+  it("fills the month once Up is pressed on a week", async () => {
+    mockRows([]);
+    await renderPlanView();
+    const up = screen.getByLabelText("upScope");
+    expect(up).toBeEnabled();
+    expect(up.parentElement).toHaveAttribute("title", "upScopeTo");
+
+    await act(async () => { fireEvent.click(up); });
+    await settle();
+    expect(getOrCreateScope).toHaveBeenCalledWith("month", "2026-09-20");
+    expect(useViewStore.getState().planScopeKind).toBe("month");
+  });
+
+  it("disables Up on a Season and says why on hover", async () => {
+    useViewStore.setState({ planScopeKind: "season" });
+    mockRows([]);
+    await renderPlanView();
+    const up = screen.getByLabelText("upScope");
+    expect(up).toBeDisabled();
+    expect(up.parentElement).toHaveAttribute("title", "upScopeAtTop");
+  });
+});
+
 describe("splitting the planned pane by subscope", () => {
   it("draws one section per day of the week being filled, empty ones included", async () => {
     useDisplayStore.setState({ planSubscopeSplit: true });

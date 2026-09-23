@@ -444,6 +444,8 @@ export default function PlanView() {
         onSetKind={scope.setKind}
         onStep={scope.step}
         onJumpTo={scope.jumpTo}
+        parentKind={scope.parentKind}
+        onUp={scope.goUp}
         onToggleBacklogged={() => setShowBacklogged((on) => !on)}
       />
 

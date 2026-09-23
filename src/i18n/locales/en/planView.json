@@ -13,6 +13,9 @@
     "day": "Day",
     "part_of_day": "Part of day"
   },
+  "upScope": "Up to the parent scope",
+  "upScopeTo": "Up to the {{kind}}",
+  "upScopeAtTop": "A Season is the top of the ladder: there is no scope above it.",
   "previousScope": "Previous scope",
   "nextScope": "Next scope",
   "jumpToScope": "Jump to a scope",

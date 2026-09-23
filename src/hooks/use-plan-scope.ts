@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { getOrCreateForRef } from "@/api/scopes";
 import type { Scope } from "@/api/scopes";
 import { getErrorMessage } from "@/api/errors";
@@ -8,7 +8,7 @@ import { formatScope } from "@/utils/scope-format";
 import type { ViewKind } from "@/utils/scope-calendar";
 import type { ScopeRef } from "@/utils/scope-ref";
 import type { PlanScopeCursor } from "@/utils/plan-scope";
-import { cursorAtNow, cursorFromRef, cursorRef, stepCursor } from "@/utils/plan-scope";
+import { cursorAtNow, cursorFromRef, cursorRef, parentRefs, stepCursor } from "@/utils/plan-scope";
 
 /** The scope a Plan pass is filling, and the ways to move to another one. */
 export interface PlanScopeHandles {
@@ -26,6 +26,13 @@ export interface PlanScopeHandles {
   step: (direction: 1 | -1) => void;
   /** Jumps to a cell picked in the calendar. A cell no pass can fill is ignored. */
   jumpTo: (ref: ScopeRef) => void;
+  /**
+   * The kind one rung up, which is what `goUp` would fill; `null` where there is no rung up (a
+   * Season) or while the scope is still being materialized.
+   */
+  parentKind: ViewKind | null;
+  /** Fills the parent scope instead. Does nothing where `parentKind` is `null`. */
+  goUp: () => void;
 }
 
 function todayIso(now: Date): string {
@@ -105,6 +112,22 @@ export function usePlanScope(now: Date = new Date()): PlanScopeHandles {
     setCursor((current) => cursorFromRef(ref, current.part) ?? current);
   }, []);
 
+  // Up goes to the **first** parent `parentRefs` names. That is the only one everywhere but a week
+  // at a month's edge, where it is the month holding the week's first day — the natural reading of
+  // "the week's month". The candidates pane still counts both months as the week's parent: that
+  // asks what was committed above this week, and this asks where to stand, which is one place.
+  const up = useMemo(() => {
+    const parent = scope === null ? undefined : parentRefs(scope)[0];
+    return parent === undefined ? null : cursorFromRef(parent, cursor.part);
+  }, [scope, cursor.part]);
+  const goUp = useCallback(() => {
+    if (up === null) return;
+    // The kind changes, and the kind is the tab's — the selector beside the stepper reads it, so
+    // going up has to say so there exactly as choosing the kind would.
+    setPlanScopeKind(up.kind);
+    setCursor(up);
+  }, [up, setPlanScopeKind]);
+
   // The scope's window is deliberately **not** derived here. `resolve_scope` is the authority on
   // what a scope spans, and `useScopeWindows` is what asks it — for this scope alongside every
   // task's, through one cache, so the target and the windows it is compared against can never be
@@ -117,5 +140,7 @@ export function usePlanScope(now: Date = new Date()): PlanScopeHandles {
     setKind,
     step,
     jumpTo,
+    parentKind: up?.kind ?? null,
+    goUp,
   };
 }
