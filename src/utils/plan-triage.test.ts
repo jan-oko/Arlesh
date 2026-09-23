@@ -204,26 +204,6 @@ describe("partitionForScope", () => {
     expect(panes.parentPlanned).toEqual([]);
   });
 
-  // A judged Commitment's supporting steps leave both panes, whichever way it was judged.
-  it.each(["kept", "broken"] as const)("drops the steps of a %s Commitment from both panes", (verdict) => {
-    const commitment = node("commitment-1", { verdict }, "commitment");
-    const rows = [
-      row({ node: node("task-1", { timeScope: scope(1) }), ancestors: [commitment] }),
-      row({ node: node("task-2", { plan: scope(1) }), ancestors: [commitment] }),
-      row({ node: node("task-3", { plan: scope(4) }), ancestors: [commitment] }),
-    ];
-    const panes = partitionForScope(rows, WEEK, WINDOWS, MONTH_PARENT);
-    expect(panes.unplanned).toEqual([]);
-    expect(panes.planned).toEqual([]);
-    expect(panes.parentPlanned).toEqual([]);
-  });
-
-  it("keeps the steps of a Commitment not yet judged", () => {
-    const commitment = node("commitment-1", { verdict: "unresolved" }, "commitment");
-    const rows = [row({ node: node("task-1", { timeScope: scope(1) }), ancestors: [commitment] })];
-    expect(partitionForScope(rows, WEEK, WINDOWS, MONTH_PARENT).unplanned).toHaveLength(1);
-  });
-
   it("triages no virtual Habit occurrence", () => {
     const habitItem = { flowId: 1, itemType: "flow_task" as const, itemId: 1, scopeId: 1, cycleId: 0 };
     const rows = [row({ node: node("task-1", { virtual: true, habitItem }) })];

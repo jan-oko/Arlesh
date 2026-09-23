@@ -1,1 +1,0 @@
-- **A Commitment you have judged no longer keeps its steps in the Plan View.** Once a Commitment is marked Kept or Broken, the tasks under it leave both halves of the Plan View, the way a done task does. Before, a Broken Commitment's steps stayed on offer even though there was nothing left to plan for it.
