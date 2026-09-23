@@ -41,7 +41,7 @@ import { addTagToGoal, removeTagFromGoal, updateGoal } from "@/api/goals";
 import { addTagToCommitment, removeTagFromCommitment, updateCommitment } from "@/api/commitments";
 import type { TimeScope } from "@/api/time-scope";
 import { findNode } from "@/utils/mindmap-tree";
-import { editorOwnerOf } from "@/utils/editor-owner";
+import { editorOwnerOf, isUneditableCheck } from "@/utils/editor-owner";
 import { rowIdOf } from "@/utils/node-identity";
 import { DOMAIN_SUBTYPE } from "@/api/domains";
 import { TASK_STATUS } from "@/utils/status-mapping";
@@ -180,6 +180,10 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
       // View looked like a dead key (Arlesh-bzn), because this guard returned without a word.
       if (node.habitItem !== undefined) {
         showToast({ nodeId, message: t("editRepetitionRefused") });
+        return;
+      }
+      if (isUneditableCheck(node)) {
+        showToast({ nodeId, message: t("editCheckTaskRefused") });
         return;
       }
       const owner = editorOwnerOf(tree, node);

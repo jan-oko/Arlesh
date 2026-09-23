@@ -34,17 +34,25 @@ function setup() {
 describe("useNodeEditor — waits", () => {
   beforeEach(() => { vi.clearAllMocks(); useMindmapStore.getState().clearToast(); });
 
-  it("E on a check task opens its wait's editor, and on a spawned wait's check its Task's", () => {
+  it("E on a check task says it can't be edited yet, and opens nothing else", () => {
     const result = setup();
-    act(() => result.current.onDoubleClick("check-3"));
-    expect(result.current.editorModal?.node).toBe(wait);
-    act(() => result.current.onDoubleClick("check-s"));
-    expect(result.current.editorModal?.node).toBe(task);
+    for (const id of ["check-3", "check-s", "check-9"]) {
+      useMindmapStore.getState().clearToast();
+      act(() => result.current.onDoubleClick(id));
+      expect(result.current.editorModal).toBeNull();
+      expect(useMindmapStore.getState().pendingToast?.message).toBe("editCheckTaskRefused");
+    }
   });
 
-  it("says so, rather than doing nothing, when what a check is drawn from is gone", () => {
-    const result = setup();
-    act(() => result.current.onDoubleClick("check-9"));
+  it("E on a spawned wait opens its Task's editor, and says so when the Task is gone", () => {
+    const spawnedWait = node("sw-5", "expectation", { virtual: true, spawnedBy: { taskId: 5 } });
+    const gone = node("sw-7", "expectation", { virtual: true, spawnedBy: { taskId: 7 } });
+    const tree = node("root", "domain", { children: [task, spawnedWait, gone] });
+    const result = renderHook(() => useNodeEditor({ tree, allTasksAndGoals: [], reload: vi.fn().mockResolvedValue(undefined) })).result;
+    act(() => result.current.onDoubleClick("sw-5"));
+    expect(result.current.editorModal?.node).toBe(task);
+    act(() => result.current.setEditorModal(null));
+    act(() => result.current.onDoubleClick("sw-7"));
     expect(result.current.editorModal).toBeNull();
     expect(useMindmapStore.getState().pendingToast?.message).toBe("editOwnerMissing");
   });
