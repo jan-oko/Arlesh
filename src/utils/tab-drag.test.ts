@@ -1,34 +1,50 @@
 import { describe, expect, it } from "vitest";
-import { tabDrop } from "./tab-drag";
+import { carriesTab, decodeTabDrag, encodeTabDrag, tabDrop, tearsOff, TAB_DRAG_TYPE } from "./tab-drag";
 
 const OWN = "main";
 
-describe("a drag that started on a tab", () => {
-  it("is a reorder when the strip took the drop", () => {
-    expect(tabDrop("board-a", OWN, true)).toEqual({ kind: "reorder" });
+describe("what a dragged tab carries", () => {
+  it("reads back the tab and window it was given", () => {
+    const payload = { tabId: "tab-1", window: "board-a" };
+    expect(decodeTabDrag(encodeTabDrag(payload))).toEqual(payload);
   });
 
-  it("moves the tab when it was released over another window", () => {
-    expect(tabDrop("board-a", OWN, false)).toEqual({ kind: "move", label: "board-a" });
+  it("ignores a drop whose data is not JSON, such as a file or a selection", () => {
+    expect(decodeTabDrag("hello")).toBeNull();
   });
 
-  it("tears the tab off when it was released over no window at all", () => {
-    expect(tabDrop(null, OWN, false)).toEqual({ kind: "tearOff" });
+  it("ignores JSON that is not a tab", () => {
+    expect(decodeTabDrag(JSON.stringify({ tabId: 7, window: "main" }))).toBeNull();
+    expect(decodeTabDrag(JSON.stringify(["tab-1", "main"]))).toBeNull();
+    expect(decodeTabDrag("null")).toBeNull();
   });
 
-  it("does nothing when it was released over the window it came from", () => {
-    // Its board, the empty part of its strip, its title bar: all the same gesture, which went
-    // nowhere. A window cannot hand a tab to itself.
-    expect(tabDrop(OWN, OWN, false)).toEqual({ kind: "nothing" });
+  it("recognises a tab drag by its type alone, since its data is unreadable until the drop", () => {
+    expect(carriesTab(["text/plain", TAB_DRAG_TYPE])).toBe(true);
+    expect(carriesTab(["text/plain", "Files"])).toBe(false);
+  });
+});
+
+describe("a tab dropped on a window", () => {
+  it("is this window's own business when it came from here", () => {
+    expect(tabDrop({ tabId: "tab-1", window: OWN }, OWN)).toEqual({ kind: "own" });
   });
 
-  it("does nothing when the platform could not say where the pointer was", () => {
-    // Deliberately not read as "the desktop". A gesture that has to be repeated costs a keystroke;
-    // a window that appears from nowhere costs finding it and closing it.
-    expect(tabDrop(undefined, OWN, false)).toEqual({ kind: "nothing" });
+  it("is asked for from the window it came from", () => {
+    expect(tabDrop({ tabId: "tab-1", window: "board-a" }, OWN)).toEqual({
+      kind: "claim",
+      from: "board-a",
+      tabId: "tab-1",
+    });
+  });
+});
+
+describe("the end of a tab drag", () => {
+  it("becomes a window when no Arlesh window took the drop", () => {
+    expect(tearsOff("none")).toBe(true);
   });
 
-  it("still reorders when the strip took the drop and the position is unknown", () => {
-    expect(tabDrop(undefined, OWN, true)).toEqual({ kind: "reorder" });
+  it("does nothing more when a window took it", () => {
+    expect(tearsOff("move")).toBe(false);
   });
 });

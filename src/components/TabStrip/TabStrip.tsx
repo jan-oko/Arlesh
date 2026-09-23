@@ -7,9 +7,8 @@ import { useTabRename } from "@/hooks/use-tab-rename";
 import { useBoardWindows } from "@/hooks/use-board-windows";
 import { useInputCapture } from "@/hooks/use-input-capture";
 import { tabLabel } from "@/utils/tab-label";
-import { tabDrop } from "@/utils/tab-drag";
-import type { DropTarget } from "@/utils/tab-drag";
-import { windowAtCursor } from "@/api/window";
+import { useTabClaims, useTabDropTarget, claimDropped } from "@/hooks/use-tab-drop-target";
+import { carriesTab, encodeTabDrag, tearsOff, TAB_DRAG_TYPE } from "@/utils/tab-drag";
 import { currentWindowLabel } from "@/api/window-label";
 import TabContextMenu from "@/components/TabContextMenu/TabContextMenu";
 import styles from "./TabStrip.module.css";
@@ -34,14 +33,11 @@ interface MenuAt {
  * it. One showing the whole tree is labelled for that rather than left nameless. Closing is offered
  * three times — an ×, a middle-click and the menu — because each is a gesture somebody already has.
  *
- * A drag **inside** the strip reorders. A drag that ends **outside** it is decided by where the
- * pointer was let go: over another window the tab moves into it, over the desktop it becomes a
- * window of its own. Drag-out and drag-back are one gesture, in both directions.
- *
- * The target cannot come from the drag itself — HTML drag-and-drop is per-webview and the other
- * window never hears about it — so it is resolved by geometry on the backend. `utils/tab-drag`
- * holds what to do with the answer, and the menu offers the same two moves for anyone who would
- * rather not drag.
+ * A drag **inside** the strip reorders. Dropped anywhere on **another** Arlesh window, the tab moves
+ * into it; dropped where no Arlesh window takes it, it becomes a window of its own. Drag-out and
+ * drag-back are one gesture, in both directions. The desktop carries the drag between windows, and
+ * the drag carries which tab it is — see `utils/tab-drag` — and the menu offers the same two moves
+ * for anyone who would rather not drag.
  */
 export default function TabStrip() {
   const { t } = useTranslation(["common"]);
@@ -56,9 +52,9 @@ export default function TabStrip() {
   const [menuAt, setMenuAt] = useState<MenuAt | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Whether the drag now ending was taken by the strip. A drop is a reorder and has already
-  // happened; anything else that ends outside the strip is a tear-off. See `utils/tab-drag`.
-  const droppedOnStrip = useRef(false);
+  // Every window takes a dragged tab anywhere on it, and hands over the tabs other windows take.
+  useTabDropTarget();
+  useTabClaims(moveTabToWindow);
 
   // A rename is a text field in the strip, so the app's own single-key bindings must stand down
   // while it is open — the same contract the Mindmap's inline title editor honours.
@@ -73,34 +69,47 @@ export default function TabStrip() {
     return () => clearTimeout(id);
   }, [editingId]);
 
-  function drop(toIndex: number) {
-    droppedOnStrip.current = true;
-    if (draggingIndex !== null) moveTab(draggingIndex, toIndex);
+  /** Starts a tab's drag, carrying which tab it is and which window it is leaving. */
+  function startDrag(event: React.DragEvent, tabId: string, index: number) {
+    event.dataTransfer.setData(TAB_DRAG_TYPE, encodeTabDrag({ tabId, window: currentWindowLabel() }));
+    event.dataTransfer.effectAllowed = "move";
+    setDraggingIndex(index);
+  }
+
+  /** Accepts a dragged tab over a tab, so that the drop lands there. */
+  function acceptDrag(event: React.DragEvent) {
+    if (!carriesTab([...event.dataTransfer.types])) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+  }
+
+  /**
+   * A tab dropped on a tab: this window's own is a reorder, another window's is asked for.
+   *
+   * The tab is found by the id the drag carries rather than by the index the drag started from,
+   * because only a drag that began here has an index here.
+   */
+  function drop(event: React.DragEvent, toIndex: number) {
+    if (!carriesTab([...event.dataTransfer.types])) return;
+    event.preventDefault();
+    const dropped = claimDropped(event.dataTransfer.getData(TAB_DRAG_TYPE));
+    if (dropped.kind === "own") {
+      const fromIndex = tabs.findIndex((tab) => tab.id === dropped.tabId);
+      if (fromIndex !== -1) moveTab(fromIndex, toIndex);
+    }
     setDraggingIndex(null);
   }
 
   /**
-   * The end of a drag: a reorder the strip already made, a move into another window, a tear-off,
-   * or nothing.
+   * The end of a tab's drag, from the window it left.
    *
-   * Which of those it is depends on where the pointer was let go, and only the backend can say —
-   * an HTML drag never reaches another window. So the answer is asked for here and read by
-   * `tabDrop`, which is where the decision lives.
+   * A drop that any Arlesh window took has already been dealt with — reordered here, or asked for
+   * by the window it landed on. One that nothing took was released over no window of ours, and
+   * becomes a window of its own.
    */
-  function endDrag(tabId: string) {
-    const onStrip = droppedOnStrip.current;
-    droppedOnStrip.current = false;
+  function endDrag(event: React.DragEvent, tabId: string) {
     setDraggingIndex(null);
-    // A reorder is already done and needs nothing asked of anybody.
-    if (onStrip) return;
-
-    void windowAtCursor()
-      .catch((): DropTarget => undefined)
-      .then((target) => {
-        const drop = tabDrop(target, currentWindowLabel(), false);
-        if (drop.kind === "move") moveTabToWindow(tabId, drop.label);
-        if (drop.kind === "tearOff") tearOffTab(tabId);
-      });
+    if (tearsOff(event.dataTransfer.dropEffect)) tearOffTab(tabId);
   }
 
   /** Opens the tab menu, having asked which other windows there are to offer. */
@@ -120,10 +129,10 @@ export default function TabStrip() {
             key={tab.id}
             className={`${styles.tab}${tab.id === activeTabId ? ` ${styles.tabActive}` : ""}${draggingIndex === index ? ` ${styles.tabDragging}` : ""}`}
             draggable={editingId !== tab.id}
-            onDragStart={() => { droppedOnStrip.current = false; setDraggingIndex(index); }}
-            onDragEnd={() => endDrag(tab.id)}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => { e.preventDefault(); drop(index); }}
+            onDragStart={(e) => startDrag(e, tab.id, index)}
+            onDragEnd={(e) => endDrag(e, tab.id)}
+            onDragOver={acceptDrag}
+            onDrop={(e) => drop(e, index)}
             onAuxClick={(e) => { if (e.button === MIDDLE_BUTTON) { e.preventDefault(); closeTab(tab.id); } }}
             onContextMenu={(e) => { e.preventDefault(); openMenu({ tabId: tab.id, x: e.clientX, y: e.clientY }); }}
           >

@@ -1,48 +1,89 @@
 /**
- * What a drag that started on a tab meant, once it has ended.
+ * What a dragged tab carries, and what its drop and its end mean.
  *
- * Inside the strip a drag is a reorder, and the strip's own drop handler has already dealt with it.
- * Outside it, **where the pointer was let go decides**: over another window the tab moves into that
- * window, over the desktop it becomes a window of its own. Drag-out and drag-in are then one
- * gesture rather than two, which is the version worth having.
+ * A tab drag is an ordinary HTML drag, and the platform carries it between windows: the drag
+ * session is the desktop's (on Wayland the compositor's data device, on X11 XDND), so a drag that
+ * leaves one Arlesh window and enters another is delivered to the second one's webview like any
+ * other drag. The receiving window reads what the tab is and where it came from off the drag
+ * itself, which is why nothing here needs to know where any window is — the desktop already knows.
  *
- * An HTML drag cannot answer this by itself. HTML5 drag-and-drop is per-webview: the target
- * window's webview never sees a dragover from a drag that began in another, so there is no drop
- * event to listen for. The target is resolved by **geometry** instead — the backend knows where
- * every window is, and answers which one the pointer was over. This module holds what to do with
- * that answer.
+ * Two WebKitGTK facts shape this module:
+ *
+ * - **A drag with no data never drops.** WebKitGTK only fires `drop` once it has received the
+ *   drag's data (bugs.webkit.org 265857), and a drag that set none has nothing to receive. The
+ *   payload is therefore not optional, even for a reorder inside one strip.
+ * - **The payload travels under a type of Arlesh's own**, never `text/plain`. A plain-text drag
+ *   would be accepted by a terminal or an editor it was released over, which would paste the
+ *   payload there and — because the drop was taken — stop the tab from becoming a window.
  */
 
-/** What the end of a tab drag turned out to mean. */
-export type TabDrop =
-  /** The strip took the drop: a reorder, already done. */
-  | { kind: "reorder" }
-  /** Released over another window: hand the tab to it. */
-  | { kind: "move"; label: string }
-  /** Released over no window: the tab becomes a window of its own. */
-  | { kind: "tearOff" }
-  /** Released over the window it came from, or nowhere we can act on: do nothing. */
-  | { kind: "nothing" };
+/** The drag type a tab travels under. Any drag without it is not a tab and is left alone. */
+export const TAB_DRAG_TYPE = "application/x-arlesh-tab";
 
-/** What the backend said the pointer was over, or `null` for "no window", or `undefined` for "could not tell". */
-export type DropTarget = string | null | undefined;
+/** What a dragged tab carries: which tab, and which window it is leaving. */
+export interface TabDragPayload {
+  tabId: string;
+  window: string;
+}
+
+/** The payload as the drag carries it. */
+export function encodeTabDrag(payload: TabDragPayload): string {
+  return JSON.stringify(payload);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
 
 /**
- * Reads the end of a drag.
+ * The payload a drop carried, or `null` for one that is not a tab of ours.
  *
- * Four answers, and the two that do nothing are not the same thing. A drop **on the strip** is a
- * reorder that has already happened. A drop on **this window** — its board, its strip's empty
- * space, its title bar — is a drag that went nowhere, and a window cannot move a tab to itself.
- *
- * A target the platform **could not tell us** also does nothing, and that is the deliberate choice
- * rather than the lazy one: the alternative is reading an unknown position as "the desktop" and
- * tearing off a window the user never asked for. A gesture that has to be repeated costs a
- * keystroke; a window that appears from nowhere costs finding and closing it.
+ * Anything else can be dropped on a window — a file, a selection from another app — and none of it
+ * is a tab, so a payload that does not parse is ignored rather than guessed at.
  */
-export function tabDrop(target: DropTarget, ownWindow: string, droppedOnStrip: boolean): TabDrop {
-  if (droppedOnStrip) return { kind: "reorder" };
-  if (target === undefined) return { kind: "nothing" };
-  if (target === null) return { kind: "tearOff" };
-  if (target === ownWindow) return { kind: "nothing" };
-  return { kind: "move", label: target };
+export function decodeTabDrag(raw: string): TabDragPayload | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!isRecord(parsed)) return null;
+  const { tabId, window } = parsed;
+  if (typeof tabId !== "string" || typeof window !== "string") return null;
+  return { tabId, window };
+}
+
+/** Whether a drag in progress is a tab, judged by its types — its data is unreadable until the drop. */
+export function carriesTab(types: readonly string[]): boolean {
+  return types.includes(TAB_DRAG_TYPE);
+}
+
+/** What a tab dropped on a window means for that window. */
+export type TabDrop =
+  /** A tab of this window, dropped on this window: reorder it, or, off the strip, nothing. */
+  | { kind: "own" }
+  /** A tab of another window: ask that window to hand it over. */
+  | { kind: "claim"; from: string; tabId: string };
+
+/** Reads a drop, from the window that received it. */
+export function tabDrop(payload: TabDragPayload, ownWindow: string): TabDrop {
+  if (payload.window === ownWindow) return { kind: "own" };
+  return { kind: "claim", from: payload.window, tabId: payload.tabId };
+}
+
+/**
+ * Whether a drag that has ended should become a window of its own.
+ *
+ * Every Arlesh window accepts a dragged tab anywhere on it, so a drag that **nothing accepted** —
+ * `dropEffect` `"none"` — was released over no Arlesh window: the desktop, or an app that does not
+ * take our type. That is the tear-off.
+ *
+ * Anything else was taken: by this window (a reorder, or nothing), or by another, which asks for
+ * the tab on its own through the claim. The end of the drag has nothing further to do in either
+ * case. The error this leans towards is the safe one: a platform that reported a stale effect for
+ * a drop outside every window would make the gesture do nothing, never conjure a window.
+ */
+export function tearsOff(dropEffect: string): boolean {
+  return dropEffect === "none";
 }

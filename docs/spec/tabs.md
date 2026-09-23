@@ -180,28 +180,53 @@ first window's**, and then left alone. It is the strip the only window a pre-win
 had was showing, and it opens in the window that would have had it. A torn-off window with no
 stored strip of its own starts fresh rather than borrowing somebody else's.
 
-**Dragging a tab out, and dragging it back.** A drag that ends **on the strip** is a reorder. A
-drag that ends anywhere else is decided by **where the pointer was let go**: over another window the
-tab moves into that window, over the desktop it becomes a window of its own. Out and back are one
-gesture, in both directions.
+**Dragging a tab out, and dragging it back.** A drag that ends **on the strip** is a reorder.
+Dropped **anywhere on another Arlesh window**, the tab moves into that window. Dropped where **no
+Arlesh window** takes it — the desktop, another app — it becomes a window of its own. Out and back
+are one gesture, in both directions.
 
-The target cannot come from the drag. HTML drag-and-drop is **per-webview**: the target window's
-webview never sees a dragover from a drag that began in another, so there is no drop event to
-listen for and no amount of work on the drag itself would produce one. It is resolved by
-**geometry** instead — the frontend asks the backend which window the pointer is over, and the move
-that follows is the same one the menu entry performs. Only the target resolution is new.
+**The desktop carries the drag, and the drag carries the tab.** A drag session belongs to the
+windowing system, not to one webview — on Wayland it is the compositor's data device, on X11 it is
+XDND — so a tab dragged out of one window is delivered to another window's webview like any other
+drag. The tab travels under a drag type of Arlesh's own, `application/x-arlesh-tab`, carrying its id
+and the label of the window it is leaving. The window it is dropped on reads that and **asks the
+source window for the tab**; the source hands it over with the same move the menu entry makes. The
+receiver asks rather than taking, because only the window that holds a tab has its state.
 
-Two overlapping windows under the pointer are decided by **which was focused most recently**, which
-stands in for a z-order neither Tauri nor tao exposes. The window you last interacted with is all
-but always the one in front, so it is right nearly every time and defensible the rest; taking
-whichever window the iteration reached first would be a coin toss wearing a rule.
+Rejected: resolving the target by **geometry** — asking the backend which window's rectangle holds
+the cursor at the moment of release. That was the first build, and it cannot work on Wayland, which
+gives an app neither the global cursor position nor where its own windows are: tao answers
+`(0, 0)` for both, so every drop landed "in" whichever window was focused last, which is the one
+the drag began in, and did nothing. It also needed a z-order stand-in for overlapping windows. The
+drag knows the answer already; there was never a reason to reconstruct it.
 
-A position the platform **will not give up** does nothing, and is deliberately not read as "the
-desktop". A gesture that has to be repeated costs a keystroke; a window that appears from a drag
-nobody made costs finding it and closing it.
+Three things the drag relies on, each a platform fact rather than a choice:
 
-Released over **its own window** — the board, the strip's empty space, the title bar — is also
-nothing: a window cannot hand a tab to itself.
+- **The drag must carry data.** WebKitGTK only fires `drop` once it has received a drag's data
+  ([WebKit bug 265857](https://bugs.webkit.org/show_bug.cgi?id=265857)), so a drag that set none —
+  as the first build's did — never drops at all, not even as a reorder within one strip.
+- **The type is Arlesh's own, never `text/plain`.** A plain-text drag released over a terminal or
+  an editor would be accepted there, pasting the payload, and a drag something accepted is not a
+  tear-off.
+- **Tauri's native file-drop handler is off** (`dragDropEnabled: false` on the window template).
+  On Windows it swallows HTML drops outright; on Linux it only acts on dropped file lists and would
+  not interfere, but the setting is one for every window. Nothing in Arlesh listens for dropped
+  files.
+
+**How the source tells a tear-off from a drop.** Every Arlesh window accepts a dragged tab
+**anywhere** on it, not only on its strip — that is the gesture people make, nobody aims for a strip
+a few pixels tall — and so a drag that **nothing accepted** (`dropEffect` `"none"` when it ends) was
+released over no Arlesh window. That, and only that, is the tear-off. Released over **its own
+window** off the strip — the board, the strip's empty space — the drop is accepted and does nothing:
+a window cannot hand a tab to itself. A platform that reported a stale effect for a release outside
+every window would make the gesture do nothing, never conjure a window; a gesture that has to be
+repeated costs a keystroke, a window that appears from nowhere costs finding it and closing it.
+Pressing Escape mid-drag also ends with nothing accepted, and so tears the tab off; the page is not
+told a drag was cancelled rather than released.
+
+A dragged tab lands **at the end** of the receiving window's strip, wherever it was dropped on it.
+Where a new window appears is the window manager's decision: a tiling compositor places it like any
+other window.
 
 The tab menu offers **Move tab to new window** as well, for anyone who would rather not drag, and
 `Ctrl+Alt+N` does the same from the keyboard. The menu entry is **absent** when the tab is the

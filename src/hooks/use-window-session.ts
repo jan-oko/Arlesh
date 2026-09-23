@@ -9,9 +9,9 @@ import { useTabsStore } from "@/stores/use-tabs-store";
 /**
  * Opens a tab another window has handed to this one.
  *
- * The only way a tab arrives from outside, and the reason moving a tab *back* is a menu entry
- * rather than a drag: a drag is captured by the window it began in, so the other window never
- * hears about it and there is nothing for it to accept.
+ * The only way a tab arrives from outside, whether it was sent by the menu or dragged here: a
+ * dragged tab is asked for by this window and then sent the same way — see
+ * `hooks/use-tab-drop-target`.
  */
 export function useTabInbox(): void {
   const adoptTab = useTabsStore((s) => s.adoptTab);

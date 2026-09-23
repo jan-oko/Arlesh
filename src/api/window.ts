@@ -10,7 +10,7 @@ import { invoke } from "./gesture";
  * `@/api/window-label`, which is a separate module because the tab store needs it and must not
  * reach Tauri to get it.
  *
- * The backend owns the list of windows and their geometry, because it is the only layer that can
+ * The backend owns the list of windows, because it is the only layer that can
  * tell a window that was really closed from one that was hidden to the tray or taken down by a
  * quit. See `src-tauri/src/windows.rs`.
  */
@@ -48,17 +48,6 @@ export async function boardWindowLabels(): Promise<string[]> {
 /** Brings another window to the front, for a tab that has just been moved into it. */
 export async function focusBoardWindow(label: string): Promise<void> {
   await invoke<null>("focus_board_window", { label });
-}
-
-/**
- * Which window the pointer is over, for a tab that has just been dropped.
- *
- * `null` means no window — the desktop, which is the tear-off. It **throws** when the platform
- * would not give up the cursor position, which is a different thing and must not be read as the
- * desktop: see `utils/tab-drag`.
- */
-export async function windowAtCursor(): Promise<string | null> {
-  return invoke<string | null>("window_at_cursor");
 }
 
 /**

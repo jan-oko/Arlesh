@@ -15,7 +15,12 @@ import { parsePersistedTab } from "@/stores/tab-persistence";
  * does carry a payload, because a tab is state rather than a signal; it is the same shape the tab
  * is persisted in, so a tab that moves and a tab that is restored are read by one parser.
  *
- * Both are wrapped here rather than called from a hook, so `@tauri-apps/api/event` has one door
+ * **Hand me that tab** — emitted by a window a tab was dragged onto, to the window the tab came
+ * from. The drag told the receiving window which tab it is and where it lives, but only the window
+ * that holds a tab has its state, so the receiver asks and the holder sends it the way the menu's
+ * move does. See `utils/tab-drag`.
+ *
+ * All three are wrapped here rather than called from a hook, so `@tauri-apps/api/event` has one door
  * the way `invoke` has one in `src/api/gesture.ts`.
  */
 
@@ -24,6 +29,15 @@ const BOARD_CHANGED = "board-changed";
 
 /** The event a window sends when it hands a tab to another window. */
 const TAB_MOVED = "tab-moved";
+
+/** The event a window sends to ask another for a tab that was dragged onto it. */
+const TAB_CLAIMED = "tab-claimed";
+
+/** A request for a tab: which one, and the window that should receive it. */
+export interface TabClaim {
+  tabId: string;
+  into: string;
+}
 
 /** Unsubscribes nothing, for a webview with no event bus — a unit test's jsdom. */
 function unsubscribed(): void {}
@@ -55,5 +69,24 @@ export async function onTabMoved(onTab: (tab: PersistedTab) => void): Promise<Un
   return listen(TAB_MOVED, (event) => {
     const tab = parsePersistedTab(event.payload);
     if (tab !== null) onTab(tab);
+  }).catch(() => unsubscribed);
+}
+
+/** Asks the window labelled `from` to hand its tab `claim.tabId` to `claim.into`. */
+export async function claimTab(from: string, claim: TabClaim): Promise<void> {
+  await emitTo(from, TAB_CLAIMED, claim);
+}
+
+function isTabClaim(value: unknown): value is TabClaim {
+  if (typeof value !== "object" || value === null) return false;
+  const tabId: unknown = Reflect.get(value, "tabId");
+  const into: unknown = Reflect.get(value, "into");
+  return typeof tabId === "string" && typeof into === "string";
+}
+
+/** Calls `onClaim` with each request another window makes for one of this window's tabs. */
+export async function onTabClaimed(onClaim: (claim: TabClaim) => void): Promise<UnlistenFn> {
+  return listen(TAB_CLAIMED, (event) => {
+    if (isTabClaim(event.payload)) onClaim(event.payload);
   }).catch(() => unsubscribed);
 }

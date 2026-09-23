@@ -3,8 +3,10 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import TabStrip from "./TabStrip";
 import { reloadTabs, useTabsStore } from "@/stores/use-tabs-store";
 import { freshTabState } from "@/stores/tab-persistence";
-import { closeWindow, openBoardWindow, windowAtCursor } from "@/api/window";
-import { sendTabToWindow } from "@/api/board";
+import { closeWindow, openBoardWindow } from "@/api/window";
+import { claimTab, onTabClaimed, sendTabToWindow } from "@/api/board";
+import type { TabClaim } from "@/api/board";
+import { encodeTabDrag, TAB_DRAG_TYPE } from "@/utils/tab-drag";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -15,12 +17,15 @@ vi.mock("@/api/board", () => ({
   sendTabToWindow: vi.fn(() => Promise.resolve()),
   onBoardChanged: vi.fn(() => Promise.resolve(() => {})),
   onTabMoved: vi.fn(() => Promise.resolve(() => {})),
+  claimTab: vi.fn(() => Promise.resolve()),
+  onTabClaimed: vi.fn(() => Promise.resolve(() => {})),
 }));
 
 const mockCloseWindow = vi.mocked(closeWindow);
 const mockOpenWindow = vi.mocked(openBoardWindow);
-const mockWindowAtCursor = vi.mocked(windowAtCursor);
 const mockSendTab = vi.mocked(sendTabToWindow);
+const mockClaimTab = vi.mocked(claimTab);
+const mockOnTabClaimed = vi.mocked(onTabClaimed);
 
 beforeEach(() => {
   localStorage.clear();
@@ -28,10 +33,38 @@ beforeEach(() => {
   mockCloseWindow.mockClear();
   mockOpenWindow.mockClear();
   mockSendTab.mockClear();
-  mockWindowAtCursor.mockReset();
-  // jsdom has no desktop, so the honest default is "released over nothing".
-  mockWindowAtCursor.mockResolvedValue(null);
+  mockClaimTab.mockClear();
+  mockOnTabClaimed.mockClear();
 });
+
+/**
+ * The drag's data, as the platform carries it between windows. jsdom has no `DataTransfer`, so this
+ * is the part of one the strip uses: typed data, and the effect the drop settled on.
+ */
+class FakeDataTransfer {
+  private readonly data = new Map<string, string>();
+  dropEffect = "none";
+  effectAllowed = "all";
+
+  get types(): string[] {
+    return [...this.data.keys()];
+  }
+
+  setData(type: string, value: string): void {
+    this.data.set(type, value);
+  }
+
+  getData(type: string): string {
+    return this.data.get(type) ?? "";
+  }
+}
+
+/** A drag carrying a tab from another window, as the platform would deliver it here. */
+function dragFromWindow(window: string, tabId: string): FakeDataTransfer {
+  const dataTransfer = new FakeDataTransfer();
+  dataTransfer.setData(TAB_DRAG_TYPE, encodeTabDrag({ tabId, window }));
+  return dataTransfer;
+}
 
 /** A real mouse click with a given button — `fireEvent.click` cannot express a middle click. */
 function clickWithButton(element: Element, button: number): void {
@@ -126,35 +159,50 @@ describe("reordering by drag", () => {
     const moved = openLabelled("CODE", "project-1");
     render(<TabStrip />);
     const [firstTab, secondTab] = screen.getAllByRole("tab");
+    const dataTransfer = new FakeDataTransfer();
 
-    fireEvent.dragStart(secondTab?.parentElement ?? document.body);
-    fireEvent.drop(firstTab?.parentElement ?? document.body);
+    fireEvent.dragStart(secondTab?.parentElement ?? document.body, { dataTransfer });
+    fireEvent.drop(firstTab?.parentElement ?? document.body, { dataTransfer });
 
     expect(useTabsStore.getState().tabs[0]?.id).toBe(moved);
   });
 
-  it("does not move the tab anywhere when the strip took the drop", async () => {
+  it("carries the tab on the drag, since WebKitGTK never drops a drag that carries nothing", () => {
+    const dragged = openLabelled("CODE", "project-1");
+    render(<TabStrip />);
+    const dataTransfer = new FakeDataTransfer();
+
+    fireEvent.dragStart(screen.getByRole("tab", { name: "CODE" }).parentElement ?? document.body, { dataTransfer });
+
+    expect(JSON.parse(dataTransfer.getData(TAB_DRAG_TYPE))).toEqual({ tabId: dragged, window: "main" });
+  });
+
+  it("neither tears off nor asks anyone for anything once the strip took the drop", () => {
     openLabelled("CODE", "project-1");
     render(<TabStrip />);
     const [firstTab, secondTab] = screen.getAllByRole("tab");
+    const dataTransfer = new FakeDataTransfer();
 
-    fireEvent.dragStart(secondTab?.parentElement ?? document.body);
-    fireEvent.drop(firstTab?.parentElement ?? document.body);
-    fireEvent.dragEnd(secondTab?.parentElement ?? document.body);
+    fireEvent.dragStart(secondTab?.parentElement ?? document.body, { dataTransfer });
+    fireEvent.drop(firstTab?.parentElement ?? document.body, { dataTransfer });
+    dataTransfer.dropEffect = "move";
+    fireEvent.dragEnd(secondTab?.parentElement ?? document.body, { dataTransfer });
 
-    // A reorder is finished business: nothing is asked of the backend and no window appears.
-    await waitFor(() => expect(mockWindowAtCursor).not.toHaveBeenCalled());
     expect(mockOpenWindow).not.toHaveBeenCalled();
+    expect(mockClaimTab).not.toHaveBeenCalled();
   });
 
-  it("leaves the order alone when a drop arrives with nothing being dragged", () => {
+  it("leaves the order alone when what was dropped is not a tab", () => {
     openLabelled("CODE", "project-1");
     render(<TabStrip />);
     const before = useTabsStore.getState().tabs.map((tab) => tab.id);
+    const dataTransfer = new FakeDataTransfer();
+    dataTransfer.setData("text/plain", "hello");
 
-    fireEvent.drop(screen.getAllByRole("tab")[0]?.parentElement ?? document.body);
+    fireEvent.drop(screen.getAllByRole("tab")[0]?.parentElement ?? document.body, { dataTransfer });
 
     expect(useTabsStore.getState().tabs.map((tab) => tab.id)).toEqual(before);
+    expect(mockClaimTab).not.toHaveBeenCalled();
   });
 });
 
@@ -301,54 +349,87 @@ describe("renaming a tab", () => {
   });
 });
 
-describe("dragging a tab out of the window", () => {
-  /** Drags the second tab and lets go somewhere the backend answers for. */
-  async function dragOut(): Promise<void> {
+describe("dragging a tab between windows", () => {
+  /** Drags the second tab out and lets the drag end with the effect the desktop settled on. */
+  function dragOut(dropEffect: string): void {
     openLabelled("CODE", "project-1");
     render(<TabStrip />);
     const tab = screen.getAllByRole("tab")[1]?.parentElement ?? document.body;
-    fireEvent.dragStart(tab);
-    fireEvent.dragEnd(tab);
+    const dataTransfer = new FakeDataTransfer();
+    fireEvent.dragStart(tab, { dataTransfer });
+    dataTransfer.dropEffect = dropEffect;
+    fireEvent.dragEnd(tab, { dataTransfer });
   }
 
-  it("becomes a window of its own when it was released over the desktop", async () => {
-    mockWindowAtCursor.mockResolvedValue(null);
-
-    await dragOut();
+  it("becomes a window of its own when no Arlesh window took the drop", async () => {
+    dragOut("none");
 
     await waitFor(() => expect(mockOpenWindow).toHaveBeenCalledOnce());
-    expect(mockSendTab).not.toHaveBeenCalled();
+    expect(useTabsStore.getState().tabs).toHaveLength(1);
   });
 
-  it("moves into the window it was released over", async () => {
-    mockWindowAtCursor.mockResolvedValue("board-a");
+  it("stays put when a window took the drop, which asks for the tab on its own", () => {
+    dragOut("move");
 
-    await dragOut();
+    expect(mockOpenWindow).not.toHaveBeenCalled();
+    expect(useTabsStore.getState().tabs).toHaveLength(2);
+  });
+
+  it("asks the window a tab came from for it, when it is dropped anywhere on this one", () => {
+    render(<TabStrip />);
+
+    fireEvent.drop(document.body, { dataTransfer: dragFromWindow("board-a", "tab-9") });
+
+    expect(mockClaimTab).toHaveBeenCalledWith("board-a", { tabId: "tab-9", into: "main" });
+  });
+
+  it("asks for it when it is dropped on the strip, and does not reorder anything", () => {
+    openLabelled("CODE", "project-1");
+    render(<TabStrip />);
+    const before = useTabsStore.getState().tabs.map((tab) => tab.id);
+
+    fireEvent.drop(screen.getAllByRole("tab")[0]?.parentElement ?? document.body, {
+      dataTransfer: dragFromWindow("board-a", "tab-9"),
+    });
+
+    expect(mockClaimTab).toHaveBeenCalledOnce();
+    expect(mockClaimTab).toHaveBeenCalledWith("board-a", { tabId: "tab-9", into: "main" });
+    expect(useTabsStore.getState().tabs.map((tab) => tab.id)).toEqual(before);
+  });
+
+  it("does nothing with its own tab dropped off the strip, on its own board", () => {
+    const own = openLabelled("CODE", "project-1");
+    render(<TabStrip />);
+
+    fireEvent.drop(document.body, { dataTransfer: dragFromWindow("main", own) });
+
+    expect(mockClaimTab).not.toHaveBeenCalled();
+    expect(useTabsStore.getState().tabs).toHaveLength(2);
+  });
+
+  it("accepts a dragged tab anywhere on the window, so that the source can tell it from the desktop", () => {
+    render(<TabStrip />);
+    const over = new Event("dragover", { bubbles: true, cancelable: true });
+    Object.defineProperty(over, "dataTransfer", { value: dragFromWindow("board-a", "tab-9") });
+
+    document.body.dispatchEvent(over);
+
+    expect(over.defaultPrevented).toBe(true);
+  });
+
+  it("hands a tab over when the window it was dropped on asks for it", async () => {
+    const asked = openLabelled("CODE", "project-1");
+    let answer: ((claim: TabClaim) => void) | null = null;
+    mockOnTabClaimed.mockImplementation((onClaim) => {
+      answer = onClaim;
+      return Promise.resolve(() => {});
+    });
+    render(<TabStrip />);
+    await waitFor(() => expect(answer).not.toBeNull());
+
+    act(() => answer?.({ tabId: asked, into: "board-a" }));
 
     await waitFor(() => expect(mockSendTab).toHaveBeenCalledOnce());
     expect(mockSendTab.mock.calls[0]?.[0]).toBe("board-a");
-    expect(mockOpenWindow).not.toHaveBeenCalled();
-  });
-
-  it("does nothing when it was released over the window it came from", async () => {
-    // The board, the strip's empty space, the title bar: one gesture, which went nowhere.
-    mockWindowAtCursor.mockResolvedValue("main");
-
-    await dragOut();
-
-    await waitFor(() => expect(mockWindowAtCursor).toHaveBeenCalled());
-    expect(mockOpenWindow).not.toHaveBeenCalled();
-    expect(mockSendTab).not.toHaveBeenCalled();
-  });
-
-  it("does nothing when the platform would not say where the pointer was", async () => {
-    // Deliberately not read as the desktop: a window nobody asked for costs more than a repeat.
-    mockWindowAtCursor.mockRejectedValue(new Error("no cursor position"));
-
-    await dragOut();
-
-    await waitFor(() => expect(mockWindowAtCursor).toHaveBeenCalled());
-    expect(mockOpenWindow).not.toHaveBeenCalled();
-    expect(mockSendTab).not.toHaveBeenCalled();
   });
 });
