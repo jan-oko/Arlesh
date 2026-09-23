@@ -318,13 +318,14 @@ describe("a card's colour", () => {
 });
 
 describe("a card's glyph and kind line", () => {
-  it("draws a glyph on an Aspect and does not write out its kind", () => {
-    mockTree([n("domain-1", "aspect", { color: "#e74c3c" })]);
+  it("draws an Aspect with neither a glyph, nor an empty slot for one, nor its kind in words", () => {
+    mockTree([n("domain-1", "aspect", { color: "#e74c3c" }), n("domain-2", "domain")]);
     render(<StepsView />);
 
     const aspect = document.querySelector('[data-step-card="domain-1"]');
-    expect(aspect?.querySelector("svg polygon")).not.toBeNull();
+    expect(aspect?.querySelector("svg")).toBeNull();
     expect(aspect?.textContent).not.toContain("nodeKinds:aspect");
+    expect(document.querySelector('[data-step-card="domain-2"] svg')).not.toBeNull();
   });
 
   it("writes out the kind only where the glyph is borrowed — a Flow's template Task", () => {

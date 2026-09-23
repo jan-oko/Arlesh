@@ -27,10 +27,10 @@ html, body, #root {
   --node-text-muted: #888899;
 
   /* How much of a node's aspect colour is mixed into a card's background — a Steps card or a List
-     View row, through `aspect-wash.module.css`. Small on purpose:
-     the card has body text on it, and what keeps that legible is staying close to the background
-     the theme already guarantees the text against. Dark needs slightly more of the hue than light
-     to read as coloured at all. */
+     View row, through `aspect-wash.module.css`. Kept low where it can be: the card has body text
+     on it, and staying close to the background the theme guarantees the text against is what keeps
+     it legible. Light takes more than dark (see the light set), because a pale wash on a pale page
+     is the one that disappears. */
   --card-aspect-strength: 16%;
   /* Self and Flow are the two near-neutral aspects, and at one shared strength their washes came out
      all but identical (ΔE00 1.9 in dark, 1.0 in light). Self is the lighter hue and should read
@@ -39,6 +39,10 @@ html, body, #root {
      darkens; in light (below) Self lightens and Flow darkens as far as the light floors allow. */
   --card-aspect-strength-self: 16%;
   --card-aspect-strength-flow: 8%;
+  /* How far a card's muted text sits from its surface toward the primary text. Derived from the
+     card, not fixed, so it keeps its contrast whatever the wash does: 65% holds AA on every aspect
+     here (4.74:1 at worst, Self in dark). */
+  --card-text-muted-mix: 65%;
 
   /* Canvas */
   --canvas-bg: #13131f;
@@ -86,12 +90,19 @@ html, body, #root {
   --node-text: #1a1a2e;
   --node-text-muted: #6b6b7a;
 
-  /* See the dark set: less of the hue here, because a pale tint reads as coloured sooner. */
-  --card-aspect-strength: 11%;
-  /* Self and Flow: see the dark set. Flow stops at 17% — 18% would put its card's muted text under
-     the 5.03:1 the other aspects hold in light. */
-  --card-aspect-strength-self: 4%;
-  --card-aspect-strength-flow: 17%;
+  /* Light needs more of the hue than it first had. At 11% a card measured 1.00–1.05:1 against the
+     page and dissolved into it; at 28% it is 1.21–1.32:1 (rows 1.34–1.46:1) and reads as coloured,
+     while titles hold 10.7:1 or better. */
+  --card-aspect-strength: 28%;
+  /* Self and Flow, the two greys, apart: Self lighter (ΔE00 8.2 on a card, 7.9 on a row). Flow
+     stops at 56%, where its badges on a row are at 3.02:1, just over the 3:1 an icon needs. Self is
+     the page's own grey, so it stays the least distinct from the page (ΔE00 3.4) at any strength
+     that keeps it lighter than Flow. */
+  --card-aspect-strength-self: 32%;
+  --card-aspect-strength-flow: 56%;
+  /* The muted text moves further toward the primary text here, because the stronger wash takes
+     more of its margin: 72% holds every aspect at 5.03:1 or better, cards and rows alike. */
+  --card-text-muted-mix: 72%;
 
   /* Canvas */
   --canvas-bg: #f4f4fa;

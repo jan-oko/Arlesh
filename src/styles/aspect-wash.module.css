@@ -11,13 +11,15 @@
    Aspect's own card came out at full strength with body text over it and was unreadable. Mixing a
    fixed small share of the hue (`--card-aspect-strength`, per theme) into the base keeps every card
    close to a surface the theme already guarantees the primary text against. For the six seeded
-   aspects the primary text bottoms out at 8.80:1 on a Steps card and 8.28:1 on a List View row
-   (Steel, dark).
+   aspects the primary text bottoms out at 8.28:1 (a Self row in dark) and 9.82:1 in light (a Flow
+   row).
 
    That margin does **not** carry muted text, whose margin was thin to begin with: the global
    `--text-secondary` fell to 3.30:1 on a Steel card in dark. So the wash also derives the card's
-   own muted colour, 65% of the way from this surface toward the primary text. Its floor is 4.74:1 on
-   a Steps card and 4.53:1 on a row (Steel, dark), 4.78:1 on a row in light — all over AA's 4.5:1.
+   own muted colour, `--card-text-muted-mix` of the way from this surface toward the primary text
+   (65% in dark, 72% in light, where the wash is stronger). Its floor is 4.53:1 in dark (a Self row)
+   and 5.03:1 in light (a Flow row) — all over AA's 4.5:1. The numbers per aspect are in
+   `docs/spec/steps-view.md`.
 
    The first `background` is the fallback for an engine without `color-mix`: a readable card that
    merely loses the colour. */
@@ -27,7 +29,7 @@
     var(--card-aspect, var(--card-base)) var(--card-aspect-strength),
     var(--card-base)
   );
-  --card-text-muted: color-mix(in srgb, var(--node-text) 65%, var(--card-surface));
+  --card-text-muted: color-mix(in srgb, var(--node-text) var(--card-text-muted-mix), var(--card-surface));
 
   background: var(--card-base);
   background: var(--card-surface);

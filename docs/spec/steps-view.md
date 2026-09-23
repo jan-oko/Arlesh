@@ -120,10 +120,9 @@ says it is *this week*. The badge is the duplicate; the value behind it is not.
 **The kind is not written out where the glyph already says it** — which is every kind but two. A
 Flow's template **Goal** and **Task** are drawn with the Goal and Task glyphs, so on them the words
 are the only thing telling a template from the real node, and they stay. Everywhere else the kind
-line was the glyph again, in capitals. **Every card has a glyph**, an Aspect's included: on the
-Mindmap an Aspect is a coloured block and draws none, but a card with no glyph and no kind line would
-say nothing about what it is, so a Steps card draws it a hexagon ring — six sides, for the six
-Aspects.
+line was the glyph again, in capitals. **An Aspect has neither**: it has no glyph (on the Mindmap
+it is a coloured block), reserves no empty slot for one, and does not write out its kind. It is known
+by its name and by where it sits — the six of them are what the root is made of.
 
 **The selection ring is drawn inside the card** — the accent border, doubled to 2px by an inset
 shadow. An outline outside the card was clipped by the card area's `overflow: hidden` along the top
@@ -170,45 +169,52 @@ Mixing instead makes contrast a property of the rule rather than of which node y
 The result is never further from `--node-bg` than `--card-aspect-strength`, and the theme already
 guarantees `--node-text` against `--node-bg` with a wide margin. That margin carries the primary
 text for every aspect in both themes, a pale one like Steel and the Aspect card itself included: for
-the six seeded aspects it bottoms out at 8.80:1 (Steel, dark) and 14.83:1 (Red, light). It does not
-carry the muted text, whose margin was thin to begin with — see below. The strength is per theme:
-a dark background needs more of the hue than a light one to read as coloured at all.
+the six seeded aspects it bottoms out at 8.80:1 in dark (Self) and 10.49:1 in light (Flow). It does
+not carry the muted text, whose margin was thin to begin with — see below.
+
+**The strength is per theme, and light takes more.** It began at 16% dark and 11% light, on the
+reasoning that a pale wash reads as coloured sooner. On a pale *page* the opposite held: at 11% a
+light card measured 1.00–1.05:1 against the page (`--canvas-bg`) and dissolved into it. Light is now
+28%, which puts a card at 1.21–1.32:1 against the page (ΔE00 11–19), still with every title at
+10.49:1 or better. Dark stays 16%, where the cards already stood off the page.
 
 **Self and Flow take a strength of their own.** They are the two near-neutral aspects (`#bdc3c7` and
-`#95a5a6`), and at the shared strength their washes were all but identical — ΔE00 1.9 in dark and
-1.0 in light, a lightness difference of 2.3 and 1.2 L*. Self is the lighter hue and should read
-lighter. Each is moved only in the direction that **raises** its own contrast, so neither falls below
-the floor the other aspects already set:
+`#95a5a6`), and at a shared strength their washes were all but identical — ΔE00 1.9 in dark and 1.0
+in light. Self is the lighter hue and reads lighter:
 
-| Theme | Self | Flow | Self − Flow, card | Self − Flow, row |
-|---|---|---|---|---|
-| Dark (shared 16%) | 16% | 8% | ΔE00 5.0, ΔL* 7.2 | ΔE00 5.0, ΔL* 6.9 |
-| Light (shared 11%) | 4% | 17% | ΔE00 3.0, ΔL* 4.7 | ΔE00 2.9, ΔL* 4.1 |
+| Theme | Others | Self | Flow | Self − Flow, card | Self − Flow, row |
+|---|---|---|---|---|---|
+| Dark | 16% | 16% | 8% | ΔE00 5.0, ΔL* 7.2 | ΔE00 5.0, ΔL* 6.9 |
+| Light | 28% | 32% | 56% | ΔE00 8.2, ΔL* 11.6 | ΔE00 7.9, ΔL* 10.5 |
 
-Light is the tighter of the two. Self is already within a few L* of white, so most of the separation
-has to come from darkening Flow, and Flow stops at 17% because 18% would put its card's muted text
-under the 5.03:1 the other aspects hold in light. Getting further apart than this would mean changing
-the seeded colours themselves, which would change every view.
+In dark each moved only in the direction that raises its own contrast. In light Flow stops at 56%,
+where its badges on a List View row are at 3.02:1, just over the 3:1 an icon needs. **Self stays the
+least distinct from the page** — ΔE00 3.4 on a card, 4.1 on a row — because Self is the page's own
+light grey: darkening it far enough to stand off the page would take it past Flow. Its edge against
+the page is mostly the card border.
 
 A node **outside any aspect** keeps the theme's plain card background, and the board's own header
 card is not coloured at all.
 
 **The card's muted text is derived from the card, not from the page.** Most of a card's body is
-muted — the kind line, the field labels, the notes, the count — and the app's `--text-secondary` is
-picked against the plain background, where in dark it measures 4.71:1: over WCAG AA's 4.5:1, but
-with no headroom for a tint underneath. Every aspect pushed it under, Steel in dark reaching 3.30:1.
-Blending the muted colour 65% of the way from *this card's* surface toward the primary text instead
-holds every aspect over AA in both themes — dark bottoms out at 4.74:1, light at 5.03:1 — and beats
-the global token on an untinted card besides. That is what "keeping note of contrast" costs: one
-derived colour, and the colouring is then safe for every aspect rather than for most of them.
+muted — the field labels, the notes, the count — and the app's `--text-secondary` is picked against
+the plain background, where in dark it measures 4.71:1: over WCAG AA's 4.5:1, but with no headroom
+for a tint underneath. Every aspect pushed it under, Self in dark reaching 3.30:1. So the muted
+colour is blended from *this card's* surface toward the primary text, by `--card-text-muted-mix`:
+65% in dark, 72% in light, where the stronger wash takes more of its margin. That holds every aspect
+over AA in both themes — dark bottoms out at 4.74:1 on a card (4.53:1 on a row), light at 5.23:1 on
+a card (5.03:1 on a row).
 
 The **badge icons** are the one thing on the card not derived from it: the badge row is shared with
 the List View and draws in `--node-text-muted` and `--danger`. As graphics they answer to WCAG's 3:1
-for non-text rather than 4.5:1. On a Steps card they clear it on every seeded aspect in both themes,
-with the least room of anything on the card: the danger mark on Steel in dark measures 3.01:1, the
-muted marks there 3.30:1. **On a List View row the danger mark does not clear it**: on the raised
-row surface, Steel in dark gives 2.83:1 (Gray 3.06:1, the muted marks 3.10:1). That is an open
-contrast gap, recorded rather than fixed here; the badge colours are shared by every surface.
+for non-text rather than 4.5:1.
+
+- **Dark**: on a card they clear it on every seeded aspect, with the least room on Self — the danger
+  mark 3.01:1, the muted marks 3.30:1. **On a List View row the danger mark does not clear it**: on
+  the raised row surface a Self row gives 2.83:1. That is an open contrast gap, recorded rather than
+  fixed here; the badge colours are shared by every surface.
+- **Light**: every aspect clears it on cards and rows; the least room is a Flow row, with the muted
+  marks at 3.02:1 and the danger mark at 3.13:1.
 
 **The fill says nothing about state**, deliberately. That is only safe because the glyph and the
 badge row already do: the Task and Goal icons draw their status and their blocked-ness, the

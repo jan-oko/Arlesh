@@ -6,11 +6,10 @@ import { isNodeBlocked } from "@/utils/tree-layout";
 import { deriveStatusIndicators } from "@/utils/node-status-indicators";
 import { DIMMED_OPACITY, aspectWashStyle } from "@/utils/node-visuals";
 import {
-  bulletCapacity, glyphNamesKind, infoBullets, infoChildTitles, stepCardFields, type StepChildCounts,
+  bulletCapacity, cardDrawsGlyph, cardWritesKind, infoBullets, infoChildTitles, stepCardFields, type StepChildCounts,
 } from "@/utils/steps-card";
 import { isRtlText } from "@/utils/text-direction";
 import { useInputCapture } from "@/hooks/use-input-capture";
-import AspectIcon from "@/components/NodeIcon/AspectIcon";
 import NodeIcon from "@/components/NodeIcon/NodeIcon";
 import TaskRowBadges from "@/components/ListView/TaskRowBadges";
 import StepCardFields from "./StepCardFields";
@@ -117,22 +116,19 @@ export default function StepCard({
       onDoubleClick={onDescend}
     >
       <span className={styles.top}>
-        <span className={styles.glyph} aria-hidden="true">
-          <svg width={ICON_R * 2} height={ICON_R * 2} viewBox={`0 0 ${ICON_R * 2} ${ICON_R * 2}`}>
-            {/* Every card has a glyph, an Aspect's included — the kind line is gone wherever the
-                glyph already says the kind, so a card without one would say nothing about it. */}
-            {node.kind === "aspect" ? (
-              <AspectIcon cx={ICON_R} cy={ICON_R} r={ICON_R * 0.9} color="var(--node-text)" opacity={1} />
-            ) : (
+        {/* No slot for a kind with no glyph — an Aspect — or its title starts after an empty gap. */}
+        {cardDrawsGlyph(node.kind) && (
+          <span className={styles.glyph} aria-hidden="true">
+            <svg width={ICON_R * 2} height={ICON_R * 2} viewBox={`0 0 ${ICON_R * 2} ${ICON_R * 2}`}>
               <NodeIcon
                 kind={node.kind} status={node.status} verdict={node.verdict}
                 isArchived={node.archived === true} isBlocked={isNodeBlocked(node)}
                 isHabit={node.flow?.isHabit === true}
                 cx={ICON_R} cy={ICON_R} r={ICON_R * 0.9} color="var(--node-text)" opacity={1}
               />
-            )}
-          </svg>
-        </span>
+            </svg>
+          </span>
+        )}
         {isEditingTitle ? (
           <input
             ref={inputRef}
@@ -153,8 +149,8 @@ export default function StepCard({
         )}
       </span>
 
-      {/* The kind in words only where the glyph does not already say it. */}
-      {!glyphNamesKind(node.kind) && <span className={styles.kind}>{t(`nodeKinds:${node.kind}`)}</span>}
+      {/* The kind in words only where the glyph cannot say it. */}
+      {cardWritesKind(node.kind) && <span className={styles.kind}>{t(`nodeKinds:${node.kind}`)}</span>}
       <TaskRowBadges node={node} indicators={indicators} />
       <StepCardFields node={node} fields={fields} />
 

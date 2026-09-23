@@ -234,16 +234,25 @@ export function infoChildTitles(node: MindmapNode): string[] {
 }
 
 /**
+ * Whether a card draws a glyph for `kind`, and so reserves the slot for one. An Aspect has none: on
+ * the Mindmap it is a coloured block, and on a card it is known by its name and by sitting at the
+ * root. A slot with nothing in it is an empty gap before the title.
+ */
+export function cardDrawsGlyph(kind: NodeKind): boolean {
+  return kind !== "aspect";
+}
+
+/**
  * The kinds whose glyph is **borrowed** from another kind: a Flow's template Goal and Task are drawn
  * with the Goal and Task glyphs, so on a card only the words tell a template from the real thing.
  */
 const KINDS_SHARING_A_GLYPH: ReadonlySet<NodeKind> = new Set<NodeKind>(["flow_goal", "flow_task"]);
 
 /**
- * Whether a card's glyph already says what kind of node it is, so that the kind need not be written
- * out underneath as well. True for every kind with a glyph of its own — the Aspect included, which
- * has one on a card though not on the Mindmap.
+ * Whether a card writes its kind out under the title. Only where the glyph cannot say it — a Flow's
+ * template Goal and Task. Everywhere else the line was the glyph again in capitals; and an Aspect,
+ * which has no glyph, is recognisable without either.
  */
-export function glyphNamesKind(kind: NodeKind): boolean {
-  return !KINDS_SHARING_A_GLYPH.has(kind);
+export function cardWritesKind(kind: NodeKind): boolean {
+  return KINDS_SHARING_A_GLYPH.has(kind);
 }
