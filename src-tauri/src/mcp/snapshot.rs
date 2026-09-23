@@ -29,8 +29,10 @@ impl ArleshMcp {
     ///
     /// An expectation is a wait rather than an action: something outside the user's own action
     /// that tasks can depend on. Its `status` is `pending` until the wait is over and `released`
-    /// after; a task depending on a pending one is blocked. Its optional `check_by` (boundary scope
-    /// IDs, like a time scope) is when the user means to look in on it. Read-only here.
+    /// after; a task depending on a pending one is blocked. Its optional `check_every` (a Duration;
+    /// its next check is in `expectation_checks`) is how often the user means to look in on it.
+    /// A task's `async_template` makes it asynchronous; completing it spawns a wait, listed in
+    /// `spawned_waits` by task. Read-only here.
     ///
     /// A task's `delegate_to` says who holds it: `null`, `{"kind": "person", "id": N}` (resolve
     /// the Person with `arlesh_kb`), or `{"kind": "agent"}` — handed to the Agent. It is

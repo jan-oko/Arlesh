@@ -288,7 +288,7 @@ pub struct CommitmentState {
 /// The four coarse Spans only. A Verdict Window counted in `part` or `exact` — the two sub-day
 /// scope kinds — has no meaning as a *count*, so such a value reads as no window at all rather
 /// than as some silently substituted number of hours.
-fn advance_by(at: NaiveDateTime, n: i64, kind: &str) -> Option<NaiveDateTime> {
+pub(crate) fn advance_by(at: NaiveDateTime, n: i64, kind: &str) -> Option<NaiveDateTime> {
     match kind {
         "day" => at.checked_add_signed(chrono::Duration::try_days(n)?),
         "week" => at.checked_add_signed(chrono::Duration::try_weeks(n)?),
@@ -364,24 +364,23 @@ mod commitment_tests;
 // Expectations
 // ===========================================================================
 //
-// An Expectation has no window of its own. What its lifecycle entry describes is its **check-by**,
-// which is the window its virtual "check on it" Task is scoped to: that task reads its Timing and
-// Resolution from here. The Expectation's own Archival is its stored archive, nothing derived.
+// A wait sends one entry for its own Time Scope and one for the day its next check is due, which its
+// virtual "check on it" Task reads. Either way the Archival is its stored archive, nothing derived.
 
-/// Derives the lifecycle entry an Expectation is sent under, at `now`.
+/// Derives a lifecycle entry for a wait, at `now`, over `window` — its Time Scope, or the day its
+/// next check is due.
 ///
-/// `check_by` is the resolved check-by window, when there is one. Timing reads it as any window is
-/// read. A check-by that has passed while the Expectation is still **pending** resolves
-/// [`Resolution::Overdue`] — the check is late, and nothing about a wait archives it for being
-/// late, so it stays on screen like a Keep-on-exit Task. A released Expectation has no check left
-/// to be late for, and so no Resolution.
+/// Timing reads the window as any window is read. A window that has passed while the wait is
+/// still **pending** resolves [`Resolution::Overdue`]: nothing about a wait archives it for being
+/// late, so it stays on screen like a Keep-on-exit Task. A released wait has nothing left to be
+/// late for, and so no Resolution.
 pub fn derive_expectation_state(
-    check_by: Option<Bounds>,
+    window: Option<Bounds>,
     status: ExpectationStatus,
     stored: ExpectationArchival,
     now: NaiveDateTime,
 ) -> DerivedState {
-    let timing = derive_timing(check_by, now);
+    let timing = derive_timing(window, now);
     let resolution = match status {
         ExpectationStatus::Pending => derive_resolution(timing, false, Some(OnScopeExit::Keep)),
         ExpectationStatus::Released => None,

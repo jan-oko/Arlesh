@@ -73,6 +73,10 @@ pub enum Section {
     Commitments,
     /// Expectations — waits tasks depend on, pending until released.
     Expectations,
+    /// Each stored expectation's next check.
+    ExpectationChecks,
+    /// Each asynchronous task's spawned wait.
+    SpawnedWaits,
     /// Notes.
     Infos,
     /// Flows.
@@ -100,12 +104,14 @@ pub enum Section {
 }
 
 /// Every section, in the order pages walk them.
-pub const SECTIONS: [Section; 17] = [
+pub const SECTIONS: [Section; 19] = [
     Section::Domains,
     Section::Goals,
     Section::Tasks,
     Section::Commitments,
     Section::Expectations,
+    Section::ExpectationChecks,
+    Section::SpawnedWaits,
     Section::Infos,
     Section::Flows,
     Section::FlowGoals,
@@ -129,6 +135,8 @@ impl Section {
             Self::Tasks => "tasks",
             Self::Commitments => "commitments",
             Self::Expectations => "expectations",
+            Self::ExpectationChecks => "expectation_checks",
+            Self::SpawnedWaits => "spawned_waits",
             Self::Infos => "infos",
             Self::Flows => "flows",
             Self::FlowGoals => "flow_goals",

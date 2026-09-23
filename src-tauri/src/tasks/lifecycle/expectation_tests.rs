@@ -9,7 +9,7 @@ fn one_day() -> Option<Bounds> {
 }
 
 #[test]
-fn no_check_by_is_always_active_and_never_late() {
+fn no_window_is_always_active_and_never_late() {
     let state = derive_expectation_state(
         None,
         ExpectationStatus::Pending,
@@ -22,7 +22,7 @@ fn no_check_by_is_always_active_and_never_late() {
 }
 
 #[test]
-fn a_check_by_ahead_is_pending_and_one_running_is_active() {
+fn a_window_ahead_is_pending_and_one_running_is_active() {
     let ahead = derive_expectation_state(
         one_day(),
         ExpectationStatus::Pending,
@@ -40,7 +40,7 @@ fn a_check_by_ahead_is_pending_and_one_running_is_active() {
 }
 
 #[test]
-fn a_passed_check_by_on_a_pending_wait_is_overdue_and_stays_live() {
+fn a_passed_window_on_a_pending_wait_is_overdue_and_stays_live() {
     let state = derive_expectation_state(
         one_day(),
         ExpectationStatus::Pending,

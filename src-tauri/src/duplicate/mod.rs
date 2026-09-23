@@ -337,6 +337,7 @@ async fn clone_task(
             // A copy starts the same wait the original starts: the flag describes the action, and
             // the copy is the same action. Dropping it would be the same silent discard.
             asynchronous: Some(original.asynchronous),
+            async_template: original.async_template.clone(),
         },
     )
     .await?;

@@ -46,11 +46,26 @@ fn an_expectation_dependency_serialises_under_its_own_tag() {
 }
 
 #[test]
-fn an_explicit_null_check_by_clears_it_and_an_absent_one_leaves_it() {
+fn an_explicit_null_check_every_clears_it_and_an_absent_one_leaves_it() {
     let clear: UpdateExpectationRequest =
-        serde_json::from_value(serde_json::json!({ "check_by": null })).expect("parses");
-    assert!(matches!(clear.check_by, Some(None)));
+        serde_json::from_value(serde_json::json!({ "check_every": null })).expect("parses");
+    assert!(matches!(clear.check_every, Some(None)));
     let leave: UpdateExpectationRequest =
         serde_json::from_value(serde_json::json!({})).expect("parses");
-    assert!(leave.check_by.is_none());
+    assert!(leave.check_every.is_none());
+}
+
+#[test]
+fn the_toggles_template_is_titled_after_its_task() {
+    let template = AsyncTemplate::for_task("Send the draft");
+    assert_eq!(template.title, "Waiting on Send the draft");
+    assert!(template.tag_ids.is_empty());
+    assert!(template.time_scope.is_none() && template.check_every.is_none());
+}
+
+#[test]
+fn an_explicit_null_template_removes_it() {
+    let clear: UpdateTaskRequest =
+        serde_json::from_value(serde_json::json!({ "async_template": null })).expect("parses");
+    assert!(matches!(clear.async_template, Some(None)));
 }

@@ -29,7 +29,10 @@ use super::expectations;
 use super::lifecycle::{
     derive_commitment_state, derive_expectation_state, derive_item_state, Archival, ItemLifecycle,
 };
-use super::model::{CommitmentId, GoalId, GoalStatus, OnScopeExit, TaskId, TaskStatus, TimeScope};
+use super::model::{
+    CommitmentId, ExpectationArchival, ExpectationStatus, GoalId, GoalStatus, OnScopeExit, TaskId,
+    TaskStatus, TimeScope,
+};
 
 /// Maps a Goal's stored status to its baseline Archival value, for [`derive_item_state`]'s `stored`
 /// parameter. `Achieved` intentionally maps to `Live`, not `Archived` — achievement is a separate,
@@ -150,33 +153,92 @@ pub async fn derive_all_scope_lifecycles<M: SessionMode>(
             archival_conflict: false,
         });
     }
+    // A wait's entries: `expectation` times a stored wait's own Time Scope, `expectation_check`
+    // the day its next check is due; `spawned_wait` and `spawned_check` do the same for the wait an
+    // Asynchronous task's completion spawned, keyed by the task. A wait is never Missed, so a
+    // passed window with the wait pending is Overdue.
+    let windows = super::waits::derive_wait_windows(db).await?;
+    let checks: std::collections::HashMap<i64, TimeScope> = windows
+        .expectation_checks
+        .into_iter()
+        .map(|check| (check.expectation_id, check.due))
+        .collect();
+    let mut entries: Vec<WaitEntry> = Vec::new();
     for expectation in db.expectations().list().await? {
-        // Two entries per wait. `expectation` times its own Time Scope, which the presets and the
-        // scope-state pill read; `expectation_check` times its check-by, which its virtual check
-        // task reads. A wait is never Missed, so a passed window with the wait pending is Overdue.
-        for (node_type, window) in [
-            (expectations::EXPECTATION, &expectation.time_scope),
-            (expectations::EXPECTATION_CHECK, &expectation.check_by),
-        ] {
-            let bounds = match window {
-                Some(window) => Some(time_scope_window(db, window).await?),
-                None => None,
-            };
-            let state =
-                derive_expectation_state(bounds, expectation.status, expectation.archival, now);
-            out.push(ItemLifecycle {
-                node_type: node_type.to_string(),
+        entries.push(WaitEntry {
+            node_type: expectations::EXPECTATION,
+            node_id: expectation.id,
+            window: expectation.time_scope.clone(),
+            status: expectation.status,
+            archival: expectation.archival,
+        });
+        if let Some(due) = checks.get(&expectation.id) {
+            entries.push(WaitEntry {
+                node_type: expectations::EXPECTATION_CHECK,
                 node_id: expectation.id,
-                timing: state.timing,
-                resolution: state.resolution,
-                verdict: None,
-                archival: state.archival,
-                // Nothing is derived over a wait's own archive, so nothing can be overridden.
-                archival_conflict: false,
+                window: Some(due.clone()),
+                status: expectation.status,
+                archival: expectation.archival,
             });
         }
     }
+    for spawned in windows.spawned_waits {
+        let (task_id, status, archival) = (
+            spawned.wait.task_id,
+            spawned.wait.status,
+            spawned.wait.archival,
+        );
+        entries.push(WaitEntry {
+            node_type: expectations::SPAWNED_WAIT,
+            node_id: task_id,
+            window: spawned.time_scope,
+            status,
+            archival,
+        });
+        if let Some(due) = spawned.next_check {
+            entries.push(WaitEntry {
+                node_type: expectations::SPAWNED_CHECK,
+                node_id: task_id,
+                window: Some(due),
+                status,
+                archival,
+            });
+        }
+    }
+    for WaitEntry {
+        node_type,
+        node_id,
+        window,
+        status,
+        archival,
+    } in entries
+    {
+        let bounds = match &window {
+            Some(window) => Some(time_scope_window(db, window).await?),
+            None => None,
+        };
+        let state = derive_expectation_state(bounds, status, archival, now);
+        out.push(ItemLifecycle {
+            node_type: node_type.to_string(),
+            node_id,
+            timing: state.timing,
+            resolution: state.resolution,
+            verdict: None,
+            archival: state.archival,
+            // Nothing is derived over a wait's own archive, so nothing can be overridden.
+            archival_conflict: false,
+        });
+    }
     Ok(out)
+}
+
+/// One lifecycle entry a wait sends: which window it times, for which node, and the wait's state.
+struct WaitEntry {
+    node_type: &'static str,
+    node_id: i64,
+    window: Option<TimeScope>,
+    status: ExpectationStatus,
+    archival: ExpectationArchival,
 }
 
 /// Resolves a single scope id to its half-open datetime window.

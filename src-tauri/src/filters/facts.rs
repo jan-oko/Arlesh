@@ -55,6 +55,19 @@ fn check_task_id(expectation_id: i64) -> String {
     format!("expectation-check-{expectation_id}")
 }
 
+/// A virtual check task's facts: to do, timed by its lifecycle entry.
+fn check_task(id: String, lifecycle: Option<&&ItemLifecycle>) -> NodeFacts {
+    let mut check = NodeFacts::new(id, NodeKind::Task);
+    check.status = Some("todo".to_string());
+    check.timing = Some(lifecycle.map_or(Timing::Active, |lifecycle| lifecycle.timing));
+    check
+}
+
+/// The fact id of the wait an Asynchronous Task's completion spawned. Backend-only, as above.
+fn spawned_wait_id(task_id: i64) -> String {
+    format!("spawned-wait-{task_id}")
+}
+
 /// The fact id of the virtual Expectation a delegated Task waits on. Backend-only, as above.
 fn delegation_wait_id(task_id: i64) -> String {
     format!("delegation-wait-{task_id}")
@@ -107,11 +120,27 @@ fn index_blocked(load: &MindmapLoad) -> HashSet<String> {
         .map(|expectation| (expectation.id, expectation.status))
         .collect();
 
+    // A done Asynchronous task still holds up what depends on it while the wait it spawned is
+    // pending: the dependency is met once the wait is released.
+    let spawned_pending: HashSet<i64> = load
+        .spawned_waits
+        .iter()
+        .filter(|spawned| spawned.wait.status == ExpectationStatus::Pending)
+        .map(|spawned| spawned.wait.task_id)
+        .filter(|task_id| {
+            load.tasks
+                .iter()
+                .any(|task| task.id == *task_id && task.async_template.is_some())
+        })
+        .collect();
     for edge in &load.task_dependencies {
         let unmet = match edge.dependency_type.as_str() {
-            "task" => task_status
-                .get(&edge.dependency_id)
-                .is_some_and(|status| *status != "done"),
+            "task" => {
+                task_status
+                    .get(&edge.dependency_id)
+                    .is_some_and(|status| *status != "done")
+                    || spawned_pending.contains(&edge.dependency_id)
+            }
             "expectation" => expectation_status
                 .get(&edge.dependency_id)
                 .is_some_and(|status| *status == ExpectationStatus::Pending),
@@ -187,13 +216,18 @@ pub fn forest(load: &MindmapLoad) -> Vec<FactNode> {
             parents.push(Some(format!("task-{}", task.id)));
         }
     }
+    let checks_due: HashSet<i64> = load
+        .expectation_checks
+        .iter()
+        .map(|check| check.expectation_id)
+        .collect();
     for expectation in &load.expectations {
         let id = format!("expectation-{}", expectation.id);
         let mut node = NodeFacts::new(id.clone(), NodeKind::Expectation);
         node.status = Some(expectation.status.as_str().to_string());
         node.is_private = expectation.is_private;
         node.archived = expectation.archival == ExpectationArchival::Archived;
-        node.has_check_by = expectation.check_by.is_some();
+        node.has_check = expectation.check_every.is_some();
         node.tag_ids.clone_from(&expectation.tag_ids);
         // Its own Time Scope's Timing — the stored archive, not the lifecycle, says archived.
         node.timing = lifecycles
@@ -204,20 +238,46 @@ pub fn forest(load: &MindmapLoad) -> Vec<FactNode> {
             &expectation.parent_type,
             expectation.parent_id,
         )));
-        // While the wait is pending, live and has a check-by, a virtual "check on it" Task sits beneath
-        // it, scoped to the check-by — whose Timing the Expectation's lifecycle entry carries.
-        if expectation.status == ExpectationStatus::Pending
-            && expectation.archival == ExpectationArchival::Live
-            && expectation.check_by.is_some()
-        {
-            let mut check = NodeFacts::new(check_task_id(expectation.id), NodeKind::Task);
-            check.status = Some("todo".to_string());
-            check.timing = Some(
-                lifecycles
-                    .get(&(expectations::EXPECTATION_CHECK, expectation.id))
-                    .map_or(Timing::Active, |lifecycle| lifecycle.timing),
-            );
-            facts.push(check);
+        // While a check is due, a virtual "check on it" Task sits beneath the wait, drawn on the
+        // day it is due — whose Timing the `expectation_check` entry carries.
+        if checks_due.contains(&expectation.id) {
+            facts.push(check_task(
+                check_task_id(expectation.id),
+                lifecycles.get(&(expectations::EXPECTATION_CHECK, expectation.id)),
+            ));
+            parents.push(Some(id));
+        }
+    }
+    let templates: HashMap<i64, &crate::tasks::model::AsyncTemplate> = load
+        .tasks
+        .iter()
+        .filter_map(|task| {
+            task.async_template
+                .as_ref()
+                .map(|template| (task.id, template))
+        })
+        .collect();
+    for spawned in &load.spawned_waits {
+        let task_id = spawned.wait.task_id;
+        let Some(template) = templates.get(&task_id) else {
+            continue;
+        };
+        let id = spawned_wait_id(task_id);
+        let mut node = NodeFacts::new(id.clone(), NodeKind::Expectation);
+        node.status = Some(spawned.wait.status.as_str().to_string());
+        node.archived = spawned.wait.archival == ExpectationArchival::Archived;
+        node.has_check = template.check_every.is_some();
+        node.tag_ids.clone_from(&template.tag_ids);
+        node.timing = lifecycles
+            .get(&(expectations::SPAWNED_WAIT, task_id))
+            .map(|lifecycle| lifecycle.timing);
+        facts.push(node);
+        parents.push(Some(format!("task-{task_id}")));
+        if spawned.next_check.is_some() {
+            facts.push(check_task(
+                format!("spawned-check-{task_id}"),
+                lifecycles.get(&(expectations::SPAWNED_CHECK, task_id)),
+            ));
             parents.push(Some(id));
         }
     }
@@ -273,14 +333,19 @@ pub fn narrow(load: &mut MindmapLoad, filter: &BoardFilter) {
         .retain(|info| keeps(&format!("info-{}", info.id)));
 
     // A wait's check-by entry travels with the wait it belongs to.
+    // A wait's check entry travels with its wait, and a spawned wait's entries with its task.
     load.lifecycles.retain(|lifecycle| {
-        let owner = if lifecycle.node_type == expectations::EXPECTATION_CHECK {
-            expectations::EXPECTATION
-        } else {
-            lifecycle.node_type.as_str()
+        let owner = match lifecycle.node_type.as_str() {
+            expectations::EXPECTATION_CHECK => expectations::EXPECTATION,
+            expectations::SPAWNED_WAIT | expectations::SPAWNED_CHECK => "task",
+            other => other,
         };
         keeps(&format!("{owner}-{}", lifecycle.node_id))
     });
+    load.expectation_checks
+        .retain(|check| keeps(&format!("expectation-{}", check.expectation_id)));
+    load.spawned_waits
+        .retain(|spawned| keeps(&spawned_wait_id(spawned.wait.task_id)));
     load.block_reasons
         .retain(|reason| keeps(&format!("{}-{}", reason.owner_type, reason.owner_id)));
     load.task_dependencies

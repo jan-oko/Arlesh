@@ -311,7 +311,7 @@ fn expectation_rows(root: &FactNode, filter: &BoardFilter) -> Vec<String> {
 
 fn waits() -> FactNode {
     let mut checked = expectation("expectation-2", "pending");
-    checked.has_check_by = true;
+    checked.has_check = true;
     let mut private = expectation("expectation-4", "pending");
     private.is_private = true;
     FactNode::with_children(

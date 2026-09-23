@@ -227,10 +227,10 @@ pub struct NodeFacts {
     /// effect of archival: it is hidden wherever an archived node is hidden.
     #[serde(default)]
     pub delegated: bool,
-    /// Whether an Expectation carries a check-by. Start shows a pending one only without it: with
-    /// one, the virtual check task beneath it is what there is to do.
+    /// Whether an Expectation is checked on — carries a Check every. Start shows a pending one only
+    /// without it: with one, the virtual check task beneath it is what there is to do.
     #[serde(default)]
-    pub has_check_by: bool,
+    pub has_check: bool,
     /// Whether a Task/Goal has any block reason, explicit or implied by an unmet dependency.
     #[serde(default)]
     pub is_blocked: bool,
@@ -262,7 +262,7 @@ impl NodeFacts {
             verdict: None,
             is_private: false,
             delegated: false,
-            has_check_by: false,
+            has_check: false,
             is_blocked: false,
             has_todo_child: false,
             is_habit_flow: false,

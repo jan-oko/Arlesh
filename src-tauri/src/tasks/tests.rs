@@ -25,6 +25,7 @@ fn stored_task() -> Task {
         delegate_to: Some(Delegate::Person { id: 3 }),
         agentic: None,
         asynchronous: false,
+        async_template: None,
         time_scope: Some(TimeScope {
             start_id: 10,
             end_id: 11,
@@ -215,16 +216,25 @@ fn delegating_to_the_agent_replaces_a_person_delegate() {
     assert_eq!(write.delegate_to, Some(Delegate::Agent));
 }
 
-/// The stored row, flagged as work that starts a wait.
+/// The stored row, Asynchronous with a template of its own.
 fn asynchronous_task() -> Task {
     Task {
         asynchronous: true,
+        async_template: Some(AsyncTemplate {
+            title: "Reviewer replies".to_string(),
+            tag_ids: vec![4],
+            time_scope: None,
+            check_every: Some(DurationSpec {
+                n: 2,
+                kind: "day".to_string(),
+            }),
+        }),
         ..stored_task()
     }
 }
 
 #[test]
-fn an_update_that_says_nothing_about_asynchronous_leaves_the_flag_alone() {
+fn an_update_that_says_nothing_about_asynchronous_leaves_the_template_alone() {
     let write = TaskWrite::merge(
         asynchronous_task(),
         UpdateTaskRequest {
@@ -232,36 +242,49 @@ fn an_update_that_says_nothing_about_asynchronous_leaves_the_flag_alone() {
             ..Default::default()
         },
     );
-    assert!(write.asynchronous);
+    assert_eq!(write.async_template, asynchronous_task().async_template);
 }
 
 #[test]
-fn each_asynchronous_answer_writes_itself() {
-    // One `Option` deep, unlike Agentic: the column is a plain boolean, so `Some(false)` is a
-    // real answer that clears the flag and only an absent field leaves it alone. If those two
-    // ever agreed, unflagging a Task would be a silent no-op.
-    for (stored, requested, expected) in [
-        (true, Some(false), false),
-        (true, Some(true), true),
-        (false, Some(true), true),
-        (true, None, true),
-        (false, None, false),
-    ] {
-        let write = TaskWrite::merge(
-            Task {
-                asynchronous: stored,
-                ..stored_task()
-            },
-            UpdateTaskRequest {
-                asynchronous: requested,
-                ..Default::default()
-            },
-        );
-        assert_eq!(
-            write.asynchronous, expected,
-            "stored {stored}, requested {requested:?}"
-        );
-    }
+fn the_toggle_keeps_a_template_gives_a_default_one_or_removes_it() {
+    let keep = TaskWrite::merge(
+        asynchronous_task(),
+        UpdateTaskRequest {
+            asynchronous: Some(true),
+            ..Default::default()
+        },
+    );
+    assert_eq!(keep.async_template, asynchronous_task().async_template);
+    let give = TaskWrite::merge(
+        stored_task(),
+        UpdateTaskRequest {
+            asynchronous: Some(true),
+            ..Default::default()
+        },
+    );
+    assert_eq!(give.async_template, Some(AsyncTemplate::for_task("Stored")));
+    let remove = TaskWrite::merge(
+        asynchronous_task(),
+        UpdateTaskRequest {
+            asynchronous: Some(false),
+            ..Default::default()
+        },
+    );
+    assert!(remove.async_template.is_none());
+}
+
+#[test]
+fn an_explicit_template_wins_over_the_toggle() {
+    let template = AsyncTemplate::for_task("Other");
+    let write = TaskWrite::merge(
+        stored_task(),
+        UpdateTaskRequest {
+            asynchronous: Some(false),
+            async_template: Some(Some(template.clone())),
+            ..Default::default()
+        },
+    );
+    assert_eq!(write.async_template, Some(template));
 }
 
 #[test]
@@ -270,7 +293,7 @@ fn asynchronous_and_agentic_are_merged_independently() {
     // doing it starts a wait. Setting one must never disturb the other.
     let write = TaskWrite::merge(
         Task {
-            asynchronous: true,
+            async_template: asynchronous_task().async_template,
             ..agentic_task()
         },
         UpdateTaskRequest {
@@ -279,7 +302,7 @@ fn asynchronous_and_agentic_are_merged_independently() {
         },
     );
     assert_eq!(write.agentic, Some(false));
-    assert!(write.asynchronous);
+    assert!(write.async_template.is_some());
 }
 
 #[test]

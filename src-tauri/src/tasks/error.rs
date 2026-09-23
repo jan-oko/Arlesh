@@ -26,10 +26,13 @@ pub enum TaskError {
     /// The requested expectation does not exist.
     #[error("expectation {0} not found")]
     ExpectationNotFound(i64),
-    /// The virtual check task was completed on an expectation that has no check-by — so there
-    /// was no check task to complete. A stale view, most likely; saying so beats pretending.
-    #[error("expectation {0} has no check-by to clear")]
-    ExpectationHasNoCheckBy(i64),
+    /// A check was completed on a wait with no check due — no Check every, or no longer pending.
+    /// A stale view, most likely; saying so beats pretending.
+    #[error("there is no check due on this wait")]
+    NoCheckDue,
+    /// A spawned wait was asked for on a task whose completion has spawned none.
+    #[error("task {0} has no spawned wait")]
+    NoSpawnedWait(i64),
     /// Adding this dependency would create a circular dependency chain.
     #[error("adding this dependency would create a cycle")]
     CircularDependency,

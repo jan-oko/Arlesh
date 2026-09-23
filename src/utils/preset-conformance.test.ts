@@ -41,7 +41,7 @@ interface CorpusNode {
   isHabitFlow?: boolean;
   isHabitOccurrence?: boolean;
   delegated?: boolean;
-  hasCheckBy?: boolean;
+  hasCheck?: boolean;
   tagIds?: number[];
   children?: CorpusNode[];
 }
@@ -127,7 +127,7 @@ function parseNode(value: unknown, what: string): CorpusNode {
     ...flag(raw.isHabitFlow, "isHabitFlow", what),
     ...flag(raw.isHabitOccurrence, "isHabitOccurrence", what),
     ...flag(raw.delegated, "delegated", what),
-    ...flag(raw.hasCheckBy, "hasCheckBy", what),
+    ...flag(raw.hasCheck, "hasCheck", what),
   };
 }
 
@@ -255,7 +255,7 @@ function toMindmapNode(node: CorpusNode): MindmapNode {
     ...(node.isHabitFlow === true ? { flow: HABIT_FLOW } : {}),
     ...(node.isHabitOccurrence === true ? { habitItem: OCCURRENCE } : {}),
     ...(node.delegated === true ? { delegate: { kind: "agent" as const } } : {}),
-    ...(node.hasCheckBy === true ? { checkBy: { start_id: 1, end_id: 1 } } : {}),
+    ...(node.hasCheck === true ? { checkBy: { start_id: 1, end_id: 1 } } : {}),
   };
 }
 

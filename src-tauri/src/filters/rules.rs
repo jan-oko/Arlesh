@@ -227,7 +227,7 @@ pub fn passes_expectation_preset(node: &NodeFacts, filter: &BoardFilter) -> bool
         Preset::Plan => is_live_expectation(node),
         // A window that has passed drops out of Start, as a Task's does.
         Preset::Start => {
-            is_live_expectation(node) && !node.has_check_by && node.timing != Some(Timing::Lapsed)
+            is_live_expectation(node) && !node.has_check && node.timing != Some(Timing::Lapsed)
         }
         Preset::Do | Preset::Backlog => false,
     }

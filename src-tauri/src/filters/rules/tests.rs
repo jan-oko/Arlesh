@@ -184,10 +184,10 @@ fn expectation(status: &str) -> NodeFacts {
 }
 
 #[test]
-fn a_pending_expectation_shows_under_all_and_plan_and_under_start_only_without_a_check_by() {
+fn a_pending_expectation_shows_under_all_and_plan_and_under_start_only_without_checks() {
     let bare = expectation("pending");
     let mut checked = expectation("pending");
-    checked.has_check_by = true;
+    checked.has_check = true;
     for (preset, bare_shows, checked_shows) in [
         (Preset::All, true, true),
         (Preset::Plan, true, true),

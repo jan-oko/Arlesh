@@ -7,20 +7,21 @@ use crate::helpers;
 use arlesh_lib::{
     domains::model::{CreateDomainRequest, DomainSubtype, ProjectStatus},
     infos::model::CreateInfoRequest,
-    scopes::model::ScopeKind,
+    scopes::model::{ScopeId, ScopeKind},
     tasks::{
-        add_task_dependency, clear_check_by, create_expectation, create_task, delete_expectation,
-        delete_task, derive_all_scope_lifecycles,
+        add_task_dependency, complete_expectation_check, create_expectation, create_task,
+        delete_expectation, delete_task, derive_all_scope_lifecycles,
         error::TaskError,
         get_task_with_blockers,
         lifecycle::{Archival, Resolution, Timing},
         model::{
-            CreateExpectationRequest, CreateTaskRequest, Dependency, Expectation,
+            CreateExpectationRequest, CreateTaskRequest, Dependency, DurationSpec, Expectation,
             ExpectationArchival, ExpectationId, ExpectationStatus, TaskId, TimeScope,
             UpdateExpectationRequest,
         },
         retype::{apply_retype, plan_node_retype, RetypeKind, StrandedChildren},
         update_expectation,
+        waits::derive_wait_windows,
     },
 };
 use chrono::{NaiveDate, NaiveDateTime};
@@ -86,7 +87,7 @@ async fn expectation(
     pool: &sqlx::SqlitePool,
     parent_type: &str,
     parent_id: i64,
-    check_by: Option<TimeScope>,
+    check_every: Option<DurationSpec>,
 ) -> Expectation {
     let mut db = helpers::session_factory(pool).begin().await.unwrap();
     let expectation = create_expectation(
@@ -95,7 +96,8 @@ async fn expectation(
             title: "Reviewer replies".into(),
             parent_type: parent_type.into(),
             parent_id,
-            check_by,
+            check_starting: check_every.as_ref().map(|_| at("2026-07-03T09:00:00")),
+            check_every,
             time_scope: None,
         },
     )
@@ -147,18 +149,25 @@ fn at(iso: &str) -> NaiveDateTime {
     NaiveDateTime::parse_from_str(iso, "%Y-%m-%dT%H:%M:%S").unwrap()
 }
 
+fn every(n: i64, kind: &str) -> DurationSpec {
+    DurationSpec {
+        n,
+        kind: kind.to_string(),
+    }
+}
+
 #[tokio::test]
-async fn a_new_expectation_is_pending_live_and_has_no_check_by_unless_given_one() {
+async fn a_new_expectation_is_pending_live_and_unchecked_unless_given_a_check_every() {
     let pool = helpers::test_pool().await;
     let project = make_project(&pool).await;
     let bare = expectation(&pool, "project", project, None).await;
     assert_eq!(bare.status, ExpectationStatus::Pending);
     assert_eq!(bare.archival, ExpectationArchival::Live);
-    assert!(bare.check_by.is_none());
+    assert!(bare.check_every.is_none() && bare.check_starting.is_none());
 
-    let check_by = day(&pool, NaiveDate::from_ymd_opt(2026, 7, 3).unwrap()).await;
-    let checked = expectation(&pool, "project", project, Some(check_by.clone())).await;
-    assert_eq!(checked.check_by, Some(check_by));
+    let checked = expectation(&pool, "project", project, Some(every(3, "day"))).await;
+    assert_eq!(checked.check_every, Some(every(3, "day")));
+    assert_eq!(checked.check_starting, Some(at("2026-07-03T09:00:00")));
 
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
     let listed = db.expectations().list().await.unwrap();
@@ -166,21 +175,29 @@ async fn a_new_expectation_is_pending_live_and_has_no_check_by_unless_given_one(
 }
 
 #[tokio::test]
-async fn a_pending_expectation_blocks_a_task_depending_on_it_until_released() {
+async fn completing_a_check_records_it_and_moves_the_next_one_interval_on() {
     let pool = helpers::test_pool().await;
     let project = make_project(&pool).await;
-    let task_id = task(&pool, "project", project).await;
-    let wait = expectation(&pool, "project", project, None).await;
-    depend(&pool, task_id, wait.id).await;
+    let wait = expectation(&pool, "project", project, Some(every(3, "day"))).await;
 
-    assert_eq!(
-        block_reasons(&pool, task_id).await,
-        [format!(
-            "Blocked by expectation {} (Reviewer replies)",
-            wait.id
-        )]
-    );
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    let checked =
+        complete_expectation_check(&mut db, ExpectationId(wait.id), at("2026-07-09T18:00:00"))
+            .await
+            .unwrap();
+    db.commit().await.unwrap();
+    assert_eq!(checked.last_check_at, Some(at("2026-07-09T18:00:00")));
+    assert_eq!(checked.status, ExpectationStatus::Pending);
 
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
+    let windows = derive_wait_windows(&mut db).await.unwrap();
+    let due = &windows.expectation_checks[0];
+    assert_eq!(due.expectation_id, wait.id);
+    let day = db.scopes().get(ScopeId(due.due.start_id)).await.unwrap();
+    assert_eq!(day.start_date, "2026-07-12");
+    drop(db);
+
+    // Released, it is not checked on any more, and a check aimed at it says so.
     update(
         &pool,
         wait.id,
@@ -190,61 +207,25 @@ async fn a_pending_expectation_blocks_a_task_depending_on_it_until_released() {
         },
     )
     .await;
-    assert!(block_reasons(&pool, task_id).await.is_empty());
-
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    let refused =
+        complete_expectation_check(&mut db, ExpectationId(wait.id), at("2026-07-12T09:00:00"))
+            .await;
+    assert!(matches!(refused, Err(TaskError::NoCheckDue)));
+    drop(db);
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
-    let dependencies = db.tasks().list_dependencies(TaskId(task_id)).await.unwrap();
-    assert!(matches!(
-        dependencies.as_slice(),
-        [Dependency::Expectation { id }] if *id == wait.id
-    ));
-}
-
-#[tokio::test]
-async fn depending_on_an_expectation_that_does_not_exist_is_refused() {
-    let pool = helpers::test_pool().await;
-    let project = make_project(&pool).await;
-    let task_id = task(&pool, "project", project).await;
-    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-    let refused = add_task_dependency(
-        &mut db,
-        TaskId(task_id),
-        Dependency::Expectation { id: 999 },
-    )
-    .await;
-    assert!(matches!(refused, Err(TaskError::ExpectationNotFound(999))));
-}
-
-#[tokio::test]
-async fn completing_the_check_clears_the_check_by_and_leaves_it_pending() {
-    let pool = helpers::test_pool().await;
-    let project = make_project(&pool).await;
-    let check_by = day(&pool, NaiveDate::from_ymd_opt(2026, 7, 3).unwrap()).await;
-    let wait = expectation(&pool, "project", project, Some(check_by)).await;
-
-    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-    let cleared = clear_check_by(&mut db, ExpectationId(wait.id))
+    assert!(derive_wait_windows(&mut db)
         .await
-        .unwrap();
-    db.commit().await.unwrap();
-    assert!(cleared.check_by.is_none());
-    assert_eq!(cleared.status, ExpectationStatus::Pending);
-
-    // A second completion has no check to complete, and says so.
-    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-    let refused = clear_check_by(&mut db, ExpectationId(wait.id)).await;
-    assert!(matches!(
-        refused,
-        Err(TaskError::ExpectationHasNoCheckBy(_))
-    ));
+        .unwrap()
+        .expectation_checks
+        .is_empty());
 }
 
 #[tokio::test]
-async fn the_lifecycle_entry_times_the_check_by_and_carries_the_archive() {
+async fn the_lifecycle_entries_time_the_next_check_and_carry_the_archive() {
     let pool = helpers::test_pool().await;
     let project = make_project(&pool).await;
-    let check_by = day(&pool, NaiveDate::from_ymd_opt(2026, 7, 3).unwrap()).await;
-    let late = expectation(&pool, "project", project, Some(check_by)).await;
+    let late = expectation(&pool, "project", project, Some(every(3, "day"))).await;
     let archived = expectation(&pool, "project", project, None).await;
     update(
         &pool,
@@ -266,7 +247,7 @@ async fn the_lifecycle_entry_times_the_check_by_and_carries_the_archive() {
             .find(|l| l.node_type == node_type && l.node_id == id)
             .unwrap()
     };
-    // The check-by is timed under its own entry, for the check task.
+    // The first check was due on the 3rd, so on the 10th it is overdue.
     assert_eq!(entry("expectation_check", late.id).timing, Timing::Lapsed);
     assert_eq!(
         entry("expectation_check", late.id).resolution,
@@ -541,7 +522,8 @@ async fn a_wait_whose_window_escapes_its_parents_is_refused() {
             title: "Too late".into(),
             parent_type: "task".into(),
             parent_id: parent.id,
-            check_by: None,
+            check_every: None,
+            check_starting: None,
             time_scope: Some(august),
         },
     )

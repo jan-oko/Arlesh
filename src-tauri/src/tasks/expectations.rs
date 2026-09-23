@@ -2,15 +2,15 @@
 //!
 //! An Expectation is something outside your own action that you are waiting on to be released —
 //! a training run finishing, someone replying. It is a content node beside Task, Goal and
-//! Commitment, but it is not an action item: it has no Time Scope and no Plan, it is never *done*,
-//! and its only stored children are Info notes. What it does have is a status — Pending until the
+//! Commitment, but it is not an action item: it has a Time Scope and tags but no Plan, it is never
+//! *done*, and its only stored children are Info notes. What it does have is a status — Pending until the
 //! wait is over, then Released — and Tasks can depend on it, so a Pending one blocks them the way
 //! an unfinished dependency does. See `docs/spec/resources.md`, "Expectations".
 //!
-//! It carries one optional date, the **check-by**: when to look in on it. While an Expectation is
-//! pending and has one, a *virtual* "check on it" Task is derived beneath it at read time. That
-//! task is never stored — completing it is [`clear_check_by`], which writes the check-by back to
-//! null and nothing else.
+//! It may carry a **Check every**: how often to look in on it. While an Expectation is pending and
+//! has one, a *virtual* "check on it" Task is derived beneath it at read time, due at its Starting
+//! and then one interval after each check made. The task is never stored — completing it is
+//! [`complete_expectation_check`], which records when and nothing else.
 //!
 //! The module follows its neighbours' shape (ADR-0004): single-resource SQL on
 //! [`ExpectationOperator`], and the writes that also touch another table — the delete, which
@@ -19,21 +19,30 @@
 //! It lives inside `tasks` because the dependency graph does: a Task's edges, its virtual block
 //! reasons and the subtree delete are all here, and each of them now has to know about this kind.
 
+use chrono::NaiveDateTime;
+
 use crate::database::session::{Db, Transactional};
 
 use super::error::TaskError;
 use super::model::{
-    CreateExpectationRequest, Expectation, ExpectationArchival, ExpectationId, ExpectationStatus,
-    TimeScope, UpdateExpectationRequest,
+    CreateExpectationRequest, DurationSpec, Expectation, ExpectationArchival, ExpectationId,
+    ExpectationStatus, TimeScope, UpdateExpectationRequest,
 };
+use super::waits::{instant_column, instant_from_column};
 use super::{insertion_position, time_scope_columns, time_scope_from_row};
 
 /// The `parent_type` / `dependency_type` / `owner_type` spelling of this kind.
 pub const EXPECTATION: &str = "expectation";
 
-/// The lifecycle `node_type` an Expectation's **check-by** is sent under — what its virtual check
-/// task reads. The `expectation` entry times the wait's own Time Scope.
+/// The lifecycle `node_type` an Expectation's **next check** is sent under — what its virtual
+/// check task reads. The `expectation` entry times the wait's own Time Scope.
 pub const EXPECTATION_CHECK: &str = "expectation_check";
+
+/// The lifecycle `node_type` a Task's **spawned** wait is sent under, keyed by the Task.
+pub const SPAWNED_WAIT: &str = "spawned_wait";
+
+/// The lifecycle `node_type` a spawned wait's next check is sent under, keyed by the Task.
+pub const SPAWNED_CHECK: &str = "spawned_check";
 
 /// The stored shape of an expectation row.
 #[derive(sqlx::FromRow)]
@@ -44,16 +53,16 @@ struct ExpectationRow {
     parent_id: i64,
     status: String,
     archival: String,
-    check_by_start_id: Option<i64>,
-    check_by_end_id: Option<i64>,
-    check_by_duration_n: Option<i64>,
-    check_by_duration_kind: Option<String>,
     position: i64,
     is_private: bool,
     time_scope_start_id: Option<i64>,
     time_scope_end_id: Option<i64>,
     time_scope_duration_n: Option<i64>,
     time_scope_duration_kind: Option<String>,
+    check_every_n: Option<i64>,
+    check_every_kind: Option<String>,
+    check_starting: Option<String>,
+    last_check_at: Option<String>,
 }
 
 impl From<ExpectationRow> for Expectation {
@@ -67,12 +76,12 @@ impl From<ExpectationRow> for Expectation {
             // blocked rather than waving them through. The CHECK constraint keeps it from arising.
             status: ExpectationStatus::from_db(&row.status).unwrap_or_default(),
             archival: ExpectationArchival::from_db(&row.archival).unwrap_or_default(),
-            check_by: time_scope_from_row(
-                row.check_by_start_id,
-                row.check_by_end_id,
-                row.check_by_duration_n,
-                row.check_by_duration_kind,
-            ),
+            check_every: match (row.check_every_n, row.check_every_kind) {
+                (Some(n), Some(kind)) => Some(DurationSpec { n, kind }),
+                _ => None,
+            },
+            check_starting: instant_from_column(row.check_starting),
+            last_check_at: instant_from_column(row.last_check_at),
             time_scope: time_scope_from_row(
                 row.time_scope_start_id,
                 row.time_scope_end_id,
@@ -97,8 +106,10 @@ struct ExpectationWrite {
     status: ExpectationStatus,
     /// Final archival.
     archival: ExpectationArchival,
-    /// Final check-by, or `None` for none.
-    check_by: Option<TimeScope>,
+    /// Final Check every, or `None` for none.
+    check_every: Option<DurationSpec>,
+    /// Final Starting.
+    check_starting: Option<NaiveDateTime>,
     /// Final Time Scope, or `None` for none.
     time_scope: Option<TimeScope>,
     /// The parent the merged Time Scope is validated against — the new one when reparenting.
@@ -113,7 +124,7 @@ struct ExpectationWrite {
 
 impl ExpectationWrite {
     /// Merges `request` over the `stored` row. Pure — it reads nothing and writes nothing.
-    fn merge(stored: Expectation, request: UpdateExpectationRequest) -> Self {
+    fn merge(stored: Expectation, request: UpdateExpectationRequest, now: NaiveDateTime) -> Self {
         let reparent = match (request.parent_type, request.parent_id) {
             (Some(parent_type), Some(parent_id)) => Some((parent_type, parent_id)),
             _ => None,
@@ -132,10 +143,17 @@ impl ExpectationWrite {
             title: request.title.unwrap_or(stored.title),
             status: request.status.unwrap_or(stored.status),
             archival: request.archival.unwrap_or(stored.archival),
-            check_by: match request.check_by {
-                Some(new_check_by) => new_check_by,
-                None => stored.check_by,
+            check_every: match &request.check_every {
+                Some(new_every) => new_every.clone(),
+                None => stored.check_every.clone(),
             },
+            // A Check every newly given with no Starting of its own starts now.
+            check_starting: request.check_starting.or(
+                match (&request.check_every, stored.check_starting) {
+                    (Some(Some(_)), None) => Some(now),
+                    (_, stored_starting) => stored_starting,
+                },
+            ),
             position: request.position.unwrap_or(stored.position),
             is_private: request.is_private.unwrap_or(stored.is_private),
         }
@@ -161,24 +179,27 @@ impl<'session> ExpectationOperator<'session> {
     async fn insert(
         &mut self,
         request: CreateExpectationRequest,
+        now: NaiveDateTime,
     ) -> Result<Expectation, TaskError> {
-        let (start, end, n, kind) = time_scope_columns(&request.check_by);
         let (ts_start, ts_end, ts_n, ts_kind) = time_scope_columns(&request.time_scope);
+        let (every_n, every_kind) = every_columns(&request.check_every);
+        let starting = request
+            .check_every
+            .as_ref()
+            .map(|_| instant_column(request.check_starting.unwrap_or(now)));
         let id = sqlx::query(
             "INSERT INTO expectations
-                (title, parent_type, parent_id, check_by_start_id, check_by_end_id,
-                 check_by_duration_n, check_by_duration_kind, position,
-                 time_scope_start_id, time_scope_end_id, time_scope_duration_n,
+                (title, parent_type, parent_id, check_every_n, check_every_kind, check_starting,
+                 position, time_scope_start_id, time_scope_end_id, time_scope_duration_n,
                  time_scope_duration_kind)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&request.title)
         .bind(&request.parent_type)
         .bind(request.parent_id)
-        .bind(start)
-        .bind(end)
-        .bind(n)
-        .bind(&kind)
+        .bind(every_n)
+        .bind(&every_kind)
+        .bind(starting)
         .bind(insertion_position())
         .bind(ts_start)
         .bind(ts_end)
@@ -278,7 +299,7 @@ impl<'session> ExpectationOperator<'session> {
         id: ExpectationId,
         write: ExpectationWrite,
     ) -> Result<Expectation, TaskError> {
-        let (start, end, n, kind) = time_scope_columns(&write.check_by);
+        let (every_n, every_kind) = every_columns(&write.check_every);
         let (ts_start, ts_end, ts_n, ts_kind) = time_scope_columns(&write.time_scope);
         if let Some((parent_type, parent_id)) = &write.reparent {
             sqlx::query("UPDATE expectations SET parent_type = ?, parent_id = ? WHERE id = ?")
@@ -290,18 +311,16 @@ impl<'session> ExpectationOperator<'session> {
         }
         sqlx::query(
             "UPDATE expectations SET title=?, status=?, archival=?,
-                check_by_start_id=?, check_by_end_id=?, check_by_duration_n=?,
-                check_by_duration_kind=?, position=?, is_private=?,
+                check_every_n=?, check_every_kind=?, check_starting=?, position=?, is_private=?,
                 time_scope_start_id=?, time_scope_end_id=?, time_scope_duration_n=?,
                 time_scope_duration_kind=? WHERE id=?",
         )
         .bind(&write.title)
         .bind(write.status.as_str())
         .bind(write.archival.as_str())
-        .bind(start)
-        .bind(end)
-        .bind(n)
-        .bind(&kind)
+        .bind(every_n)
+        .bind(&every_kind)
+        .bind(write.check_starting.map(instant_column))
         .bind(write.position)
         .bind(write.is_private)
         .bind(ts_start)
@@ -312,6 +331,20 @@ impl<'session> ExpectationOperator<'session> {
         .execute(&mut *self.connection)
         .await?;
         self.get(id).await
+    }
+
+    /// Records `at` as the time of an expectation's last check.
+    async fn set_last_check(
+        &mut self,
+        id: ExpectationId,
+        at: NaiveDateTime,
+    ) -> Result<(), TaskError> {
+        sqlx::query("UPDATE expectations SET last_check_at = ? WHERE id = ?")
+            .bind(instant_column(at))
+            .bind(id.0)
+            .execute(&mut *self.connection)
+            .await?;
+        Ok(())
     }
 
     /// Deletes one expectation row and nothing else. The Infos beneath it and the dependency
@@ -340,7 +373,7 @@ pub async fn create_expectation(
         &request.time_scope,
     )
     .await?;
-    db.expectations().insert(request).await
+    db.expectations().insert(request, now()).await
 }
 
 /// Updates an expectation — title, status, archival, check-by, parent, position or privacy.
@@ -354,7 +387,7 @@ pub async fn update_expectation(
     request: UpdateExpectationRequest,
 ) -> Result<Expectation, TaskError> {
     let stored = db.expectations().get(id).await?;
-    let write = ExpectationWrite::merge(stored, request);
+    let write = ExpectationWrite::merge(stored, request, now());
     super::scope_rules::validate_expectation_scope(
         db,
         &write.parent_type,
@@ -365,27 +398,37 @@ pub async fn update_expectation(
     db.expectations().update(id, write).await
 }
 
-/// Completes the virtual "check on it" task: clears the check-by and leaves everything else —
-/// the Expectation stays Pending. Nothing is stored for the check itself.
+/// Completes the current check on a wait: records `at` as its last check, so the next falls due
+/// one interval later. The Expectation stays Pending, and nothing else is stored for the check.
 ///
-/// Refused when there is no check-by to clear, since there was then no check task to complete
-/// either, and reporting success for a gesture that aimed at nothing would hide a stale view.
+/// Refused when no check is due — no Check every, or the wait is no longer pending — since there
+/// was then no check task to complete, and reporting success for a gesture that aimed at nothing
+/// would hide a stale view.
 #[tracing::instrument(skip(db))]
-pub async fn clear_check_by(
+pub async fn complete_expectation_check(
     db: &mut Db<Transactional>,
     id: ExpectationId,
+    at: NaiveDateTime,
 ) -> Result<Expectation, TaskError> {
     let stored = db.expectations().get(id).await?;
-    if stored.check_by.is_none() {
-        return Err(TaskError::ExpectationHasNoCheckBy(id.0));
+    if stored.check_every.is_none() || stored.status != ExpectationStatus::Pending {
+        return Err(TaskError::NoCheckDue);
     }
-    let request = UpdateExpectationRequest {
-        check_by: Some(None),
-        ..Default::default()
-    };
-    db.expectations()
-        .update(id, ExpectationWrite::merge(stored, request))
-        .await
+    db.expectations().set_last_check(id, at).await?;
+    db.expectations().get(id).await
+}
+
+/// The wall-clock instant a write is stamped with.
+pub(crate) fn now() -> NaiveDateTime {
+    chrono::Local::now().naive_local()
+}
+
+/// A Check every's two column values.
+fn every_columns(every: &Option<DurationSpec>) -> (Option<i64>, Option<String>) {
+    match every {
+        Some(every) => (Some(every.n), Some(every.kind.clone())),
+        None => (None, None),
+    }
 }
 
 /// Deletes an expectation, the Infos beneath it, and every dependency edge aimed at it.

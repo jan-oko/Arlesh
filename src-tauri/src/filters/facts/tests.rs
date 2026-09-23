@@ -54,6 +54,7 @@ fn task_row(id: i64, parent_type: &str, parent_id: i64, status: &str) -> Task {
         delegate_to: None,
         agentic: None,
         asynchronous: false,
+        async_template: None,
         time_scope: None,
         on_scope_exit: None,
         plan: None,
@@ -326,7 +327,9 @@ fn expectation_row(id: i64, parent_type: &str, parent_id: i64) -> crate::tasks::
         parent_id,
         status: crate::tasks::model::ExpectationStatus::Pending,
         archival: crate::tasks::model::ExpectationArchival::Live,
-        check_by: None,
+        check_every: None,
+        check_starting: None,
+        last_check_at: None,
         time_scope: None,
         tag_ids: Vec::new(),
         position: id,
@@ -335,15 +338,23 @@ fn expectation_row(id: i64, parent_type: &str, parent_id: i64) -> crate::tasks::
 }
 
 #[test]
-fn an_expectation_with_a_check_by_carries_a_virtual_check_task_timed_by_its_lifecycle() {
+fn an_expectation_with_a_check_due_carries_a_virtual_check_task_timed_by_its_lifecycle() {
     let mut load = board();
     let mut checked = expectation_row(50, "goal", 10);
-    checked.check_by = Some(crate::tasks::model::TimeScope {
-        start_id: 1,
-        end_id: 1,
-        duration: None,
+    checked.check_every = Some(crate::tasks::model::DurationSpec {
+        n: 3,
+        kind: "day".to_string(),
     });
     load.expectations.push(checked);
+    load.expectation_checks
+        .push(crate::tasks::waits::ExpectationCheck {
+            expectation_id: 50,
+            due: crate::tasks::model::TimeScope {
+                start_id: 1,
+                end_id: 1,
+                duration: None,
+            },
+        });
     load.expectations.push(expectation_row(51, "goal", 10));
     load.infos.push(info_row(41, "expectation", 51));
     load.lifecycles.push(lifecycle(
@@ -357,7 +368,7 @@ fn an_expectation_with_a_check_by_carries_a_virtual_check_task_timed_by_its_life
 
     let forest = forest(&load);
     let wait = find(&forest, "expectation-50").expect("the expectation is on the board");
-    assert!(wait.facts.has_check_by);
+    assert!(wait.facts.has_check);
     assert_eq!(wait.facts.timing, Some(Timing::Lapsed));
     assert_eq!(wait.facts.status.as_deref(), Some("pending"));
     let check = find(&forest, "expectation-check-50").expect("the check task is derived");
@@ -372,11 +383,6 @@ fn a_released_expectation_has_no_check_task_and_stops_blocking() {
     let mut load = board();
     let mut released = expectation_row(50, "goal", 10);
     released.status = crate::tasks::model::ExpectationStatus::Released;
-    released.check_by = Some(crate::tasks::model::TimeScope {
-        start_id: 1,
-        end_id: 1,
-        duration: None,
-    });
     load.expectations.push(released);
     load.expectations.push(expectation_row(51, "goal", 10));
     load.task_dependencies.push(TaskDependencyEdge {
@@ -421,4 +427,78 @@ fn narrowing_keeps_an_expectation_the_filter_keeps_and_drops_one_it_does_not() {
     narrow(&mut load, &BoardFilter::preset(Preset::Plan));
     let kept: Vec<i64> = load.expectations.iter().map(|e| e.id).collect();
     assert_eq!(kept, [50]);
+}
+
+fn spawned(
+    task_id: i64,
+    status: crate::tasks::model::ExpectationStatus,
+) -> crate::tasks::waits::SpawnedWaitView {
+    crate::tasks::waits::SpawnedWaitView {
+        wait: crate::tasks::model::SpawnedWait {
+            task_id,
+            spawned_at: chrono::NaiveDate::from_ymd_opt(2026, 7, 1)
+                .and_then(|date| date.and_hms_opt(9, 0, 0))
+                .expect("a date"),
+            status,
+            archival: crate::tasks::model::ExpectationArchival::Live,
+            last_check_at: None,
+        },
+        time_scope: None,
+        next_check: Some(crate::tasks::model::TimeScope {
+            start_id: 1,
+            end_id: 1,
+            duration: None,
+        }),
+    }
+}
+
+#[test]
+fn a_done_asynchronous_task_carries_its_spawned_wait_and_holds_up_its_dependents() {
+    let mut load = board();
+    for task in &mut load.tasks {
+        if task.id == 22 {
+            task.async_template = Some(crate::tasks::model::AsyncTemplate {
+                title: "Reply".to_string(),
+                tag_ids: vec![7],
+                time_scope: None,
+                check_every: Some(crate::tasks::model::DurationSpec {
+                    n: 1,
+                    kind: "week".to_string(),
+                }),
+            });
+        }
+    }
+    load.spawned_waits
+        .push(spawned(22, crate::tasks::model::ExpectationStatus::Pending));
+    load.task_dependencies.push(TaskDependencyEdge {
+        task_id: 21,
+        dependency_type: "task".to_string(),
+        dependency_id: 22,
+    });
+    let pending = forest(&load);
+    let wait = find(&pending, "spawned-wait-22").expect("the spawned wait is drawn");
+    assert_eq!(wait.facts.kind, NodeKind::Expectation);
+    assert_eq!(wait.facts.tag_ids, [7]);
+    assert!(wait.facts.has_check);
+    assert!(find(&pending, "spawned-check-22").is_some());
+    assert!(
+        find(&pending, "task-21").is_some_and(|node| node.facts.is_blocked),
+        "task 22 is done, but its wait is pending"
+    );
+
+    let mut released = load.clone();
+    released.spawned_waits = vec![spawned(
+        22,
+        crate::tasks::model::ExpectationStatus::Released,
+    )];
+    let after = forest(&released);
+    assert!(find(&after, "task-21").is_some_and(|node| !node.facts.is_blocked));
+
+    let mut untemplated = load;
+    for task in &mut untemplated.tasks {
+        task.async_template = None;
+    }
+    let bare = forest(&untemplated);
+    assert!(find(&bare, "spawned-wait-22").is_none());
+    assert!(find(&bare, "task-21").is_some_and(|node| !node.facts.is_blocked));
 }

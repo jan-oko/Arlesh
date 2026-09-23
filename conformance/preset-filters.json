@@ -851,8 +851,8 @@
       ]
     },
     {
-      "name": "start shows a pending expectation only when it has no check-by, and the check task under the ordinary task rules",
-      "spec": "resources.md, Expectations — Start shows a pending Expectation only when it has no check-by; the virtual check task follows the ordinary Task preset rules. A task depending on a pending Expectation is blocked. A wait whose own Time Scope has lapsed drops out of Start, as a Task's does.",
+      "name": "start shows a pending expectation only when it has no check chain, and the check task under the ordinary task rules",
+      "spec": "resources.md, Expectations — Start shows a pending Expectation only when it has no check chain; the virtual check task follows the ordinary Task preset rules. A task depending on a pending Expectation is blocked. A wait whose own Time Scope has lapsed drops out of Start, as a Task's does.",
       "filter": {
         "preset": "start"
       },
@@ -1652,7 +1652,7 @@
                   "id": "expectation-checked",
                   "kind": "expectation",
                   "status": "pending",
-                  "hasCheckBy": true,
+                  "hasCheck": true,
                   "children": [
                     {
                       "id": "task-check-open",
@@ -1666,7 +1666,7 @@
                   "id": "expectation-check-ahead",
                   "kind": "expectation",
                   "status": "pending",
-                  "hasCheckBy": true,
+                  "hasCheck": true,
                   "children": [
                     {
                       "id": "task-check-ahead",

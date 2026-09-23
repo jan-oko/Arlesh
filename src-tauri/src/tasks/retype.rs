@@ -1277,6 +1277,7 @@ async fn create_node(
                     // starts out not asynchronous, and a flag lost on the way out is named in the
                     // plan before any of this runs.
                     asynchronous: carried.asynchronous,
+                    async_template: None,
                 },
             )
             .await?;

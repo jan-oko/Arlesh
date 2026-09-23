@@ -15,5 +15,6 @@
 mod helpers;
 
 mod block_reasons;
+mod async_templates;
 mod expectations;
 mod tasks;

@@ -2438,6 +2438,7 @@ pub async fn create_instance_child(
                     archival: None,
                     agentic: None,
                     asynchronous: None,
+                    async_template: None,
                 },
             )
             .await?
@@ -3406,6 +3407,7 @@ async fn write_plan(
                         // its own, so the instance reads whatever the branch it lands in says.
                         agentic: None,
                         // And it arrives not asynchronous: a flow item has no column of its own,
+                        async_template: None,
                         // and nothing infers that doing a materialized instance starts a wait.
                         asynchronous: None,
                     },

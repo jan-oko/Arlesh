@@ -11,7 +11,8 @@ use crate::{
     database::session::SessionFactory,
     error::WireError,
     tasks::model::{
-        CreateExpectationRequest, Expectation, ExpectationId, UpdateExpectationRequest,
+        CreateExpectationRequest, Expectation, ExpectationId, SpawnedWait, TaskId,
+        UpdateExpectationRequest, UpdateSpawnedWaitRequest,
     },
 };
 
@@ -56,18 +57,55 @@ pub async fn update_expectation(
     Ok(expectation)
 }
 
-/// Completes an expectation's virtual check task: clears its check-by, leaving it pending.
+/// Completes the current check on a stored expectation: records now as its last check, so the
+/// next falls due one interval later. The wait stays pending.
 #[tauri::command]
-pub async fn clear_expectation_check_by(
+pub async fn complete_expectation_check(
     factory: State<'_, SessionFactory>,
     id: i64,
 ) -> Result<Expectation, WireError> {
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let expectation = crate::tasks::clear_check_by(&mut db, ExpectationId(id))
+    let expectation = crate::tasks::complete_expectation_check(
+        &mut db,
+        ExpectationId(id),
+        crate::tasks::expectations::now(),
+    )
+    .await
+    .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)?;
+    Ok(expectation)
+}
+
+/// Releases, un-releases or archives the wait a task's completion spawned.
+#[tauri::command]
+pub async fn update_spawned_wait(
+    factory: State<'_, SessionFactory>,
+    task_id: i64,
+    request: UpdateSpawnedWaitRequest,
+) -> Result<SpawnedWait, WireError> {
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    let wait = crate::tasks::waits::update_spawned_wait(&mut db, TaskId(task_id), request)
         .await
         .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)?;
-    Ok(expectation)
+    Ok(wait)
+}
+
+/// Completes the current check on a task's spawned wait.
+#[tauri::command]
+pub async fn complete_spawned_wait_check(
+    factory: State<'_, SessionFactory>,
+    task_id: i64,
+) -> Result<(), WireError> {
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    crate::tasks::waits::complete_spawned_check(
+        &mut db,
+        TaskId(task_id),
+        crate::tasks::expectations::now(),
+    )
+    .await
+    .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)
 }
 
 /// Adds a tag to an expectation.
