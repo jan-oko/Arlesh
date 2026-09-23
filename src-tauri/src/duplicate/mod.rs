@@ -20,7 +20,9 @@
 //! - **Flows are not traversed.** A Flow hanging under a copied node is not copied. Copying a Flow
 //!   on its own is `flows::duplicate_flow`, which answers what a copy of a Recurrence and of a
 //!   completion history means; wiring this walk to call it for each Flow under a copied node is
-//!   the piece still missing, and all that is missing.
+//!   the piece still missing, and all that is missing. Until it lands, the Mindmap's paste walks
+//!   the copied subtree itself and **names** the Flows this walk will not carry, so the gap is
+//!   said out loud rather than leaving a paste smaller than the copy with nothing to show for it.
 //!
 //! Aspects are never duplicated: they are the fixed, seeded roots of the board.
 //!

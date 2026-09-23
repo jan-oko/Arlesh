@@ -51,6 +51,7 @@ export default function PlanScopeBar({
     handleClick: (ref) => { onJumpTo(ref); setPickerOpen(false); },
     adjustEndpoint: () => {},
     reset: () => {},
+    seed: () => {},
     resolve: () => Promise.resolve(null),
   };
 

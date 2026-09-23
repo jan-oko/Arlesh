@@ -767,6 +767,66 @@ describe("useNodeActions — onPaste", () => {
     await vi.waitFor(() => expect(opts.moveNode).toHaveBeenCalledWith("flow-5", "flow", "goal-2", "goal", 0));
     expect(opts.moveNode).toHaveBeenCalledTimes(1);
   });
+
+  // The skip nothing in the selection hinted at. The backend's duplication walk does not descend
+  // into a Flow, so a Habit hanging under a copied Goal was simply absent from the paste — no
+  // count, no toast, a subtree quietly smaller than the one that was copied.
+  describe("a Flow left behind under a copied node", () => {
+    const habit = mkNode("flow-7", "flow", [], { title: "Morning pages" });
+    const lift = mkNode("flow-8", "flow", [], { title: "Lift" });
+    const carrier = mkNode("goal-6", "goal", [habit, mkNode("task-9", "task", [lift])]);
+    const destination = mkNode("goal-2", "goal");
+    const tree = mkNode("root", "domain", [mkNode("domain-5", "project", [carrier, destination])]);
+
+    /** What the stubbed `t` makes of the sentence: the frame, the count, then the flows list. */
+    function leftBehind(count: number, ...flows: string[]): string {
+      return ["pasteSkippedFlowUnder", String(count), flows.join(", ")].join(":");
+    }
+    const named = (title: string) => `warnings:pasteSkippedFlowName:${title}`;
+
+    it("names the Flows it could not carry, and still copies the node it could", async () => {
+      const opts = makeOpts({ tree, clipboard: { operation: CLIPBOARD_OP.COPY, nodeIds: ["goal-6"] } });
+      const { result } = renderHook(() => useNodeActions(opts));
+      act(() => { result.current.onPaste("goal-2"); });
+      await vi.waitFor(() =>
+        expect(opts.duplicateNode).toHaveBeenCalledWith("goal-6", "goal", "goal-2", "goal", 0),
+      );
+      // One toast for two Flows, not one each: the store holds a single pending notice.
+      expect(opts.showToast).toHaveBeenCalledTimes(1);
+      expect(opts.showToast).toHaveBeenCalledWith({
+        nodeId: "goal-2",
+        message: leftBehind(2, named("Morning pages"), named("Lift")),
+      });
+    });
+
+    // A cut re-points one parent link and the whole subtree follows, Flows included.
+    it("says nothing when the same subtree is cut, because nothing is left behind", async () => {
+      const opts = makeOpts({ tree, clipboard: { operation: CLIPBOARD_OP.CUT, nodeIds: ["goal-6"] } });
+      const { result } = renderHook(() => useNodeActions(opts));
+      act(() => { result.current.onPaste("goal-2"); });
+      await vi.waitFor(() => expect(opts.moveNode).toHaveBeenCalledTimes(1));
+      expect(opts.showToast).not.toHaveBeenCalled();
+    });
+
+    // Composition: a destination refusal and a left-behind Flow arrive in the same message, or the
+    // second showToast would take the first off screen unsaid.
+    it("reports it alongside a refusal the same paste tripped", async () => {
+      const clipboard = { operation: CLIPBOARD_OP.COPY, nodeIds: ["goal-6", "aspect-1"] };
+      const opts = makeOpts({ tree: mkNode("root", "domain", [
+        mkNode("domain-5", "project", [carrier, destination, mkNode("aspect-1", "aspect")]),
+      ]), clipboard });
+      const { result } = renderHook(() => useNodeActions(opts));
+      act(() => { result.current.onPaste("goal-2"); });
+      await vi.waitFor(() =>
+        expect(opts.duplicateNode).toHaveBeenCalledWith("goal-6", "goal", "goal-2", "goal", 0),
+      );
+      expect(opts.showToast).toHaveBeenCalledTimes(1);
+      expect(opts.showToast).toHaveBeenCalledWith({
+        nodeId: "goal-2",
+        message: `pasteSkippedAspect:1 ${leftBehind(2, named("Morning pages"), named("Lift"))}`,
+      });
+    });
+  });
 });
 
 describe("useNodeActions — onInsertParent", () => {

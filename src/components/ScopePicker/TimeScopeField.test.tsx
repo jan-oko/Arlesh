@@ -129,3 +129,71 @@ describe("TimeScopeField — opening view", () => {
     expect(screen.queryByRole("button", { name: "September 2026" })).not.toBeInTheDocument();
   });
 });
+
+describe("TimeScopeField — the opening is the selection", () => {
+  function byDate(date: string): number {
+    return date === "2026-06-01" ? 101 : 202;
+  }
+
+  beforeEach(() => {
+    vi.mocked(getOrCreateScope).mockImplementation((_kind, date) =>
+      Promise.resolve({ ...mkScope(byDate(date)), kind: "month", start_date: date }),
+    );
+  });
+
+  it("draws the cell it opens on as selected", async () => {
+    render(<TimeScopeField value={{ start_id: 5, end_id: 5 }} onChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "edit scope" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "June 2026" })).toHaveAttribute("aria-pressed", "true"),
+    );
+  });
+
+  it("applying without clicking re-applies the scope that was there", async () => {
+    const onChange = vi.fn();
+    render(<TimeScopeField value={{ start_id: 5, end_id: 5 }} onChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "edit scope" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "June 2026" })).toHaveAttribute("aria-pressed", "true"),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "scopeApply" }));
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith({ start_id: 101, end_id: 101 }));
+    expect(onChange).not.toHaveBeenCalledWith(null);
+  });
+
+  it("round-trips a range: both endpoints are selected and Apply re-applies them", async () => {
+    const onChange = vi.fn();
+    render(<TimeScopeField value={{ start_id: 1, end_id: 2 }} onChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "edit scope" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "June 2026" })).toHaveAttribute("aria-pressed", "true"),
+    );
+    expect(screen.getByRole("button", { name: "August 2026" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByRole("button", { name: "scopeApply" }));
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith({ start_id: 101, end_id: 202 }));
+  });
+
+  it("a seeded range is closed, so the first click starts a new one", async () => {
+    const onChange = vi.fn();
+    render(<TimeScopeField value={{ start_id: 1, end_id: 2 }} onChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "edit scope" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "August 2026" })).toHaveAttribute("aria-pressed", "true"),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "October 2026" }));
+    expect(screen.getByRole("button", { name: "June 2026" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "August 2026" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "October 2026" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("applying with nothing selected on an unscoped task changes nothing", async () => {
+    const onChange = vi.fn();
+    render(<TimeScopeField value={null} onChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "edit scope" }));
+    fireEvent.click(screen.getByRole("button", { name: "scopeApply" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("group", { name: "time scope picker" })).not.toBeInTheDocument(),
+    );
+    expect(onChange).not.toHaveBeenCalled();
+  });
+});
