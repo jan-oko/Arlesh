@@ -249,6 +249,13 @@ export interface MindmapNode {
   /** Present on a `habit_group` node, and on no other kind: what it stands for. */
   habitGroup?: HabitGroup;
   plan?: TimeScope | null;
+  /**
+   * Present on a virtual Habit task occurrence: whether its Plan is its own rather than the
+   * Cycle Plan's. `true` with a `null` plan is an occurrence deliberately left unplanned.
+   */
+  planOverridden?: boolean;
+  /** Present on a virtual Habit task occurrence: the Cycle Plan the template gives it. */
+  cyclePlan?: TimeScope | null;
   flow?: FlowData;
   flowItem?: FlowItemData;
   /** Whether this node is marked private — hidden (with its subtree) outside Private Mode. */

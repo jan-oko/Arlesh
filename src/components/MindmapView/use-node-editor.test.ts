@@ -29,6 +29,7 @@ vi.mock("@/api/flows", () => ({
   updateFlow: vi.fn(), updateFlowGoal: vi.fn(), updateFlowTask: vi.fn(),
   setFlowItemCycles: vi.fn(), addFlowDependency: vi.fn(), removeFlowDependency: vi.fn(),
   flowOrigins: vi.fn().mockResolvedValue([]),
+  setHabitInstancePlan: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("@/api/block-reasons", () => ({
   setBlockReasons: vi.fn().mockResolvedValue(undefined),
@@ -42,9 +43,14 @@ const virtualHabitItemNode: MindmapNode = {
   virtual: true,
   habitItem: { flowId: 4, itemType: "flow_task", itemId: 4, scopeId: 26, cycleId: 0 },
 };
+const virtualIterationRoot: MindmapNode = {
+  id: "habit-4-0-virtual", kind: "task", title: "Routine W1", tagIds: [], position: 0, children: [],
+  virtual: true,
+  habitItem: { flowId: 4, itemType: "flow_root", itemId: 4, scopeId: 26, cycleId: 0 },
+};
 const root: MindmapNode = {
   id: "root", kind: "domain", title: "Arlesh", tagIds: [], position: 0,
-  children: [taskNode, virtualHabitItemNode],
+  children: [taskNode, virtualHabitItemNode, virtualIterationRoot],
 };
 
 function setup() {
@@ -68,14 +74,28 @@ describe("useNodeEditor — double-click", () => {
   // A virtual Habit instance (root or item) isn't backed by a real Task/Goal row — its Time Scope
   // is derived from the flow's Duration kind and the item's Cycle, not independently settable.
   // Opening the full editor on it would save against a `dbId` parsed from its non-numeric
-  // `-virtual` id tail (NaN), silently failing — so it must stay a no-op, like the aspect case.
-  it("does not open an editor for a virtual Habit instance node", () => {
+  // `-virtual` id tail (NaN), silently failing — so the full editor never opens on one. A task
+  // occurrence opens its own Plan editor instead.
+  it("opens the occurrence Plan editor, not the Task editor, on a habit task occurrence", () => {
     const reload = vi.fn().mockResolvedValue(undefined);
     const { result } = renderHook(() =>
       useNodeEditor({ tree: root, allTasksAndGoals: [taskNode], reload }),
     );
     act(() => result.current.onDoubleClick("habititem-flow_task-4-3-virtual"));
     expect(result.current.editorModal).toBeNull();
+    expect(result.current.occurrencePlan.target).toMatchObject({
+      flowId: 4, itemId: 4, scopeId: 26, cycleId: 0,
+    });
+  });
+
+  it("opens nothing on a habit iteration root, which is not planned per occurrence", () => {
+    const reload = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(() =>
+      useNodeEditor({ tree: root, allTasksAndGoals: [taskNode], reload }),
+    );
+    act(() => result.current.onDoubleClick("habit-4-0-virtual"));
+    expect(result.current.editorModal).toBeNull();
+    expect(result.current.occurrencePlan.target).toBeNull();
   });
 });
 

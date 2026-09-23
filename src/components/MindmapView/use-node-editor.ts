@@ -37,6 +37,8 @@ import type { TimeScope } from "@/api/time-scope";
 import { findNode } from "@/utils/mindmap-tree";
 import { DOMAIN_SUBTYPE } from "@/api/domains";
 import { TASK_STATUS } from "@/utils/status-mapping";
+import { useOccurrencePlan } from "@/hooks/use-occurrence-plan";
+import type { OccurrencePlanHandles } from "@/hooks/use-occurrence-plan";
 
 export interface EditorModalState {
   nodeId: string;
@@ -94,6 +96,8 @@ interface Result {
   confirmScopeClamp: (conflicts: ViolatingDescendant[]) => Promise<boolean>;
   scopeClampRequest: ScopeClampRequest | null;
   resolveScopeClamp: (proceed: boolean) => void;
+  /** The Plan editor of a Habit task occurrence, which a double-click opens instead. */
+  occurrencePlan: OccurrencePlanHandles;
 }
 
 export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Result {
@@ -103,6 +107,8 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
   const [allTags, setAllTags] = useState<Domain[]>([]);
   const [domainNames, setDomainNames] = useState<Map<number, string>>(new Map());
   const [scopeClampRequest, setScopeClampRequest] = useState<ScopeClampRequest | null>(null);
+  const occurrencePlan = useOccurrencePlan(reload);
+  const openOccurrencePlan = occurrencePlan.open;
 
   // One load gives both the tags and the parent-domain titles used to section the tag picker.
   useEffect(() => {
@@ -156,11 +162,16 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
       // A virtual Habit instance isn't backed by a real Task/Goal row — its Time Scope is derived
       // from the flow's Duration kind and the item's Cycle, not independently editable — and
       // `onTaskSave`/`onGoalSave` would compute a `dbId` from its non-numeric `-virtual` id tail
-      // (NaN) and fail to save. It stays read-only here; only `onStatusClick` may mutate it.
-      if (node === undefined || node.kind === "aspect" || node.habitItem !== undefined) return;
+      // (NaN) and fail to save. A task occurrence opens its own Plan editor instead: its Plan is
+      // the one thing it can be given on its own. Anything else virtual stays read-only here.
+      if (node === undefined || node.kind === "aspect") return;
+      if (node.habitItem !== undefined) {
+        openOccurrencePlan(node);
+        return;
+      }
       setEditorModal({ nodeId, node });
     },
-    [tree],
+    [tree, openOccurrencePlan],
   );
 
   const onTaskSave = useCallback(
@@ -406,6 +417,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
   );
 
   return {
+    occurrencePlan,
     editorModal, setEditorModal, allTags, domainNames, availableForDep, onDoubleClick,
     onTaskSave, onGoalSave, onCommitmentSave, onSimpleSave, onProjectSave, onInfoSave,
     onClearBeadsId,

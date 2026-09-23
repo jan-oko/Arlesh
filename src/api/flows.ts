@@ -240,8 +240,15 @@ export interface HabitInstance {
   cycle_id: number;
   /** The occurrence's Cycle Scope; `null` when it has no pair (it inherits the iteration's). */
   time_scope: TimeScope | null;
-  /** The occurrence's Cycle Plan, when its pair carries one. */
+  /**
+   * The occurrence's **effective** Plan: its own when it has been planned on its own (or `null`
+   * when deliberately unplanned), otherwise the Cycle Plan its pair carries.
+   */
   plan: TimeScope | null;
+  /** The Cycle Plan the template gives this occurrence — what clearing an override returns to. */
+  cycle_plan: TimeScope | null;
+  /** Whether the Plan is this occurrence's own rather than the Cycle Plan's. */
+  plan_overridden: boolean;
   /**
    * Where the occurrence sits relative to its own window: "pending" before it opens, "lapsed" once
    * it has gone under the Habit's Consumption, "active" in between. One tri-state rather than two
@@ -322,6 +329,33 @@ export async function setHabitItemStatus(
     item_type: itemType, item_id: itemId, iteration_scope_id: iterationScopeId, cycle_id: cycleId,
   };
   return invoke<void>("set_habit_item_status", { flowId, instance, status, resolvedAtMs, confirmed });
+}
+
+/**
+ * One occurrence's Plan, set on that occurrence alone. Three states, because a Plan is optional:
+ * following the Cycle Plan and being deliberately unplanned are different answers.
+ */
+export type PlanOverride =
+  | { kind: "inherit" }
+  | { kind: "unplanned" }
+  | { kind: "planned"; plan: TimeScope };
+
+/**
+ * Plans one task occurrence of a Habit on its own, overriding its Cycle Plan for that iteration
+ * alone — or hands it back to the Cycle Plan with `{ kind: "inherit" }`. Nothing about the
+ * template changes. Refused unless a window sits inside the occurrence's own.
+ */
+export async function setHabitInstancePlan(
+  flowId: number,
+  itemId: number,
+  iterationScopeId: number,
+  cycleId: number,
+  plan: PlanOverride,
+): Promise<void> {
+  const instance = {
+    item_type: "flow_task", item_id: itemId, iteration_scope_id: iterationScopeId, cycle_id: cycleId,
+  };
+  return invoke<void>("set_habit_instance_plan", { flowId, instance, plan });
 }
 
 /** The kinds an occurrence can hold — everything a Task can parent. */

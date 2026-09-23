@@ -1363,7 +1363,8 @@ describe("injectHabitInstances", () => {
   ): HabitInstance {
     return {
       item_type: itemType, item_id: itemId, cycle_id: NO_CYCLE,
-      time_scope: null, plan: null, timing: "active", ...overrides,
+      time_scope: null, plan: null, cycle_plan: null, plan_overridden: false, timing: "active",
+      ...overrides,
     };
   }
   /** A stored status Modification for one occurrence. */
@@ -1623,6 +1624,39 @@ describe("injectHabitInstances", () => {
     expect(items[0]?.habitItem).toEqual({ flowId: 3, itemType: "flow_task", itemId: 4, scopeId: 100, cycleId: NO_CYCLE });
     expect(items[1]?.title).toBe("Dinner");
     expect(items[1]?.status).toBe("todo"); // no completion
+  });
+
+  it("draws each occurrence with its effective plan and says which ones were planned on their own", () => {
+    const root = buildTree(
+      [
+        { id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false },
+        { id: 96, title: "LOOK", description: null, subtype: "project", parent_id: 1, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false },
+      ],
+      [], [], [],
+    );
+    const run: FlowTask = { id: 4, flow_id: 3, title: "Run", parent_type: "flow", parent_id: 3, position: 0, is_private: false };
+    const tuesday = { start_id: 12, end_id: 12 };
+    const thursday = { start_id: 14, end_id: 14 };
+    injectHabitInstances(
+      root,
+      [mkFlow({ target_type: "project", target_id: 96 })],
+      [[
+        iter(0, "active", [inst("flow_task", 4, { plan: thursday, cycle_plan: tuesday, plan_overridden: true })]),
+        iter(1, "active", [inst("flow_task", 4, { plan: tuesday, cycle_plan: tuesday })]),
+      ]],
+      LABELS, NOW,
+      [],
+      [run],
+    );
+
+    const iterations = root.children[0]?.children[0]?.children ?? [];
+    const moved = iterations[0]?.children[0];
+    const usual = iterations[1]?.children[0];
+    expect(moved?.plan).toEqual(thursday);
+    expect(moved?.cyclePlan).toEqual(tuesday);
+    expect(moved?.planOverridden).toBe(true);
+    expect(usual?.plan).toEqual(tuesday);
+    expect(usual?.planOverridden).toBe(false);
   });
 
   it("archives a past-window iteration's items regardless of done-ness (the original bug report)", () => {

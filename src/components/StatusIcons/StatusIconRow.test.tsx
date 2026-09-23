@@ -31,6 +31,15 @@ describe("StatusIconRow", () => {
     invalidateTagNames();
   });
 
+  it("says whether a habit occurrence's plan is its own, and when it was taken away", () => {
+    // Duration-tagged, so its label formats without a scope lookup.
+    const plan = { start_id: 3, end_id: 3, duration: { n: 1, kind: "week" } };
+    expect(renderRow(node("task", { status: "todo", plan, planOverridden: false }))).toEqual(["plan"]);
+    expect(renderRow(node("task", { status: "todo", plan, planOverridden: true }))).toEqual(["planOwn"]);
+    expect(renderRow(node("task", { status: "todo", plan: null, planOverridden: true })))
+      .toEqual(["planUnplanned"]);
+  });
+
   it("gives the agentic badge its own tooltip", () => {
     expect(renderRow(node("task", { status: "todo", agentic: true }))).toEqual(["agentic"]);
   });

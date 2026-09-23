@@ -64,6 +64,10 @@ const ROOT_INSTANCE_TYPE: &str = "flow_root";
 /// `(item_type, item_id, iteration_scope_id, cycle_id)`.
 pub type InstanceKey = (String, i64, i64, i64);
 
+/// One overridden occurrence as it is read off the overlay: its [`InstanceKey`] fields, then the
+/// override window's `plan_start_id` and `plan_end_id`.
+type PlanOverrideRow = (String, i64, i64, i64, Option<i64>, Option<i64>);
+
 /// Advances `date` by `k` (possibly zero) periods of `kind`; `None` on calendar overflow.
 fn advance(date: NaiveDate, k: i64, kind: &str) -> Option<NaiveDate> {
     match kind {
@@ -1532,7 +1536,7 @@ impl<'session> FlowOperator<'session> {
         &mut self,
         flow_id: FlowId,
     ) -> Result<HashMap<InstanceKey, PlanOverride>, FlowError> {
-        let rows: Vec<(String, i64, i64, i64, Option<i64>, Option<i64>)> = sqlx::query_as(
+        let rows: Vec<PlanOverrideRow> = sqlx::query_as(
             "SELECT item_type, item_id, iteration_scope_id, cycle_id, plan_start_id, plan_end_id
              FROM habit_instance_modifications
              WHERE flow_id = ? AND plan_overridden = 1",

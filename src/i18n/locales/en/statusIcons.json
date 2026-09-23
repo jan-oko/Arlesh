@@ -1,6 +1,8 @@
 {
   "scope": "Scope: {{value}}",
   "plan": "Plan: {{value}}",
+  "planOwn": "Plan for this occurrence only: {{value}}",
+  "planUnplanned": "Left unplanned this time — the Cycle Plan is set aside for this occurrence",
   "overdue": "Overdue",
   "archived": "Archived",
   "archivedConflict": "Archived (overrode a manually-set Frozen status)",

@@ -21,6 +21,8 @@ const ICON_SPACING = 16;
 const ROW_GAP = 11;
 const MUTED = "var(--node-text-muted)";
 const DANGER = "var(--danger)";
+/** A Habit occurrence's own Plan, as against the Cycle Plan it would otherwise follow. */
+const ACCENT = "var(--accent)";
 
 interface Props {
   node: MindmapNode;
@@ -39,6 +41,11 @@ export default function StatusIconRow({ node, indicators, top }: Props) {
   const scopeLabel = useScopeRangeLabel(node.timeScope);
   const planLabel = useScopeRangeLabel(node.plan);
   const tagNames = useTagNames();
+  const planTooltip = (indicator: StatusIndicator): string => {
+    if (indicator.unplanned === true) return t("planUnplanned");
+    const value = planLabel ?? t("loading");
+    return indicator.overridden === true ? t("planOwn", { value }) : t("plan", { value });
+  };
 
   const rowY = top + ROW_GAP + ICON_R;
   // First badge hugs the left edge; subsequent badges march rightward.
@@ -62,8 +69,14 @@ export default function StatusIconRow({ node, indicators, top }: Props) {
         };
       case "planned":
         return {
-          tooltip: t("plan", { value: planLabel ?? t("loading") }),
-          icon: <CalendarIcon cx={cx} cy={rowY} r={ICON_R} color={MUTED} />,
+          tooltip: planTooltip(indicator),
+          icon: (
+            <CalendarIcon
+              cx={cx} cy={rowY} r={ICON_R}
+              color={indicator.overridden === true ? ACCENT : MUTED}
+              crossedOut={indicator.unplanned === true}
+            />
+          ),
         };
       case "frozen":
         return { tooltip: t("frozen"), icon: <IceIcon cx={cx} cy={rowY} r={ICON_R} color={MUTED} /> };

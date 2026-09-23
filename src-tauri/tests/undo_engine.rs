@@ -1084,6 +1084,29 @@ async fn undoing_a_cleared_habit_completion_brings_it_back_on_the_occurrence_it_
     );
 }
 
+/// The first occurrence's effective plan (by start scope) and whether it is its own, as the
+/// Habit derives it on Tuesday 2026-01-06.
+async fn occurrence_plan(app: &App<MockRuntime>, flow_id: i64) -> (Option<i64>, bool) {
+    let iterations = flow_commands::generate_habit_iterations(
+        app.state(),
+        flow_id,
+        chrono::NaiveDate::from_ymd_opt(2026, 1, 6)
+            .and_then(|date| date.and_hms_opt(9, 0, 0))
+            .expect("a real instant"),
+    )
+    .await
+    .expect("derive the habit");
+    let occurrence = iterations
+        .first()
+        .and_then(|iteration| iteration.instances.first())
+        .cloned()
+        .expect("the shopping occurrence");
+    (
+        occurrence.plan.map(|plan| plan.start_id),
+        occurrence.plan_overridden,
+    )
+}
+
 #[tokio::test]
 async fn undoing_an_occurrence_plan_hands_it_back_to_the_cycle_plan_and_redo_plans_it_again() {
     let pool = helpers::test_pool().await;
@@ -1153,26 +1176,6 @@ async fn undoing_an_occurrence_plan_hands_it_back_to_the_cycle_plan_and_redo_pla
         iteration_scope_id: week,
         cycle_id: 0,
     };
-    let plan_of = || async {
-        let iterations = flow_commands::generate_habit_iterations(
-            app.state(),
-            flow.id,
-            chrono::NaiveDate::from_ymd_opt(2026, 1, 6)
-                .and_then(|date| date.and_hms_opt(9, 0, 0))
-                .expect("a real instant"),
-        )
-        .await
-        .expect("derive the habit");
-        let occurrence = iterations
-            .first()
-            .and_then(|iteration| iteration.instances.first())
-            .cloned()
-            .expect("the shopping occurrence");
-        (
-            occurrence.plan.map(|plan| plan.start_id),
-            occurrence.plan_overridden,
-        )
-    };
 
     open_gesture(&app).await;
     flow_commands::set_habit_instance_plan(
@@ -1190,17 +1193,17 @@ async fn undoing_an_occurrence_plan_hands_it_back_to_the_cycle_plan_and_redo_pla
     .await
     .expect("plan the occurrence for Saturday");
     close_gesture(&app).await;
-    assert_eq!(plan_of().await, (Some(saturday), true));
+    assert_eq!(occurrence_plan(&app, flow.id).await, (Some(saturday), true));
 
     undo(&app).await.expect("there is something to undo");
     assert_eq!(
-        plan_of().await,
+        occurrence_plan(&app, flow.id).await,
         (None, false),
         "undo returns the occurrence to its Cycle Plan, which here is none"
     );
 
     redo(&app).await.expect("there is something to redo");
-    assert_eq!(plan_of().await, (Some(saturday), true));
+    assert_eq!(occurrence_plan(&app, flow.id).await, (Some(saturday), true));
 }
 
 // ---------------------------------------------------------------------------------------------

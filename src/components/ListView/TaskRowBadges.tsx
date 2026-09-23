@@ -20,6 +20,8 @@ import styles from "./TaskRowBadges.module.css";
 const R = 6;
 const MUTED = "var(--node-text-muted)";
 const DANGER = "var(--danger)";
+/** A Habit occurrence's own Plan, as against the Cycle Plan it would otherwise follow. */
+const ACCENT = "var(--accent)";
 
 interface Props {
   node: MindmapNode;
@@ -33,6 +35,11 @@ export default function TaskRowBadges({ node, indicators }: Props) {
   const scopeLabel = useScopeRangeLabel(node.timeScope);
   const planLabel = useScopeRangeLabel(node.plan);
   const tagNames = useTagNames();
+  const planTooltip = (indicator: StatusIndicator): string => {
+    if (indicator.unplanned === true) return t("planUnplanned");
+    const value = planLabel ?? t("loading");
+    return indicator.overridden === true ? t("planOwn", { value }) : t("plan", { value });
+  };
   const tagsValue = node.tagIds.map((id) => tagNames.get(id) ?? `#${id}`).join(", ");
 
   if (indicators.length === 0) return null;
@@ -53,8 +60,14 @@ export default function TaskRowBadges({ node, indicators }: Props) {
         };
       case "planned":
         return {
-          tooltip: t("plan", { value: planLabel ?? t("loading") }),
-          icon: <CalendarIcon cx={R} cy={R} r={R} color={MUTED} />,
+          tooltip: planTooltip(indicator),
+          icon: (
+            <CalendarIcon
+              cx={R} cy={R} r={R}
+              color={indicator.overridden === true ? ACCENT : MUTED}
+              crossedOut={indicator.unplanned === true}
+            />
+          ),
         };
       case "frozen":
         return { tooltip: t("frozen"), icon: <IceIcon cx={R} cy={R} r={R} color={MUTED} /> };

@@ -22,6 +22,7 @@ import { BEADS_NODE_TYPE } from "@/api/beads";
 import { useKeyboardListView } from "./use-keyboard-list-view";
 import { useUndo } from "@/hooks/use-undo";
 import TaskEditorModal from "@/components/TaskEditorModal/TaskEditorModal";
+import OccurrencePlanModal from "@/components/OccurrencePlanModal/OccurrencePlanModal";
 import CommitmentEditorModal from "@/components/CommitmentEditorModal/CommitmentEditorModal";
 import NodeSearchModal from "@/components/NodeSearchModal/NodeSearchModal";
 import TaskRow from "./TaskRow";
@@ -70,7 +71,7 @@ export default function ListView() {
 
   const {
     editorModal, setEditorModal, allTags, domainNames, availableForDep, onDoubleClick,
-    onTaskSave, onCommitmentSave, onClearBeadsId, checkScopeClamp,
+    onTaskSave, onCommitmentSave, onClearBeadsId, checkScopeClamp, occurrencePlan,
   } = useNodeEditor({ tree, allTasksAndGoals, reload });
 
   // One selection across both sections: a row is a Task or a Commitment, and which it is decides
@@ -362,6 +363,14 @@ export default function ListView() {
           nodes={searchableNodes}
           onSelect={(id) => { enterSubtree(id); closeSearch(); }}
           onClose={closeSearch}
+        />
+      )}
+
+      {occurrencePlan.target !== null && (
+        <OccurrencePlanModal
+          node={occurrencePlan.target.node}
+          onSave={occurrencePlan.save}
+          onClose={occurrencePlan.close}
         />
       )}
 

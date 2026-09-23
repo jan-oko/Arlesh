@@ -39,6 +39,7 @@ import { useFocusExemption } from "@/hooks/use-focus-exemption";
 import AnchoredToast from "@/components/AnchoredToast/AnchoredToast";
 import HabitFailureBanner from "@/components/HabitFailureBanner/HabitFailureBanner";
 import TaskEditorModal from "@/components/TaskEditorModal/TaskEditorModal";
+import OccurrencePlanModal from "@/components/OccurrencePlanModal/OccurrencePlanModal";
 import GoalEditorModal from "@/components/GoalEditorModal/GoalEditorModal";
 import CommitmentEditorModal, { type CommitmentSaveData } from "@/components/CommitmentEditorModal/CommitmentEditorModal";
 import CommitmentScopePrompt from "@/components/CommitmentScopePrompt/CommitmentScopePrompt";
@@ -198,7 +199,7 @@ export default function MindmapView() {
     editorModal, setEditorModal, allTags, domainNames, availableForDep, onDoubleClick,
     onTaskSave, onGoalSave, onCommitmentSave, onSimpleSave, onProjectSave, onInfoSave,
     onClearBeadsId, onFlowSave, onFlowItemSave,
-    checkScopeClamp, confirmScopeClamp, scopeClampRequest, resolveScopeClamp,
+    checkScopeClamp, confirmScopeClamp, scopeClampRequest, resolveScopeClamp, occurrencePlan,
   } = useNodeEditor({ tree, allTasksAndGoals, reload });
 
   // Every flow item, used to offer intra-flow dependency targets within the same flow.
@@ -670,6 +671,13 @@ export default function MindmapView() {
 
       <AnchoredToast toast={pendingToast} onDismiss={clearToast} />
 
+      {occurrencePlan.target !== null && (
+        <OccurrencePlanModal
+          node={occurrencePlan.target.node}
+          onSave={occurrencePlan.save}
+          onClose={occurrencePlan.close}
+        />
+      )}
       {editorModal !== null && editorModal.node.kind === "task" && (
         <TaskEditorModal node={editorModal.node} allTags={allTags} domainNames={domainNames} availableForDep={availableForDep} onSave={onTaskSave} onClearBeadsId={() => onClearBeadsId(BEADS_NODE_TYPE.TASK)} onCheckScopeClamp={checkScopeClamp} onClose={() => setEditorModal(null)} />
       )}

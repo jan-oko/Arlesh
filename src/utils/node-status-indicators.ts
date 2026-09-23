@@ -16,7 +16,7 @@ export type StatusIndicatorType =
   | "tags";
 
 /** One badge to render below a node. `outOfScope` applies only to the `scope` clock; `conflict`
- * only to `archived`. */
+ * only to `archived`; `overridden` and `unplanned` only to `planned`. */
 export interface StatusIndicator {
   type: StatusIndicatorType;
   /** For `scope`: the relevance window has passed, so the clock is drawn crossed-out. */
@@ -24,6 +24,22 @@ export interface StatusIndicator {
   /** For `archived`: this effective archival came from a scope Resolution overriding a
    * manually-set Frozen status. */
   conflict?: boolean;
+  /** For `planned`: a Habit occurrence's Plan is its own, not its Cycle Plan. */
+  overridden?: boolean;
+  /** For `planned`: a Habit occurrence deliberately left unplanned — drawn struck through. */
+  unplanned?: boolean;
+}
+
+/**
+ * The calendar badge, if any. A Habit occurrence planned on its own is marked as such, and one
+ * deliberately left unplanned keeps a struck-through badge, so it cannot be mistaken for an
+ * occurrence nobody touched.
+ */
+function planIndicator(node: MindmapNode): StatusIndicator | null {
+  const overridden = node.planOverridden === true;
+  if (node.plan != null) return overridden ? { type: "planned", overridden } : { type: "planned" };
+  if (overridden) return { type: "planned", overridden, unplanned: true };
+  return null;
 }
 
 /** A scoped item whose window has passed. */
@@ -57,8 +73,9 @@ export function deriveStatusIndicators(node: MindmapNode): StatusIndicator[] {
   if (node.status === "archived" || node.archived === true) {
     indicators.push({ type: "archived", conflict: node.archivalConflict === true });
   }
-  if (node.plan != null) {
-    indicators.push({ type: "planned" });
+  const plan = planIndicator(node);
+  if (plan !== null) {
+    indicators.push(plan);
   }
   if (node.status === "frozen") {
     indicators.push({ type: "frozen" });

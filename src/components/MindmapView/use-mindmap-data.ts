@@ -264,6 +264,8 @@ function occurrenceNode(
     ...(color !== undefined ? { color } : {}),
     timeScope: instance.time_scope,
     plan: instance.plan,
+    cyclePlan: instance.cycle_plan,
+    planOverridden: instance.plan_overridden,
     ...(expired ? EXPIRED_LIFECYCLE : workIterationLifecycle(instance.timing, done)),
     isPrivate: item.is_private,
     position: item.position,

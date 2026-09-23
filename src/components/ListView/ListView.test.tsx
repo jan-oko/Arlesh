@@ -30,6 +30,7 @@ vi.mock("@/components/MindmapView/use-node-editor", () => ({
     onTaskSave: vi.fn(),
     onCommitmentSave: vi.fn(),
     checkScopeClamp: vi.fn(),
+    occurrencePlan: { target: null, open: vi.fn(), close: vi.fn(), save: vi.fn() },
   }),
 }));
 vi.mock("@/components/TaskEditorModal/TaskEditorModal", () => ({ default: () => <div data-testid="editor-modal" /> }));

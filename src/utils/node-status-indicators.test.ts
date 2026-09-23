@@ -201,3 +201,26 @@ describe("deriveStatusIndicators — a commitment's verdict is the glyph's, not 
     expect(types(archived)).toEqual(["scope", "archived"]);
   });
 });
+
+describe("deriveStatusIndicators — a Habit occurrence planned on its own", () => {
+  it("badges the effective plan of an occurrence that follows its Cycle Plan, unmarked", () => {
+    const inherited = node("task", { status: "todo", plan: scope, planOverridden: false });
+    expect(deriveStatusIndicators(inherited)).toEqual([{ type: "planned" }]);
+  });
+
+  it("marks an occurrence whose plan is its own", () => {
+    const own = node("task", { status: "todo", plan: scope, planOverridden: true });
+    expect(deriveStatusIndicators(own)).toEqual([{ type: "planned", overridden: true }]);
+  });
+
+  it("keeps a struck-through badge on an occurrence deliberately left unplanned", () => {
+    const cleared = node("task", { status: "todo", plan: null, planOverridden: true });
+    expect(deriveStatusIndicators(cleared)).toEqual([
+      { type: "planned", overridden: true, unplanned: true },
+    ]);
+  });
+
+  it("draws no badge on an occurrence with no plan that nobody touched", () => {
+    expect(types(node("task", { status: "todo", plan: null, planOverridden: false }))).toEqual([]);
+  });
+});

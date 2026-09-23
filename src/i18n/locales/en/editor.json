@@ -76,6 +76,15 @@
   "convertMapScopes": "Map scopes",
   "fieldPlan": "Plan",
   "scopeClear": "Clear",
+  "occurrencePlan": {
+    "heading": "Plan this occurrence: {{title}}",
+    "inherit": "Follow the Cycle Plan",
+    "planned": "Plan this occurrence",
+    "unplanned": "Leave it unplanned",
+    "cyclePlan": "Cycle Plan: {{value}}",
+    "noCyclePlan": "The Cycle Plan leaves it unplanned",
+    "pickAPlan": "Pick a plan for this occurrence, or choose another option"
+  },
   "scopeApply": "Apply",
   "scopeBoundaries": "Boundaries",
   "scopeDuration": "Duration",
