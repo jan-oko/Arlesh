@@ -18,13 +18,13 @@ use arlesh_lib::commands::tasks as task_commands;
 use arlesh_lib::commands::undo as undo_commands;
 use arlesh_lib::domains::model::{CreateDomainRequest, DomainSubtype, ProjectStatus};
 use arlesh_lib::flows::model::{
-    CreateFlowItemRequest, CreateFlowRequest, FlowCycleInput, FlowItemType, HabitInstanceRef,
-    InstanceType,
+    ConsumptionKind, CreateFlowItemRequest, CreateFlowRequest, FlowCycleInput, FlowItemType,
+    HabitInstanceRef, InstanceType, PlanOverride, SetRecurrenceRequest,
 };
 use arlesh_lib::mcp::{params, ArleshMcp};
 use arlesh_lib::scopes::model::ScopeKind;
 use arlesh_lib::tasks::model::{
-    CreateGoalRequest, CreateTaskRequest, Dependency, TaskAgentic, UpdateTaskRequest,
+    CreateGoalRequest, CreateTaskRequest, Dependency, TaskAgentic, TimeScope, UpdateTaskRequest,
 };
 use arlesh_lib::undo::model::GestureSummary;
 use arlesh_lib::undo::EXCLUDED_TABLES;
@@ -1082,6 +1082,125 @@ async fn undoing_a_cleared_habit_completion_brings_it_back_on_the_occurrence_it_
          restored cycle_id of 0 marks an occurrence the user never completed and leaves the one \
          they did outstanding"
     );
+}
+
+#[tokio::test]
+async fn undoing_an_occurrence_plan_hands_it_back_to_the_cycle_plan_and_redo_plans_it_again() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let flow = flow_commands::create_flow(
+        app.state(),
+        CreateFlowRequest {
+            title: "Groceries".into(),
+            instance_type: Some(InstanceType::Task),
+            parent_type: "aspect".into(),
+            parent_id: 1,
+            flow_duration_n: Some(1),
+            flow_duration_kind: Some("week".into()),
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("create flow");
+    let item = flow_commands::create_flow_task(
+        app.state(),
+        CreateFlowItemRequest {
+            flow_id: flow.id,
+            title: "Shop".into(),
+            parent_type: "flow".into(),
+            parent_id: flow.id,
+        },
+    )
+    .await
+    .expect("create flow task");
+    let scope = |kind: ScopeKind, day: u32| {
+        let pool = pool.clone();
+        async move {
+            helpers::session_factory(&pool)
+                .connect()
+                .await
+                .expect("connect")
+                .scopes()
+                .get_or_create(
+                    kind,
+                    chrono::NaiveDate::from_ymd_opt(2026, 1, day).expect("a real date"),
+                )
+                .await
+                .expect("the scope")
+                .id
+        }
+    };
+    let week = scope(ScopeKind::Week, 5).await;
+    let saturday = scope(ScopeKind::Day, 10).await;
+    flow_commands::set_flow_recurrence(
+        app.state(),
+        flow.id,
+        SetRecurrenceRequest {
+            start_scope_id: week,
+            gap_n: None,
+            gap_kind: None,
+            end_scope_id: None,
+            consumption_kind: ConsumptionKind::Destructive,
+            blocking_mode: None,
+            catchup_policy: None,
+        },
+    )
+    .await
+    .expect("make it a habit");
+    let instance = HabitInstanceRef {
+        item_type: "flow_task".into(),
+        item_id: item.id,
+        iteration_scope_id: week,
+        cycle_id: 0,
+    };
+    let plan_of = || async {
+        let iterations = flow_commands::generate_habit_iterations(
+            app.state(),
+            flow.id,
+            chrono::NaiveDate::from_ymd_opt(2026, 1, 6)
+                .and_then(|date| date.and_hms_opt(9, 0, 0))
+                .expect("a real instant"),
+        )
+        .await
+        .expect("derive the habit");
+        let occurrence = iterations
+            .first()
+            .and_then(|iteration| iteration.instances.first())
+            .cloned()
+            .expect("the shopping occurrence");
+        (
+            occurrence.plan.map(|plan| plan.start_id),
+            occurrence.plan_overridden,
+        )
+    };
+
+    open_gesture(&app).await;
+    flow_commands::set_habit_instance_plan(
+        app.state(),
+        flow.id,
+        instance,
+        PlanOverride::Planned {
+            plan: TimeScope {
+                start_id: saturday,
+                end_id: saturday,
+                duration: None,
+            },
+        },
+    )
+    .await
+    .expect("plan the occurrence for Saturday");
+    close_gesture(&app).await;
+    assert_eq!(plan_of().await, (Some(saturday), true));
+
+    undo(&app).await.expect("there is something to undo");
+    assert_eq!(
+        plan_of().await,
+        (None, false),
+        "undo returns the occurrence to its Cycle Plan, which here is none"
+    );
+
+    redo(&app).await.expect("there is something to redo");
+    assert_eq!(plan_of().await, (Some(saturday), true));
 }
 
 // ---------------------------------------------------------------------------------------------

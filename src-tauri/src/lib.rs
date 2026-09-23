@@ -182,6 +182,7 @@ pub fn run() {
             commands::flows::generate_habit_iterations,
             commands::flows::list_habit_item_statuses,
             commands::flows::set_habit_item_status,
+            commands::flows::set_habit_instance_plan,
             commands::flows::create_habit_instance_child,
             commands::flows::list_habit_instance_children,
             commands::flows::set_habit_iteration_done,

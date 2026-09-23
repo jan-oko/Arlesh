@@ -16,8 +16,8 @@ use crate::{
             CreateFlowItemRequest, CreateFlowRequest, Flow, FlowCycleInput, FlowDependency,
             FlowGoal, FlowId, FlowItemCycle, FlowItemType, FlowOrigin, FlowRecurrence, FlowTask,
             HabitInstanceChild, HabitInstanceRef, HabitItemStatus, HabitIteration,
-            MaterializedFlow, SetRecurrenceRequest, StartFlowRequest, TargetRef, UnfinishedChild,
-            UpdateFlowItemRequest, UpdateFlowRequest,
+            MaterializedFlow, PlanOverride, SetRecurrenceRequest, StartFlowRequest, TargetRef,
+            UnfinishedChild, UpdateFlowItemRequest, UpdateFlowRequest,
         },
     },
 };
@@ -518,6 +518,26 @@ pub async fn create_habit_instance_child(
             .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)?;
     Ok(child)
+}
+
+/// Plans one virtual Habit occurrence on its own, overriding its Cycle Plan for that iteration
+/// alone: `{"kind": "planned", "plan": …}` plans it, `{"kind": "unplanned"}` leaves it deliberately
+/// unplanned, `{"kind": "inherit"}` clears the override and hands it back to the Cycle Plan.
+///
+/// Refused unless the occurrence renders as a Task, and — for a window — unless the window sits
+/// inside the occurrence's own. Nothing about the template changes, and no other occurrence moves.
+#[tauri::command]
+pub async fn set_habit_instance_plan(
+    factory: State<'_, SessionFactory>,
+    flow_id: i64,
+    instance: HabitInstanceRef,
+    plan: PlanOverride,
+) -> Result<(), WireError> {
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    flows::set_instance_plan(&mut db, FlowId(flow_id), &instance, &plan)
+        .await
+        .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)
 }
 
 /// Every added child of every occurrence of one Habit.

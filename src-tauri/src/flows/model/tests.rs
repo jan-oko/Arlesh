@@ -40,3 +40,85 @@ fn consumption_enums_cover_all_variants() {
     assert_eq!(CatchupPolicy::Next.as_str(), "next");
     assert_eq!(CatchupPolicy::Latest.as_str(), "latest");
 }
+
+fn window(start_id: i64, end_id: i64) -> TimeScope {
+    TimeScope {
+        start_id,
+        end_id,
+        duration: None,
+    }
+}
+
+#[test]
+fn an_occurrence_with_no_override_follows_its_cycle_plan() {
+    let cycle_plan = Some(window(10, 10));
+    let row = PlanOverride::from_columns(false, None, None);
+    assert_eq!(row.effective_plan(cycle_plan.clone()), cycle_plan);
+    assert!(!row.is_override());
+}
+
+#[test]
+fn an_occurrence_with_no_override_and_no_cycle_plan_is_unplanned() {
+    assert_eq!(
+        PlanOverride::from_columns(false, None, None).effective_plan(None),
+        None
+    );
+}
+
+#[test]
+fn an_overridden_window_replaces_the_cycle_plan() {
+    let row = PlanOverride::from_columns(true, Some(20), Some(22));
+    assert_eq!(
+        row.effective_plan(Some(window(10, 10))),
+        Some(window(20, 22))
+    );
+    assert!(row.is_override());
+}
+
+#[test]
+fn an_overridden_window_plans_an_occurrence_the_template_left_unplanned() {
+    let row = PlanOverride::from_columns(true, Some(20), Some(20));
+    assert_eq!(row.effective_plan(None), Some(window(20, 20)));
+}
+
+#[test]
+fn deliberately_unplanned_removes_the_cycle_plan_and_is_still_an_override() {
+    let row = PlanOverride::from_columns(true, None, None);
+    assert_eq!(row, PlanOverride::Unplanned);
+    assert_eq!(row.effective_plan(Some(window(10, 10))), None);
+    assert!(
+        row.is_override(),
+        "unplanned is a choice, not the absence of one"
+    );
+}
+
+#[test]
+fn a_half_written_window_reads_as_unplanned_rather_than_inheriting() {
+    assert_eq!(
+        PlanOverride::from_columns(true, Some(20), None),
+        PlanOverride::Unplanned
+    );
+    assert_eq!(
+        PlanOverride::from_columns(true, None, Some(20)),
+        PlanOverride::Unplanned
+    );
+}
+
+#[test]
+fn stale_scope_columns_on_an_unflagged_row_are_ignored() {
+    assert_eq!(
+        PlanOverride::from_columns(false, Some(20), Some(20)),
+        PlanOverride::Inherit
+    );
+}
+
+#[test]
+fn a_plan_override_reads_off_the_wire_in_all_three_states() {
+    let inherit: PlanOverride = serde_json::from_str(r#"{"kind":"inherit"}"#).unwrap();
+    let unplanned: PlanOverride = serde_json::from_str(r#"{"kind":"unplanned"}"#).unwrap();
+    let planned: PlanOverride =
+        serde_json::from_str(r#"{"kind":"planned","plan":{"start_id":3,"end_id":4}}"#).unwrap();
+    assert_eq!(inherit, PlanOverride::Inherit);
+    assert_eq!(unplanned, PlanOverride::Unplanned);
+    assert_eq!(planned, PlanOverride::Planned { plan: window(3, 4) });
+}

@@ -28,6 +28,7 @@ use crate::infos::model::CreateInfoRequest;
 use crate::scopes::model::{PartOfDay, Scope, ScopeId, ScopeKind};
 use crate::scopes::resolve::{day_boundary, interval_contains, scope_bounds};
 use crate::scopes::ScopeOperator;
+use crate::tasks::error::TaskError;
 use crate::tasks::lifecycle::verdict_deadline;
 use crate::tasks::model::{
     CommitmentId, CreateCommitmentRequest, CreateGoalRequest, CreateTaskRequest, Dependency,
@@ -45,9 +46,9 @@ use model::{
     BlockingMode, ChildAttachment, ConsumptionKind, CreateFlowItemRequest, CreateFlowRequest, Flow,
     FlowCycleInput, FlowDependency, FlowGoal, FlowId, FlowItemCycle, FlowItemType, FlowOrigin,
     FlowRecurrence, FlowTask, HabitInstance, HabitInstanceChild, HabitInstanceRef, HabitItemStatus,
-    HabitIteration, InstanceType, IterationStatus, MaterializedFlow, SetRecurrenceRequest,
-    StartFlowRequest, TargetRef, UnfinishedChild, UpdateFlowItemRequest, UpdateFlowRequest,
-    NO_CYCLE,
+    HabitIteration, InstanceType, IterationStatus, MaterializedFlow, PlanOverride,
+    SetRecurrenceRequest, StartFlowRequest, TargetRef, UnfinishedChild, UpdateFlowItemRequest,
+    UpdateFlowRequest, NO_CYCLE,
 };
 use render::{
     render, FlowTemplate, NodeRef, PlannedSource, RenderedPlan, ResolvedPair, ScopeTable,
@@ -58,6 +59,10 @@ use render::{
 /// an instance in its own right (not just an aggregate of items); its rows key `item_id` to the flow
 /// id so they stay unique per flow on a shared iteration scope.
 const ROOT_INSTANCE_TYPE: &str = "flow_root";
+
+/// One occurrence's identity as its Modification row is keyed:
+/// `(item_type, item_id, iteration_scope_id, cycle_id)`.
+pub type InstanceKey = (String, i64, i64, i64);
 
 /// Advances `date` by `k` (possibly zero) periods of `kind`; `None` on calendar overflow.
 fn advance(date: NaiveDate, k: i64, kind: &str) -> Option<NaiveDate> {
@@ -1374,15 +1379,17 @@ impl<'session> FlowOperator<'session> {
         resolved_at_ms: i64,
     ) -> Result<(), FlowError> {
         if !done {
+            // The status is cleared rather than the row deleted: the same row may carry a Plan
+            // override, which un-completing the iteration has no business taking away.
             sqlx::query(
-                "DELETE FROM habit_instance_modifications
+                "UPDATE habit_instance_modifications SET status = NULL, resolved_at = NULL
                  WHERE flow_id = ? AND iteration_scope_id = ? AND status = 'done' AND tombstone_kind IS NULL",
             )
             .bind(flow_id.0)
             .bind(iteration_scope_id)
             .execute(&mut *self.connection)
             .await?;
-            return Ok(());
+            return self.prune_empty_modifications(flow_id).await;
         }
         for (item_type, item_id, cycle_id) in self.iteration_instance_keys(flow_id).await? {
             sqlx::query(
@@ -1497,8 +1504,10 @@ impl<'session> FlowOperator<'session> {
                 .await?;
             }
             None => {
+                // Cleared, not deleted: the row may also hold the occurrence's own Plan, which
+                // un-ticking it must leave alone. A row left with nothing in it is pruned below.
                 sqlx::query(
-                    "DELETE FROM habit_instance_modifications
+                    "UPDATE habit_instance_modifications SET status = NULL, resolved_at = NULL
                      WHERE flow_id = ? AND item_type = ? AND item_id = ? AND iteration_scope_id = ?
                        AND cycle_id = ? AND tombstone_kind IS NULL",
                 )
@@ -1509,24 +1518,131 @@ impl<'session> FlowOperator<'session> {
                 .bind(cycle_id)
                 .execute(&mut *self.connection)
                 .await?;
+                self.prune_empty_modifications(flow_id).await?;
             }
         }
+        Ok(())
+    }
+
+    /// Every occurrence of this Habit whose Plan is its own, keyed as its Modification row is:
+    /// `(item_type, item_id, iteration_scope_id, cycle_id)`.
+    ///
+    /// Only rows that override; an occurrence missing from the map follows its Cycle Plan.
+    pub async fn plan_overrides(
+        &mut self,
+        flow_id: FlowId,
+    ) -> Result<HashMap<InstanceKey, PlanOverride>, FlowError> {
+        let rows: Vec<(String, i64, i64, i64, Option<i64>, Option<i64>)> = sqlx::query_as(
+            "SELECT item_type, item_id, iteration_scope_id, cycle_id, plan_start_id, plan_end_id
+             FROM habit_instance_modifications
+             WHERE flow_id = ? AND plan_overridden = 1",
+        )
+        .bind(flow_id.0)
+        .fetch_all(&mut *self.connection)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(
+                |(item_type, item_id, scope_id, cycle_id, start_id, end_id)| {
+                    (
+                        (item_type, item_id, scope_id, cycle_id),
+                        PlanOverride::from_columns(true, start_id, end_id),
+                    )
+                },
+            )
+            .collect())
+    }
+
+    /// Writes one occurrence's Plan override, or clears it with [`PlanOverride::Inherit`].
+    ///
+    /// Unvalidated: whether the window fits the occurrence is [`set_instance_plan`]'s question,
+    /// which is the only caller. The row is shared with the occurrence's status, so both arms
+    /// touch the plan columns alone, and clearing prunes the row only if nothing else is left in
+    /// it.
+    async fn set_plan_override(
+        &mut self,
+        flow_id: FlowId,
+        instance: &HabitInstanceRef,
+        plan: &PlanOverride,
+    ) -> Result<(), FlowError> {
+        let HabitInstanceRef {
+            item_type,
+            item_id,
+            iteration_scope_id,
+            cycle_id,
+        } = instance;
+        if !plan.is_override() {
+            sqlx::query(
+                "UPDATE habit_instance_modifications
+                 SET plan_overridden = 0, plan_start_id = NULL, plan_end_id = NULL
+                 WHERE flow_id = ? AND item_type = ? AND item_id = ? AND iteration_scope_id = ?
+                   AND cycle_id = ?",
+            )
+            .bind(flow_id.0)
+            .bind(item_type)
+            .bind(item_id)
+            .bind(iteration_scope_id)
+            .bind(cycle_id)
+            .execute(&mut *self.connection)
+            .await?;
+            return self.prune_empty_modifications(flow_id).await;
+        }
+        let (start_id, end_id) = match plan {
+            PlanOverride::Planned { plan } => (Some(plan.start_id), Some(plan.end_id)),
+            _ => (None, None),
+        };
+        sqlx::query(
+            "INSERT INTO habit_instance_modifications
+                (flow_id, item_type, item_id, iteration_scope_id, cycle_id,
+                 plan_overridden, plan_start_id, plan_end_id)
+             VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+             ON CONFLICT(item_type, item_id, iteration_scope_id, cycle_id)
+             DO UPDATE SET plan_overridden = 1,
+                           plan_start_id = excluded.plan_start_id,
+                           plan_end_id = excluded.plan_end_id",
+        )
+        .bind(flow_id.0)
+        .bind(item_type)
+        .bind(item_id)
+        .bind(iteration_scope_id)
+        .bind(cycle_id)
+        .bind(start_id)
+        .bind(end_id)
+        .execute(&mut *self.connection)
+        .await?;
+        Ok(())
+    }
+
+    /// Deletes this Habit's Modification rows that no longer diverge in any way — no status, no
+    /// edited field, no tombstone, no Plan override — so storage stays proportional to the
+    /// occurrences that actually differ now that one row can carry several divergences.
+    async fn prune_empty_modifications(&mut self, flow_id: FlowId) -> Result<(), FlowError> {
+        sqlx::query(
+            "DELETE FROM habit_instance_modifications
+             WHERE flow_id = ? AND status IS NULL AND title IS NULL AND blocked_reason IS NULL
+               AND tombstone_kind IS NULL AND plan_overridden = 0",
+        )
+        .bind(flow_id.0)
+        .execute(&mut *self.connection)
+        .await?;
         Ok(())
     }
 
     /// Number of **divergent** iterations of a Habit — the probe the edit-habit reconciliation
     /// prompt fires on.
     ///
-    /// An iteration diverges when it has been completed **or** when something has been hung on
-    /// one of its occurrences. Both are work the user did against that iteration specifically, and
-    /// delete-and-regenerate destroys both, so both have to raise the prompt that says so. Counted
+    /// An iteration diverges when it has been completed, when one of its occurrences has been
+    /// given a Plan of its own, **or** when something has been hung on one of its occurrences.
+    /// All three are work the user did against that iteration specifically, and
+    /// delete-and-regenerate destroys them, so each has to raise the prompt that says so. Counted
     /// over the union of the two tables' iteration scopes rather than summed, so an iteration that
     /// is completed *and* carries an added child counts once.
     pub async fn habit_completion_count(&mut self, flow_id: FlowId) -> Result<i64, FlowError> {
         let count: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM (
                  SELECT iteration_scope_id FROM habit_instance_modifications
-                 WHERE flow_id = ? AND status = 'done' AND tombstone_kind IS NULL
+                 WHERE flow_id = ? AND (status = 'done' OR plan_overridden = 1)
+                   AND tombstone_kind IS NULL
                  UNION
                  SELECT iteration_scope_id FROM habit_instance_children WHERE flow_id = ?
              )",
@@ -2481,6 +2597,72 @@ pub async fn create_instance_child(
     })
 }
 
+/// Plans one virtual Habit occurrence on its own, overriding the Cycle Plan for that iteration
+/// alone — or clears the override with [`PlanOverride::Inherit`].
+///
+/// Only an occurrence that renders as a **Task** carries a Plan, exactly as only a started flow's
+/// tasks do: a flow-task item's occurrence. A flow-goal occurrence has no Plan to override, and the
+/// flow root is refused too — its own Cycle Plan is not drawn on a virtual iteration today, so an
+/// override there would have nothing visible to diverge from.
+///
+/// A window is **contained** by the occurrence's own resolved window — its pair's Cycle Scope
+/// resolved against the iteration, else the iteration's — by the rule a Task's Plan is held to
+/// against its Time Scope, and refused at write time the same way. The iteration need not have
+/// begun: a display-pinned future occurrence is plannable, and the override waits for it.
+///
+/// Transactional: resolving the occurrence's window mints scope rows, and the write depends on
+/// the containment read taken first.
+#[tracing::instrument(skip(db))]
+pub async fn set_instance_plan(
+    db: &mut Db<Transactional>,
+    flow_id: FlowId,
+    instance: &HabitInstanceRef,
+    plan: &PlanOverride,
+) -> Result<(), FlowError> {
+    if instance.item_type != FlowItemType::FlowTask.as_str() {
+        return Err(FlowError::Invalid(format!(
+            "only a task occurrence carries a Plan of its own — not a {}",
+            instance.item_type
+        )));
+    }
+    if db
+        .flows()
+        .item_flow_id(FlowItemType::FlowTask, instance.item_id)
+        .await?
+        != flow_id.0
+    {
+        return Err(FlowError::Invalid(
+            "that occurrence belongs to another flow".to_string(),
+        ));
+    }
+    if instance.cycle_id != NO_CYCLE {
+        let pair = db.flows().cycle(instance.cycle_id).await?;
+        let drawn_by_item = pair.is_some_and(|pair| {
+            pair.item_type == instance.item_type && pair.item_id == instance.item_id
+        });
+        if !drawn_by_item {
+            return Err(FlowError::Invalid(
+                "that cycle pair does not draw this occurrence".to_string(),
+            ));
+        }
+    }
+    let flow = db.flows().get(flow_id).await?;
+    if db.flows().get_recurrence(flow_id).await?.is_none() {
+        return Err(FlowError::Invalid("flow is not a habit".to_string()));
+    }
+    if let PlanOverride::Planned { plan: window } = plan {
+        let occurrence = occurrence_window(db, &flow, instance).await?;
+        let outer = time_scope_window(db, &occurrence).await?;
+        let inner = time_scope_window(db, window).await?;
+        if inner.0 >= inner.1 || !interval_contains(outer, inner) {
+            return Err(FlowError::Task(TaskError::ScopeContainment(
+                "plan is not within the occurrence's window".to_string(),
+            )));
+        }
+    }
+    db.flows().set_plan_override(flow_id, instance, plan).await
+}
+
 /// The added children of one occurrence that are not finished, titles and all.
 ///
 /// Only that occurrence's own children, not their descendants. The guard exists to stop a closing
@@ -2758,9 +2940,11 @@ pub async fn generate_habit_iterations(
     // Each iteration's occurrences: the same items, resolved against that iteration's own window.
     let items = db.flows().instance_items(flow_id).await?;
     let cycles = db.flows().cycles_by_item(flow_id).await?;
+    let plan_overrides = db.flows().plan_overrides(flow_id).await?;
     let shape = HabitShape {
         items: &items,
         cycles: &cycles,
+        plan_overrides: &plan_overrides,
         consumption,
     };
     let by_index: HashMap<i64, &SlotWindow> = slots.iter().map(|slot| (slot.index, slot)).collect();
@@ -2791,8 +2975,30 @@ struct HabitShape<'template> {
     /// Each item's cycle pairs in position order, keyed `(item_type, item_id)`. An item missing
     /// from the map declares none.
     cycles: &'template HashMap<(String, i64), Vec<FlowItemCycle>>,
+    /// The occurrences whose Plan is their own, keyed as their Modification row is. An occurrence
+    /// missing from the map follows its Cycle Plan.
+    plan_overrides: &'template HashMap<InstanceKey, PlanOverride>,
     /// The Habit's Consumption, which decides when an occurrence's passed window makes it past.
     consumption: Consumption,
+}
+
+impl HabitShape<'_> {
+    /// One occurrence's effective Plan and whether it is its own: the override stored against
+    /// `(item, this iteration, pair)` when there is one, else the Cycle Plan.
+    fn plan_of(
+        &self,
+        item_type: &str,
+        item_id: i64,
+        slot: &SlotWindow,
+        cycle_id: i64,
+        cycle_plan: Option<TimeScope>,
+    ) -> (Option<TimeScope>, bool) {
+        let key = (item_type.to_string(), item_id, slot.scope_id, cycle_id);
+        match self.plan_overrides.get(&key) {
+            Some(own) => (own.effective_plan(cycle_plan), own.is_override()),
+            None => (cycle_plan, false),
+        }
+    }
 }
 
 /// Resolves the occurrences one Habit iteration renders: every flow item, **once per cycle pair it
@@ -2829,12 +3035,15 @@ async fn resolve_iteration_instances(
         // An item with no pairs is one occurrence with no window of its own: it is relevant for
         // exactly as long as the iteration around it is, which is what it has always been.
         if pairs.is_empty() {
+            let (plan, plan_overridden) = shape.plan_of(item_type, *item_id, slot, NO_CYCLE, None);
             instances.push(HabitInstance {
                 item_type: item_type.clone(),
                 item_id: *item_id,
                 cycle_id: NO_CYCLE,
                 time_scope: None,
-                plan: None,
+                plan,
+                cycle_plan: None,
+                plan_overridden,
                 timing: instance_timing(shape.consumption, status, (slot.start, slot.end), now),
             });
             continue;
@@ -2842,7 +3051,7 @@ async fn resolve_iteration_instances(
         for pair in pairs {
             // A pair whose Cycle Scope is null is a pair that names no window; it falls back to
             // the iteration's, like an item with no pair at all.
-            let (time_scope, plan, start, end) =
+            let (time_scope, cycle_plan, start, end) =
                 match resolve_cycle(scopes, Some(pair), Some(window_start)).await? {
                     Some(resolved) => {
                         let (start, end) = scope_bounds(&resolved.scope)?;
@@ -2850,12 +3059,16 @@ async fn resolve_iteration_instances(
                     }
                     None => (None, None, slot.start, slot.end),
                 };
+            let (plan, plan_overridden) =
+                shape.plan_of(item_type, *item_id, slot, pair.id, cycle_plan.clone());
             instances.push(HabitInstance {
                 item_type: item_type.clone(),
                 item_id: *item_id,
                 cycle_id: pair.id,
                 time_scope,
                 plan,
+                cycle_plan,
+                plan_overridden,
                 timing: instance_timing(shape.consumption, status, (start, end), now),
             });
         }

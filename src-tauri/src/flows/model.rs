@@ -589,8 +589,15 @@ pub struct HabitInstance {
     /// The occurrence's resolved Cycle Scope, or `None` when it has no pair (it then inherits the
     /// iteration's own window).
     pub time_scope: Option<TimeScope>,
-    /// The occurrence's resolved Cycle Plan, when its pair carries one.
+    /// The occurrence's **effective** Plan: its own override when it has one (a window, or none
+    /// at all when deliberately unplanned), otherwise the Cycle Plan its pair carries.
     pub plan: Option<TimeScope>,
+    /// The Cycle Plan the template gives this occurrence, whether or not it is overridden — what
+    /// clearing the override would return it to.
+    pub cycle_plan: Option<TimeScope>,
+    /// Whether this occurrence's Plan is its own rather than the Cycle Plan's, so a touched
+    /// occurrence can be told from an inherited one even when both read "unplanned".
+    pub plan_overridden: bool,
     /// Where the occurrence sits relative to its own window at the reference instant.
     pub timing: InstanceTiming,
 }
@@ -639,6 +646,66 @@ pub struct HabitInstanceRef {
     /// The cycle pair that drew it, or [`NO_CYCLE`] when the item declares none.
     #[serde(default)]
     pub cycle_id: i64,
+}
+
+/// One occurrence's Plan, as set on that occurrence alone — the three states its override can be
+/// in.
+///
+/// Three and not two because a Plan is optional: "no override" and "overridden to nothing" are
+/// different answers, and folding them together would put back a plan the user removed.
+/// Serialised `{"kind": "inherit"}`, `{"kind": "unplanned"}` or
+/// `{"kind": "planned", "plan": {...}}`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum PlanOverride {
+    /// Follow the Cycle Plan — no divergence. Setting this clears an override.
+    Inherit,
+    /// Deliberately unplanned for this occurrence, whatever the Cycle Plan says.
+    Unplanned,
+    /// Planned into this window for this occurrence alone.
+    Planned {
+        /// The window, as a Task's Plan is: one scope or a range of them.
+        plan: TimeScope,
+    },
+}
+
+impl PlanOverride {
+    /// Reads the override back from the overlay's three columns.
+    ///
+    /// Not overridden is [`Inherit`](Self::Inherit) whatever the scope columns hold; overridden
+    /// with both ends is [`Planned`](Self::Planned); overridden with either end missing is
+    /// [`Unplanned`](Self::Unplanned) — a half-written window names no window, and the flag still
+    /// says the user took the Cycle Plan away.
+    pub fn from_columns(overridden: bool, start_id: Option<i64>, end_id: Option<i64>) -> Self {
+        if !overridden {
+            return Self::Inherit;
+        }
+        match (start_id, end_id) {
+            (Some(start_id), Some(end_id)) => Self::Planned {
+                plan: TimeScope {
+                    start_id,
+                    end_id,
+                    duration: None,
+                },
+            },
+            _ => Self::Unplanned,
+        }
+    }
+
+    /// The occurrence's effective Plan under this override, given the Cycle Plan it would
+    /// otherwise follow.
+    pub fn effective_plan(&self, cycle_plan: Option<TimeScope>) -> Option<TimeScope> {
+        match self {
+            Self::Inherit => cycle_plan,
+            Self::Unplanned => None,
+            Self::Planned { plan } => Some(plan.clone()),
+        }
+    }
+
+    /// Whether this is a divergence from the template at all.
+    pub fn is_override(&self) -> bool {
+        !matches!(self, Self::Inherit)
+    }
 }
 
 /// One instance's divergent **status** for a Habit iteration — a non-tombstoned Modification (e.g.
