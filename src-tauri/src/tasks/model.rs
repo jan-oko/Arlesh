@@ -3,6 +3,8 @@
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 
+use crate::nodes::{id::NodeId, origin::Origin};
+
 /// Identifies a task row by its primary key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TaskId(pub i64);
@@ -321,14 +323,14 @@ pub struct TimeScope {
 /// A task row as returned from the database.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Task {
-    /// Primary key.
-    pub id: i64,
+    /// Primary key for a stored row, or the UUID of a derived one.
+    pub id: NodeId,
     /// Display title.
     pub title: String,
     /// Type of the parent entity.
     pub parent_type: String,
-    /// Id of the parent entity.
-    pub parent_id: i64,
+    /// Id of the parent entity: a stored row, or a derived one (a Habit occurrence).
+    pub parent_id: NodeId,
     /// Current status.
     pub status: String,
     /// Who this task is delegated to — a Person or the Agent — if anyone.
@@ -367,6 +369,9 @@ pub struct Task {
     /// the id it already has, and the Issue row's × drops the link — neither writes a new one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub beads_id: Option<String>,
+    /// Where the row came from: made by hand, or derived (a Habit occurrence).
+    #[serde(default)]
+    pub origin: Origin,
 }
 
 /// A task row enriched with virtual block information.
@@ -393,14 +398,14 @@ pub struct TaskDependencyEdge {
 /// A goal row as returned from the database.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Goal {
-    /// Primary key.
-    pub id: i64,
+    /// Primary key for a stored row, or the UUID of a derived one.
+    pub id: NodeId,
     /// Display title.
     pub title: String,
     /// Type of the parent entity.
     pub parent_type: String,
-    /// Id of the parent entity.
-    pub parent_id: i64,
+    /// Id of the parent entity: a stored row, or a derived one (a Habit occurrence).
+    pub parent_id: NodeId,
     /// Current status.
     pub status: String,
     /// Relevance window (if set). A null value inherits the nearest scoped ancestor.
@@ -419,6 +424,9 @@ pub struct Goal {
     /// the id it already has, and the Issue row's × drops the link — neither writes a new one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub beads_id: Option<String>,
+    /// Where the row came from: made by hand, or derived (a Habit occurrence).
+    #[serde(default)]
+    pub origin: Origin,
 }
 
 /// Dependency reference: a task, a goal, or an expectation.
@@ -647,14 +655,14 @@ impl Verdict {
 /// `delegate_to`, and no dependency edges in either direction.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Commitment {
-    /// Primary key.
-    pub id: i64,
+    /// Primary key for a stored row, or the UUID of a derived one.
+    pub id: NodeId,
     /// Display title.
     pub title: String,
     /// Type of the parent entity.
     pub parent_type: String,
-    /// Id of the parent entity.
-    pub parent_id: i64,
+    /// Id of the parent entity: a stored row, or a derived one (a Habit occurrence).
+    pub parent_id: NodeId,
     /// Whether it was held to. Never derived — see [`Verdict`].
     pub verdict: Verdict,
     /// Relevance window (if set). A null value inherits the nearest scoped ancestor; unlike every
@@ -677,6 +685,9 @@ pub struct Commitment {
     /// UI can drop the link but never write one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub beads_id: Option<String>,
+    /// Where the row came from: made by hand, or derived (a Habit occurrence).
+    #[serde(default)]
+    pub origin: Origin,
 }
 
 /// Request body for creating a commitment.
@@ -871,8 +882,8 @@ pub struct Expectation {
     pub title: String,
     /// Type of the parent entity.
     pub parent_type: String,
-    /// Id of the parent entity.
-    pub parent_id: i64,
+    /// Id of the parent entity: a stored row, or a derived one (a Habit occurrence).
+    pub parent_id: NodeId,
     /// Pending or Released.
     pub status: ExpectationStatus,
     /// Live or Archived, independently of the status.

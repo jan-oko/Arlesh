@@ -9,6 +9,7 @@ use tauri::State;
 use crate::{
     database::session::SessionFactory,
     error::WireError,
+    nodes::{id::NodeId, write},
     tasks::model::{Commitment, CommitmentId, CreateCommitmentRequest, UpdateCommitmentRequest},
 };
 
@@ -43,40 +44,53 @@ pub async fn get_commitment(
         .map_err(WireError::from_error)
 }
 
-/// Lists all commitments.
+/// Lists every commitment — the Commitment virtual table: stored rows and every commitment
+/// Habit's iterations.
 #[tauri::command]
 pub async fn list_commitments(
     factory: State<'_, SessionFactory>,
 ) -> Result<Vec<Commitment>, WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.commitments().list().await.map_err(WireError::from_error)
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    let load = crate::mindmap::load(&mut db, chrono::Local::now().naive_local())
+        .await
+        .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)?;
+    Ok(load.commitments)
 }
 
-/// Updates a commitment — including recording, changing or clearing its Verdict.
+/// Updates a commitment, stored or derived — including recording, changing or clearing its
+/// Verdict.
 #[tauri::command]
 pub async fn update_commitment(
     factory: State<'_, SessionFactory>,
-    id: i64,
+    id: NodeId,
     request: UpdateCommitmentRequest,
 ) -> Result<Commitment, WireError> {
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let commitment = crate::tasks::update_commitment(&mut db, CommitmentId(id), request)
-        .await
-        .map_err(WireError::from_error)?;
+    let commitment =
+        write::update_commitment(&mut db, &id, request, chrono::Local::now().naive_local())
+            .await
+            .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)?;
     Ok(commitment)
 }
 
-/// Deletes a commitment and everything beneath it.
+/// Deletes a commitment and everything beneath it — or archives a commitment Habit's iteration,
+/// which is never deleted.
 #[tauri::command]
 pub async fn delete_commitment(
     factory: State<'_, SessionFactory>,
-    id: i64,
+    id: NodeId,
 ) -> Result<(), WireError> {
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    crate::tasks::delete_commitment(&mut db, CommitmentId(id))
-        .await
-        .map_err(WireError::from_error)?;
+    write::delete(
+        &mut db,
+        "commitment",
+        &id,
+        chrono::Local::now().naive_local(),
+    )
+    .await
+    .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)
 }
 

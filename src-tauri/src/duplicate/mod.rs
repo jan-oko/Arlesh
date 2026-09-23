@@ -287,9 +287,10 @@ async fn clone_goal(
         },
     )
     .await?;
+    let created_id = created.id.require_stored()?;
     crate::tasks::update_goal(
         db,
-        GoalId(created.id),
+        GoalId(created_id),
         UpdateGoalRequest {
             position: Some(item.forced_position.unwrap_or(original.position)),
             is_private: Some(original.is_private),
@@ -298,12 +299,12 @@ async fn clone_goal(
     )
     .await?;
     for tag_id in &original.tag_ids {
-        db.goals().add_tag(GoalId(created.id), *tag_id).await?;
+        db.goals().add_tag(GoalId(created_id), *tag_id).await?;
     }
-    carry_block_reasons(db, "goal", item.old_id, created.id).await?;
-    carry_beads_id(db, DuplicableKind::Goal, created.id, original.beads_id).await?;
+    carry_block_reasons(db, "goal", item.old_id, created_id).await?;
+    carry_beads_id(db, DuplicableKind::Goal, created_id, original.beads_id).await?;
     Ok(ClonedNode {
-        new_id: created.id,
+        new_id: created_id,
         kind: "goal".to_string(),
     })
 }
@@ -341,9 +342,10 @@ async fn clone_task(
         },
     )
     .await?;
+    let created_id = created.id.require_stored()?;
     crate::tasks::update_task(
         db,
-        TaskId(created.id),
+        TaskId(created_id),
         UpdateTaskRequest {
             position: Some(item.forced_position.unwrap_or(original.position)),
             is_private: Some(original.is_private),
@@ -353,17 +355,17 @@ async fn clone_task(
     )
     .await?;
     for tag_id in &original.tag_ids {
-        db.tasks().add_tag(TaskId(created.id), *tag_id).await?;
+        db.tasks().add_tag(TaskId(created_id), *tag_id).await?;
     }
-    carry_block_reasons(db, "task", item.old_id, created.id).await?;
+    carry_block_reasons(db, "task", item.old_id, created_id).await?;
     // The copy waits on the same things the original waits on — see the module docs on why these
     // are not remapped onto copies of their targets.
     for dependency in db.tasks().list_dependencies(TaskId(item.old_id)).await? {
-        crate::tasks::add_task_dependency(db, TaskId(created.id), dependency).await?;
+        crate::tasks::add_task_dependency(db, TaskId(created_id), dependency).await?;
     }
-    carry_beads_id(db, DuplicableKind::Task, created.id, original.beads_id).await?;
+    carry_beads_id(db, DuplicableKind::Task, created_id, original.beads_id).await?;
     Ok(ClonedNode {
-        new_id: created.id,
+        new_id: created_id,
         kind: "task".to_string(),
     })
 }

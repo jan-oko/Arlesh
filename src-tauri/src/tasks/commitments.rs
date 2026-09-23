@@ -17,6 +17,7 @@
 //! `scope_rules`. Splitting it out would mean either duplicating that chain or making it public.
 
 use crate::database::session::{Db, SessionMode, Transactional};
+use crate::nodes::origin::Origin;
 
 use super::ancestry::{AncestryLink, NodeKind, NodeRef};
 use super::error::TaskError;
@@ -65,10 +66,10 @@ fn verdict_window_columns(window: &Option<DurationSpec>) -> (Option<i64>, Option
 impl From<CommitmentRow> for Commitment {
     fn from(row: CommitmentRow) -> Self {
         Self {
-            id: row.id,
+            id: row.id.into(),
             title: row.title,
             parent_type: row.parent_type,
-            parent_id: row.parent_id,
+            parent_id: row.parent_id.into(),
             // An unrecognised spelling reads as Unresolved, which is the one value that asserts
             // nothing about what happened. The CHECK constraint is what keeps it from arising.
             verdict: Verdict::from_db(&row.verdict).unwrap_or_default(),
@@ -83,6 +84,7 @@ impl From<CommitmentRow> for Commitment {
             position: row.position,
             is_private: row.is_private,
             beads_id: row.beads_id,
+            origin: Origin::Manual,
         }
     }
 }
@@ -119,15 +121,18 @@ impl CommitmentWrite {
     /// There is no equivalent here of a Task's "scheduling a backlogged task un-backlogs it"
     /// rule: a Commitment has no pair of fields that contradict each other, so the merge is the
     /// plain field-by-field one and nothing is resolved in anybody's favour.
-    fn merge(stored: Commitment, request: UpdateCommitmentRequest) -> Self {
+    fn merge(
+        stored: Commitment,
+        request: UpdateCommitmentRequest,
+    ) -> Result<Self, crate::nodes::id::NotStored> {
         let reparent = match (request.parent_type, request.parent_id) {
             (Some(parent_type), Some(parent_id)) => Some((parent_type, parent_id)),
             _ => None,
         };
         let (parent_type, parent_id) = reparent
             .clone()
-            .unwrap_or((stored.parent_type, stored.parent_id));
-        Self {
+            .unwrap_or((stored.parent_type, stored.parent_id.require_stored()?));
+        Ok(Self {
             reparent,
             parent_type,
             parent_id,
@@ -143,7 +148,7 @@ impl CommitmentWrite {
             },
             position: request.position.unwrap_or(stored.position),
             is_private: request.is_private.unwrap_or(stored.is_private),
-        }
+        })
     }
 }
 
@@ -243,7 +248,10 @@ impl<'session> CommitmentOperator<'session> {
         Ok(AncestryLink {
             kind: NodeKind::Commitment,
             id: id.0,
-            parent: NodeRef::new(commitment.parent_type, commitment.parent_id),
+            parent: NodeRef::new(
+                commitment.parent_type,
+                commitment.parent_id.require_stored()?,
+            ),
             time_scope: commitment.time_scope,
             // A Commitment is never scheduled: the window *is* the commitment.
             plan: None,
@@ -448,7 +456,7 @@ pub async fn update_commitment(
     request: UpdateCommitmentRequest,
 ) -> Result<Commitment, TaskError> {
     let stored = db.commitments().get(id).await?;
-    let write = CommitmentWrite::merge(stored, request);
+    let write = CommitmentWrite::merge(stored, request)?;
     scope_rules::validate_commitment_scope(
         db,
         Some(id),

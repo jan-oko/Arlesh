@@ -323,7 +323,7 @@ pub(super) fn occurrence_link(attachment: ChildAttachment) -> AncestryLink {
         kind,
         id: attachment.flow_id,
         parent: NodeRef::new("flow", attachment.flow_id),
-        time_scope: Some(attachment.window),
+        time_scope: attachment.window,
         plan: None,
         on_scope_exit: Some(OnScopeExit::Archive),
         verdict_window: None,

@@ -97,14 +97,12 @@ pub enum Section {
     FlowInstanceNodes,
     /// Each item's derived Timing / Resolution / Archival state.
     Lifecycles,
-    /// Each flow's habit iterations and statuses.
+    /// Each Habit's derivation outcome. Its occurrences are rows in the kind sections.
     Habits,
-    /// Which Habit occurrence each added child hangs on.
-    HabitInstanceChildren,
 }
 
 /// Every section, in the order pages walk them.
-pub const SECTIONS: [Section; 19] = [
+pub const SECTIONS: [Section; 18] = [
     Section::Domains,
     Section::Goals,
     Section::Tasks,
@@ -123,7 +121,6 @@ pub const SECTIONS: [Section; 19] = [
     Section::FlowInstanceNodes,
     Section::Lifecycles,
     Section::Habits,
-    Section::HabitInstanceChildren,
 ];
 
 impl Section {
@@ -148,7 +145,6 @@ impl Section {
             Self::FlowInstanceNodes => "flow_instance_nodes",
             Self::Lifecycles => "lifecycles",
             Self::Habits => "habits",
-            Self::HabitInstanceChildren => "habit_instance_children",
         }
     }
 

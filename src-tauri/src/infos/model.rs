@@ -2,6 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::nodes::id::NodeId;
+
 /// Identifies an info row by its primary key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InfoId(pub i64);
@@ -28,8 +30,8 @@ pub struct Info {
     pub details: Option<String>,
     /// The kind of the parent node (aspect, project, domain, goal, task, commitment, tag, info).
     pub parent_type: String,
-    /// The database id of the parent node.
-    pub parent_id: i64,
+    /// The parent node: a stored row, or a derived one (a Habit occurrence).
+    pub parent_id: NodeId,
     /// Display order among siblings.
     pub position: i64,
     /// Whether this node is private (hidden unless Private Mode is on).

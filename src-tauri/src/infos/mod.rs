@@ -22,7 +22,7 @@ impl From<InfoRow> for Info {
             body: row.body,
             details: row.details,
             parent_type: row.parent_type,
-            parent_id: row.parent_id,
+            parent_id: row.parent_id.into(),
             position: row.position,
             is_private: row.is_private,
         }

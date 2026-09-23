@@ -1,0 +1,462 @@
+//! Writes to a Habit occurrence: an ordinary update request, routed into the overlay.
+//!
+//! The editor sends a derived Task, Goal or Commitment the same request it sends a stored one
+//! (ADR 0008, decision 6). Here that request becomes an overlay write for **this occurrence
+//! only** — to change every occurrence, the template is edited instead — under one rule: a field
+//! set to its template's value *clears* its override rather than pinning a copy, so the
+//! occurrence goes back to following the template.
+//!
+//! What an occurrence cannot do is refused out loud (decision 7): it cannot leave its iteration
+//! (its window and its parent are its iteration's), and it is never deleted — [`archive`] is what
+//! Delete does to one. A request that merely repeats the occurrence's current window or parent,
+//! as a full editor save does, is not a move and is let through.
+
+use chrono::NaiveDateTime;
+
+use super::{
+    error::FlowError,
+    model::{Flow, FlowId},
+    occurrence_window,
+    occurrences::{derive_habit, Horizon},
+    resolve_cycle, resolve_root_plan,
+};
+use crate::{
+    database::session::{Db, Transactional},
+    nodes::{
+        id::NodeId,
+        key::{OccurrenceKey, TemplateKind},
+        origin::Origin,
+        overlay::TaskOverlay,
+    },
+    scopes::resolve::interval_contains,
+    tasks::model::{
+        Commitment, Delegate, Goal, Task, TaskArchival, TaskStatus, TimeScope,
+        UpdateCommitmentRequest, UpdateGoalRequest, UpdateTaskRequest,
+    },
+    tasks::time_scope_window,
+};
+
+/// What an occurrence reads when nothing overrides it: its template's values.
+struct TemplateValues {
+    title: String,
+    is_private: bool,
+    position: i64,
+    plan: Option<TimeScope>,
+}
+
+/// The template row an occurrence is drawn from, and its Cycle Plan resolved in the occurrence's
+/// own iteration.
+async fn template_values(
+    db: &mut Db<Transactional>,
+    flow: &Flow,
+    key: &OccurrenceKey,
+    position_of_root: i64,
+) -> Result<TemplateValues, FlowError> {
+    match key.item.item_type {
+        TemplateKind::FlowRoot => {
+            let (_, window_start) =
+                super::resolve_flow_window(&mut db.scopes(), flow, key.iteration).await?;
+            Ok(TemplateValues {
+                title: flow.title.clone(),
+                is_private: flow.is_private,
+                position: position_of_root,
+                plan: resolve_root_plan(&mut db.scopes(), flow, Some(window_start)).await?,
+            })
+        }
+        TemplateKind::FlowGoal => {
+            let goal = db
+                .flows()
+                .list_goals(FlowId(flow.id))
+                .await?
+                .into_iter()
+                .find(|goal| goal.id == key.item.item_id)
+                .ok_or_else(|| FlowError::NodeNotFound(key.node_key()))?;
+            Ok(TemplateValues {
+                title: goal.title,
+                is_private: goal.is_private,
+                position: goal.position,
+                plan: None,
+            })
+        }
+        TemplateKind::FlowTask => {
+            let task = db
+                .flows()
+                .list_tasks(FlowId(flow.id))
+                .await?
+                .into_iter()
+                .find(|task| task.id == key.item.item_id)
+                .ok_or_else(|| FlowError::NodeNotFound(key.node_key()))?;
+            let pair = db.flows().cycle(key.cycle).await?;
+            let plan = resolve_cycle(&mut db.scopes(), pair.as_ref(), Some(key.iteration))
+                .await?
+                .and_then(|resolved| resolved.plan);
+            Ok(TemplateValues {
+                title: task.title,
+                is_private: task.is_private,
+                position: task.position,
+                plan,
+            })
+        }
+    }
+}
+
+/// The ordinal of the iteration an occurrence is in — an iteration root's default position.
+fn iteration_index(origin: &Origin) -> i64 {
+    origin
+        .habit()
+        .map_or(0, |habit| habit.iteration_scope.index)
+}
+
+/// The occurrence as the virtual table serves it now, by kind.
+enum Current {
+    Task(Task),
+    Goal(Goal),
+    Commitment(Commitment),
+}
+
+/// Derives the one occurrence `key` names, as its row.
+async fn current(
+    db: &mut Db<Transactional>,
+    flow: &Flow,
+    key: &OccurrenceKey,
+    now: NaiveDateTime,
+) -> Result<Current, FlowError> {
+    let rows = derive_habit(
+        db,
+        flow,
+        now,
+        Horizon {
+            through: Some(key.iteration),
+        },
+    )
+    .await?;
+    let id = NodeId::Derived(key.id());
+    if let Some(task) = rows.tasks.into_iter().find(|task| task.id == id) {
+        return Ok(Current::Task(task));
+    }
+    if let Some(goal) = rows.goals.into_iter().find(|goal| goal.id == id) {
+        return Ok(Current::Goal(goal));
+    }
+    rows.commitments
+        .into_iter()
+        .find(|commitment| commitment.id == id)
+        .map(Current::Commitment)
+        .ok_or_else(|| FlowError::NodeNotFound(key.node_key()))
+}
+
+/// Derives the one occurrence `key` names, as the Task, Goal or Commitment it is.
+pub async fn occurrence_row(
+    db: &mut Db<Transactional>,
+    key: &OccurrenceKey,
+    now: NaiveDateTime,
+) -> Result<(Option<Task>, Option<Goal>, Option<Commitment>), FlowError> {
+    let flow_id = db.flows().occurrence_flow_id(key).await?;
+    let flow = db.flows().get(flow_id).await?;
+    Ok(match current(db, &flow, key, now).await? {
+        Current::Task(task) => (Some(task), None, None),
+        Current::Goal(goal) => (None, Some(goal), None),
+        Current::Commitment(commitment) => (None, None, Some(commitment)),
+    })
+}
+
+/// Refuses a move out of the occurrence's iteration: a new parent, or a new window. A request
+/// repeating the current ones — a full editor save — passes.
+fn refuse_moves(
+    parent: (Option<&String>, Option<i64>),
+    current_parent: (&str, &NodeId),
+    time_scope: Option<&Option<TimeScope>>,
+    current_scope: &Option<TimeScope>,
+) -> Result<(), FlowError> {
+    let moves = match parent {
+        (None, None) => false,
+        (Some(parent_type), Some(parent_id)) => {
+            parent_type != current_parent.0 || *current_parent.1 != parent_id
+        }
+        _ => true,
+    };
+    if moves {
+        return Err(FlowError::Refused(
+            "a habit occurrence belongs to its iteration and cannot be moved out of it".to_string(),
+        ));
+    }
+    let rescopes = time_scope.is_some_and(|wanted| {
+        let ignoring_duration =
+            |scope: &Option<TimeScope>| scope.as_ref().map(|scope| (scope.start_id, scope.end_id));
+        ignoring_duration(wanted) != ignoring_duration(current_scope)
+    });
+    if rescopes {
+        return Err(FlowError::Refused(
+            "a habit occurrence's window is its iteration's, and cannot be changed".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+/// The epoch-millisecond instant a completion is recorded at: `now`'s wall-clock reading, the
+/// same local-naive clock the iteration windows are laid on.
+fn resolved_at_ms(now: NaiveDateTime) -> i64 {
+    now.and_utc().timestamp_millis()
+}
+
+/// Applies an ordinary Task update to one occurrence's overlay.
+#[tracing::instrument(skip(db, request))]
+pub async fn update_task(
+    db: &mut Db<Transactional>,
+    key: &OccurrenceKey,
+    request: UpdateTaskRequest,
+    now: NaiveDateTime,
+) -> Result<(), FlowError> {
+    let flow_id = db.flows().occurrence_flow_id(key).await?;
+    let flow = db.flows().get(flow_id).await?;
+    let Current::Task(current) = current(db, &flow, key, now).await? else {
+        return Err(FlowError::Refused(
+            "this occurrence is not a task".to_string(),
+        ));
+    };
+    refuse_moves(
+        (request.parent_type.as_ref(), request.parent_id),
+        (&current.parent_type, &current.parent_id),
+        request.time_scope.as_ref(),
+        &current.time_scope,
+    )?;
+    if matches!(request.async_template, Some(Some(_))) {
+        return Err(FlowError::Refused(
+            "a habit occurrence cannot carry an expectation template of its own".to_string(),
+        ));
+    }
+    let template = template_values(db, &flow, key, iteration_index(&current.origin)).await?;
+    let mut overlay = db.overlays().task(key).await?;
+
+    if let Some(title) = request.title {
+        overlay.title = (title != template.title).then_some(title);
+    }
+    if let Some(status) = &request.status {
+        apply_task_status(&mut overlay, status, now);
+        // Work under way is not work set aside — the same rule a stored Task follows.
+        if *status == TaskStatus::InProgress && request.archival.is_none() {
+            overlay.archival = None;
+        }
+    }
+    if let Some(delegate) = request.delegate_to {
+        let (kind, id) = Delegate::columns(delegate);
+        overlay.delegate_set = delegate.is_some();
+        overlay.delegate_kind = kind.map(str::to_string);
+        overlay.delegate_id = id;
+    }
+    if let Some(agentic) = request.agentic {
+        overlay.agentic = agentic.as_column();
+        overlay.agentic_set = overlay.agentic.is_some();
+    }
+    if let Some(asynchronous) = request.asynchronous {
+        overlay.asynchronous = asynchronous.then_some(true);
+    }
+    if let Some(plan) = request.plan {
+        if let Some(plan) = &plan {
+            check_plan(db, &flow, key, plan).await?;
+        }
+        let same_as_template = plan.as_ref().map(|plan| (plan.start_id, plan.end_id))
+            == template
+                .plan
+                .as_ref()
+                .map(|plan| (plan.start_id, plan.end_id));
+        overlay.plan_set = !same_as_template;
+        let (start, end) = match (&plan, same_as_template) {
+            (Some(plan), false) => (Some(plan.start_id), Some(plan.end_id)),
+            _ => (None, None),
+        };
+        overlay.plan_start_id = start;
+        overlay.plan_end_id = end;
+        // Scheduling a backlogged occurrence takes it out of the backlog, as for a stored Task.
+        if plan.is_some() && request.archival.is_none() {
+            overlay.archival = None;
+        }
+    }
+    if let Some(archival) = request.archival {
+        let planned = if overlay.plan_set {
+            overlay.plan_start_id.is_some()
+        } else {
+            template.plan.is_some()
+        };
+        if archival == TaskArchival::Backlog && planned {
+            return Err(crate::tasks::error::TaskError::BacklogWithPlan.into());
+        }
+        overlay.archival = (archival == TaskArchival::Backlog).then(|| "backlog".to_string());
+    }
+    if let Some(position) = request.position {
+        overlay.position = (position != template.position).then_some(position);
+    }
+    if let Some(is_private) = request.is_private {
+        overlay.is_private = (is_private != template.is_private).then_some(is_private);
+    }
+    db.overlays().put_task(flow_id.0, key, &overlay).await?;
+    Ok(())
+}
+
+/// A Task status in the overlay's vocabulary: To Do is the default and clears it.
+fn apply_task_status(overlay: &mut TaskOverlay, status: &TaskStatus, now: NaiveDateTime) {
+    overlay.status = match status {
+        TaskStatus::Todo => None,
+        other => Some(other.as_str().to_string()),
+    };
+    overlay.resolved_at = (*status == TaskStatus::Done).then(|| resolved_at_ms(now));
+    // A status given to an archived occurrence brings it back into play.
+    overlay.tombstone = None;
+}
+
+/// Refuses a Plan outside the occurrence's own window.
+async fn check_plan(
+    db: &mut Db<Transactional>,
+    flow: &Flow,
+    key: &OccurrenceKey,
+    plan: &TimeScope,
+) -> Result<(), FlowError> {
+    let window = occurrence_window(db, flow, key).await?;
+    let outer = time_scope_window(db, &window).await?;
+    let inner = time_scope_window(db, plan).await?;
+    if interval_contains(outer, inner) {
+        return Ok(());
+    }
+    Err(crate::tasks::error::TaskError::ScopeContainment(
+        "a plan must fall within the occurrence's window".to_string(),
+    )
+    .into())
+}
+
+/// Applies an ordinary Goal update to one occurrence's overlay.
+#[tracing::instrument(skip(db, request))]
+pub async fn update_goal(
+    db: &mut Db<Transactional>,
+    key: &OccurrenceKey,
+    request: UpdateGoalRequest,
+    now: NaiveDateTime,
+) -> Result<(), FlowError> {
+    let flow_id = db.flows().occurrence_flow_id(key).await?;
+    let flow = db.flows().get(flow_id).await?;
+    let Current::Goal(current) = current(db, &flow, key, now).await? else {
+        return Err(FlowError::Refused(
+            "this occurrence is not a goal".to_string(),
+        ));
+    };
+    refuse_moves(
+        (request.parent_type.as_ref(), request.parent_id),
+        (&current.parent_type, &current.parent_id),
+        request.time_scope.as_ref(),
+        &current.time_scope,
+    )?;
+    let template = template_values(db, &flow, key, iteration_index(&current.origin)).await?;
+    let mut overlay = db.overlays().goal(key).await?;
+    if let Some(title) = request.title {
+        overlay.title = (title != template.title).then_some(title);
+    }
+    if let Some(status) = request.status {
+        let status = status.as_str();
+        overlay.status = (status != "active").then(|| status.to_string());
+        overlay.resolved_at = (status == "achieved").then(|| resolved_at_ms(now));
+        overlay.tombstone = None;
+    }
+    if let Some(position) = request.position {
+        overlay.position = (position != template.position).then_some(position);
+    }
+    if let Some(is_private) = request.is_private {
+        overlay.is_private = (is_private != template.is_private).then_some(is_private);
+    }
+    db.overlays().put_goal(flow_id.0, key, &overlay).await?;
+    Ok(())
+}
+
+/// Applies an ordinary Commitment update to one occurrence's overlay. Its Verdict Window is the
+/// Habit's, set on the flow; naming a different one here is refused.
+#[tracing::instrument(skip(db, request))]
+pub async fn update_commitment(
+    db: &mut Db<Transactional>,
+    key: &OccurrenceKey,
+    request: UpdateCommitmentRequest,
+    now: NaiveDateTime,
+) -> Result<(), FlowError> {
+    let flow_id = db.flows().occurrence_flow_id(key).await?;
+    let flow = db.flows().get(flow_id).await?;
+    let Current::Commitment(current) = current(db, &flow, key, now).await? else {
+        return Err(FlowError::Refused(
+            "this occurrence is not a commitment".to_string(),
+        ));
+    };
+    refuse_moves(
+        (request.parent_type.as_ref(), request.parent_id),
+        (&current.parent_type, &current.parent_id),
+        request.time_scope.as_ref(),
+        &current.time_scope,
+    )?;
+    if request
+        .verdict_window
+        .as_ref()
+        .is_some_and(|wanted| *wanted != current.verdict_window)
+    {
+        return Err(FlowError::Refused(
+            "a habit's verdict window is set on the habit, for every iteration".to_string(),
+        ));
+    }
+    let template = template_values(db, &flow, key, iteration_index(&current.origin)).await?;
+    let mut overlay = db.overlays().commitment(key).await?;
+    if let Some(title) = request.title {
+        overlay.title = (title != template.title).then_some(title);
+    }
+    if let Some(verdict) = request.verdict {
+        overlay.verdict = verdict.is_resolved().then(|| verdict.as_str().to_string());
+        overlay.resolved_at = overlay.verdict.as_ref().map(|_| resolved_at_ms(now));
+        overlay.tombstone = None;
+    }
+    if let Some(position) = request.position {
+        overlay.position = (position != template.position).then_some(position);
+    }
+    if let Some(is_private) = request.is_private {
+        overlay.is_private = (is_private != template.is_private).then_some(is_private);
+    }
+    db.overlays()
+        .put_commitment(flow_id.0, key, &overlay)
+        .await?;
+    Ok(())
+}
+
+/// Delete, for an occurrence: it is **archived**, as a manually archived node is, never removed —
+/// the iteration it belongs to still happened. Its status and edits stay beneath the tombstone,
+/// and giving it a status again brings it back.
+#[tracing::instrument(skip(db))]
+pub async fn archive(db: &mut Db<Transactional>, key: &OccurrenceKey) -> Result<(), FlowError> {
+    let flow_id = db.flows().occurrence_flow_id(key).await?;
+    let kind = db
+        .flows()
+        .occurrence_kind(flow_id, key.item.item_type)
+        .await?;
+    let tombstone = Some("archived".to_string());
+    match kind {
+        "goal" => {
+            let mut overlay = db.overlays().goal(key).await?;
+            overlay.tombstone = tombstone;
+            db.overlays().put_goal(flow_id.0, key, &overlay).await?;
+        }
+        "commitment" => {
+            let mut overlay = db.overlays().commitment(key).await?;
+            overlay.tombstone = tombstone;
+            db.overlays()
+                .put_commitment(flow_id.0, key, &overlay)
+                .await?;
+        }
+        _ => {
+            let mut overlay = db.overlays().task(key).await?;
+            overlay.tombstone = tombstone;
+            db.overlays().put_task(flow_id.0, key, &overlay).await?;
+        }
+    }
+    Ok(())
+}
+
+/// Retyping an occurrence is refused: it is its template's kind in its iteration, and there is no
+/// detaching it into a stored row of another kind (ADR 0008, decision 7).
+pub fn refuse_retype() -> FlowError {
+    FlowError::Refused(
+        "a habit occurrence cannot change kind — retype its template item instead".to_string(),
+    )
+}
+
+#[cfg(test)]
+mod tests;

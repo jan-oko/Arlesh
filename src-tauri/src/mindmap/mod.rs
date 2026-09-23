@@ -1,18 +1,17 @@
 //! The mindmap's whole-tree load, gathered in one operation.
 //!
-//! The mindmap render reads thirteen resource-wide lists plus, for each flow, its derived Habit
-//! iterations and per-instance statuses. Fetched one command at a time that is `13 + 2N` IPC
-//! round trips for `N` flows, paid again after every edit because each mutation ends with a
+//! The mindmap render reads every resource-wide list at once: fetched one command at a time that
+//! was a dozen IPC round trips, paid again after every edit because each mutation ends with a
 //! silent reload. [`load`] is the single operation that replaces them.
 //!
-//! It touches nine resources, so per ADR-0004 it is a free function over the session rather than
-//! a method on any one operator. It takes a [`Db<Transactional>`] because
-//! [`crate::flows::generate_habit_iterations`] writes: materialising an iteration window mints
-//! the scope rows it lands on. Mode follows the operation's consistency requirement, not the
-//! reader's intuition that a load is read-only.
+//! It touches many resources, so per ADR-0004 it is a free function over the session rather than
+//! a method on any one operator. It takes a [`Db<Transactional>`] because deriving a Habit's
+//! occurrences writes: resolving an iteration window mints the scope rows it lands on. Mode
+//! follows the operation's consistency requirement, not the reader's intuition that a load is
+//! read-only.
 //!
-//! **Nothing here assembles.** Every field of [`MindmapLoad`] is what the equivalent
-//! single-resource command returns; the frontend still builds the tree.
+//! **Nothing here assembles a tree.** Each kind's list is its virtual table ([`crate::nodes`]);
+//! the frontend still builds the tree from the rows' parent links.
 
 pub mod model;
 
@@ -21,34 +20,43 @@ use chrono::NaiveDateTime;
 use crate::{
     database::session::{Db, Transactional},
     error::AppError,
-    flows::{
-        self,
-        error::FlowError,
-        model::{Flow, FlowId, HabitItemStatus, HabitIteration},
-    },
+    flows::occurrences::Horizon,
+    nodes::table::{self, StoredRows},
 };
 
 use model::{FlowHabitEntry, FlowHabitResult, MindmapLoad};
 
 /// Gathers every payload one mindmap render needs, at wall-clock `now`.
 ///
-/// The per-flow wave is resolved here rather than by a second call from the frontend: the flow
-/// list is read first, then each flow's Habit payload is derived from it on the same connection.
+/// Each kind's list is its **virtual table**: the stored rows with every Habit's occurrences
+/// merged in as ordinary rows, and every stored node hung on an occurrence read as that
+/// occurrence's child. The occurrences' lifecycles are derived by the Habit's own rules and
+/// merged into [`MindmapLoad::lifecycles`] beside the stored rows'.
 ///
-/// A single flow's derivation failing does **not** fail the load. It is recorded as
-/// [`FlowHabitResult::Failed`] on that flow's entry and the rest of the mindmap still arrives —
-/// preserving the isolation the frontend used to get from a per-call `.catch(() => [])`, but
-/// carrying the reason so the user can be told instead of silently seeing an empty Habit.
+/// A single Habit's derivation failing does **not** fail the load. Its occurrences are missing,
+/// and its entry in [`MindmapLoad::habits`] says why, so the user is told instead of silently
+/// seeing an empty Habit.
 #[tracing::instrument(skip(db))]
 pub async fn load(db: &mut Db<Transactional>, now: NaiveDateTime) -> Result<MindmapLoad, AppError> {
+    load_within(db, now, Horizon::default()).await
+}
+
+/// [`load`], deriving the Habits' future occurrences as far as `horizon` names — the Plan View
+/// filling a month that has not begun.
+#[tracing::instrument(skip(db))]
+pub async fn load_within(
+    db: &mut Db<Transactional>,
+    now: NaiveDateTime,
+    horizon: Horizon,
+) -> Result<MindmapLoad, AppError> {
     // Operators are borrowed per call and never held: each line takes the session, uses it, and
     // gives it back. Two bound at once would not compile.
     let domains = db.domains().list(None).await?;
-    let goals = db.goals().list().await?;
-    let tasks = db.tasks().list().await?;
-    let commitments = db.commitments().list().await?;
-    let expectations = db.expectations().list().await?;
-    let infos = db.infos().list().await?;
+    let mut goals = db.goals().list().await?;
+    let mut tasks = db.tasks().list().await?;
+    let mut commitments = db.commitments().list().await?;
+    let mut expectations = db.expectations().list().await?;
+    let mut infos = db.infos().list().await?;
     let flow_goals = db.flows().list_all_goals().await?;
     let flow_tasks = db.flows().list_all_tasks().await?;
     let flow_cycles = db.flows().list_all_cycles().await?;
@@ -56,16 +64,41 @@ pub async fn load(db: &mut Db<Transactional>, now: NaiveDateTime) -> Result<Mind
     let block_reasons = db.block_reasons().list_all().await?;
     let task_dependencies = db.tasks().list_all_dependencies().await?;
     let flow_instance_nodes = db.flows().list_instance_node_refs().await?;
-    let habit_instance_children = db.flows().list_all_instance_children().await?;
-    let lifecycles = crate::tasks::derive_all_scope_lifecycles(db, now).await?;
+    let children = db.flows().list_all_instance_children().await?;
+    let mut lifecycles = crate::tasks::derive_all_scope_lifecycles(db, now).await?;
     let waits = crate::tasks::waits::derive_wait_windows(db, now).await?;
 
-    // The dependent wave: the flow list first, then one entry per flow derived from it.
     let flows = db.flows().list().await?;
-    let mut habits = Vec::with_capacity(flows.len());
-    for flow in &flows {
-        habits.push(habit_entry(db, flow, now).await);
-    }
+    let (derived, failures) = table::derive_habits(db, &flows, now, horizon).await;
+    table::attach_children(
+        &children,
+        &derived,
+        StoredRows {
+            tasks: &mut tasks,
+            goals: &mut goals,
+            commitments: &mut commitments,
+            expectations: &mut expectations,
+            infos: &mut infos,
+        },
+    );
+    tasks.extend(derived.tasks);
+    goals.extend(derived.goals);
+    commitments.extend(derived.commitments);
+    lifecycles.extend(derived.lifecycles);
+
+    let habits = flows
+        .iter()
+        .map(|flow| FlowHabitEntry {
+            flow_id: flow.id,
+            flow_title: flow.title.clone(),
+            result: match failures.iter().find(|failure| failure.flow_id == flow.id) {
+                Some(failure) => FlowHabitResult::Failed {
+                    message: failure.message.clone(),
+                },
+                None => FlowHabitResult::Loaded {},
+            },
+        })
+        .collect();
 
     Ok(MindmapLoad {
         domains,
@@ -86,58 +119,5 @@ pub async fn load(db: &mut Db<Transactional>, now: NaiveDateTime) -> Result<Mind
         flow_instance_nodes,
         lifecycles,
         habits,
-        habit_instance_children,
     })
-}
-
-/// One flow's Habit entry, with a failed derivation recorded rather than propagated.
-///
-/// This is the only place in the load that swallows an error, and it does not discard it: the
-/// message travels to the frontend on the entry, and is logged here at `warn` so a failure is
-/// visible in the log even if the user dismisses the notice.
-#[tracing::instrument(skip(db, flow), fields(flow_id = flow.id))]
-async fn habit_entry(
-    db: &mut Db<Transactional>,
-    flow: &Flow,
-    now: NaiveDateTime,
-) -> FlowHabitEntry {
-    let result = match habit_payload(db, FlowId(flow.id), now).await {
-        Ok((iterations, statuses)) => FlowHabitResult::Loaded {
-            iterations,
-            statuses,
-        },
-        Err(error) => {
-            tracing::warn!(error = %error, "mindmap load: habit payload failed");
-            FlowHabitResult::Failed {
-                message: error.to_string(),
-            }
-        }
-    };
-    FlowHabitEntry {
-        flow_id: flow.id,
-        flow_title: flow.title.clone(),
-        result,
-    }
-}
-
-/// One flow's iterations and per-instance statuses.
-///
-/// The recurrence is probed first rather than letting
-/// [`generate_habit_iterations`](crate::flows::generate_habit_iterations) reject a flow that has
-/// none. A flow without a recurrence is simply not a Habit — the overwhelmingly common case —
-/// and has no iterations; routing it through the failure path would raise a notice about every
-/// ordinary flow on every load. What stays a failure is a flow that *is* a Habit and could not
-/// be derived (an unscoped one, an unparseable Consumption, a missing scope row).
-async fn habit_payload(
-    db: &mut Db<Transactional>,
-    flow_id: FlowId,
-    now: NaiveDateTime,
-) -> Result<(Vec<HabitIteration>, Vec<HabitItemStatus>), FlowError> {
-    let recurrence = db.flows().get_recurrence(flow_id).await?;
-    let iterations = match recurrence {
-        None => Vec::new(),
-        Some(_) => flows::generate_habit_iterations(db, flow_id, now).await?,
-    };
-    let statuses = db.flows().list_item_statuses(flow_id).await?;
-    Ok((iterations, statuses))
 }

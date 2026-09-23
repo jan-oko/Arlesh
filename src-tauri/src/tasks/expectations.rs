@@ -79,7 +79,7 @@ impl From<ExpectationRow> for Expectation {
             id: row.id,
             title: row.title,
             parent_type: row.parent_type,
-            parent_id: row.parent_id,
+            parent_id: row.parent_id.into(),
             // An unrecognised spelling reads as Pending — the answer that keeps dependents
             // blocked rather than waving them through. The CHECK constraint keeps it from arising.
             status: ExpectationStatus::from_db(&row.status).unwrap_or_default(),
@@ -132,15 +132,19 @@ struct ExpectationWrite {
 
 impl ExpectationWrite {
     /// Merges `request` over the `stored` row. Pure — it reads nothing and writes nothing.
-    fn merge(stored: Expectation, request: UpdateExpectationRequest, now: NaiveDateTime) -> Self {
+    fn merge(
+        stored: Expectation,
+        request: UpdateExpectationRequest,
+        now: NaiveDateTime,
+    ) -> Result<Self, crate::nodes::id::NotStored> {
         let reparent = match (request.parent_type, request.parent_id) {
             (Some(parent_type), Some(parent_id)) => Some((parent_type, parent_id)),
             _ => None,
         };
         let (parent_type, parent_id) = reparent
             .clone()
-            .unwrap_or((stored.parent_type, stored.parent_id));
-        Self {
+            .unwrap_or((stored.parent_type, stored.parent_id.require_stored()?));
+        Ok(Self {
             reparent,
             parent_type,
             parent_id,
@@ -164,7 +168,7 @@ impl ExpectationWrite {
             ),
             position: request.position.unwrap_or(stored.position),
             is_private: request.is_private.unwrap_or(stored.is_private),
-        }
+        })
     }
 }
 
@@ -389,7 +393,7 @@ pub async fn update_expectation(
     request: UpdateExpectationRequest,
 ) -> Result<Expectation, TaskError> {
     let stored = db.expectations().get(id).await?;
-    let write = ExpectationWrite::merge(stored, request, now());
+    let write = ExpectationWrite::merge(stored, request, now())?;
     super::scope_rules::validate_expectation_scope(
         db,
         &write.parent_type,

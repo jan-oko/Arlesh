@@ -94,10 +94,11 @@ pub async fn derive_all_scope_lifecycles<M: SessionMode>(
 ) -> Result<Vec<ItemLifecycle>, TaskError> {
     let mut out = Vec::new();
     for task in db.tasks().list().await? {
-        let (window, on_exit) = match scope_governance(db, "task", task.id).await? {
-            Some((w, e)) => (Some(w), Some(e)),
-            None => (None, None),
-        };
+        let (window, on_exit) =
+            match scope_governance(db, "task", task.id.require_stored()?).await? {
+                Some((w, e)) => (Some(w), Some(e)),
+                None => (None, None),
+            };
         let resolved = TaskStatus::from_db(&task.status) == Some(TaskStatus::Done);
         let stored = Some(Archival::from(task.archival));
         let state = derive_item_state(window, on_exit, resolved, stored, now);
@@ -117,10 +118,11 @@ pub async fn derive_all_scope_lifecycles<M: SessionMode>(
         });
     }
     for goal in db.goals().list().await? {
-        let (window, on_exit) = match scope_governance(db, "goal", goal.id).await? {
-            Some((w, e)) => (Some(w), Some(e)),
-            None => (None, None),
-        };
+        let (window, on_exit) =
+            match scope_governance(db, "goal", goal.id.require_stored()?).await? {
+                Some((w, e)) => (Some(w), Some(e)),
+                None => (None, None),
+            };
         let parsed_status = GoalStatus::from_db(&goal.status);
         let resolved = matches!(
             parsed_status,
@@ -140,11 +142,14 @@ pub async fn derive_all_scope_lifecycles<M: SessionMode>(
         });
     }
     for commitment in db.commitments().list().await? {
-        let window = scope_governance(db, "commitment", commitment.id)
+        let window = scope_governance(db, "commitment", commitment.id.require_stored()?)
             .await?
             .map(|(window, _)| window);
-        let verdict_window =
-            commitments::effective_verdict_window(db, CommitmentId(commitment.id)).await?;
+        let verdict_window = commitments::effective_verdict_window(
+            db,
+            CommitmentId(commitment.id.require_stored()?),
+        )
+        .await?;
         let state =
             derive_commitment_state(window, commitment.verdict, verdict_window.as_ref(), now);
         out.push(ItemLifecycle {
@@ -230,7 +235,7 @@ pub async fn derive_all_scope_lifecycles<M: SessionMode>(
         let state = derive_expectation_state(bounds, status, archival, now);
         out.push(ItemLifecycle {
             node_type: node_type.to_string(),
-            node_id,
+            node_id: node_id.into(),
             timing: state.timing,
             resolution: state.resolution,
             verdict: None,

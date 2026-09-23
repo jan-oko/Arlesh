@@ -25,6 +25,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::database::session::{Db, SessionMode, Transactional};
 use crate::infos::model::InfoId;
+use crate::nodes::origin::Origin;
 use ancestry::{AncestryLink, NodeKind, NodeRef};
 pub use commitments::{
     create_commitment, delete_commitment, update_commitment, CommitmentOperator,
@@ -237,10 +238,10 @@ struct TaskRow {
 impl From<TaskRow> for Task {
     fn from(row: TaskRow) -> Self {
         Self {
-            id: row.id,
+            id: row.id.into(),
             title: row.title,
             parent_type: row.parent_type,
-            parent_id: row.parent_id,
+            parent_id: row.parent_id.into(),
             status: row.status,
             delegate_to: Delegate::from_columns(row.delegate_kind.as_deref(), row.delegate_id),
             agentic: row.agentic,
@@ -262,6 +263,7 @@ impl From<TaskRow> for Task {
             position: row.position,
             is_private: row.is_private,
             beads_id: row.beads_id,
+            origin: Origin::Manual,
         }
     }
 }
@@ -286,10 +288,10 @@ struct GoalRow {
 impl From<GoalRow> for Goal {
     fn from(row: GoalRow) -> Self {
         Self {
-            id: row.id,
+            id: row.id.into(),
             title: row.title,
             parent_type: row.parent_type,
-            parent_id: row.parent_id,
+            parent_id: row.parent_id.into(),
             status: row.status,
             time_scope: time_scope_from_row(
                 row.time_scope_start_id,
@@ -302,6 +304,7 @@ impl From<GoalRow> for Goal {
             position: row.position,
             is_private: row.is_private,
             beads_id: row.beads_id,
+            origin: Origin::Manual,
         }
     }
 }
@@ -389,14 +392,17 @@ struct GoalWrite {
 
 impl GoalWrite {
     /// Merges `request` over the `stored` row. Pure — it reads nothing and writes nothing.
-    fn merge(stored: Goal, request: UpdateGoalRequest) -> Self {
+    fn merge(
+        stored: Goal,
+        request: UpdateGoalRequest,
+    ) -> Result<Self, crate::nodes::id::NotStored> {
         let reparent = match (request.parent_type, request.parent_id) {
             (Some(parent_type), Some(parent_id)) => Some((parent_type, parent_id)),
             _ => None,
         };
         let (parent_type, parent_id) = reparent
             .clone()
-            .unwrap_or((stored.parent_type, stored.parent_id));
+            .unwrap_or((stored.parent_type, stored.parent_id.require_stored()?));
         let status = request
             .status
             .as_ref()
@@ -407,7 +413,7 @@ impl GoalWrite {
             Some(new_time_scope) => new_time_scope,
             None => stored.time_scope,
         };
-        Self {
+        Ok(Self {
             reparent,
             parent_type,
             parent_id,
@@ -417,7 +423,7 @@ impl GoalWrite {
             on_scope_exit: request.on_scope_exit.unwrap_or(stored.on_scope_exit),
             position: request.position.unwrap_or(stored.position),
             is_private: request.is_private.unwrap_or(stored.is_private),
-        }
+        })
     }
 }
 
@@ -461,7 +467,10 @@ struct TaskWrite {
 
 impl TaskWrite {
     /// Merges `request` over the `stored` row. Pure — it reads nothing and writes nothing.
-    fn merge(stored: Task, request: UpdateTaskRequest) -> Self {
+    fn merge(
+        stored: Task,
+        request: UpdateTaskRequest,
+    ) -> Result<Self, crate::nodes::id::NotStored> {
         let reparent = match (request.parent_type, request.parent_id) {
             (Some(parent_type), Some(parent_id)) => Some((parent_type, parent_id)),
             _ => None,
@@ -469,7 +478,7 @@ impl TaskWrite {
         // Validate against the effective parent — the new one when reparenting.
         let (parent_type, parent_id) = reparent
             .clone()
-            .unwrap_or((stored.parent_type, stored.parent_id));
+            .unwrap_or((stored.parent_type, stored.parent_id.require_stored()?));
         let status = request
             .status
             .as_ref()
@@ -521,7 +530,7 @@ impl TaskWrite {
         } else {
             request.archival.unwrap_or(stored.archival)
         };
-        Self {
+        Ok(Self {
             reparent,
             parent_type,
             parent_id,
@@ -537,7 +546,7 @@ impl TaskWrite {
             archival,
             position: request.position.unwrap_or(stored.position),
             is_private: request.is_private.unwrap_or(stored.is_private),
-        }
+        })
     }
 }
 
@@ -1423,7 +1432,7 @@ pub async fn update_goal(
     request: UpdateGoalRequest,
 ) -> Result<Goal, TaskError> {
     let stored = db.goals().get(id).await?;
-    let write = GoalWrite::merge(stored, request);
+    let write = GoalWrite::merge(stored, request)?;
     scope_rules::validate_goal_containment(
         db,
         Some(id),
@@ -1517,7 +1526,7 @@ pub async fn update_task(
     request: UpdateTaskRequest,
 ) -> Result<Task, TaskError> {
     let stored = db.tasks().get(id).await?;
-    let write = TaskWrite::merge(stored, request);
+    let write = TaskWrite::merge(stored, request)?;
     reject_backlog_with_plan(write.archival, &write.plan)?;
     scope_rules::validate_task_containment(
         db,

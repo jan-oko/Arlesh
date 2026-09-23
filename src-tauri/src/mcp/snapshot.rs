@@ -18,7 +18,13 @@ use crate::mindmap::model::MindmapLoad;
 impl ArleshMcp {
     /// Arlesh's planning graph: domains, goals, tasks, commitments, expectations, infos, flows, flow items,
     /// cycles, dependencies, block reasons, materialised instance nodes, each item's derived
-    /// lifecycle, and each flow's habit iterations and statuses.
+    /// lifecycle, and each Habit's derivation outcome.
+    ///
+    /// A Habit's occurrences are ordinary rows of their kinds, in `tasks`, `goals` and
+    /// `commitments`: every node carries an `origin`, `{"kind": "manual"}` for a stored one and
+    /// `{"kind": "habit", "habit_id": …, "iteration_scope": …}` for a Habit's, whose `id` is then a
+    /// UUID string rather than a number. Its `parent_id` may be one too — a node hung on an
+    /// occurrence names the occurrence as its parent.
     ///
     /// Start here. Tasks, goals and commitments carry `time_scope` and `plan` as boundary scope
     /// IDs rather than dates — resolve them with `arlesh_scopes.resolve_many`.
@@ -51,7 +57,7 @@ impl ArleshMcp {
     /// hides those. Pass the **same** filter on every page of a walk: pages are derived
     /// independently, so changing it partway is no different from the board changing underfoot.
     ///
-    /// Not read-only: deriving habit iterations materialises the scope rows their windows land on.
+    /// Not read-only: deriving Habit occurrences materialises the scope rows their windows land on.
     /// It creates no tasks, goals or flows.
     #[tool(
         name = "arlesh_snapshot",
@@ -83,7 +89,7 @@ impl ArleshMcp {
 
         // Transactional and committed, matching `commands::mindmap::load_mindmap`: without the
         // commit sqlx discards the derived scopes on drop and still returns a correct-looking
-        // payload, whose habit iterations then name scope ids that no longer exist.
+        // payload, whose Habit occurrences then name scope ids that no longer exist.
         //
         // Every page re-derives. Keeping a payload server-side between pages would buy a
         // consistent read at the cost of state to expire and grow; for one local user, seconds

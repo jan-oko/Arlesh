@@ -15,7 +15,6 @@ use crate::{
         model::{
             CreateFlowItemRequest, CreateFlowRequest, Flow, FlowCycleInput, FlowDependency,
             FlowGoal, FlowId, FlowItemCycle, FlowItemType, FlowOrigin, FlowRecurrence, FlowTask,
-            HabitInstanceChild, HabitInstanceRef, HabitItemStatus, HabitIteration,
             MaterializedFlow, SetRecurrenceRequest, StartFlowRequest, TargetRef, UnfinishedChild,
             UpdateFlowItemRequest, UpdateFlowRequest,
         },
@@ -264,23 +263,6 @@ pub async fn delete_flow_recurrence(
         .map_err(WireError::from_error)
 }
 
-/// Derives a Habit's iterations on `today`, each classified per its Consumption behavior.
-#[tauri::command]
-pub async fn generate_habit_iterations(
-    factory: State<'_, SessionFactory>,
-    flow_id: i64,
-    now: chrono::NaiveDateTime,
-) -> Result<Vec<HabitIteration>, WireError> {
-    // Transactional despite reading like a query: materialising each iteration window creates the
-    // scopes it lands on.
-    let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let iterations = flows::generate_habit_iterations(&mut db, FlowId(flow_id), now)
-        .await
-        .map_err(WireError::from_error)?;
-    db.commit().await.map_err(WireError::from_error)?;
-    Ok(iterations)
-}
-
 /// For each of `nodes` that was materialised from a flow, returns its originating flow title.
 #[tauri::command]
 pub async fn flow_origins(
@@ -417,75 +399,11 @@ pub async fn list_all_flow_dependencies(
         .map_err(WireError::from_error)
 }
 
-/// Lists every instance's divergent status for this flow, with the iteration scope it applies to.
-#[tauri::command]
-pub async fn list_habit_item_statuses(
-    factory: State<'_, SessionFactory>,
-    flow_id: i64,
-) -> Result<Vec<HabitItemStatus>, WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.flows()
-        .list_item_statuses(FlowId(flow_id))
-        .await
-        .map_err(WireError::from_error)
-}
-
-/// Sets a single instance's status (`null` clears it), recording `resolved_at_ms`. `instance`
-/// names it down to its cycle pair — an item with several pairs draws one node per pair in the
-/// same iteration — with `cycle_id` `0` for an item that declares none, and for the flow root.
-///
-/// Marking an occurrence **done** while it still holds unfinished added children is refused with
-/// [`NeedsConfirmation`](crate::error::WireErrorKind::NeedsConfirmation) until `confirmed` says
-/// the caller has seen them; the refusal names every one. Confirming marks the occurrence done and
-/// leaves the children exactly as they are, to archive with it when its window passes. Nothing is
-/// stored either way — the guard exists at the moment of completion and nowhere else, because a
-/// per-child setting would put a permanent knob on every note to express something that matters
-/// once. Added children never gate the **iteration's** resolution: they are not instances, so no
-/// future occurrence of the Habit is ever withheld by one.
-#[tauri::command]
-pub async fn set_habit_item_status(
-    factory: State<'_, SessionFactory>,
-    flow_id: i64,
-    instance: HabitInstanceRef,
-    status: Option<String>,
-    resolved_at_ms: i64,
-    confirmed: Option<bool>,
-) -> Result<(), WireError> {
-    let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    if completing(status.as_deref()) && confirmed != Some(true) {
-        let open = flows::unfinished_instance_children(&mut db, FlowId(flow_id), &instance)
-            .await
-            .map_err(WireError::from_error)?;
-        if !open.is_empty() {
-            return Err(unfinished_refusal(&open));
-        }
-    }
-    db.flows()
-        .set_item_status(
-            FlowId(flow_id),
-            &instance,
-            status.as_deref(),
-            resolved_at_ms,
-        )
-        .await
-        .map_err(WireError::from_error)?;
-    db.commit().await.map_err(WireError::from_error)
-}
-
-/// Whether a status write is the one the completion guard watches for.
-///
-/// `done` and nothing else. A Commitment Habit's iteration is **kept** or **broken** rather than
-/// done, and neither is a completion: a verdict says whether a rule was held to, which is not a
-/// claim that the work written under it was finished.
-fn completing(status: Option<&str>) -> bool {
-    status == Some("done")
-}
-
 /// The refusal a completion with unfinished children comes back as.
 ///
 /// The children are named, not counted. A prompt the user can only accept blind is not consent,
 /// and the whole point of the guard is being able to see what is about to be closed over.
-fn unfinished_refusal(open: &[UnfinishedChild]) -> WireError {
+pub(crate) fn unfinished_refusal(open: &[UnfinishedChild]) -> WireError {
     WireError::needs_confirmation(
         format!(
             "this occurrence still holds {} unfinished item(s)",
@@ -496,82 +414,6 @@ fn unfinished_refusal(open: &[UnfinishedChild]) -> WireError {
             "children": open,
         }),
     )
-}
-
-/// Creates one node and attaches it to a single virtual Habit occurrence, atomically.
-///
-/// `child_type` is `task`, `goal`, `commitment` or `info` — anything a Task can parent. The node
-/// is real and fully editable, and it belongs to that one occurrence: next week's does not carry
-/// it. It may hold children of its own in the ordinary way; only the first level is attached.
-#[tauri::command]
-pub async fn create_habit_instance_child(
-    factory: State<'_, SessionFactory>,
-    flow_id: i64,
-    instance: HabitInstanceRef,
-    child_type: String,
-    title: String,
-) -> Result<TargetRef, WireError> {
-    let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let child =
-        flows::create_instance_child(&mut db, FlowId(flow_id), &instance, &child_type, title)
-            .await
-            .map_err(WireError::from_error)?;
-    db.commit().await.map_err(WireError::from_error)?;
-    Ok(child)
-}
-
-/// Every added child of every occurrence of one Habit.
-#[tauri::command]
-pub async fn list_habit_instance_children(
-    factory: State<'_, SessionFactory>,
-    flow_id: i64,
-) -> Result<Vec<HabitInstanceChild>, WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.flows()
-        .list_instance_children(FlowId(flow_id))
-        .await
-        .map_err(WireError::from_error)
-}
-
-/// Resolves (or un-resolves) a whole Habit iteration: writes or clears a `done` Modification for
-/// every instance at `iteration_scope_id` — the flow root and each of its items.
-///
-/// SPEC: "an iteration is *resolved* when every one of its (non-tombstoned) instances is done".
-/// [`set_habit_item_status`] moves one instance; this moves the iteration as a unit, which is why
-/// it opens a transaction — the instance list is read first and one row is written per instance,
-/// so a half-applied run would leave the iteration neither done nor undone.
-#[tauri::command]
-pub async fn set_habit_iteration_done(
-    factory: State<'_, SessionFactory>,
-    flow_id: i64,
-    iteration_scope_id: i64,
-    done: bool,
-    resolved_at_ms: i64,
-    confirmed: Option<bool>,
-) -> Result<(), WireError> {
-    let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    if done && confirmed != Some(true) {
-        // One prompt for the whole iteration, naming every unfinished child on any of its
-        // occurrences: closing an iteration in one gesture is one decision, and asking once per
-        // occurrence would turn a single click into a queue of modals.
-        let open =
-            flows::unfinished_iteration_children(&mut db, FlowId(flow_id), iteration_scope_id)
-                .await
-                .map_err(WireError::from_error)?;
-        if !open.is_empty() {
-            return Err(unfinished_refusal(&open));
-        }
-    }
-    flows::set_iteration_done(
-        &mut db,
-        FlowId(flow_id),
-        iteration_scope_id,
-        done,
-        resolved_at_ms,
-    )
-    .await
-    .map_err(WireError::from_error)?;
-    db.commit().await.map_err(WireError::from_error)
 }
 
 /// Number of distinct completed iterations of a Habit (divergence detection for reconciliation).

@@ -18,6 +18,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{
     mindmap::model::MindmapLoad,
+    nodes::id::NodeId,
     tasks::{
         expectations,
         lifecycle::{Archival, ItemLifecycle, Timing},
@@ -39,12 +40,12 @@ fn domain_id(id: i64) -> String {
 ///
 /// The content tables spell their parent `goal`, `task`, `commitment`, `info`, or one of the four
 /// domains-table subtypes — which all share the single `domain-` namespace.
-fn content_parent_id(parent_type: &str, parent_id: i64) -> String {
+fn content_parent_id(parent_type: &str, parent_id: &NodeId) -> String {
     match parent_type {
         "goal" | "task" | "commitment" | "expectation" | "info" => {
             format!("{parent_type}-{parent_id}")
         }
-        _ => domain_id(parent_id),
+        _ => format!("domain-{parent_id}"),
     }
 }
 
@@ -76,7 +77,7 @@ fn spawned_wait_id(task_id: i64) -> String {
 }
 
 /// The fact id of the virtual Expectation a delegated Task waits on. Backend-only, as above.
-fn delegation_wait_id(task_id: i64) -> String {
+fn delegation_wait_id(task_id: &NodeId) -> String {
     format!("delegation-wait-{task_id}")
 }
 
@@ -92,10 +93,15 @@ fn domain_kind(subtype: &str) -> NodeKind {
 }
 
 /// Each item's derived lifecycle, keyed by the `(node_type, node_id)` pair the load sends it under.
-fn index_lifecycles(load: &MindmapLoad) -> HashMap<(&str, i64), &ItemLifecycle> {
+fn index_lifecycles(load: &MindmapLoad) -> HashMap<(&str, NodeId), &ItemLifecycle> {
     load.lifecycles
         .iter()
-        .map(|lifecycle| ((lifecycle.node_type.as_str(), lifecycle.node_id), lifecycle))
+        .map(|lifecycle| {
+            (
+                (lifecycle.node_type.as_str(), lifecycle.node_id.clone()),
+                lifecycle,
+            )
+        })
         .collect()
 }
 
@@ -111,15 +117,15 @@ fn index_blocked(load: &MindmapLoad) -> HashSet<String> {
         .map(|reason| format!("{}-{}", reason.owner_type, reason.owner_id))
         .collect();
 
-    let task_status: HashMap<i64, &str> = load
+    let task_status: HashMap<&NodeId, &str> = load
         .tasks
         .iter()
-        .map(|task| (task.id, task.status.as_str()))
+        .map(|task| (&task.id, task.status.as_str()))
         .collect();
-    let goal_status: HashMap<i64, &str> = load
+    let goal_status: HashMap<&NodeId, &str> = load
         .goals
         .iter()
-        .map(|goal| (goal.id, goal.status.as_str()))
+        .map(|goal| (&goal.id, goal.status.as_str()))
         .collect();
     let expectation_status: HashMap<i64, ExpectationStatus> = load
         .expectations
@@ -132,13 +138,13 @@ fn index_blocked(load: &MindmapLoad) -> HashSet<String> {
     for edge in &load.task_dependencies {
         let unmet = match edge.dependency_type.as_str() {
             "task" => task_status
-                .get(&edge.dependency_id)
+                .get(&NodeId::Stored(edge.dependency_id))
                 .is_some_and(|status| *status != "done"),
             "expectation" => expectation_status
                 .get(&edge.dependency_id)
                 .is_some_and(|status| *status == ExpectationStatus::Pending),
             _ => goal_status
-                .get(&edge.dependency_id)
+                .get(&NodeId::Stored(edge.dependency_id))
                 .is_some_and(|status| *status != "achieved"),
         };
         if unmet {
@@ -154,7 +160,7 @@ fn index_todo_parents(load: &MindmapLoad) -> HashSet<String> {
     load.tasks
         .iter()
         .filter(|task| task.status == "todo")
-        .map(|task| content_parent_id(&task.parent_type, task.parent_id))
+        .map(|task| content_parent_id(&task.parent_type, &task.parent_id))
         .collect()
 }
 
@@ -183,9 +189,12 @@ pub fn forest(load: &MindmapLoad) -> Vec<FactNode> {
         node.is_private = goal.is_private;
         node.tag_ids.clone_from(&goal.tag_ids);
         node.is_blocked = blocked.contains(&node.id);
-        apply_lifecycle(&mut node, lifecycles.get(&("goal", goal.id)).copied());
+        apply_lifecycle(
+            &mut node,
+            lifecycles.get(&("goal", goal.id.clone())).copied(),
+        );
         facts.push(node);
-        parents.push(Some(content_parent_id(&goal.parent_type, goal.parent_id)));
+        parents.push(Some(content_parent_id(&goal.parent_type, &goal.parent_id)));
     }
     for task in &load.tasks {
         let mut node = NodeFacts::new(format!("task-{}", task.id), NodeKind::Task);
@@ -196,14 +205,17 @@ pub fn forest(load: &MindmapLoad) -> Vec<FactNode> {
         node.tag_ids.clone_from(&task.tag_ids);
         node.is_blocked = blocked.contains(&node.id);
         node.has_todo_child = todo_parents.contains(&node.id);
-        apply_lifecycle(&mut node, lifecycles.get(&("task", task.id)).copied());
+        apply_lifecycle(
+            &mut node,
+            lifecycles.get(&("task", task.id.clone())).copied(),
+        );
         facts.push(node);
-        parents.push(Some(content_parent_id(&task.parent_type, task.parent_id)));
+        parents.push(Some(content_parent_id(&task.parent_type, &task.parent_id)));
         // A delegated Task waits on its delegate finishing: a virtual, pending Expectation beneath
         // it, for as long as the Task is not done. Nothing stores it, and it has no Check every.
         if task.delegate_to.is_some() && TaskStatus::from_db(&task.status) != Some(TaskStatus::Done)
         {
-            let mut wait = NodeFacts::new(delegation_wait_id(task.id), NodeKind::Expectation);
+            let mut wait = NodeFacts::new(delegation_wait_id(&task.id), NodeKind::Expectation);
             wait.status = Some(ExpectationStatus::Pending.as_str().to_string());
             facts.push(wait);
             parents.push(Some(format!("task-{}", task.id)));
@@ -225,19 +237,22 @@ pub fn forest(load: &MindmapLoad) -> Vec<FactNode> {
         node.tag_ids.clone_from(&expectation.tag_ids);
         // Its own Time Scope's Timing — the stored archive, not the lifecycle, says archived.
         node.timing = lifecycles
-            .get(&(expectations::EXPECTATION, expectation.id))
+            .get(&(expectations::EXPECTATION, NodeId::Stored(expectation.id)))
             .map(|lifecycle| lifecycle.timing);
         facts.push(node);
         parents.push(Some(content_parent_id(
             &expectation.parent_type,
-            expectation.parent_id,
+            &expectation.parent_id,
         )));
         // While a check is due, a virtual "check on it" Task sits beneath the wait, drawn on the
         // day it is due — whose Timing the `expectation_check` entry carries.
         if checks_due.contains(&expectation.id) {
             facts.push(check_task(
                 check_task_id(expectation.id),
-                lifecycles.get(&(expectations::EXPECTATION_CHECK, expectation.id)),
+                lifecycles.get(&(
+                    expectations::EXPECTATION_CHECK,
+                    NodeId::Stored(expectation.id),
+                )),
             ));
             parents.push(Some(id.clone()));
         }
@@ -256,18 +271,18 @@ pub fn forest(load: &MindmapLoad) -> Vec<FactNode> {
             parents.push(Some(id.clone()));
         }
     }
-    let templates: HashMap<i64, &crate::tasks::model::AsyncTemplate> = load
+    let templates: HashMap<&NodeId, &crate::tasks::model::AsyncTemplate> = load
         .tasks
         .iter()
         .filter_map(|task| {
             task.async_template
                 .as_ref()
-                .map(|template| (task.id, template))
+                .map(|template| (&task.id, template))
         })
         .collect();
     for spawned in &load.spawned_waits {
         let task_id = spawned.wait.task_id;
-        let Some(template) = templates.get(&task_id) else {
+        let Some(template) = templates.get(&NodeId::Stored(task_id)) else {
             continue;
         };
         let id = spawned_wait_id(task_id);
@@ -277,14 +292,14 @@ pub fn forest(load: &MindmapLoad) -> Vec<FactNode> {
         node.has_check = template.check_every.is_some();
         node.tag_ids.clone_from(&template.tag_ids);
         node.timing = lifecycles
-            .get(&(expectations::SPAWNED_WAIT, task_id))
+            .get(&(expectations::SPAWNED_WAIT, NodeId::Stored(task_id)))
             .map(|lifecycle| lifecycle.timing);
         facts.push(node);
         parents.push(Some(format!("task-{task_id}")));
         if spawned.next_check.is_some() {
             facts.push(check_task(
                 format!("spawned-check-{task_id}"),
-                lifecycles.get(&(expectations::SPAWNED_CHECK, task_id)),
+                lifecycles.get(&(expectations::SPAWNED_CHECK, NodeId::Stored(task_id))),
             ));
             parents.push(Some(id.clone()));
         }
@@ -306,19 +321,21 @@ pub fn forest(load: &MindmapLoad) -> Vec<FactNode> {
         node.tag_ids.clone_from(&commitment.tag_ids);
         apply_lifecycle(
             &mut node,
-            lifecycles.get(&("commitment", commitment.id)).copied(),
+            lifecycles
+                .get(&("commitment", commitment.id.clone()))
+                .copied(),
         );
         facts.push(node);
         parents.push(Some(content_parent_id(
             &commitment.parent_type,
-            commitment.parent_id,
+            &commitment.parent_id,
         )));
     }
     for info in &load.infos {
         let mut node = NodeFacts::new(format!("info-{}", info.id), NodeKind::Info);
         node.is_private = info.is_private;
         facts.push(node);
-        parents.push(Some(content_parent_id(&info.parent_type, info.parent_id)));
+        parents.push(Some(content_parent_id(&info.parent_type, &info.parent_id)));
     }
 
     assemble(&facts, &parents)
