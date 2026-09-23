@@ -101,6 +101,11 @@ async fn update(pool: &sqlx::SqlitePool, id: i64, request: UpdateTaskRequest) {
     db.commit().await.unwrap();
 }
 
+/// Long after any check these tests set up has fallen due.
+fn far_future() -> NaiveDateTime {
+    at("2099-01-01T12:00:00")
+}
+
 fn at(iso: &str) -> NaiveDateTime {
     NaiveDateTime::parse_from_str(iso, "%Y-%m-%dT%H:%M:%S").unwrap()
 }
@@ -185,7 +190,7 @@ async fn an_asynchronous_task_without_a_template_spawns_nothing() {
     .await;
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
     assert!(db.tasks().spawned_wait(TaskId(id)).await.unwrap().is_none());
-    assert!(derive_wait_windows(&mut db)
+    assert!(derive_wait_windows(&mut db, far_future())
         .await
         .unwrap()
         .spawned_waits
@@ -219,7 +224,7 @@ async fn the_wait_exists_while_the_task_is_done_and_holds_up_nothing() {
         .unwrap()
         .block_reasons
         .is_empty());
-    let windows = derive_wait_windows(&mut db).await.unwrap();
+    let windows = derive_wait_windows(&mut db, far_future()).await.unwrap();
     let view = &windows.spawned_waits[0];
     assert!(view.time_scope.is_some() && view.next_check.is_some());
     // The test pool holds one connection: give it back before reading the pool directly.
@@ -270,7 +275,7 @@ async fn a_spawned_waits_check_moves_on_and_a_released_one_has_none() {
     let sender = task(&pool, project, "Kick off the build").await;
     update(&pool, sender, with_template()).await;
     update(&pool, sender, done()).await;
-    let checked_at = at("2026-07-09T10:00:00");
+    let checked_at = far_future();
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
     complete_spawned_check(&mut db, TaskId(sender), checked_at)
         .await
@@ -287,7 +292,7 @@ async fn a_spawned_waits_check_moves_on_and_a_released_one_has_none() {
     assert!(refused.is_err());
     drop(db);
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
-    let windows = derive_wait_windows(&mut db).await.unwrap();
+    let windows = derive_wait_windows(&mut db, far_future()).await.unwrap();
     assert!(windows.spawned_waits[0].next_check.is_none());
 }
 
@@ -307,4 +312,26 @@ async fn a_task_without_a_spawned_wait_refuses_one_being_changed() {
             .await
             .is_err()
     );
+}
+
+#[tokio::test]
+async fn clearing_check_every_from_the_template_stops_the_checks() {
+    let pool = helpers::test_pool().await;
+    let project = make_project(&pool).await;
+    let sender = task(&pool, project, "Send the draft").await;
+    update(&pool, sender, with_template()).await;
+    // Exactly what the Task editor sends when the section's Check every is cleared: the template
+    // without the key.
+    let request: UpdateTaskRequest = serde_json::from_value(serde_json::json!({
+        "asynchronous": true,
+        "async_template": { "title": "Reviewer replies", "tag_ids": [] },
+    }))
+    .unwrap();
+    update(&pool, sender, request).await;
+    update(&pool, sender, done()).await;
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
+    let read = db.tasks().get(TaskId(sender)).await.unwrap();
+    assert!(read.async_template.is_some_and(|t| t.check_every.is_none()));
+    let windows = derive_wait_windows(&mut db, far_future()).await.unwrap();
+    assert!(windows.spawned_waits[0].next_check.is_none());
 }

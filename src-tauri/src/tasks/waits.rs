@@ -21,12 +21,13 @@ use serde::Serialize;
 
 use crate::database::session::{Db, SessionMode};
 use crate::scopes::model::ScopeKind;
+use crate::scopes::resolve::DAY_BOUNDARY_HOUR;
 
 use super::error::TaskError;
 use super::lifecycle::advance_by;
 use super::model::{
-    AsyncTemplate, DurationSpec, ExpectationArchival, ExpectationStatus, SpawnedWait, TaskId,
-    TimeScope, UpdateSpawnedWaitRequest,
+    AsyncTemplate, DurationSpec, Expectation, ExpectationArchival, ExpectationStatus, SpawnedWait,
+    TaskId, TimeScope, UpdateSpawnedWaitRequest,
 };
 use super::TaskOperator;
 
@@ -68,6 +69,56 @@ fn scope_kind(kind: &str) -> Option<ScopeKind> {
     }
 }
 
+/// The Day an instant falls in. A Day runs 02:00 → 02:00 (see
+/// [`crate::scopes::resolve::DAY_BOUNDARY_HOUR`]), so 01:00 on the 5th is still the 4th: reading the
+/// calendar date instead drew a check due just after midnight on the day before.
+pub fn day_of(at: NaiveDateTime) -> NaiveDate {
+    (at - chrono::Duration::hours(i64::from(DAY_BOUNDARY_HOUR))).date()
+}
+
+/// Whether a check due at `due` exists yet. A check task is drawn from the moment its check is
+/// due, never before: a wait whose checks start tomorrow has nothing to check today.
+pub fn is_due(due: NaiveDateTime, now: NaiveDateTime) -> bool {
+    due <= now
+}
+
+/// When a stored wait's current check fell due — `None` while it is not checked on, or no longer
+/// pending and live.
+pub fn stored_check_due(expectation: &Expectation) -> Option<NaiveDateTime> {
+    let (Some(every), Some(starting)) = (&expectation.check_every, expectation.check_starting)
+    else {
+        return None;
+    };
+    if expectation.status != ExpectationStatus::Pending
+        || expectation.archival != ExpectationArchival::Live
+    {
+        return None;
+    }
+    next_check_due(every, starting, expectation.last_check_at)
+}
+
+/// When a spawned wait's current check fell due, given its template's Check every. Its first check
+/// is one interval after it began, not at once: the email has only just been sent. A completion
+/// never recorded asks for one at `now`. A check made during an earlier completion, kept by the
+/// overlay, is not a check on this one.
+pub fn spawned_check_due(
+    wait: &SpawnedWait,
+    every: &DurationSpec,
+    now: NaiveDateTime,
+) -> Option<NaiveDateTime> {
+    if wait.status != ExpectationStatus::Pending || wait.archival != ExpectationArchival::Live {
+        return None;
+    }
+    let starting = match wait.spawned_at {
+        Some(began) => advance_by(began, every.n, &every.kind)?,
+        None => now,
+    };
+    let last = wait
+        .last_check_at
+        .filter(|last| wait.spawned_at.is_none_or(|began| *last >= began));
+    next_check_due(every, starting, last)
+}
+
 /// The single-day Time Scope a check due at `due` is drawn in — minting the day's scope row.
 pub async fn check_window<M: SessionMode>(
     db: &mut Db<M>,
@@ -75,7 +126,7 @@ pub async fn check_window<M: SessionMode>(
 ) -> Result<TimeScope, TaskError> {
     let day = db
         .scopes()
-        .get_or_create(ScopeKind::Day, due.date())
+        .get_or_create(ScopeKind::Day, day_of(due))
         .await?;
     Ok(TimeScope {
         start_id: day.id,
@@ -323,21 +374,16 @@ pub struct WaitWindows {
     pub spawned_waits: Vec<SpawnedWaitView>,
 }
 
-/// Derives [`WaitWindows`]. A wait that is released or archived has no next check: once it is
+/// Derives [`WaitWindows`] at `now`. A check is listed only once it is due — its check task exists
+/// from then until it is completed — and a wait that is released or archived has none: once it is
 /// over, nothing more is generated.
-pub async fn derive_wait_windows<M: SessionMode>(db: &mut Db<M>) -> Result<WaitWindows, TaskError> {
+pub async fn derive_wait_windows<M: SessionMode>(
+    db: &mut Db<M>,
+    now: NaiveDateTime,
+) -> Result<WaitWindows, TaskError> {
     let mut windows = WaitWindows::default();
     for expectation in db.expectations().list().await? {
-        let (Some(every), Some(starting)) = (&expectation.check_every, expectation.check_starting)
-        else {
-            continue;
-        };
-        if expectation.status != ExpectationStatus::Pending
-            || expectation.archival != ExpectationArchival::Live
-        {
-            continue;
-        }
-        if let Some(due) = next_check_due(every, starting, expectation.last_check_at) {
+        if let Some(due) = stored_check_due(&expectation).filter(|due| is_due(*due, now)) {
             windows.expectation_checks.push(ExpectationCheck {
                 expectation_id: expectation.id,
                 due: check_window(db, due).await?,
@@ -349,30 +395,17 @@ pub async fn derive_wait_windows<M: SessionMode>(db: &mut Db<M>) -> Result<WaitW
             continue;
         };
         let time_scope = match (&template.time_scope, wait.spawned_at) {
-            (Some(rule), Some(began)) => window_from_rule(db, rule, began.date()).await?,
+            (Some(rule), Some(began)) => window_from_rule(db, rule, day_of(began)).await?,
             _ => None,
         };
-        let live =
-            wait.status == ExpectationStatus::Pending && wait.archival == ExpectationArchival::Live;
-        let next_check = match (&template.check_every, live) {
-            (Some(every), true) => {
-                // A spawned wait's first check is one interval after it began, not at once: the
-                // email has only just been sent. A completion never recorded asks for one now.
-                let starting = match wait.spawned_at {
-                    Some(began) => advance_by(began, every.n, &every.kind),
-                    None => Some(super::expectations::now()),
-                };
-                // A check made during an earlier completion, kept by the overlay, is not a check
-                // on this one.
-                let last = wait
-                    .last_check_at
-                    .filter(|last| wait.spawned_at.is_none_or(|began| *last >= began));
-                match starting.and_then(|starting| next_check_due(every, starting, last)) {
-                    Some(due) => Some(check_window(db, due).await?),
-                    None => None,
-                }
-            }
-            _ => None,
+        let due = template
+            .check_every
+            .as_ref()
+            .and_then(|every| spawned_check_due(&wait, every, now))
+            .filter(|due| is_due(*due, now));
+        let next_check = match due {
+            Some(due) => Some(check_window(db, due).await?),
+            None => None,
         };
         windows.spawned_waits.push(SpawnedWaitView {
             wait,
@@ -407,7 +440,8 @@ pub async fn update_spawned_wait<M: SessionMode>(
 }
 
 /// Completes the current check on a task's spawned wait: records `at` as its last check, so the
-/// next falls due one interval later. Refused when there is no pending wait with a Check every.
+/// next falls due one interval later. Refused when no check is due at `at` — no pending, live wait
+/// with a Check every, or its next check not come round yet.
 #[tracing::instrument(skip(db))]
 pub async fn complete_spawned_check<M: SessionMode>(
     db: &mut Db<M>,
@@ -419,12 +453,13 @@ pub async fn complete_spawned_check<M: SessionMode>(
         .spawned_wait(task)
         .await?
         .ok_or(TaskError::NoSpawnedWait(task.0))?;
-    let checks = db
+    let due = db
         .tasks()
         .async_template(task)
         .await?
-        .and_then(|template| template.check_every);
-    if checks.is_none() || wait.status != ExpectationStatus::Pending {
+        .and_then(|template| template.check_every)
+        .and_then(|every| spawned_check_due(&wait, &every, at));
+    if !due.is_some_and(|due| is_due(due, at)) {
         return Err(TaskError::NoCheckDue);
     }
     db.tasks().set_spawned_check(task, at).await

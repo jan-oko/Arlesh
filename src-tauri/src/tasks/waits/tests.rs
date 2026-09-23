@@ -82,3 +82,67 @@ fn only_the_four_coarse_kinds_are_counted() {
     }
     assert!(scope_kind("part").is_none());
 }
+
+#[test]
+fn an_instant_before_two_in_the_morning_belongs_to_the_day_before() {
+    // The ladder turns over at 02:00, so a check due at 01:00 on the 5th is drawn on the 4th — and
+    // "tomorrow" sent as midnight would have been drawn today.
+    assert_eq!(
+        day_of(at("2026-07-05T01:00:00")),
+        NaiveDate::from_ymd_opt(2026, 7, 4).expect("a date")
+    );
+    assert_eq!(
+        day_of(at("2026-07-05T02:00:00")),
+        NaiveDate::from_ymd_opt(2026, 7, 5).expect("a date")
+    );
+}
+
+#[test]
+fn a_check_exists_only_once_it_is_due() {
+    let due = at("2026-07-05T02:00:00");
+    assert!(!is_due(due, at("2026-07-05T01:59:59")));
+    assert!(is_due(due, due));
+    assert!(is_due(due, at("2026-07-09T00:00:00")));
+}
+
+fn spawned(began: Option<&str>, last: Option<&str>) -> SpawnedWait {
+    SpawnedWait {
+        task_id: 1,
+        spawned_at: began.map(at),
+        status: ExpectationStatus::Pending,
+        archival: ExpectationArchival::Live,
+        last_check_at: last.map(at),
+    }
+}
+
+#[test]
+fn a_spawned_waits_first_check_is_one_interval_after_it_began() {
+    let now = at("2026-07-01T00:00:00");
+    assert_eq!(
+        spawned_check_due(
+            &spawned(Some("2026-07-01T09:00:00"), None),
+            &every(2, "day"),
+            now
+        ),
+        Some(at("2026-07-03T09:00:00"))
+    );
+    // A check from an earlier completion does not count toward this one.
+    assert_eq!(
+        spawned_check_due(
+            &spawned(Some("2026-07-01T09:00:00"), Some("2026-06-01T09:00:00")),
+            &every(2, "day"),
+            now
+        ),
+        Some(at("2026-07-03T09:00:00"))
+    );
+    // A completion never recorded asks for a check at once.
+    assert_eq!(
+        spawned_check_due(&spawned(None, None), &every(2, "day"), now),
+        Some(now)
+    );
+    let released = SpawnedWait {
+        status: ExpectationStatus::Released,
+        ..spawned(Some("2026-07-01T09:00:00"), None)
+    };
+    assert_eq!(spawned_check_due(&released, &every(2, "day"), now), None);
+}

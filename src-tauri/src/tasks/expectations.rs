@@ -401,9 +401,9 @@ pub async fn update_expectation(
 /// Completes the current check on a wait: records `at` as its last check, so the next falls due
 /// one interval later. The Expectation stays Pending, and nothing else is stored for the check.
 ///
-/// Refused when no check is due — no Check every, or the wait is no longer pending — since there
-/// was then no check task to complete, and reporting success for a gesture that aimed at nothing
-/// would hide a stale view.
+/// Refused when no check is due — no Check every, the wait no longer pending and live, or its next
+/// check not come round yet — since there was then no check task to complete, and reporting success
+/// for a gesture that aimed at nothing would hide a stale view.
 #[tracing::instrument(skip(db))]
 pub async fn complete_expectation_check(
     db: &mut Db<Transactional>,
@@ -411,7 +411,9 @@ pub async fn complete_expectation_check(
     at: NaiveDateTime,
 ) -> Result<Expectation, TaskError> {
     let stored = db.expectations().get(id).await?;
-    if stored.check_every.is_none() || stored.status != ExpectationStatus::Pending {
+    // Refused unless a check is due now: completing one that has not come round yet would push the
+    // schedule on without anyone having looked.
+    if !super::waits::stored_check_due(&stored).is_some_and(|due| super::waits::is_due(due, at)) {
         return Err(TaskError::NoCheckDue);
     }
     db.expectations().set_last_check(id, at).await?;

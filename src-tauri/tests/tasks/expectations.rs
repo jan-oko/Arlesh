@@ -190,7 +190,15 @@ async fn completing_a_check_records_it_and_moves_the_next_one_interval_on() {
     assert_eq!(checked.status, ExpectationStatus::Pending);
 
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
-    let windows = derive_wait_windows(&mut db).await.unwrap();
+    // Done on the 9th, the next is not due until the 12th: until then there is no check task.
+    assert!(derive_wait_windows(&mut db, at("2026-07-12T09:00:00"))
+        .await
+        .unwrap()
+        .expectation_checks
+        .is_empty());
+    let windows = derive_wait_windows(&mut db, at("2026-07-12T19:00:00"))
+        .await
+        .unwrap();
     let due = &windows.expectation_checks[0];
     assert_eq!(due.expectation_id, wait.id);
     let day = db.scopes().get(ScopeId(due.due.start_id)).await.unwrap();
@@ -214,7 +222,7 @@ async fn completing_a_check_records_it_and_moves_the_next_one_interval_on() {
     assert!(matches!(refused, Err(TaskError::NoCheckDue)));
     drop(db);
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
-    assert!(derive_wait_windows(&mut db)
+    assert!(derive_wait_windows(&mut db, at("2026-07-20T09:00:00"))
         .await
         .unwrap()
         .expectation_checks
@@ -529,4 +537,75 @@ async fn a_wait_whose_window_escapes_its_parents_is_refused() {
     )
     .await;
     assert!(matches!(refused, Err(TaskError::ScopeContainment(_))));
+}
+
+#[tokio::test]
+async fn no_check_task_exists_before_starting_and_none_can_be_completed() {
+    let pool = helpers::test_pool().await;
+    let project = make_project(&pool).await;
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    // "Tomorrow", as the editor sends it: the start of that Day, at the 02:00 boundary.
+    let wait = create_expectation(
+        &mut db,
+        CreateExpectationRequest {
+            title: "Reviewer replies".into(),
+            parent_type: "project".into(),
+            parent_id: project,
+            check_every: Some(every(2, "day")),
+            check_starting: Some(at("2026-07-20T02:00:00")),
+            time_scope: None,
+        },
+    )
+    .await
+    .unwrap();
+    db.commit().await.unwrap();
+
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
+    for before in ["2026-07-19T12:00:00", "2026-07-20T01:59:00"] {
+        assert!(
+            derive_wait_windows(&mut db, at(before))
+                .await
+                .unwrap()
+                .expectation_checks
+                .is_empty(),
+            "no check at {before}"
+        );
+    }
+    let windows = derive_wait_windows(&mut db, at("2026-07-20T02:00:00"))
+        .await
+        .unwrap();
+    let day = db
+        .scopes()
+        .get(ScopeId(windows.expectation_checks[0].due.start_id))
+        .await
+        .unwrap();
+    assert_eq!(day.start_date, "2026-07-20");
+    drop(db);
+
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    let early =
+        complete_expectation_check(&mut db, ExpectationId(wait.id), at("2026-07-19T12:00:00"))
+            .await;
+    assert!(matches!(early, Err(TaskError::NoCheckDue)));
+}
+
+#[tokio::test]
+async fn an_explicit_null_in_the_payload_stops_the_checks() {
+    let pool = helpers::test_pool().await;
+    let project = make_project(&pool).await;
+    let wait = expectation(&pool, "project", project, Some(every(3, "day"))).await;
+    // Exactly what the editor sends over IPC: the key present, its value null.
+    let request: UpdateExpectationRequest = serde_json::from_value(
+        serde_json::json!({ "title": "Reviewer replies", "check_every": null }),
+    )
+    .unwrap();
+    update(&pool, wait.id, request).await;
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
+    let read = db.expectations().get(ExpectationId(wait.id)).await.unwrap();
+    assert!(read.check_every.is_none());
+    assert!(derive_wait_windows(&mut db, at("2026-07-20T09:00:00"))
+        .await
+        .unwrap()
+        .expectation_checks
+        .is_empty());
 }

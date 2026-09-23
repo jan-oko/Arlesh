@@ -157,7 +157,7 @@ pub async fn derive_all_scope_lifecycles<M: SessionMode>(
     // the day its next check is due; `spawned_wait` and `spawned_check` do the same for the wait an
     // Asynchronous task's completion spawned, keyed by the task. A wait is never Missed, so a
     // passed window with the wait pending is Overdue.
-    let windows = super::waits::derive_wait_windows(db).await?;
+    let windows = super::waits::derive_wait_windows(db, now).await?;
     let checks: std::collections::HashMap<i64, TimeScope> = windows
         .expectation_checks
         .into_iter()
