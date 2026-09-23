@@ -248,6 +248,9 @@ export interface MindmapNode {
   /** Present on an Expectation's virtual **check task** — a `task`-kind node with no row. Completing
    * it clears the check-by of the Expectation named here and stores nothing else. */
   expectationCheck?: { expectationId: number };
+  /** The stored Expectations this Task depends on, by row id (Tasks only) — what "has no
+   * Expectation yet" is asked of when an asynchronous Task is finished. */
+  expectationDependencyIds?: number[];
   /** Present on the virtual Expectation a **delegated** Task waits on: the Task it belongs to. It
    * has no row, and it is released only by the Task being done — never by hand. */
   delegationWait?: { taskId: number };

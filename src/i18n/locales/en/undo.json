@@ -27,6 +27,7 @@
     "editGoal": "edit a goal",
     "editCommitment": "edit a commitment",
     "editProject": "edit a project",
-    "archiveAndNew": "archive a habit and start a new one"
+    "archiveAndNew": "archive a habit and start a new one",
+    "nameWait": "name what a task is waiting on"
   }
 }

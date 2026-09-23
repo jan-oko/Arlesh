@@ -5,7 +5,7 @@ import BlockReasonsField from "@/components/BlockReasonsField/BlockReasonsField"
 import TagPicker from "@/components/TagPicker/TagPicker";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { entityNodeId } from "@/utils/tree-layout";
-import { EXPECTATION_STATUS } from "@/api/expectations";
+import { EXPECTATION_STATUS } from "@/api/expectation-status";
 import type { Domain } from "@/api/domains";
 import type { Delegate, Dependency, TaskAgentic, TaskArchival } from "@/api/tasks";
 import { TASK_AGENTIC, TASK_ARCHIVAL } from "@/api/tasks";

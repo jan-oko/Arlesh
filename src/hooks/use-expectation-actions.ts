@@ -2,7 +2,8 @@ import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { rowIdOf } from "@/utils/node-identity";
-import { clearExpectationCheckBy, updateExpectation, EXPECTATION_STATUS } from "@/api/expectations";
+import { clearExpectationCheckBy, updateExpectation } from "@/api/expectations";
+import { EXPECTATION_STATUS } from "@/api/expectation-status";
 import { getErrorMessage } from "@/api/errors";
 
 interface Options {

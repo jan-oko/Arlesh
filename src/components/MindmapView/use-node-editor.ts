@@ -6,7 +6,8 @@ import type { TaskSaveData } from "@/components/TaskEditorModal/TaskEditorModal"
 import type { GoalSaveData } from "@/components/GoalEditorModal/GoalEditorModal";
 import type { CommitmentSaveData } from "@/components/CommitmentEditorModal/CommitmentEditorModal";
 import type { ExpectationSaveData } from "@/components/ExpectationEditorModal/ExpectationEditorModal";
-import { updateExpectation, EXPECTATION_ARCHIVAL } from "@/api/expectations";
+import { updateExpectation } from "@/api/expectations";
+import { EXPECTATION_ARCHIVAL } from "@/api/expectation-status";
 import type { ProjectSaveData } from "@/components/ProjectEditorModal/ProjectEditorModal";
 import type { InfoSaveData } from "@/components/InfoEditorModal/InfoEditorModal";
 import { updateInfo } from "@/api/infos";
@@ -164,7 +165,13 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
       // A virtual Habit instance isn't backed by a real Task/Goal row — its Time Scope is derived
       // from the flow's Duration kind and the item's Cycle, not independently editable — and
       // it has no `rowId` for `onTaskSave`/`onGoalSave` to write to (`rowIdOf` would throw). It stays read-only here; only `onStatusClick` may mutate it.
-      if (node === undefined || node.kind === "aspect" || node.habitItem !== undefined) return;
+      if (node === undefined || node.kind === "aspect") return;
+      // Refused out loud, not by an inert key: `E` on a commitment Habit's iteration in the List
+      // View looked like a dead key (Arlesh-bzn), because this guard returned without a word.
+      if (node.habitItem !== undefined) {
+        showToast({ nodeId, message: t("editRepetitionRefused") });
+        return;
+      }
       // A derived wait has no row of its own to edit, so the editor that owns what it draws opens
       // instead: a check task's check-by is its Expectation's, and a delegated Task's wait is the
       // Task's own — rather than a key that does nothing.
@@ -176,7 +183,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
       if (owner === undefined) return;
       setEditorModal({ nodeId: owner.id, node: owner });
     },
-    [tree],
+    [tree, showToast, t],
   );
 
   const onTaskSave = useCallback(

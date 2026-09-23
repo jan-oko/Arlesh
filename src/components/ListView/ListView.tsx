@@ -11,11 +11,12 @@ import { canParentNewTask } from "@/utils/node-meta";
 import { storedAgenticState } from "@/utils/agentic";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useListFilterStore } from "@/stores/use-list-filter-store";
-import { filterCommitmentList, filterTaskListWithFocus } from "@/utils/list-filter";
+import { filterCommitmentList, filterExpectationList, filterTaskListWithFocus } from "@/utils/list-filter";
 import type { StatusMode } from "@/utils/filter-tree";
 import type { MindmapNode } from "@/utils/tree-layout";
-import { groupRowsByPath } from "@/utils/list-data";
-import { withAsynchronousSection } from "@/utils/async-first";
+import type { MixedListRow } from "@/utils/list-data";
+import { groupMixedRowsByPath, mergeInTreeOrder, preOrderIndex } from "@/utils/list-data";
+import { withAsynchronousSectionMixed } from "@/utils/async-first";
 import { collectSearchableNodes } from "@/utils/mindmap-tree";
 import { useNodeEditor } from "@/components/MindmapView/use-node-editor";
 import { BEADS_NODE_TYPE } from "@/api/beads";
@@ -23,9 +24,12 @@ import { useKeyboardListView } from "./use-keyboard-list-view";
 import { useUndo } from "@/hooks/use-undo";
 import TaskEditorModal from "@/components/TaskEditorModal/TaskEditorModal";
 import CommitmentEditorModal from "@/components/CommitmentEditorModal/CommitmentEditorModal";
+import ExpectationEditorModal from "@/components/ExpectationEditorModal/ExpectationEditorModal";
+import AsyncExpectationOffer from "@/components/ExpectationEditorModal/AsyncExpectationOffer";
 import NodeSearchModal from "@/components/NodeSearchModal/NodeSearchModal";
 import TaskRow from "./TaskRow";
 import CommitmentRow from "./CommitmentRow";
+import ExpectationRow from "./ExpectationRow";
 import PathHeaderRow from "./PathHeaderRow";
 import AnchoredToast from "@/components/AnchoredToast/AnchoredToast";
 import BacklogConfirmModal from "@/components/BacklogConfirmModal/BacklogConfirmModal";
@@ -43,7 +47,8 @@ import { useDisplayStore } from "@/stores/use-display-store";
 
 export default function ListView() {
   const { t } = useTranslation(["common", "listView", "editor"]);
-  const { tree, rows, commitmentRows, allTasksAndGoals, isLoading, error, reload, onCycleStatus, renameNode,
+  const { tree, rows, commitmentRows, expectationRows, listRoot: flattenRoot, toggleRelease, completeCheck,
+    allTasksAndGoals, isLoading, error, reload, onCycleStatus, renameNode,
     createTask, deleteTask, removeNode,
     occurrencePrompt, confirmOccurrence, cancelOccurrence } = useListData();
 
@@ -59,6 +64,8 @@ export default function ListView() {
   const searchOpen = useMindmapStore((s) => s.searchOpen);
   const closeSearch = useMindmapStore((s) => s.closeSearch);
   const asynchronousFirst = useDisplayStore((s) => s.asynchronousFirst);
+  // Bands above the rows, or rows among them — for Commitments and Expectations together.
+  const listBands = useDisplayStore((s) => s.listBands);
   // Publishes the tab's subtree descriptor for the top bar; the exits themselves are global
   // bindings now and are driven from `ActiveTab`.
   const { subtreeRootId } = useSubtreeNav(tree);
@@ -70,7 +77,7 @@ export default function ListView() {
 
   const {
     editorModal, setEditorModal, allTags, domainNames, availableForDep, onDoubleClick,
-    onTaskSave, onCommitmentSave, onClearBeadsId, checkScopeClamp,
+    onTaskSave, onCommitmentSave, onExpectationSave, onClearBeadsId, checkScopeClamp,
   } = useNodeEditor({ tree, allTasksAndGoals, reload });
 
   // One selection across both sections: a row is a Task or a Commitment, and which it is decides
@@ -95,7 +102,7 @@ export default function ListView() {
     reload,
     showToast,
   });
-  const { markKept, markBroken, cycleVerdict } = useCommitmentVerdict({
+  const { markBroken, cycleVerdict } = useCommitmentVerdict({
     findNode: (id) => findNode(tree, id),
     reload,
     showToast,
@@ -132,24 +139,42 @@ export default function ListView() {
     () => filterCommitmentList(commitmentRows, sharedFilter, listFilter),
     [commitmentRows, sharedFilter, listFilter],
   );
+  const filteredExpectations = useMemo(
+    () => filterExpectationList(expectationRows, sharedFilter, listFilter),
+    [expectationRows, sharedFilter, listFilter],
+  );
+  const treeOrder = useMemo(() => preOrderIndex(flattenRoot), [flattenRoot]);
+  // In band mode the Commitments and Expectations sit in their bands and the list below is task
+  // rows; in rows mode all three are merged back into the order the tree draws them, so a
+  // Commitment or a wait sits exactly where it hangs, under the same path headers.
+  const bandCommitments = listBands ? filteredCommitments : [];
+  const bandExpectations = listBands ? filteredExpectations : [];
   // Split first, then grouped: with the setting on, the asynchronous work is pulled out of the
   // filtered set before any header is drawn, so each half is grouped by path on its own terms — the
   // section's rows gain the parent they left behind as a header segment, and the rows left below
   // keep the header and indentation their remaining ancestors give them. With it off nothing is
   // pulled out and the list is exactly what the tree ordered.
-  const entries = useMemo(
-    () => (asynchronousFirst ? withAsynchronousSection(filteredRows) : groupRowsByPath(filteredRows)),
-    [filteredRows, asynchronousFirst],
-  );
-  const taskIds = useMemo(
-    () => entries.filter((entry) => entry.type === "task").map((entry) => entry.row.node.id),
+  const entries = useMemo(() => {
+    const taskRows: MixedListRow[] = filteredRows.map((row) => ({ type: "task", row }));
+    const mixed = listBands
+      ? taskRows
+      : mergeInTreeOrder([
+        ...taskRows,
+        ...filteredCommitments.map((row): MixedListRow => ({ type: "commitment", row })),
+        ...filteredExpectations.map((row): MixedListRow => ({ type: "expectation", row })),
+      ], treeOrder);
+    return asynchronousFirst ? withAsynchronousSectionMixed(mixed) : groupMixedRowsByPath(mixed);
+  }, [filteredRows, filteredCommitments, filteredExpectations, listBands, treeOrder, asynchronousFirst]);
+  const rowIds = useMemo(
+    () => entries.flatMap((entry) =>
+      entry.type === "task" || entry.type === "commitment" || entry.type === "expectation" ? [entry.row.node.id] : []),
     [entries],
   );
-  // Arrow keys run the commitments section first and the task rows after, in the order the two
-  // are drawn — the band across the top is not a separate keyboard world.
+  // Arrow keys run the bands first and the rows after, in the order they are drawn — a band
+  // across the top is not a separate keyboard world.
   const navigableIds = useMemo(
-    () => [...filteredCommitments.map((row) => row.node.id), ...taskIds],
-    [filteredCommitments, taskIds],
+    () => [...bandCommitments.map((row) => row.node.id), ...bandExpectations.map((row) => row.node.id), ...rowIds],
+    [bandCommitments, bandExpectations, rowIds],
   );
   // Derived rather than cleared via an effect: a stale selection (e.g. filtered out) just reads as none.
   const activeSelectedId =
@@ -158,6 +183,8 @@ export default function ListView() {
   const selectedCommitment = filteredCommitments.find((row) => row.node.id === activeSelectedId);
   const selectedTaskId = selectedRow !== undefined ? selectedRow.node.id : null;
   const selectedCommitmentId = selectedCommitment !== undefined ? selectedCommitment.node.id : null;
+  const selectedExpectation = filteredExpectations.find((row) => row.node.id === activeSelectedId);
+  const selectedExpectationId = selectedExpectation !== undefined ? selectedExpectation.node.id : null;
   const isSelectedBlocked = selectedRow !== undefined && selectedRow.isBlocked && selectedRow.node.habitItem === undefined;
 
   function handleNavigate(direction: 1 | -1) {
@@ -251,7 +278,12 @@ export default function ListView() {
     isInputActive: isInputCaptured || planPrompt !== null || occurrencePrompt !== null,
     selectedTaskId,
     selectedCommitmentId,
+    selectedExpectationId,
     selectedRowId: activeSelectedId,
+    isSelectedCheckTask: selectedRow?.node.expectationCheck !== undefined,
+    onToggleRelease: toggleRelease,
+    onCompleteCheck: completeCheck,
+    onSetExpectationsPreset: () => setListPreset("expectations"),
     onToggleFullscreen: toggleFullscreen,
     isSelectedBlocked,
     onNavigate: handleNavigate,
@@ -281,20 +313,37 @@ export default function ListView() {
     <div className={styles.container} ref={containerRef}>
       <AnchoredToast toast={pendingToast} onDismiss={clearToast} />
 
-      {filteredCommitments.length > 0 && (
+      {bandCommitments.length > 0 && (
         <section className={styles.commitments} aria-label={t("listView:commitmentsHeading")}>
           <h2 className={styles.commitmentsHeading}>{t("listView:commitmentsHeading")}</h2>
           <div className={styles.rows}>
-            {filteredCommitments.map((row) => (
+            {bandCommitments.map((row) => (
               <CommitmentRow
                 key={row.node.id}
                 row={row}
                 isSelected={row.node.id === activeSelectedId}
                 onSelect={setSelectedRowId}
-                onMarkKept={markKept}
-                onMarkBroken={markBroken}
+                onCycleVerdict={cycleVerdict}
                 onOpenEditor={onDoubleClick}
                 onAddTagFilter={addTagFilter}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {bandExpectations.length > 0 && (
+        <section className={styles.commitments} aria-label={t("listView:expectationsHeading")}>
+          <h2 className={styles.commitmentsHeading}>{t("listView:expectationsHeading")}</h2>
+          <div className={styles.rows}>
+            {bandExpectations.map((row) => (
+              <ExpectationRow
+                key={row.node.id}
+                row={row}
+                isSelected={row.node.id === activeSelectedId}
+                onSelect={setSelectedRowId}
+                onToggleRelease={toggleRelease}
+                onOpenEditor={onDoubleClick}
               />
             ))}
           </div>
@@ -334,6 +383,33 @@ export default function ListView() {
                   // already names the ancestors.
                   onFilterByAntecedent={(id, side) => setPillSide("antecedent", id, side)}
                   onCreateTask={headerCreateHandler(entry.segments)}
+                />
+              );
+            }
+            if (entry.type === "commitment") {
+              return (
+                <CommitmentRow
+                  key={entry.row.node.id}
+                  row={entry.row}
+                  visibleDepth={entry.visibleDepth}
+                  isSelected={entry.row.node.id === activeSelectedId}
+                  onSelect={setSelectedRowId}
+                  onCycleVerdict={cycleVerdict}
+                  onOpenEditor={onDoubleClick}
+                  onAddTagFilter={addTagFilter}
+                />
+              );
+            }
+            if (entry.type === "expectation") {
+              return (
+                <ExpectationRow
+                  key={entry.row.node.id}
+                  row={entry.row}
+                  visibleDepth={entry.visibleDepth}
+                  isSelected={entry.row.node.id === activeSelectedId}
+                  onSelect={setSelectedRowId}
+                  onToggleRelease={toggleRelease}
+                  onOpenEditor={onDoubleClick}
                 />
               );
             }
@@ -385,6 +461,15 @@ export default function ListView() {
           domainNames={domainNames}
           onSave={onCommitmentSave}
           onClearBeadsId={() => onClearBeadsId(BEADS_NODE_TYPE.COMMITMENT)}
+          onClose={() => setEditorModal(null)}
+        />
+      )}
+
+      <AsyncExpectationOffer tree={tree} reload={reload} />
+      {editorModal !== null && editorModal.node.kind === "expectation" && (
+        <ExpectationEditorModal
+          node={editorModal.node}
+          onSave={onExpectationSave}
           onClose={() => setEditorModal(null)}
         />
       )}

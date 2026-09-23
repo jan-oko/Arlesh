@@ -726,6 +726,7 @@ async fn a_copied_task_waits_on_the_same_things_the_original_waits_on() {
         .map(|dep| match dep {
             Dependency::Task { id } => ("task".to_string(), id),
             Dependency::Goal { id } => ("goal".to_string(), id),
+            Dependency::Expectation { id } => ("expectation".to_string(), id),
         })
         .collect();
     targets.sort();

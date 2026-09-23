@@ -1,13 +1,13 @@
 import type { TaskListRow } from "@/utils/list-filter";
-import type { ListRowEntry } from "@/utils/list-data";
-import { groupRowsByPath } from "@/utils/list-data";
+import type { ListRowEntry, MixedListRow } from "@/utils/list-data";
+import { groupMixedRowsByPath } from "@/utils/list-data";
 
 /** The filtered rows split in two, each still in the pre-order it arrived in. */
 interface AsynchronousSplit {
   /** Every asynchronous row, and everything hanging beneath one. */
-  lifted: TaskListRow[];
+  lifted: MixedListRow[];
   /** Everything else — the ordinary list, with the lifted rows taken out of it. */
-  remaining: TaskListRow[];
+  remaining: MixedListRow[];
 }
 
 /**
@@ -20,18 +20,21 @@ interface AsynchronousSplit {
  * ancestor chain is consulted rather than just the parent, so a descendant still follows its lifted
  * ancestor when the rows between them were filtered out.
  */
-function splitAsynchronous(rows: readonly TaskListRow[]): AsynchronousSplit {
+function splitAsynchronous(rows: readonly MixedListRow[]): AsynchronousSplit {
   const liftedIds = new Set<string>();
-  const lifted: TaskListRow[] = [];
-  const remaining: TaskListRow[] = [];
-  for (const row of rows) {
-    const ridesUp = row.isAsynchronous || row.ancestors.some((ancestor) => liftedIds.has(ancestor.id));
+  const lifted: MixedListRow[] = [];
+  const remaining: MixedListRow[] = [];
+  for (const mixed of rows) {
+    // Only a Task is asynchronous; a Commitment or an Expectation drawn as a row rides up only
+    // because it hangs under one that is.
+    const own = mixed.type === "task" && mixed.row.isAsynchronous;
+    const ridesUp = own || mixed.row.ancestors.some((ancestor) => liftedIds.has(ancestor.id));
     if (!ridesUp) {
-      remaining.push(row);
+      remaining.push(mixed);
       continue;
     }
-    liftedIds.add(row.node.id);
-    lifted.push(row);
+    liftedIds.add(mixed.row.node.id);
+    lifted.push(mixed);
   }
   return { lifted, remaining };
 }
@@ -63,11 +66,16 @@ function splitAsynchronous(rows: readonly TaskListRow[]): AsynchronousSplit {
  * overwrite an answer the user already gave.
  */
 export function withAsynchronousSection(rows: readonly TaskListRow[]): ListRowEntry[] {
+  return withAsynchronousSectionMixed(rows.map((row) => ({ type: "task" as const, row })));
+}
+
+/** {@link withAsynchronousSection} over rows of every kind the list draws among the tasks. */
+export function withAsynchronousSectionMixed(rows: readonly MixedListRow[]): ListRowEntry[] {
   const { lifted, remaining } = splitAsynchronous(rows);
-  if (lifted.length === 0) return groupRowsByPath(remaining);
-  const below = groupRowsByPath(remaining);
+  if (lifted.length === 0) return groupMixedRowsByPath(remaining);
+  const below = groupMixedRowsByPath(remaining);
   // The closing rule is what makes the section read as a block rather than as a heading with the
   // whole list under it. It is drawn only when there is a list below to be closed off from.
   const closing: ListRowEntry[] = below.length === 0 ? [] : [{ type: "asynchronousEnd" }];
-  return [{ type: "asynchronous" }, ...groupRowsByPath(lifted), ...closing, ...below];
+  return [{ type: "asynchronous" }, ...groupMixedRowsByPath(lifted), ...closing, ...below];
 }

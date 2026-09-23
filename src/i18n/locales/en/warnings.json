@@ -98,5 +98,6 @@
   "pasteSkippedDerivedWait_one": "{{count}} check task or delegated wait isn't a row of its own, so there is nothing to paste.",
   "pasteSkippedDerivedWait_other": "{{count}} check tasks or delegated waits aren't rows of their own, so there is nothing to paste.",
   "pasteSkippedExpectation_one": "{{count}} Expectation can't be copied — use cut to move it.",
-  "pasteSkippedExpectation_other": "{{count}} Expectations can't be copied — use cut to move them."
+  "pasteSkippedExpectation_other": "{{count}} Expectations can't be copied — use cut to move them.",
+  "editRepetitionRefused": "A Habit repetition has no editor of its own — open the Habit's template to change it."
 }

@@ -39,7 +39,12 @@ export function listKeyboardContext(overrides: Partial<ListOptions> = {}): ListO
     isInputActive: false,
     selectedTaskId: "task-1",
     selectedCommitmentId: null,
+    selectedExpectationId: null,
     selectedRowId: null,
+    isSelectedCheckTask: false,
+    onToggleRelease: vi.fn(),
+    onCompleteCheck: vi.fn(),
+    onSetExpectationsPreset: vi.fn(),
     isSelectedBlocked: false,
     onNavigate: vi.fn(),
     onScrollList: vi.fn(),
@@ -64,7 +69,7 @@ export function listKeyboardContext(overrides: Partial<ListOptions> = {}): ListO
   };
   return {
     ...merged,
-    selectedRowId: overrides.selectedRowId ?? merged.selectedTaskId ?? merged.selectedCommitmentId,
+    selectedRowId: overrides.selectedRowId ?? merged.selectedTaskId ?? merged.selectedCommitmentId ?? merged.selectedExpectationId,
   };
 }
 

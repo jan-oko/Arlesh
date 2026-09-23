@@ -5,7 +5,8 @@ import { createTask, updateTask, deleteTask, duplicateTask, TASK_ARCHIVAL } from
 import { createCommitment, updateCommitment, deleteCommitment, addTagToCommitment } from "@/api/commitments";
 import type { CommitmentSaveData } from "@/components/CommitmentEditorModal/CommitmentEditorModal";
 import type { Commitment } from "@/api/commitments";
-import { createExpectation, updateExpectation, deleteExpectation, EXPECTATION_STATUS, EXPECTATION_ARCHIVAL } from "@/api/expectations";
+import { createExpectation, updateExpectation, deleteExpectation } from "@/api/expectations";
+import { EXPECTATION_STATUS, EXPECTATION_ARCHIVAL } from "@/api/expectation-status";
 import type { Expectation } from "@/api/expectations";
 import { checkTaskNodeId, delegationWaitNodeId, expectationNodeId } from "@/utils/node-uuid";
 import type { Verdict } from "@/api/verdict";
@@ -896,6 +897,7 @@ export function buildTree(
     const node = nodeMap.get(`task-${dep.task_id}`);
     if (node === undefined) continue;
     if (dep.dependency_type === "expectation") {
+      node.expectationDependencyIds = [...(node.expectationDependencyIds ?? []), dep.dependency_id];
       const target = expectationById.get(dep.dependency_id);
       if (target !== undefined && target.status === EXPECTATION_STATUS.PENDING) {
         node.virtualBlockers?.push(`Blocked by expectation ${dep.dependency_id} (${target.title})`);

@@ -114,26 +114,44 @@ export function flattenExpectationRows(root: MindmapNode): ExpectationListRow[] 
   return rows;
 }
 
-/** One rendered List View entry: a **path header** naming a run's location, a task row carrying the
+/** A path header: the ancestors a run of rows hangs from that are not rows themselves. */
+export interface PathEntry { type: "path"; pathKey: string; segments: MindmapNode[] }
+/** A task row, with the depth it is indented to. */
+export interface TaskEntry { type: "task"; row: TaskListRow; visibleDepth: number }
+/** A Commitment drawn as a row among the tasks (rows mode). */
+export interface CommitmentEntry { type: "commitment"; row: CommitmentListRow; visibleDepth: number }
+/** An Expectation drawn as a row among the tasks (rows mode). */
+export interface ExpectationEntry { type: "expectation"; row: ExpectationListRow; visibleDepth: number }
+
+/** One rendered List View entry: a **path header** naming a run's location, a row carrying the
  * depth it is indented to, or one of the two markers that bracket the **Asynchronous section**.
  * Header and depth partition a row's ancestors — the header names every ancestor *not* rendered as
  * a row above it, the depth counts every ancestor that *is* — so the list never implies a parent
  * that is not on screen.
  *
- * The two section markers carry nothing, and are drawn at most once each: `asynchronous` is the
- * heading that opens the section at the very top of the list, `asynchronousEnd` the rule that
- * closes it off from the ordinary list below. They are markers in the stream rather than a wrapper
- * around one, for the same reason a path header is: the list is one flat run of rows, and the
- * keyboard walks it in exactly the order it is drawn (see `withAsynchronousSection`). */
+ * A row is a Task, or — when Commitments and Expectations are drawn as rows rather than in bands —
+ * one of those. The two section markers carry nothing, and are drawn at most once each:
+ * `asynchronous` is the heading that opens the section at the very top of the list,
+ * `asynchronousEnd` the rule that closes it off from the ordinary list below. They are markers in
+ * the stream rather than a wrapper around one, for the same reason a path header is: the list is
+ * one flat run of rows, and the keyboard walks it in exactly the order it is drawn (see
+ * `withAsynchronousSection`). */
 export type ListRowEntry =
-  | { type: "path"; pathKey: string; segments: MindmapNode[] }
-  | { type: "task"; row: TaskListRow; visibleDepth: number }
+  | PathEntry | TaskEntry | CommitmentEntry | ExpectationEntry
   | { type: "asynchronous" }
   | { type: "asynchronousEnd" };
 
-/** What path grouping alone can produce. The section markers are the caller's to add, so saying so
- * in the type keeps every reader of a grouped run from having to rule them out. */
-export type PathGroupedEntry = Exclude<ListRowEntry, { type: "asynchronous" } | { type: "asynchronousEnd" }>;
+/** What path grouping of task rows alone can produce. */
+export type PathGroupedEntry = PathEntry | TaskEntry;
+
+/** What path grouping of mixed rows can produce. */
+export type MixedGroupedEntry = PathEntry | TaskEntry | CommitmentEntry | ExpectationEntry;
+
+/** One row of any kind the list can draw among the tasks, tagged with which it is. */
+export type MixedListRow =
+  | { type: "task"; row: TaskListRow }
+  | { type: "commitment"; row: CommitmentListRow }
+  | { type: "expectation"; row: ExpectationListRow };
 
 /** Identity of a path: the ancestors it names, in order. Empty for a row with nothing above it. */
 function pathKeyOf(segments: readonly MindmapNode[]): string {
@@ -142,24 +160,54 @@ function pathKeyOf(segments: readonly MindmapNode[]): string {
 
 /**
  * Inserts a path header immediately before the first row of each contiguous run sharing the same
- * path. Rows arrive from flattenTaskRows in tree pre-order, so rows sharing a path are already
- * contiguous — no sort or grouping pass is needed.
+ * path. Rows arrive in tree pre-order, so rows sharing a path are already contiguous — no sort or
+ * grouping pass is needed.
  *
  * A row's path is every ancestor the caller did not give us as a row: Goals, Projects, Domains and
- * Aspects always (they are never List View rows), plus any ancestor Task the active filter hid. What
+ * Aspects always (they are never List View rows), plus any ancestor row the active filter hid. What
  * the header leaves out is exactly what the indentation shows, so the two never repeat each other.
- * A run with an empty path — a task with no ancestors — gets no header rather than a blank one.
+ * A run with an empty path — a row with no ancestors — gets no header rather than a blank one.
  */
-export function groupRowsByPath(rows: readonly TaskListRow[]): PathGroupedEntry[] {
-  const rowIds = new Set(rows.map((row) => row.node.id));
-  const entries: PathGroupedEntry[] = [];
+export function groupMixedRowsByPath(rows: readonly MixedListRow[]): MixedGroupedEntry[] {
+  const rowIds = new Set(rows.map((mixed) => mixed.row.node.id));
+  const entries: MixedGroupedEntry[] = [];
   let lastPathKey: string | null = null;
-  for (const row of rows) {
-    const segments = row.ancestors.filter((ancestor) => !rowIds.has(ancestor.id));
+  for (const mixed of rows) {
+    const segments = mixed.row.ancestors.filter((ancestor) => !rowIds.has(ancestor.id));
     const pathKey = pathKeyOf(segments);
     if (segments.length > 0 && pathKey !== lastPathKey) entries.push({ type: "path", pathKey, segments });
     lastPathKey = pathKey;
-    entries.push({ type: "task", row, visibleDepth: row.ancestors.length - segments.length });
+    const visibleDepth = mixed.row.ancestors.length - segments.length;
+    entries.push({ ...mixed, visibleDepth });
   }
   return entries;
+}
+
+/** {@link groupMixedRowsByPath} over task rows alone — what a task-only list draws. */
+export function groupRowsByPath(rows: readonly TaskListRow[]): PathGroupedEntry[] {
+  return groupMixedRowsByPath(rows.map((row) => ({ type: "task" as const, row })))
+    .filter((entry): entry is PathGroupedEntry => entry.type === "path" || entry.type === "task");
+}
+
+/**
+ * Merges rows of every kind into the order the tree draws them in — the pre-order `order` gives
+ * each node id — so a Commitment or an Expectation drawn as a row sits exactly where it hangs.
+ */
+export function mergeInTreeOrder(
+  rows: readonly MixedListRow[],
+  order: ReadonlyMap<string, number>,
+): MixedListRow[] {
+  const rank = (mixed: MixedListRow): number => order.get(mixed.row.node.id) ?? Number.MAX_SAFE_INTEGER;
+  return [...rows].sort((a, b) => rank(a) - rank(b));
+}
+
+/** Every node id under `root`, numbered in pre-order — the order the tree, and so the list, draws. */
+export function preOrderIndex(root: MindmapNode): Map<string, number> {
+  const order = new Map<string, number>();
+  function visit(node: MindmapNode): void {
+    order.set(node.id, order.size);
+    for (const child of node.children) visit(child);
+  }
+  visit(root);
+  return order;
 }

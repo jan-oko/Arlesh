@@ -1,21 +1,6 @@
 import { invoke } from "./gesture";
 import type { TimeScope } from "@/api/time-scope";
-
-/** Where a wait stands: still waited on, or over. Released is what unblocks dependents. */
-export const EXPECTATION_STATUS = {
-  PENDING: "pending",
-  RELEASED: "released",
-} as const;
-
-export type ExpectationStatus = (typeof EXPECTATION_STATUS)[keyof typeof EXPECTATION_STATUS];
-
-/** Whether it is still in play — the usual archive, independent of the status. */
-export const EXPECTATION_ARCHIVAL = {
-  LIVE: "live",
-  ARCHIVED: "archived",
-} as const;
-
-export type ExpectationArchival = (typeof EXPECTATION_ARCHIVAL)[keyof typeof EXPECTATION_ARCHIVAL];
+import type { ExpectationArchival, ExpectationStatus } from "@/api/expectation-status";
 
 /**
  * A **wait**: something outside your own action you are waiting on to be released. Tasks can

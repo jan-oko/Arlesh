@@ -62,6 +62,7 @@
   "toggleFullscreen": "Show the board alone (hide the tabs and top bar)",
   "statusBacklog": "Status preset: Backlog",
   "statusUnblock": "Status preset: Unblock (blocked tasks only, List View)",
+  "statusExpectations": "Status preset: Expectations (pending waits only, List View)",
   "toggleBacklog": "Put in / take out of the backlog",
   "toggleAgentic": "Mark Agentic / Not agentic",
   "toggleAsynchronous": "Mark Asynchronous / Not asynchronous",

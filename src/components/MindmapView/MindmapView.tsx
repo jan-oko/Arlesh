@@ -43,6 +43,7 @@ import TaskEditorModal from "@/components/TaskEditorModal/TaskEditorModal";
 import GoalEditorModal from "@/components/GoalEditorModal/GoalEditorModal";
 import CommitmentEditorModal, { type CommitmentSaveData } from "@/components/CommitmentEditorModal/CommitmentEditorModal";
 import ExpectationEditorModal from "@/components/ExpectationEditorModal/ExpectationEditorModal";
+import AsyncExpectationOffer from "@/components/ExpectationEditorModal/AsyncExpectationOffer";
 import CommitmentScopePrompt from "@/components/CommitmentScopePrompt/CommitmentScopePrompt";
 import TitleEditorModal from "@/components/TitleEditorModal/TitleEditorModal";
 import ProjectEditorModal from "@/components/ProjectEditorModal/ProjectEditorModal";
@@ -702,6 +703,7 @@ export default function MindmapView() {
       {editorModal !== null && editorModal.node.kind === "commitment" && (
         <CommitmentEditorModal node={editorModal.node} allTags={allTags} domainNames={domainNames} onSave={onCommitmentSave} onClearBeadsId={() => onClearBeadsId(BEADS_NODE_TYPE.COMMITMENT)} onClose={() => setEditorModal(null)} />
       )}
+      <AsyncExpectationOffer tree={tree} reload={reload} />
       {editorModal !== null && editorModal.node.kind === "expectation" && (
         <ExpectationEditorModal node={editorModal.node} onSave={onExpectationSave} onClose={() => setEditorModal(null)} />
       )}

@@ -3,9 +3,11 @@ import { useTranslation } from "react-i18next";
 import type { CommitmentListRow } from "@/utils/list-filter";
 import { deriveStatusIndicators } from "@/utils/node-status-indicators";
 import { computeNodeAppearance } from "@/utils/node-visuals";
+import { commitmentGlyphState } from "@/utils/commitment-glyph";
+import { isRtlText } from "@/utils/text-direction";
 import { useTagNames } from "@/hooks/use-tag-names";
 import { VERDICT } from "@/api/verdict";
-import VerdictIcon from "@/components/StatusIcons/VerdictIcon";
+import CommitmentIcon from "@/components/NodeIcon/CommitmentIcon";
 import TaskRowBadges from "./TaskRowBadges";
 import taskStyles from "./TaskRow.module.css";
 import styles from "./CommitmentRow.module.css";
@@ -14,24 +16,26 @@ const ICON_R = 10;
 
 interface Props {
   row: CommitmentListRow;
+  /** Indentation, when drawn among the task rows; 0 in the band. */
+  visibleDepth?: number;
   isSelected: boolean;
   onSelect: (nodeId: string) => void;
-  onMarkKept: (nodeId: string) => void;
-  onMarkBroken: (nodeId: string) => void;
+  /** Advances the verdict one step: Unresolved → Kept → Broken → Unresolved. */
+  onCycleVerdict: (nodeId: string) => void;
   onOpenEditor: (nodeId: string) => void;
   onAddTagFilter: (tagId: number) => void;
 }
 
 /**
- * One Commitment, in the section above the task rows.
+ * One Commitment, in its band or among the task rows — drawn and worked exactly like a task row.
  *
- * Two controls, a tick and a cross, rather than the task row's single cycling status control.
- * The two outcomes are visibly equal and sit side by side, so recording Broken is a deliberate
- * press rather than one step past Kept — and pressing the control that is already lit clears the
- * verdict, which is how a misclick is taken back.
+ * The status control is the node's own glyph, as a task row's is, and a click on it cycles the
+ * verdict the way Enter does. The band once drew two controls, a tick and a cross, to make the two
+ * outcomes look equal; the user asked for one consistent row control instead, so a Commitment reads
+ * and works like every other row, and `X` remains the one-press route to Broken.
  */
 export default function CommitmentRow({
-  row, isSelected, onSelect, onMarkKept, onMarkBroken, onOpenEditor, onAddTagFilter,
+  row, visibleDepth = 0, isSelected, onSelect, onCycleVerdict, onOpenEditor, onAddTagFilter,
 }: Props) {
   const { t } = useTranslation("listView");
   const tagNames = useTagNames();
@@ -39,54 +43,39 @@ export default function CommitmentRow({
   const verdict = node.verdict ?? VERDICT.UNRESOLVED;
 
   const { fillColor, fillOpacity } = computeNodeAppearance(node, row.ancestors.length);
-  const cardStyle: CSSProperties & Record<`--card-tint${string}`, string | number> = {
+  const cardStyle: CSSProperties & Record<`--${string}`, string | number> = {
     "--card-tint": fillColor,
     "--card-tint-opacity": fillOpacity,
+    "--row-depth": visibleDepth,
   };
-
-  const control = (
-    pressed: typeof VERDICT.KEPT | typeof VERDICT.BROKEN,
-    onPress: (nodeId: string) => void,
-  ) => {
-    const active = verdict === pressed;
-    return (
-      <button
-        type="button"
-        className={`${styles.verdictButton}${active ? ` ${styles.verdictButtonActive}` : ""}`}
-        aria-pressed={active}
-        aria-label={active ? t("clearVerdict") : t(pressed === VERDICT.KEPT ? "markKept" : "markBroken")}
-        onClick={(e) => { e.stopPropagation(); onPress(node.id); }}
-      >
-        <svg width={ICON_R * 2} height={ICON_R * 2} viewBox={`0 0 ${ICON_R * 2} ${ICON_R * 2}`} aria-hidden="true">
-          <VerdictIcon
-            cx={ICON_R}
-            cy={ICON_R}
-            r={ICON_R * 0.9}
-            color={pressed === VERDICT.BROKEN ? "var(--danger)" : "var(--text-primary)"}
-            verdict={pressed}
-          />
-        </svg>
-      </button>
-    );
-  };
+  const indentClass = isRtlText(node.title) ? taskStyles.indentRtl : taskStyles.indentLtr;
 
   return (
     <div
       className={
-        `${taskStyles.card}${isSelected ? ` ${taskStyles.cardSelected}` : ""}` +
+        `${taskStyles.card} ${indentClass}${isSelected ? ` ${taskStyles.cardSelected}` : ""}` +
         (verdict === VERDICT.UNRESOLVED ? ` ${styles.unjudged}` : "")
       }
-      // Same marker the task rows carry: the commitments band scrolls in the same container, so a
-      // selected Commitment is brought into view by exactly the same code.
+      // Same marker the task rows carry, so a selected Commitment is scrolled into view by the
+      // same code.
       data-row-id={node.id}
       style={cardStyle}
       onClick={() => onSelect(node.id)}
       onDoubleClick={() => onOpenEditor(node.id)}
     >
-      <div className={styles.verdictControls}>
-        {control(VERDICT.KEPT, onMarkKept)}
-        {control(VERDICT.BROKEN, onMarkBroken)}
-      </div>
+      <button
+        type="button"
+        className={taskStyles.statusButton}
+        aria-label={t("cycleVerdict")}
+        onClick={(e) => { e.stopPropagation(); onSelect(node.id); onCycleVerdict(node.id); }}
+      >
+        <svg width={ICON_R * 2} height={ICON_R * 2} viewBox={`0 0 ${ICON_R * 2} ${ICON_R * 2}`} aria-hidden="true">
+          <CommitmentIcon
+            cx={ICON_R} cy={ICON_R} r={ICON_R * 0.9} color="var(--text-primary)" opacity={1}
+            state={commitmentGlyphState(node.verdict, node.archived === true)}
+          />
+        </svg>
+      </button>
 
       <div className={taskStyles.main}>
         <div className={taskStyles.titleRow}>
