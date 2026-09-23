@@ -1,9 +1,10 @@
 use crate::helpers;
 
 use arlesh_lib::flows::{
-    convert_flow_item, convert_to_flow, delete_flow, duplicate_flow, duplicate_flow_item,
+    archive_and_fork, convert_flow_item, convert_to_flow, delete_flow, duplicate_flow,
+    duplicate_flow_item,
     error::FlowError,
-    archive_and_fork, fork_flow, generate_habit_iterations,
+    fork_flow, generate_habit_iterations,
     model::{
         BlockingMode, CatchupPolicy, ConsumptionKind, CreateFlowItemRequest, CreateFlowRequest,
         Flow, FlowCycleInput, FlowId, FlowItemType, HabitInstanceRef, InstanceTiming, InstanceType,
@@ -5661,6 +5662,9 @@ async fn archive_and_fork_stops_the_original_recurring() {
         db.commit().await.unwrap();
         iterations
     };
-    let anchors: Vec<_> = iterations.iter().map(|it| it.anchor_date.as_str()).collect();
+    let anchors: Vec<_> = iterations
+        .iter()
+        .map(|it| it.anchor_date.as_str())
+        .collect();
     assert_eq!(anchors, vec!["2026-01-04", "2026-01-11", "2026-01-18"]);
 }
