@@ -2,10 +2,11 @@ import type { MindmapNode } from "@/utils/tree-layout";
 import type { FilterState, TagFilterMode } from "@/utils/filter-tree";
 import {
   typeHardHidden, passesTags, withArchivedOverride, isShelvedProject, isHiddenBacklog,
-  isUnopenedOccurrence, passesCommitmentPreset,
+  isUnopenedOccurrence, passesCommitmentPreset, isPlannedAhead,
 } from "@/utils/filter-tree";
 import { TASK_STATUS, GOAL_STATUS, PROJECT_STATUS } from "@/utils/status-mapping";
 import type { Verdict } from "@/api/verdict";
+import type { Timing } from "@/api/scope-lifecycle";
 import { VERDICT, VERDICT_VALUES } from "@/api/verdict";
 
 /** Same any/all/exclude semantics as a tag filter, reused across every List View filter dimension. */
@@ -266,6 +267,15 @@ function hasGatingAncestor(ancestors: readonly MindmapNode[], f: FilterState): b
   return ancestors.some((a) => isShelvedProject(a, f) || isHiddenBacklog(a, f) || isUnopenedOccurrence(a, f));
 }
 
+/** The nearest ancestor's own Plan position — what an unplanned row inherits under Start. */
+function inheritedPlan(ancestors: readonly MindmapNode[]): Timing | undefined {
+  for (let index = ancestors.length - 1; index >= 0; index -= 1) {
+    const plan = ancestors[index]?.planTiming;
+    if (plan !== undefined) return plan;
+  }
+  return undefined;
+}
+
 /** Task-only status-preset predicate (List View rows are always tasks, so no container logic is
  * needed here, unlike the Mindmap's passesStatus). Mirrors filter-tree.ts's task branches — including
  * its effective-Archival clause, so a lapsed task archives out of Plan here exactly as it does on the
@@ -280,6 +290,8 @@ function passesListPreset(row: TaskListRow, f: FilterState): boolean {
       return withArchivedOverride(row.node, f, row.node.status !== "done" && row.node.archived !== true);
     case "start": {
       if (row.isBlocked || row.hasBlockedAncestor) return false;
+      // A flat list has no walk to carry a Plan down, so the row asks its own chain.
+      if (isPlannedAhead(row.node, f, inheritedPlan(row.ancestors))) return false;
       if (row.node.timing === "lapsed") return withArchivedOverride(row.node, f, false);
       if (row.node.status === "done") return false;
       if (row.node.status === "in_progress" && !row.node.children.some((c) => c.kind === "task" && c.status === "todo")) {
