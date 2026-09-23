@@ -412,7 +412,9 @@ async fn retyping_a_task_to_a_project_drops_its_task_only_fields_and_ends_both_d
         &mut db,
         TaskId(task.id),
         UpdateTaskRequest {
-            delegate_to: Some(Some(person_id)),
+            delegate_to: Some(Some(arlesh_lib::tasks::model::Delegate::Person {
+                id: person_id,
+            })),
             is_private: Some(true),
             ..Default::default()
         },
@@ -658,7 +660,9 @@ async fn retyping_a_task_to_a_goal_carries_its_tags_and_reasons_and_repoints_wha
         &mut db,
         TaskId(task.id),
         UpdateTaskRequest {
-            delegate_to: Some(Some(person_id)),
+            delegate_to: Some(Some(arlesh_lib::tasks::model::Delegate::Person {
+                id: person_id,
+            })),
             ..Default::default()
         },
     )
