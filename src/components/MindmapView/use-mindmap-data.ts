@@ -10,7 +10,8 @@ import { createExpectation, updateExpectation, deleteExpectation } from "@/api/e
 import { EXPECTATION_STATUS, EXPECTATION_ARCHIVAL } from "@/api/expectation-status";
 import type { Expectation, ExpectationCheck, SpawnedWaitView } from "@/api/expectations";
 import {
-  checkTaskNodeId, delegationWaitNodeId, expectationNodeId, spawnedCheckNodeId, spawnedWaitNodeId,
+  checkTaskNodeId, delegationWaitNodeId, doneCheckNodeId, expectationNodeId, spawnedCheckNodeId,
+  spawnedWaitNodeId,
 } from "@/utils/node-uuid";
 import type { Verdict } from "@/api/verdict";
 import { VERDICT } from "@/api/verdict";
@@ -731,13 +732,19 @@ function toCyclePair(cycle: FlowItemCycle): FlowCyclePair {
   };
 }
 
-/** A wait's virtual "check on it" task, due on `due`. It has no row. */
-function checkTaskNode(id: string, title: string, due: TimeScope, wait: WaitRef, isPrivate: boolean): MindmapNode {
+/**
+ * A wait's virtual "check on it" task, due on `due`. It has no row. A completed one (`dueAt`
+ * given) stays as a done task, carrying the instant it fell due so it can be reopened.
+ */
+function checkTaskNode(
+  id: string, title: string, due: TimeScope, wait: WaitRef, isPrivate: boolean, doneDueAt?: string,
+): MindmapNode {
   return {
     id,
     kind: "task",
     title,
-    status: TASK_STATUS.TODO,
+    status: doneDueAt === undefined ? TASK_STATUS.TODO : TASK_STATUS.DONE,
+    ...(doneDueAt !== undefined ? { checkDueAt: doneDueAt } : {}),
     timeScope: due,
     onScopeExit: "keep",
     virtual: true,
@@ -860,7 +867,8 @@ export function buildTree(
   }
 
   const taskById = new Map(tasks.map((t) => [t.id, t]));
-  const checkDue = new Map(expectationChecks.map((check) => [check.expectation_id, check.due]));
+  const checkDue = new Map(expectationChecks.flatMap((check) =>
+    check.resolved_at === undefined ? [[check.expectation_id, check.due] as const] : []));
   for (const expectation of expectations) {
     const id = expectationNodeId(expectation.id);
     const node: MindmapNode = {
@@ -881,10 +889,18 @@ export function buildTree(
     // While a check is due, a virtual "check on it" Task hangs beneath the wait, drawn on the day
     // it is due. Nothing stores it; completing it records the check and nothing else.
     const due = checkDue.get(expectation.id);
+    const ref: WaitRef = { kind: "stored", expectationId: expectation.id };
+    // Every completed check stays as a done check task; the presets that hide done work hide it.
+    for (const done of expectationChecks) {
+      if (done.expectation_id !== expectation.id || done.resolved_at === undefined) continue;
+      node.children.push(checkTaskNode(
+        doneCheckNodeId(ref, done.due_at), checkTitle(expectation.title), done.due, ref,
+        expectation.is_private, done.due_at,
+      ));
+    }
     if (due !== undefined) {
       node.children.push(checkTaskNode(
-        checkTaskNodeId(expectation.id), checkTitle(expectation.title), due, { kind: "stored", expectationId: expectation.id },
-        expectation.is_private,
+        checkTaskNodeId(expectation.id), checkTitle(expectation.title), due, ref, expectation.is_private,
       ));
     }
     nodeMap.set(id, node);
@@ -913,6 +929,13 @@ export function buildTree(
       tagIds: template.tag_ids,
       children: [],
     };
+    const spawnedRef: WaitRef = { kind: "spawned", taskId: spawned.task_id };
+    for (const done of spawned.done_checks) {
+      wait.children.push(checkTaskNode(
+        doneCheckNodeId(spawnedRef, done.due_at), checkTitle(template.title), done.due, spawnedRef,
+        wait.isPrivate ?? false, done.due_at,
+      ));
+    }
     if (spawned.next_check !== undefined) {
       wait.children.push(checkTaskNode(
         spawnedCheckNodeId(spawned.task_id), checkTitle(template.title), spawned.next_check,

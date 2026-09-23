@@ -1,4 +1,5 @@
 import { uuidV5 } from "@/utils/uuid-v5";
+import type { WaitRef } from "@/utils/tree-layout";
 
 /**
  * The application namespace every minted node id is hashed under. Fixed for good: changing it
@@ -39,4 +40,14 @@ export function spawnedWaitNodeId(taskId: number): string {
 /** The node id of a spawned wait's virtual check task. It draws no row. */
 export function spawnedCheckNodeId(taskId: number): string {
   return mint(`spawned-check/${taskId}`);
+}
+
+/**
+ * The node id of a **completed** check, which stays beneath its wait as a done task: the open
+ * check's name, plus the instant it fell due — a wait has one open check but many done ones.
+ */
+export function doneCheckNodeId(wait: WaitRef, dueAt: string): string {
+  return wait.kind === "stored"
+    ? mint(`expectation-check/${wait.expectationId}/${dueAt}`)
+    : mint(`spawned-check/${wait.taskId}/${dueAt}`);
 }

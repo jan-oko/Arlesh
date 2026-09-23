@@ -70,10 +70,24 @@ export async function completeExpectationCheck(id: number): Promise<Expectation>
   return invoke<Expectation>("complete_expectation_check", { id });
 }
 
-/** A stored wait's next check, as the day its virtual check task is due. */
+/**
+ * A check on a stored wait: the one due and open (no `resolved_at`), or one completed, which stays
+ * on the board as a done check task.
+ */
 export interface ExpectationCheck {
   expectation_id: number;
+  /** The Day it fell due on. */
   due: TimeScope;
+  /** When it fell due, `YYYY-MM-DDTHH:MM:SS` — which check it is. */
+  due_at: string;
+  resolved_at?: string;
+}
+
+/** A completed check on a spawned wait. */
+export interface DoneCheck {
+  due: TimeScope;
+  due_at: string;
+  resolved_at: string;
 }
 
 /** The overlay of the wait an Asynchronous task's completion spawned, as the views draw it. */
@@ -86,8 +100,11 @@ export interface SpawnedWaitView {
   last_check_at?: string;
   /** The template's Time Scope rule, counted from the day it began. */
   time_scope?: TimeScope;
-  /** The day its next check is due, while it is pending and checked on. */
+  /** The Day its current check fell due on, while one is due and open. */
   next_check?: TimeScope;
+  next_check_at?: string;
+  /** Its completed checks during this completion of the task, oldest first. */
+  done_checks: DoneCheck[];
 }
 
 /** Releases, un-releases or archives the wait a task's completion spawned. */
@@ -96,6 +113,16 @@ export async function updateSpawnedWait(
   request: { status?: ExpectationStatus; archival?: ExpectationArchival },
 ): Promise<void> {
   await invoke<unknown>("update_spawned_wait", { taskId, request });
+}
+
+/** Takes the latest completed check on a stored wait back; refused for any other. */
+export async function reopenExpectationCheck(id: number, dueAt: string): Promise<Expectation> {
+  return invoke<Expectation>("reopen_expectation_check", { id, dueAt });
+}
+
+/** Takes the latest completed check on a task's spawned wait back; refused for any other. */
+export async function reopenSpawnedWaitCheck(taskId: number, dueAt: string): Promise<void> {
+  return invoke<void>("reopen_spawned_wait_check", { taskId, dueAt });
 }
 
 /** Completes the current check on a task's spawned wait. */

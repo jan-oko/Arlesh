@@ -8,12 +8,16 @@ const updateExpectation = vi.fn((_id: number, _request: unknown) => Promise.reso
 const completeExpectationCheck = vi.fn((_id: number) => Promise.resolve());
 const updateSpawnedWait = vi.fn((_taskId: number, _request: unknown) => Promise.resolve());
 const completeSpawnedWaitCheck = vi.fn((_taskId: number) => Promise.resolve());
+const reopenExpectationCheck = vi.fn((_id: number, _dueAt: string) => Promise.resolve());
+const reopenSpawnedWaitCheck = vi.fn((_taskId: number, _dueAt: string) => Promise.resolve());
 vi.mock("@/api/expectations", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/expectations")>()),
   updateExpectation: (id: number, request: unknown) => updateExpectation(id, request),
   completeExpectationCheck: (id: number) => completeExpectationCheck(id),
   updateSpawnedWait: (taskId: number, request: unknown) => updateSpawnedWait(taskId, request),
   completeSpawnedWaitCheck: (taskId: number) => completeSpawnedWaitCheck(taskId),
+  reopenExpectationCheck: (id: number, dueAt: string) => reopenExpectationCheck(id, dueAt),
+  reopenSpawnedWaitCheck: (taskId: number, dueAt: string) => reopenSpawnedWaitCheck(taskId, dueAt),
 }));
 
 function node(over: Partial<MindmapNode>): MindmapNode {
@@ -49,6 +53,16 @@ describe("useExpectationActions", () => {
     expect(completeExpectationCheck).toHaveBeenLastCalledWith(3);
     setup(node({ kind: "task", virtual: true, expectationCheck: { kind: "stored", expectationId: 4 } })).actions.completeCheck("x");
     expect(completeExpectationCheck).toHaveBeenLastCalledWith(4);
+  });
+
+  it("reopens a done check task instead of completing another", () => {
+    const done = { kind: "task" as const, virtual: true, status: "done", checkDueAt: "2026-07-03T02:00:00" };
+    setup(node({ ...done, expectationCheck: { kind: "stored", expectationId: 4 } })).actions.completeCheck("x");
+    expect(reopenExpectationCheck).toHaveBeenLastCalledWith(4, "2026-07-03T02:00:00");
+    setup(node({ ...done, expectationCheck: { kind: "spawned", taskId: 7 } })).actions.completeCheck("x");
+    expect(reopenSpawnedWaitCheck).toHaveBeenLastCalledWith(7, "2026-07-03T02:00:00");
+    expect(completeExpectationCheck).not.toHaveBeenCalled();
+    expect(completeSpawnedWaitCheck).not.toHaveBeenCalled();
   });
 
   it("works a spawned wait through its task's overlay", () => {

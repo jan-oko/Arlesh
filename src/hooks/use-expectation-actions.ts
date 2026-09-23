@@ -3,7 +3,8 @@ import { useTranslation } from "react-i18next";
 import type { MindmapNode, WaitRef } from "@/utils/tree-layout";
 import { rowIdOf } from "@/utils/node-identity";
 import {
-  completeExpectationCheck, completeSpawnedWaitCheck, updateExpectation, updateSpawnedWait,
+  completeExpectationCheck, completeSpawnedWaitCheck, reopenExpectationCheck, reopenSpawnedWaitCheck,
+  updateExpectation, updateSpawnedWait,
 } from "@/api/expectations";
 import { EXPECTATION_STATUS } from "@/api/expectation-status";
 import { getErrorMessage } from "@/api/errors";
@@ -17,8 +18,9 @@ interface Options {
 interface Result {
   /**
    * Completes the current check on a wait — the selected wait's, or the one a selected virtual
-   * check task belongs to. It records when; the next check falls due one interval later, and the
-   * wait stays pending.
+   * check task belongs to. It records when; the check stays as a done task, the next falls due one
+   * interval later, and the wait stays pending. On a **done** check task it reopens that check —
+   * the latest only; the backend refuses any other, out loud.
    */
   completeCheck: (nodeId: string) => void;
   /** Releases a pending wait, or takes a release back. */
@@ -68,9 +70,15 @@ export function useExpectationActions({ findNode, reload, showToast }: Options):
         showToast({ nodeId, message: t("noCheckEvery") });
         return;
       }
-      const write = wait.kind === "stored"
-        ? completeExpectationCheck(wait.expectationId).then(() => undefined)
-        : completeSpawnedWaitCheck(wait.taskId);
+      // A completed check task toggles back: `D`, `Enter` and its status control reopen it.
+      const reopening = node.checkDueAt;
+      const write = reopening !== undefined
+        ? (wait.kind === "stored"
+          ? reopenExpectationCheck(wait.expectationId, reopening).then(() => undefined)
+          : reopenSpawnedWaitCheck(wait.taskId, reopening))
+        : wait.kind === "stored"
+          ? completeExpectationCheck(wait.expectationId).then(() => undefined)
+          : completeSpawnedWaitCheck(wait.taskId);
       void write.then(() => reload(), fail(nodeId));
     },
     [findNode, reload, showToast, fail, t],

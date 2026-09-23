@@ -254,6 +254,8 @@ export interface MindmapNode {
   /** Present on a wait's virtual **check task** — a `task`-kind node with no row. Completing it
    * records the check on the wait named here and stores nothing else. */
   expectationCheck?: WaitRef;
+  /** On a **completed** check task: when that check fell due, which names it for reopening. */
+  checkDueAt?: string;
   /** Present on the virtual wait an **Asynchronous** Task spawned while it is done: the Task. Its
    * title and tags are the Task's template; its state is the overlay keyed by the Task. */
   spawnedBy?: { taskId: number };
