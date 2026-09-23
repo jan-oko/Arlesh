@@ -19,6 +19,7 @@ use crate::{
             UpdateFlowItemRequest, UpdateFlowRequest,
         },
     },
+    scopes::key::ScopeKey,
 };
 
 /// Creates a new flow.
@@ -212,14 +213,11 @@ pub async fn scope_valid_flow_targets(
         (Some(n), Some(kind)) => Some((n, kind)),
         _ => None,
     };
-    // Transactional despite reading like a query: resolving a concrete window creates the
-    // canonical scopes it names.
-    let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let valid = flows::valid_targets(&mut db, duration, anchor_date, candidates)
+    // A read: resolving a concrete window derives its scopes and writes nothing.
+    let mut db = factory.connect().await.map_err(WireError::from_error)?;
+    flows::valid_targets(&mut db, duration, anchor_date, candidates)
         .await
-        .map_err(WireError::from_error)?;
-    db.commit().await.map_err(WireError::from_error)?;
-    Ok(valid)
+        .map_err(WireError::from_error)
 }
 
 /// Sets (creates or replaces) a flow's Recurrence, making it a Habit.

@@ -18,6 +18,7 @@
 
 use crate::database::session::{Db, SessionMode, Transactional};
 use crate::nodes::origin::Origin;
+use crate::scopes::key::ScopeKey;
 
 use super::ancestry::{AncestryLink, NodeKind, NodeRef};
 use super::error::TaskError;
@@ -35,8 +36,8 @@ struct CommitmentRow {
     parent_type: String,
     parent_id: i64,
     verdict: String,
-    time_scope_start_id: Option<i64>,
-    time_scope_end_id: Option<i64>,
+    time_scope_start_id: Option<ScopeKey>,
+    time_scope_end_id: Option<ScopeKey>,
     time_scope_duration_n: Option<i64>,
     time_scope_duration_kind: Option<String>,
     verdict_window_n: Option<i64>,
@@ -126,7 +127,9 @@ impl CommitmentWrite {
         request: UpdateCommitmentRequest,
     ) -> Result<Self, crate::nodes::id::NotStored> {
         let reparent = match (request.parent_type, request.parent_id) {
-            (Some(parent_type), Some(parent_id)) => Some((parent_type, parent_id.require_stored()?)),
+            (Some(parent_type), Some(parent_id)) => {
+                Some((parent_type, parent_id.require_stored()?))
+            }
             _ => None,
         };
         let (parent_type, parent_id) = reparent
@@ -440,6 +443,7 @@ pub async fn create_commitment(
         &request.time_scope,
     )
     .await?;
+    super::register_windows(db, [&request.time_scope, &None]).await?;
     db.commitments().insert(request).await
 }
 
@@ -465,6 +469,7 @@ pub async fn update_commitment(
         &write.time_scope,
     )
     .await?;
+    super::register_windows(db, [&write.time_scope, &None]).await?;
     db.commitments().update(id, write).await
 }
 

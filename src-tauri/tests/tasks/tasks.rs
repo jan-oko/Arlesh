@@ -9,7 +9,7 @@ use arlesh_lib::commands::tasks as task_commands;
 use arlesh_lib::{
     database::session::SessionFactory,
     domains::model::{CreateDomainRequest, DomainSubtype, ProjectStatus},
-    scopes::model::ScopeKind,
+    scopes::{key::ScopeKey, model::ScopeKind},
     tasks::{
         add_task_dependency, conflicts_for_new_time_scope, create_goal, create_task,
         derive_all_scope_lifecycles, get_task_with_blockers,
@@ -1720,17 +1720,11 @@ async fn update_task_scope() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
 
-    let scope = helpers::session_factory(&pool)
-        .connect()
-        .await
-        .unwrap()
-        .scopes()
-        .get_or_create(
-            ScopeKind::Day,
-            chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap(),
-        )
-        .await
-        .unwrap();
+    let scope = arlesh_lib::scopes::model::Scope::containing(
+        ScopeKind::Day,
+        chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap(),
+    )
+    .unwrap();
 
     let task = {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
@@ -1785,17 +1779,11 @@ async fn update_task_scope() {
 async fn task_time_scope_duration_params_round_trip() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
-    let scope = helpers::session_factory(&pool)
-        .connect()
-        .await
-        .unwrap()
-        .scopes()
-        .get_or_create(
-            ScopeKind::Week,
-            chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap(),
-        )
-        .await
-        .unwrap();
+    let scope = arlesh_lib::scopes::model::Scope::containing(
+        ScopeKind::Week,
+        chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap(),
+    )
+    .unwrap();
 
     let task = {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
@@ -1837,28 +1825,16 @@ async fn task_time_scope_duration_params_round_trip() {
 async fn task_plan_is_independent_of_time_scope() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
-    let week = helpers::session_factory(&pool)
-        .connect()
-        .await
-        .unwrap()
-        .scopes()
-        .get_or_create(
-            ScopeKind::Week,
-            chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap(),
-        )
-        .await
-        .unwrap();
-    let day = helpers::session_factory(&pool)
-        .connect()
-        .await
-        .unwrap()
-        .scopes()
-        .get_or_create(
-            ScopeKind::Day,
-            chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap(),
-        )
-        .await
-        .unwrap();
+    let week = arlesh_lib::scopes::model::Scope::containing(
+        ScopeKind::Week,
+        chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap(),
+    )
+    .unwrap();
+    let day = arlesh_lib::scopes::model::Scope::containing(
+        ScopeKind::Day,
+        chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap(),
+    )
+    .unwrap();
 
     let task = {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
@@ -1921,28 +1897,16 @@ async fn plan_within_time_scope_is_accepted() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
     // 2026-07-01 (Wed) sits inside its own Sun–Sat week.
-    let week = helpers::session_factory(&pool)
-        .connect()
-        .await
-        .unwrap()
-        .scopes()
-        .get_or_create(
-            ScopeKind::Week,
-            chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap(),
-        )
-        .await
-        .unwrap();
-    let day = helpers::session_factory(&pool)
-        .connect()
-        .await
-        .unwrap()
-        .scopes()
-        .get_or_create(
-            ScopeKind::Day,
-            chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap(),
-        )
-        .await
-        .unwrap();
+    let week = arlesh_lib::scopes::model::Scope::containing(
+        ScopeKind::Week,
+        chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap(),
+    )
+    .unwrap();
+    let day = arlesh_lib::scopes::model::Scope::containing(
+        ScopeKind::Day,
+        chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap(),
+    )
+    .unwrap();
 
     let task = {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
@@ -1978,29 +1942,17 @@ async fn plan_within_time_scope_is_accepted() {
 async fn plan_outside_time_scope_is_rejected() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
-    let week = helpers::session_factory(&pool)
-        .connect()
-        .await
-        .unwrap()
-        .scopes()
-        .get_or_create(
-            ScopeKind::Week,
-            chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap(),
-        )
-        .await
-        .unwrap();
+    let week = arlesh_lib::scopes::model::Scope::containing(
+        ScopeKind::Week,
+        chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap(),
+    )
+    .unwrap();
     // A day three weeks later is not contained in the time-scope week.
-    let far_day = helpers::session_factory(&pool)
-        .connect()
-        .await
-        .unwrap()
-        .scopes()
-        .get_or_create(
-            ScopeKind::Day,
-            chrono::NaiveDate::from_ymd_opt(2026, 7, 20).unwrap(),
-        )
-        .await
-        .unwrap();
+    let far_day = arlesh_lib::scopes::model::Scope::containing(
+        ScopeKind::Day,
+        chrono::NaiveDate::from_ymd_opt(2026, 7, 20).unwrap(),
+    )
+    .unwrap();
 
     let result = {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
@@ -2037,7 +1989,7 @@ async fn plan_outside_time_scope_is_rejected() {
 
 // --- Cross-tree containment (child within ancestor, cascade detection, reparent) ---
 
-fn single(scope_id: i64) -> TimeScope {
+fn single(scope_id: ScopeKey) -> TimeScope {
     TimeScope {
         start_id: scope_id,
         end_id: scope_id,
@@ -2045,40 +1997,22 @@ fn single(scope_id: i64) -> TimeScope {
     }
 }
 
-async fn july_scopes(pool: &sqlx::SqlitePool) -> (i64, i64, i64) {
-    let july = helpers::session_factory(pool)
-        .connect()
-        .await
-        .unwrap()
-        .scopes()
-        .get_or_create(
-            ScopeKind::Month,
-            chrono::NaiveDate::from_ymd_opt(2026, 7, 15).unwrap(),
-        )
-        .await
-        .unwrap();
-    let week_in_july = helpers::session_factory(pool)
-        .connect()
-        .await
-        .unwrap()
-        .scopes()
-        .get_or_create(
-            ScopeKind::Week,
-            chrono::NaiveDate::from_ymd_opt(2026, 7, 15).unwrap(),
-        )
-        .await
-        .unwrap();
-    let week_in_august = helpers::session_factory(pool)
-        .connect()
-        .await
-        .unwrap()
-        .scopes()
-        .get_or_create(
-            ScopeKind::Week,
-            chrono::NaiveDate::from_ymd_opt(2026, 8, 15).unwrap(),
-        )
-        .await
-        .unwrap();
+async fn july_scopes(_pool: &sqlx::SqlitePool) -> (ScopeKey, ScopeKey, ScopeKey) {
+    let july = arlesh_lib::scopes::model::Scope::containing(
+        ScopeKind::Month,
+        chrono::NaiveDate::from_ymd_opt(2026, 7, 15).unwrap(),
+    )
+    .unwrap();
+    let week_in_july = arlesh_lib::scopes::model::Scope::containing(
+        ScopeKind::Week,
+        chrono::NaiveDate::from_ymd_opt(2026, 7, 15).unwrap(),
+    )
+    .unwrap();
+    let week_in_august = arlesh_lib::scopes::model::Scope::containing(
+        ScopeKind::Week,
+        chrono::NaiveDate::from_ymd_opt(2026, 8, 15).unwrap(),
+    )
+    .unwrap();
     (july.id, week_in_july.id, week_in_august.id)
 }
 
@@ -2477,28 +2411,16 @@ async fn reparent_conflicts_none_under_an_unscoped_parent() {
 async fn update_rejects_plan_outside_time_scope() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
-    let week = helpers::session_factory(&pool)
-        .connect()
-        .await
-        .unwrap()
-        .scopes()
-        .get_or_create(
-            ScopeKind::Week,
-            chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap(),
-        )
-        .await
-        .unwrap();
-    let far_day = helpers::session_factory(&pool)
-        .connect()
-        .await
-        .unwrap()
-        .scopes()
-        .get_or_create(
-            ScopeKind::Day,
-            chrono::NaiveDate::from_ymd_opt(2026, 7, 20).unwrap(),
-        )
-        .await
-        .unwrap();
+    let week = arlesh_lib::scopes::model::Scope::containing(
+        ScopeKind::Week,
+        chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap(),
+    )
+    .unwrap();
+    let far_day = arlesh_lib::scopes::model::Scope::containing(
+        ScopeKind::Day,
+        chrono::NaiveDate::from_ymd_opt(2026, 7, 20).unwrap(),
+    )
+    .unwrap();
 
     let task = {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
@@ -2620,17 +2542,11 @@ async fn update_goal_scope() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
 
-    let scope = helpers::session_factory(&pool)
-        .connect()
-        .await
-        .unwrap()
-        .scopes()
-        .get_or_create(
-            ScopeKind::Month,
-            chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap(),
-        )
-        .await
-        .unwrap();
+    let scope = arlesh_lib::scopes::model::Scope::containing(
+        ScopeKind::Month,
+        chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap(),
+    )
+    .unwrap();
 
     let goal = {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
@@ -2807,16 +2723,13 @@ async fn goal_is_achieved() {
 
 // --- On-exit behavior + derived scope lifecycle (Feature A / S2) ---
 
-async fn day_scope(pool: &sqlx::SqlitePool, y: i32, m: u32, d: u32) -> i64 {
-    helpers::session_factory(pool)
-        .connect()
-        .await
-        .unwrap()
-        .scopes()
-        .get_or_create(ScopeKind::Day, NaiveDate::from_ymd_opt(y, m, d).unwrap())
-        .await
-        .unwrap()
-        .id
+async fn day_scope(_pool: &sqlx::SqlitePool, y: i32, m: u32, d: u32) -> ScopeKey {
+    arlesh_lib::scopes::model::Scope::containing(
+        ScopeKind::Day,
+        NaiveDate::from_ymd_opt(y, m, d).unwrap(),
+    )
+    .unwrap()
+    .id
 }
 
 /// Derives every item's lifecycle over a pooled session, the way the `derive_scope_lifecycles`
@@ -4012,7 +3925,7 @@ async fn a_cyclic_ancestor_chain_renders_fine_and_rejects_a_write() {
 /// tasks, and holding one task child and one info child.
 struct RetypeFixture {
     project_id: i64,
-    scope_id: i64,
+    scope_id: ScopeKey,
     goal_id: i64,
     tag_ids: (i64, i64),
     dependents: (i64, i64),
@@ -4039,18 +3952,12 @@ async fn seed_retype_fixture(pool: &sqlx::SqlitePool) -> RetypeFixture {
         .await
         .unwrap()
         .id;
-    let scope_id = helpers::session_factory(pool)
-        .connect()
-        .await
-        .unwrap()
-        .scopes()
-        .get_or_create(
-            ScopeKind::Week,
-            NaiveDate::from_ymd_opt(2026, 7, 1).unwrap(),
-        )
-        .await
-        .unwrap()
-        .id;
+    let scope_id = arlesh_lib::scopes::model::Scope::containing(
+        ScopeKind::Week,
+        NaiveDate::from_ymd_opt(2026, 7, 1).unwrap(),
+    )
+    .unwrap()
+    .id;
 
     let mut db = helpers::session_factory(pool).begin().await.unwrap();
     let goal = create_goal(
@@ -4163,8 +4070,8 @@ async fn seed_retype_fixture(pool: &sqlx::SqlitePool) -> RetypeFixture {
 struct RetypedTaskRow {
     title: String,
     status: String,
-    time_scope_start_id: Option<i64>,
-    time_scope_end_id: Option<i64>,
+    time_scope_start_id: Option<ScopeKey>,
+    time_scope_end_id: Option<ScopeKey>,
     time_scope_duration_n: Option<i64>,
     time_scope_duration_kind: Option<String>,
     on_scope_exit: Option<String>,
@@ -4881,25 +4788,16 @@ async fn the_update_goal_command_cannot_touch_beads_id() {
 /// A project, a week Time Scope and a day inside it — the setting for every test below.
 async fn backlog_fixture(pool: &sqlx::SqlitePool) -> (i64, TimeScope, TimeScope) {
     let project_id = make_project(pool).await;
-    let week = helpers::session_factory(pool)
-        .connect()
-        .await
-        .unwrap()
-        .scopes()
-        .get_or_create(
-            ScopeKind::Week,
-            NaiveDate::from_ymd_opt(2026, 7, 1).unwrap(),
-        )
-        .await
-        .unwrap();
-    let day = helpers::session_factory(pool)
-        .connect()
-        .await
-        .unwrap()
-        .scopes()
-        .get_or_create(ScopeKind::Day, NaiveDate::from_ymd_opt(2026, 7, 1).unwrap())
-        .await
-        .unwrap();
+    let week = arlesh_lib::scopes::model::Scope::containing(
+        ScopeKind::Week,
+        NaiveDate::from_ymd_opt(2026, 7, 1).unwrap(),
+    )
+    .unwrap();
+    let day = arlesh_lib::scopes::model::Scope::containing(
+        ScopeKind::Day,
+        NaiveDate::from_ymd_opt(2026, 7, 1).unwrap(),
+    )
+    .unwrap();
     (project_id, single(week.id), single(day.id))
 }
 
@@ -5382,13 +5280,15 @@ fn an_explicit_null_time_scope_in_a_task_update_payload_clears_it() {
         Some(None),
         "an explicit null clears the Time Scope"
     );
-    let set: UpdateTaskRequest =
-        serde_json::from_str(r#"{"time_scope":{"start_id":1,"end_id":2}}"#).unwrap();
+    let set: UpdateTaskRequest = serde_json::from_str(
+        r#"{"time_scope":{"start_id":"day:2026-07-01","end_id":"day:2026-07-02"}}"#,
+    )
+    .unwrap();
     assert_eq!(
         set.time_scope,
         Some(Some(TimeScope {
-            start_id: 1,
-            end_id: 2,
+            start_id: "day:2026-07-01".parse().unwrap(),
+            end_id: "day:2026-07-02".parse().unwrap(),
             duration: None
         }))
     );
@@ -5418,12 +5318,13 @@ fn an_explicit_null_plan_in_a_task_update_payload_clears_it() {
     let nulled: UpdateTaskRequest = serde_json::from_str(r#"{"plan":null}"#).unwrap();
     assert_eq!(nulled.plan, Some(None), "an explicit null clears the Plan");
     let set: UpdateTaskRequest =
-        serde_json::from_str(r#"{"plan":{"start_id":3,"end_id":4}}"#).unwrap();
+        serde_json::from_str(r#"{"plan":{"start_id":"day:2026-07-03","end_id":"day:2026-07-04"}}"#)
+            .unwrap();
     assert_eq!(
         set.plan,
         Some(Some(TimeScope {
-            start_id: 3,
-            end_id: 4,
+            start_id: "day:2026-07-03".parse().unwrap(),
+            end_id: "day:2026-07-04".parse().unwrap(),
             duration: None
         }))
     );
@@ -5442,13 +5343,15 @@ fn an_explicit_null_time_scope_in_a_goal_update_payload_clears_it() {
         Some(None),
         "an explicit null clears the Time Scope"
     );
-    let set: UpdateGoalRequest =
-        serde_json::from_str(r#"{"time_scope":{"start_id":1,"end_id":2}}"#).unwrap();
+    let set: UpdateGoalRequest = serde_json::from_str(
+        r#"{"time_scope":{"start_id":"day:2026-07-01","end_id":"day:2026-07-02"}}"#,
+    )
+    .unwrap();
     assert_eq!(
         set.time_scope,
         Some(Some(TimeScope {
-            start_id: 1,
-            end_id: 2,
+            start_id: "day:2026-07-01".parse().unwrap(),
+            end_id: "day:2026-07-02".parse().unwrap(),
             duration: None
         }))
     );
@@ -5475,17 +5378,12 @@ fn an_explicit_null_on_scope_exit_in_a_goal_update_payload_clears_it() {
 async fn a_task_plan_is_placed_against_now_on_the_two_oclock_day_boundary() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
-    let week = {
-        let mut db = helpers::session_factory(&pool).connect().await.unwrap();
-        db.scopes()
-            .get_or_create(
-                ScopeKind::Week,
-                NaiveDate::from_ymd_opt(2026, 7, 1).unwrap(),
-            )
-            .await
-            .unwrap()
-            .id
-    };
+    let week = arlesh_lib::scopes::model::Scope::containing(
+        ScopeKind::Week,
+        NaiveDate::from_ymd_opt(2026, 7, 1).unwrap(),
+    )
+    .unwrap()
+    .id;
     let friday = day_scope(&pool, 2026, 7, 3).await;
     let planned = new_task(
         &pool,

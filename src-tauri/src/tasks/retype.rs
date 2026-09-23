@@ -805,12 +805,12 @@ fn is_default_status(kind: RetypeKind, status: &str) -> bool {
 }
 
 /// A Time Scope as a short phrase for a confirmation prompt: its Duration form when it has one,
-/// otherwise its boundary scope ids.
+/// otherwise its boundary scopes' labels.
 fn render_time_scope(scope: &TimeScope) -> String {
     match &scope.duration {
         Some(duration) => format!("{} {}", duration.n, duration.kind),
-        None if scope.start_id == scope.end_id => scope.start_id.to_string(),
-        None => format!("{}–{}", scope.start_id, scope.end_id),
+        None if scope.start_id == scope.end_id => scope.start_id.label(),
+        None => format!("{}–{}", scope.start_id.label(), scope.end_id.label()),
     }
 }
 

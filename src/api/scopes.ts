@@ -1,6 +1,16 @@
 import { invoke } from "./gesture";
 import type { ScopeRef } from "@/utils/scope-ref";
 
+/**
+ * A scope's identity: its canonical value key, mirrored from the Rust `scopes::key::ScopeKey`.
+ *
+ * `season:2026-09-01`, `month:2026-09-01`, `week:2026-09-20` (its Sunday), `day:2026-09-23`,
+ * `part_of_day:2026-09-23:morning`, `exact:2026-09-23T14:00:00/2026-09-23T15:30:00`. A key always
+ * names the scope's own start, so comparing keys compares scopes. Scopes are derived, not stored
+ * (ADR 0009): nothing here writes, and `@/utils/scope-key` builds and reads keys without a call.
+ */
+export type ScopeKey = string;
+
 /** Scope granularity, mirrored from the Rust `ScopeKind` (serde snake_case). */
 export type ScopeKind = "season" | "month" | "week" | "day" | "part_of_day" | "exact";
 
@@ -13,17 +23,13 @@ export type PartOfDay =
   | "night"
   | "premorning";
 
-/** A scope row, mirrored from the Rust `scopes::model::Scope`. */
+/** A scope with everything derived from its key, mirrored from the Rust `scopes::model::Scope`. */
 export interface Scope {
-  id: number;
+  id: ScopeKey;
   kind: ScopeKind;
   label: string;
   start_date: string;
   end_date: string;
-  week_id: number | null;
-  month_id: number | null;
-  season_id: number | null;
-  day_id: number | null;
   part: PartOfDay | null;
   start_datetime: string | null;
   end_datetime: string | null;
@@ -36,47 +42,45 @@ export interface ResolvedScope {
   active: boolean;
 }
 
-/** Fetches a scope by id. */
-export async function getScope(id: number): Promise<Scope> {
+/** The scope a key names, with its label and dates. */
+export async function getScope(id: ScopeKey): Promise<Scope> {
   return invoke<Scope>("get_scope", { id });
 }
 
-/** Gets or creates a canonical (Season/Month/Week/Day) scope for a date (`YYYY-MM-DD`). */
-export async function getOrCreateScope(kind: ScopeKind, date: string): Promise<Scope> {
-  return invoke<Scope>("get_or_create_scope", { kind, date });
+/** The canonical (Season/Month/Week/Day) scope holding a date (`YYYY-MM-DD`). */
+export async function scopeContaining(kind: ScopeKind, date: string): Promise<Scope> {
+  return invoke<Scope>("scope_containing", { kind, date });
 }
 
-/** Gets or creates the Part-of-Day scope for a date (`YYYY-MM-DD`) and band. */
-export async function getOrCreatePartScope(date: string, part: PartOfDay): Promise<Scope> {
-  return invoke<Scope>("get_or_create_part_scope", { date, part });
-}
-
-/**
- * Gets or creates the Exact scope for an arbitrary `[start, end)` window.
- * Datetimes are ISO 8601 minute-precision `YYYY-MM-DDTHH:MM:SS`.
- */
-export async function getOrCreateExactScope(start: string, end: string): Promise<Scope> {
-  return invoke<Scope>("get_or_create_exact_scope", { start, end });
+/** The Part-of-Day scope for a date (`YYYY-MM-DD`) and band. */
+export async function partScope(date: string, part: PartOfDay): Promise<Scope> {
+  return invoke<Scope>("part_scope", { date, part });
 }
 
 /**
- * Materializes the calendar cell a {@link ScopeRef} names, creating the row if it does not exist.
- *
- * One door for every caller that turns a *place on the calendar* into a scope with an id: the Plan
- * View's cursor when a pass steps to the next scope, and its subscope buckets when a row is dropped
- * or keyed into one. Two spellings of get-or-create would eventually disagree about which cell a
- * ref names, which is the one thing a plan must not be wrong about.
- *
- * An Exact window is rejected rather than created: it is not a cell, and nothing that calls this is
- * asking for one.
+ * The Exact scope for an arbitrary `[start, end)` window. Datetimes are ISO 8601 minute-precision
+ * `YYYY-MM-DDTHH:MM:SS`. Nothing is stored until a save references it.
  */
-export async function getOrCreateForRef(ref: ScopeRef): Promise<Scope> {
-  if (ref.kind === "part_of_day") return getOrCreatePartScope(ref.date, ref.part);
+export async function exactScope(start: string, end: string): Promise<Scope> {
+  return invoke<Scope>("exact_scope", { start, end });
+}
+
+/**
+ * The scope a {@link ScopeRef} names, with its label and dates.
+ *
+ * One door for every caller that turns a *place on the calendar* into a scope: the Plan View's
+ * cursor when a pass steps to the next scope, and its subscope buckets when a row is dropped or
+ * keyed into one.
+ *
+ * An Exact window is rejected: it is not a cell, and nothing that calls this is asking for one.
+ */
+export async function scopeForRef(ref: ScopeRef): Promise<Scope> {
+  if (ref.kind === "part_of_day") return partScope(ref.date, ref.part);
   if (ref.kind === "exact") throw new Error("an exact window is not a calendar cell");
-  return getOrCreateScope(ref.kind, ref.date);
+  return scopeContaining(ref.kind, ref.date);
 }
 
 /** Resolves a scope to its datetime window and whether it is currently active. */
-export async function resolveScope(id: number): Promise<ResolvedScope> {
+export async function resolveScope(id: ScopeKey): Promise<ResolvedScope> {
   return invoke<ResolvedScope>("resolve_scope", { id });
 }

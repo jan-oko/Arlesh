@@ -5,6 +5,7 @@ import { updateCommitment } from "@/api/commitments";
 import { setHabitItemStatus } from "@/api/flows";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { fixtureRowId } from "@/test/node-fixture";
+import { testKey } from "@/test/scope-key";
 
 vi.mock("@/api/commitments", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/commitments")>()),
@@ -23,7 +24,7 @@ function commitment(id: string, extra: Partial<MindmapNode> = {}): MindmapNode {
 /** One iteration of a nightly commitment Habit: virtual, keyed by (flow root, iteration scope). */
 const ITERATION = commitment("habit-3-0-virtual", {
   virtual: true,
-  habitItem: { flowId: 3, itemType: "flow_root", itemId: 3, scopeId: 100, cycleId: 0 },
+  habitItem: { flowId: 3, itemType: "flow_root", itemId: 3, scopeId: testKey(100), cycleId: 0 },
 });
 
 function setup(nodes: MindmapNode[]) {
@@ -57,7 +58,7 @@ describe("useCommitmentVerdict", () => {
       act(() => { result.current.markBroken(ITERATION.id); });
 
       await waitFor(() =>
-        expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_root", 3, 100, 0, "broken", expect.any(Number)),
+        expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_root", 3, testKey(100), 0, "broken", expect.any(Number)),
       );
       // Never the commitments table: there is no commitment id to write to, and parsing one out
       // of the virtual node id is how this used to send NaN.
@@ -72,7 +73,7 @@ describe("useCommitmentVerdict", () => {
       act(() => { result.current.markKept(ITERATION.id); });
 
       await waitFor(() =>
-        expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_root", 3, 100, 0, null, expect.any(Number)),
+        expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_root", 3, testKey(100), 0, null, expect.any(Number)),
       );
     });
 
@@ -85,7 +86,7 @@ describe("useCommitmentVerdict", () => {
       act(() => { result.current.cycleVerdict(ITERATION.id); });
 
       await waitFor(() =>
-        expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_root", 3, 100, 0, "broken", expect.any(Number)),
+        expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_root", 3, testKey(100), 0, "broken", expect.any(Number)),
       );
     });
 
@@ -96,7 +97,7 @@ describe("useCommitmentVerdict", () => {
       act(() => { result.current.cycleVerdict(ITERATION.id); });
 
       await waitFor(() =>
-        expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_root", 3, 100, 0, null, expect.any(Number)),
+        expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_root", 3, testKey(100), 0, null, expect.any(Number)),
       );
     });
 

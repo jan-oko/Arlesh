@@ -2,7 +2,7 @@
 //!
 //! An iteration's root is a Task, Goal or Commitment — the flow's Instance Type — and each flow
 //! item is a Task or Goal, once per cycle pair it declares. Each is its template with its
-//! overlay applied ([`crate::nodes::overlay`]), keyed by `(template item, iteration start date,
+//! overlay applied ([`crate::nodes::overlay`]), keyed by `(template item, iteration scope,
 //! cycle pair)` and carrying that key's UUID as its id. Nothing here is a second kind of node: a
 //! derived Task is a [`Task`] with a Habit [`Origin`], and it goes wherever a Task goes.
 //!
@@ -30,11 +30,11 @@ use super::{
         Flow, FlowGoal, FlowId, FlowItemCycle, FlowRecurrence, FlowTask, HabitIteration,
         InstanceTiming, IterationStatus,
     },
-    parse_consumption, resolve_cycle, resolve_flow_window, resolve_root_plan, scope_start_date,
-    target_parent_type, verdict_deadlines, window_spec,
+    parse_consumption, resolve_cycle, resolve_flow_window, resolve_root_plan, target_parent_type,
+    verdict_deadlines, window_spec,
 };
 use crate::{
-    database::session::{Db, Transactional},
+    database::session::{Db, SessionMode},
     flows::template::TemplateFields,
     nodes::{
         id::NodeId,
@@ -43,8 +43,7 @@ use crate::{
         overlay::{CommitmentOverlay, GoalOverlay, HabitOverlays, TaskOverlay},
         registry,
     },
-    scopes::{model::ScopeId, resolve::scope_bounds},
-    tasks::time_scope_window,
+    scopes::key::ScopeKey,
     tasks::{
         lifecycle::{
             derive_commitment_state, derive_timing, Archival, ItemLifecycle, Resolution, Timing,
@@ -150,8 +149,8 @@ struct Iteration<'a> {
 ///
 /// **This writes**: resolving iteration and cycle windows mints the scope rows they land on.
 #[tracing::instrument(skip(db, flow), fields(flow_id = flow.id))]
-pub async fn derive_habit(
-    db: &mut Db<Transactional>,
+pub async fn derive_habit<M: SessionMode>(
+    db: &mut Db<M>,
     flow: &Flow,
     now: NaiveDateTime,
     horizon: Horizon,
@@ -176,7 +175,7 @@ pub async fn derive_habit(
         cycles: db.flows().cycles_by_item(flow_id).await?,
     };
     let overlays = db.overlays().for_habit(flow.id).await?;
-    let touched = touched_dates(db, flow.id).await?;
+    let touched = touched_iterations(db, flow.id).await?;
 
     let (iterations, slots, consumption) =
         schedule(db, flow, &recurrence, &overlays, &touched, now, horizon).await?;
@@ -187,48 +186,46 @@ pub async fn derive_habit(
         let Some(slot) = by_index.get(&iteration.index) else {
             continue;
         };
-        let (window, window_start) =
-            resolve_flow_window(&mut db.scopes(), flow, slot.start.date()).await?;
-        let root_plan = resolve_root_plan(&mut db.scopes(), flow, Some(window_start)).await?;
+        let (window, window_start) = resolve_flow_window(flow, slot.start.date())?;
+        let root_plan = resolve_root_plan(flow, Some(window_start))?;
         let context = Iteration {
             iteration,
             slot,
             window,
             root_plan,
         };
-        let built =
-            build_iteration(db, flow, &template, &overlays, &context, consumption, now).await?;
+        let built = build_iteration(flow, &template, &overlays, &context, consumption, now)?;
         rows.extend(built);
     }
     Ok(rows)
 }
 
-/// The dates of this Habit's iterations that carry an overlay or an attached child.
-async fn touched_dates(
-    db: &mut Db<Transactional>,
+/// The iterations of this Habit that carry an overlay, a relation or an attached child.
+async fn touched_iterations<M: SessionMode>(
+    db: &mut Db<M>,
     flow_id: i64,
-) -> Result<HashSet<NaiveDate>, FlowError> {
-    let mut dates: HashSet<NaiveDate> = HashSet::new();
-    for date in db.overlays().touched_iterations(flow_id).await? {
-        if let Ok(date) = NaiveDate::parse_from_str(&date, "%Y-%m-%d") {
-            dates.insert(date);
+) -> Result<HashSet<ScopeKey>, FlowError> {
+    let mut touched: HashSet<ScopeKey> = db
+        .overlays()
+        .touched_iterations(flow_id)
+        .await?
+        .into_iter()
+        .collect();
+    for key in db.flows().related_keys(FlowId(flow_id)).await? {
+        if let Some(key) = OccurrenceKey::parse(&key) {
+            touched.insert(key.iteration);
         }
     }
-    for parent_key in db.flows().attached_parent_keys(FlowId(flow_id)).await? {
-        if let Some(key) = OccurrenceKey::parse(&parent_key) {
-            dates.insert(key.iteration);
-        }
-    }
-    Ok(dates)
+    Ok(touched)
 }
 
 /// The Habit's iterations within the horizon, each with the slot it came from, classified.
-async fn schedule(
-    db: &mut Db<Transactional>,
+async fn schedule<M: SessionMode>(
+    db: &mut Db<M>,
     flow: &Flow,
     recurrence: &FlowRecurrence,
     overlays: &HabitOverlays,
-    touched: &HashSet<NaiveDate>,
+    touched: &HashSet<ScopeKey>,
     now: NaiveDateTime,
     horizon: Horizon,
 ) -> Result<(Vec<HabitIteration>, Vec<SlotWindow>, Consumption), FlowError> {
@@ -238,32 +235,20 @@ async fn schedule(
         .ok_or_else(|| FlowError::Invalid("a habit requires a scoped flow".to_string()))?;
     let spec = window_spec(flow, &flow_kind, flow.flow_duration_n.unwrap_or(1))?;
     let consumption = parse_consumption(recurrence)?;
-    let start_scope = db.scopes().get(ScopeId(recurrence.start_scope_id)).await?;
-    let start_date = scope_start_date(&start_scope)?;
-    let end_date = match recurrence.end_scope_id {
-        Some(id) => Some(scope_start_date(&db.scopes().get(ScopeId(id)).await?)?),
-        None => None,
-    };
+    let start_date = recurrence.start_scope_id.start_date();
+    let end_date = recurrence.end_scope_id.map(|end| end.start_date());
     let gap = recurrence.gap_n.zip(recurrence.gap_kind.clone());
 
     // The furthest day anything asks for: now, the named window, and the latest touched date.
     let furthest = touched
         .iter()
-        .copied()
+        .map(ScopeKey::start_date)
         .chain(horizon.through)
         .max()
         .map_or(now, |date| {
             date.and_hms_opt(23, 59, 59).map_or(now, |end| end.max(now))
         });
-    let slots = habit_slots(
-        &mut db.scopes(),
-        start_date,
-        spec,
-        gap.as_ref(),
-        end_date,
-        furthest,
-    )
-    .await?;
+    let slots = habit_slots(start_date, spec, gap.as_ref(), end_date, furthest)?;
     let (started, future): (Vec<SlotWindow>, Vec<SlotWindow>) =
         slots.iter().cloned().partition(|slot| slot.start <= now);
 
@@ -274,7 +259,7 @@ async fn schedule(
     for slot in &future {
         let date = slot.start.date();
         let named = horizon.through.is_some_and(|through| date <= through);
-        if named || touched.contains(&date) {
+        if named || touched.contains(&slot.scope_id) {
             iterations.push(HabitIteration {
                 index: slot.index,
                 anchor_scope_id: slot.scope_id,
@@ -290,8 +275,8 @@ async fn schedule(
 
 /// Every instance one iteration holds, as `(template item, cycle pair)`: the root, then each item
 /// once per pair it declares (once, with [`NO_CYCLE`], when it declares none).
-async fn instance_keys(
-    db: &mut Db<Transactional>,
+async fn instance_keys<M: SessionMode>(
+    db: &mut Db<M>,
     flow: &Flow,
 ) -> Result<Vec<(TemplateItem, i64)>, FlowError> {
     let flow_id = FlowId(flow.id);
@@ -332,13 +317,13 @@ pub(super) fn resolutions(
 ) -> HashMap<i64, NaiveDateTime> {
     let mut resolved = HashMap::new();
     for slot in slots {
-        let date = slot.start.date();
+        let iteration = slot.scope_id;
         let mut latest: Option<i64> = None;
         let mut every = true;
         for (item, cycle) in keys {
             let node_key = OccurrenceKey {
                 item: *item,
-                iteration: date,
+                iteration,
                 cycle: *cycle,
             }
             .node_key();
@@ -409,8 +394,7 @@ struct Occurrence {
 }
 
 /// Every row one iteration derives: its root, then each item's occurrences.
-async fn build_iteration(
-    db: &mut Db<Transactional>,
+fn build_iteration(
     flow: &Flow,
     template: &Template,
     overlays: &HabitOverlays,
@@ -419,6 +403,7 @@ async fn build_iteration(
     now: NaiveDateTime,
 ) -> Result<DerivedRows, FlowError> {
     let date = context.slot.start.date();
+    let iteration = context.slot.scope_id;
     let iteration_scope = IterationScope {
         index: context.iteration.index,
         start_date: date,
@@ -447,7 +432,7 @@ async fn build_iteration(
     };
     let root_key = OccurrenceKey {
         item: root_item,
-        iteration: date,
+        iteration,
         cycle: NO_CYCLE,
     };
     let (host_type, host_id) = match (&flow.target_type, flow.target_id) {
@@ -506,7 +491,7 @@ async fn build_iteration(
         let parent = match template.parent_of(item) {
             Some(parent) => OccurrenceKey {
                 item: parent,
-                iteration: date,
+                iteration,
                 cycle: template.first_cycle(parent.item_type, parent.item_id),
             },
             None => root_key,
@@ -521,10 +506,10 @@ async fn build_iteration(
             draws.push(None);
         }
         for pair in draws {
-            let resolved = resolve_cycle(&mut db.scopes(), pair, Some(date)).await?;
+            let resolved = resolve_cycle(pair, Some(date))?;
             let (time_scope, plan, window) = match resolved {
                 Some(resolved) => {
-                    let bounds = scope_bounds(&resolved.scope)?;
+                    let bounds = resolved.scope.bounds();
                     (Some(resolved.time_scope), resolved.plan, bounds)
                 }
                 None => (None, None, (context.slot.start, context.slot.end)),
@@ -533,7 +518,7 @@ async fn build_iteration(
             occurrences.push(Occurrence {
                 key: OccurrenceKey {
                     item,
-                    iteration: date,
+                    iteration,
                     cycle,
                 },
                 kind: occurrence_kind(flow, item_type),
@@ -586,8 +571,7 @@ async fn build_iteration(
                     .unwrap_or_default();
                 let (task, mut lifecycle) = task_row(occurrence, overlay, consumption, expired);
                 if let Some(plan) = &task.plan {
-                    let bounds = time_scope_window(db, plan).await?;
-                    lifecycle.plan_timing = Some(derive_timing(Some(bounds), now));
+                    lifecycle.plan_timing = Some(derive_timing(Some(plan.window()), now));
                 }
                 rows.tasks.push(task);
                 rows.lifecycles.push(lifecycle);

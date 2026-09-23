@@ -1,4 +1,5 @@
 use super::*;
+use crate::scopes::key::test_key;
 
 fn at(iso: &str) -> NaiveDateTime {
     NaiveDateTime::parse_from_str(iso, "%Y-%m-%dT%H:%M:%S").expect("a parseable instant")
@@ -127,8 +128,8 @@ fn an_unrecognised_stored_status_reads_as_pending() {
         checked_at: Some("not a date".to_string()),
         position: 0,
         is_private: true,
-        time_scope_start_id: Some(4),
-        time_scope_end_id: Some(5),
+        time_scope_start_id: Some(test_key(4)),
+        time_scope_end_id: Some(test_key(5)),
         time_scope_duration_n: None,
         time_scope_duration_kind: None,
     };
@@ -145,8 +146,8 @@ fn an_unrecognised_stored_status_reads_as_pending() {
     assert_eq!(
         expectation.time_scope,
         Some(TimeScope {
-            start_id: 4,
-            end_id: 5,
+            start_id: test_key(4),
+            end_id: test_key(5),
             duration: None
         })
     );
@@ -156,8 +157,8 @@ fn an_unrecognised_stored_status_reads_as_pending() {
 #[test]
 fn a_time_scope_can_be_set_and_cleared_like_a_tasks() {
     let window = TimeScope {
-        start_id: 7,
-        end_id: 8,
+        start_id: test_key(7),
+        end_id: test_key(8),
         duration: None,
     };
     let set = ExpectationWrite::merge(

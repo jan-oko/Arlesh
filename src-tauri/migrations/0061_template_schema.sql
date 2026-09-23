@@ -54,6 +54,7 @@ CREATE TABLE template_block_reasons (
 );
 CREATE INDEX idx_template_block_reasons_item ON template_block_reasons (item_type, item_id);
 
+
 -- Undo-journal triggers, straight from scripts/generate-undo-triggers.sh.
 
 DROP TRIGGER IF EXISTS undo_journal_flow_goals_insert;

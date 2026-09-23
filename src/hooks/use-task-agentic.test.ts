@@ -5,6 +5,7 @@ import { updateTask } from "@/api/tasks";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { NO_CYCLE } from "@/api/flows";
 import { fixtureRowId } from "@/test/node-fixture";
+import { testKey } from "@/test/scope-key";
 
 vi.mock("@/api/tasks", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/tasks")>()),
@@ -95,7 +96,7 @@ describe("useTaskAgentic", () => {
     const goal = node("goal-1", { kind: "goal" });
     const habitInstance = node("task-4-virtual", {
       virtual: true,
-      habitItem: { flowId: 3, itemType: "flow_task", itemId: 4, scopeId: 100, cycleId: NO_CYCLE },
+      habitItem: { flowId: 3, itemType: "flow_task", itemId: 4, scopeId: testKey(100), cycleId: NO_CYCLE },
     });
     const { result } = setup([goal, habitInstance]);
 

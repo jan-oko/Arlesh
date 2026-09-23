@@ -12,6 +12,7 @@ import { findNode } from "@/utils/mindmap-tree";
 import {
   checkNodeId, delegationWaitNodeId, expectationNodeId, spawnedCheckNodeId, spawnedWaitNodeId,
 } from "@/utils/node-uuid";
+import { testKey } from "@/test/scope-key";
 
 const ASPECT: Domain = {
   id: 1, title: "Work", description: null, subtype: "aspect", parent_id: null, color: null,
@@ -34,7 +35,7 @@ function wait(over: Partial<Expectation> = {}): Expectation {
   };
 }
 
-const DUE = { start_id: 10, end_id: 10 };
+const DUE = { start_id: testKey(10), end_id: testKey(10) };
 const EVERY = { n: 3, kind: "day" };
 
 function build(

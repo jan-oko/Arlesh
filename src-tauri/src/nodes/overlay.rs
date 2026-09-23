@@ -15,6 +15,7 @@ use std::collections::HashMap;
 use sqlx::SqliteConnection;
 
 use super::key::OccurrenceKey;
+use crate::scopes::{error::ScopeError, key::ScopeKey, ScopeOperator};
 
 /// One occurrence's Task overlay. Every field inherits when empty.
 #[derive(Debug, Clone, Default, PartialEq, Eq, sqlx::FromRow)]
@@ -28,9 +29,9 @@ pub struct TaskOverlay {
     /// Its own title.
     pub title: Option<String>,
     /// Its own Plan's start boundary scope.
-    pub plan_start_id: Option<i64>,
+    pub plan_start_id: Option<ScopeKey>,
     /// Its own Plan's end boundary scope.
-    pub plan_end_id: Option<i64>,
+    pub plan_end_id: Option<ScopeKey>,
     /// Whether the Plan above is its own — possibly none at all — rather than its Cycle Plan.
     pub plan_set: bool,
     /// Its own delegate's kind.
@@ -215,18 +216,28 @@ impl<'session> OverlayOperator<'session> {
         })
     }
 
-    /// The iteration dates of one Habit that carry any overlay or relation at all — the future
-    /// iterations the virtual tables must still derive so that an edit is never lost.
-    pub async fn touched_iterations(&mut self, flow_id: i64) -> Result<Vec<String>, sqlx::Error> {
-        let dates: Vec<String> = sqlx::query_scalar(
-            "SELECT iteration_date FROM task_overlays WHERE flow_id = ?1 AND origin = 'habit'
-             UNION SELECT iteration_date FROM goal_overlays WHERE flow_id = ?1
-             UNION SELECT iteration_date FROM commitment_overlays WHERE flow_id = ?1",
+    /// The iterations of one Habit that carry an overlay — among the future iterations the virtual
+    /// tables must still derive, so that an edit is never lost.
+    pub async fn touched_iterations(&mut self, flow_id: i64) -> Result<Vec<ScopeKey>, sqlx::Error> {
+        sqlx::query_scalar(
+            "SELECT iteration_scope FROM task_overlays WHERE flow_id = ?1 AND origin = 'habit'
+             UNION SELECT iteration_scope FROM goal_overlays WHERE flow_id = ?1
+             UNION SELECT iteration_scope FROM commitment_overlays WHERE flow_id = ?1",
         )
         .bind(flow_id)
         .fetch_all(&mut *self.connection)
-        .await?;
-        Ok(dates)
+        .await
+    }
+
+    /// Records the Exact scopes an overlay row names, so the row's references into
+    /// `exact_scopes` hold (migration 0046). Canonical keys need nothing.
+    async fn register(
+        &mut self,
+        keys: impl IntoIterator<Item = ScopeKey>,
+    ) -> Result<(), ScopeError> {
+        ScopeOperator::new(&mut *self.connection)
+            .register_all(keys)
+            .await
     }
 
     /// One occurrence's Task overlay, empty when it has none.
@@ -271,7 +282,7 @@ impl<'session> OverlayOperator<'session> {
         flow_id: i64,
         key: &OccurrenceKey,
         overlay: &TaskOverlay,
-    ) -> Result<(), sqlx::Error> {
+    ) -> Result<(), ScopeError> {
         if overlay.is_empty() {
             sqlx::query("DELETE FROM task_overlays WHERE node_key = ?")
                 .bind(key.node_key())
@@ -279,9 +290,16 @@ impl<'session> OverlayOperator<'session> {
                 .await?;
             return Ok(());
         }
+        self.register(
+            [key.iteration]
+                .into_iter()
+                .chain(overlay.plan_start_id)
+                .chain(overlay.plan_end_id),
+        )
+        .await?;
         sqlx::query(
             "INSERT INTO task_overlays
-                (origin, flow_id, item_type, item_id, iteration_date, cycle_id,
+                (origin, flow_id, item_type, item_id, iteration_scope, cycle_id,
                  status, resolved_at, tombstone, title, plan_start_id, plan_end_id, plan_set,
                  delegate_kind, delegate_id, delegate_set, agentic, agentic_set, asynchronous,
                  archival, is_private, beads_id, beads_id_set, position, block_reasons_set)
@@ -301,7 +319,7 @@ impl<'session> OverlayOperator<'session> {
         .bind(flow_id)
         .bind(key.item.item_type.as_str())
         .bind(key.item.item_id)
-        .bind(key.iteration.format("%Y-%m-%d").to_string())
+        .bind(key.iteration)
         .bind(key.cycle)
         .bind(&overlay.status)
         .bind(overlay.resolved_at)
@@ -333,7 +351,7 @@ impl<'session> OverlayOperator<'session> {
         flow_id: i64,
         key: &OccurrenceKey,
         overlay: &GoalOverlay,
-    ) -> Result<(), sqlx::Error> {
+    ) -> Result<(), ScopeError> {
         if overlay.is_empty() {
             sqlx::query("DELETE FROM goal_overlays WHERE node_key = ?")
                 .bind(key.node_key())
@@ -341,9 +359,10 @@ impl<'session> OverlayOperator<'session> {
                 .await?;
             return Ok(());
         }
+        self.register([key.iteration]).await?;
         sqlx::query(
             "INSERT INTO goal_overlays
-                (flow_id, item_type, item_id, iteration_date, cycle_id, status, resolved_at,
+                (flow_id, item_type, item_id, iteration_scope, cycle_id, status, resolved_at,
                  tombstone, title, is_private, beads_id, beads_id_set, position, block_reasons_set)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(node_key) DO UPDATE SET
@@ -356,7 +375,7 @@ impl<'session> OverlayOperator<'session> {
         .bind(flow_id)
         .bind(key.item.item_type.as_str())
         .bind(key.item.item_id)
-        .bind(key.iteration.format("%Y-%m-%d").to_string())
+        .bind(key.iteration)
         .bind(key.cycle)
         .bind(&overlay.status)
         .bind(overlay.resolved_at)
@@ -378,7 +397,7 @@ impl<'session> OverlayOperator<'session> {
         flow_id: i64,
         key: &OccurrenceKey,
         overlay: &CommitmentOverlay,
-    ) -> Result<(), sqlx::Error> {
+    ) -> Result<(), ScopeError> {
         if overlay.is_empty() {
             sqlx::query("DELETE FROM commitment_overlays WHERE node_key = ?")
                 .bind(key.node_key())
@@ -386,9 +405,10 @@ impl<'session> OverlayOperator<'session> {
                 .await?;
             return Ok(());
         }
+        self.register([key.iteration]).await?;
         sqlx::query(
             "INSERT INTO commitment_overlays
-                (flow_id, item_type, item_id, iteration_date, cycle_id, verdict, resolved_at,
+                (flow_id, item_type, item_id, iteration_scope, cycle_id, verdict, resolved_at,
                  tombstone, title, is_private, beads_id, beads_id_set, position)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(node_key) DO UPDATE SET
@@ -400,7 +420,7 @@ impl<'session> OverlayOperator<'session> {
         .bind(flow_id)
         .bind(key.item.item_type.as_str())
         .bind(key.item.item_id)
-        .bind(key.iteration.format("%Y-%m-%d").to_string())
+        .bind(key.iteration)
         .bind(key.cycle)
         .bind(&overlay.verdict)
         .bind(overlay.resolved_at)

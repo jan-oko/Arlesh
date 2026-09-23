@@ -22,6 +22,7 @@
 use chrono::NaiveDateTime;
 
 use crate::database::session::{Db, Transactional};
+use crate::scopes::key::ScopeKey;
 
 use super::error::TaskError;
 use super::model::{
@@ -55,8 +56,8 @@ struct ExpectationRow {
     archival: String,
     position: i64,
     is_private: bool,
-    time_scope_start_id: Option<i64>,
-    time_scope_end_id: Option<i64>,
+    time_scope_start_id: Option<ScopeKey>,
+    time_scope_end_id: Option<ScopeKey>,
     time_scope_duration_n: Option<i64>,
     time_scope_duration_kind: Option<String>,
     check_every_n: Option<i64>,
@@ -138,7 +139,9 @@ impl ExpectationWrite {
         now: NaiveDateTime,
     ) -> Result<Self, crate::nodes::id::NotStored> {
         let reparent = match (request.parent_type, request.parent_id) {
-            (Some(parent_type), Some(parent_id)) => Some((parent_type, parent_id.require_stored()?)),
+            (Some(parent_type), Some(parent_id)) => {
+                Some((parent_type, parent_id.require_stored()?))
+            }
             _ => None,
         };
         let (parent_type, parent_id) = reparent
@@ -379,6 +382,7 @@ pub async fn create_expectation(
         &request.time_scope,
     )
     .await?;
+    super::register_windows(db, [&request.time_scope, &None]).await?;
     db.expectations().insert(request, now()).await
 }
 
@@ -401,6 +405,7 @@ pub async fn update_expectation(
         &write.time_scope,
     )
     .await?;
+    super::register_windows(db, [&write.time_scope, &None]).await?;
     db.expectations().update(id, write).await
 }
 

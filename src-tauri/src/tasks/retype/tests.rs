@@ -1,4 +1,5 @@
 use super::*;
+use crate::scopes::key::test_key;
 use crate::tasks::model::DurationSpec;
 
 fn goal(id: i64) -> SourceNode {
@@ -87,8 +88,8 @@ fn project(id: i64) -> SourceNode {
 
 fn window(start_id: i64, end_id: i64) -> TimeScope {
     TimeScope {
-        start_id,
-        end_id,
+        start_id: test_key(start_id),
+        end_id: test_key(end_id),
         duration: None,
     }
 }
@@ -757,7 +758,7 @@ fn the_details_payload_names_every_lost_child_and_field() {
         plan.details(),
         serde_json::json!({
             "lost_children": [],
-            "lost_fields": [{ "field": "plan", "value": "4" }],
+            "lost_fields": [{ "field": "plan", "value": "2000-01-05" }],
             "parent_climb": null,
         })
     );
@@ -767,8 +768,8 @@ fn the_details_payload_names_every_lost_child_and_field() {
 fn a_duration_shaped_window_is_rendered_in_duration_form() {
     let source = SourceNode {
         plan: Some(TimeScope {
-            start_id: 4,
-            end_id: 6,
+            start_id: test_key(4),
+            end_id: test_key(6),
             duration: Some(DurationSpec {
                 n: 3,
                 kind: "week".into(),

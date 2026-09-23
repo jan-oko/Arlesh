@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import GoalEditorModal from "./GoalEditorModal";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { Domain } from "@/api/domains";
+import { testKey } from "@/test/scope-key";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -142,7 +143,7 @@ describe("GoalEditorModal — keyboard shortcuts", () => {
 });
 
 describe("GoalEditorModal — on-exit behavior", () => {
-  const scopedNode = mkNode({ timeScope: { start_id: 1, end_id: 1 } });
+  const scopedNode = mkNode({ timeScope: { start_id: testKey(1), end_id: testKey(1) } });
 
   it("hides the on-exit toggle when the goal is unscoped", () => {
     render(<GoalEditorModal {...defaultProps} />);

@@ -9,6 +9,7 @@ vi.mock("@/api/flows", () => ({
 }));
 
 import { setHabitItemStatus, unfinishedChildren } from "@/api/flows";
+import { testKey } from "@/test/scope-key";
 
 const OCCURRENCE: MindmapNode = {
   id: "habit-3-0-virtual",
@@ -18,7 +19,7 @@ const OCCURRENCE: MindmapNode = {
   tagIds: [],
   children: [],
   virtual: true,
-  habitItem: { flowId: 3, itemType: "flow_root", itemId: 3, scopeId: 100, cycleId: 0 },
+  habitItem: { flowId: 3, itemType: "flow_root", itemId: 3, scopeId: testKey(100), cycleId: 0 },
 };
 
 const REFUSAL = { kind: "needs_confirmation", message: "still holds work" };
@@ -39,7 +40,7 @@ describe("useOccurrenceCompletion", () => {
 
     await waitFor(() => { expect(reload).toHaveBeenCalled(); });
     expect(setHabitItemStatus).toHaveBeenCalledWith(
-      3, "flow_root", 3, 100, 0, "done", expect.any(Number), undefined,
+      3, "flow_root", 3, testKey(100), 0, "done", expect.any(Number), undefined,
     );
     expect(result.current.prompt).toBeNull();
   });
@@ -71,7 +72,7 @@ describe("useOccurrenceCompletion", () => {
 
     await waitFor(() => { expect(result.current.prompt).toBeNull(); });
     expect(setHabitItemStatus).toHaveBeenLastCalledWith(
-      3, "flow_root", 3, 100, 0, "done", expect.any(Number), true,
+      3, "flow_root", 3, testKey(100), 0, "done", expect.any(Number), true,
     );
     expect(reload).toHaveBeenCalled();
   });

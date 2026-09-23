@@ -1,6 +1,7 @@
 //! Assembling a fact forest from a load, and narrowing a load to what a filter keeps.
 
 use super::*;
+use crate::scopes::key::test_key;
 use crate::{
     block_reasons::model::BlockReason,
     domains::model::Domain,
@@ -372,8 +373,8 @@ fn an_expectation_with_a_check_due_carries_a_virtual_check_task_timed_by_its_lif
         .push(crate::tasks::waits::ExpectationCheck {
             expectation_id: 50,
             due: crate::tasks::model::TimeScope {
-                start_id: 1,
-                end_id: 1,
+                start_id: test_key(1),
+                end_id: test_key(1),
                 duration: None,
             },
             due_at: instant(2026, 7, 4),
@@ -468,8 +469,8 @@ fn spawned(
         },
         time_scope: None,
         next_check: Some(crate::tasks::model::TimeScope {
-            start_id: 1,
-            end_id: 1,
+            start_id: test_key(1),
+            end_id: test_key(1),
             duration: None,
         }),
         next_check_at: Some(instant(2026, 7, 8)),
@@ -493,8 +494,8 @@ fn a_completed_check_stays_as_a_done_task_the_done_hiding_presets_drop() {
     });
     load.expectations.push(checked);
     let scope = crate::tasks::model::TimeScope {
-        start_id: 1,
-        end_id: 1,
+        start_id: test_key(1),
+        end_id: test_key(1),
         duration: None,
     };
     load.expectation_checks

@@ -12,6 +12,7 @@ import { flattenCommitmentRows, flattenExpectationRows, flattenTaskRows } from "
 import type { Timing } from "@/api/scope-lifecycle";
 import type { Verdict } from "@/api/verdict";
 import { VERDICT_VALUES } from "@/api/verdict";
+import { testKey } from "@/test/scope-key";
 
 /**
  * The status presets have two evaluators: these predicates, which the Mindmap and the List View
@@ -229,7 +230,7 @@ function parseCorpus(): Corpus {
 }
 
 /** The virtual-Habit-instance marker: its presence is what `isUnopenedOccurrence` keys on. */
-const OCCURRENCE = { flowId: 1, itemType: "flow_task", itemId: 1, scopeId: 1, cycleId: 0 } as const;
+const OCCURRENCE = { flowId: 1, itemType: "flow_task", itemId: 1, scopeId: testKey(1), cycleId: 0 } as const;
 
 /** A Habit flow's payload, reduced to the one field a filter reads off it. */
 const HABIT_FLOW = {

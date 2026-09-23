@@ -51,15 +51,8 @@ async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
 }
 
 /// A single-scope Time Scope of `kind` covering `date`.
-async fn window(pool: &sqlx::SqlitePool, kind: ScopeKind, date: NaiveDate) -> TimeScope {
-    let scope = helpers::session_factory(pool)
-        .connect()
-        .await
-        .unwrap()
-        .scopes()
-        .get_or_create(kind, date)
-        .await
-        .unwrap();
+async fn window(_pool: &sqlx::SqlitePool, kind: ScopeKind, date: NaiveDate) -> TimeScope {
+    let scope = arlesh_lib::scopes::model::Scope::containing(kind, date).unwrap();
     TimeScope {
         start_id: scope.id,
         end_id: scope.id,
@@ -904,7 +897,7 @@ async fn the_editors_clear_payload_empties_a_commitments_own_window() {
         "the emptied scope is emptied in the row"
     );
 
-    let stored: Option<i64> =
+    let stored: Option<String> =
         sqlx::query_scalar("SELECT time_scope_start_id FROM commitments WHERE id = ?")
             .bind(commitment.id.sid())
             .fetch_one(&pool)
@@ -974,13 +967,15 @@ fn an_explicit_null_time_scope_in_a_commitment_update_payload_clears_it() {
         Some(None),
         "an explicit null clears the window"
     );
-    let set: UpdateCommitmentRequest =
-        serde_json::from_str(r#"{"time_scope":{"start_id":1,"end_id":2}}"#).unwrap();
+    let set: UpdateCommitmentRequest = serde_json::from_str(
+        r#"{"time_scope":{"start_id":"day:2026-07-01","end_id":"day:2026-07-02"}}"#,
+    )
+    .unwrap();
     assert_eq!(
         set.time_scope,
         Some(Some(TimeScope {
-            start_id: 1,
-            end_id: 2,
+            start_id: "day:2026-07-01".parse().unwrap(),
+            end_id: "day:2026-07-02".parse().unwrap(),
             duration: None
         }))
     );

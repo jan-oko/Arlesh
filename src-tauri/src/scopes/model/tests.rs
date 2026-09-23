@@ -26,12 +26,6 @@ fn scope_kind_parse_db_roundtrips_every_variant() {
 }
 
 #[test]
-fn scope_id_roundtrip() {
-    let id = ScopeId::from(42_i64);
-    assert_eq!(i64::from(id), 42);
-}
-
-#[test]
 fn part_of_day_str_roundtrips_every_variant() {
     for part in PartOfDay::CYCLE {
         assert_eq!(PartOfDay::parse_db(part.as_str()), Some(part));

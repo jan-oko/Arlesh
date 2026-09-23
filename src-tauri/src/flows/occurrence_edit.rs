@@ -34,7 +34,6 @@ use crate::{
         Commitment, Delegate, Goal, Task, TaskArchival, TaskStatus, TimeScope,
         UpdateCommitmentRequest, UpdateGoalRequest, UpdateTaskRequest,
     },
-    tasks::time_scope_window,
 };
 
 /// What an occurrence reads when nothing overrides it: its template's values.
@@ -56,13 +55,12 @@ async fn template_values(
 ) -> Result<TemplateValues, FlowError> {
     match key.item.item_type {
         TemplateKind::FlowRoot => {
-            let (_, window_start) =
-                super::resolve_flow_window(&mut db.scopes(), flow, key.iteration).await?;
+            let (_, window_start) = super::resolve_flow_window(flow, key.iteration.start_date())?;
             Ok(TemplateValues {
                 title: flow.title.clone(),
                 is_private: flow.is_private,
                 position: position_of_root,
-                plan: resolve_root_plan(&mut db.scopes(), flow, Some(window_start)).await?,
+                plan: resolve_root_plan(flow, Some(window_start))?,
                 fields: flow.template.clone(),
             })
         }
@@ -91,8 +89,8 @@ async fn template_values(
                 .find(|task| task.id == key.item.item_id)
                 .ok_or_else(|| FlowError::NodeNotFound(key.node_key()))?;
             let pair = db.flows().cycle(key.cycle).await?;
-            let plan = resolve_cycle(&mut db.scopes(), pair.as_ref(), Some(key.iteration))
-                .await?
+            let (_, window_start) = super::resolve_flow_window(flow, key.iteration.start_date())?;
+            let plan = resolve_cycle(pair.as_ref(), Some(window_start))?
                 .and_then(|resolved| resolved.plan);
             Ok(TemplateValues {
                 title: task.title,
@@ -322,9 +320,7 @@ async fn check_plan(
     plan: &TimeScope,
 ) -> Result<(), FlowError> {
     let window = occurrence_window(db, flow, key).await?;
-    let outer = time_scope_window(db, &window).await?;
-    let inner = time_scope_window(db, plan).await?;
-    if interval_contains(outer, inner) {
+    if interval_contains(window.window(), plan.window()) {
         return Ok(());
     }
     Err(crate::tasks::error::TaskError::ScopeContainment(

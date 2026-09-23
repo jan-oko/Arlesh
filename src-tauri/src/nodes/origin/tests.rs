@@ -1,4 +1,5 @@
 use super::*;
+use crate::scopes::key::ScopeKey;
 
 fn habit() -> Origin {
     Origin::Habit(HabitOrigin {
@@ -10,7 +11,7 @@ fn habit() -> Origin {
                 .unwrap()
                 .and_hms_opt(2, 0, 0)
                 .unwrap(),
-            scope_id: 40,
+            scope_id: ScopeKey::day(NaiveDate::from_ymd_opt(2026, 9, 20).unwrap()),
             kind: Some("day".to_string()),
             status: IterationStatus::Active,
         },
@@ -40,6 +41,7 @@ fn a_habit_origin_names_its_habit_and_iteration() {
     assert_eq!(json["iteration_scope"]["start_date"], "2026-09-20");
     assert_eq!(json["iteration_scope"]["window_end"], "2026-09-21T02:00:00");
     assert_eq!(json["iteration_scope"]["status"], "active");
+    assert_eq!(json["iteration_scope"]["scope_id"], "day:2026-09-20");
     assert_eq!(serde_json::from_value::<Origin>(json).unwrap(), origin);
     assert!(origin.is_derived());
     assert!(origin.habit().is_some_and(HabitOrigin::is_root));

@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::scopes::key::ScopeKey;
 use crate::tasks::model::TimeScope;
 
 /// Identifies a flow row by its primary key.
@@ -498,13 +499,13 @@ pub struct FlowRecurrence {
     /// Owning flow (also the primary key — one recurrence per flow).
     pub flow_id: i64,
     /// The scope the recurrence starts on (of the flow's Duration kind).
-    pub start_scope_id: i64,
+    pub start_scope_id: ScopeKey,
     /// Idle span between one iteration window's end and the next's start; `None` = continuous.
     pub gap_n: Option<i64>,
     /// Kind of the Gap span (`day`/`week`/`month`/`season`); travels with `gap_n`.
     pub gap_kind: Option<String>,
     /// Optional end scope; `None` = open-ended.
-    pub end_scope_id: Option<i64>,
+    pub end_scope_id: Option<ScopeKey>,
     /// Destructive vs Accumulating.
     pub consumption_kind: String,
     /// Overlapping vs Blocking (set iff Accumulating).
@@ -517,13 +518,13 @@ pub struct FlowRecurrence {
 #[derive(Debug, Clone, Deserialize)]
 pub struct SetRecurrenceRequest {
     /// The scope the recurrence starts on (of the flow's Duration kind).
-    pub start_scope_id: i64,
+    pub start_scope_id: ScopeKey,
     /// Gap magnitude; `None` = continuous (no gap).
     pub gap_n: Option<i64>,
     /// Gap kind; must accompany `gap_n` and be no finer than the flow's Duration kind.
     pub gap_kind: Option<String>,
     /// Optional end scope; `None` = open-ended.
-    pub end_scope_id: Option<i64>,
+    pub end_scope_id: Option<ScopeKey>,
     /// Destructive vs Accumulating.
     pub consumption_kind: ConsumptionKind,
     /// Overlapping vs Blocking; required iff Accumulating.
@@ -624,7 +625,7 @@ pub struct HabitIteration {
     /// Zero-based ordinal from the Repetition Start.
     pub index: i64,
     /// The scope anchoring the iteration window's first period (also the instance overlay key).
-    pub anchor_scope_id: i64,
+    pub anchor_scope_id: ScopeKey,
     /// The window's first day, ISO `YYYY-MM-DD` (drives the `{flow title} {start scope}` title).
     pub anchor_date: String,
     /// The window's **exclusive** end, ISO `YYYY-MM-DDTHH:MM:SS` — the iteration's window has
@@ -657,7 +658,7 @@ pub struct HabitInstanceRef {
     /// The flow item's id, or the flow id for the root.
     pub item_id: i64,
     /// The scope anchoring the iteration this instance belongs to.
-    pub iteration_scope_id: i64,
+    pub iteration_scope_id: ScopeKey,
     /// The cycle pair that drew it, or [`NO_CYCLE`] when the item declares none.
     #[serde(default)]
     pub cycle_id: i64,
@@ -673,7 +674,7 @@ pub struct HabitItemStatus {
     /// The instance's id (a flow item id, or the flow id for `flow_root`).
     pub item_id: i64,
     /// The iteration scope the status applies to.
-    pub iteration_scope_id: i64,
+    pub iteration_scope_id: ScopeKey,
     /// Which of the item's cycle pairs the status belongs to, or [`NO_CYCLE`] for an item with
     /// none (and for the root). Two pairs on one item are two things to complete on the same day,
     /// so the iteration scope alone no longer identifies one instance.
@@ -711,10 +712,9 @@ pub struct HabitInstanceChild {
 
 /// The occurrence an added child hangs on, as everything above the child needs to read it.
 ///
-/// What a reader of the child wants is the occurrence's **window** and what it renders as, which
-/// is what governs the child's containment and its Archival. The window is the pair of boundary
-/// scopes the attachment settled when it was written, so reading it resolves nothing and mints
-/// nothing.
+/// What a reader of the child wants is not the occurrence's key but its **window** and what it renders as, which is what governs the child's
+/// containment and its Archival. The window is the pair of boundary scopes the attachment settled
+/// when it was written, so reading it resolves nothing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChildAttachment {
     /// The Habit whose occurrence holds the child.

@@ -191,7 +191,9 @@ impl<'session> RelationOperator<'session> {
     }
 
     /// The template edges removed from derived dependents, as `(dependent key, target key)`.
-    pub async fn removed_template_edges(&mut self) -> Result<HashSet<(String, String)>, sqlx::Error> {
+    pub async fn removed_template_edges(
+        &mut self,
+    ) -> Result<HashSet<(String, String)>, sqlx::Error> {
         let rows: Vec<(String, String)> = sqlx::query_as(
             "SELECT dependent_key, target_key FROM derived_dependencies
              WHERE added = 0 AND dependent_key IS NOT NULL AND target_key IS NOT NULL",
@@ -211,7 +213,8 @@ impl<'session> RelationOperator<'session> {
         target: &Endpoint,
         added: bool,
     ) -> Result<(), sqlx::Error> {
-        self.clear_dependency(dependent, target_type, target).await?;
+        self.clear_dependency(dependent, target_type, target)
+            .await?;
         let (dependent_id, dependent_key) = dependent.columns();
         let (target_id, target_key) = target.columns();
         sqlx::query(

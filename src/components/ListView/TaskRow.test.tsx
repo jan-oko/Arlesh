@@ -4,6 +4,7 @@ import type { ComponentProps } from "react";
 import TaskRow from "./TaskRow";
 import type { TaskListRow } from "@/utils/list-filter";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
+import { testKey } from "@/test/scope-key";
 
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock("@/hooks/use-tag-names", () => ({ useTagNames: () => new Map([[7, "urgent"]]) }));
@@ -93,7 +94,7 @@ describe("TaskRow", () => {
 
   it("still allows cycling a virtual Habit instance even though it reads as blocked-like", () => {
     const habitRow = row({
-      node: n("task-1", "task", { status: "todo", habitItem: { flowId: 1, itemType: "flow_task", itemId: 2, scopeId: 3, cycleId: 0 } }),
+      node: n("task-1", "task", { status: "todo", habitItem: { flowId: 1, itemType: "flow_task", itemId: 2, scopeId: testKey(3), cycleId: 0 } }),
       isBlocked: true,
     });
     render(<TaskRow {...baseProps({ row: habitRow })} />);

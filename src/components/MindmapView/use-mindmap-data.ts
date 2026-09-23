@@ -52,6 +52,7 @@ import { formatScopeCore } from "@/utils/scope-format";
 import type { ScopeLabelFns } from "@/hooks/use-scope-labels";
 import { useScopeLabels } from "@/hooks/use-scope-labels";
 import type { CanonicalKind } from "@/utils/scope-ref";
+import type { ScopeKey } from "@/api/scopes";
 import type { DurationSpec, TimeScope } from "@/api/time-scope";
 import { localNowIso } from "@/utils/local-now";
 
@@ -378,7 +379,7 @@ export function holdsUnrenderableGoalItems(flow: Flow, flowGoals: readonly FlowG
  * iteration scope, the same quadruple the backend attaches by.
  */
 function instanceKey(
-  itemType: string, itemId: number, cycleId: number, iterationScopeId: number,
+  itemType: string, itemId: number, cycleId: number, iterationScopeId: ScopeKey,
 ): string {
   return `${itemType}-${itemId}-${cycleId}-${iterationScopeId}`;
 }

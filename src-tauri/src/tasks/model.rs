@@ -4,6 +4,7 @@ use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 
 use crate::nodes::{id::NodeId, origin::Origin};
+use crate::scopes::{key::ScopeKey, resolve::Bounds};
 
 /// Identifies a task row by its primary key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -312,12 +313,34 @@ pub struct DurationSpec {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TimeScope {
     /// Start boundary scope id.
-    pub start_id: i64,
+    pub start_id: ScopeKey,
     /// End boundary scope id.
-    pub end_id: i64,
+    pub end_id: ScopeKey,
     /// Duration parameters, when the scope was set in duration form.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub duration: Option<DurationSpec>,
+}
+
+impl TimeScope {
+    /// A window of one scope, used as both boundaries.
+    pub fn single(scope: ScopeKey) -> Self {
+        Self {
+            start_id: scope,
+            end_id: scope,
+            duration: None,
+        }
+    }
+
+    /// The combined half-open window: the start of the start boundary through the end of the end
+    /// boundary. Pure — a scope is derived from its key.
+    pub fn window(&self) -> Bounds {
+        (self.start_id.bounds().0, self.end_id.bounds().1)
+    }
+
+    /// Both boundary keys, for registering them before a write.
+    pub fn keys(&self) -> [ScopeKey; 2] {
+        [self.start_id, self.end_id]
+    }
 }
 
 /// A task row as returned from the database.

@@ -5,10 +5,9 @@
 //! silent reload. [`load`] is the single operation that replaces them.
 //!
 //! It touches many resources, so per ADR-0004 it is a free function over the session rather than
-//! a method on any one operator. It takes a [`Db<Transactional>`] because deriving a Habit's
-//! occurrences writes: resolving an iteration window mints the scope rows it lands on. Mode
-//! follows the operation's consistency requirement, not the reader's intuition that a load is
-//! read-only.
+//! a method on any one operator. It writes nothing — iteration windows are derived from their
+//! value keys (ADR 0009), and a Habit's occurrences from those — and takes a
+//! [`Db<Transactional>`] only so that its many reads see one consistent board.
 //!
 //! **Nothing here assembles a tree.** Each kind's list is its virtual table ([`crate::nodes`]);
 //! the frontend still builds the tree from the rows' parent links.

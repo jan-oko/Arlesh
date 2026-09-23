@@ -12,11 +12,8 @@ use crate::{
 /// resource-wide lists plus a per-flow iterations/statuses pair — which were paid again after
 /// every edit.
 ///
-/// Transactional despite reading like a query: deriving a Habit's iterations materialises the
-/// scope rows its windows land on, so the load writes. Without the
-/// [`commit`](crate::database::session::Db::commit) below, sqlx discards those scopes when the
-/// session drops — and still returns `Ok`, which is why `tests/mindmap_commands.rs` asserts on
-/// rows rather than on the result. See ADR-0004.
+/// A read: it writes nothing, since every iteration window is derived from its value key (ADR
+/// 0009). It runs in a transaction only so that its many reads see one consistent board.
 #[tauri::command]
 pub async fn load_mindmap(
     factory: State<'_, SessionFactory>,

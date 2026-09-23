@@ -1,4 +1,5 @@
 use super::*;
+use crate::scopes::key::test_key;
 
 fn stored() -> Commitment {
     Commitment {
@@ -8,8 +9,8 @@ fn stored() -> Commitment {
         parent_id: 7.into(),
         verdict: Verdict::Unresolved,
         time_scope: Some(TimeScope {
-            start_id: 10,
-            end_id: 10,
+            start_id: test_key(10),
+            end_id: test_key(10),
             duration: None,
         }),
         verdict_window: Some(DurationSpec {

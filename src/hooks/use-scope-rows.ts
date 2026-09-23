@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { getScope } from "@/api/scopes";
-import type { Scope } from "@/api/scopes";
+import type { Scope, ScopeKey } from "@/api/scopes";
 
 /**
- * Scope rows are immutable once created, so one read serves the session. Shared with nothing else:
+ * A scope is a pure function of its key, so one read serves the session. Shared with nothing else:
  * `use-scope-windows` caches the *resolved window* of a scope, which answers a different question.
  */
-const cache = new Map<number, Promise<Scope>>();
+const cache = new Map<ScopeKey, Promise<Scope>>();
 
-function readCached(id: number): Promise<Scope> {
+function readCached(id: ScopeKey): Promise<Scope> {
   const hit = cache.get(id);
   if (hit !== undefined) return hit;
   const pending = getScope(id);
@@ -33,15 +33,15 @@ export function clearScopeRowCache(): void {
  * A row that fails to read is simply **absent**, never fabricated — the caller treats a missing
  * row as "not known yet" and shows the task in its catch-all rather than filing it under a guess.
  */
-export function useScopeRows(ids: readonly number[]): ReadonlyMap<number, Scope> {
+export function useScopeRows(ids: readonly ScopeKey[]): ReadonlyMap<ScopeKey, Scope> {
   // The caller rebuilds its id list every render; the sorted key is what actually changed.
-  const key = useMemo(() => [...new Set(ids)].sort((a, b) => a - b).join(","), [ids]);
-  const [rows, setRows] = useState<ReadonlyMap<number, Scope>>(new Map());
+  const key = useMemo(() => [...new Set(ids)].sort().join(","), [ids]);
+  const [rows, setRows] = useState<ReadonlyMap<ScopeKey, Scope>>(new Map());
 
   useEffect(() => {
     let active = true;
-    const wanted = key === "" ? [] : key.split(",").map(Number);
-    const entries: Array<[number, Scope]> = [];
+    const wanted = key === "" ? [] : key.split(",");
+    const entries: Array<[ScopeKey, Scope]> = [];
     void Promise.all(
       wanted.map((id) => readCached(id).then(
         (scope) => { entries.push([id, scope]); },

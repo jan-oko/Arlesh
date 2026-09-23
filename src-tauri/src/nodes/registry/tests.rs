@@ -10,7 +10,7 @@ fn a_remembered_key_is_recalled_by_its_id() {
             item_type: TemplateKind::FlowTask,
             item_id: 900_001,
         },
-        iteration: NaiveDate::from_ymd_opt(2031, 1, 1).unwrap(),
+        iteration: crate::scopes::key::ScopeKey::day(NaiveDate::from_ymd_opt(2031, 1, 1).unwrap()),
         cycle: 0,
     });
     let id = remember(&key);

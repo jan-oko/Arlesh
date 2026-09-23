@@ -15,6 +15,7 @@ vi.mock("react-i18next", () => ({
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import { invoke } from "@tauri-apps/api/core";
+import { testKey } from "@/test/scope-key";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -181,14 +182,14 @@ describe("TaskEditorModal — scope clamp guard", () => {
     render(
       <TaskEditorModal
         {...defaultProps}
-        node={mkNode({ timeScope: { start_id: 1, end_id: 1 } })}
+        node={mkNode({ timeScope: { start_id: testKey(1), end_id: testKey(1) } })}
         onSave={onSave}
         onCheckScopeClamp={onCheckScopeClamp}
       />,
     );
     await waitFor(() => expect(screen.getByRole("button", { name: "save" })).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "save" }));
-    await waitFor(() => expect(onCheckScopeClamp).toHaveBeenCalledWith("task", 5, { start_id: 1, end_id: 1 }));
+    await waitFor(() => expect(onCheckScopeClamp).toHaveBeenCalledWith("task", 5, { start_id: testKey(1), end_id: testKey(1) }));
     expect(onSave).not.toHaveBeenCalled();
   });
 
@@ -198,7 +199,7 @@ describe("TaskEditorModal — scope clamp guard", () => {
     render(
       <TaskEditorModal
         {...defaultProps}
-        node={mkNode({ timeScope: { start_id: 1, end_id: 1 } })}
+        node={mkNode({ timeScope: { start_id: testKey(1), end_id: testKey(1) } })}
         onSave={onSave}
         onCheckScopeClamp={onCheckScopeClamp}
       />,
@@ -233,7 +234,7 @@ describe("TaskEditorModal — bd issue link", () => {
 });
 
 describe("TaskEditorModal — Backlog control", () => {
-  const PLAN = { start_id: 4, end_id: 4 };
+  const PLAN = { start_id: testKey(4), end_id: testKey(4) };
 
   it("is off for an ordinary task and saves it as in play", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);

@@ -105,8 +105,7 @@ describe("adjustRangeEndpoint", () => {
 describe("refForScope", () => {
   function scope(fields: Partial<Scope>): Scope {
     return {
-      id: 1, kind: "day", label: "", start_date: "2026-09-16", end_date: "2026-09-16",
-      week_id: null, month_id: null, season_id: null, day_id: null,
+      id: "day:2026-09-16", kind: "day", label: "", start_date: "2026-09-16", end_date: "2026-09-16",
       part: null, start_datetime: null, end_datetime: null,
       ...fields,
     };
@@ -147,9 +146,8 @@ describe("refForScope", () => {
 });
 
 describe("refsForScopes", () => {
-  const month = (id: number, startDate: string): Scope => ({
-    id, kind: "month", label: "", start_date: startDate, end_date: startDate,
-    week_id: null, month_id: null, season_id: null, day_id: null,
+  const month = (_id: number, startDate: string): Scope => ({
+    id: `month:${startDate}`, kind: "month", label: "", start_date: startDate, end_date: startDate,
     part: null, start_datetime: null, end_datetime: null,
   });
 

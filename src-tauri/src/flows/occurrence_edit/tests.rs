@@ -57,7 +57,8 @@ fn a_derived_parent_is_never_named_by_an_integer() {
         ("task", &parent),
         None,
         &None
-    ).is_err());
+    )
+    .is_err());
 }
 
 #[test]

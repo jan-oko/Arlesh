@@ -39,10 +39,10 @@ whole-database snapshots and `sqlite3session` changesets, and says why neither i
 
 **Not every table is journaled.** Derived and materialised rows are excluded, or undo would fight
 the code that regenerates them. The exclusion list is part of the design rather than an
-optimisation, and today it is exactly `scopes` — a scope row is the calendar, instantiated on
-demand and never deleted, so undoing its creation would delete a row the next read recreates and,
-where another item still references it, fail against the foreign keys — plus the journal's own two
-tables. Everything else on the board is journaled, including the link and dependency tables that a
+optimisation, and today it is exactly `exact_scopes` — an exact window is registered by the first
+save that stores it and never deleted, so undoing its registration would delete a row an item may
+still reference, and fail against the foreign keys — plus the journal's own two tables. (Canonical
+scopes are not rows at all; see [*Scopes are derived*](time-scopes.md).) Everything else on the board is journaled, including the link and dependency tables that a
 foreign-key cascade removes without any command naming them.
 
 A table added later is **not journaled until its triggers are written**, and that is the one

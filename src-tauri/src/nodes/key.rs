@@ -1,9 +1,9 @@
 //! A derived node's **value key**: what it is derived from, spelled out.
 //!
 //! The key is the data; the UUID ([`super::id`]) is only its hash. An occurrence of a Habit is
-//! keyed by the template item it is drawn from, the **date** its iteration starts on, and the
-//! cycle pair that drew it — a date and not a scope row id, so the key survives scopes being
-//! derived rather than stored (Arlesh-9o1).
+//! keyed by the template item it is drawn from, the iteration it is in — named by the value key of
+//! the scope anchoring that iteration's window (ADR 0009), which spells the date it starts on —
+//! and the cycle pair that drew it.
 //!
 //! Every key has one canonical string spelling, [`DerivedKey::node_key`]. It is what the overlay
 //! tables generate as their `node_key` column, what the relation tables store, and what the UUID
@@ -11,10 +11,10 @@
 
 use std::fmt;
 
-use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 
 use super::id::{DerivedId, NodeId};
+use crate::scopes::key::ScopeKey;
 
 /// The cycle-pair sentinel of an occurrence no pair drew: the root, and an item declaring none.
 pub const NO_CYCLE: i64 = 0;
@@ -68,42 +68,40 @@ pub struct TemplateItem {
 }
 
 /// One occurrence of a Habit: a template item in one iteration, drawn by one cycle pair.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct OccurrenceKey {
     /// The template row the occurrence is drawn from.
     pub item: TemplateItem,
-    /// The date the occurrence's iteration starts on.
-    pub iteration: NaiveDate,
+    /// The scope anchoring the occurrence's iteration.
+    pub iteration: ScopeKey,
     /// The cycle pair that drew it, or [`NO_CYCLE`].
     pub cycle: i64,
 }
 
 impl OccurrenceKey {
-    /// The canonical spelling: `flow_task:12:2026-09-20:3`.
+    /// The canonical spelling: `flow_task:12:week:2026-09-20:3` — item type, item id, the
+    /// iteration's scope key, and the cycle pair.
     pub fn node_key(&self) -> String {
         format!(
             "{}:{}:{}:{}",
             self.item.item_type.as_str(),
             self.item.item_id,
-            self.iteration.format("%Y-%m-%d"),
+            self.iteration,
             self.cycle
         )
     }
 
-    /// Parses a canonical spelling back into the key.
+    /// Parses a canonical spelling back into the key. The scope key in the middle may itself hold
+    /// colons, so the item is read off the front and the cycle pair off the back.
     pub fn parse(node_key: &str) -> Option<Self> {
-        let mut parts = node_key.split(':');
-        let item_type = TemplateKind::from_db(parts.next()?)?;
-        let item_id = parts.next()?.parse().ok()?;
-        let iteration = NaiveDate::parse_from_str(parts.next()?, "%Y-%m-%d").ok()?;
-        let cycle = parts.next()?.parse().ok()?;
-        if parts.next().is_some() {
-            return None;
-        }
+        let mut front = node_key.splitn(3, ':');
+        let item_type = TemplateKind::from_db(front.next()?)?;
+        let item_id = front.next()?.parse().ok()?;
+        let (scope, cycle) = front.next()?.rsplit_once(':')?;
         Some(Self {
             item: TemplateItem { item_type, item_id },
-            iteration,
-            cycle,
+            iteration: scope.parse().ok()?,
+            cycle: cycle.parse().ok()?,
         })
     }
 

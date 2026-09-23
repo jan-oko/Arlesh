@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 
-import { getOrCreateExactScope, getOrCreatePartScope, getOrCreateScope } from "@/api/scopes";
 import type { TimeScope } from "@/api/time-scope";
+import { keyForRef } from "@/utils/scope-key";
 import {
   adjustRangeEndpoint,
   nextRangeSelection,
@@ -10,17 +10,6 @@ import {
   type RangeSelection,
   type ScopeRef,
 } from "@/utils/scope-ref";
-
-/** Materializes a calendar cell to its scope id, creating the scope on demand. */
-async function materializeRef(ref: ScopeRef): Promise<number> {
-  if (ref.kind === "part_of_day") {
-    return (await getOrCreatePartScope(ref.date, ref.part)).id;
-  }
-  if (ref.kind === "exact") {
-    return (await getOrCreateExactScope(ref.start, ref.end)).id;
-  }
-  return (await getOrCreateScope(ref.kind, ref.date)).id;
-}
 
 /** Single = one scope (Plan or a single-scope Time Scope); range = a boundaries window. */
 export type ScopePickerMode = "single" | "range";
@@ -44,13 +33,15 @@ export interface UseScopePicker {
    * an existing scope pre-selects it and Apply re-applies it. An empty list seeds nothing.
    */
   seed: (refs: ScopeRef[]) => void;
-  /** Materializes the current selection to a Time Scope, or null if incomplete. */
+  /** The current selection as a Time Scope of value keys, or null if incomplete. */
   resolve: () => Promise<TimeScope | null>;
 }
 
 /**
  * Headless Scope Picker selection state. Holds the current selection as calendar-cell references
- * (synchronous, testable) and materializes them to scope ids only on {@link UseScopePicker.resolve}.
+ * (synchronous, testable) and turns them into scope keys on {@link UseScopePicker.resolve}. A key is
+ * the cell's own value (ADR 0009), so nothing is written: an Exact window is registered by the save
+ * that stores it.
  */
 export function useScopePicker(mode: ScopePickerMode): UseScopePicker {
   const [single, setSingle] = useState<ScopeRef | null>(null);
@@ -90,16 +81,15 @@ export function useScopePicker(mode: ScopePickerMode): UseScopePicker {
   const resolve = useCallback(async (): Promise<TimeScope | null> => {
     if (mode === "single") {
       if (single === null) return null;
-      const id = await materializeRef(single);
-      return { start_id: id, end_id: id };
+      const id = keyForRef(single);
+      return Promise.resolve({ start_id: id, end_id: id });
     }
     // One endpoint = a single scope (start === end); two = a range.
     if (range.start === null) return null;
-    const [startId, endId] = await Promise.all([
-      materializeRef(range.start),
-      materializeRef(range.end ?? range.start),
-    ]);
-    return { start_id: startId, end_id: endId };
+    return Promise.resolve({
+      start_id: keyForRef(range.start),
+      end_id: keyForRef(range.end ?? range.start),
+    });
   }, [mode, single, range]);
 
   return { mode, single, range, handleClick, adjustEndpoint, reset, seed, resolve };

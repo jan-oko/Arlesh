@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use super::key::TemplateKind;
 use crate::flows::model::IterationStatus;
+use crate::scopes::key::ScopeKey;
 
 /// Where a node row came from. Discriminated on `kind` on the wire.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -67,8 +68,8 @@ pub struct IterationScope {
     pub start_date: NaiveDate,
     /// The window's exclusive end.
     pub window_end: NaiveDateTime,
-    /// The scope anchoring the window's first period.
-    pub scope_id: i64,
+    /// The scope anchoring the window's first period — the occurrence key's iteration.
+    pub scope_id: ScopeKey,
     /// The scope kind one period of the window is (`day`, `week`, …, `part`), the Habit's own.
     pub kind: Option<String>,
     /// The iteration's derived state at the reference instant.

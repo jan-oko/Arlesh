@@ -1,4 +1,5 @@
 use super::*;
+use crate::scopes::key::test_key;
 
 const FLOW_ID: i64 = 7;
 
@@ -77,11 +78,7 @@ fn dependency(
 }
 
 fn scope(id: i64) -> Option<TimeScope> {
-    Some(TimeScope {
-        start_id: id,
-        end_id: id,
-        duration: None,
-    })
+    Some(TimeScope::single(test_key(id)))
 }
 
 /// A scope table resolving each listed cycle id to its own single-scope window.
@@ -295,7 +292,7 @@ fn an_orphaned_item_is_never_reached() {
         titles(&render(&flow(), "Run", &template, &table(&[10]))),
         ["Run", "Reachable"]
     );
-    // And the gather is told not to mint that orphan's scopes, exactly as the single-pass
+    // And the gather is told not to resolve that orphan's scopes, exactly as the single-pass
     // version never reached them.
     assert!(template.planned_cycles(FLOW_ID).is_empty());
 }

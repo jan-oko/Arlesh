@@ -8,12 +8,14 @@
 --
 -- # The key
 --
--- An overlay row is keyed by the occurrence's **value key**: the template item, the **date** its
--- iteration starts on, and the cycle pair. It used to be keyed by the iteration's scope row id;
--- a date is what the iteration is, and it stays true once scopes stop being rows (Arlesh-9o1).
--- The tuple is stored as real columns, because it is the data. `node_key` is the same tuple
--- spelled as one canonical string (`flow_task:12:2026-09-20:3`), a VIRTUAL generated column that
--- the Rust side hashes into the row's UUID-v5 id; SQLite has no SHA-1 of its own.
+-- An overlay row is keyed by the occurrence's **value key**: the template item, the iteration it
+-- is in — named by the value key of the scope anchoring the iteration's window (ADR 0009), which
+-- spells the date it starts on — and the cycle pair. The tuple is stored as real columns, because
+-- it is the data. `node_key` is the same tuple spelled as one canonical string
+-- (`flow_task:12:day:2026-09-20:3`), a VIRTUAL generated column that the Rust side hashes into the
+-- row's UUID-v5 id; SQLite has no SHA-1 of its own. A scope key column that holds an Exact
+-- window carries the same generated `*_exact` reference into `exact_scopes` every other keyed
+-- column does (migration 0046).
 --
 -- The Task overlay is also where an Expectation's **check tasks** will keep their state
 -- (`origin = 'check'`, keyed by the wait and the instant the check fell due). Those columns are
@@ -29,11 +31,8 @@
 --
 -- # Migrating the Modifications
 --
--- Every row that says anything its kind can read carries across. Its scope id becomes that scope's
--- start date. Two rows can collide
--- on the new key when a Habit's window kind changed under them (a daily Habit given a Morning
--- window keeps its old day-keyed rows beside the new part-of-day ones): the row keyed on the
--- scope kind the Habit generates today wins, and on a tie the later row. The status moves into
+-- Every row that says anything its kind can read carries across, under the iteration scope key it
+-- already had (migration 0046 keyed it). The status moves into
 -- its kind's vocabulary: a Goal's `done` is `achieved`, a Commitment keeps `kept`/`broken` as
 -- its verdict (a stale `done` is not a verdict, and nothing reads it as one), and a Task keeps
 -- its status. A `deleted` tombstone becomes `archived` — an occurrence is never deleted.
@@ -53,14 +52,14 @@ CREATE TABLE task_overlays (
     flow_id           INTEGER REFERENCES flows(id) ON DELETE CASCADE,
     item_type         TEXT CHECK (item_type IN ('flow_task', 'flow_root')),
     item_id           INTEGER,
-    iteration_date    TEXT,
+    iteration_scope   TEXT,
     cycle_id          INTEGER,
     -- Check task key: the wait's own node key, and the instant the check fell due.
     wait_key          TEXT,
     due_at            TEXT,
     node_key          TEXT GENERATED ALWAYS AS (
                           CASE origin
-                              WHEN 'habit' THEN item_type || ':' || item_id || ':' || iteration_date || ':' || cycle_id
+                              WHEN 'habit' THEN item_type || ':' || item_id || ':' || iteration_scope || ':' || cycle_id
                               ELSE 'check:' || wait_key || '@' || due_at
                           END) VIRTUAL,
     -- Per-occurrence state.
@@ -69,8 +68,8 @@ CREATE TABLE task_overlays (
     tombstone         TEXT CHECK (tombstone IN ('archived', 'missed')),
     -- Inherited columns: NULL inherits the template's value.
     title             TEXT,
-    plan_start_id     INTEGER REFERENCES scopes(id),
-    plan_end_id       INTEGER REFERENCES scopes(id),
+    plan_start_id     TEXT,
+    plan_end_id       TEXT,
     plan_set          INTEGER NOT NULL DEFAULT 0 CHECK (plan_set IN (0, 1)),
     delegate_kind     TEXT CHECK (delegate_kind IN ('person', 'agent')),
     delegate_id       INTEGER REFERENCES people(id),
@@ -86,8 +85,11 @@ CREATE TABLE task_overlays (
     -- Set when the occurrence's block reasons are its own list (in derived_block_reasons), even an
     -- empty one; clear when it reads its template's.
     block_reasons_set INTEGER NOT NULL DEFAULT 0 CHECK (block_reasons_set IN (0, 1)),
+    iteration_scope_exact TEXT GENERATED ALWAYS AS (CASE WHEN iteration_scope LIKE 'exact:%' THEN iteration_scope END) VIRTUAL REFERENCES exact_scopes(id),
+    plan_start_id_exact   TEXT GENERATED ALWAYS AS (CASE WHEN plan_start_id LIKE 'exact:%' THEN plan_start_id END) VIRTUAL REFERENCES exact_scopes(id),
+    plan_end_id_exact     TEXT GENERATED ALWAYS AS (CASE WHEN plan_end_id LIKE 'exact:%' THEN plan_end_id END) VIRTUAL REFERENCES exact_scopes(id),
     CHECK ((origin = 'habit') = (flow_id IS NOT NULL AND item_type IS NOT NULL AND item_id IS NOT NULL
-                                 AND iteration_date IS NOT NULL AND cycle_id IS NOT NULL)),
+                                 AND iteration_scope IS NOT NULL AND cycle_id IS NOT NULL)),
     CHECK ((origin = 'check') = (wait_key IS NOT NULL AND due_at IS NOT NULL)),
     CHECK (plan_set = 1 OR (plan_start_id IS NULL AND plan_end_id IS NULL)),
     CHECK ((plan_start_id IS NULL) = (plan_end_id IS NULL)),
@@ -99,17 +101,18 @@ CREATE TABLE task_overlays (
 );
 CREATE UNIQUE INDEX idx_task_overlays_key ON task_overlays (node_key);
 CREATE INDEX idx_task_overlays_item ON task_overlays (item_type, item_id);
-CREATE INDEX idx_task_overlays_flow ON task_overlays (flow_id, iteration_date);
+CREATE INDEX idx_task_overlays_flow ON task_overlays (flow_id, iteration_scope);
 
 CREATE TABLE goal_overlays (
     id                INTEGER PRIMARY KEY,
     flow_id           INTEGER NOT NULL REFERENCES flows(id) ON DELETE CASCADE,
     item_type         TEXT NOT NULL CHECK (item_type IN ('flow_goal', 'flow_root')),
     item_id           INTEGER NOT NULL,
-    iteration_date    TEXT NOT NULL,
+    iteration_scope   TEXT NOT NULL,
     cycle_id          INTEGER NOT NULL DEFAULT 0,
     node_key          TEXT GENERATED ALWAYS AS (
-                          item_type || ':' || item_id || ':' || iteration_date || ':' || cycle_id) VIRTUAL,
+                          item_type || ':' || item_id || ':' || iteration_scope || ':' || cycle_id) VIRTUAL,
+    iteration_scope_exact TEXT GENERATED ALWAYS AS (CASE WHEN iteration_scope LIKE 'exact:%' THEN iteration_scope END) VIRTUAL REFERENCES exact_scopes(id),
     status            TEXT CHECK (status IN ('active', 'achieved', 'frozen', 'archived')),
     resolved_at       INTEGER,
     tombstone         TEXT CHECK (tombstone IN ('archived', 'missed')),
@@ -119,10 +122,10 @@ CREATE TABLE goal_overlays (
     beads_id_set      INTEGER NOT NULL DEFAULT 0 CHECK (beads_id_set IN (0, 1)),
     position          INTEGER,
     block_reasons_set INTEGER NOT NULL DEFAULT 0 CHECK (block_reasons_set IN (0, 1)),
-    UNIQUE (item_type, item_id, iteration_date, cycle_id)
+    UNIQUE (item_type, item_id, iteration_scope, cycle_id)
 );
 CREATE UNIQUE INDEX idx_goal_overlays_key ON goal_overlays (node_key);
-CREATE INDEX idx_goal_overlays_flow ON goal_overlays (flow_id, iteration_date);
+CREATE INDEX idx_goal_overlays_flow ON goal_overlays (flow_id, iteration_scope);
 
 CREATE TABLE commitment_overlays (
     id                INTEGER PRIMARY KEY,
@@ -130,10 +133,11 @@ CREATE TABLE commitment_overlays (
     -- A commitment Habit's items are Tasks; only its iteration root is a Commitment.
     item_type         TEXT NOT NULL CHECK (item_type IN ('flow_root')),
     item_id           INTEGER NOT NULL,
-    iteration_date    TEXT NOT NULL,
+    iteration_scope   TEXT NOT NULL,
     cycle_id          INTEGER NOT NULL DEFAULT 0,
     node_key          TEXT GENERATED ALWAYS AS (
-                          item_type || ':' || item_id || ':' || iteration_date || ':' || cycle_id) VIRTUAL,
+                          item_type || ':' || item_id || ':' || iteration_scope || ':' || cycle_id) VIRTUAL,
+    iteration_scope_exact TEXT GENERATED ALWAYS AS (CASE WHEN iteration_scope LIKE 'exact:%' THEN iteration_scope END) VIRTUAL REFERENCES exact_scopes(id),
     verdict           TEXT CHECK (verdict IN ('kept', 'broken')),
     resolved_at       INTEGER,
     tombstone         TEXT CHECK (tombstone IN ('archived', 'missed')),
@@ -142,10 +146,10 @@ CREATE TABLE commitment_overlays (
     beads_id          TEXT,
     beads_id_set      INTEGER NOT NULL DEFAULT 0 CHECK (beads_id_set IN (0, 1)),
     position          INTEGER,
-    UNIQUE (item_type, item_id, iteration_date, cycle_id)
+    UNIQUE (item_type, item_id, iteration_scope, cycle_id)
 );
 CREATE UNIQUE INDEX idx_commitment_overlays_key ON commitment_overlays (node_key);
-CREATE INDEX idx_commitment_overlays_flow ON commitment_overlays (flow_id, iteration_date);
+CREATE INDEX idx_commitment_overlays_flow ON commitment_overlays (flow_id, iteration_scope);
 
 -- ---------------------------------------------------------------------------------------------
 -- Relations of derived nodes
@@ -216,10 +220,12 @@ CREATE TABLE derived_children (
     parent_key          TEXT NOT NULL,
     -- The occurrence's window, its two boundary scopes resolved at attach time: reading the
     -- child's ancestry must not have to resolve a Flow Window, which mints scope rows.
-    window_start_scope_id INTEGER REFERENCES scopes(id),
-    window_end_scope_id INTEGER REFERENCES scopes(id),
+    window_start_scope_id TEXT,
+    window_end_scope_id TEXT,
     child_type          TEXT NOT NULL CHECK (child_type IN ('task', 'goal', 'commitment', 'info', 'expectation')),
     child_id            INTEGER NOT NULL,
+    window_start_scope_id_exact TEXT GENERATED ALWAYS AS (CASE WHEN window_start_scope_id LIKE 'exact:%' THEN window_start_scope_id END) VIRTUAL REFERENCES exact_scopes(id),
+    window_end_scope_id_exact   TEXT GENERATED ALWAYS AS (CASE WHEN window_end_scope_id LIKE 'exact:%' THEN window_end_scope_id END) VIRTUAL REFERENCES exact_scopes(id),
     UNIQUE (child_type, child_id)
 );
 CREATE INDEX idx_derived_children_parent ON derived_children (parent_key);
@@ -229,42 +235,30 @@ CREATE INDEX idx_derived_children_flow ON derived_children (flow_id);
 -- Carry the Modifications across
 -- ---------------------------------------------------------------------------------------------
 
--- Each Modification with its iteration date, its target kind, and its rank among rows that
--- collide on the new key (1 = the one kept).
+-- Each Modification with the kind its occurrence is.
 CREATE TEMP TABLE modification_moves AS
 SELECT m.*,
-       s.start_date AS iteration_date,
        CASE m.item_type
            WHEN 'flow_task' THEN 'task'
            WHEN 'flow_goal' THEN 'goal'
            ELSE f.instance_type
-       END AS node_kind,
-       ROW_NUMBER() OVER (
-           PARTITION BY m.item_type, m.item_id, s.start_date, m.cycle_id
-           ORDER BY (s.kind = CASE
-                                  WHEN f.flow_window_part IS NOT NULL THEN 'part_of_day'
-                                  WHEN f.flow_window_time_start IS NOT NULL THEN 'exact'
-                                  ELSE f.flow_duration_kind
-                              END) DESC,
-                    m.id DESC
-       ) AS collision_rank
+       END AS node_kind
 FROM habit_instance_modifications m
-JOIN scopes s ON s.id = m.iteration_scope_id
 JOIN flows f ON f.id = m.flow_id;
 
 INSERT INTO task_overlays
-    (origin, flow_id, item_type, item_id, iteration_date, cycle_id, status, resolved_at, tombstone, title)
-SELECT 'habit', flow_id, item_type, item_id, iteration_date, cycle_id,
+    (origin, flow_id, item_type, item_id, iteration_scope, cycle_id, status, resolved_at, tombstone, title)
+SELECT 'habit', flow_id, item_type, item_id, iteration_scope_id, cycle_id,
        CASE WHEN status IN ('todo', 'in_progress', 'done') THEN status END,
        resolved_at,
        CASE WHEN tombstone_kind IS NULL THEN NULL WHEN tombstone_kind = 'missed' THEN 'missed' ELSE 'archived' END,
        title
 FROM modification_moves
-WHERE node_kind = 'task' AND collision_rank = 1;
+WHERE node_kind = 'task';
 
 INSERT INTO goal_overlays
-    (flow_id, item_type, item_id, iteration_date, cycle_id, status, resolved_at, tombstone, title)
-SELECT flow_id, item_type, item_id, iteration_date, cycle_id,
+    (flow_id, item_type, item_id, iteration_scope, cycle_id, status, resolved_at, tombstone, title)
+SELECT flow_id, item_type, item_id, iteration_scope_id, cycle_id,
        CASE status
            WHEN 'done' THEN 'achieved'
            WHEN 'achieved' THEN 'achieved'
@@ -275,24 +269,24 @@ SELECT flow_id, item_type, item_id, iteration_date, cycle_id,
        CASE WHEN tombstone_kind IS NULL THEN NULL WHEN tombstone_kind = 'missed' THEN 'missed' ELSE 'archived' END,
        title
 FROM modification_moves
-WHERE node_kind = 'goal' AND collision_rank = 1;
+WHERE node_kind = 'goal';
 
 INSERT INTO commitment_overlays
-    (flow_id, item_type, item_id, iteration_date, cycle_id, verdict, resolved_at, tombstone, title)
-SELECT flow_id, item_type, item_id, iteration_date, cycle_id,
+    (flow_id, item_type, item_id, iteration_scope, cycle_id, verdict, resolved_at, tombstone, title)
+SELECT flow_id, item_type, item_id, iteration_scope_id, cycle_id,
        CASE WHEN status IN ('kept', 'broken') THEN status END,
        CASE WHEN status IN ('kept', 'broken') THEN resolved_at END,
        CASE WHEN tombstone_kind IS NULL THEN NULL WHEN tombstone_kind = 'missed' THEN 'missed' ELSE 'archived' END,
        title
 FROM modification_moves
-WHERE node_kind = 'commitment' AND collision_rank = 1;
+WHERE node_kind = 'commitment';
 
 -- A Modification's block reason becomes its occurrence's own one-reason list.
 INSERT INTO derived_block_reasons (flow_id, node_kind, node_key, reason, position)
-SELECT flow_id, node_kind, item_type || ':' || item_id || ':' || iteration_date || ':' || cycle_id,
+SELECT flow_id, node_kind, item_type || ':' || item_id || ':' || iteration_scope_id || ':' || cycle_id,
        blocked_reason, 0
 FROM modification_moves
-WHERE blocked_reason IS NOT NULL AND node_kind IN ('task', 'goal') AND collision_rank = 1;
+WHERE blocked_reason IS NOT NULL AND node_kind IN ('task', 'goal');
 UPDATE task_overlays SET block_reasons_set = 1
 WHERE node_key IN (SELECT node_key FROM derived_block_reasons WHERE node_kind = 'task');
 UPDATE goal_overlays SET block_reasons_set = 1
@@ -312,23 +306,21 @@ WHERE verdict IS NULL AND tombstone IS NULL AND title IS NULL;
 -- Per-iteration dependency edges: both ends are occurrences of the one iteration, cycle `0`.
 INSERT OR IGNORE INTO derived_dependencies
     (flow_id, dependent_key, target_type, target_key, added)
-SELECT d.flow_id,
-       d.dependent_type || ':' || d.dependent_id || ':' || s.start_date || ':0',
-       CASE d.depends_on_type WHEN 'flow_goal' THEN 'goal' ELSE 'task' END,
-       d.depends_on_type || ':' || d.depends_on_id || ':' || s.start_date || ':0',
-       d.added
-FROM habit_instance_dependencies d
-JOIN scopes s ON s.id = d.iteration_scope_id
-WHERE d.dependent_type = 'flow_task';
+SELECT flow_id,
+       dependent_type || ':' || dependent_id || ':' || iteration_scope_id || ':0',
+       CASE depends_on_type WHEN 'flow_goal' THEN 'goal' ELSE 'task' END,
+       depends_on_type || ':' || depends_on_id || ':' || iteration_scope_id || ':0',
+       added
+FROM habit_instance_dependencies
+WHERE dependent_type = 'flow_task';
 
 INSERT INTO derived_children
     (flow_id, parent_kind, parent_key, window_start_scope_id, window_end_scope_id, child_type, child_id)
 SELECT c.flow_id,
        CASE c.item_type WHEN 'flow_task' THEN 'task' WHEN 'flow_goal' THEN 'goal' ELSE f.instance_type END,
-       c.item_type || ':' || c.item_id || ':' || s.start_date || ':' || c.cycle_id,
+       c.item_type || ':' || c.item_id || ':' || c.iteration_scope_id || ':' || c.cycle_id,
        c.iteration_scope_id, c.window_end_scope_id, c.child_type, c.child_id
 FROM habit_instance_children c
-JOIN scopes s ON s.id = c.iteration_scope_id
 JOIN flows f ON f.id = c.flow_id;
 
 DROP TABLE habit_instance_modifications;
@@ -336,26 +328,27 @@ DROP TABLE habit_instance_dependencies;
 DROP TABLE habit_instance_children;
 
 
+
 -- Undo-journal triggers, straight from scripts/generate-undo-triggers.sh.
 
 DROP TRIGGER IF EXISTS undo_journal_commitment_overlays_insert;
 CREATE TRIGGER undo_journal_commitment_overlays_insert AFTER INSERT ON commitment_overlays BEGIN
     INSERT INTO undo_journal (gesture_id, source, table_name, row_id, operation, before_image, after_image, written_at)
-    SELECT gesture_id, source, 'commitment_overlays', new.rowid, 'insert', NULL, json_object('id', new.id, 'flow_id', new.flow_id, 'item_type', new.item_type, 'item_id', new.item_id, 'iteration_date', new.iteration_date, 'cycle_id', new.cycle_id, 'verdict', new.verdict, 'resolved_at', new.resolved_at, 'tombstone', new.tombstone, 'title', new.title, 'is_private', new.is_private, 'beads_id', new.beads_id, 'beads_id_set', new.beads_id_set, 'position', new.position), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    SELECT gesture_id, source, 'commitment_overlays', new.rowid, 'insert', NULL, json_object('id', new.id, 'flow_id', new.flow_id, 'item_type', new.item_type, 'item_id', new.item_id, 'iteration_scope', new.iteration_scope, 'cycle_id', new.cycle_id, 'verdict', new.verdict, 'resolved_at', new.resolved_at, 'tombstone', new.tombstone, 'title', new.title, 'is_private', new.is_private, 'beads_id', new.beads_id, 'beads_id_set', new.beads_id_set, 'position', new.position), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
       FROM undo_context WHERE id = 1 AND suppressed = 0;
 END;
 
 DROP TRIGGER IF EXISTS undo_journal_commitment_overlays_update;
 CREATE TRIGGER undo_journal_commitment_overlays_update AFTER UPDATE ON commitment_overlays BEGIN
     INSERT INTO undo_journal (gesture_id, source, table_name, row_id, operation, before_image, after_image, written_at)
-    SELECT gesture_id, source, 'commitment_overlays', new.rowid, 'update', json_object('id', old.id, 'flow_id', old.flow_id, 'item_type', old.item_type, 'item_id', old.item_id, 'iteration_date', old.iteration_date, 'cycle_id', old.cycle_id, 'verdict', old.verdict, 'resolved_at', old.resolved_at, 'tombstone', old.tombstone, 'title', old.title, 'is_private', old.is_private, 'beads_id', old.beads_id, 'beads_id_set', old.beads_id_set, 'position', old.position), json_object('id', new.id, 'flow_id', new.flow_id, 'item_type', new.item_type, 'item_id', new.item_id, 'iteration_date', new.iteration_date, 'cycle_id', new.cycle_id, 'verdict', new.verdict, 'resolved_at', new.resolved_at, 'tombstone', new.tombstone, 'title', new.title, 'is_private', new.is_private, 'beads_id', new.beads_id, 'beads_id_set', new.beads_id_set, 'position', new.position), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    SELECT gesture_id, source, 'commitment_overlays', new.rowid, 'update', json_object('id', old.id, 'flow_id', old.flow_id, 'item_type', old.item_type, 'item_id', old.item_id, 'iteration_scope', old.iteration_scope, 'cycle_id', old.cycle_id, 'verdict', old.verdict, 'resolved_at', old.resolved_at, 'tombstone', old.tombstone, 'title', old.title, 'is_private', old.is_private, 'beads_id', old.beads_id, 'beads_id_set', old.beads_id_set, 'position', old.position), json_object('id', new.id, 'flow_id', new.flow_id, 'item_type', new.item_type, 'item_id', new.item_id, 'iteration_scope', new.iteration_scope, 'cycle_id', new.cycle_id, 'verdict', new.verdict, 'resolved_at', new.resolved_at, 'tombstone', new.tombstone, 'title', new.title, 'is_private', new.is_private, 'beads_id', new.beads_id, 'beads_id_set', new.beads_id_set, 'position', new.position), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
       FROM undo_context WHERE id = 1 AND suppressed = 0;
 END;
 
 DROP TRIGGER IF EXISTS undo_journal_commitment_overlays_delete;
 CREATE TRIGGER undo_journal_commitment_overlays_delete AFTER DELETE ON commitment_overlays BEGIN
     INSERT INTO undo_journal (gesture_id, source, table_name, row_id, operation, before_image, after_image, written_at)
-    SELECT gesture_id, source, 'commitment_overlays', old.rowid, 'delete', json_object('id', old.id, 'flow_id', old.flow_id, 'item_type', old.item_type, 'item_id', old.item_id, 'iteration_date', old.iteration_date, 'cycle_id', old.cycle_id, 'verdict', old.verdict, 'resolved_at', old.resolved_at, 'tombstone', old.tombstone, 'title', old.title, 'is_private', old.is_private, 'beads_id', old.beads_id, 'beads_id_set', old.beads_id_set, 'position', old.position), NULL, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    SELECT gesture_id, source, 'commitment_overlays', old.rowid, 'delete', json_object('id', old.id, 'flow_id', old.flow_id, 'item_type', old.item_type, 'item_id', old.item_id, 'iteration_scope', old.iteration_scope, 'cycle_id', old.cycle_id, 'verdict', old.verdict, 'resolved_at', old.resolved_at, 'tombstone', old.tombstone, 'title', old.title, 'is_private', old.is_private, 'beads_id', old.beads_id, 'beads_id_set', old.beads_id_set, 'position', old.position), NULL, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
       FROM undo_context WHERE id = 1 AND suppressed = 0;
 END;
 
@@ -446,41 +439,41 @@ END;
 DROP TRIGGER IF EXISTS undo_journal_goal_overlays_insert;
 CREATE TRIGGER undo_journal_goal_overlays_insert AFTER INSERT ON goal_overlays BEGIN
     INSERT INTO undo_journal (gesture_id, source, table_name, row_id, operation, before_image, after_image, written_at)
-    SELECT gesture_id, source, 'goal_overlays', new.rowid, 'insert', NULL, json_object('id', new.id, 'flow_id', new.flow_id, 'item_type', new.item_type, 'item_id', new.item_id, 'iteration_date', new.iteration_date, 'cycle_id', new.cycle_id, 'status', new.status, 'resolved_at', new.resolved_at, 'tombstone', new.tombstone, 'title', new.title, 'is_private', new.is_private, 'beads_id', new.beads_id, 'beads_id_set', new.beads_id_set, 'position', new.position, 'block_reasons_set', new.block_reasons_set), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    SELECT gesture_id, source, 'goal_overlays', new.rowid, 'insert', NULL, json_object('id', new.id, 'flow_id', new.flow_id, 'item_type', new.item_type, 'item_id', new.item_id, 'iteration_scope', new.iteration_scope, 'cycle_id', new.cycle_id, 'status', new.status, 'resolved_at', new.resolved_at, 'tombstone', new.tombstone, 'title', new.title, 'is_private', new.is_private, 'beads_id', new.beads_id, 'beads_id_set', new.beads_id_set, 'position', new.position, 'block_reasons_set', new.block_reasons_set), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
       FROM undo_context WHERE id = 1 AND suppressed = 0;
 END;
 
 DROP TRIGGER IF EXISTS undo_journal_goal_overlays_update;
 CREATE TRIGGER undo_journal_goal_overlays_update AFTER UPDATE ON goal_overlays BEGIN
     INSERT INTO undo_journal (gesture_id, source, table_name, row_id, operation, before_image, after_image, written_at)
-    SELECT gesture_id, source, 'goal_overlays', new.rowid, 'update', json_object('id', old.id, 'flow_id', old.flow_id, 'item_type', old.item_type, 'item_id', old.item_id, 'iteration_date', old.iteration_date, 'cycle_id', old.cycle_id, 'status', old.status, 'resolved_at', old.resolved_at, 'tombstone', old.tombstone, 'title', old.title, 'is_private', old.is_private, 'beads_id', old.beads_id, 'beads_id_set', old.beads_id_set, 'position', old.position, 'block_reasons_set', old.block_reasons_set), json_object('id', new.id, 'flow_id', new.flow_id, 'item_type', new.item_type, 'item_id', new.item_id, 'iteration_date', new.iteration_date, 'cycle_id', new.cycle_id, 'status', new.status, 'resolved_at', new.resolved_at, 'tombstone', new.tombstone, 'title', new.title, 'is_private', new.is_private, 'beads_id', new.beads_id, 'beads_id_set', new.beads_id_set, 'position', new.position, 'block_reasons_set', new.block_reasons_set), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    SELECT gesture_id, source, 'goal_overlays', new.rowid, 'update', json_object('id', old.id, 'flow_id', old.flow_id, 'item_type', old.item_type, 'item_id', old.item_id, 'iteration_scope', old.iteration_scope, 'cycle_id', old.cycle_id, 'status', old.status, 'resolved_at', old.resolved_at, 'tombstone', old.tombstone, 'title', old.title, 'is_private', old.is_private, 'beads_id', old.beads_id, 'beads_id_set', old.beads_id_set, 'position', old.position, 'block_reasons_set', old.block_reasons_set), json_object('id', new.id, 'flow_id', new.flow_id, 'item_type', new.item_type, 'item_id', new.item_id, 'iteration_scope', new.iteration_scope, 'cycle_id', new.cycle_id, 'status', new.status, 'resolved_at', new.resolved_at, 'tombstone', new.tombstone, 'title', new.title, 'is_private', new.is_private, 'beads_id', new.beads_id, 'beads_id_set', new.beads_id_set, 'position', new.position, 'block_reasons_set', new.block_reasons_set), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
       FROM undo_context WHERE id = 1 AND suppressed = 0;
 END;
 
 DROP TRIGGER IF EXISTS undo_journal_goal_overlays_delete;
 CREATE TRIGGER undo_journal_goal_overlays_delete AFTER DELETE ON goal_overlays BEGIN
     INSERT INTO undo_journal (gesture_id, source, table_name, row_id, operation, before_image, after_image, written_at)
-    SELECT gesture_id, source, 'goal_overlays', old.rowid, 'delete', json_object('id', old.id, 'flow_id', old.flow_id, 'item_type', old.item_type, 'item_id', old.item_id, 'iteration_date', old.iteration_date, 'cycle_id', old.cycle_id, 'status', old.status, 'resolved_at', old.resolved_at, 'tombstone', old.tombstone, 'title', old.title, 'is_private', old.is_private, 'beads_id', old.beads_id, 'beads_id_set', old.beads_id_set, 'position', old.position, 'block_reasons_set', old.block_reasons_set), NULL, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    SELECT gesture_id, source, 'goal_overlays', old.rowid, 'delete', json_object('id', old.id, 'flow_id', old.flow_id, 'item_type', old.item_type, 'item_id', old.item_id, 'iteration_scope', old.iteration_scope, 'cycle_id', old.cycle_id, 'status', old.status, 'resolved_at', old.resolved_at, 'tombstone', old.tombstone, 'title', old.title, 'is_private', old.is_private, 'beads_id', old.beads_id, 'beads_id_set', old.beads_id_set, 'position', old.position, 'block_reasons_set', old.block_reasons_set), NULL, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
       FROM undo_context WHERE id = 1 AND suppressed = 0;
 END;
 
 DROP TRIGGER IF EXISTS undo_journal_task_overlays_insert;
 CREATE TRIGGER undo_journal_task_overlays_insert AFTER INSERT ON task_overlays BEGIN
     INSERT INTO undo_journal (gesture_id, source, table_name, row_id, operation, before_image, after_image, written_at)
-    SELECT gesture_id, source, 'task_overlays', new.rowid, 'insert', NULL, json_object('id', new.id, 'origin', new.origin, 'flow_id', new.flow_id, 'item_type', new.item_type, 'item_id', new.item_id, 'iteration_date', new.iteration_date, 'cycle_id', new.cycle_id, 'wait_key', new.wait_key, 'due_at', new.due_at, 'status', new.status, 'resolved_at', new.resolved_at, 'tombstone', new.tombstone, 'title', new.title, 'plan_start_id', new.plan_start_id, 'plan_end_id', new.plan_end_id, 'plan_set', new.plan_set, 'delegate_kind', new.delegate_kind, 'delegate_id', new.delegate_id, 'delegate_set', new.delegate_set, 'agentic', new.agentic, 'agentic_set', new.agentic_set, 'asynchronous', new.asynchronous, 'archival', new.archival, 'is_private', new.is_private, 'beads_id', new.beads_id, 'beads_id_set', new.beads_id_set, 'position', new.position, 'block_reasons_set', new.block_reasons_set), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    SELECT gesture_id, source, 'task_overlays', new.rowid, 'insert', NULL, json_object('id', new.id, 'origin', new.origin, 'flow_id', new.flow_id, 'item_type', new.item_type, 'item_id', new.item_id, 'iteration_scope', new.iteration_scope, 'cycle_id', new.cycle_id, 'wait_key', new.wait_key, 'due_at', new.due_at, 'status', new.status, 'resolved_at', new.resolved_at, 'tombstone', new.tombstone, 'title', new.title, 'plan_start_id', new.plan_start_id, 'plan_end_id', new.plan_end_id, 'plan_set', new.plan_set, 'delegate_kind', new.delegate_kind, 'delegate_id', new.delegate_id, 'delegate_set', new.delegate_set, 'agentic', new.agentic, 'agentic_set', new.agentic_set, 'asynchronous', new.asynchronous, 'archival', new.archival, 'is_private', new.is_private, 'beads_id', new.beads_id, 'beads_id_set', new.beads_id_set, 'position', new.position, 'block_reasons_set', new.block_reasons_set), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
       FROM undo_context WHERE id = 1 AND suppressed = 0;
 END;
 
 DROP TRIGGER IF EXISTS undo_journal_task_overlays_update;
 CREATE TRIGGER undo_journal_task_overlays_update AFTER UPDATE ON task_overlays BEGIN
     INSERT INTO undo_journal (gesture_id, source, table_name, row_id, operation, before_image, after_image, written_at)
-    SELECT gesture_id, source, 'task_overlays', new.rowid, 'update', json_object('id', old.id, 'origin', old.origin, 'flow_id', old.flow_id, 'item_type', old.item_type, 'item_id', old.item_id, 'iteration_date', old.iteration_date, 'cycle_id', old.cycle_id, 'wait_key', old.wait_key, 'due_at', old.due_at, 'status', old.status, 'resolved_at', old.resolved_at, 'tombstone', old.tombstone, 'title', old.title, 'plan_start_id', old.plan_start_id, 'plan_end_id', old.plan_end_id, 'plan_set', old.plan_set, 'delegate_kind', old.delegate_kind, 'delegate_id', old.delegate_id, 'delegate_set', old.delegate_set, 'agentic', old.agentic, 'agentic_set', old.agentic_set, 'asynchronous', old.asynchronous, 'archival', old.archival, 'is_private', old.is_private, 'beads_id', old.beads_id, 'beads_id_set', old.beads_id_set, 'position', old.position, 'block_reasons_set', old.block_reasons_set), json_object('id', new.id, 'origin', new.origin, 'flow_id', new.flow_id, 'item_type', new.item_type, 'item_id', new.item_id, 'iteration_date', new.iteration_date, 'cycle_id', new.cycle_id, 'wait_key', new.wait_key, 'due_at', new.due_at, 'status', new.status, 'resolved_at', new.resolved_at, 'tombstone', new.tombstone, 'title', new.title, 'plan_start_id', new.plan_start_id, 'plan_end_id', new.plan_end_id, 'plan_set', new.plan_set, 'delegate_kind', new.delegate_kind, 'delegate_id', new.delegate_id, 'delegate_set', new.delegate_set, 'agentic', new.agentic, 'agentic_set', new.agentic_set, 'asynchronous', new.asynchronous, 'archival', new.archival, 'is_private', new.is_private, 'beads_id', new.beads_id, 'beads_id_set', new.beads_id_set, 'position', new.position, 'block_reasons_set', new.block_reasons_set), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    SELECT gesture_id, source, 'task_overlays', new.rowid, 'update', json_object('id', old.id, 'origin', old.origin, 'flow_id', old.flow_id, 'item_type', old.item_type, 'item_id', old.item_id, 'iteration_scope', old.iteration_scope, 'cycle_id', old.cycle_id, 'wait_key', old.wait_key, 'due_at', old.due_at, 'status', old.status, 'resolved_at', old.resolved_at, 'tombstone', old.tombstone, 'title', old.title, 'plan_start_id', old.plan_start_id, 'plan_end_id', old.plan_end_id, 'plan_set', old.plan_set, 'delegate_kind', old.delegate_kind, 'delegate_id', old.delegate_id, 'delegate_set', old.delegate_set, 'agentic', old.agentic, 'agentic_set', old.agentic_set, 'asynchronous', old.asynchronous, 'archival', old.archival, 'is_private', old.is_private, 'beads_id', old.beads_id, 'beads_id_set', old.beads_id_set, 'position', old.position, 'block_reasons_set', old.block_reasons_set), json_object('id', new.id, 'origin', new.origin, 'flow_id', new.flow_id, 'item_type', new.item_type, 'item_id', new.item_id, 'iteration_scope', new.iteration_scope, 'cycle_id', new.cycle_id, 'wait_key', new.wait_key, 'due_at', new.due_at, 'status', new.status, 'resolved_at', new.resolved_at, 'tombstone', new.tombstone, 'title', new.title, 'plan_start_id', new.plan_start_id, 'plan_end_id', new.plan_end_id, 'plan_set', new.plan_set, 'delegate_kind', new.delegate_kind, 'delegate_id', new.delegate_id, 'delegate_set', new.delegate_set, 'agentic', new.agentic, 'agentic_set', new.agentic_set, 'asynchronous', new.asynchronous, 'archival', new.archival, 'is_private', new.is_private, 'beads_id', new.beads_id, 'beads_id_set', new.beads_id_set, 'position', new.position, 'block_reasons_set', new.block_reasons_set), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
       FROM undo_context WHERE id = 1 AND suppressed = 0;
 END;
 
 DROP TRIGGER IF EXISTS undo_journal_task_overlays_delete;
 CREATE TRIGGER undo_journal_task_overlays_delete AFTER DELETE ON task_overlays BEGIN
     INSERT INTO undo_journal (gesture_id, source, table_name, row_id, operation, before_image, after_image, written_at)
-    SELECT gesture_id, source, 'task_overlays', old.rowid, 'delete', json_object('id', old.id, 'origin', old.origin, 'flow_id', old.flow_id, 'item_type', old.item_type, 'item_id', old.item_id, 'iteration_date', old.iteration_date, 'cycle_id', old.cycle_id, 'wait_key', old.wait_key, 'due_at', old.due_at, 'status', old.status, 'resolved_at', old.resolved_at, 'tombstone', old.tombstone, 'title', old.title, 'plan_start_id', old.plan_start_id, 'plan_end_id', old.plan_end_id, 'plan_set', old.plan_set, 'delegate_kind', old.delegate_kind, 'delegate_id', old.delegate_id, 'delegate_set', old.delegate_set, 'agentic', old.agentic, 'agentic_set', old.agentic_set, 'asynchronous', old.asynchronous, 'archival', old.archival, 'is_private', old.is_private, 'beads_id', old.beads_id, 'beads_id_set', old.beads_id_set, 'position', old.position, 'block_reasons_set', old.block_reasons_set), NULL, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    SELECT gesture_id, source, 'task_overlays', old.rowid, 'delete', json_object('id', old.id, 'origin', old.origin, 'flow_id', old.flow_id, 'item_type', old.item_type, 'item_id', old.item_id, 'iteration_scope', old.iteration_scope, 'cycle_id', old.cycle_id, 'wait_key', old.wait_key, 'due_at', old.due_at, 'status', old.status, 'resolved_at', old.resolved_at, 'tombstone', old.tombstone, 'title', old.title, 'plan_start_id', old.plan_start_id, 'plan_end_id', old.plan_end_id, 'plan_set', old.plan_set, 'delegate_kind', old.delegate_kind, 'delegate_id', old.delegate_id, 'delegate_set', old.delegate_set, 'agentic', old.agentic, 'agentic_set', old.agentic_set, 'asynchronous', old.asynchronous, 'archival', old.archival, 'is_private', old.is_private, 'beads_id', old.beads_id, 'beads_id_set', old.beads_id_set, 'position', old.position, 'block_reasons_set', old.block_reasons_set), NULL, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
       FROM undo_context WHERE id = 1 AND suppressed = 0;
 END;

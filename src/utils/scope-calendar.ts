@@ -1,6 +1,6 @@
 // Pure calendar layout for the Scope Picker: enumerates the cells of each view and the
 // navigation between views. This is the client-side "grid layout" half of the hybrid decision;
-// the backend remains the source of truth for a materialized scope's authoritative bounds.
+// the backend remains the source of truth for a scope's authoritative bounds.
 
 import { refsForScopes, type CanonicalKind, type ScopeRef } from "@/utils/scope-ref";
 import type { PartOfDay, Scope } from "@/api/scopes";
