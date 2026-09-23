@@ -91,3 +91,14 @@ pub fn window(
 pub fn session_factory(pool: &SqlitePool) -> SessionFactory {
     SessionFactory::new(pool.clone())
 }
+
+/// Every row inserted, updated or deleted on the test pool's one connection since it opened.
+///
+/// The pool has a single connection, so this counts every write anything made through it — which
+/// is how a test asserts that an operation is a pure read.
+pub async fn total_changes(pool: &SqlitePool) -> i64 {
+    sqlx::query_scalar("SELECT total_changes()")
+        .fetch_one(pool)
+        .await
+        .expect("total_changes")
+}

@@ -1,6 +1,7 @@
 use super::*;
 use crate::database::session::SessionFactory;
 use crate::database::DatabasePool;
+use crate::scopes::key::test_key;
 use sqlx::sqlite::SqlitePoolOptions;
 
 /// A migrated in-memory database with a single connection, as the integration tests use.
@@ -63,8 +64,8 @@ fn shape(chain: &AncestryChain) -> Vec<(NodeKind, i64)> {
 /// A Time Scope over one scope id — enough to tell two scopes apart by identity.
 fn scope(id: i64) -> TimeScope {
     TimeScope {
-        start_id: id,
-        end_id: id,
+        start_id: test_key(id),
+        end_id: test_key(id),
         duration: None,
     }
 }

@@ -51,14 +51,7 @@ async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
 
 /// A single-scope Time Scope of `kind` covering `date`.
 async fn window(pool: &sqlx::SqlitePool, kind: ScopeKind, date: NaiveDate) -> TimeScope {
-    let scope = helpers::session_factory(pool)
-        .connect()
-        .await
-        .unwrap()
-        .scopes()
-        .get_or_create(kind, date)
-        .await
-        .unwrap();
+    let scope = arlesh_lib::scopes::model::Scope::containing(kind, date).unwrap();
     TimeScope {
         start_id: scope.id,
         end_id: scope.id,
@@ -903,7 +896,7 @@ async fn the_editors_clear_payload_empties_a_commitments_own_window() {
         "the emptied scope is emptied in the row"
     );
 
-    let stored: Option<i64> =
+    let stored: Option<String> =
         sqlx::query_scalar("SELECT time_scope_start_id FROM commitments WHERE id = ?")
             .bind(commitment.id)
             .fetch_one(&pool)

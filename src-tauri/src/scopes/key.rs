@@ -279,3 +279,11 @@ impl<'r> Decode<'r, Sqlite> for ScopeKey {
 
 #[cfg(test)]
 mod tests;
+
+/// A distinct Day key per integer, for unit tests that only need scope ids as opaque tokens —
+/// what an integer scope id used to be.
+#[cfg(test)]
+pub(crate) fn test_key(n: i64) -> ScopeKey {
+    let epoch = NaiveDate::from_ymd_opt(2000, 1, 1).unwrap_or_default();
+    ScopeKey::day(epoch + chrono::Duration::days(n.rem_euclid(100_000)))
+}

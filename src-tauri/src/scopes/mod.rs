@@ -59,12 +59,12 @@ impl<'session> ScopeOperator<'session> {
     }
 
     /// Registers every key in `keys`; see [`Self::register`].
-    pub async fn register_all<'key>(
+    pub async fn register_all(
         &mut self,
-        keys: impl IntoIterator<Item = &'key ScopeKey>,
+        keys: impl IntoIterator<Item = ScopeKey>,
     ) -> Result<(), ScopeError> {
         for key in keys {
-            self.register(key).await?;
+            self.register(&key).await?;
         }
         Ok(())
     }

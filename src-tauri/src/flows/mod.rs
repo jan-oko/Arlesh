@@ -2288,9 +2288,9 @@ pub async fn set_flow_recurrence(
 ) -> Result<FlowRecurrence, FlowError> {
     db.scopes()
         .register_all(
-            [&request.start_scope_id]
+            [request.start_scope_id]
                 .into_iter()
-                .chain(&request.end_scope_id),
+                .chain(request.end_scope_id),
         )
         .await?;
     db.flows().set_recurrence(flow_id, request).await
@@ -2442,7 +2442,7 @@ pub async fn create_instance_child(
     };
 
     db.scopes()
-        .register_all([&instance.iteration_scope_id, &window.end_id])
+        .register_all([instance.iteration_scope_id, window.end_id])
         .await?;
     db.flows()
         .attach_instance_child(flow_id, instance, window.end_id, child_type, child_id)

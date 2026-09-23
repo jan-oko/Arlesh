@@ -63,14 +63,11 @@ async fn make_domain(pool: &sqlx::SqlitePool, subtype: DomainSubtype, title: &st
 
 /// A one-day window, so a Commitment has something to be held over.
 async fn one_day(pool: &sqlx::SqlitePool) -> TimeScope {
-    let scope = helpers::session_factory(pool)
-        .connect()
-        .await
-        .unwrap()
-        .scopes()
-        .get_or_create(ScopeKind::Day, NaiveDate::from_ymd_opt(2026, 7, 1).unwrap())
-        .await
-        .unwrap();
+    let scope = arlesh_lib::scopes::model::Scope::containing(
+        ScopeKind::Day,
+        NaiveDate::from_ymd_opt(2026, 7, 1).unwrap(),
+    )
+    .unwrap();
     TimeScope {
         start_id: scope.id,
         end_id: scope.id,

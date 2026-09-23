@@ -7,11 +7,10 @@
 //! is compared against the command it stands in for, on the wire (`serde_json::to_value`), since
 //! that is the form the frontend actually receives.
 //!
-//! The second is the **commit**. `load_mindmap` opens a transaction because deriving a Habit's
-//! iterations mints the scope rows its windows land on. Replacing `db.commit().await…?;` with
-//! `Ok(())` still compiles, and sqlx rolls a dropped transaction back silently — so the command
-//! returns a perfectly correct-looking envelope while nothing reaches disk. Only a test that
-//! calls the real command and then reads the rows off the pool can tell the difference.
+//! The second is that the load is a **read**. It used to mint the scope row of every Habit
+//! iteration window it derived — the largest write the app made, performed by rendering. Scopes
+//! are derived now (ADR 0009), and a test that counts the pool's changes around the real command is
+//! what keeps a write from creeping back in.
 //!
 //! The pool has **one** connection (see [`helpers::test_pool`]), so every assertion here reads it
 //! only after the command's session has closed.
@@ -28,7 +27,7 @@ use arlesh_lib::flows::model::{
 };
 use arlesh_lib::infos::model::CreateInfoRequest;
 use arlesh_lib::mindmap::model::FlowHabitResult;
-use arlesh_lib::scopes::model::ScopeKind;
+use arlesh_lib::scopes::{key::ScopeKey, model::ScopeKind};
 use arlesh_lib::tasks::model::{CreateGoalRequest, CreateTaskRequest, Dependency};
 use tauri::Manager;
 
@@ -39,23 +38,6 @@ fn ymd(y: i32, m: u32, d: u32) -> chrono::NaiveDate {
 /// The reference instant every test loads at.
 fn now() -> chrono::NaiveDateTime {
     ymd(2026, 2, 4).and_hms_opt(9, 0, 0).unwrap()
-}
-
-/// Total rows in `table`.
-async fn count_all(pool: &sqlx::SqlitePool, table: &str) -> i64 {
-    sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {table}"))
-        .fetch_one(pool)
-        .await
-        .unwrap()
-}
-
-/// Counts the rows of `table` whose `column` equals `value`.
-async fn count_where(pool: &sqlx::SqlitePool, table: &str, column: &str, value: i64) -> i64 {
-    sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {table} WHERE {column} = ?"))
-        .bind(value)
-        .fetch_one(pool)
-        .await
-        .unwrap()
 }
 
 /// A two-week Span flow under the seeded aspect 1 — scoped, so it can be made a Habit.
@@ -71,7 +53,7 @@ fn scoped_flow(title: &str) -> CreateFlowRequest {
     }
 }
 
-fn weekly_from(start_scope_id: i64) -> SetRecurrenceRequest {
+fn weekly_from(start_scope_id: ScopeKey) -> SetRecurrenceRequest {
     SetRecurrenceRequest {
         start_scope_id,
         gap_n: None,
@@ -83,17 +65,9 @@ fn weekly_from(start_scope_id: i64) -> SetRecurrenceRequest {
     }
 }
 
-/// Mints the week scope starting on `date` and returns its id.
-async fn week_scope(pool: &sqlx::SqlitePool, date: chrono::NaiveDate) -> i64 {
-    helpers::session_factory(pool)
-        .connect()
-        .await
-        .unwrap()
-        .scopes()
-        .get_or_create(ScopeKind::Week, date)
-        .await
-        .unwrap()
-        .id
+/// The week scope holding `date`.
+async fn week_scope(_pool: &sqlx::SqlitePool, date: chrono::NaiveDate) -> ScopeKey {
+    ScopeKey::containing(ScopeKind::Week, date).unwrap()
 }
 
 /// Everything the mindmap reads, seeded: two domains, a goal, two tasks with a dependency and a
@@ -352,11 +326,12 @@ async fn the_envelope_carries_what_the_individual_commands_return() {
 }
 
 #[tokio::test]
-async fn the_command_commits_the_scopes_its_habit_derivation_materialises() {
+async fn loading_a_habit_that_needs_new_windows_writes_nothing() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
     let habit = seed(&app, &pool).await;
-    let scopes_before = count_all(&pool, "scopes").await;
+    // The test pool is one connection, so its change counter sees every row the load could write.
+    let before = helpers::total_changes(&pool).await;
 
     let load = mindmap_commands::load_mindmap(app.state(), now())
         .await
@@ -375,20 +350,19 @@ async fn the_command_commits_the_scopes_its_habit_derivation_materialises() {
         3,
         "three two-week windows have started by 4 February"
     );
-
-    // The assertion that fails when the commit goes: a rolled-back load returns this same
-    // envelope, but leaves no scope behind.
-    assert!(
-        count_all(&pool, "scopes").await > scopes_before,
-        "the canonical scopes each window landed on must be committed, not rolled back"
+    assert_eq!(
+        iterations
+            .iter()
+            .map(|iteration| iteration.anchor_scope_id.to_string())
+            .collect::<Vec<_>>(),
+        ["week:2026-01-04", "week:2026-01-18", "week:2026-02-01"],
+        "each iteration is keyed by the week it starts in"
     );
-    for iteration in iterations {
-        assert_eq!(
-            count_where(&pool, "scopes", "id", iteration.anchor_scope_id).await,
-            1,
-            "every iteration's anchoring scope must be on disk"
-        );
-    }
+    assert_eq!(
+        helpers::total_changes(&pool).await,
+        before,
+        "deriving the windows is a read: no INSERT, no UPDATE"
+    );
 }
 
 #[tokio::test]

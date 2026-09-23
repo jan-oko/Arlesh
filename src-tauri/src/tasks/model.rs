@@ -337,8 +337,8 @@ impl TimeScope {
     }
 
     /// Both boundary keys, for registering them before a write.
-    pub fn keys(&self) -> [&ScopeKey; 2] {
-        [&self.start_id, &self.end_id]
+    pub fn keys(&self) -> [ScopeKey; 2] {
+        [self.start_id, self.end_id]
     }
 }
 

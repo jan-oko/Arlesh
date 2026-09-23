@@ -23,7 +23,7 @@ use arlesh_lib::{
     },
     flows::model::CreateFlowRequest,
     infos::model::CreateInfoRequest,
-    scopes::model::ScopeKind,
+    scopes::{key::ScopeKey, model::ScopeKind},
     tasks::{
         add_task_dependency, create_commitment, create_goal, create_task,
         model::{
@@ -90,14 +90,8 @@ async fn make_tag(pool: &sqlx::SqlitePool, parent_id: Option<i64>) -> i64 {
         .id
 }
 
-async fn make_week_scope(pool: &sqlx::SqlitePool, day: NaiveDate) -> i64 {
-    helpers::session_factory(pool)
-        .connect()
-        .await
-        .unwrap()
-        .scopes()
-        .get_or_create(ScopeKind::Week, day)
-        .await
+async fn make_week_scope(pool: &sqlx::SqlitePool, day: NaiveDate) -> ScopeKey {
+    arlesh_lib::scopes::model::Scope::containing(ScopeKind::Week, day)
         .unwrap()
         .id
 }
@@ -1272,17 +1266,11 @@ async fn retyping_a_tracked_task_to_a_note_reports_the_link_as_lost_and_clears_i
 
 /// A single-day Time Scope, so a retype to a Commitment has an effective window to satisfy.
 async fn one_day(pool: &sqlx::SqlitePool, day: u32) -> TimeScope {
-    let scope = helpers::session_factory(pool)
-        .connect()
-        .await
-        .unwrap()
-        .scopes()
-        .get_or_create(
-            ScopeKind::Day,
-            NaiveDate::from_ymd_opt(2026, 7, day).unwrap(),
-        )
-        .await
-        .unwrap();
+    let scope = arlesh_lib::scopes::model::Scope::containing(
+        ScopeKind::Day,
+        NaiveDate::from_ymd_opt(2026, 7, day).unwrap(),
+    )
+    .unwrap();
     TimeScope {
         start_id: scope.id,
         end_id: scope.id,

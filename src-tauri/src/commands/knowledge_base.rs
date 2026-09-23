@@ -82,7 +82,7 @@ pub async fn create_event(
 ) -> Result<Event, WireError> {
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
     db.scopes()
-        .register_all(&request.scope_id)
+        .register_all(request.scope_id)
         .await
         .map_err(WireError::from_error)?;
     let event = db

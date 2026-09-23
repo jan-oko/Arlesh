@@ -1,4 +1,5 @@
 use super::*;
+use crate::scopes::key::test_key;
 use crate::tasks::model::{Dependency, TaskAgentic};
 
 #[test]
@@ -27,14 +28,14 @@ fn stored_task() -> Task {
         asynchronous: false,
         async_template: None,
         time_scope: Some(TimeScope {
-            start_id: 10,
-            end_id: 11,
+            start_id: test_key(10),
+            end_id: test_key(11),
             duration: None,
         }),
         on_scope_exit: Some(OnScopeExit::Keep),
         plan: Some(TimeScope {
-            start_id: 12,
-            end_id: 12,
+            start_id: test_key(12),
+            end_id: test_key(12),
             duration: None,
         }),
         archival: TaskArchival::Live,
@@ -73,8 +74,8 @@ fn setting_a_plan_on_a_backlogged_task_takes_it_out_of_the_backlog() {
     // The unambiguous gesture: nobody schedules a week for work they mean to leave aside. The
     // caller raises a toast, which is what keeps this from being a silent change.
     let plan = TimeScope {
-        start_id: 20,
-        end_id: 20,
+        start_id: test_key(20),
+        end_id: test_key(20),
         duration: None,
     };
     let write = TaskWrite::merge(
@@ -93,8 +94,8 @@ fn an_explicit_backlog_is_never_overridden_by_the_plan_rule() {
     // Asking for both is a contradiction, and `update_task` refuses it — but the merge must
     // report what was asked for rather than quietly resolving it one way.
     let plan = TimeScope {
-        start_id: 20,
-        end_id: 20,
+        start_id: test_key(20),
+        end_id: test_key(20),
         duration: None,
     };
     let write = TaskWrite::merge(
@@ -119,8 +120,8 @@ fn a_live_task_that_keeps_its_plan_is_untouched_by_the_backlog_rule() {
 #[test]
 fn the_invariant_refuses_backlog_with_a_plan_and_allows_every_other_pair() {
     let plan = Some(TimeScope {
-        start_id: 1,
-        end_id: 1,
+        start_id: test_key(1),
+        end_id: test_key(1),
         duration: None,
     });
     assert!(matches!(
