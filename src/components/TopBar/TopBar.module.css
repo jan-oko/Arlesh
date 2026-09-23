@@ -64,37 +64,6 @@
   padding-inline: var(--space-3);
 }
 
-.viewTabs {
-  display: flex;
-  border: 1px solid var(--node-border);
-  border-radius: 6px;
-  overflow: hidden;
-}
-
-.viewTab {
-  padding: 3px var(--space-3);
-  background: transparent;
-  border: none;
-  border-inline-start: 1px solid var(--node-border);
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-  font-family: var(--font-sans);
-  cursor: pointer;
-}
-
-.viewTab:first-child {
-  border-inline-start: none;
-}
-
-.viewTab:hover {
-  color: var(--text-primary);
-}
-
-.viewTabActive {
-  background: var(--accent);
-  color: var(--surface);
-}
-
 .filterBtn {
   display: inline-flex;
   align-items: center;

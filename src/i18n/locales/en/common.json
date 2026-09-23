@@ -12,6 +12,8 @@
   "viewMindmap": "Mindmap",
   "viewList": "List",
   "viewPlan": "Plan",
+  "viewSteps": "Steps",
+  "viewSelectorLabel": "View",
   "searchNodesPlaceholder": "Search…",
   "noResults": "No results",
   "loading": "Loading…",

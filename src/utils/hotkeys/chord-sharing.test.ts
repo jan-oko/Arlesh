@@ -8,6 +8,7 @@ import { LIST_BINDINGS } from "./list-bindings";
 import type { ListContext } from "./list-bindings";
 import { MINDMAP_BINDINGS } from "./mindmap-bindings";
 import { PLAN_BINDINGS } from "./plan-bindings";
+import { STEPS_BINDINGS } from "./steps-bindings";
 import type { MindmapContext } from "./mindmap-bindings";
 import { PLAN_KIND_BINDINGS, SCOPE_KIND_KEYS } from "./plan/kind";
 import type { PlanKindContext } from "./plan/kind";
@@ -57,6 +58,7 @@ const SHARED_CHORDS: Readonly<Record<string, readonly string[]>> = {
 
 const ALL: readonly BindingMeta[] = [
   ...GLOBAL_BINDINGS, ...TAB_BINDINGS, ...MINDMAP_BINDINGS, ...LIST_BINDINGS, ...PLAN_BINDINGS,
+  ...STEPS_BINDINGS,
 ];
 
 /**
@@ -213,6 +215,7 @@ describe("chords a view shares with an always-live table", () => {
       ...crossTableGroups("mindmap", MINDMAP_BINDINGS),
       ...crossTableGroups("listView", LIST_BINDINGS),
       ...crossTableGroups("planView", PLAN_BINDINGS),
+      ...crossTableGroups("stepsView", STEPS_BINDINGS),
     }).toEqual(CROSS_TABLE_CHORDS);
   });
 });

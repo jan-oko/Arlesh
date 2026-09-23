@@ -1,0 +1,196 @@
+.card {
+  composes: wash from "@/styles/aspect-wash.module.css";
+  position: relative;
+  display: flex;
+  overflow: hidden;
+  box-sizing: border-box;
+  flex-direction: column;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--node-border);
+  border-radius: var(--node-radius);
+  cursor: pointer;
+  font-family: var(--font-sans);
+  gap: var(--space-1);
+
+  /* The card is washed in its aspect's colour; `aspect-wash.module.css` says how, and why that keeps
+     every aspect legible. A child card's base is the theme's card background. */
+  --card-base: var(--node-bg);
+}
+
+.child {
+  width: var(--step-card-width);
+  height: var(--step-card-height);
+}
+
+/* The header card spans the Step, and its width is now the whole of what says so. It is the first
+   cell of the same arrow grid as the children, so it still has to read as a different *kind* of
+   cell — but a full-width band against a row of fixed-width cards is a strong enough difference on
+   its own, without an accent border or a label spelling it out. */
+.header {
+  width: 100%;
+}
+
+/* The board's own card: its name, centred, and nothing else. It belongs to no aspect, so it is given
+   none and the wash leaves it its base — the raised surface. */
+.board {
+  --card-base: var(--surface-raised);
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+}
+
+.boardTitle {
+  color: var(--node-text);
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+/* The selection ring is drawn **inside** the card: the border takes the accent and an inset shadow
+   doubles it to 2px. An outline outside the card was clipped by the card area's `overflow: hidden`
+   on the top and left of every card in the first row and first column, which sit flush against
+   that edge — so the ring came out lopsided, thick on the right and bottom and missing elsewhere. */
+.selected {
+  border-color: var(--node-border-selected);
+  box-shadow: inset 0 0 0 1px var(--node-border-selected);
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.glyph {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+}
+
+/* The title is toned into the card rather than laid over it: the card's strong colour, not the
+   theme's full text colour, and a medium weight rather than semibold. At full strength and 600, with
+   a full-strength glyph beside it, the top line read as a separate band against the washed body —
+   most visibly in light, once the wash was strong enough to see. */
+.title {
+  overflow: hidden;
+  min-width: 0;
+  flex: 1 1 auto;
+  color: var(--card-text-strong);
+  font-size: var(--text-base);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.titleInput {
+  min-width: 0;
+  flex: 1 1 auto;
+  padding: 0 4px;
+  border: 1px solid var(--node-border-selected);
+  border-radius: 4px;
+  background: var(--node-bg);
+  color: var(--node-text);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: 600;
+  outline: none;
+}
+
+.kind {
+  color: var(--card-text-muted);
+  font-size: var(--text-sm);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.fields {
+  display: flex;
+  overflow: hidden;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  margin: 0;
+  gap: 1px;
+}
+
+.field {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.fieldLabel {
+  flex: 0 0 auto;
+  color: var(--card-text-muted);
+  font-size: var(--text-sm);
+}
+
+.fieldValue {
+  overflow: hidden;
+  min-width: 0;
+  flex: 1 1 auto;
+  margin: 0;
+  color: var(--card-text-strong);
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The first Info notes under the node, as many as the card's height leaves room for. Each is one
+   line that ellipses rather than wrapping — the fitting arithmetic in `bulletCapacity` counts lines,
+   so a note that wrapped would push the footer out of the card it was measured into. */
+.notes {
+  display: flex;
+  overflow: hidden;
+  min-height: 0;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  gap: 1px;
+  list-style: none;
+}
+
+.note {
+  overflow: hidden;
+  color: var(--card-text-muted);
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note::before {
+  content: "• ";
+}
+
+.noteMore {
+  font-style: italic;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: auto;
+  gap: var(--space-2);
+}
+
+.count {
+  color: var(--card-text-muted);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.editBtn {
+  padding: 0 var(--space-1);
+  border: 1px solid transparent;
+  border-radius: var(--node-radius);
+  background: transparent;
+  color: var(--card-text-muted);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  line-height: 1.4;
+}
+
+.editBtn:hover {
+  border-color: var(--node-border);
+  color: var(--text-primary);
+}

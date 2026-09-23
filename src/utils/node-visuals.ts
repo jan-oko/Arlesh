@@ -1,5 +1,6 @@
 import type { MindmapNode } from "@/utils/tree-layout";
 import { isNodeBlocked } from "@/utils/tree-layout";
+import { pathToNode } from "@/utils/mindmap-tree";
 import type { Resolution } from "@/api/scope-lifecycle";
 
 /** Opacity for a node the view is showing but the filter is not asking for: an archived item, or one
@@ -45,4 +46,50 @@ export function computeNodeAppearance(node: MindmapNode, depth: number): NodeApp
     isBlocked, iconColor, iconOpacity, fillColor, fillOpacity, label, textFill,
     resolution: node.resolution, nodeOpacity,
   };
+}
+
+/** The style properties that wash a card in its aspect's colour. */
+export interface AspectWashStyle {
+  "--card-aspect"?: string;
+  "--card-aspect-strength"?: string;
+}
+
+/**
+ * The hues that take a wash strength of their own, keyed by the seeded aspect colour.
+ *
+ * Self (`#bdc3c7`) and Flow (`#95a5a6`) are both near-neutral greys, and at the shared strength their
+ * washes were indistinguishable. The strengths themselves are per theme, so they live in
+ * `tokens.css`; this only says which hue takes which. Keyed by colour rather than by aspect because
+ * what needs tuning is how a hue mixes, and the six aspect colours are fixed with the board.
+ */
+const WASH_STRENGTH_BY_COLOUR: ReadonlyMap<string, string> = new Map([
+  ["#bdc3c7", "var(--card-aspect-strength-self)"],
+  ["#95a5a6", "var(--card-aspect-strength-flow)"],
+]);
+
+/**
+ * What a card needs to be washed in `aspectColor` — see `aspect-wash.module.css`, which the card's
+ * class composes. Outside any aspect it is empty, which leaves the card its plain base surface.
+ */
+export function aspectWashStyle(aspectColor: string | undefined): AspectWashStyle {
+  if (aspectColor === undefined) return {};
+  const strength = WASH_STRENGTH_BY_COLOUR.get(aspectColor.toLowerCase());
+  return strength === undefined
+    ? { "--card-aspect": aspectColor }
+    : { "--card-aspect": aspectColor, "--card-aspect-strength": strength };
+}
+
+/**
+ * The colour of the aspect `id` lives under, or `undefined` outside any of them.
+ *
+ * A node's own `color` is already the aspect's, propagated down on load — but only where it was
+ * set, and a node that carries none needs its ancestors asked. One walk down answers both.
+ */
+export function aspectColorOf(root: MindmapNode, id: string): string | undefined {
+  const path = pathToNode(root, id);
+  for (let i = path.length - 1; i >= 0; i--) {
+    const color = path[i]?.color;
+    if (color !== undefined) return color;
+  }
+  return undefined;
 }

@@ -38,3 +38,10 @@ Marked here so the consequences above are not read as current where they no long
   display-pinning are not built; they were taken out of the spec and are tracked as `Arlesh-9md`.
 - Real children can be attached to one virtual instance (`habit_instance_children`, migration
   `0034`) without materializing it, which keeps the materialize-on-first-touch rejection above.
+
+## Amendment, 2026-09-23 — superseded in representation by ADR 0008
+
+How a virtual instance is represented, keyed and edited is replaced by
+[ADR 0008](0008-virtual-node-tables.md): a derived node is an ordinary row of its kind, read through
+a per-kind virtual table over a per-kind overlay, with a UUID-v5 id and an `origin` field. This ADR's
+decision to keep Habit instances virtual, with storage proportional to divergences, stands.

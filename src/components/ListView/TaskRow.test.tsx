@@ -225,3 +225,40 @@ describe("TaskRow", () => {
     });
   });
 });
+
+describe("TaskRow — its colour", () => {
+  function cardOf(container: HTMLElement): HTMLElement {
+    const card = container.querySelector("[data-row-id]");
+    if (!(card instanceof HTMLElement)) throw new Error("no card");
+    return card;
+  }
+
+  it("is its aspect's, whatever depth the row sits at", () => {
+    const shallow = render(<TaskRow {...baseProps({ row: row({ node: n("task-1", "task", { color: "#27ae60" }) }) })} />);
+    expect(cardOf(shallow.container).style.getPropertyValue("--card-aspect")).toBe("#27ae60");
+    shallow.unmount();
+
+    const deep = render(<TaskRow {...baseProps({
+      visibleDepth: 4,
+      row: row({
+        node: n("task-9", "task", { color: "#27ae60" }),
+        ancestors: [n("p", "project"), n("d", "domain"), n("g", "goal"), n("t1", "task"), n("t2", "task")],
+      }),
+    })} />);
+    expect(cardOf(deep.container).style.getPropertyValue("--card-aspect")).toBe("#27ae60");
+  });
+
+  it.each([
+    ["done", row({ node: n("task-1", "task", { status: "done", color: "#e74c3c" }) })],
+    ["blocked", row({ isBlocked: true, node: n("task-1", "task", { status: "todo", color: "#e74c3c", virtualBlockers: ["Spec"] }) })],
+    ["archived", row({ node: n("task-1", "task", { status: "todo", color: "#e74c3c", archived: true }) })],
+  ])("says nothing about state: a %s row takes the same colour as an open one", (_state, taskRow) => {
+    const { container } = render(<TaskRow {...baseProps({ row: taskRow })} />);
+    expect(cardOf(container).style.getPropertyValue("--card-aspect")).toBe("#e74c3c");
+  });
+
+  it("is the plain row surface outside any aspect", () => {
+    const { container } = render(<TaskRow {...baseProps()} />);
+    expect(cardOf(container).style.getPropertyValue("--card-aspect")).toBe("");
+  });
+});

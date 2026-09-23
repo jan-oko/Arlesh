@@ -1,0 +1,35 @@
+- **Steps View: one level at a time, as cards you enter.** A fourth view, on `Ctrl+S`. The node
+  you are standing on is drawn as a header card and its direct children as cards beneath it, and
+  nothing deeper — so a wide branch stops being a wall and picking the next thing stops meaning
+  reading the whole subtree.
+
+  Entering a card makes it the Step and redraws. It moves the same place the breadcrumb and `Ctrl+O`
+  move, so switching to the Mindmap afterwards lands you where you walked to, the breadcrumb names
+  the Step as it does everywhere else, and `Shift+Escape` and `Ctrl+Escape` climb back out — there
+  is no new navigation vocabulary to learn. Each tab remembers it is showing Steps, so one tab can
+  be a walk while another stays a Mindmap.
+
+  A card carries what the editor carries: the fields you would open the editor to read, chosen by
+  kind, and never a second copy of what its icon or its badges already say. Under them sit the
+  node's first Info notes as bullets, as many as the card has room for, with the last line saying
+  how many did not fit rather than dropping them in silence. A card that holds something says how
+  much — "3 of 12", what the current filter will show against what the board actually holds. All four arrows move between cards, `Enter` descends, `E` opens the editor, `Space` cycles
+  a status, and a leaf opens on an empty Step that offers to create the first child rather than
+  being a dead end.
+
+  Every card is coloured by the aspect it lives under, as a List View row is, so a Step reads at a
+  glance as one place on the board. It is a light wash of the aspect's hue rather than the colour itself, so text stays
+  legible on every aspect in both themes, the pale ones and an Aspect's own card included. What
+  state a card is in is left to its icon and its badges.
+
+  Cards are created and deleted with the Mindmap's keys and rules: `Shift+Enter` puts a new card
+  beside the selected one, `Ctrl+Enter` a new parent around it, and `Tab` (or `Shift` and a kind's
+  initial) makes a child of the selected card and steps into it to show it. With nothing selected,
+  `Shift` and a kind's initial puts that kind on the Step you are looking at, and so does the "+"
+  beside the Step's header card, which lists the kinds the Step can hold. A new card is selected
+  with its title open for naming. `Delete` asks first, then lands on the next card. The Step you
+  are standing on cannot be deleted or given a sibling from inside it, and says so. `Ctrl+Z` takes
+  back either in one press.
+
+  A wide Step turns to pages rather than scrolling, with `PageUp` and `PageDown` for the landings,
+  and a card-size setting per tab in the gear menu.
