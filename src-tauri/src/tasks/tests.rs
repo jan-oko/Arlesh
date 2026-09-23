@@ -242,7 +242,37 @@ fn an_update_that_says_nothing_about_asynchronous_leaves_the_template_alone() {
             ..Default::default()
         },
     );
+    assert!(write.asynchronous);
     assert_eq!(write.async_template, asynchronous_task().async_template);
+}
+
+#[test]
+fn each_asynchronous_answer_writes_itself() {
+    // One `Option` deep, unlike Agentic: the column is a plain boolean, so `Some(false)` is a
+    // real answer that clears the flag and only an absent field leaves it alone. If those two
+    // ever agreed, unflagging a Task would be a silent no-op.
+    for (stored, requested, expected) in [
+        (true, Some(false), false),
+        (true, Some(true), true),
+        (false, Some(true), true),
+        (true, None, true),
+        (false, None, false),
+    ] {
+        let write = TaskWrite::merge(
+            Task {
+                asynchronous: stored,
+                ..stored_task()
+            },
+            UpdateTaskRequest {
+                asynchronous: requested,
+                ..Default::default()
+            },
+        );
+        assert_eq!(
+            write.asynchronous, expected,
+            "stored {stored}, requested {requested:?}"
+        );
+    }
 }
 
 #[test]

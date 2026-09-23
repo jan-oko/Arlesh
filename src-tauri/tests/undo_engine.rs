@@ -1144,15 +1144,13 @@ async fn an_undo_that_cannot_be_applied_changes_nothing_and_leaves_the_gesture_o
     );
 }
 
-/// Whether the task is Asynchronous as the database holds it: whether it has a template row.
+/// The `asynchronous` flag as the database holds it.
 async fn asynchronous(pool: &SqlitePool, task_id: i64) -> bool {
-    let count: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM task_async_templates WHERE task_id = ?")
-            .bind(task_id)
-            .fetch_one(pool)
-            .await
-            .expect("read the template");
-    count == 1
+    sqlx::query_scalar("SELECT asynchronous FROM tasks WHERE id = ?")
+        .bind(task_id)
+        .fetch_one(pool)
+        .await
+        .expect("read asynchronous")
 }
 
 #[tokio::test]
@@ -1188,7 +1186,8 @@ async fn undoing_an_edit_that_unflagged_asynchronous_puts_the_flag_back() {
     undo(&app).await.expect("there is something to undo");
     assert!(
         asynchronous(&pool, task.id).await,
-        "undo must put the template back — the template table is journaled like any other"
+        "undo must put the flag back — a column the triggers do not name is restored silently \
+         as whatever it was at insert time"
     );
 
     redo(&app).await.expect("there is something to redo");
