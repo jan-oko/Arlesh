@@ -32,7 +32,7 @@ export const STEPS_TYPED_CHILD_CHORDS: ReadonlyArray<{ code: string; kind: Typed
   { code: "KeyG", kind: "goal", labelKey: "createGoalChild" },
   { code: "KeyT", kind: "task", labelKey: "createTaskChild" },
   { code: "KeyC", kind: "commitment", labelKey: "createCommitmentChild" },
-  { code: "KeyW", kind: "expectation", labelKey: "createExpectationChild" },
+  { code: "KeyE", kind: "expectation", labelKey: "createExpectationChild" },
   { code: "KeyI", kind: "info", labelKey: "createInfoChild" },
   { code: "KeyF", kind: "flow", labelKey: "createFlowChild" },
 ];

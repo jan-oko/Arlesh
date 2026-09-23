@@ -105,7 +105,12 @@ export function flattenExpectationRows(root: MindmapNode): ExpectationListRow[] 
   function visit(node: MindmapNode, ancestors: readonly MindmapNode[]): void {
     const isFrame = node === root;
     if (node.kind === "expectation" && !isFrame) {
-      rows.push({ node, ancestors: [...ancestors], hasPrivateAncestor: ancestors.some((a) => a.isPrivate === true) });
+      rows.push({
+        node,
+        ancestors: [...ancestors],
+        hasPrivateAncestor: ancestors.some((a) => a.isPrivate === true),
+        scopeTokens: deriveScopeStateTokens(node),
+      });
     }
     const nextAncestors = isFrame ? ancestors : [...ancestors, node];
     for (const child of node.children) visit(child, nextAncestors);

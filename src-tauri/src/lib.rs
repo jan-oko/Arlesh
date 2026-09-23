@@ -147,6 +147,8 @@ pub fn run() {
             commands::expectations::update_expectation,
             commands::expectations::clear_expectation_check_by,
             commands::expectations::delete_expectation,
+            commands::expectations::add_tag_to_expectation,
+            commands::expectations::remove_tag_from_expectation,
             commands::retype::retype_node,
             commands::scopes::get_or_create_scope,
             commands::scopes::get_or_create_part_scope,

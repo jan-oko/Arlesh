@@ -328,8 +328,9 @@ export function passesExpectationPreset(node: MindmapNode, f: FilterState): bool
       return true;
     case "plan":
       return isLiveExpectation(node);
+    // A wait whose own window has passed drops out of Start, as a Task's does.
     case "start":
-      return isLiveExpectation(node) && (node.checkBy ?? null) === null;
+      return isLiveExpectation(node) && (node.checkBy ?? null) === null && node.timing !== "lapsed";
     case "do":
     case "backlog":
       return false;
@@ -339,7 +340,9 @@ export function passesExpectationPreset(node: MindmapNode, f: FilterState): bool
 /** Combined tag predicate per SPEC: (∪Any) ∧ (∩All) ∧ ¬(∪Exclude). Only judges taggable nodes. */
 export function passesTags(node: MindmapNode, f: FilterState): boolean {
   if (f.tagFilters.length === 0) return true;
-  if (node.kind !== "task" && node.kind !== "goal" && node.kind !== "commitment") return true;
+  if (node.kind !== "task" && node.kind !== "goal" && node.kind !== "commitment" && node.kind !== "expectation") {
+    return true;
+  }
   const has = (id: number) => node.tagIds.includes(id);
   const any = f.tagFilters.filter((t) => t.mode === "any");
   if (any.length > 0 && !any.some((t) => has(t.tagId))) return false;

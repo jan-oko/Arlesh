@@ -222,6 +222,8 @@ export interface ExpectationListRow {
   ancestors: MindmapNode[];
   /** Whether any ancestor is marked private — the subtree hides as a unit outside Private Mode. */
   hasPrivateAncestor: boolean;
+  /** Its own Time Scope's scope-state tokens, read the way a Task row's are. */
+  scopeTokens: string[];
 }
 
 /**
@@ -415,8 +417,8 @@ export function filterCommitmentList(
  * replaces the preset's rules, as Unblock does, and keeps every pending, live wait — the hard-hide
  * rules still apply, read under the neutralised filter. Otherwise the preset answers through
  * {@link passesExpectationPreset}, with the same subtree gates the task rows answer, so a branch the
- * list has dropped takes its waits with it. Only the Antecedent pill applies: a wait has no status,
- * scope, verdict or tags to be filtered on.
+ * list has dropped takes its waits with it. The tag filters apply as they do to a Task, and of the
+ * List View's pills the ones a wait can answer: Antecedent and Scope.
  */
 export function filterExpectationList(
   rows: readonly ExpectationListRow[],
@@ -435,6 +437,8 @@ export function filterExpectationList(
       if (hasGatingAncestor(row.ancestors, shared)) return false;
       if (!withArchivedOverride(row.node, shared, passesExpectationPreset(row.node, shared))) return false;
     }
+    if (!passesTags(row.node, shared)) return false;
+    if (!matchesPillGroup(listFilter.pills.scopeState, row.scopeTokens)) return false;
     return matchesPillGroup(listFilter.pills.antecedent, ancestorRefs(row.ancestors));
   });
 }

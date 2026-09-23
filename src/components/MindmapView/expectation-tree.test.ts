@@ -24,7 +24,8 @@ function task(over: Partial<Task> = {}): Task {
 function wait(over: Partial<Expectation> = {}): Expectation {
   return {
     id: 3, title: "Reviewer replies", parent_type: "project", parent_id: 1, status: "pending",
-    archival: "live", check_by: null, position: 2, is_private: false, ...over,
+    archival: "live", check_by: null, time_scope: null, tag_ids: [], position: 2, is_private: false,
+    ...over,
   };
 }
 

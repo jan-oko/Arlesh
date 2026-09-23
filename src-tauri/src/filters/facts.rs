@@ -19,6 +19,7 @@ use std::collections::{HashMap, HashSet};
 use crate::{
     mindmap::model::MindmapLoad,
     tasks::{
+        expectations,
         lifecycle::{Archival, ItemLifecycle, Timing},
         model::{ExpectationArchival, ExpectationStatus, TaskArchival, TaskStatus},
     },
@@ -193,6 +194,11 @@ pub fn forest(load: &MindmapLoad) -> Vec<FactNode> {
         node.is_private = expectation.is_private;
         node.archived = expectation.archival == ExpectationArchival::Archived;
         node.has_check_by = expectation.check_by.is_some();
+        node.tag_ids.clone_from(&expectation.tag_ids);
+        // Its own Time Scope's Timing — the stored archive, not the lifecycle, says archived.
+        node.timing = lifecycles
+            .get(&(expectations::EXPECTATION, expectation.id))
+            .map(|lifecycle| lifecycle.timing);
         facts.push(node);
         parents.push(Some(content_parent_id(
             &expectation.parent_type,
@@ -208,7 +214,7 @@ pub fn forest(load: &MindmapLoad) -> Vec<FactNode> {
             check.status = Some("todo".to_string());
             check.timing = Some(
                 lifecycles
-                    .get(&("expectation", expectation.id))
+                    .get(&(expectations::EXPECTATION_CHECK, expectation.id))
                     .map_or(Timing::Active, |lifecycle| lifecycle.timing),
             );
             facts.push(check);
@@ -266,8 +272,15 @@ pub fn narrow(load: &mut MindmapLoad, filter: &BoardFilter) {
     load.infos
         .retain(|info| keeps(&format!("info-{}", info.id)));
 
-    load.lifecycles
-        .retain(|lifecycle| keeps(&format!("{}-{}", lifecycle.node_type, lifecycle.node_id)));
+    // A wait's check-by entry travels with the wait it belongs to.
+    load.lifecycles.retain(|lifecycle| {
+        let owner = if lifecycle.node_type == expectations::EXPECTATION_CHECK {
+            expectations::EXPECTATION
+        } else {
+            lifecycle.node_type.as_str()
+        };
+        keeps(&format!("{owner}-{}", lifecycle.node_id))
+    });
     load.block_reasons
         .retain(|reason| keeps(&format!("{}-{}", reason.owner_type, reason.owner_id)));
     load.task_dependencies

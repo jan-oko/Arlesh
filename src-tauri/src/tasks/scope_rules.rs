@@ -151,21 +151,30 @@ pub async fn derive_all_scope_lifecycles<M: SessionMode>(
         });
     }
     for expectation in db.expectations().list().await? {
-        let window = match &expectation.check_by {
-            Some(check_by) => Some(time_scope_window(db, check_by).await?),
-            None => None,
-        };
-        let state = derive_expectation_state(window, expectation.status, expectation.archival, now);
-        out.push(ItemLifecycle {
-            node_type: expectations::EXPECTATION.to_string(),
-            node_id: expectation.id,
-            timing: state.timing,
-            resolution: state.resolution,
-            verdict: None,
-            archival: state.archival,
-            // Nothing is derived over an expectation's own archive, so nothing can be overridden.
-            archival_conflict: false,
-        });
+        // Two entries per wait. `expectation` times its own Time Scope, which the presets and the
+        // scope-state pill read; `expectation_check` times its check-by, which its virtual check
+        // task reads. A wait is never Missed, so a passed window with the wait pending is Overdue.
+        for (node_type, window) in [
+            (expectations::EXPECTATION, &expectation.time_scope),
+            (expectations::EXPECTATION_CHECK, &expectation.check_by),
+        ] {
+            let bounds = match window {
+                Some(window) => Some(time_scope_window(db, window).await?),
+                None => None,
+            };
+            let state =
+                derive_expectation_state(bounds, expectation.status, expectation.archival, now);
+            out.push(ItemLifecycle {
+                node_type: node_type.to_string(),
+                node_id: expectation.id,
+                timing: state.timing,
+                resolution: state.resolution,
+                verdict: None,
+                archival: state.archival,
+                // Nothing is derived over a wait's own archive, so nothing can be overridden.
+                archival_conflict: false,
+            });
+        }
     }
     Ok(out)
 }
@@ -420,6 +429,29 @@ pub(super) async fn validate_commitment_scope<M: SessionMode>(
         };
     };
 
+    let own_scope = Some(time_scope_window(db, own).await?);
+    let ancestor_scope = resolve_optional(db, ancestor).await?;
+    check_containment(ContainmentWindows {
+        own_scope,
+        ancestor_scope,
+        ..Default::default()
+    })
+}
+
+/// Refuses an Expectation's Time Scope that escapes its nearest scoped ancestor's window — the rule
+/// a Task's window answers. With no window of its own there is nothing to check: unlike a
+/// Commitment, a wait may be unscoped, and it inherits nothing.
+pub(super) async fn validate_expectation_scope<M: SessionMode>(
+    db: &mut Db<M>,
+    parent_type: &str,
+    parent_id: i64,
+    time_scope: &Option<TimeScope>,
+) -> Result<(), TaskError> {
+    let Some(own) = time_scope else {
+        return Ok(());
+    };
+    let chain = write_chain(db, None, parent_type, parent_id).await?;
+    let ancestor = chain.nearest_scoped().or_reject()?.map(|(scope, _)| scope);
     let own_scope = Some(time_scope_window(db, own).await?);
     let ancestor_scope = resolve_optional(db, ancestor).await?;
     check_containment(ContainmentWindows {

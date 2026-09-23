@@ -803,10 +803,10 @@ impl ExpectationArchival {
 
 /// An expectation row as returned from the database: a **wait** that Tasks can depend on.
 ///
-/// Note what is absent, since the absences are the design: no Time Scope and no Plan (a wait is
-/// not something you schedule or do), no tags, no beads id, no block reasons and no dependencies
-/// of its own — it depends on nothing, only Tasks depend on it. The one date it carries is the
-/// optional **check-by**.
+/// It carries a Time Scope and tags, like a Task. Note what is absent, since the absences are the
+/// design: no Plan and no On-exit behaviour (a wait is not something you schedule, and it is never
+/// Missed), no beads id, no block reasons and no dependencies of its own — it depends on nothing,
+/// only Tasks depend on it. Beside its Time Scope it carries the optional **check-by**.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Expectation {
     /// Primary key.
@@ -821,6 +821,11 @@ pub struct Expectation {
     pub status: ExpectationStatus,
     /// Live or Archived, independently of the status.
     pub archival: ExpectationArchival,
+    /// Relevance window, if set. Its own only: a wait's window is validated against its nearest
+    /// scoped ancestor's, but not inherited from it.
+    pub time_scope: Option<TimeScope>,
+    /// Tag domain ids attached to this expectation.
+    pub tag_ids: Vec<i64>,
     /// When to look in on it, if ever. There is no default. While it is set and the Expectation
     /// is pending, a virtual "check on it" Task scoped to it is derived under the Expectation at
     /// read time; completing that task clears this field and stores nothing else.
@@ -843,6 +848,9 @@ pub struct CreateExpectationRequest {
     /// Initial check-by. Omitted, the expectation has none.
     #[serde(default)]
     pub check_by: Option<TimeScope>,
+    /// Initial relevance window. Omitted, the expectation has none.
+    #[serde(default)]
+    pub time_scope: Option<TimeScope>,
 }
 
 /// Request body for updating an expectation.
@@ -858,6 +866,9 @@ pub struct UpdateExpectationRequest {
     /// the virtual check task does).
     #[serde(default, deserialize_with = "crate::wire::null_clears")]
     pub check_by: Option<Option<TimeScope>>,
+    /// Relevance window to set (None leaves unchanged, Some(None) clears it).
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    pub time_scope: Option<Option<TimeScope>>,
     /// New parent entity type for re-parenting (must be set together with parent_id).
     pub parent_type: Option<String>,
     /// New parent entity id for re-parenting (must be set together with parent_type).

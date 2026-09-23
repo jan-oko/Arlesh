@@ -43,6 +43,7 @@ import NodeCreateModals from "@/components/NodeCreateModals/NodeCreateModals";
 import NodeEditorModals from "@/components/NodeEditorModals/NodeEditorModals";
 import { editorOwnerOf } from "@/utils/editor-owner";
 import AsyncExpectationOffer from "@/components/ExpectationEditorModal/AsyncExpectationOffer";
+import { useAsyncExpectationOffer } from "@/hooks/use-async-expectation-offer";
 import NodeSearchModal from "@/components/NodeSearchModal/NodeSearchModal";
 import UnfinishedChildrenModal from "@/components/UnfinishedChildrenModal/UnfinishedChildrenModal";
 import StepCard from "./StepCard";
@@ -188,6 +189,7 @@ export default function StepsView() {
   const { toggleAsynchronous } = useTaskAsynchronous({
     findNode: (id) => findNode(tree, id), reload, showToast,
   });
+  const waitEditor = useAsyncExpectationOffer(tree, reload);
   const { completeCheck, toggleRelease } = useExpectationActions({
     findNode: (id) => findNode(tree, id), reload, showToast,
   });
@@ -382,6 +384,7 @@ export default function StepsView() {
     onToggleAsynchronous: toggleAsynchronous,
     onCompleteCheck: completeCheck,
     onToggleRelease: toggleRelease,
+    onBindWait: waitEditor.bind,
     onOpenEditor,
     onCreateChild: onCreateChildHere,
     onCreateTypedChild: onCreateTypedChildHere,
@@ -520,7 +523,7 @@ export default function StepsView() {
       )}
 
       <NodeEditorModals tree={tree} editor={nodeEditor} />
-      <AsyncExpectationOffer tree={tree} reload={reload} />
+      <AsyncExpectationOffer waitEditor={waitEditor} />
       <NodeCreateModals
         tree={tree} editors={createEditors} allTags={nodeEditor.allTags} domainNames={nodeEditor.domainNames}
       />

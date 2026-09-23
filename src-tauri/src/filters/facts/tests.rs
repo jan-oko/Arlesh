@@ -327,6 +327,8 @@ fn expectation_row(id: i64, parent_type: &str, parent_id: i64) -> crate::tasks::
         status: crate::tasks::model::ExpectationStatus::Pending,
         archival: crate::tasks::model::ExpectationArchival::Live,
         check_by: None,
+        time_scope: None,
+        tag_ids: Vec::new(),
         position: id,
         is_private: false,
     }
@@ -345,15 +347,18 @@ fn an_expectation_with_a_check_by_carries_a_virtual_check_task_timed_by_its_life
     load.expectations.push(expectation_row(51, "goal", 10));
     load.infos.push(info_row(41, "expectation", 51));
     load.lifecycles.push(lifecycle(
-        "expectation",
+        "expectation_check",
         50,
         Timing::Pending,
         Archival::Live,
     ));
+    load.lifecycles
+        .push(lifecycle("expectation", 50, Timing::Lapsed, Archival::Live));
 
     let forest = forest(&load);
     let wait = find(&forest, "expectation-50").expect("the expectation is on the board");
     assert!(wait.facts.has_check_by);
+    assert_eq!(wait.facts.timing, Some(Timing::Lapsed));
     assert_eq!(wait.facts.status.as_deref(), Some("pending"));
     let check = find(&forest, "expectation-check-50").expect("the check task is derived");
     assert_eq!(check.facts.kind, NodeKind::Task);

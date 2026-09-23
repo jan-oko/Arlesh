@@ -11,9 +11,27 @@ export interface ListExpectationContext extends ListSelectionContext {
   onCompleteCheck: (id: string) => void;
   /** Selects the List View's **Expectations** option, leaving the shared status preset untouched. */
   onSetExpectationsPreset: () => void;
+  /** Marks the selected Task Asynchronous and binds it to a new wait it depends on. */
+  onBindWait: (id: string) => void;
+  /** Opens the new-Expectation editor for a wait under the selected row. */
+  onCreateExpectation: (id: string) => void;
 }
 
 export const LIST_EXPECTATION_BINDINGS: readonly Binding<ListExpectationContext>[] = [
+  {
+    // The Mindmap's create chord for a wait. The List View otherwise creates Tasks alone; a wait is
+    // configured in its editor before it exists, since a row has no inline title to fill.
+    id: "listView.createExpectation", section: "listView", chord: { code: "KeyE", shift: true },
+    labelKey: "createExpectationChild", allowRepeat: false,
+    when: (c) => c.selectedRowId !== null,
+    run: (c) => { if (c.selectedRowId !== null) c.onCreateExpectation(c.selectedRowId); },
+  },
+  {
+    id: "listView.bindWait", section: "listView", chord: { code: "KeyW", shift: true },
+    labelKey: "bindWait", allowRepeat: false,
+    when: (c) => c.selectedRowId !== null,
+    run: (c) => { if (c.selectedRowId !== null) c.onBindWait(c.selectedRowId); },
+  },
   {
     // Shares Enter with `listView.cycleStatus` and `listView.cycleVerdict`, on a complementary
     // guard: a selection is a Task, a Commitment or an Expectation, never two of them. Enter

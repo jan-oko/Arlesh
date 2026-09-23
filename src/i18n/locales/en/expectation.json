@@ -15,5 +15,9 @@
   "delegationWaitReleasedByTask": "This wait is released when its delegated task is done — it can't be released by hand.",
   "delegationWaitHasNoCheck": "A delegated task's wait has no check-by to complete.",
   "noCheckBy": "This expectation has no check-by, so there's no check to complete.",
-  "notAWait": "Only an Expectation, or a wait's check task, can be released or checked on."
+  "notAWait": "Only an Expectation, or a wait's check task, can be released or checked on.",
+  "bindNotATask": "Only a Task can be bound to a wait.",
+  "bindAlreadyWaits": "This task already waits on “{{title}}”.",
+  "bindNoPlace": "This task hangs somewhere a wait can't be placed beside it.",
+  "createRefused": "An Expectation can't hang here."
 }

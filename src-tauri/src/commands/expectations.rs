@@ -70,6 +70,34 @@ pub async fn clear_expectation_check_by(
     Ok(expectation)
 }
 
+/// Adds a tag to an expectation.
+#[tauri::command]
+pub async fn add_tag_to_expectation(
+    factory: State<'_, SessionFactory>,
+    expectation_id: i64,
+    tag_id: i64,
+) -> Result<(), WireError> {
+    let mut db = factory.connect().await.map_err(WireError::from_error)?;
+    db.expectations()
+        .add_tag(ExpectationId(expectation_id), tag_id)
+        .await
+        .map_err(WireError::from_error)
+}
+
+/// Removes a tag from an expectation.
+#[tauri::command]
+pub async fn remove_tag_from_expectation(
+    factory: State<'_, SessionFactory>,
+    expectation_id: i64,
+    tag_id: i64,
+) -> Result<(), WireError> {
+    let mut db = factory.connect().await.map_err(WireError::from_error)?;
+    db.expectations()
+        .remove_tag(ExpectationId(expectation_id), tag_id)
+        .await
+        .map_err(WireError::from_error)
+}
+
 /// Deletes an expectation, its notes, and every dependency edge aimed at it.
 #[tauri::command]
 pub async fn delete_expectation(

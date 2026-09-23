@@ -9,6 +9,8 @@ import EditorModal from "@/components/EditorModal/EditorModal";
 import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
 import TimeScopeField from "@/components/ScopePicker/TimeScopeField";
 import Switch from "@/components/Switch/Switch";
+import TagPicker from "@/components/TagPicker/TagPicker";
+import type { Domain } from "@/api/domains";
 import { useInputCapture } from "@/hooks/use-input-capture";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 
@@ -16,6 +18,8 @@ export interface ExpectationSaveData {
   title: string;
   status: ExpectationStatus;
   checkBy: TimeScope | null;
+  timeScope: TimeScope | null;
+  tagIds: number[];
   archived: boolean;
   isPrivate: boolean;
 }
@@ -31,18 +35,22 @@ interface Props {
   lead?: string;
   onSave: (data: ExpectationSaveData) => Promise<void>;
   onClose: () => void;
+  /** The tags to pick from. Omitted — as on the paths that create a wait for a Task — the tag
+   * picker is not drawn, and the wait starts with none. */
+  allTags?: Domain[];
+  domainNames?: Map<number, string>;
 }
 
 /**
- * The Expectation editor: a title, the status (Pending / Released), the optional **check-by**, and
- * the archive.
+ * The Expectation editor: a title, the status (Pending / Released), its Time Scope, the optional
+ * **check-by**, its tags, and the archive.
  *
- * Shorter than the Task editor on purpose. A wait has no Time Scope, no Plan, no tags, no
- * dependencies of its own and no block reasons. The check-by opens in **Duration** form when it is
+ * Shorter than the Task editor on purpose. A wait has no Plan, no dependencies of its own and no
+ * block reasons. The check-by opens in **Duration** form when it is
  * empty — "look in on it in three days" is the usual shape of the answer — and a stored one opens
  * in whatever form it was set in.
  */
-export default function ExpectationEditorModal({ node, heading, lead, onSave, onClose }: Props) {
+export default function ExpectationEditorModal({ node, heading, lead, onSave, onClose, allTags, domainNames }: Props) {
   useInputCapture();
   const { t } = useTranslation(["expectation", "editor"]);
   const [title, setTitle] = useState(node.title);
@@ -50,6 +58,8 @@ export default function ExpectationEditorModal({ node, heading, lead, onSave, on
     node.status === EXPECTATION_STATUS.RELEASED ? EXPECTATION_STATUS.RELEASED : EXPECTATION_STATUS.PENDING,
   );
   const [checkBy, setCheckBy] = useState<TimeScope | null>(node.checkBy ?? null);
+  const [timeScope, setTimeScope] = useState<TimeScope | null>(node.timeScope ?? null);
+  const [tagIds, setTagIds] = useState<number[]>(node.tagIds);
   const [archived, setArchived] = useState(node.archived === true);
   const [isPrivate, setIsPrivate] = useState(node.isPrivate ?? false);
   const [isSaving, setIsSaving] = useState(false);
@@ -63,7 +73,7 @@ export default function ExpectationEditorModal({ node, heading, lead, onSave, on
     setIsSaving(true);
     setSaveError(null);
     try {
-      await onSave({ title: title.trim(), status, checkBy, archived, isPrivate });
+      await onSave({ title: title.trim(), status, checkBy, timeScope, tagIds, archived, isPrivate });
     } catch (err) {
       setSaveError(getErrorMessage(err));
       setIsSaving(false);
@@ -108,9 +118,16 @@ export default function ExpectationEditorModal({ node, heading, lead, onSave, on
         </div>
       </div>
       <div className={styles.label}>
+        {t("editor:fieldTimeScope")}
+        <TimeScopeField value={timeScope} onChange={setTimeScope} />
+      </div>
+      <div className={styles.label}>
         {t("expectation:fieldCheckBy")}
         <TimeScopeField value={checkBy} onChange={setCheckBy} defaultForm="duration" />
       </div>
+      {allTags !== undefined && domainNames !== undefined && (
+        <TagPicker allTags={allTags} domainNames={domainNames} selectedIds={tagIds} onChange={setTagIds} />
+      )}
       <EditorAdvanced isPrivate={isPrivate} onPrivateChange={setIsPrivate} startOpen={archived}>
         <Switch checked={archived} onChange={setArchived} label={t("expectation:archived")} />
       </EditorAdvanced>

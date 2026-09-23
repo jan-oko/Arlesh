@@ -7,7 +7,7 @@ import { useTaskAsynchronous } from "@/hooks/use-task-asynchronous";
 import { useCommitmentVerdict } from "@/hooks/use-commitment-verdict";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { findNode } from "@/utils/mindmap-tree";
-import { canParentNewTask } from "@/utils/node-meta";
+import { canParentNewChild, canParentNewTask } from "@/utils/node-meta";
 import { storedAgenticState } from "@/utils/agentic";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useListFilterStore } from "@/stores/use-list-filter-store";
@@ -26,6 +26,7 @@ import TaskEditorModal from "@/components/TaskEditorModal/TaskEditorModal";
 import CommitmentEditorModal from "@/components/CommitmentEditorModal/CommitmentEditorModal";
 import ExpectationEditorModal from "@/components/ExpectationEditorModal/ExpectationEditorModal";
 import AsyncExpectationOffer from "@/components/ExpectationEditorModal/AsyncExpectationOffer";
+import { useAsyncExpectationOffer } from "@/hooks/use-async-expectation-offer";
 import NodeSearchModal from "@/components/NodeSearchModal/NodeSearchModal";
 import TaskRow from "./TaskRow";
 import CommitmentRow from "./CommitmentRow";
@@ -47,7 +48,7 @@ import { useFullscreenStore } from "@/stores/use-fullscreen-store";
 import { useDisplayStore } from "@/stores/use-display-store";
 
 export default function ListView() {
-  const { t } = useTranslation(["common", "listView", "editor"]);
+  const { t } = useTranslation(["common", "listView", "editor", "expectation"]);
   const { tree, rows, commitmentRows, expectationRows, listRoot: flattenRoot, toggleRelease, completeCheck,
     allTasksAndGoals, isLoading, error, reload, onCycleStatus, renameNode,
     createTask, deleteTask, removeNode,
@@ -103,6 +104,7 @@ export default function ListView() {
     reload,
     showToast,
   });
+  const waitEditor = useAsyncExpectationOffer(tree, reload);
   const { markBroken, cycleVerdict } = useCommitmentVerdict({
     findNode: (id) => findNode(tree, id),
     reload,
@@ -275,6 +277,16 @@ export default function ListView() {
     onToggleRelease: toggleRelease,
     onCompleteCheck: completeCheck,
     onSetExpectationsPreset: () => setListPreset("expectations"),
+    onBindWait: waitEditor.bind,
+    onCreateExpectation: (id) => {
+      const node = findNode(tree, id);
+      if (node === undefined) return;
+      if (!canParentNewChild(node, "expectation")) {
+        showToast({ nodeId: id, message: t("expectation:createRefused") });
+        return;
+      }
+      waitEditor.createUnder(id);
+    },
     onToggleFullscreen: toggleFullscreen,
     isSelectedBlocked,
     onNavigate: handleNavigate,
@@ -456,10 +468,12 @@ export default function ListView() {
         />
       )}
 
-      <AsyncExpectationOffer tree={tree} reload={reload} />
+      <AsyncExpectationOffer waitEditor={waitEditor} allTags={allTags} domainNames={domainNames} />
       {editorModal !== null && editorModal.node.kind === "expectation" && (
         <ExpectationEditorModal
           node={editorModal.node}
+          allTags={allTags}
+          domainNames={domainNames}
           onSave={onExpectationSave}
           onClose={() => setEditorModal(null)}
         />

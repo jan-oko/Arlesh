@@ -786,6 +786,7 @@
         "expectation-check-ahead",
         "expectation-checked",
         "expectation-delegation",
+        "expectation-late",
         "expectation-pending",
         "expectation-released",
         "goal-w",
@@ -809,6 +810,7 @@
         "expectation-check-ahead",
         "expectation-checked",
         "expectation-delegation",
+        "expectation-late",
         "expectation-pending",
         "expectation-released"
       ]
@@ -825,6 +827,7 @@
         "expectation-check-ahead",
         "expectation-checked",
         "expectation-delegation",
+        "expectation-late",
         "expectation-pending",
         "goal-w",
         "info-on-wait",
@@ -843,12 +846,13 @@
         "expectation-check-ahead",
         "expectation-checked",
         "expectation-delegation",
+        "expectation-late",
         "expectation-pending"
       ]
     },
     {
       "name": "start shows a pending expectation only when it has no check-by, and the check task under the ordinary task rules",
-      "spec": "resources.md, Expectations — Start shows a pending Expectation only when it has no check-by; the virtual check task follows the ordinary Task preset rules. A task depending on a pending Expectation is blocked.",
+      "spec": "resources.md, Expectations — Start shows a pending Expectation only when it has no check-by; the virtual check task follows the ordinary Task preset rules. A task depending on a pending Expectation is blocked. A wait whose own Time Scope has lapsed drops out of Start, as a Task's does.",
       "filter": {
         "preset": "start"
       },
@@ -913,6 +917,7 @@
         "expectation-check-ahead",
         "expectation-checked",
         "expectation-delegation",
+        "expectation-late",
         "expectation-pending",
         "expectation-released",
         "goal-w",
@@ -929,6 +934,7 @@
         "expectation-check-ahead",
         "expectation-checked",
         "expectation-delegation",
+        "expectation-late",
         "expectation-pending"
       ]
     },
@@ -958,6 +964,7 @@
         "expectation-check-ahead",
         "expectation-checked",
         "expectation-delegation",
+        "expectation-late",
         "expectation-pending"
       ]
     },
@@ -975,6 +982,7 @@
         "expectation-check-ahead",
         "expectation-checked",
         "expectation-delegation",
+        "expectation-late",
         "expectation-pending",
         "expectation-released",
         "goal-w",
@@ -1005,6 +1013,7 @@
         "expectation-check-ahead",
         "expectation-checked",
         "expectation-delegation",
+        "expectation-late",
         "expectation-pending",
         "goal-w",
         "info-on-wait",
@@ -1027,6 +1036,7 @@
         "expectation-check-ahead",
         "expectation-checked",
         "expectation-delegation",
+        "expectation-late",
         "expectation-pending"
       ]
     },
@@ -1042,6 +1052,7 @@
         "domain-work",
         "expectation-check-ahead",
         "expectation-checked",
+        "expectation-late",
         "expectation-pending",
         "expectation-released",
         "goal-w",
@@ -1060,6 +1071,7 @@
         "expectation-check-ahead",
         "expectation-checked",
         "expectation-delegation",
+        "expectation-late",
         "expectation-pending",
         "expectation-released"
       ]
@@ -1138,6 +1150,30 @@
       "mindmap": [],
       "list": [],
       "commitments": []
+    },
+    {
+      "name": "a tag filter judges an expectation's own tags",
+      "spec": "resources.md, Expectations — a wait carries tags like a Task, and the tag filters read them the same way.",
+      "filter": {
+        "preset": "all",
+        "tags": [
+          {
+            "tagId": 7,
+            "mode": "any"
+          }
+        ]
+      },
+      "board": "waits",
+      "mindmap": [
+        "domain-work",
+        "expectation-late",
+        "goal-w"
+      ],
+      "list": [],
+      "commitments": [],
+      "expectations": [
+        "expectation-late"
+      ]
     }
   ],
   "boards": {
@@ -1669,6 +1705,15 @@
                   "kind": "task",
                   "status": "done",
                   "delegated": true
+                },
+                {
+                  "id": "expectation-late",
+                  "kind": "expectation",
+                  "status": "pending",
+                  "timing": "lapsed",
+                  "tagIds": [
+                    7
+                  ]
                 }
               ]
             }

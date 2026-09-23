@@ -13,6 +13,8 @@ fn stored() -> Expectation {
             end_id: 10,
             duration: None,
         }),
+        time_scope: None,
+        tag_ids: vec![2],
         position: 100,
         is_private: false,
     }
@@ -101,10 +103,54 @@ fn an_unrecognised_stored_status_reads_as_pending() {
         check_by_duration_kind: None,
         position: 0,
         is_private: true,
+        time_scope_start_id: Some(4),
+        time_scope_end_id: Some(5),
+        time_scope_duration_n: None,
+        time_scope_duration_kind: None,
     };
     let expectation = Expectation::from(row);
     assert_eq!(expectation.status, ExpectationStatus::Pending);
     assert_eq!(expectation.archival, ExpectationArchival::Live);
     assert!(expectation.check_by.is_none());
     assert!(expectation.is_private);
+    assert_eq!(
+        expectation.time_scope,
+        Some(TimeScope {
+            start_id: 4,
+            end_id: 5,
+            duration: None
+        })
+    );
+    assert!(expectation.tag_ids.is_empty());
+}
+
+#[test]
+fn a_time_scope_can_be_set_and_cleared_like_a_tasks() {
+    let window = TimeScope {
+        start_id: 7,
+        end_id: 8,
+        duration: None,
+    };
+    let set = ExpectationWrite::merge(
+        stored(),
+        UpdateExpectationRequest {
+            time_scope: Some(Some(window.clone())),
+            ..Default::default()
+        },
+    );
+    assert_eq!(set.time_scope, Some(window.clone()));
+    let scoped = Expectation {
+        time_scope: Some(window),
+        ..stored()
+    };
+    let cleared = ExpectationWrite::merge(
+        scoped,
+        UpdateExpectationRequest {
+            time_scope: Some(None),
+            ..Default::default()
+        },
+    );
+    assert!(cleared.time_scope.is_none());
+    assert_eq!(cleared.parent_type, "project");
+    assert_eq!(cleared.parent_id, 7);
 }

@@ -92,7 +92,11 @@ export default function NodeEditorModals({ tree, editor }: Props) {
         />
       );
     case "expectation":
-      return <ExpectationEditorModal node={node} onSave={onExpectationSave} onClose={close} />;
+      return (
+        <ExpectationEditorModal
+          node={node} allTags={allTags} domainNames={domainNames} onSave={onExpectationSave} onClose={close}
+        />
+      );
     case "domain":
       return (
         <TitleEditorModal

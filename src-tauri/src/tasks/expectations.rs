@@ -31,6 +31,10 @@ use super::{insertion_position, time_scope_columns, time_scope_from_row};
 /// The `parent_type` / `dependency_type` / `owner_type` spelling of this kind.
 pub const EXPECTATION: &str = "expectation";
 
+/// The lifecycle `node_type` an Expectation's **check-by** is sent under — what its virtual check
+/// task reads. The `expectation` entry times the wait's own Time Scope.
+pub const EXPECTATION_CHECK: &str = "expectation_check";
+
 /// The stored shape of an expectation row.
 #[derive(sqlx::FromRow)]
 struct ExpectationRow {
@@ -46,6 +50,10 @@ struct ExpectationRow {
     check_by_duration_kind: Option<String>,
     position: i64,
     is_private: bool,
+    time_scope_start_id: Option<i64>,
+    time_scope_end_id: Option<i64>,
+    time_scope_duration_n: Option<i64>,
+    time_scope_duration_kind: Option<String>,
 }
 
 impl From<ExpectationRow> for Expectation {
@@ -65,6 +73,13 @@ impl From<ExpectationRow> for Expectation {
                 row.check_by_duration_n,
                 row.check_by_duration_kind,
             ),
+            time_scope: time_scope_from_row(
+                row.time_scope_start_id,
+                row.time_scope_end_id,
+                row.time_scope_duration_n,
+                row.time_scope_duration_kind,
+            ),
+            tag_ids: Vec::new(),
             position: row.position,
             is_private: row.is_private,
         }
@@ -84,6 +99,12 @@ struct ExpectationWrite {
     archival: ExpectationArchival,
     /// Final check-by, or `None` for none.
     check_by: Option<TimeScope>,
+    /// Final Time Scope, or `None` for none.
+    time_scope: Option<TimeScope>,
+    /// The parent the merged Time Scope is validated against — the new one when reparenting.
+    parent_type: String,
+    /// Id of that same parent.
+    parent_id: i64,
     /// Final sort position.
     position: i64,
     /// Final privacy flag.
@@ -97,8 +118,17 @@ impl ExpectationWrite {
             (Some(parent_type), Some(parent_id)) => Some((parent_type, parent_id)),
             _ => None,
         };
+        let (parent_type, parent_id) = reparent
+            .clone()
+            .unwrap_or((stored.parent_type, stored.parent_id));
         Self {
             reparent,
+            parent_type,
+            parent_id,
+            time_scope: match request.time_scope {
+                Some(new_time_scope) => new_time_scope,
+                None => stored.time_scope,
+            },
             title: request.title.unwrap_or(stored.title),
             status: request.status.unwrap_or(stored.status),
             archival: request.archival.unwrap_or(stored.archival),
@@ -133,11 +163,14 @@ impl<'session> ExpectationOperator<'session> {
         request: CreateExpectationRequest,
     ) -> Result<Expectation, TaskError> {
         let (start, end, n, kind) = time_scope_columns(&request.check_by);
+        let (ts_start, ts_end, ts_n, ts_kind) = time_scope_columns(&request.time_scope);
         let id = sqlx::query(
             "INSERT INTO expectations
                 (title, parent_type, parent_id, check_by_start_id, check_by_end_id,
-                 check_by_duration_n, check_by_duration_kind, position)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                 check_by_duration_n, check_by_duration_kind, position,
+                 time_scope_start_id, time_scope_end_id, time_scope_duration_n,
+                 time_scope_duration_kind)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&request.title)
         .bind(&request.parent_type)
@@ -147,6 +180,10 @@ impl<'session> ExpectationOperator<'session> {
         .bind(n)
         .bind(&kind)
         .bind(insertion_position())
+        .bind(ts_start)
+        .bind(ts_end)
+        .bind(ts_n)
+        .bind(&ts_kind)
         .execute(&mut *self.connection)
         .await?
         .last_insert_rowid();
@@ -160,7 +197,43 @@ impl<'session> ExpectationOperator<'session> {
             .fetch_optional(&mut *self.connection)
             .await?
             .ok_or(TaskError::ExpectationNotFound(id.0))?;
-        Ok(row.into())
+        let tag_ids = self.tag_ids(id).await?;
+        Ok(Expectation {
+            tag_ids,
+            ..row.into()
+        })
+    }
+
+    /// The tag domain ids attached to one expectation, in id order.
+    async fn tag_ids(&mut self, id: ExpectationId) -> Result<Vec<i64>, TaskError> {
+        Ok(sqlx::query_scalar::<_, i64>(
+            "SELECT tag_id FROM tags_on_expectations WHERE expectation_id = ? ORDER BY tag_id",
+        )
+        .bind(id.0)
+        .fetch_all(&mut *self.connection)
+        .await?)
+    }
+
+    /// Attaches a tag to an expectation.
+    pub async fn add_tag(&mut self, id: ExpectationId, tag_id: i64) -> Result<(), TaskError> {
+        sqlx::query(
+            "INSERT OR IGNORE INTO tags_on_expectations (expectation_id, tag_id) VALUES (?, ?)",
+        )
+        .bind(id.0)
+        .bind(tag_id)
+        .execute(&mut *self.connection)
+        .await?;
+        Ok(())
+    }
+
+    /// Removes a tag from an expectation.
+    pub async fn remove_tag(&mut self, id: ExpectationId, tag_id: i64) -> Result<(), TaskError> {
+        sqlx::query("DELETE FROM tags_on_expectations WHERE expectation_id = ? AND tag_id = ?")
+            .bind(id.0)
+            .bind(tag_id)
+            .execute(&mut *self.connection)
+            .await?;
+        Ok(())
     }
 
     /// Lists all expectations, in sort-position order.
@@ -169,7 +242,15 @@ impl<'session> ExpectationOperator<'session> {
             sqlx::query_as::<_, ExpectationRow>("SELECT * FROM expectations ORDER BY position ASC")
                 .fetch_all(&mut *self.connection)
                 .await?;
-        Ok(rows.into_iter().map(Expectation::from).collect())
+        let mut expectations = Vec::with_capacity(rows.len());
+        for row in rows {
+            let tag_ids = self.tag_ids(ExpectationId(row.id)).await?;
+            expectations.push(Expectation {
+                tag_ids,
+                ..row.into()
+            });
+        }
+        Ok(expectations)
     }
 
     /// Returns the ids of the expectations parented directly by `(parent_type, parent_id)`.
@@ -198,6 +279,7 @@ impl<'session> ExpectationOperator<'session> {
         write: ExpectationWrite,
     ) -> Result<Expectation, TaskError> {
         let (start, end, n, kind) = time_scope_columns(&write.check_by);
+        let (ts_start, ts_end, ts_n, ts_kind) = time_scope_columns(&write.time_scope);
         if let Some((parent_type, parent_id)) = &write.reparent {
             sqlx::query("UPDATE expectations SET parent_type = ?, parent_id = ? WHERE id = ?")
                 .bind(parent_type)
@@ -209,7 +291,9 @@ impl<'session> ExpectationOperator<'session> {
         sqlx::query(
             "UPDATE expectations SET title=?, status=?, archival=?,
                 check_by_start_id=?, check_by_end_id=?, check_by_duration_n=?,
-                check_by_duration_kind=?, position=?, is_private=? WHERE id=?",
+                check_by_duration_kind=?, position=?, is_private=?,
+                time_scope_start_id=?, time_scope_end_id=?, time_scope_duration_n=?,
+                time_scope_duration_kind=? WHERE id=?",
         )
         .bind(&write.title)
         .bind(write.status.as_str())
@@ -220,6 +304,10 @@ impl<'session> ExpectationOperator<'session> {
         .bind(&kind)
         .bind(write.position)
         .bind(write.is_private)
+        .bind(ts_start)
+        .bind(ts_end)
+        .bind(ts_n)
+        .bind(&ts_kind)
         .bind(id.0)
         .execute(&mut *self.connection)
         .await?;
@@ -237,13 +325,21 @@ impl<'session> ExpectationOperator<'session> {
     }
 }
 
-/// Creates an expectation. Pending, live, and with whatever check-by the request names — none,
-/// unless it names one.
+/// Creates an expectation. Pending, live, and with whatever check-by and Time Scope the request
+/// names — none, unless it names them. A Time Scope escaping the nearest scoped ancestor's window is
+/// refused, as it is for a Task.
 #[tracing::instrument(skip(db))]
 pub async fn create_expectation(
     db: &mut Db<Transactional>,
     request: CreateExpectationRequest,
 ) -> Result<Expectation, TaskError> {
+    super::scope_rules::validate_expectation_scope(
+        db,
+        &request.parent_type,
+        request.parent_id,
+        &request.time_scope,
+    )
+    .await?;
     db.expectations().insert(request).await
 }
 
@@ -259,6 +355,13 @@ pub async fn update_expectation(
 ) -> Result<Expectation, TaskError> {
     let stored = db.expectations().get(id).await?;
     let write = ExpectationWrite::merge(stored, request);
+    super::scope_rules::validate_expectation_scope(
+        db,
+        &write.parent_type,
+        write.parent_id,
+        &write.time_scope,
+    )
+    .await?;
     db.expectations().update(id, write).await
 }
 

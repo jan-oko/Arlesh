@@ -47,6 +47,9 @@ const LABELS_SPANNING_SECTIONS: Readonly<Record<string, readonly string[]>> = {
   toggleAsynchronous: ["mindmap", "listView"],
   completeCheck: ["mindmap", "listView"],
   toggleRelease: ["mindmap", "listView"],
+  bindWait: ["mindmap", "listView"],
+  // The List View creates Tasks alone except for a wait, which it opens the editor for.
+  createExpectationChild: ["mindmap", "listView"],
   // Same key, different movement: cells on a canvas against rows in a list against two panes.
   navigateRows: ["listView", "planView"],
   // F11 is global; bare F is declared per view because eligibility depends on the view's selection

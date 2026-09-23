@@ -170,7 +170,8 @@ pub fn passes_expectation_row(row: Row<'_>, filter: &BoardFilter) -> bool {
         let neutral = unblock_filter(filter);
         return !rules::type_hard_hidden(row.node, &neutral)
             && (filter.private_mode || !row.has_private_ancestor())
-            && rules::is_live_expectation(row.node);
+            && rules::is_live_expectation(row.node)
+            && rules::passes_tags(row.node, filter);
     }
     if rules::type_hard_hidden(row.node, filter) {
         return false;
@@ -185,7 +186,7 @@ pub fn passes_expectation_row(row: Row<'_>, filter: &BoardFilter) -> bool {
         row.node,
         filter,
         rules::passes_expectation_preset(row.node, filter),
-    )
+    ) && rules::passes_tags(row.node, filter)
 }
 
 /// One row of a flattened board, owning its chain — what [`flatten`] produces.

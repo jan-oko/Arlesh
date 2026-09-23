@@ -10,31 +10,42 @@ interface Props {
   isArchived: boolean;
 }
 
+/** How much of the ring a pending wait draws: three quarters, the gap at the top right. */
+const ARC_SWEEP = 0.75;
+/** Where the arc starts, measured clockwise from twelve o'clock, as a fraction of a turn. */
+const ARC_START = 0.1;
+
+/** A point on a circle of radius `radius` round `(cx, cy)`, `turn` of the way clockwise from 12. */
+function pointAt(cx: number, cy: number, radius: number, turn: number): string {
+  const angle = turn * 2 * Math.PI;
+  return `${(cx + radius * Math.sin(angle)).toFixed(2)} ${(cy - radius * Math.cos(angle)).toFixed(2)}`;
+}
+
 /**
- * An Expectation renders as a **downward-pointing triangle** — something on its way to you.
+ * An Expectation renders as a **loading ring** — the shape a screen uses for "waiting on something".
  *
- * Straight-edged on purpose, like the Commitment's shield: every kind a person *does* is round
- * (a Task is a circle, a Goal a ring), and a wait is not something you do. At the smallest size the
- * Mindmap draws, the outline is still the only inverted triangle in the tree.
+ * **Pending** is the ring with a quarter missing, as a spinner is drawn. **Released** is a solid
+ * disc: the wait is over and the ring has filled. A full hollow ring, or a ring with a tick, would
+ * have been the obvious "done" — but those are the Task glyph's To Do and Done, and a wait must not
+ * read as a Task at the sizes the Mindmap draws. An **archived** wait is the pending ring struck
+ * through, as an expired Commitment is.
  *
- * **Hollow while pending, solid once released** — the same "answer owed / answer given" reading the
- * Commitment glyph uses. An archived wait is **struck through**, as an expired Commitment is.
+ * Deliberately **still**. A board of waits each turning would be motion with nothing to say, and
+ * the open quarter already reads as "not finished" without it. It is not the hourglass (an
+ * Asynchronous Task's badge: a wait somebody started) and not the clock (a Time Scope's badge: a
+ * window passing) — both badges, both drawn in the status row, where this is the node glyph itself.
  */
 export default function ExpectationIcon({ cx, cy, r, color, opacity, status, isArchived }: Props) {
-  const top = cy - r * 0.7;
-  const half = r * 0.85;
-  const tip = cy + r * 0.85;
-  const released = status === "released";
+  const radius = r * 0.72;
+  const stroke = r * 0.26;
+  if (status === "released" && !isArchived) {
+    return <circle cx={cx} cy={cy} r={radius + stroke / 2} fill={color} opacity={opacity} />;
+  }
+  const arc = `M ${pointAt(cx, cy, radius, ARC_START)} A ${radius.toFixed(2)} ${radius.toFixed(2)} 0 1 1 ${pointAt(cx, cy, radius, ARC_START + ARC_SWEEP)}`;
   const strike = r * 0.9;
   return (
     <g opacity={opacity}>
-      <polygon
-        points={`${(cx - half).toFixed(2)},${top.toFixed(2)} ${(cx + half).toFixed(2)},${top.toFixed(2)} ${cx.toFixed(2)},${tip.toFixed(2)}`}
-        fill={released ? color : "none"}
-        stroke={color}
-        strokeWidth={r * 0.2}
-        strokeLinejoin="round"
-      />
+      <path d={arc} fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round" />
       {isArchived && (
         <path
           d={`M ${cx - strike} ${cy + strike * 0.75} L ${cx + strike} ${cy - strike * 0.75}`}

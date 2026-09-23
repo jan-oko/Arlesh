@@ -6,7 +6,7 @@ import type { TaskSaveData } from "@/components/TaskEditorModal/TaskEditorModal"
 import type { GoalSaveData } from "@/components/GoalEditorModal/GoalEditorModal";
 import type { CommitmentSaveData } from "@/components/CommitmentEditorModal/CommitmentEditorModal";
 import type { ExpectationSaveData } from "@/components/ExpectationEditorModal/ExpectationEditorModal";
-import { updateExpectation } from "@/api/expectations";
+import { addTagToExpectation, removeTagFromExpectation, updateExpectation } from "@/api/expectations";
 import { EXPECTATION_ARCHIVAL } from "@/api/expectation-status";
 import type { ProjectSaveData } from "@/components/ProjectEditorModal/ProjectEditorModal";
 import type { InfoSaveData } from "@/components/InfoEditorModal/InfoEditorModal";
@@ -259,13 +259,18 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
   const onExpectationSave = useCallback(
     async (data: ExpectationSaveData) => {
       if (editorModal === null) return;
-      await updateExpectation(rowIdOf(editorModal.node), {
+      const dbId = rowIdOf(editorModal.node);
+      await updateExpectation(dbId, {
         title: data.title,
         status: data.status,
         check_by: data.checkBy,
+        time_scope: data.timeScope,
         archival: data.archived ? EXPECTATION_ARCHIVAL.ARCHIVED : EXPECTATION_ARCHIVAL.LIVE,
         is_private: data.isPrivate,
       });
+      const before = editorModal.node.tagIds;
+      for (const tagId of data.tagIds.filter((id) => !before.includes(id))) await addTagToExpectation(dbId, tagId);
+      for (const tagId of before.filter((id) => !data.tagIds.includes(id))) await removeTagFromExpectation(dbId, tagId);
       setEditorModal(null);
       await reload();
     },

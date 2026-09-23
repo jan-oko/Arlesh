@@ -8,6 +8,8 @@ export interface StepsExpectationContext extends StepsSelectionContext {
   onCompleteCheck: (id: string) => void;
   /** Releases the selected wait, or takes the release back. */
   onToggleRelease: (id: string) => void;
+  /** Marks the selected Task Asynchronous and binds it to a new wait it depends on. */
+  onBindWait: (id: string) => void;
 }
 
 /**
@@ -16,6 +18,12 @@ export interface StepsExpectationContext extends StepsSelectionContext {
  * the flag keys beside them turn away a card that is not a Task.
  */
 export const STEPS_EXPECTATION_BINDINGS: readonly Binding<StepsExpectationContext>[] = [
+  {
+    id: "stepsView.bindWait", section: "stepsView", chord: { code: "KeyW", shift: true },
+    labelKey: "bindWait", allowRepeat: false,
+    when: (c) => hasSelection(c),
+    run: (c) => withNode(c, c.onBindWait),
+  },
   {
     id: "stepsView.completeCheck", section: "stepsView", chord: { code: "KeyD" },
     labelKey: "completeCheck",

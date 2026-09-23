@@ -54,6 +54,7 @@ import { useTaskBacklog } from "@/hooks/use-task-backlog";
 import { useCommitmentVerdict } from "@/hooks/use-commitment-verdict";
 import { useExpectationActions } from "@/hooks/use-expectation-actions";
 import AsyncExpectationOffer from "@/components/ExpectationEditorModal/AsyncExpectationOffer";
+import { useAsyncExpectationOffer } from "@/hooks/use-async-expectation-offer";
 import { useTaskAgentic } from "@/hooks/use-task-agentic";
 import { useTaskAsynchronous } from "@/hooks/use-task-asynchronous";
 import DeleteConfirmModal from "@/components/DeleteConfirmModal/DeleteConfirmModal";
@@ -332,6 +333,7 @@ export default function MindmapView() {
   const { markBroken, cycleVerdict } = useCommitmentVerdict({
     findNode: findNodeById, reload, showToast,
   });
+  const waitEditor = useAsyncExpectationOffer(tree, reload);
   const { completeCheck, toggleRelease } = useExpectationActions({
     findNode: findNodeById, reload, showToast,
   });
@@ -496,6 +498,7 @@ export default function MindmapView() {
     onMarkBroken: markBroken,
     onCompleteCheck: completeCheck,
     onToggleRelease: toggleRelease,
+    onBindWait: waitEditor.bind,
     onDeselect: () => { selectNode(null); },
     onCut: (ids) => setClipboard({ operation: CLIPBOARD_OP.CUT, nodeIds: ids }),
     onCopy: (ids) => setClipboard({ operation: CLIPBOARD_OP.COPY, nodeIds: ids }),
@@ -562,7 +565,7 @@ export default function MindmapView() {
       {/* The editor for whichever kind is open — one component, shared with the Steps View, which
           can open one on any kind at all. */}
       <NodeEditorModals tree={tree} editor={nodeEditor} />
-      <AsyncExpectationOffer tree={tree} reload={reload} />
+      <AsyncExpectationOffer waitEditor={waitEditor} />
       {searchOpen && (
         <NodeSearchModal
           nodes={collectSearchableNodes(tree)}

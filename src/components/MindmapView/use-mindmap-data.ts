@@ -69,14 +69,15 @@ function applyLifecycles(node: MindmapNode, byId: Map<string, ItemLifecycle>): v
 }
 
 /**
- * Each lifecycle keyed by the node id it stamps. An Expectation's entry describes its **check-by**,
- * so it stamps two nodes: the Expectation, and the virtual check task scoped to that check-by.
+ * Each lifecycle keyed by the node id it stamps. A wait sends two: `expectation` times its own
+ * Time Scope, and `expectation_check` its check-by, which is what its virtual check task reads.
  */
 function lifecycleMap(lifecycles: ItemLifecycle[]): Map<string, ItemLifecycle> {
-  return new Map(lifecycles.flatMap((l): Array<[string, ItemLifecycle]> =>
-    l.node_type === "expectation"
-      ? [[expectationNodeId(l.node_id), l], [checkTaskNodeId(l.node_id), { ...l, archival: "live", archival_conflict: false }]]
-      : [[`${l.node_type}-${l.node_id}`, l]]));
+  return new Map(lifecycles.map((l): [string, ItemLifecycle] => {
+    if (l.node_type === "expectation") return [expectationNodeId(l.node_id), l];
+    if (l.node_type === "expectation_check") return [checkTaskNodeId(l.node_id), l];
+    return [`${l.node_type}-${l.node_id}`, l];
+  }));
 }
 
 /**
@@ -838,9 +839,10 @@ export function buildTree(
       status: expectation.status,
       archived: expectation.archival === EXPECTATION_ARCHIVAL.ARCHIVED,
       checkBy: expectation.check_by,
+      timeScope: expectation.time_scope,
       position: expectation.position,
       isPrivate: expectation.is_private,
-      tagIds: [],
+      tagIds: expectation.tag_ids,
       children: [],
     };
     // While the wait is pending, live and has a check-by, a virtual "check on it" Task hangs

@@ -1448,6 +1448,7 @@ describe("ListView — expectations", () => {
       node: n("wait-1", "expectation", { status: "pending", ...over }),
       ancestors: [n("aspect-1", "aspect")],
       hasPrivateAncestor: false,
+      scopeTokens: ["unscoped", "unplanned"],
     };
   }
 

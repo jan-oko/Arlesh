@@ -4,8 +4,9 @@ import type { ExpectationArchival, ExpectationStatus } from "@/api/expectation-s
 
 /**
  * A **wait**: something outside your own action you are waiting on to be released. Tasks can
- * depend on one, and a pending one blocks them. It has no Time Scope, no Plan and no tags; its one
- * date is the optional check-by: while it is set, a virtual "check on it" task is drawn beneath it.
+ * depend on one, and a pending one blocks them. It has a Time Scope and tags like a Task, but no
+ * Plan; beside its window it carries the optional check-by: while it is set, a virtual "check on
+ * it" task is drawn beneath it.
  */
 export interface Expectation {
   id: number;
@@ -15,6 +16,9 @@ export interface Expectation {
   status: ExpectationStatus;
   archival: ExpectationArchival;
   check_by: TimeScope | null;
+  /** Its own relevance window, like a Task's — separate from the check-by. */
+  time_scope: TimeScope | null;
+  tag_ids: number[];
   position: number;
   is_private: boolean;
 }
@@ -24,6 +28,7 @@ export interface CreateExpectationRequest {
   parent_type: string;
   parent_id: number;
   check_by?: TimeScope;
+  time_scope?: TimeScope;
 }
 
 export interface UpdateExpectationRequest {
@@ -32,6 +37,8 @@ export interface UpdateExpectationRequest {
   archival?: ExpectationArchival;
   // Absent = leave unchanged, null = clear, value = set.
   check_by?: TimeScope | null;
+  // Absent = leave unchanged, null = clear, value = set.
+  time_scope?: TimeScope | null;
   parent_type?: string;
   parent_id?: number;
   position?: number;
@@ -56,6 +63,14 @@ export async function updateExpectation(id: number, request: UpdateExpectationRe
  */
 export async function clearExpectationCheckBy(id: number): Promise<Expectation> {
   return invoke<Expectation>("clear_expectation_check_by", { id });
+}
+
+export async function addTagToExpectation(expectationId: number, tagId: number): Promise<void> {
+  return invoke<void>("add_tag_to_expectation", { expectationId, tagId });
+}
+
+export async function removeTagFromExpectation(expectationId: number, tagId: number): Promise<void> {
+  return invoke<void>("remove_tag_from_expectation", { expectationId, tagId });
 }
 
 /** Deletes an expectation, its notes, and every dependency edge aimed at it. */

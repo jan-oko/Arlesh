@@ -63,10 +63,10 @@ function fieldsForKind(node: MindmapNode): readonly StepFieldKind[] {
     // drawn anywhere, so that stays.
     case "commitment":
       return ["verdictWindow", "timeScope", "plan"];
-    // No Status: the triangle is the status — hollow while pending, solid once released. The
-    // check-by is drawn nowhere else.
+    // No Status: the ring is the status — open while pending, solid once released. The check-by
+    // is drawn nowhere else.
     case "expectation":
-      return ["checkBy"];
+      return ["timeScope", "checkBy"];
     case "info":
       return ["details"];
     // A Project's status *is* a field: no icon draws it, and no badge carries it.

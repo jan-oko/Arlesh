@@ -87,5 +87,6 @@
   "stepsZoomIn": "Larger cards (fewer to a page)",
   "stepsZoomOut": "Smaller cards (more to a page)",
   "stepsCreateChild": "Create a child of the selected card (on a card: step into it)",
-  "stepsCreateSibling": "Create a card beside the selected one, on this Step"
+  "stepsCreateSibling": "Create a card beside the selected one, on this Step",
+  "bindWait": "Mark the selected task asynchronous and name the wait it starts"
 }

@@ -96,6 +96,7 @@ async fn expectation(
             parent_type: parent_type.into(),
             parent_id,
             check_by,
+            time_scope: None,
         },
     )
     .await
@@ -259,16 +260,25 @@ async fn the_lifecycle_entry_times_the_check_by_and_carries_the_archive() {
     let lifecycles = derive_all_scope_lifecycles(&mut db, at("2026-07-10T12:00:00"))
         .await
         .unwrap();
-    let entry = |id: i64| {
+    let entry = |node_type: &str, id: i64| {
         lifecycles
             .iter()
-            .find(|l| l.node_type == "expectation" && l.node_id == id)
+            .find(|l| l.node_type == node_type && l.node_id == id)
             .unwrap()
     };
-    assert_eq!(entry(late.id).timing, Timing::Lapsed);
-    assert_eq!(entry(late.id).resolution, Some(Resolution::Overdue));
-    assert_eq!(entry(archived.id).timing, Timing::Active);
-    assert_eq!(entry(archived.id).archival, Archival::Archived);
+    // The check-by is timed under its own entry, for the check task.
+    assert_eq!(entry("expectation_check", late.id).timing, Timing::Lapsed);
+    assert_eq!(
+        entry("expectation_check", late.id).resolution,
+        Some(Resolution::Overdue)
+    );
+    // The wait's own entry times its (absent) Time Scope and carries its archive.
+    assert_eq!(entry("expectation", late.id).timing, Timing::Active);
+    assert_eq!(entry("expectation", archived.id).timing, Timing::Active);
+    assert_eq!(
+        entry("expectation", archived.id).archival,
+        Archival::Archived
+    );
 }
 
 #[tokio::test]
@@ -457,4 +467,84 @@ async fn moving_an_expectation_rewrites_its_parent_link() {
     assert_eq!(moved.title, "Build finishes");
     assert!(moved.is_private);
     assert_eq!(moved.position, 3);
+}
+
+#[tokio::test]
+async fn a_wait_carries_tags_and_a_time_scope_of_its_own() {
+    let pool = helpers::test_pool().await;
+    let project = make_project(&pool).await;
+    let tag: i64 = helpers::session_factory(&pool)
+        .connect()
+        .await
+        .unwrap()
+        .domains()
+        .create(CreateDomainRequest {
+            title: "waiting".into(),
+            description: None,
+            subtype: DomainSubtype::Tag,
+            parent_id: Some(project),
+            status: None,
+            knowledge_base_directory: None,
+        })
+        .await
+        .unwrap()
+        .id;
+    let window = day(&pool, NaiveDate::from_ymd_opt(2026, 7, 3).unwrap()).await;
+    let wait = expectation(&pool, "project", project, None).await;
+    update(
+        &pool,
+        wait.id,
+        UpdateExpectationRequest {
+            time_scope: Some(Some(window.clone())),
+            ..Default::default()
+        },
+    )
+    .await;
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
+    db.expectations()
+        .add_tag(ExpectationId(wait.id), tag)
+        .await
+        .unwrap();
+    let read = db.expectations().get(ExpectationId(wait.id)).await.unwrap();
+    assert_eq!(read.tag_ids, [tag]);
+    assert_eq!(read.time_scope, Some(window));
+    db.expectations()
+        .remove_tag(ExpectationId(wait.id), tag)
+        .await
+        .unwrap();
+    let listed = db.expectations().list().await.unwrap();
+    assert!(listed[0].tag_ids.is_empty());
+}
+
+#[tokio::test]
+async fn a_wait_whose_window_escapes_its_parents_is_refused() {
+    let pool = helpers::test_pool().await;
+    let project = make_project(&pool).await;
+    let july = day(&pool, NaiveDate::from_ymd_opt(2026, 7, 3).unwrap()).await;
+    let august = day(&pool, NaiveDate::from_ymd_opt(2026, 8, 3).unwrap()).await;
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    let parent = create_task(
+        &mut db,
+        CreateTaskRequest {
+            title: "Scoped".into(),
+            parent_type: "project".into(),
+            parent_id: project,
+            time_scope: Some(july),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let refused = create_expectation(
+        &mut db,
+        CreateExpectationRequest {
+            title: "Too late".into(),
+            parent_type: "task".into(),
+            parent_id: parent.id,
+            check_by: None,
+            time_scope: Some(august),
+        },
+    )
+    .await;
+    assert!(matches!(refused, Err(TaskError::ScopeContainment(_))));
 }

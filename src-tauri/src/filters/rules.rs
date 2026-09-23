@@ -225,7 +225,10 @@ pub fn passes_expectation_preset(node: &NodeFacts, filter: &BoardFilter) -> bool
     match filter.preset {
         Preset::All => true,
         Preset::Plan => is_live_expectation(node),
-        Preset::Start => is_live_expectation(node) && !node.has_check_by,
+        // A window that has passed drops out of Start, as a Task's does.
+        Preset::Start => {
+            is_live_expectation(node) && !node.has_check_by && node.timing != Some(Timing::Lapsed)
+        }
         Preset::Do | Preset::Backlog => false,
     }
 }
@@ -333,7 +336,7 @@ pub fn passes_tags(node: &NodeFacts, filter: &BoardFilter) -> bool {
     }
     if !matches!(
         node.kind,
-        NodeKind::Task | NodeKind::Goal | NodeKind::Commitment
+        NodeKind::Task | NodeKind::Goal | NodeKind::Commitment | NodeKind::Expectation
     ) {
         return true;
     }
