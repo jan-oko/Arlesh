@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useMindmapData } from "@/components/MindmapView/use-mindmap-data";
 import { collectSearchableNodes, flattenNodesById } from "@/utils/mindmap-tree";
+import { rowIdOf } from "@/utils/node-identity";
 import {
   isTaskStatusValue, isGoalStatusValue, isProjectStatusValue, isScopeStateValue, isBlockedValue,
   isVerdictValue, isAgenticValue, isAsynchronousValue,
@@ -24,11 +25,6 @@ export interface TagOption {
   id: number;
   label: string;
   color: string | null;
-}
-
-function tagDbId(nodeId: string): number {
-  const parts = nodeId.split("-");
-  return parseInt(parts[parts.length - 1] ?? "", 10);
 }
 
 export interface FilterDisplay {
@@ -64,10 +60,10 @@ export function useFilterDisplay(): FilterDisplay {
   const searchableNodes = useMemo(() => collectSearchableNodes(tree), [tree]);
 
   const tagOptions = useMemo<TagOption[]>(
-    () => searchableNodes
+    () => [...nodeById.values()]
       .filter((n) => n.kind === "tag" && n.title.trim() !== "")
-      .map((n) => ({ id: tagDbId(n.id), label: n.title, color: nodeById.get(n.id)?.color ?? null })),
-    [searchableNodes, nodeById],
+      .map((n) => ({ id: rowIdOf(n), label: n.title, color: n.color ?? null })),
+    [nodeById],
   );
   const tagOptionById = useMemo(() => new Map(tagOptions.map((opt) => [opt.id, opt])), [tagOptions]);
 

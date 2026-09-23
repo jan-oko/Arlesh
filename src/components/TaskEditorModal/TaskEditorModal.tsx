@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { rowIdOf } from "@/utils/node-identity";
 import BlockReasonsField from "@/components/BlockReasonsField/BlockReasonsField";
 import TagPicker from "@/components/TagPicker/TagPicker";
 import type { MindmapNode } from "@/utils/tree-layout";
@@ -92,7 +93,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   const [saveError, setSaveError] = useState<string | null>(null);
   const beadsClear = useBeadsIdClear(onClearBeadsId);
   const titleRef = useRef<HTMLInputElement>(null);
-  const dbId = parseInt(node.id.split("-").pop() ?? "0", 10);
+  const dbId = rowIdOf(node);
 
   useEffect(() => {
     titleRef.current?.focus();
@@ -107,7 +108,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
 
   function addDep(candidate: MindmapNode) {
     const kind = candidate.kind === "goal" ? "goal" : "task";
-    const id = parseInt(candidate.id.split("-").pop() ?? "0", 10);
+    const id = rowIdOf(candidate);
     const dep: Dependency = { type: kind, id };
     if (currentDeps.some((d) => depEquals(d, dep))) return;
     setCurrentDeps((prev) => [...prev, dep]);
@@ -189,7 +190,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
     .filter((n) => n.kind === "task" || n.kind === "goal")
     .filter((n) => n.title.toLowerCase().includes(depSearchLower))
     .filter((n) => {
-      const id = parseInt(n.id.split("-").pop() ?? "0", 10);
+      const id = rowIdOf(n);
       const type = n.kind === "goal" ? "goal" : "task";
       return !currentDeps.some((d) => d.type === type && d.id === id);
     })

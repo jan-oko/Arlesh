@@ -27,6 +27,7 @@ beforeEach(() => {
 function mkNode(overrides: Partial<MindmapNode> = {}): MindmapNode {
   return {
     id: "task-5",
+    rowId: 5,
     kind: "task",
     title: "Write tests",
     status: "todo",
@@ -55,7 +56,7 @@ const defaultProps = {
 };
 
 describe("TaskEditorModal — virtual blockers from dependencies", () => {
-  const GOAL_DEP: MindmapNode = { id: "goal-9", kind: "goal", title: "Milestone", status: "active", position: 0, tagIds: [], children: [] };
+  const GOAL_DEP: MindmapNode = { id: "goal-9", rowId: 9, kind: "goal", title: "Milestone", status: "active", position: 0, tagIds: [], children: [] };
 
   function withDep() {
     vi.mocked(invoke).mockImplementation((cmd: string) => {

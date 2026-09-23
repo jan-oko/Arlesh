@@ -26,7 +26,7 @@ pub struct Info {
     pub body: String,
     /// Optional longer supporting text (e.g. an error traceback); `None` when unset.
     pub details: Option<String>,
-    /// The kind of the parent node (aspect, project, domain, goal, task, tag, info).
+    /// The kind of the parent node (aspect, project, domain, goal, task, commitment, tag, info).
     pub parent_type: String,
     /// The database id of the parent node.
     pub parent_id: i64,

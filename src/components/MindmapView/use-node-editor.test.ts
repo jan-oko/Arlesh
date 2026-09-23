@@ -35,7 +35,7 @@ vi.mock("@/api/block-reasons", () => ({
 }));
 
 const taskNode: MindmapNode = {
-  id: "task-5", kind: "task", title: "Task", tagIds: [], position: 0, children: [],
+  id: "task-5", rowId: 5, kind: "task", title: "Task", tagIds: [], position: 0, children: [],
 };
 const virtualHabitItemNode: MindmapNode = {
   id: "habititem-flow_task-4-3-virtual", kind: "task", title: "Breakfast", tagIds: [], position: 0, children: [],
@@ -67,8 +67,8 @@ beforeEach(() => vi.clearAllMocks());
 describe("useNodeEditor — double-click", () => {
   // A virtual Habit instance (root or item) isn't backed by a real Task/Goal row — its Time Scope
   // is derived from the flow's Duration kind and the item's Cycle, not independently settable.
-  // Opening the full editor on it would save against a `dbId` parsed from its non-numeric
-  // `-virtual` id tail (NaN), silently failing — so it must stay a no-op, like the aspect case.
+  // It carries no `rowId`, so the full editor would have nothing to save against — it must stay a
+  // no-op, like the aspect case.
   it("does not open an editor for a virtual Habit instance node", () => {
     const reload = vi.fn().mockResolvedValue(undefined);
     const { result } = renderHook(() =>

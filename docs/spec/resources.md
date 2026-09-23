@@ -10,26 +10,26 @@ There are four domain subtypes:
 
 **Aspects** — six built-in, color-coded top-level domains. Not user-managed. Fixed roots of the domain tree.
 
-| Name   | Color      | Focus                                                                 |
-|--------|------------|-----------------------------------------------------------------------|
-| Red    | Red        | Physical needs: health, physical pursuits                             |
-| Purple | Purple     | Psychological needs: social activities                                |
-| Green  | Green      | Fulfillment needs: hobbies, knowledge, creative/technical construction|
-| Blue   | Blue       | Moral duty: activities for others, social activism                    |
-| Gray   | Gray       | Flow-state needs: finance, cleaning, bureaucracy                      |
-| Steel  | Light gray | Self-determination: introspection, goal-making, task management       |
+| Name        | Color      | Focus                                                                 |
+|-------------|------------|-----------------------------------------------------------------------|
+| Body        | Red        | Physical needs: health, physical pursuits                             |
+| Connections | Purple     | Psychological needs: social activities                                |
+| Growth      | Green      | Fulfillment needs: hobbies, knowledge, creative/technical construction|
+| Duty        | Blue       | Moral duty: activities for others, social activism                    |
+| Flow        | Gray       | Flow-state needs: finance, cleaning, bureaucracy                      |
+| Self        | Light gray | Self-determination: introspection, goal-making, task management       |
 
 **Projects** — large domains (hobby, habit, workplace, etc.). Parent must be an Aspect or another Project. May be linked to a knowledge-base directory. Status: **Active / Achieved / Frozen / Archived**. May carry a **beads id** (see *Beads id* below).
 
 **Domains** — general-purpose organizational containers. Can parent Goals, Tasks, Tags, or other Domains.
 
-**Tags** — flat leaf nodes used as resource markers. Each Tag has a title and a `domain_id` parent. Tags cannot parent other Tags, and hold no structural children — with one exception: a Tag may hold **Info notes**, which is what a label carries when it needs explaining (`Shift+I`, or dropping a note onto it). `Tab` on a Tag is still refused, because the child it would create is a Domain. Tags appear in filtering as a first-class primitive.
+**Tags** — flat leaf nodes used as resource markers. Each Tag has a title and a parent (`parent_id`, a row in `domains`). Tags cannot parent other Tags, and hold no structural children — with one exception: a Tag may hold **Info notes**, which is what a label carries when it needs explaining (`Shift+I`, or dropping a note onto it). `Tab` on a Tag is still refused, because the child it would create is a Domain. Tags appear in filtering as a first-class primitive.
 
 ## Knowledge Base
 
 The knowledge base is externally managed (Obsidian). Arlesh manages specific note types as structured entities.
 
-**People** — represent persons. Fields: name (= note title), aliases (list of strings), linked note. Person notes are discovered by recursively searching configured directories.
+**People** — represent persons. Fields: name (= note title), aliases (list of strings), linked note. (Discovery from the vault is not built yet — see *Not built yet*.)
 
 **Scopes** — time range entities. Not manually created; lazily instantiated on first reference and stored as rows. Canonical kinds:
 
@@ -37,13 +37,13 @@ The knowledge base is externally managed (Obsidian). Arlesh manages specific not
 |-------------|-------------------------------------------------|
 | Season      | Three-month period (Autumn: Sep–Nov, Winter: Dec–Feb, Spring: Mar–May, Summer: Jun–Aug) |
 | Month       | Calendar month                                  |
-| Week        | Sunday–Saturday, custom 1–52 numbering (not ISO 8601) |
+| Week        | Sunday–Saturday, custom numbering from the week holding 1 January (week 1) — so a year runs to week 53, or 54 when a leap year starts on a Saturday (not ISO 8601); never split at New Year — see [*The week across New Year*](time-scopes.md) |
 | Day         | Single date; corresponds to an Obsidian note at `{yyyy}/{mm MMMM}/{yyyy-mm-dd}.md` |
 | Part of Day | Sub-day band: Morning (06–12), Noon (12–15), Afternoon (15–18), Evening (18–22), Night (22–02), Premorning (02–06). Start inclusive, end exclusive. |
 
 Beyond the canonical hierarchy, an **Exact** scope is defined by two arbitrary datetimes at minute precision (e.g. for a one-off deadline).
 
-Canonical scope containment is hierarchical: Part of Day ⊂ Day ⊂ Week ⊂ Month ⊂ Season. **Night (22:00–02:00) crosses midnight and is parented to the Day it starts on** — and is wholly inside it, because Day, Week, Month and Season all run 02:00 → 02:00 (see [*The day boundary*](time-scopes.md)). Every scope resolves to concrete datetime boundaries (a cached backend function does the resolution); Parts of Day and Exact scopes carry a time-of-day component.
+Canonical scope containment is hierarchical, on two ladders: Part of Day ⊂ Day ⊂ Week, and Day ⊂ Month ⊂ Season. A Week is not inside a Month — a Sunday–Saturday week can straddle two months, and two seasons — so a Day row records its Week, Month and Season, a Month its Season, and a Week none. **Night (22:00–02:00) crosses midnight and is parented to the Day it starts on** — and is wholly inside it, because Day, Week, Month and Season all run 02:00 → 02:00 (see [*The day boundary*](time-scopes.md)). Every scope resolves to concrete datetime boundaries (a cached backend function does the resolution); Parts of Day and Exact scopes carry a time-of-day component.
 
 A scope is **active** when it contains the current datetime.
 
@@ -51,7 +51,7 @@ A scope is **active** when it contains the current datetime.
 
 **Events** — represent events. Fields: datetime or scope, title, optional linked note.
 
-**Threads** — concretized trains of thought. Fields: title, linked note. Discovered by recursively searching configured directories.
+**Threads** — concretized trains of thought. Fields: title, linked note. (Discovery from the vault is not built yet — see *Not built yet*.)
 
 ## Goals
 
@@ -63,7 +63,7 @@ Goals are never List View *rows*; they appear instead as a segment of a row's **
 
 ## Tasks
 
-Tasks represent action items. Fields: title, parent (Project / Goal / Domain / Task), tags (list), KB resource links, status, blockers, dependencies, delegation, agentic, beads id.
+Tasks represent action items. Fields: title, parent (Project / Goal / Domain / Task / Commitment), tags (list), KB resource links, status, blockers, dependencies, delegation, agentic, beads id.
 
 **Status:** To Do / In Progress / Done
 
@@ -73,9 +73,9 @@ Tasks represent action items. Fields: title, parent (Project / Goal / Domain / T
 
 **Delegation:** A Task can be delegated to a **Person** or to the **Agent** — its **Delegate**. Delegation is a `(kind, id)` pair rather than a Person id (`tasks.delegate_kind` / `delegate_id`), so handing work to an agent does not mean inventing a Person called "Agent": a knowledge-base entity standing for something that is not a person. There is one Agent target, and it carries no id; naming individual agents is a later question. `delegate_id` still references `people`, since every id it can hold is a Person's, so a delegate naming no Person is refused and a Person who is someone's delegate cannot be deleted. A Delegate says who holds the work and dispatches nothing. On the wire it is `{"kind": "person", "id": N}` or `{"kind": "agent"}`, and `null` for none.
 
-**Agentic:** A Task can be marked **Agentic** — work that suits being handed to an agent. It is a stored three-state flag (`agentic` — NULL / true / false), not a boolean, because it **inherits downward and is overridable**, exactly as Delegation does: a Task with no value of its own reads its nearest flagged ancestor, so marking a whole branch is one edit, and an explicit value replaces what would have been inherited — including an explicit **not agentic**, which is how one Task comes back out of an agentic branch. The value inherits *through* Goals, Projects and Domains, which carry no flag of their own.
+**Agentic:** A Task can be marked **Agentic** — work that suits being handed to an agent. It is a stored three-state flag (`agentic` — NULL / true / false), not a boolean, because it **inherits downward and is overridable**, the rule specced for Delegation: a Task with no value of its own reads its nearest flagged ancestor, so marking a whole branch is one edit, and an explicit value replaces what would have been inherited — including an explicit **not agentic**, which is how one Task comes back out of an agentic branch. The value inherits *through* Goals, Projects and Domains, which carry no flag of their own.
 
-It is **Tasks only**: an agent performs actions, where a Goal is a desired state and a Commitment is kept rather than done. It is also **independent of Delegation** — the flag says the work suits an agent, a delegate says who holds it, so a Task may be both, either or neither, and the delegated/undelegated filter is untouched by it. Set from the **Advanced** section of the Task editor (Inherit / Agentic / Not agentic, with the Advanced section opening on arrival when the Task carries an explicit value), and from the bare **A** binding in the Mindmap and List View, which is a **two-state toggle over the resolved value**, not a cycle through the stored one: it reads what the Task currently *reads as* and writes the opposite — agentic → explicit *Not agentic*, anything else → explicit *Agentic*. The flag stores three states but a Task only ever shows two, and *Inherit* under a non-agentic parent is the same picture as an explicit *Not agentic*, so a cycle spent a press moving between them with nothing on screen to show for it — marking a fresh Task agentic appeared to take two presses. The consequence is deliberate: **the key can no longer return a Task to *Inherit***, which is an editor-only state, and a press on a Task that was merely inheriting *yes* pins it to an explicit *no*. That is the price of no press being invisible. Creating a sibling with `Shift+Enter` carries over the source Task's **own stored** value, explicit or not-set — the stored column, never the resolved one, since freezing an inherited *yes* into an explicit one would silently cut the new Task off from the ancestor deciding for it, which the ordinary downward rule already covers. It is shown as its own **status-row badge** in both views, on a Task that reads as agentic whether it said so itself or inherited it; and filterable as its own List View pill dimension. Retyping a Task to any other kind drops an explicit flag and names it in the confirmation prompt alongside every other lost field; duplicating a Task copies it, all three states alike. Beside the flag in the Task editor sits a one-click **Delegate to agent** button, offered on a Task that reads as agentic (its own flag, or an inherited one while it is on *Inherit*) and on any Task already delegated to the Agent, so an Agent delegate can always be taken back after the flag that earned it is gone. It toggles Delegation between the Agent and nobody — pressed on a Task delegated to a Person, it replaces the Person with the Agent — and is staged like every other field, so Cancel discards it. Nothing about it dispatches anything.
+It is **Tasks only**: an agent performs actions, where a Goal is a desired state and a Commitment is kept rather than done. It is also **independent of Delegation** — the flag says the work suits an agent, a delegate says who holds it, so a Task may be both, either or neither, and a delegated/undelegated filter would be untouched by it. Set from the **Advanced** section of the Task editor (Inherit / Agentic / Not agentic, with the Advanced section opening on arrival when the Task carries an explicit value), and from the bare **A** binding in the Mindmap and List View, which is a **two-state toggle over the resolved value**, not a cycle through the stored one: it reads what the Task currently *reads as* and writes the opposite — agentic → explicit *Not agentic*, anything else → explicit *Agentic*. The flag stores three states but a Task only ever shows two, and *Inherit* under a non-agentic parent is the same picture as an explicit *Not agentic*, so a cycle spent a press moving between them with nothing on screen to show for it — marking a fresh Task agentic appeared to take two presses. The consequence is deliberate: **the key can no longer return a Task to *Inherit***, which is an editor-only state, and a press on a Task that was merely inheriting *yes* pins it to an explicit *no*. That is the price of no press being invisible. Creating a sibling with `Shift+Enter` carries over the source Task's **own stored** value, explicit or not-set — the stored column, never the resolved one, since freezing an inherited *yes* into an explicit one would silently cut the new Task off from the ancestor deciding for it, which the ordinary downward rule already covers. It is shown as its own **status-row badge** in both views, on a Task that reads as agentic whether it said so itself or inherited it; and filterable as its own List View pill dimension. Retyping a Task to any other kind drops an explicit flag and names it in the confirmation prompt alongside every other lost field; duplicating a Task copies it, all three states alike. Beside the flag in the Task editor sits a one-click **Delegate to agent** button, offered on a Task that reads as agentic (its own flag, or an inherited one while it is on *Inherit*) and on any Task already delegated to the Agent, so an Agent delegate can always be taken back after the flag that earned it is gone. It toggles Delegation between the Agent and nobody — pressed on a Task delegated to a Person, it replaces the Person with the Agent — and is staged like every other field, so Cancel discards it. Nothing about it dispatches anything.
 
 **Asynchronous:** A Task can be marked **Asynchronous** — doing it starts a *wait* rather than finishing something. Send the email, order the part, kick off the build: do one of those first and the wait runs while you work on everything else; leave it to the end and the day is wasted. Nothing else in the model says which tasks those are.
 
@@ -117,15 +117,23 @@ The rule is enforced at write time, but it is **not** enforced by hiding the opt
 
 A Task, Goal, Commitment or Project may carry an optional **beads id** — the identifier of the issue tracking it in `bd` (beads), e.g. `Arlesh-5fs`. It is a mirror of an id `bd` owns, not a value this app authors, and so is **write-restricted**:
 
-- The **MCP server is the only source**. Each resource operator exposes a single setter (`set_beads_id`); `UpdateTaskRequest` / `UpdateGoalRequest` / `UpdateDomainRequest` have no field for it, and no gesture can **author or edit** a beads id from the UI. Two named exceptions write the column from the UI side, and neither can produce a value `bd` did not issue.
+- The **MCP server is the only source**. Each resource operator exposes a single setter (`set_beads_id`); `UpdateTaskRequest` / `UpdateGoalRequest` / `UpdateCommitmentRequest` / `UpdateDomainRequest` have no field for it, and no gesture can **author or edit** a beads id from the UI. Two named exceptions write the column from the UI side, and neither can produce a value `bd` did not issue.
 - **Exception one: duplication.** Copy+Paste's `duplicate_*` commands *propagate* the id a node already carries onto its copy — only ever a value `bd` issued and the source already had. A source with no link produces a copy with no link. The accepted consequence is that two nodes can show the same issue id, and `bd` holds no record of the second.
 - **Exception two: clearing.** Authoring and editing need a value the UI has no way to obtain; **dropping** a link needs none, and a link to a closed, wrong or duplicated issue otherwise has to go back through MCP to remove. One dedicated command, `clear_beads_id(node_type, node_id)`, writes null and nothing else — mirroring the MCP tool's shape rather than adding a field to any update request, and called by the editor's **Save** rather than by the × itself. Only `task`, `goal`, `commitment` and `project` are accepted, and a Domain that is not a Project is refused as it is on the way in. Nothing is told to `bd`: the issue is untouched, and this only removes Arlesh's mirror of the link.
-- Every read that returns a Task, Goal or Domain carries it.
+- Every read that returns a Task, Goal, Commitment or Domain carries it.
 - The UI shows it **read-only but for its ×, only where it is set** — as the **Issue** row in the Task, Goal, Commitment and Project editors, directly under the title. A node with no beads id shows no row at all: no label, no placeholder.
 - The **×** takes no confirmation dialog, but it does not write either: it **stages** the clear, which **Save** performs and Cancel, Escape or closing the editor discard along with every other unsaved field. An earlier draft had it write straight through, on the reasoning that one nullable column is not worth a confirmation and `Ctrl+Z` puts the link back anyway. That was revised in use: the argument was about *confirmation*, and it silently answered a second question — whether this one field escapes the form the other fields are held in. It should not. Cancel means nothing was written, and a field that ignores it is worse than a field that asks.
 - The clear is sent **before** the update it is saved with, so a refused clear leaves the node exactly as it was rather than half-saved, and the refusal appears on the editor's own error line with the editor still open. A clear that lands and an update that is then refused is the reverse case: the link is gone, the edits are not, the error says so, and `Ctrl+Z` reverses the clear. The clear is a Gesture of its own, so a save that also clears is two `Ctrl+Z`s — as a save that also retags or re-links is already several.
 - The row **stays, greyed and without its ×, for the life of the editor** rather than vanishing: a dialog that reflows under the pointer hides the very thing it is reporting. Greyed means *staged*, not *gone*. Reopening the editor after the save shows no row, which is the steady state.
 
 The column lives on `domains` for the Project case, but only the `project` subtype is given one and only a Project surfaces it; Aspects, Domains and Tags leave it null.
+
+## Not built yet
+
+Specced and kept, but not in the app today:
+
+- **Delegation, beyond the Delegate itself and the Agent button.** No UI picks a Person as a delegate, a delegate does not inherit down the tree (the specced rule is an override, as Agentic's is, and it holds across kinds — see [*Link Inheritance*](link-inheritance.md)), and there is no delegate-to or delegated/undelegated filter (for how those treat the Agent, see [*Filtering Logic*](filtering-logic.md)).
+- **Knowledge-base links.** Goals and Tasks list "KB resource links" among their fields, and the `goal_knowledge_base_links` / `task_knowledge_base_links` tables exist, but no command writes them and nothing filters on them.
+- **Obsidian discovery.** People and Threads are meant to be discovered by recursively searching configured vault directories. Today they exist only as rows created through the backend commands.
 
 ---

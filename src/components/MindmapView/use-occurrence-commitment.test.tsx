@@ -309,7 +309,7 @@ describe("a parent with no row behind it and no occurrence either", () => {
         title: "Asleep by 23:00", verdict: "unresolved", tagIds: [],
         timeScope: null, verdictWindow: null, isPrivate: false,
       }),
-    ).rejects.toThrow('Node "habitgroup-3-virtual" is not backed by a database row');
+    ).rejects.toThrow('Node "habitgroup-3-virtual" is not in the tree');
     expect(commands()).not.toContain("create_commitment");
   });
 });

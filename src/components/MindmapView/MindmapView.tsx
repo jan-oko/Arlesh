@@ -21,6 +21,7 @@ import { updateTask, reparentScopeConflicts } from "@/api/tasks";
 import { updateGoal } from "@/api/goals";
 import { getErrorMessage } from "@/api/errors";
 import { findNode, findParent, collectTasksAndGoals, collectSubtreePostOrder, computeShiftSelectRange, conversionNeedsConfirm, canConvertNodeToFlow, collectSearchableNodes } from "@/utils/mindmap-tree";
+import { rowIdOf, rowIdOfNodeId } from "@/utils/node-identity";
 import MindmapCanvas, { type MindmapCanvasHandle } from "@/components/MindmapCanvas/MindmapCanvas";
 import DragGhost from "@/components/DragGhost/DragGhost";
 import DragPlaceholder from "@/components/DragPlaceholder/DragPlaceholder";
@@ -70,9 +71,9 @@ const KEYBOARD_PAN_STEP = 80;
  * start modal both offer the node the instances would actually land on.
  */
 function targetSelectionFor(node: MindmapNode | null | undefined): TargetSelection | null {
-  if (node === null || node === undefined || node.id === "root") return null;
-  const id = parseInt(node.id.split("-").pop() ?? "", 10);
-  return Number.isNaN(id) ? null : { kind: node.kind, id, title: node.title };
+  // A node that draws no row — the tree root, a virtual Habit node — is nothing a flow can target.
+  if (node === null || node === undefined || node.rowId === undefined) return null;
+  return { kind: node.kind, id: node.rowId, title: node.title };
 }
 
 // A pristine flow used to seed the create editor before the flow is persisted.
@@ -213,12 +214,14 @@ export default function MindmapView() {
   }, [tree]);
 
   // Nodes a Flow may target — those that can hold a Goal/Task instance. Phase 7.5 further
-  // narrows this to targets whose Time Scope satisfies containment.
+  // narrows this to targets whose Time Scope satisfies containment. Only a node that draws a row
+  // can be a target: a flow stores its target as a row id, which the tree root and a virtual Habit
+  // occurrence do not have.
   const flowTargets = useMemo(() => {
     const canHoldInstance = new Set<NodeKind>(["aspect", "domain", "project", "goal", "task"]);
     const acc: MindmapNode[] = [];
     const walk = (node: MindmapNode) => {
-      if (node.id !== "root" && canHoldInstance.has(node.kind)) acc.push(node);
+      if (node.rowId !== undefined && canHoldInstance.has(node.kind)) acc.push(node);
       node.children.forEach(walk);
     };
     walk(tree);
@@ -265,11 +268,12 @@ export default function MindmapView() {
   // Runs the conversion, reloads, then opens the new flow's editor so it can be configured.
   const runConvertToFlow = useCallback(
     async (node: MindmapNode, keepDependencies: boolean, mapScopes: boolean) => {
-      const dbId = parseInt(node.id.split("-").pop() ?? "0", 10);
+      const dbId = rowIdOf(node);
       const flow = await convertToFlow(node.kind, dbId, keepDependencies, mapScopes);
       await reload();
       const flowNode: MindmapNode = {
         id: `flow-${flow.id}`,
+        rowId: flow.id,
         kind: "flow",
         title: flow.title,
         flow: {
@@ -328,7 +332,7 @@ export default function MindmapView() {
   const onCreateFlow = useCallback(
     async (data: FlowSaveData) => {
       if (flowCreateParent === null) return;
-      const parentDbId = parseInt(flowCreateParent.id.split("-").pop() ?? "0", 10);
+      const parentDbId = rowIdOfNodeId(tree, flowCreateParent.id);
       await createFlow({
         title: data.title,
         instance_type: data.instanceType,
@@ -349,7 +353,7 @@ export default function MindmapView() {
       });
       setFlowCreateParent(null);
     },
-    [flowCreateParent, createFlow],
+    [flowCreateParent, createFlow, tree],
   );
 
   // Persists a brand-new commitment under the pending parent, then closes the create editor. A
@@ -371,8 +375,8 @@ export default function MindmapView() {
     async (id: string, kind: NodeKind, parentId: string, parentKind: NodeKind, position: number) => {
       await withGesture(t("undo:gestures.move", { count: 1 }), async () => {
         if (kind === "task" || kind === "goal") {
-          const nodeDbId = parseInt(id.split("-").pop() ?? "0", 10);
-          const parentDbId = parseInt(parentId.split("-").pop() ?? "0", 10);
+          const nodeDbId = rowIdOfNodeId(tree, id);
+          const parentDbId = rowIdOfNodeId(tree, parentId);
           const { ancestor_time_scope, conflicts } = await reparentScopeConflicts(kind, nodeDbId, parentKind, parentDbId);
           if (ancestor_time_scope !== null && conflicts.length > 0) {
             if (!(await confirmScopeClamp(conflicts))) return;
@@ -388,7 +392,7 @@ export default function MindmapView() {
         await moveNode(id, kind, parentId, parentKind, position);
       });
     },
-    [confirmScopeClamp, moveNode, t],
+    [confirmScopeClamp, moveNode, t, tree],
   );
 
   const { dragSourceId, dragTargetId, ghostPos, onDragStart } = useDrag({ tree, moveNode: guardedMoveNode });
@@ -551,7 +555,7 @@ export default function MindmapView() {
   const onConfirmStartFlow = useCallback(
     async (data: StartFlowData) => {
       if (startFlowNode === null) return;
-      const flowDbId = parseInt(startFlowNode.id.split("-").pop() ?? "0", 10);
+      const flowDbId = rowIdOf(startFlowNode);
       const result = await startFlow(flowDbId, {
         title: data.title, target_type: data.targetType, target_id: data.targetId, anchor_date: data.anchorDate,
       });

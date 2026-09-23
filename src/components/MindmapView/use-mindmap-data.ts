@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { createDomain, updateDomain, deleteDomain, duplicateDomain } from "@/api/domains";
 import { createTask, updateTask, deleteTask, duplicateTask, TASK_ARCHIVAL } from "@/api/tasks";
@@ -23,6 +23,7 @@ import {
   duplicateFlow, duplicateFlowItem,
 } from "@/api/flows";
 import { findNode } from "@/utils/mindmap-tree";
+import { rowIdOf, rowIdOfNodeId } from "@/utils/node-identity";
 import { TASK_STATUS, GOAL_STATUS } from "@/utils/status-mapping";
 import { propagateAgentic } from "@/utils/agentic";
 import type { Domain } from "@/api/domains";
@@ -43,13 +44,8 @@ import type { ScopeLabelFns } from "@/hooks/use-scope-labels";
 import { useScopeLabels } from "@/hooks/use-scope-labels";
 import type { CanonicalKind } from "@/utils/scope-ref";
 import type { DurationSpec, TimeScope } from "@/api/time-scope";
+import { localNowIso } from "@/utils/local-now";
 
-/** Local wall-clock now as a `YYYY-MM-DDTHH:MM:SS` string for the scope-lifecycle derivation. */
-function localNowIso(): string {
-  const now = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-}
 
 /** Stamps each Task/Goal/Commitment node with its derived lifecycle (Timing, then Resolution or
  * Verdict, then effective Archival). */
@@ -426,9 +422,9 @@ function attachAddedChildren(
 /**
  * Injects each Habit's derived iterations as **virtual**, read-only child nodes under its Target
  * Node — its explicit one, or its parent when it has none (`flowTargetNodeId`). Each iteration root
- * carries the flow's items as its own virtual, per-item-completable instances. The `-virtual` id
- * suffix keeps every injected node out of DB-backed mutations (`dbIdFromNodeId` rejects a
- * non-numeric tail). `iterationsByFlow[i]` / `statusesByFlow[i]` correspond to `flows[i]` (empty for
+ * carries the flow's items as its own virtual, per-item-completable instances. Every injected node is
+ * `virtual` with no `rowId`, which keeps it out of DB-backed mutations (they carry no `rowId`, so
+ * `rowIdOf` refuses them). `iterationsByFlow[i]` / `statusesByFlow[i]` correspond to `flows[i]` (empty for
  * non-habits).
  *
  * A flow whose template its Instance Type cannot hold contributes nothing — see
@@ -587,13 +583,6 @@ const VIRTUAL_ROOT: MindmapNode = {
   children: [],
 };
 
-function dbIdFromNodeId(nodeId: string): number {
-  const parts = nodeId.split("-");
-  const id = parseInt(parts[parts.length - 1] ?? "", 10);
-  if (Number.isNaN(id)) throw new Error(`Node "${nodeId}" is not backed by a database row`);
-  return id;
-}
-
 function kindToParentType(kind: NodeKind): string {
   if (kind === "goal") return "goal";
   if (kind === "task") return "task";
@@ -750,6 +739,7 @@ export function buildTree(
   for (const domain of domains) {
     nodeMap.set(`domain-${domain.id}`, {
       id: `domain-${domain.id}`,
+      rowId: domain.id,
       kind: subtypeToKind(domain.subtype),
       title: domain.title,
       position: domain.position,
@@ -766,6 +756,7 @@ export function buildTree(
   for (const goal of goals) {
     nodeMap.set(`goal-${goal.id}`, {
       id: `goal-${goal.id}`,
+      rowId: goal.id,
       kind: "goal",
       title: goal.title,
       status: goal.status,
@@ -783,6 +774,7 @@ export function buildTree(
   for (const task of tasks) {
     nodeMap.set(`task-${task.id}`, {
       id: `task-${task.id}`,
+      rowId: task.id,
       kind: "task",
       title: task.title,
       status: task.status,
@@ -806,6 +798,7 @@ export function buildTree(
   for (const commitment of commitments) {
     nodeMap.set(`commitment-${commitment.id}`, {
       id: `commitment-${commitment.id}`,
+      rowId: commitment.id,
       kind: "commitment",
       title: commitment.title,
       verdict: commitment.verdict,
@@ -842,6 +835,7 @@ export function buildTree(
   for (const info of infos) {
     nodeMap.set(`info-${info.id}`, {
       id: `info-${info.id}`,
+      rowId: info.id,
       kind: "info",
       title: info.body,
       ...(info.details !== null ? { infoDetails: info.details } : {}),
@@ -855,6 +849,7 @@ export function buildTree(
   for (const flow of flows) {
     nodeMap.set(`flow-${flow.id}`, {
       id: `flow-${flow.id}`,
+      rowId: flow.id,
       kind: "flow",
       title: flow.title,
       position: flow.position,
@@ -902,6 +897,7 @@ export function buildTree(
     const owningFlow = flowById.get(item.flow_id);
     nodeMap.set(id, {
       id,
+      rowId: item.id,
       kind: itemType,
       title: item.title,
       position: item.position,
@@ -1146,14 +1142,14 @@ async function attachCommitmentToOccurrence(
 
 /** Writes a commitment configured in the editor under an ordinary, row-backed parent. */
 async function createCommitmentUnderNode(
-  parentId: string,
+  parentRowId: number,
   parentKind: NodeKind,
   data: CommitmentSaveData,
 ): Promise<number> {
   const commitment = await createCommitment({
     title: data.title,
     parent_type: kindToParentType(parentKind),
-    parent_id: dbIdFromNodeId(parentId),
+    parent_id: parentRowId,
     verdict: data.verdict,
     ...commitmentWindow(data),
   });
@@ -1164,6 +1160,11 @@ async function createCommitmentUnderNode(
 export function useMindmapData(): MindmapData {
   const { t } = useTranslation("undo");
   const [tree, setTree] = useState<MindmapNode>(VIRTUAL_ROOT);
+  // The tree as of the latest load, read synchronously by the mutations to resolve a node id to
+  // its row. A ref rather than the `tree` closure: a caller that creates a node and acts on it in
+  // the same gesture holds a callback from before the reload that drew it.
+  const latestTree = useRef<MindmapNode>(VIRTUAL_ROOT);
+  const rowIdOfId = useCallback((nodeId: string): number => rowIdOfNodeId(latestTree.current, nodeId), []);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [loadCondition, setLoadCondition] = useState<LoadCondition>(NO_CONDITIONS);
@@ -1197,6 +1198,7 @@ export function useMindmapData(): MindmapData {
           data.flow_goals, data.flow_tasks, habitStatuses(data.habits),
           data.habit_instance_children,
         );
+        latestTree.current = built;
         setTree(built);
         setLoadCondition(collectLoadConditions(data));
       } catch (err) {
@@ -1229,6 +1231,7 @@ export function useMindmapData(): MindmapData {
       const { kind, id } = await attachOccurrenceChild(occurrence, childKind, title);
       const newNode: MindmapNode = {
         id: entityNodeId(kind, id),
+        rowId: id,
         kind, title,
         ...(kind === "task" ? { status: TASK_STATUS.TODO } : {}),
         ...(kind === "goal" ? { status: GOAL_STATUS.ACTIVE } : {}),
@@ -1244,14 +1247,14 @@ export function useMindmapData(): MindmapData {
   const createNode = useCallback(
     async (parentId: string, parentKind: NodeKind, childKind: NodeKind, title: string, agentic?: TaskAgentic): Promise<MindmapNode> => {
       // A virtual Habit occurrence has no row id, so it takes its children through the attachment
-      // path rather than through `dbIdFromNodeId`. Everything below is unchanged for every other
+      // path rather than through `rowIdOf`. Everything below is unchanged for every other
       // parent: the same gesture, the same kinds, a real node either way.
       const occurrence = findNodeInTree(tree, parentId)?.habitItem;
       if (occurrence !== undefined) {
         return createOccurrenceChild(occurrence, childKind, title);
       }
 
-      const dbParentId = dbIdFromNodeId(parentId);
+      const dbParentId = rowIdOfId(parentId);
 
       if (childKind === "domain" || childKind === "project" || childKind === "tag") {
         const domain = await createDomain({
@@ -1259,7 +1262,7 @@ export function useMindmapData(): MindmapData {
           parent_id: dbParentId, status: null, knowledge_base_directory: null,
         });
         const newNode: MindmapNode = {
-          id: `domain-${domain.id}`, kind: childKind, title: domain.title,
+          id: `domain-${domain.id}`, rowId: domain.id, kind: childKind, title: domain.title,
           position: domain.position, tagIds: [], children: [],
         };
         await load(false);
@@ -1269,7 +1272,7 @@ export function useMindmapData(): MindmapData {
       if (childKind === "goal") {
         const goal = await createGoal({ title, parent_type: kindToParentType(parentKind), parent_id: dbParentId });
         const newNode: MindmapNode = {
-          id: `goal-${goal.id}`, kind: "goal", title: goal.title,
+          id: `goal-${goal.id}`, rowId: goal.id, kind: "goal", title: goal.title,
           status: goal.status, position: goal.position, tagIds: [], children: [],
         };
         await load(false);
@@ -1285,7 +1288,7 @@ export function useMindmapData(): MindmapData {
           ...(agentic !== undefined ? { agentic } : {}),
         });
         const newNode: MindmapNode = {
-          id: `task-${task.id}`, kind: "task", title: task.title,
+          id: `task-${task.id}`, rowId: task.id, kind: "task", title: task.title,
           status: task.status, position: task.position, tagIds: [], children: [],
         };
         await load(false);
@@ -1300,7 +1303,7 @@ export function useMindmapData(): MindmapData {
           title, parent_type: kindToParentType(parentKind), parent_id: dbParentId,
         });
         const newNode: MindmapNode = {
-          id: `commitment-${commitment.id}`, kind: "commitment", title: commitment.title,
+          id: `commitment-${commitment.id}`, rowId: commitment.id, kind: "commitment", title: commitment.title,
           verdict: commitment.verdict, position: commitment.position, tagIds: [], children: [],
         };
         await load(false);
@@ -1315,7 +1318,7 @@ export function useMindmapData(): MindmapData {
           parent_id: dbParentId, position: maxPos + 1,
         });
         const newNode: MindmapNode = {
-          id: `info-${info.id}`, kind: "info", title: info.body,
+          id: `info-${info.id}`, rowId: info.id, kind: "info", title: info.body,
           position: info.position, tagIds: [], children: [],
         };
         await load(false);
@@ -1332,6 +1335,7 @@ export function useMindmapData(): MindmapData {
         const item = childKind === "flow_goal" ? await createFlowGoal(request) : await createFlowTask(request);
         const newNode: MindmapNode = {
           id: childKind === "flow_goal" ? `flowgoal-${item.id}` : `flowtask-${item.id}`,
+          rowId: item.id,
           kind: childKind, title: item.title,
           position: item.position, tagIds: [], children: [],
         };
@@ -1341,7 +1345,7 @@ export function useMindmapData(): MindmapData {
 
       throw new Error(`Cannot create a node of kind "${childKind}"`);
     },
-    [load, tree, createOccurrenceChild],
+    [load, rowIdOfId, tree, createOccurrenceChild],
   );
 
   const createChild = useCallback(
@@ -1368,7 +1372,7 @@ export function useMindmapData(): MindmapData {
 
   const renameNode = useCallback(
     async (id: string, kind: NodeKind, title: string): Promise<void> => {
-      const dbId = dbIdFromNodeId(id);
+      const dbId = rowIdOfId(id);
       if (kind === "goal") {
         await updateGoal(dbId, { title });
       } else if (kind === "task") {
@@ -1388,12 +1392,12 @@ export function useMindmapData(): MindmapData {
       }
       await load(false);
     },
-    [load],
+    [load, rowIdOfId],
   );
 
   const retypeNode = useCallback(
     async (id: string, fromKind: NodeKind, toKind: NodeKind, options?: RetypeOptions): Promise<string | null> => {
-      const dbId = dbIdFromNodeId(id);
+      const dbId = rowIdOfId(id);
       // The flow node itself is not part of the retype cycle (Phase 7.2 decision).
       if (fromKind === "flow") return null;
 
@@ -1407,9 +1411,9 @@ export function useMindmapData(): MindmapData {
         // A flow-goal child can't live under a flow-task; move it up or delete it per the prompt.
         if (fromKind === "flow_goal" && toKind === "flow_task") {
           const parentType = parent.kind === "flow" ? "flow" : parent.kind;
-          const parentDbId = dbIdFromNodeId(parent.id);
+          const parentDbId = rowIdOf(parent);
           for (const child of node.children.filter((c) => c.kind === "flow_goal")) {
-            const childDbId = dbIdFromNodeId(child.id);
+            const childDbId = rowIdOf(child);
             if (options?.goalChildrenAction === "reparent") {
               await updateFlowGoal(childDbId, { parent_type: parentType, parent_id: parentDbId });
             } else {
@@ -1446,7 +1450,7 @@ export function useMindmapData(): MindmapData {
 
       return null;
     },
-    [load, tree],
+    [load, rowIdOfId, tree],
   );
 
   const reorderNode = useCallback(
@@ -1463,8 +1467,8 @@ export function useMindmapData(): MindmapData {
 
       const node = siblings[idx]!;
       const neighbor = siblings[neighborIdx]!;
-      const nodeDbId = dbIdFromNodeId(id);
-      const neighborDbId = dbIdFromNodeId(neighbor.id);
+      const nodeDbId = rowIdOf(node);
+      const neighborDbId = rowIdOf(neighbor);
       const nodePos = node.position;
       const neighborPos = neighbor.position;
 
@@ -1491,8 +1495,8 @@ export function useMindmapData(): MindmapData {
 
   const moveNode = useCallback(
     async (id: string, kind: NodeKind, newParentId: string, newParentKind: NodeKind, position: number): Promise<void> => {
-      const dbId = dbIdFromNodeId(id);
-      const dbParentId = dbIdFromNodeId(newParentId);
+      const dbId = rowIdOfId(id);
+      const dbParentId = rowIdOfId(newParentId);
       // Exhaustive over NodeKind on purpose. Node ids are polymorphic — a flow and a domain can
       // share the number 5 — so a kind with no branch of its own must be a compile error, not a
       // fall-through that hands the id to whichever table the default happens to name.
@@ -1552,7 +1556,7 @@ export function useMindmapData(): MindmapData {
       }
       await load(false);
     },
-    [load],
+    [load, rowIdOfId],
   );
 
   /**
@@ -1562,8 +1566,8 @@ export function useMindmapData(): MindmapData {
    */
   const duplicateNode = useCallback(
     async (id: string, kind: NodeKind, targetId: string, targetKind: NodeKind, position: number): Promise<void> => {
-      const dbId = dbIdFromNodeId(id);
-      const dbTargetId = dbIdFromNodeId(targetId);
+      const dbId = rowIdOfId(id);
+      const dbTargetId = rowIdOfId(targetId);
       // Exhaustive over NodeKind, for the same reason `moveNode` is: node ids are polymorphic, so a
       // kind with no branch of its own must be a compile error rather than a fall-through that
       // hands the id to whichever table the default happens to name.
@@ -1611,7 +1615,7 @@ export function useMindmapData(): MindmapData {
       }
       await load(false);
     },
-    [load],
+    [load, rowIdOfId],
   );
 
   const removeNode = useCallback(
@@ -1620,7 +1624,7 @@ export function useMindmapData(): MindmapData {
       // confirm dialog expanded into its nodes, has to come back in a single press.
       await withGesture(t("gestures.delete", { count: nodesToDelete.length }), async () => {
         for (const { id, kind } of nodesToDelete) {
-          const dbId = dbIdFromNodeId(id);
+          const dbId = rowIdOfId(id);
           if (kind === "goal") await deleteGoal(dbId);
           else if (kind === "task") await deleteTask(dbId);
           else if (kind === "commitment") await deleteCommitment(dbId);
@@ -1633,7 +1637,7 @@ export function useMindmapData(): MindmapData {
       });
       await load(false);
     },
-    [load, t],
+    [load, rowIdOfId, t],
   );
 
   /**
@@ -1657,11 +1661,11 @@ export function useMindmapData(): MindmapData {
       const commitmentId =
         occurrence !== undefined
           ? await attachCommitmentToOccurrence(occurrence, data)
-          : await createCommitmentUnderNode(parentId, parentKind, data);
+          : await createCommitmentUnderNode(rowIdOfId(parentId), parentKind, data);
       for (const tagId of data.tagIds) await addTagToCommitment(commitmentId, tagId);
       await load(false);
     },
-    [load, tree],
+    [load, rowIdOfId, tree],
   );
 
   const createFlowNode = useCallback(

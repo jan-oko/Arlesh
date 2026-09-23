@@ -1009,3 +1009,54 @@ fn an_explicit_null_verdict_window_in_a_commitment_update_payload_clears_it() {
         }))
     );
 }
+
+/// A Commitment holds notes as a Task does: the `infos.parent_type` CHECK accepts `commitment`
+/// (migration 0040), and deleting the Commitment takes its notes with it.
+#[tokio::test]
+async fn an_info_can_hang_under_a_commitment() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let tonight = window(&pool, ScopeKind::Day, july(14)).await;
+    let commitment = create(
+        &pool,
+        CreateCommitmentRequest {
+            title: "Asleep by 23:00".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            time_scope: Some(tonight),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    let info = helpers::session_factory(&pool)
+        .connect()
+        .await
+        .unwrap()
+        .infos()
+        .create(arlesh_lib::infos::model::CreateInfoRequest {
+            body: "Phone stays in the kitchen".into(),
+            details: None,
+            parent_type: "commitment".into(),
+            parent_id: commitment.id,
+            position: 0,
+        })
+        .await
+        .unwrap();
+    assert_eq!(info.parent_type, "commitment");
+    assert_eq!(info.parent_id, commitment.id);
+
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    delete_commitment(&mut db, CommitmentId(commitment.id))
+        .await
+        .unwrap();
+    db.commit().await.unwrap();
+
+    let remaining: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM infos WHERE id = ?")
+        .bind(info.id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(remaining, 0);
+}

@@ -574,7 +574,10 @@ async fn the_fork_flow_command_commits_the_whole_clone() {
     .await
     .unwrap();
 
-    let forked = flow_commands::fork_flow(app.state(), flow.id)
+    let now = chrono::NaiveDate::from_ymd_opt(2026, 1, 22)
+        .unwrap()
+        .and_time(chrono::NaiveTime::MIN);
+    let forked = flow_commands::fork_flow(app.state(), flow.id, now)
         .await
         .unwrap();
 
