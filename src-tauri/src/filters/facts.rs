@@ -120,27 +120,13 @@ fn index_blocked(load: &MindmapLoad) -> HashSet<String> {
         .map(|expectation| (expectation.id, expectation.status))
         .collect();
 
-    // A done Asynchronous task still holds up what depends on it while the wait it spawned is
-    // pending: the dependency is met once the wait is released.
-    let spawned_pending: HashSet<i64> = load
-        .spawned_waits
-        .iter()
-        .filter(|spawned| spawned.wait.status == ExpectationStatus::Pending)
-        .map(|spawned| spawned.wait.task_id)
-        .filter(|task_id| {
-            load.tasks
-                .iter()
-                .any(|task| task.id == *task_id && task.async_template.is_some())
-        })
-        .collect();
+    // A done Asynchronous task is done: what depends on it does not wait on the wait it spawned
+    // (ruled by the user, 2026-09-23).
     for edge in &load.task_dependencies {
         let unmet = match edge.dependency_type.as_str() {
-            "task" => {
-                task_status
-                    .get(&edge.dependency_id)
-                    .is_some_and(|status| *status != "done")
-                    || spawned_pending.contains(&edge.dependency_id)
-            }
+            "task" => task_status
+                .get(&edge.dependency_id)
+                .is_some_and(|status| *status != "done"),
             "expectation" => expectation_status
                 .get(&edge.dependency_id)
                 .is_some_and(|status| *status == ExpectationStatus::Pending),

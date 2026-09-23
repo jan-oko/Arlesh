@@ -1,11 +1,15 @@
-//! A Task's **Expectation template**, and the virtual wait its completion spawns.
+//! A Task's optional **Expectation template**, and the virtual wait it spawns.
 //!
-//! Asynchronous is not a flag: it is a nullable template on the Task (`task_async_templates`). When
-//! the Task is completed, a **virtual** Expectation is spawned from the template — derived at read
-//! time, never stored as an `expectations` row. What the wait has done since it began lives in an
-//! **overlay** keyed by the Task (`spawned_waits`): written when the Task is completed, deleted when
-//! it is un-completed, holding its status, its archive and the time of its last check. Arlesh-pnn's
-//! virtual node tables (ADR 0008) will generalise this; it is kept narrow until then.
+//! An Asynchronous Task may carry a template (`task_async_templates`), kept only while the flag is
+//! on. While such a Task is **done**, a **virtual** Expectation exists beneath it — derived at read
+//! time from "this Task is done and has a template", never stored as an `expectations` row, and
+//! begun when the Task was completed (`tasks.done_at`). Completing and reopening the Task, and
+//! undoing either, are only the Task's own status change: nothing here is written or removed.
+//!
+//! What the wait itself has had done to it — released, archived, checked on — lives in an
+//! **overlay** keyed by the Task (`spawned_waits`), written only by those gestures. When the wait
+//! stops being derived the row is left where it is and ignored, so completing the Task again brings
+//! its state back. Arlesh-pnn's virtual node tables (ADR 0008) will generalise this.
 //!
 //! The same module answers the question both kinds of wait share: **when is the next check due?**
 //! A wait with a Check every is checked at its Starting, then one interval after each check made —
@@ -113,15 +117,24 @@ struct TemplateRow {
     check_every_kind: Option<String>,
 }
 
-/// The stored shape of an overlay row.
+/// A derived wait's Task, joined to its overlay if it has one.
 #[derive(sqlx::FromRow)]
 struct SpawnedRow {
     task_id: i64,
-    spawned_at: String,
-    status: String,
-    archival: String,
+    done_at: Option<String>,
+    status: Option<String>,
+    archival: Option<String>,
     last_check_at: Option<String>,
 }
+
+/// The rows [`SpawnedRow`] reads: every done, Asynchronous Task with a template — the waits that
+/// exist — with whatever overlay each has.
+const SPAWNED_SELECT: &str =
+    "SELECT t.id AS task_id, t.done_at, o.status, o.archival, o.last_check_at
+     FROM tasks t
+     JOIN task_async_templates a ON a.task_id = t.id
+     LEFT JOIN spawned_waits o ON o.task_id = t.id
+     WHERE t.status = 'done' AND t.asynchronous = 1";
 
 fn duration(n: Option<i64>, kind: Option<String>) -> Option<DurationSpec> {
     Some(DurationSpec { n: n?, kind: kind? })
@@ -135,14 +148,23 @@ fn columns(spec: &Option<DurationSpec>) -> (Option<i64>, Option<String>) {
 }
 
 impl SpawnedRow {
-    fn into_wait(self) -> Option<SpawnedWait> {
-        Some(SpawnedWait {
+    /// With no overlay the wait is as it began: pending and live, never checked.
+    fn into_wait(self) -> SpawnedWait {
+        SpawnedWait {
             task_id: self.task_id,
-            spawned_at: instant_from_column(Some(self.spawned_at))?,
-            status: ExpectationStatus::from_db(&self.status).unwrap_or_default(),
-            archival: ExpectationArchival::from_db(&self.archival).unwrap_or_default(),
+            spawned_at: instant_from_column(self.done_at),
+            status: self
+                .status
+                .as_deref()
+                .and_then(ExpectationStatus::from_db)
+                .unwrap_or_default(),
+            archival: self
+                .archival
+                .as_deref()
+                .and_then(ExpectationArchival::from_db)
+                .unwrap_or_default(),
             last_check_at: instant_from_column(self.last_check_at),
-        })
+        }
     }
 }
 
@@ -217,72 +239,52 @@ impl TaskOperator<'_> {
         Ok(())
     }
 
-    /// The overlay of the wait a task's completion spawned, if there is one.
+    /// The wait a task spawned, while it exists — the task done, Asynchronous and with a template.
     pub async fn spawned_wait(&mut self, id: TaskId) -> Result<Option<SpawnedWait>, TaskError> {
-        let row = sqlx::query_as::<_, SpawnedRow>("SELECT * FROM spawned_waits WHERE task_id = ?")
+        let row = sqlx::query_as::<_, SpawnedRow>(&format!("{SPAWNED_SELECT} AND t.id = ?"))
             .bind(id.0)
             .fetch_optional(&mut *self.connection)
             .await?;
-        Ok(row.and_then(SpawnedRow::into_wait))
+        Ok(row.map(SpawnedRow::into_wait))
     }
 
-    /// Every spawned wait's overlay.
+    /// Every wait that exists, by task. An overlay whose wait is not derived is not among them.
     pub async fn spawned_waits(&mut self) -> Result<Vec<SpawnedWait>, TaskError> {
-        let rows = sqlx::query_as::<_, SpawnedRow>("SELECT * FROM spawned_waits ORDER BY task_id")
+        let rows = sqlx::query_as::<_, SpawnedRow>(&format!("{SPAWNED_SELECT} ORDER BY t.id"))
             .fetch_all(&mut *self.connection)
             .await?;
-        Ok(rows.into_iter().filter_map(SpawnedRow::into_wait).collect())
+        Ok(rows.into_iter().map(SpawnedRow::into_wait).collect())
     }
 
-    /// Starts a spawned wait at `at`, pending and live, replacing any earlier one.
-    pub(super) async fn spawn_wait(
-        &mut self,
-        id: TaskId,
-        at: NaiveDateTime,
-    ) -> Result<(), TaskError> {
-        sqlx::query(
-            "INSERT OR REPLACE INTO spawned_waits (task_id, spawned_at, status, archival, last_check_at)
-             VALUES (?, ?, 'pending', 'live', NULL)",
-        )
-        .bind(id.0)
-        .bind(instant_column(at))
-        .execute(&mut *self.connection)
-        .await?;
-        Ok(())
-    }
-
-    /// Writes a spawned wait's status and archive.
+    /// Writes a spawned wait's status and archive, starting its overlay if it has none.
     async fn set_spawned_state(
         &mut self,
         id: TaskId,
         status: ExpectationStatus,
         archival: ExpectationArchival,
     ) -> Result<(), TaskError> {
-        sqlx::query("UPDATE spawned_waits SET status = ?, archival = ? WHERE task_id = ?")
-            .bind(status.as_str())
-            .bind(archival.as_str())
-            .bind(id.0)
-            .execute(&mut *self.connection)
-            .await?;
+        sqlx::query(
+            "INSERT INTO spawned_waits (task_id, status, archival) VALUES (?, ?, ?)
+             ON CONFLICT (task_id) DO UPDATE SET status = excluded.status, archival = excluded.archival",
+        )
+        .bind(id.0)
+        .bind(status.as_str())
+        .bind(archival.as_str())
+        .execute(&mut *self.connection)
+        .await?;
         Ok(())
     }
 
-    /// Records `at` as the time of a spawned wait's last check.
+    /// Records `at` as the time of a spawned wait's last check, starting its overlay if it has none.
     async fn set_spawned_check(&mut self, id: TaskId, at: NaiveDateTime) -> Result<(), TaskError> {
-        sqlx::query("UPDATE spawned_waits SET last_check_at = ? WHERE task_id = ?")
-            .bind(instant_column(at))
-            .bind(id.0)
-            .execute(&mut *self.connection)
-            .await?;
-        Ok(())
-    }
-
-    /// Retracts a task's spawned wait — what un-completing the task does.
-    pub(super) async fn retract_wait(&mut self, id: TaskId) -> Result<(), TaskError> {
-        sqlx::query("DELETE FROM spawned_waits WHERE task_id = ?")
-            .bind(id.0)
-            .execute(&mut *self.connection)
-            .await?;
+        sqlx::query(
+            "INSERT INTO spawned_waits (task_id, last_check_at) VALUES (?, ?)
+             ON CONFLICT (task_id) DO UPDATE SET last_check_at = excluded.last_check_at",
+        )
+        .bind(id.0)
+        .bind(instant_column(at))
+        .execute(&mut *self.connection)
+        .await?;
         Ok(())
     }
 }
@@ -343,24 +345,29 @@ pub async fn derive_wait_windows<M: SessionMode>(db: &mut Db<M>) -> Result<WaitW
         }
     }
     for wait in db.tasks().spawned_waits().await? {
-        // A template removed since the wait began leaves nothing to draw it from.
         let Some(template) = db.tasks().async_template(TaskId(wait.task_id)).await? else {
             continue;
         };
-        let time_scope = match &template.time_scope {
-            Some(rule) => window_from_rule(db, rule, wait.spawned_at.date()).await?,
-            None => None,
+        let time_scope = match (&template.time_scope, wait.spawned_at) {
+            (Some(rule), Some(began)) => window_from_rule(db, rule, began.date()).await?,
+            _ => None,
         };
         let live =
             wait.status == ExpectationStatus::Pending && wait.archival == ExpectationArchival::Live;
         let next_check = match (&template.check_every, live) {
             (Some(every), true) => {
                 // A spawned wait's first check is one interval after it began, not at once: the
-                // email has only just been sent.
-                let starting = advance_by(wait.spawned_at, every.n, &every.kind);
-                match starting
-                    .and_then(|starting| next_check_due(every, starting, wait.last_check_at))
-                {
+                // email has only just been sent. A completion never recorded asks for one now.
+                let starting = match wait.spawned_at {
+                    Some(began) => advance_by(began, every.n, &every.kind),
+                    None => Some(super::expectations::now()),
+                };
+                // A check made during an earlier completion, kept by the overlay, is not a check
+                // on this one.
+                let last = wait
+                    .last_check_at
+                    .filter(|last| wait.spawned_at.is_none_or(|began| *last >= began));
+                match starting.and_then(|starting| next_check_due(every, starting, last)) {
                     Some(due) => Some(check_window(db, due).await?),
                     None => None,
                 }
@@ -376,7 +383,8 @@ pub async fn derive_wait_windows<M: SessionMode>(db: &mut Db<M>) -> Result<WaitW
     Ok(windows)
 }
 
-/// Releases, un-releases or archives a task's spawned wait. Refused when the task has none.
+/// Releases, un-releases or archives a task's spawned wait. Refused when there is none — the task
+/// not done, not Asynchronous, or without a template.
 #[tracing::instrument(skip(db))]
 pub async fn update_spawned_wait<M: SessionMode>(
     db: &mut Db<M>,

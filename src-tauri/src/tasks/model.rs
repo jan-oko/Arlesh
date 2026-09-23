@@ -337,14 +337,12 @@ pub struct Task {
     /// ancestor; `Some` is an explicit value that replaces what would have been inherited.
     /// Independent of `delegate_to` — a task may be both.
     pub agentic: Option<bool>,
-    /// Whether doing this task starts a **wait** — derived, `true` exactly when
-    /// [`Self::async_template`] is set. Kept on the wire because the badge, the filter pill and the
-    /// List View's Asynchronous section all ask only this.
+    /// Whether doing this task starts a **wait**. A plain flag that does not inherit: "starts a
+    /// wait" is a property of one concrete action.
     #[serde(default)]
     pub asynchronous: bool,
-    /// The **Expectation template** that makes this task Asynchronous, or `None`. Completing the
-    /// task spawns a virtual Expectation from it. It does not inherit: "starts a wait" is a
-    /// property of one concrete action.
+    /// The task's optional **Expectation template**, kept only while it is Asynchronous.
+    /// Completing the task spawns a virtual Expectation from it; without one, nothing is spawned.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub async_template: Option<AsyncTemplate>,
     /// Relevance window (if set). A null value inherits the nearest scoped ancestor.
@@ -470,12 +468,11 @@ pub struct CreateTaskRequest {
     /// Initial Agentic state (defaults to Inherit, the stored NULL).
     #[serde(default)]
     pub agentic: Option<TaskAgentic>,
-    /// `Some(true)` makes the new task Asynchronous with a default template; ignored when
-    /// [`Self::async_template`] names one. Nothing arrives asynchronous otherwise.
+    /// `Some(true)` makes the new task Asynchronous. Nothing arrives asynchronous otherwise.
     #[serde(default)]
     pub asynchronous: Option<bool>,
     /// The new task's Expectation template, when it is created Asynchronous with one in hand — a
-    /// duplicate carrying its source's.
+    /// duplicate carrying its source's. Dropped unless [`Self::asynchronous`] is `Some(true)`.
     #[serde(default)]
     pub async_template: Option<AsyncTemplate>,
 }
@@ -494,12 +491,11 @@ pub struct UpdateTaskRequest {
     /// writes the NULL that puts the task back to inheriting. The three states are named rather
     /// than nested in a second `Option` — see [`TaskAgentic`] for why that shape is wrong here.
     pub agentic: Option<TaskAgentic>,
-    /// The bare `W` toggle's shorthand: `Some(true)` gives the task a default template when it has
-    /// none (and keeps one it has), `Some(false)` removes it, `None` leaves it. Ignored when
-    /// [`Self::async_template`] is present, which says exactly what to write.
+    /// New Asynchronous flag (if provided). Turning it off removes the task's template too: a
+    /// template only exists while the flag is on.
     pub asynchronous: Option<bool>,
-    /// The Expectation template to set (None leaves it unchanged, Some(None) removes it — the task
-    /// stops being Asynchronous).
+    /// The Expectation template to set (None leaves it unchanged, Some(None) removes it). Dropped
+    /// when the task ends up not Asynchronous.
     #[serde(default, deserialize_with = "crate::wire::null_clears")]
     pub async_template: Option<Option<AsyncTemplate>>,
     /// Relevance window to set (None leaves unchanged, Some(None) clears it).
@@ -729,7 +725,8 @@ pub struct UpdateCommitmentRequest {
     pub is_private: Option<bool>,
 }
 
-/// A Task's **Expectation template**: what the wait its completion spawns starts out as.
+/// A Task's **Expectation template**: what the wait its completion spawns starts out as. Optional,
+/// and only kept while the Task is Asynchronous — an asynchronous Task without one spawns nothing.
 ///
 /// Thinner than an Expectation on purpose — only what a wait needs up front. No status: a status
 /// exists only once the wait does. No parent: the spawned wait hangs under its Task.
@@ -748,25 +745,18 @@ pub struct AsyncTemplate {
     pub check_every: Option<DurationSpec>,
 }
 
-impl AsyncTemplate {
-    /// The template the bare `W` toggle writes: a title derived from the task, and nothing else.
-    pub fn for_task(task_title: &str) -> Self {
-        Self {
-            title: format!("Waiting on {task_title}"),
-            ..Default::default()
-        }
-    }
-}
-
-/// The overlay of a Task's **spawned** Expectation — the virtual wait completing an Asynchronous
-/// Task creates. Keyed by the Task: written when it is completed, deleted when it is un-completed.
-/// Everything else the wait shows is read from the Task's template.
+/// A Task's **spawned** Expectation — the virtual wait that exists while an Asynchronous Task with a
+/// template is done. Its state is an **overlay** keyed by the Task, written only when the wait
+/// itself is changed; with none written it is pending and live. Everything else the wait shows is
+/// read from the Task's template.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SpawnedWait {
     /// The Task that spawned it.
     pub task_id: i64,
-    /// When the Task was completed — when the wait began.
-    pub spawned_at: NaiveDateTime,
+    /// When the Task was completed — when the wait began. `None` for a Task whose completion time
+    /// was never recorded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spawned_at: Option<NaiveDateTime>,
     /// Pending or Released.
     pub status: ExpectationStatus,
     /// Live or Archived.

@@ -437,8 +437,7 @@ fn spawned(
         wait: crate::tasks::model::SpawnedWait {
             task_id,
             spawned_at: chrono::NaiveDate::from_ymd_opt(2026, 7, 1)
-                .and_then(|date| date.and_hms_opt(9, 0, 0))
-                .expect("a date"),
+                .and_then(|date| date.and_hms_opt(9, 0, 0)),
             status,
             archival: crate::tasks::model::ExpectationArchival::Live,
             last_check_at: None,
@@ -453,10 +452,11 @@ fn spawned(
 }
 
 #[test]
-fn a_done_asynchronous_task_carries_its_spawned_wait_and_holds_up_its_dependents() {
+fn a_done_asynchronous_task_carries_its_spawned_wait_and_does_not_hold_up_its_dependents() {
     let mut load = board();
     for task in &mut load.tasks {
         if task.id == 22 {
+            task.asynchronous = true;
             task.async_template = Some(crate::tasks::model::AsyncTemplate {
                 title: "Reply".to_string(),
                 tag_ids: vec![7],
@@ -482,17 +482,9 @@ fn a_done_asynchronous_task_carries_its_spawned_wait_and_holds_up_its_dependents
     assert!(wait.facts.has_check);
     assert!(find(&pending, "spawned-check-22").is_some());
     assert!(
-        find(&pending, "task-21").is_some_and(|node| node.facts.is_blocked),
-        "task 22 is done, but its wait is pending"
+        find(&pending, "task-21").is_some_and(|node| !node.facts.is_blocked),
+        "task 22 is done: a pending spawned wait does not hold up its dependents"
     );
-
-    let mut released = load.clone();
-    released.spawned_waits = vec![spawned(
-        22,
-        crate::tasks::model::ExpectationStatus::Released,
-    )];
-    let after = forest(&released);
-    assert!(find(&after, "task-21").is_some_and(|node| !node.facts.is_blocked));
 
     let mut untemplated = load;
     for task in &mut untemplated.tasks {

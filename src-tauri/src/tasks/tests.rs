@@ -246,7 +246,16 @@ fn an_update_that_says_nothing_about_asynchronous_leaves_the_template_alone() {
 }
 
 #[test]
-fn the_toggle_keeps_a_template_gives_a_default_one_or_removes_it() {
+fn the_toggle_turns_the_flag_on_without_a_template_and_off_taking_the_template_with_it() {
+    let on = TaskWrite::merge(
+        stored_task(),
+        UpdateTaskRequest {
+            asynchronous: Some(true),
+            ..Default::default()
+        },
+    );
+    assert!(on.asynchronous);
+    assert!(on.async_template.is_none());
     let keep = TaskWrite::merge(
         asynchronous_task(),
         UpdateTaskRequest {
@@ -255,36 +264,45 @@ fn the_toggle_keeps_a_template_gives_a_default_one_or_removes_it() {
         },
     );
     assert_eq!(keep.async_template, asynchronous_task().async_template);
-    let give = TaskWrite::merge(
-        stored_task(),
-        UpdateTaskRequest {
-            asynchronous: Some(true),
-            ..Default::default()
-        },
-    );
-    assert_eq!(give.async_template, Some(AsyncTemplate::for_task("Stored")));
-    let remove = TaskWrite::merge(
+    let off = TaskWrite::merge(
         asynchronous_task(),
         UpdateTaskRequest {
             asynchronous: Some(false),
             ..Default::default()
         },
     );
-    assert!(remove.async_template.is_none());
+    assert!(!off.asynchronous);
+    assert!(off.async_template.is_none());
 }
 
 #[test]
-fn an_explicit_template_wins_over_the_toggle() {
-    let template = AsyncTemplate::for_task("Other");
-    let write = TaskWrite::merge(
+fn a_template_is_dropped_unless_the_task_ends_up_asynchronous() {
+    let template = asynchronous_task().async_template;
+    let dropped = TaskWrite::merge(
         stored_task(),
         UpdateTaskRequest {
-            asynchronous: Some(false),
-            async_template: Some(Some(template.clone())),
+            async_template: Some(template.clone()),
             ..Default::default()
         },
     );
-    assert_eq!(write.async_template, Some(template));
+    assert!(dropped.async_template.is_none());
+    let kept = TaskWrite::merge(
+        stored_task(),
+        UpdateTaskRequest {
+            asynchronous: Some(true),
+            async_template: Some(template.clone()),
+            ..Default::default()
+        },
+    );
+    assert_eq!(kept.async_template, template);
+    let removed = TaskWrite::merge(
+        asynchronous_task(),
+        UpdateTaskRequest {
+            async_template: Some(None),
+            ..Default::default()
+        },
+    );
+    assert!(removed.asynchronous && removed.async_template.is_none());
 }
 
 #[test]
@@ -293,6 +311,7 @@ fn asynchronous_and_agentic_are_merged_independently() {
     // doing it starts a wait. Setting one must never disturb the other.
     let write = TaskWrite::merge(
         Task {
+            asynchronous: true,
             async_template: asynchronous_task().async_template,
             ..agentic_task()
         },
@@ -314,7 +333,7 @@ fn an_empty_update_request_writes_the_stored_row_back_unchanged() {
     assert_eq!(write.title, "Stored");
     assert_eq!(write.delegate_to, Some(Delegate::Person { id: 3 }));
     assert_eq!(write.agentic, None);
-    assert!(write.async_template.is_none());
+    assert!(!write.asynchronous && write.async_template.is_none());
     assert_eq!(write.position, 100);
     assert!(!write.is_private);
 }

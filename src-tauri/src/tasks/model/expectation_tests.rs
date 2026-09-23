@@ -56,14 +56,6 @@ fn an_explicit_null_check_every_clears_it_and_an_absent_one_leaves_it() {
 }
 
 #[test]
-fn the_toggles_template_is_titled_after_its_task() {
-    let template = AsyncTemplate::for_task("Send the draft");
-    assert_eq!(template.title, "Waiting on Send the draft");
-    assert!(template.tag_ids.is_empty());
-    assert!(template.time_scope.is_none() && template.check_every.is_none());
-}
-
-#[test]
 fn an_explicit_null_template_removes_it() {
     let clear: UpdateTaskRequest =
         serde_json::from_value(serde_json::json!({ "async_template": null })).expect("parses");

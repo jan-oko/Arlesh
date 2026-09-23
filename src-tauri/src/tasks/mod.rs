@@ -220,6 +220,7 @@ struct TaskRow {
     delegate_kind: Option<String>,
     delegate_id: Option<i64>,
     agentic: Option<bool>,
+    asynchronous: bool,
     time_scope_start_id: Option<i64>,
     time_scope_end_id: Option<i64>,
     time_scope_duration_n: Option<i64>,
@@ -243,8 +244,8 @@ impl From<TaskRow> for Task {
             status: row.status,
             delegate_to: Delegate::from_columns(row.delegate_kind.as_deref(), row.delegate_id),
             agentic: row.agentic,
-            // Retired column (0044): Asynchronous is the template, read after the row.
-            asynchronous: false,
+            asynchronous: row.asynchronous,
+            // Read after the row, from its own table.
             async_template: None,
             time_scope: time_scope_from_row(
                 row.time_scope_start_id,
@@ -439,7 +440,9 @@ struct TaskWrite {
     delegate_to: Option<Delegate>,
     /// Final Agentic column: `None` is the NULL that inherits from the nearest flagged ancestor.
     agentic: Option<bool>,
-    /// Final Expectation template: `Some` makes the task Asynchronous.
+    /// Final Asynchronous flag.
+    asynchronous: bool,
+    /// Final Expectation template; always `None` when `asynchronous` is false.
     async_template: Option<AsyncTemplate>,
     /// Final Time Scope, or `None` for unscoped.
     time_scope: Option<TimeScope>,
@@ -483,16 +486,12 @@ impl TaskWrite {
             Some(new_agentic) => new_agentic.as_column(),
             None => stored.agentic,
         };
-        // An explicit template says exactly what to write. The bare toggle's `asynchronous` keeps a
-        // template the task already has, or gives it the default one; `false` removes it.
-        let async_template = match (request.async_template, request.asynchronous) {
-            (Some(template), _) => template,
-            (None, Some(true)) => stored
-                .async_template
-                .clone()
-                .or_else(|| Some(AsyncTemplate::for_task(&stored.title))),
-            (None, Some(false)) => None,
-            (None, None) => stored.async_template.clone(),
+        // The template only exists while the flag is on: turning Asynchronous off takes it too.
+        let asynchronous = request.asynchronous.unwrap_or(stored.asynchronous);
+        let async_template = if asynchronous {
+            request.async_template.unwrap_or(stored.async_template)
+        } else {
+            None
         };
         let time_scope = match request.time_scope {
             Some(new_time_scope) => new_time_scope,
@@ -530,6 +529,7 @@ impl TaskWrite {
             status,
             delegate_to,
             agentic,
+            asynchronous,
             async_template,
             time_scope,
             on_scope_exit: request.on_scope_exit.unwrap_or(stored.on_scope_exit),
@@ -861,18 +861,22 @@ impl<'session> TaskOperator<'session> {
         let (plan_start, plan_end, _, _) = time_scope_columns(&request.plan);
         let archival = request.archival.unwrap_or_default();
         let agentic = request.agentic.unwrap_or_default().as_column();
-        let async_template = match (&request.async_template, request.asynchronous) {
-            (Some(template), _) => Some(template.clone()),
-            (None, Some(true)) => Some(AsyncTemplate::for_task(&request.title)),
-            _ => None,
+        let asynchronous = request.asynchronous.unwrap_or(false);
+        let async_template = if asynchronous {
+            request.async_template.clone()
+        } else {
+            None
         };
+        // A task created done was completed now, as far as anything can tell.
+        let done_at = (status == TaskStatus::Done.as_str())
+            .then(|| waits::instant_column(expectations::now()));
         let id = sqlx::query(
             "INSERT INTO tasks
                 (title, parent_type, parent_id, status,
                  time_scope_start_id, time_scope_end_id, time_scope_duration_n,
                  time_scope_duration_kind, on_scope_exit, plan_start_id, plan_end_id, archival,
-                 agentic)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                 agentic, asynchronous, done_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&request.title)
         .bind(&request.parent_type)
@@ -887,6 +891,8 @@ impl<'session> TaskOperator<'session> {
         .bind(plan_end)
         .bind(archival.as_str())
         .bind(agentic)
+        .bind(asynchronous)
+        .bind(done_at)
         .execute(&mut *self.connection)
         .await?
         .last_insert_rowid();
@@ -908,10 +914,13 @@ impl<'session> TaskOperator<'session> {
             .await?
             .ok_or(TaskError::TaskNotFound(id.0))?;
         let tag_ids = fetch_task_tag_ids(&mut *self.connection, id.0).await?;
-        let async_template = self.async_template(id).await?;
+        let async_template = if row.asynchronous {
+            self.async_template(id).await?
+        } else {
+            None
+        };
         Ok(Task {
             tag_ids,
-            asynchronous: async_template.is_some(),
             async_template,
             ..row.into()
         })
@@ -957,10 +966,13 @@ impl<'session> TaskOperator<'session> {
         let mut tasks = Vec::with_capacity(rows.len());
         for row in rows {
             let tag_ids = fetch_task_tag_ids(&mut *self.connection, row.id).await?;
-            let async_template = self.async_template(TaskId(row.id)).await?;
+            let async_template = if row.asynchronous {
+                self.async_template(TaskId(row.id)).await?
+            } else {
+                None
+            };
             tasks.push(Task {
                 tag_ids,
-                asynchronous: async_template.is_some(),
                 async_template,
                 ..row.into()
             });
@@ -1015,7 +1027,11 @@ impl<'session> TaskOperator<'session> {
             "UPDATE tasks SET title=?, status=?, delegate_kind=?, delegate_id=?,
                 time_scope_start_id=?, time_scope_end_id=?, time_scope_duration_n=?,
                 time_scope_duration_kind=?, on_scope_exit=?, plan_start_id=?, plan_end_id=?,
-                archival=?, agentic=?, position=?, is_private=? WHERE id=?",
+                archival=?, agentic=?, asynchronous=?, position=?, is_private=?,
+                done_at = CASE WHEN ? = 'done'
+                               THEN CASE WHEN status = 'done' THEN done_at ELSE ? END
+                               ELSE NULL END
+             WHERE id=?",
         )
         .bind(&write.title)
         .bind(&write.status)
@@ -1030,8 +1046,13 @@ impl<'session> TaskOperator<'session> {
         .bind(plan_end)
         .bind(write.archival.as_str())
         .bind(write.agentic)
+        .bind(write.asynchronous)
         .bind(write.position)
         .bind(write.is_private)
+        // Completing a task records when; it is when the wait its template spawns begins. Staying
+        // done keeps the time, and reopening clears it.
+        .bind(&write.status)
+        .bind(waits::instant_column(expectations::now()))
         .bind(id.0)
         .execute(&mut *self.connection)
         .await?;
@@ -1491,7 +1512,6 @@ pub async fn update_task(
     request: UpdateTaskRequest,
 ) -> Result<Task, TaskError> {
     let stored = db.tasks().get(id).await?;
-    let was_done = stored.status == TaskStatus::Done.as_str();
     let write = TaskWrite::merge(stored, request);
     reject_backlog_with_plan(write.archival, &write.plan)?;
     scope_rules::validate_task_containment(
@@ -1503,16 +1523,10 @@ pub async fn update_task(
         &write.plan,
     )
     .await?;
-    let updated = db.tasks().update(id, write).await?;
-    // Completing an Asynchronous task spawns its wait; un-completing it retracts the wait. Both in
-    // this same write, so one Ctrl+Z takes the status and the wait back together.
-    let is_done = updated.status == TaskStatus::Done.as_str();
-    if is_done && !was_done && updated.async_template.is_some() {
-        db.tasks().spawn_wait(id, expectations::now()).await?;
-    } else if was_done && !is_done {
-        db.tasks().retract_wait(id).await?;
-    }
-    Ok(updated)
+    // Nothing else is written for the wait an Asynchronous task spawns: it is derived from the task
+    // being done and having a template, so completing and reopening — and undoing either — are
+    // just this row's own status change.
+    db.tasks().update(id, write).await
 }
 
 /// Adds a dependency to a task, rejecting chains that would close a cycle.
@@ -1584,16 +1598,6 @@ pub async fn get_task_with_blockers<M: SessionMode>(
                         "Blocked by task {} ({})",
                         dependency_id, dependency_task.title
                     ));
-                } else if let Some(template) = &dependency_task.async_template {
-                    // A done Asynchronous task is not finished with until the wait it spawned is
-                    // released: what depends on it waits on that wait.
-                    let spawned = db.tasks().spawned_wait(TaskId(dependency_id)).await?;
-                    if spawned.is_some_and(|wait| wait.status == ExpectationStatus::Pending) {
-                        reasons.push(format!(
-                            "Blocked by expectation spawned by task {} ({})",
-                            dependency_id, template.title
-                        ));
-                    }
                 }
             }
             Dependency::Goal { id: dependency_id } => {

@@ -31,8 +31,8 @@ impl ArleshMcp {
     /// that tasks can depend on. Its `status` is `pending` until the wait is over and `released`
     /// after; a task depending on a pending one is blocked. Its optional `check_every` (a Duration;
     /// its next check is in `expectation_checks`) is how often the user means to look in on it.
-    /// A task's `async_template` makes it asynchronous; completing it spawns a wait, listed in
-    /// `spawned_waits` by task. Read-only here.
+    /// An `asynchronous` task may carry an `async_template`; while such a task is done, the wait
+    /// it spawned is listed in `spawned_waits` by task. Read-only here.
     ///
     /// A task's `delegate_to` says who holds it: `null`, `{"kind": "person", "id": N}` (resolve
     /// the Person with `arlesh_kb`), or `{"kind": "agent"}` — handed to the Agent. It is

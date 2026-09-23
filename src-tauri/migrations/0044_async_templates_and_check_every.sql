@@ -1,29 +1,28 @@
--- Asynchronous becomes a template, and a wait's single check-by becomes a repeating check.
--- Ruled by the user on 2026-09-23; see docs/spec/resources.md, "Tasks" and "Expectations".
+-- An Asynchronous Task gains an optional Expectation template, and a wait's single check-by
+-- becomes a repeating check. Ruled by the user on 2026-09-23; see docs/spec/resources.md, "Tasks"
+-- and "Expectations".
 --
--- 1. A Task's **Asynchronous** is no longer a boolean. It is a nullable **Expectation template**:
---    no row here means not asynchronous, a row means asynchronous. The template carries only what
---    the wait needs up front — a title, tags, a Time Scope *rule* (a Duration counted from the day
---    the wait begins) and Check every — and no status, because a status only exists once a wait
---    does. Completing the Task spawns a **virtual** Expectation from it.
--- 2. `spawned_waits` is that virtual Expectation's **overlay**: keyed by the Task, written when
---    the Task is completed, deleted when it is un-completed. It holds only the state the wait
---    itself has since — its status, its archive, and when its last check was made. The node is
---    drawn from the template and this row; nothing else is stored. Arlesh-pnn's virtual node
---    tables (ADR 0008) will generalise it.
--- 3. An Expectation's **check-by** (one window) becomes **Check every** (a Duration) from a
+-- 1. **Asynchronous stays a flag** (`tasks.asynchronous`, unchanged) and gains an optional
+--    **Expectation template**, which exists only while the flag is on: a title, tags, a Time Scope
+--    *rule* (a Duration counted from the day the wait begins) and Check every — no status, because
+--    a status only exists once a wait does. A Task that is asynchronous with no template spawns
+--    nothing; existing asynchronous Tasks arrive exactly like that, so no data moves.
+-- 2. The spawned wait is **derived**: it exists while its Task is done and has a template, and is
+--    never a row of its own. `tasks.done_at` records when the Task was last completed, which is
+--    when the wait began; it is written by the Task's own status change and nothing else.
+-- 3. `spawned_waits` is the wait's **overlay** — status, archive and the last check — keyed by the
+--    Task and written only when the wait itself is changed. When the wait stops being derived (the
+--    Task is reopened, or its template removed) the row is left where it is and ignored, so
+--    re-completing brings its state back and undo/redo of the completion needs no special code.
+--    Arlesh-pnn's virtual node tables (ADR 0008) will generalise it.
+-- 4. An Expectation's **check-by** (one window) becomes **Check every** (a Duration) from a
 --    **Starting** instant, with the time the last check was made. The next check falls due one
 --    interval after that — anchored to the resolution, not to the schedule.
 --
--- `tasks.asynchronous` is left in place but **retired**: nothing reads or writes it after this
--- migration. Dropping it means rebuilding `tasks`, which ten tables reference; it goes with the
--- next rebuild that has to happen anyway. Every Task it flagged gets a template first, titled
--- "Waiting on <the task's title>", and the column is then zeroed so nothing can mistake it for
--- current.
---
 -- `expectations` is rebuilt to drop the check-by columns. `tags_on_expectations` references it
 -- with ON DELETE CASCADE, so it is copied aside first — `PRAGMA legacy_alter_table` does nothing
--- while foreign keys are on — and rebuilt afterwards.
+-- while foreign keys are on — and rebuilt afterwards. `tasks` only gains a column, which needs no
+-- rebuild; its journal triggers are regenerated to carry it.
 
 CREATE TABLE task_async_templates (
     task_id          INTEGER PRIMARY KEY REFERENCES tasks(id) ON DELETE CASCADE,
@@ -44,15 +43,14 @@ CREATE TABLE tags_on_async_templates (
 
 CREATE TABLE spawned_waits (
     task_id       INTEGER PRIMARY KEY REFERENCES tasks(id) ON DELETE CASCADE,
-    spawned_at    TEXT NOT NULL,
     status        TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'released')),
     archival      TEXT NOT NULL DEFAULT 'live' CHECK (archival IN ('live', 'archived')),
     last_check_at TEXT
 );
 
-INSERT INTO task_async_templates (task_id, title)
-    SELECT id, 'Waiting on ' || title FROM tasks WHERE asynchronous = 1;
-UPDATE tasks SET asynchronous = 0 WHERE asynchronous = 1;
+ALTER TABLE tasks ADD COLUMN done_at TEXT;
+-- Tasks already done have no recorded completion; the migration is the earliest time known.
+UPDATE tasks SET done_at = strftime('%Y-%m-%dT%H:%M:%S', 'now', 'localtime') WHERE status = 'done';
 
 -- --- expectations: check-by → check every ------------------------------------
 
@@ -102,6 +100,27 @@ DROP TABLE carry_tags_on_expectations;
 -- ===========================================================================
 -- Undo-journal triggers, straight from scripts/generate-undo-triggers.sh
 -- ===========================================================================
+DROP TRIGGER IF EXISTS undo_journal_tasks_insert;
+CREATE TRIGGER undo_journal_tasks_insert AFTER INSERT ON tasks BEGIN
+    INSERT INTO undo_journal (gesture_id, source, table_name, row_id, operation, before_image, after_image, written_at)
+    SELECT gesture_id, source, 'tasks', new.rowid, 'insert', NULL, json_object('id', new.id, 'title', new.title, 'parent_type', new.parent_type, 'parent_id', new.parent_id, 'status', new.status, 'delegate_kind', new.delegate_kind, 'delegate_id', new.delegate_id, 'position', new.position, 'time_scope_start_id', new.time_scope_start_id, 'time_scope_end_id', new.time_scope_end_id, 'time_scope_duration_n', new.time_scope_duration_n, 'time_scope_duration_kind', new.time_scope_duration_kind, 'plan_start_id', new.plan_start_id, 'plan_end_id', new.plan_end_id, 'on_scope_exit', new.on_scope_exit, 'is_private', new.is_private, 'beads_id', new.beads_id, 'archival', new.archival, 'agentic', new.agentic, 'asynchronous', new.asynchronous, 'done_at', new.done_at), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      FROM undo_context WHERE id = 1 AND suppressed = 0;
+END;
+
+DROP TRIGGER IF EXISTS undo_journal_tasks_update;
+CREATE TRIGGER undo_journal_tasks_update AFTER UPDATE ON tasks BEGIN
+    INSERT INTO undo_journal (gesture_id, source, table_name, row_id, operation, before_image, after_image, written_at)
+    SELECT gesture_id, source, 'tasks', new.rowid, 'update', json_object('id', old.id, 'title', old.title, 'parent_type', old.parent_type, 'parent_id', old.parent_id, 'status', old.status, 'delegate_kind', old.delegate_kind, 'delegate_id', old.delegate_id, 'position', old.position, 'time_scope_start_id', old.time_scope_start_id, 'time_scope_end_id', old.time_scope_end_id, 'time_scope_duration_n', old.time_scope_duration_n, 'time_scope_duration_kind', old.time_scope_duration_kind, 'plan_start_id', old.plan_start_id, 'plan_end_id', old.plan_end_id, 'on_scope_exit', old.on_scope_exit, 'is_private', old.is_private, 'beads_id', old.beads_id, 'archival', old.archival, 'agentic', old.agentic, 'asynchronous', old.asynchronous, 'done_at', old.done_at), json_object('id', new.id, 'title', new.title, 'parent_type', new.parent_type, 'parent_id', new.parent_id, 'status', new.status, 'delegate_kind', new.delegate_kind, 'delegate_id', new.delegate_id, 'position', new.position, 'time_scope_start_id', new.time_scope_start_id, 'time_scope_end_id', new.time_scope_end_id, 'time_scope_duration_n', new.time_scope_duration_n, 'time_scope_duration_kind', new.time_scope_duration_kind, 'plan_start_id', new.plan_start_id, 'plan_end_id', new.plan_end_id, 'on_scope_exit', new.on_scope_exit, 'is_private', new.is_private, 'beads_id', new.beads_id, 'archival', new.archival, 'agentic', new.agentic, 'asynchronous', new.asynchronous, 'done_at', new.done_at), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      FROM undo_context WHERE id = 1 AND suppressed = 0;
+END;
+
+DROP TRIGGER IF EXISTS undo_journal_tasks_delete;
+CREATE TRIGGER undo_journal_tasks_delete AFTER DELETE ON tasks BEGIN
+    INSERT INTO undo_journal (gesture_id, source, table_name, row_id, operation, before_image, after_image, written_at)
+    SELECT gesture_id, source, 'tasks', old.rowid, 'delete', json_object('id', old.id, 'title', old.title, 'parent_type', old.parent_type, 'parent_id', old.parent_id, 'status', old.status, 'delegate_kind', old.delegate_kind, 'delegate_id', old.delegate_id, 'position', old.position, 'time_scope_start_id', old.time_scope_start_id, 'time_scope_end_id', old.time_scope_end_id, 'time_scope_duration_n', old.time_scope_duration_n, 'time_scope_duration_kind', old.time_scope_duration_kind, 'plan_start_id', old.plan_start_id, 'plan_end_id', old.plan_end_id, 'on_scope_exit', old.on_scope_exit, 'is_private', old.is_private, 'beads_id', old.beads_id, 'archival', old.archival, 'agentic', old.agentic, 'asynchronous', old.asynchronous, 'done_at', old.done_at), NULL, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      FROM undo_context WHERE id = 1 AND suppressed = 0;
+END;
+
 DROP TRIGGER IF EXISTS undo_journal_task_async_templates_insert;
 CREATE TRIGGER undo_journal_task_async_templates_insert AFTER INSERT ON task_async_templates BEGIN
     INSERT INTO undo_journal (gesture_id, source, table_name, row_id, operation, before_image, after_image, written_at)
@@ -147,21 +166,21 @@ END;
 DROP TRIGGER IF EXISTS undo_journal_spawned_waits_insert;
 CREATE TRIGGER undo_journal_spawned_waits_insert AFTER INSERT ON spawned_waits BEGIN
     INSERT INTO undo_journal (gesture_id, source, table_name, row_id, operation, before_image, after_image, written_at)
-    SELECT gesture_id, source, 'spawned_waits', new.rowid, 'insert', NULL, json_object('task_id', new.task_id, 'spawned_at', new.spawned_at, 'status', new.status, 'archival', new.archival, 'last_check_at', new.last_check_at), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    SELECT gesture_id, source, 'spawned_waits', new.rowid, 'insert', NULL, json_object('task_id', new.task_id, 'status', new.status, 'archival', new.archival, 'last_check_at', new.last_check_at), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
       FROM undo_context WHERE id = 1 AND suppressed = 0;
 END;
 
 DROP TRIGGER IF EXISTS undo_journal_spawned_waits_update;
 CREATE TRIGGER undo_journal_spawned_waits_update AFTER UPDATE ON spawned_waits BEGIN
     INSERT INTO undo_journal (gesture_id, source, table_name, row_id, operation, before_image, after_image, written_at)
-    SELECT gesture_id, source, 'spawned_waits', new.rowid, 'update', json_object('task_id', old.task_id, 'spawned_at', old.spawned_at, 'status', old.status, 'archival', old.archival, 'last_check_at', old.last_check_at), json_object('task_id', new.task_id, 'spawned_at', new.spawned_at, 'status', new.status, 'archival', new.archival, 'last_check_at', new.last_check_at), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    SELECT gesture_id, source, 'spawned_waits', new.rowid, 'update', json_object('task_id', old.task_id, 'status', old.status, 'archival', old.archival, 'last_check_at', old.last_check_at), json_object('task_id', new.task_id, 'status', new.status, 'archival', new.archival, 'last_check_at', new.last_check_at), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
       FROM undo_context WHERE id = 1 AND suppressed = 0;
 END;
 
 DROP TRIGGER IF EXISTS undo_journal_spawned_waits_delete;
 CREATE TRIGGER undo_journal_spawned_waits_delete AFTER DELETE ON spawned_waits BEGIN
     INSERT INTO undo_journal (gesture_id, source, table_name, row_id, operation, before_image, after_image, written_at)
-    SELECT gesture_id, source, 'spawned_waits', old.rowid, 'delete', json_object('task_id', old.task_id, 'spawned_at', old.spawned_at, 'status', old.status, 'archival', old.archival, 'last_check_at', old.last_check_at), NULL, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    SELECT gesture_id, source, 'spawned_waits', old.rowid, 'delete', json_object('task_id', old.task_id, 'status', old.status, 'archival', old.archival, 'last_check_at', old.last_check_at), NULL, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
       FROM undo_context WHERE id = 1 AND suppressed = 0;
 END;
 
