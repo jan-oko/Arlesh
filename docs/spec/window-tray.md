@@ -162,6 +162,11 @@ what Arlesh does. It costs a dependency and buys back the plainest gesture the f
 the hover tooltip libappindicator drops. Windows and macOS keep the tray Tauri builds, whose click
 events work.
 
+**The tray item is called Arlesh.** Its title, its tooltip and its StatusNotifierItem `Id` are all
+the app's name — never an internal identifier, because bars show the `Id`: DankMaterialShell heads
+the item's menu with it. Not a window's title either, which carries a number and a tab, while the
+tray holds the app. A branch instance keeps the suffix its config title already carries.
+
 **The tray mark is monochrome, and it is not the logo.** A tray sits on a bar whose colour and
 theme are not the app's to know, and every other icon on it is a flat silhouette; the full-colour
 logo would read as a sticker among them. It would also be unreadable: the logo is seven chevrons

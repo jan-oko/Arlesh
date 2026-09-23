@@ -370,7 +370,7 @@ pub async fn set_window_title<R: Runtime>(
 }
 
 /// The app's own name, as the config gives it — which a branch instance overrides.
-fn base_title<R: Runtime>(app: &AppHandle<R>) -> String {
+pub fn base_title<R: Runtime>(app: &AppHandle<R>) -> String {
     app.config()
         .app
         .windows

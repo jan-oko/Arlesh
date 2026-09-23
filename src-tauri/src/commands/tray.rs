@@ -48,10 +48,12 @@ use crate::{
 };
 
 /// The tray icon's own id, which is a different namespace from the window's label.
+///
+/// Internal to Tauri's tray. It is **not** the StatusNotifierItem `Id` on Linux, because bars show
+/// that one: DankMaterialShell heads the item's menu with it, so an id there has to read as the
+/// app's name — see `SystemTray`'s `id`.
+#[cfg(not(target_os = "linux"))]
 const TRAY_ID: &str = "arlesh-tray";
-
-/// What the tray says when nothing better is available.
-const FALLBACK_TOOLTIP: &str = "Arlesh";
 
 /// The id a per-window entry carries, with the window's label after this prefix.
 ///
@@ -211,9 +213,7 @@ fn build_tray(app: &AppHandle) -> anyhow::Result<()> {
         // What the silhouette already is, said out loud. macOS is the only platform that acts on
         // it — it tints a template image to suit a light or dark menu bar.
         .icon_as_template(true)
-        // The window's title, not a constant: `scripts/branch-instance.sh` titles each branch's
-        // window after its branch, and with several instances up their tray icons are otherwise
-        // indistinguishable.
+        // The app's name from the config, which a branch instance suffixes with its branch.
         .tooltip(tray_tooltip(app))
         .menu(&menu)
         // The menu belongs to the right button; the left one toggles the window.
@@ -285,8 +285,10 @@ impl SystemTray {
 
 #[cfg(target_os = "linux")]
 impl ksni::Tray for SystemTray {
+    /// The item's `Id`, which a bar may show as the item's name — DankMaterialShell heads the
+    /// menu with it. So it is the app's name, the same as the title.
     fn id(&self) -> String {
-        TRAY_ID.to_string()
+        self.title.clone()
     }
 
     fn title(&self) -> String {
@@ -399,17 +401,14 @@ fn menu_label(title: &str) -> String {
     title.replace('_', "__")
 }
 
-/// What the tray icon says on hover: a window's title, else [`FALLBACK_TOOLTIP`].
+/// What the tray icon is called, on hover and wherever a bar names it: the app's name.
 ///
-/// Any window's, because they all carry the same one — `scripts/branch-instance.sh` titles a
-/// branch's windows after its branch, and with several instances up their tray icons are otherwise
-/// indistinguishable.
+/// The app's name as the config gives it, not any window's title — a window's title carries its
+/// number and its active tab, and the tray holds the app rather than a window. A branch instance
+/// keeps the suffix `scripts/branch-instance.sh` puts in its config title, which is what tells
+/// several instances' icons apart.
 fn tray_tooltip(app: &AppHandle) -> String {
-    app.webview_windows()
-        .values()
-        .find_map(|window| window.title().ok())
-        .filter(|title| !title.is_empty())
-        .unwrap_or_else(|| FALLBACK_TOOLTIP.to_string())
+    windows::base_title(app)
 }
 
 /// What this close request means, according to the managed [`ClosePreference`].
