@@ -13,7 +13,7 @@ vi.mock("react-i18next", () => ({
 
 vi.mock("@/hooks/use-filter-display");
 
-vi.mock("@/api/window", () => ({ closeWindow: vi.fn(() => Promise.resolve()) }));
+vi.mock("@/api/window", async () => (await import("@/test/window-api-mock")).windowApi());
 
 const mockUseFilterDisplay = vi.mocked(useFilterDisplay);
 

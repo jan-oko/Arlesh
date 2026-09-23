@@ -6,6 +6,17 @@ import type { PersistedTab } from "@/stores/tab-persistence";
 import {
   freshTabState, legacyTabState, readPersistedTabs, writePersistedTabs,
 } from "@/stores/tab-persistence";
+import { BOOTSTRAP_WINDOW_LABEL, currentWindowLabel } from "@/api/window-label";
+
+/**
+ * Which window this store is the tab strip of.
+ *
+ * Read once, at module scope, because it never changes: a webview belongs to one window for its
+ * whole life. Every window runs its own copy of this module over its own key in the one shared
+ * `localStorage`, which is the whole of what keeps two windows' tabs apart — the store itself never
+ * learns that there is more than one window.
+ */
+const WINDOW_LABEL = currentWindowLabel();
 
 /** One open tab: an identity, the two labels it may carry, and its own stores. */
 export interface Tab {
@@ -35,9 +46,18 @@ interface TabsStore {
   setTabTitle: (id: string, title: string | null) => void;
   /** Names a tab, or — given a blank name — takes the name off and hands it back to `title`. */
   renameTab: (id: string, name: string) => void;
+  /** Opens a tab handed over by another window, after the active one, and activates it. */
+  adoptTab: (tab: PersistedTab) => void;
 }
 
-function newTabId(): string {
+/**
+ * A fresh tab id.
+ *
+ * Exported because a tab can now be created **outside** this store: a new window's first tab is
+ * written to storage before that window exists to hold it. One function decides what a tab id
+ * looks like, so the two routes cannot drift into two answers.
+ */
+export function newTabId(): string {
   return crypto.randomUUID();
 }
 
@@ -47,12 +67,23 @@ function newTabId(): string {
  */
 function saveTabs(): void {
   const { tabs, activeTabId } = useTabsStore.getState();
-  writePersistedTabs({
-    activeTabId,
-    tabs: tabs.map((tab) => ({
-      id: tab.id, title: tab.title, customTitle: tab.customTitle, state: readTabState(tab.stores),
-    })),
-  });
+  writePersistedTabs(WINDOW_LABEL, { activeTabId, tabs: tabs.map(persistTab) });
+}
+
+/**
+ * A tab in the shape it is written down in — and handed to another window in.
+ *
+ * One shape for both, because a tab that moves between windows and a tab that comes back after a
+ * restart are the same tab arriving by two routes; giving the move its own wire format would be a
+ * second description of a tab, free to drift from the first.
+ */
+export function persistTab(tab: Tab): PersistedTab {
+  return {
+    id: tab.id,
+    title: tab.title,
+    customTitle: tab.customTitle,
+    state: readTabState(tab.stores),
+  };
 }
 
 /**
@@ -78,7 +109,7 @@ function makeTab({ id, title, customTitle, state }: PersistedTab): Tab {
  * tab rather than a blank board.
  */
 function initialTabs(): { tabs: Tab[]; activeTabId: string } {
-  const persisted = readPersistedTabs();
+  const persisted = readPersistedTabs(WINDOW_LABEL);
   if (persisted !== null) {
     return {
       tabs: persisted.tabs.map((tab) => makeTab(tab)),
@@ -86,7 +117,10 @@ function initialTabs(): { tabs: Tab[]; activeTabId: string } {
     };
   }
   const id = newTabId();
-  const state = legacyTabState() ?? freshTabState();
+  // The pre-tabs session belongs to the window that would have had it, which is the only window a
+  // session written before windows existed ever had. A torn-off window starts fresh.
+  const legacy = WINDOW_LABEL === BOOTSTRAP_WINDOW_LABEL ? legacyTabState() : null;
+  const state = legacy ?? freshTabState();
   return { tabs: [makeTab({ id, title: null, customTitle: null, state })], activeTabId: id };
 }
 
@@ -171,6 +205,22 @@ export const useTabsStore = create<TabsStore>()((set, get) => ({
     const tab = current.find((candidate) => candidate.id === id);
     if (tab === undefined || tab.customTitle === customTitle) return;
     set({ tabs: current.map((candidate) => (candidate.id === id ? { ...candidate, customTitle } : candidate)) });
+  },
+
+  // The arriving tab keeps its own id where it can, so a tab that is moved and moved back is the
+  // same tab throughout. Ids are minted per window and a collision is only possible when a tab
+  // comes back to a window that has since opened one of its own with that id — in which case the
+  // arriving tab takes a new id, because two tabs with one id is the worse of the two problems.
+  adoptTab: (tab) => {
+    set((s) => {
+      // A tab that is already here is the same tab arriving twice — a hand-over retried, or one
+      // delivered twice — and adopting it again would make two of one tab. It is shown, not added.
+      if (s.tabs.some((candidate) => candidate.id === tab.id)) return { activeTabId: tab.id };
+      const at = s.tabs.findIndex((candidate) => candidate.id === s.activeTabId);
+      const tabs = [...s.tabs];
+      tabs.splice(at + 1, 0, makeTab(tab));
+      return { tabs, activeTabId: tab.id };
+    });
   },
 }));
 

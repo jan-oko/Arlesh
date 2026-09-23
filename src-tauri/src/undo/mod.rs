@@ -125,12 +125,39 @@ pub async fn reset_journal(factory: &SessionFactory) -> Result<(), UndoError> {
     db.undo().reset().await
 }
 
+/// What closing a Gesture amounted to.
+///
+/// Two different questions, which used to be one and are not the same: *can the user take this
+/// back*, and *did the board move*. A Gesture whose only writes were an agent's answers no to the
+/// first and yes to the second — it never enters the user's Undo Stack, but a second window
+/// showing that part of the board is now wrong.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct GestureClose {
+    /// What reached the Undo Stack, or `None` for a nested close or a Gesture the user cannot undo.
+    pub undoable: Option<GestureSummary>,
+    /// Whether the Gesture wrote to the board at all, whoever made the writes.
+    ///
+    /// Read straight off the journal rather than reported by the commands, which is what makes it
+    /// impossible for a command to forget — see [`crate::board`].
+    pub wrote: bool,
+}
+
+/// What an abort amounted to: what it took back, and whether anything it wrote still stands.
+#[derive(Debug, Default)]
+pub struct GestureAbort {
+    /// What was reversed, or `None` for a nested close or a Gesture with nothing of the user's in it.
+    pub taken_back: Option<GestureSummary>,
+    /// Whether anything this Gesture wrote survives the abort, and so has to reach the other
+    /// windows. See [`abort_gesture`].
+    pub wrote: bool,
+}
+
 /// Closes one open Gesture and, when that ended it, puts it on the Undo Stack.
 ///
-/// Returns what the Gesture amounted to, or `None` when the close was a nested one or the Gesture
-/// wrote nothing the user can undo. A Gesture that reaches the stack also **empties the Redo
-/// Stack**: redo reapplies rows onto the board they were taken from, and a new change means that
-/// is no longer the board in front of the user.
+/// Returns what the Gesture amounted to — what the user can undo, and whether the board moved at
+/// all. Both are empty for a nested close, which ends nothing. A Gesture that reaches the stack
+/// also **empties the Redo Stack**: redo reapplies rows onto the board they were taken from, and a
+/// new change means that is no longer the board in front of the user.
 ///
 /// Pooled rather than transactional: the close and the read that follows it are two statements
 /// with no invariant between them — the Gesture is already over, and the worst a reader racing
@@ -139,20 +166,29 @@ pub async fn reset_journal(factory: &SessionFactory) -> Result<(), UndoError> {
 pub async fn close_gesture(
     factory: &SessionFactory,
     stacks: &UndoStacks,
-) -> Result<Option<GestureSummary>, UndoError> {
+) -> Result<GestureClose, UndoError> {
     let mut db = factory.connect().await?;
     let Some(gesture) = db.undo().close_gesture().await? else {
-        return Ok(None);
+        return Ok(GestureClose::default());
     };
+    // Two questions, and they are not the same one: what the user can take back, and whether the
+    // board moved at all. An agent's write answers no to the first and yes to the second.
+    let wrote = db.undo().wrote_anything(&gesture).await?;
     let entries = db.undo().entries_for(&gesture).await?;
 
     let Some(stacked) = StackedGesture::new(gesture, entries) else {
-        return Ok(None);
+        return Ok(GestureClose {
+            undoable: None,
+            wrote,
+        });
     };
     let summary = stacked.summary();
     stacks.record(stacked);
     tracing::info!(gesture = %summary.gesture, rows = summary.rows, "gesture is undoable");
-    Ok(Some(summary))
+    Ok(GestureClose {
+        undoable: Some(summary),
+        wrote,
+    })
 }
 
 /// Closes one open Gesture and **takes back** everything it wrote, instead of offering it as a
@@ -181,31 +217,52 @@ pub async fn close_gesture(
 /// is a reversal that fails. The writes then stand, and the honest thing is to offer them as a
 /// step the user can reverse by hand rather than strand them outside the stacks entirely — so the
 /// Gesture is recorded as [`close_gesture`] would have recorded it, and the error says so.
+///
+/// It reports `wrote` for the same reason [`close_gesture`] does, and the answer is not always no.
+/// An abort takes back **the user's** writes; an agent's write that landed while the Gesture was
+/// open was never this Gesture's to reverse, so it stands and the other windows still have to hear
+/// about it. The question is asked *after* the reversal, which is what makes one predicate cover
+/// both outcomes: [`UndoOperator::discard`] removes precisely what was undone, so whatever the
+/// journal still holds for this Gesture is whatever the board still carries.
 #[tracing::instrument(skip(factory, stacks))]
 pub async fn abort_gesture(
     factory: &SessionFactory,
     stacks: &UndoStacks,
-) -> Result<Option<GestureSummary>, UndoError> {
+) -> Result<GestureAbort, UndoError> {
     // Scoped so the pooled session is back in the pool before `take_back` asks for a
     // transactional one: a single-connection pool would otherwise wait on itself forever.
-    let stacked = {
+    let closed = {
         let mut db = factory.connect().await?;
         let Some(gesture) = db.undo().close_gesture().await? else {
-            return Ok(None);
+            return Ok(GestureAbort::default());
         };
         let entries = db.undo().entries_for(&gesture).await?;
-        StackedGesture::new(gesture, entries)
+        match StackedGesture::new(gesture.clone(), entries) {
+            Some(stacked) => Some(stacked),
+            // Nothing of the user's to take back. An agent's write may still have landed inside
+            // this Gesture, and it is as real as any other — so the question is still asked.
+            None => {
+                let wrote = db.undo().wrote_anything(&gesture).await?;
+                return Ok(GestureAbort {
+                    taken_back: None,
+                    wrote,
+                });
+            }
+        }
     };
 
-    let Some(stacked) = stacked else {
-        return Ok(None);
+    let Some(stacked) = closed else {
+        return Ok(GestureAbort::default());
     };
     let summary = stacked.summary();
 
     match take_back(factory, &stacked).await {
-        Ok(()) => {
+        Ok(wrote) => {
             tracing::info!(gesture = %summary.gesture, rows = summary.rows, "gesture aborted");
-            Ok(Some(summary))
+            Ok(GestureAbort {
+                taken_back: Some(summary),
+                wrote,
+            })
         }
         Err(cause) => {
             stacks.record(stacked);
@@ -218,12 +275,17 @@ pub async fn abort_gesture(
 }
 
 /// Reverses `gesture`'s entries and drops them from the journal, in one transaction.
-async fn take_back(factory: &SessionFactory, gesture: &StackedGesture) -> Result<(), UndoError> {
+///
+/// Answers whether anything the Gesture wrote **still stands** afterwards — an agent's write it
+/// never owned. Asked inside the transaction, after the discard, so it sees the board the commit
+/// is about to make real rather than the one that existed before the reversal.
+async fn take_back(factory: &SessionFactory, gesture: &StackedGesture) -> Result<bool, UndoError> {
     let mut db = factory.begin().await?;
     db.undo().replay(gesture.entries(), Replay::Inverse).await?;
     db.undo().discard(gesture.gesture()).await?;
+    let wrote = db.undo().wrote_anything(gesture.gesture()).await?;
     db.commit().await?;
-    Ok(())
+    Ok(wrote)
 }
 
 /// Reverses the most recent user Gesture, or does nothing when there is none.
@@ -468,6 +530,22 @@ impl<'session> UndoOperator<'session> {
         .await?;
 
         rows.into_iter().map(JournalRow::into_entry).collect()
+    }
+
+    /// Whether a Gesture wrote to the board at all — **whoever** made the writes.
+    ///
+    /// Deliberately not [`UndoOperator::entries_for`] with the filter dropped: the two questions
+    /// have different answers and different customers. The Undo Stack wants the user's writes,
+    /// because Ctrl+Z is a history of the user; the other windows want anybody's, because a window
+    /// showing a node an agent has just relabelled is wrong regardless of who relabelled it. See
+    /// [`crate::board`].
+    pub async fn wrote_anything(&mut self, gesture: &GestureId) -> Result<bool, UndoError> {
+        let wrote: bool =
+            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM undo_journal WHERE gesture_id = ?)")
+                .bind(&gesture.0)
+                .fetch_one(&mut *self.connection)
+                .await?;
+        Ok(wrote)
     }
 
     /// Drops `gesture`'s `user` entries from the journal, and returns how many it removed.

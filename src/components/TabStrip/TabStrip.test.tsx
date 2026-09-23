@@ -1,23 +1,71 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import TabStrip from "./TabStrip";
 import { reloadTabs, useTabsStore } from "@/stores/use-tabs-store";
 import { freshTabState } from "@/stores/tab-persistence";
-import { closeWindow } from "@/api/window";
+import { closeWindow, openBoardWindow } from "@/api/window";
+import { claimTab, onTabClaimed, sendTabToWindow } from "@/api/board";
+import type { TabClaim } from "@/api/board";
+import { encodeTabDrag, TAB_DRAG_TYPE } from "@/utils/tab-drag";
+import { TEAR_OFF_GRACE_MS } from "@/hooks/use-tab-tear-off";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock("@/api/window", () => ({ closeWindow: vi.fn(() => Promise.resolve()) }));
+vi.mock("@/api/window", async () => (await import("@/test/window-api-mock")).windowApi());
+vi.mock("@/api/board", () => ({
+  sendTabToWindow: vi.fn(() => Promise.resolve()),
+  onBoardChanged: vi.fn(() => Promise.resolve(() => {})),
+  onTabMoved: vi.fn(() => Promise.resolve(() => {})),
+  claimTab: vi.fn(() => Promise.resolve()),
+  onTabClaimed: vi.fn(() => Promise.resolve(() => {})),
+}));
 
 const mockCloseWindow = vi.mocked(closeWindow);
+const mockOpenWindow = vi.mocked(openBoardWindow);
+const mockSendTab = vi.mocked(sendTabToWindow);
+const mockClaimTab = vi.mocked(claimTab);
+const mockOnTabClaimed = vi.mocked(onTabClaimed);
 
 beforeEach(() => {
   localStorage.clear();
   reloadTabs();
   mockCloseWindow.mockClear();
+  mockOpenWindow.mockClear();
+  mockSendTab.mockClear();
+  mockClaimTab.mockClear();
+  mockOnTabClaimed.mockClear();
 });
+
+/**
+ * The drag's data, as the platform carries it between windows. jsdom has no `DataTransfer`, so this
+ * is the part of one the strip uses: typed data, and the effect the drop settled on.
+ */
+class FakeDataTransfer {
+  private readonly data = new Map<string, string>();
+  dropEffect = "none";
+  effectAllowed = "all";
+
+  get types(): string[] {
+    return [...this.data.keys()];
+  }
+
+  setData(type: string, value: string): void {
+    this.data.set(type, value);
+  }
+
+  getData(type: string): string {
+    return this.data.get(type) ?? "";
+  }
+}
+
+/** A drag carrying a tab from another window, as the platform would deliver it here. */
+function dragFromWindow(window: string, tabId: string): FakeDataTransfer {
+  const dataTransfer = new FakeDataTransfer();
+  dataTransfer.setData(TAB_DRAG_TYPE, encodeTabDrag({ tabId, window }));
+  return dataTransfer;
+}
 
 /** A real mouse click with a given button — `fireEvent.click` cannot express a middle click. */
 function clickWithButton(element: Element, button: number): void {
@@ -112,21 +160,50 @@ describe("reordering by drag", () => {
     const moved = openLabelled("CODE", "project-1");
     render(<TabStrip />);
     const [firstTab, secondTab] = screen.getAllByRole("tab");
+    const dataTransfer = new FakeDataTransfer();
 
-    fireEvent.dragStart(secondTab?.parentElement ?? document.body);
-    fireEvent.drop(firstTab?.parentElement ?? document.body);
+    fireEvent.dragStart(secondTab?.parentElement ?? document.body, { dataTransfer });
+    fireEvent.drop(firstTab?.parentElement ?? document.body, { dataTransfer });
 
     expect(useTabsStore.getState().tabs[0]?.id).toBe(moved);
   });
 
-  it("leaves the order alone when a drop arrives with nothing being dragged", () => {
+  it("carries the tab on the drag, since WebKitGTK never drops a drag that carries nothing", () => {
+    const dragged = openLabelled("CODE", "project-1");
+    render(<TabStrip />);
+    const dataTransfer = new FakeDataTransfer();
+
+    fireEvent.dragStart(screen.getByRole("tab", { name: "CODE" }).parentElement ?? document.body, { dataTransfer });
+
+    expect(JSON.parse(dataTransfer.getData(TAB_DRAG_TYPE))).toEqual({ tabId: dragged, window: "main" });
+  });
+
+  it("neither tears off nor asks anyone for anything once the strip took the drop", () => {
+    openLabelled("CODE", "project-1");
+    render(<TabStrip />);
+    const [firstTab, secondTab] = screen.getAllByRole("tab");
+    const dataTransfer = new FakeDataTransfer();
+
+    fireEvent.dragStart(secondTab?.parentElement ?? document.body, { dataTransfer });
+    fireEvent.drop(firstTab?.parentElement ?? document.body, { dataTransfer });
+    dataTransfer.dropEffect = "move";
+    fireEvent.dragEnd(secondTab?.parentElement ?? document.body, { dataTransfer });
+
+    expect(mockOpenWindow).not.toHaveBeenCalled();
+    expect(mockClaimTab).not.toHaveBeenCalled();
+  });
+
+  it("leaves the order alone when what was dropped is not a tab", () => {
     openLabelled("CODE", "project-1");
     render(<TabStrip />);
     const before = useTabsStore.getState().tabs.map((tab) => tab.id);
+    const dataTransfer = new FakeDataTransfer();
+    dataTransfer.setData("text/plain", "hello");
 
-    fireEvent.drop(screen.getAllByRole("tab")[0]?.parentElement ?? document.body);
+    fireEvent.drop(screen.getAllByRole("tab")[0]?.parentElement ?? document.body, { dataTransfer });
 
     expect(useTabsStore.getState().tabs.map((tab) => tab.id)).toEqual(before);
+    expect(mockClaimTab).not.toHaveBeenCalled();
   });
 });
 
@@ -270,5 +347,150 @@ describe("renaming a tab", () => {
     typeName(longName, "Enter");
 
     expect(screen.getByRole("tab", { name: longName })).toHaveAttribute("title", longName);
+  });
+});
+
+describe("dragging a tab between windows", () => {
+  /** Captures this window's claim listener, so a test can play the part of the other window. */
+  function listenForClaims(): { claim: (claim: TabClaim) => void } {
+    const heard: { claim: (claim: TabClaim) => void } = { claim: () => {} };
+    mockOnTabClaimed.mockImplementation((onClaim) => {
+      heard.claim = onClaim;
+      return Promise.resolve(() => {});
+    });
+    return heard;
+  }
+
+  /** Drags the second tab out and ends the drag reporting `dropEffect`. Returns the tab's id. */
+  function dragOut(dropEffect: string): string {
+    const dragged = openLabelled("CODE", "project-1");
+    render(<TabStrip />);
+    const tab = screen.getByRole("tab", { name: "CODE" }).parentElement ?? document.body;
+    const dataTransfer = new FakeDataTransfer();
+    fireEvent.dragStart(tab, { dataTransfer });
+    dataTransfer.dropEffect = dropEffect;
+    fireEvent.dragEnd(tab, { dataTransfer });
+    return dragged;
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("becomes a window of its own when no window took it, though the drag still reports \"move\"", () => {
+    // What GTK on Wayland reports after a drag released over the desktop: the last action agreed.
+    vi.useFakeTimers();
+    dragOut("move");
+    expect(mockOpenWindow).not.toHaveBeenCalled();
+
+    act(() => vi.advanceTimersByTime(TEAR_OFF_GRACE_MS));
+
+    expect(mockOpenWindow).toHaveBeenCalledOnce();
+    expect(useTabsStore.getState().tabs).toHaveLength(1);
+  });
+
+  it("moves to the window that asks for it, and is not torn off as well", async () => {
+    vi.useFakeTimers();
+    const heard = listenForClaims();
+    const dragged = dragOut("move");
+    await act(async () => { await Promise.resolve(); });
+
+    act(() => heard.claim({ tabId: dragged, into: "board-a" }));
+    act(() => vi.advanceTimersByTime(TEAR_OFF_GRACE_MS));
+
+    expect(mockSendTab).toHaveBeenCalledWith("board-a", expect.objectContaining({ id: dragged }));
+    expect(mockOpenWindow).not.toHaveBeenCalled();
+  });
+
+  it("is not torn off when the claim overtook the end of the drag", async () => {
+    vi.useFakeTimers();
+    const heard = listenForClaims();
+    const dragged = openLabelled("CODE", "project-1");
+    render(<TabStrip />);
+    await act(async () => { await Promise.resolve(); });
+    const tab = screen.getByRole("tab", { name: "CODE" }).parentElement ?? document.body;
+    const dataTransfer = new FakeDataTransfer();
+
+    fireEvent.dragStart(tab, { dataTransfer });
+    act(() => heard.claim({ tabId: dragged, into: "board-a" }));
+    fireEvent.dragEnd(tab, { dataTransfer });
+    act(() => vi.advanceTimersByTime(TEAR_OFF_GRACE_MS));
+
+    expect(mockOpenWindow).not.toHaveBeenCalled();
+  });
+
+  it("is not torn off when it was dropped on its own window's board", () => {
+    vi.useFakeTimers();
+    const dragged = openLabelled("CODE", "project-1");
+    render(<TabStrip />);
+    const tab = screen.getByRole("tab", { name: "CODE" }).parentElement ?? document.body;
+    const dataTransfer = new FakeDataTransfer();
+
+    fireEvent.dragStart(tab, { dataTransfer });
+    fireEvent.drop(document.body, { dataTransfer });
+    fireEvent.dragEnd(tab, { dataTransfer });
+    act(() => vi.advanceTimersByTime(TEAR_OFF_GRACE_MS));
+
+    expect(JSON.parse(dataTransfer.getData(TAB_DRAG_TYPE))).toEqual({ tabId: dragged, window: "main" });
+    expect(mockOpenWindow).not.toHaveBeenCalled();
+    expect(useTabsStore.getState().tabs).toHaveLength(2);
+  });
+
+  it("asks the window a tab came from for it, when it is dropped anywhere on this one", () => {
+    render(<TabStrip />);
+
+    fireEvent.drop(document.body, { dataTransfer: dragFromWindow("board-a", "tab-9") });
+
+    expect(mockClaimTab).toHaveBeenCalledWith("board-a", { tabId: "tab-9", into: "main" });
+  });
+
+  it("asks for it when it is dropped on the strip, and does not reorder anything", () => {
+    openLabelled("CODE", "project-1");
+    render(<TabStrip />);
+    const before = useTabsStore.getState().tabs.map((tab) => tab.id);
+
+    fireEvent.drop(screen.getAllByRole("tab")[0]?.parentElement ?? document.body, {
+      dataTransfer: dragFromWindow("board-a", "tab-9"),
+    });
+
+    expect(mockClaimTab).toHaveBeenCalledOnce();
+    expect(mockClaimTab).toHaveBeenCalledWith("board-a", { tabId: "tab-9", into: "main" });
+    expect(useTabsStore.getState().tabs.map((tab) => tab.id)).toEqual(before);
+  });
+
+  it("does nothing with its own tab dropped off the strip, on its own board", () => {
+    const own = openLabelled("CODE", "project-1");
+    render(<TabStrip />);
+
+    fireEvent.drop(document.body, { dataTransfer: dragFromWindow("main", own) });
+
+    expect(mockClaimTab).not.toHaveBeenCalled();
+    expect(useTabsStore.getState().tabs).toHaveLength(2);
+  });
+
+  it("accepts a dragged tab anywhere on the window, so that the source can tell it from the desktop", () => {
+    render(<TabStrip />);
+    const over = new Event("dragover", { bubbles: true, cancelable: true });
+    Object.defineProperty(over, "dataTransfer", { value: dragFromWindow("board-a", "tab-9") });
+
+    document.body.dispatchEvent(over);
+
+    expect(over.defaultPrevented).toBe(true);
+  });
+
+  it("hands a tab over when the window it was dropped on asks for it", async () => {
+    const asked = openLabelled("CODE", "project-1");
+    let answer: ((claim: TabClaim) => void) | null = null;
+    mockOnTabClaimed.mockImplementation((onClaim) => {
+      answer = onClaim;
+      return Promise.resolve(() => {});
+    });
+    render(<TabStrip />);
+    await waitFor(() => expect(answer).not.toBeNull());
+
+    act(() => answer?.({ tabId: asked, into: "board-a" }));
+
+    await waitFor(() => expect(mockSendTab).toHaveBeenCalledOnce());
+    expect(mockSendTab.mock.calls[0]?.[0]).toBe("board-a");
   });
 });

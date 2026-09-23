@@ -47,6 +47,7 @@ use rmcp::{
     ServerHandler,
 };
 
+use crate::board::{self, Announce};
 use crate::database::session::SessionFactory;
 
 /// The default localhost port the MCP endpoint binds to.
@@ -55,11 +56,16 @@ pub const DEFAULT_PORT: u16 = 4747;
 /// Environment variable overriding [`DEFAULT_PORT`].
 pub const PORT_ENV_VAR: &str = "ARLESH_MCP_PORT";
 
-/// The MCP tool handler. Holds a [`SessionFactory`] and nothing else — every tool opens its own
-/// session per call, exactly as a command does.
+/// The MCP tool handler. Holds a [`SessionFactory`] and a way to say the board changed — every
+/// tool opens its own session per call, exactly as a command does.
 #[derive(Clone)]
 pub struct ArleshMcp {
     factory: SessionFactory,
+    /// Told after the one tool that writes has committed, so an open window catches up.
+    ///
+    /// A closure rather than an `AppHandle`, so that nothing in this module has to know what a
+    /// window is — an agent's write is not made *in* a window, and every window needs telling.
+    announce: Announce,
     tool_router: ToolRouter<Self>,
 }
 
@@ -71,6 +77,9 @@ impl ArleshMcp {
     pub fn new(factory: SessionFactory) -> Self {
         Self {
             factory,
+            // Silent until [`ArleshMcp::announcing`] says otherwise, so a handler built by a test
+            // — which has no windows — needs no ceremony to stand up.
+            announce: board::silent(),
             tool_router: Self::snapshot_router()
                 + Self::scopes_router()
                 + Self::kb_router()
@@ -78,6 +87,16 @@ impl ArleshMcp {
                 + Self::flows_router()
                 + Self::beads_router(),
         }
+    }
+
+    /// Gives this handler somewhere to send a board change.
+    ///
+    /// Separate from [`ArleshMcp::new`] rather than an argument to it, because it is the running
+    /// app's business and no test's: every integration test builds a handler over a pool, and
+    /// none of them has a window to tell.
+    pub fn announcing(mut self, announce: Announce) -> Self {
+        self.announce = announce;
+        self
     }
 
     /// The names of every registered tool.
@@ -129,7 +148,7 @@ pub fn port() -> u16 {
 }
 
 /// Builds the axum router serving the MCP endpoint at `/mcp`.
-fn router(factory: SessionFactory) -> axum::Router {
+fn router(factory: SessionFactory, announce: Announce) -> axum::Router {
     // `allowed_hosts` already defaults to loopback only. `allowed_origins` defaults to empty,
     // which *disables* Origin validation rather than enforcing it — so a page in the user's
     // browser could POST here. `enforce_origin_validation` rejects any request that carries an
@@ -137,7 +156,7 @@ fn router(factory: SessionFactory) -> axum::Router {
     let config = StreamableHttpServerConfig::default().enforce_origin_validation();
 
     let service = StreamableHttpService::new(
-        move || Ok(ArleshMcp::new(factory.clone())),
+        move || Ok(ArleshMcp::new(factory.clone()).announcing(announce.clone())),
         Arc::new(LocalSessionManager::default()),
         config,
     );
@@ -150,7 +169,7 @@ fn router(factory: SessionFactory) -> axum::Router {
 /// A bind failure is logged and swallowed: an occupied port is an ordinary condition, and the app
 /// is still fully usable without an agent attached. Returning an error here would propagate into
 /// Tauri's `setup` and take the whole window down with it.
-pub async fn serve(factory: SessionFactory) {
+pub async fn serve(factory: SessionFactory, announce: Announce) {
     let port = port();
     let address = std::net::SocketAddr::from(([127, 0, 0, 1], port));
 
@@ -169,7 +188,7 @@ pub async fn serve(factory: SessionFactory) {
 
     tracing::info!(%address, "MCP endpoint listening at /mcp");
 
-    if let Err(error) = axum::serve(listener, router(factory)).await {
+    if let Err(error) = axum::serve(listener, router(factory, announce)).await {
         tracing::error!(error = %error, "MCP endpoint stopped");
     }
 }
