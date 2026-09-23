@@ -230,51 +230,53 @@ fn a_write_that_cannot_land_is_survivable() {
 // Numbering the windows.
 // -------------------------------------------------------------------------------------------
 
-/// A session holding windows with these ordinals.
-fn session_of(ordinals: &[u32]) -> WindowSession {
-    WindowSession {
-        windows: ordinals
-            .iter()
-            .enumerate()
-            .map(|(index, ordinal)| WindowRecord {
-                label: format!("w{index}"),
-                rect: None,
-                ordinal: *ordinal,
-            })
-            .collect(),
-    }
+#[test]
+fn the_first_window_is_numbered_one() {
+    assert_eq!(next_ordinal(&[]), 1);
 }
 
 #[test]
-fn the_first_window_of_an_empty_session_is_numbered_one() {
-    assert_eq!(next_ordinal(&WindowSession::default()), 1);
+fn a_new_window_takes_the_next_number_when_none_is_free() {
+    assert_eq!(next_ordinal(&[1, 2]), 3);
 }
 
 #[test]
-fn a_new_window_takes_the_next_number_after_the_highest() {
-    assert_eq!(next_ordinal(&session_of(&[1, 2])), 3);
-}
-
-#[test]
-fn a_closed_windows_number_is_not_handed_out_again() {
-    // Windows 1 and 3 are open; 2 was closed. The next is 4, because reusing 2 would make the
-    // menu entry the user learned point at a different window.
-    assert_eq!(next_ordinal(&session_of(&[1, 3])), 4);
+fn a_closed_windows_number_is_handed_out_again_lowest_first() {
+    // Windows 1 and 3 are open; 2 was closed. Window 3 keeps its number, and 2 is free again.
+    assert_eq!(next_ordinal(&[1, 3]), 2);
+    assert_eq!(next_ordinal(&[3, 4]), 1);
 }
 
 #[test]
 fn the_bootstrap_session_starts_the_numbering_at_one() {
     assert_eq!(WindowSession::bootstrap().windows[0].ordinal, 1);
-    assert_eq!(next_ordinal(&WindowSession::bootstrap()), 2);
 }
 
 #[test]
-fn the_first_window_is_not_numbered_in_its_title() {
-    assert_eq!(window_title("Arlesh", 1), "Arlesh");
+fn a_restored_session_keeps_the_numbers_it_was_saved_with() {
+    assert_eq!(restored_ordinals(&[1, 3, 2]), vec![1, 3, 2]);
+    assert_eq!(restored_ordinals(&[4]), vec![4]);
 }
 
 #[test]
-fn every_later_window_carries_its_number() {
+fn a_session_saved_before_numbering_gives_each_window_its_own_number() {
+    // Records with no stored number read as 1, so every window of an old session claims it.
+    assert_eq!(restored_ordinals(&[1, 1, 1]), vec![1, 2, 3]);
+}
+
+#[test]
+fn a_duplicate_number_does_not_take_one_a_later_window_was_saved_with() {
+    assert_eq!(restored_ordinals(&[1, 1, 2]), vec![1, 3, 2]);
+}
+
+#[test]
+fn a_zero_number_is_read_as_missing() {
+    assert_eq!(restored_ordinals(&[0, 1]), vec![2, 1]);
+}
+
+#[test]
+fn every_window_carries_its_number_in_its_title_the_first_included() {
+    assert_eq!(window_title("Arlesh", 1), "Arlesh 1");
     assert_eq!(window_title("Arlesh", 2), "Arlesh 2");
     assert_eq!(window_title("Arlesh", 11), "Arlesh 11");
 }
@@ -292,83 +294,6 @@ fn the_tray_lists_a_window_by_its_title_and_its_active_tab() {
 
 #[test]
 fn a_window_with_nothing_to_add_keeps_its_plain_title() {
-    assert_eq!(titled_by_tab("Arlesh", ""), "Arlesh");
-    assert_eq!(titled_by_tab("Arlesh", "   "), "Arlesh");
-}
-
-// -------------------------------------------------------------------------------------------
-// Which window a tab was dropped on.
-// -------------------------------------------------------------------------------------------
-
-/// A window at `(x, y)`, 800 by 600.
-fn drop_target(label: &str, x: i32, y: i32) -> (String, WindowRect) {
-    (
-        label.to_string(),
-        WindowRect {
-            x,
-            y,
-            width: 800,
-            height: 600,
-        },
-    )
-}
-
-#[test]
-fn a_drop_inside_a_window_finds_it() {
-    let windows = [drop_target("main", 0, 0)];
-
-    assert_eq!(window_under((400, 300), &windows).as_deref(), Some("main"));
-}
-
-#[test]
-fn a_drop_on_the_desktop_finds_nothing_which_is_the_tear_off() {
-    let windows = [drop_target("main", 0, 0)];
-
-    assert_eq!(window_under((2000, 300), &windows), None);
-}
-
-#[test]
-fn a_drop_finds_the_window_it_is_over_and_not_its_neighbour() {
-    let windows = [drop_target("main", 0, 0), drop_target("board-a", 900, 0)];
-
-    assert_eq!(
-        window_under((1000, 300), &windows).as_deref(),
-        Some("board-a")
-    );
-}
-
-#[test]
-fn overlapping_windows_are_decided_by_which_was_focused_last() {
-    // Both hold the point. The list is most-recently-focused first, standing in for a z-order
-    // neither Tauri nor tao exposes.
-    let front = [drop_target("board-a", 100, 100), drop_target("main", 0, 0)];
-    let behind = [drop_target("main", 0, 0), drop_target("board-a", 100, 100)];
-
-    assert_eq!(window_under((400, 300), &front).as_deref(), Some("board-a"));
-    assert_eq!(window_under((400, 300), &behind).as_deref(), Some("main"));
-}
-
-#[test]
-fn a_drop_on_a_windows_own_edge_counts_as_inside_it() {
-    let windows = [drop_target("main", 0, 0)];
-
-    assert_eq!(window_under((0, 0), &windows).as_deref(), Some("main"));
-    assert_eq!(window_under((800, 600), &windows).as_deref(), Some("main"));
-    assert_eq!(window_under((801, 601), &windows), None);
-}
-
-#[test]
-fn a_drop_on_a_window_at_a_negative_offset_finds_it() {
-    // A second monitor left of the primary puts a window at a negative x, which is ordinary.
-    let windows = [drop_target("board-a", -1920, 0)];
-
-    assert_eq!(
-        window_under((-1500, 300), &windows).as_deref(),
-        Some("board-a")
-    );
-}
-
-#[test]
-fn no_windows_at_all_finds_nothing_rather_than_guessing() {
-    assert_eq!(window_under((400, 300), &[]), None);
+    assert_eq!(titled_by_tab("Arlesh 1", ""), "Arlesh 1");
+    assert_eq!(titled_by_tab("Arlesh 1", "   "), "Arlesh 1");
 }

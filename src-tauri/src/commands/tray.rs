@@ -36,7 +36,7 @@
 
 #[cfg(not(target_os = "linux"))]
 use tauri::{
-    menu::{Menu, MenuEvent, MenuItem},
+    menu::{CheckMenuItem, Menu, MenuEvent, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
 use tauri::{AppHandle, Manager, Runtime, State, Window, WindowEvent};
@@ -125,16 +125,13 @@ pub fn on_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
                 windows::snapshot(app);
             }
         }
-        // The window in front changed. Nothing in the tray cares, but a tab dropped where two
-        // windows overlap does: the most recently focused of them is taken to be the one on top.
-        WindowEvent::Focused(true) => {
-            if let Some(order) = app.try_state::<windows::FocusOrder>() {
-                order.focused(window.label());
-            }
-        }
         // Not during a quit: every window is destroyed in turn, and the session was written
         // down intact before the first of them went.
         WindowEvent::Destroyed if !quit_requested(app) => {
+            // Its number is free for the next window to open. See `windows::next_ordinal`.
+            if let Some(ordinals) = app.try_state::<windows::Ordinals>() {
+                ordinals.forget(window.label());
+            }
             windows::snapshot(app);
             // One fewer window to list, and the entries are the only way to reach one.
             refresh_menu(app);
@@ -150,7 +147,10 @@ fn quit_requested<R: Runtime>(app: &AppHandle<R>) -> bool {
         .unwrap_or(false)
 }
 
-/// The tray menu: Show, Quit, and one entry per open window.
+/// The tray menu: Show, one entry per open window, and Quit.
+///
+/// A window's entry is a check item, checked while the window is on screen, and a click on it
+/// hides or shows that window alone.
 ///
 /// Rebuilt rather than mutated, because a menu is a list and the list changes; see
 /// [`refresh_menu`] for when.
@@ -162,9 +162,16 @@ fn window_menu<R: Runtime>(
 ) -> anyhow::Result<Menu<R>> {
     let menu = Menu::new(app)?;
     menu.append(show)?;
-    for (label, title) in windows::open_windows(app) {
-        let id = format!("{WINDOW_ITEM_PREFIX}{label}");
-        menu.append(&MenuItem::with_id(app, id, title, true, None::<&str>)?)?;
+    for listed in windows::open_windows(app) {
+        let id = format!("{WINDOW_ITEM_PREFIX}{}", listed.label);
+        menu.append(&CheckMenuItem::with_id(
+            app,
+            id,
+            listed.title,
+            true,
+            listed.visible,
+            None::<&str>,
+        )?)?;
     }
     menu.append(quit)?;
     Ok(menu)
@@ -253,7 +260,7 @@ struct SystemTray {
     /// and while the service lock is held. Asking Tauri for a window's title from in there means
     /// a round trip to the main thread taken under a lock that the refresh is already holding —
     /// so the list is computed by [`refresh_menu`], outside it, and handed in.
-    windows: Vec<(String, String)>,
+    windows: Vec<windows::ListedWindow>,
 }
 
 #[cfg(target_os = "linux")]
@@ -307,9 +314,9 @@ impl ksni::Tray for SystemTray {
     /// Reads only what the struct already holds. The list is refreshed by [`refresh_menu`], which
     /// gathers it outside the service lock and hands it in — see [`SystemTray::windows`].
     ///
-    /// A window's entry shows and focuses that one window, where the click on the icon and Show
-    /// both act on all of them. That is the division: the icon is the app, the menu reaches into
-    /// it.
+    /// A window's entry is checked while that window is on screen, and hides or shows it alone,
+    /// where the click on the icon and Show both act on all of them. That is the division: the
+    /// icon is the app, the menu reaches into it.
     fn menu(&self) -> Vec<ksni::MenuItem<Self>> {
         let mut items: Vec<ksni::MenuItem<Self>> = vec![ksni::menu::StandardItem {
             label: SHOW_LABEL.to_string(),
@@ -318,13 +325,15 @@ impl ksni::Tray for SystemTray {
         }
         .into()];
 
-        for (label, title) in self.windows.clone() {
+        for listed in self.windows.clone() {
+            let label = listed.label;
             items.push(
-                ksni::menu::StandardItem {
-                    label: title,
+                ksni::menu::CheckmarkItem {
+                    label: menu_label(&listed.title),
+                    checked: listed.visible,
                     activate: Box::new(move |tray: &mut Self| {
                         let label = label.clone();
-                        on_main_thread(&tray.app, move |app| reveal_window(app, &label));
+                        on_main_thread(&tray.app, move |app| toggle_window(app, &label));
                     }),
                     ..Default::default()
                 }
@@ -382,6 +391,14 @@ fn on_main_thread(app: &AppHandle, action: impl FnOnce(&AppHandle) + Send + 'sta
     }
 }
 
+/// A title as a D-Bus menu label, which reads a lone underscore as an access-key marker.
+///
+/// A tab named `snake_case` would otherwise show as `snakecase`; doubling is the escape.
+#[cfg(target_os = "linux")]
+fn menu_label(title: &str) -> String {
+    title.replace('_', "__")
+}
+
 /// What the tray icon says on hover: a window's title, else [`FALLBACK_TOOLTIP`].
 ///
 /// Any window's, because they all carry the same one — `scripts/branch-instance.sh` titles a
@@ -415,7 +432,7 @@ fn on_menu_event(app: &AppHandle, event: MenuEvent) {
         SHOW_ITEM => show_windows(app),
         QUIT_ITEM => quit(app),
         id if id.starts_with(WINDOW_ITEM_PREFIX) => {
-            reveal_window(app, &id[WINDOW_ITEM_PREFIX.len()..]);
+            toggle_window(app, &id[WINDOW_ITEM_PREFIX.len()..]);
         }
         // Every other menu in the app comes through here too, so an unrecognised id is ordinary.
         _ => {}
@@ -450,23 +467,29 @@ pub fn show_windows(app: &AppHandle) {
             tracing::warn!(error = %error, "could not focus a window");
         }
     }
+    // Every entry's check has just changed.
+    refresh_menu(app);
 }
 
-/// Shows one window and puts the keyboard in it, for a click on its own tray entry.
+/// Hides one window, or shows it and puts the keyboard in it, for a click on its own tray entry.
 ///
 /// The one place anything in the tray acts on a single window. The icon holds the app, so a click
 /// on it toggles them all; the menu is how you reach past that to the window you want.
-fn reveal_window<R: Runtime>(app: &AppHandle<R>, label: &str) {
+fn toggle_window<R: Runtime>(app: &AppHandle<R>, label: &str) {
     let Some(window) = app.get_webview_window(label) else {
         return;
     };
-    if let Err(error) = window.show() {
-        tracing::warn!(error = %error, label = %label, "could not show the window");
-        return;
+    // Unreadable reads as hidden, so the click shows it — the failure that leaves nothing lost.
+    let result = if window.is_visible().unwrap_or(false) {
+        window.hide()
+    } else {
+        window.show().and_then(|()| window.set_focus())
+    };
+    if let Err(error) = result {
+        tracing::warn!(error = %error, label = %label, "could not toggle the window");
     }
-    if let Err(error) = window.set_focus() {
-        tracing::warn!(error = %error, label = %label, "could not focus the window");
-    }
+    // The entry's check has just changed.
+    refresh_menu(app);
 }
 
 /// Hides every window, leaving the process — and the MCP endpoint — running.
@@ -476,6 +499,8 @@ fn hide_windows<R: Runtime>(app: &AppHandle<R>) {
             tracing::warn!(error = %error, "could not hide a window to the tray");
         }
     }
+    // Every entry's check has just changed.
+    refresh_menu(app);
 }
 
 /// Puts the windows away when any of them is showing, and brings them back when none is.

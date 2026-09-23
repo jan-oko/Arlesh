@@ -67,15 +67,6 @@ impl WindowRect {
         i64::from(self.y) + i64::from(self.height)
     }
 
-    /// Whether `point` is inside this rectangle, edges included.
-    fn holds(&self, point: (i32, i32)) -> bool {
-        let (x, y) = point;
-        i64::from(x) >= i64::from(self.x)
-            && i64::from(x) <= self.right()
-            && i64::from(y) >= i64::from(self.y)
-            && i64::from(y) <= self.bottom()
-    }
-
     /// How many pixels of this rectangle and `other` overlap horizontally, and vertically.
     fn overlap(&self, other: &Self) -> (i64, i64) {
         let horizontal =
@@ -140,36 +131,56 @@ impl WindowSession {
     }
 }
 
-/// The number a new window should wear: one more than the highest any window has ever worn here.
+/// The number a new window should wear: the lowest that no open window is wearing.
 ///
-/// **Fixed for the window's life, never renumbered.** A number that shifted when an earlier window
-/// closed would make "Arlesh 2" in the tray menu mean a different window from one minute to the
-/// next, and the whole point of the number is to be the name you reach for. So closing a window
-/// leaves a gap, which is the cheaper of the two costs: a gap is a thing you notice and ignore,
-/// where a renumbering is a thing you act on and get wrong.
+/// **Fixed for the window's life, never shifted.** A number that moved when another window closed
+/// would make "Arlesh 2" in the tray menu mean a different window from one minute to the next, and
+/// the whole point of the number is to be the name you reach for — so closing window 2 of three
+/// leaves window 3 as 3.
 ///
-/// It is the highest *seen* rather than the count, so a session of windows 1 and 3 numbers the
-/// next one 4 and not 3 — reusing a closed window's number is renumbering by another route.
-pub fn next_ordinal(session: &WindowSession) -> u32 {
-    session
-        .windows
-        .iter()
-        .map(|window| window.ordinal)
-        .max()
-        .unwrap_or(0)
-        + 1
+/// A closed window's number **is** handed out again, lowest first, because the numbers are there to
+/// tell the open windows apart and a small set of small numbers does that best. Nothing refers to a
+/// closed window, so there is nothing a reused number could be confused with.
+pub fn next_ordinal(in_use: &[u32]) -> u32 {
+    (1..)
+        .find(|candidate| !in_use.contains(candidate))
+        .unwrap_or(1)
 }
 
-/// What a window is called: the app's name, and its number once there has been more than one.
+/// The numbers a restored session's windows wear, in the order they were saved.
 ///
-/// The first window is just "Arlesh". "Arlesh 1" would promise a second that may never exist, and
-/// the overwhelmingly common case is one window — the number is there to tell several apart, so it
-/// earns its place only once there are several. A window that is *numbered* keeps its number even
-/// when it ends up alone, because the alternative is renumbering.
-pub fn window_title(base: &str, ordinal: u32) -> String {
-    if ordinal <= 1 {
-        return base.to_string();
+/// Each window gets back the number it was saved with, so an arrangement comes back named the way
+/// it was left. A number that is missing or already taken — a session saved before windows were
+/// numbered reads every window as 1 — gets the lowest free one instead, so no two windows ever
+/// share a number.
+pub fn restored_ordinals(saved: &[u32]) -> Vec<u32> {
+    let mut taken: Vec<u32> = Vec::with_capacity(saved.len());
+    for &ordinal in saved {
+        let wanted = ordinal >= 1 && !taken.contains(&ordinal);
+        let assigned = if wanted {
+            ordinal
+        } else {
+            next_free(saved, &taken)
+        };
+        taken.push(assigned);
     }
+    taken
+}
+
+/// The lowest number neither taken yet nor saved by a window still to come, which keeps its own.
+fn next_free(saved: &[u32], taken: &[u32]) -> u32 {
+    let remaining = &saved[taken.len() + 1..];
+    (1..)
+        .find(|candidate| !taken.contains(candidate) && !remaining.contains(candidate))
+        .unwrap_or(1)
+}
+
+/// What a window is called: the app's name and the window's number.
+///
+/// Every window is numbered, the first included — the number is how a window in the tray menu and
+/// the window on screen are matched at a glance, and a window without one would be the odd one out
+/// the moment a second opened.
+pub fn window_title(base: &str, ordinal: u32) -> String {
     format!("{base} {ordinal}")
 }
 
@@ -182,32 +193,6 @@ pub fn titled_by_tab(base_title: &str, tab: &str) -> String {
         return base_title.to_string();
     }
     format!("{base_title} — {tab}")
-}
-
-/// Which window a tab was dropped on, given where the pointer was let go.
-///
-/// This is what makes dragging a tab **into another window** possible at all. An HTML drag cannot
-/// cross a window boundary — the drop is per-webview, and the target window's webview never sees a
-/// dragover from a drag that began in another — so the gesture is resolved by **geometry** instead:
-/// the source window knows where the pointer was released on the desktop, and this knows where
-/// every window is. The move that follows is the same one the menu entry already performs.
-///
-/// `windows` is **most recently focused first**, and the first match wins. That ordering is doing
-/// the work of z-order, which neither Tauri nor tao exposes: the window you last interacted with is
-/// all but always the one on top, so with two windows overlapping under the pointer it is the right
-/// answer nearly every time and a defensible one the rest. The alternative — taking whichever
-/// window the iteration happened to reach first — would be a coin toss wearing a rule.
-///
-/// `None` is "released over no window at all", which the caller reads as the tear-off: dragging a
-/// tab out to the desktop and dragging it into another window are then one gesture rather than two.
-///
-/// Named for what it answers rather than `window_at`, which this module's tests already use for a
-/// helper that builds a rectangle — two meanings of "at" in one file is one too many.
-pub fn window_under(point: (i32, i32), windows: &[(String, WindowRect)]) -> Option<String> {
-    windows
-        .iter()
-        .find(|(_, rect)| rect.holds(point))
-        .map(|(label, _)| label.clone())
 }
 
 /// Where a restored window should be put.

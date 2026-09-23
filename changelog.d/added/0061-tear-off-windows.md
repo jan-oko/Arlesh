@@ -5,10 +5,14 @@
   how a tab comes back. Closing a window's last tab closes that window; closing a window that is
   not the last one simply closes it, and only the final close is governed by *Close to tray*.
 
-  Dragging works both ways: drop a tab on another window and it moves there, drop it on the
-  desktop and it becomes a window of its own. Windows are numbered — `Arlesh 2 — Bugfixes` — and
-  the tray's menu lists them, so you can bring back one window rather than all of them. A window
-  keeps its number for as long as it is open.
+  Dragging works both ways: drop a tab anywhere on another window and it moves there, drop it
+  anywhere that is not an Arlesh window and it becomes a window of its own. Dragging works on
+  Wayland, where apps are not told where the pointer or their windows are.
+
+  Every window is numbered in its title — `Arlesh 1`, `Arlesh 2 — Bugfixes` — and the tray's menu lists them by the same title, each with a check
+  while it is on screen: click one to hide or show that window alone, where clicking the tray icon
+  still hides or shows them all. A window keeps its number while it is open and gets it back when
+  Arlesh reopens; a new window takes the lowest number not in use.
 
   From the keyboard: **Ctrl+N** opens a new window, beside Ctrl+T's new tab, starting at the
   subtree you are looking at. **Ctrl+Alt+N** takes the current tab into a new window — the same

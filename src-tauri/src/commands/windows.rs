@@ -48,7 +48,7 @@ impl Ordinals {
         }
     }
 
-    /// `label`'s number, or 1 for a window nothing recorded — the number that shows no number.
+    /// `label`'s number, or 1 for a window nothing recorded — a runtime with one window.
     fn get(&self, label: &str) -> u32 {
         self.0
             .lock()
@@ -57,49 +57,19 @@ impl Ordinals {
             .unwrap_or(1)
     }
 
-    /// Every number in play, which is what a new window's must come after.
-    fn highest(&self) -> u32 {
+    /// Every number an open window is wearing, which a new window's must not repeat.
+    fn in_use(&self) -> Vec<u32> {
         self.0
             .lock()
-            .ok()
-            .and_then(|map| map.values().copied().max())
-            .unwrap_or(0)
+            .map(|map| map.values().copied().collect())
+            .unwrap_or_default()
     }
-}
 
-/// Which window was focused most recently, most recent first.
-///
-/// Managed state, and the app's stand-in for a **z-order** that neither Tauri nor tao exposes. It
-/// is only ever consulted to decide which of two overlapping windows a tab was dropped into, and
-/// for that the window you last interacted with is all but always the one in front. See
-/// [`crate::windows::window_at`].
-#[derive(Debug, Default)]
-pub struct FocusOrder(Mutex<Vec<String>>);
-
-impl FocusOrder {
-    /// Moves `label` to the front, for a window that has just taken the focus.
-    pub fn focused(&self, label: &str) {
-        if let Ok(mut order) = self.0.lock() {
-            order.retain(|candidate| candidate != label);
-            order.insert(0, label.to_string());
+    /// Frees `label`'s number, for a window that has closed for good.
+    pub fn forget(&self, label: &str) {
+        if let Ok(mut map) = self.0.lock() {
+            map.remove(label);
         }
-    }
-
-    /// The labels, most recently focused first, with everything else after them.
-    fn ranked(&self, labels: Vec<String>) -> Vec<String> {
-        let Ok(order) = self.0.lock() else {
-            return labels;
-        };
-        let mut ranked = labels;
-        // A window that has never been focused sorts last, in the order it came in. `usize::MAX`
-        // is the rank of "never", which is exactly where an unfocused window belongs.
-        ranked.sort_by_key(|label| {
-            order
-                .iter()
-                .position(|candidate| candidate == label)
-                .unwrap_or(usize::MAX)
-        });
-        ranked
     }
 }
 
@@ -164,23 +134,6 @@ impl SessionStore {
 fn rect_of<R: Runtime>(window: &WebviewWindow<R>) -> Option<WindowRect> {
     let position = window.outer_position().ok()?;
     let size = window.inner_size().ok()?;
-    Some(WindowRect {
-        x: position.x,
-        y: position.y,
-        width: size.width,
-        height: size.height,
-    })
-}
-
-/// A window's rectangle **including its decorations**, for deciding what the pointer is over.
-///
-/// Deliberately not [`rect_of`], which pairs the outer position with the *inner* size because that
-/// is the pair a restore needs — `set_size` is given an inner size. Hit-testing wants the shape the
-/// user sees, title bar and border included, or the bottom edge of every window would be dead to a
-/// drop by the height of its frame.
-fn outer_rect_of<R: Runtime>(window: &WebviewWindow<R>) -> Option<WindowRect> {
-    let position = window.outer_position().ok()?;
-    let size = window.outer_size().ok()?;
     Some(WindowRect {
         x: position.x,
         y: position.y,
@@ -329,9 +282,17 @@ pub fn restore<R: Runtime>(app: &AppHandle<R>) -> anyhow::Result<()> {
     let displays = displays(app);
     let mut opened = 0usize;
 
-    for record in &session.windows {
+    // Each window gets back the number it was saved with, unless another already has it.
+    let saved: Vec<u32> = session
+        .windows
+        .iter()
+        .map(|record| record.ordinal)
+        .collect();
+    let ordinals = windows::restored_ordinals(&saved);
+
+    for (record, ordinal) in session.windows.iter().zip(ordinals) {
         let placed = windows::placement(record.rect, &displays);
-        match build(app, &record.label, placed, record.ordinal) {
+        match build(app, &record.label, placed, ordinal) {
             Ok(_) => opened += 1,
             Err(error) => {
                 tracing::error!(error = %error, label = %record.label, "a saved window could not be reopened");
@@ -373,13 +334,13 @@ pub async fn open_board_window<R: Runtime>(
         )));
     }
     let placed = torn_off_placement(&app, &window);
-    // One more than any window has worn, so a closed window's number is never handed out again —
-    // see `windows::next_ordinal`. The live registry is asked rather than the saved session,
-    // because a window opened and closed since the last save is still a number that was used.
-    let ordinal = app
+    // The lowest number no open window wears — see `windows::next_ordinal`. The live registry is
+    // asked rather than the saved session, which may be a gesture behind.
+    let in_use = app
         .try_state::<Ordinals>()
-        .map(|ordinals| ordinals.highest() + 1)
-        .unwrap_or(1);
+        .map(|ordinals| ordinals.in_use())
+        .unwrap_or_default();
+    let ordinal = windows::next_ordinal(&in_use);
     build(&app, &label, placed, ordinal).map_err(|error| WireError::internal(error.to_string()))?;
     snapshot(&app);
     // A window the tray's menu does not list is a window the menu cannot reach.
@@ -418,58 +379,40 @@ fn base_title<R: Runtime>(app: &AppHandle<R>) -> String {
         .unwrap_or_else(|| "Arlesh".to_string())
 }
 
-/// Which window the pointer was over when a dragged tab was let go.
-///
-/// The one piece of machinery a cross-window tab drag needs that did not already exist. An HTML
-/// drag cannot cross a window boundary — see [`crate::windows::window_under`] — so the source window
-/// asks this, and then hands the tab over exactly as the menu entry does.
-///
-/// `None` covers two different things, and the frontend tells them apart by what it gets back:
-/// released over no window at all (the tear-off), and a cursor position the platform would not
-/// give us. The second returns an error rather than `None`, so a drag whose position is unknown
-/// does nothing instead of conjuring a window the user did not ask for.
-#[tauri::command]
-pub async fn window_at_cursor<R: Runtime>(app: AppHandle<R>) -> Result<Option<String>, WireError> {
-    let cursor = app
-        .cursor_position()
-        .map_err(|error| WireError::internal(error.to_string()))?;
-    // Physical throughout, as everything in this module is: the cursor, the window rectangles and
-    // the saved session all speak the same coordinates, so nothing has to be converted.
-    let point = (cursor.x as i32, cursor.y as i32);
-
-    let session = match app.try_state::<SessionStore>() {
-        Some(store) => store.session(),
-        None => WindowSession::bootstrap(),
-    };
-    let labels = match app.try_state::<FocusOrder>() {
-        Some(order) => order.ranked(open_labels(&app, &session)),
-        None => open_labels(&app, &session),
-    };
-    let rects: Vec<(String, WindowRect)> = labels
-        .into_iter()
-        .filter_map(|label| {
-            let window = app.get_webview_window(&label)?;
-            Some((label, outer_rect_of(&window)?))
-        })
-        .collect();
-
-    Ok(windows::window_under(point, &rects))
+/// One open window, as the tray menu lists it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ListedWindow {
+    /// The window's label, which is how the menu entry reaches it.
+    pub label: String,
+    /// Its title, which carries its number and its active tab.
+    pub title: String,
+    /// Whether it is on screen, which the entry shows as a check.
+    pub visible: bool,
 }
 
-/// Every open window, in the order they were opened, with the number and title the tray lists.
-pub fn open_windows<R: Runtime>(app: &AppHandle<R>) -> Vec<(String, String)> {
+/// Every open window, in the order they were opened, as the tray menu lists them.
+pub fn open_windows<R: Runtime>(app: &AppHandle<R>) -> Vec<ListedWindow> {
     let session = match app.try_state::<SessionStore>() {
         Some(store) => store.session(),
         None => WindowSession::bootstrap(),
     };
-    open_labels(app, &session)
+    let mut labels = open_labels(app, &session);
+    // By number, since the number is what an entry is matched to its window by.
+    labels.sort_by_key(|label| ordinal_of(app, label));
+    labels
         .into_iter()
         .filter_map(|label| {
             let window = app.get_webview_window(&label)?;
             // The window's own title, which already carries its number and its active tab. Asking
             // the window rather than recomposing it keeps one answer to what a window is called.
             let title = window.title().ok().filter(|title| !title.is_empty())?;
-            Some((label, title))
+            // Unreadable reads as hidden: the entry then offers to show it, which is harmless.
+            let visible = window.is_visible().unwrap_or(false);
+            Some(ListedWindow {
+                label,
+                title,
+                visible,
+            })
         })
         .collect()
 }
