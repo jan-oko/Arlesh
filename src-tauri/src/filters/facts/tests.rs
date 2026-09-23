@@ -222,6 +222,21 @@ fn a_lifecycle_supplies_the_two_derived_facts_a_filter_reads() {
 }
 
 #[test]
+fn a_lifecycle_supplies_the_task_plan_position_too() {
+    let mut load = board();
+    let mut planned = lifecycle("task", 22, Timing::Active, Archival::Live);
+    planned.plan_timing = Some(Timing::Pending);
+    load.lifecycles.push(planned);
+    load.lifecycles
+        .push(lifecycle("task", 21, Timing::Active, Archival::Live));
+    let forest = forest(&load);
+    let task_22 = find(&forest, "task-22").expect("the task is on the board");
+    assert_eq!(task_22.facts.plan_timing, Some(Timing::Pending));
+    let task_21 = find(&forest, "task-21").expect("the task is on the board");
+    assert_eq!(task_21.facts.plan_timing, None);
+}
+
+#[test]
 fn narrowing_cuts_the_derived_sections_to_match_the_nodes_that_survived() {
     let mut load = board();
     load.block_reasons.push(BlockReason {
