@@ -42,7 +42,7 @@ export default function NodeIcon({ kind, status, verdict, isArchived = false, is
     return <CommitmentIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} state={commitmentGlyphState(verdict, isArchived)} />;
   }
   if (kind === "expectation") {
-    return <ExpectationIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} status={status} isArchived={isArchived} />;
+    return <ExpectationIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} status={status} />;
   }
   if (kind === "flow") {
     return isHabit

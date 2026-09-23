@@ -17,12 +17,10 @@
   "fieldCheckEvery": "Check every",
   "checkEveryNone": "Never",
   "fieldCheckStarting": "Starting",
-  "templateHeading": "Asynchronous: “{{title}}”",
-  "templateLead": "Finishing this task starts a wait. This is what that wait will be — nothing is created until the task is done.",
   "templateTitle": "Wait title",
   "templateTimeScope": "Time Scope",
   "templateTimeScopeNone": "None",
-  "templateRemove": "Not asynchronous",
   "templateDefaultTitle": "Waiting on {{title}}",
-  "spawnedNotStored": "This wait was spawned by its task — edit the task's template instead."
+  "spawnedNotStored": "This wait was spawned by its task — edit the task's template instead.",
+  "templateSection": "Expectation"
 }

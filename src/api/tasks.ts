@@ -61,10 +61,10 @@ export interface Task {
   // This task's own flag: true/false when it says so itself, null when it inherits the nearest
   // flagged ancestor's. Independent of delegate_to — a task can be both.
   agentic: boolean | null;
-  // Whether doing this task starts a wait — derived: true exactly when it has an async_template.
+  // Whether doing this task starts a wait. Its own flag; it does not inherit.
   asynchronous: boolean;
-  // The Expectation template that makes it Asynchronous; absent when it is not. Completing the task
-  // spawns a virtual wait from it.
+  // Its optional Expectation template, only while asynchronous. While the task is done, a virtual
+  // wait is drawn from it; without one, nothing is spawned.
   async_template?: AsyncTemplate;
   time_scope: TimeScope | null;
   // Present iff time_scope is (inherited with the window otherwise).
@@ -101,10 +101,10 @@ export interface UpdateTaskRequest {
   delegate_to?: Delegate | null;
   // Absent = leave unchanged; "inherit" puts the task back to reading its ancestors.
   agentic?: TaskAgentic;
-  // The bare W toggle's shorthand: true gives the task a default template (keeping one it has),
-  // false removes it. Ignored when async_template is present.
+  // Absent = leave unchanged. Turning it off removes the template too.
   asynchronous?: boolean;
-  // Absent = leave unchanged, null = not asynchronous any more, value = this template.
+  // Absent = leave unchanged, null = no template, value = this template. Dropped unless the task
+  // ends up asynchronous.
   async_template?: AsyncTemplate | null;
   // Absent = leave unchanged, null = clear, value = set.
   time_scope?: TimeScope | null;

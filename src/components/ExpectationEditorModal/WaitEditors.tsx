@@ -2,12 +2,10 @@ import { useTranslation } from "react-i18next";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { Domain } from "@/api/domains";
 import type { useWaitEditor } from "@/hooks/use-wait-editor";
-import { defaultTemplate } from "@/hooks/use-wait-editor";
 import ExpectationEditorModal from "./ExpectationEditorModal";
-import AsyncTemplateEditorModal from "@/components/AsyncTemplateEditor/AsyncTemplateEditorModal";
 
 interface Props {
-  /** The view's wait editors — `useWaitEditor`, called by the view so its keys can open them. */
+  /** The view's wait editor — `useWaitEditor`, called by the view so its key can open it. */
   waitEditor: ReturnType<typeof useWaitEditor>;
   /** The tags to pick from. */
   allTags?: Domain[];
@@ -21,27 +19,12 @@ const BLANK_EXPECTATION: MindmapNode = {
 };
 
 /**
- * The editors `Shift+W` (a Task's Expectation template) and `Shift+E` (a new stored Expectation)
- * open. Nothing is drawn until one of those happens; Cancel declines, and nothing is written.
+ * The editor `Shift+E` opens in the List View for a new stored Expectation. Nothing is drawn until
+ * then; Cancel declines, and nothing is written.
  */
 export default function WaitEditors({ waitEditor, allTags, domainNames }: Props) {
   const { t } = useTranslation(["expectation", "undo"]);
-  const { create, template, dismiss, saveCreate, saveTemplate } = waitEditor;
-  if (template !== null) {
-    return (
-      <AsyncTemplateEditorModal
-        key={template.taskId}
-        taskTitle={template.taskTitle}
-        template={template.template
-          ?? defaultTemplate(template.taskTitle, (title) => t("expectation:templateDefaultTitle", { title }))}
-        hasTemplate={template.template !== null}
-        allTags={allTags}
-        domainNames={domainNames}
-        onSave={(next) => saveTemplate(t("undo:gestures.editTemplate"), next)}
-        onClose={dismiss}
-      />
-    );
-  }
+  const { create, dismiss, saveCreate } = waitEditor;
   if (create === null) return null;
   return (
     <ExpectationEditorModal

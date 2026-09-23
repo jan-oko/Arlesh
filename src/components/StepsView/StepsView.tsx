@@ -42,8 +42,7 @@ import DeleteConfirmModal from "@/components/DeleteConfirmModal/DeleteConfirmMod
 import NodeCreateModals from "@/components/NodeCreateModals/NodeCreateModals";
 import NodeEditorModals from "@/components/NodeEditorModals/NodeEditorModals";
 import { editorOwnerOf } from "@/utils/editor-owner";
-import WaitEditors from "@/components/ExpectationEditorModal/WaitEditors";
-import { useWaitEditor } from "@/hooks/use-wait-editor";
+import { useOpenAsyncTemplate } from "@/hooks/use-open-async-template";
 import NodeSearchModal from "@/components/NodeSearchModal/NodeSearchModal";
 import UnfinishedChildrenModal from "@/components/UnfinishedChildrenModal/UnfinishedChildrenModal";
 import StepCard from "./StepCard";
@@ -189,7 +188,7 @@ export default function StepsView() {
   const { toggleAsynchronous } = useTaskAsynchronous({
     findNode: (id) => findNode(tree, id), reload, showToast,
   });
-  const waitEditor = useWaitEditor(tree, reload);
+  const openAsyncTemplate = useOpenAsyncTemplate(tree, setEditorModal);
   const { completeCheck, toggleRelease } = useExpectationActions({
     findNode: (id) => findNode(tree, id), reload, showToast,
   });
@@ -384,7 +383,7 @@ export default function StepsView() {
     onToggleAsynchronous: toggleAsynchronous,
     onCompleteCheck: completeCheck,
     onToggleRelease: toggleRelease,
-    onBindWait: waitEditor.bind,
+    onBindWait: openAsyncTemplate,
     onOpenEditor,
     onCreateChild: onCreateChildHere,
     onCreateTypedChild: onCreateTypedChildHere,
@@ -523,7 +522,6 @@ export default function StepsView() {
       )}
 
       <NodeEditorModals tree={tree} editor={nodeEditor} />
-      <WaitEditors waitEditor={waitEditor} allTags={nodeEditor.allTags} domainNames={nodeEditor.domainNames} />
       <NodeCreateModals
         tree={tree} editors={createEditors} allTags={nodeEditor.allTags} domainNames={nodeEditor.domainNames}
       />

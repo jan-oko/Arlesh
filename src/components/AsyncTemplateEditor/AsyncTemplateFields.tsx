@@ -9,6 +9,8 @@ import styles from "@/components/EditorModal/EditorModal.module.css";
 interface Props {
   value: AsyncTemplate;
   onChange: (value: AsyncTemplate) => void;
+  /** What an empty title will be saved as. */
+  titlePlaceholder?: string | undefined;
   /** The tags to pick from. Omitted, the template's tags are kept as they are and not drawn. */
   allTags?: Domain[] | undefined;
   domainNames?: Map<number, string> | undefined;
@@ -27,9 +29,9 @@ function withDuration(template: AsyncTemplate, field: "time_scope" | "check_ever
  * The fields of a Task's **Expectation template** — what the wait its completion spawns will be:
  * a title, a Time Scope **rule** (N days, weeks… counted from the day the wait begins), how often
  * to check on it, and its tags. No status: a template is never pending or released, only the wait
- * drawn from it is. Shared by the Task editor and the `Shift+W` editor.
+ * drawn from it is. The Task editor's Expectation section.
  */
-export default function AsyncTemplateFields({ value, onChange, allTags, domainNames }: Props) {
+export default function AsyncTemplateFields({ value, onChange, titlePlaceholder, allTags, domainNames }: Props) {
   const { t } = useTranslation(["expectation", "editor"]);
   return (
     <>
@@ -39,6 +41,7 @@ export default function AsyncTemplateFields({ value, onChange, allTags, domainNa
           className={styles.input}
           type="text"
           value={value.title}
+          {...(titlePlaceholder !== undefined ? { placeholder: titlePlaceholder } : {})}
           onChange={(e) => onChange({ ...value, title: e.target.value })}
         />
       </label>

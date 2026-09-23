@@ -57,7 +57,7 @@ export default function ExpectationRow({
         <svg width={ICON_R * 2} height={ICON_R * 2} viewBox={`0 0 ${ICON_R * 2} ${ICON_R * 2}`} aria-hidden="true">
           <ExpectationIcon
             cx={ICON_R} cy={ICON_R} r={ICON_R * 0.9} color="var(--text-primary)" opacity={1}
-            status={node.status} isArchived={node.archived === true}
+            status={node.status}
           />
         </svg>
       </button>

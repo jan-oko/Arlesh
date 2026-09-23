@@ -46,8 +46,11 @@ export interface TaskSaveData {
   /** The task's own Agentic state. `"inherit"` is a real instruction — it clears a stored flag
    * and puts the task back to reading its ancestors — not an absent value. */
   agentic: TaskAgentic;
-  /** The task's **Expectation template** — the wait finishing it spawns — or `null` when it is not
-   * asynchronous. It does not inherit, so there is no third "unset" state for it to be in. */
+  /** Whether doing this task starts a wait. A plain boolean — the flag does not inherit, so
+   * there is no third "unset" state for it to be in. */
+  asynchronous: boolean;
+  /** The optional **Expectation template** — the wait finishing the task spawns. `null` when the
+   * section is empty, and always `null` when the task is not asynchronous. */
   asyncTemplate: AsyncTemplate | null;
   /** The task's new delegate, present only when the form changed it — `null` takes it back. Absent
    * says nothing about delegation at all, so a save that never touched it cannot overwrite it. */
@@ -77,10 +80,21 @@ interface Props {
    * node a create path opens, which has no link to drop — the Issue row stays wholly read-only. */
   onClearBeadsId?: (() => Promise<void>) | undefined;
   onCheckScopeClamp?: (nodeType: "task" | "goal", dbId: number, timeScope: TimeScope) => Promise<boolean>;
+  /** `Shift+W`: open with Asynchronous switched on and the Expectation section's title focused. */
+  openAtTemplate?: boolean;
   onClose: () => void;
 }
 
-export default function TaskEditorModal({ node, allTags, domainNames, availableForDep, onSave, onClearBeadsId, onCheckScopeClamp, onClose }: Props) {
+/** The section as the form holds it: every field, blank ones included. */
+const EMPTY_TEMPLATE: AsyncTemplate = { title: "", tag_ids: [] };
+
+/** Whether the Expectation section says anything at all — an empty one is no template. */
+function isEmptyTemplate(template: AsyncTemplate): boolean {
+  return template.title.trim() === "" && template.tag_ids.length === 0
+    && template.time_scope === undefined && template.check_every === undefined;
+}
+
+export default function TaskEditorModal({ node, allTags, domainNames, availableForDep, onSave, onClearBeadsId, onCheckScopeClamp, openAtTemplate = false, onClose }: Props) {
   useInputCapture();
   const { t } = useTranslation(["editor", "status", "nodeKinds", "undo", "expectation"]);
   const [title, setTitle] = useState(node.title);
@@ -92,7 +106,9 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   const [plan, setPlan] = useState<TimeScope | null>(node.plan ?? null);
   const [isBacklogged, setIsBacklogged] = useState(node.backlogged === true);
   const [agentic, setAgentic] = useState<TaskAgentic>(storedAgenticState(node.agentic));
-  const [asyncTemplate, setAsyncTemplate] = useState<AsyncTemplate | null>(node.asyncTemplate ?? null);
+  const [isAsynchronous, setIsAsynchronous] = useState(node.asynchronous === true || openAtTemplate);
+  const [asyncTemplate, setAsyncTemplate] = useState<AsyncTemplate>(node.asyncTemplate ?? EMPTY_TEMPLATE);
+  const templateRef = useRef<HTMLDivElement>(null);
   const [delegate, setDelegate] = useState<Delegate | null>(node.delegate ?? null);
   const [isPrivate, setIsPrivate] = useState(node.isPrivate ?? false);
   const [initialDeps, setInitialDeps] = useState<Dependency[]>([]);
@@ -104,9 +120,18 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   const titleRef = useRef<HTMLInputElement>(null);
   const dbId = rowIdOf(node);
 
+  // Where the editor opens: on the title, or — from `Shift+W` — on the Expectation section.
   useEffect(() => {
-    titleRef.current?.focus();
-    titleRef.current?.select();
+    if (openAtTemplate) {
+      templateRef.current?.scrollIntoView?.({ block: "nearest" });
+      templateRef.current?.querySelector("input")?.focus();
+    } else {
+      titleRef.current?.focus();
+      titleRef.current?.select();
+    }
+  }, [openAtTemplate]);
+
+  useEffect(() => {
     void listTaskDependencies(dbId).then((deps) => { setInitialDeps(deps); setCurrentDeps(deps); });
   }, [dbId]);
 
@@ -150,7 +175,12 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
           plan,
           archival: isBacklogged ? TASK_ARCHIVAL.BACKLOG : TASK_ARCHIVAL.LIVE,
           agentic,
-          asyncTemplate: asyncTemplate === null ? null : { ...asyncTemplate, title: asyncTemplate.title.trim() || t("expectation:templateDefaultTitle", { title: title.trim() }) },
+          asynchronous: isAsynchronous,
+          // An empty section is no template; one with anything in it but a title takes the default.
+          asyncTemplate: !isAsynchronous || isEmptyTemplate(asyncTemplate) ? null : {
+            ...asyncTemplate,
+            title: asyncTemplate.title.trim() || t("expectation:templateDefaultTitle", { title: title.trim() }),
+          },
           ...(delegate !== (node.delegate ?? null) ? { delegate } : {}),
           isPrivate,
         });
@@ -263,19 +293,27 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
       {/* Beside Backlog rather than down in Advanced, where the Agentic control sits: this one is
           a statement about the order the work wants to be done in, which is the same kind of
           question as whether it is set aside at all — and it is what the List View's "Asynchronous
-          first" setting reads. On, it opens the template of the wait finishing the task spawns. */}
+          first" setting reads. While it is on, an Expectation section follows it: the template of the
+          wait finishing the task spawns. Left empty, there is no template and nothing is spawned. */}
       <div className={styles.label}>
         {t("fieldAsynchronous")}
         <Switch
-          checked={asyncTemplate !== null}
-          onChange={(on) => setAsyncTemplate(on
-            ? { title: t("expectation:templateDefaultTitle", { title: title.trim() }), tag_ids: [] }
-            : null)}
-          label={asyncTemplate !== null ? t("asynchronousOn") : t("asynchronousOff")}
+          checked={isAsynchronous}
+          onChange={setIsAsynchronous}
+          label={isAsynchronous ? t("asynchronousOn") : t("asynchronousOff")}
         />
       </div>
-      {asyncTemplate !== null && (
-        <AsyncTemplateFields value={asyncTemplate} onChange={setAsyncTemplate} allTags={allTags} domainNames={domainNames} />
+      {isAsynchronous && (
+        <div ref={templateRef} role="group" aria-label={t("expectation:templateSection")}>
+          <span className={styles.label}>{t("expectation:templateSection")}</span>
+          <AsyncTemplateFields
+            value={asyncTemplate}
+            onChange={setAsyncTemplate}
+            titlePlaceholder={t("expectation:templateDefaultTitle", { title: title.trim() })}
+            allTags={allTags}
+            domainNames={domainNames}
+          />
+        </div>
       )}
       <BlockReasonsField reasons={blockReasons} onChange={setBlockReasons} virtualBlockers={virtualBlockers} />
       <TagPicker allTags={allTags} domainNames={domainNames} selectedIds={tagIds} onChange={setTagIds} />

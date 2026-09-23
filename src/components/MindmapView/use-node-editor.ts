@@ -48,6 +48,8 @@ import { TASK_STATUS } from "@/utils/status-mapping";
 export interface EditorModalState {
   nodeId: string;
   node: MindmapNode;
+  /** Opens a Task's editor at its Expectation section, Asynchronous switched on — `Shift+W`. */
+  focus?: "asyncTemplate";
 }
 
 /** A pending clamp-or-cancel prompt: the descendants a narrowed scope would orphan. */
@@ -203,6 +205,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
         plan: data.plan,
         archival: data.archival,
         agentic: data.agentic,
+        asynchronous: data.asynchronous,
         async_template: data.asyncTemplate,
         is_private: data.isPrivate,
         ...(data.delegate !== undefined ? { delegate_to: data.delegate } : {}),

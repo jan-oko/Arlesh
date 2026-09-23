@@ -229,8 +229,7 @@ export interface MindmapNode {
    * **own** stored delegate — absent or `null` when it has none of its own. */
   delegate?: Delegate | null;
   /** Whether doing this Task starts a **wait** rather than finishing something (Tasks only) —
-   * derived: true exactly when it has an `asyncTemplate`.
-   * send the email, order the part, kick off the build.
+   * send the email, order the part, kick off the build. Its own flag; `asyncTemplate` is optional.
    *
    * Deliberately **not** inherited, unlike `agentic`: "starts a wait" is a property of one
    * concrete action, and a subtask of an asynchronous Task is usually the work you do *after* the
@@ -255,13 +254,13 @@ export interface MindmapNode {
   /** Present on a wait's virtual **check task** — a `task`-kind node with no row. Completing it
    * records the check on the wait named here and stores nothing else. */
   expectationCheck?: WaitRef;
-  /** Present on the virtual wait an **Asynchronous** Task's completion spawned: the Task. Its
+  /** Present on the virtual wait an **Asynchronous** Task spawned while it is done: the Task. Its
    * title and tags are the Task's template; its state is the overlay keyed by the Task. */
   spawnedBy?: { taskId: number };
-  /** A Task's **Expectation template** (Tasks only): `asynchronous` is true exactly when it is set. */
+  /** A Task's optional **Expectation template** (Tasks only), kept only while `asynchronous`: while
+   * the Task is done, a virtual wait is drawn from it. */
   asyncTemplate?: AsyncTemplate | null;
-  /** The stored Expectations this Task depends on, by row id (Tasks only) — what "has no
-   * Expectation yet" is asked of when an asynchronous Task is finished. */
+  /** The stored Expectations this Task depends on, by row id (Tasks only). */
   expectationDependencyIds?: number[];
   /** Present on the virtual Expectation a **delegated** Task waits on: the Task it belongs to. It
    * has no row, and it is released only by the Task being done — never by hand. */

@@ -79,7 +79,8 @@ export interface ExpectationCheck {
 /** The overlay of the wait an Asynchronous task's completion spawned, as the views draw it. */
 export interface SpawnedWaitView {
   task_id: number;
-  spawned_at: string;
+  /** When the task was completed; absent when that was never recorded. */
+  spawned_at?: string;
   status: ExpectationStatus;
   archival: ExpectationArchival;
   last_check_at?: string;

@@ -72,7 +72,8 @@ export default function NodeEditorModals({ tree, editor }: Props) {
         <TaskEditorModal
           node={node} allTags={allTags} domainNames={domainNames} availableForDep={availableForDep}
           onSave={onTaskSave} onClearBeadsId={() => onClearBeadsId(BEADS_NODE_TYPE.TASK)}
-          onCheckScopeClamp={checkScopeClamp} onClose={close}
+          onCheckScopeClamp={checkScopeClamp} openAtTemplate={editorModal.focus === "asyncTemplate"}
+          onClose={close}
         />
       );
     case "goal":

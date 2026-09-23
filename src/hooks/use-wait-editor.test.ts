@@ -2,9 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { useWaitEditor } from "@/hooks/use-wait-editor";
-import { useMindmapStore } from "@/stores/use-mindmap-store";
 
-vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 const createExpectation = vi.fn((_request: unknown) => Promise.resolve({ id: 42 }));
 vi.mock("@/api/expectations", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/expectations")>()),
@@ -34,44 +32,6 @@ const SAVE = {
   title: "Reply", status: "pending" as const, checkEvery: null, checkStartingDate: null, timeScope: null,
   tagIds: [], archived: false, isPrivate: false,
 };
-const TEMPLATE = { title: "Waiting on the reviewer", tag_ids: [], check_every: { n: 2, kind: "day" } };
-
-describe("useWaitEditor — Shift+W", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    useMindmapStore.getState().clearToast();
-  });
-
-  it("opens a Task's template, and saving writes the template and creates no Expectation", async () => {
-    const tree = board(node("task-5", "task", { rowId: 5, title: "Send it" }));
-    const reload = vi.fn(() => Promise.resolve());
-    const { result } = renderHook(() => useWaitEditor(tree, reload));
-    act(() => result.current.bind("task-5"));
-    expect(result.current.template).toEqual({ taskId: 5, taskTitle: "Send it", template: null });
-    await act(() => result.current.saveTemplate("gesture", TEMPLATE));
-    expect(updateTask).toHaveBeenCalledWith(5, { async_template: TEMPLATE });
-    expect(createExpectation).not.toHaveBeenCalled();
-    expect(result.current.template).toBeNull();
-    expect(reload).toHaveBeenCalled();
-  });
-
-  it("opens the template a Task already has, and removing it makes the Task not asynchronous", async () => {
-    const tree = board(node("task-5", "task", { rowId: 5, asynchronous: true, asyncTemplate: TEMPLATE }));
-    const { result } = renderHook(() => useWaitEditor(tree, vi.fn(() => Promise.resolve())));
-    act(() => result.current.bind("task-5"));
-    expect(result.current.template?.template).toEqual(TEMPLATE);
-    await act(() => result.current.saveTemplate("gesture", null));
-    expect(updateTask).toHaveBeenCalledWith(5, { async_template: null });
-  });
-
-  it("refuses anything but a real Task, out loud", () => {
-    const tree = board(node("goal-2", "goal", { rowId: 2 }));
-    const { result } = renderHook(() => useWaitEditor(tree, vi.fn(() => Promise.resolve())));
-    act(() => result.current.bind("goal-2"));
-    expect(result.current.template).toBeNull();
-    expect(useMindmapStore.getState().pendingToast?.message).toBe("bindNotATask");
-  });
-});
 
 describe("useWaitEditor — Shift+E", () => {
   beforeEach(() => vi.clearAllMocks());

@@ -27,6 +27,7 @@ import CommitmentEditorModal from "@/components/CommitmentEditorModal/Commitment
 import ExpectationEditorModal from "@/components/ExpectationEditorModal/ExpectationEditorModal";
 import WaitEditors from "@/components/ExpectationEditorModal/WaitEditors";
 import { useWaitEditor } from "@/hooks/use-wait-editor";
+import { useOpenAsyncTemplate } from "@/hooks/use-open-async-template";
 import NodeSearchModal from "@/components/NodeSearchModal/NodeSearchModal";
 import TaskRow from "./TaskRow";
 import CommitmentRow from "./CommitmentRow";
@@ -105,6 +106,7 @@ export default function ListView() {
     showToast,
   });
   const waitEditor = useWaitEditor(tree, reload);
+  const openAsyncTemplate = useOpenAsyncTemplate(tree, setEditorModal);
   const { markBroken, cycleVerdict } = useCommitmentVerdict({
     findNode: (id) => findNode(tree, id),
     reload,
@@ -277,7 +279,7 @@ export default function ListView() {
     onToggleRelease: toggleRelease,
     onCompleteCheck: completeCheck,
     onSetExpectationsPreset: () => setListPreset("expectations"),
-    onBindWait: waitEditor.bind,
+    onBindWait: openAsyncTemplate,
     onCreateExpectation: (id) => {
       const node = findNode(tree, id);
       if (node === undefined) return;
@@ -453,6 +455,7 @@ export default function ListView() {
           onSave={onTaskSave}
           onClearBeadsId={() => onClearBeadsId(BEADS_NODE_TYPE.TASK)}
           onCheckScopeClamp={checkScopeClamp}
+          openAtTemplate={editorModal.focus === "asyncTemplate"}
           onClose={() => setEditorModal(null)}
         />
       )}

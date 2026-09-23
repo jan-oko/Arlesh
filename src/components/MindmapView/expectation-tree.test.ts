@@ -112,27 +112,27 @@ describe("buildTree — expectations", () => {
     });
   });
 
-  it("draws no spawned wait once the task's template is gone", () => {
-    const root = build([task({ status: "done" })], [], [], [], [], [spawn()]);
-    expect(findNode(root, spawnedWaitNodeId(5))).toBeUndefined();
+  it("draws no spawned wait for a task without a template, asynchronous or not", () => {
+    const bare = build([task({ status: "done" })], [], [], [], [], [spawn()]);
+    expect(findNode(bare, spawnedWaitNodeId(5))).toBeUndefined();
+    const flagOnly = build([task({ status: "done", asynchronous: true })], [], [], [], [], [spawn()]);
+    expect(findNode(flagOnly, spawnedWaitNodeId(5))).toBeUndefined();
   });
 
-  it("keeps a dependent of a done asynchronous task blocked until its spawned wait is released", () => {
+  it("lets a dependent of a done asynchronous task go, whatever its spawned wait is doing", () => {
     const edge: TaskDependencyEdge = { task_id: 8, dependency_type: "task", dependency_id: 5 };
     const tasks = (): Task[] => [
       task({ status: "done", asynchronous: true, async_template: TEMPLATE }),
       task({ id: 8, title: "Merge it" }),
     ];
     const pending = findNode(build(tasks(), [], [edge], [], [], [spawn()]), "task-8");
-    expect(pending?.virtualBlockers).toEqual(["Blocked by expectation spawned by task 5 (Waiting on Send the draft)"]);
-    const released = findNode(build(tasks(), [], [edge], [], [], [spawn({ status: "released" })]), "task-8");
-    expect(released?.virtualBlockers).toEqual([]);
+    expect(pending?.virtualBlockers).toEqual([]);
   });
 
-  it("marks a task asynchronous exactly when it has a template", () => {
-    const root = build([task({ asynchronous: true, async_template: TEMPLATE }), task({ id: 8 })], []);
+  it("reads asynchronous from the task's own flag, with or without a template", () => {
+    const root = build([task({ asynchronous: true, async_template: TEMPLATE }), task({ id: 8, asynchronous: true })], []);
     expect(findNode(root, "task-5")).toMatchObject({ asynchronous: true, asyncTemplate: TEMPLATE });
-    expect(findNode(root, "task-8")?.asynchronous).not.toBe(true);
+    expect(findNode(root, "task-8")).toMatchObject({ asynchronous: true });
   });
 
   it("hangs a note under a wait", () => {

@@ -829,7 +829,7 @@ export function buildTree(
       backlogged: task.archival === TASK_ARCHIVAL.BACKLOG,
       agentic: task.agentic,
       delegate: task.delegate_to,
-      asynchronous: task.async_template !== undefined,
+      asynchronous: task.asynchronous,
       asyncTemplate: task.async_template ?? null,
       position: task.position,
       isPrivate: task.is_private,
@@ -887,16 +887,14 @@ export function buildTree(
     nodeMap.set(id, node);
   }
 
-  // The wait an Asynchronous Task's completion spawned: virtual, drawn from the Task's template and
-  // the overlay keyed by the Task, and hung beneath the Task. A template removed since leaves
-  // nothing to draw it from.
+  // The wait an Asynchronous Task spawned while it is done: virtual, drawn from the Task's template
+  // and its overlay, and hung beneath the Task. The backend sends one only while it exists; a
+  // Task here without a template has nothing to draw it from.
   const templateOf = new Map(tasks.flatMap((task) =>
-    task.async_template === undefined ? [] : [[task.id, task.async_template] as const]));
-  const spawnedPending = new Set<number>();
+    task.asynchronous && task.async_template !== undefined ? [[task.id, task.async_template] as const] : []));
   for (const spawned of spawnedWaits) {
     const template = templateOf.get(spawned.task_id);
     if (template === undefined) continue;
-    if (spawned.status === EXPECTATION_STATUS.PENDING) spawnedPending.add(spawned.task_id);
     const wait: MindmapNode = {
       id: spawnedWaitNodeId(spawned.task_id),
       kind: "expectation",
@@ -959,11 +957,6 @@ export function buildTree(
       const target = taskById.get(dep.dependency_id);
       if (target !== undefined && target.status !== "done") {
         node.virtualBlockers?.push(`Blocked by task ${dep.dependency_id} (${target.title})`);
-      } else if (target !== undefined && spawnedPending.has(dep.dependency_id)) {
-        // A done Asynchronous task is not finished with until the wait it spawned is released.
-        node.virtualBlockers?.push(
-          `Blocked by expectation spawned by task ${dep.dependency_id} (${target.async_template?.title ?? ""})`,
-        );
       }
     } else {
       const target = goalById.get(dep.dependency_id);
