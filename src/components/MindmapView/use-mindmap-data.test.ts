@@ -90,6 +90,31 @@ describe("buildTree", () => {
     expect(root.children).toHaveLength(0);
   });
 
+  // Node ids are frozen as spelled (Arlesh-z7n): tab state persisted before rowId existed —
+  // selection, collapse, subtree root — names nodes by these strings and must still find them.
+  it("keeps every id spelled as before, and carries the row it draws as rowId", () => {
+    const aspect = mkDomain({ id: 1, subtype: "aspect" });
+    const goal = mkGoal({ id: 4, parent_type: "domain", parent_id: 1 });
+    const task = mkTask({ id: 9, parent_type: "goal", parent_id: 4 });
+    const info = mkInfo({ id: 2, parent_type: "task", parent_id: 9 });
+    const flow = mkFlow({ id: 3, parent_type: "domain", parent_id: 1 });
+    const flowGoal = { id: 6, flow_id: 3, title: "M", parent_type: "flow", parent_id: 3, position: 0, is_private: false };
+    const flowTask = { id: 7, flow_id: 3, title: "S", parent_type: "flow_goal", parent_id: 6, position: 0, is_private: false };
+    const root = buildTree([aspect], [goal], [task], [info], [], [flow], [flowGoal], [flowTask]);
+
+    const drawn = new Map<string, number | undefined>();
+    const visit = (node: MindmapNode): void => {
+      drawn.set(node.id, node.rowId);
+      node.children.forEach(visit);
+    };
+    visit(root);
+    expect(Object.fromEntries(drawn)).toEqual({
+      root: undefined,
+      "domain-1": 1, "goal-4": 4, "task-9": 9, "info-2": 2,
+      "flow-3": 3, "flowgoal-6": 6, "flowtask-7": 7,
+    });
+  });
+
   it("carries a task's stored Backlog state onto its node", () => {
     const aspect = mkDomain({ id: 1, subtype: "aspect" });
     const aside = mkTask({ id: 1, parent_type: "domain", parent_id: 1, archival: "backlog" });
@@ -1420,7 +1445,9 @@ describe("injectHabitInstances", () => {
     expect(virtuals[2]?.timing).toBe("lapsed"); // lapsed + uncompleted iterations are dimmed
     expect(virtuals[2]?.resolution).toBe("missed");
     expect(virtuals[2]?.archived).toBe(true);
-    expect(virtuals[2]?.id).toBe("habit-3-2-virtual"); // non-numeric tail keeps it out of mutations
+    expect(virtuals[2]?.id).toBe("habit-3-2-virtual");
+    // No row behind any of them, so `rowIdOf` refuses them — nothing DB-backed can be aimed at one.
+    expect(virtuals.map((n) => n.rowId)).toEqual([undefined, undefined, undefined]);
   });
 
   it("tells each iteration node whether its window has passed, and how it ended", () => {
@@ -1631,7 +1658,8 @@ describe("injectHabitInstances", () => {
     expect(items[0]?.title).toBe("Breakfast");
     expect(items[0]?.status).toBe("done"); // has a completion
     expect(items[0]?.color).toBe("#0af"); // inherits the aspect colour
-    expect(items[0]?.id).toBe("habititem-flow_task-4-0-0-virtual"); // virtual, non-numeric tail
+    expect(items[0]?.id).toBe("habititem-flow_task-4-0-0-virtual");
+    expect(items[0]?.rowId).toBeUndefined();
     expect(items[0]?.habitItem).toEqual({ flowId: 3, itemType: "flow_task", itemId: 4, scopeId: 100, cycleId: NO_CYCLE });
     expect(items[1]?.title).toBe("Dinner");
     expect(items[1]?.status).toBe("todo"); // no completion
