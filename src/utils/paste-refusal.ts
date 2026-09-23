@@ -1,4 +1,5 @@
 import type { MindmapNode, NodeKind } from "./tree-layout";
+import { isDerivedWait } from "@/utils/derived-wait";
 import { ALL_NODE_KINDS } from "./tree-layout";
 import { findNode, owningFlowId } from "./mindmap-tree";
 import { canAdoptExistingChild, isFlowKind, validParentKinds } from "./node-meta";
@@ -143,7 +144,7 @@ export function pasteRefusal(
 ): PasteRefusal | null {
   const node = findNode(tree, nodeId);
   if (node === undefined) return { reason: PASTE_REFUSAL.GONE };
-  if (node.expectationCheck !== undefined || node.delegationWait !== undefined) {
+  if (isDerivedWait(node)) {
     return { reason: PASTE_REFUSAL.DERIVED_WAIT };
   }
   if (node.virtual === true) return { reason: PASTE_REFUSAL.REPETITION };

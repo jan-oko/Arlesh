@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { isDerivedWait } from "@/utils/derived-wait";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { findNode, findParent, collectAllNodeIds } from "@/utils/mindmap-tree";
@@ -64,11 +65,6 @@ interface Result {
   onInsertParent: (nodeId: string) => void;
   onDelete: (nodeIds: string[]) => void;
   onPaste: (targetId: string) => void;
-}
-
-/** A wait's check task, or a delegated Task's wait: drawn from their owner, never stored. */
-function isDerivedWait(node: MindmapNode): boolean {
-  return node.expectationCheck !== undefined || node.delegationWait !== undefined;
 }
 
 export function useNodeActions({

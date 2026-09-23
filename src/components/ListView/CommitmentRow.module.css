@@ -1,5 +1,0 @@
-/* A commitment row is a task card with one difference: a left edge that says at a glance whether
-   a verdict has been recorded. Its status control is the task card's own. */
-.unjudged {
-  border-left: 3px solid var(--node-border-selected);
-}

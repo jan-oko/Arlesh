@@ -255,7 +255,7 @@ function toMindmapNode(node: CorpusNode): MindmapNode {
     ...(node.isHabitFlow === true ? { flow: HABIT_FLOW } : {}),
     ...(node.isHabitOccurrence === true ? { habitItem: OCCURRENCE } : {}),
     ...(node.delegated === true ? { delegate: { kind: "agent" as const } } : {}),
-    ...(node.hasCheck === true ? { checkBy: { start_id: 1, end_id: 1 } } : {}),
+    ...(node.hasCheck === true ? { checkEvery: { n: 1, kind: "day" } } : {}),
   };
 }
 

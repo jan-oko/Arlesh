@@ -53,8 +53,8 @@ import BacklogConfirmModal from "@/components/BacklogConfirmModal/BacklogConfirm
 import { useTaskBacklog } from "@/hooks/use-task-backlog";
 import { useCommitmentVerdict } from "@/hooks/use-commitment-verdict";
 import { useExpectationActions } from "@/hooks/use-expectation-actions";
-import AsyncExpectationOffer from "@/components/ExpectationEditorModal/AsyncExpectationOffer";
-import { useAsyncExpectationOffer } from "@/hooks/use-async-expectation-offer";
+import WaitEditors from "@/components/ExpectationEditorModal/WaitEditors";
+import { useWaitEditor } from "@/hooks/use-wait-editor";
 import { useTaskAgentic } from "@/hooks/use-task-agentic";
 import { useTaskAsynchronous } from "@/hooks/use-task-asynchronous";
 import DeleteConfirmModal from "@/components/DeleteConfirmModal/DeleteConfirmModal";
@@ -333,7 +333,7 @@ export default function MindmapView() {
   const { markBroken, cycleVerdict } = useCommitmentVerdict({
     findNode: findNodeById, reload, showToast,
   });
-  const waitEditor = useAsyncExpectationOffer(tree, reload);
+  const waitEditor = useWaitEditor(tree, reload);
   const { completeCheck, toggleRelease } = useExpectationActions({
     findNode: findNodeById, reload, showToast,
   });
@@ -565,7 +565,7 @@ export default function MindmapView() {
       {/* The editor for whichever kind is open — one component, shared with the Steps View, which
           can open one on any kind at all. */}
       <NodeEditorModals tree={tree} editor={nodeEditor} />
-      <AsyncExpectationOffer waitEditor={waitEditor} />
+      <WaitEditors waitEditor={waitEditor} allTags={allTags} domainNames={domainNames} />
       {searchOpen && (
         <NodeSearchModal
           nodes={collectSearchableNodes(tree)}

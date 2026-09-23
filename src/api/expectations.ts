@@ -1,12 +1,12 @@
 import { invoke } from "./gesture";
-import type { TimeScope } from "@/api/time-scope";
+import type { DurationSpec, TimeScope } from "@/api/time-scope";
 import type { ExpectationArchival, ExpectationStatus } from "@/api/expectation-status";
 
 /**
  * A **wait**: something outside your own action you are waiting on to be released. Tasks can
  * depend on one, and a pending one blocks them. It has a Time Scope and tags like a Task, but no
- * Plan; beside its window it carries the optional check-by: while it is set, a virtual "check on
- * it" task is drawn beneath it.
+ * Plan; it may carry a Check every, while which a virtual "check on it" task is drawn beneath it —
+ * due at its Starting, then one interval after each check made.
  */
 export interface Expectation {
   id: number;
@@ -15,7 +15,10 @@ export interface Expectation {
   parent_id: number;
   status: ExpectationStatus;
   archival: ExpectationArchival;
-  check_by: TimeScope | null;
+  check_every?: DurationSpec;
+  // ISO `YYYY-MM-DDTHH:MM:SS`, local time.
+  check_starting?: string;
+  last_check_at?: string;
   /** Its own relevance window, like a Task's — separate from the check-by. */
   time_scope: TimeScope | null;
   tag_ids: number[];
@@ -27,7 +30,8 @@ export interface CreateExpectationRequest {
   title: string;
   parent_type: string;
   parent_id: number;
-  check_by?: TimeScope;
+  check_every?: DurationSpec;
+  check_starting?: string;
   time_scope?: TimeScope;
 }
 
@@ -35,8 +39,9 @@ export interface UpdateExpectationRequest {
   title?: string;
   status?: ExpectationStatus;
   archival?: ExpectationArchival;
-  // Absent = leave unchanged, null = clear, value = set.
-  check_by?: TimeScope | null;
+  // Absent = leave unchanged, null = stop checking, value = set (starting now unless named).
+  check_every?: DurationSpec | null;
+  check_starting?: string;
   // Absent = leave unchanged, null = clear, value = set.
   time_scope?: TimeScope | null;
   parent_type?: string;
@@ -58,11 +63,43 @@ export async function updateExpectation(id: number, request: UpdateExpectationRe
 }
 
 /**
- * Completes an expectation's virtual check task: clears its check-by, leaving it pending. Refused
- * when there is no check-by, since there was then no check to complete.
+ * Completes the current check on a stored wait: records now as its last check, so the next falls due
+ * one interval later. Refused when no check is due.
  */
-export async function clearExpectationCheckBy(id: number): Promise<Expectation> {
-  return invoke<Expectation>("clear_expectation_check_by", { id });
+export async function completeExpectationCheck(id: number): Promise<Expectation> {
+  return invoke<Expectation>("complete_expectation_check", { id });
+}
+
+/** A stored wait's next check, as the day its virtual check task is due. */
+export interface ExpectationCheck {
+  expectation_id: number;
+  due: TimeScope;
+}
+
+/** The overlay of the wait an Asynchronous task's completion spawned, as the views draw it. */
+export interface SpawnedWaitView {
+  task_id: number;
+  spawned_at: string;
+  status: ExpectationStatus;
+  archival: ExpectationArchival;
+  last_check_at?: string;
+  /** The template's Time Scope rule, counted from the day it began. */
+  time_scope?: TimeScope;
+  /** The day its next check is due, while it is pending and checked on. */
+  next_check?: TimeScope;
+}
+
+/** Releases, un-releases or archives the wait a task's completion spawned. */
+export async function updateSpawnedWait(
+  taskId: number,
+  request: { status?: ExpectationStatus; archival?: ExpectationArchival },
+): Promise<void> {
+  await invoke<unknown>("update_spawned_wait", { taskId, request });
+}
+
+/** Completes the current check on a task's spawned wait. */
+export async function completeSpawnedWaitCheck(taskId: number): Promise<void> {
+  return invoke<void>("complete_spawned_wait_check", { taskId });
 }
 
 export async function addTagToExpectation(expectationId: number, tagId: number): Promise<void> {

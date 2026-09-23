@@ -7,7 +7,7 @@ import type { MindmapNode } from "@/utils/tree-layout";
 import { entityNodeId } from "@/utils/tree-layout";
 import { EXPECTATION_STATUS } from "@/api/expectation-status";
 import type { Domain } from "@/api/domains";
-import type { Delegate, Dependency, TaskAgentic, TaskArchival } from "@/api/tasks";
+import type { AsyncTemplate, Delegate, Dependency, TaskAgentic, TaskArchival } from "@/api/tasks";
 import { TASK_AGENTIC, TASK_ARCHIVAL } from "@/api/tasks";
 import { storedAgenticState } from "@/utils/agentic";
 import { isDelegatedToAgent, toggledAgentDelegate } from "@/utils/delegation";
@@ -26,6 +26,7 @@ import PlanField from "@/components/ScopePicker/PlanField";
 import { useInputCapture } from "@/hooks/use-input-capture";
 import { useBeadsIdClear } from "@/hooks/use-beads-id-clear";
 import Switch from "@/components/Switch/Switch";
+import AsyncTemplateFields from "@/components/AsyncTemplateEditor/AsyncTemplateFields";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 import { TASK_STATUS } from "@/utils/status-mapping";
 
@@ -45,9 +46,9 @@ export interface TaskSaveData {
   /** The task's own Agentic state. `"inherit"` is a real instruction — it clears a stored flag
    * and puts the task back to reading its ancestors — not an absent value. */
   agentic: TaskAgentic;
-  /** Whether doing this task starts a wait. A plain boolean — the flag does not inherit, so
-   * there is no third "unset" state for it to be in. */
-  asynchronous: boolean;
+  /** The task's **Expectation template** — the wait finishing it spawns — or `null` when it is not
+   * asynchronous. It does not inherit, so there is no third "unset" state for it to be in. */
+  asyncTemplate: AsyncTemplate | null;
   /** The task's new delegate, present only when the form changed it — `null` takes it back. Absent
    * says nothing about delegation at all, so a save that never touched it cannot overwrite it. */
   delegate?: Delegate | null;
@@ -81,7 +82,7 @@ interface Props {
 
 export default function TaskEditorModal({ node, allTags, domainNames, availableForDep, onSave, onClearBeadsId, onCheckScopeClamp, onClose }: Props) {
   useInputCapture();
-  const { t } = useTranslation(["editor", "status", "nodeKinds", "undo"]);
+  const { t } = useTranslation(["editor", "status", "nodeKinds", "undo", "expectation"]);
   const [title, setTitle] = useState(node.title);
   const [status, setStatus] = useState(node.status ?? TASK_STATUS.TODO);
   const [blockReasons, setBlockReasons] = useState<string[]>(node.blockReasons ?? []);
@@ -91,7 +92,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   const [plan, setPlan] = useState<TimeScope | null>(node.plan ?? null);
   const [isBacklogged, setIsBacklogged] = useState(node.backlogged === true);
   const [agentic, setAgentic] = useState<TaskAgentic>(storedAgenticState(node.agentic));
-  const [isAsynchronous, setIsAsynchronous] = useState(node.asynchronous === true);
+  const [asyncTemplate, setAsyncTemplate] = useState<AsyncTemplate | null>(node.asyncTemplate ?? null);
   const [delegate, setDelegate] = useState<Delegate | null>(node.delegate ?? null);
   const [isPrivate, setIsPrivate] = useState(node.isPrivate ?? false);
   const [initialDeps, setInitialDeps] = useState<Dependency[]>([]);
@@ -149,7 +150,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
           plan,
           archival: isBacklogged ? TASK_ARCHIVAL.BACKLOG : TASK_ARCHIVAL.LIVE,
           agentic,
-          asynchronous: isAsynchronous,
+          asyncTemplate: asyncTemplate === null ? null : { ...asyncTemplate, title: asyncTemplate.title.trim() || t("expectation:templateDefaultTitle", { title: title.trim() }) },
           ...(delegate !== (node.delegate ?? null) ? { delegate } : {}),
           isPrivate,
         });
@@ -261,16 +262,21 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
       </div>
       {/* Beside Backlog rather than down in Advanced, where the Agentic control sits: this one is
           a statement about the order the work wants to be done in, which is the same kind of
-          question as whether it is set aside at all — and it is the flag the List View's
-          "Asynchronous first" setting reads. */}
+          question as whether it is set aside at all — and it is what the List View's "Asynchronous
+          first" setting reads. On, it opens the template of the wait finishing the task spawns. */}
       <div className={styles.label}>
         {t("fieldAsynchronous")}
         <Switch
-          checked={isAsynchronous}
-          onChange={setIsAsynchronous}
-          label={isAsynchronous ? t("asynchronousOn") : t("asynchronousOff")}
+          checked={asyncTemplate !== null}
+          onChange={(on) => setAsyncTemplate(on
+            ? { title: t("expectation:templateDefaultTitle", { title: title.trim() }), tag_ids: [] }
+            : null)}
+          label={asyncTemplate !== null ? t("asynchronousOn") : t("asynchronousOff")}
         />
       </div>
+      {asyncTemplate !== null && (
+        <AsyncTemplateFields value={asyncTemplate} onChange={setAsyncTemplate} allTags={allTags} domainNames={domainNames} />
+      )}
       <BlockReasonsField reasons={blockReasons} onChange={setBlockReasons} virtualBlockers={virtualBlockers} />
       <TagPicker allTags={allTags} domainNames={domainNames} selectedIds={tagIds} onChange={setTagIds} />
       <div className={styles.depSection}>

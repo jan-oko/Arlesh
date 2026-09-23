@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { isDerivedWait } from "@/utils/derived-wait";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { collectSubtreePostOrder } from "@/utils/mindmap-tree";
@@ -61,7 +62,7 @@ export function useListDelete({
       const node = findNode(id);
       if (node === undefined) return;
       if (node.virtual === true) {
-        const derivedWait = node.expectationCheck !== undefined || node.delegationWait !== undefined;
+        const derivedWait = isDerivedWait(node);
         showToast({ nodeId: id, message: t(derivedWait ? "deleteDerivedWaitRefused" : "deleteRepetitionRefused") });
         return;
       }

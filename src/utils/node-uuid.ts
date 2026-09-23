@@ -30,3 +30,13 @@ export function checkTaskNodeId(expectationId: number): string {
 export function delegationWaitNodeId(taskId: number): string {
   return mint(`delegation-wait/${taskId}`);
 }
+
+/** The node id of the virtual wait an Asynchronous Task's completion spawned. It draws no row. */
+export function spawnedWaitNodeId(taskId: number): string {
+  return mint(`spawned-wait/${taskId}`);
+}
+
+/** The node id of a spawned wait's virtual check task. It draws no row. */
+export function spawnedCheckNodeId(taskId: number): string {
+  return mint(`spawned-check/${taskId}`);
+}

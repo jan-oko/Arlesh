@@ -1470,7 +1470,7 @@ describe("ListView — expectations", () => {
 
   it("completes the check on D from a check task's row, and not from an ordinary task's", () => {
     const completeCheck = vi.fn();
-    const check = row({ node: n("check-1", "task", { status: "todo", virtual: true, expectationCheck: { expectationId: 1 } }) });
+    const check = row({ node: n("check-1", "task", { status: "todo", virtual: true, expectationCheck: { kind: "stored", expectationId: 1 } }) });
     mockUseListData.mockReturnValue(listData({ rows: [check], completeCheck }));
     render(<ListViewInApp />);
     fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });

@@ -44,7 +44,7 @@ describe("where a wait may hang", () => {
 describe("pasting a wait", () => {
   it("refuses a copied wait and any derived one by name", () => {
     const stored = n("e", "expectation");
-    const check = drawn("c", "task", { virtual: true, expectationCheck: { expectationId: 1 } });
+    const check = drawn("c", "task", { virtual: true, expectationCheck: { kind: "stored", expectationId: 1 } });
     const target = n("project-1", "project");
     const tree = n("root", "domain", { children: [stored, check, target] });
     expect(pasteRefusal(tree, "e", target, true)).toEqual({ reason: PASTE_REFUSAL.EXPECTATION });
@@ -59,7 +59,7 @@ describe("filterExpectationList", () => {
   const root = n("root", "domain", {
     children: [
       n("pending", "expectation", { status: "pending" }),
-      n("checked", "expectation", { status: "pending", checkBy: { start_id: 1, end_id: 1 } }),
+      n("checked", "expectation", { status: "pending", checkEvery: { n: 1, kind: "day" } }),
       n("released", "expectation", { status: "released" }),
       n("private", "expectation", { status: "pending", isPrivate: true }),
     ],

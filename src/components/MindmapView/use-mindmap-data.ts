@@ -7,8 +7,10 @@ import type { CommitmentSaveData } from "@/components/CommitmentEditorModal/Comm
 import type { Commitment } from "@/api/commitments";
 import { createExpectation, updateExpectation, deleteExpectation } from "@/api/expectations";
 import { EXPECTATION_STATUS, EXPECTATION_ARCHIVAL } from "@/api/expectation-status";
-import type { Expectation } from "@/api/expectations";
-import { checkTaskNodeId, delegationWaitNodeId, expectationNodeId } from "@/utils/node-uuid";
+import type { Expectation, ExpectationCheck, SpawnedWaitView } from "@/api/expectations";
+import {
+  checkTaskNodeId, delegationWaitNodeId, expectationNodeId, spawnedCheckNodeId, spawnedWaitNodeId,
+} from "@/utils/node-uuid";
 import type { Verdict } from "@/api/verdict";
 import { VERDICT } from "@/api/verdict";
 import type { TaskAgentic, TaskDependencyEdge } from "@/api/tasks";
@@ -42,7 +44,7 @@ import type {
 } from "@/api/flows";
 import { createHabitInstanceChild, NO_CYCLE } from "@/api/flows";
 import type { ItemLifecycle, Timing } from "@/api/scope-lifecycle";
-import type { MindmapNode, NodeKind, FlowCyclePair, FlowItemDep } from "@/utils/tree-layout";
+import type { MindmapNode, NodeKind, FlowCyclePair, FlowItemDep, WaitRef } from "@/utils/tree-layout";
 import { entityNodeId, flowTargetNodeId } from "@/utils/tree-layout";
 import { formatScopeCore } from "@/utils/scope-format";
 import type { ScopeLabelFns } from "@/hooks/use-scope-labels";
@@ -77,6 +79,8 @@ function lifecycleMap(lifecycles: ItemLifecycle[]): Map<string, ItemLifecycle> {
   return new Map(lifecycles.map((l): [string, ItemLifecycle] => {
     if (l.node_type === "expectation") return [expectationNodeId(l.node_id), l];
     if (l.node_type === "expectation_check") return [checkTaskNodeId(l.node_id), l];
+    if (l.node_type === "spawned_wait") return [spawnedWaitNodeId(l.node_id), l];
+    if (l.node_type === "spawned_check") return [spawnedCheckNodeId(l.node_id), l];
     return [`${l.node_type}-${l.node_id}`, l];
   }));
 }
@@ -725,6 +729,24 @@ function toCyclePair(cycle: FlowItemCycle): FlowCyclePair {
   };
 }
 
+/** A wait's virtual "check on it" task, due on `due`. It has no row. */
+function checkTaskNode(id: string, title: string, due: TimeScope, wait: WaitRef, isPrivate: boolean): MindmapNode {
+  return {
+    id,
+    kind: "task",
+    title,
+    status: TASK_STATUS.TODO,
+    timeScope: due,
+    onScopeExit: "keep",
+    virtual: true,
+    expectationCheck: wait,
+    position: Number.MIN_SAFE_INTEGER,
+    isPrivate,
+    tagIds: [],
+    children: [],
+  };
+}
+
 export function buildTree(
   domains: Domain[],
   goals: Goal[],
@@ -742,6 +764,8 @@ export function buildTree(
   expectations: Expectation[] = [],
   /** The title a delegated Task's virtual Expectation is drawn with, from the Task's own. */
   delegationWaitTitle: (taskTitle: string) => string = (taskTitle) => taskTitle,
+  expectationChecks: ExpectationCheck[] = [],
+  spawnedWaits: SpawnedWaitView[] = [],
 ): MindmapNode {
   const nodeMap = new Map<string, MindmapNode>();
 
@@ -804,7 +828,8 @@ export function buildTree(
       backlogged: task.archival === TASK_ARCHIVAL.BACKLOG,
       agentic: task.agentic,
       delegate: task.delegate_to,
-      asynchronous: task.asynchronous,
+      asynchronous: task.async_template !== undefined,
+      asyncTemplate: task.async_template ?? null,
       position: task.position,
       isPrivate: task.is_private,
       ...(task.beads_id !== undefined ? { beadsId: task.beads_id } : {}),
@@ -830,6 +855,8 @@ export function buildTree(
     });
   }
 
+  const taskById = new Map(tasks.map((t) => [t.id, t]));
+  const checkDue = new Map(expectationChecks.map((check) => [check.expectation_id, check.due]));
   for (const expectation of expectations) {
     const id = expectationNodeId(expectation.id);
     const node: MindmapNode = {
@@ -839,35 +866,58 @@ export function buildTree(
       title: expectation.title,
       status: expectation.status,
       archived: expectation.archival === EXPECTATION_ARCHIVAL.ARCHIVED,
-      checkBy: expectation.check_by,
+      checkEvery: expectation.check_every ?? null,
+      checkStarting: expectation.check_starting ?? null,
       timeScope: expectation.time_scope,
       position: expectation.position,
       isPrivate: expectation.is_private,
       tagIds: expectation.tag_ids,
       children: [],
     };
-    // While the wait is pending, live and has a check-by, a virtual "check on it" Task hangs
-    // beneath it, scoped to the check-by. Nothing stores it; completing it clears the check-by.
-    if (
-      expectation.check_by !== null && expectation.status === EXPECTATION_STATUS.PENDING &&
-      expectation.archival === EXPECTATION_ARCHIVAL.LIVE
-    ) {
-      node.children.push({
-        id: checkTaskNodeId(expectation.id),
-        kind: "task",
-        title: expectation.title,
-        status: TASK_STATUS.TODO,
-        timeScope: expectation.check_by,
-        onScopeExit: "keep",
-        virtual: true,
-        expectationCheck: { expectationId: expectation.id },
-        position: Number.MIN_SAFE_INTEGER,
-        isPrivate: expectation.is_private,
-        tagIds: [],
-        children: [],
-      });
+    // While a check is due, a virtual "check on it" Task hangs beneath the wait, drawn on the day
+    // it is due. Nothing stores it; completing it records the check and nothing else.
+    const due = checkDue.get(expectation.id);
+    if (due !== undefined) {
+      node.children.push(checkTaskNode(
+        checkTaskNodeId(expectation.id), expectation.title, due, { kind: "stored", expectationId: expectation.id },
+        expectation.is_private,
+      ));
     }
     nodeMap.set(id, node);
+  }
+
+  // The wait an Asynchronous Task's completion spawned: virtual, drawn from the Task's template and
+  // the overlay keyed by the Task, and hung beneath the Task. A template removed since leaves
+  // nothing to draw it from.
+  const templateOf = new Map(tasks.flatMap((task) =>
+    task.async_template === undefined ? [] : [[task.id, task.async_template] as const]));
+  const spawnedPending = new Set<number>();
+  for (const spawned of spawnedWaits) {
+    const template = templateOf.get(spawned.task_id);
+    if (template === undefined) continue;
+    if (spawned.status === EXPECTATION_STATUS.PENDING) spawnedPending.add(spawned.task_id);
+    const wait: MindmapNode = {
+      id: spawnedWaitNodeId(spawned.task_id),
+      kind: "expectation",
+      title: template.title,
+      status: spawned.status,
+      archived: spawned.archival === EXPECTATION_ARCHIVAL.ARCHIVED,
+      checkEvery: template.check_every ?? null,
+      timeScope: spawned.time_scope ?? null,
+      virtual: true,
+      spawnedBy: { taskId: spawned.task_id },
+      position: Number.MIN_SAFE_INTEGER,
+      isPrivate: taskById.get(spawned.task_id)?.is_private ?? false,
+      tagIds: template.tag_ids,
+      children: [],
+    };
+    if (spawned.next_check !== undefined) {
+      wait.children.push(checkTaskNode(
+        spawnedCheckNodeId(spawned.task_id), template.title, spawned.next_check,
+        { kind: "spawned", taskId: spawned.task_id }, wait.isPrivate ?? false,
+      ));
+    }
+    nodeMap.get(`task-${spawned.task_id}`)?.children.push(wait);
   }
 
   // A delegated Task waits on its delegate finishing: a virtual, pending Expectation beneath it
@@ -880,7 +930,7 @@ export function buildTree(
       kind: "expectation",
       title: delegationWaitTitle(task.title),
       status: EXPECTATION_STATUS.PENDING,
-      checkBy: null,
+      checkEvery: null,
       virtual: true,
       delegationWait: { taskId: task.id },
       position: Number.MIN_SAFE_INTEGER,
@@ -893,7 +943,6 @@ export function buildTree(
   // Virtual block reasons: a task is also blocked by any dependency on a non-done task, a
   // non-achieved goal or a pending expectation. Derived here from the bulk dependency edges so the
   // canvas shows it without per-task calls.
-  const taskById = new Map(tasks.map((t) => [t.id, t]));
   const goalById = new Map(goals.map((g) => [g.id, g]));
   const expectationById = new Map(expectations.map((e) => [e.id, e]));
   for (const dep of taskDeps) {
@@ -909,6 +958,11 @@ export function buildTree(
       const target = taskById.get(dep.dependency_id);
       if (target !== undefined && target.status !== "done") {
         node.virtualBlockers?.push(`Blocked by task ${dep.dependency_id} (${target.title})`);
+      } else if (target !== undefined && spawnedPending.has(dep.dependency_id)) {
+        // A done Asynchronous task is not finished with until the wait it spawned is released.
+        node.virtualBlockers?.push(
+          `Blocked by expectation spawned by task ${dep.dependency_id} (${target.async_template?.title ?? ""})`,
+        );
       }
     } else {
       const target = goalById.get(dep.dependency_id);
@@ -1289,6 +1343,7 @@ export function useMindmapData(): MindmapData {
           data.flow_goals, data.flow_tasks, data.flow_cycles, data.flow_dependencies,
           data.block_reasons, data.task_dependencies, data.flow_instance_nodes,
           data.expectations, (title) => delegationWaitTitle.current(title),
+          data.expectation_checks, data.spawned_waits,
         );
         applyLifecycles(built, lifecycleMap(data.lifecycles));
         // Inject each Habit's iterations as virtual, read-only child nodes under their targets.
@@ -1417,7 +1472,7 @@ export function useMindmapData(): MindmapData {
         });
         const newNode: MindmapNode = {
           id: expectationNodeId(expectation.id), rowId: expectation.id, kind: "expectation",
-          title: expectation.title, status: expectation.status, checkBy: expectation.check_by,
+          title: expectation.title, status: expectation.status, checkEvery: expectation.check_every ?? null,
           position: expectation.position, tagIds: [], children: [],
         };
         await load(false);

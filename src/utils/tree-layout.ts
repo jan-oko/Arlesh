@@ -5,6 +5,7 @@ import type { OnScopeExit, Timing, Resolution } from "@/api/scope-lifecycle";
 import type { Verdict } from "@/api/verdict";
 import type { Delegate } from "@/api/tasks";
 import type { DurationSpec } from "@/api/time-scope";
+import type { AsyncTemplate } from "@/api/tasks";
 import type { CanonicalKind } from "@/utils/scope-ref";
 import { expectationNodeId } from "@/utils/node-uuid";
 
@@ -28,6 +29,9 @@ export const ALL_NODE_KINDS: readonly NodeKind[] = [
 export function isNodeKind(value: string): value is NodeKind {
   return ALL_NODE_KINDS.some((kind) => kind === value);
 }
+
+/** Which wait a check task checks on: a stored Expectation, or the wait a Task's completion spawned. */
+export type WaitRef = { kind: "stored"; expectationId: number } | { kind: "spawned"; taskId: number };
 
 /** A task/goal is blocked when it has any block reason — explicit or virtual (from an unmet dependency). */
 export function isNodeBlocked(node: MindmapNode): boolean {
@@ -225,6 +229,7 @@ export interface MindmapNode {
    * **own** stored delegate — absent or `null` when it has none of its own. */
   delegate?: Delegate | null;
   /** Whether doing this Task starts a **wait** rather than finishing something (Tasks only) —
+   * derived: true exactly when it has an `asyncTemplate`.
    * send the email, order the part, kick off the build.
    *
    * Deliberately **not** inherited, unlike `agentic`: "starts a wait" is a property of one
@@ -241,13 +246,20 @@ export interface MindmapNode {
   verdictWindow?: DurationSpec | null;
   /** A derived, read-only node (e.g. a virtual Habit iteration) with no backing DB row. */
   virtual?: boolean;
-  /** An Expectation's **check-by** (Expectations only): when to look in on the wait. While it is
-   * set and the wait is pending, a virtual check task hangs beneath it. `status` carries the
-   * Expectation's `pending`/`released`, and `archived` its stored archive. */
-  checkBy?: TimeScope | null;
-  /** Present on an Expectation's virtual **check task** — a `task`-kind node with no row. Completing
-   * it clears the check-by of the Expectation named here and stores nothing else. */
-  expectationCheck?: { expectationId: number };
+  /** An Expectation's **Check every** (Expectations only): how often to look in on the wait. While
+   * it is pending, a virtual check task hangs beneath it, due one interval after the last check.
+   * `status` carries the Expectation's `pending`/`released`, and `archived` its archive. */
+  checkEvery?: DurationSpec | null;
+  /** When a stored wait's first check fell due, ISO local time. */
+  checkStarting?: string | null;
+  /** Present on a wait's virtual **check task** — a `task`-kind node with no row. Completing it
+   * records the check on the wait named here and stores nothing else. */
+  expectationCheck?: WaitRef;
+  /** Present on the virtual wait an **Asynchronous** Task's completion spawned: the Task. Its
+   * title and tags are the Task's template; its state is the overlay keyed by the Task. */
+  spawnedBy?: { taskId: number };
+  /** A Task's **Expectation template** (Tasks only): `asynchronous` is true exactly when it is set. */
+  asyncTemplate?: AsyncTemplate | null;
   /** The stored Expectations this Task depends on, by row id (Tasks only) — what "has no
    * Expectation yet" is asked of when an asynchronous Task is finished. */
   expectationDependencyIds?: number[];

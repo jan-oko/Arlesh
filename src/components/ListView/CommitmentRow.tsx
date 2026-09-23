@@ -6,11 +6,9 @@ import { aspectWashStyle } from "@/utils/node-visuals";
 import { commitmentGlyphState } from "@/utils/commitment-glyph";
 import { isRtlText } from "@/utils/text-direction";
 import { useTagNames } from "@/hooks/use-tag-names";
-import { VERDICT } from "@/api/verdict";
 import CommitmentIcon from "@/components/NodeIcon/CommitmentIcon";
 import TaskRowBadges from "./TaskRowBadges";
 import taskStyles from "./TaskRow.module.css";
-import styles from "./CommitmentRow.module.css";
 
 const ICON_R = 10;
 
@@ -40,7 +38,6 @@ export default function CommitmentRow({
   const { t } = useTranslation("listView");
   const tagNames = useTagNames();
   const { node } = row;
-  const verdict = node.verdict ?? VERDICT.UNRESOLVED;
 
   // Washed in its aspect's colour, exactly as a Task row is — see `TaskRow`.
   const cardStyle: CSSProperties & Record<`--${string}`, string | number> = {
@@ -52,10 +49,7 @@ export default function CommitmentRow({
 
   return (
     <div
-      className={
-        `${taskStyles.card} ${indentClass}${isSelected ? ` ${taskStyles.cardSelected}` : ""}` +
-        (verdict === VERDICT.UNRESOLVED ? ` ${styles.unjudged}` : "")
-      }
+      className={`${taskStyles.card} ${indentClass}${isSelected ? ` ${taskStyles.cardSelected}` : ""}`}
       // Same marker the task rows carry, so a selected Commitment is scrolled into view by the
       // same code.
       data-row-id={node.id}

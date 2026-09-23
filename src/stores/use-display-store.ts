@@ -66,19 +66,6 @@ interface DisplayStore {
   listBands: boolean;
   toggleListBands: () => void;
   /**
-   * Whether marking a Task **Asynchronous** opens the new-Expectation editor for the wait it
-   * starts, which the Task then depends on. **Off by default**: the flag says only that doing the
-   * Task starts a wait, and naming the wait is a step not everyone wants every time.
-   */
-  asynchronousOpensExpectation: boolean;
-  toggleAsynchronousOpensExpectation: () => void;
-  /**
-   * Whether completing an Asynchronous Task that has no Expectation yet offers to create one.
-   * **Off by default**, for the same reason.
-   */
-  offerExpectationOnAsyncDone: boolean;
-  toggleOfferExpectationOnAsyncDone: () => void;
-  /**
    * Whether a Day's **Premorning** band is drawn as a bucket of the split.
    *
    * **Off by default**: 02:00–06:00 is not where work gets planned, and a bucket nobody fills is a
@@ -133,12 +120,6 @@ export const useDisplayStore = create<DisplayStore>()(
       togglePlanSubscopeSplit: () => set((s) => ({ planSubscopeSplit: !s.planSubscopeSplit })),
       listBands: true,
       toggleListBands: () => set((s) => ({ listBands: !s.listBands })),
-      asynchronousOpensExpectation: false,
-      toggleAsynchronousOpensExpectation: () =>
-        set((s) => ({ asynchronousOpensExpectation: !s.asynchronousOpensExpectation })),
-      offerExpectationOnAsyncDone: false,
-      toggleOfferExpectationOnAsyncDone: () =>
-        set((s) => ({ offerExpectationOnAsyncDone: !s.offerExpectationOnAsyncDone })),
       planIncludePremorning: false,
       togglePlanIncludePremorning: () =>
         set((s) => ({ planIncludePremorning: !s.planIncludePremorning })),

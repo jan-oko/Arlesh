@@ -47,10 +47,6 @@ export default function TopBar() {
   const asynchronousFirst = useDisplayStore((s) => s.asynchronousFirst);
   const listBands = useDisplayStore((s) => s.listBands);
   const toggleListBands = useDisplayStore((s) => s.toggleListBands);
-  const asynchronousOpensExpectation = useDisplayStore((s) => s.asynchronousOpensExpectation);
-  const toggleAsynchronousOpensExpectation = useDisplayStore((s) => s.toggleAsynchronousOpensExpectation);
-  const offerExpectationOnAsyncDone = useDisplayStore((s) => s.offerExpectationOnAsyncDone);
-  const toggleOfferExpectationOnAsyncDone = useDisplayStore((s) => s.toggleOfferExpectationOnAsyncDone);
   const toggleAsynchronousFirst = useDisplayStore((s) => s.toggleAsynchronousFirst);
   const listPreset = useListFilterStore((s) => s.filter.preset);
   const setListPreset = useListFilterStore((s) => s.setPreset);
@@ -135,22 +131,6 @@ export default function TopBar() {
                       <Switch checked={listBands} onChange={toggleListBands} label={t("common:listBands")} />
                     </div>
                   )}
-                  {/* What marking and finishing Asynchronous work does is the same in every view,
-                      so these two sit ungated, beside the theme. */}
-                  <div className={styles.settingRow}>
-                    <Switch
-                      checked={asynchronousOpensExpectation}
-                      onChange={toggleAsynchronousOpensExpectation}
-                      label={t("common:asynchronousOpensExpectation")}
-                    />
-                  </div>
-                  <div className={styles.settingRow}>
-                    <Switch
-                      checked={offerExpectationOnAsyncDone}
-                      onChange={toggleOfferExpectationOnAsyncDone}
-                      label={t("common:offerExpectationOnAsyncDone")}
-                    />
-                  </div>
                   {/* The Plan View's own shape switches are deliberately absent: they live in a
                       kebab menu on each of its two panes, beside the half they act on. A pane's
                       options belong to the pane, not to a popover three rows up that has to say

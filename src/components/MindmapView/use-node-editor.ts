@@ -203,7 +203,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
         plan: data.plan,
         archival: data.archival,
         agentic: data.agentic,
-        asynchronous: data.asynchronous,
+        async_template: data.asyncTemplate,
         is_private: data.isPrivate,
         ...(data.delegate !== undefined ? { delegate_to: data.delegate } : {}),
       });
@@ -263,7 +263,8 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
       await updateExpectation(dbId, {
         title: data.title,
         status: data.status,
-        check_by: data.checkBy,
+        check_every: data.checkEvery,
+        ...(data.checkStartingDate !== null ? { check_starting: `${data.checkStartingDate}T00:00:00` } : {}),
         time_scope: data.timeScope,
         archival: data.archived ? EXPECTATION_ARCHIVAL.ARCHIVED : EXPECTATION_ARCHIVAL.LIVE,
         is_private: data.isPrivate,

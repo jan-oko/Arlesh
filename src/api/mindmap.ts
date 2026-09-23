@@ -3,7 +3,7 @@ import type { Domain } from "@/api/domains";
 import type { Goal } from "@/api/goals";
 import type { Task, TaskDependencyEdge } from "@/api/tasks";
 import type { Commitment } from "@/api/commitments";
-import type { Expectation } from "@/api/expectations";
+import type { Expectation, ExpectationCheck, SpawnedWaitView } from "@/api/expectations";
 import type { Info } from "@/api/infos";
 import type { BlockReason } from "@/api/block-reasons";
 import type {
@@ -45,6 +45,10 @@ export interface MindmapLoad {
   commitments: Commitment[];
   /** Every stored expectation. Check tasks and delegated tasks' waits are derived, not sent. */
   expectations: Expectation[];
+  /** Each stored wait's next check. */
+  expectation_checks: ExpectationCheck[];
+  /** Each asynchronous task's spawned wait; its title and tags are the task's template. */
+  spawned_waits: SpawnedWaitView[];
   infos: Info[];
   flows: Flow[];
   flow_goals: FlowGoal[];

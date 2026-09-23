@@ -25,8 +25,8 @@ import { useUndo } from "@/hooks/use-undo";
 import TaskEditorModal from "@/components/TaskEditorModal/TaskEditorModal";
 import CommitmentEditorModal from "@/components/CommitmentEditorModal/CommitmentEditorModal";
 import ExpectationEditorModal from "@/components/ExpectationEditorModal/ExpectationEditorModal";
-import AsyncExpectationOffer from "@/components/ExpectationEditorModal/AsyncExpectationOffer";
-import { useAsyncExpectationOffer } from "@/hooks/use-async-expectation-offer";
+import WaitEditors from "@/components/ExpectationEditorModal/WaitEditors";
+import { useWaitEditor } from "@/hooks/use-wait-editor";
 import NodeSearchModal from "@/components/NodeSearchModal/NodeSearchModal";
 import TaskRow from "./TaskRow";
 import CommitmentRow from "./CommitmentRow";
@@ -104,7 +104,7 @@ export default function ListView() {
     reload,
     showToast,
   });
-  const waitEditor = useAsyncExpectationOffer(tree, reload);
+  const waitEditor = useWaitEditor(tree, reload);
   const { markBroken, cycleVerdict } = useCommitmentVerdict({
     findNode: (id) => findNode(tree, id),
     reload,
@@ -150,8 +150,8 @@ export default function ListView() {
   // In band mode the Commitments and Expectations sit in their bands and the list below is task
   // rows; in rows mode all three are merged back into the order the tree draws them, so a
   // Commitment or a wait sits exactly where it hangs, under the same path headers.
-  const bandCommitments = listBands ? filteredCommitments : [];
-  const bandExpectations = listBands ? filteredExpectations : [];
+  const bandCommitments = useMemo(() => (listBands ? filteredCommitments : []), [listBands, filteredCommitments]);
+  const bandExpectations = useMemo(() => (listBands ? filteredExpectations : []), [listBands, filteredExpectations]);
   // Split first, then grouped: with the setting on, the asynchronous work is pulled out of the
   // filtered set before any header is drawn, so each half is grouped by path on its own terms — the
   // section's rows gain the parent they left behind as a header segment, and the rows left below
@@ -468,7 +468,7 @@ export default function ListView() {
         />
       )}
 
-      <AsyncExpectationOffer waitEditor={waitEditor} allTags={allTags} domainNames={domainNames} />
+      <WaitEditors waitEditor={waitEditor} allTags={allTags} domainNames={domainNames} />
       {editorModal !== null && editorModal.node.kind === "expectation" && (
         <ExpectationEditorModal
           node={editorModal.node}

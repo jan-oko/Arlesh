@@ -1,8 +1,10 @@
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import type { MindmapNode } from "@/utils/tree-layout";
+import type { MindmapNode, WaitRef } from "@/utils/tree-layout";
 import { rowIdOf } from "@/utils/node-identity";
-import { clearExpectationCheckBy, updateExpectation } from "@/api/expectations";
+import {
+  completeExpectationCheck, completeSpawnedWaitCheck, updateExpectation, updateSpawnedWait,
+} from "@/api/expectations";
 import { EXPECTATION_STATUS } from "@/api/expectation-status";
 import { getErrorMessage } from "@/api/errors";
 
@@ -14,27 +16,30 @@ interface Options {
 
 interface Result {
   /**
-   * Completes the check on a wait: clears the check-by of the selected Expectation, or of the one
-   * a selected virtual check task belongs to. The Expectation stays pending; nothing is stored for
-   * the check itself.
+   * Completes the current check on a wait — the selected wait's, or the one a selected virtual
+   * check task belongs to. It records when; the next check falls due one interval later, and the
+   * wait stays pending.
    */
   completeCheck: (nodeId: string) => void;
-  /** Releases a pending Expectation, or takes a release back. */
+  /** Releases a pending wait, or takes a release back. */
   toggleRelease: (nodeId: string) => void;
 }
 
-/** The row id of the Expectation a node stands for: itself, or the one its check task belongs to. */
-function expectationRowOf(node: MindmapNode): number | null {
-  if (node.expectationCheck !== undefined) return node.expectationCheck.expectationId;
-  if (node.kind === "expectation" && node.rowId !== undefined) return node.rowId;
+/** The wait a node stands for: itself, or the one its check task checks on. */
+function waitOf(node: MindmapNode): WaitRef | null {
+  if (node.expectationCheck !== undefined) return node.expectationCheck;
+  if (node.spawnedBy !== undefined) return { kind: "spawned", taskId: node.spawnedBy.taskId };
+  if (node.kind === "expectation" && node.rowId !== undefined) return { kind: "stored", expectationId: node.rowId };
   return null;
 }
 
 /**
- * The two Expectation gestures, shared by the Mindmap and the List View.
+ * The two Expectation gestures, shared by every view — for a stored wait and for the one an
+ * Asynchronous Task's completion spawned alike.
  *
- * Every refusal is said out loud: a delegated Task's wait is released by the Task being done and
- * by nothing else, and a wait with no check-by has no check to complete.
+ * Every refusal is said out loud: a delegated Task's wait is released by the Task being done and by
+ * nothing else, a wait with no Check every has no check to complete, and a node that is not a wait
+ * is not one.
  */
 export function useExpectationActions({ findNode, reload, showToast }: Options): Result {
   const { t } = useTranslation("expectation");
@@ -54,16 +59,19 @@ export function useExpectationActions({ findNode, reload, showToast }: Options):
         showToast({ nodeId, message: t("delegationWaitHasNoCheck") });
         return;
       }
-      const expectationId = expectationRowOf(node);
-      if (expectationId === null) {
+      const wait = waitOf(node);
+      if (wait === null) {
         showToast({ nodeId, message: t("notAWait") });
         return;
       }
-      if (node.kind === "expectation" && (node.checkBy ?? null) === null) {
-        showToast({ nodeId, message: t("noCheckBy") });
+      if (node.kind === "expectation" && (node.checkEvery ?? null) === null) {
+        showToast({ nodeId, message: t("noCheckEvery") });
         return;
       }
-      void clearExpectationCheckBy(expectationId).then(() => reload(), fail(nodeId));
+      const write = wait.kind === "stored"
+        ? completeExpectationCheck(wait.expectationId).then(() => undefined)
+        : completeSpawnedWaitCheck(wait.taskId);
+      void write.then(() => reload(), fail(nodeId));
     },
     [findNode, reload, showToast, fail, t],
   );
@@ -80,8 +88,11 @@ export function useExpectationActions({ findNode, reload, showToast }: Options):
         showToast({ nodeId, message: t("notAWait") });
         return;
       }
-      const next = node.status === EXPECTATION_STATUS.RELEASED ? EXPECTATION_STATUS.PENDING : EXPECTATION_STATUS.RELEASED;
-      void updateExpectation(rowIdOf(node), { status: next }).then(() => reload(), fail(nodeId));
+      const status = node.status === EXPECTATION_STATUS.RELEASED ? EXPECTATION_STATUS.PENDING : EXPECTATION_STATUS.RELEASED;
+      const write = node.spawnedBy !== undefined
+        ? updateSpawnedWait(node.spawnedBy.taskId, { status })
+        : updateExpectation(rowIdOf(node), { status }).then(() => undefined);
+      void write.then(() => reload(), fail(nodeId));
     },
     [findNode, reload, showToast, fail, t],
   );

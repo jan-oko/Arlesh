@@ -318,8 +318,8 @@ export function isLiveExpectation(node: MindmapNode): boolean {
  * Whether an Expectation shows under the given preset.
  *
  * A wait is not work, so it answers its own rule. **All** shows every one. A pending, live one
- * shows under **Plan**, and under **Start** only when it has no check-by — with one, the virtual
- * check task beneath it is the thing to start, and that task answers the ordinary Task rules. **Do**
+ * shows under **Plan**, and under **Start** only when it is not checked on (no Check every) — with
+ * a Check every, the virtual check task beneath it is the thing to start, and that task answers the ordinary Task rules. **Do**
  * and **Backlog** show none. A released or archived one shows under All only.
  */
 export function passesExpectationPreset(node: MindmapNode, f: FilterState): boolean {
@@ -330,7 +330,7 @@ export function passesExpectationPreset(node: MindmapNode, f: FilterState): bool
       return isLiveExpectation(node);
     // A wait whose own window has passed drops out of Start, as a Task's does.
     case "start":
-      return isLiveExpectation(node) && (node.checkBy ?? null) === null && node.timing !== "lapsed";
+      return isLiveExpectation(node) && (node.checkEvery ?? null) === null && node.timing !== "lapsed";
     case "do":
     case "backlog":
       return false;

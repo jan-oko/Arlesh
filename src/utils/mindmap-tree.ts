@@ -1,4 +1,5 @@
 import type { MindmapNode, NodeKind, Position } from "@/utils/tree-layout";
+import { isDerivedWait } from "@/utils/derived-wait";
 
 export function findNode(root: MindmapNode, id: string): MindmapNode | undefined {
   if (root.id === id) return root;
@@ -132,11 +133,11 @@ export function gatherSubtreeItems(
 
 /**
  * Every node a Task can depend on — Tasks, Goals and stored Expectations — for the dependency
- * picker and the editors that read it. A wait's virtual check task and a delegated Task's virtual
- * wait have no row for an edge to name, so neither is collected.
+ * picker and the editors that read it. A derived wait — a check task, a delegated Task's wait, an
+ * asynchronous Task's spawned wait — has no row for an edge to name, so none is collected.
  */
 export function collectTasksAndGoals(node: MindmapNode, acc: MindmapNode[]): void {
-  const derivedWait = node.expectationCheck !== undefined || node.delegationWait !== undefined;
+  const derivedWait = isDerivedWait(node);
   if ((node.kind === "task" || node.kind === "goal" || node.kind === "expectation") && !derivedWait) acc.push(node);
   for (const child of node.children) collectTasksAndGoals(child, acc);
 }
@@ -144,10 +145,10 @@ export function collectTasksAndGoals(node: MindmapNode, acc: MindmapNode[]): voi
 export function collectSubtreePostOrder(node: MindmapNode): Array<{ id: string; kind: NodeKind }> {
   const result: Array<{ id: string; kind: NodeKind }> = [];
   function visit(n: MindmapNode): void {
-    // A wait's check task and a delegated Task's wait are drawn from their owner's row, not stored:
-    // there is nothing to delete, and they go when the owner does.
+    // A derived wait is drawn from its owner's row, not stored: there is nothing to delete, and it
+    // goes when the owner does.
     for (const child of n.children) {
-      if (child.expectationCheck === undefined && child.delegationWait === undefined) visit(child);
+      if (!isDerivedWait(child)) visit(child);
     }
     result.push({ id: n.id, kind: n.kind });
   }

@@ -34,7 +34,6 @@ export default function StepCardFields({ node, fields }: Props) {
   const { t } = useTranslation(["stepsView", "status", "nodeKinds"]);
   const scopeLabel = useScopeRangeLabel(node.timeScope);
   const planLabel = useScopeRangeLabel(node.plan);
-  const checkByLabel = useScopeRangeLabel(node.checkBy);
   const tagNames = useTagNames();
 
   if (fields.length === 0) return null;
@@ -83,8 +82,10 @@ export default function StepCardFields({ node, fields }: Props) {
         return node.onScopeExit === "archive"
           ? t("stepsView:value.onExitArchive")
           : t("stepsView:value.onExitKeep");
-      case "checkBy":
-        return checkByLabel ?? t("stepsView:value.loading");
+      case "checkEvery": {
+        const every = node.checkEvery;
+        return every == null ? "" : `${every.n} ${every.kind}`;
+      }
       case "verdictWindow": {
         const window = node.verdictWindow;
         return window == null ? "" : `${window.n} ${window.kind}`;

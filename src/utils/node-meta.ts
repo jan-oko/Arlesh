@@ -86,7 +86,7 @@ export const NODE_ICON: Record<NodeKind, string> = {
   task: "✓",
   // A handshake: a rule you hold to, not a box you tick.
   commitment: "🤝",
-  // A loading ring: waiting on something, not an action.
+  // A ring not closed yet: waiting on something, not an action.
   expectation: "◌",
   tag: "🏷",
   info: "ℹ",

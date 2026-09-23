@@ -10,30 +10,22 @@ interface Props {
   isArchived: boolean;
 }
 
-/** How much of the ring a pending wait draws: three quarters, the gap at the top right. */
-const ARC_SWEEP = 0.75;
-/** Where the arc starts, measured clockwise from twelve o'clock, as a fraction of a turn. */
-const ARC_START = 0.1;
-
-/** A point on a circle of radius `radius` round `(cx, cy)`, `turn` of the way clockwise from 12. */
-function pointAt(cx: number, cy: number, radius: number, turn: number): string {
-  const angle = turn * 2 * Math.PI;
-  return `${(cx + radius * Math.sin(angle)).toFixed(2)} ${(cy - radius * Math.cos(angle)).toFixed(2)}`;
-}
+/** How many dashes the lower half breaks into. Few and fat, so they still read as dashes — not as
+ * a grey smudge — at the Mindmap's smallest node size. */
+const DASHES = 3;
 
 /**
- * An Expectation renders as a **loading ring** — the shape a screen uses for "waiting on something".
+ * An Expectation renders as a **half-drawn ring** — solid across the top, dashed across the bottom:
+ * a circle that is not closed yet, the shape of "waiting on something".
  *
- * **Pending** is the ring with a quarter missing, as a spinner is drawn. **Released** is a solid
- * disc: the wait is over and the ring has filled. A full hollow ring, or a ring with a tick, would
- * have been the obvious "done" — but those are the Task glyph's To Do and Done, and a wait must not
- * read as a Task at the sizes the Mindmap draws. An **archived** wait is the pending ring struck
- * through, as an expired Commitment is.
+ * **Pending** is that ring. **Released** is a solid disc: the wait is over and the ring has filled.
+ * A full hollow ring would have been the obvious "done" — but that is the Task glyph's To Do, and a
+ * wait must not read as a Task at the sizes the Mindmap draws. An **archived** wait is the pending
+ * ring struck through, as an expired Commitment is — the same family, one line more.
  *
- * Deliberately **still**. A board of waits each turning would be motion with nothing to say, and
- * the open quarter already reads as "not finished" without it. It is not the hourglass (an
- * Asynchronous Task's badge: a wait somebody started) and not the clock (a Time Scope's badge: a
- * window passing) — both badges, both drawn in the status row, where this is the node glyph itself.
+ * Deliberately **still**: a board of waits each moving would be motion with nothing to say. It is
+ * not the hourglass (an Asynchronous Task's badge) and not the clock (a Time Scope's badge) — both
+ * badges, drawn in the status row, where this is the node glyph itself.
  */
 export default function ExpectationIcon({ cx, cy, r, color, opacity, status, isArchived }: Props) {
   const radius = r * 0.72;
@@ -41,11 +33,25 @@ export default function ExpectationIcon({ cx, cy, r, color, opacity, status, isA
   if (status === "released" && !isArchived) {
     return <circle cx={cx} cy={cy} r={radius + stroke / 2} fill={color} opacity={opacity} />;
   }
-  const arc = `M ${pointAt(cx, cy, radius, ARC_START)} A ${radius.toFixed(2)} ${radius.toFixed(2)} 0 1 1 ${pointAt(cx, cy, radius, ARC_START + ARC_SWEEP)}`;
+  const left = `${(cx - radius).toFixed(2)} ${cy.toFixed(2)}`;
+  const right = `${(cx + radius).toFixed(2)} ${cy.toFixed(2)}`;
+  const r2 = radius.toFixed(2);
+  // The lower half is cut into `DASHES` dashes with a gap on either side of each, so it neither
+  // touches the solid top — which would blur the two halves together — nor ends in a stub.
+  const segment = (Math.PI * radius) / (2 * DASHES + 1);
   const strike = r * 0.9;
   return (
     <g opacity={opacity}>
-      <path d={arc} fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round" />
+      <path d={`M ${left} A ${r2} ${r2} 0 0 1 ${right}`} fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round" />
+      <path
+        data-part="dashed"
+        d={`M ${right} A ${r2} ${r2} 0 0 1 ${left}`}
+        fill="none"
+        stroke={color}
+        strokeWidth={stroke}
+        strokeDasharray={`${segment.toFixed(2)} ${segment.toFixed(2)}`}
+        strokeDashoffset={segment.toFixed(2)}
+      />
       {isArchived && (
         <path
           d={`M ${cx - strike} ${cy + strike * 0.75} L ${cx + strike} ${cy - strike * 0.75}`}
