@@ -22,11 +22,11 @@ interface TickRing {
 }
 
 /** The reference's ring: 24 positions, 20 ticks, a gap of four at the lower right. */
-const FULL: TickRing = { slots: 24, missing: 4, inner: 0.54, outer: 0.68, stroke: 0.075 };
+const FULL: TickRing = { slots: 24, missing: 4, inner: 0.6, outer: 0.7, stroke: 0.075 };
 
 /** Half as many, longer and heavier, for small icons: twenty ticks a few pixels apart blur into a
  * grey ring. 12 positions, 10 ticks, a gap of two. */
-const SPARSE: TickRing = { slots: 12, missing: 2, inner: 0.48, outer: 0.76, stroke: 0.15 };
+const SPARSE: TickRing = { slots: 12, missing: 2, inner: 0.58, outer: 0.76, stroke: 0.15 };
 
 /** Below this radius the ring thins to [`SPARSE`] — every Mindmap node and every row icon today. */
 const FULL_MIN_R = 16;
