@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { findNode, findParent, collectAllNodeIds } from "@/utils/mindmap-tree";
 import { canAdoptChildren, canParentAnyNewChild, canParentNewChild, validParentKinds } from "@/utils/node-meta";
-import { pasteRefusal, countPasteRefusals, pasteRefusalKey, PASTE_REFUSAL } from "@/utils/paste-refusal";
+import { pasteRefusal, countPasteRefusals, pasteRefusalKey, flowsLeftBehind, PASTE_REFUSAL } from "@/utils/paste-refusal";
 import type { PasteRefusal, PasteRefusalCount } from "@/utils/paste-refusal";
 import type { TypedChildKind } from "@/utils/node-meta";
 import type { TaskAgentic } from "@/api/tasks";
@@ -254,6 +254,14 @@ export function useNodeActions({
   const refusalSentence = useCallback(
     (line: PasteRefusalCount, parentKind: NodeKind): string => {
       const key = pasteRefusalKey(line);
+      // The one line that names rather than counts. The names are assembled here because the list
+      // separator and the overflow tail are words, not punctuation the util should be inventing —
+      // the same reason the destination refusal joins its parent labels here too.
+      if (line.reason === PASTE_REFUSAL.FLOW_UNDER) {
+        const flows = line.named.map((title) => t("warnings:pasteSkippedFlowName", { title }));
+        if (line.unnamed > 0) flows.push(t("warnings:pasteSkippedFlowMore", { count: line.unnamed }));
+        return t(key, { count: line.count, flows: flows.join(", ") });
+      }
       if (line.reason !== PASTE_REFUSAL.HERE) return t(key, { count: line.count });
       return t(key, {
         count: line.count,
@@ -295,6 +303,12 @@ export function useNodeActions({
         refusals.push(refusal);
         return false;
       });
+      // The skip nothing in the selection hints at: a Flow hanging *under* one of the nodes being
+      // copied. The backend's duplication walk does not descend into a Flow, so the pasted subtree
+      // comes out quietly smaller than the one that was copied. It leaves `nodeIds` untouched —
+      // everything that can be copied still is, and this only says what the copy could not carry.
+      // Copies alone: a cut re-points one parent link and the whole subtree follows.
+      if (isCopy) refusals.push(...flowsLeftBehind(tree, nodeIds));
       // One toast carrying every reason, never one call per reason: the store holds a single pending
       // toast, so a second `showToast` would overwrite the first and the node it spoke for would be
       // dropped in silence — exactly what this message exists to prevent.

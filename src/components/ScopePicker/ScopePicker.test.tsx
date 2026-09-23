@@ -12,6 +12,7 @@ function stubPicker(overrides: Partial<UseScopePicker> = {}): UseScopePicker {
     handleClick: vi.fn(),
     adjustEndpoint: vi.fn(),
     reset: vi.fn(),
+    seed: vi.fn(),
     resolve: vi.fn().mockResolvedValue(null),
     ...overrides,
   };
