@@ -24,13 +24,28 @@ export const TASK_AGENTIC = {
   NO: "no",
 } as const;
 
+/** A Task delegated to a Person, by the Person's id. */
+export interface PersonDelegate {
+  kind: "person";
+  id: number;
+}
+
+/** A Task delegated to the Agent. There is one Agent target, so it carries no id. */
+export interface AgentDelegate {
+  kind: "agent";
+}
+
+/** Who holds a delegated Task: a Person or the Agent. Independent of the Agentic flag, which says
+ * only that the work suits an agent. */
+export type Delegate = PersonDelegate | AgentDelegate;
+
 export interface Task {
   id: number;
   title: string;
   parent_type: string;
   parent_id: number;
   status: string;
-  delegate_to: number | null;
+  delegate_to: Delegate | null;
   // This task's own flag: true/false when it says so itself, null when it inherits the nearest
   // flagged ancestor's. Independent of delegate_to — a task can be both.
   agentic: boolean | null;
@@ -67,7 +82,8 @@ export interface CreateTaskRequest {
 export interface UpdateTaskRequest {
   title?: string;
   status?: string;
-  delegate_to?: number | null;
+  // Absent = leave unchanged, null = clear, value = set.
+  delegate_to?: Delegate | null;
   // Absent = leave unchanged; "inherit" puts the task back to reading its ancestors.
   agentic?: TaskAgentic;
   // Absent = leave unchanged; false is a real answer that unflags the task.

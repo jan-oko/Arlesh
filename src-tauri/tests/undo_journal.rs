@@ -306,7 +306,7 @@ async fn creating_a_task_journals_an_insert_carrying_the_row_it_wrote() {
     assert_eq!(after["title"], serde_json::json!("journaled"));
     assert_eq!(after["parent_id"], serde_json::json!(project_id));
     assert_eq!(
-        after["delegate_to"],
+        after["delegate_kind"],
         serde_json::json!(null),
         "a NULL column is recorded as null, not omitted — undo has to be able to put it back"
     );

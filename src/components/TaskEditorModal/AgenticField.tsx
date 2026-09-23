@@ -17,6 +17,12 @@ interface Props {
    * rather than inferred, since Inherit and an explicit "Not agentic" look identical otherwise. */
   inherited: boolean;
   onChange: (value: TaskAgentic) => void;
+  /** Whether the task is delegated to the Agent, which is what the delegate button shows pressed. */
+  delegatedToAgent: boolean;
+  /** Whether to offer the one-click delegate button at all. */
+  offersDelegate: boolean;
+  /** Delegates the task to the Agent, or takes it back. */
+  onToggleDelegate: () => void;
 }
 
 /**
@@ -27,7 +33,7 @@ interface Props {
  * the other two are answers of the task's own, and *Not agentic* is a real one, since it is what
  * takes a single task back out of an agentic branch.
  */
-export default function AgenticField({ value, inherited, onChange }: Props) {
+export default function AgenticField({ value, inherited, onChange, delegatedToAgent, offersDelegate, onToggleDelegate }: Props) {
   const { t } = useTranslation("editor");
   return (
     <div className={styles.label}>
@@ -43,9 +49,18 @@ export default function AgenticField({ value, inherited, onChange }: Props) {
             {t(OPTION_LABEL_KEY[option])}
           </button>
         ))}
-        {/* The one-click delegate button belongs here, beside the flag that earns it. It waits on
-            Delegation being able to point at an Agent rather than only a Person (Arlesh-8wh); this
-            row is the slot it lands in. */}
+        {/* The one-click delegate button, beside the flag that earns it: it toggles Delegation
+            between the Agent and nobody. Staged like every other field, so Cancel discards it. */}
+        {offersDelegate && (
+          <button
+            type="button"
+            className={`${styles.statusPill}${delegatedToAgent ? ` ${styles.statusPillActive}` : ""}`}
+            aria-pressed={delegatedToAgent}
+            onClick={onToggleDelegate}
+          >
+            {t("delegateToAgent")}
+          </button>
+        )}
       </div>
       {value === TASK_AGENTIC.INHERIT && (
         <small>{inherited ? t("agenticInheritedOn") : t("agenticInheritedOff")}</small>

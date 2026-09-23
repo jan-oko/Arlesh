@@ -22,7 +22,7 @@ fn stored_task() -> Task {
         parent_type: "project".to_string(),
         parent_id: 7,
         status: TaskStatus::Todo.as_str().to_string(),
-        delegate_to: Some(3),
+        delegate_to: Some(Delegate::Person { id: 3 }),
         agentic: None,
         asynchronous: false,
         time_scope: Some(TimeScope {
@@ -203,6 +203,18 @@ fn agentic_and_the_delegate_are_merged_independently() {
     assert_eq!(write.delegate_to, None);
 }
 
+#[test]
+fn delegating_to_the_agent_replaces_a_person_delegate() {
+    let write = TaskWrite::merge(
+        stored_task(),
+        UpdateTaskRequest {
+            delegate_to: Some(Some(Delegate::Agent)),
+            ..Default::default()
+        },
+    );
+    assert_eq!(write.delegate_to, Some(Delegate::Agent));
+}
+
 /// The stored row, flagged as work that starts a wait.
 fn asynchronous_task() -> Task {
     Task {
@@ -277,7 +289,7 @@ fn an_empty_update_request_writes_the_stored_row_back_unchanged() {
     assert_eq!(write.parent_type, "project");
     assert_eq!(write.parent_id, 7);
     assert_eq!(write.title, "Stored");
-    assert_eq!(write.delegate_to, Some(3));
+    assert_eq!(write.delegate_to, Some(Delegate::Person { id: 3 }));
     assert_eq!(write.agentic, None);
     assert!(!write.asynchronous);
     assert_eq!(write.position, 100);

@@ -330,7 +330,9 @@ async fn a_duplicated_task_carries_every_field_the_original_held() {
         &mut db,
         TaskId(task.id),
         UpdateTaskRequest {
-            delegate_to: Some(Some(person)),
+            delegate_to: Some(Some(arlesh_lib::tasks::model::Delegate::Person {
+                id: person,
+            })),
             is_private: Some(true),
             ..Default::default()
         },
@@ -361,7 +363,10 @@ async fn a_duplicated_task_carries_every_field_the_original_held() {
     assert_eq!(copy.time_scope, Some(at(week)));
     assert_eq!(copy.on_scope_exit, Some(OnScopeExit::Archive));
     assert_eq!(copy.plan, Some(at(week)));
-    assert_eq!(copy.delegate_to, Some(person));
+    assert_eq!(
+        copy.delegate_to,
+        Some(arlesh_lib::tasks::model::Delegate::Person { id: person })
+    );
     assert_eq!(
         copy.agentic,
         Some(true),
