@@ -7,6 +7,8 @@ import {
   nextRangeSelection,
   adjustRangeEndpoint,
   refForScope,
+  refsForScopes,
+  seededRange,
   type ScopeRef,
 } from "./scope-ref";
 import type { Scope } from "@/api/scopes";
@@ -141,5 +143,56 @@ describe("refForScope", () => {
   it("names no cell for a row missing its band or datetimes", () => {
     expect(refForScope(scope({ kind: "part_of_day", part: null }))).toBeNull();
     expect(refForScope(scope({ kind: "exact" }))).toBeNull();
+  });
+});
+
+describe("refsForScopes", () => {
+  const month = (id: number, startDate: string): Scope => ({
+    id, kind: "month", label: "", start_date: startDate, end_date: startDate,
+    week_id: null, month_id: null, season_id: null, day_id: null,
+    part: null, start_datetime: null, end_datetime: null,
+  });
+
+  it("gives one ref per scope, taken from its start_date", () => {
+    expect(refsForScopes([month(1, "2026-06-01"), month(2, "2026-08-01")])).toEqual([
+      { kind: "month", date: "2026-06-01" },
+      { kind: "month", date: "2026-08-01" },
+    ]);
+  });
+
+  it("drops a row that names no calendar cell", () => {
+    const broken: Scope = { ...month(3, "2026-06-01"), kind: "part_of_day", part: null };
+    expect(refsForScopes([broken, month(1, "2026-06-01")])).toEqual([
+      { kind: "month", date: "2026-06-01" },
+    ]);
+  });
+});
+
+describe("seededRange", () => {
+  it("seeds a two-endpoint window as a closed range, earliest first", () => {
+    expect(seededRange([week("2026-06-21"), week("2026-06-07")])).toEqual({
+      start: week("2026-06-07"),
+      end: week("2026-06-21"),
+    });
+  });
+
+  it("seeds a single-scope window as both endpoints of the same cell", () => {
+    expect(seededRange([day("2026-06-20"), day("2026-06-20")])).toEqual({
+      start: day("2026-06-20"),
+      end: day("2026-06-20"),
+    });
+  });
+
+  it("seeds nothing when a window has fewer than two drawable cells", () => {
+    expect(seededRange([])).toEqual({ start: null, end: null });
+    expect(seededRange([day("2026-06-20")])).toEqual({ start: null, end: null });
+  });
+
+  it("is closed, so the next click starts a new range rather than extending it", () => {
+    const seeded = seededRange([week("2026-06-07"), week("2026-06-07")]);
+    expect(nextRangeSelection(seeded, week("2026-06-21"))).toEqual({
+      start: week("2026-06-21"),
+      end: null,
+    });
   });
 });

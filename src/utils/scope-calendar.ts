@@ -2,7 +2,7 @@
 // navigation between views. This is the client-side "grid layout" half of the hybrid decision;
 // the backend remains the source of truth for a materialized scope's authoritative bounds.
 
-import { refForScope, type CanonicalKind, type ScopeRef } from "@/utils/scope-ref";
+import { refsForScopes, type CanonicalKind, type ScopeRef } from "@/utils/scope-ref";
 import type { PartOfDay, Scope } from "@/api/scopes";
 
 /** A single selectable calendar cell. `startDate`/`endDate` are inclusive ISO dates for shading. */
@@ -308,12 +308,7 @@ export function openingForRefs(refs: ScopeRef[]): ScopeOpening | null {
  * opening stands.
  */
 export function openingForScopes(scopes: Scope[]): ScopeOpening | null {
-  const refs: ScopeRef[] = [];
-  for (const scope of scopes) {
-    const ref = refForScope(scope);
-    if (ref !== null) refs.push(ref);
-  }
-  return openingForRefs(refs);
+  return openingForRefs(refsForScopes(scopes));
 }
 
 /** The cells of a view, given the browsed anchor date. */
