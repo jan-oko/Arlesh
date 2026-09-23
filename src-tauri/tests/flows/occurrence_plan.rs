@@ -47,7 +47,7 @@ async fn day(pool: &sqlx::SqlitePool, date: chrono::NaiveDate) -> TimeScope {
     }
 }
 
-/// A weekly Habit starting Monday 2026-01-05 whose one task item — "Run" — has a single cycle
+/// A weekly Habit starting the week of Sunday 2026-01-04 (weeks run Sunday to Saturday) whose one task item — "Run" — has a single cycle
 /// pair: `cycle_scope` as its Cycle Scope and the 2nd day of it as its Cycle Plan.
 struct WeeklyRun {
     flow_id: i64,
@@ -318,10 +318,10 @@ async fn a_plan_outside_the_occurrences_iteration_is_refused_as_a_containment_vi
 async fn an_occurrence_with_a_day_cycle_scope_is_held_to_that_day_not_to_its_week() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    // The pair's Cycle Scope is the 2nd day of the week: Tuesday the 6th.
+    // The pair's Cycle Scope is the 2nd day of the week: Monday the 5th.
     let run = weekly_run(&pool, &app, "day").await;
     let thursday = day(&pool, ymd(2026, 1, 8)).await;
-    let tuesday = day(&pool, ymd(2026, 1, 6)).await;
+    let monday = day(&pool, ymd(2026, 1, 5)).await;
 
     let refused = set_plan(
         &app,
@@ -330,7 +330,7 @@ async fn an_occurrence_with_a_day_cycle_scope_is_held_to_that_day_not_to_its_wee
         PlanOverride::Planned { plan: thursday },
     )
     .await
-    .expect_err("Thursday is inside the iteration but outside Tuesday's occurrence");
+    .expect_err("Thursday is inside the iteration but outside Monday's occurrence");
     assert_eq!(refused["kind"].as_str(), Some("containment_violated"));
 
     set_plan(
@@ -338,7 +338,7 @@ async fn an_occurrence_with_a_day_cycle_scope_is_held_to_that_day_not_to_its_wee
         run.flow_id,
         run.occurrence(run.first_week),
         PlanOverride::Planned {
-            plan: tuesday.clone(),
+            plan: monday.clone(),
         },
     )
     .await
@@ -347,7 +347,7 @@ async fn an_occurrence_with_a_day_cycle_scope_is_held_to_that_day_not_to_its_wee
         &iterations(&app, run.flow_id, at(2026, 1, 6)).await,
         run.first_week,
     );
-    assert_eq!(occurrence.plan, Some(tuesday));
+    assert_eq!(occurrence.plan, Some(monday));
 }
 
 #[tokio::test]
