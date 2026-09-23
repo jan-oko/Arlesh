@@ -274,26 +274,116 @@ fn a_zero_number_is_read_as_missing() {
     assert_eq!(restored_ordinals(&[0, 1]), vec![2, 1]);
 }
 
-#[test]
-fn every_window_carries_its_number_in_its_title_the_first_included() {
-    assert_eq!(window_title("Arlesh", 1), "Arlesh 1");
-    assert_eq!(window_title("Arlesh", 2), "Arlesh 2");
-    assert_eq!(window_title("Arlesh", 11), "Arlesh 11");
+// -------------------------------------------------------------------------------------------
+// Naming the windows: the number shows only while there are several.
+// -------------------------------------------------------------------------------------------
+
+fn open_window(label: &str, ordinal: u32, tab: &str) -> OpenWindow {
+    OpenWindow {
+        label: label.to_string(),
+        ordinal,
+        tab: tab.to_string(),
+        visible: true,
+    }
 }
 
 #[test]
-fn a_branch_instances_own_title_keeps_the_numbering() {
-    // `scripts/branch-instance.sh` titles a branch's windows after its branch.
-    assert_eq!(window_title("Arlesh (fxo)", 2), "Arlesh (fxo) 2");
+fn a_lone_window_carries_no_number_in_its_title() {
+    assert_eq!(window_title("Arlesh", 1, "", 1), "Arlesh");
+    assert_eq!(
+        window_title("Arlesh", 1, "Bugfixes", 1),
+        "Arlesh — Bugfixes"
+    );
 }
 
 #[test]
-fn the_tray_lists_a_window_by_its_title_and_its_active_tab() {
-    assert_eq!(titled_by_tab("Arlesh 2", "Bugfixes"), "Arlesh 2 — Bugfixes");
+fn a_lone_window_keeps_its_number_hidden_even_when_it_is_not_one() {
+    // Window 2 of two, after window 1 closed: still numbered 2, but alone, so it shows none.
+    assert_eq!(
+        window_title("Arlesh", 2, "Bugfixes", 1),
+        "Arlesh — Bugfixes"
+    );
 }
 
 #[test]
-fn a_window_with_nothing_to_add_keeps_its_plain_title() {
-    assert_eq!(titled_by_tab("Arlesh 1", ""), "Arlesh 1");
-    assert_eq!(titled_by_tab("Arlesh 1", "   "), "Arlesh 1");
+fn with_several_windows_each_title_carries_its_number_in_brackets() {
+    assert_eq!(window_title("Arlesh", 1, "", 2), "Arlesh [1]");
+    assert_eq!(window_title("Arlesh", 2, "", 2), "Arlesh [2]");
+    assert_eq!(window_title("Arlesh", 11, "", 12), "Arlesh [11]");
+}
+
+#[test]
+fn the_number_sits_between_the_apps_name_and_the_active_tab() {
+    assert_eq!(
+        window_title("Arlesh", 2, "Bugfixes", 3),
+        "Arlesh [2] — Bugfixes"
+    );
+}
+
+#[test]
+fn a_branch_instances_number_follows_its_branch() {
+    // `scripts/branch-instance.sh` titles a branch's windows `Arlesh — <branch>`.
+    assert_eq!(
+        window_title("Arlesh — fxo", 2, "Bugfixes", 2),
+        "Arlesh — fxo [2] — Bugfixes"
+    );
+    assert_eq!(window_title("Arlesh — fxo", 1, "", 1), "Arlesh — fxo");
+}
+
+#[test]
+fn a_blank_tab_name_adds_no_separator() {
+    assert_eq!(window_title("Arlesh", 1, "", 2), "Arlesh [1]");
+    assert_eq!(window_title("Arlesh", 1, "   ", 1), "Arlesh");
+}
+
+#[test]
+fn the_tray_lists_no_windows_while_only_one_is_open() {
+    assert!(menu_entries("Arlesh", vec![open_window("main", 1, "Bugfixes")]).is_empty());
+    assert!(menu_entries("Arlesh", Vec::new()).is_empty());
+}
+
+#[test]
+fn with_two_windows_the_tray_lists_both_by_their_numbered_titles() {
+    let entries = menu_entries(
+        "Arlesh",
+        vec![
+            open_window("torn", 2, "Bugfixes"),
+            OpenWindow {
+                visible: false,
+                ..open_window("main", 1, "")
+            },
+        ],
+    );
+    assert_eq!(
+        entries,
+        vec![
+            ListedWindow {
+                label: "main".to_string(),
+                title: "Arlesh [1]".to_string(),
+                visible: false,
+            },
+            ListedWindow {
+                label: "torn".to_string(),
+                title: "Arlesh [2] — Bugfixes".to_string(),
+                visible: true,
+            },
+        ]
+    );
+}
+
+#[test]
+fn closing_back_to_one_window_drops_both_the_number_and_the_tray_list() {
+    let two = vec![
+        open_window("main", 1, ""),
+        open_window("torn", 2, "Bugfixes"),
+    ];
+    assert_eq!(menu_entries("Arlesh", two.clone()).len(), 2);
+
+    // Window 1 closes; window 2 is left alone and keeps its number without showing it.
+    let one: Vec<OpenWindow> = two.into_iter().filter(|w| w.label == "torn").collect();
+    assert_eq!(
+        window_title("Arlesh", 2, "Bugfixes", one.len()),
+        "Arlesh — Bugfixes"
+    );
+    assert!(menu_entries("Arlesh", one).is_empty());
 }
