@@ -23,8 +23,8 @@ Specced and kept, but not in the app today:
 |------------------------|----------------------------------------|
 | Tags                   | Additive — child has both parent's and its own tags |
 | KB links (Person/Event/Thread) | Additive |
-| Delegation             | Override — child's explicit delegation replaces the inherited one |
+| Delegation             | Override — child's explicit delegation replaces the inherited one, whichever kind either is: a Person overrides an inherited Agent and the Agent an inherited Person |
 
-With these, when filtering, a child item would match a filter if it or any ancestor holds the matching link. Today a tag filter tests the node's own tags only, nothing writes a knowledge-base link, and Delegation is a stored column with no inheritance.
+With these, when filtering, a child item would match a filter if it or any ancestor holds the matching link. Today a tag filter tests the node's own tags only, nothing writes a knowledge-base link, and a Task's Delegate (a Person or the Agent) is its own only — nothing inherits it.
 
 ---

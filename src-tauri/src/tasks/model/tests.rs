@@ -88,3 +88,60 @@ fn goal_id_roundtrip() {
     let id = GoalId::from(13_i64);
     assert_eq!(i64::from(id), 13);
 }
+
+#[test]
+fn a_delegate_is_a_kind_and_an_id_on_the_wire() {
+    let person = serde_json::to_value(Delegate::Person { id: 3 }).expect("serialises");
+    assert_eq!(person, serde_json::json!({"kind": "person", "id": 3}));
+    let agent = serde_json::to_value(Delegate::Agent).expect("serialises");
+    assert_eq!(agent, serde_json::json!({"kind": "agent"}));
+
+    let read: Delegate = serde_json::from_str(r#"{"kind":"agent"}"#).expect("parses");
+    assert_eq!(read, Delegate::Agent);
+    let read: Delegate = serde_json::from_str(r#"{"kind":"person","id":7}"#).expect("parses");
+    assert_eq!(read, Delegate::Person { id: 7 });
+}
+
+#[test]
+fn a_person_delegate_without_an_id_is_refused_on_the_wire() {
+    assert!(serde_json::from_str::<Delegate>(r#"{"kind":"person"}"#).is_err());
+    assert!(serde_json::from_str::<Delegate>(r#"{"kind":"robot"}"#).is_err());
+}
+
+#[test]
+fn every_delegate_round_trips_through_its_columns() {
+    for delegate in [
+        None,
+        Some(Delegate::Person { id: 4 }),
+        Some(Delegate::Agent),
+    ] {
+        let (kind, id) = Delegate::columns(delegate);
+        assert_eq!(Delegate::from_columns(kind, id), delegate);
+    }
+}
+
+#[test]
+fn the_agent_stores_no_id_and_a_person_stores_theirs() {
+    assert_eq!(
+        Delegate::columns(Some(Delegate::Agent)),
+        (Some("agent"), None)
+    );
+    assert_eq!(
+        Delegate::columns(Some(Delegate::Person { id: 9 })),
+        (Some("person"), Some(9))
+    );
+    assert_eq!(Delegate::columns(None), (None, None));
+}
+
+#[test]
+fn a_column_pair_the_schema_would_refuse_reads_as_no_delegate() {
+    assert_eq!(Delegate::from_columns(Some("person"), None), None);
+    assert_eq!(Delegate::from_columns(Some("robot"), Some(1)), None);
+    assert_eq!(Delegate::from_columns(None, Some(1)), None);
+}
+
+#[test]
+fn a_delegate_describes_itself_for_a_prompt() {
+    assert_eq!(Delegate::Person { id: 12 }.describe(), "person 12");
+    assert_eq!(Delegate::Agent.describe(), "agent");
+}

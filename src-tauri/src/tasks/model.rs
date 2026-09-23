@@ -168,6 +168,65 @@ impl TaskAgentic {
     }
 }
 
+/// Who holds a delegated Task: a **Person**, or the **Agent**.
+///
+/// A `(kind, id)` pair rather than a person id, so the model says what is true — delegating a
+/// Task to an agent does not have to invent a Person called "Agent". There is one Agent target,
+/// so the variant carries no id; naming individual agents is a later question.
+///
+/// On the wire it is `{"kind": "person", "id": 3}` or `{"kind": "agent"}`; in the `tasks` table it
+/// is the `delegate_kind` / `delegate_id` column pair (migration 0037), whose CHECK allows exactly
+/// the shapes this enum can hold.
+///
+/// Independent of the Agentic flag: the flag says the work suits an agent, the delegate says who
+/// holds it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum Delegate {
+    /// Delegated to the Person with this id.
+    Person {
+        /// The `people` row the task is delegated to.
+        id: i64,
+    },
+    /// Delegated to the Agent.
+    Agent,
+}
+
+impl Delegate {
+    /// `delegate_kind` for a Person delegate.
+    const PERSON: &'static str = "person";
+    /// `delegate_kind` for the Agent delegate.
+    const AGENT: &'static str = "agent";
+
+    /// The `(delegate_kind, delegate_id)` columns a delegate — or its absence — stores.
+    pub fn columns(delegate: Option<Self>) -> (Option<&'static str>, Option<i64>) {
+        match delegate {
+            None => (None, None),
+            Some(Self::Person { id }) => (Some(Self::PERSON), Some(id)),
+            Some(Self::Agent) => (Some(Self::AGENT), None),
+        }
+    }
+
+    /// The delegate a stored column pair holds. A pair the schema's CHECK would have refused — an
+    /// unknown kind, or a Person without an id — reads as no delegate, the same fallback the other
+    /// enum columns use.
+    pub fn from_columns(kind: Option<&str>, id: Option<i64>) -> Option<Self> {
+        match (kind?, id) {
+            (Self::PERSON, Some(id)) => Some(Self::Person { id }),
+            (Self::AGENT, _) => Some(Self::Agent),
+            _ => None,
+        }
+    }
+
+    /// A short rendering, for a prompt that has to name the value at stake.
+    pub fn describe(self) -> String {
+        match self {
+            Self::Person { id } => format!("person {id}"),
+            Self::Agent => Self::AGENT.to_string(),
+        }
+    }
+}
+
 /// Goal lifecycle status.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -271,8 +330,8 @@ pub struct Task {
     pub parent_id: i64,
     /// Current status.
     pub status: String,
-    /// Person id this task is delegated to (if any).
-    pub delegate_to: Option<i64>,
+    /// Who this task is delegated to — a Person or the Agent — if anyone.
+    pub delegate_to: Option<Delegate>,
     /// Whether this task is explicitly Agentic. A null value inherits the nearest flagged
     /// ancestor; `Some` is an explicit value that replaces what would have been inherited.
     /// Independent of `delegate_to` — a task may be both.
@@ -415,9 +474,9 @@ pub struct UpdateTaskRequest {
     pub title: Option<String>,
     /// New status (if provided).
     pub status: Option<TaskStatus>,
-    /// Person to delegate to (None leaves unchanged, Some(None) clears it).
+    /// Delegate to set — a Person or the Agent (None leaves unchanged, Some(None) clears it).
     #[serde(default, deserialize_with = "crate::wire::null_clears")]
-    pub delegate_to: Option<Option<i64>>,
+    pub delegate_to: Option<Option<Delegate>>,
     /// Agentic state to set. `None` leaves the column unchanged; `Some(TaskAgentic::Inherit)`
     /// writes the NULL that puts the task back to inheriting. The three states are named rather
     /// than nested in a second `Option` — see [`TaskAgentic`] for why that shape is wrong here.

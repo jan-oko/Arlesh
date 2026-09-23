@@ -27,6 +27,10 @@ impl ArleshMcp {
     /// `verdict` of `unresolved`/`kept`/`broken` that is recorded, never inferred. `unresolved`
     /// means the user has not said, and is not a synonym for "not done".
     ///
+    /// A task's `delegate_to` says who holds it: `null`, `{"kind": "person", "id": N}` (resolve
+    /// the Person with `arlesh_kb`), or `{"kind": "agent"}` — handed to the Agent. It is
+    /// independent of `agentic`, which says only that the work suits an agent.
+    ///
     /// **Paged.** A board of any size outgrows one tool result, so a response carries as much as
     /// fits and a `next_cursor`. Pass that cursor back for the next page, and keep going until it
     /// is null. Items are never split across pages, so nothing has to be reassembled — but a

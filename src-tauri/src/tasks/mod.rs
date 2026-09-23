@@ -30,9 +30,9 @@ pub use commitments::{
 use error::TaskError;
 use model::CommitmentId;
 use model::{
-    CreateGoalRequest, CreateTaskRequest, Dependency, DurationSpec, Goal, GoalId, GoalStatus,
-    OnScopeExit, Task, TaskArchival, TaskDependencyEdge, TaskId, TaskStatus, TaskWithBlockers,
-    TimeScope, UpdateGoalRequest, UpdateTaskRequest,
+    CreateGoalRequest, CreateTaskRequest, Delegate, Dependency, DurationSpec, Goal, GoalId,
+    GoalStatus, OnScopeExit, Task, TaskArchival, TaskDependencyEdge, TaskId, TaskStatus,
+    TaskWithBlockers, TimeScope, UpdateGoalRequest, UpdateTaskRequest,
 };
 pub use scope_rules::{
     conflicts_for_new_time_scope, derive_all_scope_lifecycles, nearest_scoped_ancestor_window,
@@ -194,7 +194,8 @@ struct TaskRow {
     parent_type: String,
     parent_id: i64,
     status: String,
-    delegate_to: Option<i64>,
+    delegate_kind: Option<String>,
+    delegate_id: Option<i64>,
     agentic: Option<bool>,
     asynchronous: bool,
     time_scope_start_id: Option<i64>,
@@ -218,7 +219,7 @@ impl From<TaskRow> for Task {
             parent_type: row.parent_type,
             parent_id: row.parent_id,
             status: row.status,
-            delegate_to: row.delegate_to,
+            delegate_to: Delegate::from_columns(row.delegate_kind.as_deref(), row.delegate_id),
             agentic: row.agentic,
             asynchronous: row.asynchronous,
             time_scope: time_scope_from_row(
@@ -411,7 +412,7 @@ struct TaskWrite {
     /// Final status, as its database string.
     status: String,
     /// Final delegate, or `None`.
-    delegate_to: Option<i64>,
+    delegate_to: Option<Delegate>,
     /// Final Agentic column: `None` is the NULL that inherits from the nearest flagged ancestor.
     agentic: Option<bool>,
     /// Final Asynchronous column: whether doing this task starts a wait.
@@ -956,6 +957,7 @@ impl<'session> TaskOperator<'session> {
         let (ts_start, ts_end, ts_n, ts_kind) = time_scope_columns(&write.time_scope);
         let on_exit = on_scope_exit_column(&write.time_scope, write.on_scope_exit);
         let (plan_start, plan_end, _, _) = time_scope_columns(&write.plan);
+        let (delegate_kind, delegate_id) = Delegate::columns(write.delegate_to);
 
         if let Some((new_parent_type, new_parent_id)) = &write.reparent {
             sqlx::query("UPDATE tasks SET parent_type = ?, parent_id = ? WHERE id = ?")
@@ -967,14 +969,15 @@ impl<'session> TaskOperator<'session> {
         }
 
         sqlx::query(
-            "UPDATE tasks SET title=?, status=?, delegate_to=?,
+            "UPDATE tasks SET title=?, status=?, delegate_kind=?, delegate_id=?,
                 time_scope_start_id=?, time_scope_end_id=?, time_scope_duration_n=?,
                 time_scope_duration_kind=?, on_scope_exit=?, plan_start_id=?, plan_end_id=?,
                 archival=?, agentic=?, asynchronous=?, position=?, is_private=? WHERE id=?",
         )
         .bind(&write.title)
         .bind(&write.status)
-        .bind(write.delegate_to)
+        .bind(delegate_kind)
+        .bind(delegate_id)
         .bind(ts_start)
         .bind(ts_end)
         .bind(ts_n)

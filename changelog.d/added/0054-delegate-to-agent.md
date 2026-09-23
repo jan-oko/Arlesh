@@ -1,0 +1,1 @@
+- **Delegate a task to the agent.** An agentic Task now has a **Delegate to agent** button beside its Agentic flag in the Task editor's Advanced section. One click hands the Task to the agent and a second takes it back. A task can now be delegated to the agent itself instead of to a person made up to stand in for it.

@@ -462,7 +462,74 @@ describe("TaskEditorModal — Agentic", () => {
     fireEvent.click(screen.getByRole("button", { name: "save" }));
     await waitFor(() => expect(onSave).toHaveBeenCalled());
     // The save carries the flag and says nothing about delegation at all.
-    expect(onSave.mock.calls[0]?.[0]).not.toHaveProperty("delegateTo");
+    expect(onSave.mock.calls[0]?.[0]).not.toHaveProperty("delegate");
+  });
+});
+
+describe("TaskEditorModal — the one-click delegate button", () => {
+  async function renderAndOpen(node: MindmapNode, onSave = vi.fn().mockResolvedValue(undefined)) {
+    render(<TaskEditorModal {...defaultProps} node={node} onSave={onSave} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
+    return onSave;
+  }
+
+  function openAdvanced() {
+    fireEvent.click(screen.getByRole("button", { name: "advanced" }));
+  }
+
+  function delegateButton(): HTMLElement {
+    return screen.getByRole("button", { name: "delegateToAgent" });
+  }
+
+  it("is not offered on a task that is not agentic", async () => {
+    await renderAndOpen(mkNode());
+    openAdvanced();
+    expect(screen.queryByRole("button", { name: "delegateToAgent" })).not.toBeInTheDocument();
+  });
+
+  it("appears as soon as the task is flagged agentic", async () => {
+    await renderAndOpen(mkNode());
+    openAdvanced();
+    fireEvent.click(screen.getByRole("button", { name: "agenticYes" }));
+    expect(delegateButton()).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("is offered on a task that inherits Agentic", async () => {
+    await renderAndOpen(mkNode({ inheritedAgentic: true }));
+    openAdvanced();
+    expect(delegateButton()).toBeInTheDocument();
+  });
+
+  it("delegates an agentic task to the Agent in one click", async () => {
+    const onSave = await renderAndOpen(mkNode({ agentic: true }));
+    fireEvent.click(delegateButton());
+    expect(delegateButton()).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ delegate: { kind: "agent" } });
+  });
+
+  it("takes the Agent back with a second click, saving an explicit null", async () => {
+    const onSave = await renderAndOpen(mkNode({ agentic: true, delegate: { kind: "agent" } }));
+    expect(delegateButton()).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(delegateButton());
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ delegate: null });
+  });
+
+  it("stays offered on an Agent-delegated task that is no longer agentic, so it can be taken back", async () => {
+    await renderAndOpen(mkNode({ agentic: false, delegate: { kind: "agent" } }));
+    expect(delegateButton()).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("says nothing about delegation when the button was pressed twice", async () => {
+    const onSave = await renderAndOpen(mkNode({ agentic: true }));
+    fireEvent.click(delegateButton());
+    fireEvent.click(delegateButton());
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0]?.[0]).not.toHaveProperty("delegate");
   });
 });
 
