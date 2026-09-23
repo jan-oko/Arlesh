@@ -23,7 +23,7 @@ fn a_request_repeating_the_current_parent_and_window_is_not_a_move() {
     let project = "project".to_string();
     assert!(refuse_moves((None, None), ("project", &parent), None, &scope(1, 1)).is_ok());
     assert!(refuse_moves(
-        (Some(&project), Some(7)),
+        (Some(&project), Some(&NodeId::Stored(7))),
         ("project", &parent),
         Some(&scope(1, 1)),
         &scope(1, 1),
@@ -37,8 +37,8 @@ fn a_new_parent_is_refused() {
     let project = "project".to_string();
     let goal = "goal".to_string();
     for request in [
-        (Some(&project), Some(8)),
-        (Some(&goal), Some(7)),
+        (Some(&project), Some(&NodeId::Stored(8))),
+        (Some(&goal), Some(&NodeId::Stored(7))),
         (Some(&project), None),
     ] {
         let refused = refuse_moves(request, ("project", &parent), None, &None).unwrap_err();
@@ -52,7 +52,12 @@ fn a_derived_parent_is_never_named_by_an_integer() {
         "flow_root:1:2026-09-20:0",
     ));
     let task = "task".to_string();
-    assert!(refuse_moves((Some(&task), Some(1)), ("task", &parent), None, &None).is_err());
+    assert!(refuse_moves(
+        (Some(&task), Some(&NodeId::Stored(1))),
+        ("task", &parent),
+        None,
+        &None
+    ).is_err());
 }
 
 #[test]

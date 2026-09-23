@@ -15,6 +15,15 @@ struct InfoRow {
     is_private: bool,
 }
 
+/// The stored row a note's parent names. A Habit occurrence is resolved to its host before a
+/// note is written — the attachment is what makes the occurrence its parent — so a derived id
+/// reaching here is a caller's mistake, refused as an invalid argument.
+fn stored_parent(parent: &crate::nodes::id::NodeId) -> Result<i64, sqlx::Error> {
+    parent
+        .require_stored()
+        .map_err(|error| sqlx::Error::InvalidArgument(error.to_string()))
+}
+
 impl From<InfoRow> for Info {
     fn from(row: InfoRow) -> Self {
         Self {
@@ -54,7 +63,7 @@ impl<'session> InfoOperator<'session> {
         .bind(&req.body)
         .bind(&req.details)
         .bind(&req.parent_type)
-        .bind(req.parent_id)
+        .bind(stored_parent(&req.parent_id)?)
         .bind(req.position)
         .fetch_one(&mut *self.connection)
         .await?;
@@ -163,7 +172,7 @@ impl<'session> InfoOperator<'session> {
                 "UPDATE infos SET parent_type = ?, parent_id = ?, updated_at = datetime('now') WHERE id = ?",
             )
             .bind(&pt)
-            .bind(pi)
+            .bind(stored_parent(&pi)?)
             .bind(id.0)
             .execute(&mut *self.connection)
             .await?;

@@ -390,7 +390,7 @@ async fn an_occurrence_cannot_leave_its_iteration() {
         today.clone(),
         UpdateTaskRequest {
             parent_type: Some("project".into()),
-            parent_id: Some(1),
+            parent_id: Some(1.into()),
             ..Default::default()
         },
         None,

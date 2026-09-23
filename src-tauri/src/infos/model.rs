@@ -49,7 +49,7 @@ pub struct CreateInfoRequest {
     /// Parent node kind.
     pub parent_type: String,
     /// Parent node database id.
-    pub parent_id: i64,
+    pub parent_id: NodeId,
     /// Display order.
     pub position: i64,
 }
@@ -67,7 +67,7 @@ pub struct UpdateInfoRequest {
     /// New parent kind, if re-parenting.
     pub parent_type: Option<String>,
     /// New parent id, if re-parenting.
-    pub parent_id: Option<i64>,
+    pub parent_id: Option<NodeId>,
     /// New private flag, if changing.
     pub is_private: Option<bool>,
 }

@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 pub struct BlockReason {
     /// Owning node kind: `task` or `goal`.
     pub owner_type: String,
-    /// Owning node database id.
-    pub owner_id: i64,
+    /// Owning node: a stored row, or a derived one (a Habit occurrence's own list).
+    pub owner_id: crate::nodes::id::NodeId,
     /// The reason text.
     pub reason: String,
     /// Order among the owner's reasons.

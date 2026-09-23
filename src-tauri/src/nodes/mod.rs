@@ -21,5 +21,6 @@ pub mod key;
 pub mod origin;
 pub mod overlay;
 pub mod registry;
+pub mod relations;
 pub mod table;
 pub mod write;

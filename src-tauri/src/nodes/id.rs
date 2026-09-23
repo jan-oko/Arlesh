@@ -93,6 +93,15 @@ impl NodeId {
 #[error("node {0} is derived from a template and has no stored row")]
 pub struct NotStored(pub DerivedId);
 
+/// The id no row has: stored ids start at 1. It exists so a request can be built field by field
+/// with `..Default::default()`; a request that reaches the database still naming it is refused
+/// there as a missing parent.
+impl Default for NodeId {
+    fn default() -> Self {
+        Self::Stored(0)
+    }
+}
+
 impl From<i64> for NodeId {
     fn from(id: i64) -> Self {
         Self::Stored(id)

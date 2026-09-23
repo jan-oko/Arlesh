@@ -167,7 +167,7 @@ pub async fn occurrence_row(
 /// Refuses a move out of the occurrence's iteration: a new parent, or a new window. A request
 /// repeating the current ones — a full editor save — passes.
 fn refuse_moves(
-    parent: (Option<&String>, Option<i64>),
+    parent: (Option<&String>, Option<&NodeId>),
     current_parent: (&str, &NodeId),
     time_scope: Option<&Option<TimeScope>>,
     current_scope: &Option<TimeScope>,
@@ -175,7 +175,7 @@ fn refuse_moves(
     let moves = match parent {
         (None, None) => false,
         (Some(parent_type), Some(parent_id)) => {
-            parent_type != current_parent.0 || *current_parent.1 != parent_id
+            parent_type != current_parent.0 || current_parent.1 != parent_id
         }
         _ => true,
     };
@@ -219,7 +219,7 @@ pub async fn update_task(
         ));
     };
     refuse_moves(
-        (request.parent_type.as_ref(), request.parent_id),
+        (request.parent_type.as_ref(), request.parent_id.as_ref()),
         (&current.parent_type, &current.parent_id),
         request.time_scope.as_ref(),
         &current.time_scope,
@@ -349,7 +349,7 @@ pub async fn update_goal(
         ));
     };
     refuse_moves(
-        (request.parent_type.as_ref(), request.parent_id),
+        (request.parent_type.as_ref(), request.parent_id.as_ref()),
         (&current.parent_type, &current.parent_id),
         request.time_scope.as_ref(),
         &current.time_scope,
@@ -392,7 +392,7 @@ pub async fn update_commitment(
         ));
     };
     refuse_moves(
-        (request.parent_type.as_ref(), request.parent_id),
+        (request.parent_type.as_ref(), request.parent_id.as_ref()),
         (&current.parent_type, &current.parent_id),
         request.time_scope.as_ref(),
         &current.time_scope,

@@ -138,7 +138,7 @@ impl ExpectationWrite {
         now: NaiveDateTime,
     ) -> Result<Self, crate::nodes::id::NotStored> {
         let reparent = match (request.parent_type, request.parent_id) {
-            (Some(parent_type), Some(parent_id)) => Some((parent_type, parent_id)),
+            (Some(parent_type), Some(parent_id)) => Some((parent_type, parent_id.require_stored()?)),
             _ => None,
         };
         let (parent_type, parent_id) = reparent
@@ -208,7 +208,7 @@ impl<'session> ExpectationOperator<'session> {
         )
         .bind(&request.title)
         .bind(&request.parent_type)
-        .bind(request.parent_id)
+        .bind(request.parent_id.require_stored()?)
         .bind(every_n)
         .bind(&every_kind)
         .bind(starting)
@@ -375,7 +375,7 @@ pub async fn create_expectation(
     super::scope_rules::validate_expectation_scope(
         db,
         &request.parent_type,
-        request.parent_id,
+        request.parent_id.require_stored()?,
         &request.time_scope,
     )
     .await?;

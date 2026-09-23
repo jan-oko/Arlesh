@@ -388,11 +388,11 @@ pub struct TaskWithBlockers {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskDependencyEdge {
     /// The dependent task.
-    pub task_id: i64,
+    pub task_id: NodeId,
     /// Kind of the dependency target: `task` or `goal`.
     pub dependency_type: String,
     /// Database id of the dependency target.
-    pub dependency_id: i64,
+    pub dependency_id: NodeId,
 }
 
 /// A goal row as returned from the database.
@@ -435,13 +435,13 @@ pub struct Goal {
 pub enum Dependency {
     /// Depends on another task.
     Task {
-        /// The task being depended on.
-        id: i64,
+        /// The task being depended on — a stored one, or a Habit occurrence.
+        id: NodeId,
     },
     /// Depends on a goal being achieved.
     Goal {
-        /// The goal being depended on.
-        id: i64,
+        /// The goal being depended on — a stored one, or a Habit occurrence.
+        id: NodeId,
     },
     /// Depends on an expectation being released.
     Expectation {
@@ -458,7 +458,7 @@ pub struct CreateTaskRequest {
     /// Parent entity type.
     pub parent_type: String,
     /// Parent entity id.
-    pub parent_id: i64,
+    pub parent_id: NodeId,
     /// Initial status (defaults to Todo).
     pub status: Option<TaskStatus>,
     /// Initial relevance window.
@@ -528,7 +528,7 @@ pub struct UpdateTaskRequest {
     /// New parent entity type for re-parenting (must be set together with parent_id).
     pub parent_type: Option<String>,
     /// New parent entity id for re-parenting (must be set together with parent_type).
-    pub parent_id: Option<i64>,
+    pub parent_id: Option<NodeId>,
     /// New sort position among siblings (for sibling reordering).
     pub position: Option<i64>,
     /// New private flag, if changing.
@@ -543,7 +543,7 @@ pub struct CreateGoalRequest {
     /// Parent entity type.
     pub parent_type: String,
     /// Parent entity id.
-    pub parent_id: i64,
+    pub parent_id: NodeId,
     /// Initial status (defaults to Active).
     pub status: Option<GoalStatus>,
     /// Initial relevance window.
@@ -574,7 +574,7 @@ pub struct UpdateGoalRequest {
     /// New parent entity type for re-parenting (must be set together with parent_id).
     pub parent_type: Option<String>,
     /// New parent entity id for re-parenting (must be set together with parent_type).
-    pub parent_id: Option<i64>,
+    pub parent_id: Option<NodeId>,
     /// New sort position among siblings (for sibling reordering).
     pub position: Option<i64>,
     /// New private flag, if changing.
@@ -698,7 +698,7 @@ pub struct CreateCommitmentRequest {
     /// Parent entity type.
     pub parent_type: String,
     /// Parent entity id.
-    pub parent_id: i64,
+    pub parent_id: NodeId,
     /// Initial verdict (defaults to Unresolved). Present so a retype can carry one across; the
     /// editor never sends it, because a commitment nobody has judged yet is unresolved.
     #[serde(default)]
@@ -729,7 +729,7 @@ pub struct UpdateCommitmentRequest {
     /// New parent entity type for re-parenting (must be set together with parent_id).
     pub parent_type: Option<String>,
     /// New parent entity id for re-parenting (must be set together with parent_type).
-    pub parent_id: Option<i64>,
+    pub parent_id: Option<NodeId>,
     /// New sort position among siblings (for sibling reordering).
     pub position: Option<i64>,
     /// New private flag, if changing.
@@ -919,7 +919,7 @@ pub struct CreateExpectationRequest {
     /// Parent entity type.
     pub parent_type: String,
     /// Parent entity id.
-    pub parent_id: i64,
+    pub parent_id: NodeId,
     /// How often to check on it. Omitted, it is never checked.
     #[serde(default)]
     pub check_every: Option<DurationSpec>,
@@ -953,7 +953,7 @@ pub struct UpdateExpectationRequest {
     /// New parent entity type for re-parenting (must be set together with parent_id).
     pub parent_type: Option<String>,
     /// New parent entity id for re-parenting (must be set together with parent_type).
-    pub parent_id: Option<i64>,
+    pub parent_id: Option<NodeId>,
     /// New sort position among siblings (for sibling reordering).
     pub position: Option<i64>,
     /// New private flag, if changing.

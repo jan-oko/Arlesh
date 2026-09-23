@@ -397,7 +397,7 @@ impl GoalWrite {
         request: UpdateGoalRequest,
     ) -> Result<Self, crate::nodes::id::NotStored> {
         let reparent = match (request.parent_type, request.parent_id) {
-            (Some(parent_type), Some(parent_id)) => Some((parent_type, parent_id)),
+            (Some(parent_type), Some(parent_id)) => Some((parent_type, parent_id.require_stored()?)),
             _ => None,
         };
         let (parent_type, parent_id) = reparent
@@ -472,7 +472,7 @@ impl TaskWrite {
         request: UpdateTaskRequest,
     ) -> Result<Self, crate::nodes::id::NotStored> {
         let reparent = match (request.parent_type, request.parent_id) {
-            (Some(parent_type), Some(parent_id)) => Some((parent_type, parent_id)),
+            (Some(parent_type), Some(parent_id)) => Some((parent_type, parent_id.require_stored()?)),
             _ => None,
         };
         // Validate against the effective parent — the new one when reparenting.
@@ -595,7 +595,7 @@ impl<'session> GoalOperator<'session> {
         )
         .bind(&request.title)
         .bind(&request.parent_type)
-        .bind(request.parent_id)
+        .bind(request.parent_id.require_stored()?)
         .bind(status)
         .bind(ts_start)
         .bind(ts_end)
@@ -889,7 +889,7 @@ impl<'session> TaskOperator<'session> {
         )
         .bind(&request.title)
         .bind(&request.parent_type)
-        .bind(request.parent_id)
+        .bind(request.parent_id.require_stored()?)
         .bind(status)
         .bind(ts_start)
         .bind(ts_end)
@@ -1100,15 +1100,15 @@ impl<'session> TaskOperator<'session> {
         task_id: TaskId,
         dependency: Dependency,
     ) -> Result<(), TaskError> {
-        if let Dependency::Task { id: dependency_id } = dependency {
+        if let Dependency::Task { id: dependency_id } = &dependency {
             if self
-                .would_create_cycle(task_id, TaskId(dependency_id))
+                .would_create_cycle(task_id, TaskId(dependency_id.require_stored()?))
                 .await?
             {
                 return Err(TaskError::CircularDependency);
             }
         }
-        let (dependency_type, dependency_id) = dependency_parts(&dependency);
+        let (dependency_type, dependency_id) = dependency_parts(&dependency)?;
         sqlx::query(
             "INSERT OR IGNORE INTO task_dependencies (task_id, dependency_type, dependency_id) VALUES (?, ?, ?)",
         )
@@ -1126,7 +1126,7 @@ impl<'session> TaskOperator<'session> {
         task_id: TaskId,
         dependency: Dependency,
     ) -> Result<(), TaskError> {
-        let (dependency_type, dependency_id) = dependency_parts(&dependency);
+        let (dependency_type, dependency_id) = dependency_parts(&dependency)?;
         sqlx::query(
             "DELETE FROM task_dependencies WHERE task_id=? AND dependency_type=? AND dependency_id=?",
         )
@@ -1159,13 +1159,13 @@ impl<'session> TaskOperator<'session> {
             .into_iter()
             .map(|row| match row.dependency_type.as_str() {
                 "task" => Dependency::Task {
-                    id: row.dependency_id,
+                    id: row.dependency_id.into(),
                 },
                 expectations::EXPECTATION => Dependency::Expectation {
                     id: row.dependency_id,
                 },
                 _ => Dependency::Goal {
-                    id: row.dependency_id,
+                    id: row.dependency_id.into(),
                 },
             })
             .collect();
@@ -1182,9 +1182,9 @@ impl<'session> TaskOperator<'session> {
             .into_iter()
             .map(
                 |(task_id, dependency_type, dependency_id)| TaskDependencyEdge {
-                    task_id,
+                    task_id: task_id.into(),
                     dependency_type,
-                    dependency_id,
+                    dependency_id: dependency_id.into(),
                 },
             )
             .collect())
@@ -1396,7 +1396,7 @@ pub async fn create_goal(
         db,
         None,
         &request.parent_type,
-        request.parent_id,
+        request.parent_id.require_stored()?,
         &request.time_scope,
     )
     .await?;
@@ -1481,7 +1481,7 @@ pub async fn create_task(
         db,
         None,
         &request.parent_type,
-        request.parent_id,
+        request.parent_id.require_stored()?,
         &request.time_scope,
         &request.plan,
     )
@@ -1606,7 +1606,10 @@ pub async fn get_task_with_blockers<M: SessionMode>(
     for dependency in dependencies {
         match dependency {
             Dependency::Task { id: dependency_id } => {
-                let dependency_task = db.tasks().get(TaskId(dependency_id)).await?;
+                let dependency_task = db
+                    .tasks()
+                    .get(TaskId(dependency_id.require_stored()?))
+                    .await?;
                 if dependency_task.status != TaskStatus::Done.as_str() {
                     reasons.push(format!(
                         "Blocked by task {} ({})",
@@ -1615,8 +1618,10 @@ pub async fn get_task_with_blockers<M: SessionMode>(
                 }
             }
             Dependency::Goal { id: dependency_id } => {
-                let (goal_status, goal_title) =
-                    db.goals().status_and_title(GoalId(dependency_id)).await?;
+                let (goal_status, goal_title) = db
+                    .goals()
+                    .status_and_title(GoalId(dependency_id.require_stored()?))
+                    .await?;
                 if goal_status != GoalStatus::Achieved.as_str() {
                     reasons.push(format!(
                         "Blocked by goal {} ({})",
@@ -1642,12 +1647,17 @@ pub async fn get_task_with_blockers<M: SessionMode>(
     })
 }
 
-fn dependency_parts(dependency: &Dependency) -> (&'static str, i64) {
-    match dependency {
-        Dependency::Task { id } => ("task", *id),
-        Dependency::Goal { id } => ("goal", *id),
+/// The `(dependency_type, dependency_id)` columns a stored edge is written as. An edge naming a
+/// Habit occurrence is not a `task_dependencies` row — it lives in `derived_dependencies` — so a
+/// derived target reaching here is refused.
+fn dependency_parts(
+    dependency: &Dependency,
+) -> Result<(&'static str, i64), crate::nodes::id::NotStored> {
+    Ok(match dependency {
+        Dependency::Task { id } => ("task", id.require_stored()?),
+        Dependency::Goal { id } => ("goal", id.require_stored()?),
         Dependency::Expectation { id } => (expectations::EXPECTATION, *id),
-    }
+    })
 }
 
 #[cfg(test)]

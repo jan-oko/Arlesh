@@ -3577,8 +3577,8 @@ pub async fn convert_to_flow(
             let dependencies = db.tasks().list_dependencies(TaskId(*id)).await?;
             for dep in dependencies {
                 let dep_key = match dep {
-                    Dependency::Task { id } => ("task".to_string(), id),
-                    Dependency::Goal { id } => ("goal".to_string(), id),
+                    Dependency::Task { id } => ("task".to_string(), id.require_stored()?),
+                    Dependency::Goal { id } => ("goal".to_string(), id.require_stored()?),
                     // A wait is never a flow item, so an edge onto one has nothing inside the
                     // template to become — the same as an edge onto anything outside the subtree.
                     Dependency::Expectation { .. } => continue,
@@ -3862,9 +3862,13 @@ async fn write_plan(
         let dependent = written.get(edge.dependent.0).ok_or_else(dangling)?.1;
         let (blocker_type, blocker_id) = written.get(edge.blocker.0).ok_or_else(dangling)?.clone();
         let dependency = if blocker_type == "goal" {
-            Dependency::Goal { id: blocker_id }
+            Dependency::Goal {
+                id: blocker_id.into(),
+            }
         } else {
-            Dependency::Task { id: blocker_id }
+            Dependency::Task {
+                id: blocker_id.into(),
+            }
         };
         add_task_dependency(db, TaskId(dependent), dependency).await?;
     }

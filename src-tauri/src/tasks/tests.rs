@@ -3,14 +3,14 @@ use crate::tasks::model::{Dependency, TaskAgentic};
 
 #[test]
 fn dependency_parts_task_variant() {
-    let (ty, id) = dependency_parts(&Dependency::Task { id: 42 });
+    let (ty, id) = dependency_parts(&Dependency::Task { id: 42.into() }).unwrap();
     assert_eq!(ty, "task");
     assert_eq!(id, 42);
 }
 
 #[test]
 fn dependency_parts_goal_variant() {
-    let (ty, id) = dependency_parts(&Dependency::Goal { id: 99 });
+    let (ty, id) = dependency_parts(&Dependency::Goal { id: 99.into() }).unwrap();
     assert_eq!(ty, "goal");
     assert_eq!(id, 99);
 }
@@ -459,4 +459,12 @@ fn a_goal_update_merges_its_request_over_the_stored_row() {
     assert_eq!(write.status, GoalStatus::Achieved.as_str());
     assert_eq!(write.position, 9);
     assert!(write.is_private);
+}
+
+#[test]
+fn dependency_parts_refuses_a_derived_target() {
+    let derived = crate::nodes::id::NodeId::Derived(crate::nodes::id::DerivedId::of_key(
+        "flow_task:1:2026-01-05:0",
+    ));
+    assert!(dependency_parts(&Dependency::Task { id: derived }).is_err());
 }
