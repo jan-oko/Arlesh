@@ -156,8 +156,10 @@ full strength with body text over it, and was unreadable in both themes.
 
 Mixing instead makes contrast a property of the rule rather than of which node you are looking at.
 The result is never further from `--node-bg` than `--card-aspect-strength`, and the theme already
-guarantees `--node-text` against `--node-bg` — so every aspect works in both themes by construction,
-including a pale one like Steel, and including the Aspect card itself. The strength is per theme:
+guarantees `--node-text` against `--node-bg` with a wide margin. That margin carries the primary
+text for every aspect in both themes, a pale one like Steel and the Aspect card itself included: for
+the six seeded aspects it bottoms out at 8.80:1 (Steel, dark) and 14.83:1 (Red, light). It does not
+carry the muted text, whose margin was thin to begin with — see below. The strength is per theme:
 a dark background needs more of the hue than a light one to read as coloured at all.
 
 A node **outside any aspect** keeps the theme's plain card background, and the board's own header
@@ -171,6 +173,12 @@ Blending the muted colour 65% of the way from *this card's* surface toward the p
 holds every aspect over AA in both themes — dark bottoms out at 4.74:1, light at 5.03:1 — and beats
 the global token on an untinted card besides. That is what "keeping note of contrast" costs: one
 derived colour, and the colouring is then safe for every aspect rather than for most of them.
+
+The **badge icons** are the one thing on the card not derived from it: the badge row is shared with
+the List View and draws in `--node-text-muted` and `--danger`. As graphics they answer to WCAG's 3:1
+for non-text rather than 4.5:1, and they clear it on every seeded aspect in both themes — but with
+the least room of anything on the card: the danger mark on Steel in dark measures 3.01:1, the muted
+marks there 3.30:1.
 
 **The fill says nothing about state**, deliberately. That is only safe because the glyph and the
 badge row already do: the Task and Goal icons draw their status and their blocked-ness, the

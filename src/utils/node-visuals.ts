@@ -63,13 +63,15 @@ export type StatusTint =
   | "--tint-open";
 
 /**
- * What a card's fill says: **the state the work is in**.
+ * What a List View row's fill says: **the state the work is in**.
  *
  * It used to say how deep the node sat — the aspect's colour at an opacity falling off with depth.
- * That was two mistakes at once. Depth is the one thing a Steps card never needs to encode, because
- * a Step *is* one depth; and a fill taken from an arbitrary node colour at an arbitrary opacity has
- * no contrast guarantee against the text on top of it, which is why an Aspect card — drawn at full
- * strength by that rule — was unreadable in both themes.
+ * A flat list never needs that: its path header already says in words where a row came from. And a
+ * fill taken from an arbitrary node colour at an arbitrary opacity has no contrast guarantee against
+ * the text on top of it.
+ *
+ * The Steps View does **not** use this: a Step's cards share one place on the board, so their fill
+ * says which aspect that is instead (see `StepCard.module.css`).
  *
  * The order is the order the facts override each other, and it is the interesting part:
  *
@@ -82,8 +84,7 @@ export type StatusTint =
  *
  * A **Commitment** is matched on its Verdict rather than a status it does not have: broken reads
  * like blocked, kept like done, unanswered like open. A structural container — Aspect, Domain,
- * Project, Tag — has no state of its own to show and reads open, which is also what finally lets an
- * Aspect card be legible.
+ * Project, Tag — has no state of its own to show and reads open.
  */
 export function statusTint(node: MindmapNode): StatusTint {
   if (isNodeBlocked(node)) return "--tint-blocked";

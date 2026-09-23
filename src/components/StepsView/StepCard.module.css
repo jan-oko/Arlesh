@@ -19,8 +19,10 @@
      Mixing a fixed, small share of the hue into the theme's own card background instead makes
      contrast a property of the rule rather than of which node you happened to be looking at: the
      result is never further from `--node-bg` than `--card-aspect-strength`, and the theme already
-     guarantees `--node-text` against `--node-bg`. So every aspect works in both themes by
-     construction, including a pale one like Steel and including the Aspect card itself.
+     guarantees `--node-text` against `--node-bg` with a wide margin. That margin is what carries the
+     primary text: for the six seeded aspects it bottoms out at 8.80:1 (Steel, dark) and 14.83:1
+     (Red, light), including the Aspect card itself. It does **not** carry the muted text, whose
+     margin was thin to begin with — that is what `--card-text-muted` below is for.
 
      The plain `background` below is the fallback for an engine without `color-mix`: it keeps a
      readable card and merely loses the colour. `--card-aspect` defaults to the background so a node
