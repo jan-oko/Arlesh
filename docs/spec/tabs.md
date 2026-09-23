@@ -98,7 +98,7 @@ takes `Ctrl+W` and `Ctrl+T` — the dispatcher reads the event in the capture ph
 a text field nothing reaches the switcher at all, because the dispatcher ignores events from a
 typing target, so a save reflex in a rename box stays a save reflex that does nothing.
 
-Unlike the tab shortcuts below, the four view chords are **suppressed while a modal or an inline
+Unlike the tab shortcuts above, the four view chords are **suppressed while a modal or an inline
 editor holds the keyboard**: switching tabs is never ambiguous about what it acts on, where
 switching views behind an open editor would leave that editor over a board it no longer belongs to.
 

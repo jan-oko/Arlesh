@@ -7,6 +7,7 @@ import { useViewStore } from "@/stores/use-view-store";
 import { DEFAULT_FILTER } from "@/utils/filter-tree";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { useMindmapData } from "@/components/MindmapView/use-mindmap-data";
+import { fixtureRowId } from "@/test/node-fixture";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -42,8 +43,10 @@ vi.mock("@/api/tasks", async (importOriginal) => ({
   updateTask: (id: number, request: unknown) => updateTask(id, request),
 }));
 
+/** A fixture node; it draws the row its id names (`task-12` is row 12), unless it is virtual. */
 function n(id: string, kind: NodeKind, extra: Partial<MindmapNode> = {}): MindmapNode {
-  return { id, kind, title: id, position: 0, tagIds: [], children: [], ...extra };
+  const rowId = extra.virtual === true ? {} : fixtureRowId(id);
+  return { id, ...rowId, kind, title: id, position: 0, tagIds: [], children: [], ...extra };
 }
 
 const reload = vi.fn(() => Promise.resolve());

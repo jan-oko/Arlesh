@@ -19,6 +19,8 @@ import {
   setFlowRecurrence, deleteFlowRecurrence, forkFlow, clearHabitModifications,
 } from "@/api/flows";
 import { getOrCreateScope } from "@/api/scopes";
+import { withAtomicGesture } from "@/api/gesture";
+import { localNowIso } from "@/utils/local-now";
 import type { Domain } from "@/api/domains";
 import { listDomains, updateDomain } from "@/api/domains";
 import {
@@ -35,6 +37,7 @@ import { addTagToGoal, removeTagFromGoal, updateGoal } from "@/api/goals";
 import { addTagToCommitment, removeTagFromCommitment, updateCommitment } from "@/api/commitments";
 import type { TimeScope } from "@/api/time-scope";
 import { findNode } from "@/utils/mindmap-tree";
+import { rowIdOf } from "@/utils/node-identity";
 import { DOMAIN_SUBTYPE } from "@/api/domains";
 import { TASK_STATUS } from "@/utils/status-mapping";
 
@@ -105,6 +108,7 @@ export interface NodeEditorHandles {
 
 export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): NodeEditorHandles {
   const { t } = useTranslation("warnings");
+  const { t: tUndo } = useTranslation("undo");
   const showToast = useMindmapStore((s) => s.showToast);
   const [editorModal, setEditorModal] = useState<EditorModalState | null>(null);
   const [allTags, setAllTags] = useState<Domain[]>([]);
@@ -162,8 +166,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
       const node = findNode(tree, nodeId);
       // A virtual Habit instance isn't backed by a real Task/Goal row — its Time Scope is derived
       // from the flow's Duration kind and the item's Cycle, not independently editable — and
-      // `onTaskSave`/`onGoalSave` would compute a `dbId` from its non-numeric `-virtual` id tail
-      // (NaN) and fail to save. It stays read-only here; only `onStatusClick` may mutate it.
+      // it has no `rowId` for `onTaskSave`/`onGoalSave` to write to (`rowIdOf` would throw). It stays read-only here; only `onStatusClick` may mutate it.
       if (node === undefined || node.kind === "aspect" || node.habitItem !== undefined) return;
       setEditorModal({ nodeId, node });
     },
@@ -174,7 +177,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
     async (data: TaskSaveData) => {
       if (editorModal === null) return;
       const { nodeId, node } = editorModal;
-      const dbId = parseInt(nodeId.split("-").pop() ?? "0", 10);
+      const dbId = rowIdOf(node);
       if (data.timeScope !== null) {
         const conflicts = await scopeContainmentConflicts("task", dbId, data.timeScope);
         await clampDescendants(conflicts, data.timeScope);
@@ -215,8 +218,8 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
   const onGoalSave = useCallback(
     async (data: GoalSaveData) => {
       if (editorModal === null) return;
-      const { nodeId, node } = editorModal;
-      const dbId = parseInt(nodeId.split("-").pop() ?? "0", 10);
+      const { node } = editorModal;
+      const dbId = rowIdOf(node);
       if (data.timeScope !== null) {
         const conflicts = await scopeContainmentConflicts("goal", dbId, data.timeScope);
         await clampDescendants(conflicts, data.timeScope);
@@ -242,8 +245,8 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
   const onCommitmentSave = useCallback(
     async (data: CommitmentSaveData) => {
       if (editorModal === null) return;
-      const { nodeId, node } = editorModal;
-      const dbId = parseInt(nodeId.split("-").pop() ?? "0", 10);
+      const { node } = editorModal;
+      const dbId = rowIdOf(node);
       // Any refusal — most likely clearing the last window above the commitment — propagates to
       // the modal, which shows it rather than closing on a save that did not happen.
       await updateCommitment(dbId, {
@@ -266,8 +269,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
   const onFlowSave = useCallback(
     async (data: FlowSaveData) => {
       if (editorModal === null) return;
-      const { nodeId } = editorModal;
-      const dbId = parseInt(nodeId.split("-").pop() ?? "0", 10);
+      const dbId = rowIdOf(editorModal.node);
       const flowFields = {
         title: data.title,
         instance_type: data.instanceType,
@@ -307,10 +309,15 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
         });
       };
       if (data.reconcile === "fork") {
-        // Archive & new: apply the edit to a deep clone; the original habit + history stay untouched.
-        const clone = await forkFlow(dbId);
-        await updateFlow(clone.id, flowFields);
-        await persistRecurrence(clone.id);
+        // Archive & new: the backend clones the template and archives the original (it stops
+        // recurring, its history stays); the edit then lands on the clone. One Gesture, and an
+        // atomic one: a single Ctrl+Z takes the whole thing back, and a refusal part-way leaves
+        // neither a stray clone nor an archived original behind.
+        await withAtomicGesture(tUndo("gestures.archiveAndNew"), async () => {
+          const clone = await forkFlow(dbId, localNowIso());
+          await updateFlow(clone.id, flowFields);
+          await persistRecurrence(clone.id);
+        });
       } else {
         if (data.reconcile === "discard") await clearHabitModifications(dbId);
         await updateFlow(dbId, flowFields);
@@ -319,7 +326,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
       await reload();
       setEditorModal(null);
     },
-    [editorModal, reload],
+    [editorModal, reload, tUndo],
   );
 
   const onFlowItemSave = useCallback(
@@ -328,7 +335,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
       const { node } = editorModal;
       const flowItem = node.flowItem;
       if (flowItem === undefined) return;
-      const dbId = parseInt(node.id.split("-").pop() ?? "0", 10);
+      const dbId = rowIdOf(node);
       const patch = { title: data.title, isPrivate: data.isPrivate };
       if (flowItem.itemType === "flow_goal") {
         await updateFlowGoal(dbId, patch);
@@ -359,8 +366,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
   const onSimpleSave = useCallback(
     async (title: string, isPrivate: boolean) => {
       if (editorModal === null) return;
-      const { nodeId } = editorModal;
-      const dbId = parseInt(nodeId.split("-").pop() ?? "0", 10);
+      const dbId = rowIdOf(editorModal.node);
       // Domain/tag editors: persist title and privacy together, then refresh.
       await updateDomain(dbId, { title, is_private: isPrivate });
       await reload();
@@ -372,8 +378,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
   const onProjectSave = useCallback(
     async (data: ProjectSaveData) => {
       if (editorModal === null) return;
-      const { nodeId } = editorModal;
-      const dbId = parseInt(nodeId.split("-").pop() ?? "0", 10);
+      const dbId = rowIdOf(editorModal.node);
       await updateDomain(dbId, {
         title: data.title,
         is_private: data.isPrivate,
@@ -389,7 +394,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
   const onInfoSave = useCallback(
     async (data: InfoSaveData) => {
       if (editorModal === null) return;
-      const dbId = parseInt(editorModal.nodeId.split("-").pop() ?? "0", 10);
+      const dbId = rowIdOf(editorModal.node);
       await updateInfo(dbId, { body: data.body, details: data.details, is_private: data.isPrivate });
       await reload();
       setEditorModal(null);
@@ -405,7 +410,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
   const onClearBeadsId = useCallback(
     async (nodeType: BeadsNodeType) => {
       if (editorModal === null) return;
-      const dbId = parseInt(editorModal.nodeId.split("-").pop() ?? "0", 10);
+      const dbId = rowIdOf(editorModal.node);
       await clearBeadsId(nodeType, dbId);
       await reload();
     },

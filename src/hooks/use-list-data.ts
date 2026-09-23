@@ -9,6 +9,7 @@ import type { TaskAgentic } from "@/api/tasks";
 import { TASK_STATUS } from "@/utils/status-mapping";
 import { cameOutOfBacklog, nextTaskStatus } from "@/utils/task-status-cycle";
 import { findNode, collectTasksAndGoals } from "@/utils/mindmap-tree";
+import { rowIdOf } from "@/utils/node-identity";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import type { CommitmentListRow, TaskListRow } from "@/utils/list-filter";
 import { flattenCommitmentRows, flattenTaskRows } from "@/utils/list-data";
@@ -89,8 +90,7 @@ export function useListData(): ListData {
         setOccurrenceStatus(node, next);
         return;
       }
-      const dbId = parseInt(nodeId.split("-").pop() ?? "", 10);
-      void updateTask(dbId, { status: nextTaskStatus(node.status ?? TASK_STATUS.TODO) }).then(async (updated) => {
+      void updateTask(rowIdOf(node), { status: nextTaskStatus(node.status ?? TASK_STATUS.TODO) }).then(async (updated) => {
         // Starting a set-aside task takes it out of the backlog, in the same write and so in the
         // same undo step. The row that comes back says whether it did; it is never assumed.
         if (cameOutOfBacklog(node, updated)) {

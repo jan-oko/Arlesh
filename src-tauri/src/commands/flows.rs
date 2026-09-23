@@ -600,14 +600,17 @@ pub async fn clear_habit_modifications(
         .map_err(WireError::from_error)
 }
 
-/// Deep-clones a flow's template into a new flow (the archive-and-new reconciliation arm).
+/// The archive-and-new reconciliation arm: deep-clones a flow's template into a new flow and
+/// archives the original Habit — it stops recurring after the Day holding `now` — in one
+/// transaction. See [`flows::archive_and_fork`].
 #[tauri::command]
 pub async fn fork_flow(
     factory: State<'_, SessionFactory>,
     flow_id: i64,
+    now: chrono::NaiveDateTime,
 ) -> Result<Flow, WireError> {
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let forked = flows::fork_flow(&mut db, FlowId(flow_id))
+    let forked = flows::archive_and_fork(&mut db, FlowId(flow_id), now)
         .await
         .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)?;

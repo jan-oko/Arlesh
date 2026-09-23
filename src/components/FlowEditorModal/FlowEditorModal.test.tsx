@@ -32,6 +32,7 @@ import { getFlowRecurrence, habitCompletionCount } from "@/api/flows";
 function mkFlow(overrides: Partial<MindmapNode> = {}): MindmapNode {
   return {
     id: "flow-1",
+    rowId: 1,
     kind: "flow",
     title: "Ship a feature",
     position: 0,
@@ -43,7 +44,7 @@ function mkFlow(overrides: Partial<MindmapNode> = {}): MindmapNode {
 }
 
 function mkGoal(id: number, title: string): MindmapNode {
-  return { id: `goal-${id}`, kind: "goal", title, status: "active", position: 0, tagIds: [], children: [] };
+  return { id: `goal-${id}`, rowId: id, kind: "goal", title, status: "active", position: 0, tagIds: [], children: [] };
 }
 
 const TARGETS = [mkGoal(7, "Backend Revamp"), mkGoal(8, "Frontend Polish")];

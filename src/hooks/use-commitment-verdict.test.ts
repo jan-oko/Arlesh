@@ -4,6 +4,7 @@ import { useCommitmentVerdict } from "./use-commitment-verdict";
 import { updateCommitment } from "@/api/commitments";
 import { setHabitItemStatus } from "@/api/flows";
 import type { MindmapNode } from "@/utils/tree-layout";
+import { fixtureRowId } from "@/test/node-fixture";
 
 vi.mock("@/api/commitments", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/commitments")>()),
@@ -16,7 +17,7 @@ vi.mock("@/api/flows", async (importOriginal) => ({
 }));
 
 function commitment(id: string, extra: Partial<MindmapNode> = {}): MindmapNode {
-  return { id, kind: "commitment", title: id, position: 0, tagIds: [], children: [], ...extra };
+  return { id, ...fixtureRowId(id), kind: "commitment", title: id, position: 0, tagIds: [], children: [], ...extra };
 }
 
 /** One iteration of a nightly commitment Habit: virtual, keyed by (flow root, iteration scope). */

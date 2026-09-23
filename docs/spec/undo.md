@@ -209,7 +209,7 @@ the stack to try again.
 **A new user Gesture empties the Redo Stack**, so redo can never reapply rows onto a board that has
 moved on. An MCP write does not, because it never enters either stack.
 
-Undo with an empty stack is a **silent no-op**, not an error: a keystroke with nothing to act on is
-not a mistake the user made. `undo` and `redo` return what they applied, or nothing; `undo_status`
+Undo with an empty stack is a **no-op** on the backend, not an error: a keystroke with nothing to act on is
+not a mistake the user made. (The frontend still answers it with *Nothing to undo* — see *What the user sees*.) `undo` and `redo` return what they applied, or nothing; `undo_status`
 reports what each press would do so a control can be labelled and disabled, and is never a
 precondition for calling them.

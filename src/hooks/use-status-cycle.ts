@@ -6,6 +6,7 @@ import { getErrorMessage } from "@/api/errors";
 import { GOAL_STATUS, TASK_STATUS } from "@/utils/status-mapping";
 import { cameOutOfBacklog, nextTaskStatus } from "@/utils/task-status-cycle";
 import type { MindmapNode } from "@/utils/tree-layout";
+import { rowIdOf } from "@/utils/node-identity";
 import { useOccurrenceCompletion } from "@/hooks/use-occurrence-completion";
 import type { OccurrencePrompt } from "@/hooks/use-occurrence-completion";
 
@@ -74,7 +75,7 @@ export function useStatusCycle({ findNode, reload, showToast }: Options): Status
       }
       // A real goal toggles active ↔ achieved on click (like a habit goal instance) — no modal.
       if (node.kind === "goal") {
-        const dbId = parseInt(nodeId.split("-").pop() ?? "0", 10);
+        const dbId = rowIdOf(node);
         const next = node.status === GOAL_STATUS.ACHIEVED ? GOAL_STATUS.ACTIVE : GOAL_STATUS.ACHIEVED;
         void updateGoal(dbId, { status: next })
           .then(() => reload())
@@ -85,7 +86,7 @@ export function useStatusCycle({ findNode, reload, showToast }: Options): Status
         return;
       }
       if (node.kind !== "task") return;
-      const dbId = parseInt(nodeId.split("-").pop() ?? "0", 10);
+      const dbId = rowIdOf(node);
       void updateTask(dbId, { status: nextTaskStatus(node.status ?? TASK_STATUS.TODO) })
         .then(async (updated) => {
           // Starting a set-aside task takes it out of the backlog, in the same write and so in the

@@ -15,7 +15,7 @@ vi.mock("@/hooks/use-valid-flow-targets", () => ({ useValidFlowTargets: vi.fn(()
 import { useValidFlowTargets } from "@/hooks/use-valid-flow-targets";
 
 function mkGoal(id: number, title: string): MindmapNode {
-  return { id: `goal-${id}`, kind: "goal", title, status: "active", position: 0, tagIds: [], children: [] };
+  return { id: `goal-${id}`, rowId: id, kind: "goal", title, status: "active", position: 0, tagIds: [], children: [] };
 }
 
 const TARGETS = [mkGoal(7, "Backend"), mkGoal(8, "Frontend")];

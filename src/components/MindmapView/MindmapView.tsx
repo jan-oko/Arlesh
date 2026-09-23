@@ -20,6 +20,7 @@ import { updateTask, reparentScopeConflicts } from "@/api/tasks";
 import { updateGoal } from "@/api/goals";
 import { getErrorMessage } from "@/api/errors";
 import { findNode, findParent, collectTasksAndGoals, collectSubtreePostOrder, computeShiftSelectRange, conversionNeedsConfirm, canConvertNodeToFlow, collectSearchableNodes } from "@/utils/mindmap-tree";
+import { rowIdOf, rowIdOfNodeId } from "@/utils/node-identity";
 import MindmapCanvas, { type MindmapCanvasHandle } from "@/components/MindmapCanvas/MindmapCanvas";
 import DragGhost from "@/components/DragGhost/DragGhost";
 import DragPlaceholder from "@/components/DragPlaceholder/DragPlaceholder";
@@ -183,11 +184,12 @@ export default function MindmapView() {
   // Runs the conversion, reloads, then opens the new flow's editor so it can be configured.
   const runConvertToFlow = useCallback(
     async (node: MindmapNode, keepDependencies: boolean, mapScopes: boolean) => {
-      const dbId = parseInt(node.id.split("-").pop() ?? "0", 10);
+      const dbId = rowIdOf(node);
       const flow = await convertToFlow(node.kind, dbId, keepDependencies, mapScopes);
       await reload();
       const flowNode: MindmapNode = {
         id: `flow-${flow.id}`,
+        rowId: flow.id,
         kind: "flow",
         title: flow.title,
         flow: {
@@ -249,8 +251,8 @@ export default function MindmapView() {
     async (id: string, kind: NodeKind, parentId: string, parentKind: NodeKind, position: number) => {
       await withGesture(t("undo:gestures.move", { count: 1 }), async () => {
         if (kind === "task" || kind === "goal") {
-          const nodeDbId = parseInt(id.split("-").pop() ?? "0", 10);
-          const parentDbId = parseInt(parentId.split("-").pop() ?? "0", 10);
+          const nodeDbId = rowIdOfNodeId(tree, id);
+          const parentDbId = rowIdOfNodeId(tree, parentId);
           const { ancestor_time_scope, conflicts } = await reparentScopeConflicts(kind, nodeDbId, parentKind, parentDbId);
           if (ancestor_time_scope !== null && conflicts.length > 0) {
             if (!(await confirmScopeClamp(conflicts))) return;
@@ -266,7 +268,7 @@ export default function MindmapView() {
         await moveNode(id, kind, parentId, parentKind, position);
       });
     },
-    [confirmScopeClamp, moveNode, t],
+    [confirmScopeClamp, moveNode, t, tree],
   );
 
   const { dragSourceId, dragTargetId, ghostPos, onDragStart } = useDrag({ tree, moveNode: guardedMoveNode });
@@ -429,7 +431,7 @@ export default function MindmapView() {
   const onConfirmStartFlow = useCallback(
     async (data: StartFlowData) => {
       if (startFlowNode === null) return;
-      const flowDbId = parseInt(startFlowNode.id.split("-").pop() ?? "0", 10);
+      const flowDbId = rowIdOf(startFlowNode);
       const result = await startFlow(flowDbId, {
         title: data.title, target_type: data.targetType, target_id: data.targetId, anchor_date: data.anchorDate,
       });

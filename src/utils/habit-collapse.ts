@@ -111,8 +111,9 @@ function tallyOf(iterations: readonly HabitIterationMeta[]): HabitTally {
 }
 
 /**
- * A group node's tree id. The `-virtual` tail keeps it out of every DB-backed mutation, exactly as
- * the iteration nodes it stands for are kept out.
+ * A group node's tree id. The spelling is frozen (Arlesh-z7n) and is a key only: what keeps the
+ * node out of every DB-backed mutation is that it carries no `rowId`, exactly as the iteration
+ * nodes it stands for carry none.
  *
  * The run node is keyed by its flow alone: passed iterations are a *prefix* of a Habit's generated
  * ones — a window cannot pass before an earlier window has — so one flow under one host has one

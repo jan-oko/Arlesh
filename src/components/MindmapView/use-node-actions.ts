@@ -207,8 +207,8 @@ export function useNodeActions({
       // away. It is refused here, in the List View's words (`useListDelete` raises the same key),
       // because one gesture on one kind of node must not read two ways depending on the surface.
       // Refusing this early is the whole point: the guard used to stop at `kind !== "aspect"`, so a
-      // repetition raised the confirmation and then reached `dbIdFromNodeId`, which rejects the
-      // `-virtual` tail — the user answered a dialog that could only end in "delete failed".
+      // repetition raised the confirmation and then reached `rowIdOf`, which refuses a node with no
+      // row — the user answered a dialog that could only end in "delete failed".
       //
       // One repetition anywhere in the selection refuses the **whole** gesture, rather than taking
       // the real nodes and naming what was skipped the way `onPaste` does. Two reasons, and the

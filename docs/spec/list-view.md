@@ -25,7 +25,8 @@ A compact-card task list, reached via its tab in the top bar or the `Ctrl+L` sho
 - `Shift+Escape` — up one subtree level; `Ctrl+Escape` — straight back to the true root *(a [global binding](tabs.md) — declared once, not per view)*. Same semantics as the Mindmap's, and gated the same way (they do nothing at the true root, where bare `Escape` still deselects)
 - `Escape` — deselect
 - `Ctrl+Z` — undo the last thing you did to the board; `Ctrl+Shift+Z` (or `Ctrl+Y`) — redo it
-- `Ctrl+M` — show the Mindmap, `Ctrl+P` the Plan View; `Ctrl+Shift+/` — open the keyboard cheat-sheet
+- `Ctrl+M` — show the Mindmap, `Ctrl+P` the Plan View; `Ctrl+Shift+/` — open the keyboard cheat-sheet; `Ctrl+Q` — quit
+- `F` with nothing selected — the board alone *(see [Tabs](tabs.md); `F11` is the global form)*
 
 A shortcut requires exactly the modifiers listed — `Ctrl+E` does not open the editor, only a bare `E` does.
 
@@ -95,6 +96,6 @@ card.
 **The colour says nothing about state.** The status control's glyph draws done, in progress and
 blocked (and is disabled while blocked); the badge row carries archived, frozen, backlogged, agentic
 and asynchronous; a Commitment's verdict controls show its Verdict, and an unjudged one has a marked
-left edge. A row briefly carried a status tint on this branch; it is gone.
+left edge.
 
 ---

@@ -17,7 +17,6 @@ function nearestOfKind(ancestors: readonly MindmapNode[], kind: MindmapNode["kin
 function buildRow(node: MindmapNode, ancestors: readonly MindmapNode[], depsByTask: ReadonlyMap<number, string[]>): TaskListRow {
   const goal = nearestOfKind(ancestors, "goal");
   const project = nearestOfKind(ancestors, "project");
-  const dbId = parseInt(node.id.split("-").pop() ?? "", 10);
   return {
     node,
     ancestors: [...ancestors],
@@ -25,7 +24,8 @@ function buildRow(node: MindmapNode, ancestors: readonly MindmapNode[], depsByTa
     goalStatus: goal?.status ?? null,
     projectRef: project?.id ?? null,
     projectStatus: project?.status ?? null,
-    dependencyRefs: depsByTask.get(dbId) ?? [],
+    // A virtual Habit occurrence draws no row, so no dependency edge can name it.
+    dependencyRefs: (node.rowId === undefined ? undefined : depsByTask.get(node.rowId)) ?? [],
     isBlocked: isNodeBlocked(node),
     hasBlockedAncestor: ancestors.some(isNodeBlocked),
     isAgentic: isAgentic(node),

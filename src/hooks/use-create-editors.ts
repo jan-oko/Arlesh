@@ -3,6 +3,7 @@ import type { CreateFlowRequest, Flow } from "@/api/flows";
 import type { CommitmentSaveData } from "@/components/CommitmentEditorModal/CommitmentEditorModal";
 import type { FlowSaveData } from "@/components/FlowEditorModal/FlowEditorModal";
 import { findNode } from "@/utils/mindmap-tree";
+import { rowIdOfNodeId } from "@/utils/node-identity";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 
 /** The node a blank Flow or Commitment will be created under, once its editor is saved. */
@@ -67,7 +68,7 @@ export function useCreateEditors({ tree, createFlow, createCommitment }: Options
   const onCreateFlow = useCallback(
     async (data: FlowSaveData) => {
       if (flowParent === null) return;
-      const parentDbId = parseInt(flowParent.id.split("-").pop() ?? "0", 10);
+      const parentDbId = rowIdOfNodeId(tree, flowParent.id);
       await createFlow({
         title: data.title,
         instance_type: data.instanceType,
@@ -88,7 +89,7 @@ export function useCreateEditors({ tree, createFlow, createCommitment }: Options
       });
       setFlowParent(null);
     },
-    [flowParent, createFlow],
+    [flowParent, createFlow, tree],
   );
 
   // Persists a brand-new commitment under the pending parent, then closes the create editor. A

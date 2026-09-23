@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode } from "@/utils/tree-layout";
+import { rowIdOf } from "@/utils/node-identity";
 import type { Verdict } from "@/api/verdict";
 import { VERDICT } from "@/api/verdict";
 import { NEXT_VERDICT, updateCommitment, verdictAfterPressing } from "@/api/commitments";
@@ -20,10 +21,6 @@ interface Result {
   markBroken: (nodeId: string) => void;
   /** Advances the verdict one step: Unresolved → Kept → Broken → Unresolved. */
   cycleVerdict: (nodeId: string) => void;
-}
-
-function dbIdOf(nodeId: string): number {
-  return parseInt(nodeId.split("-").pop() ?? "", 10);
 }
 
 /**
@@ -52,7 +49,7 @@ export function useCommitmentVerdict({ findNode, reload, showToast }: Options): 
       // instance does — there is then nothing recorded, which is what "you have not said" is.
       const write =
         node.habitItem === undefined
-          ? updateCommitment(dbIdOf(nodeId), { verdict: next }).then(() => undefined)
+          ? updateCommitment(rowIdOf(node), { verdict: next }).then(() => undefined)
           : setHabitItemStatus(
               node.habitItem.flowId,
               node.habitItem.itemType,

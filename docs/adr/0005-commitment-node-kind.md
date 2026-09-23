@@ -76,3 +76,9 @@ Roughly a third of a Task's fields are meaningless on it.
   mirror any Task rule: **Plan** shows `broken` commitments whose window is still open,
   because a broken commitment remains a live problem until its window closes, while a kept
   one is settled.
+
+## Amendment, 2026-09-23 — the Verdict Window's columns
+
+The Verdict Window was built as the pair `verdict_window_n` / `verdict_window_kind` (migration
+`0027` on `commitments`, and migration `0028` on `flows` for a commitment Habit), not as a column
+named `archive_unresolved_after`. Nothing else in the decision changed.

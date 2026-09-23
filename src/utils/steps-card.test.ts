@@ -7,7 +7,8 @@ import {
 } from "./steps-card";
 
 function node(kind: NodeKind, extra: Partial<MindmapNode> = {}): MindmapNode {
-  return { id: `${kind}-1`, kind, title: kind, position: 0, tagIds: [], children: [], ...extra };
+  const rowId = extra.virtual === true ? {} : { rowId: 1 };
+  return { id: `${kind}-1`, ...rowId, kind, title: kind, position: 0, tagIds: [], children: [], ...extra };
 }
 
 const WINDOW = { start_id: 7, end_id: 7 };

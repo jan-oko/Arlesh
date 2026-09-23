@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { computeNodeDimensions, estimateWrappedLineCount, getNodeSize, validTypesForCycling, typeAcceptsChildren, isValidDropTarget, computeEditHeight, validParentKinds, isFlowKind, canParentNewTask, canParentNewChild, canParentAnyNewChild, canAdoptChildren, canAdoptExistingChild, TYPED_CHILD_KINDS } from "./node-meta";
 import { ALL_NODE_KINDS } from "./tree-layout";
 import type { MindmapNode } from "./tree-layout";
+import { fixtureRowId } from "@/test/node-fixture";
 
 describe("computeNodeDimensions", () => {
   it("matches getNodeSize height for a short single-word title", () => {
@@ -419,7 +420,7 @@ describe("validParentKinds", () => {
 
 describe("canParentNewTask", () => {
   function node(id: string, kind: MindmapNode["kind"], extra: Partial<MindmapNode> = {}): MindmapNode {
-    return { id, kind, title: id, position: 0, tagIds: [], children: [], ...extra };
+    return { id, ...fixtureRowId(id), kind, title: id, position: 0, tagIds: [], children: [], ...extra };
   }
 
   it.each(["aspect", "domain", "project", "goal", "task", "commitment"] as const)(
@@ -457,7 +458,7 @@ describe("isValidDropTarget — a folded run of Habit history", () => {
 
 describe("canParentNewChild", () => {
   function node(id: string, kind: MindmapNode["kind"], extra: Partial<MindmapNode> = {}): MindmapNode {
-    return { id, kind, title: id, position: 0, tagIds: [], children: [], ...extra };
+    return { id, ...fixtureRowId(id), kind, title: id, position: 0, tagIds: [], children: [], ...extra };
   }
 
   const occurrence = (kind: MindmapNode["kind"]) =>
