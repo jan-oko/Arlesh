@@ -6,9 +6,10 @@ vi.mock("@/api/flows", () => ({ scopeValidFlowTargets: vi.fn() }));
 
 import { scopeValidFlowTargets } from "@/api/flows";
 import { useValidFlowTargets } from "./use-valid-flow-targets";
+import { fixtureRowId } from "@/test/node-fixture";
 
 function node(id: string, kind: MindmapNode["kind"]): MindmapNode {
-  return { id, kind, title: id, status: "active", position: 0, tagIds: [], children: [] };
+  return { id, ...fixtureRowId(id), kind, title: id, status: "active", position: 0, tagIds: [], children: [] };
 }
 
 // Aspect/project/domain/tag nodes are keyed `domain-<id>` in the tree, though their kind is the subtype.

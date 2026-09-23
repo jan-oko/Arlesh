@@ -931,6 +931,17 @@ describe("useMindmapData — mutations", () => {
   });
 
   describe("duplicateNode", () => {
+    /** Flow 1 under the aspect, holding goal item 3 with task item 4 beneath it. */
+    const FLOW_TEMPLATE = {
+      list_flows: [mkFlow()],
+      list_all_flow_goals: [
+        { id: 3, flow_id: 1, title: "Milestone", parent_type: "flow", parent_id: 1, position: 0, is_private: false },
+      ],
+      list_all_flow_tasks: [
+        { id: 4, flow_id: 1, title: "Step", parent_type: "flow_goal", parent_id: 3, position: 0, is_private: false },
+      ],
+    };
+
     it("goal: calls duplicate_goal with the target and position", async () => {
       setupInvoke({ duplicate_goal: GOAL });
       const { result } = await loadedHook();
@@ -998,7 +1009,7 @@ describe("useMindmapData — mutations", () => {
     });
 
     it("flow: calls duplicate_flow with the parent the paste chose", async () => {
-      setupInvoke({ duplicate_flow: mkFlow({ id: 2 }) });
+      setupInvoke({ list_flows: [mkFlow()], duplicate_flow: mkFlow({ id: 2 }) });
       const { result } = await loadedHook();
 
       await act(async () => {
@@ -1011,7 +1022,7 @@ describe("useMindmapData — mutations", () => {
     });
 
     it("flow item: calls duplicate_flow_item with its in-flow parent", async () => {
-      setupInvoke({ duplicate_flow_item: 9 });
+      setupInvoke({ ...FLOW_TEMPLATE, duplicate_flow_item: 9 });
       const { result } = await loadedHook();
 
       await act(async () => {
@@ -1024,7 +1035,7 @@ describe("useMindmapData — mutations", () => {
     });
 
     it("refuses a flow pasted onto a node no Flow can hang from", async () => {
-      setupInvoke({});
+      setupInvoke({ list_flows: [mkFlow()] });
       const { result } = await loadedHook();
 
       await expect(
@@ -1036,7 +1047,7 @@ describe("useMindmapData — mutations", () => {
     });
 
     it("refuses a flow item pasted onto a real node", async () => {
-      setupInvoke({});
+      setupInvoke(FLOW_TEMPLATE);
       const { result } = await loadedHook();
 
       await expect(
@@ -1218,6 +1229,7 @@ describe("useMindmapData — mutations", () => {
         if (cmd === "retype_node") {
           return Promise.reject({ kind: "needs_confirmation", message: "would lose 1 child", details: {} });
         }
+        if (cmd === "load_mindmap") return Promise.resolve(mindmapEnvelope({ domains: [ASPECT], goals: [GOAL] }));
         return Promise.resolve(undefined);
       });
       const { result } = await loadedHook();

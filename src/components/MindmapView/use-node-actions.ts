@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { findNode, findParent, collectAllNodeIds } from "@/utils/mindmap-tree";
+import { rowIdOf } from "@/utils/node-identity";
 import { canAdoptChildren, canParentAnyNewChild, canParentNewChild, validParentKinds } from "@/utils/node-meta";
 import { pasteRefusal, countPasteRefusals, pasteRefusalKey, flowsLeftBehind, PASTE_REFUSAL } from "@/utils/paste-refusal";
 import type { PasteRefusal, PasteRefusalCount } from "@/utils/paste-refusal";
@@ -106,7 +107,7 @@ export function useNodeActions({
       }
       // A real goal toggles active ↔ achieved on click (like a habit goal instance) — no modal needed.
       if (node.kind === "goal") {
-        const dbId = parseInt(nodeId.split("-").pop() ?? "0", 10);
+        const dbId = rowIdOf(node);
         const next = node.status === GOAL_STATUS.ACHIEVED ? GOAL_STATUS.ACTIVE : GOAL_STATUS.ACHIEVED;
         void updateGoal(dbId, { status: next })
           .then(() => reload())
@@ -117,7 +118,7 @@ export function useNodeActions({
         return;
       }
       if (node.kind !== "task") return;
-      const dbId = parseInt(nodeId.split("-").pop() ?? "0", 10);
+      const dbId = rowIdOf(node);
       void updateTask(dbId, { status: nextTaskStatus(node.status ?? TASK_STATUS.TODO) })
         .then(async (updated) => {
           // Starting a set-aside task takes it out of the backlog, in the same write and so in the
@@ -263,8 +264,8 @@ export function useNodeActions({
       // away. It is refused here, in the List View's words (`useListDelete` raises the same key),
       // because one gesture on one kind of node must not read two ways depending on the surface.
       // Refusing this early is the whole point: the guard used to stop at `kind !== "aspect"`, so a
-      // repetition raised the confirmation and then reached `dbIdFromNodeId`, which rejects the
-      // `-virtual` tail — the user answered a dialog that could only end in "delete failed".
+      // repetition raised the confirmation and then reached `rowIdOf`, which refuses a node with no
+      // row — the user answered a dialog that could only end in "delete failed".
       //
       // One repetition anywhere in the selection refuses the **whole** gesture, rather than taking
       // the real nodes and naming what was skipped the way `onPaste` does. Two reasons, and the

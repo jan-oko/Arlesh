@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode } from "@/utils/tree-layout";
+import { rowIdOf } from "@/utils/node-identity";
 import type { TimeScope } from "@/api/time-scope";
 import { updateTask, backlogNeedsPlanCleared, TASK_ARCHIVAL } from "@/api/tasks";
 import { getErrorMessage } from "@/api/errors";
@@ -13,6 +14,8 @@ import { getErrorMessage } from "@/api/errors";
  */
 export interface BacklogPlanPrompt {
   nodeId: string;
+  /** The task row the confirmed write goes to. */
+  rowId: number;
   title: string;
   plan: TimeScope | null;
 }
@@ -32,10 +35,6 @@ interface Result {
   confirmClearPlan: () => void;
   /** Declines: the task keeps its plan and stays out of the backlog. */
   cancelPlanPrompt: () => void;
-}
-
-function dbIdOf(nodeId: string): number {
-  return parseInt(nodeId.split("-").pop() ?? "", 10);
 }
 
 /**
@@ -66,11 +65,12 @@ export function useTaskBacklog({ findNode, reload, showToast }: Options): Result
       // template and has no row of its own to set aside.
       if (node === undefined || node.kind !== "task" || node.habitItem !== undefined) return;
       const next = node.backlogged === true ? TASK_ARCHIVAL.LIVE : TASK_ARCHIVAL.BACKLOG;
-      void updateTask(dbIdOf(nodeId), { archival: next }).then(
+      const rowId = rowIdOf(node);
+      void updateTask(rowId, { archival: next }).then(
         () => reload(),
         (error: unknown) => {
           if (backlogNeedsPlanCleared(error)) {
-            setPlanPrompt({ nodeId, title: node.title, plan: node.plan ?? null });
+            setPlanPrompt({ nodeId, rowId, title: node.title, plan: node.plan ?? null });
             return;
           }
           reportFailure(nodeId, error);
@@ -82,11 +82,11 @@ export function useTaskBacklog({ findNode, reload, showToast }: Options): Result
 
   const confirmClearPlan = useCallback(() => {
     if (planPrompt === null) return;
-    const { nodeId } = planPrompt;
+    const { nodeId, rowId } = planPrompt;
     setPlanPrompt(null);
     // Both fields in one write: the plan going and the backlog arriving are the same decision, and
     // sending them separately would leave a moment where neither the old state nor the new holds.
-    void updateTask(dbIdOf(nodeId), { archival: TASK_ARCHIVAL.BACKLOG, plan: null }).then(
+    void updateTask(rowId, { archival: TASK_ARCHIVAL.BACKLOG, plan: null }).then(
       () => reload(),
       (error: unknown) => reportFailure(nodeId, error),
     );

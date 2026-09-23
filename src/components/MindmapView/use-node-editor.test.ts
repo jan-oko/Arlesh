@@ -35,7 +35,7 @@ vi.mock("@/api/block-reasons", () => ({
 }));
 
 const taskNode: MindmapNode = {
-  id: "task-5", kind: "task", title: "Task", tagIds: [], position: 0, children: [],
+  id: "task-5", rowId: 5, kind: "task", title: "Task", tagIds: [], position: 0, children: [],
 };
 const virtualHabitItemNode: MindmapNode = {
   id: "habititem-flow_task-4-3-virtual", kind: "task", title: "Breakfast", tagIds: [], position: 0, children: [],

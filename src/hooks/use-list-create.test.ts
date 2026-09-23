@@ -2,9 +2,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { useListCreate } from "./use-list-create";
 import type { MindmapNode } from "@/utils/tree-layout";
+import { fixtureRowId } from "@/test/node-fixture";
 
 function node(id: string, kind: MindmapNode["kind"], extra: Partial<MindmapNode> = {}): MindmapNode {
-  return { id, kind, title: id, position: 0, tagIds: [], children: [], ...extra };
+  return { id, ...fixtureRowId(id), kind, title: id, position: 0, tagIds: [], children: [], ...extra };
 }
 
 function setup(created: MindmapNode = node("task-9", "task", { status: "todo" })) {

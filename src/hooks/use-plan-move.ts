@@ -32,12 +32,6 @@ export interface PlanMoveHandles {
   unplan: (row: TaskListRow) => Promise<boolean>;
 }
 
-/** The database id behind a task node id (`task-42` → `42`), or `null` for a node with no row. */
-function taskRowId(nodeId: string): number | null {
-  const id = parseInt(nodeId.split("-").pop() ?? "", 10);
-  return Number.isNaN(id) ? null : id;
-}
-
 /**
  * The Plan View's one write: a task's Plan, set to the scope being filled or cleared.
  *
@@ -69,8 +63,8 @@ export function usePlanMove({
 
   const planInto = useCallback(
     async (row: TaskListRow): Promise<boolean> => {
-      const id = taskRowId(row.node.id);
-      if (id === null || targetScopeId === null || targetWindow === null) return false;
+      const id = row.node.rowId;
+      if (id === undefined || targetScopeId === null || targetWindow === null) return false;
       const refusal = planRefusal(row, targetWindow, windows);
       if (refusal !== null) {
         const key = refusal === "ownTimeScope" ? "refusedTimeScope" : "refusedParentPlan";
@@ -98,8 +92,8 @@ export function usePlanMove({
 
   const unplan = useCallback(
     async (row: TaskListRow): Promise<boolean> => {
-      const id = taskRowId(row.node.id);
-      if (id === null) return false;
+      const id = row.node.rowId;
+      if (id === undefined) return false;
       try {
         await updateTask(id, { plan: null });
       } catch (error: unknown) {

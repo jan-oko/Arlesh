@@ -9,9 +9,10 @@ import type { MindmapNode, NodeKind } from "./tree-layout";
 import { ALL_NODE_KINDS } from "./tree-layout";
 import warnings from "@/i18n/locales/en/warnings.json";
 import i18n from "@/i18n";
+import { fixtureRowId } from "@/test/node-fixture";
 
 function mkNode(id: string, kind: NodeKind, children: MindmapNode[] = [], extra: Partial<MindmapNode> = {}): MindmapNode {
-  return { id, kind, title: id, position: 0, tagIds: [], children, ...extra };
+  return { id, ...fixtureRowId(id), kind, title: id, position: 0, tagIds: [], children, ...extra };
 }
 
 const TASK = mkNode("task-5", "task");

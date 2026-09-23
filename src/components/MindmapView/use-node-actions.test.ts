@@ -38,9 +38,10 @@ vi.mock("react-i18next", () => ({
 import { updateTask } from "@/api/tasks";
 import { updateGoal } from "@/api/goals";
 import { setHabitItemStatus } from "@/api/flows";
+import { fixtureRowId } from "@/test/node-fixture";
 
 function mkNode(id: string, kind: NodeKind, children: MindmapNode[] = [], extra: Partial<MindmapNode> = {}): MindmapNode {
-  return { id, kind, title: id, position: 0, tagIds: [], children, ...extra };
+  return { id, ...fixtureRowId(id), kind, title: id, position: 0, tagIds: [], children, ...extra };
 }
 
 const TASK_NODE = mkNode("task-5", "task", [], { status: "todo" });

@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode } from "@/utils/tree-layout";
+import { rowIdOf } from "@/utils/node-identity";
 import { updateTask } from "@/api/tasks";
 import { getErrorMessage } from "@/api/errors";
 import { toggledAgenticState } from "@/utils/agentic";
@@ -15,10 +16,6 @@ interface Result {
   /** Flips the task between Agentic and Not agentic. One node, never a multi-selection — the same
    * scope the Backlog key acts at. */
   toggleAgentic: (nodeId: string) => void;
-}
-
-function dbIdOf(nodeId: string): number {
-  return parseInt(nodeId.split("-").pop() ?? "", 10);
 }
 
 /**
@@ -40,10 +37,10 @@ export function useTaskAgentic({ findNode, reload, showToast }: Options): Result
     (nodeId: string) => {
       const node = findNode(nodeId);
       // Only a real Task has an agentic column: a virtual Habit instance is rendered from a
-      // template and has no row of its own to flag — its id has no database id to address, so
+      // template and has no row of its own to flag — it carries no `rowId` to address, so
       // this is a refusal to act rather than a write that would go nowhere.
       if (node === undefined || node.kind !== "task" || node.habitItem !== undefined) return;
-      void updateTask(dbIdOf(nodeId), { agentic: toggledAgenticState(node) }).then(
+      void updateTask(rowIdOf(node), { agentic: toggledAgenticState(node) }).then(
         () => reload(),
         (error: unknown) => {
           showToast({ nodeId, message: t("agenticFailed", { message: getErrorMessage(error) }) });

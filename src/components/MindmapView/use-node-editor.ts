@@ -35,6 +35,7 @@ import { addTagToGoal, removeTagFromGoal, updateGoal } from "@/api/goals";
 import { addTagToCommitment, removeTagFromCommitment, updateCommitment } from "@/api/commitments";
 import type { TimeScope } from "@/api/time-scope";
 import { findNode } from "@/utils/mindmap-tree";
+import { rowIdOf } from "@/utils/node-identity";
 import { DOMAIN_SUBTYPE } from "@/api/domains";
 import { TASK_STATUS } from "@/utils/status-mapping";
 
@@ -155,8 +156,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
       const node = findNode(tree, nodeId);
       // A virtual Habit instance isn't backed by a real Task/Goal row — its Time Scope is derived
       // from the flow's Duration kind and the item's Cycle, not independently editable — and
-      // `onTaskSave`/`onGoalSave` would compute a `dbId` from its non-numeric `-virtual` id tail
-      // (NaN) and fail to save. It stays read-only here; only `onStatusClick` may mutate it.
+      // it has no `rowId` for `onTaskSave`/`onGoalSave` to write to (`rowIdOf` would throw). It stays read-only here; only `onStatusClick` may mutate it.
       if (node === undefined || node.kind === "aspect" || node.habitItem !== undefined) return;
       setEditorModal({ nodeId, node });
     },
@@ -167,7 +167,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
     async (data: TaskSaveData) => {
       if (editorModal === null) return;
       const { nodeId, node } = editorModal;
-      const dbId = parseInt(nodeId.split("-").pop() ?? "0", 10);
+      const dbId = rowIdOf(node);
       if (data.timeScope !== null) {
         const conflicts = await scopeContainmentConflicts("task", dbId, data.timeScope);
         await clampDescendants(conflicts, data.timeScope);
@@ -208,8 +208,8 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
   const onGoalSave = useCallback(
     async (data: GoalSaveData) => {
       if (editorModal === null) return;
-      const { nodeId, node } = editorModal;
-      const dbId = parseInt(nodeId.split("-").pop() ?? "0", 10);
+      const { node } = editorModal;
+      const dbId = rowIdOf(node);
       if (data.timeScope !== null) {
         const conflicts = await scopeContainmentConflicts("goal", dbId, data.timeScope);
         await clampDescendants(conflicts, data.timeScope);
@@ -235,8 +235,8 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
   const onCommitmentSave = useCallback(
     async (data: CommitmentSaveData) => {
       if (editorModal === null) return;
-      const { nodeId, node } = editorModal;
-      const dbId = parseInt(nodeId.split("-").pop() ?? "0", 10);
+      const { node } = editorModal;
+      const dbId = rowIdOf(node);
       // Any refusal — most likely clearing the last window above the commitment — propagates to
       // the modal, which shows it rather than closing on a save that did not happen.
       await updateCommitment(dbId, {
@@ -259,8 +259,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
   const onFlowSave = useCallback(
     async (data: FlowSaveData) => {
       if (editorModal === null) return;
-      const { nodeId } = editorModal;
-      const dbId = parseInt(nodeId.split("-").pop() ?? "0", 10);
+      const dbId = rowIdOf(editorModal.node);
       const flowFields = {
         title: data.title,
         instance_type: data.instanceType,
@@ -321,7 +320,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
       const { node } = editorModal;
       const flowItem = node.flowItem;
       if (flowItem === undefined) return;
-      const dbId = parseInt(node.id.split("-").pop() ?? "0", 10);
+      const dbId = rowIdOf(node);
       const patch = { title: data.title, isPrivate: data.isPrivate };
       if (flowItem.itemType === "flow_goal") {
         await updateFlowGoal(dbId, patch);
@@ -352,8 +351,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
   const onSimpleSave = useCallback(
     async (title: string, isPrivate: boolean) => {
       if (editorModal === null) return;
-      const { nodeId } = editorModal;
-      const dbId = parseInt(nodeId.split("-").pop() ?? "0", 10);
+      const dbId = rowIdOf(editorModal.node);
       // Domain/tag editors: persist title and privacy together, then refresh.
       await updateDomain(dbId, { title, is_private: isPrivate });
       await reload();
@@ -365,8 +363,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
   const onProjectSave = useCallback(
     async (data: ProjectSaveData) => {
       if (editorModal === null) return;
-      const { nodeId } = editorModal;
-      const dbId = parseInt(nodeId.split("-").pop() ?? "0", 10);
+      const dbId = rowIdOf(editorModal.node);
       await updateDomain(dbId, {
         title: data.title,
         is_private: data.isPrivate,
@@ -382,7 +379,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
   const onInfoSave = useCallback(
     async (data: InfoSaveData) => {
       if (editorModal === null) return;
-      const dbId = parseInt(editorModal.nodeId.split("-").pop() ?? "0", 10);
+      const dbId = rowIdOf(editorModal.node);
       await updateInfo(dbId, { body: data.body, details: data.details, is_private: data.isPrivate });
       await reload();
       setEditorModal(null);
@@ -398,7 +395,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
   const onClearBeadsId = useCallback(
     async (nodeType: BeadsNodeType) => {
       if (editorModal === null) return;
-      const dbId = parseInt(editorModal.nodeId.split("-").pop() ?? "0", 10);
+      const dbId = rowIdOf(editorModal.node);
       await clearBeadsId(nodeType, dbId);
       await reload();
     },

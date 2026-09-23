@@ -22,12 +22,12 @@ const TREE: MindmapNode = {
   id: "root", kind: "domain", title: "Arlesh", position: 0, tagIds: [],
   children: [
     {
-      id: "domain-1", kind: "aspect", title: "Red", color: "#e74c3c", position: 0, tagIds: [],
+      id: "domain-1", rowId: 1, kind: "aspect", title: "Red", color: "#e74c3c", position: 0, tagIds: [],
       children: [
-        { id: "domain-2", kind: "tag", title: "urgent", color: "#e74c3c", position: 0, tagIds: [], children: [] },
-        { id: "project-1", kind: "project", title: "Rocket", color: "#e74c3c", position: 0, tagIds: [], children: [
-          { id: "goal-1", kind: "goal", title: "Launch", status: "active", color: "#e74c3c", position: 0, tagIds: [], children: [] },
-          { id: "task-1", kind: "task", title: "Fuel up", status: "todo", color: "#e74c3c", position: 0, tagIds: [], children: [] },
+        { id: "domain-2", rowId: 2, kind: "tag", title: "urgent", color: "#e74c3c", position: 0, tagIds: [], children: [] },
+        { id: "project-1", rowId: 1, kind: "project", title: "Rocket", color: "#e74c3c", position: 0, tagIds: [], children: [
+          { id: "goal-1", rowId: 1, kind: "goal", title: "Launch", status: "active", color: "#e74c3c", position: 0, tagIds: [], children: [] },
+          { id: "task-1", rowId: 1, kind: "task", title: "Fuel up", status: "todo", color: "#e74c3c", position: 0, tagIds: [], children: [] },
         ] },
       ],
     },
