@@ -1,4 +1,5 @@
 import { hierarchy, tree } from "d3-hierarchy";
+import type { ScopeKey } from "@/api/scopes";
 import type { TimeScope } from "@/api/time-scope";
 import type { InstanceType, FlowItemType, HabitInstanceType } from "@/api/flows";
 import type { OnScopeExit, Timing, Resolution } from "@/api/scope-lifecycle";
@@ -279,7 +280,7 @@ export interface MindmapNode {
     flowId: number;
     itemType: HabitInstanceType;
     itemId: number;
-    scopeId: number;
+    scopeId: ScopeKey;
     cycleId: number;
   };
   /** Present on a virtual Habit **iteration root** — what the Mindmap's collapse of passed

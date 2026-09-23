@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { getOrCreateForRef } from "@/api/scopes";
+import { scopeForRef } from "@/api/scopes";
 import type { Scope } from "@/api/scopes";
 import { getErrorMessage } from "@/api/errors";
 import { useScopeLabels } from "@/hooks/use-scope-labels";
@@ -45,10 +45,10 @@ function todayIso(now: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-/** Materializes a cursor's cell, creating the scope row on demand — the same get-or-create the
- * Scope Picker resolves a selection through, and the same one a drop into a subscope goes through. */
+/** Reads a cursor's cell back as its scope — label and dates, derived from its key, with nothing
+ * written — through the same door a drop into a subscope goes through. */
 async function materialize(cursor: PlanScopeCursor): Promise<Scope> {
-  return getOrCreateForRef(cursorRef(cursor));
+  return scopeForRef(cursorRef(cursor));
 }
 
 /**

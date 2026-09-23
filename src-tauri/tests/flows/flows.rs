@@ -24,7 +24,7 @@ use arlesh_lib::tasks::{
 
 /// Creates a goal under aspect 1 whose Time Scope is the single canonical scope of `kind` covering
 /// `date`, returning its id. Used to give target candidates a concrete window to contain (or not).
-async fn week_scope_id(pool: &sqlx::SqlitePool, date: chrono::NaiveDate) -> ScopeKey {
+async fn week_scope_id(_pool: &sqlx::SqlitePool, date: chrono::NaiveDate) -> ScopeKey {
     arlesh_lib::scopes::model::Scope::containing(ScopeKind::Week, date)
         .unwrap()
         .id
@@ -4020,7 +4020,7 @@ fn an_explicit_null_root_plan_end_in_an_update_payload_clears_it() {
 // resolution that fixes it, on a Span-windowed Habit and on a Phase-windowed one.
 
 /// The canonical scope of `kind` covering `date`.
-async fn scope_id(pool: &sqlx::SqlitePool, kind: ScopeKind, date: chrono::NaiveDate) -> ScopeKey {
+async fn scope_id(_pool: &sqlx::SqlitePool, kind: ScopeKind, date: chrono::NaiveDate) -> ScopeKey {
     arlesh_lib::scopes::model::Scope::containing(kind, date)
         .unwrap()
         .id

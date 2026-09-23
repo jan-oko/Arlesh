@@ -51,7 +51,7 @@ async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
         .id
 }
 
-async fn day(pool: &sqlx::SqlitePool, date: NaiveDate) -> TimeScope {
+async fn day(_pool: &sqlx::SqlitePool, date: NaiveDate) -> TimeScope {
     let scope = arlesh_lib::scopes::model::Scope::containing(ScopeKind::Day, date).unwrap();
     TimeScope {
         start_id: scope.id,

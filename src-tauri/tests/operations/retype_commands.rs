@@ -90,7 +90,7 @@ async fn make_tag(pool: &sqlx::SqlitePool, parent_id: Option<i64>) -> i64 {
         .id
 }
 
-async fn make_week_scope(pool: &sqlx::SqlitePool, day: NaiveDate) -> ScopeKey {
+async fn make_week_scope(_pool: &sqlx::SqlitePool, day: NaiveDate) -> ScopeKey {
     arlesh_lib::scopes::model::Scope::containing(ScopeKind::Week, day)
         .unwrap()
         .id

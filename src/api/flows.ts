@@ -1,5 +1,6 @@
 import { invoke } from "./gesture";
 import { isWireError } from "@/api/errors";
+import type { ScopeKey } from "@/api/scopes";
 import type { TimeScope } from "@/api/time-scope";
 import type { Timing } from "@/api/scope-lifecycle";
 
@@ -174,20 +175,20 @@ export type CatchupPolicy = "all_pending" | "next" | "latest";
 /** A Habit's Recurrence — Repetition (start/gap/end) plus the Consumption config. */
 export interface FlowRecurrence {
   flow_id: number;
-  start_scope_id: number;
+  start_scope_id: ScopeKey;
   gap_n: number | null;
   gap_kind: string | null;
-  end_scope_id: number | null;
+  end_scope_id: ScopeKey | null;
   consumption_kind: ConsumptionKind;
   blocking_mode: BlockingMode | null;
   catchup_policy: CatchupPolicy | null;
 }
 
 export interface SetRecurrenceRequest {
-  start_scope_id: number;
+  start_scope_id: ScopeKey;
   gap_n?: number | null;
   gap_kind?: string | null;
-  end_scope_id?: number | null;
+  end_scope_id?: ScopeKey | null;
   consumption_kind: ConsumptionKind;
   blocking_mode?: BlockingMode | null;
   catchup_policy?: CatchupPolicy | null;
@@ -253,7 +254,7 @@ export interface HabitInstance {
 /** A derived Habit iteration on a reference day (nothing is persisted per iteration). */
 export interface HabitIteration {
   index: number;
-  anchor_scope_id: number;
+  anchor_scope_id: ScopeKey;
   /** The window's first day, ISO `YYYY-MM-DD`. */
   anchor_date: string;
   /**
@@ -289,7 +290,7 @@ export type HabitInstanceType = FlowItemType | "flow_root";
 export interface HabitItemStatus {
   item_type: HabitInstanceType;
   item_id: number;
-  iteration_scope_id: number;
+  iteration_scope_id: ScopeKey;
   /** Which occurrence of the item, since one item can draw several in a single iteration. */
   cycle_id: number;
   status: string;
@@ -312,7 +313,7 @@ export async function setHabitItemStatus(
   flowId: number,
   itemType: HabitInstanceType,
   itemId: number,
-  iterationScopeId: number,
+  iterationScopeId: ScopeKey,
   cycleId: number,
   status: string | null,
   resolvedAtMs: number,
@@ -338,7 +339,7 @@ export interface HabitInstanceChild {
   flow_id: number;
   item_type: HabitInstanceType;
   item_id: number;
-  iteration_scope_id: number;
+  iteration_scope_id: ScopeKey;
   cycle_id: number;
   child_type: HabitChildKind;
   child_id: number;
@@ -355,7 +356,7 @@ export async function createHabitInstanceChild(
   flowId: number,
   itemType: HabitInstanceType,
   itemId: number,
-  iterationScopeId: number,
+  iterationScopeId: ScopeKey,
   cycleId: number,
   childType: HabitChildKind,
   title: string,

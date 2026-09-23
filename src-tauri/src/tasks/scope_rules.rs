@@ -100,10 +100,10 @@ pub async fn derive_all_scope_lifecycles<M: SessionMode>(
         let resolved = TaskStatus::from_db(&task.status) == Some(TaskStatus::Done);
         let stored = Some(Archival::from(task.archival));
         let state = derive_item_state(window, on_exit, resolved, stored, now);
-        let plan_timing = match &task.plan {
-            Some(plan) => Some(derive_timing(Some(plan.window()), now)),
-            None => None,
-        };
+        let plan_timing = task
+            .plan
+            .as_ref()
+            .map(|plan| derive_timing(Some(plan.window()), now));
         out.push(ItemLifecycle {
             node_type: "task".to_string(),
             node_id: task.id,
@@ -222,10 +222,7 @@ pub async fn derive_all_scope_lifecycles<M: SessionMode>(
         archival,
     } in entries
     {
-        let bounds = match &window {
-            Some(window) => Some(window.window()),
-            None => None,
-        };
+        let bounds = window.as_ref().map(TimeScope::window);
         let state = derive_expectation_state(bounds, status, archival, now);
         out.push(ItemLifecycle {
             node_type: node_type.to_string(),

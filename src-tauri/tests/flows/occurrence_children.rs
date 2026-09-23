@@ -39,7 +39,7 @@ fn daily_habit(title: &str) -> CreateFlowRequest {
 }
 
 /// The canonical scope a date falls in, as the iteration anchor an occurrence keys on.
-async fn scope_id(pool: &sqlx::SqlitePool, kind: ScopeKind, date: chrono::NaiveDate) -> ScopeKey {
+async fn scope_id(_pool: &sqlx::SqlitePool, kind: ScopeKind, date: chrono::NaiveDate) -> ScopeKey {
     arlesh_lib::scopes::model::Scope::containing(kind, date)
         .unwrap()
         .id

@@ -8,7 +8,7 @@
 // business, and an interval built here from a date would bake in an answer this file has no
 // business knowing. Dates are dates under either convention.
 
-import type { Scope, ScopeKind } from "@/api/scopes";
+import type { Scope, ScopeKind, ScopeKey } from "@/api/scopes";
 import type { TaskListRow } from "@/utils/list-filter";
 import type { ScopeRef } from "@/utils/scope-ref";
 import type { ScopeCell, ViewKind } from "@/utils/scope-calendar";
@@ -139,7 +139,7 @@ function sectionKey(cell: ScopeCell): string {
 export function buildPlanSections(
   planned: readonly TaskListRow[],
   target: Scope,
-  scopes: ReadonlyMap<number, Scope>,
+  scopes: ReadonlyMap<ScopeKey, Scope>,
   options: PlanSplitOptions,
 ): PlanSplit | null {
   const cells = subscopeCells(target);

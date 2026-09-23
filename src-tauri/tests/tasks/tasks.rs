@@ -1980,7 +1980,7 @@ fn single(scope_id: ScopeKey) -> TimeScope {
     }
 }
 
-async fn july_scopes(pool: &sqlx::SqlitePool) -> (ScopeKey, ScopeKey, ScopeKey) {
+async fn july_scopes(_pool: &sqlx::SqlitePool) -> (ScopeKey, ScopeKey, ScopeKey) {
     let july = arlesh_lib::scopes::model::Scope::containing(
         ScopeKind::Month,
         chrono::NaiveDate::from_ymd_opt(2026, 7, 15).unwrap(),
@@ -2706,7 +2706,7 @@ async fn goal_is_achieved() {
 
 // --- On-exit behavior + derived scope lifecycle (Feature A / S2) ---
 
-async fn day_scope(pool: &sqlx::SqlitePool, y: i32, m: u32, d: u32) -> ScopeKey {
+async fn day_scope(_pool: &sqlx::SqlitePool, y: i32, m: u32, d: u32) -> ScopeKey {
     arlesh_lib::scopes::model::Scope::containing(
         ScopeKind::Day,
         NaiveDate::from_ymd_opt(y, m, d).unwrap(),

@@ -73,7 +73,7 @@ async fn make_domain(
 }
 
 /// The canonical week containing `date`, instantiated on first use.
-async fn week_scope(pool: &sqlx::SqlitePool, date: NaiveDate) -> ScopeKey {
+async fn week_scope(_pool: &sqlx::SqlitePool, date: NaiveDate) -> ScopeKey {
     arlesh_lib::scopes::model::Scope::containing(ScopeKind::Week, date)
         .unwrap()
         .id
