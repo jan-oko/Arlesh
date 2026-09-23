@@ -24,6 +24,9 @@ import { useUndo } from "@/hooks/use-undo";
 import TaskEditorModal from "@/components/TaskEditorModal/TaskEditorModal";
 import OccurrenceEditorModal from "@/components/OccurrenceEditorModal/OccurrenceEditorModal";
 import { useOccurrenceDelete } from "@/hooks/use-occurrence-delete";
+import { useOccurrenceMenu } from "@/hooks/use-occurrence-menu";
+import { occurrenceMenuEntries } from "@/utils/occurrence-menu";
+import OccurrenceContextMenu from "@/components/OccurrenceContextMenu/OccurrenceContextMenu";
 import CommitmentEditorModal from "@/components/CommitmentEditorModal/CommitmentEditorModal";
 import NodeSearchModal from "@/components/NodeSearchModal/NodeSearchModal";
 import TaskRow from "./TaskRow";
@@ -47,7 +50,7 @@ export default function ListView() {
   const { t } = useTranslation(["common", "listView", "editor"]);
   const { tree, rows, commitmentRows, allTasksAndGoals, isLoading, error, reload, onCycleStatus, renameNode,
     createTask, deleteTask, removeNode,
-    occurrencePrompt, confirmOccurrence, cancelOccurrence } = useListData();
+    occurrencePrompt, confirmOccurrence, cancelOccurrence, setOccurrenceStatus } = useListData();
 
   const sharedFilter = useFilterStore((s) => s.filter);
   // The cheat-sheet overlay gates background shortcuts the same way an open modal does.
@@ -233,6 +236,20 @@ export default function ListView() {
   }
 
   const deleteOccurrences = useOccurrenceDelete({ reload, showToast });
+  // A Habit occurrence's own context menu — the one row kind in this list that has one, since it
+  // is the only row whose editing, status, Plan and delete need their own route.
+  const [occurrenceMenu, setOccurrenceMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null);
+  const runOccurrenceAction = useOccurrenceMenu({
+    openEditor: occurrenceEditor.open,
+    setOccurrenceStatus,
+    deleteOccurrences,
+    toggleCollapsed: () => undefined,
+    reload,
+    showToast,
+  });
+  const occurrenceMenuNode = occurrenceMenu === null ? undefined : findNode(tree, occurrenceMenu.nodeId);
+  const occurrenceMenuEntryList =
+    occurrenceMenuNode === undefined ? null : occurrenceMenuEntries(occurrenceMenuNode, false, false);
 
   // Deleting on the Mindmap's terms: its chord, its confirmation, its subtree cascade and its
   // writer — so one undo step covers a delete made from either view.
@@ -368,6 +385,16 @@ export default function ListView() {
           nodes={searchableNodes}
           onSelect={(id) => { enterSubtree(id); closeSearch(); }}
           onClose={closeSearch}
+        />
+      )}
+
+      {occurrenceMenu !== null && occurrenceMenuNode !== undefined && occurrenceMenuEntryList !== null && (
+        <OccurrenceContextMenu
+          x={occurrenceMenu.x}
+          y={occurrenceMenu.y}
+          entries={occurrenceMenuEntryList}
+          onAction={(action) => runOccurrenceAction(occurrenceMenuNode, action)}
+          onClose={() => setOccurrenceMenu(null)}
         />
       )}
 

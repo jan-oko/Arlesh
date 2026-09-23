@@ -10,5 +10,20 @@
   "newFlow": "New Flow",
   "convertToFlow": "Convert to flow",
   "startFlow": "Start flow",
-  "delete": "Delete"
+  "delete": "Delete",
+  "occurrence": {
+    "edit": "Edit this occurrence…",
+    "plan": "Plan this occurrence…",
+    "followCyclePlan": "Follow the Cycle Plan",
+    "unplan": "Leave it unplanned this time",
+    "delete": "Delete this occurrence only",
+    "restore": "Restore this occurrence",
+    "status": {
+      "todo": "Mark to do",
+      "in_progress": "Mark in progress",
+      "done": "Mark done",
+      "active": "Mark active",
+      "achieved": "Mark achieved"
+    }
+  }
 }

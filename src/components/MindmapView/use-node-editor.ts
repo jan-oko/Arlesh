@@ -178,12 +178,13 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
       // iteration root stays read-only here.
       if (node === undefined || node.kind === "aspect") return;
       if (node.habitItem !== undefined) {
-        openOccurrenceEditor(node);
+        // The iteration root has no editor of its own; saying so beats a key that does nothing.
+        if (!openOccurrenceEditor(node)) showToast({ nodeId, message: t("editIterationRefused") });
         return;
       }
       setEditorModal({ nodeId, node });
     },
-    [tree, openOccurrenceEditor],
+    [tree, openOccurrenceEditor, showToast, t],
   );
 
   const onTaskSave = useCallback(

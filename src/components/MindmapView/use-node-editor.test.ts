@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { useNodeEditor } from "./use-node-editor";
+import { useMindmapStore } from "@/stores/use-mindmap-store";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { TaskSaveData } from "@/components/TaskEditorModal/TaskEditorModal";
 import { updateTask, scopeContainmentConflicts } from "@/api/tasks";
@@ -91,7 +92,7 @@ describe("useNodeEditor — double-click", () => {
     });
   });
 
-  it("opens nothing on a habit iteration root, which is not edited per occurrence", () => {
+  it("refuses a habit iteration root out loud, since it is not edited per occurrence", () => {
     const reload = vi.fn().mockResolvedValue(undefined);
     const { result } = renderHook(() =>
       useNodeEditor({ tree: root, allTasksAndGoals: [taskNode], reload }),
@@ -99,6 +100,9 @@ describe("useNodeEditor — double-click", () => {
     act(() => result.current.onDoubleClick("habit-4-0-virtual"));
     expect(result.current.editorModal).toBeNull();
     expect(result.current.occurrenceEditor.target).toBeNull();
+    expect(useMindmapStore.getState().pendingToast).toMatchObject({
+      nodeId: "habit-4-0-virtual", message: "editIterationRefused",
+    });
   });
 });
 

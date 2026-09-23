@@ -23,6 +23,8 @@ interface Props {
   onSelect: (nodeId: string) => void;
   onCycleStatus: (nodeId: string) => void;
   onOpenEditor: (nodeId: string) => void;
+  /** Opens a Habit occurrence's context menu at a point; rows that are not occurrences have none. */
+  onOccurrenceMenu?: (nodeId: string, x: number, y: number) => void;
   onCommitTitle: (nodeId: string, title: string) => void;
   onCancelTitleEdit: () => void;
   onAddTagFilter: (tagId: number) => void;
@@ -41,7 +43,7 @@ interface Props {
  * title drifting away from them. Ancestors the filter hides are named in the path header instead, so
  * a row never indents under something that is not on screen. */
 export default function TaskRow({
-  row, visibleDepth, isSelected, isFocusExempt, isEditingTitle, onSelect, onCycleStatus, onOpenEditor, onCommitTitle, onCancelTitleEdit,
+  row, visibleDepth, isSelected, isFocusExempt, isEditingTitle, onSelect, onCycleStatus, onOpenEditor, onOccurrenceMenu, onCommitTitle, onCancelTitleEdit,
   onAddTagFilter,
 }: Props) {
   useInputCapture(isEditingTitle);
@@ -78,6 +80,11 @@ export default function TaskRow({
       style={cardStyle}
       onClick={() => onSelect(node.id)}
       onDoubleClick={() => onOpenEditor(node.id)}
+      onContextMenu={(event) => {
+        if (node.habitItem === undefined || onOccurrenceMenu === undefined) return;
+        event.preventDefault();
+        onOccurrenceMenu(node.id, event.clientX, event.clientY);
+      }}
     >
       <button
         type="button"

@@ -62,6 +62,8 @@ interface Result {
   confirmOccurrence: () => void;
   /** Declines it. Nothing was written, so nothing is undone. */
   cancelOccurrence: () => void;
+  /** Writes one Habit occurrence's status through the completion guard — the context menu's way. */
+  setOccurrenceStatus: (node: MindmapNode, status: string | null) => void;
   onStatusClick: (nodeId: string) => void;
   onCommitEdit: (nodeId: string, title: string) => void;
   onCreateChild: (nodeId: string) => void;
@@ -513,6 +515,6 @@ export function useNodeActions({
   return {
     onStatusClick, onCommitEdit, onCreateChild, onCreateTypedChild, onCreateSibling,
     onInsertParent, onDelete, onPaste,
-    occurrencePrompt, confirmOccurrence, cancelOccurrence,
+    occurrencePrompt, confirmOccurrence, cancelOccurrence, setOccurrenceStatus,
   };
 }

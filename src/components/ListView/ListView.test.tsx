@@ -140,6 +140,7 @@ function listData(overrides: Partial<ReturnType<typeof useListData>> = {}) {
     occurrencePrompt: null,
     confirmOccurrence: vi.fn(),
     cancelOccurrence: vi.fn(),
+    setOccurrenceStatus: vi.fn(),
     ...overrides,
   };
 }

@@ -27,6 +27,7 @@ function makeOpts(overrides: Partial<Parameters<typeof useContextAction>[0]> = {
     onNewFlow: vi.fn(),
     onConvertToFlow: vi.fn(),
     onStartFlow: vi.fn(),
+    onOccurrenceAction: vi.fn(),
     ...overrides,
   };
 }
@@ -130,5 +131,19 @@ describe("useContextAction — convert to flow", () => {
     const { result } = renderHook(() => useContextAction(opts));
     result.current.onContextAction("task-5", "convert-to-flow");
     expect(opts.onConvertToFlow).toHaveBeenCalledWith("task-5");
+  });
+
+  it("hands a Habit occurrence's own menu entries to the occurrence handler", () => {
+    const occurrence: MindmapNode = {
+      ...stubNode, id: "habititem-flow_task-4-0-0-virtual", kind: "task", virtual: true,
+      habitItem: { flowId: 3, itemType: "flow_task", itemId: 4, scopeId: 100, cycleId: 0 },
+    };
+    const opts = makeOpts({ findNodeById: vi.fn(() => occurrence) });
+    const { result } = renderHook(() => useContextAction(opts));
+    result.current.onContextAction(occurrence.id, "edit");
+    result.current.onContextAction(occurrence.id, "delete");
+    expect(opts.onOccurrenceAction).toHaveBeenCalledWith(occurrence, "edit");
+    expect(opts.onOccurrenceAction).toHaveBeenCalledWith(occurrence, "delete");
+    expect(opts.onDelete).not.toHaveBeenCalled();
   });
 });

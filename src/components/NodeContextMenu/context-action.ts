@@ -1,4 +1,5 @@
 import type { NodeKind } from "@/utils/tree-layout";
+import type { OccurrenceMenuAction } from "@/utils/occurrence-menu";
 
 export const CONTEXT_ACTION = {
   ENTER: "enter",
@@ -19,4 +20,11 @@ export type SetTypeAction = `set-type:${NodeKind}`;
 
 export const SET_TYPE_PREFIX = "set-type:";
 
-export type ContextMenuAction = typeof CONTEXT_ACTION[keyof typeof CONTEXT_ACTION] | SetTypeAction;
+/**
+ * Every action a node's context menu can send — including a Habit occurrence's own menu, whose
+ * entries arrive through the same route and are handed to the occurrence handler.
+ */
+export type ContextMenuAction =
+  | typeof CONTEXT_ACTION[keyof typeof CONTEXT_ACTION]
+  | SetTypeAction
+  | OccurrenceMenuAction;

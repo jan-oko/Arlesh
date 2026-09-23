@@ -4,6 +4,8 @@ import { isNodeKind } from "@/utils/tree-layout";
 import type { ContextMenuAction } from "@/components/NodeContextMenu/context-action";
 import { CONTEXT_ACTION, SET_TYPE_PREFIX } from "@/components/NodeContextMenu/context-action";
 import { CLIPBOARD_OP } from "@/stores/use-clipboard-store";
+import type { OccurrenceMenuAction } from "@/utils/occurrence-menu";
+import { isOccurrenceMenuAction } from "@/utils/occurrence-menu";
 
 interface ClipboardEntry {
   operation: "cut" | "copy";
@@ -23,6 +25,8 @@ interface Options {
   onNewFlow: (parentId: string) => void;
   onConvertToFlow: (nodeId: string) => void;
   onStartFlow: (flowId: string) => void;
+  /** Runs an entry of a virtual Habit node's own menu. */
+  onOccurrenceAction: (node: MindmapNode, action: OccurrenceMenuAction) => void;
 }
 
 interface Result {
@@ -32,10 +36,17 @@ interface Result {
 export function useContextAction({
   findNodeById, enterSubtree, setEditingNodeId, setType,
   setClipboard, clipboard, onPaste, toggleCollapsed, onDelete, onNewFlow, onConvertToFlow, onStartFlow,
+  onOccurrenceAction,
 }: Options): Result {
   const onContextAction = useCallback(
     (nodeId: string, action: ContextMenuAction) => {
-      if (findNodeById(nodeId) === undefined) return;
+      const node = findNodeById(nodeId);
+      if (node === undefined) return;
+      // A Habit occurrence's menu is its own, and so is what its entries do.
+      if (node.habitItem !== undefined && isOccurrenceMenuAction(action)) {
+        onOccurrenceAction(node, action);
+        return;
+      }
       // "Set type" submenu picks arrive as `set-type:<kind>`.
       if (action.startsWith(SET_TYPE_PREFIX)) {
         const kind = action.slice(SET_TYPE_PREFIX.length);
@@ -55,7 +66,7 @@ export function useContextAction({
         case CONTEXT_ACTION.DELETE: onDelete([nodeId]); break;
       }
     },
-    [findNodeById, enterSubtree, setEditingNodeId, setType, setClipboard, clipboard, onPaste, toggleCollapsed, onDelete, onNewFlow, onConvertToFlow, onStartFlow],
+    [findNodeById, enterSubtree, setEditingNodeId, setType, setClipboard, clipboard, onPaste, toggleCollapsed, onDelete, onNewFlow, onConvertToFlow, onStartFlow, onOccurrenceAction],
   );
 
   return { onContextAction };

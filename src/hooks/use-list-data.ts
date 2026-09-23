@@ -33,6 +33,8 @@ interface ListData {
   occurrencePrompt: OccurrencePrompt | null;
   /** Answers that prompt: marks the occurrence done and leaves its children in place. */
   confirmOccurrence: () => void;
+  /** Writes one Habit occurrence's status through the completion guard — the context menu's way. */
+  setOccurrenceStatus: (node: MindmapNode, status: string | null) => void;
   /** Declines it. Nothing was written, so nothing is undone. */
   cancelOccurrence: () => void;
   /** Renames a task (inline rename, keyboard "R"). */
@@ -116,6 +118,6 @@ export function useListData(): ListData {
   return {
     tree, rows, commitmentRows, allTasksAndGoals, isLoading, error, reload, onCycleStatus,
     renameNode, createTask, deleteTask, removeNode,
-    occurrencePrompt, confirmOccurrence, cancelOccurrence,
+    occurrencePrompt, confirmOccurrence, cancelOccurrence, setOccurrenceStatus,
   };
 }

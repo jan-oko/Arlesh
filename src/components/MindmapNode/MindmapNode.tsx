@@ -5,6 +5,8 @@ import { isRtlText } from "@/utils/text-direction";
 import { computeNodeDimensions, computeEditHeight } from "@/utils/node-meta";
 import { computeNodeAppearance, DIMMED_OPACITY } from "@/utils/node-visuals";
 import { deriveStatusIndicators } from "@/utils/node-status-indicators";
+import OccurrenceContextMenu from "@/components/OccurrenceContextMenu/OccurrenceContextMenu";
+import { occurrenceMenuEntries } from "@/utils/occurrence-menu";
 import NodeContextMenu from "@/components/NodeContextMenu/NodeContextMenu";
 import type { ContextMenuAction } from "@/components/NodeContextMenu/context-action";
 import StatusIconRow from "@/components/StatusIcons/StatusIconRow";
@@ -85,9 +87,13 @@ export default function MindmapNode({ node, parentKind, position, isSelected, is
       onSelect(node.id);
     }
   }, [node.id, onSelect, onCtrlClick, onShiftClick]);
-  // A virtual node (derived Habit iteration) is read-only: no edit, drag, or context menu.
-  const handleDoubleClick = useCallback((e: React.MouseEvent) => { e.stopPropagation(); if (node.virtual === true) return; onDoubleClick(node.id); }, [node.id, node.virtual, onDoubleClick]);
-  const handleContextMenu = useCallback((e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); if (node.virtual === true) return; setContextMenu({ x: e.clientX, y: e.clientY }); }, [node.virtual]);
+  // A virtual node is not dragged. A Habit occurrence (or iteration root) is edited through its own
+  // editor and menu — the editor hook routes the double-click, and says so when the root refuses
+  // it; any other virtual node (a folded run of history) has neither.
+  const isOccurrence = node.habitItem !== undefined;
+  const handleDoubleClick = useCallback((e: React.MouseEvent) => { e.stopPropagation(); if (node.virtual === true && !isOccurrence) return; onDoubleClick(node.id); }, [node.id, node.virtual, isOccurrence, onDoubleClick]);
+  const handleContextMenu = useCallback((e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); if (node.virtual === true && !isOccurrence) return; setContextMenu({ x: e.clientX, y: e.clientY }); }, [node.virtual, isOccurrence]);
+  const occurrenceEntries = occurrenceMenuEntries(node, isCollapsed);
   const handleMouseDown = useCallback((e: React.MouseEvent) => { if (e.button !== 0 || node.kind === "aspect" || node.virtual === true) return; onDragStart(node.id, e.clientX, e.clientY); }, [node.id, node.kind, node.virtual, onDragStart]);
   const handleStatusIconClick = useCallback((e: React.MouseEvent) => { e.stopPropagation(); onSelect(node.id); onStatusClick?.(node.id); }, [node.id, onSelect, onStatusClick]);
 
@@ -111,7 +117,11 @@ export default function MindmapNode({ node, parentKind, position, isSelected, is
       {statusIndicators.length > 0 && (
         <StatusIconRow node={node} indicators={statusIndicators} top={activeHeight} />
       )}
-      {contextMenu !== null && createPortal(
+      {contextMenu !== null && occurrenceEntries !== null && createPortal(
+        <OccurrenceContextMenu x={contextMenu.x} y={contextMenu.y} entries={occurrenceEntries} onAction={(action) => onContextAction(node.id, action)} onClose={() => setContextMenu(null)} />,
+        document.body,
+      )}
+      {contextMenu !== null && occurrenceEntries === null && createPortal(
         <NodeContextMenu x={contextMenu.x} y={contextMenu.y} nodeKind={node.kind} parentKind={parentKind} childKinds={[...new Set(node.children.map((c) => c.kind))]} {...(node.flowItem !== undefined ? { flowInstanceType: node.flowItem.flowInstanceType } : {})} isCollapsed={isCollapsed} hasClipboard={hasClipboard} onAction={(action) => onContextAction(node.id, action)} onClose={() => setContextMenu(null)} />,
         document.body,
       )}

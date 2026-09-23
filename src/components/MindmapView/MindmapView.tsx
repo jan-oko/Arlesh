@@ -41,6 +41,7 @@ import AnchoredToast from "@/components/AnchoredToast/AnchoredToast";
 import HabitFailureBanner from "@/components/HabitFailureBanner/HabitFailureBanner";
 import TaskEditorModal from "@/components/TaskEditorModal/TaskEditorModal";
 import OccurrenceEditorModal from "@/components/OccurrenceEditorModal/OccurrenceEditorModal";
+import { useOccurrenceMenu } from "@/hooks/use-occurrence-menu";
 import GoalEditorModal from "@/components/GoalEditorModal/GoalEditorModal";
 import CommitmentEditorModal, { type CommitmentSaveData } from "@/components/CommitmentEditorModal/CommitmentEditorModal";
 import CommitmentScopePrompt from "@/components/CommitmentScopePrompt/CommitmentScopePrompt";
@@ -500,7 +501,7 @@ export default function MindmapView() {
 
   const {
     onStatusClick, onCommitEdit, onCreateChild, onCreateTypedChild, onCreateSibling, onInsertParent,
-    onDelete, onPaste, occurrencePrompt, confirmOccurrence, cancelOccurrence,
+    onDelete, onPaste, occurrencePrompt, confirmOccurrence, cancelOccurrence, setOccurrenceStatus,
   } = useNodeActions({
     tree, clipboard, moveNode, duplicateNode, onRequestDelete: setDeleteTargets, reload, renameNode,
     createNode, createChild, selectNode, setClipboard, setEditingNodeId, showToast, onNewFlow, onNewCommitment,
@@ -567,9 +568,18 @@ export default function MindmapView() {
     [startFlowNode, reload, selectNode],
   );
 
+  const onOccurrenceAction = useOccurrenceMenu({
+    openEditor: occurrenceEditor.open,
+    setOccurrenceStatus,
+    deleteOccurrences: (nodes) => { onDelete(nodes.map((node) => node.id)); return true; },
+    toggleCollapsed: toggleCollapsedOrGroup,
+    reload,
+    showToast,
+  });
   const { onContextAction } = useContextAction({
     findNodeById, enterSubtree, setEditingNodeId, setType,
     setClipboard, clipboard, onPaste, toggleCollapsed: toggleCollapsedOrGroup, onDelete, onNewFlow, onConvertToFlow, onStartFlow,
+    onOccurrenceAction,
   });
 
   const handleCtrlClick = useCallback((id: string) => { addToSelection(id); }, [addToSelection]);
