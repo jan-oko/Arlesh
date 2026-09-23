@@ -55,7 +55,7 @@ export function formatScope(scope: Scope, labels: ScopeLabelFns): string {
 }
 
 /**
- * Formats a canonical kind/date pair directly, without a materialized `Scope` row — for a calendar
+ * Formats a canonical kind/date pair directly, without a `Scope` read back from the backend — for a calendar
  * cell picked but not yet persisted (e.g. a Habit's Recurrence anchor).
  */
 export function formatScopeAnchor(kind: CanonicalKind, date: string, labels: ScopeLabelFns): string {

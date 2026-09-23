@@ -1,53 +1,21 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useScopePicker } from "./use-scope-picker";
-import { getOrCreateScope } from "@/api/scopes";
-import type { Scope } from "@/api/scopes";
 import type { ScopeRef } from "@/utils/scope-ref";
-
-vi.mock("@/api/scopes", () => ({
-  getOrCreateScope: vi.fn(),
-  getOrCreatePartScope: vi.fn(),
-  getOrCreateExactScope: vi.fn(),
-}));
-
-function mkScope(id: number): Scope {
-  return {
-    id,
-    kind: "week",
-    label: "",
-    start_date: "",
-    end_date: "",
-    week_id: null,
-    month_id: null,
-    season_id: null,
-    day_id: null,
-    part: null,
-    start_datetime: null,
-    end_datetime: null,
-  };
-}
 
 const week = (date: string): ScopeRef => ({ kind: "week", date });
 
-let counter = 0;
-beforeEach(() => {
-  vi.clearAllMocks();
-  counter = 0;
-  // Idempotent by date, like the real get-or-create: the same cell yields the same id.
-  const idByDate: Record<string, number> = {};
-  vi.mocked(getOrCreateScope).mockImplementation((_kind, date) => {
-    idByDate[date] ??= ++counter;
-    return Promise.resolve(mkScope(idByDate[date]));
-  });
-});
+// A selection resolves to value keys, derived on the spot: nothing is asked of the backend and
+// the same cell always names the same scope.
+const JUNE_14 = "week:2026-06-14";
+const JUNE_28 = "week:2026-06-28";
 
 describe("useScopePicker — single mode", () => {
   it("resolves a single click to a single-scope Time Scope", async () => {
     const { result } = renderHook(() => useScopePicker("single"));
     act(() => result.current.handleClick(week("2026-06-14")));
     const ts = await result.current.resolve();
-    expect(ts).toEqual({ start_id: 1, end_id: 1 });
+    expect(ts).toEqual({ start_id: JUNE_14, end_id: JUNE_14 });
   });
 
   it("deselects when the same cell is clicked twice, resolving to null", async () => {
@@ -65,14 +33,14 @@ describe("useScopePicker — range mode", () => {
     act(() => result.current.handleClick(week("2026-06-14")));
     act(() => result.current.handleClick(week("2026-06-28")));
     const ts = await result.current.resolve();
-    expect(ts).toEqual({ start_id: 1, end_id: 2 });
+    expect(ts).toEqual({ start_id: JUNE_14, end_id: JUNE_28 });
   });
 
   it("resolves a single click to a single scope (start === end)", async () => {
     const { result } = renderHook(() => useScopePicker("range"));
     act(() => result.current.handleClick(week("2026-06-14")));
     const ts = await result.current.resolve();
-    expect(ts).toEqual({ start_id: 1, end_id: 1 });
+    expect(ts).toEqual({ start_id: JUNE_14, end_id: JUNE_14 });
   });
 
   it("resolves to null when nothing is selected", async () => {
@@ -97,7 +65,7 @@ describe("useScopePicker — seeding", () => {
     const { result } = renderHook(() => useScopePicker("range"));
     act(() => result.current.seed([week("2026-06-14"), week("2026-06-28")]));
     expect(result.current.range).toEqual({ start: week("2026-06-14"), end: week("2026-06-28") });
-    expect(await result.current.resolve()).toEqual({ start_id: 1, end_id: 2 });
+    expect(await result.current.resolve()).toEqual({ start_id: JUNE_14, end_id: JUNE_28 });
   });
 
   it("makes a seeded range closed, so the next click starts a new one", () => {

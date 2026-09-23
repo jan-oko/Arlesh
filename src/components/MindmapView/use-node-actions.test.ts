@@ -39,6 +39,7 @@ import { updateTask } from "@/api/tasks";
 import { updateGoal } from "@/api/goals";
 import { setHabitItemStatus } from "@/api/flows";
 import { fixtureRowId } from "@/test/node-fixture";
+import { testKey } from "@/test/scope-key";
 
 function mkNode(id: string, kind: NodeKind, children: MindmapNode[] = [], extra: Partial<MindmapNode> = {}): MindmapNode {
   return { id, ...fixtureRowId(id), kind, title: id, position: 0, tagIds: [], children, ...extra };
@@ -50,19 +51,19 @@ const GOAL_NODE = mkNode("goal-2", "goal", [], { status: "active" });
 const GOAL_ACHIEVED = mkNode("goal-8", "goal", [], { status: "achieved" });
 const ASPECT = mkNode("aspect-1", "aspect");
 const HABIT_ITER = mkNode("habit-3-0-virtual", "task", [], {
-  status: "todo", virtual: true, habitItem: { flowId: 3, itemType: "flow_root", itemId: 3, scopeId: 100, cycleId: 0 },
+  status: "todo", virtual: true, habitItem: { flowId: 3, itemType: "flow_root", itemId: 3, scopeId: testKey(100), cycleId: 0 },
 });
 const HABIT_DONE = mkNode("habit-3-1-virtual", "task", [], {
-  status: "done", virtual: true, habitItem: { flowId: 3, itemType: "flow_root", itemId: 3, scopeId: 101, cycleId: 0 },
+  status: "done", virtual: true, habitItem: { flowId: 3, itemType: "flow_root", itemId: 3, scopeId: testKey(101), cycleId: 0 },
 });
 const HABIT_ITEM = mkNode("habititem-flow_task-4-0-virtual", "task", [], {
-  status: "todo", virtual: true, habitItem: { flowId: 3, itemType: "flow_task", itemId: 4, scopeId: 100, cycleId: 0 },
+  status: "todo", virtual: true, habitItem: { flowId: 3, itemType: "flow_task", itemId: 4, scopeId: testKey(100), cycleId: 0 },
 });
 const HABIT_GOAL_DONE = mkNode("habititem-flow_goal-9-0-virtual", "goal", [], {
-  status: "achieved", virtual: true, habitItem: { flowId: 3, itemType: "flow_goal", itemId: 9, scopeId: 100, cycleId: 0 },
+  status: "achieved", virtual: true, habitItem: { flowId: 3, itemType: "flow_goal", itemId: 9, scopeId: testKey(100), cycleId: 0 },
 });
 const HABIT_TASK_IP = mkNode("habititem-flow_task-7-0-virtual", "task", [], {
-  status: "in_progress", virtual: true, habitItem: { flowId: 3, itemType: "flow_task", itemId: 7, scopeId: 100, cycleId: 0 },
+  status: "in_progress", virtual: true, habitItem: { flowId: 3, itemType: "flow_task", itemId: 7, scopeId: testKey(100), cycleId: 0 },
 });
 // A task that answered the Agentic question itself, and one that only reads as agentic because an
 // ancestor does — the pair that tells "copy the stored column" apart from "copy what it resolves to".
@@ -191,7 +192,7 @@ describe("useNodeActions — onStatusClick", () => {
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("habit-3-0-virtual"); });
     await vi.waitFor(() =>
-      expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_root", 3, 100, 0, "in_progress", expect.any(Number), undefined),
+      expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_root", 3, testKey(100), 0, "in_progress", expect.any(Number), undefined),
     );
     expect(updateTask).not.toHaveBeenCalled();
   });
@@ -201,7 +202,7 @@ describe("useNodeActions — onStatusClick", () => {
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("habit-3-1-virtual"); });
     await vi.waitFor(() =>
-      expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_root", 3, 101, 0, null, expect.any(Number), undefined),
+      expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_root", 3, testKey(101), 0, null, expect.any(Number), undefined),
     );
   });
 
@@ -210,7 +211,7 @@ describe("useNodeActions — onStatusClick", () => {
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("habititem-flow_task-7-0-virtual"); });
     await vi.waitFor(() =>
-      expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_task", 7, 100, 0, "done", expect.any(Number), undefined),
+      expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_task", 7, testKey(100), 0, "done", expect.any(Number), undefined),
     );
   });
 
@@ -219,7 +220,7 @@ describe("useNodeActions — onStatusClick", () => {
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("habititem-flow_goal-9-0-virtual"); });
     await vi.waitFor(() =>
-      expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_goal", 9, 100, 0, null, expect.any(Number), undefined),
+      expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_goal", 9, testKey(100), 0, null, expect.any(Number), undefined),
     );
   });
 
@@ -228,7 +229,7 @@ describe("useNodeActions — onStatusClick", () => {
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("habititem-flow_task-4-0-virtual"); });
     await vi.waitFor(() =>
-      expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_task", 4, 100, 0, "in_progress", expect.any(Number), undefined),
+      expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_task", 4, testKey(100), 0, "in_progress", expect.any(Number), undefined),
     );
     expect(updateTask).not.toHaveBeenCalled();
   });
@@ -956,7 +957,7 @@ describe("useNodeActions — onCreateTypedChild", () => {
   // A Habit whose instances are Goals draws its iteration root as a `goal`. That is what made
   // Shift+F on one pass a kind-only check: a Flow may sit under a Goal.
   const GOAL_OCCURRENCE = mkNode("habit-3-0-virtual", "goal", [], {
-    virtual: true, habitItem: { flowId: 3, itemType: "flow_root", itemId: 3, scopeId: 100, cycleId: 0 },
+    virtual: true, habitItem: { flowId: 3, itemType: "flow_root", itemId: 3, scopeId: testKey(100), cycleId: 0 },
   });
   const CONTAINER = mkNode("domain-3", "project", [TASK_NODE, GOAL_NODE, COMMITMENT_NODE, TAG, DOMAIN, INFO, FLOW_NODE, GOAL_OCCURRENCE, HABIT_RUN]);
   const TREE = mkNode("root", "domain", [CONTAINER]);

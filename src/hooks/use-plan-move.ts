@@ -14,7 +14,7 @@ import type { ScopeWindows } from "@/utils/plan-triage";
 import { planRefusal } from "@/utils/plan-triage";
 
 interface PlanMoveOptions {
-  /** The scope being filled, once it is materialized. */
+  /** The scope being filled, once it is known. */
   targetScopeId: ScopeKey | null;
   /** That scope's window, once it is resolved. */
   targetWindow: ScopeInterval | null;
@@ -38,8 +38,8 @@ export interface PlanMoveHandles {
   planInto: (rows: readonly TaskListRow[]) => Promise<string[]>;
   /**
    * Plans every row into one **subscope** — a week of the month, a day of the week, a band of the
-   * day. The cell is materialized on the way in, so a bucket nobody has ever planned into is a
-   * scope row that does not exist until the moment it is used.
+   * day. The cell's key is derived on the way in, so a bucket nobody has ever planned into needs
+   * nothing to exist first.
    */
   planIntoSubscope: (rows: readonly TaskListRow[], ref: ScopeRef, label: string, partial: boolean) => Promise<string[]>;
   /** Clears every row's Plan. */

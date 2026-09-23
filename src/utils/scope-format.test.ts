@@ -14,10 +14,9 @@ const labels: ScopeLabelFns = {
   week: (n) => `W${n}`,
 };
 
-function mk(id: number, kind: Scope["kind"], startDate: string, label = ""): Scope {
+function mk(_id: number, kind: Scope["kind"], startDate: string, label = ""): Scope {
   return {
-    id, kind, label, start_date: startDate, end_date: startDate,
-    week_id: null, month_id: null, season_id: null, day_id: null,
+    id: `${kind}:${startDate}`, kind, label, start_date: startDate, end_date: startDate,
     part: null, start_datetime: null, end_datetime: null,
   };
 }

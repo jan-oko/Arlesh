@@ -8,6 +8,7 @@ import type { PillFilter, ListFilterState, TaskListRow, CommitmentListRow } from
 import { DEFAULT_FILTER } from "./filter-tree";
 import type { FilterState } from "./filter-tree";
 import type { MindmapNode, NodeKind } from "./tree-layout";
+import { testKey } from "@/test/scope-key";
 
 function n(id: string, kind: NodeKind, extra: Partial<MindmapNode> = {}): MindmapNode {
   return { id, kind, title: id, position: 0, tagIds: [], children: [], ...extra };
@@ -81,7 +82,7 @@ describe("deriveScopeStateTokens", () => {
   });
 
   it("scope lifecycle token when scoped", () => {
-    const node = n("t", "task", { timeScope: { start_id: 1, end_id: 1 }, timing: "lapsed", resolution: "overdue" });
+    const node = n("t", "task", { timeScope: { start_id: testKey(1), end_id: testKey(1) }, timing: "lapsed", resolution: "overdue" });
     expect(deriveScopeStateTokens(node)).toContain("overdue");
   });
 
@@ -89,14 +90,14 @@ describe("deriveScopeStateTokens", () => {
     // Preserves this dimension's exact pre-existing behavior: a Done task never got a "lapsed"/
     // "overdue" scope-state token before Resolution existed, even though it's now `archived: true`.
     const node = n("t", "task", {
-      status: "done", timeScope: { start_id: 1, end_id: 1 }, timing: "lapsed", resolution: "completed", archived: true,
+      status: "done", timeScope: { start_id: testKey(1), end_id: testKey(1) }, timing: "lapsed", resolution: "completed", archived: true,
     });
     expect(deriveScopeStateTokens(node)).toContain("active");
     expect(deriveScopeStateTokens(node)).not.toContain("lapsed");
   });
 
   it("planned when a Plan is set, independent of scope state", () => {
-    const node = n("t", "task", { plan: { start_id: 1, end_id: 1 } });
+    const node = n("t", "task", { plan: { start_id: testKey(1), end_id: testKey(1) } });
     expect(deriveScopeStateTokens(node)).toEqual(["unscoped", "planned"]);
   });
 });
@@ -123,7 +124,7 @@ describe("filterTaskList", () => {
     const evening = n("evening", "task", {
       status: "todo",
       timing: "pending",
-      habitItem: { flowId: 3, itemType: "flow_task", itemId: 4, scopeId: 100, cycleId: 12 },
+      habitItem: { flowId: 3, itemType: "flow_task", itemId: 4, scopeId: testKey(100), cycleId: 12 },
     });
     const rows = [row({ node: evening })];
     expect(filterTaskList(rows, sf({ statusMode: "all" }), lf())).toHaveLength(1);
@@ -136,7 +137,7 @@ describe("filterTaskList", () => {
     // The canvas prunes the subtree; a flat list has to walk for it.
     const ancestor = n("evening", "task", {
       timing: "pending",
-      habitItem: { flowId: 3, itemType: "flow_task", itemId: 4, scopeId: 100, cycleId: 12 },
+      habitItem: { flowId: 3, itemType: "flow_task", itemId: 4, scopeId: testKey(100), cycleId: 12 },
     });
     const rows = [row({ ancestors: [ancestor] })];
     expect(filterTaskList(rows, sf({ statusMode: "all" }), lf())).toHaveLength(1);
@@ -258,7 +259,7 @@ describe("filterTaskList", () => {
 describe("filterTaskList — archived tasks under the Plan preset", () => {
   const archivedTask = () =>
     n("task-archived", "task", {
-      status: "todo", timeScope: { start_id: 1, end_id: 1 }, timing: "lapsed",
+      status: "todo", timeScope: { start_id: testKey(1), end_id: testKey(1) }, timing: "lapsed",
       resolution: "missed", archived: true,
     });
 
@@ -278,7 +279,7 @@ describe("filterTaskList — archived tasks under the Plan preset", () => {
 
   it("plan preset still shows an unfinished task that is merely overdue, not archived", () => {
     const overdue = n("task-overdue", "task", {
-      status: "todo", timeScope: { start_id: 1, end_id: 1 }, timing: "lapsed", resolution: "overdue",
+      status: "todo", timeScope: { start_id: testKey(1), end_id: testKey(1) }, timing: "lapsed", resolution: "overdue",
     });
     const kept = filterTaskList([row({ node: overdue })], sf({ statusMode: "plan" }), lf());
     expect(kept.map((r) => r.node.id)).toEqual(["task-overdue"]);
@@ -639,7 +640,7 @@ describe("filterCommitmentList", () => {
   it("hides a commitment under a habit occurrence whose window has not opened", () => {
     // habits.md hides an unopened occurrence together with its own subtree, and the band answers
     // that rule like every other surface: the commitment never outlives the occurrence it hangs on.
-    const occurrence = { flowId: 1, itemType: "flow_goal", itemId: 1, scopeId: 1, cycleId: 0 } as const;
+    const occurrence = { flowId: 1, itemType: "flow_goal", itemId: 1, scopeId: testKey(1), cycleId: 0 } as const;
     const rows = [
       commitmentRow({
         ancestors: [n("goal-occurrence", "goal", { status: "active", timing: "pending", habitItem: occurrence })],

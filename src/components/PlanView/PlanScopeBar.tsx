@@ -24,7 +24,7 @@ const NEXT = "›";
 
 interface Props {
   cursor: PlanScopeCursor;
-  /** The scope in words, or an empty string while it is still being materialized. */
+  /** The scope in words, or an empty string while it is still being read. */
   label: string;
   showBacklogged: boolean;
   onSetKind: (kind: ViewKind) => void;

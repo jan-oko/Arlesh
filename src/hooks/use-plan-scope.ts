@@ -15,11 +15,11 @@ import type { UpRefusal } from "@/utils/plan-scope";
 export interface PlanScopeHandles {
   /** Where the pass is standing on the calendar. */
   cursor: PlanScopeCursor;
-  /** The materialized scope row, once it exists; `null` while it is being created or resolved. */
+  /** The scope being filled, once read back; `null` while it is being read. */
   scope: Scope | null;
   /** The scope in words, for the header. */
   label: string;
-  /** Why the scope could not be materialized, if it could not. */
+  /** Why the scope could not be read, if it could not. */
   error: string | null;
   /** Fills a different kind of scope: the one holding this one, or the one holding now inside it. */
   setKind: (kind: ViewKind) => void;
@@ -29,7 +29,7 @@ export interface PlanScopeHandles {
   jumpTo: (ref: ScopeRef) => void;
   /**
    * The kind one rung up, which is what `goUp` would fill; `null` where there is no rung up (a
-   * Season) or while the scope is still being materialized.
+   * Season) or while the scope is still being read.
    */
   parentKind: ViewKind | null;
   /** Why there is no Up right now, or `null` when there is one. The button and the key both say it. */
@@ -47,7 +47,7 @@ function todayIso(now: Date): string {
 
 /** Reads a cursor's cell back as its scope — label and dates, derived from its key, with nothing
  * written — through the same door a drop into a subscope goes through. */
-async function materialize(cursor: PlanScopeCursor): Promise<Scope> {
+async function readScope(cursor: PlanScopeCursor): Promise<Scope> {
   return scopeForRef(cursorRef(cursor));
 }
 
@@ -59,7 +59,7 @@ async function materialize(cursor: PlanScopeCursor): Promise<Scope> {
  * you were filling on Friday is not the week you want on Monday, and restoring it would put you
  * to work on the past without saying so.
  *
- * Stepping walks from the materialized scope's own `start_date` rather than from wherever the
+ * Stepping walks from the scope's own `start_date` rather than from wherever the
  * cursor happened to be inside it, so a month stepped from the 31st lands on the next month rather
  * than on whatever a naive month-addition overflows to.
  */
@@ -78,7 +78,7 @@ export function usePlanScope(now: Date = new Date()): PlanScopeHandles {
 
   useEffect(() => {
     let active = true;
-    void materialize(cursor).then(
+    void readScope(cursor).then(
       (resolved) => {
         if (active) setAnswer({ cursor, scope: resolved, error: null });
       },

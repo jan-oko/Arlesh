@@ -231,3 +231,40 @@ fn the_scope_commands_derive_without_a_database() {
     .unwrap();
     assert_eq!(exact.id, exact_key());
 }
+
+/// One case of the shared key corpus, which the frontend's `scope-key` module replays too.
+#[derive(serde::Deserialize)]
+struct KeyCase {
+    kind: ScopeKind,
+    date: Option<NaiveDate>,
+    part: Option<PartOfDay>,
+    start: Option<NaiveDateTime>,
+    end: Option<NaiveDateTime>,
+    key: String,
+}
+
+#[derive(serde::Deserialize)]
+struct KeyCorpus {
+    cases: Vec<KeyCase>,
+}
+
+const KEY_CORPUS: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../conformance/scope-keys.json"
+));
+
+#[test]
+fn every_key_in_the_shared_corpus_is_spelled_the_same_here() {
+    let corpus: KeyCorpus = serde_json::from_str(KEY_CORPUS).unwrap();
+    assert!(!corpus.cases.is_empty());
+    for case in corpus.cases {
+        let key = match (case.kind, case.date, case.part, case.start, case.end) {
+            (ScopeKind::PartOfDay, Some(date), Some(part), _, _) => ScopeKey::part(date, part),
+            (ScopeKind::Exact, _, _, Some(start), Some(end)) => ScopeKey::exact(start, end).unwrap(),
+            (kind, Some(date), None, None, None) => ScopeKey::containing(kind, date).unwrap(),
+            _ => panic!("malformed corpus case {}", case.key),
+        };
+        assert_eq!(key.to_string(), case.key);
+        assert_eq!(case.key.parse::<ScopeKey>().unwrap(), key, "{} round-trips", case.key);
+    }
+}

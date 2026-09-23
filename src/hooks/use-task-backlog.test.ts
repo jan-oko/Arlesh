@@ -4,6 +4,7 @@ import { useTaskBacklog } from "./use-task-backlog";
 import { updateTask } from "@/api/tasks";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { fixtureRowId } from "@/test/node-fixture";
+import { testKey } from "@/test/scope-key";
 
 vi.mock("@/api/tasks", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/tasks")>()),
@@ -14,7 +15,7 @@ function node(id: string, extra: Partial<MindmapNode> = {}): MindmapNode {
   return { id, ...fixtureRowId(id), kind: "task", title: id, position: 0, tagIds: [], children: [], ...extra };
 }
 
-const PLAN = { start_id: 4, end_id: 4 };
+const PLAN = { start_id: testKey(4), end_id: testKey(4) };
 
 /** The refusal `update_task` returns rather than throwing a Plan away unasked. */
 const NEEDS_CONFIRMATION = { kind: "needs_confirmation", message: "a backlogged task cannot also be planned" };
@@ -104,7 +105,7 @@ describe("useTaskBacklog", () => {
     const { result } = setup([
       { ...node("goal-1"), kind: "goal" },
       { ...node("project-1"), kind: "project" },
-      node("task-9", { habitItem: { flowId: 1, itemType: "flow_task", itemId: 2, scopeId: 3, cycleId: 0 } }),
+      node("task-9", { habitItem: { flowId: 1, itemType: "flow_task", itemId: 2, scopeId: testKey(3), cycleId: 0 } }),
     ]);
 
     act(() => {

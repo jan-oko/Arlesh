@@ -14,6 +14,7 @@ import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import type { Verdict } from "@/api/verdict";
 import { useListData } from "@/hooks/use-list-data";
 import { LIST_SCROLL_STEP_PX } from "@/hooks/use-list-scroll";
+import { testKey } from "@/test/scope-key";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -1110,7 +1111,7 @@ describe("ListView — the commitments section", () => {
       title: "Asleep by 23:00 Mon",
       verdict: "unresolved",
       virtual: true,
-      habitItem: { flowId: 3, itemType: "flow_root", itemId: 3, scopeId: 100, cycleId: 0 },
+      habitItem: { flowId: 3, itemType: "flow_root", itemId: 3, scopeId: testKey(100), cycleId: 0 },
     });
     mockUseListData.mockReturnValue(listData({
       commitmentRows: [commitmentRow({ node: iteration })],
@@ -1120,7 +1121,7 @@ describe("ListView — the commitments section", () => {
     render(<ListViewInApp />);
 
     fireEvent.click(screen.getByRole("button", { name: "cycleVerdict" }));
-    expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_root", 3, 100, 0, "kept", expect.any(Number));
+    expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_root", 3, testKey(100), 0, "kept", expect.any(Number));
     expect(updateCommitment).not.toHaveBeenCalled();
   });
 
@@ -1379,7 +1380,7 @@ describe("ListView — deleting a row", () => {
     const occurrence = n("habititem-flow_task-2-1-0-virtual", "task", {
       status: "todo",
       virtual: true,
-      habitItem: { flowId: 1, itemType: "flow_task", itemId: 2, scopeId: 3, cycleId: 4 },
+      habitItem: { flowId: 1, itemType: "flow_task", itemId: 2, scopeId: testKey(3), cycleId: 4 },
     });
     const { removeNode } = setup([occurrence], [row({ node: occurrence })]);
     render(<ListViewInApp />);

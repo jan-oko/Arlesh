@@ -5,13 +5,14 @@ import {
   bulletCapacity, canDescendInto, infoBullets, infoChildTitles, stepCardFields, stepChildCounts,
   stepRefusalKey,
 } from "./steps-card";
+import { testKey } from "@/test/scope-key";
 
 function node(kind: NodeKind, extra: Partial<MindmapNode> = {}): MindmapNode {
   const rowId = extra.virtual === true ? {} : { rowId: 1 };
   return { id: `${kind}-1`, ...rowId, kind, title: kind, position: 0, tagIds: [], children: [], ...extra };
 }
 
-const WINDOW = { start_id: 7, end_id: 7 };
+const WINDOW = { start_id: testKey(7), end_id: testKey(7) };
 
 describe("the fields a card spells out", () => {
   it("never repeat the icon: a Task's status is the glyph, so it is not also a field", () => {
@@ -137,7 +138,7 @@ describe("what you can descend into", () => {
   it("opens a virtual Habit occurrence, which takes children through the attachment path", () => {
     const occurrence = node("task", {
       id: "task-9", virtual: true,
-      habitItem: { flowId: 1, itemType: "flow_task", itemId: 2, scopeId: 3, cycleId: 0 },
+      habitItem: { flowId: 1, itemType: "flow_task", itemId: 2, scopeId: testKey(3), cycleId: 0 },
     });
     expect(canDescendInto(occurrence)).toBe(true);
   });
