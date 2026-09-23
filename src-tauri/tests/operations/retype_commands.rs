@@ -711,7 +711,7 @@ async fn retyping_a_task_to_a_goal_carries_its_tags_and_reasons_and_repoints_wha
     let refused = retype_node(
         app.state(),
         "task".into(),
-        task.id,
+        task.id.clone(),
         "goal".into(),
         None,
         None,
@@ -724,7 +724,7 @@ async fn retyping_a_task_to_a_goal_carries_its_tags_and_reasons_and_repoints_wha
     let retyped = retype_node(
         app.state(),
         "task".into(),
-        task.id,
+        task.id.clone(),
         "goal".into(),
         Some(StrandedChildren::Reparent),
         None,
@@ -856,7 +856,7 @@ async fn the_retype_node_command_deletes_stranded_children_and_their_own_descend
     let refused = retype_node(
         app.state(),
         "goal".into(),
-        goal.id,
+        goal.id.clone(),
         "task".into(),
         None,
         None,
@@ -872,7 +872,7 @@ async fn the_retype_node_command_deletes_stranded_children_and_their_own_descend
     let retyped = retype_node(
         app.state(),
         "goal".into(),
-        goal.id,
+        goal.id.clone(),
         "task".into(),
         Some(StrandedChildren::Delete),
         None,
@@ -978,7 +978,7 @@ async fn the_retype_node_command_reparents_every_kind_of_stranded_child_and_leav
     let refused = retype_node(
         app.state(),
         "goal".into(),
-        goal.id,
+        goal.id.clone(),
         "task".into(),
         None,
         None,
@@ -997,7 +997,7 @@ async fn the_retype_node_command_reparents_every_kind_of_stranded_child_and_leav
     let retyped = retype_node(
         app.state(),
         "goal".into(),
-        goal.id,
+        goal.id.clone(),
         "task".into(),
         Some(StrandedChildren::Reparent),
         None,

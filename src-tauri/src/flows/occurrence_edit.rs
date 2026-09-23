@@ -19,6 +19,7 @@ use super::{
     occurrence_window,
     occurrences::{derive_habit, Horizon},
     resolve_cycle, resolve_root_plan,
+    template::TemplateFields,
 };
 use crate::{
     database::session::{Db, Transactional},
@@ -42,6 +43,7 @@ struct TemplateValues {
     is_private: bool,
     position: i64,
     plan: Option<TimeScope>,
+    fields: TemplateFields,
 }
 
 /// The template row an occurrence is drawn from, and its Cycle Plan resolved in the occurrence's
@@ -61,6 +63,7 @@ async fn template_values(
                 is_private: flow.is_private,
                 position: position_of_root,
                 plan: resolve_root_plan(&mut db.scopes(), flow, Some(window_start)).await?,
+                fields: flow.template.clone(),
             })
         }
         TemplateKind::FlowGoal => {
@@ -76,6 +79,7 @@ async fn template_values(
                 is_private: goal.is_private,
                 position: goal.position,
                 plan: None,
+                fields: goal.template,
             })
         }
         TemplateKind::FlowTask => {
@@ -95,6 +99,7 @@ async fn template_values(
                 is_private: task.is_private,
                 position: task.position,
                 plan,
+                fields: task.template,
             })
         }
     }
@@ -234,21 +239,25 @@ pub async fn update_task(
         apply_task_status(&mut overlay, status, now);
         // Work under way is not work set aside — the same rule a stored Task follows.
         if *status == TaskStatus::InProgress && request.archival.is_none() {
-            overlay.archival = None;
+            overlay.archival = (template.fields.archival != TaskArchival::Live)
+                .then(|| TaskArchival::Live.as_str().to_string());
         }
     }
     if let Some(delegate) = request.delegate_to {
-        let (kind, id) = Delegate::columns(delegate);
-        overlay.delegate_set = delegate.is_some();
+        let own = delegate != template.fields.delegate_to;
+        let (kind, id) = Delegate::columns(if own { delegate } else { None });
+        overlay.delegate_set = own;
         overlay.delegate_kind = kind.map(str::to_string);
         overlay.delegate_id = id;
     }
     if let Some(agentic) = request.agentic {
-        overlay.agentic = agentic.as_column();
-        overlay.agentic_set = overlay.agentic.is_some();
+        let own = agentic.as_column() != template.fields.agentic;
+        overlay.agentic = if own { agentic.as_column() } else { None };
+        overlay.agentic_set = own;
     }
     if let Some(asynchronous) = request.asynchronous {
-        overlay.asynchronous = asynchronous.then_some(true);
+        overlay.asynchronous =
+            (asynchronous != template.fields.asynchronous).then_some(asynchronous);
     }
     if let Some(plan) = request.plan {
         if let Some(plan) = &plan {
@@ -268,7 +277,8 @@ pub async fn update_task(
         overlay.plan_end_id = end;
         // Scheduling a backlogged occurrence takes it out of the backlog, as for a stored Task.
         if plan.is_some() && request.archival.is_none() {
-            overlay.archival = None;
+            overlay.archival = (template.fields.archival != TaskArchival::Live)
+                .then(|| TaskArchival::Live.as_str().to_string());
         }
     }
     if let Some(archival) = request.archival {
@@ -280,7 +290,8 @@ pub async fn update_task(
         if archival == TaskArchival::Backlog && planned {
             return Err(crate::tasks::error::TaskError::BacklogWithPlan.into());
         }
-        overlay.archival = (archival == TaskArchival::Backlog).then(|| "backlog".to_string());
+        overlay.archival =
+            (archival != template.fields.archival).then(|| archival.as_str().to_string());
     }
     if let Some(position) = request.position {
         overlay.position = (position != template.position).then_some(position);

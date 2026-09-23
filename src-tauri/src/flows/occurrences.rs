@@ -35,6 +35,7 @@ use super::{
 };
 use crate::{
     database::session::{Db, Transactional},
+    flows::template::TemplateFields,
     nodes::{
         id::NodeId,
         key::{DerivedKey, OccurrenceKey, TemplateItem, TemplateKind, NO_CYCLE},
@@ -403,6 +404,8 @@ struct Occurrence {
     plan: Option<TimeScope>,
     timing: InstanceTiming,
     origin: Origin,
+    /// What the template says beyond its title and place.
+    fields: TemplateFields,
 }
 
 /// Every row one iteration derives: its root, then each item's occurrences.
@@ -468,6 +471,7 @@ async fn build_iteration(
         plan: context.root_plan.clone(),
         timing: root_timing,
         origin: origin_of(root_item, NO_CYCLE),
+        fields: flow.template.clone(),
     }];
 
     // Each item, once per cycle pair, resolved against this iteration's window start.
@@ -482,6 +486,7 @@ async fn build_iteration(
                 &goal.title,
                 goal.position,
                 goal.is_private,
+                &goal.template,
             )
         })
         .chain(template.tasks.values().map(|task| {
@@ -491,11 +496,12 @@ async fn build_iteration(
                 &task.title,
                 task.position,
                 task.is_private,
+                &task.template,
             )
         }));
     let mut items: Vec<_> = items.collect();
-    items.sort_by_key(|(kind, id, _, position, _)| (*position, *kind, *id));
-    for (item_type, item_id, title, position, is_private) in items {
+    items.sort_by_key(|(kind, id, _, position, _, _)| (*position, *kind, *id));
+    for (item_type, item_id, title, position, is_private, fields) in items {
         let item = TemplateItem { item_type, item_id };
         let parent = match template.parent_of(item) {
             Some(parent) => OccurrenceKey {
@@ -540,6 +546,7 @@ async fn build_iteration(
                 plan,
                 timing: instance_timing(consumption, context.iteration.status, window, now),
                 origin: origin_of(item, cycle),
+                fields: fields.clone(),
             });
         }
     }
@@ -661,7 +668,7 @@ fn task_row(
         .archival
         .as_deref()
         .and_then(TaskArchival::from_db)
-        .unwrap_or_default();
+        .unwrap_or(occurrence.fields.archival);
     let plan = if overlay.plan_set {
         overlay
             .plan_start_id
@@ -677,7 +684,7 @@ fn task_row(
     let delegate_to = if overlay.delegate_set {
         Delegate::from_columns(overlay.delegate_kind.as_deref(), overlay.delegate_id)
     } else {
-        None
+        occurrence.fields.delegate_to
     };
     let lifecycle = work_lifecycle(
         "task",
@@ -706,7 +713,7 @@ fn task_row(
         time_scope: occurrence.time_scope,
         plan,
         archival,
-        tag_ids: Vec::new(),
+        tag_ids: occurrence.fields.tag_ids.clone(),
         position: overlay.position.unwrap_or(occurrence.position),
         is_private: overlay.is_private.unwrap_or(occurrence.is_private),
         beads_id: if overlay.beads_id_set {
@@ -748,7 +755,7 @@ fn goal_row(
         status,
         on_scope_exit: on_exit(consumption, &occurrence.time_scope),
         time_scope: occurrence.time_scope,
-        tag_ids: Vec::new(),
+        tag_ids: occurrence.fields.tag_ids.clone(),
         position: overlay.position.unwrap_or(occurrence.position),
         is_private: overlay.is_private.unwrap_or(occurrence.is_private),
         beads_id: if overlay.beads_id_set {
@@ -803,7 +810,7 @@ fn commitment_row(
         verdict,
         time_scope: occurrence.time_scope,
         verdict_window,
-        tag_ids: Vec::new(),
+        tag_ids: occurrence.fields.tag_ids.clone(),
         position: overlay.position.unwrap_or(occurrence.position),
         is_private: overlay.is_private.unwrap_or(occurrence.is_private),
         beads_id: if overlay.beads_id_set {

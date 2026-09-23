@@ -111,6 +111,11 @@ pub struct Flow {
     pub position: i64,
     /// Whether this flow is private (hidden unless Private Mode is on).
     pub is_private: bool,
+    /// What the template says about the rows it draws beyond its title and place: its kind's
+    /// columns and relations (migration 0061), flattened onto the row on the wire.
+    #[sqlx(skip)]
+    #[serde(flatten)]
+    pub template: super::template::TemplateFields,
 }
 
 /// A flow-goal (template item) row.
@@ -130,6 +135,11 @@ pub struct FlowGoal {
     pub position: i64,
     /// Whether this item is private (hidden unless Private Mode is on; propagates to its instances).
     pub is_private: bool,
+    /// What the template says about the rows it draws beyond its title and place: its kind's
+    /// columns and relations (migration 0061), flattened onto the row on the wire.
+    #[sqlx(skip)]
+    #[serde(flatten)]
+    pub template: super::template::TemplateFields,
 }
 
 /// A flow-task (template item) row.
@@ -149,6 +159,11 @@ pub struct FlowTask {
     pub position: i64,
     /// Whether this item is private (hidden unless Private Mode is on; propagates to its instances).
     pub is_private: bool,
+    /// What the template says about the rows it draws beyond its title and place: its kind's
+    /// columns and relations (migration 0061), flattened onto the row on the wire.
+    #[sqlx(skip)]
+    #[serde(flatten)]
+    pub template: super::template::TemplateFields,
 }
 
 /// Request body for creating a flow.
@@ -251,6 +266,9 @@ pub struct UpdateFlowRequest {
     pub position: Option<i64>,
     /// New private flag, if changing.
     pub is_private: Option<bool>,
+    /// Template fields to change, flattened into the request: its kind's columns and relations.
+    #[serde(flatten)]
+    pub template: super::template::TemplateUpdate,
 }
 
 /// Request body for creating a flow item (goal or task).
@@ -299,6 +317,9 @@ pub struct UpdateFlowItemRequest {
     pub position: Option<i64>,
     /// New private flag, if changing.
     pub is_private: Option<bool>,
+    /// Template fields to change, flattened into the request: its kind's columns and relations.
+    #[serde(flatten)]
+    pub template: super::template::TemplateUpdate,
 }
 
 /// A relative (Cycle Scope, Cycle Plan) pair carried by a flow item.

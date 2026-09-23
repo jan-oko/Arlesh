@@ -13,12 +13,14 @@
 //! `habit_slots` — take a single [`ScopeOperator`], not the session: they need exactly one
 //! resource and ADR-0004 keeps that precision.
 
+pub mod cycles;
 pub mod error;
 pub mod habits;
 pub mod model;
 pub mod occurrence_edit;
 pub mod occurrences;
 mod render;
+pub mod template;
 
 use std::collections::{HashMap, VecDeque};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -60,6 +62,7 @@ use render::{
     render, FlowTemplate, NodeRef, PlannedSource, RenderedPlan, ResolvedPair, ScopeTable,
     TemplateItem,
 };
+use template::{TemplateFields, TemplateOperator, TemplateTable};
 
 /// Sentinel `item_type` for the flow **root** occurrence in the overlays. The root is an instance in
 /// its own right (not just an aggregate of items); its rows key `item_id` to the flow id so they
@@ -615,26 +618,62 @@ impl<'session> FlowOperator<'session> {
         self.get(FlowId(id)).await
     }
 
-    /// Fetches a flow by id.
+    /// Fetches a flow by id, with its root template's fields.
     pub async fn get(&mut self, id: FlowId) -> Result<Flow, FlowError> {
-        sqlx::query_as::<_, Flow>(
+        let mut flow = sqlx::query_as::<_, Flow>(
             "SELECT flows.*, EXISTS(SELECT 1 FROM flow_recurrences WHERE flow_recurrences.flow_id = flows.id) AS is_habit
              FROM flows WHERE id = ?",
         )
         .bind(id.0)
         .fetch_optional(&mut *self.connection)
         .await?
-        .ok_or(FlowError::NotFound(id.0))
+        .ok_or(FlowError::NotFound(id.0))?;
+        flow.template = self.templates().one(TemplateTable::Flow, id.0).await?;
+        Ok(flow)
     }
 
-    /// Lists all flows in sort order.
+    /// Lists all flows in sort order, each with its root template's fields.
     pub async fn list(&mut self) -> Result<Vec<Flow>, FlowError> {
-        Ok(sqlx::query_as::<_, Flow>(
+        let mut flows = sqlx::query_as::<_, Flow>(
             "SELECT flows.*, EXISTS(SELECT 1 FROM flow_recurrences WHERE flow_recurrences.flow_id = flows.id) AS is_habit
              FROM flows ORDER BY position ASC",
         )
         .fetch_all(&mut *self.connection)
-        .await?)
+        .await?;
+        let mut fields = self.templates().all(TemplateTable::Flow).await?;
+        for flow in &mut flows {
+            flow.template = fields.remove(&flow.id).unwrap_or_default();
+        }
+        Ok(flows)
+    }
+
+    /// The template fields of this session's connection.
+    fn templates(&mut self) -> TemplateOperator<'_> {
+        TemplateOperator::new(&mut *self.connection)
+    }
+
+    /// Stamps each goal item with its template fields.
+    async fn with_goal_templates(
+        &mut self,
+        mut goals: Vec<FlowGoal>,
+    ) -> Result<Vec<FlowGoal>, FlowError> {
+        let mut fields = self.templates().all(TemplateTable::FlowGoal).await?;
+        for goal in &mut goals {
+            goal.template = fields.remove(&goal.id).unwrap_or_default();
+        }
+        Ok(goals)
+    }
+
+    /// Stamps each task item with its template fields.
+    async fn with_task_templates(
+        &mut self,
+        mut tasks: Vec<FlowTask>,
+    ) -> Result<Vec<FlowTask>, FlowError> {
+        let mut fields = self.templates().all(TemplateTable::FlowTask).await?;
+        for task in &mut tasks {
+            task.template = fields.remove(&task.id).unwrap_or_default();
+        }
+        Ok(tasks)
     }
 
     /// Updates a flow.
@@ -728,6 +767,19 @@ impl<'session> FlowOperator<'session> {
     /// `&mut Db<Transactional>` and is this method's only caller.
     async fn delete(&mut self, id: FlowId) -> Result<(), FlowError> {
         self.get(id).await?;
+        // The template relations are polymorphic and carry no foreign key, so they are forgotten
+        // here rather than by the cascade that takes the items themselves.
+        for goal in self.list_goals(id).await? {
+            self.templates()
+                .forget(TemplateTable::FlowGoal, goal.id)
+                .await?;
+        }
+        for task in self.list_tasks(id).await? {
+            self.templates()
+                .forget(TemplateTable::FlowTask, task.id)
+                .await?;
+        }
+        self.templates().forget(TemplateTable::Flow, id.0).await?;
         sqlx::query("DELETE FROM flows WHERE id = ?")
             .bind(id.0)
             .execute(&mut *self.connection)
@@ -797,22 +849,24 @@ impl<'session> FlowOperator<'session> {
 
     /// Lists a flow's goal items.
     pub async fn list_goals(&mut self, flow_id: FlowId) -> Result<Vec<FlowGoal>, FlowError> {
-        Ok(sqlx::query_as::<_, FlowGoal>(
+        let goals = sqlx::query_as::<_, FlowGoal>(
             "SELECT * FROM flow_goals WHERE flow_id = ? ORDER BY position ASC",
         )
         .bind(flow_id.0)
         .fetch_all(&mut *self.connection)
-        .await?)
+        .await?;
+        self.with_goal_templates(goals).await
     }
 
     /// Lists a flow's task items.
     pub async fn list_tasks(&mut self, flow_id: FlowId) -> Result<Vec<FlowTask>, FlowError> {
-        Ok(sqlx::query_as::<_, FlowTask>(
+        let tasks = sqlx::query_as::<_, FlowTask>(
             "SELECT * FROM flow_tasks WHERE flow_id = ? ORDER BY position ASC",
         )
         .bind(flow_id.0)
         .fetch_all(&mut *self.connection)
-        .await?)
+        .await?;
+        self.with_task_templates(tasks).await
     }
 
     /// A flow's items as `(item_type, item_id)` in render order — goal items then task items, each
@@ -854,20 +908,18 @@ impl<'session> FlowOperator<'session> {
 
     /// Lists every flow's goal items (for the mindmap load).
     pub async fn list_all_goals(&mut self) -> Result<Vec<FlowGoal>, FlowError> {
-        Ok(
-            sqlx::query_as::<_, FlowGoal>("SELECT * FROM flow_goals ORDER BY position ASC")
-                .fetch_all(&mut *self.connection)
-                .await?,
-        )
+        let goals = sqlx::query_as::<_, FlowGoal>("SELECT * FROM flow_goals ORDER BY position ASC")
+            .fetch_all(&mut *self.connection)
+            .await?;
+        self.with_goal_templates(goals).await
     }
 
     /// Lists every flow's task items (for the mindmap load).
     pub async fn list_all_tasks(&mut self) -> Result<Vec<FlowTask>, FlowError> {
-        Ok(
-            sqlx::query_as::<_, FlowTask>("SELECT * FROM flow_tasks ORDER BY position ASC")
-                .fetch_all(&mut *self.connection)
-                .await?,
-        )
+        let tasks = sqlx::query_as::<_, FlowTask>("SELECT * FROM flow_tasks ORDER BY position ASC")
+            .fetch_all(&mut *self.connection)
+            .await?;
+        self.with_task_templates(tasks).await
     }
 
     /// Updates a flow-goal item.
@@ -973,6 +1025,15 @@ impl<'session> FlowOperator<'session> {
             FlowItemType::FlowTask => "flow_tasks",
         };
         self.clear_item_links(item_type, id).await?;
+        let template = match item_type {
+            FlowItemType::FlowGoal => TemplateTable::FlowGoal,
+            FlowItemType::FlowTask => TemplateTable::FlowTask,
+        };
+        self.templates().forget(template, id).await?;
+        // Its occurrences go with it, and so does everything recorded against them.
+        OverlayOperator::new(&mut *self.connection)
+            .clear_item(item_type.as_str(), id)
+            .await?;
         sqlx::query(&format!("DELETE FROM {table} WHERE id = ?"))
             .bind(id)
             .execute(&mut *self.connection)
@@ -1097,6 +1158,21 @@ impl<'session> FlowOperator<'session> {
                 .execute(&mut *self.connection).await?;
         }
 
+        // Its tags, block reasons and beads id carry across, as they do when a node is retyped;
+        // the Task-only columns go, a goal template having none.
+        let (old_template, new_template) = match from {
+            FlowItemType::FlowGoal => (TemplateTable::FlowGoal, TemplateTable::FlowTask),
+            FlowItemType::FlowTask => (TemplateTable::FlowTask, TemplateTable::FlowGoal),
+        };
+        let carried = self.templates().one(old_template, id).await?;
+        self.templates()
+            .copy_relations_across(old_template, id, new_template, new_id)
+            .await?;
+        self.templates()
+            .set_beads_id(new_template, new_id, carried.beads_id.as_deref())
+            .await?;
+        self.templates().forget(old_template, id).await?;
+
         // The old row's links were re-pointed, so a plain delete orphans nothing.
         let old_table = match from {
             FlowItemType::FlowGoal => "flow_goals",
@@ -1109,23 +1185,18 @@ impl<'session> FlowOperator<'session> {
         Ok(new_id)
     }
 
-    /// Replaces a flow item's (Cycle Scope, Cycle Plan) pairs with `cycles`.
+    /// Makes a flow item's (Cycle Scope, Cycle Plan) pairs read `cycles`, **keeping the id of
+    /// every pair that survives**.
     ///
-    /// A `DELETE` followed by one `INSERT` per pair, and so **not atomic on its own**: interrupted
-    /// part-way it leaves the item with some of its old pairs gone and some of its new ones
-    /// missing. It opens no transaction — per ADR-0004 only the outermost caller decides the
-    /// boundary. Nothing is read first, which is why this stays on the operator.
+    /// A pair's id is part of every occurrence's value key — its overlay, its relations and the
+    /// nodes hung on it are all keyed on it — so replacing the pairs wholesale, as this used to,
+    /// orphaned every one of them on any save of the item, a title-only one included. The pairs
+    /// are diffed instead ([`cycles::diff_cycles`]): a pair whose Cycle Scope is still asked for
+    /// keeps its row, updated in place only if its Cycle Plan or position moved; only pairs that
+    /// really went are deleted and only new ones inserted. An unchanged set writes nothing.
     ///
-    /// ```no_run
-    /// # use arlesh_lib::database::session::SessionFactory;
-    /// # use arlesh_lib::flows::{error::FlowError, model::FlowItemType};
-    /// # async fn replace(factory: &SessionFactory) -> Result<(), FlowError> {
-    /// let mut db = factory.begin().await?;
-    /// db.flows().set_cycles(1, FlowItemType::FlowTask, 2, &[]).await?;
-    /// db.commit().await?;
-    /// # Ok(())
-    /// # }
-    /// ```
+    /// It reads the stored pairs first and writes from them, and opens no transaction — per
+    /// ADR-0004 the outermost caller decides the boundary, and every caller runs inside one.
     pub async fn set_cycles(
         &mut self,
         flow_id: i64,
@@ -1133,12 +1204,45 @@ impl<'session> FlowOperator<'session> {
         item_id: i64,
         cycles: &[FlowCycleInput],
     ) -> Result<(), FlowError> {
-        sqlx::query("DELETE FROM flow_item_cycles WHERE item_type = ? AND item_id = ?")
-            .bind(item_type.as_str())
-            .bind(item_id)
+        let existing = self.item_cycles(item_type, item_id).await?;
+        let diff = cycles::diff_cycles(&existing, cycles);
+        for id in &diff.removed {
+            sqlx::query("DELETE FROM flow_item_cycles WHERE id = ?")
+                .bind(id)
+                .execute(&mut *self.connection)
+                .await?;
+        }
+        for kept in &diff.kept {
+            let (Some(stored), Some(wanted)) = (
+                existing.iter().find(|pair| pair.id == kept.id),
+                cycles.get(kept.position),
+            ) else {
+                continue;
+            };
+            let position = i64::try_from(kept.position).unwrap_or(i64::MAX);
+            let unchanged = stored.plan_kind == wanted.plan_kind
+                && stored.plan_start == wanted.plan_start
+                && stored.plan_end == wanted.plan_end
+                && stored.position == position;
+            if unchanged {
+                continue;
+            }
+            sqlx::query(
+                "UPDATE flow_item_cycles SET plan_kind = ?, plan_start = ?, plan_end = ?, position = ?
+                 WHERE id = ?",
+            )
+            .bind(&wanted.plan_kind)
+            .bind(wanted.plan_start)
+            .bind(wanted.plan_end)
+            .bind(position)
+            .bind(kept.id)
             .execute(&mut *self.connection)
             .await?;
-        for (position, cycle) in cycles.iter().enumerate() {
+        }
+        for position in &diff.added {
+            let Some(cycle) = cycles.get(*position) else {
+                continue;
+            };
             sqlx::query(
                 "INSERT INTO flow_item_cycles
                     (flow_id, item_type, item_id, scope_kind, scope_index,
@@ -1153,11 +1257,70 @@ impl<'session> FlowOperator<'session> {
             .bind(&cycle.plan_kind)
             .bind(cycle.plan_start)
             .bind(cycle.plan_end)
-            .bind(position as i64)
+            .bind(i64::try_from(*position).unwrap_or(i64::MAX))
             .execute(&mut *self.connection)
             .await?;
         }
         Ok(())
+    }
+
+    /// One item's cycle pairs, in position order.
+    pub async fn item_cycles(
+        &mut self,
+        item_type: FlowItemType,
+        item_id: i64,
+    ) -> Result<Vec<FlowItemCycle>, FlowError> {
+        Ok(sqlx::query_as::<_, FlowItemCycle>(
+            "SELECT * FROM flow_item_cycles WHERE item_type = ? AND item_id = ?
+             ORDER BY position, id",
+        )
+        .bind(item_type.as_str())
+        .bind(item_id)
+        .fetch_all(&mut *self.connection)
+        .await?)
+    }
+
+    /// How many iterations hold something recorded against an occurrence of this item drawn by
+    /// one of `cycle_ids`: an overlay, a relation, or a node hung on it.
+    pub async fn iterations_keyed_on(
+        &mut self,
+        item_type: FlowItemType,
+        item_id: i64,
+        cycle_ids: &[i64],
+    ) -> Result<i64, FlowError> {
+        let mut dates: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let related: Vec<String> = sqlx::query_scalar(
+            "SELECT parent_key FROM derived_children
+             UNION SELECT node_key FROM derived_tags
+             UNION SELECT node_key FROM derived_block_reasons
+             UNION SELECT dependent_key FROM derived_dependencies WHERE dependent_key IS NOT NULL
+             UNION SELECT target_key FROM derived_dependencies WHERE target_key IS NOT NULL",
+        )
+        .fetch_all(&mut *self.connection)
+        .await?;
+        for cycle in cycle_ids {
+            let overlaid: Vec<String> = sqlx::query_scalar(
+                "SELECT iteration_date FROM task_overlays
+                 WHERE item_type = ?1 AND item_id = ?2 AND cycle_id = ?3
+                 UNION SELECT iteration_date FROM goal_overlays
+                 WHERE item_type = ?1 AND item_id = ?2 AND cycle_id = ?3",
+            )
+            .bind(item_type.as_str())
+            .bind(item_id)
+            .bind(cycle)
+            .fetch_all(&mut *self.connection)
+            .await?;
+            dates.extend(overlaid);
+            for key in related.iter().filter_map(|key| OccurrenceKey::parse(key)) {
+                if key.item.item_type.as_str() == item_type.as_str()
+                    && key.item.item_id == item_id
+                    && key.cycle == *cycle
+                {
+                    dates.insert(key.iteration.format("%Y-%m-%d").to_string());
+                }
+            }
+        }
+        Ok(i64::try_from(dates.len()).unwrap_or(i64::MAX))
     }
 
     /// Lists every flow's cycle pairs (for the mindmap load).
@@ -2063,6 +2226,20 @@ impl<'session> FlowOperator<'session> {
             .bind(&d.depends_on_type).bind(map_item(&d.depends_on_type, d.depends_on_id)?)
             .execute(&mut *self.connection).await?;
         }
+        // What each template says about its occurrences travels with it, as its title does.
+        self.templates()
+            .copy(TemplateTable::Flow, flow_id.0, new_id)
+            .await?;
+        for (old, new) in &goal_map {
+            self.templates()
+                .copy(TemplateTable::FlowGoal, *old, *new)
+                .await?;
+        }
+        for (old, new) in &task_map {
+            self.templates()
+                .copy(TemplateTable::FlowTask, *old, *new)
+                .await?;
+        }
         let cloned = self.get(FlowId(new_id)).await?;
         Ok(TemplateClone {
             flow: cloned,
@@ -2192,6 +2369,11 @@ impl<'session> FlowOperator<'session> {
         // has a copy on both ends to be remapped onto.
         let (goals, tasks) = item_id_maps(&copied);
         for (kind, old_id, new_id) in &copied {
+            let table = match kind {
+                FlowItemType::FlowGoal => TemplateTable::FlowGoal,
+                FlowItemType::FlowTask => TemplateTable::FlowTask,
+            };
+            self.templates().copy(table, *old_id, *new_id).await?;
             self.copy_item_cycles(flow_id, *kind, *old_id, *new_id)
                 .await?;
             self.copy_item_dependencies(flow_id, *kind, *old_id, *new_id, &goals, &tasks)
@@ -2419,7 +2601,14 @@ pub async fn update_flow(
     id: FlowId,
     request: UpdateFlowRequest,
 ) -> Result<Flow, FlowError> {
-    db.flows().update(id, request).await
+    let template = request.template.clone();
+    let flow = db.flows().update(id, request).await?;
+    let is_task = InstanceType::from_db(&flow.instance_type) == InstanceType::Task;
+    db.flows()
+        .templates()
+        .write(TemplateTable::Flow, is_task, id.0, &template)
+        .await?;
+    db.flows().get(id).await
 }
 
 /// Deletes a flow (and, by cascade, its items, cycles, dependencies and recurrence).
@@ -2437,7 +2626,18 @@ pub async fn update_flow_goal(
     id: i64,
     request: UpdateFlowItemRequest,
 ) -> Result<FlowGoal, FlowError> {
-    db.flows().update_goal(id, request).await
+    let template = request.template.clone();
+    let mut goal = db.flows().update_goal(id, request).await?;
+    db.flows()
+        .templates()
+        .write(TemplateTable::FlowGoal, false, id, &template)
+        .await?;
+    goal.template = db
+        .flows()
+        .templates()
+        .one(TemplateTable::FlowGoal, id)
+        .await?;
+    Ok(goal)
 }
 
 /// Updates a flow-task item. Transactional for the same reason as [`update_flow`].
@@ -2447,7 +2647,18 @@ pub async fn update_flow_task(
     id: i64,
     request: UpdateFlowItemRequest,
 ) -> Result<FlowTask, FlowError> {
-    db.flows().update_task(id, request).await
+    let template = request.template.clone();
+    let mut task = db.flows().update_task(id, request).await?;
+    db.flows()
+        .templates()
+        .write(TemplateTable::FlowTask, true, id, &template)
+        .await?;
+    task.template = db
+        .flows()
+        .templates()
+        .one(TemplateTable::FlowTask, id)
+        .await?;
+    Ok(task)
 }
 
 /// Converts a flow item to the other kind (goal↔task), moving it to the other table and
@@ -2741,8 +2952,21 @@ pub async fn archive_and_fork(
     now: NaiveDateTime,
 ) -> Result<Flow, FlowError> {
     let clone = db.flows().fork_flow(flow_id).await?;
+    stop_recurring(db, flow_id, now).await?;
+    Ok(clone)
+}
+
+/// Archives a Habit: it **stops recurring** after the Day holding `now` (by the 02:00 day
+/// boundary), so an iteration that has already begun still stands with its history and no later
+/// one is generated. An end already on or before that Day is left alone rather than pushed later,
+/// and a flow with no Recurrence has nothing to stop.
+pub(crate) async fn stop_recurring(
+    db: &mut Db<Transactional>,
+    flow_id: FlowId,
+    now: NaiveDateTime,
+) -> Result<(), FlowError> {
     let Some(recurrence) = db.flows().get_recurrence(flow_id).await? else {
-        return Ok(clone);
+        return Ok(());
     };
     let today = if now < day_boundary(now.date()) {
         now.date() - Duration::days(1)
@@ -2752,12 +2976,12 @@ pub async fn archive_and_fork(
     if let Some(end_id) = recurrence.end_scope_id {
         let end = db.scopes().get(ScopeId(end_id)).await?;
         if scope_start_date(&end)? <= today {
-            return Ok(clone);
+            return Ok(());
         }
     }
     let day = db.scopes().get_or_create(ScopeKind::Day, today).await?;
     db.flows().set_recurrence_end(flow_id, day.id).await?;
-    Ok(clone)
+    Ok(())
 }
 
 /// Copies a Flow under `(parent_type, parent_id)` at `position` — the Mindmap's Copy+Paste of a
@@ -3516,6 +3740,7 @@ async fn write_plan(
     flow_id: FlowId,
     request: &StartFlowRequest,
     plan: &RenderedPlan,
+    fields: &HashMap<(String, i64), TemplateFields>,
 ) -> Result<MaterializedFlow, FlowError> {
     let dangling = || FlowError::Invalid("rendered plan references an unwritten node".to_string());
     let mut written: Vec<(String, i64)> = Vec::with_capacity(plan.nodes.len());
@@ -3627,6 +3852,9 @@ async fn write_plan(
         if node.is_private {
             set_node_private(db, &created.0, created.1).await?;
         }
+        if let Some(fields) = fields.get(&(source.0.to_string(), source.1)) {
+            apply_template_fields(db, &created.0, created.1, fields).await?;
+        }
         written.push(created);
     }
 
@@ -3668,7 +3896,82 @@ pub async fn start(
     let cycles = template.planned_cycles(flow_id.0);
     let scopes = resolve_scopes(&mut db.scopes(), &flow, request.anchor_date, &cycles).await?;
     let plan = render(&flow, &request.title, &template, &scopes);
-    write_plan(db, flow_id, &request, &plan).await
+    let mut fields: HashMap<(String, i64), TemplateFields> = HashMap::new();
+    fields.insert(("flow".to_string(), flow_id.0), flow.template.clone());
+    for goal in db.flows().list_goals(flow_id).await? {
+        fields.insert(("flow_goal".to_string(), goal.id), goal.template);
+    }
+    for task in db.flows().list_tasks(flow_id).await? {
+        fields.insert(("flow_task".to_string(), task.id), task.template);
+    }
+    write_plan(db, flow_id, &request, &plan, &fields).await
+}
+
+/// Copies what a template says about the rows it draws onto one row a start just made: a Task's
+/// delegate, Agentic and Asynchronous flags and Backlog, and every kind's tags, block reasons and
+/// beads id — so a started flow's copy is the template, not merely its title.
+async fn apply_template_fields(
+    db: &mut Db<Transactional>,
+    node_type: &str,
+    node_id: i64,
+    fields: &TemplateFields,
+) -> Result<(), FlowError> {
+    match node_type {
+        "task" => {
+            if *fields != TemplateFields::default() {
+                crate::tasks::update_task(
+                    db,
+                    TaskId(node_id),
+                    crate::tasks::model::UpdateTaskRequest {
+                        delegate_to: Some(fields.delegate_to),
+                        agentic: Some(crate::tasks::model::TaskAgentic::from_column(
+                            fields.agentic,
+                        )),
+                        asynchronous: Some(fields.asynchronous),
+                        archival: Some(fields.archival),
+                        ..Default::default()
+                    },
+                )
+                .await?;
+            }
+            for tag_id in &fields.tag_ids {
+                db.tasks().add_tag(TaskId(node_id), *tag_id).await?;
+            }
+            if let Some(beads_id) = &fields.beads_id {
+                db.tasks()
+                    .set_beads_id(TaskId(node_id), Some(beads_id.clone()))
+                    .await?;
+            }
+        }
+        "goal" => {
+            for tag_id in &fields.tag_ids {
+                db.goals().add_tag(GoalId(node_id), *tag_id).await?;
+            }
+            if let Some(beads_id) = &fields.beads_id {
+                db.goals()
+                    .set_beads_id(GoalId(node_id), Some(beads_id.clone()))
+                    .await?;
+            }
+        }
+        _ => {
+            for tag_id in &fields.tag_ids {
+                db.commitments()
+                    .add_tag(CommitmentId(node_id), *tag_id)
+                    .await?;
+            }
+            if let Some(beads_id) = &fields.beads_id {
+                db.commitments()
+                    .set_beads_id(CommitmentId(node_id), Some(beads_id.clone()))
+                    .await?;
+            }
+        }
+    }
+    if !fields.block_reasons.is_empty() && node_type != "commitment" {
+        db.block_reasons()
+            .set(node_type, node_id, &fields.block_reasons)
+            .await?;
+    }
+    Ok(())
 }
 
 /// Marks a freshly materialised node private, propagating a flow's (or flow item's) privacy onto

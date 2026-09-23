@@ -690,6 +690,8 @@ async fn a_cycle_pair_draws_its_own_occurrence_with_its_own_window() {
                 plan_end: None,
             },
         ],
+        None,
+        None,
     )
     .await
     .unwrap();
@@ -787,6 +789,17 @@ async fn a_stored_task_is_still_written_where_it_always_was() {
 // ---------------------------------------------------------------------------------------------
 // Migration 0060
 // ---------------------------------------------------------------------------------------------
+
+/// One `task_overlays` row as the migration test reads it: key, status, title, tombstone,
+/// resolved at, and whether its block reasons are its own.
+type TaskOverlayRow = (
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<i64>,
+    i64,
+);
 
 /// A database migrated to just before 0060.
 async fn pool_before_0060() -> sqlx::SqlitePool {

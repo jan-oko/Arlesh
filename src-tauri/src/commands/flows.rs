@@ -319,7 +319,12 @@ pub async fn delete_flow_item(
     db.commit().await.map_err(WireError::from_error)
 }
 
-/// Replaces a flow item's (Cycle Scope, Cycle Plan) pairs.
+/// Saves a flow item's cycle pairs, keeping every pair that survives. A change that would orphan
+/// what an occurrence recorded is refused with
+/// [`NeedsConfirmation`](crate::error::WireErrorKind::NeedsConfirmation) until `reconcile`
+/// answers it — Archive & new (with `now`) or Discard & regenerate.
+///
+/// The pairs are diffed, not replaced: see [`flows::cycles`].
 #[tauri::command]
 pub async fn set_flow_item_cycles(
     factory: State<'_, SessionFactory>,
@@ -327,13 +332,37 @@ pub async fn set_flow_item_cycles(
     item_type: FlowItemType,
     item_id: i64,
     cycles: Vec<FlowCycleInput>,
-) -> Result<(), WireError> {
+    reconcile: Option<flows::cycles::Reconcile>,
+    now: Option<chrono::NaiveDateTime>,
+) -> Result<Option<flows::cycles::ForkedTemplate>, WireError> {
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    db.flows()
-        .set_cycles(flow_id, item_type, item_id, &cycles)
-        .await
-        .map_err(WireError::from_error)?;
-    db.commit().await.map_err(WireError::from_error)
+    if reconcile.is_none() {
+        let orphaned = flows::cycles::orphaned_edits(&mut db, item_type, item_id, &cycles)
+            .await
+            .map_err(WireError::from_error)?;
+        if orphaned > 0 {
+            return Err(WireError::needs_confirmation(
+                format!("changing these cycles would orphan what {orphaned} iteration(s) recorded"),
+                serde_json::json!({
+                    "reason": "orphaned_edits",
+                    "iterations": orphaned,
+                }),
+            ));
+        }
+    }
+    let fork = flows::cycles::set_item_cycles(
+        &mut db,
+        FlowId(flow_id),
+        item_type,
+        item_id,
+        &cycles,
+        reconcile,
+        now,
+    )
+    .await
+    .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)?;
+    Ok(fork)
 }
 
 /// Lists every flow's cycle pairs.
