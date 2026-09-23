@@ -23,6 +23,7 @@ use arlesh_lib::{
     },
 };
 use chrono::{NaiveDate, NaiveDateTime};
+use helpers::StoredId;
 
 /// A project under the fixed Growth aspect, to hang fixtures off.
 async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
@@ -183,7 +184,7 @@ async fn a_commitment_under_a_scoped_parent_needs_no_window_of_its_own() {
         CreateCommitmentRequest {
             title: "Asleep by 23:00".into(),
             parent_type: "commitment".into(),
-            parent_id: parent.id,
+            parent_id: parent.id.sid(),
             ..Default::default()
         },
     )
@@ -214,7 +215,7 @@ async fn clearing_the_last_window_above_a_commitment_is_refused() {
 
     let refused = update(
         &pool,
-        commitment.id,
+        commitment.id.sid(),
         UpdateCommitmentRequest {
             time_scope: Some(None),
             ..Default::default()
@@ -264,7 +265,7 @@ async fn a_child_commitments_window_must_fit_inside_its_parents() {
         CreateCommitmentRequest {
             title: "No social media today".into(),
             parent_type: "commitment".into(),
-            parent_id: month.id,
+            parent_id: month.id.sid(),
             time_scope: Some(inside),
             ..Default::default()
         },
@@ -277,7 +278,7 @@ async fn a_child_commitments_window_must_fit_inside_its_parents() {
         CreateCommitmentRequest {
             title: "No social media in August".into(),
             parent_type: "commitment".into(),
-            parent_id: month.id,
+            parent_id: month.id.sid(),
             time_scope: Some(outside),
             ..Default::default()
         },
@@ -317,7 +318,7 @@ async fn a_commitment_holds_task_children_that_inherit_its_window() {
             CreateTaskRequest {
                 title: "Phone on charger".into(),
                 parent_type: "commitment".into(),
-                parent_id: commitment.id,
+                parent_id: commitment.id.sid(),
                 ..Default::default()
             },
         )
@@ -368,7 +369,7 @@ async fn a_recorded_verdict_survives_a_round_trip_and_can_be_taken_back() {
     for verdict in [Verdict::Kept, Verdict::Broken, Verdict::Unresolved] {
         let written = update(
             &pool,
-            commitment.id,
+            commitment.id.sid(),
             UpdateCommitmentRequest {
                 verdict: Some(verdict),
                 ..Default::default()
@@ -463,7 +464,7 @@ async fn a_child_commitment_inherits_the_verdict_window_of_the_nearest_ancestor_
         CreateCommitmentRequest {
             title: "No social media today".into(),
             parent_type: "commitment".into(),
-            parent_id: parent.id,
+            parent_id: parent.id.sid(),
             time_scope: Some(a_day),
             ..Default::default()
         },
@@ -526,7 +527,7 @@ async fn finishing_every_child_task_does_not_mark_a_commitment_kept() {
             CreateTaskRequest {
                 title: "Phone on charger".into(),
                 parent_type: "commitment".into(),
-                parent_id: commitment.id,
+                parent_id: commitment.id.sid(),
                 status: Some(arlesh_lib::tasks::model::TaskStatus::Done),
                 ..Default::default()
             },
@@ -541,7 +542,7 @@ async fn finishing_every_child_task_does_not_mark_a_commitment_kept() {
         .await
         .unwrap()
         .commitments()
-        .get(CommitmentId(commitment.id))
+        .get(CommitmentId(commitment.id.sid()))
         .await
         .unwrap();
     assert_eq!(reread.verdict, Verdict::Unresolved);
@@ -575,7 +576,7 @@ async fn deleting_a_commitment_takes_its_whole_subtree_with_it() {
         CreateCommitmentRequest {
             title: "No social media today".into(),
             parent_type: "commitment".into(),
-            parent_id: parent.id,
+            parent_id: parent.id.sid(),
             ..Default::default()
         },
     )
@@ -589,7 +590,7 @@ async fn deleting_a_commitment_takes_its_whole_subtree_with_it() {
             CreateTaskRequest {
                 title: "Log out everywhere".into(),
                 parent_type: "commitment".into(),
-                parent_id: parent.id,
+                parent_id: parent.id.sid(),
                 ..Default::default()
             },
         )
@@ -600,7 +601,7 @@ async fn deleting_a_commitment_takes_its_whole_subtree_with_it() {
 
     {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-        delete_commitment(&mut db, CommitmentId(parent.id))
+        delete_commitment(&mut db, CommitmentId(parent.id.sid()))
             .await
             .unwrap();
         db.commit().await.unwrap();
@@ -662,7 +663,7 @@ async fn a_commitment_carries_tags_and_an_issue_link() {
     .await
     .unwrap();
 
-    let id = CommitmentId(commitment.id);
+    let id = CommitmentId(commitment.id.sid());
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
     db.commitments().add_tag(id, tag_id).await.unwrap();
     db.commitments()
@@ -741,10 +742,10 @@ async fn a_commitment_can_be_marked_private_and_reparented_under_another_commitm
 
     let moved = update(
         &pool,
-        day.id,
+        day.id.sid(),
         UpdateCommitmentRequest {
             parent_type: Some("commitment".into()),
-            parent_id: Some(month.id),
+            parent_id: Some(month.id.sid()),
             position: Some(5),
             ..Default::default()
         },
@@ -757,12 +758,12 @@ async fn a_commitment_can_be_marked_private_and_reparented_under_another_commitm
 
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
     db.commitments()
-        .set_private(CommitmentId(day.id), true)
+        .set_private(CommitmentId(day.id.sid()), true)
         .await
         .unwrap();
     assert!(
         db.commitments()
-            .get(CommitmentId(day.id))
+            .get(CommitmentId(day.id.sid()))
             .await
             .unwrap()
             .is_private
@@ -776,7 +777,7 @@ async fn a_commitment_can_be_marked_private_and_reparented_under_another_commitm
     );
     let children = db
         .commitments()
-        .child_ids("commitment", month.id)
+        .child_ids("commitment", month.id.sid())
         .await
         .unwrap();
     assert_eq!(children, vec![day.id]);
@@ -813,7 +814,7 @@ async fn a_commitment_under_a_scoped_task_inherits_that_window_and_no_verdict_wi
         CreateCommitmentRequest {
             title: "Asleep by 23:00".into(),
             parent_type: "task".into(),
-            parent_id: task.id,
+            parent_id: task.id.sid(),
             ..Default::default()
         },
     )
@@ -878,7 +879,7 @@ async fn the_editors_clear_payload_empties_a_commitments_own_window() {
         CreateCommitmentRequest {
             title: "Asleep by 23:00".into(),
             parent_type: "commitment".into(),
-            parent_id: month.id,
+            parent_id: month.id.sid(),
             time_scope: Some(a_day),
             ..Default::default()
         },
@@ -897,7 +898,7 @@ async fn the_editors_clear_payload_empties_a_commitments_own_window() {
     )
     .unwrap();
 
-    let cleared = update(&pool, commitment.id, payload).await.unwrap();
+    let cleared = update(&pool, commitment.id.sid(), payload).await.unwrap();
     assert_eq!(
         cleared.time_scope, None,
         "the emptied scope is emptied in the row"
@@ -905,7 +906,7 @@ async fn the_editors_clear_payload_empties_a_commitments_own_window() {
 
     let stored: Option<i64> =
         sqlx::query_scalar("SELECT time_scope_start_id FROM commitments WHERE id = ?")
-            .bind(commitment.id)
+            .bind(commitment.id.sid())
             .fetch_one(&pool)
             .await
             .unwrap();
@@ -945,7 +946,7 @@ async fn the_editors_clear_payload_empties_a_commitments_verdict_window() {
     )
     .unwrap();
 
-    let cleared = update(&pool, commitment.id, payload).await.unwrap();
+    let cleared = update(&pool, commitment.id.sid(), payload).await.unwrap();
     assert_eq!(
         cleared.verdict_window, None,
         "the emptied Verdict Window goes back to inheriting"
@@ -953,7 +954,7 @@ async fn the_editors_clear_payload_empties_a_commitments_verdict_window() {
 
     let stored: Option<i64> =
         sqlx::query_scalar("SELECT verdict_window_n FROM commitments WHERE id = ?")
-            .bind(commitment.id)
+            .bind(commitment.id.sid())
             .fetch_one(&pool)
             .await
             .unwrap();
@@ -1039,7 +1040,7 @@ async fn an_info_can_hang_under_a_commitment() {
             body: "Phone stays in the kitchen".into(),
             details: None,
             parent_type: "commitment".into(),
-            parent_id: commitment.id,
+            parent_id: commitment.id.sid(),
             position: 0,
         })
         .await
@@ -1048,7 +1049,7 @@ async fn an_info_can_hang_under_a_commitment() {
     assert_eq!(info.parent_id, commitment.id);
 
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-    delete_commitment(&mut db, CommitmentId(commitment.id))
+    delete_commitment(&mut db, CommitmentId(commitment.id.sid()))
         .await
         .unwrap();
     db.commit().await.unwrap();

@@ -10,6 +10,7 @@ use arlesh_lib::{
         model::{CreateGoalRequest, CreateTaskRequest},
     },
 };
+use helpers::StoredId;
 use tauri::Manager;
 
 async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
@@ -64,7 +65,7 @@ async fn create_info_under_goal() {
             body: "Important detail".into(),
             details: None,
             parent_type: "goal".into(),
-            parent_id: goal.id,
+            parent_id: goal.id.sid(),
             position: 0,
         })
         .await
@@ -103,7 +104,7 @@ async fn create_info_under_task() {
             body: "Task note".into(),
             details: None,
             parent_type: "task".into(),
-            parent_id: task.id,
+            parent_id: task.id.sid(),
             position: 0,
         })
         .await
@@ -381,7 +382,7 @@ async fn update_info_parent() {
             info.id.into(),
             UpdateInfoRequest {
                 parent_type: Some("task".into()),
-                parent_id: Some(task.id),
+                parent_id: Some(task.id.sid()),
                 ..Default::default()
             },
         )

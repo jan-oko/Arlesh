@@ -28,6 +28,7 @@ use arlesh_lib::tasks::model::{
 };
 use arlesh_lib::undo::model::GestureSummary;
 use arlesh_lib::undo::EXCLUDED_TABLES;
+use helpers::StoredId;
 use rmcp::handler::server::wrapper::Parameters;
 use sqlx::SqlitePool;
 use tauri::test::MockRuntime;
@@ -244,7 +245,7 @@ async fn undoing_a_created_task_removes_it_and_redoing_puts_it_back_at_the_same_
     );
     assert!(
         sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM tasks WHERE id = ?")
-            .bind(task.id)
+            .bind(task.id.sid())
             .fetch_one(&pool)
             .await
             .expect("count")
@@ -270,28 +271,35 @@ async fn undoing_a_deleted_goal_brings_its_subtree_back_whole() {
     let goal = task_commands::create_goal(app.state(), goal_request("project", project_id, "goal"))
         .await
         .expect("create goal");
-    let child = task_commands::create_goal(app.state(), goal_request("goal", goal.id, "child"))
-        .await
-        .expect("create child goal");
-    let task = task_commands::create_task(app.state(), task_request("goal", goal.id, "task"))
+    let child =
+        task_commands::create_goal(app.state(), goal_request("goal", goal.id.sid(), "child"))
+            .await
+            .expect("create child goal");
+    let task = task_commands::create_task(app.state(), task_request("goal", goal.id.sid(), "task"))
         .await
         .expect("create task");
-    task_commands::add_tag_to_goal(app.state(), goal.id, tag_id)
+    task_commands::add_tag_to_goal(app.state(), goal.id.sid(), tag_id)
         .await
         .expect("tag the goal");
-    task_commands::add_tag_to_goal(app.state(), child.id, tag_id)
+    task_commands::add_tag_to_goal(app.state(), child.id.sid(), tag_id)
         .await
         .expect("tag the child");
-    task_commands::add_tag_to_task(app.state(), task.id, tag_id)
+    task_commands::add_tag_to_task(app.state(), task.id.sid(), tag_id)
         .await
         .expect("tag the task");
-    task_commands::add_task_dependency(app.state(), task.id, Dependency::Task { id: outside.id })
-        .await
-        .expect("add dependency");
+    task_commands::add_task_dependency(
+        app.state(),
+        task.id.sid(),
+        Dependency::Task {
+            id: outside.id.sid(),
+        },
+    )
+    .await
+    .expect("add dependency");
     block_reason_commands::set_block_reasons(
         app.state(),
         "goal".into(),
-        goal.id,
+        goal.id.sid(),
         vec!["waiting".into(), "unfunded".into()],
     )
     .await
@@ -299,7 +307,7 @@ async fn undoing_a_deleted_goal_brings_its_subtree_back_whole() {
     block_reason_commands::set_block_reasons(
         app.state(),
         "task".into(),
-        task.id,
+        task.id.sid(),
         vec!["stuck".into()],
     )
     .await
@@ -315,8 +323,8 @@ async fn undoing_a_deleted_goal_brings_its_subtree_back_whole() {
 
     assert_eq!(
         sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM goals WHERE id IN (?, ?)")
-            .bind(goal.id)
-            .bind(child.id)
+            .bind(goal.id.sid())
+            .bind(child.id.sid())
             .fetch_one(&pool)
             .await
             .expect("count"),
@@ -397,13 +405,14 @@ async fn an_aborted_gesture_leaves_the_board_exactly_as_it_was() {
             title: Some("edited".into()),
             ..Default::default()
         },
+        None,
     )
     .await
     .expect("update task");
     block_reason_commands::set_block_reasons(
         app.state(),
         "task".into(),
-        task.id,
+        task.id.sid(),
         vec!["waiting on someone".into()],
     )
     .await
@@ -532,6 +541,7 @@ async fn undo_then_redo_returns_the_board_to_what_the_gesture_made_of_it() {
             title: Some("after".into()),
             ..Default::default()
         },
+        None,
     )
     .await
     .expect("update task");
@@ -676,7 +686,7 @@ async fn an_mcp_write_between_the_users_change_and_their_undo_is_not_reversed() 
     let result = mcp
         .beads(Parameters(params::BeadsOperation::Set {
             node_type: params::BeadsNode::Task,
-            node_id: agents_task.id,
+            node_id: agents_task.id.sid(),
             beads_id: Some("Arlesh-h2u".into()),
         }))
         .await
@@ -692,7 +702,7 @@ async fn an_mcp_write_between_the_users_change_and_their_undo_is_not_reversed() 
 
     assert_eq!(
         sqlx::query_scalar::<_, Option<String>>("SELECT beads_id FROM tasks WHERE id = ?")
-            .bind(agents_task.id)
+            .bind(agents_task.id.sid())
             .fetch_one(&pool)
             .await
             .expect("read beads id"),
@@ -730,7 +740,7 @@ async fn an_mcp_write_made_while_a_user_gesture_is_open_is_not_reversed_with_it(
     let result = mcp
         .beads(Parameters(params::BeadsOperation::Set {
             node_type: params::BeadsNode::Task,
-            node_id: agents_task.id,
+            node_id: agents_task.id.sid(),
             beads_id: Some("Arlesh-h2u".into()),
         }))
         .await
@@ -774,7 +784,7 @@ async fn an_mcp_write_made_while_a_user_gesture_is_open_is_not_reversed_with_it(
 
     assert_eq!(
         sqlx::query_scalar::<_, Option<String>>("SELECT beads_id FROM tasks WHERE id = ?")
-            .bind(agents_task.id)
+            .bind(agents_task.id.sid())
             .fetch_one(&pool)
             .await
             .expect("read beads id"),
@@ -866,7 +876,7 @@ async fn undoing_an_edit_that_cleared_agentic_puts_the_flag_back() {
     )
     .await
     .expect("create task");
-    assert_eq!(agentic(&pool, task.id).await, Some(true));
+    assert_eq!(agentic(&pool, task.id.sid()).await, Some(true));
 
     open_gesture(&app).await;
     task_commands::update_task(
@@ -876,22 +886,23 @@ async fn undoing_an_edit_that_cleared_agentic_puts_the_flag_back() {
             agentic: Some(TaskAgentic::Inherit),
             ..Default::default()
         },
+        None,
     )
     .await
     .expect("clear the flag back to inheriting");
     close_gesture(&app).await;
-    assert_eq!(agentic(&pool, task.id).await, None);
+    assert_eq!(agentic(&pool, task.id.sid()).await, None);
 
     undo(&app).await.expect("there is something to undo");
     assert_eq!(
-        agentic(&pool, task.id).await,
+        agentic(&pool, task.id.sid()).await,
         Some(true),
         "undo must put the flag back, not leave the Task inheriting a decision it had overridden"
     );
 
     redo(&app).await.expect("there is something to redo");
     assert_eq!(
-        agentic(&pool, task.id).await,
+        agentic(&pool, task.id.sid()).await,
         None,
         "and redo must clear it again"
     );
@@ -924,27 +935,30 @@ async fn undoing_a_cleared_issue_link_puts_the_id_back() {
     let mcp = ArleshMcp::new(helpers::session_factory(&pool));
     mcp.beads(Parameters(params::BeadsOperation::Set {
         node_type: params::BeadsNode::Task,
-        node_id: task.id,
+        node_id: task.id.sid(),
         beads_id: Some("Arlesh-ncy".into()),
     }))
     .await
     .expect("link the task to its issue");
-    assert_eq!(beads_id(&pool, task.id).await, Some("Arlesh-ncy".into()));
+    assert_eq!(
+        beads_id(&pool, task.id.sid()).await,
+        Some("Arlesh-ncy".into())
+    );
 
     open_gesture(&app).await;
-    clear_beads_id(app.state(), "task".into(), task.id)
+    clear_beads_id(app.state(), "task".into(), task.id.sid())
         .await
         .expect("clear the link");
     close_gesture(&app).await;
     assert_eq!(
-        beads_id(&pool, task.id).await,
+        beads_id(&pool, task.id.sid()).await,
         None,
         "the × writes NULL, not an empty string"
     );
 
     undo(&app).await.expect("there is something to undo");
     assert_eq!(
-        beads_id(&pool, task.id).await,
+        beads_id(&pool, task.id.sid()).await,
         Some("Arlesh-ncy".into()),
         "the clear is a user-sourced write, so Ctrl+Z puts the link back — the reason it needs no \
          confirmation dialog"
@@ -952,7 +966,7 @@ async fn undoing_a_cleared_issue_link_puts_the_id_back() {
 
     redo(&app).await.expect("there is something to redo");
     assert_eq!(
-        beads_id(&pool, task.id).await,
+        beads_id(&pool, task.id.sid()).await,
         None,
         "and redo drops it again"
     );
@@ -1099,13 +1113,13 @@ async fn an_undo_that_cannot_be_applied_changes_nothing_and_leaves_the_gesture_o
         task_commands::create_task(app.state(), task_request("project", project_id, "tagged"))
             .await
             .expect("create task");
-    task_commands::add_tag_to_task(app.state(), task.id, tag_id)
+    task_commands::add_tag_to_task(app.state(), task.id.sid(), tag_id)
         .await
         .expect("tag the task");
 
     // The user removes the tag, inside a gesture...
     open_gesture(&app).await;
-    task_commands::remove_tag_from_task(app.state(), task.id, tag_id)
+    task_commands::remove_tag_from_task(app.state(), task.id.sid(), tag_id)
         .await
         .expect("remove the tag");
     let doomed = close_gesture(&app).await.expect("the gesture is undoable");
@@ -1167,7 +1181,7 @@ async fn undoing_an_edit_that_unflagged_asynchronous_puts_the_flag_back() {
     )
     .await
     .expect("create task");
-    assert!(asynchronous(&pool, task.id).await);
+    assert!(asynchronous(&pool, task.id.sid()).await);
 
     open_gesture(&app).await;
     task_commands::update_task(
@@ -1177,22 +1191,23 @@ async fn undoing_an_edit_that_unflagged_asynchronous_puts_the_flag_back() {
             asynchronous: Some(false),
             ..Default::default()
         },
+        None,
     )
     .await
     .expect("unflag the task");
     close_gesture(&app).await;
-    assert!(!asynchronous(&pool, task.id).await);
+    assert!(!asynchronous(&pool, task.id.sid()).await);
 
     undo(&app).await.expect("there is something to undo");
     assert!(
-        asynchronous(&pool, task.id).await,
+        asynchronous(&pool, task.id.sid()).await,
         "undo must put the flag back — a column the triggers do not name is restored silently \
          as whatever it was at insert time"
     );
 
     redo(&app).await.expect("there is something to redo");
     assert!(
-        !asynchronous(&pool, task.id).await,
+        !asynchronous(&pool, task.id.sid()).await,
         "and redo must clear it again"
     );
 }

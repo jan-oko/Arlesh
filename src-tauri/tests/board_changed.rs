@@ -22,6 +22,7 @@ use arlesh_lib::mcp::{params, ArleshMcp};
 use arlesh_lib::tasks::model::CreateTaskRequest;
 use arlesh_lib::undo::model::WriteSource;
 use arlesh_lib::undo::{self as engine, GestureClose};
+use helpers::StoredId;
 use rmcp::handler::server::wrapper::Parameters;
 use sqlx::SqlitePool;
 use tauri::test::MockRuntime;
@@ -90,6 +91,7 @@ async fn create_task(app: &App<MockRuntime>, project_id: i64, title: &str) -> i6
     .await
     .expect("create task")
     .id
+    .sid()
 }
 
 #[tokio::test]

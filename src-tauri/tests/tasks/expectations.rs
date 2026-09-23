@@ -26,6 +26,7 @@ use arlesh_lib::{
     },
 };
 use chrono::{NaiveDate, NaiveDateTime};
+use helpers::StoredId;
 
 async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
     let aspect_id: i64 =
@@ -81,7 +82,7 @@ async fn task(pool: &sqlx::SqlitePool, parent_type: &str, parent_id: i64) -> i64
     .await
     .unwrap();
     db.commit().await.unwrap();
-    task.id
+    task.id.sid()
 }
 
 async fn expectation(
@@ -586,7 +587,7 @@ async fn a_wait_whose_window_escapes_its_parents_is_refused() {
         CreateExpectationRequest {
             title: "Too late".into(),
             parent_type: "task".into(),
-            parent_id: parent.id,
+            parent_id: parent.id.sid(),
             check_every: None,
             check_starting: None,
             time_scope: Some(august),

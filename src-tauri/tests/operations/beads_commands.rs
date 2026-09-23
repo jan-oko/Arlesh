@@ -23,6 +23,7 @@ use arlesh_lib::{
     },
 };
 use chrono::NaiveDate;
+use helpers::StoredId;
 use tauri::Manager;
 
 // ===========================================================================
@@ -131,15 +132,15 @@ async fn linked_nodes(pool: &sqlx::SqlitePool) -> (i64, i64, i64, i64) {
     .await
     .unwrap();
     db.tasks()
-        .set_beads_id(TaskId(task.id), Some("Arlesh-ta1".into()))
+        .set_beads_id(TaskId(task.id.sid()), Some("Arlesh-ta1".into()))
         .await
         .unwrap();
     db.goals()
-        .set_beads_id(GoalId(goal.id), Some("Arlesh-go1".into()))
+        .set_beads_id(GoalId(goal.id.sid()), Some("Arlesh-go1".into()))
         .await
         .unwrap();
     db.commitments()
-        .set_beads_id(CommitmentId(commitment.id), Some("Arlesh-co1".into()))
+        .set_beads_id(CommitmentId(commitment.id.sid()), Some("Arlesh-co1".into()))
         .await
         .unwrap();
     db.domains()
@@ -148,7 +149,12 @@ async fn linked_nodes(pool: &sqlx::SqlitePool) -> (i64, i64, i64, i64) {
         .unwrap();
     db.commit().await.unwrap();
 
-    (task.id, goal.id, commitment.id, project_id)
+    (
+        task.id.sid(),
+        goal.id.sid(),
+        commitment.id.sid(),
+        project_id,
+    )
 }
 
 // ===========================================================================
@@ -230,10 +236,10 @@ async fn clearing_a_node_that_carries_no_link_is_not_an_error() {
         task
     };
 
-    clear_beads_id(app.state(), "task".into(), task.id)
+    clear_beads_id(app.state(), "task".into(), task.id.sid())
         .await
         .expect("a second press on a stale editor reads as \"already gone\", not as a failure");
-    assert_eq!(stored_beads_id(&pool, "tasks", task.id).await, None);
+    assert_eq!(stored_beads_id(&pool, "tasks", task.id.sid()).await, None);
 }
 
 // ===========================================================================

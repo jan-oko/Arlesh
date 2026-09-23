@@ -46,9 +46,12 @@ pub async fn get_task(
 
 /// Lists every task — the Task virtual table: stored rows and every Habit occurrence.
 #[tauri::command]
-pub async fn list_tasks(factory: State<'_, SessionFactory>) -> Result<Vec<Task>, WireError> {
+pub async fn list_tasks(
+    factory: State<'_, SessionFactory>,
+    now: chrono::NaiveDateTime,
+) -> Result<Vec<Task>, WireError> {
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let load = crate::mindmap::load(&mut db, chrono::Local::now().naive_local())
+    let load = crate::mindmap::load(&mut db, now)
         .await
         .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)?;
@@ -248,9 +251,12 @@ pub async fn get_goal(factory: State<'_, SessionFactory>, id: i64) -> Result<Goa
 
 /// Lists every goal — the Goal virtual table: stored rows and every Habit occurrence.
 #[tauri::command]
-pub async fn list_goals(factory: State<'_, SessionFactory>) -> Result<Vec<Goal>, WireError> {
+pub async fn list_goals(
+    factory: State<'_, SessionFactory>,
+    now: chrono::NaiveDateTime,
+) -> Result<Vec<Goal>, WireError> {
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let load = crate::mindmap::load(&mut db, chrono::Local::now().naive_local())
+    let load = crate::mindmap::load(&mut db, now)
         .await
         .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)?;

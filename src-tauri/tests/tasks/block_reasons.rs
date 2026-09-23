@@ -9,6 +9,7 @@ use arlesh_lib::{
         model::{CreateGoalRequest, CreateTaskRequest},
     },
 };
+use helpers::StoredId;
 use tauri::Manager;
 
 async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
@@ -66,11 +67,11 @@ async fn list_all_returns_reasons_for_every_owner() {
     .unwrap();
 
     db.block_reasons()
-        .set("task", task.id, &["a".into(), "b".into()])
+        .set("task", task.id.sid(), &["a".into(), "b".into()])
         .await
         .unwrap();
     db.block_reasons()
-        .set("goal", goal.id, &["x".into()])
+        .set("goal", goal.id.sid(), &["x".into()])
         .await
         .unwrap();
 
@@ -103,15 +104,15 @@ async fn deleting_a_task_removes_its_block_reasons() {
     .await
     .unwrap();
     db.block_reasons()
-        .set("task", task.id, &["stuck".into()])
+        .set("task", task.id.sid(), &["stuck".into()])
         .await
         .unwrap();
 
-    delete_task(&mut db, task.id.into()).await.unwrap();
+    delete_task(&mut db, task.id.sid().into()).await.unwrap();
 
     assert!(db
         .block_reasons()
-        .list_for("task", task.id)
+        .list_for("task", task.id.sid())
         .await
         .unwrap()
         .is_empty());
@@ -136,7 +137,7 @@ async fn make_task(pool: &sqlx::SqlitePool, project_id: i64) -> i64 {
     .unwrap()
     .id;
     db.commit().await.unwrap();
-    id
+    id.sid()
 }
 
 /// Reads an owner's list back over the pool, after the session under test has released it.

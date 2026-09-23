@@ -11,6 +11,7 @@
 use crate::helpers;
 
 use arlesh_lib::mcp::{params, ArleshMcp};
+use helpers::StoredId;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
 use tauri::Manager;
@@ -205,13 +206,14 @@ async fn seed(app: &tauri::App<tauri::test::MockRuntime>) -> i64 {
         CreateTaskRequest {
             title: "Write".into(),
             parent_type: "goal".into(),
-            parent_id: goal.id,
+            parent_id: goal.id.sid(),
             ..Default::default()
         },
     )
     .await
     .unwrap()
     .id
+    .sid()
 }
 
 /// The reference instant the snapshot tests load at.
@@ -707,7 +709,7 @@ async fn beads_set_links_a_goal() {
     let result = mcp
         .beads(Parameters(params::BeadsOperation::Set {
             node_type: params::BeadsNode::Goal,
-            node_id: goal.id,
+            node_id: goal.id.sid(),
             beads_id: Some("Arlesh-32r".into()),
         }))
         .await
@@ -715,7 +717,7 @@ async fn beads_set_links_a_goal() {
     assert_ne!(result.is_error, Some(true));
 
     assert_eq!(
-        stored_beads_id(&pool, "goals", goal.id).await,
+        stored_beads_id(&pool, "goals", goal.id.sid()).await,
         Some("Arlesh-32r".into())
     );
 }
@@ -1219,7 +1221,7 @@ async fn beads_set_links_a_commitment_and_then_clears_it() {
     let result = mcp
         .beads(Parameters(params::BeadsOperation::Set {
             node_type: params::BeadsNode::Commitment,
-            node_id: commitment.id,
+            node_id: commitment.id.sid(),
             beads_id: Some("Arlesh-cyo".into()),
         }))
         .await
@@ -1229,19 +1231,19 @@ async fn beads_set_links_a_commitment_and_then_clears_it() {
         Some("commitment"),
     );
     assert_eq!(
-        stored_beads_id(&pool, "commitments", commitment.id).await,
+        stored_beads_id(&pool, "commitments", commitment.id.sid()).await,
         Some("Arlesh-cyo".into())
     );
 
     mcp.beads(Parameters(params::BeadsOperation::Set {
         node_type: params::BeadsNode::Commitment,
-        node_id: commitment.id,
+        node_id: commitment.id.sid(),
         beads_id: None,
     }))
     .await
     .unwrap();
     assert_eq!(
-        stored_beads_id(&pool, "commitments", commitment.id).await,
+        stored_beads_id(&pool, "commitments", commitment.id.sid()).await,
         None
     );
 }

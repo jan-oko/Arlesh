@@ -16,6 +16,7 @@ use arlesh_lib::{
     },
 };
 use chrono::NaiveDateTime;
+use helpers::StoredId;
 
 async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
     let aspect_id: i64 =
@@ -55,7 +56,7 @@ async fn task(pool: &sqlx::SqlitePool, project: i64, title: &str) -> i64 {
     .await
     .unwrap();
     db.commit().await.unwrap();
-    task.id
+    task.id.sid()
 }
 
 fn done() -> UpdateTaskRequest {

@@ -21,6 +21,7 @@ use arlesh_lib::tasks::{
         CreateGoalRequest, CreateTaskRequest, Dependency, GoalId, OnScopeExit, TaskId, TimeScope,
     },
 };
+use helpers::StoredId;
 
 /// Creates a goal under aspect 1 whose Time Scope is the single canonical scope of `kind` covering
 /// `date`, returning its id. Used to give target candidates a concrete window to contain (or not).
@@ -3148,7 +3149,7 @@ async fn convert_to_flow_builds_a_template_maps_scopes_deps_and_deletes_the_subt
             CreateTaskRequest {
                 title: "Step".into(),
                 parent_type: "goal".into(),
-                parent_id: root.id,
+                parent_id: root.id.sid(),
                 time_scope: Some(TimeScope {
                     start_id: day.id,
                     end_id: day.id,
@@ -3172,7 +3173,7 @@ async fn convert_to_flow_builds_a_template_maps_scopes_deps_and_deletes_the_subt
             CreateTaskRequest {
                 title: "Prep".into(),
                 parent_type: "goal".into(),
-                parent_id: root.id,
+                parent_id: root.id.sid(),
                 ..Default::default()
             },
         )
@@ -3185,8 +3186,12 @@ async fn convert_to_flow_builds_a_template_maps_scopes_deps_and_deletes_the_subt
     .unwrap();
     {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-        let __r =
-            add_task_dependency(&mut db, step.id.into(), Dependency::Task { id: prep.id }).await;
+        let __r = add_task_dependency(
+            &mut db,
+            step.id.sid().into(),
+            Dependency::Task { id: prep.id.sid() },
+        )
+        .await;
         if __r.is_ok() {
             db.commit().await.unwrap();
         }
@@ -3196,7 +3201,7 @@ async fn convert_to_flow_builds_a_template_maps_scopes_deps_and_deletes_the_subt
 
     let flow = {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-        let __r = convert_to_flow(&mut db, "goal", root.id, true, true).await;
+        let __r = convert_to_flow(&mut db, "goal", root.id.sid(), true, true).await;
         if __r.is_ok() {
             db.commit().await.unwrap();
         }
@@ -3268,7 +3273,7 @@ async fn convert_to_flow_builds_a_template_maps_scopes_deps_and_deletes_the_subt
         .await
         .unwrap()
         .goals()
-        .get(GoalId(root.id))
+        .get(GoalId(root.id.sid()))
         .await
         .is_err());
     assert!(helpers::session_factory(&pool)
@@ -3276,7 +3281,7 @@ async fn convert_to_flow_builds_a_template_maps_scopes_deps_and_deletes_the_subt
         .await
         .unwrap()
         .tasks()
-        .get(TaskId(step.id))
+        .get(TaskId(step.id.sid()))
         .await
         .is_err());
     assert!(helpers::session_factory(&pool)
@@ -3284,7 +3289,7 @@ async fn convert_to_flow_builds_a_template_maps_scopes_deps_and_deletes_the_subt
         .await
         .unwrap()
         .tasks()
-        .get(TaskId(prep.id))
+        .get(TaskId(prep.id.sid()))
         .await
         .is_err());
 }
@@ -3317,7 +3322,7 @@ async fn convert_to_flow_rejects_a_task_under_a_task() {
             CreateTaskRequest {
                 title: "Child".into(),
                 parent_type: "task".into(),
-                parent_id: parent.id,
+                parent_id: parent.id.sid(),
                 ..Default::default()
             },
         )
@@ -3331,7 +3336,7 @@ async fn convert_to_flow_rejects_a_task_under_a_task() {
     // A flow can't be parented under a task, so converting the child is rejected.
     assert!({
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-        let __r = convert_to_flow(&mut db, "task", child.id, true, true).await;
+        let __r = convert_to_flow(&mut db, "task", child.id.sid(), true, true).await;
         if __r.is_ok() {
             db.commit().await.unwrap();
         }
@@ -3369,7 +3374,7 @@ async fn convert_a_task_subtree_without_deps_or_scope_mapping() {
             CreateTaskRequest {
                 title: "Sub".into(),
                 parent_type: "task".into(),
-                parent_id: root.id,
+                parent_id: root.id.sid(),
                 ..Default::default()
             },
         )
@@ -3383,7 +3388,7 @@ async fn convert_a_task_subtree_without_deps_or_scope_mapping() {
 
     let flow = {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-        let __r = convert_to_flow(&mut db, "task", root.id, false, false).await;
+        let __r = convert_to_flow(&mut db, "task", root.id.sid(), false, false).await;
         if __r.is_ok() {
             db.commit().await.unwrap();
         }
@@ -3431,7 +3436,7 @@ async fn convert_a_task_subtree_without_deps_or_scope_mapping() {
         .await
         .unwrap()
         .tasks()
-        .get(TaskId(root.id))
+        .get(TaskId(root.id.sid()))
         .await
         .is_err());
 }
@@ -4840,7 +4845,7 @@ async fn a_copied_flow_keeps_a_target_that_was_chosen_deliberately() {
         .flows()
         .create(CreateFlowRequest {
             target_type: Some("goal".into()),
-            target_id: Some(target.id),
+            target_id: Some(target.id.sid()),
             ..create_req("Routine")
         })
         .await
@@ -4851,7 +4856,7 @@ async fn a_copied_flow_keeps_a_target_that_was_chosen_deliberately() {
     assert_eq!(copy.target_type.as_deref(), Some("goal"));
     assert_eq!(
         copy.target_id,
-        Some(target.id),
+        Some(target.id.sid()),
         "a target pointed somewhere on purpose stays pointed there"
     );
 }

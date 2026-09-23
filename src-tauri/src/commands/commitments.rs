@@ -49,9 +49,10 @@ pub async fn get_commitment(
 #[tauri::command]
 pub async fn list_commitments(
     factory: State<'_, SessionFactory>,
+    now: chrono::NaiveDateTime,
 ) -> Result<Vec<Commitment>, WireError> {
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let load = crate::mindmap::load(&mut db, chrono::Local::now().naive_local())
+    let load = crate::mindmap::load(&mut db, now)
         .await
         .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)?;
