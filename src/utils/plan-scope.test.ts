@@ -108,9 +108,10 @@ describe("parentRefs", () => {
       .toEqual([{ kind: "month", date: "2026-09-20" }]);
   });
 
-  it("is both months for a week at a month's edge", () => {
+  // One parent, not two: the week of 27 September is September's, as Up and M say.
+  it("is only the month of its first day for a week at a month's edge", () => {
     expect(parentRefs({ kind: "week", start_date: "2026-09-27", end_date: "2026-10-03" }))
-      .toEqual([{ kind: "month", date: "2026-09-27" }, { kind: "month", date: "2026-10-03" }]);
+      .toEqual([{ kind: "month", date: "2026-09-27" }]);
   });
 
   it("is the season a month sits in", () => {

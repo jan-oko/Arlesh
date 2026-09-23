@@ -75,13 +75,35 @@ export function referencedScopeIds(rows: readonly TaskListRow[]): number[] {
 }
 
 /**
- * A Task the first cut of the Plan View will not triage.
+ * Whether `node` is a Habit **occurrence**: one Task of one iteration, derived rather than stored.
+ * An iteration's **root** is not one — it stands for the whole iteration, and is never a card.
+ */
+export function isHabitOccurrence(node: MindmapNode): boolean {
+  return node.habitItem !== undefined && node.habitIteration === undefined;
+}
+
+/**
+ * The Plan a row is triaged by: its own, for a Task.
  *
- * Virtual rows — a Habit's occurrences and its iteration roots — have no DB row to carry a Plan,
- * so offering to plan one would be a gesture with nowhere to write. Planning a recurrence is its
- * own question and is deliberately out of scope here.
+ * For a Habit **occurrence**, its Plan if its Habit gave it one, and otherwise its **own window**.
+ * An occurrence is already scheduled — by its Habit, which placed it in this iteration — so it is
+ * never *unplanned* work waiting for a decision. Reading its window as its plan puts it where that
+ * schedule says: in the planned pane of a scope its window sits inside, as load the pass has to
+ * see, and among the candidates only as work committed to the parent scope. It never lands in the
+ * unplanned half, the one that invites a plan. Planning one is not possible until occurrences are
+ * stored rows, and a move that tries says so (see `use-plan-move`).
+ */
+export function triagePlanOf(node: MindmapNode): TimeScope | null {
+  if (isHabitOccurrence(node)) return node.plan ?? node.timeScope ?? null;
+  return node.plan ?? null;
+}
+
+/**
+ * A row the Plan View does not triage: a virtual row that is not a Habit occurrence — an
+ * iteration root, which stands for the whole iteration rather than for work.
  */
 function isTriageable(node: MindmapNode): boolean {
+  if (isHabitOccurrence(node)) return true;
   return node.virtual !== true && node.habitItem === undefined;
 }
 
@@ -108,7 +130,7 @@ export interface PlanPanes {
 
 /**
  * Splits the rows into the heaps for `target`, whose parent scopes are `parentIds` — none for a
- * Season, two for a week at a month's edge, one everywhere else.
+ * Season, one everywhere else — for a week at a month's edge, the month holding its first day.
  *
  * **Unplanned** is the work that is relevant *now*: a Task with no Plan at all whose effective Time
  * Scope overlaps the scope. An **Unscoped** task is always relevant and so is always here — the
@@ -138,7 +160,7 @@ export function partitionForScope(
   const parentPlanned: TaskListRow[] = [];
   for (const row of rows) {
     if (!isTriageable(row.node)) continue;
-    const plan = row.node.plan;
+    const plan = triagePlanOf(row.node);
     if (plan != null) {
       if (plan.start_id === plan.end_id && parentIds.has(plan.start_id)) {
         parentPlanned.push(row);

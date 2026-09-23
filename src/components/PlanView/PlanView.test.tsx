@@ -660,6 +660,51 @@ describe("splitting the planned pane by subscope", () => {
   });
 });
 
+describe("a Habit occurrence", () => {
+  // Built by hand rather than through `n`: an occurrence has no stored row, so no row id.
+  function occurrence(extra: Partial<MindmapNode>): MindmapNode {
+    return {
+      id: "habititem-flow_task-1-0-0-virtual", kind: "task", title: "stretch", position: 0, tagIds: [], children: [],
+      virtual: true, habitItem: { flowId: 1, itemType: "flow_task", itemId: 1, scopeId: WEEK_ID, cycleId: 0 },
+      ...extra,
+    };
+  }
+
+  it("shows in the planned pane where its window sits inside the scope", async () => {
+    mockRows([row(occurrence({ timeScope: { start_id: DAY_ID, end_id: DAY_ID } }))]);
+    await renderPlanView();
+    expect(cardsIn("planned")).toEqual(["habititem-flow_task-1-0-0-virtual"]);
+  });
+
+  it("says it cannot be planned yet rather than moving nothing in silence", async () => {
+    mockRows([row(occurrence({ timeScope: { start_id: DAY_ID, end_id: DAY_ID } }))]);
+    await renderPlanView();
+
+    await act(async () => { fireEvent.click(screen.getByLabelText("unplan")); });
+    await settle();
+    expect(updateTask).not.toHaveBeenCalled();
+    expect(screen.getByText("planView:occurrenceNotYet")).toBeInTheDocument();
+  });
+
+  // A batch with an occurrence in it plans the rest, and still names the one it left.
+  it("plans the rest of a batch and says the occurrence was left where it was", async () => {
+    mockRows([
+      row(occurrence({ timeScope: { start_id: MONTH_ID, end_id: MONTH_ID } })),
+      row(n("task-1", "task", { timeScope: { start_id: WEEK_ID, end_id: WEEK_ID } })),
+    ]);
+    await renderPlanView();
+    expect(cardsIn("candidates")).toEqual(["habititem-flow_task-1-0-0-virtual", "task-1"]);
+
+    fireEvent.keyDown(window, { code: "ArrowDown" });
+    fireEvent.keyDown(window, { code: "ArrowDown", shiftKey: true });
+    await act(async () => { fireEvent.keyDown(window, { code: "Enter" }); });
+    await settle();
+    expect(updateTask).toHaveBeenCalledTimes(1);
+    expect(updateTask).toHaveBeenCalledWith(1, { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
+    expect(screen.getByText("planView:occurrenceNotYet")).toBeInTheDocument();
+  });
+});
+
 describe("selecting more than one row", () => {
   const relevant = { start_id: WEEK_ID, end_id: WEEK_ID };
 

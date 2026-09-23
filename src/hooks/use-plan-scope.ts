@@ -120,10 +120,8 @@ export function usePlanScope(now: Date = new Date()): PlanScopeHandles {
     setCursor((current) => cursorFromRef(ref, current.part) ?? current);
   }, []);
 
-  // Up goes to the **first** parent `parentRefs` names. That is the only one everywhere but a week
-  // at a month's edge, where it is the month holding the week's first day — the natural reading of
-  // "the week's month". The candidates pane still counts both months as the week's parent: that
-  // asks what was committed above this week, and this asks where to stand, which is one place.
+  // Up goes to the parent `parentRefs` names — for a week at a month's edge, the month holding its
+  // first day. The candidates pane reads the same parent, so Up and "planned to the parent" agree.
   const up = useMemo(() => {
     const parent = scope === null ? undefined : parentRefs(scope)[0];
     return parent === undefined ? null : cursorFromRef(parent, cursor.part);

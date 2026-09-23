@@ -29,10 +29,10 @@ describe("usePlanParents", () => {
     await waitFor(() => expect([...result.current.ids]).toEqual([30]));
   });
 
-  it("materializes both months of a week at a month's edge", async () => {
+  it("materializes only the month of the first day for a week at a month's edge", async () => {
     const week = scope("week", "2026-09-27", 11, "2026-10-03");
     const { result } = renderHook(() => usePlanParents(week));
-    await waitFor(() => expect([...result.current.ids].sort()).toEqual([30, 31]));
+    await waitFor(() => expect([...result.current.ids]).toEqual([30]));
   });
 
   it("has no parent for a Season, and asks the backend for none", () => {

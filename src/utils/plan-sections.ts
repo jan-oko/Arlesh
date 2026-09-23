@@ -13,6 +13,7 @@ import type { TaskListRow } from "@/utils/list-filter";
 import type { ScopeRef } from "@/utils/scope-ref";
 import type { ScopeCell, ViewKind } from "@/utils/scope-calendar";
 import { cellsForView, descendKind } from "@/utils/scope-calendar";
+import { triagePlanOf } from "@/utils/plan-triage";
 
 /** One drawn bucket of the planned pane. */
 export interface PlanSection {
@@ -158,7 +159,7 @@ export function buildPlanSections(
 
   const unplaced: TaskListRow[] = [];
   for (const row of planned) {
-    const plan = row.node.plan;
+    const plan = triagePlanOf(row.node);
     const start = plan == null ? undefined : scopes.get(plan.start_id);
     const end = plan == null ? undefined : scopes.get(plan.end_id);
     const index = start === undefined || end === undefined
