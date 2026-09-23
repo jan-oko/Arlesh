@@ -116,6 +116,20 @@ export function clampPage(page: number, childCount: number, pageSize: number): n
   return Math.min(page, last);
 }
 
+/**
+ * The page a Step shows: **the one holding the selected card**, or the page you turned to when
+ * nothing on the Step is selected.
+ *
+ * Following the selection is what puts a card you just created on screen when the Step has more
+ * pages than one — a new card is appended, so it usually lands on the last — and what takes you
+ * back a page when a delete empties the one you were on, since the selection moves to the card
+ * before. Turning a page moves the selection to that page's first card, so the two never disagree.
+ */
+export function shownPage(page: number, selectedIndex: number, childCount: number, pageSize: number): number {
+  if (selectedIndex < 0 || pageSize <= 0) return clampPage(page, childCount, pageSize);
+  return Math.floor(selectedIndex / pageSize);
+}
+
 /** The children drawn on `page`. */
 export function pageSlice<T>(children: readonly T[], page: number, pageSize: number): readonly T[] {
   if (pageSize <= 0) return [];

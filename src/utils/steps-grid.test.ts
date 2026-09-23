@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  shownPage,
   CARD_GAP, DEFAULT_STEPS_ZOOM, HEADER_CURSOR, cardSizeForZoom, childCursor, clampPage, isStepsZoom,
   moveCursor, pageCount, pageSlice, resolveGrid, stepGrid,
 } from "./steps-grid";
@@ -79,6 +80,24 @@ describe("pages", () => {
     const children = [0, 1, 2, 3, 4, 5, 6];
     expect(pageSlice(children, 0, 3)).toEqual([0, 1, 2]);
     expect(pageSlice(children, 2, 3)).toEqual([6]);
+  });
+});
+
+describe("the page a Step shows", () => {
+  it("is the one holding the selected card", () => {
+    // 10 cards, 4 to a page: card 9 is on the third page, whatever page was last turned to.
+    expect(shownPage(0, 9, 10, 4)).toBe(2);
+    expect(shownPage(2, 1, 10, 4)).toBe(0);
+  });
+
+  it("is the page turned to when nothing on the Step is selected, kept in range", () => {
+    expect(shownPage(1, -1, 10, 4)).toBe(1);
+    expect(shownPage(5, -1, 10, 4)).toBe(2);
+  });
+
+  it("goes back a page when a delete empties the last one, because the selection moves back", () => {
+    // Card 8 alone on page 2 is deleted; the selection lands on card 7, the new last card.
+    expect(shownPage(2, 7, 8, 4)).toBe(1);
   });
 });
 

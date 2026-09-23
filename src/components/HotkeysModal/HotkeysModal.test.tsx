@@ -80,13 +80,20 @@ describe("HotkeysModal — typed-child chords", () => {
     ["Shift+F", "hotkeys:createFlowChild"],
   ];
 
-  it("lists all six Shift+initial chords, each on its own labelled row", () => {
-    render(<HotkeysModal onClose={vi.fn()} />);
-    for (const [chord, label] of CHORDS) {
-      const kbd = screen.getByText(chord);
-      const row = kbd.closest("div");
-      expect(row).not.toBeNull();
-      expect(row?.textContent).toContain(label);
-    }
-  });
+  // Scoped per section: the Steps View takes the same chords, so each appears once per view.
+  it.each(["hotkeys:sectionMindmap", "hotkeys:sectionStepsView"])(
+    "lists all six Shift+initial chords under %s, each on its own labelled row",
+    (sectionLabel) => {
+      render(<HotkeysModal onClose={vi.fn()} />);
+      const section = screen.getByText(sectionLabel).closest("section");
+      expect(section).not.toBeNull();
+      if (section === null) return;
+      for (const [chord, label] of CHORDS) {
+        const kbd = within(section).getByText(chord);
+        const row = kbd.closest("div");
+        expect(row).not.toBeNull();
+        expect(row?.textContent).toContain(label);
+      }
+    },
+  );
 });

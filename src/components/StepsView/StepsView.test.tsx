@@ -31,6 +31,12 @@ vi.mock("@/components/MindmapView/use-node-editor", () => ({
 }));
 
 const updateTask = vi.fn((_id: number, _request: unknown) => Promise.resolve());
+
+const undo = vi.fn(() => Promise.resolve(null));
+vi.mock("@/api/gesture", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/gesture")>()),
+  undo: () => undo(),
+}));
 vi.mock("@/api/tasks", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/tasks")>()),
   updateTask: (id: number, request: unknown) => updateTask(id, request),
@@ -43,6 +49,9 @@ function n(id: string, kind: NodeKind, extra: Partial<MindmapNode> = {}): Mindma
 const reload = vi.fn(() => Promise.resolve());
 const createChild = vi.fn((_parentId: string, _parentKind: NodeKind, _title: string) =>
   Promise.resolve(n("task-99", "task")));
+const createNode = vi.fn((_parentId: string, _parentKind: NodeKind, childKind: NodeKind, _title: string) =>
+  Promise.resolve(n(`${childKind}-98`, childKind)));
+const removeNode = vi.fn((_nodes: Array<{ id: string; kind: NodeKind }>) => Promise.resolve());
 
 function mockTree(children: MindmapNode[]): void {
   vi.mocked(useMindmapData).mockReturnValue({
@@ -51,14 +60,14 @@ function mockTree(children: MindmapNode[]): void {
     error: null,
     loadCondition: { failedFlows: [], unrenderableCommitmentFlows: [] },
     reload,
-    createNode: vi.fn(),
+    createNode,
     createChild,
     renameNode: vi.fn(),
     retypeNode: vi.fn(),
     reorderNode: vi.fn(),
     moveNode: vi.fn(),
     duplicateNode: vi.fn(),
-    removeNode: vi.fn(),
+    removeNode,
     createCommitment: vi.fn(),
     createFlow: vi.fn(),
     updateFlow: vi.fn(),
@@ -393,5 +402,204 @@ describe("an empty Step", () => {
 
     expect(screen.getByText("stepsView:emptyStepFiltered")).toBeTruthy();
     expect(screen.queryByText("stepsView:createFirstChild")).toBeNull();
+  });
+});
+
+function pressWith(code: string, modifiers: { shift?: boolean; ctrl?: boolean }): void {
+  act(() => { fireEvent.keyDown(window, { code, shiftKey: modifiers.shift ?? false, ctrlKey: modifiers.ctrl ?? false }); });
+}
+
+/** Lets the shared action's create/delete promise settle, and re-renders on what it set. */
+async function settle(): Promise<void> {
+  await act(async () => { await Promise.resolve(); });
+}
+
+/** Selects the first card below the header. */
+function selectFirstCard(): void {
+  press("ArrowDown");
+}
+
+describe("creating from a Step", () => {
+  it("puts a sibling of the selected card on this Step, selected and open for naming", async () => {
+    const goal = n("goal-1", "goal", { children: [n("task-1", "task"), n("task-2", "task")] });
+    mockTree([goal]);
+    useMindmapStore.setState({ subtreeRootId: "goal-1" });
+    const { rerender } = render(<StepsView />);
+
+    selectFirstCard();
+    pressWith("Enter", { shift: true });
+    await settle();
+
+    // The Mindmap's own sibling action: a node of the same kind, under the Step, carrying the
+    // source's own Agentic answer ("inherit" when it gave none).
+    expect(createNode).toHaveBeenCalledWith("goal-1", "goal", "task", "", "inherit");
+    // The reload is simulated by the tree now holding the new card.
+    mockTree([{ ...goal, children: [...goal.children, n("task-98", "task")] }]);
+    rerender(<StepsView />);
+    expect(selectedCardId()).toBe("task-98");
+    expect(screen.getByLabelText("stepsView:titleLabel")).toBeTruthy();
+  });
+
+  it("makes a child of the header card a card on this Step, without moving", async () => {
+    mockTree([n("goal-1", "goal", { children: [n("task-1", "task")] })]);
+    useMindmapStore.setState({ subtreeRootId: "goal-1" });
+    render(<StepsView />);
+
+    press("ArrowUp"); // onto the header
+    press("ArrowDown");
+    press("ArrowUp");
+    press("Tab");
+    await settle();
+
+    expect(createChild).toHaveBeenCalledWith("goal-1", "goal", "");
+    expect(useMindmapStore.getState().subtreeRootId).toBe("goal-1");
+  });
+
+  it("steps into a card when the new node is its child, as the Mindmap puts it under that card", async () => {
+    mockTree([n("goal-1", "goal", { children: [n("task-1", "task")] })]);
+    useMindmapStore.setState({ subtreeRootId: "goal-1" });
+    render(<StepsView />);
+
+    selectFirstCard();
+    press("Tab");
+    await settle();
+
+    expect(createChild).toHaveBeenCalledWith("task-1", "task", "");
+    expect(useMindmapStore.getState().subtreeRootId).toBe("task-1");
+  });
+
+  it("does not step in when the create is refused, and says why", async () => {
+    // A Tag holds notes and nothing else, so Tab (which would create its default child) is refused.
+    mockTree([n("domain-1", "domain", { children: [n("domain-2", "tag")] })]);
+    useMindmapStore.setState({ subtreeRootId: "domain-1" });
+    render(<StepsView />);
+
+    selectFirstCard();
+    press("Tab");
+    await settle();
+
+    expect(createChild).not.toHaveBeenCalled();
+    expect(useMindmapStore.getState().subtreeRootId).toBe("domain-1");
+    expect(useMindmapStore.getState().pendingToast?.message).toBe("warnings:createUnderTagRefused");
+  });
+
+  it("refuses a sibling of the Step itself, which would land outside it", () => {
+    mockTree([n("goal-1", "goal", { children: [n("task-1", "task")] })]);
+    useMindmapStore.setState({ subtreeRootId: "goal-1" });
+    render(<StepsView />);
+
+    selectFirstCard();
+    press("ArrowUp");
+    pressWith("Enter", { shift: true });
+
+    expect(createNode).not.toHaveBeenCalled();
+    expect(useMindmapStore.getState().pendingToast?.message).toBe("stepsView:refusedSiblingOfStep");
+  });
+
+  it("refuses every create on the board's own card, out loud", () => {
+    mockTree([n("domain-1", "aspect")]);
+    render(<StepsView />);
+
+    selectFirstCard();
+    press("ArrowUp"); // the board
+    press("Tab");
+
+    expect(createChild).not.toHaveBeenCalled();
+    expect(useMindmapStore.getState().pendingToast?.message).toBe("stepsView:refusedBoardRoot");
+  });
+});
+
+describe("deleting from a Step", () => {
+  it("asks first, deletes the card's subtree, and lands on the next card", async () => {
+    const goal = n("goal-1", "goal", {
+      children: [n("task-1", "task", { children: [n("task-3", "task")] }), n("task-2", "task")],
+    });
+    mockTree([goal]);
+    useMindmapStore.setState({ subtreeRootId: "goal-1" });
+    render(<StepsView />);
+
+    selectFirstCard();
+    press("Delete");
+    expect(removeNode).not.toHaveBeenCalled();
+
+    await act(async () => { fireEvent.click(screen.getByText("warnings:deleteConfirm")); });
+
+    expect(removeNode).toHaveBeenCalledWith([
+      { id: "task-3", kind: "task" }, { id: "task-1", kind: "task" },
+    ]);
+    expect(selectedCardId()).toBe("task-2");
+  });
+
+  it("lands on the card before when the last one goes", async () => {
+    mockTree([n("goal-1", "goal", { children: [n("task-1", "task"), n("task-2", "task")] })]);
+    useMindmapStore.setState({ subtreeRootId: "goal-1" });
+    render(<StepsView />);
+
+    selectFirstCard();
+    press("ArrowRight");
+    press("Delete");
+    await act(async () => { fireEvent.click(screen.getByText("warnings:deleteConfirm")); });
+
+    expect(selectedCardId()).toBe("task-1");
+  });
+
+  it("refuses the Step you are standing on", () => {
+    mockTree([n("goal-1", "goal", { children: [n("task-1", "task")] })]);
+    useMindmapStore.setState({ subtreeRootId: "goal-1" });
+    render(<StepsView />);
+
+    selectFirstCard();
+    press("ArrowUp");
+    press("Delete");
+
+    expect(screen.queryByText("warnings:deleteConfirm")).toBeNull();
+    expect(useMindmapStore.getState().pendingToast?.message).toBe("stepsView:refusedDeleteStep");
+  });
+
+  it("refuses an Aspect, as the Mindmap does", () => {
+    mockTree([n("domain-1", "aspect")]);
+    render(<StepsView />);
+    selectFirstCard();
+    press("Delete");
+    expect(useMindmapStore.getState().pendingToast?.message).toBe("warnings:deleteAspectRefused");
+  });
+
+  it("refuses a Habit repetition, which is drawn rather than stored, as the Mindmap does", () => {
+    mockTree([n("goal-1", "goal", { children: [n("task-5", "task", { virtual: true })] })]);
+    useMindmapStore.setState({ subtreeRootId: "goal-1" });
+    render(<StepsView />);
+    selectFirstCard();
+    press("Delete");
+    expect(screen.queryByText("warnings:deleteConfirm")).toBeNull();
+    expect(useMindmapStore.getState().pendingToast?.message).toBe("warnings:deleteRepetitionRefused");
+  });
+
+  it("refuses the board's own card", () => {
+    mockTree([n("domain-1", "aspect")]);
+    render(<StepsView />);
+    selectFirstCard();
+    press("ArrowUp");
+    press("Delete");
+    expect(useMindmapStore.getState().pendingToast?.message).toBe("stepsView:refusedBoardRoot");
+  });
+});
+
+describe("undoing from a Step", () => {
+  it("takes a create back with one Ctrl+Z", async () => {
+    mockTree([n("goal-1", "goal", { children: [n("task-1", "task")] })]);
+    useMindmapStore.setState({ subtreeRootId: "goal-1" });
+    const { rerender } = render(<StepsView />);
+
+    selectFirstCard();
+    pressWith("Enter", { shift: true });
+    await settle();
+    mockTree([n("goal-1", "goal", { children: [n("task-1", "task"), n("task-98", "task")] })]);
+    rerender(<StepsView />);
+    // The new card's title is open; leaving it closes the rename without a write.
+    act(() => { fireEvent.keyDown(screen.getByLabelText("stepsView:titleLabel"), { key: "Escape" }); });
+    pressWith("KeyZ", { ctrl: true });
+    await settle();
+
+    expect(undo).toHaveBeenCalledTimes(1);
   });
 });

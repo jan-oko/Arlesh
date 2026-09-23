@@ -22,5 +22,12 @@
   legible on every aspect in both themes, the pale ones and an Aspect's own card included. What
   state a card is in is left to its icon and its badges.
 
+  Cards are created and deleted with the Mindmap's keys and rules: `Shift+Enter` puts a new card
+  beside the selected one, `Ctrl+Enter` a new parent around it, and `Tab` (or `Shift` and a kind's
+  initial) makes a child of the selected card and steps into it to show it. A new card is selected
+  with its title open for naming. `Delete` asks first, then lands on the next card. The Step you
+  are standing on cannot be deleted or given a sibling from inside it, and says so. `Ctrl+Z` takes
+  back either in one press.
+
   A wide Step turns to pages rather than scrolling, with `PageUp` and `PageDown` for the landings,
   and a card-size setting per tab in the gear menu.

@@ -86,7 +86,7 @@ than an empty form, or a strapline explaining what the absence of one means, it 
 stops. A child count there would be the one number on the board nobody decides anything from.
 
 The *behaviour* is the same as on any header card: every gesture that would act on a node is refused
-there out loud (`E`, `Space`, `B`/`A`/`W`, `Enter`), because a *selected* card that answers nothing
+there out loud (`E`, `Space`, `B`/`A`/`W`, `Enter`, every create and `Delete`), because a *selected* card that answers nothing
 in silence reads as a broken key. Bare `F` still shows the board alone only when nothing at all is
 selected, which is why "the board is selected" and "nothing is selected" are two states rather than
 one.
@@ -224,9 +224,9 @@ View still do.
 
 ## Editing
 
-**Cards are read-only.** `E` opens the real editor, exactly as elsewhere — one editing surface, not
-two, and inspecting and descending stay different gestures. Status cycling and the flag keys still
-act on the selected card, as they do on a Mindmap node.
+**Cards are read-only**, apart from naming a card just created. `E` opens the real editor, exactly
+as elsewhere — one editing surface, not two, and inspecting and descending stay different gestures.
+Status cycling and the flag keys still act on the selected card, as they do on a Mindmap node.
 
 Because a Steps card is any kind at all, the editor fan-out every view used to carry its own copy of
 is now one shared component: the List View and the Plan View could get away with two kinds each
@@ -240,8 +240,45 @@ fact is how this view shipped a card that set the editor open, drew no modal, an
 captured with nothing on screen to release it.
 
 An **empty Step offers to create the first child**, which arrives through the parent's own default
-child kind and opens straight into its editor to be named. Creation gestures beyond that — `Tab`,
-`Shift+Enter` — are not in the first cut.
+child kind and opens straight into its editor to be named.
+
+### Creating and deleting
+
+**The Mindmap's chords, through the Mindmap's actions.** `Tab`, `Shift+Enter`, `Ctrl+Enter`, the
+seven `Shift`+initial chords and `Delete` are bound here and hand the selected card to
+`useNodeActions`, the same hook the Mindmap calls. So the type rules, the parent rules, every
+refusal (an Aspect, a Habit repetition, a Tag's default child, a kind the parent cannot hold) and
+the undo Gestures come with them rather than being restated; one `Ctrl+Z` takes back a create or a
+delete made here. `Shift+F` and `Shift+C` open the blank Flow and Commitment editors, shared with the
+Mindmap through `useCreateEditors`, because those two kinds are configured before they exist.
+
+**Where the new node goes is the Mindmap's answer, and Steps only decides what you see.**
+
+| Selected | `Shift+Enter` (sibling) | `Ctrl+Enter` (insert parent) | `Tab`, `Shift`+initial (child) |
+|---|---|---|---|
+| A card | A card beside it, on this Step | A card on this Step, with the selected card moved inside it | A child of the card — so the view **steps into that card** to show it |
+| The header card | Refused: it would land outside this Step | Refused: likewise | A card on this Step |
+| The board's own card | Refused, as every gesture is there | Refused | Refused |
+
+Stepping in on a child is the Mindmap reading taken literally — `Tab` makes a child of what is
+selected — with the one move that puts the result on screen. It happens only once the create has
+succeeded, so a refused create leaves you where you were. A new card is **selected with its title
+open for naming**, as on the other views: `Enter` or leaving the field keeps the name, `Escape`
+leaves the card untitled, as on the Mindmap. A Flow or Commitment made through its editor is not
+selected afterwards, which is also the Mindmap's behaviour.
+
+**Delete** acts on the selected card after the confirmation the other views raise, taking the card's
+subtree with it. The selection then lands on the **next card, or the one before** when the last
+went — the List View's rule, from the same helper. The Step you are standing on is refused (climb
+out first), and so is the board.
+
+**The page follows the selection.** The page shown is the one holding the selected card; with
+nothing on the Step selected, it is the page you turned to. That is what puts a new card — appended,
+so usually on the last page — on screen, and what goes back a page when a delete empties the one you
+were on.
+
+With **nothing selected** every one of these chords does nothing, as on the Mindmap: there is no
+card for them to be aimed at.
 
 ## Filtering
 
@@ -280,6 +317,8 @@ Three movements, three gestures. An arrow key never leaves the page.
 - `Space` — cycle the selected card's status. Not `Enter`, which descends here; `Space` is bound
   nowhere else and reads as a toggle rather than a move
 - `E` — open the selected card's editor
+- `Tab`, `Shift+Enter`, `Ctrl+Enter`, `Shift+D`/`P`/`G`/`T`/`C`/`I`/`F` — create, as above
+- `Delete` — delete the selected card, after confirming
 - `B` / `A` / `W` — backlog, agentic, asynchronous, the same bare letters the other views bind
 - `Escape` — deselect; `F` with nothing selected — the board alone
 - `Ctrl+=` / `Ctrl+-` — card size
@@ -295,7 +334,8 @@ a fourth view cost one binding.
 ## What this view does not do
 
 - **Drag and drop between Steps**, and **multi-selection**.
-- **Editing in a card.** `E` is the one editing surface.
+- **Editing in a card**, beyond naming one just created. `E` is the one editing surface.
+- **Pasting, and moving cards between Steps.**
 - **A free-text description on kinds that have none**, as above.
 - **Folding passed Habit iterations**, as above.
 

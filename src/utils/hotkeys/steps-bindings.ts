@@ -1,5 +1,7 @@
 import type { Binding } from "./chord";
 import type { StepsSelectionContext, StepsTarget } from "./steps/selection";
+import { STEPS_CREATE_BINDINGS, type StepsCreateContext } from "./steps/create";
+import { STEPS_DELETE_BINDINGS, type StepsDeleteContext } from "./steps/delete";
 import { STEPS_DESCEND_BINDINGS, type StepsDescendContext } from "./steps/descend";
 import { STEPS_DESELECT_BINDINGS, type StepsDeselectContext } from "./steps/deselect";
 import { STEPS_EDITOR_BINDINGS, type StepsEditorContext } from "./steps/editor";
@@ -22,6 +24,8 @@ export type { StepsSelectionContext, StepsTarget };
  * below, not an edit inside an interface every other feature in flight is also editing.
  */
 export interface StepsContext extends
+  StepsCreateContext,
+  StepsDeleteContext,
   StepsDescendContext,
   StepsDeselectContext,
   StepsEditorContext,
@@ -56,6 +60,8 @@ export const STEPS_BINDINGS: readonly Binding<StepsContext>[] = [
   ...STEPS_STATUS_BINDINGS,
   ...STEPS_FLAGS_BINDINGS,
   ...STEPS_EDITOR_BINDINGS,
+  ...STEPS_CREATE_BINDINGS,
+  ...STEPS_DELETE_BINDINGS,
   ...STEPS_DESELECT_BINDINGS,
   ...STEPS_HISTORY_BINDINGS,
 ];

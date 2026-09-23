@@ -77,6 +77,20 @@
   white-space: nowrap;
 }
 
+.titleInput {
+  min-width: 0;
+  flex: 1 1 auto;
+  padding: 0 4px;
+  border: 1px solid var(--node-border-selected);
+  border-radius: 4px;
+  background: var(--node-bg);
+  color: var(--node-text);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: 600;
+  outline: none;
+}
+
 .kind {
   color: var(--card-text-muted);
   font-size: var(--text-sm);

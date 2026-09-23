@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode } from "@/utils/tree-layout";
@@ -8,6 +9,7 @@ import {
   bulletCapacity, glyphNamesKind, infoBullets, infoChildTitles, stepCardFields, type StepChildCounts,
 } from "@/utils/steps-card";
 import { isRtlText } from "@/utils/text-direction";
+import { useInputCapture } from "@/hooks/use-input-capture";
 import AspectIcon from "@/components/NodeIcon/AspectIcon";
 import NodeIcon from "@/components/NodeIcon/NodeIcon";
 import TaskRowBadges from "@/components/ListView/TaskRowBadges";
@@ -32,6 +34,10 @@ interface Props {
   onSelect: () => void;
   onDescend: () => void;
   onOpenEditor: () => void;
+  /** Whether the title is open for naming — a card just created, as on the other views. */
+  isEditingTitle: boolean;
+  onCommitTitle: (title: string) => void;
+  onCancelTitleEdit: () => void;
 }
 
 /**
@@ -59,8 +65,17 @@ interface Props {
  */
 export default function StepCard({
   node, aspectColor, cardHeight, isHeader, isSelected, counts, onSelect, onDescend, onOpenEditor,
+  isEditingTitle, onCommitTitle, onCancelTitleEdit,
 }: Props) {
   const { t } = useTranslation(["stepsView", "nodeKinds"]);
+  // The title input holds the keyboard while it is open, as the List View's and the Mindmap's do.
+  useInputCapture(isEditingTitle);
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!isEditingTitle) return;
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, [isEditingTitle]);
 
   const className = [
     styles.card,
@@ -118,7 +133,24 @@ export default function StepCard({
             )}
           </svg>
         </span>
-        <span className={styles.title} dir={isRtlText(node.title) ? "rtl" : "ltr"}>{node.title}</span>
+        {isEditingTitle ? (
+          <input
+            ref={inputRef}
+            type="text"
+            className={styles.titleInput}
+            defaultValue={node.title}
+            aria-label={t("stepsView:titleLabel")}
+            onClick={(event) => event.stopPropagation()}
+            onDoubleClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") { event.preventDefault(); onCommitTitle(event.currentTarget.value); }
+              if (event.key === "Escape") { event.stopPropagation(); onCancelTitleEdit(); }
+            }}
+            onBlur={(event) => onCommitTitle(event.currentTarget.value)}
+          />
+        ) : (
+          <span className={styles.title} dir={isRtlText(node.title) ? "rtl" : "ltr"}>{node.title}</span>
+        )}
       </span>
 
       {/* The kind in words only where the glyph does not already say it. */}
