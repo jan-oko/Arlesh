@@ -222,13 +222,14 @@ async fn the_wait_exists_while_the_task_is_done_and_holds_up_nothing() {
     let windows = derive_wait_windows(&mut db).await.unwrap();
     let view = &windows.spawned_waits[0];
     assert!(view.time_scope.is_some() && view.next_check.is_some());
+    // The test pool holds one connection: give it back before reading the pool directly.
+    drop(db);
     // Nothing is stored for it until the wait itself is changed.
     let overlays: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM spawned_waits")
         .fetch_one(&pool)
         .await
         .unwrap();
     assert_eq!(overlays, 0);
-    drop(db);
 
     // Reopened, the wait is simply not derived any more.
     update(&pool, sender, reopened()).await;
