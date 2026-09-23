@@ -37,7 +37,7 @@ The knowledge base is externally managed (Obsidian). Arlesh manages specific not
 |-------------|-------------------------------------------------|
 | Season      | Three-month period (Autumn: Sep–Nov, Winter: Dec–Feb, Spring: Mar–May, Summer: Jun–Aug) |
 | Month       | Calendar month                                  |
-| Week        | Sunday–Saturday, custom numbering from the week holding 1 January (week 1) — so a year runs to week 53, or 54 when a leap year starts on a Saturday (not ISO 8601) |
+| Week        | Sunday–Saturday, custom numbering from the week holding 1 January (week 1) — so a year runs to week 53, or 54 when a leap year starts on a Saturday (not ISO 8601); never split at New Year — see [*The week across New Year*](time-scopes.md) |
 | Day         | Single date; corresponds to an Obsidian note at `{yyyy}/{mm MMMM}/{yyyy-mm-dd}.md` |
 | Part of Day | Sub-day band: Morning (06–12), Noon (12–15), Afternoon (15–18), Evening (18–22), Night (22–02), Premorning (02–06). Start inclusive, end exclusive. |
 

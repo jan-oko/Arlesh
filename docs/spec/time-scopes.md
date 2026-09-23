@@ -15,6 +15,12 @@ Two consequences worth stating plainly:
 - **"Today" at 00:30 is the previous calendar date.** The Day that is still running began yesterday, so that is the Day scope an item is planned into, the cell the Scope Picker outlines, and the date a new Recurrence starts on by default.
 - **Nothing is stored differently.** A canonical scope row stores its inclusive `start_date`/`end_date` as dates and derives its interval on read; only an Exact scope stores datetimes. Every existing row keeps its date and simply resolves to a window shifted two hours later — no migration, no backfill.
 
+## The week across New Year
+
+**A Week runs Sunday to Saturday and is never split.** A week that spans 31 December to 1 January is one scope, part in each year.
+
+Its **label** is `Week N YYYY`, where N is `week_number()` (`src-tauri/src/scopes/mod.rs`) of the **date that created the row**: 1-based Sunday-to-Saturday weeks counted from 1 January of that date's year, so a year runs to week 53, or 54 when a leap year starts on a Saturday. A week that spans New Year therefore reads **"Week 53 YYYY" or "Week 1 YYYY+1"**, depending on which of its days was touched first. That dependence is known and deliberate for now; re-examining it is `Arlesh-8zf`.
+
 ## Time Scope (relevance)
 
 Every Task and Goal has an optional **Time Scope** — the window during which it is relevant. It takes one of two forms:
