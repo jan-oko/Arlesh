@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { isNodeBlocked } from "@/utils/tree-layout";
+import { kindHasGlyph } from "@/utils/node-meta";
 import { deriveStatusIndicators } from "@/utils/node-status-indicators";
 import { DIMMED_OPACITY, aspectWashStyle } from "@/utils/node-visuals";
 import {
@@ -101,16 +102,20 @@ export default function StepCard({
       onDoubleClick={onDescend}
     >
       <span className={styles.top}>
-        <span className={styles.glyph} aria-hidden="true">
-          <svg width={ICON_R * 2} height={ICON_R * 2} viewBox={`0 0 ${ICON_R * 2} ${ICON_R * 2}`}>
-            <NodeIcon
-              kind={node.kind} status={node.status} verdict={node.verdict}
-              isArchived={node.archived === true} isBlocked={isNodeBlocked(node)}
-              isHabit={node.flow?.isHabit === true}
-              cx={ICON_R} cy={ICON_R} r={ICON_R * 0.9} color="var(--node-text)" opacity={1}
-            />
-          </svg>
-        </span>
+        {/* An Aspect has no glyph, so it gets no glyph slot either: an empty 18px box would push its
+            title in off the card's edge for nothing. */}
+        {kindHasGlyph(node.kind) && (
+          <span className={styles.glyph} aria-hidden="true">
+            <svg width={ICON_R * 2} height={ICON_R * 2} viewBox={`0 0 ${ICON_R * 2} ${ICON_R * 2}`}>
+              <NodeIcon
+                kind={node.kind} status={node.status} verdict={node.verdict}
+                isArchived={node.archived === true} isBlocked={isNodeBlocked(node)}
+                isHabit={node.flow?.isHabit === true}
+                cx={ICON_R} cy={ICON_R} r={ICON_R * 0.9} color="var(--node-text)" opacity={1}
+              />
+            </svg>
+          </span>
+        )}
         <span className={styles.title} dir={isRtlText(node.title) ? "rtl" : "ltr"}>{node.title}</span>
       </span>
 

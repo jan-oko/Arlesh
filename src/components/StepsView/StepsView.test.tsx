@@ -308,6 +308,18 @@ describe("a card's colour", () => {
   });
 });
 
+describe("a card's glyph", () => {
+  it("leaves no empty glyph slot on an Aspect, which has no glyph", () => {
+    mockTree([n("domain-1", "aspect", { color: "#e74c3c" }), n("domain-2", "domain")]);
+    render(<StepsView />);
+
+    const aspect = document.querySelector('[data-step-card="domain-1"]');
+    const domain = document.querySelector('[data-step-card="domain-2"]');
+    expect(aspect?.querySelector("svg")).toBeNull();
+    expect(domain?.querySelector("svg")).not.toBeNull();
+  });
+});
+
 describe("the Info notes on a card", () => {
   it("draws the first ones as bullets", () => {
     mockTree([n("goal-1", "goal", {

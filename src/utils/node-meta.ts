@@ -424,3 +424,14 @@ export function hasNodeEditor(node: MindmapNode): boolean {
   if (node.kind === "aspect" || node.kind === "habit_group") return false;
   return node.habitItem === undefined;
 }
+
+/**
+ * Whether `kind` has a glyph of its own. An Aspect does not: on the Mindmap it *is* a coloured
+ * block, and its name is the whole of what identifies it. `NodeIcon` draws nothing for it — it
+ * keeps its own `kind === "aspect"` branch, which its exhaustiveness check needs to narrow on — and a
+ * surface that reserves a glyph slot asks this first rather than leaving an empty gap where one
+ * would go.
+ */
+export function kindHasGlyph(kind: NodeKind): boolean {
+  return kind !== "aspect";
+}

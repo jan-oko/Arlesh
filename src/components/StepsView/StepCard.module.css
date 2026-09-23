@@ -45,9 +45,13 @@
   font-weight: 600;
 }
 
+/* The selection ring is drawn **inside** the card: the border takes the accent and an inset shadow
+   doubles it to 2px. An outline outside the card was clipped by the card area's `overflow: hidden`
+   on the top and left of every card in the first row and first column, which sit flush against
+   that edge — so the ring came out lopsided, thick on the right and bottom and missing elsewhere. */
 .selected {
-  outline: 2px solid var(--node-border-selected);
-  outline-offset: 1px;
+  border-color: var(--node-border-selected);
+  box-shadow: inset 0 0 0 1px var(--node-border-selected);
 }
 
 .top {
