@@ -4,7 +4,11 @@ import { useDisplayStore } from "./use-display-store";
 beforeEach(() => {
   // Reset before clearing: the persist middleware writes the key back on every set, so clearing
   // first would leave a stored value behind for the boot-from-scratch cases below.
-  useDisplayStore.setState({ habitCollapseThreshold: 3, asynchronousFirst: false });
+  useDisplayStore.setState({
+    habitCollapseThreshold: 3, asynchronousFirst: false,
+    planCandidatesPathGrouping: true, planCandidatesParentOnly: true,
+    planSubscopeSplit: false, planIncludePremorning: false,
+  });
   localStorage.clear();
 });
 
@@ -47,6 +51,38 @@ describe("a display blob written while the path-icon setting still existed", () 
 
     expect(store.getState().habitCollapseThreshold).toBe(3);
     expect(store.getState().asynchronousFirst).toBe(false);
+  });
+});
+
+/**
+ * The Plan View's path switch was `planPathGrouping` and defaulted off. It is now the candidates
+ * pane's alone and defaults **on** — which a rename is what makes true, since `persist` merges
+ * whatever it finds over the initial state and what it would have found is an off switch nobody
+ * chose.
+ */
+describe("a display blob carrying the Plan View's first path switch", () => {
+  it("ignores it, so the new switch actually opens on", async () => {
+    localStorage.setItem(
+      "arlesh-display",
+      JSON.stringify({ state: { planPathGrouping: false }, version: 0 }),
+    );
+    vi.resetModules();
+
+    const module = await import("./use-display-store");
+
+    expect(module.useDisplayStore.getState().planCandidatesPathGrouping).toBe(true);
+  });
+});
+
+describe("the Plan View's kebab switches", () => {
+  it("open a pass on what still needs placing, grouped by where it lives", () => {
+    expect(useDisplayStore.getState().planCandidatesParentOnly).toBe(true);
+    expect(useDisplayStore.getState().planCandidatesPathGrouping).toBe(true);
+  });
+
+  it("leave the planned pane unsplit, and Premorning out of it", () => {
+    expect(useDisplayStore.getState().planSubscopeSplit).toBe(false);
+    expect(useDisplayStore.getState().planIncludePremorning).toBe(false);
   });
 });
 

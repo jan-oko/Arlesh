@@ -2,7 +2,7 @@
 // Pure and synchronous — the cursor is a calendar position, and only materializing it (turning it
 // into a scope row with an id and a window) touches the backend.
 
-import type { PartOfDay } from "@/api/scopes";
+import type { PartOfDay, Scope } from "@/api/scopes";
 import type { ScopeRef } from "@/utils/scope-ref";
 import type { ViewKind } from "@/utils/scope-calendar";
 import { PART_SEQUENCE, addScopePeriods, previousDay } from "@/utils/scope-calendar";
@@ -88,4 +88,74 @@ export function cursorAtNow(kind: ViewKind, todayIso: string, hour: number): Pla
   const part = partOfHour(hour);
   const date = hour < 2 ? previousDay(todayIso) : todayIso;
   return { kind, date, part };
+}
+
+/**
+ * Where a pass lands when the **kind** being filled changes — from the selector or its letter key.
+ *
+ * - **Coarser:** the scope of the new kind holding the current scope's **first day**. That is the
+ *   one containing it everywhere but a week at a month's edge, which is in two months; the first
+ *   day picks one, the same rule Up uses, so `M` and Up never disagree about a week's month.
+ * - **Finer:** the one holding **now**, if now is inside the current scope — the pass you most
+ *   likely want is today's — and otherwise the **first** one inside it, its first day (and, for a
+ *   part of day, the day's first band).
+ * - **The same kind:** nowhere; the cursor is returned as it is.
+ *
+ * While the current scope has not materialized there are no dates to reason from, and the kind
+ * alone changes, anchored where the cursor already was — which is what the selector always did.
+ */
+export function cursorForKind(
+  current: PlanScopeCursor,
+  scope: Pick<Scope, "start_date" | "end_date"> | null,
+  next: ViewKind,
+  nowCursor: PlanScopeCursor,
+): PlanScopeCursor {
+  if (next === current.kind) return current;
+  if (scope === null) return { ...current, kind: next };
+  const finer = PLAN_SCOPE_KINDS.indexOf(next) > PLAN_SCOPE_KINDS.indexOf(current.kind);
+  if (!finer) return { kind: next, date: scope.start_date, part: current.part };
+  const nowInside = nowCursor.date >= scope.start_date && nowCursor.date <= scope.end_date;
+  if (nowInside) return { ...nowCursor, kind: next };
+  return { kind: next, date: scope.start_date, part: FIRST_PART };
+}
+
+/**
+ * Why Up cannot go anywhere: the scope is at the **top** of the ladder (a Season — or an Exact
+ * window, which is not on the ladder at all), or it is still **resolving** and its parent is not
+ * known yet.
+ */
+export type UpRefusal = "top" | "resolving";
+
+/** The `planView` string that says an {@link UpRefusal} — one sentence for the tooltip and the key. */
+export function upRefusalKey(refusal: UpRefusal): "upScopeAtTop" | "upScopeResolving" {
+  return refusal === "top" ? "upScopeAtTop" : "upScopeResolving";
+}
+
+/**
+ * The calendar cells one rung **above** `scope` that it sits in — its **parent scope**, as the
+ * candidates pane asks "planned to the parent scope".
+ *
+ * Empty for a **Season**, and that is structural rather than defensive: a Season is the one
+ * top-level scope, so for it the question has no answer, and nothing else on the ladder is ever
+ * without one. (An Exact window is not on the ladder and is never filled, so it has none either.)
+ *
+ * Asked of the calendar by date rather than read off the row's containment ids, because a **Week**
+ * row carries no month: weeks do not nest in months. A week at a month's edge sits in **two** of
+ * them, and both are one rung above it, so both are its parent — asking for the month at its first
+ * day and at its last gives one cell or two, and the same rule gives exactly one everywhere else.
+ */
+export function parentRefs(scope: Pick<Scope, "kind" | "start_date" | "end_date">): ScopeRef[] {
+  switch (scope.kind) {
+    case "part_of_day": return [{ kind: "day", date: scope.start_date }];
+    case "day": return [{ kind: "week", date: scope.start_date }];
+    case "month": return [{ kind: "season", date: scope.start_date }];
+    case "week": {
+      const first: ScopeRef = { kind: "month", date: scope.start_date };
+      if (scope.start_date.slice(0, 7) === scope.end_date.slice(0, 7)) return [first];
+      return [first, { kind: "month", date: scope.end_date }];
+    }
+    case "season":
+    case "exact":
+      return [];
+  }
 }

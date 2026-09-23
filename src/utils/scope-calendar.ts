@@ -88,6 +88,11 @@ export function previousDay(iso: string): string {
   return addDays(iso, -1);
 }
 
+/** The day of the week `iso` falls on, Sunday `0` through Saturday `6`. */
+export function weekdayOf(iso: string): number {
+  return parse(iso).getUTCDay();
+}
+
 /**
  * The wall-clock hour the whole scope ladder turns over on. A Day runs 02:00 -> 02:00, and
  * Season, Month and Week start and end on the same seam, so every scope contains exactly its own

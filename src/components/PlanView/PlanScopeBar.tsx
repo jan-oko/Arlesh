@@ -7,9 +7,18 @@ import type { UseScopePicker } from "@/hooks/use-scope-picker";
 import type { ViewKind } from "@/utils/scope-calendar";
 import type { ScopeRef } from "@/utils/scope-ref";
 import type { PlanScopeCursor } from "@/utils/plan-scope";
-import { PLAN_SCOPE_KINDS, cursorRef, isPlanScopeKind } from "@/utils/plan-scope";
+import { PLAN_SCOPE_KINDS, cursorRef, isPlanScopeKind, upRefusalKey } from "@/utils/plan-scope";
+import type { UpRefusal } from "@/utils/plan-scope";
+import { useInputCapture } from "@/hooks/use-input-capture";
+import { SCOPE_KIND_KEYS } from "@/utils/hotkeys/plan/kind";
 import styles from "./PlanScopeBar.module.css";
 
+const UP = "↑";
+
+/** The letter that fills `kind`, as the cheat sheet and the tooltips print it. */
+function keyFor(kind: ViewKind): string {
+  return SCOPE_KIND_KEYS.find((entry) => entry.kind === kind)?.letter ?? "";
+}
 const PREVIOUS = "‹";
 const NEXT = "›";
 
@@ -21,6 +30,11 @@ interface Props {
   onSetKind: (kind: ViewKind) => void;
   onStep: (direction: 1 | -1) => void;
   onJumpTo: (ref: ScopeRef) => void;
+  /** The kind one rung up, or `null` where there is none — a Season — or it is not known yet. */
+  parentKind: ViewKind | null;
+  /** Why Up is unavailable, or `null` when it is available — what the disabled button says. */
+  upRefusal: UpRefusal | null;
+  onUp: () => void;
   onToggleBacklogged: () => void;
 }
 
@@ -35,10 +49,13 @@ interface Props {
  * clicks go straight back out as a jump.
  */
 export default function PlanScopeBar({
-  cursor, label, showBacklogged, onSetKind, onStep, onJumpTo, onToggleBacklogged,
+  cursor, label, showBacklogged, onSetKind, onStep, onJumpTo, parentKind, upRefusal, onUp, onToggleBacklogged,
 }: Props) {
   const { t } = useTranslation("planView");
   const [pickerOpen, setPickerOpen] = useState(false);
+  // The jump picker is a popover over the pass: while it is open, a letter must not change the
+  // kind it is locked to underneath it.
+  useInputCapture(pickerOpen);
 
   function selectKind(value: string): void {
     if (isPlanScopeKind(value)) onSetKind(value);
@@ -55,16 +72,38 @@ export default function PlanScopeBar({
     resolve: () => Promise.resolve(null),
   };
 
+  const upTitle = upRefusal === null && parentKind !== null
+    ? t("upScopeTo", { kind: t(`kind.${parentKind}`) })
+    : t(upRefusalKey(upRefusal ?? "resolving"));
+
   return (
     <header className={styles.bar}>
       <Select
         value={cursor.kind}
-        options={PLAN_SCOPE_KINDS.map((value) => ({ value, label: t(`kind.${value}`) }))}
+        options={PLAN_SCOPE_KINDS.map((value) => ({
+          value,
+          label: t(`kind.${value}`),
+          title: t("scopeKindKey", { key: keyFor(value) }),
+        }))}
         onChange={selectKind}
         ariaLabel={t("scopeKind")}
+        title={t("scopeKindKeys", { keys: SCOPE_KIND_KEYS.map((entry) => entry.letter).join(" / ") })}
       />
 
       <div className={styles.stepper}>
+        {/* The title sits on a wrapper: a disabled button receives no pointer events, and the
+            reason it is disabled is exactly what the hover has to say. */}
+        <span title={upTitle}>
+          <button
+            type="button"
+            className={styles.step}
+            aria-label={t("upScope")}
+            disabled={upRefusal !== null}
+            onClick={onUp}
+          >
+            {UP}
+          </button>
+        </span>
         <button type="button" className={styles.step} aria-label={t("previousScope")} onClick={() => onStep(-1)}>
           {PREVIOUS}
         </button>

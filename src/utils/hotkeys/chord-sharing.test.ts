@@ -10,6 +10,10 @@ import { MINDMAP_BINDINGS } from "./mindmap-bindings";
 import { PLAN_BINDINGS } from "./plan-bindings";
 import { STEPS_BINDINGS } from "./steps-bindings";
 import type { MindmapContext } from "./mindmap-bindings";
+import { PLAN_KIND_BINDINGS, SCOPE_KIND_KEYS } from "./plan/kind";
+import type { PlanKindContext } from "./plan/kind";
+import { PLAN_SUBSCOPE_BINDINGS } from "./plan/subscope";
+import type { PlanSubscopeContext } from "./plan/subscope";
 
 /**
  * Two bindings may share a chord — ADR 0003 dispatches the first whose chord matches *and* whose
@@ -44,6 +48,12 @@ const SHARED_CHORDS: Readonly<Record<string, readonly string[]>> = {
   "mindmap F": ["mindmap.convertToFlow", "mindmap.toggleFullscreen"],
   // Complementary: a List View selection is a Task or a Commitment, never both.
   "listView Enter": ["listView.cycleStatus", "listView.cycleVerdict"],
+  // Complementary: a subscope mnemonic needs a selection, a kind letter needs none.
+  "planView S": ["planView.subscope.S", "planView.kind.season"],
+  "planView M": ["planView.subscope.M", "planView.kind.month"],
+  "planView W": ["planView.subscope.W", "planView.kind.week"],
+  "planView D": ["planView.subscope.D", "planView.kind.day"],
+  "planView P": ["planView.subscope.P", "planView.kind.part_of_day"],
 };
 
 const ALL: readonly BindingMeta[] = [
@@ -110,6 +120,29 @@ describe("chords bound more than once", () => {
       expect(ids.every((id) => id.startsWith(`${section}.`))).toBe(true);
     }
   });
+});
+
+describe("the Plan View's kind letters are complementary with the subscope mnemonics", () => {
+  // Every state the two guards read: a selection or none, and a bucket answering the letter or not.
+  // The bucket is the harder case — with rows selected and a bucket named M, M must plan into it.
+  const states = [
+    { selected: [], bucket: false }, { selected: [], bucket: true },
+    { selected: ["task-1"], bucket: false }, { selected: ["task-1"], bucket: true },
+  ];
+  for (const { kind, letter } of SCOPE_KIND_KEYS) {
+    it(`never lets both ${letter} bindings pass`, () => {
+      const subscope = guardOf(PLAN_SUBSCOPE_BINDINGS, `planView.subscope.${letter}`);
+      const kindGuard = guardOf(PLAN_KIND_BINDINGS, `planView.kind.${kind}`);
+      for (const state of states) {
+        const base = { pane: "candidates" as const, selectedTaskId: state.selected[0] ?? null, selectedTaskIds: state.selected };
+        const subscopeContext: PlanSubscopeContext = { ...base, hasSubscopeKey: () => state.bucket, onPlanIntoSubscope: () => {} };
+        const kindContext: PlanKindContext = { ...base, onSetScopeKind: () => {} };
+        expect(subscope(subscopeContext) && kindGuard(kindContext)).toBe(false);
+        // With nothing selected the letter always switches the kind.
+        if (state.selected.length === 0) expect(kindGuard(kindContext)).toBe(true);
+      }
+    });
+  }
 });
 
 describe("bare Enter in List View is complementary, not ordered", () => {
