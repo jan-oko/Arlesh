@@ -81,8 +81,8 @@ and from the same shared stylesheet, so a Task reads as the same part of the boa
 surface. It is **flat**: a row's colour no longer fades with how deep its node sits. The fade dated
 from when the List View was the only flat surface and a row's colour was the only thing saying where
 it came from — the path header says that now, in words, and a depth ramp also meant the colour said
-nothing consistent from one row to the next. The Mindmap, the Plan View and the drag ghost keep
-their depth-shaded fill; this rule is the List View's and the Steps View's.
+nothing consistent from one row to the next. The Mindmap and the drag ghost keep their depth-shaded
+fill; this rule is the List View's, the Steps View's and the [Plan View](plan-view.md)'s.
 
 It is a small share of the hue mixed into the row surface (`--surface-raised`), not the colour
 itself, with the row's muted text derived from that surface. The contrast reasoning and the numbers

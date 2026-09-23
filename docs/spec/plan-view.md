@@ -21,6 +21,16 @@ this view too, and the status preset chosen in any of the three governs all thre
 Rows are **Tasks**, the same flattened Task rows the List View builds, filtered by the shared
 filter. Goals, Projects and Commitments are never cards: none of them has a Plan.
 
+**A card is washed in its aspect's colour, flat** — the same wash a [List View](list-view.md) row
+and a [Steps View](steps-view.md) card take, from the same shared stylesheet
+(`src/styles/aspect-wash.module.css`), so a Task reads as the same part of the board on every
+surface. It does not fade with how deep the task sits: a pane is a flat list whose cards come from
+every depth at once, and a depth ramp made two tasks of one aspect look like they belonged to
+different parts of the board. The base is the card background, as a Steps card's is, so the
+contrast numbers are the Steps View's (see *What the fill says* there); the path line takes the
+card's derived muted text rather than the global secondary colour, which falls short on some
+aspects. The colour says nothing about state — the glyph and the badge row carry that.
+
 ### The parent scope
 
 The **parent scope** is the scope one rung above the one being filled, on the ladder `season →
