@@ -32,6 +32,25 @@ never an empty one left over.
 stay shared. See [Tabs](tabs.md) for what a tab owns, and [Undo](undo.md) for why one history is
 right for several windows.
 
+**Where a torn-off window appears is the compositor's decision.** Decided 2026-09-23: Arlesh keeps
+the placement the window manager gives it, and does not place the window itself. Following the
+pointer the way a browser's torn-off tab does is not reachable on the Wayland compositor this is
+used on (Hyprland 0.55.4), by either route a browser uses:
+
+- **`xdg-toplevel-drag-v1`**, which attaches a toplevel to the drag in progress, is not
+  implemented — [hyprwm/Hyprland#10456](https://github.com/hyprwm/Hyprland/issues/10456) is open,
+  and 0.55.4's `src/protocols/` has no such protocol. GTK 3, which Tauri renders through, has no
+  API for it either, so it would also need a native Wayland binding beside GTK.
+- **Interactive move** (`xdg_toplevel.move`, what Tauri's `startDragging()` requests on Wayland) is
+  ignored: 0.55.4's `XDGShell.cpp` installs no move or resize handler.
+  [hyprwm/Hyprland#12164](https://github.com/hyprwm/Hyprland/pull/12164), which adds them, is not
+  merged.
+
+Rejected for now: placing the new window at the cursor through Hyprland's IPC socket — code for one
+compositor, and it would land the window rather than let it follow the drag. **Revisit** when
+#12164 or #10456 lands: interactive move would let the new window follow the pointer through
+`startDragging()` with no binding.
+
 ## The board-changed broadcast
 
 Every mutation used to end in a reload **in the window that issued it**, which was the whole story
