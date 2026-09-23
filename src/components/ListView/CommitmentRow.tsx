@@ -17,6 +17,8 @@ interface Props {
   /** Indentation, when drawn among the task rows; 0 in the band. */
   visibleDepth?: number;
   isSelected: boolean;
+  /** Kept only by the focus exemption — the selected row your own edit stopped matching. Dimmed. */
+  isFocusExempt?: boolean;
   onSelect: (nodeId: string) => void;
   /** Advances the verdict one step: Unresolved → Kept → Broken → Unresolved. */
   onCycleVerdict: (nodeId: string) => void;
@@ -33,7 +35,7 @@ interface Props {
  * and works like every other row, and `X` remains the one-press route to Broken.
  */
 export default function CommitmentRow({
-  row, visibleDepth = 0, isSelected, onSelect, onCycleVerdict, onOpenEditor, onAddTagFilter,
+  row, visibleDepth = 0, isSelected, isFocusExempt = false, onSelect, onCycleVerdict, onOpenEditor, onAddTagFilter,
 }: Props) {
   const { t } = useTranslation("listView");
   const tagNames = useTagNames();
@@ -49,7 +51,7 @@ export default function CommitmentRow({
 
   return (
     <div
-      className={`${taskStyles.card} ${indentClass}${isSelected ? ` ${taskStyles.cardSelected}` : ""}`}
+      className={`${taskStyles.card} ${indentClass}${isSelected ? ` ${taskStyles.cardSelected}` : ""}${isFocusExempt ? ` ${taskStyles.cardFocusExempt}` : ""}`}
       // Same marker the task rows carry, so a selected Commitment is scrolled into view by the
       // same code.
       data-row-id={node.id}
