@@ -128,8 +128,8 @@ by its name and by where it sits — the six of them are what the root is made o
 shadow. An outline outside the card was clipped by the card area's `overflow: hidden` along the top
 and left of every card in the first row and column, which sit flush against that edge.
 
-An **Expectation card** draws the wait's glyph — a still, unclosed ring, solid across the top and
-breaking into shortening dashes below, with a check inside once released — so its status is never written out; an archived one
+An **Expectation card** draws the wait's glyph — a still spinner of short ticks, open at the lower
+right, with a check inside once released — so its status is never written out; an archived one
 is dimmed and badged like any archived card; its fields are its **Time Scope** and its **Check every**. `Enter`
 descends into it like any card, onto its notes and, while a check is due, its virtual check task.
 `E` on that check task, on a delegated Task's virtual wait or on an asynchronous Task's spawned

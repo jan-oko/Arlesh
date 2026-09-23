@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import TaskEditorModal from "./TaskEditorModal";
 import type { MindmapNode } from "@/utils/tree-layout";
@@ -395,6 +395,20 @@ describe("TaskEditorModal — Asynchronous", () => {
     save();
     await waitFor(() => expect(onSave).toHaveBeenCalled());
     expect(onSave.mock.calls[0]?.[0]).toMatchObject({ asynchronous: false, asyncTemplate: null });
+  });
+
+  it("clears the template's Check every, and the saved template has none", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<TaskEditorModal {...defaultProps} node={mkNode({ asynchronous: true, asyncTemplate: TEMPLATE })} onSave={onSave} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
+
+    const section = screen.getByRole("group", { name: "expectation:templateSection" });
+    fireEvent.click(within(section).getByRole("button", { name: "scopeClear" }));
+    save();
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    const saved = onSave.mock.calls[0]?.[0].asyncTemplate;
+    expect(saved).toMatchObject({ title: "Waiting on the reviewer" });
+    expect(saved).not.toHaveProperty("check_every");
   });
 
   it("opens at the Expectation section with the flag on when asked to (Shift+W), and Cancel writes nothing", async () => {
