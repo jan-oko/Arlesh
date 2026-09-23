@@ -27,7 +27,8 @@ pub enum Preset {
     /// whose effective Archival is Archived.
     Plan,
     /// What can be begun now: Plan, minus lapsed windows, minus in-progress tasks with nothing
-    /// left under them to start, minus Habit flows, minus blocked subtrees.
+    /// left under them to start, minus Habit flows, minus blocked subtrees, minus Tasks planned
+    /// into a scope that has not begun yet.
     Start,
     /// Only in-progress tasks.
     Do,
@@ -198,6 +199,11 @@ pub struct NodeFacts {
     /// Derived window position, for the kinds that have a window.
     #[serde(default)]
     pub timing: Option<Timing>,
+    /// Where the Task's **own** Plan stands at the same instant, for a Task that has one. `None`
+    /// for an unplanned Task and for every other kind. What an ancestor's Plan says is not a fact
+    /// of this node: the filter walk carries it down (see [`super::rules::is_planned_ahead`]).
+    #[serde(default)]
+    pub plan_timing: Option<Timing>,
     /// Effective Archival is Archived — which a forced Resolution can set regardless of the stored
     /// status.
     #[serde(default)]
@@ -237,6 +243,7 @@ impl NodeFacts {
             kind,
             status: None,
             timing: None,
+            plan_timing: None,
             archived: false,
             backlogged: false,
             verdict: None,

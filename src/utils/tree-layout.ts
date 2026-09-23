@@ -259,6 +259,10 @@ export interface MindmapNode {
   /** Present on a `habit_group` node, and on no other kind: what it stands for. */
   habitGroup?: HabitGroup;
   plan?: TimeScope | null;
+  /** Where this Task's **own** Plan stands at "now" (real Tasks with a Plan only); set by the view
+   * from the derived lifecycle, never persisted. Absent on a virtual Habit occurrence, whose Cycle
+   * Plan the Start preset does not read. */
+  planTiming?: Timing;
   flow?: FlowData;
   flowItem?: FlowItemData;
   /** Whether this node is marked private — hidden (with its subtree) outside Private Mode. */

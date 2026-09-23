@@ -212,13 +212,14 @@ pub fn narrow(load: &mut MindmapLoad, filter: &BoardFilter) {
         .retain(|edge| keeps(&format!("task-{}", edge.task_id)));
 }
 
-/// Copies the two derived facts a filter reads off a lifecycle. An item with no lifecycle — an
+/// Copies the derived facts a filter reads off a lifecycle. An item with no lifecycle — an
 /// unscoped one the derivation skipped — keeps its neutral values.
 fn apply_lifecycle(node: &mut NodeFacts, lifecycle: Option<&ItemLifecycle>) {
     let Some(lifecycle) = lifecycle else {
         return;
     };
     node.timing = Some(lifecycle.timing);
+    node.plan_timing = lifecycle.plan_timing;
     node.archived = lifecycle.archival == Archival::Archived;
 }
 

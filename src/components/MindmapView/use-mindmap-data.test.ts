@@ -576,6 +576,20 @@ describe("useMindmapData — mutations", () => {
     return hook;
   }
 
+  it("stamps a task's own Plan position from its lifecycle, and none on an unplanned one", async () => {
+    setupInvoke({
+      derive_scope_lifecycles: [
+        { node_type: "task", node_id: 1, timing: "active", archival: "live", archival_conflict: false, plan_timing: "pending" },
+        { node_type: "task", node_id: 2, timing: "active", archival: "live", archival_conflict: false },
+      ],
+    });
+    const { result } = await loadedHook();
+    const tasks = result.current.tree.children[0]?.children[0]?.children ?? [];
+    expect(tasks.find((n) => n.id === "task-1")?.planTiming).toBe("pending");
+    expect(tasks.find((n) => n.id === "task-2")).toBeDefined();
+    expect(tasks.find((n) => n.id === "task-2")?.planTiming).toBeUndefined();
+  });
+
   describe("reload", () => {
     // MindmapView early-returns a full-screen "Loading…" whenever isLoading is true, which
     // unmounts the whole canvas — losing pan, zoom and DOM focus. `reload` is what every
