@@ -3205,6 +3205,9 @@ pub async fn convert_to_flow(
                 let dep_key = match dep {
                     Dependency::Task { id } => ("task".to_string(), id),
                     Dependency::Goal { id } => ("goal".to_string(), id),
+                    // A wait is never a flow item, so an edge onto one has nothing inside the
+                    // template to become — the same as an edge onto anything outside the subtree.
+                    Dependency::Expectation { .. } => continue,
                 };
                 if let Some((on_type, on_id)) = item_map.get(&dep_key).copied() {
                     db.flows()

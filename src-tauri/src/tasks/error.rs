@@ -1,4 +1,4 @@
-//! Task, Goal and Commitment operation errors.
+//! Task, Goal, Commitment and Expectation operation errors.
 
 /// Errors that can occur during task, goal or commitment operations.
 #[derive(Debug, thiserror::Error)]
@@ -23,6 +23,13 @@ pub enum TaskError {
     /// there is nothing the backend could do on the caller's behalf.
     #[error("a commitment must have a time scope of its own or inherit one")]
     CommitmentUnscoped,
+    /// The requested expectation does not exist.
+    #[error("expectation {0} not found")]
+    ExpectationNotFound(i64),
+    /// The virtual check task was completed on an expectation that has no check-by — so there
+    /// was no check task to complete. A stale view, most likely; saying so beats pretending.
+    #[error("expectation {0} has no check-by to clear")]
+    ExpectationHasNoCheckBy(i64),
     /// Adding this dependency would create a circular dependency chain.
     #[error("adding this dependency would create a cycle")]
     CircularDependency,

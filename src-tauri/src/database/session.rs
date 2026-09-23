@@ -41,7 +41,7 @@ use crate::flows::FlowOperator;
 use crate::infos::InfoOperator;
 use crate::knowledge_base::{EventOperator, PersonOperator, ThreadOperator};
 use crate::scopes::ScopeOperator;
-use crate::tasks::{CommitmentOperator, GoalOperator, TaskOperator};
+use crate::tasks::{CommitmentOperator, ExpectationOperator, GoalOperator, TaskOperator};
 use crate::undo::UndoOperator;
 
 /// Makes [`SessionMode`] sealed: only this module can name it, so only this module can add a
@@ -172,6 +172,11 @@ impl<M: SessionMode> Db<M> {
     /// Commitments — rules held over a window, kept or broken.
     pub fn commitments(&mut self) -> CommitmentOperator<'_> {
         CommitmentOperator::new(self.connection())
+    }
+
+    /// Expectations — waits that tasks depend on.
+    pub fn expectations(&mut self) -> ExpectationOperator<'_> {
+        ExpectationOperator::new(self.connection())
     }
 
     /// Aspects, projects, domains and tags.

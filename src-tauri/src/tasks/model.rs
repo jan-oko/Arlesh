@@ -420,7 +420,7 @@ pub struct Goal {
     pub beads_id: Option<String>,
 }
 
-/// Dependency reference: either a task or a goal.
+/// Dependency reference: a task, a goal, or an expectation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum Dependency {
@@ -432,6 +432,11 @@ pub enum Dependency {
     /// Depends on a goal being achieved.
     Goal {
         /// The goal being depended on.
+        id: i64,
+    },
+    /// Depends on an expectation being released.
+    Expectation {
+        /// The expectation being waited on.
         id: i64,
     },
 }
@@ -714,5 +719,156 @@ pub struct UpdateCommitmentRequest {
     pub is_private: Option<bool>,
 }
 
+/// Identifies an expectation row by its primary key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExpectationId(pub i64);
+
+impl From<i64> for ExpectationId {
+    fn from(value: i64) -> Self {
+        Self(value)
+    }
+}
+impl From<ExpectationId> for i64 {
+    fn from(id: ExpectationId) -> Self {
+        id.0
+    }
+}
+
+/// Where a wait stands: still being waited on, or over.
+///
+/// Two states and no third. An Expectation is not an action item, so it has no "in progress":
+/// the thing it waits on happens somewhere else, and the only event on this side is noticing that
+/// it has. **Released** is what unblocks the Tasks depending on it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExpectationStatus {
+    /// Still waited on. The default, and what blocks dependents.
+    #[default]
+    Pending,
+    /// The wait is over; dependents are free to go.
+    Released,
+}
+
+impl ExpectationStatus {
+    /// Returns the database string representation.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::Released => "released",
+        }
+    }
+
+    /// Parses the database string representation, if recognized.
+    pub fn from_db(value: &str) -> Option<Self> {
+        match value {
+            "pending" => Some(Self::Pending),
+            "released" => Some(Self::Released),
+            _ => None,
+        }
+    }
+}
+
+/// Whether an Expectation is still in play: the usual archive, **orthogonal** to its status.
+///
+/// A wait can be put away without pretending it was released — the reply that will never come —
+/// so this is its own column rather than a third status.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExpectationArchival {
+    /// In play. The default.
+    #[default]
+    Live,
+    /// Put away. Shown under All only.
+    Archived,
+}
+
+impl ExpectationArchival {
+    /// Returns the database string representation.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Live => "live",
+            Self::Archived => "archived",
+        }
+    }
+
+    /// Parses the database string representation, if recognized.
+    pub fn from_db(value: &str) -> Option<Self> {
+        match value {
+            "live" => Some(Self::Live),
+            "archived" => Some(Self::Archived),
+            _ => None,
+        }
+    }
+}
+
+/// An expectation row as returned from the database: a **wait** that Tasks can depend on.
+///
+/// Note what is absent, since the absences are the design: no Time Scope and no Plan (a wait is
+/// not something you schedule or do), no tags, no beads id, no block reasons and no dependencies
+/// of its own — it depends on nothing, only Tasks depend on it. The one date it carries is the
+/// optional **check-by**.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Expectation {
+    /// Primary key.
+    pub id: i64,
+    /// Display title.
+    pub title: String,
+    /// Type of the parent entity.
+    pub parent_type: String,
+    /// Id of the parent entity.
+    pub parent_id: i64,
+    /// Pending or Released.
+    pub status: ExpectationStatus,
+    /// Live or Archived, independently of the status.
+    pub archival: ExpectationArchival,
+    /// When to look in on it, if ever. There is no default. While it is set and the Expectation
+    /// is pending, a virtual "check on it" Task scoped to it is derived under the Expectation at
+    /// read time; completing that task clears this field and stores nothing else.
+    pub check_by: Option<TimeScope>,
+    /// Sort position among siblings.
+    pub position: i64,
+    /// Whether this node is private (hidden unless Private Mode is on).
+    pub is_private: bool,
+}
+
+/// Request body for creating an expectation.
+#[derive(Debug, Default, Deserialize)]
+pub struct CreateExpectationRequest {
+    /// Display title.
+    pub title: String,
+    /// Parent entity type.
+    pub parent_type: String,
+    /// Parent entity id.
+    pub parent_id: i64,
+    /// Initial check-by. Omitted, the expectation has none.
+    #[serde(default)]
+    pub check_by: Option<TimeScope>,
+}
+
+/// Request body for updating an expectation.
+#[derive(Debug, Default, Deserialize)]
+pub struct UpdateExpectationRequest {
+    /// New title (if provided).
+    pub title: Option<String>,
+    /// New status (if provided). Releasing is a write of `Released`; `Pending` takes it back.
+    pub status: Option<ExpectationStatus>,
+    /// New archival (if provided).
+    pub archival: Option<ExpectationArchival>,
+    /// Check-by to set (None leaves unchanged, Some(None) clears it — which is what completing
+    /// the virtual check task does).
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    pub check_by: Option<Option<TimeScope>>,
+    /// New parent entity type for re-parenting (must be set together with parent_id).
+    pub parent_type: Option<String>,
+    /// New parent entity id for re-parenting (must be set together with parent_type).
+    pub parent_id: Option<i64>,
+    /// New sort position among siblings (for sibling reordering).
+    pub position: Option<i64>,
+    /// New private flag, if changing.
+    pub is_private: Option<bool>,
+}
+
 #[cfg(test)]
 mod commitment_tests;
+#[cfg(test)]
+mod expectation_tests;
