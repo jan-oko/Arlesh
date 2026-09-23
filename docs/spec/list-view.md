@@ -75,10 +75,19 @@ On top of the shared filters, the List View adds its own filter dimensions — a
 
 ## What a row's colour says
 
-A row's fill is **its status**, not how deep its node sits — the same rule the
-[Steps View](steps-view.md) draws its cards by, so a Task reads the same on either surface. See
-that page for the tints and the order they override each other in. The depth ramp it replaced dated
-from when the List View was the only flat surface and a row's colour was the only thing left saying
-where it came from; the path header says that now, and says it in words.
+A row's fill is **its status**, not how deep its node sits. The tints are opaque surfaces chosen
+against the text rather than a node colour at some opacity, matched in the order the facts override
+each other: **blocked** first, because it is the most actionable thing a row can say and is true
+whatever the stored status claims; then **archived**, because the model already lets a lapsed scope
+force it over a stored status; then **frozen**, a deliberate hold; then **done**, **in progress**,
+and everything else. A Commitment is matched on its **Verdict**, the state it actually has.
+
+The depth ramp this replaced dated from when the List View was the only flat surface and a row's
+colour was the only thing left saying where it came from. The path header says that now, and says it
+in words — which is what frees the colour to say what the row *is*.
+
+The [Steps View](steps-view.md) colours its cards by **aspect** instead, and the difference is not an
+inconsistency: a Step is one place on the board, so where a card came from is the thing its fill can
+usefully say, while a flat list drawn from everywhere already answers that in its headers.
 
 ---

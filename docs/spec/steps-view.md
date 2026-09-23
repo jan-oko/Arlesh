@@ -76,8 +76,9 @@ the level.
 
 It is the **first cell of the arrow grid** — one navigation model, nothing extra to learn. The
 consequence is handled deliberately: arrowing up from the top row changes *what you are standing on*
-rather than *what you are choosing*, so the header card reads as visibly different from a child card
-— a full-width band with a "you are here" mark.
+rather than *what you are choosing*, so the header card has to read as a different *kind* of cell.
+Its **full width**, against a row of fixed-width cards, is what says so — no accent border and no
+label spelling it out.
 
 **At the true root the header card is the board, and it says only the app's name, centred.** Every
 Step has the same shape and the root is addressable, but there is no node there to draw — so rather
@@ -139,40 +140,40 @@ to say it, and that is the right trade, because a note you cannot see is a note 
 go looking for.
 
 **Reuse, not re-derivation.** Badges come from `deriveStatusIndicators`, the glyph from `NodeIcon`,
-the fill from `statusTint`, and the scope and plan labels from the formatters the editors use — so a
-node reads the same whichever surface you meet it on.
+and the scope and plan labels from the formatters the editors use — so a node's state reads the same
+whichever surface you meet it on.
 
 ### What the fill says
 
-**A card's fill is its status**, not its depth. Depth is the one thing a Steps card never needs to
-encode, because a Step *is* one depth — and the old rule (the aspect's colour at an opacity falling
-off with depth) had no contrast guarantee against the text on top of it, which is why an Aspect's own
-card, drawn at full strength by that rule, was unreadable in both themes.
+**A card's fill is the aspect it lives under.** Every node on a Step is coloured by the part of the
+board it belongs to, so a Step reads at a glance as one place rather than a set of unrelated cards.
 
-The tints are **opaque surfaces** chosen against the text colour, at low chroma so a card reads as a
-surface with a hue rather than a colour block. They are matched in the order the facts override each
-other: **blocked** first, because it is the most actionable thing a card can say and it is true
-whatever the stored status claims; then **archived**, because the model already lets a lapsed scope
-force it over a stored status and the card should agree with the model rather than with the field;
-then **frozen**, a deliberate hold that outranks the progress made before it; then **done**, **in
-progress**, and everything else. A Commitment is matched on its **Verdict**, which is the state it
-actually has: broken reads like blocked, kept like done, unanswered like open.
+It is **not the aspect colour itself**. A small, fixed share of that hue is mixed into the theme's
+own card background, giving an opaque low-chroma surface. That distinction is the whole of what
+makes it legible, and it is worth stating why: the rule this replaces painted the colour on at an
+opacity that fell off with depth, which meant an **Aspect's own card** — depth zero — was drawn at
+full strength with body text over it, and was unreadable in both themes.
 
-The **aspect colour moves to the card's leading edge** — a bar, not a fill. It still says which part
-of the board a card belongs to, without sitting behind the text.
+Mixing instead makes contrast a property of the rule rather than of which node you are looking at.
+The result is never further from `--node-bg` than `--card-aspect-strength`, and the theme already
+guarantees `--node-text` against `--node-bg` — so every aspect works in both themes by construction,
+including a pale one like Steel, and including the Aspect card itself. The strength is per theme:
+a dark background needs more of the hue than a light one to read as coloured at all.
 
-**The List View follows the same rule**, for the same reason: one visual vocabulary, so a Task reads
-the same on either surface. The Mindmap keeps `computeNodeAppearance` — a canvas node is a glyph on
-a tinted rectangle with no body text over it, so the depth ramp there is doing a different job.
+A node **outside any aspect** keeps the theme's plain card background, and the board's own header
+card is not coloured at all.
 
-**A card shows `virtualBlockers` ("Blocked by …") and no free-text description.** The derived
-blockers are the only dependency information the node carries and are exactly what you would open
-the editor to check. A description exists only on Info nodes today; promising one everywhere needs a
-column, a migration and trigger regeneration — a separate feature.
+**The fill says nothing about state**, deliberately. That is only safe because the glyph and the
+badge row already do: the Task and Goal icons draw their status and their blocked-ness, the
+Commitment shield draws its Verdict, and the badge row carries archived, frozen, backlogged, agentic
+and asynchronous. It is the same reasoning that took those out of the card's fields — with state
+covered twice over, the fill is free to spend itself on *where* the node lives, which nothing else
+on the card says.
 
-**A container card counts matching of total — "3 of 12".** The first number is a promise about the
-next Step under the active filter; the second is the fact about the board, which is what makes the
-filter's effect visible.
+The **List View is not coloured this way.** Its rows are tinted by status (see
+[List View](list-view.md)), because a flat list of Tasks drawn from everywhere is answering a
+different question: there, where a row came from is what the path header says in words, and what it
+*is* has nothing else to carry it.
 
 ## Editing
 

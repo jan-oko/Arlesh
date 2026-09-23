@@ -26,6 +26,12 @@ html, body, #root {
   --node-text: #e0e0f0;
   --node-text-muted: #888899;
 
+  /* How much of a node's aspect colour is mixed into a Steps card's background. Small on purpose:
+     the card has body text on it, and what keeps that legible is staying close to the background
+     the theme already guarantees the text against. Dark needs slightly more of the hue than light
+     to read as coloured at all. */
+  --card-aspect-strength: 16%;
+
   /* Status tints — a card's fill says what state the work is in.
      They are **opaque surfaces**, not a colour at some opacity: contrast against --node-text is
      then a property of the token rather than an accident of how deep a node happened to sit, which
@@ -83,6 +89,9 @@ html, body, #root {
   --node-border-selected: #5546d8;
   --node-text: #1a1a2e;
   --node-text-muted: #6b6b7a;
+
+  /* See the dark set: less of the hue here, because a pale tint reads as coloured sooner. */
+  --card-aspect-strength: 11%;
 
   /* Status tints — see the dark set above. The same hues at the same low chroma, so one state
      reads as that state in either theme. */

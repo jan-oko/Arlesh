@@ -252,6 +252,62 @@ describe("a card with no editor", () => {
   });
 });
 
+describe("a card's colour", () => {
+  /** The `--card-aspect` a card was given, or null when it was given none. */
+  function aspectOf(id: string): string | null {
+    const card = document.querySelector(`[data-step-card="${id}"]`);
+    if (!(card instanceof HTMLElement)) throw new Error(`no card ${id}`);
+    const value = card.style.getPropertyValue("--card-aspect");
+    return value === "" ? null : value;
+  }
+
+  it("is its aspect's, taken from the node itself at the root where each card is an aspect", () => {
+    mockTree([
+      n("domain-1", "aspect", { color: "#e74c3c" }),
+      n("domain-2", "aspect", { color: "#27ae60" }),
+    ]);
+    render(<StepsView />);
+
+    expect(aspectOf("domain-1")).toBe("#e74c3c");
+    expect(aspectOf("domain-2")).toBe("#27ae60");
+  });
+
+  it("is the Step's aspect for a child that carries no colour of its own", () => {
+    mockTree([n("domain-1", "aspect", {
+      color: "#2980b9",
+      children: [n("task-1", "task")],
+    })]);
+    useMindmapStore.setState({ subtreeRootId: "domain-1" });
+    render(<StepsView />);
+
+    expect(aspectOf("domain-1")).toBe("#2980b9");
+    expect(aspectOf("task-1")).toBe("#2980b9");
+  });
+
+  it("says nothing about state — the glyph and the badges carry that", () => {
+    // Two Tasks in one aspect, one blocked and one done: same fill, different glyphs. This is the
+    // trade the aspect colouring makes, and it is only safe because the icon already draws status.
+    mockTree([n("domain-1", "aspect", {
+      color: "#9b59b6",
+      children: [
+        n("task-1", "task", { status: "done" }),
+        n("task-2", "task", { status: "todo", virtualBlockers: ["Blocked by Spec"] }),
+      ],
+    })]);
+    useMindmapStore.setState({ subtreeRootId: "domain-1" });
+    render(<StepsView />);
+
+    expect(aspectOf("task-1")).toBe("#9b59b6");
+    expect(aspectOf("task-2")).toBe("#9b59b6");
+  });
+
+  it("leaves a card outside any aspect the theme's own background", () => {
+    mockTree([n("domain-1", "domain")]);
+    render(<StepsView />);
+    expect(aspectOf("domain-1")).toBeNull();
+  });
+});
+
 describe("the Info notes on a card", () => {
   it("draws the first ones as bullets", () => {
     mockTree([n("goal-1", "goal", {

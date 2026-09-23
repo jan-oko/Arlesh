@@ -1,6 +1,5 @@
 {
   "boardTitle": "Arlesh",
-  "hereLabel": "← you are here",
   "childCount": "{{matching}} of {{total}}",
   "childCountEmpty": "Nothing inside",
   "moreNotes_one": "+{{count}} more note",

@@ -280,9 +280,9 @@ export default function StepsView() {
   if (error !== null) return <div className={styles.centered}>{t("common:error", { message: error })}</div>;
 
   const card = cardSizeForZoom(zoom);
-  // The aspect this Step sits under, for every card's leading edge. One lookup for the whole Step:
-  // a Step is one place on the board, so its cards share an aspect except at the true root, where
-  // each top-level card is an aspect of its own.
+  // The aspect this Step sits under, which every card on it is coloured from. One walk for the
+  // whole Step: a Step is one place on the board, so its cards share an aspect — except at the true
+  // root, where each top-level card *is* an aspect and carries its own colour.
   const stepAspectColor = rawStepNode === null ? undefined : aspectColorOf(tree, rawStepNode.id);
   const gridStyle: CSSProperties & Record<`--${string}`, string | number> = {
     "--step-card-width": `${card.width}px`,
@@ -340,7 +340,7 @@ export default function StepsView() {
             <StepCard
               key={child.id}
               node={child}
-              aspectColor={stepAspectColor ?? aspectColorOf(tree, child.id)}
+              aspectColor={child.color ?? stepAspectColor}
               cardHeight={card.height}
               isHeader={false}
               isSelected={cursor?.cell === "child" && cursor.index === index}
