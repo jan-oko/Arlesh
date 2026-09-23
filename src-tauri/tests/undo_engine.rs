@@ -316,7 +316,7 @@ async fn undoing_a_deleted_goal_brings_its_subtree_back_whole() {
     let before = board(&pool).await;
 
     open_gesture(&app).await;
-    task_commands::delete_goal(app.state(), goal.id)
+    task_commands::delete_goal(app.state(), goal.id.clone())
         .await
         .expect("delete the goal");
     close_gesture(&app).await;
@@ -400,7 +400,7 @@ async fn an_aborted_gesture_leaves_the_board_exactly_as_it_was() {
     open_gesture(&app).await;
     task_commands::update_task(
         app.state(),
-        task.id,
+        task.id.clone(),
         UpdateTaskRequest {
             title: Some("edited".into()),
             ..Default::default()
@@ -478,7 +478,7 @@ async fn aborting_a_gesture_that_wrote_nothing_does_nothing() {
     let before = board(&pool).await;
 
     open_gesture(&app).await;
-    task_commands::list_tasks(app.state())
+    task_commands::list_tasks(app.state(), chrono::Local::now().naive_local())
         .await
         .expect("a read changes nothing");
 
@@ -623,7 +623,7 @@ async fn a_gesture_that_changed_nothing_never_reaches_the_stack() {
     let project_id = make_project(&pool).await;
 
     open_gesture(&app).await;
-    task_commands::list_tasks(app.state())
+    task_commands::list_tasks(app.state(), chrono::Local::now().naive_local())
         .await
         .expect("a read changes nothing");
     assert_eq!(close_gesture(&app).await, None);
@@ -881,7 +881,7 @@ async fn undoing_an_edit_that_cleared_agentic_puts_the_flag_back() {
     open_gesture(&app).await;
     task_commands::update_task(
         app.state(),
-        task.id,
+        task.id.clone(),
         UpdateTaskRequest {
             agentic: Some(TaskAgentic::Inherit),
             ..Default::default()
@@ -1056,40 +1056,48 @@ async fn undoing_a_cleared_habit_completion_brings_it_back_on_the_occurrence_it_
     };
 
     // The evening occurrence is completed...
-    flow_commands::set_habit_item_status(
-        app.state(),
-        flow.id,
-        instance(),
-        Some("done".into()),
-        1_767_600_000_000,
-        None,
-    )
-    .await
-    .expect("mark the evening occurrence done");
+    let set_status = |status: Option<&'static str>| {
+        let pool = pool.clone();
+        let instance = instance();
+        async move {
+            let mut db = helpers::session_factory(&pool)
+                .begin()
+                .await
+                .expect("begin");
+            db.flows()
+                .set_item_status(
+                    arlesh_lib::flows::model::FlowId(flow.id),
+                    &instance,
+                    status,
+                    1_767_600_000_000,
+                )
+                .await
+                .expect("set the occurrence's status");
+            db.commit().await.expect("commit");
+        }
+    };
+    set_status(Some("done")).await;
 
-    // ...and then un-completed, which deletes the Modification row, inside a gesture.
+    // ...and then un-completed, which deletes its overlay row, inside a gesture.
     open_gesture(&app).await;
-    flow_commands::set_habit_item_status(app.state(), flow.id, instance(), None, 0, None)
-        .await
-        .expect("clear the status");
+    set_status(None).await;
     close_gesture(&app).await;
     assert_eq!(
-        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM habit_instance_modifications")
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM task_overlays")
             .fetch_one(&pool)
             .await
             .expect("count"),
         0,
-        "clearing a status removes the Modification row"
+        "clearing a status removes the overlay row, which then says nothing"
     );
 
     undo(&app).await.expect("there is something to undo");
-    let restored: (i64, Option<String>) = sqlx::query_as(
-        "SELECT cycle_id, status FROM habit_instance_modifications WHERE item_id = ?",
-    )
-    .bind(item.id)
-    .fetch_one(&pool)
-    .await
-    .expect("the Modification is back");
+    let restored: (i64, Option<String>) =
+        sqlx::query_as("SELECT cycle_id, status FROM task_overlays WHERE item_id = ?")
+            .bind(item.id)
+            .fetch_one(&pool)
+            .await
+            .expect("the overlay row is back");
     assert_eq!(
         restored,
         (evening, Some("done".into())),
@@ -1186,7 +1194,7 @@ async fn undoing_an_edit_that_unflagged_asynchronous_puts_the_flag_back() {
     open_gesture(&app).await;
     task_commands::update_task(
         app.state(),
-        task.id,
+        task.id.clone(),
         UpdateTaskRequest {
             asynchronous: Some(false),
             ..Default::default()

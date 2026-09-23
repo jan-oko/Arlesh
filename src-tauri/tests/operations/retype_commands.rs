@@ -292,7 +292,7 @@ async fn retyping_a_goal_to_a_domain_carries_only_identity_fields_and_drops_the_
     let refused = retype_node(
         app.state(),
         "goal".into(),
-        goal.id,
+        goal.id.clone(),
         "domain".into(),
         None,
         None,
@@ -320,7 +320,7 @@ async fn retyping_a_goal_to_a_domain_carries_only_identity_fields_and_drops_the_
     let retyped = retype_node(
         app.state(),
         "goal".into(),
-        goal.id,
+        goal.id.clone(),
         "domain".into(),
         Some(StrandedChildren::Reparent),
         None,
@@ -472,7 +472,7 @@ async fn retyping_a_task_to_a_project_drops_its_task_only_fields_and_ends_both_d
     let refused = retype_node(
         app.state(),
         "task".into(),
-        task.id,
+        task.id.clone(),
         "project".into(),
         None,
         None,
@@ -496,7 +496,7 @@ async fn retyping_a_task_to_a_project_drops_its_task_only_fields_and_ends_both_d
     let retyped = retype_node(
         app.state(),
         "task".into(),
-        task.id,
+        task.id.clone(),
         "project".into(),
         Some(StrandedChildren::Reparent),
         None,
@@ -756,7 +756,7 @@ async fn retyping_a_task_to_a_goal_carries_its_tags_and_reasons_and_repoints_wha
 
     assert_eq!(
         dependency_rows(&pool).await,
-        vec![(dependent.id, "goal".to_string(), retyped.id)],
+        vec![(dependent.id.sid(), "goal".to_string(), retyped.id)],
         "the inbound edge is repointed at the goal, not dropped — a goal can be depended on"
     );
 
@@ -866,7 +866,7 @@ async fn the_retype_node_command_deletes_stranded_children_and_their_own_descend
     let wire = serde_json::to_value(&refused).unwrap();
     assert_eq!(
         lost_child_kinds_and_ids(&wire),
-        vec![("goal".to_string(), sub_goal.id)]
+        vec![("goal".to_string(), sub_goal.id.sid())]
     );
 
     let retyped = retype_node(
@@ -989,7 +989,7 @@ async fn the_retype_node_command_reparents_every_kind_of_stranded_child_and_leav
     assert_eq!(
         lost_child_kinds_and_ids(&wire),
         vec![
-            ("goal".to_string(), sub_goal.id),
+            ("goal".to_string(), sub_goal.id.sid()),
             ("flow".to_string(), flow_child.id.into())
         ]
     );
@@ -1022,7 +1022,7 @@ async fn the_retype_node_command_reparents_every_kind_of_stranded_child_and_leav
     // its descendants stay exactly where they were, still correctly parented to it.
     assert_eq!(
         info_parent(&pool, grandchild_info.id).await,
-        ("goal".to_string(), sub_goal.id),
+        ("goal".to_string(), sub_goal.id.sid()),
         "the sub-goal's own child is untouched by its parent's reparenting"
     );
 
@@ -1160,7 +1160,7 @@ async fn retyping_a_tracked_task_to_a_goal_keeps_its_issue_link() {
     let retyped = retype_node(
         app.state(),
         "task".into(),
-        task.id,
+        task.id.clone(),
         "goal".into(),
         None,
         None,
@@ -1252,7 +1252,7 @@ async fn retyping_a_tracked_task_to_a_note_reports_the_link_as_lost_and_clears_i
     let refused = retype_node(
         app.state(),
         "task".into(),
-        task.id,
+        task.id.clone(),
         "info".into(),
         None,
         None,
@@ -1341,7 +1341,7 @@ async fn a_scoped_task_becomes_a_commitment_carrying_its_window_tags_and_issue_l
     let retyped = retype_node(
         app.state(),
         "task".into(),
-        task.id,
+        task.id.clone(),
         "commitment".into(),
         None,
         None,
@@ -1411,7 +1411,7 @@ async fn a_planned_task_cannot_become_a_commitment_until_the_caller_has_been_tol
     let refused = retype_node(
         app.state(),
         "task".into(),
-        task.id,
+        task.id.clone(),
         "commitment".into(),
         None,
         None,
@@ -1463,7 +1463,7 @@ async fn an_unscoped_task_with_no_scoped_ancestor_cannot_become_a_commitment() {
     let refused = retype_node(
         app.state(),
         "task".into(),
-        task.id,
+        task.id.clone(),
         "commitment".into(),
         None,
         None,
@@ -1520,7 +1520,7 @@ async fn an_unscoped_task_becomes_a_commitment_when_the_caller_supplies_the_wind
     let retyped = retype_node(
         app.state(),
         "task".into(),
-        task.id,
+        task.id.clone(),
         "commitment".into(),
         None,
         Some(tonight.clone()),
@@ -1645,7 +1645,7 @@ async fn a_judged_commitment_becoming_a_task_reports_the_verdict_it_would_lose()
     let refused = retype_node(
         app.state(),
         "commitment".into(),
-        commitment.id,
+        commitment.id.clone(),
         "task".into(),
         None,
         None,
@@ -1969,7 +1969,7 @@ async fn a_task_under_a_commitment_climbs_past_it_when_it_becomes_a_goal() {
     let refused = retype_node(
         app.state(),
         "task".into(),
-        task.id,
+        task.id.clone(),
         "goal".into(),
         None,
         None,
@@ -2034,7 +2034,7 @@ async fn retyping_a_backlogged_task_to_a_goal_names_the_backlog_as_lost_and_then
     let refused = retype_node(
         app.state(),
         "task".into(),
-        task.id,
+        task.id.clone(),
         "goal".into(),
         None,
         None,
@@ -2052,7 +2052,7 @@ async fn retyping_a_backlogged_task_to_a_goal_names_the_backlog_as_lost_and_then
     let retyped = retype_node(
         app.state(),
         "task".into(),
-        task.id,
+        task.id.clone(),
         "goal".into(),
         Some(StrandedChildren::Reparent),
         None,
@@ -2131,7 +2131,7 @@ async fn retyping_a_backlogged_task_to_a_commitment_names_the_backlog_as_lost() 
     let refused = retype_node(
         app.state(),
         "task".into(),
-        task.id,
+        task.id.clone(),
         "commitment".into(),
         None,
         None,

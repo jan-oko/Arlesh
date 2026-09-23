@@ -84,6 +84,7 @@ async fn scoped_goal(pool: &sqlx::SqlitePool, kind: ScopeKind, date: chrono::Nai
     }
     .unwrap()
     .id
+    .sid()
 }
 
 fn day_cycle(index: i64) -> FlowCycleInput {

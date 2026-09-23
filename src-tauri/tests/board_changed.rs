@@ -118,7 +118,7 @@ async fn a_gesture_that_only_read_says_nothing() {
     make_project(&pool).await;
 
     open(&app).await;
-    task_commands::list_tasks(app.state())
+    task_commands::list_tasks(app.state(), chrono::Local::now().naive_local())
         .await
         .expect("list tasks");
     let closed = close(&app).await;

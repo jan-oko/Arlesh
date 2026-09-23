@@ -1058,7 +1058,7 @@ async fn a_board_too_big_for_one_page_is_handed_over_across_several() {
     let expected = arlesh_lib::commands::mindmap::load_mindmap(app.state(), now())
         .await
         .unwrap();
-    let expected_ids: Vec<i64> = expected.tasks.iter().map(|task| task.id).collect();
+    let expected_ids: Vec<i64> = expected.tasks.iter().map(|task| task.id.sid()).collect();
     assert_eq!(
         tasks_seen, expected_ids,
         "paging must yield every task exactly once, in order"

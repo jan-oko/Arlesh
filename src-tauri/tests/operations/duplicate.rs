@@ -759,8 +759,8 @@ async fn a_copied_task_waits_on_the_same_things_the_original_waits_on() {
         .collect();
     targets.sort();
     let mut expected = vec![
-        ("task".to_string(), inner_b.id),
-        ("goal".to_string(), outside_goal.id),
+        ("task".to_string(), inner_b.id.sid()),
+        ("goal".to_string(), outside_goal.id.sid()),
     ];
     expected.sort();
     assert_eq!(

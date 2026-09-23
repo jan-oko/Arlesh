@@ -2375,7 +2375,7 @@ async fn reparent_conflicts_flags_a_node_that_would_leave_its_new_ancestor() {
 
     let result = {
         let mut db = helpers::session_factory(&pool).connect().await.unwrap();
-        reparent_conflicts(&mut db, "task", task.id, "goal", july_goal.id).await
+        reparent_conflicts(&mut db, "task", task.id.sid(), "goal", july_goal.id.sid()).await
     }
     .unwrap();
 
@@ -2432,7 +2432,7 @@ async fn reparent_conflicts_empty_when_node_fits_the_new_ancestor() {
 
     let result = {
         let mut db = helpers::session_factory(&pool).connect().await.unwrap();
-        reparent_conflicts(&mut db, "task", task.id, "goal", july_goal.id).await
+        reparent_conflicts(&mut db, "task", task.id.sid(), "goal", july_goal.id.sid()).await
     }
     .unwrap();
     assert!(result.conflicts.is_empty());
@@ -3492,7 +3492,7 @@ async fn the_update_task_command_commits_the_reparent_and_the_field_update_toget
 
     task_commands::update_task(
         app.state(),
-        task.id,
+        task.id.clone(),
         UpdateTaskRequest {
             title: Some("After".into()),
             parent_type: Some("project".into()),
@@ -3575,7 +3575,7 @@ async fn the_delete_task_command_commits_the_whole_subtree() {
     .unwrap();
     let app = helpers::command_host(&pool);
 
-    task_commands::delete_task(app.state(), root.id)
+    task_commands::delete_task(app.state(), root.id.clone())
         .await
         .unwrap();
 
@@ -3657,7 +3657,7 @@ async fn the_update_goal_command_commits_the_reparent_and_the_field_update_toget
 
     task_commands::update_goal(
         app.state(),
-        goal.id,
+        goal.id.clone(),
         UpdateGoalRequest {
             title: Some("After".into()),
             parent_type: Some("project".into()),
@@ -3719,7 +3719,7 @@ async fn the_delete_goal_command_commits_the_whole_subtree() {
     .unwrap();
     let app = helpers::command_host(&pool);
 
-    task_commands::delete_goal(app.state(), root.id)
+    task_commands::delete_goal(app.state(), root.id.clone())
         .await
         .unwrap();
 
@@ -4152,7 +4152,7 @@ async fn seed_retype_fixture(pool: &sqlx::SqlitePool) -> RetypeFixture {
         scope_id,
         goal_id: goal.id.sid(),
         tag_ids: (tag_a, tag_b),
-        dependents: (dependents.sid()[0], dependents.sid()[1]),
+        dependents: (dependents[0].sid(), dependents[1].sid()),
         task_child_id: task_child.id.sid(),
         info_child_id: info_child.id,
     }
@@ -4761,7 +4761,7 @@ async fn the_update_task_command_cannot_touch_beads_id() {
     let app = helpers::command_host(&pool);
     let updated = task_commands::update_task(
         app.state(),
-        linked_id,
+        linked_id.into(),
         UpdateTaskRequest {
             title: Some("Renamed".into()),
             status: Some(TaskStatus::InProgress),
@@ -4781,7 +4781,7 @@ async fn the_update_task_command_cannot_touch_beads_id() {
 
     let untouched = task_commands::update_task(
         app.state(),
-        unlinked_id,
+        unlinked_id.into(),
         UpdateTaskRequest {
             title: Some("Also renamed".into()),
             ..Default::default()
@@ -4825,7 +4825,7 @@ async fn the_update_goal_command_cannot_touch_beads_id() {
     let app = helpers::command_host(&pool);
     let updated = task_commands::update_goal(
         app.state(),
-        linked_id,
+        linked_id.into(),
         UpdateGoalRequest {
             title: Some("Renamed".into()),
             status: Some(GoalStatus::Frozen),
@@ -4845,7 +4845,7 @@ async fn the_update_goal_command_cannot_touch_beads_id() {
 
     let untouched = task_commands::update_goal(
         app.state(),
-        unlinked_id,
+        unlinked_id.into(),
         UpdateGoalRequest {
             title: Some("Also renamed".into()),
             ..Default::default()

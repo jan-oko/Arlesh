@@ -508,7 +508,7 @@ async fn moving_an_expectation_rewrites_its_parent_link() {
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
     let moved = db.expectations().get(ExpectationId(wait.id)).await.unwrap();
     assert_eq!(
-        (moved.parent_type.as_str(), moved.parent_id),
+        (moved.parent_type.as_str(), moved.parent_id.sid()),
         ("task", parent)
     );
     assert_eq!(moved.title, "Build finishes");

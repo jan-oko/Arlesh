@@ -29,7 +29,8 @@
 --
 -- # Migrating the Modifications
 --
--- Every row carries across. Its scope id becomes that scope's start date. Two rows can collide
+-- Every row that says anything its kind can read carries across. Its scope id becomes that scope's
+-- start date. Two rows can collide
 -- on the new key when a Habit's window kind changed under them (a daily Habit given a Morning
 -- window keeps its old day-keyed rows beside the new part-of-day ones): the row keyed on the
 -- scope kind the Habit generates today wins, and on a tie the later row. The status moves into
@@ -280,7 +281,7 @@ INSERT INTO commitment_overlays
     (flow_id, item_type, item_id, iteration_date, cycle_id, verdict, resolved_at, tombstone, title)
 SELECT flow_id, item_type, item_id, iteration_date, cycle_id,
        CASE WHEN status IN ('kept', 'broken') THEN status END,
-       resolved_at,
+       CASE WHEN status IN ('kept', 'broken') THEN resolved_at END,
        CASE WHEN tombstone_kind IS NULL THEN NULL WHEN tombstone_kind = 'missed' THEN 'missed' ELSE 'archived' END,
        title
 FROM modification_moves
@@ -298,6 +299,15 @@ UPDATE goal_overlays SET block_reasons_set = 1
 WHERE node_key IN (SELECT node_key FROM derived_block_reasons WHERE node_kind = 'goal');
 
 DROP TABLE modification_moves;
+
+-- A row that carried nothing its kind can read — a goal's `in_progress`, a commitment's stale
+-- `done` — says nothing now, and an overlay that says nothing is not kept.
+DELETE FROM task_overlays
+WHERE status IS NULL AND tombstone IS NULL AND title IS NULL AND block_reasons_set = 0;
+DELETE FROM goal_overlays
+WHERE status IS NULL AND tombstone IS NULL AND title IS NULL AND block_reasons_set = 0;
+DELETE FROM commitment_overlays
+WHERE verdict IS NULL AND tombstone IS NULL AND title IS NULL;
 
 -- Per-iteration dependency edges: both ends are occurrences of the one iteration, cycle `0`.
 INSERT OR IGNORE INTO derived_dependencies
