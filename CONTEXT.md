@@ -108,7 +108,7 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 **Knowledge Base** — The external Obsidian vault integrated with Arlesh.
 
-**Scope** — A time-range entity (Part of Day / Day / Week / Month / Season) lazily instantiated on first reference.
+**Scope** — A time-range entity (Part of Day / Day / Week / Month / Season, or an Exact window), identified by its value key (e.g. `week:2026-09-20`). Canonical scopes are derived, never stored; only Exact windows are rows.
 
 **Season** — A three-month period.
 

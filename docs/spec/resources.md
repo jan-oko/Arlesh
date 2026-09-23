@@ -31,7 +31,7 @@ The knowledge base is externally managed (Obsidian). Arlesh manages specific not
 
 **People** — represent persons. Fields: name (= note title), aliases (list of strings), linked note. (Discovery from the vault is not built yet — see *Not built yet*.)
 
-**Scopes** — time range entities. Not manually created; lazily instantiated on first reference and stored as rows. Canonical kinds:
+**Scopes** — time range entities. Not manually created, and never stored: a canonical scope is derived from its kind and start date, and referenced everywhere by its value key (e.g. `week:2026-09-20`; see [*Scopes are derived*](time-scopes.md)). Canonical kinds:
 
 | Kind        | Definition                                      |
 |-------------|-------------------------------------------------|
@@ -41,13 +41,13 @@ The knowledge base is externally managed (Obsidian). Arlesh manages specific not
 | Day         | Single date; corresponds to an Obsidian note at `{yyyy}/{mm MMMM}/{yyyy-mm-dd}.md` |
 | Part of Day | Sub-day band: Morning (06–12), Noon (12–15), Afternoon (15–18), Evening (18–22), Night (22–02), Premorning (02–06). Start inclusive, end exclusive. |
 
-Beyond the canonical hierarchy, an **Exact** scope is defined by two arbitrary datetimes at minute precision (e.g. for a one-off deadline).
+Beyond the canonical hierarchy, an **Exact** scope is defined by two arbitrary datetimes at minute precision (e.g. for a one-off deadline). It is the one kind kept as a row, so references to it keep referential integrity.
 
-Canonical scope containment is hierarchical, on two ladders: Part of Day ⊂ Day ⊂ Week, and Day ⊂ Month ⊂ Season. A Week is not inside a Month — a Sunday–Saturday week can straddle two months, and two seasons — so a Day row records its Week, Month and Season, a Month its Season, and a Week none. **Night (22:00–02:00) crosses midnight and is parented to the Day it starts on** — and is wholly inside it, because Day, Week, Month and Season all run 02:00 → 02:00 (see [*The day boundary*](time-scopes.md)). Every scope resolves to concrete datetime boundaries (a cached backend function does the resolution); Parts of Day and Exact scopes carry a time-of-day component.
+Canonical scope containment is hierarchical, on two ladders: Part of Day ⊂ Day ⊂ Week, and Day ⊂ Month ⊂ Season. A Week is not inside a Month — a Sunday–Saturday week can straddle two months, and two seasons — so a Day has a Week, a Month and a Season, a Month a Season, and a Week none — each derived from the Day's date, never stored. **Night (22:00–02:00) crosses midnight and is parented to the Day it starts on** — and is wholly inside it, because Day, Week, Month and Season all run 02:00 → 02:00 (see [*The day boundary*](time-scopes.md)). Every scope resolves to concrete datetime boundaries (a pure backend function does the resolution, with no cache — it is cheaper than a lookup); Parts of Day and Exact scopes carry a time-of-day component.
 
 A scope is **active** when it contains the current datetime.
 
-**Containment-based filtering** is evaluated as interval containment on resolved datetime boundaries: filtering by a scope returns every item whose own scope window is wholly contained within it. This works uniformly for canonical, multi-week, and exact scopes. (Denormalized `week_id`/`month_id`/`season_id` may remain as a canonical-vs-canonical optimization.)
+**Containment-based filtering** is evaluated as interval containment on resolved datetime boundaries: filtering by a scope returns every item whose own scope window is wholly contained within it. This works uniformly for canonical, multi-week, and exact scopes.
 
 **Events** — represent events. Fields: datetime or scope, title, optional linked note.
 
