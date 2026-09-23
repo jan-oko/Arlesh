@@ -2,6 +2,7 @@ import type { MindmapNode } from "@/utils/tree-layout";
 import { isNodeBlocked } from "@/utils/tree-layout";
 import { VERDICT } from "@/api/verdict";
 import { EXPECTATION_STATUS } from "@/api/expectation-status";
+import type { Timing } from "@/api/scope-lifecycle";
 
 /** Status preset a filter is in. `all` disables status filtering; `backlog` inverts it, showing
  * only what has been deliberately set aside. */
@@ -161,6 +162,27 @@ export function isHiddenBacklog(node: MindmapNode, f: FilterState): boolean {
 export function isUnopenedOccurrence(node: MindmapNode, f: FilterState): boolean {
   if (node.habitItem === undefined || node.timing !== "pending") return false;
   return f.statusMode !== "all";
+}
+
+/**
+ * Whether `node` is a Task that **Start** hides because its Plan has not begun yet — Start asks what
+ * can be begun *now*, and a Task scheduled into next week is not that.
+ *
+ * The Plan read is the Task's own `planTiming` when it has one, and otherwise `inheritedPlan`: the
+ * nearest planned ancestor Task's, which the walk carries down. That inheritance is the **interim**
+ * reading of an unplanned sub-step under a planned Task, pending real Plan inheritance, and lives
+ * only here — nothing stored, edited or badged inherits a Plan yet. A Task with a Plan of its own
+ * answers to it alone, whatever its parent's says.
+ *
+ * Only a Plan still **ahead** hides: one that ended unfulfilled keeps the Task on screen as missed
+ * work. It fails the Task's own match rather than gating its subtree, so a sub-step with a current
+ * Plan still shows, holding its future-planned parent on screen as an ancestor. Virtual Habit
+ * occurrences carry no `planTiming`, so their Cycle Plans are not read. Mirrors `is_planned_ahead`
+ * in `src-tauri/src/filters/rules.rs`.
+ */
+export function isPlannedAhead(node: MindmapNode, f: FilterState, inheritedPlan: Timing | undefined): boolean {
+  if (f.statusMode !== "start" || node.kind !== "task") return false;
+  return (node.planTiming ?? inheritedPlan) === "pending";
 }
 
 /**
@@ -395,7 +417,12 @@ export function filterTreeWithFocus(root: MindmapNode, f: FilterState, exempt: R
 function pruneTree(root: MindmapNode, f: FilterState, exempt: ReadonlySet<string>): FocusFilteredTree {
   const exemptedIds = new Set<string>();
 
-  function prune(node: MindmapNode, inheritedStatus: string, underBacklog: boolean): MindmapNode | null {
+  function prune(
+    node: MindmapNode,
+    inheritedStatus: string,
+    underBacklog: boolean,
+    inheritedPlan: Timing | undefined,
+  ): MindmapNode | null {
     const isExempt = exempt.has(node.id);
     const hardHidden = typeHardHidden(node, f);
     if (hardHidden && !isExempt) return null;
@@ -406,12 +433,16 @@ function pruneTree(root: MindmapNode, f: FilterState, exempt: ReadonlySet<string
       : inheritedStatus;
     // Backlog, unlike status, does propagate: everything under a set-aside Task is set aside too.
     const backlogForChildren = underBacklog || isBacklogged(node);
+    // So, for Start, does a Plan: an unplanned sub-step is read by its nearest planned ancestor's.
+    // A wait cuts the chain: the check task beneath it has no Plan, answers to its own due time,
+    // and must not vanish because the Task the wait hangs under is planned for next week.
+    const planForChildren = node.kind === "expectation" ? undefined : node.planTiming ?? inheritedPlan;
     const children: MindmapNode[] = [];
     let hasContentMatch = false;
     for (const child of node.children) {
       // A hard-hidden node is on screen only to carry the focused node: nothing else beneath it returns.
       if (hardHidden && !exempt.has(child.id)) continue;
-      const pruned = prune(child, inheritedForChildren, backlogForChildren);
+      const pruned = prune(child, inheritedForChildren, backlogForChildren, planForChildren);
       if (pruned === null) continue;
       children.push(pruned);
       // A child kept only by the exemption is not a match, so it must not keep its parent either —
@@ -424,7 +455,8 @@ function pruneTree(root: MindmapNode, f: FilterState, exempt: ReadonlySet<string
     }
     // Info is carried by its parent's decision (visibility already handled by typeHardHidden above).
     if (node.kind === "info") return { ...node, children };
-    if (selfMatches(node, f, inheritedStatus, underBacklog) || hasContentMatch) return { ...node, children };
+    const matches = selfMatches(node, f, inheritedStatus, underBacklog) && !isPlannedAhead(node, f, inheritedPlan);
+    if (matches || hasContentMatch) return { ...node, children };
     if (isExempt) {
       exemptedIds.add(node.id);
       return { ...node, children };
@@ -432,5 +464,5 @@ function pruneTree(root: MindmapNode, f: FilterState, exempt: ReadonlySet<string
     return null;
   }
 
-  return { root: prune(root, UNSET_STATUS, false) ?? { ...root, children: [] }, exemptedIds };
+  return { root: prune(root, UNSET_STATUS, false, undefined) ?? { ...root, children: [] }, exemptedIds };
 }

@@ -1174,6 +1174,96 @@
       "expectations": [
         "expectation-late"
       ]
+    },
+    {
+      "name": "start hides a task planned into a scope that has not begun",
+      "spec": "mindmap-view.md — Start drops a Task whose own Plan has not begun yet; a Plan that has already ended unfulfilled stays visible as missed work, and an unplanned Task is unaffected.",
+      "filter": {
+        "preset": "start"
+      },
+      "board": "plans",
+      "mindmap": [
+        "domain-plans",
+        "goal-plans",
+        "task-plan-now",
+        "task-plan-ended",
+        "task-unplanned",
+        "commitment-plans"
+      ],
+      "list": [
+        "task-plan-now",
+        "task-plan-ended",
+        "task-unplanned"
+      ],
+      "commitments": [
+        "commitment-plans"
+      ]
+    },
+    {
+      "name": "plan still shows a task planned into a scope that has not begun",
+      "spec": "mindmap-view.md — the Plan rule belongs to Start alone; planning ahead is exactly what Plan shows.",
+      "filter": {
+        "preset": "plan"
+      },
+      "board": "plans",
+      "mindmap": [
+        "domain-plans",
+        "goal-plans",
+        "task-plan-now",
+        "task-plan-future",
+        "task-plan-ended",
+        "task-unplanned",
+        "commitment-plans"
+      ],
+      "list": [
+        "task-plan-now",
+        "task-plan-future",
+        "task-plan-ended",
+        "task-unplanned"
+      ],
+      "commitments": [
+        "commitment-plans"
+      ]
+    },
+    {
+      "name": "start reads an unplanned task by its nearest planned ancestor task",
+      "spec": "mindmap-view.md / filtering-logic.md — under Start an unplanned Task is read by its nearest planned ancestor Task's Plan (interim, pending Plan inheritance), while a Task with a Plan of its own answers to it alone; the rule fails a Task's own match rather than gating its subtree.",
+      "filter": {
+        "preset": "start"
+      },
+      "board": "plan-inheritance",
+      "mindmap": [
+        "domain-plan-inheritance",
+        "task-future-parent",
+        "task-own-plan-now",
+        "task-now-parent",
+        "task-inherits-now"
+      ],
+      "list": [
+        "task-own-plan-now",
+        "task-now-parent",
+        "task-inherits-now"
+      ],
+      "commitments": []
+    },
+    {
+      "name": "start keeps a due check task under a wait whose task is planned ahead",
+      "spec": "resources.md, Expectations / mindmap-view.md — a wait cuts Plan inheritance: its check task has no Plan and answers to its own due time, so a Task planned for next week does not hide the check due today beneath its wait.",
+      "filter": {
+        "preset": "start"
+      },
+      "board": "plan-waits",
+      "mindmap": [
+        "domain-plan-waits",
+        "expectation-wait-ahead",
+        "task-check-under-wait",
+        "task-future-waiter"
+      ],
+      "list": [
+        "task-check-under-wait"
+      ],
+      "commitments": [],
+      "expectations": []
     }
   ],
   "boards": {
@@ -1742,6 +1832,154 @@
           "kind": "commitment",
           "verdict": "broken",
           "timing": "active"
+        }
+      ]
+    },
+    "plans": {
+      "id": "root",
+      "kind": "aspect",
+      "children": [
+        {
+          "id": "domain-plans",
+          "kind": "project",
+          "status": "active",
+          "children": [
+            {
+              "id": "goal-plans",
+              "kind": "goal",
+              "status": "active",
+              "children": [
+                {
+                  "id": "task-plan-now",
+                  "kind": "task",
+                  "status": "todo",
+                  "planTiming": "active"
+                },
+                {
+                  "id": "task-plan-future",
+                  "kind": "task",
+                  "status": "todo",
+                  "planTiming": "pending"
+                },
+                {
+                  "id": "task-plan-ended",
+                  "kind": "task",
+                  "status": "todo",
+                  "planTiming": "lapsed"
+                },
+                {
+                  "id": "task-unplanned",
+                  "kind": "task",
+                  "status": "todo"
+                },
+                {
+                  "id": "commitment-plans",
+                  "kind": "commitment",
+                  "verdict": "unresolved",
+                  "timing": "active"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "plan-inheritance": {
+      "id": "root",
+      "kind": "aspect",
+      "children": [
+        {
+          "id": "domain-plan-inheritance",
+          "kind": "project",
+          "status": "active",
+          "children": [
+            {
+              "id": "task-future-parent",
+              "kind": "task",
+              "status": "todo",
+              "planTiming": "pending",
+              "children": [
+                {
+                  "id": "task-inherits-future",
+                  "kind": "task",
+                  "status": "todo"
+                },
+                {
+                  "id": "task-own-plan-now",
+                  "kind": "task",
+                  "status": "todo",
+                  "planTiming": "active"
+                }
+              ]
+            },
+            {
+              "id": "task-future-grandparent",
+              "kind": "task",
+              "status": "todo",
+              "planTiming": "pending",
+              "children": [
+                {
+                  "id": "task-unplanned-middle",
+                  "kind": "task",
+                  "status": "todo",
+                  "children": [
+                    {
+                      "id": "task-grandchild",
+                      "kind": "task",
+                      "status": "todo"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "task-now-parent",
+              "kind": "task",
+              "status": "todo",
+              "planTiming": "active",
+              "children": [
+                {
+                  "id": "task-inherits-now",
+                  "kind": "task",
+                  "status": "todo"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "plan-waits": {
+      "id": "root",
+      "kind": "aspect",
+      "children": [
+        {
+          "id": "domain-plan-waits",
+          "kind": "project",
+          "status": "active",
+          "children": [
+            {
+              "id": "task-future-waiter",
+              "kind": "task",
+              "status": "todo",
+              "planTiming": "pending",
+              "children": [
+                {
+                  "id": "expectation-wait-ahead",
+                  "kind": "expectation",
+                  "status": "pending",
+                  "hasCheck": true,
+                  "children": [
+                    {
+                      "id": "task-check-under-wait",
+                      "kind": "task",
+                      "status": "todo"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
         }
       ]
     }

@@ -131,12 +131,13 @@ pub fn on_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
         // down intact before the first of them went.
         WindowEvent::Destroyed if !quit_requested(app) => {
             // Its number is free for the next window to open. See `windows::next_ordinal`.
-            if let Some(ordinals) = app.try_state::<windows::Ordinals>() {
-                ordinals.forget(window.label());
+            if let Some(names) = app.try_state::<windows::WindowNames>() {
+                names.forget(window.label());
             }
             windows::snapshot(app);
-            // One fewer window to list, and the entries are the only way to reach one.
-            refresh_menu(app);
+            // One fewer window: down to one, the survivor loses its number and the menu its list.
+            // Tauri has already dropped this window from the live set by the time it says so.
+            windows::retitle_all(app);
         }
         _ => {}
     }
@@ -149,7 +150,7 @@ fn quit_requested<R: Runtime>(app: &AppHandle<R>) -> bool {
         .unwrap_or(false)
 }
 
-/// The tray menu: Show, one entry per open window, and Quit.
+/// The tray menu: Show, one entry per open window while there are several, and Quit.
 ///
 /// A window's entry is a check item, checked while the window is on screen, and a click on it
 /// hides or shows that window alone.
@@ -260,7 +261,7 @@ struct SystemTray {
     /// and while the service lock is held. Asking Tauri for a window's title from in there means
     /// a round trip to the main thread taken under a lock that the refresh is already holding —
     /// so the list is computed by [`refresh_menu`], outside it, and handed in.
-    windows: Vec<windows::ListedWindow>,
+    windows: Vec<crate::windows::ListedWindow>,
 }
 
 #[cfg(target_os = "linux")]
@@ -311,7 +312,7 @@ impl ksni::Tray for SystemTray {
         on_main_thread(&self.app, toggle_windows);
     }
 
-    /// Show, then one entry per open window, then Quit.
+    /// Show, then one entry per open window while there are several, then Quit.
     ///
     /// Reads only what the struct already holds. The list is refreshed by [`refresh_menu`], which
     /// gathers it outside the service lock and hands it in — see [`SystemTray::windows`].

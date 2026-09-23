@@ -33,6 +33,7 @@ interface CorpusNode {
   kind: NodeKind;
   status?: string;
   timing?: Timing;
+  planTiming?: Timing;
   archived?: boolean;
   backlogged?: boolean;
   verdict?: Verdict;
@@ -118,6 +119,7 @@ function parseNode(value: unknown, what: string): CorpusNode {
     children,
     ...(raw.status !== undefined ? { status: str(raw.status, `${what}.status`) } : {}),
     ...(raw.timing !== undefined ? { timing: parseTiming(raw.timing, `${what}.timing`) } : {}),
+    ...(raw.planTiming !== undefined ? { planTiming: parseTiming(raw.planTiming, `${what}.planTiming`) } : {}),
     ...(raw.verdict !== undefined ? { verdict: parseVerdict(raw.verdict, `${what}.verdict`) } : {}),
     ...(raw.tagIds !== undefined ? { tagIds: parseTagIds(raw.tagIds, `${what}.tagIds`) } : {}),
     ...flag(raw.archived, "archived", what),
@@ -247,6 +249,7 @@ function toMindmapNode(node: CorpusNode): MindmapNode {
     children: (node.children ?? []).map(toMindmapNode),
     ...(node.status !== undefined ? { status: node.status } : {}),
     ...(node.timing !== undefined ? { timing: node.timing } : {}),
+    ...(node.planTiming !== undefined ? { planTiming: node.planTiming } : {}),
     ...(node.verdict !== undefined ? { verdict: node.verdict } : {}),
     ...(node.archived === true ? { archived: true } : {}),
     ...(node.backlogged === true ? { backlogged: true } : {}),

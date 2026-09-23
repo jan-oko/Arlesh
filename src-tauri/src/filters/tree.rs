@@ -13,6 +13,8 @@
 
 use std::collections::BTreeSet;
 
+use crate::tasks::lifecycle::Timing;
+
 use super::{
     model::{BoardFilter, NodeFacts, NodeKind},
     rules::{self, UNSET_STATUS},
@@ -49,7 +51,7 @@ impl FactNode {
 /// The honest answer, which [`prune_tree`] then softens for the one caller — the Mindmap's
 /// synthetic root — that needs a container to render into whatever the filter says.
 pub fn prune(root: &FactNode, filter: &BoardFilter) -> Option<FactNode> {
-    prune_at(root, filter, UNSET_STATUS, false)
+    prune_at(root, filter, UNSET_STATUS, false, None)
 }
 
 /// Prunes `root`, returning it as a container even when nothing in it survived.
@@ -98,6 +100,7 @@ fn prune_at(
     filter: &BoardFilter,
     inherited_status: &str,
     under_backlog: bool,
+    inherited_plan: Option<Timing>,
 ) -> Option<FactNode> {
     if rules::type_hard_hidden(&node.facts, filter) {
         return None;
@@ -111,12 +114,25 @@ fn prune_at(
     };
     // Backlog, unlike status, does propagate: everything under a set-aside Task is set aside too.
     let backlog_for_children = under_backlog || node.facts.backlogged;
+    // So, for Start, does a Plan: an unplanned sub-step is read by its nearest planned ancestor's.
+    // A wait cuts the chain: the check task beneath it has no Plan, answers to its own due time,
+    // and must not vanish because the Task the wait hangs under is planned for next week.
+    let plan_for_children = if node.facts.kind == NodeKind::Expectation {
+        None
+    } else {
+        node.facts.plan_timing.or(inherited_plan)
+    };
 
     let mut children = Vec::new();
     let mut has_content_match = false;
     for child in &node.children {
-        let Some(pruned) = prune_at(child, filter, inherited_for_children, backlog_for_children)
-        else {
+        let Some(pruned) = prune_at(
+            child,
+            filter,
+            inherited_for_children,
+            backlog_for_children,
+            plan_for_children,
+        ) else {
             continue;
         };
         if child.facts.kind != NodeKind::Info {
@@ -131,7 +147,8 @@ fn prune_at(
         return Some(FactNode::with_children(node.facts.clone(), children));
     }
     if has_content_match
-        || rules::self_matches(&node.facts, filter, inherited_status, under_backlog)
+        || (rules::self_matches(&node.facts, filter, inherited_status, under_backlog)
+            && !rules::is_planned_ahead(&node.facts, filter, inherited_plan))
     {
         return Some(FactNode::with_children(node.facts.clone(), children));
     }

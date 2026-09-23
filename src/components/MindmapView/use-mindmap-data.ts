@@ -62,6 +62,7 @@ function applyLifecycles(node: MindmapNode, byId: Map<string, ItemLifecycle>): v
   const entry = byId.get(node.id);
   if (entry !== undefined) {
     node.timing = entry.timing;
+    if (entry.plan_timing !== undefined) node.planTiming = entry.plan_timing;
     if (entry.resolution !== undefined) node.resolution = entry.resolution;
     // A Commitment's verdict comes back on the same envelope, in place of a Resolution. It is
     // already on the node from its own row; re-stamping it keeps the two from disagreeing when

@@ -253,6 +253,14 @@ pub struct ItemLifecycle {
     pub archival: Archival,
     /// True when `archival` silently overrode a manually-set `Frozen` or `Backlog`.
     pub archival_conflict: bool,
+    /// Where the Task's own **Plan** stands at the same instant, on the same axis as [`Self::timing`]
+    /// — present only for a Task that has a Plan. Absent for an unplanned Task, a Goal and a
+    /// Commitment, none of which is scheduled into anything.
+    ///
+    /// Only the Task's own Plan counts: a Plan is not inherited the way a Time Scope is. The Start
+    /// preset reads it (see [`crate::filters::rules::is_planned_ahead`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plan_timing: Option<Timing>,
 }
 
 #[cfg(test)]

@@ -151,19 +151,32 @@ click puts it away; none showing brings them all back. **Ctrl+Q** quits from the
 appears in the cheat-sheet. The windows return where and how they were left, since hiding never
 destroys them.
 
-The right button opens a menu: **Show**, then **one entry per open window**, then **Quit**. That is
-the division — the icon is the app and acts on all of it, the menu is how you reach past that into
-one window. A window's entry is a **check item, checked while that window is on screen**, and
+The right button opens a menu: **Show**, then **one entry per open window** while two or more are
+open, then **Quit**. That is the division — the icon is the app and acts on all of it, the menu is
+how you reach past that into one window. With a single window the two are the same thing, so the
+menu is just Show and Quit. A window's entry is a **check item, checked while that window is on screen**, and
 clicking it hides or shows that window alone; shown, it also takes the keyboard. The menu is
 rebuilt whenever a window opens, closes, is hidden or shown, or changes its title, because a menu
 whose checks or entries lag behind the windows is worse than no menu at all. Whether a check mark is
 drawn is the tray host's business: the entry is published as a checkmark item, and a host that
 does not draw those still toggles the window.
 
-**Every window is numbered, in its own title.** The title reads `Arlesh 2 — Bugfixes`: the number,
-which stays put, and the active tab, which is what you actually recognise the window by. The first
-window is `Arlesh 1`. The window manager shows that title in its bars and window lists, and the
-tray entry is the same title, so an entry and its window are matched at a glance.
+**While several windows are open, each is numbered in its own title.** The title reads
+`Arlesh [2] — Bugfixes`: the number in brackets, which stays put, and the active tab, which is what
+you actually recognise the window by. The window manager shows that title in its bars and window
+lists, and the tray entry is the same title, so an entry and its window are matched at a glance.
+In a branch instance the number follows the whole of the config title, branch included, and comes
+before the tab: `Arlesh — <branch> [2] — Bugfixes`.
+
+**A lone window shows no number.** Decided 2026-09-23: with one window open the title reads
+`Arlesh`, or `Arlesh — Bugfixes`, as it did before numbering existed, and the tray menu has no
+per-window list. A number is there to tell windows apart, and one window has nothing to be told
+apart from. The number is still **assigned** — it is only not shown — so the rules below are
+untouched. It updates live: the second window to open numbers both titles and adds the list, and
+closing back down to one takes both away. "Open" is the live window set, hidden ones included: a
+window put away in the tray is still open, and still counts. Because a window's title now depends
+on the others, the backend keeps each window's last-reported tab name beside its number and
+retitles every window whenever one opens or closes.
 
 **A window keeps its number while it is open, and it comes back with it.** Close window 2 of three
 and window 3 stays 3 — a number that moved when something else closed would make the menu entry

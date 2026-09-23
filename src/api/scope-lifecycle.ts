@@ -30,6 +30,9 @@ export interface ItemLifecycle {
   verdict?: Verdict;
   archival: Archival;
   archival_conflict: boolean;
+  /** Where a Task's **own** Plan stands at the same instant — present only for a Task that has a
+   * Plan; absent for an unplanned Task, a Goal and a Commitment. */
+  plan_timing?: Timing;
 }
 
 /**
