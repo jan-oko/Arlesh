@@ -206,7 +206,7 @@ fn task_kind(error: &TaskError) -> WireErrorKind {
         | TaskError::ExpectationNotFound(_)
         | TaskError::NoSpawnedWait(_) => WireErrorKind::NotFound,
         // The request named a check that is no longer there to complete.
-        TaskError::NoCheckDue => WireErrorKind::InvalidRequest,
+        TaskError::NoCheckDue | TaskError::CheckNotReopenable => WireErrorKind::InvalidRequest,
         TaskError::CircularDependency => WireErrorKind::InvalidRequest,
         // Not `InvalidRequest`: the request is well-formed and could be carried out. The backend
         // is asking whether to throw the Plan away, and the caller answers by asking again with

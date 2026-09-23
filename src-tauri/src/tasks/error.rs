@@ -30,6 +30,11 @@ pub enum TaskError {
     /// A stale view, most likely; saying so beats pretending.
     #[error("there is no check due on this wait")]
     NoCheckDue,
+    /// Reopening a check was asked for on one that is not the wait's latest completed check, or
+    /// on a wait that is no longer pending and live. Only the latest can be taken back: the
+    /// schedule runs on from it, and an older one reopened would have nowhere to be drawn.
+    #[error("only the latest completed check on a pending wait can be reopened")]
+    CheckNotReopenable,
     /// A spawned wait was asked for on a task whose completion has spawned none.
     #[error("task {0} has no spawned wait")]
     NoSpawnedWait(i64),

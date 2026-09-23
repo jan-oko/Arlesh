@@ -62,8 +62,16 @@ struct ExpectationRow {
     check_every_n: Option<i64>,
     check_every_kind: Option<String>,
     check_starting: Option<String>,
-    last_check_at: Option<String>,
+    /// The latest completed check's time, from `wait_checks` — not the retired column of the
+    /// same meaning (0045).
+    checked_at: Option<String>,
 }
+
+/// An expectation row with its latest completed check alongside, for [`ExpectationRow`].
+const EXPECTATION_SELECT: &str = "SELECT e.*,
+        (SELECT MAX(c.resolved_at) FROM wait_checks c
+          WHERE c.wait_kind = 'stored' AND c.wait_id = e.id) AS checked_at
+     FROM expectations e";
 
 impl From<ExpectationRow> for Expectation {
     fn from(row: ExpectationRow) -> Self {
@@ -81,7 +89,7 @@ impl From<ExpectationRow> for Expectation {
                 _ => None,
             },
             check_starting: instant_from_column(row.check_starting),
-            last_check_at: instant_from_column(row.last_check_at),
+            last_check_at: instant_from_column(row.checked_at),
             time_scope: time_scope_from_row(
                 row.time_scope_start_id,
                 row.time_scope_end_id,
@@ -213,11 +221,12 @@ impl<'session> ExpectationOperator<'session> {
 
     /// Fetches an expectation by id.
     pub async fn get(&mut self, id: ExpectationId) -> Result<Expectation, TaskError> {
-        let row = sqlx::query_as::<_, ExpectationRow>("SELECT * FROM expectations WHERE id = ?")
-            .bind(id.0)
-            .fetch_optional(&mut *self.connection)
-            .await?
-            .ok_or(TaskError::ExpectationNotFound(id.0))?;
+        let row =
+            sqlx::query_as::<_, ExpectationRow>(&format!("{EXPECTATION_SELECT} WHERE e.id = ?"))
+                .bind(id.0)
+                .fetch_optional(&mut *self.connection)
+                .await?
+                .ok_or(TaskError::ExpectationNotFound(id.0))?;
         let tag_ids = self.tag_ids(id).await?;
         Ok(Expectation {
             tag_ids,
@@ -259,10 +268,11 @@ impl<'session> ExpectationOperator<'session> {
 
     /// Lists all expectations, in sort-position order.
     pub async fn list(&mut self) -> Result<Vec<Expectation>, TaskError> {
-        let rows =
-            sqlx::query_as::<_, ExpectationRow>("SELECT * FROM expectations ORDER BY position ASC")
-                .fetch_all(&mut *self.connection)
-                .await?;
+        let rows = sqlx::query_as::<_, ExpectationRow>(&format!(
+            "{EXPECTATION_SELECT} ORDER BY e.position ASC"
+        ))
+        .fetch_all(&mut *self.connection)
+        .await?;
         let mut expectations = Vec::with_capacity(rows.len());
         for row in rows {
             let tag_ids = self.tag_ids(ExpectationId(row.id)).await?;
@@ -333,24 +343,16 @@ impl<'session> ExpectationOperator<'session> {
         self.get(id).await
     }
 
-    /// Records `at` as the time of an expectation's last check.
-    async fn set_last_check(
-        &mut self,
-        id: ExpectationId,
-        at: NaiveDateTime,
-    ) -> Result<(), TaskError> {
-        sqlx::query("UPDATE expectations SET last_check_at = ? WHERE id = ?")
-            .bind(instant_column(at))
-            .bind(id.0)
-            .execute(&mut *self.connection)
-            .await?;
-        Ok(())
-    }
-
     /// Deletes one expectation row and nothing else. The Infos beneath it and the dependency
     /// edges aimed at it are the subtree cascade's job — see [`delete_expectation`].
     pub(super) async fn delete_row(&mut self, id: ExpectationId) -> Result<(), TaskError> {
         sqlx::query("DELETE FROM expectations WHERE id = ?")
+            .bind(id.0)
+            .execute(&mut *self.connection)
+            .await?;
+        // Its completed checks go with it: `wait_checks` has no foreign key to cascade, and a
+        // freed id would otherwise hand them to the next wait created.
+        sqlx::query("DELETE FROM wait_checks WHERE wait_kind = 'stored' AND wait_id = ?")
             .bind(id.0)
             .execute(&mut *self.connection)
             .await?;
@@ -413,10 +415,31 @@ pub async fn complete_expectation_check(
     let stored = db.expectations().get(id).await?;
     // Refused unless a check is due now: completing one that has not come round yet would push the
     // schedule on without anyone having looked.
-    if !super::waits::stored_check_due(&stored).is_some_and(|due| super::waits::is_due(due, at)) {
+    let Some(due) =
+        super::waits::stored_check_due(&stored).filter(|due| super::waits::is_due(*due, at))
+    else {
         return Err(TaskError::NoCheckDue);
+    };
+    db.tasks()
+        .record_check(super::waits::WaitKind::Stored, id.0, due, at)
+        .await?;
+    db.expectations().get(id).await
+}
+
+/// Takes a completed check on a stored wait back: the check named by `due_at` is open again and,
+/// being due, is the one drawn, while the check after it — no longer due — goes. Only the wait's
+/// latest completed check, and only on a pending, live wait; anything else is refused.
+#[tracing::instrument(skip(db))]
+pub async fn reopen_expectation_check(
+    db: &mut Db<Transactional>,
+    id: ExpectationId,
+    due_at: NaiveDateTime,
+) -> Result<Expectation, TaskError> {
+    let stored = db.expectations().get(id).await?;
+    if stored.status != ExpectationStatus::Pending || stored.archival != ExpectationArchival::Live {
+        return Err(TaskError::CheckNotReopenable);
     }
-    db.expectations().set_last_check(id, at).await?;
+    super::waits::reopen_latest(db, super::waits::WaitKind::Stored, id.0, due_at).await?;
     db.expectations().get(id).await
 }
 

@@ -31,8 +31,8 @@ pub use commitments::{
 };
 use error::TaskError;
 pub use expectations::{
-    complete_expectation_check, create_expectation, delete_expectation, update_expectation,
-    ExpectationOperator,
+    complete_expectation_check, create_expectation, delete_expectation, reopen_expectation_check,
+    update_expectation, ExpectationOperator,
 };
 use model::{AsyncTemplate, CommitmentId, ExpectationId, ExpectationStatus};
 use model::{
@@ -1060,13 +1060,18 @@ impl<'session> TaskOperator<'session> {
         self.get(id).await
     }
 
-    /// Deletes one task row and nothing else. Descendants and the infos and block reasons hanging
-    /// off them are the subtree cascade's job — see [`delete_task`].
+    /// Deletes one task row, and the checks recorded on the wait it spawned. Descendants and the
+    /// infos and block reasons hanging off them are the subtree cascade's job — see [`delete_task`].
     ///
     /// Module-private: called directly it orphans the whole subtree under the task, since the
     /// polymorphic parent links have no foreign key to cascade along.
     async fn delete_row(&mut self, id: TaskId) -> Result<(), TaskError> {
         sqlx::query("DELETE FROM tasks WHERE id = ?")
+            .bind(id.0)
+            .execute(&mut *self.connection)
+            .await?;
+        // The checks made on the wait it spawned go with it; `wait_checks` has no foreign key.
+        sqlx::query("DELETE FROM wait_checks WHERE wait_kind = 'spawned' AND wait_id = ?")
             .bind(id.0)
             .execute(&mut *self.connection)
             .await?;

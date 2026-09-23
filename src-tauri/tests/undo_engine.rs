@@ -1196,3 +1196,59 @@ async fn undoing_an_edit_that_unflagged_asynchronous_puts_the_flag_back() {
         "and redo must clear it again"
     );
 }
+
+/// How many completed checks are stored for a wait.
+async fn completed_checks(pool: &SqlitePool, expectation_id: i64) -> i64 {
+    sqlx::query_scalar(
+        "SELECT COUNT(*) FROM wait_checks WHERE wait_kind = 'stored' AND wait_id = ?",
+    )
+    .bind(expectation_id)
+    .fetch_one(pool)
+    .await
+    .expect("read the checks")
+}
+
+#[tokio::test]
+async fn undoing_a_completed_check_reopens_it_and_redo_completes_it_again() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let project_id = make_project(&pool).await;
+    let wait = arlesh_lib::commands::expectations::create_expectation(
+        app.state(),
+        arlesh_lib::tasks::model::CreateExpectationRequest {
+            title: "reviewer replies".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            check_every: Some(arlesh_lib::tasks::model::DurationSpec {
+                n: 1,
+                kind: "day".into(),
+            }),
+            // Long past, so a check is due whenever the test runs.
+            check_starting: chrono::NaiveDate::from_ymd_opt(2026, 1, 1)
+                .and_then(|date| date.and_hms_opt(2, 0, 0)),
+            time_scope: None,
+        },
+    )
+    .await
+    .expect("create the wait");
+
+    open_gesture(&app).await;
+    arlesh_lib::commands::expectations::complete_expectation_check(app.state(), wait.id)
+        .await
+        .expect("complete the check");
+    close_gesture(&app).await;
+    assert_eq!(completed_checks(&pool, wait.id).await, 1);
+
+    undo(&app).await.expect("there is something to undo");
+    assert_eq!(
+        completed_checks(&pool, wait.id).await,
+        0,
+        "undo reopens the check"
+    );
+    redo(&app).await.expect("there is something to redo");
+    assert_eq!(
+        completed_checks(&pool, wait.id).await,
+        1,
+        "and redo completes it again"
+    );
+}

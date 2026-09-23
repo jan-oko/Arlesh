@@ -148,3 +148,33 @@ pub async fn delete_expectation(
         .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)
 }
+
+/// Takes the latest completed check on a stored wait back. `due_at` names the check, as the
+/// frontend drew it (`YYYY-MM-DDTHH:MM:SS`).
+#[tauri::command]
+pub async fn reopen_expectation_check(
+    factory: State<'_, SessionFactory>,
+    id: i64,
+    due_at: chrono::NaiveDateTime,
+) -> Result<Expectation, WireError> {
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    let expectation = crate::tasks::reopen_expectation_check(&mut db, ExpectationId(id), due_at)
+        .await
+        .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)?;
+    Ok(expectation)
+}
+
+/// Takes the latest completed check on a task's spawned wait back.
+#[tauri::command]
+pub async fn reopen_spawned_wait_check(
+    factory: State<'_, SessionFactory>,
+    task_id: i64,
+    due_at: chrono::NaiveDateTime,
+) -> Result<(), WireError> {
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    crate::tasks::waits::reopen_spawned_check(&mut db, TaskId(task_id), due_at)
+        .await
+        .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)
+}

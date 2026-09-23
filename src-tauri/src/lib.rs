@@ -168,6 +168,8 @@ pub fn run() {
             commands::expectations::complete_expectation_check,
             commands::expectations::update_spawned_wait,
             commands::expectations::complete_spawned_wait_check,
+            commands::expectations::reopen_expectation_check,
+            commands::expectations::reopen_spawned_wait_check,
             commands::expectations::delete_expectation,
             commands::expectations::add_tag_to_expectation,
             commands::expectations::remove_tag_from_expectation,

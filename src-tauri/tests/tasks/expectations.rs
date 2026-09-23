@@ -19,9 +19,10 @@ use arlesh_lib::{
             ExpectationArchival, ExpectationId, ExpectationStatus, TaskId, TimeScope,
             UpdateExpectationRequest,
         },
+        reopen_expectation_check,
         retype::{apply_retype, plan_node_retype, RetypeKind, StrandedChildren},
         update_expectation,
-        waits::derive_wait_windows,
+        waits::{derive_wait_windows, ExpectationCheck},
     },
 };
 use chrono::{NaiveDate, NaiveDateTime};
@@ -190,16 +191,19 @@ async fn completing_a_check_records_it_and_moves_the_next_one_interval_on() {
     assert_eq!(checked.status, ExpectationStatus::Pending);
 
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
-    // Done on the 9th, the next is not due until the 12th: until then there is no check task.
-    assert!(derive_wait_windows(&mut db, at("2026-07-12T09:00:00"))
+    // Done on the 9th, the check stays as a done one; the next is not due until the 12th, so until
+    // then there is no open check.
+    let before = derive_wait_windows(&mut db, at("2026-07-12T09:00:00"))
         .await
         .unwrap()
-        .expectation_checks
-        .is_empty());
+        .expectation_checks;
+    assert_eq!(before.len(), 1);
+    assert_eq!(before[0].due_at, at("2026-07-03T09:00:00"));
+    assert_eq!(before[0].resolved_at, Some(at("2026-07-09T18:00:00")));
     let windows = derive_wait_windows(&mut db, at("2026-07-12T19:00:00"))
         .await
         .unwrap();
-    let due = &windows.expectation_checks[0];
+    let due = open_check(&windows.expectation_checks).expect("the next check is due");
     assert_eq!(due.expectation_id, wait.id);
     let day = db.scopes().get(ScopeId(due.due.start_id)).await.unwrap();
     assert_eq!(day.start_date, "2026-07-12");
@@ -222,11 +226,64 @@ async fn completing_a_check_records_it_and_moves_the_next_one_interval_on() {
     assert!(matches!(refused, Err(TaskError::NoCheckDue)));
     drop(db);
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
-    assert!(derive_wait_windows(&mut db, at("2026-07-20T09:00:00"))
+    let checks = derive_wait_windows(&mut db, at("2026-07-20T09:00:00"))
         .await
         .unwrap()
-        .expectation_checks
-        .is_empty());
+        .expectation_checks;
+    assert!(open_check(&checks).is_none());
+    assert_eq!(checks.len(), 1, "the done check stays");
+}
+
+/// The one check that is due and open, among a wait's checks.
+fn open_check(checks: &[ExpectationCheck]) -> Option<&ExpectationCheck> {
+    checks.iter().find(|check| check.resolved_at.is_none())
+}
+
+#[tokio::test]
+async fn reopening_the_latest_check_brings_it_back_and_the_next_goes() {
+    let pool = helpers::test_pool().await;
+    let project = make_project(&pool).await;
+    let wait = expectation(&pool, "project", project, Some(every(3, "day"))).await;
+    for day in ["2026-07-04T10:00:00", "2026-07-08T10:00:00"] {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        complete_expectation_check(&mut db, ExpectationId(wait.id), at(day))
+            .await
+            .unwrap();
+        db.commit().await.unwrap();
+    }
+    // Due the 3rd (done the 4th), then the 7th (done the 8th); the next is due the 11th.
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
+    let checks = derive_wait_windows(&mut db, at("2026-07-11T12:00:00"))
+        .await
+        .unwrap()
+        .expectation_checks;
+    assert_eq!(checks.len(), 3);
+    assert_eq!(
+        open_check(&checks).map(|check| check.due_at),
+        Some(at("2026-07-11T10:00:00"))
+    );
+    drop(db);
+
+    // Only the latest can be taken back.
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    let older =
+        reopen_expectation_check(&mut db, ExpectationId(wait.id), at("2026-07-03T09:00:00")).await;
+    assert!(matches!(older, Err(TaskError::CheckNotReopenable)));
+    reopen_expectation_check(&mut db, ExpectationId(wait.id), at("2026-07-07T10:00:00"))
+        .await
+        .unwrap();
+    db.commit().await.unwrap();
+
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
+    let checks = derive_wait_windows(&mut db, at("2026-07-11T12:00:00"))
+        .await
+        .unwrap()
+        .expectation_checks;
+    assert_eq!(checks.len(), 2, "one done, and the reopened one open again");
+    assert_eq!(
+        open_check(&checks).map(|check| check.due_at),
+        Some(at("2026-07-07T10:00:00"))
+    );
 }
 
 #[tokio::test]

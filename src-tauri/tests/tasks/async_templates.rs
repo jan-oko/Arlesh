@@ -294,6 +294,10 @@ async fn a_spawned_waits_check_moves_on_and_a_released_one_has_none() {
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
     let windows = derive_wait_windows(&mut db, far_future()).await.unwrap();
     assert!(windows.spawned_waits[0].next_check.is_none());
+    // The completed check stays, done.
+    let done = &windows.spawned_waits[0].done_checks;
+    assert_eq!(done.len(), 1);
+    assert_eq!(done[0].resolved_at, checked_at);
 }
 
 #[tokio::test]

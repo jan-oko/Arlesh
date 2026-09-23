@@ -16,7 +16,7 @@
 //! anchored to when the check was made, not to the schedule, so a late check does not leave a run
 //! of overdue ones behind it.
 
-use chrono::{NaiveDate, NaiveDateTime};
+use chrono::{NaiveDate, NaiveDateTime, Timelike};
 use serde::Serialize;
 
 use crate::database::session::{Db, SessionMode};
@@ -123,7 +123,7 @@ pub fn spawned_check_due(
     }
     let starting = match wait.spawned_at {
         Some(began) => advance_check(began, every)?,
-        None => now,
+        None => now.with_nanosecond(0).unwrap_or(now),
     };
     let last = wait
         .last_check_at
@@ -192,8 +192,9 @@ struct SpawnedRow {
 
 /// The rows [`SpawnedRow`] reads: every done, Asynchronous Task with a template — the waits that
 /// exist — with whatever overlay each has.
-const SPAWNED_SELECT: &str =
-    "SELECT t.id AS task_id, t.done_at, o.status, o.archival, o.last_check_at
+const SPAWNED_SELECT: &str = "SELECT t.id AS task_id, t.done_at, o.status, o.archival,
+            (SELECT MAX(c.resolved_at) FROM wait_checks c
+              WHERE c.wait_kind = 'spawned' AND c.wait_id = t.id) AS last_check_at
      FROM tasks t
      JOIN task_async_templates a ON a.task_id = t.id
      LEFT JOIN spawned_waits o ON o.task_id = t.id
@@ -338,18 +339,118 @@ impl TaskOperator<'_> {
         Ok(())
     }
 
-    /// Records `at` as the time of a spawned wait's last check, starting its overlay if it has none.
-    async fn set_spawned_check(&mut self, id: TaskId, at: NaiveDateTime) -> Result<(), TaskError> {
-        sqlx::query(
-            "INSERT INTO spawned_waits (task_id, last_check_at) VALUES (?, ?)
-             ON CONFLICT (task_id) DO UPDATE SET last_check_at = excluded.last_check_at",
+    /// A wait's completed checks, oldest first.
+    pub async fn wait_checks(
+        &mut self,
+        kind: WaitKind,
+        wait_id: i64,
+    ) -> Result<Vec<CheckRecord>, TaskError> {
+        let rows = sqlx::query_as::<_, CheckRow>(
+            "SELECT due_at, resolved_at FROM wait_checks
+             WHERE wait_kind = ? AND wait_id = ? ORDER BY resolved_at, due_at",
         )
-        .bind(id.0)
-        .bind(instant_column(at))
+        .bind(kind.as_str())
+        .bind(wait_id)
+        .fetch_all(&mut *self.connection)
+        .await?;
+        Ok(rows.into_iter().filter_map(CheckRow::into_record).collect())
+    }
+
+    /// Records the check due at `due_at` as completed at `resolved_at`.
+    pub(crate) async fn record_check(
+        &mut self,
+        kind: WaitKind,
+        wait_id: i64,
+        due_at: NaiveDateTime,
+        resolved_at: NaiveDateTime,
+    ) -> Result<(), TaskError> {
+        sqlx::query(
+            "INSERT INTO wait_checks (wait_kind, wait_id, due_at, resolved_at) VALUES (?, ?, ?, ?)",
+        )
+        .bind(kind.as_str())
+        .bind(wait_id)
+        .bind(instant_column(due_at))
+        .bind(instant_column(resolved_at))
         .execute(&mut *self.connection)
         .await?;
         Ok(())
     }
+
+    /// Deletes the completed check due at `due_at`.
+    async fn delete_check(
+        &mut self,
+        kind: WaitKind,
+        wait_id: i64,
+        due_at: NaiveDateTime,
+    ) -> Result<(), TaskError> {
+        sqlx::query("DELETE FROM wait_checks WHERE wait_kind = ? AND wait_id = ? AND due_at = ?")
+            .bind(kind.as_str())
+            .bind(wait_id)
+            .bind(instant_column(due_at))
+            .execute(&mut *self.connection)
+            .await?;
+        Ok(())
+    }
+}
+
+/// Which kind of wait a check belongs to — and so what its `wait_id` names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WaitKind {
+    /// A stored Expectation; the id is the Expectation's.
+    Stored,
+    /// The wait an Asynchronous Task spawned; the id is the Task's.
+    Spawned,
+}
+
+impl WaitKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Stored => "stored",
+            Self::Spawned => "spawned",
+        }
+    }
+}
+
+/// A completed check, as stored.
+#[derive(sqlx::FromRow)]
+struct CheckRow {
+    due_at: String,
+    resolved_at: String,
+}
+
+impl CheckRow {
+    fn into_record(self) -> Option<CheckRecord> {
+        Some(CheckRecord {
+            due_at: instant_from_column(Some(self.due_at))?,
+            resolved_at: instant_from_column(Some(self.resolved_at))?,
+        })
+    }
+}
+
+/// One completed check on a wait.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct CheckRecord {
+    /// When it fell due — which check it was.
+    pub due_at: NaiveDateTime,
+    /// When it was completed.
+    pub resolved_at: NaiveDateTime,
+}
+
+/// Takes the wait's latest completed check back, if `due_at` names it; refused otherwise. The
+/// schedule runs on from the latest completion, so reopening it makes it the check due again and
+/// the one after it — no longer due — goes. An older check cannot be reopened: the checks after it
+/// stand, and it would have nowhere to be drawn.
+pub(crate) async fn reopen_latest<M: SessionMode>(
+    db: &mut Db<M>,
+    kind: WaitKind,
+    wait_id: i64,
+    due_at: NaiveDateTime,
+) -> Result<(), TaskError> {
+    let latest = db.tasks().wait_checks(kind, wait_id).await?.pop();
+    if latest.is_none_or(|latest| latest.due_at != due_at) {
+        return Err(TaskError::CheckNotReopenable);
+    }
+    db.tasks().delete_check(kind, wait_id, due_at).await
 }
 
 /// A stored Expectation's next check, as the window its virtual check task is drawn in.
@@ -357,8 +458,24 @@ impl TaskOperator<'_> {
 pub struct ExpectationCheck {
     /// The Expectation being checked on.
     pub expectation_id: i64,
-    /// The day the check is due.
+    /// The Day the check fell due on.
     pub due: TimeScope,
+    /// When it fell due — which check it is.
+    pub due_at: NaiveDateTime,
+    /// When it was completed; absent on the one check that is due and open.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resolved_at: Option<NaiveDateTime>,
+}
+
+/// A completed check on a spawned wait, drawn as a done check task.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct DoneCheck {
+    /// The Day it fell due on.
+    pub due: TimeScope,
+    /// When it fell due.
+    pub due_at: NaiveDateTime,
+    /// When it was completed.
+    pub resolved_at: NaiveDateTime,
 }
 
 /// A Task's spawned wait as the views draw it: the overlay, plus what the template makes of it —
@@ -371,9 +488,15 @@ pub struct SpawnedWaitView {
     /// Its Time Scope, when the template gives it a rule.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub time_scope: Option<TimeScope>,
-    /// The day its next check is due, while it is pending, live and checked on.
+    /// The Day its current check fell due on, while one is due and open.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_check: Option<TimeScope>,
+    /// When that check fell due.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_check_at: Option<NaiveDateTime>,
+    /// Its completed checks during this completion of the Task, oldest first.
+    #[serde(default)]
+    pub done_checks: Vec<DoneCheck>,
 }
 
 /// Every wait's derived windows at one load: the stored Expectations' next checks, and each
@@ -395,10 +518,25 @@ pub async fn derive_wait_windows<M: SessionMode>(
 ) -> Result<WaitWindows, TaskError> {
     let mut windows = WaitWindows::default();
     for expectation in db.expectations().list().await? {
+        // Every completed check stays on the board as a done check task.
+        for done in db
+            .tasks()
+            .wait_checks(WaitKind::Stored, expectation.id)
+            .await?
+        {
+            windows.expectation_checks.push(ExpectationCheck {
+                expectation_id: expectation.id,
+                due: check_window(db, done.due_at).await?,
+                due_at: done.due_at,
+                resolved_at: Some(done.resolved_at),
+            });
+        }
         if let Some(due) = stored_check_due(&expectation).filter(|due| is_due(*due, now)) {
             windows.expectation_checks.push(ExpectationCheck {
                 expectation_id: expectation.id,
                 due: check_window(db, due).await?,
+                due_at: due,
+                resolved_at: None,
             });
         }
     }
@@ -419,10 +557,31 @@ pub async fn derive_wait_windows<M: SessionMode>(
             Some(due) => Some(check_window(db, due).await?),
             None => None,
         };
+        // Checks from an earlier completion of the Task belong to that one, not this.
+        let mut done_checks = Vec::new();
+        for done in db
+            .tasks()
+            .wait_checks(WaitKind::Spawned, wait.task_id)
+            .await?
+        {
+            if wait
+                .spawned_at
+                .is_some_and(|began| done.resolved_at < began)
+            {
+                continue;
+            }
+            done_checks.push(DoneCheck {
+                due: check_window(db, done.due_at).await?,
+                due_at: done.due_at,
+                resolved_at: done.resolved_at,
+            });
+        }
         windows.spawned_waits.push(SpawnedWaitView {
             wait,
             time_scope,
             next_check,
+            next_check_at: due,
+            done_checks,
         });
     }
     Ok(windows)
@@ -465,16 +624,38 @@ pub async fn complete_spawned_check<M: SessionMode>(
         .spawned_wait(task)
         .await?
         .ok_or(TaskError::NoSpawnedWait(task.0))?;
-    let due = db
+    let Some(due) = db
         .tasks()
         .async_template(task)
         .await?
         .and_then(|template| template.check_every)
-        .and_then(|every| spawned_check_due(&wait, &every, at));
-    if !due.is_some_and(|due| is_due(due, at)) {
+        .and_then(|every| spawned_check_due(&wait, &every, at))
+        .filter(|due| is_due(*due, at))
+    else {
         return Err(TaskError::NoCheckDue);
+    };
+    db.tasks()
+        .record_check(WaitKind::Spawned, task.0, due, at)
+        .await
+}
+
+/// Takes the latest completed check on a task's spawned wait back — see [`reopen_latest`].
+/// Refused unless the wait exists and is pending and live.
+#[tracing::instrument(skip(db))]
+pub async fn reopen_spawned_check<M: SessionMode>(
+    db: &mut Db<M>,
+    task: TaskId,
+    due_at: NaiveDateTime,
+) -> Result<(), TaskError> {
+    let wait = db
+        .tasks()
+        .spawned_wait(task)
+        .await?
+        .ok_or(TaskError::NoSpawnedWait(task.0))?;
+    if wait.status != ExpectationStatus::Pending || wait.archival != ExpectationArchival::Live {
+        return Err(TaskError::CheckNotReopenable);
     }
-    db.tasks().set_spawned_check(task, at).await
+    reopen_latest(db, WaitKind::Spawned, task.0, due_at).await
 }
 
 #[cfg(test)]

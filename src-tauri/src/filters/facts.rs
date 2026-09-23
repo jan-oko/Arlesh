@@ -63,6 +63,13 @@ fn check_task(id: String, lifecycle: Option<&&ItemLifecycle>) -> NodeFacts {
     check
 }
 
+/// A completed check's facts: a done task, with no Timing to report — it is resolved.
+fn done_check_task(id: String) -> NodeFacts {
+    let mut check = NodeFacts::new(id, NodeKind::Task);
+    check.status = Some("done".to_string());
+    check
+}
+
 /// The fact id of the wait an Asynchronous Task's completion spawned. Backend-only, as above.
 fn spawned_wait_id(task_id: i64) -> String {
     format!("spawned-wait-{task_id}")
@@ -205,6 +212,7 @@ pub fn forest(load: &MindmapLoad) -> Vec<FactNode> {
     let checks_due: HashSet<i64> = load
         .expectation_checks
         .iter()
+        .filter(|check| check.resolved_at.is_none())
         .map(|check| check.expectation_id)
         .collect();
     for expectation in &load.expectations {
@@ -231,7 +239,21 @@ pub fn forest(load: &MindmapLoad) -> Vec<FactNode> {
                 check_task_id(expectation.id),
                 lifecycles.get(&(expectations::EXPECTATION_CHECK, expectation.id)),
             ));
-            parents.push(Some(id));
+            parents.push(Some(id.clone()));
+        }
+        // Each completed check stays beneath the wait as a done task, which the presets that
+        // hide done work hide.
+        for done in load
+            .expectation_checks
+            .iter()
+            .filter(|check| check.expectation_id == expectation.id)
+            .filter_map(|check| check.resolved_at.map(|_| check.due_at))
+        {
+            facts.push(done_check_task(format!(
+                "expectation-check-{}-{}",
+                expectation.id, done
+            )));
+            parents.push(Some(id.clone()));
         }
     }
     let templates: HashMap<i64, &crate::tasks::model::AsyncTemplate> = load
@@ -264,7 +286,14 @@ pub fn forest(load: &MindmapLoad) -> Vec<FactNode> {
                 format!("spawned-check-{task_id}"),
                 lifecycles.get(&(expectations::SPAWNED_CHECK, task_id)),
             ));
-            parents.push(Some(id));
+            parents.push(Some(id.clone()));
+        }
+        for done in &spawned.done_checks {
+            facts.push(done_check_task(format!(
+                "spawned-check-{task_id}-{}",
+                done.due_at
+            )));
+            parents.push(Some(id.clone()));
         }
     }
     for commitment in &load.commitments {

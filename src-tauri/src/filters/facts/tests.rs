@@ -354,6 +354,8 @@ fn an_expectation_with_a_check_due_carries_a_virtual_check_task_timed_by_its_lif
                 end_id: 1,
                 duration: None,
             },
+            due_at: instant(2026, 7, 4),
+            resolved_at: None,
         });
     load.expectations.push(expectation_row(51, "goal", 10));
     load.infos.push(info_row(41, "expectation", 51));
@@ -448,7 +450,69 @@ fn spawned(
             end_id: 1,
             duration: None,
         }),
+        next_check_at: Some(instant(2026, 7, 8)),
+        done_checks: vec![],
     }
+}
+
+fn instant(year: i32, month: u32, day: u32) -> chrono::NaiveDateTime {
+    chrono::NaiveDate::from_ymd_opt(year, month, day)
+        .and_then(|date| date.and_hms_opt(2, 0, 0))
+        .expect("a date")
+}
+
+#[test]
+fn a_completed_check_stays_as_a_done_task_the_done_hiding_presets_drop() {
+    let mut load = board();
+    let mut checked = expectation_row(50, "goal", 10);
+    checked.check_every = Some(crate::tasks::model::DurationSpec {
+        n: 3,
+        kind: "day".to_string(),
+    });
+    load.expectations.push(checked);
+    let scope = crate::tasks::model::TimeScope {
+        start_id: 1,
+        end_id: 1,
+        duration: None,
+    };
+    load.expectation_checks
+        .push(crate::tasks::waits::ExpectationCheck {
+            expectation_id: 50,
+            due: scope.clone(),
+            due_at: instant(2026, 7, 1),
+            resolved_at: Some(instant(2026, 7, 2)),
+        });
+    let mut spawned_wait = spawned(22, crate::tasks::model::ExpectationStatus::Pending);
+    spawned_wait
+        .done_checks
+        .push(crate::tasks::waits::DoneCheck {
+            due: scope,
+            due_at: instant(2026, 7, 8),
+            resolved_at: instant(2026, 7, 8),
+        });
+    for task in &mut load.tasks {
+        if task.id == 22 {
+            task.asynchronous = true;
+            task.async_template = Some(crate::tasks::model::AsyncTemplate {
+                title: "Reply".to_string(),
+                ..Default::default()
+            });
+        }
+    }
+    load.spawned_waits.push(spawned_wait);
+    let forest = forest(&load);
+    for id in [
+        "expectation-check-50-2026-07-01 02:00:00",
+        "spawned-check-22-2026-07-08 02:00:00",
+    ] {
+        let check = find(&forest, id).expect("the done check stays on the board");
+        assert_eq!(check.facts.kind, NodeKind::Task);
+        assert_eq!(check.facts.status.as_deref(), Some("done"));
+    }
+    assert!(
+        find(&forest, "expectation-check-50").is_none(),
+        "no check is due, so none is open"
+    );
 }
 
 #[test]

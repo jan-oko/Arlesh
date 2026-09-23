@@ -161,6 +161,7 @@ pub async fn derive_all_scope_lifecycles<M: SessionMode>(
     let checks: std::collections::HashMap<i64, TimeScope> = windows
         .expectation_checks
         .into_iter()
+        .filter(|check| check.resolved_at.is_none())
         .map(|check| (check.expectation_id, check.due))
         .collect();
     let mut entries: Vec<WaitEntry> = Vec::new();
