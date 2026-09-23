@@ -3,9 +3,10 @@ import { flattenTaskRows, groupRowsByPath } from "./list-data";
 import type { PathGroupedEntry } from "./list-data";
 import type { MindmapNode, NodeKind } from "./tree-layout";
 import type { TaskDependencyEdge } from "@/api/tasks";
+import { fixtureRowId } from "@/test/node-fixture";
 
 function n(id: string, kind: NodeKind, extra: Partial<MindmapNode> = {}, children: MindmapNode[] = []): MindmapNode {
-  return { id, kind, title: id, position: 0, tagIds: [], children, ...extra };
+  return { id, ...fixtureRowId(id), kind, title: id, position: 0, tagIds: [], children, ...extra };
 }
 
 describe("flattenTaskRows", () => {

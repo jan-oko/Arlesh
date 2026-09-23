@@ -4,6 +4,7 @@ import { useTaskAgentic } from "./use-task-agentic";
 import { updateTask } from "@/api/tasks";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { NO_CYCLE } from "@/api/flows";
+import { fixtureRowId } from "@/test/node-fixture";
 
 vi.mock("@/api/tasks", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/tasks")>()),
@@ -11,7 +12,7 @@ vi.mock("@/api/tasks", async (importOriginal) => ({
 }));
 
 function node(id: string, extra: Partial<MindmapNode> = {}): MindmapNode {
-  return { id, kind: "task", title: id, position: 0, tagIds: [], children: [], ...extra };
+  return { id, ...fixtureRowId(id), kind: "task", title: id, position: 0, tagIds: [], children: [], ...extra };
 }
 
 function setup(nodes: MindmapNode[]) {

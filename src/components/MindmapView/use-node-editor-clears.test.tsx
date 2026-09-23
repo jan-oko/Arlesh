@@ -41,11 +41,11 @@ afterEach(() => {
 const scope = { start_id: 1, end_id: 1 };
 
 const taskNode: MindmapNode = {
-  id: "task-5", kind: "task", title: "Task", tagIds: [], position: 0, children: [],
+  id: "task-5", rowId: 5, kind: "task", title: "Task", tagIds: [], position: 0, children: [],
   timeScope: scope, onScopeExit: "keep", status: "todo", blockReasons: [],
 };
 const commitmentNode: MindmapNode = {
-  id: "commitment-7", kind: "commitment", title: "Asleep by 23:00", tagIds: [], position: 0,
+  id: "commitment-7", rowId: 7, kind: "commitment", title: "Asleep by 23:00", tagIds: [], position: 0,
   children: [], timeScope: scope, verdictWindow: { n: 2, kind: "day" },
 };
 const root: MindmapNode = {

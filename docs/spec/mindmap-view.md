@@ -182,3 +182,26 @@ inside it — and takes everything nested under it, its cycle pairs and its depe
 edge between two copied items rewired onto the copies. Pasting one into a *different* flow is
 refused: its Cycle Scope is an offset into its own flow's window, and another window does not share
 it.
+
+**Node identity.** A node's `id` is a **display key**: unique within the tree and comparable, and
+nothing more. It is never parsed. The database row a node draws is a field of its own, `rowId`,
+read through `rowIdOf(node)` — which **throws** on a node that draws no row (the synthetic root, a
+virtual Habit occurrence, a folded run of Habit history) rather than handing back a number that is
+not one. Recovering the row by splitting the id on `-` and parsing the tail is how a virtual node's
+`-virtual` suffix once became `NaN`, then `null` over IPC; the idiom is a lint error now.
+
+Node ids are not stored: they are derived afresh on every tree build, and selection, collapse and
+the subtree root survive a reload — and are persisted per tab — only because that derivation is
+deterministic. So the existing spellings are **frozen exactly as written**: `domain-<id>` (for
+every domain-table subtype), `goal-<id>`, `task-<id>`, `commitment-<id>`, `info-<id>`, `flow-<id>`,
+`flowgoal-<id>`, `flowtask-<id>`, and the virtual `habit-…`, `habititem-…` and `habitrun-…` keys.
+Changing one would silently orphan every tab's saved state.
+
+**A node kind added from now on mints a UUID** for its id instead of composing a string — which
+makes decoding it impossible rather than merely discouraged. The UUID is a **version 5** UUID: the
+SHA-1 name-based hash of the node's structural key under one fixed application namespace. It has to
+be deterministic, not random, for the reason above — a fresh `randomUUID()` per build would lose
+collapse state on every in-session reload, not just across restarts. It is undecodable, which is the
+point; it is not an immutable handle — if a node's structural key changes, its id changes with it,
+exactly as a composed id does today. No kind uses it yet; the first one to be added introduces the
+namespace constant and the minter.
