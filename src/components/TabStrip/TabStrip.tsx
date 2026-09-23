@@ -11,7 +11,6 @@ import { useTabClaims, useTabDropTarget, claimDropped } from "@/hooks/use-tab-dr
 import { carriesTab, encodeTabDrag, TAB_DRAG_TYPE } from "@/utils/tab-drag";
 import { useTabTearOff } from "@/hooks/use-tab-tear-off";
 import { currentWindowLabel } from "@/api/window-label";
-import { traceDrag } from "@/utils/drag-trace";
 import TabContextMenu from "@/components/TabContextMenu/TabContextMenu";
 import styles from "./TabStrip.module.css";
 
@@ -84,7 +83,6 @@ export default function TabStrip() {
   function startDrag(event: React.DragEvent, tabId: string, index: number) {
     event.dataTransfer.setData(TAB_DRAG_TYPE, encodeTabDrag({ tabId, window: currentWindowLabel() }));
     event.dataTransfer.effectAllowed = "move";
-    traceDrag("dragstart", { tabId, types: [...event.dataTransfer.types] });
     tearOff.started();
     setDraggingIndex(index);
   }
@@ -106,7 +104,6 @@ export default function TabStrip() {
     if (!carriesTab([...event.dataTransfer.types])) return;
     event.preventDefault();
     const dropped = claimDropped(event.dataTransfer.getData(TAB_DRAG_TYPE));
-    traceDrag("drop on a tab", { toIndex, dropped });
     if (dropped.kind === "own") {
       tearOff.landedHere();
       const fromIndex = tabs.findIndex((tab) => tab.id === dropped.tabId);
@@ -122,8 +119,7 @@ export default function TabStrip() {
    * window's claim. Anything else becomes a window of its own — see `useTabTearOff` for why this is
    * not read off the drag's `dropEffect`.
    */
-  function endDrag(event: React.DragEvent, tabId: string) {
-    traceDrag("dragend", { tabId, dropEffect: event.dataTransfer.dropEffect });
+  function endDrag(tabId: string) {
     setDraggingIndex(null);
     tearOff.ended(tabId);
   }
@@ -146,7 +142,7 @@ export default function TabStrip() {
             className={`${styles.tab}${tab.id === activeTabId ? ` ${styles.tabActive}` : ""}${draggingIndex === index ? ` ${styles.tabDragging}` : ""}`}
             draggable={editingId !== tab.id}
             onDragStart={(e) => startDrag(e, tab.id, index)}
-            onDragEnd={(e) => endDrag(e, tab.id)}
+            onDragEnd={() => endDrag(tab.id)}
             onDragOver={acceptDrag}
             onDrop={(e) => drop(e, index)}
             onAuxClick={(e) => { if (e.button === MIDDLE_BUTTON) { e.preventDefault(); closeTab(tab.id); } }}

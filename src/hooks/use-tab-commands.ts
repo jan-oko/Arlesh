@@ -5,7 +5,6 @@ import { forgetPersistedTabs, freshTabState, writePersistedTabs } from "@/stores
 import { closeWindow, openBoardWindow, focusBoardWindow } from "@/api/window";
 import { newWindowLabel } from "@/api/window-label";
 import { sendTabToWindow } from "@/api/board";
-import { traceDrag } from "@/utils/drag-trace";
 
 /** Everything the tab shortcuts and the strip's controls do. */
 export interface TabCommands {
@@ -130,23 +129,19 @@ export function useTabCommands(): TabCommands {
       const strip = useTabsStore.getState().tabs;
       const tab = strip.find((candidate) => candidate.id === id);
       if (tab === undefined) {
-        traceDrag("move skipped: tab not here", { tabId: id, to: label });
         return;
       }
       const persisted = persistTab(tab);
       // The last tab cannot be removed from a strip; its window closes once the tab has arrived.
       const isLast = strip.length <= 1;
       if (!isLast) close(id);
-      traceDrag("tab sent", { tabId: id, to: label, removedFirst: !isLast });
 
       void sendTabToWindow(label, persisted)
         .then(() => {
-          traceDrag("tab send resolved", { tabId: id, to: label });
           if (isLast) void closeWindow();
           return focusBoardWindow(label);
         })
         .catch((error: unknown) => {
-          traceDrag("tab send failed", { tabId: id, to: label, error: String(error) });
           console.error("[arlesh] could not move the tab to the other window:", error);
           if (!isLast) adoptTab(persisted);
         });
