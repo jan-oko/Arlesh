@@ -183,24 +183,16 @@ fn next_free(saved: &[u32], taken: &[u32]) -> u32 {
 /// change, only whether the number is on show.
 pub const NUMBERED_FROM: usize = 2;
 
-/// What a window is called, given its number, its active tab, and how many windows are open.
+/// What a window is called, given its number and how many windows are open.
 ///
-/// `Arlesh [2] — Bugfixes` with several open, `Arlesh — Bugfixes` alone: the number sits in
-/// brackets straight after `base`, which is the config's title — so a branch instance, whose
-/// config title is `Arlesh — <branch>`, reads `Arlesh — <branch> [2] — Bugfixes`. The number
-/// follows the whole of the app's name, never the tab, which is what changes.
-///
-/// A blank tab name adds nothing rather than trailing a separator.
-pub fn window_title(base: &str, ordinal: u32, tab: &str, open: usize) -> String {
-    let named = if open >= NUMBERED_FROM {
-        format!("{base} [{ordinal}]")
-    } else {
-        base.to_string()
-    };
-    if tab.trim().is_empty() {
-        return named;
+/// `Arlesh [2]` with several open, `Arlesh` alone: the number sits in brackets after `base`, which
+/// is the config's title. A branch instance, whose config title is `Arlesh — <branch>`, reads
+/// `Arlesh — <branch> [2]`: the number follows the whole of the app's name.
+pub fn window_title(base: &str, ordinal: u32, open: usize) -> String {
+    if open >= NUMBERED_FROM {
+        return format!("{base} [{ordinal}]");
     }
-    format!("{named} — {tab}")
+    base.to_string()
 }
 
 /// One open window, as the backend knows it: what the tray menu and the title are built from.
@@ -210,8 +202,6 @@ pub struct OpenWindow {
     pub label: String,
     /// The number it wears. See [`next_ordinal`].
     pub ordinal: u32,
-    /// Its active tab's name, as the frontend last reported it.
-    pub tab: String,
     /// Whether it is on screen.
     pub visible: bool,
 }
@@ -244,7 +234,7 @@ pub fn menu_entries(base: &str, mut open: Vec<OpenWindow>) -> Vec<ListedWindow> 
     open.sort_by_key(|window| window.ordinal);
     open.into_iter()
         .map(|window| ListedWindow {
-            title: window_title(base, window.ordinal, &window.tab, count),
+            title: window_title(base, window.ordinal, count),
             label: window.label,
             visible: window.visible,
         })

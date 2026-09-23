@@ -98,7 +98,7 @@ pub fn run() {
             app.manage(commands::windows::SessionStore::open(&app_dir));
             // The numbers the windows wear, seeded as they are rebuilt. Managed before `restore`
             // so a restored window's saved number is the one it keeps.
-            app.manage(commands::windows::WindowNames::default());
+            app.manage(commands::windows::Ordinals::default());
             commands::windows::restore(app.handle())?;
 
             // The tray goes up last, so that everything its Quit has to release cleanly — the
@@ -231,7 +231,6 @@ pub fn run() {
             commands::windows::open_board_window,
             commands::windows::board_windows,
             commands::windows::focus_board_window,
-            commands::windows::set_window_title,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -162,21 +162,25 @@ drawn is the tray host's business: the entry is published as a checkmark item, a
 does not draw those still toggles the window.
 
 **While several windows are open, each is numbered in its own title.** The title reads
-`Arlesh [2] — Bugfixes`: the number in brackets, which stays put, and the active tab, which is what
-you actually recognise the window by. The window manager shows that title in its bars and window
+`Arlesh [2]`: the app's name and the number in brackets, which stays put. The window manager shows that title in its bars and window
 lists, and the tray entry is the same title, so an entry and its window are matched at a glance.
-In a branch instance the number follows the whole of the config title, branch included, and comes
-before the tab: `Arlesh — <branch> [2] — Bugfixes`.
+On Wayland the title bar drawn inside the window reads it too. That bar is tao's own GTK header
+bar, which does not follow the window title by itself, so every retitle also writes into it.
+In a branch instance the number follows the whole of the config title, branch included:
+`Arlesh — <branch> [2]`.
+
+**The title does not name the active tab.** Decided 2026-09-24; until then it read
+`Arlesh [2] — Bugfixes`. The title is the app's name and, with several windows open, the number,
+and nothing else, so the frontend reports nothing to the backend for it.
 
 **A lone window shows no number.** Decided 2026-09-23: with one window open the title reads
-`Arlesh`, or `Arlesh — Bugfixes`, as it did before numbering existed, and the tray menu has no
+`Arlesh`, as it did before numbering existed, and the tray menu has no
 per-window list. A number is there to tell windows apart, and one window has nothing to be told
 apart from. The number is still **assigned** — it is only not shown — so the rules below are
 untouched. It updates live: the second window to open numbers both titles and adds the list, and
 closing back down to one takes both away. "Open" is the live window set, hidden ones included: a
-window put away in the tray is still open, and still counts. Because a window's title now depends
-on the others, the backend keeps each window's last-reported tab name beside its number and
-retitles every window whenever one opens or closes.
+window put away in the tray is still open, and still counts. Because a window's title depends on
+the others, the backend retitles every window whenever one opens or closes.
 
 **A window keeps its number while it is open, and it comes back with it.** Close window 2 of three
 and window 3 stays 3 — a number that moved when something else closed would make the menu entry
@@ -185,9 +189,8 @@ no open window wears, so the 2 is handed out again: nothing refers to a closed w
 set of small numbers tells the open ones apart best. The numbers are saved with the session and
 each restored window gets its own back; a number two saved windows both claim — a session saved
 before windows were numbered reads every window as 1 — goes to the first, and the others take the
-lowest free ones. The number is the backend's, and the tab name is the frontend's, so what crosses
-between them is the tab name alone and the two are composed on the backend side. Two places knowing
-how a window is named is one too many. Quit is a real shutdown — the database session factory and
+lowest free ones. The number is the backend's, and so is the whole title: the frontend
+never names its window. Quit is a real shutdown — the database session factory and
 the MCP listener are released with the app, not abandoned.
 
 **On Linux the tray icon is Arlesh's own, not Tauri's.** A Linux tray is a protocol, not a widget:

@@ -60,6 +60,7 @@ dependencies = [
  "anyhow",
  "axum",
  "chrono",
+ "gtk",
  "ksni",
  "png 0.17.16",
  "rmcp",

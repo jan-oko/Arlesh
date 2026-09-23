@@ -8,6 +8,7 @@ pub mod commitments;
 pub mod domains;
 pub mod expectations;
 pub mod flows;
+pub mod header_bar;
 pub mod infos;
 pub mod knowledge_base;
 pub mod mindmap;
