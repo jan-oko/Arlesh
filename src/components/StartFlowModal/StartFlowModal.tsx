@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { rowIdOf } from "@/utils/node-identity";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { entityNodeId } from "@/utils/tree-layout";
 import { dayScopeDate } from "@/utils/scope-calendar";
@@ -74,7 +75,7 @@ export default function StartFlowModal({ flowTitle, flowScoped, durationN, durat
   useEffect(() => { titleRef.current?.focus(); titleRef.current?.select(); }, []);
 
   function selectTarget(candidate: MindmapNode) {
-    const id = parseInt(candidate.id.split("-").pop() ?? "0", 10);
+    const id = rowIdOf(candidate);
     setTarget({ kind: candidate.kind, id, title: candidate.title });
     setTargetSearch("");
   }

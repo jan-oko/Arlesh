@@ -320,12 +320,11 @@ type ParentCapacity = "row" | "occurrence" | "drawing";
 
 /** Which of the three `node` is. Ordered deepest fact first: a folded run is virtual too. */
 function parentCapacity(node: MindmapNode): ParentCapacity {
-  // The synthetic root: its id carries no `-<id>` suffix because there is no id to carry.
-  if (!node.id.includes("-")) return "drawing";
   // A folded run of passed iterations — a tally and a span, standing in for many nodes at once.
   if (node.habitGroup !== undefined) return "drawing";
   if (node.habitItem !== undefined) return "occurrence";
-  if (node.virtual === true) return "drawing";
+  // The synthetic root and any other virtual node: nothing a parent link could point at.
+  if (node.rowId === undefined) return "drawing";
   return "row";
 }
 

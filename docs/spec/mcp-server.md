@@ -133,8 +133,8 @@ and writes nothing at all.
 - **`valid_targets`** — it reads, but resolving a concrete window mints the scopes it names, and it
   answers "where could this Flow be started?", a question nothing on this surface can act on while
   starting a Flow is a write. It returns alongside `start_flow`.
-- **The List view's own pill dimensions** — Antecedent, Dependency, Goal/Project status, Verdict,
-  Scope, Blocked and Agentic. They read values a flattened row carries rather than facts a node
+- **The List view's own pill dimensions** — Antecedent, Dependency, Task/Goal/Project status, Verdict,
+  Scope, Blocked, Agentic and Asynchronous. They read values a flattened row carries rather than facts a node
   has, so they belong with the flattening, which is frontend-side. The status presets are no longer
   absent; see *Filtering a read* above.
 
@@ -142,5 +142,6 @@ and writes nothing at all.
 
 A tool that fails returns a result flagged as an error carrying the same structured `WireError` the
 frontend receives across the Tauri boundary, including its stable `kind` — `not_found`,
-`containment_violated`, `invalid_request`, `database`, `internal` — so an agent branches on the
-discriminant rather than parsing a message.
+`containment_violated`, `invalid_request`, `needs_confirmation`, `needs_time_scope`, `database`,
+`internal` — so an agent branches on the discriminant rather than parsing a message. (The two
+`needs_*` kinds are raised only by writes this surface does not expose.)

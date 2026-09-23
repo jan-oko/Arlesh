@@ -106,4 +106,29 @@ export default tseslint.config(
       ],
     },
   },
+  // A node id is a display key, never an address. The row a node draws is `node.rowId`, read
+  // through `rowIdOf` (src/utils/node-identity.ts). Parsing it back out of the id is the idiom that
+  // turned a virtual Habit node's `-virtual` tail into NaN, and NaN into `null` over IPC
+  // (Arlesh-aln) — so it is a lint error, not a convention. Arlesh-z7n.
+  {
+    files: ["**/*.{ts,tsx}"],
+    ignores: ["src/test/**", "**/*.test.ts", "**/*.test.tsx"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "CallExpression[callee.name='parseInt'] CallExpression[callee.property.name='split'][arguments.0.value='-']",
+          message: "Do not decode a node id with parseInt(id.split(\"-\")…). Read `rowIdOf(node)` from @/utils/node-identity.",
+        },
+        {
+          selector: "CallExpression[callee.property.name='parseInt'] CallExpression[callee.property.name='split'][arguments.0.value='-']",
+          message: "Do not decode a node id with Number.parseInt(id.split(\"-\")…). Read `rowIdOf(node)` from @/utils/node-identity.",
+        },
+        {
+          selector: "CallExpression[callee.property.name='pop'] > MemberExpression > CallExpression[callee.property.name='split'][arguments.0.value='-']",
+          message: "Do not take the tail of id.split(\"-\") — a node id is not an address. Read `rowIdOf(node)` from @/utils/node-identity.",
+        },
+      ],
+    },
+  },
 );

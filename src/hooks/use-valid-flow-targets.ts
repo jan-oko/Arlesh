@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { entityNodeId } from "@/utils/tree-layout";
+import { rowIdOf } from "@/utils/node-identity";
 import { scopeValidFlowTargets } from "@/api/flows";
 
 /**
@@ -23,7 +24,7 @@ export function useValidFlowTargets(
     let cancelled = false;
     const refs = candidates.map((candidate) => ({
       node_type: candidate.kind,
-      node_id: parseInt(candidate.id.split("-").pop() ?? "0", 10),
+      node_id: rowIdOf(candidate),
     }));
     void scopeValidFlowTargets(durationN, durationKind, anchorDate, refs).then((valid) => {
       if (!cancelled) setFetched(new Set(valid.map((ref) => entityNodeId(ref.node_type, ref.node_id))));

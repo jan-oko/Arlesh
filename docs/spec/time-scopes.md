@@ -4,16 +4,22 @@
 
 ## The day boundary
 
-**A Day runs 02:00 → 02:00, and the whole ladder runs with it.** Season, Month, Week and Day all start and end at 02:00 local wall-clock: a Week is Monday 02:00 to the next Monday 02:00, a Month the 1st at 02:00 to the next 1st at 02:00. Only the canonical kinds are defined this way; a Part of Day keeps its own band and an Exact scope its own two datetimes.
+**A Day runs 02:00 → 02:00, and the whole ladder runs with it.** Season, Month, Week and Day all start and end at 02:00 local wall-clock: a Week is Sunday 02:00 to the next Sunday 02:00, a Month the 1st at 02:00 to the next 1st at 02:00. Only the canonical kinds are defined this way; a Part of Day keeps its own band and an Exact scope its own two datetimes.
 
 The reason is containment: **a scope contains exactly its own parts.** Night runs 22:00–02:00 and belongs to the Day it starts on, so a Day ending at midnight did not contain its own Night — for the two hours after midnight the part-of-day model said "still yesterday" while the Day scope said "already today", and everything derived from Day bounds (habit iteration generation and archival, Timing, Resolution, Archival, every *is this in scope now* test) turned over at midnight while the parts said the day had not ended. 02:00 is not a new seam: it is where Night already ends and Premorning already begins.
 
-Moving only the Day was rejected. It removes the contradiction at the Day boundary and reproduces it at the Week boundary — Sunday's Night would run two hours into Monday's week while belonging to the old one. One rule, applied to every canonical kind, is the point.
+Moving only the Day was rejected. It removes the contradiction at the Day boundary and reproduces it at the Week boundary — Saturday's Night would run two hours into Sunday's week while belonging to the old one. One rule, applied to every canonical kind, is the point.
 
 Two consequences worth stating plainly:
 
 - **"Today" at 00:30 is the previous calendar date.** The Day that is still running began yesterday, so that is the Day scope an item is planned into, the cell the Scope Picker outlines, and the date a new Recurrence starts on by default.
 - **Nothing is stored differently.** A canonical scope row stores its inclusive `start_date`/`end_date` as dates and derives its interval on read; only an Exact scope stores datetimes. Every existing row keeps its date and simply resolves to a window shifted two hours later — no migration, no backfill.
+
+## The week across New Year
+
+**A Week runs Sunday to Saturday and is never split.** A week that spans 31 December to 1 January is one scope, part in each year.
+
+Its **label** is `Week N YYYY`, where N is `week_number()` (`src-tauri/src/scopes/mod.rs`) of the **date that created the row**: 1-based Sunday-to-Saturday weeks counted from 1 January of that date's year, so a year runs to week 53, or 54 when a leap year starts on a Saturday. A week that spans New Year therefore reads **"Week 53 YYYY" or "Week 1 YYYY+1"**, depending on which of its days was touched first. That dependence is known and deliberate for now; re-examining it is `Arlesh-8zf`.
 
 ## Time Scope (relevance)
 

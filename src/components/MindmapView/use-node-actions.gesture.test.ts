@@ -5,6 +5,7 @@ import { useNodeActions } from "./use-node-actions";
 import { duplicateTask } from "@/api/tasks";
 import { CLIPBOARD_OP } from "@/stores/use-clipboard-store";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
+import { fixtureRowId } from "@/test/node-fixture";
 
 /**
  * The seam the whole granularity design exists for: a paste of several nodes reaching the backend
@@ -58,7 +59,7 @@ function installBackend(): Journal {
 }
 
 function node(id: string, kind: NodeKind, children: MindmapNode[] = []): MindmapNode {
-  return { id, kind, title: id, position: 0, tagIds: [], children };
+  return { id, ...fixtureRowId(id), kind, title: id, position: 0, tagIds: [], children };
 }
 
 const TREE = node("root", "domain", [

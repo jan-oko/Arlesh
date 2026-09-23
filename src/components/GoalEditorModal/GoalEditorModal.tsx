@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { rowIdOf } from "@/utils/node-identity";
 import BlockReasonsField from "@/components/BlockReasonsField/BlockReasonsField";
 import TagPicker from "@/components/TagPicker/TagPicker";
 import type { MindmapNode } from "@/utils/tree-layout";
@@ -65,7 +66,7 @@ export default function GoalEditorModal({ node, allTags, domainNames, onSave, on
     setIsSaving(true);
     setSaveError(null);
     try {
-      const dbId = parseInt(node.id.split("-").pop() ?? "0", 10);
+      const dbId = rowIdOf(node);
       if (timeScope !== null && onCheckScopeClamp && !(await onCheckScopeClamp("goal", dbId, timeScope))) {
         setIsSaving(false);
         return;
