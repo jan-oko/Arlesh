@@ -29,7 +29,7 @@ There are four domain subtypes:
 
 The knowledge base is externally managed (Obsidian). Arlesh manages specific note types as structured entities.
 
-**People** — represent persons. Fields: name (= note title), aliases (list of strings), linked note. Person notes are discovered by recursively searching configured directories.
+**People** — represent persons. Fields: name (= note title), aliases (list of strings), linked note. (Discovery from the vault is not built yet — see *Not built yet*.)
 
 **Scopes** — time range entities. Not manually created; lazily instantiated on first reference and stored as rows. Canonical kinds:
 
@@ -51,7 +51,7 @@ A scope is **active** when it contains the current datetime.
 
 **Events** — represent events. Fields: datetime or scope, title, optional linked note.
 
-**Threads** — concretized trains of thought. Fields: title, linked note. Discovered by recursively searching configured directories.
+**Threads** — concretized trains of thought. Fields: title, linked note. (Discovery from the vault is not built yet — see *Not built yet*.)
 
 ## Goals
 
@@ -71,11 +71,11 @@ Tasks represent action items. Fields: title, parent (Project / Goal / Domain / T
 
 **Dependencies:** Tasks can depend on other Tasks or Goals. Circular dependencies are rejected at write time.
 
-**Delegation:** A Task can be delegated to a Person.
+**Delegation:** A Task stores an optional delegate, a Person (`delegate_to`). `update_task` accepts it, and duplication and retype carry it; the rest is not built yet — see *Not built yet*.
 
-**Agentic:** A Task can be marked **Agentic** — work that suits being handed to an agent. It is a stored three-state flag (`agentic` — NULL / true / false), not a boolean, because it **inherits downward and is overridable**, exactly as Delegation does: a Task with no value of its own reads its nearest flagged ancestor, so marking a whole branch is one edit, and an explicit value replaces what would have been inherited — including an explicit **not agentic**, which is how one Task comes back out of an agentic branch. The value inherits *through* Goals, Projects and Domains, which carry no flag of their own.
+**Agentic:** A Task can be marked **Agentic** — work that suits being handed to an agent. It is a stored three-state flag (`agentic` — NULL / true / false), not a boolean, because it **inherits downward and is overridable**, the rule specced for Delegation: a Task with no value of its own reads its nearest flagged ancestor, so marking a whole branch is one edit, and an explicit value replaces what would have been inherited — including an explicit **not agentic**, which is how one Task comes back out of an agentic branch. The value inherits *through* Goals, Projects and Domains, which carry no flag of their own.
 
-It is **Tasks only**: an agent performs actions, where a Goal is a desired state and a Commitment is kept rather than done. It is also **independent of Delegation** — the flag says the work suits an agent, a delegate says who holds it, so a Task may be both, either or neither, and the delegated/undelegated filter is untouched by it. Set from the **Advanced** section of the Task editor (Inherit / Agentic / Not agentic, with the Advanced section opening on arrival when the Task carries an explicit value), and from the bare **A** binding in the Mindmap and List View, which is a **two-state toggle over the resolved value**, not a cycle through the stored one: it reads what the Task currently *reads as* and writes the opposite — agentic → explicit *Not agentic*, anything else → explicit *Agentic*. The flag stores three states but a Task only ever shows two, and *Inherit* under a non-agentic parent is the same picture as an explicit *Not agentic*, so a cycle spent a press moving between them with nothing on screen to show for it — marking a fresh Task agentic appeared to take two presses. The consequence is deliberate: **the key can no longer return a Task to *Inherit***, which is an editor-only state, and a press on a Task that was merely inheriting *yes* pins it to an explicit *no*. That is the price of no press being invisible. Creating a sibling with `Shift+Enter` carries over the source Task's **own stored** value, explicit or not-set — the stored column, never the resolved one, since freezing an inherited *yes* into an explicit one would silently cut the new Task off from the ancestor deciding for it, which the ordinary downward rule already covers. It is shown as its own **status-row badge** in both views, on a Task that reads as agentic whether it said so itself or inherited it; and filterable as its own List View pill dimension. Retyping a Task to any other kind drops an explicit flag and names it in the confirmation prompt alongside every other lost field; duplicating a Task copies it, all three states alike. A one-click **delegate** button belongs beside the flag once Delegation can point at an Agent rather than only a Person; the slot is left for it and nothing about this dispatches anything.
+It is **Tasks only**: an agent performs actions, where a Goal is a desired state and a Commitment is kept rather than done. It is also **independent of Delegation** — the flag says the work suits an agent, a delegate says who holds it, so a Task may be both, either or neither, and a delegated/undelegated filter would be untouched by it. Set from the **Advanced** section of the Task editor (Inherit / Agentic / Not agentic, with the Advanced section opening on arrival when the Task carries an explicit value), and from the bare **A** binding in the Mindmap and List View, which is a **two-state toggle over the resolved value**, not a cycle through the stored one: it reads what the Task currently *reads as* and writes the opposite — agentic → explicit *Not agentic*, anything else → explicit *Agentic*. The flag stores three states but a Task only ever shows two, and *Inherit* under a non-agentic parent is the same picture as an explicit *Not agentic*, so a cycle spent a press moving between them with nothing on screen to show for it — marking a fresh Task agentic appeared to take two presses. The consequence is deliberate: **the key can no longer return a Task to *Inherit***, which is an editor-only state, and a press on a Task that was merely inheriting *yes* pins it to an explicit *no*. That is the price of no press being invisible. Creating a sibling with `Shift+Enter` carries over the source Task's **own stored** value, explicit or not-set — the stored column, never the resolved one, since freezing an inherited *yes* into an explicit one would silently cut the new Task off from the ancestor deciding for it, which the ordinary downward rule already covers. It is shown as its own **status-row badge** in both views, on a Task that reads as agentic whether it said so itself or inherited it; and filterable as its own List View pill dimension. Retyping a Task to any other kind drops an explicit flag and names it in the confirmation prompt alongside every other lost field; duplicating a Task copies it, all three states alike. A one-click **delegate** button belongs beside the flag once Delegation can point at an Agent rather than only a Person; the slot is left for it and nothing about this dispatches anything.
 
 **Asynchronous:** A Task can be marked **Asynchronous** — doing it starts a *wait* rather than finishing something. Send the email, order the part, kick off the build: do one of those first and the wait runs while you work on everything else; leave it to the end and the day is wasted. Nothing else in the model says which tasks those are.
 
@@ -127,5 +127,13 @@ A Task, Goal, Commitment or Project may carry an optional **beads id** — the i
 - The row **stays, greyed and without its ×, for the life of the editor** rather than vanishing: a dialog that reflows under the pointer hides the very thing it is reporting. Greyed means *staged*, not *gone*. Reopening the editor after the save shows no row, which is the steady state.
 
 The column lives on `domains` for the Project case, but only the `project` subtype is given one and only a Project surfaces it; Aspects, Domains and Tags leave it null.
+
+## Not built yet
+
+Specced and kept, but not in the app today:
+
+- **Delegation's behaviour.** Beyond the stored `delegate_to` column: no UI sets or shows a delegate, a delegate does not inherit down the tree (the specced rule is an override, as Agentic's is), and there is no delegate-to or delegated/undelegated filter.
+- **Knowledge-base links.** Goals and Tasks list "KB resource links" among their fields, and the `goal_knowledge_base_links` / `task_knowledge_base_links` tables exist, but no command writes them and nothing filters on them.
+- **Obsidian discovery.** People and Threads are meant to be discovered by recursively searching configured vault directories. Today they exist only as rows created through the backend commands.
 
 ---
