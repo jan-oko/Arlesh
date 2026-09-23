@@ -7,9 +7,9 @@ views is built for that: the Mindmap is structural, and the List View is flat an
 filling a week meant re-filtering, opening editors and setting Plans one at a time, with nothing on
 screen saying what the scope already held.
 
-The Plan View is a **two-pane triage** over one scope. On the left are the **candidates** — the work
-this pass has not placed yet. On the right is **the scope being filled** — what is already planned
-into it. Moving a card across sets its Plan; moving one back clears it. That is the whole of what
+The Plan View is a **two-pane triage** over one scope. On the left are the **candidates** — relevant
+work that is unplanned, or planned to the scope one rung above. On the right is **the scope being
+filled** — what is already planned into it. Moving a card across sets its Plan; moving one back clears it. That is the whole of what
 this view writes.
 
 It is a third tab beside Mindmap and List, and shares what they share: the tab's **subtree root**
@@ -21,33 +21,60 @@ this view too, and the status preset chosen in any of the three governs all thre
 Rows are **Tasks**, the same flattened Task rows the List View builds, filtered by the shared
 filter. Goals, Projects and Commitments are never cards: none of them has a Plan.
 
-### What a pass is filling
+### The parent scope
 
-A pass fills **buckets**. Unsplit (see *Split by subscope* below), the bucket is the scope itself.
-Split, the buckets are its subscopes. The **parent scope** is the scope one rung coarser than the
-bucket: the scope's own parent while the pane is flat, the scope itself once it is split.
+The **parent scope** is the scope one rung above the one being filled, on the ladder `season →
+month → week → day → part of day`: the week a day sits in, the month a week sits in, the season a
+month sits in. It is stated against the scope being filled, not against the buckets a split draws
+(see *Split by subscope* below) — splitting changes how the right-hand pane reads, not what the pass
+is filling.
 
-That one definition is what both panes are stated in, and it is why the same two sentences describe
-a week being filled day by day and a month being filled week by week.
+Two cases are not "exactly one":
+
+- **A week at a month's edge has two parents.** Weeks do not nest in months, and a week that
+  straddles a month boundary sits one rung below both months. Both are its parent, and work planned
+  to either is offered. That is the same rule — the cells one rung up that the scope sits in —
+  applied to the one rung that does not nest, not an exception to it.
+- **A Season has none.** It is the only top-level scope, and that is the entire reason. This is
+  **structural, not defensive**, and it does not generalise: "no parent" is not a fallback for a
+  scope whose parent happens to hold nothing, and it is not a rule about empty panes. Every scope
+  but a Season has a parent.
 
 ### The candidates
 
-The left-hand pane holds **what this pass has not placed**, in two layers:
+The left-hand pane holds the **relevant** work that is **unplanned, or planned to the parent
+scope**:
 
-- **Planned to the parent scope.** Work whose Plan contains the scope being filled without being
-  contained by a bucket of it — committed, but not to anywhere as fine as this pass is placing at.
-  Filling a week, that is the work pinned to its month. Filling a month's weeks, it is the work
-  pinned to the month itself, which is in the scope and in no part of it.
 - **Unplanned and relevant.** A Task with **no Plan** whose **effective** Time Scope overlaps the
   scope — a task's own window, or the nearest scoped ancestor's when it has none. An **Unscoped**
   Task is always here, because the model defines Unscoped as always relevant and a planning pass is
   exactly where always-relevant work should be offered.
+- **Planned to the parent scope.** A Task whose Plan **is** the parent — committed a rung up, not
+  yet placed here. Filling a week, the work pinned to its month. Planned *to* the parent, not
+  "anywhere coarser": work pinned to the season is not a week's to place, because a pass places what
+  the pass directly above it committed, and reaching two rungs up would be doing the month's pass
+  inside the week's. The match is by the Plan's scope, not by containment, which is also what makes
+  a straddling week work — neither of its months contains it.
 
-**Only the first layer is shown by default**, behind *Show only planned to parent scope*. A pass
-then opens on the one list that shrinks as you work. The unplanned pool is the same list however
-long the pass runs; leading with it would bury the work that has a decision waiting on it. The
-alternative — always showing the pool and merely adding the parent-planned work to it — was
-considered and rejected for that reason.
+**Show only planned to parent scope** hides the unplanned half. It is **on by default**, so a pass
+opens on the one list that shrinks as you work; the unplanned pool is the same list however long
+the pass runs, and leading with it would bury the work that has a decision waiting on it. The
+switch *subtracts*: off, the pane shows both halves.
+
+With a parent present and nothing planned to it, the switch on leaves the pane **empty**, and that
+is the true answer — nothing was committed a rung up — so it is left to say so rather than falling
+back to the unplanned half.
+
+For a **Season** the switch is **inert**: drawn greyed out, with the reason on hover, and the pane
+shows the unplanned relevant work whatever the switch says. There is no parent-planned half to show
+or to leave, so hiding the unplanned half would empty the pane for a reason that has nothing to do
+with the board. Inert is drawn rather than hidden so the menu does not change shape as you walk
+kinds.
+
+One more thing sits on the candidates side, and the switch does not touch it: with the planned pane
+split, work planned to the scope being filled that **no bucket holds** — see *Split by subscope*.
+It is neither unplanned nor planned to the parent; it is planned *here*, in no part of here, and it
+is on this side because this is the side with the gestures that place it.
 
 **The scope's pane** holds Tasks whose **Plan is contained in** the scope — containment, not
 equality, so a Task pinned to Tuesday is part of what this week holds. A week being filled that did
@@ -55,9 +82,9 @@ not show its own days' work would under-report the load it exists to report. Onc
 work the split cannot place in a bucket leaves this pane for the candidates, where the gestures that
 place it are.
 
-A Task planned **somewhere else** — neither in this scope nor above it — is in neither pane. It is
-not unscheduled, so it is not a candidate, and it is not in this scope, so it is not what the scope
-holds.
+A Task planned **somewhere else** — neither in this scope nor to its parent — is in neither pane.
+It is not unscheduled, so it is not a candidate, and it is not in this scope, so it is not what the
+scope holds.
 
 **Virtual Habit occurrences and iteration roots are not triaged.** They have no row to carry a Plan,
 and planning a recurrence is a separate question. A first cut plans real Tasks.
@@ -156,7 +183,7 @@ asking it; these are questions about how the Plan View reads, and a pass that ca
 differently because it was started from another tab would read as a bug rather than as a setting.
 
 **Show only planned to parent scope** is the candidates pane's own question, and is described under
-[The candidates](#the-candidates) above.
+[The candidates](#the-candidates) above, with the Season case that makes it inert.
 
 **Group by path** draws a header above each contiguous run of rows sharing a location, spelling the
 chain — `Growth › CODE › ARLESH › Features`. It is the List View's header: clicking a segment enters
@@ -167,14 +194,10 @@ It is the **candidates pane's** switch and groups that pane alone. That pane is 
 work lives; the pane opposite it is read for *when*, which is the question its own menu answers, and
 nesting both groupings in one column would have the sections and the headers competing for it.
 
-Two rules keep the header and the card from saying the same thing twice:
-
-- **A row draws no path of its own while a header carries it.** The card's path line is what the
-  header replaces, and drawing both put the same chain twice on one line narrow enough to clip it.
-- **A run that hangs straight off the frame gets a header too**, naming the frame — the board's
-  root, or the subtree the tab has entered — centred, and nothing else. It is not a chain, so it is
-  not drawn as one. Leaving it out left one run in the pane whose location was the only one unnamed,
-  which reads as a bug rather than as "this is the top".
+**A row draws no path of its own while a header carries it.** The card's path line is what the
+header replaces, and drawing both put the same chain twice on one line narrow enough to clip it. A
+run that hangs straight off the frame has no chain to spell and gets no header, as in the List
+View.
 
 **Split by subscope** divides the **planned** pane into one section per subscope — the weeks of a
 month, the days of a week, the bands of a day — so a whole month's buckets and their contents read

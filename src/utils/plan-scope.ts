@@ -2,7 +2,7 @@
 // Pure and synchronous — the cursor is a calendar position, and only materializing it (turning it
 // into a scope row with an id and a window) touches the backend.
 
-import type { PartOfDay } from "@/api/scopes";
+import type { PartOfDay, Scope } from "@/api/scopes";
 import type { ScopeRef } from "@/utils/scope-ref";
 import type { ViewKind } from "@/utils/scope-calendar";
 import { PART_SEQUENCE, addScopePeriods, previousDay } from "@/utils/scope-calendar";
@@ -88,4 +88,33 @@ export function cursorAtNow(kind: ViewKind, todayIso: string, hour: number): Pla
   const part = partOfHour(hour);
   const date = hour < 2 ? previousDay(todayIso) : todayIso;
   return { kind, date, part };
+}
+
+/**
+ * The calendar cells one rung **above** `scope` that it sits in — its **parent scope**, as the
+ * candidates pane asks "planned to the parent scope".
+ *
+ * Empty for a **Season**, and that is structural rather than defensive: a Season is the one
+ * top-level scope, so for it the question has no answer, and nothing else on the ladder is ever
+ * without one. (An Exact window is not on the ladder and is never filled, so it has none either.)
+ *
+ * Asked of the calendar by date rather than read off the row's containment ids, because a **Week**
+ * row carries no month: weeks do not nest in months. A week at a month's edge sits in **two** of
+ * them, and both are one rung above it, so both are its parent — asking for the month at its first
+ * day and at its last gives one cell or two, and the same rule gives exactly one everywhere else.
+ */
+export function parentRefs(scope: Pick<Scope, "kind" | "start_date" | "end_date">): ScopeRef[] {
+  switch (scope.kind) {
+    case "part_of_day": return [{ kind: "day", date: scope.start_date }];
+    case "day": return [{ kind: "week", date: scope.start_date }];
+    case "month": return [{ kind: "season", date: scope.start_date }];
+    case "week": {
+      const first: ScopeRef = { kind: "month", date: scope.start_date };
+      if (scope.start_date.slice(0, 7) === scope.end_date.slice(0, 7)) return [first];
+      return [first, { kind: "month", date: scope.end_date }];
+    }
+    case "season":
+    case "exact":
+      return [];
+  }
 }

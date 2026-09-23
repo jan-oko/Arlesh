@@ -3,6 +3,7 @@ import type { DragEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { useListData } from "@/hooks/use-list-data";
 import { usePlanScope } from "@/hooks/use-plan-scope";
+import { usePlanParents } from "@/hooks/use-plan-parents";
 import { usePlanMove } from "@/hooks/use-plan-move";
 import { useScopeWindows } from "@/hooks/use-scope-windows";
 import { useScopeRows } from "@/hooks/use-scope-rows";
@@ -21,7 +22,7 @@ import type { FilterState } from "@/utils/filter-tree";
 import type { TaskListRow } from "@/utils/list-filter";
 import { DEFAULT_LIST_FILTER, filterTaskList } from "@/utils/list-filter";
 import { collectSearchableNodes } from "@/utils/mindmap-tree";
-import { parentScopeId, partitionForScope, referencedScopeIds } from "@/utils/plan-triage";
+import { partitionForScope, referencedScopeIds } from "@/utils/plan-triage";
 import { buildPlanSections } from "@/utils/plan-sections";
 import type { PlanSection } from "@/utils/plan-sections";
 import { buildPaneModel } from "@/utils/plan-pane-model";
@@ -103,23 +104,21 @@ export default function PlanView() {
   );
 
   const targetScopeId = scope.scope?.id ?? null;
-  // The rung above the scope being filled. `null` for a **Season**, which is the top of the ladder
-  // — not an edge case to be defended against, but the reason "planned to the parent scope" is a
+  // The rung above the scope being filled: none for a **Season**, which is the top of the ladder —
+  // not an edge case to be defended against, but the reason "planned to the parent scope" is a
   // question that cannot be asked about one.
-  const parentId = useMemo(() => (scope.scope === null ? null : parentScopeId(scope.scope)), [scope.scope]);
+  const parents = usePlanParents(scope.scope);
   const scopeIds = useMemo(() => {
     const ids = referencedScopeIds(visibleRows);
     if (targetScopeId !== null) ids.push(targetScopeId);
-    if (parentId !== null) ids.push(parentId);
     return ids;
-  }, [visibleRows, targetScopeId, parentId]);
+  }, [visibleRows, targetScopeId]);
   const windows = useScopeWindows(scopeIds);
   const targetWindow = targetScopeId === null ? null : windows.get(targetScopeId) ?? null;
-  const parentWindow = parentId === null ? null : windows.get(parentId) ?? null;
 
   const panes = useMemo(
-    () => (targetWindow === null ? NO_PANES : partitionForScope(visibleRows, targetWindow, windows, parentWindow)),
-    [visibleRows, targetWindow, windows, parentWindow],
+    () => (targetWindow === null ? NO_PANES : partitionForScope(visibleRows, targetWindow, windows, parents.ids)),
+    [visibleRows, targetWindow, windows, parents.ids],
   );
 
   const { planInto, planIntoSubscope, unplan } = usePlanMove({
@@ -170,7 +169,7 @@ export default function PlanView() {
    * simply holds nothing, an empty pane is the true answer — it says nothing was committed to the
    * parent — and it is left to say it.
    */
-  const parentApplies = parentId !== null;
+  const parentApplies = parents.exists;
 
   /**
    * The left-hand pane: **relevant work that is unplanned or planned to the parent scope.**

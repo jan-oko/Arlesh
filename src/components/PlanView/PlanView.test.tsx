@@ -11,6 +11,7 @@ import { useListData } from "@/hooks/use-list-data";
 import { clearScopeWindowCache } from "@/hooks/use-scope-windows";
 import { clearScopeRowCache } from "@/hooks/use-scope-rows";
 import { useDisplayStore } from "@/stores/use-display-store";
+import { useViewStore } from "@/stores/use-view-store";
 
 // The usual key-for-string stub, with one exception: a bucket's keyboard mnemonic is the initial
 // of its **rendered** name, so a stub that answered "planView:weekday.3" for Wednesday would give
@@ -54,11 +55,16 @@ const DAY_ID = 20;
 // A second day inside the same week, later than DAY_ID: the two together are what tell section
 // order apart from triage order.
 const LATER_DAY_ID = 21;
+// The month the week sits in — its parent scope — and the season above that, the top of the ladder.
+const MONTH_ID = 30;
+const SEASON_ID = 40;
 const WINDOWS: Record<number, { start: string; end: string }> = {
   [WEEK_ID]: { start: "2026-09-20T00:00:00", end: "2026-09-27T00:00:00" },
   [NEXT_WEEK_ID]: { start: "2026-09-27T00:00:00", end: "2026-10-04T00:00:00" },
   [DAY_ID]: { start: "2026-09-22T00:00:00", end: "2026-09-23T00:00:00" },
   [LATER_DAY_ID]: { start: "2026-09-24T00:00:00", end: "2026-09-25T00:00:00" },
+  [MONTH_ID]: { start: "2026-09-01T00:00:00", end: "2026-10-01T00:00:00" },
+  [SEASON_ID]: { start: "2026-09-01T00:00:00", end: "2026-12-01T00:00:00" },
 };
 
 /** The scope **rows** the sectioning reads — dates, never the datetimes, which stay null. */
@@ -76,17 +82,26 @@ const getScope = vi.fn((id: number) => {
   });
 });
 
-const getOrCreateScope = vi.fn((_kind: string, date: string) =>
-  Promise.resolve({
+const CONTAINMENT = {
+  week_id: null, month_id: null, season_id: null, day_id: null, part: null,
+  start_datetime: null, end_datetime: null,
+};
+const getOrCreateScope = vi.fn((kind: string, date: string) => {
+  if (kind === "month") {
+    return Promise.resolve({ id: MONTH_ID, kind: "month", label: "Sep", start_date: "2026-09-01", end_date: "2026-09-30", ...CONTAINMENT });
+  }
+  if (kind === "season") {
+    return Promise.resolve({ id: SEASON_ID, kind: "season", label: "Autumn", start_date: "2026-09-01", end_date: "2026-11-30", ...CONTAINMENT });
+  }
+  return Promise.resolve({
     id: date === "2026-09-27" ? NEXT_WEEK_ID : WEEK_ID,
     kind: "week",
     label: "W39",
     start_date: date === "2026-09-27" ? "2026-09-27" : "2026-09-20",
     end_date: date === "2026-09-27" ? "2026-10-03" : "2026-09-26",
-    week_id: null, month_id: null, season_id: null, day_id: null, part: null,
-    start_datetime: null, end_datetime: null,
-  }),
-);
+    ...CONTAINMENT,
+  });
+});
 const resolveScope = vi.fn((id: number) =>
   Promise.resolve({ ...(WINDOWS[id] ?? { start: "", end: "" }), active: false }),
 );
@@ -184,6 +199,7 @@ beforeEach(() => {
   });
   useFilterStore.setState({ filter: { ...DEFAULT_FILTER } });
   useMindmapStore.setState({ subtreeRootId: null, pendingToast: null });
+  useViewStore.setState({ planScopeKind: "week" });
 });
 
 describe("the two panes", () => {
@@ -244,7 +260,7 @@ describe("moving a task across", () => {
     });
     await settle();
     expect(updateTask).not.toHaveBeenCalled();
-    expect(screen.getByText("refusedTimeScope")).toBeInTheDocument();
+    expect(screen.getByText("planView:refusedTimeScope")).toBeInTheDocument();
   });
 
   it("refuses a move that escapes the parent task's Plan", async () => {
@@ -257,7 +273,7 @@ describe("moving a task across", () => {
     });
     await settle();
     expect(updateTask).not.toHaveBeenCalled();
-    expect(screen.getByText("refusedParentPlan")).toBeInTheDocument();
+    expect(screen.getByText("planView:refusedParentPlan")).toBeInTheDocument();
   });
 });
 
@@ -374,12 +390,13 @@ describe("grouping the candidates by path", () => {
     expect(document.querySelectorAll('[data-plan-pane="planned"] [data-path-header]').length).toBe(0);
   });
 
-  it("names the frame above a run that hangs straight off it, rather than leaving it the one unnamed run", async () => {
+  // As in the List View: a run with nothing above it has no chain to spell, and gets no header.
+  it("draws no header over a run that hangs straight off the frame", async () => {
     useDisplayStore.setState({ planCandidatesPathGrouping: true });
     mockRows([row(n("task-1", "task", { timeScope: { start_id: WEEK_ID, end_id: WEEK_ID } }))]);
     await renderPlanView();
-    const pane = document.querySelector('[data-plan-pane="candidates"]');
-    expect(pane?.textContent).toContain("root");
+    expect(document.querySelectorAll('[data-plan-pane="candidates"] [data-path-header]').length).toBe(0);
+    expect(cardsIn("candidates")).toEqual(["task-1"]);
   });
 
   it("takes the path off the card once a header carries it", async () => {
@@ -400,20 +417,55 @@ describe("the two kebab menus", () => {
     expect(screen.getAllByLabelText("paneOptions")).toHaveLength(2);
   });
 
-  it("opens the pass on what still needs placing, and nothing else", async () => {
+  // The switch hides the unplanned half and leaves the work committed to the parent scope — the
+  // month the week sits in — which is what the pass opens on.
+  it("opens the pass on the work planned to the parent scope, and shows the unplanned half once unticked", async () => {
     useDisplayStore.setState({ planCandidatesParentOnly: true });
     mockRows([
       // Unplanned and relevant — the pool, which is the same list however long the pass runs.
       row(n("task-1", "task", { timeScope: { start_id: WEEK_ID, end_id: WEEK_ID } })),
-      // Planned to this week itself while its days are what is being filled: still needs placing.
-      row(n("task-2", "task", { plan: { start_id: WEEK_ID, end_id: WEEK_ID } })),
+      // Planned to the month above this week: committed a rung up, not yet placed here.
+      row(n("task-3", "task", { plan: { start_id: MONTH_ID, end_id: MONTH_ID } })),
+      // Planned to the season, two rungs up: not this pass's to place.
+      row(n("task-4", "task", { plan: { start_id: SEASON_ID, end_id: SEASON_ID } })),
     ]);
-    useDisplayStore.setState({ planSubscopeSplit: true });
     await renderPlanView();
-    expect(cardsIn("candidates")).toEqual(["task-2"]);
+    expect(cardsIn("candidates")).toEqual(["task-3"]);
 
     await act(async () => { useDisplayStore.setState({ planCandidatesParentOnly: false }); });
-    expect(cardsIn("candidates")).toEqual(["task-2", "task-1"]);
+    expect(cardsIn("candidates")).toEqual(["task-3", "task-1"]);
+  });
+
+  // With a parent present and nothing planned into it, an empty pane is the true answer.
+  it("leaves the pane empty when the parent scope holds nothing", async () => {
+    useDisplayStore.setState({ planCandidatesParentOnly: true });
+    mockRows([row(n("task-1", "task", { timeScope: { start_id: WEEK_ID, end_id: WEEK_ID } }))]);
+    await renderPlanView();
+    expect(cardsIn("candidates")).toEqual([]);
+  });
+
+  // Work the split cannot place in a bucket is neither half: it is planned to the scope itself,
+  // and the switch does not hide it.
+  it("keeps work planned to the scope itself on the candidates side while it is split", async () => {
+    useDisplayStore.setState({ planCandidatesParentOnly: true, planSubscopeSplit: true });
+    mockRows([
+      row(n("task-1", "task", { timeScope: { start_id: WEEK_ID, end_id: WEEK_ID } })),
+      row(n("task-2", "task", { plan: { start_id: WEEK_ID, end_id: WEEK_ID } })),
+    ]);
+    await renderPlanView();
+    expect(cardsIn("candidates")).toEqual(["task-2"]);
+  });
+
+  // A Season is the one top-level scope: there is no parent to have planned to, so the switch is
+  // drawn inert and the pane shows the unplanned relevant work whatever it says.
+  it("draws the switch inert for a Season, and shows the unplanned work regardless", async () => {
+    useViewStore.setState({ planScopeKind: "season" });
+    useDisplayStore.setState({ planCandidatesParentOnly: true });
+    mockRows([row(n("task-1", "task", { timeScope: { start_id: WEEK_ID, end_id: WEEK_ID } }))]);
+    await renderPlanView();
+    expect(cardsIn("candidates")).toEqual(["task-1"]);
+    fireEvent.click(screen.getAllByLabelText("paneOptions")[0] ?? document.body);
+    expect(screen.getByLabelText("planView:optionParentOnly")).toBeDisabled();
   });
 });
 

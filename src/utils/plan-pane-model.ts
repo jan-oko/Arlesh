@@ -44,9 +44,7 @@ function pathKeyOf(ancestors: readonly MindmapNode[]): string {
  * the tree is not a reason to move it right. So the header says all of it, and the card below says
  * none of it.
  *
- * A run with **nothing** above it gets a root header rather than no header. The alternative leaves
- * one run in the pane whose location is the only one not named, which reads as a bug rather than as
- * "this is the top".
+ * A run with **nothing** above it has no chain to spell and gets no header, as in the List View.
  */
 function groupByPath(rows: readonly TaskListRow[]): PaneEntry[] {
   const entries: PaneEntry[] = [];

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { cursorAtNow, cursorFromRef, cursorRef, isPlanScopeKind, partOfHour, stepCursor } from "./plan-scope";
+import { cursorAtNow, cursorFromRef, cursorRef, isPlanScopeKind, parentRefs, partOfHour, stepCursor } from "./plan-scope";
 import type { PlanScopeCursor } from "./plan-scope";
 
 const WEEK: PlanScopeCursor = { kind: "week", date: "2026-09-20", part: "morning" };
@@ -89,5 +89,36 @@ describe("cursorAtNow", () => {
     expect(cursorAtNow("part_of_day", "2026-09-22", 1)).toEqual({
       kind: "part_of_day", date: "2026-09-21", part: "night",
     });
+  });
+});
+
+describe("parentRefs", () => {
+  it("is the day a part of day sits in", () => {
+    expect(parentRefs({ kind: "part_of_day", start_date: "2026-09-22", end_date: "2026-09-23" }))
+      .toEqual([{ kind: "day", date: "2026-09-22" }]);
+  });
+
+  it("is the week a day sits in", () => {
+    expect(parentRefs({ kind: "day", start_date: "2026-09-22", end_date: "2026-09-22" }))
+      .toEqual([{ kind: "week", date: "2026-09-22" }]);
+  });
+
+  it("is the one month a week wholly inside it sits in", () => {
+    expect(parentRefs({ kind: "week", start_date: "2026-09-20", end_date: "2026-09-26" }))
+      .toEqual([{ kind: "month", date: "2026-09-20" }]);
+  });
+
+  it("is both months for a week at a month's edge", () => {
+    expect(parentRefs({ kind: "week", start_date: "2026-09-27", end_date: "2026-10-03" }))
+      .toEqual([{ kind: "month", date: "2026-09-27" }, { kind: "month", date: "2026-10-03" }]);
+  });
+
+  it("is the season a month sits in", () => {
+    expect(parentRefs({ kind: "month", start_date: "2026-09-01", end_date: "2026-09-30" }))
+      .toEqual([{ kind: "season", date: "2026-09-01" }]);
+  });
+
+  it("is nothing for a Season, the top of the ladder", () => {
+    expect(parentRefs({ kind: "season", start_date: "2026-09-01", end_date: "2026-11-30" })).toEqual([]);
   });
 });
