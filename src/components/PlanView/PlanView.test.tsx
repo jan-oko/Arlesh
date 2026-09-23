@@ -6,6 +6,7 @@ import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { DEFAULT_FILTER } from "@/utils/filter-tree";
 import type { TaskListRow } from "@/utils/list-filter";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
+import type { ScopeRef } from "@/utils/scope-ref";
 import { useListData } from "@/hooks/use-list-data";
 import { clearScopeWindowCache } from "@/hooks/use-scope-windows";
 import { clearScopeRowCache } from "@/hooks/use-scope-rows";
@@ -89,10 +90,19 @@ const getOrCreateScope = vi.fn((_kind: string, date: string) =>
 const resolveScope = vi.fn((id: number) =>
   Promise.resolve({ ...(WINDOWS[id] ?? { start: "", end: "" }), active: false }),
 );
+// `getOrCreateForRef` has to be stubbed alongside the two calls it dispatches to, not left to
+// `importOriginal`. A partial mock replaces exports, not the bindings *inside* the real module — so
+// the real `getOrCreateForRef` would keep calling the real get-or-create, reach for a Tauri host
+// that is not there, and fail the scope the whole view is drawn against.
 vi.mock("@/api/scopes", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/scopes")>()),
   getOrCreateScope: (kind: string, date: string) => getOrCreateScope(kind, date),
   getOrCreatePartScope: (date: string, part: string) => getOrCreateScope(part, date),
+  getOrCreateForRef: (ref: ScopeRef) => (
+    ref.kind === "part_of_day"
+      ? getOrCreateScope(ref.part, ref.date)
+      : getOrCreateScope(ref.kind, "date" in ref ? ref.date : ref.start)
+  ),
   resolveScope: (id: number) => resolveScope(id),
   getScope: (id: number) => getScope(id),
 }));
