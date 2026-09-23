@@ -239,3 +239,173 @@ async fn migration_0037_keeps_every_delegate_as_a_person_and_every_link() {
             .unwrap();
     assert!(violations.is_empty(), "{violations:?}");
 }
+
+/// Migration `0046` rewrites every scope reference from a `scopes` row id to the scope's value
+/// key, rebuilding nine tables and carrying their ON DELETE CASCADE dependents aside, then drops
+/// `scopes` (ADR 0009). This seeds a board with every kind of scope and every kind of reference —
+/// a Time Scope, a Plan, a Recurrence, a Habit Modification, an event — plus the tags, links,
+/// dependency edges and wait rows that hang off the rebuilt tables, and checks that each reference
+/// became the key of the scope it named and that nothing hanging off a row was lost.
+#[tokio::test]
+async fn migration_0046_turns_every_scope_reference_into_its_key_and_keeps_every_link() {
+    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+        .max_connections(1)
+        .after_connect(|conn, _| {
+            Box::pin(async move {
+                sqlx::query("PRAGMA foreign_keys = ON")
+                    .execute(conn)
+                    .await?;
+                Ok(())
+            })
+        })
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+
+    let everything = sqlx::migrate!("./migrations");
+    let mut before = sqlx::migrate!("./migrations");
+    before.migrations = std::borrow::Cow::Owned(
+        everything
+            .migrations
+            .iter()
+            .filter(|migration| migration.version < 46)
+            .cloned()
+            .collect(),
+    );
+    before.run(&pool).await.unwrap();
+
+    sqlx::query(
+        "INSERT INTO scopes (id, kind, label, start_date, end_date) VALUES
+             (1, 'week', 'Week 39 2026', '2026-09-20', '2026-09-26'),
+             (2, 'day', '2026-09-23', '2026-09-23', '2026-09-23'),
+             (3, 'month', 'September 2026', '2026-09-01', '2026-09-30'),
+             (4, 'season', 'Autumn 2026', '2026-09-01', '2026-11-30');
+         INSERT INTO scopes (id, kind, label, start_date, end_date, part, day_id) VALUES
+             (5, 'part_of_day', '2026-09-23 night', '2026-09-23', '2026-09-24', 'night', 2);
+         INSERT INTO scopes (id, kind, label, start_date, end_date, start_datetime, end_datetime)
+             VALUES (6, 'exact', 'x', '2026-09-23', '2026-09-23',
+                     '2026-09-23T14:00:00', '2026-09-23T15:30:00');
+         INSERT INTO domains (id, title, subtype) VALUES (100, 'Tag', 'tag');
+         INSERT INTO goals (id, title, parent_type, parent_id, time_scope_start_id,
+                            time_scope_end_id, on_scope_exit)
+             VALUES (1, 'autumn', 'domain', 1, 4, 4, 'keep');
+         INSERT INTO tasks (id, title, parent_type, parent_id, time_scope_start_id,
+                            time_scope_end_id, plan_start_id, plan_end_id, on_scope_exit)
+             VALUES (1, 'planned', 'goal', 1, 3, 3, 2, 5, 'keep'),
+                    (2, 'exact', 'goal', 1, 6, 6, NULL, NULL, 'archive'),
+                    (3, 'unscoped', 'goal', 1, NULL, NULL, NULL, NULL, NULL);
+         INSERT INTO tags_on_tasks (task_id, tag_id) VALUES (1, 100);
+         INSERT INTO tags_on_goals (goal_id, tag_id) VALUES (1, 100);
+         INSERT INTO task_dependencies (task_id, dependency_type, dependency_id)
+             VALUES (2, 'task', 1);
+         INSERT INTO task_knowledge_base_links (task_id, entity_type, entity_id)
+             VALUES (1, 'person', 1);
+         INSERT INTO task_async_templates (task_id, title) VALUES (3, 'reply');
+         INSERT INTO tags_on_async_templates (task_id, tag_id) VALUES (3, 100);
+         INSERT INTO spawned_waits (task_id) VALUES (3);
+         INSERT INTO events (id, title, scope_id) VALUES (1, 'launch', 2);
+         INSERT INTO flows (id, title, instance_type, parent_type, parent_id,
+                            flow_duration_n, flow_duration_kind)
+             VALUES (1, 'weekly', 'task', 'aspect', 1, 1, 'week');
+         INSERT INTO flow_recurrences (flow_id, start_scope_id, end_scope_id, consumption_kind)
+             VALUES (1, 1, NULL, 'destructive');
+         INSERT INTO habit_instance_modifications
+             (flow_id, item_type, item_id, iteration_scope_id, status)
+             VALUES (1, 'flow_root', 1, 1, 'done');",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    everything.run(&pool).await.unwrap();
+
+    type Window = (
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    );
+    let windows: Vec<Window> = sqlx::query_as(
+        "SELECT time_scope_start_id, time_scope_end_id, plan_start_id, plan_end_id
+         FROM tasks ORDER BY id",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    let key = |raw: &str| Some(raw.to_string());
+    assert_eq!(
+        windows,
+        vec![
+            (
+                key("month:2026-09-01"),
+                key("month:2026-09-01"),
+                key("day:2026-09-23"),
+                key("part_of_day:2026-09-23:night"),
+            ),
+            (
+                key("exact:2026-09-23T14:00:00/2026-09-23T15:30:00"),
+                key("exact:2026-09-23T14:00:00/2026-09-23T15:30:00"),
+                None,
+                None,
+            ),
+            (None, None, None, None),
+        ]
+    );
+
+    let goal: Option<String> = sqlx::query_scalar("SELECT time_scope_start_id FROM goals")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(goal.as_deref(), Some("season:2026-09-01"));
+    let event: Option<String> = sqlx::query_scalar("SELECT scope_id FROM events")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(event.as_deref(), Some("day:2026-09-23"));
+    let recurrence: String = sqlx::query_scalar("SELECT start_scope_id FROM flow_recurrences")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(recurrence, "week:2026-09-20");
+    let iteration: String =
+        sqlx::query_scalar("SELECT iteration_scope_id FROM habit_instance_modifications")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(iteration, "week:2026-09-20");
+    let exact: Vec<String> = sqlx::query_scalar("SELECT id FROM exact_scopes")
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+    assert_eq!(exact, ["exact:2026-09-23T14:00:00/2026-09-23T15:30:00"]);
+
+    let scopes_left: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM sqlite_master WHERE name = 'scopes'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(scopes_left, 0, "the calendar table is gone");
+
+    for table in [
+        "tags_on_tasks",
+        "tags_on_goals",
+        "task_dependencies",
+        "task_knowledge_base_links",
+        "task_async_templates",
+        "tags_on_async_templates",
+        "spawned_waits",
+    ] {
+        let count: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {table}"))
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(count, 1, "{table} lost its row in the rebuild");
+    }
+
+    let violations: Vec<(String, Option<i64>, String, i64)> =
+        sqlx::query_as("PRAGMA foreign_key_check")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert!(violations.is_empty(), "{violations:?}");
+}
