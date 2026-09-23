@@ -20,6 +20,5 @@ export function windowApi() {
     openBoardWindow: vi.fn(() => Promise.resolve()),
     boardWindowLabels: vi.fn(() => Promise.resolve(["main"])),
     focusBoardWindow: vi.fn(() => Promise.resolve()),
-    setWindowTitle: vi.fn(() => Promise.resolve()),
   };
 }

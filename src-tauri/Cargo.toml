@@ -47,6 +47,9 @@ schemars = "1.2.2"
 # fire. Owning the item is what makes a plain click reach the app. See `commands::tray`.
 [target.'cfg(target_os = "linux")'.dependencies]
 ksni = "0.3.6"
+# The same GTK bindings Tauri already links, named so the app can reach the header bar tao draws
+# inside a window on Wayland, whose title does not follow the window's. See `commands::header_bar`.
+gtk = "0.18"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt", "macros"] }

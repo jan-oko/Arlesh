@@ -131,8 +131,8 @@ pub fn on_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
         // down intact before the first of them went.
         WindowEvent::Destroyed if !quit_requested(app) => {
             // Its number is free for the next window to open. See `windows::next_ordinal`.
-            if let Some(names) = app.try_state::<windows::WindowNames>() {
-                names.forget(window.label());
+            if let Some(ordinals) = app.try_state::<windows::Ordinals>() {
+                ordinals.forget(window.label());
             }
             windows::snapshot(app);
             // One fewer window: down to one, the survivor loses its number and the menu its list.
@@ -396,7 +396,8 @@ fn on_main_thread(app: &AppHandle, action: impl FnOnce(&AppHandle) + Send + 'sta
 
 /// A title as a D-Bus menu label, which reads a lone underscore as an access-key marker.
 ///
-/// A tab named `snake_case` would otherwise show as `snakecase`; doubling is the escape.
+/// A branch instance titled `Arlesh — snake_case` would otherwise show as `snakecase`; doubling is
+/// the escape.
 #[cfg(target_os = "linux")]
 fn menu_label(title: &str) -> String {
     title.replace('_', "__")
@@ -405,7 +406,7 @@ fn menu_label(title: &str) -> String {
 /// What the tray icon is called, on hover and wherever a bar names it: the app's name.
 ///
 /// The app's name as the config gives it, not any window's title — a window's title carries its
-/// number and its active tab, and the tray holds the app rather than a window. A branch instance
+/// number, and the tray holds the app rather than a window. A branch instance
 /// keeps the suffix `scripts/branch-instance.sh` puts in its config title, which is what tells
 /// several instances' icons apart.
 fn tray_tooltip(app: &AppHandle) -> String {
