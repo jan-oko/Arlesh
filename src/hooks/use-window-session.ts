@@ -5,7 +5,6 @@ import { boardWindowLabels } from "@/api/window";
 import { currentWindowLabel } from "@/api/window-label";
 import { forgetPersistedTabs, persistedWindowLabels } from "@/stores/tab-persistence";
 import { useTabsStore } from "@/stores/use-tabs-store";
-import { traceDrag } from "@/utils/drag-trace";
 
 /**
  * Opens a tab another window has handed to this one.
@@ -22,7 +21,6 @@ export function useTabInbox(): void {
     let unlisten: UnlistenFn | null = null;
 
     void onTabMoved((tab) => {
-      traceDrag("tab arrived", { tabId: tab.id });
       adoptTab(tab);
     }).then((stop) => {
       if (subscribed) unlisten = stop;

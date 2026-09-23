@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import { traceDrag } from "@/utils/drag-trace";
 
 /**
  * How long the window a tab was dragged out of waits, after the drag ends, for another window to
@@ -76,18 +75,15 @@ export function useTabTearOff(tearOff: (tabId: string) => void): TabTearOff {
     }
     clearTimeout(timer);
     timers.current.delete(tabId);
-    traceDrag("tear-off cancelled by a claim", { tabId });
   }, []);
 
   const ended = useCallback((tabId: string) => {
     const wasClaimed = claimedIds.current.delete(tabId);
     if (landed.current || wasClaimed) return;
-    traceDrag("tear-off pending", { tabId, graceMs: TEAR_OFF_GRACE_MS });
     timers.current.set(
       tabId,
       setTimeout(() => {
         timers.current.delete(tabId);
-        traceDrag("tear-off", { tabId });
         latestTearOff.current(tabId);
       }, TEAR_OFF_GRACE_MS),
     );
