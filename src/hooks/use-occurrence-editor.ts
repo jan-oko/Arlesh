@@ -8,7 +8,7 @@ import {
   setHabitInstanceTitle,
 } from "@/api/flows";
 import type { FlowItemRef, OccurrenceKey, PlanOverride } from "@/api/flows";
-import { withGesture } from "@/api/gesture";
+import { withAtomicGesture } from "@/api/gesture";
 import type { MindmapNode } from "@/utils/tree-layout";
 
 /** Another item of the same Habit, as the dependency list offers it. */
@@ -201,7 +201,7 @@ export function useOccurrenceEditor(
       if (target === null) return;
       const writes = pendingWrites(target.node, edits);
       if (writes.length > 0) {
-        await withGesture(t("gestures.editOccurrence"), async () => {
+        await withAtomicGesture(t("gestures.editOccurrence"), async () => {
           for (const write of writes) await send(target.key, write);
         });
       }

@@ -9,6 +9,7 @@ import { useDisplayStore } from "@/stores/use-display-store";
 import { DEFAULT_FILTER } from "@/utils/filter-tree";
 import { DEFAULT_LIST_FILTER } from "@/utils/list-filter";
 import type { CommitmentListRow, TaskListRow } from "@/utils/list-filter";
+import { fixtureRowId } from "@/test/node-fixture";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import type { Verdict } from "@/api/verdict";
 import { useListData } from "@/hooks/use-list-data";
@@ -63,8 +64,22 @@ function ListViewInApp() {
   return <ListView />;
 }
 
+/** A row id per fixture id, stable across the file. `commitment-7` draws row 7; a fixture named
+ * by word (`task-parent`) draws one of its own, numbered from 1000 so it meets no numbered one. */
+const wordRows = new Map<string, number>();
+function fixtureRow(id: string): number {
+  const numbered = fixtureRowId(id).rowId;
+  if (numbered !== undefined) return numbered;
+  const known = wordRows.get(id);
+  if (known !== undefined) return known;
+  const next = 1000 + wordRows.size;
+  wordRows.set(id, next);
+  return next;
+}
+
 function n(id: string, kind: NodeKind, extra: Partial<MindmapNode> = {}): MindmapNode {
-  return { id, kind, title: id, position: 0, tagIds: [], children: [], ...extra };
+  const rowId = id === "root" || extra.virtual === true ? {} : { rowId: fixtureRow(id) };
+  return { id, ...rowId, kind, title: id, position: 0, tagIds: [], children: [], ...extra };
 }
 
 /** A tree holding whatever rows a test supplies, since the verdict hook looks its node up in it

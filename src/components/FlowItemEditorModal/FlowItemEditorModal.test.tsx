@@ -14,6 +14,7 @@ vi.mock("react-i18next", () => ({
 function mkItem(overrides: Partial<MindmapNode> = {}): MindmapNode {
   return {
     id: "flowtask-2",
+    rowId: 2,
     kind: "flow_task",
     title: "Implement",
     position: 1,
@@ -25,7 +26,7 @@ function mkItem(overrides: Partial<MindmapNode> = {}): MindmapNode {
 }
 
 const SPECIFY: MindmapNode = {
-  id: "flowtask-1", kind: "flow_task", title: "Specify", position: 0, tagIds: [], children: [],
+  id: "flowtask-1", rowId: 1, kind: "flow_task", title: "Specify", position: 0, tagIds: [], children: [],
   flowItem: { itemType: "flow_task", flowId: 5, flowInstanceType: "task" as const, flowScopeN: 2, flowScopeKind: "week", cycles: [], dependsOn: [] },
 };
 

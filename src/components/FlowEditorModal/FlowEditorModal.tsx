@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { rowIdOf } from "@/utils/node-identity";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { entityNodeId } from "@/utils/tree-layout";
 import type { InstanceType, ConsumptionKind, BlockingMode, CatchupPolicy } from "@/api/flows";
@@ -179,8 +180,8 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
   const titleRef = useRef<HTMLInputElement>(null);
 
   // Recurrence (Habit) is edit-only — it needs a persisted flow to key on.
-  const flowId = parseInt(node.id.split("-").pop() ?? "", 10);
-  const isEdit = flowId > 0;
+  const flowId = node.rowId;
+  const isEdit = flowId !== undefined;
   const [recurrence, setRecurrence] = useState<RecurrenceUi>(() => defaultRecurrence(todayIso()));
   // For edit-habit reconciliation: how many completed iterations exist, the schedule snapshot to
   // diff against, and whether the reconcile prompt is showing.
@@ -195,7 +196,7 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
 
   // Prefill the Recurrence from the stored one (if this flow is already a Habit).
   useEffect(() => {
-    if (!isEdit) return;
+    if (flowId === undefined) return;
     let cancelled = false;
     void (async () => {
       const rec = await getFlowRecurrence(flowId);
@@ -225,10 +226,10 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
       setCompletionCount(count);
     })();
     return () => { cancelled = true; };
-  }, [isEdit, flowId]);
+  }, [flowId]);
 
   function selectTarget(candidate: MindmapNode) {
-    const id = parseInt(candidate.id.split("-").pop() ?? "0", 10);
+    const id = rowIdOf(candidate);
     setTarget({ kind: candidate.kind, id, title: candidate.title });
     setTargetSearch("");
   }

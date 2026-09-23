@@ -4,7 +4,7 @@ import {
   setHabitInstanceBlockReason, setHabitInstanceDeleted, setHabitInstanceDependencies,
   setHabitInstancePlan, setHabitInstanceTitle,
 } from "@/api/flows";
-import { withGesture } from "@/api/gesture";
+import { withAtomicGesture } from "@/api/gesture";
 import {
   currentPlanOverride, occurrenceCandidates, pendingWrites, useOccurrenceEditor,
 } from "@/hooks/use-occurrence-editor";
@@ -20,7 +20,7 @@ vi.mock("@/api/flows", () => ({
   setHabitInstanceDependencies: vi.fn(),
 }));
 vi.mock("@/api/gesture", () => ({
-  withGesture: vi.fn((_name: string, run: () => Promise<unknown>) => run()),
+  withAtomicGesture: vi.fn((_name: string, run: () => Promise<unknown>) => run()),
 }));
 
 const thursday = { start_id: 14, end_id: 14 };
@@ -137,7 +137,7 @@ describe("useOccurrenceEditor", () => {
       ...unchanged(occurrence()), title: "Cook for four", plan: { kind: "planned", plan: thursday },
     }));
 
-    expect(withGesture).toHaveBeenCalledTimes(1);
+    expect(withAtomicGesture).toHaveBeenCalledTimes(1);
     expect(setHabitInstanceTitle).toHaveBeenCalledWith(key, "Cook for four");
     expect(setHabitInstancePlan).toHaveBeenCalledWith(key, { kind: "planned", plan: thursday });
     expect(setHabitInstanceBlockReason).not.toHaveBeenCalled();

@@ -123,6 +123,7 @@ async fn stretch(pool: &sqlx::SqlitePool, app: &App) -> Stretch {
     }
 }
 
+/// Saves an item's pairs the way the item editor does, at 09:00 on Tuesday 2026-01-06.
 async fn save_cycles(
     app: &App,
     flow_id: i64,
@@ -130,6 +131,7 @@ async fn save_cycles(
     cycles: Vec<FlowCycleInput>,
     reconcile: Option<Reconcile>,
 ) -> Result<Option<arlesh_lib::flows::occurrence::ForkedTemplate>, arlesh_lib::error::WireError> {
+    let now = Some(ymd(2026, 1, 6).and_hms_opt(9, 0, 0).unwrap());
     flow_commands::set_flow_item_cycles(
         app.state(),
         flow_id,
@@ -137,6 +139,7 @@ async fn save_cycles(
         item_id,
         cycles,
         reconcile,
+        now,
     )
     .await
 }
@@ -361,5 +364,13 @@ async fn archive_and_new_lands_the_change_on_a_fork_and_leaves_the_original_whol
             .unwrap()
             .is_some(),
         "the fork is a Habit too — the item editor does not restate the Recurrence"
+    );
+    assert!(
+        flow_commands::get_flow_recurrence(app.state(), habit.flow_id)
+            .await
+            .unwrap()
+            .and_then(|recurrence| recurrence.end_scope_id)
+            .is_some(),
+        "and the original is archived: it stops recurring, as the Habit editor's Archive & new does"
     );
 }

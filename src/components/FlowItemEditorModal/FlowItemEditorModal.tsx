@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { rowIdOf } from "@/utils/node-identity";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { FlowCyclePair, FlowItemDep } from "@/utils/tree-layout";
 import type { FlowItemType, Reconcile } from "@/api/flows";
@@ -30,7 +31,7 @@ function depEquals(a: FlowItemDep, b: FlowItemDep): boolean { return a.type === 
 
 function nodeToDep(node: MindmapNode): FlowItemDep | null {
   if (node.flowItem === undefined) return null;
-  return { type: node.flowItem.itemType, id: parseInt(node.id.split("-").pop() ?? "0", 10) };
+  return { type: node.flowItem.itemType, id: rowIdOf(node) };
 }
 
 interface Props {

@@ -519,9 +519,13 @@ export async function clearHabitModifications(flowId: number): Promise<void> {
   return invoke<void>("clear_habit_modifications", { flowId });
 }
 
-/** Deep-clones a flow's template into a new flow (archive-and-new reconciliation). */
-export async function forkFlow(flowId: number): Promise<Flow> {
-  return invoke<Flow>("fork_flow", { flowId });
+/**
+ * The archive-and-new reconciliation: deep-clones a flow's template into a new flow and archives
+ * the original Habit — it stops recurring after the Day holding `now` (a local wall-clock
+ * `YYYY-MM-DDTHH:MM:SS`), keeping the iterations that had begun — in one backend transaction.
+ */
+export async function forkFlow(flowId: number, now: string): Promise<Flow> {
+  return invoke<Flow>("fork_flow", { flowId, now });
 }
 
 /**
@@ -699,8 +703,9 @@ export interface ForkedTemplate {
 /**
  * Saves a flow item's cycle pairs, keeping every pair that survives — so a save that leaves them
  * alone orphans nothing. A change that would orphan recorded edits rejects with a
- * `needs_confirmation` ({@link orphanedEditCount}) until `reconcile` answers it; a fork resolves to
- * where the change went.
+ * `needs_confirmation` ({@link orphanedEditCount}) until `reconcile` answers it. A fork archives the
+ * original at `now` (local wall-clock), as the Habit editor's does, and resolves to where the
+ * change went.
  */
 export async function setFlowItemCycles(
   flowId: number,
@@ -708,9 +713,10 @@ export async function setFlowItemCycles(
   itemId: number,
   cycles: FlowCycleInput[],
   reconcile?: Reconcile,
+  now?: string,
 ): Promise<ForkedTemplate | null> {
   return invoke<ForkedTemplate | null>("set_flow_item_cycles", {
-    flowId, itemType, itemId, cycles, reconcile: reconcile ?? null,
+    flowId, itemType, itemId, cycles, reconcile: reconcile ?? null, now: now ?? null,
   });
 }
 

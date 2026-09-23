@@ -345,7 +345,8 @@ pub async fn delete_flow_item(
 /// tombstone, or an added child, on an occurrence a removed pair drew — is refused with
 /// [`NeedsConfirmation`](crate::error::WireErrorKind::NeedsConfirmation) until `reconcile` answers
 /// it the way the Habit editor's prompt does: `fork` (Archive & new) or `discard` (Discard &
-/// regenerate). A fork returns the new flow and its old→new item ids, for the rest of the save.
+/// regenerate). A fork archives the original at `now`, as the Habit editor's does, and returns the
+/// new flow and its old→new item ids, for the rest of the save.
 #[tauri::command]
 pub async fn set_flow_item_cycles(
     factory: State<'_, SessionFactory>,
@@ -354,6 +355,7 @@ pub async fn set_flow_item_cycles(
     item_id: i64,
     cycles: Vec<FlowCycleInput>,
     reconcile: Option<Reconcile>,
+    now: Option<chrono::NaiveDateTime>,
 ) -> Result<Option<ForkedTemplate>, WireError> {
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
     if reconcile.is_none() {
@@ -379,6 +381,7 @@ pub async fn set_flow_item_cycles(
         item_id,
         &cycles,
         reconcile,
+        now,
     )
     .await
     .map_err(WireError::from_error)?;
@@ -716,14 +719,17 @@ pub async fn clear_habit_modifications(
         .map_err(WireError::from_error)
 }
 
-/// Deep-clones a flow's template into a new flow (the archive-and-new reconciliation arm).
+/// The archive-and-new reconciliation arm: deep-clones a flow's template into a new flow and
+/// archives the original Habit — it stops recurring after the Day holding `now` — in one
+/// transaction. See [`flows::archive_and_fork`].
 #[tauri::command]
 pub async fn fork_flow(
     factory: State<'_, SessionFactory>,
     flow_id: i64,
+    now: chrono::NaiveDateTime,
 ) -> Result<Flow, WireError> {
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let forked = flows::fork_flow(&mut db, FlowId(flow_id))
+    let forked = flows::archive_and_fork(&mut db, FlowId(flow_id), now)
         .await
         .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)?;

@@ -93,6 +93,7 @@ async fn weekly_run(
         item.id,
         vec![cycle(cycle_scope, 2)],
         None,
+        None,
     )
     .await
     .unwrap();

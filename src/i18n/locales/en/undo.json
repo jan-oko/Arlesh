@@ -30,6 +30,7 @@
     "editOccurrence": "edit a habit occurrence",
     "editFlowItem": "edit a flow item",
     "deleteOccurrence_one": "delete 1 habit occurrence",
-    "deleteOccurrence_other": "delete {{count}} habit occurrences"
+    "deleteOccurrence_other": "delete {{count}} habit occurrences",
+    "archiveAndNew": "archive a habit and start a new one"
   }
 }

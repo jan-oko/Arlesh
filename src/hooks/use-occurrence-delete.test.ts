@@ -1,14 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
 import { setHabitInstanceDeleted } from "@/api/flows";
-import { withGesture } from "@/api/gesture";
+import { withAtomicGesture } from "@/api/gesture";
 import { useOccurrenceDelete } from "@/hooks/use-occurrence-delete";
 import type { MindmapNode } from "@/utils/tree-layout";
 
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock("@/api/flows", () => ({ setHabitInstanceDeleted: vi.fn() }));
 vi.mock("@/api/gesture", () => ({
-  withGesture: vi.fn((_name: string, run: () => Promise<unknown>) => run()),
+  withAtomicGesture: vi.fn((_name: string, run: () => Promise<unknown>) => run()),
 }));
 
 const key = { flowId: 3, itemType: "flow_task" as const, itemId: 7, scopeId: 100, cycleId: 0 };
@@ -46,7 +46,7 @@ describe("useOccurrenceDelete", () => {
     const { remove, reload, showToast } = setup();
     expect(remove([occurrence])).toBe(true);
     await waitFor(() => expect(reload).toHaveBeenCalled());
-    expect(withGesture).toHaveBeenCalledTimes(1);
+    expect(withAtomicGesture).toHaveBeenCalledTimes(1);
     expect(setHabitInstanceDeleted).toHaveBeenCalledWith(key, true);
     expect(showToast).toHaveBeenCalledWith({ nodeId: "occ", message: "warnings:occurrenceDeleted" });
   });

@@ -33,13 +33,14 @@ vi.mock("@/api/flows", () => ({
 }));
 vi.mock("@/api/gesture", () => ({
   withGesture: vi.fn((_name: string, run: () => Promise<unknown>) => run()),
+  withAtomicGesture: vi.fn((_name: string, run: () => Promise<unknown>) => run()),
 }));
 vi.mock("@/api/block-reasons", () => ({
   setBlockReasons: vi.fn().mockResolvedValue(undefined),
 }));
 
 const taskNode: MindmapNode = {
-  id: "task-5", kind: "task", title: "Task", tagIds: [], position: 0, children: [],
+  id: "task-5", rowId: 5, kind: "task", title: "Task", tagIds: [], position: 0, children: [],
 };
 const virtualHabitItemNode: MindmapNode = {
   id: "habititem-flow_task-4-3-virtual", kind: "task", title: "Breakfast", tagIds: [], position: 0, children: [],
@@ -76,9 +77,8 @@ beforeEach(() => vi.clearAllMocks());
 describe("useNodeEditor — double-click", () => {
   // A virtual Habit instance (root or item) isn't backed by a real Task/Goal row — its Time Scope
   // is derived from the flow's Duration kind and the item's Cycle, not independently settable.
-  // Opening the full editor on it would save against a `dbId` parsed from its non-numeric
-  // `-virtual` id tail (NaN), silently failing — so the full editor never opens on one. A task
-  // occurrence opens its own Plan editor instead.
+  // It carries no `rowId`, so the full editor would have nothing to save against — so the full
+  // editor never opens on one. An item occurrence opens its own editor instead.
   it("opens the occurrence editor, not the Task editor, on a habit task occurrence", () => {
     const reload = vi.fn().mockResolvedValue(undefined);
     const { result } = renderHook(() =>
@@ -170,7 +170,7 @@ describe("useNodeEditor — checkScopeClamp confirm", () => {
 
 describe("useNodeEditor — saving a flow item", () => {
   const flowTask: MindmapNode = {
-    id: "flowtask-7", kind: "flow_task", title: "Stretch", tagIds: [], position: 0, children: [],
+    id: "flowtask-7", rowId: 7, kind: "flow_task", title: "Stretch", tagIds: [], position: 0, children: [],
     flowItem: {
       itemType: "flow_task", flowId: 3, flowInstanceType: "task", flowScopeN: 1, flowScopeKind: "day",
       cycles: [], dependsOn: [],
@@ -189,7 +189,7 @@ describe("useNodeEditor — saving a flow item", () => {
       addedDeps: [{ type: "flow_task", id: 6 }], removedDeps: [],
     }));
 
-    expect(setFlowItemCycles).toHaveBeenCalledWith(3, "flow_task", 7, [], "fork");
+    expect(setFlowItemCycles).toHaveBeenCalledWith(3, "flow_task", 7, [], "fork", expect.any(String));
     expect(updateFlowTask).toHaveBeenCalledWith(70, { title: "Stretch well", isPrivate: false });
     expect(addFlowDependency).toHaveBeenCalledWith(9, "flow_task", 70, "flow_task", 60);
   });

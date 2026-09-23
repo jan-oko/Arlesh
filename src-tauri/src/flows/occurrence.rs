@@ -13,6 +13,8 @@
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 
+use chrono::NaiveDateTime;
+
 use crate::database::session::{Db, Transactional};
 
 use super::error::FlowError;
@@ -298,10 +300,11 @@ pub async fn orphaned_edits(
 ///
 /// - **Discard** clears the Habit's recorded edits, exactly as the Habit editor's
 ///   delete-and-regenerate does, then saves.
-/// - **Fork** forks the Habit exactly as the Habit editor's "Archive & new" does — the template,
-///   with none of the history — and carries over what the item editor does not restate: the
-///   Recurrence and privacy. The pairs are saved on the fork's copy of the item, and the
-///   old→new ids are returned so the rest of the save lands there too.
+/// - **Fork** is the Habit editor's "Archive & new": the template is forked with none of the
+///   history, and the original is archived — it stops recurring after the Day holding `now`,
+///   keeping the iterations already begun. The fork also carries what the item editor does not
+///   restate, the Recurrence and privacy. The pairs are saved on the fork's copy of the item, and
+///   the old→new ids are returned so the rest of the save lands there too.
 #[tracing::instrument(skip(db))]
 pub async fn set_item_cycles(
     db: &mut Db<Transactional>,
@@ -310,6 +313,7 @@ pub async fn set_item_cycles(
     item_id: i64,
     cycles: &[FlowCycleInput],
     reconcile: Option<Reconcile>,
+    now: Option<NaiveDateTime>,
 ) -> Result<Option<ForkedTemplate>, FlowError> {
     match reconcile {
         None => {
@@ -325,9 +329,14 @@ pub async fn set_item_cycles(
                 .await?;
             Ok(None)
         }
-        Some(Reconcile::Fork) => fork_and_set_cycles(db, flow_id, item_type, item_id, cycles)
-            .await
-            .map(Some),
+        Some(Reconcile::Fork) => {
+            let now = now.ok_or_else(|| {
+                FlowError::Invalid("archive & new needs the time it is archived at".to_string())
+            })?;
+            let fork = fork_and_set_cycles(db, flow_id, item_type, item_id, cycles).await?;
+            super::stop_recurring(db, flow_id, now).await?;
+            Ok(Some(fork))
+        }
     }
 }
 

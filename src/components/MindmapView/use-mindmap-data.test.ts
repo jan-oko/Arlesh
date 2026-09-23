@@ -90,6 +90,31 @@ describe("buildTree", () => {
     expect(root.children).toHaveLength(0);
   });
 
+  // Node ids are frozen as spelled (Arlesh-z7n): tab state persisted before rowId existed —
+  // selection, collapse, subtree root — names nodes by these strings and must still find them.
+  it("keeps every id spelled as before, and carries the row it draws as rowId", () => {
+    const aspect = mkDomain({ id: 1, subtype: "aspect" });
+    const goal = mkGoal({ id: 4, parent_type: "domain", parent_id: 1 });
+    const task = mkTask({ id: 9, parent_type: "goal", parent_id: 4 });
+    const info = mkInfo({ id: 2, parent_type: "task", parent_id: 9 });
+    const flow = mkFlow({ id: 3, parent_type: "domain", parent_id: 1 });
+    const flowGoal = { id: 6, flow_id: 3, title: "M", parent_type: "flow", parent_id: 3, position: 0, is_private: false };
+    const flowTask = { id: 7, flow_id: 3, title: "S", parent_type: "flow_goal", parent_id: 6, position: 0, is_private: false };
+    const root = buildTree([aspect], [goal], [task], [info], [], [flow], [flowGoal], [flowTask]);
+
+    const drawn = new Map<string, number | undefined>();
+    const visit = (node: MindmapNode): void => {
+      drawn.set(node.id, node.rowId);
+      node.children.forEach(visit);
+    };
+    visit(root);
+    expect(Object.fromEntries(drawn)).toEqual({
+      root: undefined,
+      "domain-1": 1, "goal-4": 4, "task-9": 9, "info-2": 2,
+      "flow-3": 3, "flowgoal-6": 6, "flowtask-7": 7,
+    });
+  });
+
   it("carries a task's stored Backlog state onto its node", () => {
     const aspect = mkDomain({ id: 1, subtype: "aspect" });
     const aside = mkTask({ id: 1, parent_type: "domain", parent_id: 1, archival: "backlog" });
@@ -931,6 +956,17 @@ describe("useMindmapData — mutations", () => {
   });
 
   describe("duplicateNode", () => {
+    /** Flow 1 under the aspect, holding goal item 3 with task item 4 beneath it. */
+    const FLOW_TEMPLATE = {
+      list_flows: [mkFlow()],
+      list_all_flow_goals: [
+        { id: 3, flow_id: 1, title: "Milestone", parent_type: "flow", parent_id: 1, position: 0, is_private: false },
+      ],
+      list_all_flow_tasks: [
+        { id: 4, flow_id: 1, title: "Step", parent_type: "flow_goal", parent_id: 3, position: 0, is_private: false },
+      ],
+    };
+
     it("goal: calls duplicate_goal with the target and position", async () => {
       setupInvoke({ duplicate_goal: GOAL });
       const { result } = await loadedHook();
@@ -998,7 +1034,7 @@ describe("useMindmapData — mutations", () => {
     });
 
     it("flow: calls duplicate_flow with the parent the paste chose", async () => {
-      setupInvoke({ duplicate_flow: mkFlow({ id: 2 }) });
+      setupInvoke({ list_flows: [mkFlow()], duplicate_flow: mkFlow({ id: 2 }) });
       const { result } = await loadedHook();
 
       await act(async () => {
@@ -1011,7 +1047,7 @@ describe("useMindmapData — mutations", () => {
     });
 
     it("flow item: calls duplicate_flow_item with its in-flow parent", async () => {
-      setupInvoke({ duplicate_flow_item: 9 });
+      setupInvoke({ ...FLOW_TEMPLATE, duplicate_flow_item: 9 });
       const { result } = await loadedHook();
 
       await act(async () => {
@@ -1024,7 +1060,7 @@ describe("useMindmapData — mutations", () => {
     });
 
     it("refuses a flow pasted onto a node no Flow can hang from", async () => {
-      setupInvoke({});
+      setupInvoke({ list_flows: [mkFlow()] });
       const { result } = await loadedHook();
 
       await expect(
@@ -1036,7 +1072,7 @@ describe("useMindmapData — mutations", () => {
     });
 
     it("refuses a flow item pasted onto a real node", async () => {
-      setupInvoke({});
+      setupInvoke(FLOW_TEMPLATE);
       const { result } = await loadedHook();
 
       await expect(
@@ -1218,6 +1254,7 @@ describe("useMindmapData — mutations", () => {
         if (cmd === "retype_node") {
           return Promise.reject({ kind: "needs_confirmation", message: "would lose 1 child", details: {} });
         }
+        if (cmd === "load_mindmap") return Promise.resolve(mindmapEnvelope({ domains: [ASPECT], goals: [GOAL] }));
         return Promise.resolve(undefined);
       });
       const { result } = await loadedHook();
@@ -1409,7 +1446,9 @@ describe("injectHabitInstances", () => {
     expect(virtuals[2]?.timing).toBe("lapsed"); // lapsed + uncompleted iterations are dimmed
     expect(virtuals[2]?.resolution).toBe("missed");
     expect(virtuals[2]?.archived).toBe(true);
-    expect(virtuals[2]?.id).toBe("habit-3-2-virtual"); // non-numeric tail keeps it out of mutations
+    expect(virtuals[2]?.id).toBe("habit-3-2-virtual");
+    // No row behind any of them, so `rowIdOf` refuses them — nothing DB-backed can be aimed at one.
+    expect(virtuals.map((n) => n.rowId)).toEqual([undefined, undefined, undefined]);
   });
 
   it("tells each iteration node whether its window has passed, and how it ended", () => {
@@ -1620,7 +1659,8 @@ describe("injectHabitInstances", () => {
     expect(items[0]?.title).toBe("Breakfast");
     expect(items[0]?.status).toBe("done"); // has a completion
     expect(items[0]?.color).toBe("#0af"); // inherits the aspect colour
-    expect(items[0]?.id).toBe("habititem-flow_task-4-0-0-virtual"); // virtual, non-numeric tail
+    expect(items[0]?.id).toBe("habititem-flow_task-4-0-0-virtual");
+    expect(items[0]?.rowId).toBeUndefined();
     expect(items[0]?.habitItem).toEqual({ flowId: 3, itemType: "flow_task", itemId: 4, scopeId: 100, cycleId: NO_CYCLE });
     expect(items[1]?.title).toBe("Dinner");
     expect(items[1]?.status).toBe("todo"); // no completion

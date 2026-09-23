@@ -1412,6 +1412,21 @@ impl<'session> FlowOperator<'session> {
         Ok(recurrence)
     }
 
+    /// Moves a Habit's Recurrence end to `end_scope_id`, leaving the rest of the Recurrence as it
+    /// was. [`archive_and_fork`] is its only caller.
+    async fn set_recurrence_end(
+        &mut self,
+        flow_id: FlowId,
+        end_scope_id: i64,
+    ) -> Result<(), FlowError> {
+        sqlx::query("UPDATE flow_recurrences SET end_scope_id = ? WHERE flow_id = ?")
+            .bind(end_scope_id)
+            .bind(flow_id.0)
+            .execute(&mut *self.connection)
+            .await?;
+        Ok(())
+    }
+
     /// Deletes a flow's Recurrence, demoting the Habit back to a plain flow.
     pub async fn delete_recurrence(&mut self, flow_id: FlowId) -> Result<(), FlowError> {
         sqlx::query("DELETE FROM flow_recurrences WHERE flow_id = ?")
@@ -2775,6 +2790,53 @@ async fn unfinished_children(
 #[tracing::instrument(skip(db))]
 pub async fn fork_flow(db: &mut Db<Transactional>, flow_id: FlowId) -> Result<Flow, FlowError> {
     db.flows().fork_flow(flow_id).await
+}
+
+/// The habit editor's **Archive & new**: forks the flow's template (see [`fork_flow`]) and archives
+/// the original Habit, in one transaction.
+///
+/// Archiving a Habit means it **stops recurring**, and nothing else: its Recurrence is ended on the
+/// Day holding `now` (by the 02:00 day boundary), so an iteration that has already begun — today's,
+/// or this week's for a weekly Habit — still stands with its history, and no later one is ever
+/// generated. An end that is already on or before that Day is left alone rather than pushed later.
+/// A flow with no Recurrence is only forked.
+///
+/// One transaction, and so, called from one command, one Gesture: a single `Ctrl+Z` takes back the
+/// clone and the archive together.
+#[tracing::instrument(skip(db))]
+pub async fn archive_and_fork(
+    db: &mut Db<Transactional>,
+    flow_id: FlowId,
+    now: NaiveDateTime,
+) -> Result<Flow, FlowError> {
+    let clone = db.flows().fork_flow(flow_id).await?;
+    stop_recurring(db, flow_id, now).await?;
+    Ok(clone)
+}
+
+/// Archives a Habit the way [`archive_and_fork`] does: its Recurrence ends on the Day holding
+/// `now`, unless it already ends on or before it. A flow with no Recurrence is left alone.
+async fn stop_recurring(
+    db: &mut Db<Transactional>,
+    flow_id: FlowId,
+    now: NaiveDateTime,
+) -> Result<(), FlowError> {
+    let Some(recurrence) = db.flows().get_recurrence(flow_id).await? else {
+        return Ok(());
+    };
+    let today = if now < day_boundary(now.date()) {
+        now.date() - Duration::days(1)
+    } else {
+        now.date()
+    };
+    if let Some(end_id) = recurrence.end_scope_id {
+        let end = db.scopes().get(ScopeId(end_id)).await?;
+        if scope_start_date(&end)? <= today {
+            return Ok(());
+        }
+    }
+    let day = db.scopes().get_or_create(ScopeKind::Day, today).await?;
+    db.flows().set_recurrence_end(flow_id, day.id).await
 }
 
 /// Copies a Flow under `(parent_type, parent_id)` at `position` — the Mindmap's Copy+Paste of a

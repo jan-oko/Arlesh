@@ -173,7 +173,13 @@ export interface HabitGroup {
 }
 
 export interface MindmapNode {
+  /** The node's display key: unique and comparable, **not** an address — never parse it. Read the
+   * row through `rowId` (via `rowIdOf`). A node kind added from now on mints a UUID here rather
+   * than a composed string; see docs/spec/mindmap-view.md, "Node identity". */
   id: string;
+  /** The database row this node draws, in its kind's table. Absent exactly when the node draws no
+   * row: a `virtual` node, or the synthetic tree root. */
+  rowId?: number;
   kind: NodeKind;
   title: string;
   status?: string;

@@ -39,9 +39,10 @@ vi.mock("react-i18next", () => ({
 import { updateTask } from "@/api/tasks";
 import { updateGoal } from "@/api/goals";
 import { setHabitInstanceDeleted, setHabitItemStatus } from "@/api/flows";
+import { fixtureRowId } from "@/test/node-fixture";
 
 function mkNode(id: string, kind: NodeKind, children: MindmapNode[] = [], extra: Partial<MindmapNode> = {}): MindmapNode {
-  return { id, kind, title: id, position: 0, tagIds: [], children, ...extra };
+  return { id, ...fixtureRowId(id), kind, title: id, position: 0, tagIds: [], children, ...extra };
 }
 
 const TASK_NODE = mkNode("task-5", "task", [], { status: "todo" });
@@ -398,7 +399,7 @@ describe("useNodeActions — onDelete", () => {
 
   it("refuses a virtual Habit repetition out loud instead of raising the confirmation", () => {
     // The repetition has no row behind it, so the confirmation used to open on a delete that could
-    // only throw: `dbIdFromNodeId` rejects the `-virtual` tail, and the throw surfaced as a generic
+    // only throw: `rowIdOf` refuses a node with no `rowId`, and the throw surfaced as a generic
     // "delete failed" inside the dialog. It never gets that far now — and it says the same thing
     // the List View says, since one gesture on one kind of node must not have two wordings.
     const opts = makeOpts();

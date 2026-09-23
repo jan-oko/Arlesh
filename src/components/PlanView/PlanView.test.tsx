@@ -10,6 +10,7 @@ import { useListData } from "@/hooks/use-list-data";
 import { clearScopeWindowCache } from "@/hooks/use-scope-windows";
 import { clearScopeRowCache } from "@/hooks/use-scope-rows";
 import { useDisplayStore } from "@/stores/use-display-store";
+import { fixtureRowId } from "@/test/node-fixture";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -92,7 +93,7 @@ vi.mock("@/api/tasks", async (importOriginal) => ({
 }));
 
 function n(id: string, kind: NodeKind, extra: Partial<MindmapNode> = {}): MindmapNode {
-  return { id, kind, title: id, position: 0, tagIds: [], children: [], ...extra };
+  return { id, ...fixtureRowId(id), kind, title: id, position: 0, tagIds: [], children: [], ...extra };
 }
 
 function row(node: MindmapNode, ancestors: MindmapNode[] = []): TaskListRow {

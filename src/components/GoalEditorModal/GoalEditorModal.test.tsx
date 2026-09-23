@@ -25,6 +25,7 @@ vi.mock("@/api/scopes", () => ({
 function mkNode(overrides: Partial<MindmapNode> = {}): MindmapNode {
   return {
     id: "goal-1",
+    rowId: 1,
     kind: "goal",
     title: "Ship it",
     status: "active",

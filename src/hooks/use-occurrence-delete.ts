@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { setHabitInstanceDeleted } from "@/api/flows";
 import { getErrorMessage } from "@/api/errors";
-import { withGesture } from "@/api/gesture";
+import { withAtomicGesture } from "@/api/gesture";
 import { editableOccurrence } from "@/hooks/use-occurrence-editor";
 import type { MindmapNode } from "@/utils/tree-layout";
 
@@ -35,7 +35,7 @@ export function useOccurrenceDelete({ reload, showToast }: Options): (nodes: Min
       }
       void (async () => {
         try {
-          await withGesture(t("undo:gestures.deleteOccurrence", { count: nodes.length }), async () => {
+          await withAtomicGesture(t("undo:gestures.deleteOccurrence", { count: nodes.length }), async () => {
             for (const key of keys) if (key !== null) await setHabitInstanceDeleted(key, true);
           });
           showToast({ nodeId: first.id, message: t("warnings:occurrenceDeleted", { count: nodes.length }) });
