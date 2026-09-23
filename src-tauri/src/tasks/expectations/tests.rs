@@ -119,7 +119,7 @@ fn an_unrecognised_stored_status_reads_as_pending() {
         check_every_n: Some(2),
         check_every_kind: Some("week".to_string()),
         check_starting: Some("2026-07-01T09:00:00".to_string()),
-        last_check_at: Some("not a date".to_string()),
+        checked_at: Some("not a date".to_string()),
         position: 0,
         is_private: true,
         time_scope_start_id: Some(4),
