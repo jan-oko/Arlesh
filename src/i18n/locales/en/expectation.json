@@ -22,5 +22,6 @@
   "templateTimeScopeNone": "None",
   "templateDefaultTitle": "Waiting on {{title}}",
   "spawnedNotStored": "This wait was spawned by its task — edit the task's template instead.",
-  "templateSection": "Expectation"
+  "templateSection": "Expectation",
+  "checkTaskPrefixDefault": "Check: "
 }

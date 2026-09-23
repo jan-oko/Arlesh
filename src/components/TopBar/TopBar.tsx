@@ -16,6 +16,7 @@ import Select from "@/components/Select/Select";
 import Switch from "@/components/Switch/Switch";
 import SubtreeBreadcrumb from "./SubtreeBreadcrumb";
 import HabitCollapseSetting from "./HabitCollapseSetting";
+import CheckTaskPrefixSetting from "./CheckTaskPrefixSetting";
 import StepsZoomSetting from "./StepsZoomSetting";
 import styles from "./TopBar.module.css";
 
@@ -131,6 +132,10 @@ export default function TopBar() {
                       <Switch checked={listBands} onChange={toggleListBands} label={t("common:listBands")} />
                     </div>
                   )}
+                  {/* How a wait's check task is titled — the same in every view, so ungated. */}
+                  <div className={styles.settingRow}>
+                    <CheckTaskPrefixSetting />
+                  </div>
                   {/* The Plan View's own shape switches are deliberately absent: they live in a
                       kebab menu on each of its two panes, beside the half they act on. A pane's
                       options belong to the pane, not to a popover three rows up that has to say

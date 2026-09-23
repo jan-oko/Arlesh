@@ -135,6 +135,14 @@ describe("buildTree — expectations", () => {
     expect(findNode(root, "task-8")).toMatchObject({ asynchronous: true });
   });
 
+  it("titles a check task with the prefix it is given, before the wait's own title", () => {
+    const root = buildTree(
+      [ASPECT], [], [], [], [], [], [], [], [], [], [], [], [], [wait({ id: 3, check_every: EVERY })],
+      (title) => title, [{ expectation_id: 3, due: DUE }], [], (title) => `Check: ${title}`,
+    );
+    expect(findNode(root, checkTaskNodeId(3))?.title).toBe("Check: Reviewer replies");
+  });
+
   it("hangs a note under a wait", () => {
     const note: Info = { id: 9, body: "asked Monday", details: null, parent_type: "expectation", parent_id: 3, position: 0, is_private: false };
     const root = build([], [wait()], [], [note]);

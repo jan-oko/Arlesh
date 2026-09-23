@@ -22,7 +22,11 @@ interface Props {
 
 /**
  * A simple counted scope — N days, weeks, months or seasons — the shape a wait's Check every and an
- * Expectation template's Time Scope rule both take. An empty or zero count is no value at all.
+ * Expectation template's Time Scope rule both take. An empty count is no value at all.
+ *
+ * **Clear** is the way back to no value, as it is on the Time Scope field. Without it the only
+ * route was to delete the digits by hand: the number input's spinner stops at 1, so stepping down
+ * never reached "none", and a set Check every looked permanent.
  */
 export default function CountedDurationField({ value, onChange, label, emptyLabel }: Props) {
   const { t } = useTranslation("editor");
@@ -55,6 +59,11 @@ export default function CountedDurationField({ value, onChange, label, emptyLabe
           {t(option.labelKey)}
         </button>
       ))}
+      {value !== null && (
+        <button type="button" className={styles.statusPill} onClick={() => onChange(null)}>
+          {t("scopeClear")}
+        </button>
+      )}
     </div>
   );
 }

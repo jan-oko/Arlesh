@@ -66,6 +66,13 @@ interface DisplayStore {
   listBands: boolean;
   toggleListBands: () => void;
   /**
+   * What a wait's virtual **check task** is titled with, before the wait's own title —
+   * `{prefix}{title}`. `null` is the translated default ("Check: "); an empty string is no prefix
+   * at all, which is a choice rather than an unset value.
+   */
+  checkTaskPrefix: string | null;
+  setCheckTaskPrefix: (prefix: string | null) => void;
+  /**
    * Whether a Day's **Premorning** band is drawn as a bucket of the split.
    *
    * **Off by default**: 02:00–06:00 is not where work gets planned, and a bucket nobody fills is a
@@ -120,6 +127,8 @@ export const useDisplayStore = create<DisplayStore>()(
       togglePlanSubscopeSplit: () => set((s) => ({ planSubscopeSplit: !s.planSubscopeSplit })),
       listBands: true,
       toggleListBands: () => set((s) => ({ listBands: !s.listBands })),
+      checkTaskPrefix: null,
+      setCheckTaskPrefix: (prefix) => set({ checkTaskPrefix: prefix }),
       planIncludePremorning: false,
       togglePlanIncludePremorning: () =>
         set((s) => ({ planIncludePremorning: !s.planIncludePremorning })),

@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { dayStartInstant } from "@/utils/scope-calendar";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { findNode } from "@/utils/mindmap-tree";
 import { addTagToExpectation, createExpectation, updateExpectation } from "@/api/expectations";
@@ -48,7 +49,7 @@ export function useWaitEditor(tree: MindmapNode, reload: () => Promise<void>) {
           parent_id: create.parentId,
           ...(data.checkEvery !== null ? { check_every: data.checkEvery } : {}),
           ...(data.checkEvery !== null && data.checkStartingDate !== null
-            ? { check_starting: `${data.checkStartingDate}T00:00:00` } : {}),
+            ? { check_starting: dayStartInstant(data.checkStartingDate) } : {}),
           ...(data.timeScope !== null ? { time_scope: data.timeScope } : {}),
         });
         // What the create request has no field for is written straight after, inside the same

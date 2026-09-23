@@ -92,7 +92,7 @@ function steppedZoom(zoom: StepsZoom, direction: 1 | -1): StepsZoom {
  * the recovery in `use-subtree-nav` would bounce you straight back to the true root.
  */
 export default function StepsView() {
-  const { t } = useTranslation(["common", "stepsView"]);
+  const { t } = useTranslation(["common", "stepsView", "warnings"]);
   const {
     tree, isLoading, error, reload, createChild, createNode, renameNode, moveNode, duplicateNode, removeNode,
     createCommitment, createFlow,
@@ -339,7 +339,10 @@ export default function StepsView() {
       // A derived wait opens the editor of what it is drawn from: a check task its wait's, a
       // delegated Task's wait the Task's.
       const owner = editorOwnerOf(tree, node);
-      if (owner === undefined) return;
+      if (owner === undefined) {
+        showToast({ nodeId: id, message: t("warnings:editOwnerMissing") });
+        return;
+      }
       setEditorModal({ nodeId: owner.id, node: owner });
     },
     [tree, setEditorModal, showToast, t],

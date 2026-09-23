@@ -46,7 +46,7 @@ describe("useWaitEditor — Shift+E", () => {
     }));
     expect(createExpectation).toHaveBeenCalledWith({
       title: "Reply", parent_type: "task", parent_id: 5,
-      check_every: { n: 1, kind: "week" }, check_starting: "2026-10-01T00:00:00",
+      check_every: { n: 1, kind: "week" }, check_starting: "2026-10-01T02:00:00",
     });
     expect(updateTask).not.toHaveBeenCalled();
     expect(result.current.create).toBeNull();

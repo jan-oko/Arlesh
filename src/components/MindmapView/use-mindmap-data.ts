@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useDisplayStore } from "@/stores/use-display-store";
 import { useTranslation } from "react-i18next";
 import { createDomain, updateDomain, deleteDomain, duplicateDomain } from "@/api/domains";
 import { createTask, updateTask, deleteTask, duplicateTask, TASK_ARCHIVAL } from "@/api/tasks";
@@ -767,6 +768,8 @@ export function buildTree(
   delegationWaitTitle: (taskTitle: string) => string = (taskTitle) => taskTitle,
   expectationChecks: ExpectationCheck[] = [],
   spawnedWaits: SpawnedWaitView[] = [],
+  /** The title a wait's check task is drawn with, from the wait's own: the settings' prefix. */
+  checkTitle: (waitTitle: string) => string = (waitTitle) => waitTitle,
 ): MindmapNode {
   const nodeMap = new Map<string, MindmapNode>();
 
@@ -880,7 +883,7 @@ export function buildTree(
     const due = checkDue.get(expectation.id);
     if (due !== undefined) {
       node.children.push(checkTaskNode(
-        checkTaskNodeId(expectation.id), expectation.title, due, { kind: "stored", expectationId: expectation.id },
+        checkTaskNodeId(expectation.id), checkTitle(expectation.title), due, { kind: "stored", expectationId: expectation.id },
         expectation.is_private,
       ));
     }
@@ -912,7 +915,7 @@ export function buildTree(
     };
     if (spawned.next_check !== undefined) {
       wait.children.push(checkTaskNode(
-        spawnedCheckNodeId(spawned.task_id), template.title, spawned.next_check,
+        spawnedCheckNodeId(spawned.task_id), checkTitle(template.title), spawned.next_check,
         { kind: "spawned", taskId: spawned.task_id }, wait.isPrivate ?? false,
       ));
     }
@@ -1308,6 +1311,11 @@ export function useMindmapData(): MindmapData {
   useEffect(() => {
     delegationWaitTitle.current = (title: string) => t("expectation:delegationWaitTitle", { title });
   }, [t]);
+  // A check task is titled `{prefix}{wait title}`, the prefix a display setting. Unlike the
+  // translation above it is a dependency of `load`: changing it redraws the board with the new
+  // titles rather than leaving them stale until the next edit.
+  const storedCheckPrefix = useDisplayStore((s) => s.checkTaskPrefix);
+  const checkPrefix = storedCheckPrefix ?? t("expectation:checkTaskPrefixDefault");
   // The tree as of the latest load, read synchronously by the mutations to resolve a node id to
   // its row. A ref rather than the `tree` closure: a caller that creates a node and acts on it in
   // the same gesture holds a callback from before the reload that drew it.
@@ -1337,7 +1345,7 @@ export function useMindmapData(): MindmapData {
           data.flow_goals, data.flow_tasks, data.flow_cycles, data.flow_dependencies,
           data.block_reasons, data.task_dependencies, data.flow_instance_nodes,
           data.expectations, (title) => delegationWaitTitle.current(title),
-          data.expectation_checks, data.spawned_waits,
+          data.expectation_checks, data.spawned_waits, (title) => `${checkPrefix}${title}`,
         );
         applyLifecycles(built, lifecycleMap(data.lifecycles));
         // Inject each Habit's iterations as virtual, read-only child nodes under their targets.
@@ -1357,7 +1365,7 @@ export function useMindmapData(): MindmapData {
         if (showSpinner) setIsLoading(false);
       }
     },
-    [scopeLabels],
+    [scopeLabels, checkPrefix],
   );
 
   useEffect(() => {

@@ -104,6 +104,15 @@ export const DAY_BOUNDARY_HOUR = 2;
 const BOUNDARY_TIME = `${String(DAY_BOUNDARY_HOUR).padStart(2, "0")}:00:00`;
 
 /**
+ * The instant the Day named by `date` (`YYYY-MM-DD`) begins, as a local ISO datetime — `date` at
+ * the boundary, not at midnight. Midnight is still the previous Day: a Starting of "tomorrow" sent
+ * as `T00:00:00` put the first check on today.
+ */
+export function dayStartInstant(date: string): string {
+  return `${date}T${BOUNDARY_TIME}`;
+}
+
+/**
  * The date of the Day scope holding a calendar `date` at wall-clock `hour`: before
  * `DAY_BOUNDARY_HOUR` that is the **previous** date, because the Day still running began
  * yesterday. At 00:30 on the 17th you are in the 16th.

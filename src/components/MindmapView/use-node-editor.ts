@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { dayStartInstant } from "@/utils/scope-calendar";
 import { useTranslation } from "react-i18next";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import type { MindmapNode } from "@/utils/tree-layout";
@@ -182,7 +183,10 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
         return;
       }
       const owner = editorOwnerOf(tree, node);
-      if (owner === undefined) return;
+      if (owner === undefined) {
+        showToast({ nodeId, message: t("editOwnerMissing") });
+        return;
+      }
       setEditorModal({ nodeId: owner.id, node: owner });
     },
     [tree, showToast, t],
@@ -267,7 +271,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
         title: data.title,
         status: data.status,
         check_every: data.checkEvery,
-        ...(data.checkStartingDate !== null ? { check_starting: `${data.checkStartingDate}T00:00:00` } : {}),
+        ...(data.checkStartingDate !== null ? { check_starting: dayStartInstant(data.checkStartingDate) } : {}),
         time_scope: data.timeScope,
         archival: data.archived ? EXPECTATION_ARCHIVAL.ARCHIVED : EXPECTATION_ARCHIVAL.LIVE,
         is_private: data.isPrivate,
