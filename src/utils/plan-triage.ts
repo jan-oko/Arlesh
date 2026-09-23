@@ -4,6 +4,7 @@
 // panes re-derive synchronously as the scope is walked.
 
 import type { TimeScope } from "@/api/time-scope";
+import { VERDICT } from "@/api/verdict";
 import type { TaskListRow } from "@/utils/list-filter";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { ScopeInterval } from "@/utils/scope-interval";
@@ -85,6 +86,23 @@ function isTriageable(node: MindmapNode): boolean {
   return node.virtual !== true && node.habitItem === undefined;
 }
 
+/**
+ * Whether the row is a supporting step of a Commitment that has already been **judged** — Kept or
+ * Broken — at any depth above it.
+ *
+ * A Commitment is never a card here (it has no Plan), so the way it shows up in a planning pass is
+ * through the Tasks under it. Once it has a verdict there is nothing left to plan in its service:
+ * kept, the steps did their job; broken, it is past saving. So its steps leave both panes the way a
+ * done Task leaves them. The shared Plan preset still shows a Broken Commitment whose window is
+ * open, in the List View's band, as a live problem — that is a question about the Commitment, and
+ * this is a question about whether to spend time on its steps.
+ */
+function servesJudgedCommitment(row: TaskListRow): boolean {
+  return row.ancestors.some(
+    (ancestor) => ancestor.kind === "commitment" && (ancestor.verdict ?? VERDICT.UNRESOLVED) !== VERDICT.UNRESOLVED,
+  );
+}
+
 /** What one triage pass makes of the board, in three heaps. */
 export interface PlanPanes {
   /** Unplanned Tasks whose effective Time Scope reaches into the scope being filled. */
@@ -137,7 +155,7 @@ export function partitionForScope(
   const planned: TaskListRow[] = [];
   const parentPlanned: TaskListRow[] = [];
   for (const row of rows) {
-    if (!isTriageable(row.node)) continue;
+    if (!isTriageable(row.node) || servesJudgedCommitment(row)) continue;
     const plan = row.node.plan;
     if (plan != null) {
       if (plan.start_id === plan.end_id && parentIds.has(plan.start_id)) {

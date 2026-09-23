@@ -86,6 +86,13 @@ A Task planned **somewhere else** â€” neither in this scope nor to its parent â€
 It is not unscheduled, so it is not a candidate, and it is not in this scope, so it is not what the
 scope holds.
 
+**A judged Commitment's steps are not triaged.** A Commitment is never a card, so it reaches a
+pass through the Tasks under it. Once it has a Verdict, **Kept or Broken**, nothing is left to plan
+in its service, so its steps, at any depth, leave **both** panes the way a done Task does. The
+shared Plan preset still shows a Broken Commitment with an open window in the List View's band, as
+a live problem. That is a question about the Commitment. This one is about whether to spend time on
+its steps, and the answer is no either way.
+
 **Virtual Habit occurrences and iteration roots are not triaged.** They have no row to carry a Plan,
 and planning a recurrence is a separate question. A first cut plans real Tasks.
 

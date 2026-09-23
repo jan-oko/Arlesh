@@ -216,6 +216,17 @@ describe("the two panes", () => {
     expect(cardsIn("planned")).toEqual(["task-2"]);
   });
 
+  it.each(["kept", "broken"] as const)("takes a %s Commitment's steps off both panes", async (verdict) => {
+    const commitment = n("commitment-1", "commitment", { verdict });
+    mockRows([
+      row(n("task-1", "task", { timeScope: { start_id: WEEK_ID, end_id: WEEK_ID } }), [commitment]),
+      row(n("task-2", "task", { plan: { start_id: DAY_ID, end_id: DAY_ID } }), [commitment]),
+    ]);
+    await renderPlanView();
+    expect(cardsIn("candidates")).toEqual([]);
+    expect(cardsIn("planned")).toEqual([]);
+  });
+
   it("keeps backlogged work off the table until the switch says otherwise", async () => {
     mockRows([row(n("task-1", "task", { backlogged: true }))]);
     await renderPlanView();
