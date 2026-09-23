@@ -220,7 +220,6 @@ struct TaskRow {
     delegate_kind: Option<String>,
     delegate_id: Option<i64>,
     agentic: Option<bool>,
-    asynchronous: bool,
     time_scope_start_id: Option<i64>,
     time_scope_end_id: Option<i64>,
     time_scope_duration_n: Option<i64>,

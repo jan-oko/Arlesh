@@ -314,7 +314,7 @@ fn an_empty_update_request_writes_the_stored_row_back_unchanged() {
     assert_eq!(write.title, "Stored");
     assert_eq!(write.delegate_to, Some(Delegate::Person { id: 3 }));
     assert_eq!(write.agentic, None);
-    assert!(!write.asynchronous);
+    assert!(write.async_template.is_none());
     assert_eq!(write.position, 100);
     assert!(!write.is_private);
 }
