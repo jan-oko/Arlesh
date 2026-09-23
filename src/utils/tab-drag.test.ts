@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { carriesTab, decodeTabDrag, encodeTabDrag, tabDrop, tearsOff, TAB_DRAG_TYPE } from "./tab-drag";
+import { carriesTab, decodeTabDrag, encodeTabDrag, tabDrop, TAB_DRAG_TYPE } from "./tab-drag";
 
 const OWN = "main";
 
@@ -36,15 +36,5 @@ describe("a tab dropped on a window", () => {
       from: "board-a",
       tabId: "tab-1",
     });
-  });
-});
-
-describe("the end of a tab drag", () => {
-  it("becomes a window when no Arlesh window took the drop", () => {
-    expect(tearsOff("none")).toBe(true);
-  });
-
-  it("does nothing more when a window took it", () => {
-    expect(tearsOff("move")).toBe(false);
   });
 });

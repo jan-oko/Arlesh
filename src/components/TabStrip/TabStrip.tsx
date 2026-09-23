@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useTabsStore } from "@/stores/use-tabs-store";
@@ -8,7 +8,8 @@ import { useBoardWindows } from "@/hooks/use-board-windows";
 import { useInputCapture } from "@/hooks/use-input-capture";
 import { tabLabel } from "@/utils/tab-label";
 import { useTabClaims, useTabDropTarget, claimDropped } from "@/hooks/use-tab-drop-target";
-import { carriesTab, encodeTabDrag, tearsOff, TAB_DRAG_TYPE } from "@/utils/tab-drag";
+import { carriesTab, encodeTabDrag, TAB_DRAG_TYPE } from "@/utils/tab-drag";
+import { useTabTearOff } from "@/hooks/use-tab-tear-off";
 import { currentWindowLabel } from "@/api/window-label";
 import { traceDrag } from "@/utils/drag-trace";
 import TabContextMenu from "@/components/TabContextMenu/TabContextMenu";
@@ -54,8 +55,17 @@ export default function TabStrip() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Every window takes a dragged tab anywhere on it, and hands over the tabs other windows take.
-  useTabDropTarget();
-  useTabClaims(moveTabToWindow);
+  // A tab dragged out that neither this window nor another took becomes a window of its own.
+  const tearOff = useTabTearOff(tearOffTab);
+  useTabDropTarget(tearOff.landedHere);
+  const handOver = useCallback(
+    (tabId: string, into: string) => {
+      tearOff.claimed(tabId);
+      moveTabToWindow(tabId, into);
+    },
+    [tearOff, moveTabToWindow],
+  );
+  useTabClaims(handOver);
 
   // A rename is a text field in the strip, so the app's own single-key bindings must stand down
   // while it is open — the same contract the Mindmap's inline title editor honours.
@@ -75,6 +85,7 @@ export default function TabStrip() {
     event.dataTransfer.setData(TAB_DRAG_TYPE, encodeTabDrag({ tabId, window: currentWindowLabel() }));
     event.dataTransfer.effectAllowed = "move";
     traceDrag("dragstart", { tabId, types: [...event.dataTransfer.types] });
+    tearOff.started();
     setDraggingIndex(index);
   }
 
@@ -97,6 +108,7 @@ export default function TabStrip() {
     const dropped = claimDropped(event.dataTransfer.getData(TAB_DRAG_TYPE));
     traceDrag("drop on a tab", { toIndex, dropped });
     if (dropped.kind === "own") {
+      tearOff.landedHere();
       const fromIndex = tabs.findIndex((tab) => tab.id === dropped.tabId);
       if (fromIndex !== -1) moveTab(fromIndex, toIndex);
     }
@@ -106,14 +118,14 @@ export default function TabStrip() {
   /**
    * The end of a tab's drag, from the window it left.
    *
-   * A drop that any Arlesh window took has already been dealt with — reordered here, or asked for
-   * by the window it landed on. One that nothing took was released over no window of ours, and
-   * becomes a window of its own.
+   * A drop on this window has been dealt with, and a drop on another reaches this window as that
+   * window's claim. Anything else becomes a window of its own — see `useTabTearOff` for why this is
+   * not read off the drag's `dropEffect`.
    */
   function endDrag(event: React.DragEvent, tabId: string) {
-    traceDrag("dragend", { tabId, dropEffect: event.dataTransfer.dropEffect, tearsOff: tearsOff(event.dataTransfer.dropEffect) });
+    traceDrag("dragend", { tabId, dropEffect: event.dataTransfer.dropEffect });
     setDraggingIndex(null);
-    if (tearsOff(event.dataTransfer.dropEffect)) tearOffTab(tabId);
+    tearOff.ended(tabId);
   }
 
   /** Opens the tab menu, having asked which other windows there are to offer. */

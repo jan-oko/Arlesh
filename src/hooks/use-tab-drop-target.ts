@@ -12,12 +12,17 @@ import { traceDrag } from "@/utils/drag-trace";
  * window is the gesture people make — nobody aims for a strip a few pixels tall. And a drop that
  * this window accepts is one the drag's source can tell apart from a drop on the desktop: a tab
  * released over the board it came from goes nowhere, where released over nothing it becomes a
- * window. See `tearsOff` in `utils/tab-drag`.
+ * window. `onOwnDrop` is told when one of this window's own tabs lands here, which is how.
  *
  * The strip's own tabs handle a drop on themselves — a reorder, or a claim at a place — and mark it
  * handled; this only takes what they did not.
  */
-export function useTabDropTarget(): void {
+export function useTabDropTarget(onOwnDrop: () => void): void {
+  const latestOwnDrop = useRef(onOwnDrop);
+  useEffect(() => {
+    latestOwnDrop.current = onOwnDrop;
+  }, [onOwnDrop]);
+
   useEffect(() => {
     function accept(event: DragEvent) {
       if (event.dataTransfer === null || !carriesTab([...event.dataTransfer.types])) return;
@@ -31,6 +36,7 @@ export function useTabDropTarget(): void {
       event.preventDefault();
       const dropped = claimDropped(event.dataTransfer.getData(TAB_DRAG_TYPE));
       traceDrag("drop on the window", { dropped });
+      if (dropped.kind === "own") latestOwnDrop.current();
     }
 
     window.addEventListener("dragover", accept);

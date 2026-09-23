@@ -71,19 +71,3 @@ export function tabDrop(payload: TabDragPayload, ownWindow: string): TabDrop {
   if (payload.window === ownWindow) return { kind: "own" };
   return { kind: "claim", from: payload.window, tabId: payload.tabId };
 }
-
-/**
- * Whether a drag that has ended should become a window of its own.
- *
- * Every Arlesh window accepts a dragged tab anywhere on it, so a drag that **nothing accepted** —
- * `dropEffect` `"none"` — was released over no Arlesh window: the desktop, or an app that does not
- * take our type. That is the tear-off.
- *
- * Anything else was taken: by this window (a reorder, or nothing), or by another, which asks for
- * the tab on its own through the claim. The end of the drag has nothing further to do in either
- * case. The error this leans towards is the safe one: a platform that reported a stale effect for
- * a drop outside every window would make the gesture do nothing, never conjure a window.
- */
-export function tearsOff(dropEffect: string): boolean {
-  return dropEffect === "none";
-}

@@ -220,14 +220,26 @@ Three things the drag relies on, each a platform fact rather than a choice:
 
 **How the source tells a tear-off from a drop.** Every Arlesh window accepts a dragged tab
 **anywhere** on it, not only on its strip — that is the gesture people make, nobody aims for a strip
-a few pixels tall — and so a drag that **nothing accepted** (`dropEffect` `"none"` when it ends) was
-released over no Arlesh window. That, and only that, is the tear-off. Released over **its own
-window** off the strip — the board, the strip's empty space — the drop is accepted and does nothing:
-a window cannot hand a tab to itself. A platform that reported a stale effect for a release outside
-every window would make the gesture do nothing, never conjure a window; a gesture that has to be
-repeated costs a keystroke, a window that appears from nowhere costs finding it and closing it.
-Pressing Escape mid-drag also ends with nothing accepted, and so tears the tab off; the page is not
-told a drag was cancelled rather than released.
+a few pixels tall. The source then decides from what the app itself saw: a drop on **its own
+window** is seen there directly and does nothing off the strip (a window cannot hand a tab to
+itself); a drop on **another window** reaches it as that window's **claim**. A drag that ends with
+neither, within 700 ms of its end, was released over no Arlesh window, and that is the tear-off. A
+claim slower than that finds the tab already in a window of its own and does nothing, so the worst
+case is a tab in a new window, never two copies of it. Pressing Escape mid-drag reads as a release
+over nothing and tears the tab off; the page is not told a drag was cancelled.
+
+Rejected: reading the drag's **`dropEffect`** at `dragend`, which is the browser's answer to "did
+anything take it". On Wayland it cannot be trusted. GTK 3 reports the last action a destination
+agreed to and never resets it when the compositor cancels the drag (`data_source_cancelled` in
+`gdkselection-wayland.c`), and Hyprland sends the source nothing when the pointer leaves a surface
+(`CWLDataDeviceProtocol::updateDrag`). A tab drag always starts over its own window, which accepts
+it, so a drag released over the desktop still ends reporting `"move"` and a tear-off keyed on
+`"none"` never happened — which is what the first manual test showed.
+
+**Moving is let-go-then-send.** The source window removes the tab **before** handing it over and
+takes it back only if the hand-over fails, so a tab is never in two windows at once; the first
+build sent first and removed once the send resolved, and a drop on another window left the tab in
+both. A window never adopts a tab it already holds, so a hand-over delivered twice is still one tab.
 
 A dragged tab lands **at the end** of the receiving window's strip, wherever it was dropped on it.
 Where a new window appears is the window manager's decision: a tiling compositor places it like any
@@ -261,5 +273,6 @@ The tab travels as the same thing it is stored as, so a tab that moves and a tab
 after a restart are one tab arriving by two routes. Tearing off writes it to the new window's key
 *before* asking for the window, so the window finds its tab on boot and nothing travels through an
 event that could arrive before the window listening for it does; a window that fails to open gives
-the tab straight back. Moving to an existing window sends it first and removes it second, so a
-hand-over that never arrives leaves the tab exactly where it was.
+the tab straight back. Moving to an existing window removes it first and sends it second, taking
+it back if the send fails, so a tab is never in two windows and a hand-over that fails leaves it
+where it was.
