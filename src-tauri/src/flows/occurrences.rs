@@ -27,13 +27,14 @@ use super::{
     habit_slots,
     habits::{classify_iterations, expire_unanswered, instance_timing, Consumption, SlotWindow},
     model::{
-        Flow, FlowGoal, FlowId, FlowItemCycle, FlowRecurrence, FlowTask, HabitIteration,
-        InstanceTiming, IterationStatus,
+        Flow, FlowDependency, FlowGoal, FlowId, FlowItemCycle, FlowRecurrence, FlowTask,
+        HabitIteration, InstanceTiming, IterationStatus,
     },
     parse_consumption, resolve_cycle, resolve_flow_window, resolve_root_plan, target_parent_type,
     verdict_deadlines, window_spec,
 };
 use crate::{
+    block_reasons::model::BlockReason,
     database::session::{Db, SessionMode},
     flows::template::TemplateFields,
     nodes::{
@@ -42,6 +43,7 @@ use crate::{
         origin::{HabitOrigin, IterationScope, Origin},
         overlay::{CommitmentOverlay, GoalOverlay, HabitOverlays, TaskOverlay},
         registry,
+        relations::TagDifferences,
     },
     scopes::key::ScopeKey,
     tasks::{
@@ -49,8 +51,8 @@ use crate::{
             derive_commitment_state, derive_timing, Archival, ItemLifecycle, Resolution, Timing,
         },
         model::{
-            Commitment, Delegate, DurationSpec, Goal, OnScopeExit, Task, TaskArchival, TimeScope,
-            Verdict,
+            Commitment, Delegate, DurationSpec, Goal, OnScopeExit, Task, TaskArchival,
+            TaskDependencyEdge, TimeScope, Verdict,
         },
     },
 };
@@ -73,6 +75,11 @@ pub struct DerivedRows {
     pub commitments: Vec<Commitment>,
     /// One lifecycle per derived row.
     pub lifecycles: Vec<ItemLifecycle>,
+    /// Each derived Task's and Goal's effective block reasons, in order.
+    pub block_reasons: Vec<BlockReason>,
+    /// The dependency edges the template's own wiring draws between one iteration's occurrences,
+    /// less any an occurrence removed.
+    pub dependencies: Vec<TaskDependencyEdge>,
 }
 
 impl DerivedRows {
@@ -82,7 +89,34 @@ impl DerivedRows {
         self.goals.extend(other.goals);
         self.commitments.extend(other.commitments);
         self.lifecycles.extend(other.lifecycles);
+        self.block_reasons.extend(other.block_reasons);
+        self.dependencies.extend(other.dependencies);
     }
+}
+
+/// What one Habit's occurrences say about their relations, as differences against the template.
+struct HabitRelations {
+    /// Tag differences, by node key.
+    tags: TagDifferences,
+    /// Own block-reason lists, by node key.
+    block_reasons: HashMap<String, Vec<String>>,
+    /// Template edges an occurrence removed, as `(dependent key, target key)`.
+    removed_edges: HashSet<(String, String)>,
+    /// The template's own dependency wiring.
+    template_edges: Vec<FlowDependency>,
+}
+
+/// The template's tags with one occurrence's differences applied.
+fn effective_tags(template: &[i64], differences: Option<&Vec<(i64, bool)>>) -> Vec<i64> {
+    let mut tags: Vec<i64> = template.to_vec();
+    for (tag, added) in differences.map(Vec::as_slice).unwrap_or_default() {
+        tags.retain(|existing| existing != tag);
+        if *added {
+            tags.push(*tag);
+        }
+    }
+    tags.sort_unstable();
+    tags
 }
 
 /// A Habit's template, as the rows are built from it.
@@ -175,6 +209,18 @@ pub async fn derive_habit<M: SessionMode>(
         cycles: db.flows().cycles_by_item(flow_id).await?,
     };
     let overlays = db.overlays().for_habit(flow.id).await?;
+    let relations = HabitRelations {
+        tags: db.relations().tags_for_habit(flow.id).await?,
+        block_reasons: db.relations().block_reasons_for_habit(flow.id).await?,
+        removed_edges: db.relations().removed_template_edges().await?,
+        template_edges: db
+            .flows()
+            .list_all_dependencies()
+            .await?
+            .into_iter()
+            .filter(|edge| edge.flow_id == flow.id)
+            .collect(),
+    };
     let touched = touched_iterations(db, flow.id).await?;
 
     let (iterations, slots, consumption) =
@@ -194,7 +240,14 @@ pub async fn derive_habit<M: SessionMode>(
             window,
             root_plan,
         };
-        let built = build_iteration(flow, &template, &overlays, &context, consumption, now)?;
+        let built = build_iteration(
+            flow,
+            &template,
+            (&overlays, &relations),
+            &context,
+            consumption,
+            now,
+        )?;
         rows.extend(built);
     }
     Ok(rows)
@@ -397,7 +450,7 @@ struct Occurrence {
 fn build_iteration(
     flow: &Flow,
     template: &Template,
-    overlays: &HabitOverlays,
+    (overlays, relations): (&HabitOverlays, &HabitRelations),
     context: &Iteration<'_>,
     consumption: Consumption,
     now: NaiveDateTime,
@@ -536,49 +589,120 @@ fn build_iteration(
         }
     }
 
-    let mut rows = DerivedRows::default();
+    let mut rows = DerivedRows {
+        dependencies: template_edges(flow, &occurrences, relations),
+        ..DerivedRows::default()
+    };
     let expired = context.iteration.status == IterationStatus::Expired;
     for occurrence in occurrences {
         registry::remember(&DerivedKey::Occurrence(occurrence.key));
+        let node_key = occurrence.key.node_key();
+        let tag_ids = effective_tags(&occurrence.fields.tag_ids, relations.tags.get(&node_key));
+        let own_reasons = relations
+            .block_reasons
+            .get(&node_key)
+            .cloned()
+            .unwrap_or_default();
+        let template_reasons = occurrence.fields.block_reasons.clone();
+        let reasons_of = |own: bool| {
+            if own {
+                own_reasons.clone()
+            } else {
+                template_reasons.clone()
+            }
+        };
         match occurrence.kind {
             "goal" => {
-                let overlay = overlays
-                    .goals
-                    .get(&occurrence.key.node_key())
-                    .cloned()
-                    .unwrap_or_default();
-                let (goal, lifecycle) = goal_row(occurrence, overlay, consumption, expired);
+                let overlay = overlays.goals.get(&node_key).cloned().unwrap_or_default();
+                let reasons = reasons_of(overlay.block_reasons_set);
+                let (mut goal, lifecycle) = goal_row(occurrence, overlay, consumption, expired);
+                goal.tag_ids = tag_ids;
+                push_reasons(&mut rows.block_reasons, "goal", &goal.id, reasons);
                 rows.goals.push(goal);
                 rows.lifecycles.push(lifecycle);
             }
             "commitment" => {
                 let overlay = overlays
                     .commitments
-                    .get(&occurrence.key.node_key())
+                    .get(&node_key)
                     .cloned()
                     .unwrap_or_default();
                 let window = (context.slot.start, context.slot.end);
-                let (commitment, lifecycle) =
+                let (mut commitment, lifecycle) =
                     commitment_row(flow, occurrence, overlay, window, now);
+                commitment.tag_ids = tag_ids;
                 rows.commitments.push(commitment);
                 rows.lifecycles.push(lifecycle);
             }
             _ => {
-                let overlay = overlays
-                    .tasks
-                    .get(&occurrence.key.node_key())
-                    .cloned()
-                    .unwrap_or_default();
-                let (task, mut lifecycle) = task_row(occurrence, overlay, consumption, expired);
+                let overlay = overlays.tasks.get(&node_key).cloned().unwrap_or_default();
+                let reasons = reasons_of(overlay.block_reasons_set);
+                let (mut task, mut lifecycle) = task_row(occurrence, overlay, consumption, expired);
                 if let Some(plan) = &task.plan {
                     lifecycle.plan_timing = Some(derive_timing(Some(plan.window()), now));
                 }
+                task.tag_ids = tag_ids;
+                push_reasons(&mut rows.block_reasons, "task", &task.id, reasons);
                 rows.tasks.push(task);
                 rows.lifecycles.push(lifecycle);
             }
         }
     }
     Ok(rows)
+}
+
+/// Appends one derived row's block reasons, in order, as the rows the load carries.
+fn push_reasons(out: &mut Vec<BlockReason>, kind: &str, id: &NodeId, reasons: Vec<String>) {
+    for (position, reason) in reasons.into_iter().enumerate() {
+        out.push(BlockReason {
+            owner_type: kind.to_string(),
+            owner_id: id.clone(),
+            reason,
+            position: i64::try_from(position).unwrap_or(i64::MAX),
+        });
+    }
+}
+
+/// The dependency edges a template's own wiring draws between one iteration's occurrences: every
+/// occurrence of a dependent task item waits on every occurrence of the item it depends on — the
+/// fan-in a started flow is wired with — unless the occurrence removed that edge.
+fn template_edges(
+    flow: &Flow,
+    occurrences: &[Occurrence],
+    relations: &HabitRelations,
+) -> Vec<TaskDependencyEdge> {
+    let of_item = |item_type: &str, item_id: i64| {
+        occurrences
+            .iter()
+            .filter(move |occurrence| {
+                occurrence.key.item.item_type.as_str() == item_type
+                    && occurrence.key.item.item_id == item_id
+            })
+            .collect::<Vec<_>>()
+    };
+    let mut edges = Vec::new();
+    for edge in &relations.template_edges {
+        if edge.dependent_type != "flow_task" {
+            continue;
+        }
+        let blockers = of_item(&edge.depends_on_type, edge.depends_on_id);
+        for dependent in of_item(&edge.dependent_type, edge.dependent_id) {
+            for blocker in &blockers {
+                let removed = relations
+                    .removed_edges
+                    .contains(&(dependent.key.node_key(), blocker.key.node_key()));
+                if removed {
+                    continue;
+                }
+                edges.push(TaskDependencyEdge {
+                    task_id: NodeId::Derived(dependent.key.id()),
+                    dependency_type: occurrence_kind(flow, blocker.key.item.item_type).to_string(),
+                    dependency_id: NodeId::Derived(blocker.key.id()),
+                });
+            }
+        }
+    }
+    edges
 }
 
 /// The On-exit behaviour an occurrence with a window of its own reads: its Habit's Consumption.

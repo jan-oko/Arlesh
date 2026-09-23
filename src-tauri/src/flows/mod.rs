@@ -31,6 +31,7 @@ use crate::database::session::{Db, SessionMode, Transactional};
 use crate::infos::model::CreateInfoRequest;
 use crate::nodes::{
     self,
+    id::NodeId,
     key::{OccurrenceKey, TemplateKind},
     overlay::OverlayOperator,
 };
@@ -2663,38 +2664,23 @@ pub async fn create_instance_child(
     child_type: &str,
     title: String,
 ) -> Result<TargetRef, FlowError> {
-    let flow_id = db.flows().occurrence_flow_id(parent).await?;
     if !model::CHILD_KINDS.contains(&child_type) {
         return Err(FlowError::Invalid(format!(
-            "a habit occurrence holds tasks, goals, commitments and notes — not a {child_type}"
+            "a habit occurrence holds tasks, goals, commitments, expectations and notes — not a \
+             {child_type}"
         )));
     }
-    let flow = db.flows().get(flow_id).await?;
-    let window = occurrence_window(db, &flow, parent).await?;
-    let parent_kind = db
-        .flows()
-        .occurrence_kind(flow_id, parent.item.item_type)
-        .await?;
-    let (host_type, host_id) = match (&flow.target_type, flow.target_id) {
-        (Some(kind), Some(id)) => (target_parent_type(kind), id),
-        _ => (target_parent_type(&flow.parent_type), flow.parent_id),
-    };
-
+    let host = occurrence_edit::host_of(db, parent).await?;
+    let parent_type = host.host_type.clone();
+    let parent_id = NodeId::Stored(host.host_id);
     let child_id = match child_type {
         "task" => create_task(
             db,
             CreateTaskRequest {
                 title,
-                parent_type: host_type,
-                parent_id: host_id,
-                status: None,
-                time_scope: None,
-                on_scope_exit: None,
-                plan: None,
-                archival: None,
-                agentic: None,
-                asynchronous: None,
-                async_template: None,
+                parent_type,
+                parent_id,
+                ..Default::default()
             },
         )
         .await?
@@ -2704,11 +2690,9 @@ pub async fn create_instance_child(
             db,
             CreateGoalRequest {
                 title,
-                parent_type: host_type,
-                parent_id: host_id,
-                status: None,
-                time_scope: None,
-                on_scope_exit: None,
+                parent_type,
+                parent_id,
+                ..Default::default()
             },
         )
         .await?
@@ -2718,43 +2702,42 @@ pub async fn create_instance_child(
             db,
             CreateCommitmentRequest {
                 title,
-                parent_type: host_type,
-                parent_id: host_id,
-                verdict: None,
-                time_scope: Some(window.clone()),
-                verdict_window: None,
+                parent_type,
+                parent_id,
+                time_scope: Some(host.window.clone()),
+                ..Default::default()
             },
         )
         .await?
         .id
         .require_stored()?,
+        "expectation" => {
+            crate::tasks::create_expectation(
+                db,
+                crate::tasks::model::CreateExpectationRequest {
+                    title,
+                    parent_type,
+                    parent_id,
+                    ..Default::default()
+                },
+            )
+            .await?
+            .id
+        }
         _ => {
             db.infos()
                 .create(CreateInfoRequest {
                     body: title,
                     details: None,
-                    parent_type: host_type,
-                    parent_id: host_id,
+                    parent_type,
+                    parent_id,
                     position: 0,
                 })
                 .await?
                 .id
         }
     };
-
-    db.scopes()
-        .register_all([parent.iteration, window.start_id, window.end_id])
-        .await?;
-    db.flows()
-        .attach_instance_child(
-            flow_id,
-            parent_kind,
-            parent,
-            Some(&window),
-            child_type,
-            child_id,
-        )
-        .await?;
+    occurrence_edit::attach(db, &host, parent, child_type, child_id).await?;
     Ok(TargetRef {
         node_type: child_type.to_string(),
         node_id: child_id,

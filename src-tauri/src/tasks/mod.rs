@@ -191,6 +191,9 @@ async fn delete_node_subtree(
         // Commitment never has any, and asking for none costs one statement against the risk of
         // leaving a stale row behind if that ever changes.
         db.block_reasons().delete_for(node_type, *node_id).await?;
+        // An edge between this row and a Habit occurrence names the row by id, with no foreign
+        // key on the target side; it goes with the row, as a stored edge does.
+        db.relations().forget_stored(node_type, *node_id).await?;
         match node_type.as_str() {
             "goal" => db.goals().delete_row(GoalId(*node_id)).await?,
             "commitment" => db.commitments().delete_row(CommitmentId(*node_id)).await?,

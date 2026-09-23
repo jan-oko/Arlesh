@@ -41,6 +41,7 @@ use crate::flows::FlowOperator;
 use crate::infos::InfoOperator;
 use crate::knowledge_base::{EventOperator, PersonOperator, ThreadOperator};
 use crate::nodes::overlay::OverlayOperator;
+use crate::nodes::relations::RelationOperator;
 use crate::scopes::ScopeOperator;
 use crate::tasks::{CommitmentOperator, ExpectationOperator, GoalOperator, TaskOperator};
 use crate::undo::UndoOperator;
@@ -218,6 +219,11 @@ impl<M: SessionMode> Db<M> {
     /// The overlays of derived nodes — what makes a Habit occurrence differ from its template.
     pub fn overlays(&mut self) -> OverlayOperator<'_> {
         OverlayOperator::new(self.connection())
+    }
+
+    /// The relations of derived nodes — their differences against their templates.
+    pub fn relations(&mut self) -> RelationOperator<'_> {
+        RelationOperator::new(self.connection())
     }
 
     /// Tasks — action items.

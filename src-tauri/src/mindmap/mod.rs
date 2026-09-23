@@ -60,8 +60,8 @@ pub async fn load_within(
     let flow_tasks = db.flows().list_all_tasks().await?;
     let flow_cycles = db.flows().list_all_cycles().await?;
     let flow_dependencies = db.flows().list_all_dependencies().await?;
-    let block_reasons = db.block_reasons().list_all().await?;
-    let task_dependencies = db.tasks().list_all_dependencies().await?;
+    let mut block_reasons = db.block_reasons().list_all().await?;
+    let mut task_dependencies = db.tasks().list_all_dependencies().await?;
     let flow_instance_nodes = db.flows().list_instance_node_refs().await?;
     let children = db.flows().list_all_instance_children().await?;
     let mut lifecycles = crate::tasks::derive_all_scope_lifecycles(db, now).await?;
@@ -80,10 +80,13 @@ pub async fn load_within(
             infos: &mut infos,
         },
     );
+    task_dependencies.extend(table::added_edges(db, &derived).await?);
     tasks.extend(derived.tasks);
     goals.extend(derived.goals);
     commitments.extend(derived.commitments);
     lifecycles.extend(derived.lifecycles);
+    block_reasons.extend(derived.block_reasons);
+    task_dependencies.extend(derived.dependencies);
 
     let habits = flows
         .iter()

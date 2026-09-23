@@ -25,7 +25,7 @@ pub async fn create_task(
     request: CreateTaskRequest,
 ) -> Result<Task, WireError> {
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let task = crate::tasks::create_task(&mut db, request)
+    let task = write::create_task(&mut db, request, chrono::Local::now().naive_local())
         .await
         .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)?;
@@ -176,13 +176,18 @@ pub async fn duplicate_task(
 #[tauri::command]
 pub async fn add_task_dependency(
     factory: State<'_, SessionFactory>,
-    task_id: i64,
+    task_id: NodeId,
     dependency: Dependency,
 ) -> Result<(), WireError> {
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    crate::tasks::add_task_dependency(&mut db, TaskId(task_id), dependency)
-        .await
-        .map_err(WireError::from_error)?;
+    write::add_dependency(
+        &mut db,
+        &task_id,
+        dependency,
+        chrono::Local::now().naive_local(),
+    )
+    .await
+    .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)
 }
 
@@ -190,14 +195,19 @@ pub async fn add_task_dependency(
 #[tauri::command]
 pub async fn remove_task_dependency(
     factory: State<'_, SessionFactory>,
-    task_id: i64,
+    task_id: NodeId,
     dependency: Dependency,
 ) -> Result<(), WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.tasks()
-        .remove_dependency(TaskId(task_id), dependency)
-        .await
-        .map_err(WireError::from_error)
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    write::remove_dependency(
+        &mut db,
+        &task_id,
+        dependency,
+        chrono::Local::now().naive_local(),
+    )
+    .await
+    .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)
 }
 
 /// Lists all dependencies for a task.
@@ -232,7 +242,7 @@ pub async fn create_goal(
     request: CreateGoalRequest,
 ) -> Result<Goal, WireError> {
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let goal = crate::tasks::create_goal(&mut db, request)
+    let goal = write::create_goal(&mut db, request, chrono::Local::now().naive_local())
         .await
         .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)?;
@@ -335,56 +345,84 @@ pub async fn duplicate_goal(
 #[tauri::command]
 pub async fn add_tag_to_task(
     factory: State<'_, SessionFactory>,
-    task_id: i64,
+    task_id: NodeId,
     tag_id: i64,
 ) -> Result<(), WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.tasks()
-        .add_tag(TaskId(task_id), tag_id)
-        .await
-        .map_err(WireError::from_error)
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    write::set_tag(
+        &mut db,
+        "task",
+        &task_id,
+        tag_id,
+        true,
+        chrono::Local::now().naive_local(),
+    )
+    .await
+    .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)
 }
 
 /// Removes a tag from a task.
 #[tauri::command]
 pub async fn remove_tag_from_task(
     factory: State<'_, SessionFactory>,
-    task_id: i64,
+    task_id: NodeId,
     tag_id: i64,
 ) -> Result<(), WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.tasks()
-        .remove_tag(TaskId(task_id), tag_id)
-        .await
-        .map_err(WireError::from_error)
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    write::set_tag(
+        &mut db,
+        "task",
+        &task_id,
+        tag_id,
+        false,
+        chrono::Local::now().naive_local(),
+    )
+    .await
+    .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)
 }
 
 /// Adds a tag to a goal.
 #[tauri::command]
 pub async fn add_tag_to_goal(
     factory: State<'_, SessionFactory>,
-    goal_id: i64,
+    goal_id: NodeId,
     tag_id: i64,
 ) -> Result<(), WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.goals()
-        .add_tag(GoalId(goal_id), tag_id)
-        .await
-        .map_err(WireError::from_error)
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    write::set_tag(
+        &mut db,
+        "goal",
+        &goal_id,
+        tag_id,
+        true,
+        chrono::Local::now().naive_local(),
+    )
+    .await
+    .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)
 }
 
 /// Removes a tag from a goal.
 #[tauri::command]
 pub async fn remove_tag_from_goal(
     factory: State<'_, SessionFactory>,
-    goal_id: i64,
+    goal_id: NodeId,
     tag_id: i64,
 ) -> Result<(), WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.goals()
-        .remove_tag(GoalId(goal_id), tag_id)
-        .await
-        .map_err(WireError::from_error)
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    write::set_tag(
+        &mut db,
+        "goal",
+        &goal_id,
+        tag_id,
+        false,
+        chrono::Local::now().naive_local(),
+    )
+    .await
+    .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)
 }
 
 /// Derives the scope lifecycle (Active / Overdue / Lapsed) of every Task and Goal at `now`

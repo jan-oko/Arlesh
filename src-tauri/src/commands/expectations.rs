@@ -23,9 +23,13 @@ pub async fn create_expectation(
     request: CreateExpectationRequest,
 ) -> Result<Expectation, WireError> {
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let expectation = crate::tasks::create_expectation(&mut db, request)
-        .await
-        .map_err(WireError::from_error)?;
+    let expectation = crate::nodes::write::create_expectation(
+        &mut db,
+        request,
+        chrono::Local::now().naive_local(),
+    )
+    .await
+    .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)?;
     Ok(expectation)
 }
@@ -50,9 +54,14 @@ pub async fn update_expectation(
     request: UpdateExpectationRequest,
 ) -> Result<Expectation, WireError> {
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let expectation = crate::tasks::update_expectation(&mut db, ExpectationId(id), request)
-        .await
-        .map_err(WireError::from_error)?;
+    let expectation = crate::nodes::write::update_expectation(
+        &mut db,
+        id,
+        request,
+        chrono::Local::now().naive_local(),
+    )
+    .await
+    .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)?;
     Ok(expectation)
 }
@@ -112,28 +121,42 @@ pub async fn complete_spawned_wait_check(
 #[tauri::command]
 pub async fn add_tag_to_expectation(
     factory: State<'_, SessionFactory>,
-    expectation_id: i64,
+    expectation_id: crate::nodes::id::NodeId,
     tag_id: i64,
 ) -> Result<(), WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.expectations()
-        .add_tag(ExpectationId(expectation_id), tag_id)
-        .await
-        .map_err(WireError::from_error)
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    crate::nodes::write::set_tag(
+        &mut db,
+        "expectation",
+        &expectation_id,
+        tag_id,
+        true,
+        chrono::Local::now().naive_local(),
+    )
+    .await
+    .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)
 }
 
 /// Removes a tag from an expectation.
 #[tauri::command]
 pub async fn remove_tag_from_expectation(
     factory: State<'_, SessionFactory>,
-    expectation_id: i64,
+    expectation_id: crate::nodes::id::NodeId,
     tag_id: i64,
 ) -> Result<(), WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.expectations()
-        .remove_tag(ExpectationId(expectation_id), tag_id)
-        .await
-        .map_err(WireError::from_error)
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    crate::nodes::write::set_tag(
+        &mut db,
+        "expectation",
+        &expectation_id,
+        tag_id,
+        false,
+        chrono::Local::now().naive_local(),
+    )
+    .await
+    .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)
 }
 
 /// Deletes an expectation, its notes, and every dependency edge aimed at it.

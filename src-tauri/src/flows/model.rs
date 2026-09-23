@@ -688,7 +688,7 @@ pub struct HabitItemStatus {
 /// A string on the wire rather than an enum with a `from_db`, because it is exactly the
 /// `node_type` every other polymorphic reference in the payload already speaks, and a second
 /// vocabulary for the same four words would be one to translate at every boundary.
-pub const CHILD_KINDS: [&str; 4] = ["task", "goal", "commitment", "info"];
+pub const CHILD_KINDS: [&str; 5] = ["task", "goal", "commitment", "info", "expectation"];
 
 /// One stored node hung on a single derived one — a node added to a Habit occurrence.
 ///

@@ -12,7 +12,7 @@ fn at(day: u32, hour: u32) -> NaiveDateTime {
 fn slot(index: i64, day: u32) -> SlotWindow {
     SlotWindow {
         index,
-        scope_id: 100 + index,
+        scope_id: ScopeKey::day(NaiveDate::from_ymd_opt(2026, 9, day).unwrap()),
         start: at(day, 2),
         end: at(day + 1, 2),
     }
@@ -43,7 +43,7 @@ fn done_task(at_ms: i64) -> TaskOverlay {
 fn key_on(template: TemplateItem, day: u32, cycle: i64) -> String {
     OccurrenceKey {
         item: template,
-        iteration: NaiveDate::from_ymd_opt(2026, 9, day).unwrap(),
+        iteration: ScopeKey::day(NaiveDate::from_ymd_opt(2026, 9, day).unwrap()),
         cycle,
     }
     .node_key()
@@ -233,6 +233,7 @@ fn flow(instance_type: &str) -> Flow {
         is_habit: true,
         position: 0,
         is_private: false,
+        template: TemplateFields::default(),
     }
 }
 
@@ -269,6 +270,7 @@ fn flow_task(id: i64, parent_type: &str, parent_id: i64) -> FlowTask {
         parent_id,
         position: id,
         is_private: false,
+        template: TemplateFields::default(),
     }
 }
 
@@ -316,4 +318,26 @@ fn children_nest_under_their_parents_first_occurrence() {
     assert_eq!(template.parent_of(root(1)), None);
     assert_eq!(template.first_cycle(TemplateKind::FlowTask, 1), 11);
     assert_eq!(template.first_cycle(TemplateKind::FlowTask, 2), NO_CYCLE);
+}
+
+#[test]
+fn an_occurrences_tags_are_its_templates_with_its_own_differences() {
+    assert_eq!(effective_tags(&[3, 1], None), vec![1, 3]);
+    let differences = vec![(3, false), (7, true), (1, true)];
+    assert_eq!(
+        effective_tags(&[3, 1], Some(&differences)),
+        vec![1, 7],
+        "a removed template tag goes, an added one comes, and a repeat is not doubled"
+    );
+}
+
+#[test]
+fn block_reasons_travel_in_order_under_their_owner() {
+    let mut out = Vec::new();
+    let id = NodeId::Stored(9);
+    push_reasons(&mut out, "task", &id, vec!["a".into(), "b".into()]);
+    assert_eq!(out.len(), 2);
+    assert_eq!(out[1].position, 1);
+    assert_eq!(out[1].owner_type, "task");
+    assert_eq!(out[1].owner_id, id);
 }

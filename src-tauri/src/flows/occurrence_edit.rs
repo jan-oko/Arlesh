@@ -22,7 +22,7 @@ use super::{
     template::TemplateFields,
 };
 use crate::{
-    database::session::{Db, Transactional},
+    database::session::{Db, SessionMode, Transactional},
     nodes::{
         id::NodeId,
         key::{OccurrenceKey, TemplateKind},
@@ -108,6 +108,33 @@ fn iteration_index(origin: &Origin) -> i64 {
     origin
         .habit()
         .map_or(0, |habit| habit.iteration_scope.index)
+}
+
+/// What the template an occurrence is drawn from says beyond its title and place.
+pub async fn template_fields<M: SessionMode>(
+    db: &mut Db<M>,
+    key: &OccurrenceKey,
+) -> Result<TemplateFields, FlowError> {
+    let flow_id = db.flows().occurrence_flow_id(key).await?;
+    Ok(match key.item.item_type {
+        TemplateKind::FlowRoot => db.flows().get(flow_id).await?.template,
+        TemplateKind::FlowGoal => db
+            .flows()
+            .list_goals(flow_id)
+            .await?
+            .into_iter()
+            .find(|goal| goal.id == key.item.item_id)
+            .map(|goal| goal.template)
+            .unwrap_or_default(),
+        TemplateKind::FlowTask => db
+            .flows()
+            .list_tasks(flow_id)
+            .await?
+            .into_iter()
+            .find(|task| task.id == key.item.item_id)
+            .map(|task| task.template)
+            .unwrap_or_default(),
+    })
 }
 
 /// The occurrence as the virtual table serves it now, by kind.
@@ -455,6 +482,96 @@ pub async fn archive(db: &mut Db<Transactional>, key: &OccurrenceKey) -> Result<
         }
     }
     Ok(())
+}
+
+/// Where a stored node hung on an occurrence is written, and what it hangs on.
+///
+/// The node's own `parent_type`/`parent_id` name the Habit's **host** — its Target Node — because
+/// an occurrence has no integer id for them to hold. The attachment is what makes the occurrence
+/// its parent, and the occurrence's window, settled here, is what governs it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OccurrenceHost {
+    /// The Habit.
+    pub flow_id: FlowId,
+    /// What the occurrence is: `task`, `goal` or `commitment`.
+    pub parent_kind: &'static str,
+    /// The occurrence's window.
+    pub window: TimeScope,
+    /// The host's parent type, as a child row spells it.
+    pub host_type: String,
+    /// The host's row id.
+    pub host_id: i64,
+}
+
+/// The host a node hung on the occurrence `key` is written under.
+pub async fn host_of<M: SessionMode>(
+    db: &mut Db<M>,
+    key: &OccurrenceKey,
+) -> Result<OccurrenceHost, FlowError> {
+    let flow_id = db.flows().occurrence_flow_id(key).await?;
+    let flow = db.flows().get(flow_id).await?;
+    let window = occurrence_window(db, &flow, key).await?;
+    let parent_kind = db
+        .flows()
+        .occurrence_kind(flow_id, key.item.item_type)
+        .await?;
+    let (host_type, host_id) = match (&flow.target_type, flow.target_id) {
+        (Some(kind), Some(id)) => (super::target_parent_type(kind), id),
+        _ => (super::target_parent_type(&flow.parent_type), flow.parent_id),
+    };
+    Ok(OccurrenceHost {
+        flow_id,
+        parent_kind,
+        window,
+        host_type,
+        host_id,
+    })
+}
+
+/// Refuses a child's window or Plan that escapes the occurrence it hangs on. Containment holds
+/// here as everywhere: a child cannot outrun its parent.
+pub fn check_within(
+    host: &OccurrenceHost,
+    time_scope: Option<&TimeScope>,
+    plan: Option<&TimeScope>,
+) -> Result<(), FlowError> {
+    let outer = host.window.window();
+    let escapes = |inner: &TimeScope| !interval_contains(outer, inner.window());
+    if time_scope.is_some_and(escapes) || plan.is_some_and(escapes) {
+        return Err(crate::tasks::error::TaskError::ScopeContainment(
+            "a node hung on a habit occurrence must fall within the occurrence's window"
+                .to_string(),
+        )
+        .into());
+    }
+    Ok(())
+}
+
+/// Attaches a stored row to an occurrence — or moves its attachment there — as the row's own
+/// write's second half.
+pub async fn attach(
+    db: &mut Db<Transactional>,
+    host: &OccurrenceHost,
+    key: &OccurrenceKey,
+    child_type: &str,
+    child_id: i64,
+) -> Result<(), FlowError> {
+    db.scopes()
+        .register_all([key.iteration, host.window.start_id, host.window.end_id])
+        .await?;
+    db.flows()
+        .detach_instance_child(child_type, child_id)
+        .await?;
+    db.flows()
+        .attach_instance_child(
+            host.flow_id,
+            host.parent_kind,
+            key,
+            Some(&host.window),
+            child_type,
+            child_id,
+        )
+        .await
 }
 
 /// Retyping an occurrence is refused: it is its template's kind in its iteration, and there is no

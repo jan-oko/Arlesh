@@ -26,13 +26,18 @@ pub async fn list_all_block_reasons(
 pub async fn set_block_reasons(
     factory: State<'_, SessionFactory>,
     owner_type: String,
-    owner_id: i64,
+    owner_id: crate::nodes::id::NodeId,
     reasons: Vec<String>,
 ) -> Result<(), WireError> {
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    db.block_reasons()
-        .set(&owner_type, owner_id, &reasons)
-        .await
-        .map_err(WireError::from_error)?;
+    crate::nodes::write::set_block_reasons(
+        &mut db,
+        &owner_type,
+        &owner_id,
+        &reasons,
+        chrono::Local::now().naive_local(),
+    )
+    .await
+    .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)
 }

@@ -26,7 +26,7 @@ use crate::{
         occurrences::{derive_habit, DerivedRows, Horizon},
     },
     infos::model::Info,
-    tasks::model::{Commitment, Expectation, Goal, Task},
+    tasks::model::{Commitment, Expectation, Goal, Task, TaskDependencyEdge},
 };
 
 /// A Habit whose occurrences could not be derived, named so the load can say so.
@@ -162,6 +162,39 @@ pub fn attach_children(
             &mut info.parent_id,
         );
     }
+}
+
+/// The dependency edges recorded against derived nodes — an edge added to an occurrence, or one
+/// between a stored Task and an occurrence — whose derived ends are on the board.
+///
+/// An edge whose derived end is not derived (its template item or cycle pair went, or it lies
+/// beyond the horizon) is left out rather than pointing at nothing.
+pub async fn added_edges<M: crate::database::session::SessionMode>(
+    db: &mut Db<M>,
+    derived: &DerivedRows,
+) -> Result<Vec<TaskDependencyEdge>, sqlx::Error> {
+    let present: std::collections::HashSet<&NodeId> = derived
+        .tasks
+        .iter()
+        .map(|task| &task.id)
+        .chain(derived.goals.iter().map(|goal| &goal.id))
+        .collect();
+    let on_board = |id: &NodeId| id.stored().is_some() || present.contains(id);
+    Ok(db
+        .relations()
+        .dependencies()
+        .await?
+        .into_iter()
+        .filter(|edge| edge.added)
+        .filter_map(|edge| {
+            let (dependent, target) = (edge.dependent()?, edge.target()?);
+            (on_board(&dependent) && on_board(&target)).then(|| TaskDependencyEdge {
+                task_id: dependent,
+                dependency_type: edge.target_type,
+                dependency_id: target,
+            })
+        })
+        .collect())
 }
 
 /// The value key a derived id stands for.

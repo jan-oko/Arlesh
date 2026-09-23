@@ -24,7 +24,7 @@ pub async fn create_commitment(
     request: CreateCommitmentRequest,
 ) -> Result<Commitment, WireError> {
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let commitment = crate::tasks::create_commitment(&mut db, request)
+    let commitment = write::create_commitment(&mut db, request, chrono::Local::now().naive_local())
         .await
         .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)?;
@@ -99,26 +99,40 @@ pub async fn delete_commitment(
 #[tauri::command]
 pub async fn add_tag_to_commitment(
     factory: State<'_, SessionFactory>,
-    commitment_id: i64,
+    commitment_id: NodeId,
     tag_id: i64,
 ) -> Result<(), WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.commitments()
-        .add_tag(CommitmentId(commitment_id), tag_id)
-        .await
-        .map_err(WireError::from_error)
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    write::set_tag(
+        &mut db,
+        "commitment",
+        &commitment_id,
+        tag_id,
+        true,
+        chrono::Local::now().naive_local(),
+    )
+    .await
+    .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)
 }
 
 /// Removes a tag from a commitment.
 #[tauri::command]
 pub async fn remove_tag_from_commitment(
     factory: State<'_, SessionFactory>,
-    commitment_id: i64,
+    commitment_id: NodeId,
     tag_id: i64,
 ) -> Result<(), WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.commitments()
-        .remove_tag(CommitmentId(commitment_id), tag_id)
-        .await
-        .map_err(WireError::from_error)
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    write::set_tag(
+        &mut db,
+        "commitment",
+        &commitment_id,
+        tag_id,
+        false,
+        chrono::Local::now().naive_local(),
+    )
+    .await
+    .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)
 }
