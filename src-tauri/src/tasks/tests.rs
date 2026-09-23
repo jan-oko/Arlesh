@@ -420,7 +420,7 @@ fn a_reparent_needs_both_halves_and_becomes_the_validated_parent() {
         stored_task(),
         UpdateTaskRequest {
             parent_type: Some("goal".into()),
-            parent_id: Some(42),
+            parent_id: Some(42.into()),
             ..Default::default()
         },
     )

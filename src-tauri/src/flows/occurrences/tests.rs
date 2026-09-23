@@ -195,11 +195,9 @@ fn an_expired_iteration_archives_its_steps_without_a_resolution() {
 
 #[test]
 fn only_an_occurrence_with_a_window_of_its_own_reads_an_on_exit() {
-    let window = Some(TimeScope {
-        start_id: 1,
-        end_id: 1,
-        duration: None,
-    });
+    let window = Some(TimeScope::single(ScopeKey::day(
+        NaiveDate::from_ymd_opt(2026, 9, 20).unwrap(),
+    )));
     assert_eq!(
         on_exit(Consumption::Destructive, &window),
         Some(OnScopeExit::Archive)

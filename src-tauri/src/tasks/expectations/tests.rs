@@ -96,7 +96,7 @@ fn a_move_needs_both_halves_of_the_parent_link() {
         stored(),
         UpdateExpectationRequest {
             parent_type: Some("task".to_string()),
-            parent_id: Some(3),
+            parent_id: Some(3.into()),
             title: Some("Reply".to_string()),
             archival: Some(ExpectationArchival::Archived),
             position: Some(5),

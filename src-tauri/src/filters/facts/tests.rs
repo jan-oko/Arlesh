@@ -189,20 +189,20 @@ fn an_explicit_block_reason_and_an_unmet_dependency_both_read_as_blocked() {
     let mut load = board();
     load.block_reasons.push(BlockReason {
         owner_type: "goal".to_string(),
-        owner_id: 10,
+        owner_id: 10.into(),
         reason: "waiting".to_string(),
         position: 0,
     });
     load.task_dependencies.push(TaskDependencyEdge {
-        task_id: 21,
+        task_id: 21.into(),
         dependency_type: "task".to_string(),
-        dependency_id: 20,
+        dependency_id: 20.into(),
     });
     // A dependency on something already finished does not block.
     load.task_dependencies.push(TaskDependencyEdge {
-        task_id: 20,
+        task_id: 20.into(),
         dependency_type: "task".to_string(),
-        dependency_id: 22,
+        dependency_id: 22.into(),
     });
 
     let forest = forest(&load);
@@ -246,14 +246,14 @@ fn narrowing_cuts_the_derived_sections_to_match_the_nodes_that_survived() {
     let mut load = board();
     load.block_reasons.push(BlockReason {
         owner_type: "task".to_string(),
-        owner_id: 22,
+        owner_id: 22.into(),
         reason: "waiting".to_string(),
         position: 0,
     });
     load.task_dependencies.push(TaskDependencyEdge {
-        task_id: 22,
+        task_id: 22.into(),
         dependency_type: "goal".to_string(),
-        dependency_id: 10,
+        dependency_id: 10.into(),
     });
     load.lifecycles
         .push(lifecycle("task", 22, Timing::Active, Archival::Live));
@@ -411,14 +411,14 @@ fn a_released_expectation_has_no_check_task_and_stops_blocking() {
     load.expectations.push(released);
     load.expectations.push(expectation_row(51, "goal", 10));
     load.task_dependencies.push(TaskDependencyEdge {
-        task_id: 21,
+        task_id: 21.into(),
         dependency_type: "expectation".to_string(),
-        dependency_id: 50,
+        dependency_id: 50.into(),
     });
     load.task_dependencies.push(TaskDependencyEdge {
-        task_id: 22,
+        task_id: 22.into(),
         dependency_type: "expectation".to_string(),
-        dependency_id: 51,
+        dependency_id: 51.into(),
     });
     let forest = forest(&load);
     assert!(find(&forest, "expectation-check-50").is_none());
@@ -558,9 +558,9 @@ fn a_done_asynchronous_task_carries_its_spawned_wait_and_does_not_hold_up_its_de
     load.spawned_waits
         .push(spawned(22, crate::tasks::model::ExpectationStatus::Pending));
     load.task_dependencies.push(TaskDependencyEdge {
-        task_id: 21,
+        task_id: 21.into(),
         dependency_type: "task".to_string(),
-        dependency_id: 22,
+        dependency_id: 22.into(),
     });
     let pending = forest(&load);
     let wait = find(&pending, "spawned-wait-22").expect("the spawned wait is drawn");

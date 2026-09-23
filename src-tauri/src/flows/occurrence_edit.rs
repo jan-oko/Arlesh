@@ -156,7 +156,7 @@ async fn current(
         flow,
         now,
         Horizon {
-            through: Some(key.iteration),
+            through: Some(key.iteration.start_date()),
         },
     )
     .await?;
