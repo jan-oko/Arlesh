@@ -131,9 +131,9 @@ and left of every card in the first row and column, which sit flush against that
 An **Expectation card** draws the wait's glyph — a still spinner of short ticks, open at the lower
 right, with a check inside once released — so its status is never written out; an archived one
 is dimmed and badged like any archived card; its fields are its **Time Scope** and its **Check every**. `Enter`
-descends into it like any card, onto its notes and, while a check is due, its virtual check task.
-`E` on that check task, on a delegated Task's virtual wait or on an asynchronous Task's spawned
-wait opens the editor of what it is drawn from (see [*Expectations*](resources.md)).
+descends into it like any card, onto its notes, its completed checks and, while one is due, its
+open check task. `E` on a check task says it has no editor yet (see [*Expectations*](resources.md));
+on a delegated Task's virtual wait or an asynchronous Task's spawned wait it opens the Task's.
 
 | Kind | Fields, in reading order |
 | --- | --- |

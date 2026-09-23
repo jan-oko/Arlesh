@@ -207,7 +207,7 @@ collapse state on every in-session reload, not just across restarts. It is undec
 point; it is not an immutable handle — if a node's structural key changes, its id changes with it,
 exactly as a composed id does today. The **Expectation** is the first kind to use it:
 `src/utils/node-uuid.ts` holds the namespace constant and the minter, and mints the ids of a stored
-Expectation (`expectation/<id>`), of a wait's virtual check task (`expectation-check/<id>`) and of a
-delegated Task's virtual wait (`delegation-wait/<task id>`). The two virtual ones draw no row, so
+Expectation (`expectation/<id>`), of a wait's open virtual check task (`expectation-check/<id>`), of a completed one
+(`expectation-check/<id>/<due instant>`) and of a delegated Task's virtual wait (`delegation-wait/<task id>`). The two virtual ones draw no row, so
 `rowIdOf` throws on them as it does on a Habit occurrence. The SHA-1 is computed synchronously in
 `src/utils/uuid-v5.ts`, because the tree is built synchronously and `crypto.subtle` is not.
