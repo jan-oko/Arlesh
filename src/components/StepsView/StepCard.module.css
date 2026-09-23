@@ -66,13 +66,17 @@
   align-items: center;
 }
 
+/* The title is toned into the card rather than laid over it: the card's strong colour, not the
+   theme's full text colour, and a medium weight rather than semibold. At full strength and 600, with
+   a full-strength glyph beside it, the top line read as a separate band against the washed body —
+   most visibly in light, once the wash was strong enough to see. */
 .title {
   overflow: hidden;
   min-width: 0;
   flex: 1 1 auto;
-  color: var(--node-text);
+  color: var(--card-text-strong);
   font-size: var(--text-base);
-  font-weight: 600;
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -125,7 +129,7 @@
   min-width: 0;
   flex: 1 1 auto;
   margin: 0;
-  color: var(--node-text);
+  color: var(--card-text-strong);
   font-size: var(--text-sm);
   text-overflow: ellipsis;
   white-space: nowrap;

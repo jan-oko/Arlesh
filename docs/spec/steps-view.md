@@ -205,6 +205,15 @@ colour is blended from *this card's* surface toward the primary text, by `--card
 over AA in both themes — dark bottoms out at 4.74:1 on a card (4.53:1 on a row), light at 5.23:1 on
 a card (5.03:1 on a row).
 
+**The title line is toned into the card, not laid over it.** The glyph and the title were the only
+things on a card at the theme's full text colour — the glyph a solid shape, the title semibold — so
+against a washed card the top line read as a separate band, most of all in light. Now the glyph is
+drawn in the card's muted colour (4.74:1 at worst, over the 3:1 an icon needs), and the title and the
+field values in the card's **strong** colour, derived like the muted one but 85% of the way to the
+primary text: 6.87:1 at worst on a card in dark (Self) and 7.44:1 in light (Flow), at medium weight
+rather than semibold. The List View's rows do not take this: a row is one line whose title is its
+content, at regular weight, with no body under it for a title line to stand apart from.
+
 The **badge icons** are the one thing on the card not derived from it: the badge row is shared with
 the List View and draws in `--node-text-muted` and `--danger`. As graphics they answer to WCAG's 3:1
 for non-text rather than 4.5:1.

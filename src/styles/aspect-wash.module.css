@@ -30,6 +30,11 @@
     var(--card-base)
   );
   --card-text-muted: color-mix(in srgb, var(--node-text) var(--card-text-muted-mix), var(--card-surface));
+  /* The card's **strong** text — its title and field values — derived the same way, 85% of the way
+     toward the primary text. Full-strength text on a washed card read as a band laid over it: the
+     one line at the top was the only thing on the card not taken from the card. At 85% it holds
+     6.50:1 at worst (a Self row in dark) and 7.06:1 in light (a Flow row), well over AA. */
+  --card-text-strong: color-mix(in srgb, var(--node-text) 85%, var(--card-surface));
 
   background: var(--card-base);
   background: var(--card-surface);

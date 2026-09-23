@@ -124,7 +124,9 @@ export default function StepCard({
                 kind={node.kind} status={node.status} verdict={node.verdict}
                 isArchived={node.archived === true} isBlocked={isNodeBlocked(node)}
                 isHabit={node.flow?.isHabit === true}
-                cx={ICON_R} cy={ICON_R} r={ICON_R * 0.9} color="var(--node-text)" opacity={1}
+                // The card's muted colour, not the full text colour: a solid glyph at full strength
+                // was half of what made the top line read as a band over the card.
+                cx={ICON_R} cy={ICON_R} r={ICON_R * 0.9} color="var(--card-text-muted)" opacity={1}
               />
             </svg>
           </span>
