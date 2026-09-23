@@ -36,12 +36,18 @@ impl<'a> Row<'a> {
     }
 
     /// The nearest ancestor's own Plan position — what an unplanned row inherits under Start
-    /// (see [`rules::is_planned_ahead`]). Only a Task carries one.
+    /// (see [`rules::is_planned_ahead`]). Only a Task carries one, and a wait cuts the chain: a
+    /// check task answers to its own due time, not to the Plan of the Task its wait hangs under.
     fn inherited_plan(&self) -> Option<Timing> {
-        self.ancestors
-            .iter()
-            .rev()
-            .find_map(|ancestor| ancestor.plan_timing)
+        for ancestor in self.ancestors.iter().rev() {
+            if ancestor.kind == NodeKind::Expectation {
+                return None;
+            }
+            if ancestor.plan_timing.is_some() {
+                return ancestor.plan_timing;
+            }
+        }
+        None
     }
 
     /// Whether any ancestor gates the whole subtree beneath it under this filter.
@@ -61,6 +67,10 @@ impl<'a> Row<'a> {
 /// [`unblock_filter`]. Everything that is not a preset rule — tags, the Info/Flow/Private
 /// toggles, the Archived and Backlog pills — still applies.
 pub fn passes_row(row: Row<'_>, filter: &BoardFilter) -> bool {
+    // The Expectations option shows waits and nothing else.
+    if filter.expectations && !filter.unblock {
+        return false;
+    }
     let effective: Cow<'_, BoardFilter> = if filter.unblock {
         Cow::Owned(unblock_filter(filter))
     } else {
@@ -141,7 +151,7 @@ fn passes_row_preset(row: Row<'_>, filter: &BoardFilter) -> bool {
 /// archived Commitment through [`rules::with_archived_override`], as `docs/spec/mindmap-view.md`
 /// says it does.
 pub fn passes_commitment_row(row: Row<'_>, filter: &BoardFilter) -> bool {
-    if filter.unblock || filter.preset == Preset::Backlog {
+    if filter.unblock || filter.expectations || filter.preset == Preset::Backlog {
         return false;
     }
     if rules::type_hard_hidden(row.node, filter) {
@@ -161,6 +171,43 @@ pub fn passes_commitment_row(row: Row<'_>, filter: &BoardFilter) -> bool {
         return false;
     }
     rules::passes_tags(row.node, filter)
+}
+
+/// Whether one Expectation row survives the filter, in the band or among the rows.
+///
+/// Under **Unblock** there are none: a wait is never blocked. Under the List View's own
+/// **Expectations** option the preset does not answer — as under Unblock, the hard-hide runs under
+/// the neutralised filter — and the row shows exactly when it is pending and not archived.
+/// Otherwise it answers [`rules::passes_expectation_preset`], with the same subtree gates the
+/// task rows and the commitments answer, so a branch the list has dropped takes its waits with it.
+///
+/// Only Antecedent-style narrowing and tags are left to the caller's pills; a wait has no tags,
+/// so the tag predicate passes it.
+pub fn passes_expectation_row(row: Row<'_>, filter: &BoardFilter) -> bool {
+    if filter.unblock {
+        return false;
+    }
+    if filter.expectations {
+        let neutral = unblock_filter(filter);
+        return !rules::type_hard_hidden(row.node, &neutral)
+            && (filter.private_mode || !row.has_private_ancestor())
+            && rules::is_live_expectation(row.node)
+            && rules::passes_tags(row.node, filter);
+    }
+    if rules::type_hard_hidden(row.node, filter) {
+        return false;
+    }
+    if !filter.private_mode && row.has_private_ancestor() {
+        return false;
+    }
+    if row.has_gating_ancestor(filter) {
+        return false;
+    }
+    rules::with_archived_override(
+        row.node,
+        filter,
+        rules::passes_expectation_preset(row.node, filter),
+    ) && rules::passes_tags(row.node, filter)
 }
 
 /// One row of a flattened board, owning its chain — what [`flatten`] produces.

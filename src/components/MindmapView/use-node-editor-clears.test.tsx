@@ -94,6 +94,7 @@ const taskSave: TaskSaveData = {
   // these tests are about the nullable scope fields, not about the Agentic flag.
   agentic: TASK_AGENTIC.INHERIT,
   asynchronous: false,
+  asyncTemplate: null,
 };
 const commitmentSave: CommitmentSaveData = {
   title: "Asleep by 23:00", verdict: "unresolved", tagIds: [],

@@ -82,6 +82,10 @@ export default function StepCardFields({ node, fields }: Props) {
         return node.onScopeExit === "archive"
           ? t("stepsView:value.onExitArchive")
           : t("stepsView:value.onExitKeep");
+      case "checkEvery": {
+        const every = node.checkEvery;
+        return every == null ? "" : `${every.n} ${every.kind}`;
+      }
       case "verdictWindow": {
         const window = node.verdictWindow;
         return window == null ? "" : `${window.n} ${window.kind}`;

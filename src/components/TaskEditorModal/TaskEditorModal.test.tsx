@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import TaskEditorModal from "./TaskEditorModal";
 import type { MindmapNode } from "@/utils/tree-layout";
@@ -341,38 +341,87 @@ describe("TaskEditorModal — Backlog control", () => {
 });
 
 describe("TaskEditorModal — Asynchronous", () => {
-  it("saves an unflagged task as unflagged when nothing is touched", async () => {
+  const TEMPLATE = { title: "Waiting on the reviewer", tag_ids: [], check_every: { n: 2, kind: "day" } };
+  const save = () => fireEvent.click(screen.getByRole("button", { name: "save" }));
+
+  it("saves an unflagged task as unflagged, with no template, when nothing is touched", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     render(<TaskEditorModal {...defaultProps} onSave={onSave} />);
     await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    expect(screen.queryByRole("group", { name: "expectation:templateSection" })).toBeNull();
+    save();
     await waitFor(() => expect(onSave).toHaveBeenCalled());
-    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ asynchronous: false });
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ asynchronous: false, asyncTemplate: null });
   });
 
-  it("flags the task from the switch beside Backlog", async () => {
+  it("flags the task from the switch, and an empty Expectation section is no template", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     render(<TaskEditorModal {...defaultProps} onSave={onSave} />);
     await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("checkbox", { name: "asynchronousOff" }));
-    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    expect(screen.getByRole("group", { name: "expectation:templateSection" })).toBeInTheDocument();
+    save();
     await waitFor(() => expect(onSave).toHaveBeenCalled());
-    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ asynchronous: true });
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ asynchronous: true, asyncTemplate: null });
   });
 
-  it("opens showing a flagged task as flagged, and unflags it in one click", async () => {
+  it("saves what the Expectation section says, a blank title taking the default", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
-    render(<TaskEditorModal {...defaultProps} node={mkNode({ asynchronous: true })} onSave={onSave} />);
+    render(<TaskEditorModal {...defaultProps} onSave={onSave} />);
     await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
 
+    fireEvent.click(screen.getByRole("checkbox", { name: "asynchronousOff" }));
+    fireEvent.change(screen.getByRole("spinbutton", { name: "expectation:fieldCheckEvery" }), { target: { value: "3" } });
+    save();
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({
+      asynchronous: true,
+      asyncTemplate: { title: "expectation:templateDefaultTitle", tag_ids: [], check_every: { n: 3, kind: "day" } },
+    });
+  });
+
+  it("opens a task's template, and turning the flag off drops it", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<TaskEditorModal {...defaultProps} node={mkNode({ asynchronous: true, asyncTemplate: TEMPLATE })} onSave={onSave} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
+
+    expect(screen.getByDisplayValue("Waiting on the reviewer")).toBeInTheDocument();
     const control = screen.getByRole("checkbox", { name: "asynchronousOn" });
     expect(control).toBeChecked();
     fireEvent.click(control);
-    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    expect(screen.queryByDisplayValue("Waiting on the reviewer")).toBeNull();
+    save();
     await waitFor(() => expect(onSave).toHaveBeenCalled());
-    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ asynchronous: false });
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ asynchronous: false, asyncTemplate: null });
+  });
+
+  it("clears the template's Check every, and the saved template has none", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<TaskEditorModal {...defaultProps} node={mkNode({ asynchronous: true, asyncTemplate: TEMPLATE })} onSave={onSave} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
+
+    const section = screen.getByRole("group", { name: "expectation:templateSection" });
+    fireEvent.click(within(section).getByRole("button", { name: "scopeClear" }));
+    save();
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    const saved = onSave.mock.calls[0]?.[0].asyncTemplate;
+    expect(saved).toMatchObject({ title: "Waiting on the reviewer" });
+    expect(saved).not.toHaveProperty("check_every");
+  });
+
+  it("opens at the Expectation section with the flag on when asked to (Shift+W), and Cancel writes nothing", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const onClose = vi.fn();
+    render(<TaskEditorModal {...defaultProps} onSave={onSave} onClose={onClose} openAtTemplate />);
+    await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
+
+    expect(screen.getByRole("checkbox", { name: "asynchronousOn" })).toBeChecked();
+    const section = screen.getByRole("group", { name: "expectation:templateSection" });
+    expect(section.contains(document.activeElement)).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "cancel" }));
+    expect(onSave).not.toHaveBeenCalled();
   });
 
   it("leaves the Backlog switch alone — the two are separate answers", async () => {
@@ -381,7 +430,7 @@ describe("TaskEditorModal — Asynchronous", () => {
     await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("checkbox", { name: "asynchronousOff" }));
-    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    save();
     await waitFor(() => expect(onSave).toHaveBeenCalled());
     expect(onSave.mock.calls[0]?.[0]).toMatchObject({ asynchronous: true, archival: "backlog" });
   });

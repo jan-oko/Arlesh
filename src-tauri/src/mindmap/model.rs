@@ -12,7 +12,8 @@ use crate::{
     infos::model::Info,
     tasks::{
         lifecycle::ItemLifecycle,
-        model::{Commitment, Goal, Task, TaskDependencyEdge},
+        model::{Commitment, Expectation, Goal, Task, TaskDependencyEdge},
+        waits::{ExpectationCheck, SpawnedWaitView},
     },
 };
 
@@ -72,6 +73,15 @@ pub struct MindmapLoad {
     pub tasks: Vec<Task>,
     /// Every commitment — as `list_commitments`.
     pub commitments: Vec<Commitment>,
+    /// Every stored expectation — as `list_expectations`. The virtual check tasks, the waits
+    /// delegated and asynchronous tasks carry are derived from these rows, the task rows and the
+    /// two lists below, never stored as expectations.
+    pub expectations: Vec<Expectation>,
+    /// Each stored expectation's next check, as the day its virtual check task is due.
+    pub expectation_checks: Vec<ExpectationCheck>,
+    /// Each Asynchronous task's spawned wait: the overlay, its Time Scope and its next check. The
+    /// wait's title and tags are its task's template, which travels on the task.
+    pub spawned_waits: Vec<SpawnedWaitView>,
     /// Every info node — as `list_infos`.
     pub infos: Vec<Info>,
     /// Every flow — as `list_flows`.

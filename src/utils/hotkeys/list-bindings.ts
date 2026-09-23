@@ -5,6 +5,7 @@ import { LIST_CREATE_BINDINGS, type ListCreateContext } from "./list/create";
 import { LIST_DELETE_BINDINGS, type ListDeleteContext } from "./list/delete";
 import { LIST_DESELECT_BINDINGS, type ListDeselectContext } from "./list/deselect";
 import { LIST_EDITOR_BINDINGS, type ListEditorContext } from "./list/editor";
+import { LIST_EXPECTATION_BINDINGS, type ListExpectationContext } from "./list/expectation";
 import { LIST_FLAGS_BINDINGS, type ListFlagsContext } from "./list/flags";
 import { LIST_FULLSCREEN_BINDINGS, type ListFullscreenContext } from "./list/fullscreen";
 import { LIST_HISTORY_BINDINGS, type ListHistoryContext } from "./list/history";
@@ -31,6 +32,7 @@ export interface ListContext extends
   ListDeleteContext,
   ListDeselectContext,
   ListEditorContext,
+  ListExpectationContext,
   ListFlagsContext,
   ListFullscreenContext,
   ListHistoryContext,
@@ -46,7 +48,7 @@ export interface ListContext extends
  *
  * Order is only significant between entries sharing a chord — the dispatcher takes the first whose
  * chord matches *and* whose guard passes (ADR 0003). Only bare `Enter` is shared here, by
- * `list/status.ts` and `list/commitment.ts`, whose guards are complementary; `chord-sharing.test.ts`
+ * `list/status.ts`, `list/commitment.ts` and `list/expectation.ts`, whose guards are complementary; `chord-sharing.test.ts`
  * declares that pair and fails on any new one, so a second module quietly shadowing an existing
  * chord is a red test rather than a silent no-op.
  */
@@ -58,6 +60,7 @@ export const LIST_BINDINGS: readonly Binding<ListContext>[] = [
   ...LIST_SCROLL_BINDINGS,
   ...LIST_STATUS_BINDINGS,
   ...LIST_COMMITMENT_BINDINGS,
+  ...LIST_EXPECTATION_BINDINGS,
   ...LIST_EDITOR_BINDINGS,
   ...LIST_RENAME_BINDINGS,
   ...LIST_CREATE_BINDINGS,

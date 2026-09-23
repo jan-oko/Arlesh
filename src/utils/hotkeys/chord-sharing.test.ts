@@ -46,8 +46,8 @@ const SHARED_CHORDS: Readonly<Record<string, readonly string[]>> = {
   // Complementary: F converts the selection to a Flow, and with nothing selected there is nothing
   // to convert, so it shows the board alone instead.
   "mindmap F": ["mindmap.convertToFlow", "mindmap.toggleFullscreen"],
-  // Complementary: a List View selection is a Task or a Commitment, never both.
-  "listView Enter": ["listView.cycleStatus", "listView.cycleVerdict"],
+  // Complementary: a List View selection is a Task, a Commitment or an Expectation, never two.
+  "listView Enter": ["listView.cycleStatus", "listView.cycleVerdict", "listView.toggleReleaseEnter"],
   // Complementary: a subscope mnemonic needs a selection, a kind letter needs none.
   "planView S": ["planView.subscope.S", "planView.kind.season"],
   "planView M": ["planView.subscope.M", "planView.kind.month"],

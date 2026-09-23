@@ -1,4 +1,4 @@
-//! Task, Goal and Commitment operation errors.
+//! Task, Goal, Commitment and Expectation operation errors.
 
 /// Errors that can occur during task, goal or commitment operations.
 #[derive(Debug, thiserror::Error)]
@@ -23,6 +23,21 @@ pub enum TaskError {
     /// there is nothing the backend could do on the caller's behalf.
     #[error("a commitment must have a time scope of its own or inherit one")]
     CommitmentUnscoped,
+    /// The requested expectation does not exist.
+    #[error("expectation {0} not found")]
+    ExpectationNotFound(i64),
+    /// A check was completed on a wait with no check due — no Check every, or no longer pending.
+    /// A stale view, most likely; saying so beats pretending.
+    #[error("there is no check due on this wait")]
+    NoCheckDue,
+    /// Reopening a check was asked for on one that is not the wait's latest completed check, or
+    /// on a wait that is no longer pending and live. Only the latest can be taken back: the
+    /// schedule runs on from it, and an older one reopened would have nowhere to be drawn.
+    #[error("only the latest completed check on a pending wait can be reopened")]
+    CheckNotReopenable,
+    /// A spawned wait was asked for on a task whose completion has spawned none.
+    #[error("task {0} has no spawned wait")]
+    NoSpawnedWait(i64),
     /// Adding this dependency would create a circular dependency chain.
     #[error("adding this dependency would create a cycle")]
     CircularDependency,

@@ -6,7 +6,9 @@
 
 use crate::tasks::{lifecycle::Timing, model::Verdict};
 
-use super::model::{BoardFilter, NodeFacts, NodeKind, OverrideMode, Preset, TagFilter, TagMode};
+use super::model::{
+    BoardFilter, NodeFacts, NodeKind, OverrideMode, Preset, TagFilter, TagMode, EXPECTATION_PENDING,
+};
 
 /// Goal statuses that read as resolved, and so drop out of Plan and Start.
 const RESOLVED_GOAL: [&str; 3] = ["achieved", "frozen", "archived"];
@@ -35,12 +37,16 @@ pub fn is_blocked(node: &NodeFacts) -> bool {
     matches!(node.kind, NodeKind::Task | NodeKind::Goal) && node.is_blocked
 }
 
-/// An Archived-status node, or one whose effective Archival was derived as Archived.
+/// An Archived-status node, one whose effective Archival was derived as Archived, or a delegated
+/// Task.
 ///
-/// A scope Resolution of Completed or Missed forces the latter regardless of done-ness: both
-/// render the same archive-box badge, and the Archived pill governs both together.
+/// A scope Resolution of Completed or Missed forces the second regardless of done-ness: both
+/// render the same archive-box badge, and the Archived pill governs both together. A delegated
+/// Task has **every effect of archival** — someone else holds it, so it is off your board
+/// wherever an archived node is — and so it answers here rather than through a rule of its own.
+/// What it is waiting on stays visible: its virtual Expectation (see [`crate::filters::facts`]).
 pub fn is_archived(node: &NodeFacts) -> bool {
-    node.status_str() == "archived" || node.archived
+    node.status_str() == "archived" || node.archived || node.delegated
 }
 
 /// Forces an archived-like node to match when the Archived pill is on `Include`, overriding
@@ -207,24 +213,49 @@ pub fn type_hard_hidden(node: &NodeFacts, filter: &BoardFilter) -> bool {
 ///
 /// Its own rule, not a translation of a Task's, because the two kinds resolve the opposite way
 /// round. Plan, Start and Do show what is **unresolved**: what you have yet to judge is what is
-/// still live. All shows everything, past verdicts included, because looking back over what you
-/// kept and broke is the point of keeping the record.
+/// still live, and a recorded verdict — Kept or Broken alike — is resolved, the way a done Task
+/// is. All shows everything, past verdicts included, because looking back over what you kept and
+/// broke is the point of keeping the record.
 ///
-/// Plan carries the one carve-out in the model that mirrors no Task rule: it **also** shows a
-/// `broken` Commitment whose window is still open. A commitment you have already broken today is
-/// a live problem until the window closes, where a kept one is settled.
+/// (Plan once also kept a Broken commitment on screen while its window was open. The user ruled
+/// that out on 2026-09-23: a Broken commitment is answered, and Plan hides what is answered.)
 ///
 /// Backlog shows none: a Commitment has no Backlog state to be in.
 pub fn passes_commitment_preset(node: &NodeFacts, filter: &BoardFilter) -> bool {
     let verdict = node.verdict.unwrap_or(Verdict::Unresolved);
     match filter.preset {
         Preset::All => true,
-        Preset::Plan => {
-            verdict == Verdict::Unresolved
-                || (verdict == Verdict::Broken && node.timing != Some(Timing::Lapsed))
-        }
-        Preset::Start | Preset::Do => verdict == Verdict::Unresolved,
+        Preset::Plan | Preset::Start | Preset::Do => verdict == Verdict::Unresolved,
         Preset::Backlog => false,
+    }
+}
+
+/// Whether an Expectation is still being waited on and has not been put away: pending, and not
+/// archived.
+pub fn is_live_expectation(node: &NodeFacts) -> bool {
+    node.status_str() == EXPECTATION_PENDING && !node.archived
+}
+
+/// Whether an Expectation shows under the active preset.
+///
+/// A wait is not work, so it answers to its own rule. **All** shows every one. A **pending**, live
+/// one shows under **Plan** — it is part of what is in play — and under **Start** only when it has
+/// no Check every: with one, the virtual check task beneath it is the thing to start, and that task
+/// answers the ordinary Task rules. **Do** and **Backlog** show none: nothing about a wait is
+/// underway on your side, and a wait cannot be set aside. A **released** or **archived** one shows
+/// under All only.
+///
+/// The List View's own Expectations option is not a preset and is not answered here; see
+/// [`crate::filters::list::passes_expectation_row`].
+pub fn passes_expectation_preset(node: &NodeFacts, filter: &BoardFilter) -> bool {
+    match filter.preset {
+        Preset::All => true,
+        Preset::Plan => is_live_expectation(node),
+        // A window that has passed drops out of Start, as a Task's does.
+        Preset::Start => {
+            is_live_expectation(node) && !node.has_check && node.timing != Some(Timing::Lapsed)
+        }
+        Preset::Do | Preset::Backlog => false,
     }
 }
 
@@ -260,6 +291,9 @@ pub fn passes_status(
     if node.kind == NodeKind::Commitment {
         return with_archived_override(node, filter, passes_commitment_preset(node, filter));
     }
+    if node.kind == NodeKind::Expectation {
+        return with_archived_override(node, filter, passes_expectation_preset(node, filter));
+    }
     match filter.preset {
         // The Archived pill's `Exclude` hides an archived item under All too, but that is the
         // hard-hide in `type_hard_hidden`, which runs first; `Include` is a no-op here.
@@ -279,9 +313,11 @@ pub fn passes_status(
 /// status that would say so.
 fn passes_plan(node: &NodeFacts, filter: &BoardFilter) -> bool {
     match node.kind {
-        NodeKind::Task => {
-            with_archived_override(node, filter, node.status_str() != "done" && !node.archived)
-        }
+        NodeKind::Task => with_archived_override(
+            node,
+            filter,
+            node.status_str() != "done" && !is_archived(node),
+        ),
         NodeKind::Goal => with_archived_override(
             node,
             filter,
@@ -300,7 +336,9 @@ fn passes_start(node: &NodeFacts, filter: &BoardFilter) -> bool {
     if !matches!(node.kind, NodeKind::Task | NodeKind::Goal) {
         return true;
     }
-    if node.timing == Some(Timing::Lapsed) {
+    // A lapsed window drops out, and so does a delegated Task: it is archived in every effect
+    // but name, and nothing someone else holds is yours to start.
+    if node.timing == Some(Timing::Lapsed) || node.delegated {
         return with_archived_override(node, filter, false);
     }
     if node.kind == NodeKind::Goal {
@@ -324,7 +362,7 @@ pub fn passes_tags(node: &NodeFacts, filter: &BoardFilter) -> bool {
     }
     if !matches!(
         node.kind,
-        NodeKind::Task | NodeKind::Goal | NodeKind::Commitment
+        NodeKind::Task | NodeKind::Goal | NodeKind::Commitment | NodeKind::Expectation
     ) {
         return true;
     }

@@ -13,10 +13,12 @@
 mod ancestry;
 pub mod commitments;
 pub mod error;
+pub mod expectations;
 pub mod lifecycle;
 pub mod model;
 pub mod retype;
 mod scope_rules;
+pub mod waits;
 
 use std::collections::{HashSet, VecDeque};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -28,7 +30,11 @@ pub use commitments::{
     create_commitment, delete_commitment, update_commitment, CommitmentOperator,
 };
 use error::TaskError;
-use model::CommitmentId;
+pub use expectations::{
+    complete_expectation_check, create_expectation, delete_expectation, reopen_expectation_check,
+    update_expectation, ExpectationOperator,
+};
+use model::{AsyncTemplate, CommitmentId, ExpectationId, ExpectationStatus};
 use model::{
     CreateGoalRequest, CreateTaskRequest, Delegate, Dependency, DurationSpec, Goal, GoalId,
     GoalStatus, OnScopeExit, Task, TaskArchival, TaskDependencyEdge, TaskId, TaskStatus,
@@ -119,7 +125,8 @@ async fn delete_infos_under(
     Ok(())
 }
 
-/// Cascade-deletes a content-node subtree: the node, every descendant task, goal and commitment,
+/// Cascade-deletes a content-node subtree: the node, every descendant task, goal, commitment and
+/// expectation (with the dependency edges aimed at each expectation),
 /// and all infos under them. Dependencies and tags fall away via their `ON DELETE CASCADE`
 /// foreign keys; the polymorphic parent links do not, so descendants are collected explicitly to
 /// avoid orphaning them.
@@ -145,6 +152,12 @@ async fn delete_node_subtree(
                 .into_iter()
                 .map(|id| ("commitment".to_string(), id)),
         );
+        let expectation_children = db.expectations().child_ids(&node_type, node_id).await?;
+        stack.extend(
+            expectation_children
+                .into_iter()
+                .map(|id| (expectations::EXPECTATION.to_string(), id)),
+        );
     }
     for (node_type, node_id) in &nodes {
         // The node may be an added child of a Habit occurrence. Its attachment names the row, so
@@ -161,6 +174,16 @@ async fn delete_node_subtree(
         match node_type.as_str() {
             "goal" => db.goals().delete_row(GoalId(*node_id)).await?,
             "commitment" => db.commitments().delete_row(CommitmentId(*node_id)).await?,
+            expectations::EXPECTATION => {
+                // The edges aimed at a wait carry no foreign key, and a freed rowid is reused:
+                // left behind, they would re-attach to the next expectation created.
+                db.tasks()
+                    .drop_dependents(expectations::EXPECTATION, *node_id)
+                    .await?;
+                db.expectations()
+                    .delete_row(ExpectationId(*node_id))
+                    .await?
+            }
             _ => db.tasks().delete_row(TaskId(*node_id)).await?,
         }
     }
@@ -222,6 +245,8 @@ impl From<TaskRow> for Task {
             delegate_to: Delegate::from_columns(row.delegate_kind.as_deref(), row.delegate_id),
             agentic: row.agentic,
             asynchronous: row.asynchronous,
+            // Read after the row, from its own table.
+            async_template: None,
             time_scope: time_scope_from_row(
                 row.time_scope_start_id,
                 row.time_scope_end_id,
@@ -415,8 +440,10 @@ struct TaskWrite {
     delegate_to: Option<Delegate>,
     /// Final Agentic column: `None` is the NULL that inherits from the nearest flagged ancestor.
     agentic: Option<bool>,
-    /// Final Asynchronous column: whether doing this task starts a wait.
+    /// Final Asynchronous flag.
     asynchronous: bool,
+    /// Final Expectation template; always `None` when `asynchronous` is false.
+    async_template: Option<AsyncTemplate>,
     /// Final Time Scope, or `None` for unscoped.
     time_scope: Option<TimeScope>,
     /// Requested on-exit behavior; dropped by [`on_scope_exit_column`] when unscoped.
@@ -459,9 +486,13 @@ impl TaskWrite {
             Some(new_agentic) => new_agentic.as_column(),
             None => stored.agentic,
         };
-        // One `Option` deep, not two: the column is a plain boolean, so there is no third state an
-        // absent field could be confused with.
+        // The template only exists while the flag is on: turning Asynchronous off takes it too.
         let asynchronous = request.asynchronous.unwrap_or(stored.asynchronous);
+        let async_template = if asynchronous {
+            request.async_template.unwrap_or(stored.async_template)
+        } else {
+            None
+        };
         let time_scope = match request.time_scope {
             Some(new_time_scope) => new_time_scope,
             None => stored.time_scope,
@@ -499,6 +530,7 @@ impl TaskWrite {
             delegate_to,
             agentic,
             asynchronous,
+            async_template,
             time_scope,
             on_scope_exit: request.on_scope_exit.unwrap_or(stored.on_scope_exit),
             plan,
@@ -830,13 +862,21 @@ impl<'session> TaskOperator<'session> {
         let archival = request.archival.unwrap_or_default();
         let agentic = request.agentic.unwrap_or_default().as_column();
         let asynchronous = request.asynchronous.unwrap_or(false);
+        let async_template = if asynchronous {
+            request.async_template.clone()
+        } else {
+            None
+        };
+        // A task created done was completed now, as far as anything can tell.
+        let done_at = (status == TaskStatus::Done.as_str())
+            .then(|| waits::instant_column(expectations::now()));
         let id = sqlx::query(
             "INSERT INTO tasks
                 (title, parent_type, parent_id, status,
                  time_scope_start_id, time_scope_end_id, time_scope_duration_n,
                  time_scope_duration_kind, on_scope_exit, plan_start_id, plan_end_id, archival,
-                 agentic, asynchronous)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                 agentic, asynchronous, done_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&request.title)
         .bind(&request.parent_type)
@@ -852,6 +892,7 @@ impl<'session> TaskOperator<'session> {
         .bind(archival.as_str())
         .bind(agentic)
         .bind(asynchronous)
+        .bind(done_at)
         .execute(&mut *self.connection)
         .await?
         .last_insert_rowid();
@@ -859,6 +900,8 @@ impl<'session> TaskOperator<'session> {
             .bind(insertion_position())
             .bind(id)
             .execute(&mut *self.connection)
+            .await?;
+        self.write_async_template(TaskId(id), &async_template)
             .await?;
         self.get(TaskId(id)).await
     }
@@ -871,8 +914,14 @@ impl<'session> TaskOperator<'session> {
             .await?
             .ok_or(TaskError::TaskNotFound(id.0))?;
         let tag_ids = fetch_task_tag_ids(&mut *self.connection, id.0).await?;
+        let async_template = if row.asynchronous {
+            self.async_template(id).await?
+        } else {
+            None
+        };
         Ok(Task {
             tag_ids,
+            async_template,
             ..row.into()
         })
     }
@@ -917,8 +966,14 @@ impl<'session> TaskOperator<'session> {
         let mut tasks = Vec::with_capacity(rows.len());
         for row in rows {
             let tag_ids = fetch_task_tag_ids(&mut *self.connection, row.id).await?;
+            let async_template = if row.asynchronous {
+                self.async_template(TaskId(row.id)).await?
+            } else {
+                None
+            };
             tasks.push(Task {
                 tag_ids,
+                async_template,
                 ..row.into()
             });
         }
@@ -972,7 +1027,11 @@ impl<'session> TaskOperator<'session> {
             "UPDATE tasks SET title=?, status=?, delegate_kind=?, delegate_id=?,
                 time_scope_start_id=?, time_scope_end_id=?, time_scope_duration_n=?,
                 time_scope_duration_kind=?, on_scope_exit=?, plan_start_id=?, plan_end_id=?,
-                archival=?, agentic=?, asynchronous=?, position=?, is_private=? WHERE id=?",
+                archival=?, agentic=?, asynchronous=?, position=?, is_private=?,
+                done_at = CASE WHEN ? = 'done'
+                               THEN CASE WHEN status = 'done' THEN done_at ELSE ? END
+                               ELSE NULL END
+             WHERE id=?",
         )
         .bind(&write.title)
         .bind(&write.status)
@@ -990,19 +1049,29 @@ impl<'session> TaskOperator<'session> {
         .bind(write.asynchronous)
         .bind(write.position)
         .bind(write.is_private)
+        // Completing a task records when; it is when the wait its template spawns begins. Staying
+        // done keeps the time, and reopening clears it.
+        .bind(&write.status)
+        .bind(waits::instant_column(expectations::now()))
         .bind(id.0)
         .execute(&mut *self.connection)
         .await?;
+        self.write_async_template(id, &write.async_template).await?;
         self.get(id).await
     }
 
-    /// Deletes one task row and nothing else. Descendants and the infos and block reasons hanging
-    /// off them are the subtree cascade's job — see [`delete_task`].
+    /// Deletes one task row, and the checks recorded on the wait it spawned. Descendants and the
+    /// infos and block reasons hanging off them are the subtree cascade's job — see [`delete_task`].
     ///
     /// Module-private: called directly it orphans the whole subtree under the task, since the
     /// polymorphic parent links have no foreign key to cascade along.
     async fn delete_row(&mut self, id: TaskId) -> Result<(), TaskError> {
         sqlx::query("DELETE FROM tasks WHERE id = ?")
+            .bind(id.0)
+            .execute(&mut *self.connection)
+            .await?;
+        // The checks made on the wait it spawned go with it; `wait_checks` has no foreign key.
+        sqlx::query("DELETE FROM wait_checks WHERE wait_kind = 'spawned' AND wait_id = ?")
             .bind(id.0)
             .execute(&mut *self.connection)
             .await?;
@@ -1081,6 +1150,9 @@ impl<'session> TaskOperator<'session> {
             .into_iter()
             .map(|row| match row.dependency_type.as_str() {
                 "task" => Dependency::Task {
+                    id: row.dependency_id,
+                },
+                expectations::EXPECTATION => Dependency::Expectation {
                     id: row.dependency_id,
                 },
                 _ => Dependency::Goal {
@@ -1456,6 +1528,9 @@ pub async fn update_task(
         &write.plan,
     )
     .await?;
+    // Nothing else is written for the wait an Asynchronous task spawns: it is derived from the task
+    // being done and having a template, so completing and reopening — and undoing either — are
+    // just this row's own status change.
     db.tasks().update(id, write).await
 }
 
@@ -1487,10 +1562,17 @@ pub async fn add_task_dependency(
     task_id: TaskId,
     dependency: Dependency,
 ) -> Result<(), TaskError> {
+    // An edge onto a wait that does not exist would not dangle harmlessly: the column carries no
+    // foreign key, so it would attach to whichever expectation takes that id next. Nothing can
+    // depend on an expectation through it, so there is no cycle to look for.
+    if let Dependency::Expectation { id } = dependency {
+        db.expectations().get(ExpectationId(id)).await?;
+    }
     db.tasks().add_dependency(task_id, dependency).await
 }
 
-/// Deletes a task and its entire subtree (descendant tasks/goals and their infos).
+/// Deletes a task and its entire subtree (descendant tasks, goals, commitments and expectations,
+/// and their infos).
 #[tracing::instrument(skip(db))]
 pub async fn delete_task(db: &mut Db<Transactional>, id: TaskId) -> Result<(), TaskError> {
     db.tasks().get(id).await?;
@@ -1533,6 +1615,15 @@ pub async fn get_task_with_blockers<M: SessionMode>(
                     ));
                 }
             }
+            Dependency::Expectation { id: dependency_id } => {
+                let expectation = db.expectations().get(ExpectationId(dependency_id)).await?;
+                if expectation.status == ExpectationStatus::Pending {
+                    reasons.push(format!(
+                        "Blocked by expectation {} ({})",
+                        dependency_id, expectation.title
+                    ));
+                }
+            }
         }
     }
 
@@ -1546,6 +1637,7 @@ fn dependency_parts(dependency: &Dependency) -> (&'static str, i64) {
     match dependency {
         Dependency::Task { id } => ("task", *id),
         Dependency::Goal { id } => ("goal", *id),
+        Dependency::Expectation { id } => (expectations::EXPECTATION, *id),
     }
 }
 

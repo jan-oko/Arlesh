@@ -11,8 +11,9 @@ import { cameOutOfBacklog, nextTaskStatus } from "@/utils/task-status-cycle";
 import { findNode, collectTasksAndGoals } from "@/utils/mindmap-tree";
 import { rowIdOf } from "@/utils/node-identity";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
-import type { CommitmentListRow, TaskListRow } from "@/utils/list-filter";
-import { flattenCommitmentRows, flattenTaskRows } from "@/utils/list-data";
+import type { CommitmentListRow, ExpectationListRow, TaskListRow } from "@/utils/list-filter";
+import { flattenCommitmentRows, flattenExpectationRows, flattenTaskRows } from "@/utils/list-data";
+import { useExpectationActions } from "@/hooks/use-expectation-actions";
 import { useOccurrenceCompletion } from "@/hooks/use-occurrence-completion";
 import type { OccurrencePrompt } from "@/hooks/use-occurrence-completion";
 
@@ -22,6 +23,12 @@ interface ListData {
   rows: TaskListRow[];
   /** Every Commitment row, unfiltered — the section that sits above the task rows. */
   commitmentRows: CommitmentListRow[];
+  /** Every Expectation row, unfiltered — stored waits and delegated Tasks' virtual ones. */
+  expectationRows: ExpectationListRow[];
+  /** The tree the rows are flattened from — the entered subtree, or the whole board. */
+  listRoot: MindmapNode;
+  /** Releases a wait, or takes a release back. */
+  toggleRelease: (nodeId: string) => void;
   /** Every Task/Goal node, for the shared task/goal editor plumbing (dependency picker, etc.). */
   allTasksAndGoals: MindmapNode[];
   isLoading: boolean;
@@ -72,6 +79,10 @@ export function useListData(): ListData {
   );
   const rows = useMemo(() => flattenTaskRows(listRoot, taskDeps), [listRoot, taskDeps]);
   const commitmentRows = useMemo(() => flattenCommitmentRows(listRoot), [listRoot]);
+  const expectationRows = useMemo(() => flattenExpectationRows(listRoot), [listRoot]);
+  const { toggleRelease, completeCheck } = useExpectationActions({
+    findNode: (id) => findNode(tree, id), reload, showToast,
+  });
   const allTasksAndGoals = useMemo(() => {
     const acc: MindmapNode[] = [];
     collectTasksAndGoals(tree, acc);
@@ -82,6 +93,11 @@ export function useListData(): ListData {
     (nodeId: string) => {
       const node = findNode(tree, nodeId);
       if (node === undefined || node.kind !== "task") return;
+      // A wait's check task has no status of its own: completing it records the check.
+      if (node.expectationCheck !== undefined) {
+        completeCheck(nodeId);
+        return;
+      }
       if (node.habitItem !== undefined) {
         const cycled = nextTaskStatus(node.status ?? TASK_STATUS.TODO);
         const next = cycled === TASK_STATUS.TODO ? null : cycled;
@@ -99,7 +115,7 @@ export function useListData(): ListData {
         await reload();
       });
     },
-    [tree, reload, setOccurrenceStatus, showToast, t],
+    [tree, reload, setOccurrenceStatus, showToast, t, completeCheck],
   );
 
   const createTask = useCallback(
@@ -114,7 +130,8 @@ export function useListData(): ListData {
   );
 
   return {
-    tree, rows, commitmentRows, allTasksAndGoals, isLoading, error, reload, onCycleStatus,
+    tree, rows, commitmentRows, expectationRows, listRoot, toggleRelease,
+    allTasksAndGoals, isLoading, error, reload, onCycleStatus,
     renameNode, createTask, deleteTask, removeNode,
     occurrencePrompt, confirmOccurrence, cancelOccurrence,
   };

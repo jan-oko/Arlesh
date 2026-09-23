@@ -93,5 +93,13 @@
   "occurrenceUnfinishedHeading_one": "\"{{title}}\" still holds {{count}} unfinished item — mark it done anyway?",
   "occurrenceUnfinishedHeading_other": "\"{{title}}\" still holds {{count}} unfinished items — mark it done anyway?",
   "occurrenceUnfinishedItem": "{{type}}: \"{{title}}\"",
-  "occurrenceUnfinishedAction": "Mark it done anyway"
+  "occurrenceUnfinishedAction": "Mark it done anyway",
+  "deleteDerivedWaitRefused": "A check task, a delegated task's wait or an asynchronous task's wait isn't a row of its own, so there is nothing to delete — stop checking on it, undelegate the task, or reopen the task, instead.",
+  "pasteSkippedDerivedWait_one": "{{count}} check task or derived wait isn't a row of its own, so there is nothing to paste.",
+  "pasteSkippedDerivedWait_other": "{{count}} check tasks or derived waits aren't rows of their own, so there is nothing to paste.",
+  "pasteSkippedExpectation_one": "{{count}} Expectation can't be copied — use cut to move it.",
+  "pasteSkippedExpectation_other": "{{count}} Expectations can't be copied — use cut to move them.",
+  "editRepetitionRefused": "A Habit repetition has no editor of its own — open the Habit's template to change it.",
+  "editOwnerMissing": "This is drawn from something that isn't on the board any more, so there's nothing to edit.",
+  "editCheckTaskRefused": "A check task has no editor yet: it is drawn from its wait, not stored, and can't be edited on its own until checks become rows of their own (Arlesh-pnn). Complete it from its status (Enter, Space in Steps, or its status control), or open the wait to change its Check every."
 }

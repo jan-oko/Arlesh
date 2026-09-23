@@ -47,6 +47,7 @@ pub async fn load(db: &mut Db<Transactional>, now: NaiveDateTime) -> Result<Mind
     let goals = db.goals().list().await?;
     let tasks = db.tasks().list().await?;
     let commitments = db.commitments().list().await?;
+    let expectations = db.expectations().list().await?;
     let infos = db.infos().list().await?;
     let flow_goals = db.flows().list_all_goals().await?;
     let flow_tasks = db.flows().list_all_tasks().await?;
@@ -57,6 +58,7 @@ pub async fn load(db: &mut Db<Transactional>, now: NaiveDateTime) -> Result<Mind
     let flow_instance_nodes = db.flows().list_instance_node_refs().await?;
     let habit_instance_children = db.flows().list_all_instance_children().await?;
     let lifecycles = crate::tasks::derive_all_scope_lifecycles(db, now).await?;
+    let waits = crate::tasks::waits::derive_wait_windows(db, now).await?;
 
     // The dependent wave: the flow list first, then one entry per flow derived from it.
     let flows = db.flows().list().await?;
@@ -70,6 +72,9 @@ pub async fn load(db: &mut Db<Transactional>, now: NaiveDateTime) -> Result<Mind
         goals,
         tasks,
         commitments,
+        expectations,
+        expectation_checks: waits.expectation_checks,
+        spawned_waits: waits.spawned_waits,
         infos,
         flows,
         flow_goals,

@@ -115,7 +115,13 @@ fn prune_at(
     // Backlog, unlike status, does propagate: everything under a set-aside Task is set aside too.
     let backlog_for_children = under_backlog || node.facts.backlogged;
     // So, for Start, does a Plan: an unplanned sub-step is read by its nearest planned ancestor's.
-    let plan_for_children = node.facts.plan_timing.or(inherited_plan);
+    // A wait cuts the chain: the check task beneath it has no Plan, answers to its own due time,
+    // and must not vanish because the Task the wait hangs under is planned for next week.
+    let plan_for_children = if node.facts.kind == NodeKind::Expectation {
+        None
+    } else {
+        node.facts.plan_timing.or(inherited_plan)
+    };
 
     let mut children = Vec::new();
     let mut has_content_match = false;

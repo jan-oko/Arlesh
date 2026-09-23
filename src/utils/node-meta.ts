@@ -86,6 +86,8 @@ export const NODE_ICON: Record<NodeKind, string> = {
   task: "✓",
   // A handshake: a rule you hold to, not a box you tick.
   commitment: "🤝",
+  // A ring not closed yet: waiting on something, not an action.
+  expectation: "◌",
   tag: "🏷",
   info: "ℹ",
   flow: "▶",
@@ -102,6 +104,7 @@ export const NODE_LABEL: Record<NodeKind, string> = {
   goal: "Goal",
   task: "Task",
   commitment: "Commitment",
+  expectation: "Expectation",
   tag: "Tag",
   info: "Info",
   flow: "Flow",
@@ -121,15 +124,17 @@ const DOMAIN_PARENT_CYCLE: NodeKind[] = [
 // projects need an aspect/project parent, tags can't nest). Used to hide a retype that would strand
 // an existing child under a type that can't hold it.
 const ALLOWED_CHILD_KINDS: Partial<Record<NodeKind, NodeKind[]>> = {
-  aspect: ["project", "domain", "tag", "goal", "task", "commitment", "info", "flow"],
-  project: ["project", "domain", "tag", "goal", "task", "commitment", "info", "flow"],
-  domain: ["domain", "tag", "goal", "task", "commitment", "info", "flow"],
+  aspect: ["project", "domain", "tag", "goal", "task", "commitment", "expectation", "info", "flow"],
+  project: ["project", "domain", "tag", "goal", "task", "commitment", "expectation", "info", "flow"],
+  domain: ["domain", "tag", "goal", "task", "commitment", "expectation", "info", "flow"],
   tag: ["info"], // a tag is a label — it holds only info notes, no structural children
-  goal: ["goal", "task", "commitment", "info", "flow"],
-  task: ["task", "commitment", "info"],
+  goal: ["goal", "task", "commitment", "expectation", "info", "flow"],
+  task: ["task", "commitment", "expectation", "info"],
   // The supporting steps under a rule, and the finer-grained rules inside it. Not a Goal: a
   // desired state is not something you hold to over a window.
-  commitment: ["task", "commitment", "info"],
+  commitment: ["task", "commitment", "expectation", "info"],
+  // A wait holds notes about it, and nothing else (its check task is derived, not a child).
+  expectation: ["info"],
   info: ["info"],
 };
 
@@ -167,6 +172,10 @@ export function validTypesForCycling(
   // nothing behind it to retype.
   if (kind === "habit_group") return [];
 
+  // An Expectation is not in the type cycle: a wait has no field in common with an action item
+  // but its title, and nothing translates between Released and Done.
+  if (kind === "expectation") return [];
+
   // Flow items retype between goal and task, mirroring real nodes: a goal child is invalid
   // under a flow-task parent, so only flow-tasks may sit there.
   if (kind === "flow_goal" || kind === "flow_task") {
@@ -174,8 +183,8 @@ export function validTypesForCycling(
     return ["flow_goal", "flow_task"];
   }
 
-  // Info nodes can only have info children — no cycling out.
-  if (parentKind === "info") return ["info"];
+  // Info nodes can only have info children — no cycling out. Nor can a wait's.
+  if (parentKind === "info" || parentKind === "expectation") return ["info"];
 
   const hasDomainParent =
     parentKind === "aspect" ||
@@ -227,7 +236,8 @@ export function isFlowKind(kind: NodeKind): boolean {
  *   aspect / domain / project  → domain, project, tag, goal, task, commitment, info children
  *   goal                       → goal, task, commitment, info children
  *   task                       → task, commitment, info children
- *   commitment                 → task, commitment, info children
+ *   commitment                 → task, commitment, expectation, info children
+ *   expectation                → info children only (and it hangs wherever a task can)
  *   info                       → info children only
  *   tag                        → info children only (a label, annotated — nothing structural)
  *   aspect                     → cannot be moved (immutable)
@@ -255,11 +265,21 @@ export function isValidDropTarget(sourceKind: NodeKind, targetKind: NodeKind): b
   // It still sits above the `info` arms, so every other kind is refused before they are reached.
   if (targetKind === "tag") return sourceKind === "info";
   if (targetKind === "info") return sourceKind === "info";
+  // A wait holds notes about it and nothing else.
+  if (targetKind === "expectation") return sourceKind === "info";
   if (sourceKind === "info") return true;
   // A commitment lives anywhere a task can, plus inside another commitment; it holds only
-  // tasks and other commitments. (Tag and info targets were already refused above.)
-  if (targetKind === "commitment") return sourceKind === "task" || sourceKind === "commitment";
+  // tasks, other commitments and waits. (Tag and info targets were already refused above.)
+  if (targetKind === "commitment") {
+    return sourceKind === "task" || sourceKind === "commitment" || sourceKind === "expectation";
+  }
   if (sourceKind === "commitment") return true;
+  // A wait lives anywhere a Task can: under a domain-table kind, a Goal, a Task — or a Commitment,
+  // answered just above.
+  if (sourceKind === "expectation") {
+    return targetKind === "aspect" || targetKind === "domain" || targetKind === "project" ||
+      targetKind === "goal" || targetKind === "task";
+  }
   if (sourceKind === "project") return targetKind === "aspect" || targetKind === "project";
   if (sourceKind === "domain") return targetKind === "aspect" || targetKind === "domain" || targetKind === "project";
   if (sourceKind === "tag") return targetKind === "aspect" || targetKind === "domain" || targetKind === "project";
@@ -282,7 +302,7 @@ export function isValidDropTarget(sourceKind: NodeKind, targetKind: NodeKind): b
  * are left out because they are spawned by Tab from inside their flow. Two of the seven open an
  * editor rather than a blank row — see `onCreateTypedChild`.
  */
-export const TYPED_CHILD_KINDS = ["domain", "project", "goal", "task", "commitment", "info", "flow"] as const;
+export const TYPED_CHILD_KINDS = ["domain", "project", "goal", "task", "commitment", "expectation", "info", "flow"] as const;
 
 /** One of the kinds a Shift+initial chord can create. */
 export type TypedChildKind = (typeof TYPED_CHILD_KINDS)[number];
@@ -293,7 +313,7 @@ export type TypedChildKind = (typeof TYPED_CHILD_KINDS)[number];
  * has to be able to say where a flow item *does* go, and that is inside its Flow.
  */
 const PARENT_CANDIDATES: readonly NodeKind[] = [
-  "aspect", "domain", "project", "goal", "task", "commitment", "info", "tag",
+  "aspect", "domain", "project", "goal", "task", "commitment", "expectation", "info", "tag",
   "flow", "flow_goal", "flow_task",
 ];
 
@@ -345,6 +365,8 @@ export function canParentNewChild(node: MindmapNode, childKind: NodeKind): boole
     case "drawing":
       return false;
     case "occurrence":
+      // A wait is not one of the four kinds the attachment path writes onto an occurrence.
+      if (childKind === "expectation") return false;
       // An occurrence's children are ordinary nodes, written and hung on that one iteration by the
       // attachment path. A Flow or a flow item is not one of those: it belongs to the Habit's
       // template, which is the very thing the occurrence is a repetition of. Everything else its

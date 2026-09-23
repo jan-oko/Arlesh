@@ -7,6 +7,7 @@ import GoalIcon from "./GoalIcon";
 import TagIcon from "./TagIcon";
 import TaskIcon from "./TaskIcon";
 import CommitmentIcon from "./CommitmentIcon";
+import ExpectationIcon from "./ExpectationIcon";
 import InfoIcon from "./InfoIcon";
 import FlowIcon from "./FlowIcon";
 import HabitIcon from "./HabitIcon";
@@ -39,6 +40,9 @@ export default function NodeIcon({ kind, status, verdict, isArchived = false, is
   if (kind === "task") return <TaskIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} status={status} isBlocked={isBlocked} />;
   if (kind === "commitment") {
     return <CommitmentIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} state={commitmentGlyphState(verdict, isArchived)} />;
+  }
+  if (kind === "expectation") {
+    return <ExpectationIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} status={status} />;
   }
   if (kind === "flow") {
     return isHabit

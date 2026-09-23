@@ -12,7 +12,12 @@
     "node frames each board — it is never a row and never appears in an expectation.",
     "",
     "`filter.preset` is the shared status preset. `filter.unblock` is the List View's sixth option,",
-    "which does not replace the preset: it leaves it where it was and adds `blocked rows only`."
+    "which does not replace the preset: it leaves it where it was and adds `blocked rows only`.",
+    "",
+    "`filter.expectations` is the List View's Expectations option, which, like Unblock, leaves the",
+    "preset where it was. A case's `expectations` lists the Expectation rows the List View keeps;",
+    "omitted, it is empty. A delegated Task's virtual Expectation and an Expectation's virtual",
+    "check task are written into a board as the ordinary nodes they are drawn as."
   ],
   "cases": [
     {
@@ -72,13 +77,12 @@
     },
     {
       "name": "plan hides done tasks, resolved goals and effectively-archived items",
-      "spec": "mindmap-view.md — Plan: hide done tasks, achieved/frozen/archived goals, and anything whose effective Archival is Archived. A Frozen or Archived Project goes with its whole subtree; Achieved keeps ordinary ancestor-keeping. An active Aspect/Domain/Project shows on its own.",
+      "spec": "mindmap-view.md — Plan: hide done tasks, achieved/frozen/archived goals, and anything whose effective Archival is Archived. A Frozen or Archived Project goes with its whole subtree; Achieved keeps ordinary ancestor-keeping. An active Aspect/Domain/Project shows on its own. A Commitment shows under Plan only while unresolved: Kept and Broken are both answered, as a done Task is (resources.md, Commitments).",
       "filter": {
         "preset": "plan"
       },
       "board": "mixed",
       "mindmap": [
-        "commitment-broken-open",
         "commitment-unresolved",
         "domain-achieved",
         "domain-active",
@@ -105,7 +109,6 @@
         "task-under-blocked"
       ],
       "commitments": [
-        "commitment-broken-open",
         "commitment-unresolved"
       ]
     },
@@ -253,7 +256,6 @@
       },
       "board": "mixed",
       "mindmap": [
-        "commitment-broken-open",
         "commitment-unresolved",
         "domain-achieved",
         "domain-active",
@@ -283,7 +285,6 @@
         "task-under-blocked"
       ],
       "commitments": [
-        "commitment-broken-open",
         "commitment-unresolved"
       ]
     },
@@ -349,7 +350,6 @@
       },
       "board": "mixed",
       "mindmap": [
-        "commitment-broken-open",
         "commitment-unresolved",
         "domain-achieved",
         "domain-active",
@@ -380,7 +380,6 @@
         "task-under-blocked"
       ],
       "commitments": [
-        "commitment-broken-open",
         "commitment-unresolved"
       ]
     },
@@ -775,6 +774,408 @@
       "commitments": []
     },
     {
+      "name": "all shows every expectation, released and archived ones included",
+      "spec": "resources.md, Expectations — a released or archived Expectation shows under All only.",
+      "filter": {
+        "preset": "all"
+      },
+      "board": "waits",
+      "mindmap": [
+        "domain-work",
+        "expectation-archived",
+        "expectation-check-ahead",
+        "expectation-checked",
+        "expectation-delegation",
+        "expectation-late",
+        "expectation-pending",
+        "expectation-released",
+        "goal-w",
+        "info-on-wait",
+        "task-check-ahead",
+        "task-check-open",
+        "task-delegated",
+        "task-delegated-done",
+        "task-waiting"
+      ],
+      "list": [
+        "task-check-ahead",
+        "task-check-open",
+        "task-delegated",
+        "task-delegated-done",
+        "task-waiting"
+      ],
+      "commitments": [],
+      "expectations": [
+        "expectation-archived",
+        "expectation-check-ahead",
+        "expectation-checked",
+        "expectation-delegation",
+        "expectation-late",
+        "expectation-pending",
+        "expectation-released"
+      ]
+    },
+    {
+      "name": "plan shows pending expectations and hides a delegated task that still keeps its wait on screen",
+      "spec": "resources.md, Expectations — All and Plan show a pending Expectation; released and archived ones show under All only. A delegated Task has every effect of archival; its virtual Expectation shows under the Expectation rules while the Task is not done.",
+      "filter": {
+        "preset": "plan"
+      },
+      "board": "waits",
+      "mindmap": [
+        "domain-work",
+        "expectation-check-ahead",
+        "expectation-checked",
+        "expectation-delegation",
+        "expectation-late",
+        "expectation-pending",
+        "goal-w",
+        "info-on-wait",
+        "task-check-ahead",
+        "task-check-open",
+        "task-delegated",
+        "task-waiting"
+      ],
+      "list": [
+        "task-check-ahead",
+        "task-check-open",
+        "task-waiting"
+      ],
+      "commitments": [],
+      "expectations": [
+        "expectation-check-ahead",
+        "expectation-checked",
+        "expectation-delegation",
+        "expectation-late",
+        "expectation-pending"
+      ]
+    },
+    {
+      "name": "start shows a pending expectation only when it has no check chain, and the check task under the ordinary task rules",
+      "spec": "resources.md, Expectations — Start shows a pending Expectation only when it has no check chain; the virtual check task follows the ordinary Task preset rules. A task depending on a pending Expectation is blocked. A wait whose own Time Scope has lapsed drops out of Start, as a Task's does.",
+      "filter": {
+        "preset": "start"
+      },
+      "board": "waits",
+      "mindmap": [
+        "domain-work",
+        "expectation-check-ahead",
+        "expectation-checked",
+        "expectation-delegation",
+        "expectation-pending",
+        "goal-w",
+        "info-on-wait",
+        "task-check-ahead",
+        "task-check-open",
+        "task-delegated"
+      ],
+      "list": [
+        "task-check-ahead",
+        "task-check-open"
+      ],
+      "commitments": [],
+      "expectations": [
+        "expectation-delegation",
+        "expectation-pending"
+      ]
+    },
+    {
+      "name": "do shows no expectation",
+      "spec": "resources.md, Expectations — every preset but All, Plan and Start hides a pending Expectation.",
+      "filter": {
+        "preset": "do"
+      },
+      "board": "waits",
+      "mindmap": [],
+      "list": [],
+      "commitments": [],
+      "expectations": []
+    },
+    {
+      "name": "backlog shows no expectation",
+      "spec": "resources.md, Expectations — a wait cannot be set aside.",
+      "filter": {
+        "preset": "backlog"
+      },
+      "board": "waits",
+      "mindmap": [],
+      "list": [],
+      "commitments": [],
+      "expectations": []
+    },
+    {
+      "name": "the expectations option shows every pending live expectation and no task rows",
+      "spec": "list-view.md — the Expectations option shows pending, live Expectations and nothing else; the Mindmap ignores it.",
+      "filter": {
+        "preset": "all",
+        "expectations": true
+      },
+      "board": "waits",
+      "mindmap": [
+        "domain-work",
+        "expectation-archived",
+        "expectation-check-ahead",
+        "expectation-checked",
+        "expectation-delegation",
+        "expectation-late",
+        "expectation-pending",
+        "expectation-released",
+        "goal-w",
+        "info-on-wait",
+        "task-check-ahead",
+        "task-check-open",
+        "task-delegated",
+        "task-delegated-done",
+        "task-waiting"
+      ],
+      "list": [],
+      "commitments": [],
+      "expectations": [
+        "expectation-check-ahead",
+        "expectation-checked",
+        "expectation-delegation",
+        "expectation-late",
+        "expectation-pending"
+      ]
+    },
+    {
+      "name": "the expectations option ignores the preset it leaves behind",
+      "spec": "list-view.md — like Unblock, the Expectations option replaces the preset's rules for the list rather than combining with them.",
+      "filter": {
+        "preset": "start",
+        "expectations": true
+      },
+      "board": "waits",
+      "mindmap": [
+        "domain-work",
+        "expectation-check-ahead",
+        "expectation-checked",
+        "expectation-delegation",
+        "expectation-pending",
+        "goal-w",
+        "info-on-wait",
+        "task-check-ahead",
+        "task-check-open",
+        "task-delegated"
+      ],
+      "list": [],
+      "commitments": [],
+      "expectations": [
+        "expectation-check-ahead",
+        "expectation-checked",
+        "expectation-delegation",
+        "expectation-late",
+        "expectation-pending"
+      ]
+    },
+    {
+      "name": "unblock shows the task a pending expectation blocks and no expectation",
+      "spec": "resources.md, Expectations — a Task depending on a pending Expectation is virtually blocked; a wait is never blocked itself.",
+      "filter": {
+        "preset": "all",
+        "unblock": true
+      },
+      "board": "waits",
+      "mindmap": [
+        "domain-work",
+        "expectation-archived",
+        "expectation-check-ahead",
+        "expectation-checked",
+        "expectation-delegation",
+        "expectation-late",
+        "expectation-pending",
+        "expectation-released",
+        "goal-w",
+        "info-on-wait",
+        "task-check-ahead",
+        "task-check-open",
+        "task-delegated",
+        "task-delegated-done",
+        "task-waiting"
+      ],
+      "list": [
+        "task-waiting"
+      ],
+      "commitments": [],
+      "expectations": []
+    },
+    {
+      "name": "the archived pill on include force-shows archived expectations and delegated tasks under plan",
+      "spec": "mindmap-view.md — Include force-shows anything whose effective Archival is Archived; a delegated Task has every effect of archival.",
+      "filter": {
+        "preset": "plan",
+        "archived": "include"
+      },
+      "board": "waits",
+      "mindmap": [
+        "domain-work",
+        "expectation-archived",
+        "expectation-check-ahead",
+        "expectation-checked",
+        "expectation-delegation",
+        "expectation-late",
+        "expectation-pending",
+        "goal-w",
+        "info-on-wait",
+        "task-check-ahead",
+        "task-check-open",
+        "task-delegated",
+        "task-delegated-done",
+        "task-waiting"
+      ],
+      "list": [
+        "task-check-ahead",
+        "task-check-open",
+        "task-delegated",
+        "task-delegated-done",
+        "task-waiting"
+      ],
+      "commitments": [],
+      "expectations": [
+        "expectation-archived",
+        "expectation-check-ahead",
+        "expectation-checked",
+        "expectation-delegation",
+        "expectation-late",
+        "expectation-pending"
+      ]
+    },
+    {
+      "name": "the archived pill on exclude hides archived expectations and delegated subtrees under all",
+      "spec": "mindmap-view.md — Exclude hard-hides the whole subtree of anything archived; a delegated Task has every effect of archival. In the flat list the pill hides the archived row itself, as it does for task rows: an excluded ancestor does not gate a row there, so the delegated Task's wait stays in the list while the Mindmap drops it with its Task.",
+      "filter": {
+        "preset": "all",
+        "archived": "exclude"
+      },
+      "board": "waits",
+      "mindmap": [
+        "domain-work",
+        "expectation-check-ahead",
+        "expectation-checked",
+        "expectation-late",
+        "expectation-pending",
+        "expectation-released",
+        "goal-w",
+        "info-on-wait",
+        "task-check-ahead",
+        "task-check-open",
+        "task-waiting"
+      ],
+      "list": [
+        "task-check-ahead",
+        "task-check-open",
+        "task-waiting"
+      ],
+      "commitments": [],
+      "expectations": [
+        "expectation-check-ahead",
+        "expectation-checked",
+        "expectation-delegation",
+        "expectation-late",
+        "expectation-pending",
+        "expectation-released"
+      ]
+    },
+    {
+      "name": "all and a kept or broken commitment whose window is still open",
+      "spec": "resources.md, Commitments — Plan, Start and Do show only unresolved Commitments: Kept and Broken are both answered, the way a done Task is, window open or not. All shows every verdict; Backlog shows none.",
+      "filter": {
+        "preset": "all"
+      },
+      "board": "verdicts",
+      "mindmap": [
+        "commitment-open-broken",
+        "commitment-open-kept",
+        "commitment-open-unresolved"
+      ],
+      "list": [],
+      "commitments": [
+        "commitment-open-broken",
+        "commitment-open-kept",
+        "commitment-open-unresolved"
+      ]
+    },
+    {
+      "name": "plan and a kept or broken commitment whose window is still open",
+      "spec": "resources.md, Commitments — Plan, Start and Do show only unresolved Commitments: Kept and Broken are both answered, the way a done Task is, window open or not. All shows every verdict; Backlog shows none.",
+      "filter": {
+        "preset": "plan"
+      },
+      "board": "verdicts",
+      "mindmap": [
+        "commitment-open-unresolved"
+      ],
+      "list": [],
+      "commitments": [
+        "commitment-open-unresolved"
+      ]
+    },
+    {
+      "name": "start and a kept or broken commitment whose window is still open",
+      "spec": "resources.md, Commitments — Plan, Start and Do show only unresolved Commitments: Kept and Broken are both answered, the way a done Task is, window open or not. All shows every verdict; Backlog shows none.",
+      "filter": {
+        "preset": "start"
+      },
+      "board": "verdicts",
+      "mindmap": [
+        "commitment-open-unresolved"
+      ],
+      "list": [],
+      "commitments": [
+        "commitment-open-unresolved"
+      ]
+    },
+    {
+      "name": "do and a kept or broken commitment whose window is still open",
+      "spec": "resources.md, Commitments — Plan, Start and Do show only unresolved Commitments: Kept and Broken are both answered, the way a done Task is, window open or not. All shows every verdict; Backlog shows none.",
+      "filter": {
+        "preset": "do"
+      },
+      "board": "verdicts",
+      "mindmap": [
+        "commitment-open-unresolved"
+      ],
+      "list": [],
+      "commitments": [
+        "commitment-open-unresolved"
+      ]
+    },
+    {
+      "name": "backlog and a kept or broken commitment whose window is still open",
+      "spec": "resources.md, Commitments — Plan, Start and Do show only unresolved Commitments: Kept and Broken are both answered, the way a done Task is, window open or not. All shows every verdict; Backlog shows none.",
+      "filter": {
+        "preset": "backlog"
+      },
+      "board": "verdicts",
+      "mindmap": [],
+      "list": [],
+      "commitments": []
+    },
+    {
+      "name": "a tag filter judges an expectation's own tags",
+      "spec": "resources.md, Expectations — a wait carries tags like a Task, and the tag filters read them the same way.",
+      "filter": {
+        "preset": "all",
+        "tags": [
+          {
+            "tagId": 7,
+            "mode": "any"
+          }
+        ]
+      },
+      "board": "waits",
+      "mindmap": [
+        "domain-work",
+        "expectation-late",
+        "goal-w"
+      ],
+      "list": [],
+      "commitments": [],
+      "expectations": [
+        "expectation-late"
+      ]
+    },
+    {
       "name": "start hides a task planned into a scope that has not begun",
       "spec": "mindmap-view.md — Start drops a Task whose own Plan has not begun yet; a Plan that has already ended unfulfilled stays visible as missed work, and an unplanned Task is unaffected.",
       "filter": {
@@ -844,6 +1245,25 @@
         "task-inherits-now"
       ],
       "commitments": []
+    },
+    {
+      "name": "start keeps a due check task under a wait whose task is planned ahead",
+      "spec": "resources.md, Expectations / mindmap-view.md — a wait cuts Plan inheritance: its check task has no Plan and answers to its own due time, so a Task planned for next week does not hide the check due today beneath its wait.",
+      "filter": {
+        "preset": "start"
+      },
+      "board": "plan-waits",
+      "mindmap": [
+        "domain-plan-waits",
+        "expectation-wait-ahead",
+        "task-check-under-wait",
+        "task-future-waiter"
+      ],
+      "list": [
+        "task-check-under-wait"
+      ],
+      "commitments": [],
+      "expectations": []
     }
   ],
   "boards": {
@@ -1287,6 +1707,134 @@
         }
       ]
     },
+    "waits": {
+      "id": "root",
+      "kind": "aspect",
+      "children": [
+        {
+          "id": "domain-work",
+          "kind": "project",
+          "status": "active",
+          "children": [
+            {
+              "id": "goal-w",
+              "kind": "goal",
+              "status": "active",
+              "children": [
+                {
+                  "id": "task-waiting",
+                  "kind": "task",
+                  "status": "todo",
+                  "isBlocked": true
+                },
+                {
+                  "id": "expectation-pending",
+                  "kind": "expectation",
+                  "status": "pending",
+                  "children": [
+                    {
+                      "id": "info-on-wait",
+                      "kind": "info"
+                    }
+                  ]
+                },
+                {
+                  "id": "expectation-checked",
+                  "kind": "expectation",
+                  "status": "pending",
+                  "hasCheck": true,
+                  "children": [
+                    {
+                      "id": "task-check-open",
+                      "kind": "task",
+                      "status": "todo",
+                      "timing": "active"
+                    }
+                  ]
+                },
+                {
+                  "id": "expectation-check-ahead",
+                  "kind": "expectation",
+                  "status": "pending",
+                  "hasCheck": true,
+                  "children": [
+                    {
+                      "id": "task-check-ahead",
+                      "kind": "task",
+                      "status": "todo",
+                      "timing": "pending"
+                    }
+                  ]
+                },
+                {
+                  "id": "expectation-released",
+                  "kind": "expectation",
+                  "status": "released"
+                },
+                {
+                  "id": "expectation-archived",
+                  "kind": "expectation",
+                  "status": "pending",
+                  "archived": true
+                },
+                {
+                  "id": "task-delegated",
+                  "kind": "task",
+                  "status": "todo",
+                  "delegated": true,
+                  "children": [
+                    {
+                      "id": "expectation-delegation",
+                      "kind": "expectation",
+                      "status": "pending"
+                    }
+                  ]
+                },
+                {
+                  "id": "task-delegated-done",
+                  "kind": "task",
+                  "status": "done",
+                  "delegated": true
+                },
+                {
+                  "id": "expectation-late",
+                  "kind": "expectation",
+                  "status": "pending",
+                  "timing": "lapsed",
+                  "tagIds": [
+                    7
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "verdicts": {
+      "id": "root",
+      "kind": "aspect",
+      "children": [
+        {
+          "id": "commitment-open-unresolved",
+          "kind": "commitment",
+          "verdict": "unresolved",
+          "timing": "active"
+        },
+        {
+          "id": "commitment-open-kept",
+          "kind": "commitment",
+          "verdict": "kept",
+          "timing": "active"
+        },
+        {
+          "id": "commitment-open-broken",
+          "kind": "commitment",
+          "verdict": "broken",
+          "timing": "active"
+        }
+      ]
+    },
     "plans": {
       "id": "root",
       "kind": "aspect",
@@ -1394,6 +1942,40 @@
                   "id": "task-inherits-now",
                   "kind": "task",
                   "status": "todo"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "plan-waits": {
+      "id": "root",
+      "kind": "aspect",
+      "children": [
+        {
+          "id": "domain-plan-waits",
+          "kind": "project",
+          "status": "active",
+          "children": [
+            {
+              "id": "task-future-waiter",
+              "kind": "task",
+              "status": "todo",
+              "planTiming": "pending",
+              "children": [
+                {
+                  "id": "expectation-wait-ahead",
+                  "kind": "expectation",
+                  "status": "pending",
+                  "hasCheck": true,
+                  "children": [
+                    {
+                      "id": "task-check-under-wait",
+                      "kind": "task",
+                      "status": "todo"
+                    }
+                  ]
                 }
               ]
             }

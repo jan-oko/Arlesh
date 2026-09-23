@@ -66,6 +66,12 @@ export const MINDMAP_ENTER_BINDINGS: readonly Binding<MindmapEnterContext>[] = [
         c.onCycleVerdict(c.selectedNodeId);
         return;
       }
+      // A wait releases (or un-releases) on Enter, the way a Task's status cycles. Never gated by
+      // blocking: a wait depends on nothing, so it has no blocked state to refuse.
+      if (node.kind === "expectation") {
+        c.onCycleStatus(c.selectedNodeId);
+        return;
+      }
       if ((node.kind === "goal" || node.kind === "task") && !isNodeBlocked(node)) {
         c.onCycleStatus(c.selectedNodeId);
       }

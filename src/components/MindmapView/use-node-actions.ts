@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { isDerivedWait } from "@/utils/derived-wait";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { findNode, findParent, collectAllNodeIds } from "@/utils/mindmap-tree";
@@ -230,7 +231,10 @@ export function useNodeActions({
         // One toast, both sentences: the store holds a single pending notice, so a selection that
         // trips both rules has to say both at once or say one of them into nothing.
         const messages: string[] = [];
-        if (refused.some((node) => node.virtual === true)) messages.push(t("warnings:deleteRepetitionRefused"));
+        if (refused.some((node) => node.virtual === true && !isDerivedWait(node))) {
+          messages.push(t("warnings:deleteRepetitionRefused"));
+        }
+        if (refused.some(isDerivedWait)) messages.push(t("warnings:deleteDerivedWaitRefused"));
         if (refused.some((node) => node.kind === "aspect")) messages.push(t("warnings:deleteAspectRefused"));
         showToast({ nodeId: first.id, message: messages.join(" ") });
         return;

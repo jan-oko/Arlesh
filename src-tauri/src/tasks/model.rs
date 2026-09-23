@@ -1,5 +1,6 @@
 //! Task and Goal resource models.
 
+use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 
 /// Identifies a task row by its primary key.
@@ -336,14 +337,14 @@ pub struct Task {
     /// ancestor; `Some` is an explicit value that replaces what would have been inherited.
     /// Independent of `delegate_to` — a task may be both.
     pub agentic: Option<bool>,
-    /// Whether doing this task starts a **wait** rather than finishing something — send the
-    /// email, order the part, kick off the build.
-    ///
-    /// A plain `bool`, deliberately unlike [`Self::agentic`]: the flag does not inherit, so there
-    /// is no third state for an unset value to mean. "Starts a wait" is a property of one concrete
-    /// action, and a subtask of an asynchronous task is usually the work you do *after* the wait.
+    /// Whether doing this task starts a **wait**. A plain flag that does not inherit: "starts a
+    /// wait" is a property of one concrete action.
     #[serde(default)]
     pub asynchronous: bool,
+    /// The task's optional **Expectation template**, kept only while it is Asynchronous.
+    /// Completing the task spawns a virtual Expectation from it; without one, nothing is spawned.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub async_template: Option<AsyncTemplate>,
     /// Relevance window (if set). A null value inherits the nearest scoped ancestor.
     pub time_scope: Option<TimeScope>,
     /// On-exit behavior; present iff `time_scope` is (inherited with the window otherwise).
@@ -420,7 +421,7 @@ pub struct Goal {
     pub beads_id: Option<String>,
 }
 
-/// Dependency reference: either a task or a goal.
+/// Dependency reference: a task, a goal, or an expectation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum Dependency {
@@ -432,6 +433,11 @@ pub enum Dependency {
     /// Depends on a goal being achieved.
     Goal {
         /// The goal being depended on.
+        id: i64,
+    },
+    /// Depends on an expectation being released.
+    Expectation {
+        /// The expectation being waited on.
         id: i64,
     },
 }
@@ -462,9 +468,13 @@ pub struct CreateTaskRequest {
     /// Initial Agentic state (defaults to Inherit, the stored NULL).
     #[serde(default)]
     pub agentic: Option<TaskAgentic>,
-    /// Whether the new task is Asynchronous (defaults to `false` — nothing arrives flagged).
+    /// `Some(true)` makes the new task Asynchronous. Nothing arrives asynchronous otherwise.
     #[serde(default)]
     pub asynchronous: Option<bool>,
+    /// The new task's Expectation template, when it is created Asynchronous with one in hand — a
+    /// duplicate carrying its source's. Dropped unless [`Self::asynchronous`] is `Some(true)`.
+    #[serde(default)]
+    pub async_template: Option<AsyncTemplate>,
 }
 
 /// Request body for updating a task.
@@ -481,12 +491,13 @@ pub struct UpdateTaskRequest {
     /// writes the NULL that puts the task back to inheriting. The three states are named rather
     /// than nested in a second `Option` — see [`TaskAgentic`] for why that shape is wrong here.
     pub agentic: Option<TaskAgentic>,
-    /// Asynchronous flag to set; `None` leaves it unchanged.
-    ///
-    /// One `Option` deep, where [`Self::agentic`] needs a named three-state enum: the column is a
-    /// plain boolean with no NULL to clear it to, so "leave alone" and "set" are the only two
-    /// things a request can say about it.
+    /// New Asynchronous flag (if provided). Turning it off removes the task's template too: a
+    /// template only exists while the flag is on.
     pub asynchronous: Option<bool>,
+    /// The Expectation template to set (None leaves it unchanged, Some(None) removes it). Dropped
+    /// when the task ends up not Asynchronous.
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    pub async_template: Option<Option<AsyncTemplate>>,
     /// Relevance window to set (None leaves unchanged, Some(None) clears it).
     #[serde(default, deserialize_with = "crate::wire::null_clears")]
     pub time_scope: Option<Option<TimeScope>>,
@@ -714,5 +725,231 @@ pub struct UpdateCommitmentRequest {
     pub is_private: Option<bool>,
 }
 
+/// A Task's **Expectation template**: what the wait its completion spawns starts out as. Optional,
+/// and only kept while the Task is Asynchronous — an asynchronous Task without one spawns nothing.
+///
+/// Thinner than an Expectation on purpose — only what a wait needs up front. No status: a status
+/// exists only once the wait does. No parent: the spawned wait hangs under its Task.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AsyncTemplate {
+    /// The spawned wait's title.
+    pub title: String,
+    /// Tags the spawned wait carries.
+    #[serde(default)]
+    pub tag_ids: Vec<i64>,
+    /// The spawned wait's Time Scope **rule**: N of a kind, counted from the day the wait begins.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub time_scope: Option<DurationSpec>,
+    /// How often to check on the spawned wait; the first check falls one interval after it begins.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub check_every: Option<DurationSpec>,
+}
+
+/// A Task's **spawned** Expectation — the virtual wait that exists while an Asynchronous Task with a
+/// template is done. Its state is an **overlay** keyed by the Task, written only when the wait
+/// itself is changed; with none written it is pending and live. Everything else the wait shows is
+/// read from the Task's template.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SpawnedWait {
+    /// The Task that spawned it.
+    pub task_id: i64,
+    /// When the Task was completed — when the wait began. `None` for a Task whose completion time
+    /// was never recorded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spawned_at: Option<NaiveDateTime>,
+    /// Pending or Released.
+    pub status: ExpectationStatus,
+    /// Live or Archived.
+    pub archival: ExpectationArchival,
+    /// When its last check was made, if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_check_at: Option<NaiveDateTime>,
+}
+
+/// Request body for changing a spawned wait: release it, take the release back, or archive it.
+#[derive(Debug, Default, Deserialize)]
+pub struct UpdateSpawnedWaitRequest {
+    /// New status (if provided).
+    pub status: Option<ExpectationStatus>,
+    /// New archival (if provided).
+    pub archival: Option<ExpectationArchival>,
+}
+
+/// Identifies an expectation row by its primary key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExpectationId(pub i64);
+
+impl From<i64> for ExpectationId {
+    fn from(value: i64) -> Self {
+        Self(value)
+    }
+}
+impl From<ExpectationId> for i64 {
+    fn from(id: ExpectationId) -> Self {
+        id.0
+    }
+}
+
+/// Where a wait stands: still being waited on, or over.
+///
+/// Two states and no third. An Expectation is not an action item, so it has no "in progress":
+/// the thing it waits on happens somewhere else, and the only event on this side is noticing that
+/// it has. **Released** is what unblocks the Tasks depending on it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExpectationStatus {
+    /// Still waited on. The default, and what blocks dependents.
+    #[default]
+    Pending,
+    /// The wait is over; dependents are free to go.
+    Released,
+}
+
+impl ExpectationStatus {
+    /// Returns the database string representation.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::Released => "released",
+        }
+    }
+
+    /// Parses the database string representation, if recognized.
+    pub fn from_db(value: &str) -> Option<Self> {
+        match value {
+            "pending" => Some(Self::Pending),
+            "released" => Some(Self::Released),
+            _ => None,
+        }
+    }
+}
+
+/// Whether an Expectation is still in play: the usual archive, **orthogonal** to its status.
+///
+/// A wait can be put away without pretending it was released — the reply that will never come —
+/// so this is its own column rather than a third status.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExpectationArchival {
+    /// In play. The default.
+    #[default]
+    Live,
+    /// Put away. Shown under All only.
+    Archived,
+}
+
+impl ExpectationArchival {
+    /// Returns the database string representation.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Live => "live",
+            Self::Archived => "archived",
+        }
+    }
+
+    /// Parses the database string representation, if recognized.
+    pub fn from_db(value: &str) -> Option<Self> {
+        match value {
+            "live" => Some(Self::Live),
+            "archived" => Some(Self::Archived),
+            _ => None,
+        }
+    }
+}
+
+/// An expectation row as returned from the database: a **wait** that Tasks can depend on.
+///
+/// It carries a Time Scope and tags, like a Task. Note what is absent, since the absences are the
+/// design: no Plan and no On-exit behaviour (a wait is not something you schedule, and it is never
+/// Missed), no beads id, no block reasons and no dependencies of its own — it depends on nothing,
+/// only Tasks depend on it. Beside its Time Scope it carries the optional **Check every**.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Expectation {
+    /// Primary key.
+    pub id: i64,
+    /// Display title.
+    pub title: String,
+    /// Type of the parent entity.
+    pub parent_type: String,
+    /// Id of the parent entity.
+    pub parent_id: i64,
+    /// Pending or Released.
+    pub status: ExpectationStatus,
+    /// Live or Archived, independently of the status.
+    pub archival: ExpectationArchival,
+    /// Relevance window, if set. Its own only: a wait's window is validated against its nearest
+    /// scoped ancestor's, but not inherited from it.
+    pub time_scope: Option<TimeScope>,
+    /// Tag domain ids attached to this expectation.
+    pub tag_ids: Vec<i64>,
+    /// How often to look in on it, if ever — a counted Duration. While it is set and the wait is
+    /// pending, a virtual "check on it" task is due at [`Self::check_starting`], and after each
+    /// check one interval after that check was made. Nothing is stored for a check but its time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub check_every: Option<DurationSpec>,
+    /// When the first check falls due; set to the moment Check every is first given, unless the
+    /// request names another.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub check_starting: Option<NaiveDateTime>,
+    /// When the last check was made, if any. The next falls due one interval after it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_check_at: Option<NaiveDateTime>,
+    /// Sort position among siblings.
+    pub position: i64,
+    /// Whether this node is private (hidden unless Private Mode is on).
+    pub is_private: bool,
+}
+
+/// Request body for creating an expectation.
+#[derive(Debug, Default, Deserialize)]
+pub struct CreateExpectationRequest {
+    /// Display title.
+    pub title: String,
+    /// Parent entity type.
+    pub parent_type: String,
+    /// Parent entity id.
+    pub parent_id: i64,
+    /// How often to check on it. Omitted, it is never checked.
+    #[serde(default)]
+    pub check_every: Option<DurationSpec>,
+    /// When the first check falls due. Omitted with a Check every, it is the moment of creation.
+    #[serde(default)]
+    pub check_starting: Option<NaiveDateTime>,
+    /// Initial relevance window. Omitted, the expectation has none.
+    #[serde(default)]
+    pub time_scope: Option<TimeScope>,
+}
+
+/// Request body for updating an expectation.
+#[derive(Debug, Default, Deserialize)]
+pub struct UpdateExpectationRequest {
+    /// New title (if provided).
+    pub title: Option<String>,
+    /// New status (if provided). Releasing is a write of `Released`; `Pending` takes it back.
+    pub status: Option<ExpectationStatus>,
+    /// New archival (if provided).
+    pub archival: Option<ExpectationArchival>,
+    /// Check every to set (None leaves unchanged, Some(None) stops checking).
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    pub check_every: Option<Option<DurationSpec>>,
+    /// When the first check falls due (None leaves unchanged). Setting a Check every with no
+    /// Starting of its own starts it now.
+    #[serde(default)]
+    pub check_starting: Option<NaiveDateTime>,
+    /// Relevance window to set (None leaves unchanged, Some(None) clears it).
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    pub time_scope: Option<Option<TimeScope>>,
+    /// New parent entity type for re-parenting (must be set together with parent_id).
+    pub parent_type: Option<String>,
+    /// New parent entity id for re-parenting (must be set together with parent_type).
+    pub parent_id: Option<i64>,
+    /// New sort position among siblings (for sibling reordering).
+    pub position: Option<i64>,
+    /// New private flag, if changing.
+    pub is_private: Option<bool>,
+}
+
 #[cfg(test)]
 mod commitment_tests;
+#[cfg(test)]
+mod expectation_tests;

@@ -2438,6 +2438,7 @@ pub async fn create_instance_child(
                     archival: None,
                     agentic: None,
                     asynchronous: None,
+                    async_template: None,
                 },
             )
             .await?
@@ -3205,6 +3206,9 @@ pub async fn convert_to_flow(
                 let dep_key = match dep {
                     Dependency::Task { id } => ("task".to_string(), id),
                     Dependency::Goal { id } => ("goal".to_string(), id),
+                    // A wait is never a flow item, so an edge onto one has nothing inside the
+                    // template to become — the same as an edge onto anything outside the subtree.
+                    Dependency::Expectation { .. } => continue,
                 };
                 if let Some((on_type, on_id)) = item_map.get(&dep_key).copied() {
                     db.flows()
@@ -3403,6 +3407,7 @@ async fn write_plan(
                         // its own, so the instance reads whatever the branch it lands in says.
                         agentic: None,
                         // And it arrives not asynchronous: a flow item has no column of its own,
+                        async_template: None,
                         // and nothing infers that doing a materialized instance starts a wait.
                         asynchronous: None,
                     },

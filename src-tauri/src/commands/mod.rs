@@ -6,6 +6,7 @@ pub mod block_reasons;
 pub mod board;
 pub mod commitments;
 pub mod domains;
+pub mod expectations;
 pub mod flows;
 pub mod header_bar;
 pub mod infos;

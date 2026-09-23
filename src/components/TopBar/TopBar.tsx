@@ -8,7 +8,7 @@ import { useDisplayStore } from "@/stores/use-display-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { useCloseToTrayStore } from "@/stores/use-close-to-tray-store";
 import { useHotkeysStore } from "@/stores/use-hotkeys-store";
-import { LIST_PRESET_VALUES, isListPreset } from "@/utils/list-filter";
+import { LIST_PRESET_VALUES, isListOnlyPreset, isListPreset } from "@/utils/list-filter";
 import type { ListPreset } from "@/utils/list-filter";
 import FilterPopover from "@/components/FilterPopover/FilterPopover";
 import FilterChips from "@/components/FilterChips/FilterChips";
@@ -16,12 +16,13 @@ import Select from "@/components/Select/Select";
 import Switch from "@/components/Switch/Switch";
 import SubtreeBreadcrumb from "./SubtreeBreadcrumb";
 import HabitCollapseSetting from "./HabitCollapseSetting";
+import CheckTaskPrefixSetting from "./CheckTaskPrefixSetting";
 import StepsZoomSetting from "./StepsZoomSetting";
 import styles from "./TopBar.module.css";
 
 const GEAR_ICON = "⚙";
 /** Unblock only makes sense — and only appears as an option — while List View is active. */
-const MINDMAP_PRESETS: readonly ListPreset[] = LIST_PRESET_VALUES.filter((p) => p !== "unblock");
+const MINDMAP_PRESETS: readonly ListPreset[] = LIST_PRESET_VALUES.filter((p) => !isListOnlyPreset(p));
 
 /** A small funnel (filter) glyph for the Filter button. */
 function FunnelIcon() {
@@ -45,6 +46,8 @@ export default function TopBar() {
   const mindmapOrientation = useViewStore((s) => s.mindmapOrientation);
   const toggleMindmapOrientation = useViewStore((s) => s.toggleMindmapOrientation);
   const asynchronousFirst = useDisplayStore((s) => s.asynchronousFirst);
+  const listBands = useDisplayStore((s) => s.listBands);
+  const toggleListBands = useDisplayStore((s) => s.toggleListBands);
   const toggleAsynchronousFirst = useDisplayStore((s) => s.toggleAsynchronousFirst);
   const listPreset = useListFilterStore((s) => s.filter.preset);
   const setListPreset = useListFilterStore((s) => s.setPreset);
@@ -64,13 +67,13 @@ export default function TopBar() {
     steps: t("common:viewSteps"),
   };
 
-  const activePreset: ListPreset = view === "list" && listPreset === "unblock" ? "unblock" : statusMode;
+  const activePreset: ListPreset = view === "list" && isListOnlyPreset(listPreset) ? listPreset : statusMode;
   const presetOptions = view === "list" ? LIST_PRESET_VALUES : MINDMAP_PRESETS;
 
   function selectPreset(value: string) {
     if (!isListPreset(value)) return;
-    if (value === "unblock") {
-      setListPreset("unblock");
+    if (value === "unblock" || value === "expectations") {
+      setListPreset(value);
       return;
     }
     setStatusMode(value);
@@ -122,6 +125,17 @@ export default function TopBar() {
                       />
                     </div>
                   )}
+                  {/* Where Commitments and Expectations sit in the list — bands above the rows, or
+                      rows among them. A List View matter, so gated to it. */}
+                  {view === "list" && (
+                    <div className={styles.settingRow}>
+                      <Switch checked={listBands} onChange={toggleListBands} label={t("common:listBands")} />
+                    </div>
+                  )}
+                  {/* How a wait's check task is titled — the same in every view, so ungated. */}
+                  <div className={styles.settingRow}>
+                    <CheckTaskPrefixSetting />
+                  </div>
                   {/* The Plan View's own shape switches are deliberately absent: they live in a
                       kebab menu on each of its two panes, beside the half they act on. A pane's
                       options belong to the pane, not to a popover three rows up that has to say

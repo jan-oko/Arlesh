@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
+import { dayStartInstant } from "@/utils/scope-calendar";
 import { useTranslation } from "react-i18next";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { TaskSaveData } from "@/components/TaskEditorModal/TaskEditorModal";
 import type { GoalSaveData } from "@/components/GoalEditorModal/GoalEditorModal";
 import type { CommitmentSaveData } from "@/components/CommitmentEditorModal/CommitmentEditorModal";
+import type { ExpectationSaveData } from "@/components/ExpectationEditorModal/ExpectationEditorModal";
+import { addTagToExpectation, removeTagFromExpectation, updateExpectation } from "@/api/expectations";
+import { EXPECTATION_ARCHIVAL } from "@/api/expectation-status";
 import type { ProjectSaveData } from "@/components/ProjectEditorModal/ProjectEditorModal";
 import type { InfoSaveData } from "@/components/InfoEditorModal/InfoEditorModal";
 import { updateInfo } from "@/api/infos";
@@ -37,6 +41,7 @@ import { addTagToGoal, removeTagFromGoal, updateGoal } from "@/api/goals";
 import { addTagToCommitment, removeTagFromCommitment, updateCommitment } from "@/api/commitments";
 import type { TimeScope } from "@/api/time-scope";
 import { findNode } from "@/utils/mindmap-tree";
+import { editorOwnerOf, isUneditableCheck } from "@/utils/editor-owner";
 import { rowIdOf } from "@/utils/node-identity";
 import { DOMAIN_SUBTYPE } from "@/api/domains";
 import { TASK_STATUS } from "@/utils/status-mapping";
@@ -44,6 +49,8 @@ import { TASK_STATUS } from "@/utils/status-mapping";
 export interface EditorModalState {
   nodeId: string;
   node: MindmapNode;
+  /** Opens a Task's editor at its Expectation section, Asynchronous switched on — `Shift+W`. */
+  focus?: "asyncTemplate";
 }
 
 /** A pending clamp-or-cancel prompt: the descendants a narrowed scope would orphan. */
@@ -91,6 +98,7 @@ export interface NodeEditorHandles {
   onTaskSave: (data: TaskSaveData) => Promise<void>;
   onGoalSave: (data: GoalSaveData) => Promise<void>;
   onCommitmentSave: (data: CommitmentSaveData) => Promise<void>;
+  onExpectationSave: (data: ExpectationSaveData) => Promise<void>;
   onSimpleSave: (title: string, isPrivate: boolean) => Promise<void>;
   onProjectSave: (data: ProjectSaveData) => Promise<void>;
   onInfoSave: (data: InfoSaveData) => Promise<void>;
@@ -167,10 +175,25 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
       // A virtual Habit instance isn't backed by a real Task/Goal row — its Time Scope is derived
       // from the flow's Duration kind and the item's Cycle, not independently editable — and
       // it has no `rowId` for `onTaskSave`/`onGoalSave` to write to (`rowIdOf` would throw). It stays read-only here; only `onStatusClick` may mutate it.
-      if (node === undefined || node.kind === "aspect" || node.habitItem !== undefined) return;
-      setEditorModal({ nodeId, node });
+      if (node === undefined || node.kind === "aspect") return;
+      // Refused out loud, not by an inert key: `E` on a commitment Habit's iteration in the List
+      // View looked like a dead key (Arlesh-bzn), because this guard returned without a word.
+      if (node.habitItem !== undefined) {
+        showToast({ nodeId, message: t("editRepetitionRefused") });
+        return;
+      }
+      if (isUneditableCheck(node)) {
+        showToast({ nodeId, message: t("editCheckTaskRefused") });
+        return;
+      }
+      const owner = editorOwnerOf(tree, node);
+      if (owner === undefined) {
+        showToast({ nodeId, message: t("editOwnerMissing") });
+        return;
+      }
+      setEditorModal({ nodeId: owner.id, node: owner });
     },
-    [tree],
+    [tree, showToast, t],
   );
 
   const onTaskSave = useCallback(
@@ -191,6 +214,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
         archival: data.archival,
         agentic: data.agentic,
         asynchronous: data.asynchronous,
+        async_template: data.asyncTemplate,
         is_private: data.isPrivate,
         ...(data.delegate !== undefined ? { delegate_to: data.delegate } : {}),
       });
@@ -239,6 +263,28 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
       for (const tagId of tagsRemoved) await removeTagFromGoal(dbId, tagId);
       await reload();
       setEditorModal(null);
+    },
+    [editorModal, reload],
+  );
+
+  const onExpectationSave = useCallback(
+    async (data: ExpectationSaveData) => {
+      if (editorModal === null) return;
+      const dbId = rowIdOf(editorModal.node);
+      await updateExpectation(dbId, {
+        title: data.title,
+        status: data.status,
+        check_every: data.checkEvery,
+        ...(data.checkStartingDate !== null ? { check_starting: dayStartInstant(data.checkStartingDate) } : {}),
+        time_scope: data.timeScope,
+        archival: data.archived ? EXPECTATION_ARCHIVAL.ARCHIVED : EXPECTATION_ARCHIVAL.LIVE,
+        is_private: data.isPrivate,
+      });
+      const before = editorModal.node.tagIds;
+      for (const tagId of data.tagIds.filter((id) => !before.includes(id))) await addTagToExpectation(dbId, tagId);
+      for (const tagId of before.filter((id) => !data.tagIds.includes(id))) await removeTagFromExpectation(dbId, tagId);
+      setEditorModal(null);
+      await reload();
     },
     [editorModal, reload],
   );
@@ -420,7 +466,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
 
   return {
     editorModal, setEditorModal, allTags, domainNames, availableForDep, onDoubleClick,
-    onTaskSave, onGoalSave, onCommitmentSave, onSimpleSave, onProjectSave, onInfoSave,
+    onTaskSave, onGoalSave, onCommitmentSave, onExpectationSave, onSimpleSave, onProjectSave, onInfoSave,
     onClearBeadsId,
     onFlowSave, onFlowItemSave,
     checkScopeClamp, confirmScopeClamp, scopeClampRequest, resolveScopeClamp,

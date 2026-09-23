@@ -5,6 +5,7 @@ import { STEPS_DELETE_BINDINGS, type StepsDeleteContext } from "./steps/delete";
 import { STEPS_DESCEND_BINDINGS, type StepsDescendContext } from "./steps/descend";
 import { STEPS_DESELECT_BINDINGS, type StepsDeselectContext } from "./steps/deselect";
 import { STEPS_EDITOR_BINDINGS, type StepsEditorContext } from "./steps/editor";
+import { STEPS_EXPECTATION_BINDINGS, type StepsExpectationContext } from "./steps/expectation";
 import { STEPS_FLAGS_BINDINGS, type StepsFlagsContext } from "./steps/flags";
 import { STEPS_FULLSCREEN_BINDINGS, type StepsFullscreenContext } from "./steps/fullscreen";
 import { STEPS_HISTORY_BINDINGS, type StepsHistoryContext } from "./steps/history";
@@ -29,6 +30,7 @@ export interface StepsContext extends
   StepsDescendContext,
   StepsDeselectContext,
   StepsEditorContext,
+  StepsExpectationContext,
   StepsFlagsContext,
   StepsFullscreenContext,
   StepsHistoryContext,
@@ -59,6 +61,7 @@ export const STEPS_BINDINGS: readonly Binding<StepsContext>[] = [
   ...STEPS_ZOOM_BINDINGS,
   ...STEPS_STATUS_BINDINGS,
   ...STEPS_FLAGS_BINDINGS,
+  ...STEPS_EXPECTATION_BINDINGS,
   ...STEPS_EDITOR_BINDINGS,
   ...STEPS_CREATE_BINDINGS,
   ...STEPS_DELETE_BINDINGS,

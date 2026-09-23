@@ -9,6 +9,7 @@ import type { MindmapNode } from "@/utils/tree-layout";
 import { rowIdOf } from "@/utils/node-identity";
 import { useOccurrenceCompletion } from "@/hooks/use-occurrence-completion";
 import type { OccurrencePrompt } from "@/hooks/use-occurrence-completion";
+import { useExpectationActions } from "@/hooks/use-expectation-actions";
 
 const LOG_PREFIX = "[arlesh]";
 
@@ -52,11 +53,16 @@ export function useStatusCycle({ findNode, reload, showToast }: Options): Status
   const { t } = useTranslation(["warnings"]);
   const { prompt: occurrencePrompt, setOccurrenceStatus, confirm: confirmOccurrence,
     cancel: cancelOccurrence } = useOccurrenceCompletion(reload);
+  const { completeCheck, toggleRelease } = useExpectationActions({ findNode, reload, showToast });
 
   const cycleStatus = useCallback(
     (nodeId: string) => {
       const node = findNode(nodeId);
       if (node === undefined) return;
+      // A wait's glyph releases it (or takes the release back); its check task's completes the
+      // check, which records when and stores nothing else.
+      if (node.expectationCheck !== undefined) { completeCheck(nodeId); return; }
+      if (node.kind === "expectation") { toggleRelease(nodeId); return; }
       // A virtual Habit instance (an item, or the iteration root `flow_root`) advances just itself:
       // a goal toggles achieved; a task cycles todo → in_progress → done. `null` clears the
       // Modification (back to the base status). A goal's "achieved" is stored canonically as `done`.
@@ -101,7 +107,7 @@ export function useStatusCycle({ findNode, reload, showToast }: Options): Status
           showToast({ nodeId, message: t("warnings:statusChangeFailed", { message: getErrorMessage(err) }) });
         });
     },
-    [findNode, reload, setOccurrenceStatus, showToast, t],
+    [findNode, reload, setOccurrenceStatus, showToast, t, completeCheck, toggleRelease],
   );
 
   return { cycleStatus, occurrencePrompt, confirmOccurrence, cancelOccurrence };

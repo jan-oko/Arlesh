@@ -33,6 +33,7 @@
   "createInfoChild": "Create an Info child",
   "createFlowChild": "Create a Flow child",
   "createCommitmentChild": "Create a Commitment child",
+  "createExpectationChild": "Create an Expectation child",
   "createSibling": "Create a sibling cell",
   "insertParent": "Insert a parent above",
   "focusRoot": "Focus the current root (nothing selected)",
@@ -65,11 +66,13 @@
   "toggleFullscreen": "Show the board alone (hide the tabs and top bar)",
   "statusBacklog": "Status preset: Backlog",
   "statusUnblock": "Status preset: Unblock (blocked tasks only, List View)",
+  "statusExpectations": "Status preset: Expectations (pending waits only, List View)",
   "toggleBacklog": "Put in / take out of the backlog",
   "toggleAgentic": "Mark Agentic / Not agentic",
   "toggleAsynchronous": "Mark Asynchronous / Not asynchronous",
   "cycleVerdict": "Cycle the selected commitment's verdict (Unresolved → Kept → Broken)",
   "markBroken": "Mark the selected commitment broken (again to clear it)",
+  "toggleRelease": "Release the selected expectation (again to take it back)",
   "createChildRow": "Create a child of the selected row",
   "createSiblingRow": "Create a sibling of the selected row",
   "undo": "Undo the last change",
@@ -94,5 +97,6 @@
   "stepsZoomIn": "Larger cards (fewer to a page)",
   "stepsZoomOut": "Smaller cards (more to a page)",
   "stepsCreateChild": "Create a child of the selected card (on a card: step into it)",
-  "stepsCreateSibling": "Create a card beside the selected one, on this Step"
+  "stepsCreateSibling": "Create a card beside the selected one, on this Step",
+  "bindWait": "Open the selected task's editor at its Expectation section, with Asynchronous on"
 }

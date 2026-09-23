@@ -25,6 +25,7 @@ fn stored_task() -> Task {
         delegate_to: Some(Delegate::Person { id: 3 }),
         agentic: None,
         asynchronous: false,
+        async_template: None,
         time_scope: Some(TimeScope {
             start_id: 10,
             end_id: 11,
@@ -215,16 +216,25 @@ fn delegating_to_the_agent_replaces_a_person_delegate() {
     assert_eq!(write.delegate_to, Some(Delegate::Agent));
 }
 
-/// The stored row, flagged as work that starts a wait.
+/// The stored row, Asynchronous with a template of its own.
 fn asynchronous_task() -> Task {
     Task {
         asynchronous: true,
+        async_template: Some(AsyncTemplate {
+            title: "Reviewer replies".to_string(),
+            tag_ids: vec![4],
+            time_scope: None,
+            check_every: Some(DurationSpec {
+                n: 2,
+                kind: "day".to_string(),
+            }),
+        }),
         ..stored_task()
     }
 }
 
 #[test]
-fn an_update_that_says_nothing_about_asynchronous_leaves_the_flag_alone() {
+fn an_update_that_says_nothing_about_asynchronous_leaves_the_template_alone() {
     let write = TaskWrite::merge(
         asynchronous_task(),
         UpdateTaskRequest {
@@ -233,6 +243,7 @@ fn an_update_that_says_nothing_about_asynchronous_leaves_the_flag_alone() {
         },
     );
     assert!(write.asynchronous);
+    assert_eq!(write.async_template, asynchronous_task().async_template);
 }
 
 #[test]
@@ -265,12 +276,73 @@ fn each_asynchronous_answer_writes_itself() {
 }
 
 #[test]
+fn the_toggle_turns_the_flag_on_without_a_template_and_off_taking_the_template_with_it() {
+    let on = TaskWrite::merge(
+        stored_task(),
+        UpdateTaskRequest {
+            asynchronous: Some(true),
+            ..Default::default()
+        },
+    );
+    assert!(on.asynchronous);
+    assert!(on.async_template.is_none());
+    let keep = TaskWrite::merge(
+        asynchronous_task(),
+        UpdateTaskRequest {
+            asynchronous: Some(true),
+            ..Default::default()
+        },
+    );
+    assert_eq!(keep.async_template, asynchronous_task().async_template);
+    let off = TaskWrite::merge(
+        asynchronous_task(),
+        UpdateTaskRequest {
+            asynchronous: Some(false),
+            ..Default::default()
+        },
+    );
+    assert!(!off.asynchronous);
+    assert!(off.async_template.is_none());
+}
+
+#[test]
+fn a_template_is_dropped_unless_the_task_ends_up_asynchronous() {
+    let template = asynchronous_task().async_template;
+    let dropped = TaskWrite::merge(
+        stored_task(),
+        UpdateTaskRequest {
+            async_template: Some(template.clone()),
+            ..Default::default()
+        },
+    );
+    assert!(dropped.async_template.is_none());
+    let kept = TaskWrite::merge(
+        stored_task(),
+        UpdateTaskRequest {
+            asynchronous: Some(true),
+            async_template: Some(template.clone()),
+            ..Default::default()
+        },
+    );
+    assert_eq!(kept.async_template, template);
+    let removed = TaskWrite::merge(
+        asynchronous_task(),
+        UpdateTaskRequest {
+            async_template: Some(None),
+            ..Default::default()
+        },
+    );
+    assert!(removed.asynchronous && removed.async_template.is_none());
+}
+
+#[test]
 fn asynchronous_and_agentic_are_merged_independently() {
     // Two unrelated questions about one Task — whether the work suits an agent, and whether
     // doing it starts a wait. Setting one must never disturb the other.
     let write = TaskWrite::merge(
         Task {
             asynchronous: true,
+            async_template: asynchronous_task().async_template,
             ..agentic_task()
         },
         UpdateTaskRequest {
@@ -279,7 +351,7 @@ fn asynchronous_and_agentic_are_merged_independently() {
         },
     );
     assert_eq!(write.agentic, Some(false));
-    assert!(write.asynchronous);
+    assert!(write.async_template.is_some());
 }
 
 #[test]
@@ -291,7 +363,7 @@ fn an_empty_update_request_writes_the_stored_row_back_unchanged() {
     assert_eq!(write.title, "Stored");
     assert_eq!(write.delegate_to, Some(Delegate::Person { id: 3 }));
     assert_eq!(write.agentic, None);
-    assert!(!write.asynchronous);
+    assert!(!write.asynchronous && write.async_template.is_none());
     assert_eq!(write.position, 100);
     assert!(!write.is_private);
 }

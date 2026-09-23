@@ -57,6 +57,22 @@ interface DisplayStore {
   planSubscopeSplit: boolean;
   togglePlanSubscopeSplit: () => void;
   /**
+   * Whether the List View draws Commitments and Expectations in **bands** above the task rows
+   * (on, the default — the shape the Commitments band already had) or as **ordinary rows** among
+   * them, at their place in the tree. One switch for both kinds: they are the two non-task kinds
+   * the list shows, and a list mixing the two shapes would read as two different lists. Either way
+   * a row looks and works the same; only where it sits changes.
+   */
+  listBands: boolean;
+  toggleListBands: () => void;
+  /**
+   * What a wait's virtual **check task** is titled with, before the wait's own title —
+   * `{prefix}{title}`. `null` is the translated default ("Check: "); an empty string is no prefix
+   * at all, which is a choice rather than an unset value.
+   */
+  checkTaskPrefix: string | null;
+  setCheckTaskPrefix: (prefix: string | null) => void;
+  /**
    * Whether a Day's **Premorning** band is drawn as a bucket of the split.
    *
    * **Off by default**: 02:00–06:00 is not where work gets planned, and a bucket nobody fills is a
@@ -109,6 +125,10 @@ export const useDisplayStore = create<DisplayStore>()(
         set((s) => ({ planCandidatesParentOnly: !s.planCandidatesParentOnly })),
       planSubscopeSplit: false,
       togglePlanSubscopeSplit: () => set((s) => ({ planSubscopeSplit: !s.planSubscopeSplit })),
+      listBands: true,
+      toggleListBands: () => set((s) => ({ listBands: !s.listBands })),
+      checkTaskPrefix: null,
+      setCheckTaskPrefix: (prefix) => set({ checkTaskPrefix: prefix }),
       planIncludePremorning: false,
       togglePlanIncludePremorning: () =>
         set((s) => ({ planIncludePremorning: !s.planIncludePremorning })),

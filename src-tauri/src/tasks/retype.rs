@@ -17,8 +17,9 @@ use serde::{Deserialize, Serialize};
 
 use super::model::{
     CommitmentId, CreateCommitmentRequest, CreateGoalRequest, CreateTaskRequest, Delegate,
-    DurationSpec, GoalId, GoalStatus, OnScopeExit, TaskAgentic, TaskArchival, TaskId, TaskStatus,
-    TimeScope, UpdateCommitmentRequest, UpdateGoalRequest, UpdateTaskRequest, Verdict,
+    DurationSpec, ExpectationId, GoalId, GoalStatus, OnScopeExit, TaskAgentic, TaskArchival,
+    TaskId, TaskStatus, TimeScope, UpdateCommitmentRequest, UpdateExpectationRequest,
+    UpdateGoalRequest, UpdateTaskRequest, Verdict,
 };
 use crate::database::session::{Db, SessionMode, Transactional};
 use crate::domains::error::DomainError;
@@ -104,13 +105,17 @@ impl RetypeKind {
                 ChildKind::Goal
                     | ChildKind::Task
                     | ChildKind::Commitment
+                    | ChildKind::Expectation
                     | ChildKind::Info
                     | ChildKind::Flow
             ),
             Self::Task => {
                 matches!(
                     child,
-                    ChildKind::Task | ChildKind::Commitment | ChildKind::Info
+                    ChildKind::Task
+                        | ChildKind::Commitment
+                        | ChildKind::Expectation
+                        | ChildKind::Info
                 )
             }
             // The supporting steps under a rule ("phone on charger"), and the finer-grained
@@ -119,7 +124,10 @@ impl RetypeKind {
             Self::Commitment => {
                 matches!(
                     child,
-                    ChildKind::Task | ChildKind::Commitment | ChildKind::Info
+                    ChildKind::Task
+                        | ChildKind::Commitment
+                        | ChildKind::Expectation
+                        | ChildKind::Info
                 )
             }
             // Mirrors `ALLOWED_CHILD_KINDS.info` in `src/utils/node-meta.ts`: an info nests only
@@ -151,6 +159,9 @@ pub enum ChildKind {
     Task,
     /// A commitment child.
     Commitment,
+    /// An expectation child — a wait. Not retypeable itself, but it hangs anywhere a Task can, so
+    /// a retype has to carry it, strand it or delete it like any other child.
+    Expectation,
     /// A domain child.
     Domain,
     /// A project child.
@@ -170,6 +181,7 @@ impl ChildKind {
             Self::Goal => "goal",
             Self::Task => "task",
             Self::Commitment => "commitment",
+            Self::Expectation => "expectation",
             Self::Domain => "domain",
             Self::Project => "project",
             Self::Tag => "tag",
@@ -890,6 +902,8 @@ enum ParentCategory {
     Task,
     /// A row in `commitments`.
     Commitment,
+    /// A row in `expectations` — which holds nothing but notes, so only an Info accepts it.
+    Expectation,
     /// A row in `infos`.
     Info,
 }
@@ -901,6 +915,7 @@ fn category_of(kind: &str) -> ParentCategory {
         "goal" => ParentCategory::Goal,
         "task" => ParentCategory::Task,
         "commitment" => ParentCategory::Commitment,
+        "expectation" => ParentCategory::Expectation,
         "info" => ParentCategory::Info,
         _ => ParentCategory::DomainsTable,
     }
@@ -1025,6 +1040,10 @@ async fn next_parent_of<M: SessionMode>(
             let commitment = db.commitments().get(CommitmentId(id)).await?;
             Some((commitment.parent_type, commitment.parent_id))
         }
+        "expectation" => {
+            let expectation = db.expectations().get(ExpectationId(id)).await?;
+            Some((expectation.parent_type, expectation.parent_id))
+        }
         "info" => {
             let info = db.infos().get(InfoId(id)).await?;
             Some((info.parent_type, info.parent_id))
@@ -1043,6 +1062,7 @@ async fn fetch_title<M: SessionMode>(
         "goal" => db.goals().get(GoalId(id)).await?.title,
         "task" => db.tasks().get(TaskId(id)).await?.title,
         "commitment" => db.commitments().get(CommitmentId(id)).await?.title,
+        "expectation" => db.expectations().get(ExpectationId(id)).await?.title,
         "info" => db.infos().get(InfoId(id)).await?.body,
         _ => db.domains().get(DomainId(id)).await?.title,
     })
@@ -1257,6 +1277,7 @@ async fn create_node(
                     // starts out not asynchronous, and a flag lost on the way out is named in the
                     // plan before any of this runs.
                     asynchronous: carried.asynchronous,
+                    async_template: None,
                 },
             )
             .await?;
@@ -1503,6 +1524,18 @@ async fn reparent(
             )
             .await?;
         }
+        ChildKind::Expectation => {
+            super::update_expectation(
+                db,
+                ExpectationId(child.id),
+                UpdateExpectationRequest {
+                    parent_type: Some(goal_task_parent_type(&destination.kind).to_string()),
+                    parent_id: Some(parent_row_id(destination)?),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        }
         ChildKind::Info => {
             db.infos()
                 .update(
@@ -1548,6 +1581,7 @@ async fn delete_child(db: &mut Db<Transactional>, child: &ChildNode) -> Result<(
         ChildKind::Goal => super::delete_goal(db, GoalId(child.id)).await?,
         ChildKind::Task => super::delete_task(db, TaskId(child.id)).await?,
         ChildKind::Commitment => super::delete_commitment(db, CommitmentId(child.id)).await?,
+        ChildKind::Expectation => super::delete_expectation(db, ExpectationId(child.id)).await?,
         ChildKind::Info => db.infos().delete(InfoId(child.id)).await?,
         ChildKind::Flow => crate::flows::delete_flow(db, FlowId(child.id)).await?,
         // `domains.parent_id` has no `ON DELETE`, so a domain that still has children of its own
@@ -1812,6 +1846,14 @@ async fn read_children<M: SessionMode>(
                 kind: ChildKind::Commitment,
                 id: commitment_id,
                 title: commitment.title,
+            });
+        }
+        for expectation_id in db.expectations().child_ids(parent_type, id).await? {
+            let expectation = db.expectations().get(ExpectationId(expectation_id)).await?;
+            children.push(ChildNode {
+                kind: ChildKind::Expectation,
+                id: expectation_id,
+                title: expectation.title,
             });
         }
     }

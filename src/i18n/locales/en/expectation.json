@@ -1,0 +1,25 @@
+{
+  "delegationWaitTitle": "“{{title}}” done by its delegate",
+  "editHeading": "Edit expectation",
+  "newHeading": "New expectation",
+  "archived": "Archived",
+  "status": {
+    "pending": "Pending",
+    "released": "Released"
+  },
+  "actionFailed": "Couldn't change the expectation: {{message}}",
+  "delegationWaitReleasedByTask": "This wait is released when its delegated task is done — it can't be released by hand.",
+  "bindNotATask": "Only a Task can be made asynchronous.",
+  "createRefused": "An Expectation can't hang here.",
+  "fieldCheckEvery": "Check every",
+  "checkEveryNone": "Never",
+  "fieldCheckStarting": "Starting",
+  "templateTitle": "Wait title",
+  "templateTimeScope": "Time Scope",
+  "templateTimeScopeNone": "None",
+  "templateDefaultTitle": "Waiting on {{title}}",
+  "spawnedNotStored": "This wait was spawned by its task — edit the task's template instead.",
+  "templateSection": "Expectation",
+  "checkTaskPrefixDefault": "Check: ",
+  "checkStartingNow": "From when it is saved"
+}

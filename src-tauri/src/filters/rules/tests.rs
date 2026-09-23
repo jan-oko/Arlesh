@@ -161,26 +161,110 @@ fn a_commitment_answers_its_own_branch_of_the_rules() {
 }
 
 #[test]
-fn plan_alone_shows_a_broken_commitment_whose_window_is_still_open() {
+fn plan_start_and_do_hide_a_broken_commitment_even_while_its_window_is_open() {
+    // A Broken verdict is an answer, like Kept: Plan no longer keeps it on screen until the
+    // window closes (ruled 2026-09-23).
     let open = commitment(Verdict::Broken, Timing::Active);
-    let closed = commitment(Verdict::Broken, Timing::Lapsed);
+    for preset in [Preset::Plan, Preset::Start, Preset::Do, Preset::Backlog] {
+        assert!(!passes_commitment_preset(
+            &open,
+            &BoardFilter::preset(preset)
+        ));
+    }
     assert!(passes_commitment_preset(
         &open,
-        &BoardFilter::preset(Preset::Plan)
+        &BoardFilter::preset(Preset::All)
     ));
-    assert!(!passes_commitment_preset(
-        &closed,
-        &BoardFilter::preset(Preset::Plan)
+}
+
+fn expectation(status: &str) -> NodeFacts {
+    let mut node = NodeFacts::new("expectation-1", NodeKind::Expectation);
+    node.status = Some(status.to_string());
+    node
+}
+
+#[test]
+fn a_pending_expectation_shows_under_all_and_plan_and_under_start_only_without_checks() {
+    let bare = expectation("pending");
+    let mut checked = expectation("pending");
+    checked.has_check = true;
+    for (preset, bare_shows, checked_shows) in [
+        (Preset::All, true, true),
+        (Preset::Plan, true, true),
+        (Preset::Start, true, false),
+        (Preset::Do, false, false),
+        (Preset::Backlog, false, false),
+    ] {
+        let filter = BoardFilter::preset(preset);
+        assert_eq!(
+            passes_expectation_preset(&bare, &filter),
+            bare_shows,
+            "{preset:?}"
+        );
+        assert_eq!(
+            passes_expectation_preset(&checked, &filter),
+            checked_shows,
+            "{preset:?}"
+        );
+    }
+}
+
+#[test]
+fn a_released_or_archived_expectation_shows_under_all_only() {
+    let released = expectation("released");
+    let mut archived = expectation("pending");
+    archived.archived = true;
+    for node in [&released, &archived] {
+        assert!(passes_expectation_preset(
+            node,
+            &BoardFilter::preset(Preset::All)
+        ));
+        assert!(!passes_expectation_preset(
+            node,
+            &BoardFilter::preset(Preset::Plan)
+        ));
+        assert!(!passes_expectation_preset(
+            node,
+            &BoardFilter::preset(Preset::Start)
+        ));
+    }
+    // The Archived pill's Include still force-shows the archived one, through `passes_status`.
+    let include = BoardFilter {
+        archived: OverrideMode::Include,
+        ..BoardFilter::preset(Preset::Plan)
+    };
+    assert!(passes_status(&archived, &include, UNSET_STATUS, false));
+    assert!(!passes_status(&released, &include, UNSET_STATUS, false));
+}
+
+#[test]
+fn a_delegated_task_reads_as_archived_under_plan_and_start_but_not_do() {
+    let mut delegated = task("in_progress");
+    delegated.delegated = true;
+    assert!(is_archived(&delegated));
+    assert!(!passes_status(
+        &delegated,
+        &BoardFilter::preset(Preset::Plan),
+        UNSET_STATUS,
+        false
     ));
-    // The carve-out mirrors no Task rule, and no other preset repeats it.
-    assert!(!passes_commitment_preset(
-        &open,
-        &BoardFilter::preset(Preset::Start)
+    assert!(!passes_status(
+        &delegated,
+        &BoardFilter::preset(Preset::Start),
+        UNSET_STATUS,
+        false
     ));
-    assert!(!passes_commitment_preset(
-        &open,
-        &BoardFilter::preset(Preset::Do)
+    assert!(passes_status(
+        &delegated,
+        &BoardFilter::preset(Preset::Do),
+        UNSET_STATUS,
+        false
     ));
+    let exclude = BoardFilter {
+        archived: OverrideMode::Exclude,
+        ..BoardFilter::preset(Preset::All)
+    };
+    assert!(type_hard_hidden(&delegated, &exclude));
 }
 
 #[test]

@@ -30,6 +30,7 @@ export type StepFieldKind =
   | "onScopeExit"
   | "plan"
   | "verdictWindow"
+  | "checkEvery"
   | "blockedBy"
   | "details"
   | "knowledgeBase"
@@ -62,6 +63,10 @@ function fieldsForKind(node: MindmapNode): readonly StepFieldKind[] {
     // drawn anywhere, so that stays.
     case "commitment":
       return ["verdictWindow", "timeScope", "plan"];
+    // No Status: the ring is the status — open while pending, solid once released. Check every
+    // is drawn nowhere else.
+    case "expectation":
+      return ["timeScope", "checkEvery"];
     case "info":
       return ["details"];
     // A Project's status *is* a field: no icon draws it, and no badge carries it.
@@ -98,6 +103,8 @@ function hasValue(node: MindmapNode, field: StepFieldKind): boolean {
       return node.plan != null;
     case "verdictWindow":
       return node.verdictWindow != null;
+    case "checkEvery":
+      return node.checkEvery != null;
     case "blockedBy":
       return (node.blockReasons?.length ?? 0) + (node.virtualBlockers?.length ?? 0) > 0;
     case "details":

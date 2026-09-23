@@ -125,6 +125,9 @@ function listData(overrides: Partial<ReturnType<typeof useListData>> = {}) {
     tree: n("root", "domain"),
     rows: [row()],
     commitmentRows: [],
+    expectationRows: [],
+    listRoot: n("root", "domain"),
+    toggleRelease: vi.fn(),
     allTasksAndGoals: [],
     isLoading: false,
     error: null,
@@ -1045,47 +1048,34 @@ describe("ListView — the commitments section", () => {
     expect(screen.queryByRole("region", { name: "listView:commitmentsHeading" })).not.toBeInTheDocument();
   });
 
-  it("records Kept when the tick is clicked", () => {
-    mockUseListData.mockReturnValue(listData({ commitmentRows: [commitmentRow()], rows: [], tree: treeWith(n("commitment-1", "commitment", { verdict: "unresolved" })) }));
+  it.each([
+    ["unresolved", "kept"],
+    ["kept", "broken"],
+    ["broken", "unresolved"],
+  ] as const)("cycles the verdict from %s to %s when the row's status control is clicked", (current, next) => {
+    // One control, the task row's own, rather than a tick and a cross: the user asked for a
+    // Commitment row to work like every other row.
+    const node = n("commitment-1", "commitment", { verdict: current });
+    mockUseListData.mockReturnValue(listData({ commitmentRows: [commitmentRow({ node })], rows: [], tree: treeWith(node) }));
     render(<ListViewInApp />);
 
-    fireEvent.click(screen.getByRole("button", { name: "markKept" }));
+    fireEvent.click(screen.getByRole("button", { name: "cycleVerdict" }));
+    expect(updateCommitment).toHaveBeenCalledWith(1, { verdict: next });
+  });
+
+  it("draws a Commitment as a row among the tasks, with the same control, when bands are off", () => {
+    useDisplayStore.setState({ listBands: false });
+    const node = n("commitment-1", "commitment", { verdict: "unresolved" });
+    mockUseListData.mockReturnValue(listData({
+      commitmentRows: [commitmentRow({ node })], rows: [row()],
+      tree: treeWith(node, n("task-1", "task")), listRoot: treeWith(node, n("task-1", "task")),
+    }));
+    render(<ListViewInApp />);
+
+    expect(screen.queryByRole("region", { name: "listView:commitmentsHeading" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "cycleVerdict" }));
     expect(updateCommitment).toHaveBeenCalledWith(1, { verdict: "kept" });
-  });
-
-  it("records Broken when the cross is clicked", () => {
-    mockUseListData.mockReturnValue(listData({ commitmentRows: [commitmentRow()], rows: [], tree: treeWith(n("commitment-1", "commitment", { verdict: "unresolved" })) }));
-    render(<ListViewInApp />);
-
-    fireEvent.click(screen.getByRole("button", { name: "markBroken" }));
-    expect(updateCommitment).toHaveBeenCalledWith(1, { verdict: "broken" });
-  });
-
-  it("clears the verdict when the control that already reads it is pressed again", () => {
-    // A misclick has to be recoverable, and the way back is the same control.
-    mockUseListData.mockReturnValue(listData({
-      commitmentRows: [commitmentRow({ node: n("commitment-1", "commitment", { verdict: "kept" }) })],
-      rows: [],
-      tree: treeWith(n("commitment-1", "commitment", { verdict: "kept" })),
-    }));
-    render(<ListViewInApp />);
-
-    fireEvent.click(screen.getByRole("button", { name: "clearVerdict" }));
-    expect(updateCommitment).toHaveBeenCalledWith(1, { verdict: "unresolved" });
-  });
-
-  it("never moves straight from one verdict to the other", () => {
-    // Pressing the cross on a kept commitment records Broken; it does not clear first, and
-    // nothing ever cycles Kept → Broken by repetition.
-    mockUseListData.mockReturnValue(listData({
-      commitmentRows: [commitmentRow({ node: n("commitment-1", "commitment", { verdict: "kept" }) })],
-      rows: [],
-      tree: treeWith(n("commitment-1", "commitment", { verdict: "kept" })),
-    }));
-    render(<ListViewInApp />);
-
-    fireEvent.click(screen.getByRole("button", { name: "markBroken" }));
-    expect(updateCommitment).toHaveBeenCalledWith(1, { verdict: "broken" });
+    useDisplayStore.setState({ listBands: true });
   });
 
   /** Selects the one commitment row and presses a key on it. */
@@ -1113,7 +1103,7 @@ describe("ListView — the commitments section", () => {
     expect(updateCommitment).toHaveBeenCalledWith(1, { verdict: "broken" });
   });
 
-  it("gives a commitment Habit's iteration the same two verdict controls as any other commitment", () => {
+  it("gives a commitment Habit's iteration the same verdict control as any other commitment", () => {
     // Its verdict has nowhere else to go: the iteration is virtual, so it is written as that
     // iteration's Modification rather than against a commitments row it does not have.
     const iteration = n("habit-3-0-virtual", "commitment", {
@@ -1129,8 +1119,8 @@ describe("ListView — the commitments section", () => {
     }));
     render(<ListViewInApp />);
 
-    fireEvent.click(screen.getByRole("button", { name: "markBroken" }));
-    expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_root", 3, 100, 0, "broken", expect.any(Number));
+    fireEvent.click(screen.getByRole("button", { name: "cycleVerdict" }));
+    expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_root", 3, 100, 0, "kept", expect.any(Number));
     expect(updateCommitment).not.toHaveBeenCalled();
   });
 
@@ -1448,5 +1438,52 @@ describe("ListView — deleting a row", () => {
       await confirm();
       expect(container.querySelector("[class*='cardSelected']")).toBeNull();
     });
+  });
+});
+
+describe("ListView — expectations", () => {
+  function waitRow(over: Partial<MindmapNode> = {}) {
+    return {
+      node: n("wait-1", "expectation", { status: "pending", ...over }),
+      ancestors: [n("aspect-1", "aspect")],
+      hasPrivateAncestor: false,
+      scopeTokens: ["unscoped", "unplanned"],
+    };
+  }
+
+  it("draws pending waits in their own band above the rows", () => {
+    mockUseListData.mockReturnValue(listData({ expectationRows: [waitRow()], rows: [row()] }));
+    render(<ListViewInApp />);
+    expect(screen.getByRole("region", { name: "listView:expectationsHeading" })).toBeInTheDocument();
+  });
+
+  it("releases the selected wait on Enter and on its status control, and leaves L free", () => {
+    const toggleRelease = vi.fn();
+    mockUseListData.mockReturnValue(listData({ expectationRows: [waitRow()], rows: [], toggleRelease }));
+    render(<ListViewInApp />);
+    fireEvent.click(screen.getByRole("button", { name: "releaseToggle" }));
+    fireEvent.keyDown(window, { key: "Enter", code: "Enter" });
+    fireEvent.keyDown(window, { key: "l", code: "KeyL" });
+    expect(toggleRelease.mock.calls).toEqual([["wait-1"], ["wait-1"]]);
+  });
+
+  it("completes a check task's check on Enter, and leaves D free", () => {
+    const onCycleStatus = vi.fn();
+    const check = row({ node: n("check-1", "task", { status: "todo", virtual: true, expectationCheck: { kind: "stored", expectationId: 1 } }) });
+    mockUseListData.mockReturnValue(listData({ rows: [check], onCycleStatus }));
+    render(<ListViewInApp />);
+    fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
+    fireEvent.keyDown(window, { key: "d", code: "KeyD" });
+    expect(onCycleStatus).not.toHaveBeenCalled();
+    fireEvent.keyDown(window, { key: "Enter", code: "Enter" });
+    expect(onCycleStatus).toHaveBeenCalledWith("check-1");
+  });
+
+  it("selects the Expectations option on Alt+E without touching the shared preset", () => {
+    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, statusMode: "start" } });
+    render(<ListViewInApp />);
+    fireEvent.keyDown(window, { key: "e", code: "KeyE", altKey: true });
+    expect(useListFilterStore.getState().filter.preset).toBe("expectations");
+    expect(useFilterStore.getState().filter.statusMode).toBe("start");
   });
 });

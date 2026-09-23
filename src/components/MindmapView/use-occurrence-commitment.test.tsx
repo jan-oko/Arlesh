@@ -67,7 +67,7 @@ function envelope(): MindmapLoad {
       id: 1, title: "Sleep well", parent_type: "domain", parent_id: 1, status: "active",
       time_scope: null, on_scope_exit: null, tag_ids: [], position: 0, is_private: false,
     }],
-    tasks: [], commitments: [], infos: [],
+    tasks: [], commitments: [], expectations: [], expectation_checks: [], spawned_waits: [], infos: [],
     flows: [{
       id: FLOW_ID, title: "Evening routine", instance_type: "task",
       parent_type: "domain", parent_id: 1, target_type: "goal", target_id: 1,

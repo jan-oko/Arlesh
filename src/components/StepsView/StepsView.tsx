@@ -40,6 +40,8 @@ import BacklogConfirmModal from "@/components/BacklogConfirmModal/BacklogConfirm
 import DeleteConfirmModal from "@/components/DeleteConfirmModal/DeleteConfirmModal";
 import NodeCreateModals from "@/components/NodeCreateModals/NodeCreateModals";
 import NodeEditorModals from "@/components/NodeEditorModals/NodeEditorModals";
+import { editorOwnerOf, isUneditableCheck } from "@/utils/editor-owner";
+import { useOpenAsyncTemplate } from "@/hooks/use-open-async-template";
 import NodeSearchModal from "@/components/NodeSearchModal/NodeSearchModal";
 import UnfinishedChildrenModal from "@/components/UnfinishedChildrenModal/UnfinishedChildrenModal";
 import StepCard from "./StepCard";
@@ -89,7 +91,7 @@ function steppedZoom(zoom: StepsZoom, direction: 1 | -1): StepsZoom {
  * the recovery in `use-subtree-nav` would bounce you straight back to the true root.
  */
 export default function StepsView() {
-  const { t } = useTranslation(["common", "stepsView"]);
+  const { t } = useTranslation(["common", "stepsView", "warnings"]);
   const {
     tree, isLoading, error, reload, createChild, createNode, renameNode, moveNode, duplicateNode, removeNode,
     createCommitment, createFlow,
@@ -185,6 +187,7 @@ export default function StepsView() {
   const { toggleAsynchronous } = useTaskAsynchronous({
     findNode: (id) => findNode(tree, id), reload, showToast,
   });
+  const openAsyncTemplate = useOpenAsyncTemplate(tree, setEditorModal);
   const { onUndo, onRedo } = useUndo({ reload, showToast });
 
   /**
@@ -329,7 +332,18 @@ export default function StepsView() {
         showToast({ nodeId: id, message: t("stepsView:refusedNoEditor", { title: node.title }) });
         return;
       }
-      setEditorModal({ nodeId: id, node });
+      // A derived wait opens the editor of what it is drawn from: a check task its wait's, a
+      // delegated Task's wait the Task's.
+      if (isUneditableCheck(node)) {
+        showToast({ nodeId: id, message: t("warnings:editCheckTaskRefused") });
+        return;
+      }
+      const owner = editorOwnerOf(tree, node);
+      if (owner === undefined) {
+        showToast({ nodeId: id, message: t("warnings:editOwnerMissing") });
+        return;
+      }
+      setEditorModal({ nodeId: owner.id, node: owner });
     },
     [tree, setEditorModal, showToast, t],
   );
@@ -370,6 +384,7 @@ export default function StepsView() {
     onToggleBacklog: toggleBacklog,
     onToggleAgentic: toggleAgentic,
     onToggleAsynchronous: toggleAsynchronous,
+    onBindWait: openAsyncTemplate,
     onOpenEditor,
     onCreateChild: onCreateChildHere,
     onCreateTypedChild: onCreateTypedChildHere,

@@ -39,7 +39,12 @@ export function listKeyboardContext(overrides: Partial<ListOptions> = {}): ListO
     isInputActive: false,
     selectedTaskId: "task-1",
     selectedCommitmentId: null,
+    selectedExpectationId: null,
     selectedRowId: null,
+    onToggleRelease: vi.fn(),
+    onSetExpectationsPreset: vi.fn(),
+    onBindWait: vi.fn(),
+    onCreateExpectation: vi.fn(),
     isSelectedBlocked: false,
     onNavigate: vi.fn(),
     onScrollList: vi.fn(),
@@ -64,7 +69,7 @@ export function listKeyboardContext(overrides: Partial<ListOptions> = {}): ListO
   };
   return {
     ...merged,
-    selectedRowId: overrides.selectedRowId ?? merged.selectedTaskId ?? merged.selectedCommitmentId,
+    selectedRowId: overrides.selectedRowId ?? merged.selectedTaskId ?? merged.selectedCommitmentId ?? merged.selectedExpectationId,
   };
 }
 
@@ -96,6 +101,7 @@ export function mindmapKeyboardContext(overrides: Partial<MindmapOptions> = {}):
     onCycleStatus: vi.fn(),
     onCycleVerdict: vi.fn(),
     onMarkBroken: vi.fn(),
+    onBindWait: vi.fn(),
     onDeselect: vi.fn(),
     onCut: vi.fn(),
     onCopy: vi.fn(),

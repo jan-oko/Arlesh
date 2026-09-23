@@ -37,7 +37,8 @@
     "instanceType": "Instance Type",
     "private": "Private",
     "beadsId": "Issue",
-    "tags": "Tags"
+    "tags": "Tags",
+    "checkEvery": "Check every"
   },
   "value": {
     "yes": "Yes",

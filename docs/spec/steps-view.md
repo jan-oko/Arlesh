@@ -128,10 +128,18 @@ by its name and by where it sits — the six of them are what the root is made o
 shadow. An outline outside the card was clipped by the card area's `overflow: hidden` along the top
 and left of every card in the first row and column, which sit flush against that edge.
 
+An **Expectation card** draws the wait's glyph — a still spinner of short ticks, open at the lower
+right, with a check inside once released — so its status is never written out; an archived one
+is dimmed and badged like any archived card; its fields are its **Time Scope** and its **Check every**. `Enter`
+descends into it like any card, onto its notes, its completed checks and, while one is due, its
+open check task. `E` on a check task says it has no editor yet (see [*Expectations*](resources.md));
+on a delegated Task's virtual wait or an asynchronous Task's spawned wait it opens the Task's.
+
 | Kind | Fields, in reading order |
 | --- | --- |
 | Task · Goal | Time Scope, Plan, On scope exit |
 | Commitment | Verdict Window, Time Scope, Plan |
+| Expectation | Time Scope, Check every |
 | Info | Details |
 | Project | Status, Knowledge base |
 | Aspect · Domain · Tag | Knowledge base |
@@ -343,9 +351,14 @@ Three movements, three gestures. An arrow key never leaves the page.
 - `Enter` — descend into the selected card
 - `PageUp` / `PageDown` — the previous / next page of this Step
 - `Space` — cycle the selected card's status. Not `Enter`, which descends here; `Space` is bound
-  nowhere else and reads as a toggle rather than a move
+  nowhere else and reads as a toggle rather than a move. On an **Expectation** it releases the wait
+  or takes the release back, and on its check task it completes the check (or reopens a done one).
+  Neither has a key of its own: `D` and `L` were removed by the user on 2026-09-24 as proxies for
+  this one
+- `Shift+W` — on a Task card, open its editor at the Expectation section with Asynchronous on, as on the Mindmap
 - `E` — open the selected card's editor
-- `Tab`, `Shift+Enter`, `Ctrl+Enter`, `Shift+D`/`P`/`G`/`T`/`C`/`I`/`F` — create, as above; the
+- `Tab`, `Shift+Enter`, `Ctrl+Enter`, `Shift+D`/`P`/`G`/`T`/`C`/`E`/`I`/`F` — create, as above
+  (`Shift+E` an **Expectation**); the
   `Shift`+initial chords also with nothing selected, onto this Step
 - `Delete` — delete the selected card, after confirming
 - `B` / `A` / `W` — backlog, agentic, asynchronous, the same bare letters the other views bind

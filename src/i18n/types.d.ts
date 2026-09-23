@@ -12,6 +12,7 @@ import type en_hotkeys from "./locales/en/hotkeys.json";
 import type en_undo from "./locales/en/undo.json";
 import type en_habits from "./locales/en/habits.json";
 import type en_planView from "./locales/en/planView.json";
+import type en_expectation from "./locales/en/expectation.json";
 import type en_stepsView from "./locales/en/stepsView.json";
 
 declare module "i18next" {
@@ -32,6 +33,7 @@ declare module "i18next" {
       undo: typeof en_undo;
       habits: typeof en_habits;
       planView: typeof en_planView;
+      expectation: typeof en_expectation;
       stepsView: typeof en_stepsView;
     };
   }

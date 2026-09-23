@@ -1,5 +1,5 @@
 import { invoke } from "./gesture";
-import type { TimeScope } from "@/api/time-scope";
+import type { DurationSpec, TimeScope } from "@/api/time-scope";
 import type { OnScopeExit } from "@/api/scope-lifecycle";
 import { isWireError } from "@/api/errors";
 
@@ -39,6 +39,18 @@ export interface AgentDelegate {
  * only that the work suits an agent. */
 export type Delegate = PersonDelegate | AgentDelegate;
 
+/**
+ * A Task's **Expectation template**: what the wait its completion spawns starts out as. Thinner than
+ * an Expectation — a title, tags, a Time Scope rule counted from the day the wait begins, and how
+ * often to check on it. No status: that exists only once the wait does.
+ */
+export interface AsyncTemplate {
+  title: string;
+  tag_ids: number[];
+  time_scope?: DurationSpec;
+  check_every?: DurationSpec;
+}
+
 export interface Task {
   id: number;
   title: string;
@@ -49,9 +61,11 @@ export interface Task {
   // This task's own flag: true/false when it says so itself, null when it inherits the nearest
   // flagged ancestor's. Independent of delegate_to — a task can be both.
   agentic: boolean | null;
-  // Whether doing this task starts a wait rather than finishing something. A plain boolean, not a
-  // third state: the flag does not inherit, so there is nothing for a null to carry.
+  // Whether doing this task starts a wait. Its own flag; it does not inherit.
   asynchronous: boolean;
+  // Its optional Expectation template, only while asynchronous. While the task is done, a virtual
+  // wait is drawn from it; without one, nothing is spawned.
+  async_template?: AsyncTemplate;
   time_scope: TimeScope | null;
   // Present iff time_scope is (inherited with the window otherwise).
   on_scope_exit: OnScopeExit | null;
@@ -77,6 +91,7 @@ export interface CreateTaskRequest {
   archival?: TaskArchival;
   agentic?: TaskAgentic;
   asynchronous?: boolean;
+  async_template?: AsyncTemplate;
 }
 
 export interface UpdateTaskRequest {
@@ -86,8 +101,11 @@ export interface UpdateTaskRequest {
   delegate_to?: Delegate | null;
   // Absent = leave unchanged; "inherit" puts the task back to reading its ancestors.
   agentic?: TaskAgentic;
-  // Absent = leave unchanged; false is a real answer that unflags the task.
+  // Absent = leave unchanged. Turning it off removes the template too.
   asynchronous?: boolean;
+  // Absent = leave unchanged, null = no template, value = this template. Dropped unless the task
+  // ends up asynchronous.
+  async_template?: AsyncTemplate | null;
   // Absent = leave unchanged, null = clear, value = set.
   time_scope?: TimeScope | null;
   // Forced null when the scope is cleared; defaulted to "keep" when a scope is set without one.
@@ -188,7 +206,8 @@ export async function scopeContainmentConflicts(
 
 export type Dependency =
   | { type: "task"; id: number }
-  | { type: "goal"; id: number };
+  | { type: "goal"; id: number }
+  | { type: "expectation"; id: number };
 
 export interface TaskWithBlockers {
   task: Task;
@@ -206,7 +225,7 @@ export async function listTaskDependencies(taskId: number): Promise<Dependency[]
 /** A single dependency edge: `task_id` depends on `(dependency_type, dependency_id)`. */
 export interface TaskDependencyEdge {
   task_id: number;
-  dependency_type: string; // "task" | "goal"
+  dependency_type: string; // "task" | "goal" | "expectation"
   dependency_id: number;
 }
 

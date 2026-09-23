@@ -4,8 +4,10 @@ import { rowIdOf } from "@/utils/node-identity";
 import BlockReasonsField from "@/components/BlockReasonsField/BlockReasonsField";
 import TagPicker from "@/components/TagPicker/TagPicker";
 import type { MindmapNode } from "@/utils/tree-layout";
+import { entityNodeId } from "@/utils/tree-layout";
+import { EXPECTATION_STATUS } from "@/api/expectation-status";
 import type { Domain } from "@/api/domains";
-import type { Delegate, Dependency, TaskAgentic, TaskArchival } from "@/api/tasks";
+import type { AsyncTemplate, Delegate, Dependency, TaskAgentic, TaskArchival } from "@/api/tasks";
 import { TASK_AGENTIC, TASK_ARCHIVAL } from "@/api/tasks";
 import { storedAgenticState } from "@/utils/agentic";
 import { isDelegatedToAgent, toggledAgentDelegate } from "@/utils/delegation";
@@ -24,6 +26,7 @@ import PlanField from "@/components/ScopePicker/PlanField";
 import { useInputCapture } from "@/hooks/use-input-capture";
 import { useBeadsIdClear } from "@/hooks/use-beads-id-clear";
 import Switch from "@/components/Switch/Switch";
+import AsyncTemplateFields from "@/components/AsyncTemplateEditor/AsyncTemplateFields";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 import { TASK_STATUS } from "@/utils/status-mapping";
 
@@ -46,6 +49,9 @@ export interface TaskSaveData {
   /** Whether doing this task starts a wait. A plain boolean — the flag does not inherit, so
    * there is no third "unset" state for it to be in. */
   asynchronous: boolean;
+  /** The optional **Expectation template** — the wait finishing the task spawns. `null` when the
+   * section is empty, and always `null` when the task is not asynchronous. */
+  asyncTemplate: AsyncTemplate | null;
   /** The task's new delegate, present only when the form changed it — `null` takes it back. Absent
    * says nothing about delegation at all, so a save that never touched it cannot overwrite it. */
   delegate?: Delegate | null;
@@ -55,6 +61,12 @@ export interface TaskSaveData {
 const TASK_STATUSES = Object.values(TASK_STATUS);
 
 function depKey(dep: Dependency): string { return `${dep.type}-${dep.id}`; }
+/** The edge type a dependency on `candidate` is stored under. */
+function dependencyKindOf(candidate: MindmapNode): Dependency["type"] {
+  if (candidate.kind === "goal") return "goal";
+  if (candidate.kind === "expectation") return "expectation";
+  return "task";
+}
 function depEquals(a: Dependency, b: Dependency): boolean { return a.type === b.type && a.id === b.id; }
 
 interface Props {
@@ -68,12 +80,23 @@ interface Props {
    * node a create path opens, which has no link to drop — the Issue row stays wholly read-only. */
   onClearBeadsId?: (() => Promise<void>) | undefined;
   onCheckScopeClamp?: (nodeType: "task" | "goal", dbId: number, timeScope: TimeScope) => Promise<boolean>;
+  /** `Shift+W`: open with Asynchronous switched on and the Expectation section's title focused. */
+  openAtTemplate?: boolean;
   onClose: () => void;
 }
 
-export default function TaskEditorModal({ node, allTags, domainNames, availableForDep, onSave, onClearBeadsId, onCheckScopeClamp, onClose }: Props) {
+/** The section as the form holds it: every field, blank ones included. */
+const EMPTY_TEMPLATE: AsyncTemplate = { title: "", tag_ids: [] };
+
+/** Whether the Expectation section says anything at all — an empty one is no template. */
+function isEmptyTemplate(template: AsyncTemplate): boolean {
+  return template.title.trim() === "" && template.tag_ids.length === 0
+    && template.time_scope === undefined && template.check_every === undefined;
+}
+
+export default function TaskEditorModal({ node, allTags, domainNames, availableForDep, onSave, onClearBeadsId, onCheckScopeClamp, openAtTemplate = false, onClose }: Props) {
   useInputCapture();
-  const { t } = useTranslation(["editor", "status", "nodeKinds", "undo"]);
+  const { t } = useTranslation(["editor", "status", "nodeKinds", "undo", "expectation"]);
   const [title, setTitle] = useState(node.title);
   const [status, setStatus] = useState(node.status ?? TASK_STATUS.TODO);
   const [blockReasons, setBlockReasons] = useState<string[]>(node.blockReasons ?? []);
@@ -83,7 +106,9 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   const [plan, setPlan] = useState<TimeScope | null>(node.plan ?? null);
   const [isBacklogged, setIsBacklogged] = useState(node.backlogged === true);
   const [agentic, setAgentic] = useState<TaskAgentic>(storedAgenticState(node.agentic));
-  const [isAsynchronous, setIsAsynchronous] = useState(node.asynchronous === true);
+  const [isAsynchronous, setIsAsynchronous] = useState(node.asynchronous === true || openAtTemplate);
+  const [asyncTemplate, setAsyncTemplate] = useState<AsyncTemplate>(node.asyncTemplate ?? EMPTY_TEMPLATE);
+  const templateRef = useRef<HTMLDivElement>(null);
   const [delegate, setDelegate] = useState<Delegate | null>(node.delegate ?? null);
   const [isPrivate, setIsPrivate] = useState(node.isPrivate ?? false);
   const [initialDeps, setInitialDeps] = useState<Dependency[]>([]);
@@ -95,9 +120,18 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   const titleRef = useRef<HTMLInputElement>(null);
   const dbId = rowIdOf(node);
 
+  // Where the editor opens: on the title, or — from `Shift+W` — on the Expectation section.
   useEffect(() => {
-    titleRef.current?.focus();
-    titleRef.current?.select();
+    if (openAtTemplate) {
+      templateRef.current?.scrollIntoView?.({ block: "nearest" });
+      templateRef.current?.querySelector("input")?.focus();
+    } else {
+      titleRef.current?.focus();
+      titleRef.current?.select();
+    }
+  }, [openAtTemplate]);
+
+  useEffect(() => {
     void listTaskDependencies(dbId).then((deps) => { setInitialDeps(deps); setCurrentDeps(deps); });
   }, [dbId]);
 
@@ -107,7 +141,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   }
 
   function addDep(candidate: MindmapNode) {
-    const kind = candidate.kind === "goal" ? "goal" : "task";
+    const kind = dependencyKindOf(candidate);
     const id = rowIdOf(candidate);
     const dep: Dependency = { type: kind, id };
     if (currentDeps.some((d) => depEquals(d, dep))) return;
@@ -142,6 +176,11 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
           archival: isBacklogged ? TASK_ARCHIVAL.BACKLOG : TASK_ARCHIVAL.LIVE,
           agentic,
           asynchronous: isAsynchronous,
+          // An empty section is no template; one with anything in it but a title takes the default.
+          asyncTemplate: !isAsynchronous || isEmptyTemplate(asyncTemplate) ? null : {
+            ...asyncTemplate,
+            title: asyncTemplate.title.trim() || t("expectation:templateDefaultTitle", { title: title.trim() }),
+          },
           ...(delegate !== (node.delegate ?? null) ? { delegate } : {}),
           isPrivate,
         });
@@ -187,26 +226,28 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
 
   const depSearchLower = depSearch.toLowerCase();
   const searchResults = depSearch.trim() === "" ? [] : availableForDep
-    .filter((n) => n.kind === "task" || n.kind === "goal")
+    .filter((n) => n.kind === "task" || n.kind === "goal" || n.kind === "expectation")
     .filter((n) => n.title.toLowerCase().includes(depSearchLower))
     .filter((n) => {
       const id = rowIdOf(n);
-      const type = n.kind === "goal" ? "goal" : "task";
+      const type = dependencyKindOf(n);
       return !currentDeps.some((d) => d.type === type && d.id === id);
     })
     .slice(0, 8);
 
   function depTitle(dep: Dependency): string {
-    return availableForDep.find((n) => n.id === `${dep.type}-${dep.id}`)?.title ?? `${dep.type} #${dep.id}`;
+    return availableForDep.find((n) => n.id === entityNodeId(dep.type, dep.id))?.title ?? `${dep.type} #${dep.id}`;
   }
 
   // Virtual blockers derived from the *current* (editable) dependencies — an unmet dependency (a
   // non-Done task / non-Achieved goal) blocks. Recomputed live, so removing a dependency drops its row.
   const virtualBlockers = currentDeps.flatMap((dep) => {
-    const target = availableForDep.find((n) => n.id === `${dep.type}-${dep.id}`);
+    const target = availableForDep.find((n) => n.id === entityNodeId(dep.type, dep.id));
     const unmet = target === undefined
       ? true
-      : dep.type === "task" ? target.status !== "done" : target.status !== "achieved";
+      : dep.type === "task" ? target.status !== "done"
+        : dep.type === "expectation" ? target.status === EXPECTATION_STATUS.PENDING
+          : target.status !== "achieved";
     return unmet ? [`Blocked by ${dep.type} ${dep.id} (${depTitle(dep)})`] : [];
   });
 
@@ -251,8 +292,9 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
       </div>
       {/* Beside Backlog rather than down in Advanced, where the Agentic control sits: this one is
           a statement about the order the work wants to be done in, which is the same kind of
-          question as whether it is set aside at all — and it is the flag the List View's
-          "Asynchronous first" setting reads. */}
+          question as whether it is set aside at all — and it is what the List View's "Asynchronous
+          first" setting reads. While it is on, an Expectation section follows it: the template of the
+          wait finishing the task spawns. Left empty, there is no template and nothing is spawned. */}
       <div className={styles.label}>
         {t("fieldAsynchronous")}
         <Switch
@@ -261,6 +303,18 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
           label={isAsynchronous ? t("asynchronousOn") : t("asynchronousOff")}
         />
       </div>
+      {isAsynchronous && (
+        <div ref={templateRef} role="group" aria-label={t("expectation:templateSection")}>
+          <span className={styles.label}>{t("expectation:templateSection")}</span>
+          <AsyncTemplateFields
+            value={asyncTemplate}
+            onChange={setAsyncTemplate}
+            titlePlaceholder={t("expectation:templateDefaultTitle", { title: title.trim() })}
+            allTags={allTags}
+            domainNames={domainNames}
+          />
+        </div>
+      )}
       <BlockReasonsField reasons={blockReasons} onChange={setBlockReasons} virtualBlockers={virtualBlockers} />
       <TagPicker allTags={allTags} domainNames={domainNames} selectedIds={tagIds} onChange={setTagIds} />
       <div className={styles.depSection}>

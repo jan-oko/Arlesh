@@ -25,10 +25,15 @@ use crate::scopes::resolve::{self, Bounds};
 use super::ancestry;
 use super::commitments;
 use super::error::TaskError;
+use super::expectations;
 use super::lifecycle::{
-    derive_commitment_state, derive_item_state, derive_timing, Archival, ItemLifecycle,
+    derive_commitment_state, derive_expectation_state, derive_item_state, derive_timing, Archival,
+    ItemLifecycle,
 };
-use super::model::{CommitmentId, GoalId, GoalStatus, OnScopeExit, TaskId, TaskStatus, TimeScope};
+use super::model::{
+    CommitmentId, ExpectationArchival, ExpectationStatus, GoalId, GoalStatus, OnScopeExit, TaskId,
+    TaskStatus, TimeScope,
+};
 
 /// Maps a Goal's stored status to its baseline Archival value, for [`derive_item_state`]'s `stored`
 /// parameter. `Achieved` intentionally maps to `Live`, not `Archived` — achievement is a separate,
@@ -157,7 +162,95 @@ pub async fn derive_all_scope_lifecycles<M: SessionMode>(
             plan_timing: None,
         });
     }
+    // A wait's entries: `expectation` times a stored wait's own Time Scope, `expectation_check`
+    // the day its next check is due; `spawned_wait` and `spawned_check` do the same for the wait an
+    // Asynchronous task's completion spawned, keyed by the task. A wait is never Missed, so a
+    // passed window with the wait pending is Overdue.
+    let windows = super::waits::derive_wait_windows(db, now).await?;
+    let checks: std::collections::HashMap<i64, TimeScope> = windows
+        .expectation_checks
+        .into_iter()
+        .filter(|check| check.resolved_at.is_none())
+        .map(|check| (check.expectation_id, check.due))
+        .collect();
+    let mut entries: Vec<WaitEntry> = Vec::new();
+    for expectation in db.expectations().list().await? {
+        entries.push(WaitEntry {
+            node_type: expectations::EXPECTATION,
+            node_id: expectation.id,
+            window: expectation.time_scope.clone(),
+            status: expectation.status,
+            archival: expectation.archival,
+        });
+        if let Some(due) = checks.get(&expectation.id) {
+            entries.push(WaitEntry {
+                node_type: expectations::EXPECTATION_CHECK,
+                node_id: expectation.id,
+                window: Some(due.clone()),
+                status: expectation.status,
+                archival: expectation.archival,
+            });
+        }
+    }
+    for spawned in windows.spawned_waits {
+        let (task_id, status, archival) = (
+            spawned.wait.task_id,
+            spawned.wait.status,
+            spawned.wait.archival,
+        );
+        entries.push(WaitEntry {
+            node_type: expectations::SPAWNED_WAIT,
+            node_id: task_id,
+            window: spawned.time_scope,
+            status,
+            archival,
+        });
+        if let Some(due) = spawned.next_check {
+            entries.push(WaitEntry {
+                node_type: expectations::SPAWNED_CHECK,
+                node_id: task_id,
+                window: Some(due),
+                status,
+                archival,
+            });
+        }
+    }
+    for WaitEntry {
+        node_type,
+        node_id,
+        window,
+        status,
+        archival,
+    } in entries
+    {
+        let bounds = match &window {
+            Some(window) => Some(time_scope_window(db, window).await?),
+            None => None,
+        };
+        let state = derive_expectation_state(bounds, status, archival, now);
+        out.push(ItemLifecycle {
+            node_type: node_type.to_string(),
+            node_id,
+            timing: state.timing,
+            resolution: state.resolution,
+            verdict: None,
+            archival: state.archival,
+            // Nothing is derived over a wait's own archive, so nothing can be overridden.
+            archival_conflict: false,
+            // A wait is never scheduled, and nor is its check: neither has a Plan.
+            plan_timing: None,
+        });
+    }
     Ok(out)
+}
+
+/// One lifecycle entry a wait sends: which window it times, for which node, and the wait's state.
+struct WaitEntry {
+    node_type: &'static str,
+    node_id: i64,
+    window: Option<TimeScope>,
+    status: ExpectationStatus,
+    archival: ExpectationArchival,
 }
 
 /// Resolves a single scope id to its half-open datetime window.
@@ -410,6 +503,29 @@ pub(super) async fn validate_commitment_scope<M: SessionMode>(
         };
     };
 
+    let own_scope = Some(time_scope_window(db, own).await?);
+    let ancestor_scope = resolve_optional(db, ancestor).await?;
+    check_containment(ContainmentWindows {
+        own_scope,
+        ancestor_scope,
+        ..Default::default()
+    })
+}
+
+/// Refuses an Expectation's Time Scope that escapes its nearest scoped ancestor's window — the rule
+/// a Task's window answers. With no window of its own there is nothing to check: unlike a
+/// Commitment, a wait may be unscoped, and it inherits nothing.
+pub(super) async fn validate_expectation_scope<M: SessionMode>(
+    db: &mut Db<M>,
+    parent_type: &str,
+    parent_id: i64,
+    time_scope: &Option<TimeScope>,
+) -> Result<(), TaskError> {
+    let Some(own) = time_scope else {
+        return Ok(());
+    };
+    let chain = write_chain(db, None, parent_type, parent_id).await?;
+    let ancestor = chain.nearest_scoped().or_reject()?.map(|(scope, _)| scope);
     let own_scope = Some(time_scope_window(db, own).await?);
     let ancestor_scope = resolve_optional(db, ancestor).await?;
     check_containment(ContainmentWindows {

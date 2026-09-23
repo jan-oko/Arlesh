@@ -9,6 +9,7 @@ import { BEADS_NODE_TYPE } from "@/api/beads";
 import TaskEditorModal from "@/components/TaskEditorModal/TaskEditorModal";
 import GoalEditorModal from "@/components/GoalEditorModal/GoalEditorModal";
 import CommitmentEditorModal from "@/components/CommitmentEditorModal/CommitmentEditorModal";
+import ExpectationEditorModal from "@/components/ExpectationEditorModal/ExpectationEditorModal";
 import TitleEditorModal from "@/components/TitleEditorModal/TitleEditorModal";
 import ProjectEditorModal from "@/components/ProjectEditorModal/ProjectEditorModal";
 import InfoEditorModal from "@/components/InfoEditorModal/InfoEditorModal";
@@ -43,7 +44,7 @@ export default function NodeEditorModals({ tree, editor }: Props) {
   const { t } = useTranslation(["editor"]);
   const {
     editorModal, setEditorModal, allTags, domainNames, availableForDep,
-    onTaskSave, onGoalSave, onCommitmentSave, onSimpleSave, onProjectSave, onInfoSave,
+    onTaskSave, onGoalSave, onCommitmentSave, onExpectationSave, onSimpleSave, onProjectSave, onInfoSave,
     onClearBeadsId, onFlowSave, onFlowItemSave, checkScopeClamp,
   } = editor;
 
@@ -71,7 +72,8 @@ export default function NodeEditorModals({ tree, editor }: Props) {
         <TaskEditorModal
           node={node} allTags={allTags} domainNames={domainNames} availableForDep={availableForDep}
           onSave={onTaskSave} onClearBeadsId={() => onClearBeadsId(BEADS_NODE_TYPE.TASK)}
-          onCheckScopeClamp={checkScopeClamp} onClose={close}
+          onCheckScopeClamp={checkScopeClamp} openAtTemplate={editorModal.focus === "asyncTemplate"}
+          onClose={close}
         />
       );
     case "goal":
@@ -88,6 +90,12 @@ export default function NodeEditorModals({ tree, editor }: Props) {
           node={node} allTags={allTags} domainNames={domainNames}
           onSave={onCommitmentSave} onClearBeadsId={() => onClearBeadsId(BEADS_NODE_TYPE.COMMITMENT)}
           onClose={close}
+        />
+      );
+    case "expectation":
+      return (
+        <ExpectationEditorModal
+          node={node} allTags={allTags} domainNames={domainNames} onSave={onExpectationSave} onClose={close}
         />
       );
     case "domain":

@@ -5,10 +5,12 @@ import type { OnScopeExit, Timing, Resolution } from "@/api/scope-lifecycle";
 import type { Verdict } from "@/api/verdict";
 import type { Delegate } from "@/api/tasks";
 import type { DurationSpec } from "@/api/time-scope";
+import type { AsyncTemplate } from "@/api/tasks";
 import type { CanonicalKind } from "@/utils/scope-ref";
+import { expectationNodeId } from "@/utils/node-uuid";
 
 export type NodeKind =
-  | "aspect" | "project" | "domain" | "goal" | "task" | "commitment" | "tag" | "info"
+  | "aspect" | "project" | "domain" | "goal" | "task" | "commitment" | "expectation" | "tag" | "info"
   | "flow" | "flow_goal" | "flow_task"
   /** A display-only stand-in for a run of passed Habit iterations — see {@link HabitGroup}. */
   | "habit_group";
@@ -19,7 +21,7 @@ export type NodeKind =
  * orders them by it, so the same set always reads the same way.
  */
 export const ALL_NODE_KINDS: readonly NodeKind[] = [
-  "aspect", "project", "domain", "goal", "task", "commitment", "tag", "info",
+  "aspect", "project", "domain", "goal", "task", "commitment", "expectation", "tag", "info",
   "flow", "flow_goal", "flow_task", "habit_group",
 ];
 
@@ -27,6 +29,9 @@ export const ALL_NODE_KINDS: readonly NodeKind[] = [
 export function isNodeKind(value: string): value is NodeKind {
   return ALL_NODE_KINDS.some((kind) => kind === value);
 }
+
+/** Which wait a check task checks on: a stored Expectation, or the wait a Task's completion spawned. */
+export type WaitRef = { kind: "stored"; expectationId: number } | { kind: "spawned"; taskId: number };
 
 /** A task/goal is blocked when it has any block reason — explicit or virtual (from an unmet dependency). */
 export function isNodeBlocked(node: MindmapNode): boolean {
@@ -44,6 +49,8 @@ const DOMAIN_TABLE_KINDS: ReadonlySet<string> = new Set(["aspect", "project", "d
  * target would resolve to `project-<id>`, which no tree node uses, and silently miss.
  */
 export function entityNodeId(type: string, id: number): string {
+  // A kind added after the composed spellings were frozen mints its id instead.
+  if (type === "expectation") return expectationNodeId(id);
   return DOMAIN_TABLE_KINDS.has(type) ? `domain-${id}` : `${type}-${id}`;
 }
 
@@ -222,7 +229,7 @@ export interface MindmapNode {
    * **own** stored delegate — absent or `null` when it has none of its own. */
   delegate?: Delegate | null;
   /** Whether doing this Task starts a **wait** rather than finishing something (Tasks only) —
-   * send the email, order the part, kick off the build.
+   * send the email, order the part, kick off the build. Its own flag; `asyncTemplate` is optional.
    *
    * Deliberately **not** inherited, unlike `agentic`: "starts a wait" is a property of one
    * concrete action, and a subtask of an asynchronous Task is usually the work you do *after* the
@@ -238,6 +245,28 @@ export interface MindmapNode {
   verdictWindow?: DurationSpec | null;
   /** A derived, read-only node (e.g. a virtual Habit iteration) with no backing DB row. */
   virtual?: boolean;
+  /** An Expectation's **Check every** (Expectations only): how often to look in on the wait. While
+   * it is pending, a virtual check task hangs beneath it, due one interval after the last check.
+   * `status` carries the Expectation's `pending`/`released`, and `archived` its archive. */
+  checkEvery?: DurationSpec | null;
+  /** When a stored wait's first check fell due, ISO local time. */
+  checkStarting?: string | null;
+  /** Present on a wait's virtual **check task** — a `task`-kind node with no row. Completing it
+   * records the check on the wait named here and stores nothing else. */
+  expectationCheck?: WaitRef;
+  /** On a **completed** check task: when that check fell due, which names it for reopening. */
+  checkDueAt?: string;
+  /** Present on the virtual wait an **Asynchronous** Task spawned while it is done: the Task. Its
+   * title and tags are the Task's template; its state is the overlay keyed by the Task. */
+  spawnedBy?: { taskId: number };
+  /** A Task's optional **Expectation template** (Tasks only), kept only while `asynchronous`: while
+   * the Task is done, a virtual wait is drawn from it. */
+  asyncTemplate?: AsyncTemplate | null;
+  /** The stored Expectations this Task depends on, by row id (Tasks only). */
+  expectationDependencyIds?: number[];
+  /** Present on the virtual Expectation a **delegated** Task waits on: the Task it belongs to. It
+   * has no row, and it is released only by the Task being done — never by hand. */
+  delegationWait?: { taskId: number };
   /**
    * Present on any virtual Habit instance — a per-iteration flow-item instance, or the iteration
    * **root** itself (`itemType: "flow_root"`, `itemId` = the flow id). Carries the

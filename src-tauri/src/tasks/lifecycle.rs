@@ -23,7 +23,9 @@ use chrono::NaiveDateTime;
 
 use crate::scopes::resolve::Bounds;
 
-use super::model::{DurationSpec, OnScopeExit, TaskArchival, Verdict};
+use super::model::{
+    DurationSpec, ExpectationArchival, ExpectationStatus, OnScopeExit, TaskArchival, Verdict,
+};
 
 /// An item's window position relative to `now`. Unscoped items are always `Active`.
 ///
@@ -231,7 +233,8 @@ pub fn derive_item_state(
 /// One item's fully-derived lifecycle state, keyed by node reference for the frontend.
 #[derive(Debug, Clone, Serialize)]
 pub struct ItemLifecycle {
-    /// `"task"`, `"goal"` or `"commitment"`.
+    /// `"task"`, `"goal"`, `"commitment"` or `"expectation"`; `"expectation_check"`,
+    /// `"spawned_wait"` and `"spawned_check"` time a wait's next check and a spawned wait.
     pub node_type: String,
     /// The item's id.
     pub node_id: i64,
@@ -294,7 +297,7 @@ pub struct CommitmentState {
 /// The four coarse Spans only. A Verdict Window counted in `part` or `exact` — the two sub-day
 /// scope kinds — has no meaning as a *count*, so such a value reads as no window at all rather
 /// than as some silently substituted number of hours.
-fn advance_by(at: NaiveDateTime, n: i64, kind: &str) -> Option<NaiveDateTime> {
+pub(crate) fn advance_by(at: NaiveDateTime, n: i64, kind: &str) -> Option<NaiveDateTime> {
     match kind {
         "day" => at.checked_add_signed(chrono::Duration::try_days(n)?),
         "week" => at.checked_add_signed(chrono::Duration::try_weeks(n)?),
@@ -365,3 +368,42 @@ pub fn derive_commitment_state(
 
 #[cfg(test)]
 mod commitment_tests;
+
+// ===========================================================================
+// Expectations
+// ===========================================================================
+//
+// A wait sends one entry for its own Time Scope and one for the day its next check is due, which its
+// virtual "check on it" Task reads. Either way the Archival is its stored archive, nothing derived.
+
+/// Derives a lifecycle entry for a wait, at `now`, over `window` — its Time Scope, or the day its
+/// next check is due.
+///
+/// Timing reads the window as any window is read. A window that has passed while the wait is
+/// still **pending** resolves [`Resolution::Overdue`]: nothing about a wait archives it for being
+/// late, so it stays on screen like a Keep-on-exit Task. A released wait has nothing left to be
+/// late for, and so no Resolution.
+pub fn derive_expectation_state(
+    window: Option<Bounds>,
+    status: ExpectationStatus,
+    stored: ExpectationArchival,
+    now: NaiveDateTime,
+) -> DerivedState {
+    let timing = derive_timing(window, now);
+    let resolution = match status {
+        ExpectationStatus::Pending => derive_resolution(timing, false, Some(OnScopeExit::Keep)),
+        ExpectationStatus::Released => None,
+    };
+    DerivedState {
+        timing,
+        resolution,
+        archival: match stored {
+            ExpectationArchival::Live => Archival::Live,
+            ExpectationArchival::Archived => Archival::Archived,
+        },
+        archival_conflict: false,
+    }
+}
+
+#[cfg(test)]
+mod expectation_tests;

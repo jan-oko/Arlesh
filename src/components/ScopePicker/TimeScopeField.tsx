@@ -15,7 +15,7 @@ import styles from "./ScopeField.module.css";
 const DURATION_KINDS: CanonicalKind[] = ["day", "week", "month", "season"];
 
 /** The two ways to enter a Time Scope. */
-type ScopeForm = "boundaries" | "duration";
+export type ScopeForm = "boundaries" | "duration";
 
 function toCanonicalKind(value: string): CanonicalKind {
   return DURATION_KINDS.find((kind) => kind === value) ?? "week";
@@ -24,16 +24,20 @@ function toCanonicalKind(value: string): CanonicalKind {
 interface Props {
   value: TimeScope | null;
   onChange: (timeScope: TimeScope | null) => void;
+  /** The form an empty field opens in. A stored value always opens in the form it was set in. */
+  defaultForm?: ScopeForm;
 }
 
 /**
  * Edits a Task/Goal Time Scope: a **Boundaries** range (via the calendar picker) or a **Duration**
  * (anchor + N of a kind), snapshotted to a fixed window while persisting the duration parameters.
  */
-export default function TimeScopeField({ value, onChange }: Props) {
+export default function TimeScopeField({ value, onChange, defaultForm = "boundaries" }: Props) {
   const { t } = useTranslation("editor");
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState<ScopeForm>(value?.duration ? "duration" : "boundaries");
+  const [form, setForm] = useState<ScopeForm>(
+    value === null ? defaultForm : value.duration ? "duration" : "boundaries",
+  );
   const rangePicker = useScopePicker("range");
   const anchorPicker = useScopePicker("single");
   const [durationN, setDurationN] = useState<number>(value?.duration?.n ?? 1);

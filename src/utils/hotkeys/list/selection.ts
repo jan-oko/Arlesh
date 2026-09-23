@@ -9,6 +9,9 @@ export interface ListSelectionContext {
   /** The selected row when it is a Commitment. Never set at the same time as `selectedTaskId`:
    * List View has one selection, and which kind it is decides what Enter means. */
   selectedCommitmentId: string | null;
-  /** Whichever of the two is set — for the bindings that do not care which kind it is. */
+  /** The selected row when it is an Expectation — a stored wait, or a delegated Task's. Never set
+   * at the same time as either of the two above. */
+  selectedExpectationId: string | null;
+  /** Whichever of them is set — for the bindings that do not care which kind it is. */
   selectedRowId: string | null;
 }

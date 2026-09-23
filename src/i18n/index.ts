@@ -15,6 +15,7 @@ import en_hotkeys from "./locales/en/hotkeys.json";
 import en_undo from "./locales/en/undo.json";
 import en_habits from "./locales/en/habits.json";
 import en_planView from "./locales/en/planView.json";
+import en_expectation from "./locales/en/expectation.json";
 import en_stepsView from "./locales/en/stepsView.json";
 
 // English is the only locale. i18next stays in place so every user-facing string keeps a key
@@ -36,6 +37,7 @@ void i18n.use(initReactI18next).init({
       undo: en_undo,
       habits: en_habits,
       planView: en_planView,
+      expectation: en_expectation,
       stepsView: en_stepsView,
     },
   },

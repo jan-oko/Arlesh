@@ -30,6 +30,8 @@ const TYPED_CHILD_CHORDS: ReadonlyArray<{ code: string; kind: TypedChildKind; la
   // Shift+C is free: bare C centres on the selection and Ctrl+C copies, and strict chord
   // matching keeps all three apart.
   { code: "KeyC", kind: "commitment", labelKey: "createCommitmentChild" },
+  // E for Expectation (ruled by the user). Bare E opens the editor; Shift+E was free in every view.
+  { code: "KeyE", kind: "expectation", labelKey: "createExpectationChild" },
   { code: "KeyI", kind: "info", labelKey: "createInfoChild" },
   { code: "KeyF", kind: "flow", labelKey: "createFlowChild" },
 ];
