@@ -1,30 +1,17 @@
+/* Washed in its aspect's colour, flat — the same wash as a List View row and a Steps card, and not
+   faded by how deep the task sits. `aspect-wash.module.css` says why that keeps every aspect legible;
+   the base is the card background, as a Steps card's is. */
 .card {
-  position: relative;
+  composes: wash from "@/styles/aspect-wash.module.css";
+  --card-base: var(--node-bg);
   display: flex;
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--node-border);
   border-radius: var(--node-radius);
-  background: var(--node-bg);
   font-family: var(--font-sans);
   cursor: pointer;
-}
-
-/* The aspect tint, drawn behind the content at the node's own opacity — the same derivation the
-   Mindmap node and the List View card use, so one task is one colour everywhere. */
-.card::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: var(--card-tint);
-  opacity: var(--card-tint-opacity);
-  pointer-events: none;
-}
-
-.card > * {
-  position: relative;
 }
 
 .cardSelected {
@@ -47,7 +34,7 @@
 
 .path {
   overflow: hidden;
-  color: var(--text-secondary);
+  color: var(--card-text-muted);
   font-size: var(--text-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -55,7 +42,7 @@
 
 .title {
   overflow: hidden;
-  color: var(--node-text);
+  color: var(--text-primary);
   font-size: var(--text-base);
   text-overflow: ellipsis;
   white-space: nowrap;

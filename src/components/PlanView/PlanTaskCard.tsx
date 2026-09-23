@@ -2,7 +2,7 @@ import type { CSSProperties, DragEvent, MouseEvent } from "react";
 import { useTranslation } from "react-i18next";
 import type { TaskListRow } from "@/utils/list-filter";
 import { deriveStatusIndicators } from "@/utils/node-status-indicators";
-import { computeNodeAppearance } from "@/utils/node-visuals";
+import { aspectWashStyle } from "@/utils/node-visuals";
 import { isRtlText } from "@/utils/text-direction";
 import TaskIcon from "@/components/NodeIcon/TaskIcon";
 import TaskRowBadges from "@/components/ListView/TaskRowBadges";
@@ -55,11 +55,10 @@ export default function PlanTaskCard({
   const { t } = useTranslation("planView");
   const { node } = row;
   const indicators = deriveStatusIndicators(node);
-  const { fillColor, fillOpacity } = computeNodeAppearance(node, row.ancestors.length);
-  const cardStyle: CSSProperties & Record<`--${string}`, string | number> = {
-    "--card-tint": fillColor,
-    "--card-tint-opacity": fillOpacity,
-  };
+  // Washed in its aspect's colour, flat — the same wash a List View row and a Steps card take, so a
+  // Task reads as the same part of the board on every surface. `node.color` is the aspect's,
+  // propagated on load.
+  const cardStyle: CSSProperties & Record<`--${string}`, string> = { ...aspectWashStyle(node.color) };
   const path = row.ancestors.map((ancestor) => ancestor.title).join(PATH_SEPARATOR);
   const moveLabel = direction === "in" ? t("planInto") : t("unplan");
 
