@@ -1,3 +1,5 @@
+import type { SVGProps } from "react";
+
 interface Props {
   cx: number;
   cy: number;
@@ -8,55 +10,88 @@ interface Props {
   status: string | undefined;
 }
 
-/** How many dashes the left half breaks into. Few and heavy, so they still read as dashes — not as
- * a grey smudge — at the Mindmap's smallest node size. */
-const DASHES = 3;
+/** An arc of the ring, as two angles in degrees clockwise from twelve o'clock, drawn clockwise
+ * from `from` to `to`. */
+interface Arc {
+  from: number;
+  to: number;
+}
+
+/** The solid top half: from about nine o'clock over the top to about three. */
+const SOLID: Arc = { from: 283, to: 437 };
 
 /**
- * An Expectation renders as a **half-drawn ring** — solid down its right half, dashed down its
- * left: a circle not closed yet, the shape of "waiting on something".
+ * The bottom half, broken into dashes that shorten as they run from the left side round under the
+ * ring to the lower right — long, medium, medium, a stub — and stop short of the solid arc, leaving
+ * the ring open between about four and five o'clock. Measured off the reference drawing.
+ */
+const FOUR_DASHES: readonly Arc[] = [
+  { from: 238, to: 257 },
+  { from: 197, to: 212 },
+  { from: 162, to: 171 },
+  { from: 133, to: 137 },
+];
+
+/**
+ * The same run with one dash fewer, for small icons: four dashes on a ring a few pixels across
+ * leave sub-pixel gaps that blur into a grey smudge. Long, medium, stub, with wider gaps.
+ */
+const THREE_DASHES: readonly Arc[] = [
+  { from: 234, to: 257 },
+  { from: 181, to: 199 },
+  { from: 141, to: 146 },
+];
+
+/** Below this radius the four-dash run collapses to three. At it, a gap between four dashes is
+ * about 1.4px once the round caps have eaten into it; below, it drops under a pixel. */
+const FOUR_DASH_MIN_R = 8;
+
+/** A point on the ring, `degrees` clockwise from twelve o'clock. */
+function pointAt(cx: number, cy: number, radius: number, degrees: number): string {
+  const angle = (degrees * Math.PI) / 180;
+  return `${(cx + radius * Math.sin(angle)).toFixed(2)} ${(cy - radius * Math.cos(angle)).toFixed(2)}`;
+}
+
+function arcPath(cx: number, cy: number, radius: number, arc: Arc): string {
+  const large = arc.to - arc.from > 180 ? 1 : 0;
+  const r = radius.toFixed(2);
+  return `M ${pointAt(cx, cy, radius, arc.from)} A ${r} ${r} 0 ${large} 1 ${pointAt(cx, cy, radius, arc.to)}`;
+}
+
+/** Which dash run an icon of radius `r` draws. */
+function expectationDashes(r: number): readonly Arc[] {
+  return r >= FOUR_DASH_MIN_R ? FOUR_DASHES : THREE_DASHES;
+}
+
+/**
+ * An Expectation renders as an **unclosed ring**: one solid arc across the top, and below it a run
+ * of dashes that shorten as they go — long, medium, medium, a stub — stopping short of the solid
+ * arc at the lower right, so the ring never closes. A wait that has not come round yet.
  *
  * The glyph shows **status only**. **Pending** is the ring; **Released** is the same ring with a
- * check inside — one family, and never a Task's glyph: a Task's To Do and Done rings are whole, and
- * this one never is. **Archive is not drawn here**: an archived wait is dimmed and badged exactly as
- * every other kind is, so a pending archived wait is a dimmed ring and a released one a dimmed ring
- * with a check.
+ * check inside — one family, and never a Task's glyph, whose To Do and Done rings are whole.
+ * **Archive is not drawn here**: an archived wait is dimmed and badged exactly as every other kind
+ * is.
  *
- * **Monochrome** in the node's glyph colour. The reference fades its dashes one by one; at the
- * sizes the Mindmap draws, per-dash opacity reads as a smudge rather than a gradient, so every
- * dash is drawn at full strength. Deliberately **still**: a board of waits each moving would be
- * motion with nothing to say. It is not the hourglass (an Asynchronous Task's badge) and not the
- * clock (a Time Scope's badge) — both badges, drawn in the status row, where this is the node glyph.
+ * Every stroke has round caps, is about 8% of the icon's width, and nothing is filled. On an icon
+ * small enough that four dashes would clump — the Mindmap's deeper levels — the run collapses to
+ * three. **Monochrome** in the node's glyph colour, and deliberately **still**.
  */
 export default function ExpectationIcon({ cx, cy, r, color, opacity, status }: Props) {
-  const radius = r * 0.72;
-  const stroke = r * 0.26;
-  const top = `${cx.toFixed(2)} ${(cy - radius).toFixed(2)}`;
-  const bottom = `${cx.toFixed(2)} ${(cy + radius).toFixed(2)}`;
-  const r2 = radius.toFixed(2);
-  // The left half is cut into `DASHES` dashes with a gap on either side of each, so it neither
-  // touches the solid half — which would blur the two together — nor ends in a stub.
-  const segment = (Math.PI * radius) / (2 * DASHES + 1);
+  const radius = r * 0.75;
+  const stroke = r * 0.167;
+  const common: SVGProps<SVGPathElement> = { fill: "none", stroke: color, strokeWidth: stroke, strokeLinecap: "round" };
   return (
     <g opacity={opacity}>
-      <path data-part="solid" d={`M ${top} A ${r2} ${r2} 0 0 1 ${bottom}`} fill="none" stroke={color} strokeWidth={stroke} />
-      <path
-        data-part="dashed"
-        d={`M ${bottom} A ${r2} ${r2} 0 0 1 ${top}`}
-        fill="none"
-        stroke={color}
-        strokeWidth={stroke}
-        strokeDasharray={`${segment.toFixed(2)} ${segment.toFixed(2)}`}
-        strokeDashoffset={segment.toFixed(2)}
-      />
+      <path data-part="solid" d={arcPath(cx, cy, radius, SOLID)} {...common} />
+      {expectationDashes(r).map((arc) => (
+        <path key={arc.from} data-part="dash" d={arcPath(cx, cy, radius, arc)} {...common} />
+      ))}
       {status === "released" && (
         <path
           data-part="check"
           d={`M ${cx - r * 0.34},${cy} L ${cx - r * 0.06},${cy + r * 0.28} L ${cx + r * 0.36},${cy - r * 0.24}`}
-          stroke={color}
-          strokeWidth={r * 0.2}
-          fill="none"
-          strokeLinecap="round"
+          {...common}
           strokeLinejoin="round"
         />
       )}
