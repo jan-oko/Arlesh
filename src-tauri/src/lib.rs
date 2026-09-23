@@ -185,7 +185,7 @@ pub fn run() {
             commands::flows::set_habit_instance_plan,
             commands::flows::set_habit_instance_title,
             commands::flows::set_habit_instance_block_reason,
-            commands::flows::set_habit_instance_deleted,
+            commands::flows::set_habit_instance_archived,
             commands::flows::set_habit_instance_dependencies,
             commands::flows::create_habit_instance_child,
             commands::flows::list_habit_instance_children,

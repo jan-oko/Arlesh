@@ -342,7 +342,7 @@ pub async fn delete_flow_item(
 /// survives — so a save that leaves the pairs alone, a title-only one included, orphans nothing.
 ///
 /// A change that **would** orphan recorded edits — a status, an own title, block reason, Plan or
-/// tombstone, or an added child, on an occurrence a removed pair drew — is refused with
+/// archival, or an added child, on an occurrence a removed pair drew — is refused with
 /// [`NeedsConfirmation`](crate::error::WireErrorKind::NeedsConfirmation) until `reconcile` answers
 /// it the way the Habit editor's prompt does: `fork` (Archive & new) or `discard` (Discard &
 /// regenerate). A fork archives the original at `now`, as the Habit editor's does, and returns the
@@ -606,17 +606,17 @@ pub async fn set_habit_instance_block_reason(
     db.commit().await.map_err(WireError::from_error)
 }
 
-/// Deletes one habit occurrence from its iteration alone (`deleted` true), or restores it.
-/// Refused while it still holds something — an added child, or its child items' occurrences.
+/// Archives one habit occurrence by hand (`archived` true), or unarchives it — an item's
+/// occurrence, or the iteration root, which takes its whole iteration with it.
 #[tauri::command]
-pub async fn set_habit_instance_deleted(
+pub async fn set_habit_instance_archived(
     factory: State<'_, SessionFactory>,
     flow_id: i64,
     instance: HabitInstanceRef,
-    deleted: bool,
+    archived: bool,
 ) -> Result<(), WireError> {
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    flows::occurrence::set_instance_deleted(&mut db, FlowId(flow_id), &instance, deleted)
+    flows::occurrence::set_instance_archived(&mut db, FlowId(flow_id), &instance, archived)
         .await
         .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)
@@ -655,7 +655,7 @@ pub async fn list_habit_instance_children(
 /// Resolves (or un-resolves) a whole Habit iteration: writes or clears a `done` Modification for
 /// every instance at `iteration_scope_id` — the flow root and each of its items.
 ///
-/// SPEC: "an iteration is *resolved* when every one of its (non-tombstoned) instances is done".
+/// SPEC: "an iteration is *resolved* when every one of its instances still in play is done".
 /// [`set_habit_item_status`] moves one instance; this moves the iteration as a unit, which is why
 /// it opens a transaction — the instance list is read first and one row is written per instance,
 /// so a half-applied run would leave the iteration neither done nor undone.

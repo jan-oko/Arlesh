@@ -227,3 +227,63 @@ fn taking_every_pair_away_orphans_each_of_them() {
     let diff = diff_cycles(&existing, &[]);
     assert_eq!(orphaned_cycle_ids(&existing, &[], &diff), vec![10, 11]);
 }
+
+fn key(item_type: &str, item_id: i64, cycle_id: i64) -> (String, i64, i64) {
+    (item_type.to_string(), item_id, cycle_id)
+}
+
+/// A root, an item 1 with a pair 7 (first) and 8, and item 2 nested under item 1.
+fn iteration_keys() -> Vec<(String, i64, i64)> {
+    vec![
+        key("flow_root", 99, NO_CYCLE),
+        key("flow_task", 1, 7),
+        key("flow_task", 1, 8),
+        key("flow_task", 2, NO_CYCLE),
+    ]
+}
+
+fn hierarchy() -> (
+    HashMap<(String, i64), (String, i64)>,
+    HashMap<(String, i64), i64>,
+) {
+    let parents = HashMap::from([(("flow_task".to_string(), 2), ("flow_task".to_string(), 1))]);
+    let first = HashMap::from([(("flow_task".to_string(), 1), 7)]);
+    (parents, first)
+}
+
+#[test]
+fn nothing_archived_sets_nothing_aside() {
+    let (parents, first) = hierarchy();
+    assert!(set_aside(&iteration_keys(), &HashSet::new(), &parents, &first).is_empty());
+}
+
+#[test]
+fn an_archived_root_sets_the_whole_iteration_aside() {
+    let (parents, first) = hierarchy();
+    let archived = HashSet::from([key("flow_root", 99, NO_CYCLE)]);
+    assert_eq!(
+        set_aside(&iteration_keys(), &archived, &parents, &first).len(),
+        4
+    );
+}
+
+#[test]
+fn an_archived_first_occurrence_takes_the_items_nested_under_it() {
+    let (parents, first) = hierarchy();
+    let archived = HashSet::from([key("flow_task", 1, 7)]);
+    let aside = set_aside(&iteration_keys(), &archived, &parents, &first);
+    assert!(aside.contains(&key("flow_task", 1, 7)));
+    assert!(aside.contains(&key("flow_task", 2, NO_CYCLE)));
+    assert!(
+        !aside.contains(&key("flow_task", 1, 8)),
+        "the evening occurrence is its own"
+    );
+}
+
+#[test]
+fn an_archived_later_occurrence_holds_no_children_and_takes_only_itself() {
+    let (parents, first) = hierarchy();
+    let archived = HashSet::from([key("flow_task", 1, 8)]);
+    let aside = set_aside(&iteration_keys(), &archived, &parents, &first);
+    assert_eq!(aside, HashSet::from([key("flow_task", 1, 8)]));
+}

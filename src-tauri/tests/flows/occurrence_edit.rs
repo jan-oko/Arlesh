@@ -1,5 +1,5 @@
 //! One Habit occurrence edited on its own: its title, its block reason, its dependencies in that
-//! iteration, and deleting it from that iteration alone.
+//! iteration, and archiving it — an item's occurrence, and the iteration root.
 //!
 //! Every test asks what an occurrence *ends up as* — through the derivation the Mindmap and the
 //! MCP snapshot read — whether a write is refused, or whether the Habit counts as divergent. The
@@ -365,20 +365,60 @@ async fn an_occurrence_does_not_wait_on_itself() {
     assert_eq!(kind(refused).as_deref(), Some("invalid_request"));
 }
 
+fn root(habit: &Dinner, day: i64) -> HabitInstanceRef {
+    HabitInstanceRef {
+        item_type: "flow_root".into(),
+        item_id: habit.flow_id,
+        iteration_scope_id: day,
+        cycle_id: 0,
+    }
+}
+
+/// The iteration anchored at `day`.
+fn iteration_on(iterations: &[HabitIteration], day: i64) -> HabitIteration {
+    iterations
+        .iter()
+        .find(|iteration| iteration.anchor_scope_id == day)
+        .cloned()
+        .unwrap_or_else(|| panic!("no iteration anchored at {day}"))
+}
+
+async fn archive(app: &App, flow_id: i64, instance: HabitInstanceRef, archived: bool) {
+    flow_commands::set_habit_instance_archived(app.state(), flow_id, instance, archived)
+        .await
+        .unwrap();
+}
+
+async fn mark_done(app: &App, flow_id: i64, instance: HabitInstanceRef) {
+    flow_commands::set_habit_item_status(
+        app.state(),
+        flow_id,
+        instance,
+        Some("done".into()),
+        1_767_600_000_000,
+        Some(true),
+    )
+    .await
+    .unwrap();
+}
+
+fn status_of(iteration: &HabitIteration) -> serde_json::Value {
+    serde_json::to_value(iteration.status).unwrap()
+}
+
 #[tokio::test]
-async fn a_deleted_occurrence_is_marked_and_no_longer_holds_its_iteration_open() {
+async fn an_archived_occurrence_is_marked_and_its_iteration_resolves_without_it() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
     let habit = dinner(&pool, &app).await;
 
-    flow_commands::set_habit_instance_deleted(
-        app.state(),
+    archive(
+        &app,
         habit.flow_id,
         occurrence(habit.shop, habit.monday),
         true,
     )
-    .await
-    .unwrap();
+    .await;
     flow_commands::set_habit_iteration_done(
         app.state(),
         habit.flow_id,
@@ -392,65 +432,34 @@ async fn a_deleted_occurrence_is_marked_and_no_longer_holds_its_iteration_open()
 
     let drawn = iterations(&app, habit.flow_id).await;
     let shop = find(&drawn, habit.monday, habit.shop);
-    assert!(shop.deleted, "closing the iteration does not bring it back");
-    let monday = drawn
-        .iter()
-        .find(|iteration| iteration.anchor_scope_id == habit.monday)
-        .unwrap();
+    assert!(shop.archived, "closing the iteration does not unarchive it");
     assert_eq!(
-        serde_json::to_value(monday.status).unwrap(),
+        status_of(&iteration_on(&drawn, habit.monday)),
         serde_json::json!("done"),
-        "the iteration resolves without the occurrence it no longer has"
+        "the iteration resolves once everything still in play is done"
     );
-    assert!(!find(&drawn, habit.tuesday, habit.shop).deleted);
+    assert!(!find(&drawn, habit.tuesday, habit.shop).archived);
     assert_eq!(divergent_iterations(&app, habit.flow_id).await, 1);
 
-    flow_commands::set_habit_instance_deleted(
-        app.state(),
+    archive(
+        &app,
         habit.flow_id,
         occurrence(habit.shop, habit.monday),
         false,
     )
-    .await
-    .unwrap();
+    .await;
     assert!(
         !find(
             &iterations(&app, habit.flow_id).await,
             habit.monday,
             habit.shop
         )
-        .deleted
+        .archived
     );
 }
 
 #[tokio::test]
-async fn an_occurrence_holding_an_added_child_is_not_deleted() {
-    let pool = helpers::test_pool().await;
-    let app = helpers::command_host(&pool);
-    let habit = dinner(&pool, &app).await;
-    flow_commands::create_habit_instance_child(
-        app.state(),
-        habit.flow_id,
-        occurrence(habit.shop, habit.monday),
-        "task".into(),
-        "buy milk".into(),
-    )
-    .await
-    .unwrap();
-
-    let refused = flow_commands::set_habit_instance_deleted(
-        app.state(),
-        habit.flow_id,
-        occurrence(habit.shop, habit.monday),
-        true,
-    )
-    .await
-    .expect_err("it still holds the milk");
-    assert_eq!(kind(refused).as_deref(), Some("invalid_request"));
-}
-
-#[tokio::test]
-async fn an_occurrence_its_template_children_nest_under_is_not_deleted() {
+async fn archiving_an_occurrence_sets_the_steps_nested_under_it_aside_too() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
     let habit = dinner(&pool, &app).await;
@@ -466,42 +475,203 @@ async fn an_occurrence_its_template_children_nest_under_is_not_deleted() {
     .await
     .unwrap();
 
-    let refused = flow_commands::set_habit_instance_deleted(
-        app.state(),
+    // Shop is archived; nothing is written to the list-writing step nested under it.
+    archive(
+        &app,
         habit.flow_id,
         occurrence(habit.shop, habit.monday),
         true,
     )
-    .await
-    .expect_err("the list-writing step hangs under this occurrence");
-    assert_eq!(kind(refused).as_deref(), Some("invalid_request"));
+    .await;
+    mark_done(&app, habit.flow_id, root(&habit, habit.monday)).await;
+    mark_done(&app, habit.flow_id, occurrence(habit.cook, habit.monday)).await;
+
+    assert_eq!(
+        status_of(&iteration_on(
+            &iterations(&app, habit.flow_id).await,
+            habit.monday
+        )),
+        serde_json::json!("done"),
+        "the nested step went aside with the occurrence it hangs under"
+    );
 }
 
 #[tokio::test]
-async fn the_iteration_root_is_not_edited_on_its_own() {
+async fn an_occurrence_holding_an_added_child_is_archived_rather_than_refused() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
     let habit = dinner(&pool, &app).await;
-    let root = HabitInstanceRef {
-        item_type: "flow_root".into(),
-        item_id: habit.flow_id,
-        iteration_scope_id: habit.monday,
-        cycle_id: 0,
-    };
-
-    let title = flow_commands::set_habit_instance_title(
+    flow_commands::create_habit_instance_child(
         app.state(),
         habit.flow_id,
-        root.clone(),
-        Some("Monday dinner".into()),
+        occurrence(habit.shop, habit.monday),
+        "task".into(),
+        "buy milk".into(),
     )
     .await
-    .expect_err("the root's title is the iteration's");
-    assert_eq!(kind(title).as_deref(), Some("invalid_request"));
-    let deleted = flow_commands::set_habit_instance_deleted(app.state(), habit.flow_id, root, true)
+    .unwrap();
+
+    archive(
+        &app,
+        habit.flow_id,
+        occurrence(habit.shop, habit.monday),
+        true,
+    )
+    .await;
+
+    assert!(
+        find(
+            &iterations(&app, habit.flow_id).await,
+            habit.monday,
+            habit.shop
+        )
+        .archived
+    );
+}
+
+#[tokio::test]
+async fn the_iteration_root_takes_a_title_and_a_block_reason_of_its_own() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let habit = dinner(&pool, &app).await;
+
+    flow_commands::set_habit_instance_title(
+        app.state(),
+        habit.flow_id,
+        root(&habit, habit.monday),
+        Some("Monday: dinner for six".into()),
+    )
+    .await
+    .unwrap();
+    flow_commands::set_habit_instance_block_reason(
+        app.state(),
+        habit.flow_id,
+        root(&habit, habit.monday),
+        Some("guests not confirmed".into()),
+    )
+    .await
+    .unwrap();
+
+    let drawn = iterations(&app, habit.flow_id).await;
+    let monday = iteration_on(&drawn, habit.monday).root.unwrap();
+    assert_eq!(monday.title.as_deref(), Some("Monday: dinner for six"));
+    assert_eq!(
+        monday.blocked_reason.as_deref(),
+        Some("guests not confirmed")
+    );
+    assert_eq!(
+        iteration_on(&drawn, habit.tuesday).root.unwrap().title,
+        None,
+        "tomorrow's iteration reads its own derived title"
+    );
+    assert_eq!(divergent_iterations(&app, habit.flow_id).await, 1);
+}
+
+#[tokio::test]
+async fn archiving_the_iteration_root_sets_the_whole_iteration_aside_without_recording_it_done() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let habit = dinner(&pool, &app).await;
+
+    archive(&app, habit.flow_id, root(&habit, habit.monday), true).await;
+
+    let drawn = iterations(&app, habit.flow_id).await;
+    let monday = iteration_on(&drawn, habit.monday);
+    assert!(monday.root.as_ref().unwrap().archived);
+    assert_eq!(
+        status_of(&monday),
+        serde_json::json!("done"),
+        "an archived iteration no longer withholds the Habit"
+    );
+    let statuses = flow_commands::list_habit_item_statuses(app.state(), habit.flow_id)
         .await
-        .expect_err("deleting the root would be deleting the iteration");
-    assert_eq!(kind(deleted).as_deref(), Some("invalid_request"));
+        .unwrap();
+    assert!(
+        statuses.is_empty(),
+        "nothing in it was recorded as done: archiving is not completing"
+    );
+}
+
+#[tokio::test]
+async fn the_iteration_root_is_planned_against_the_flows_root_cycle_plan() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let habit = dinner(&pool, &app).await;
+    flow_commands::update_flow(
+        app.state(),
+        habit.flow_id,
+        arlesh_lib::flows::model::UpdateFlowRequest {
+            root_plan_kind: Some(Some("part_of_day".into())),
+            root_plan_start: Some(Some(5)),
+            root_plan_end: Some(Some(5)),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    let drawn = iterations(&app, habit.flow_id).await;
+    let monday = iteration_on(&drawn, habit.monday).root.unwrap();
+    assert!(
+        monday.cycle_plan.is_some(),
+        "the root's Cycle Plan is drawn"
+    );
+    assert_eq!(monday.plan, monday.cycle_plan);
+
+    flow_commands::set_habit_instance_plan(
+        app.state(),
+        habit.flow_id,
+        root(&habit, habit.monday),
+        arlesh_lib::flows::model::PlanOverride::Unplanned,
+    )
+    .await
+    .unwrap();
+    let drawn = iterations(&app, habit.flow_id).await;
+    let monday = iteration_on(&drawn, habit.monday).root.unwrap();
+    assert_eq!(monday.plan, None);
+    assert!(monday.plan_overridden);
+    assert!(
+        iteration_on(&drawn, habit.tuesday)
+            .root
+            .unwrap()
+            .cycle_plan
+            .is_some(),
+        "and the next iteration keeps its Cycle Plan"
+    );
+
+    let tuesday = day_scope(&pool, ymd(2026, 1, 6)).await;
+    let refused = flow_commands::set_habit_instance_plan(
+        app.state(),
+        habit.flow_id,
+        root(&habit, habit.monday),
+        arlesh_lib::flows::model::PlanOverride::Planned {
+            plan: arlesh_lib::tasks::model::TimeScope {
+                start_id: tuesday,
+                end_id: tuesday,
+                duration: None,
+            },
+        },
+    )
+    .await
+    .expect_err("Tuesday is outside Monday's iteration");
+    assert_eq!(kind(refused).as_deref(), Some("containment_violated"));
+}
+
+#[tokio::test]
+async fn the_iteration_root_takes_no_part_in_the_dependency_graph() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let habit = dinner(&pool, &app).await;
+
+    let refused = flow_commands::set_habit_instance_dependencies(
+        app.state(),
+        habit.flow_id,
+        root(&habit, habit.monday),
+        vec![task_ref(habit.shop)],
+    )
+    .await
+    .expect_err("an iteration root waits on nothing");
+    assert_eq!(kind(refused).as_deref(), Some("invalid_request"));
 }
 
 #[tokio::test]

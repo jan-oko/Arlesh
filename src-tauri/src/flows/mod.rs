@@ -19,7 +19,7 @@ pub mod model;
 pub mod occurrence;
 mod render;
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chrono::{Datelike, Duration, Months, NaiveDate, NaiveDateTime, NaiveTime};
@@ -66,6 +66,35 @@ const ROOT_INSTANCE_TYPE: &str = "flow_root";
 /// One occurrence's identity as its Modification row is keyed:
 /// `(item_type, item_id, iteration_scope_id, cycle_id)`.
 pub type InstanceKey = (String, i64, i64, i64);
+
+/// One Modification row as iteration resolution reads it: its iteration scope, the occurrence's
+/// `(item_type, item_id, cycle_id)`, its status, its archival mark and its `resolved_at`.
+type ResolutionRow = (
+    i64,
+    String,
+    i64,
+    i64,
+    Option<String>,
+    Option<String>,
+    Option<i64>,
+);
+
+/// Each item's in-flow parent item, and each item's first cycle pair id.
+type ItemHierarchy = (
+    HashMap<(String, i64), (String, i64)>,
+    HashMap<(String, i64), i64>,
+);
+
+/// What one iteration's Modification rows say about resolving it.
+#[derive(Debug, Default)]
+struct IterationFacts {
+    /// Occurrences recorded `done`.
+    done: HashSet<(String, i64, i64)>,
+    /// Occurrences archived by hand.
+    archived: HashSet<(String, i64, i64)>,
+    /// The latest `resolved_at` among the done ones.
+    last: Option<i64>,
+}
 
 /// Advances `date` by `k` (possibly zero) periods of `kind`; `None` on calendar overflow.
 fn advance(date: NaiveDate, k: i64, kind: &str) -> Option<NaiveDate> {
@@ -322,6 +351,31 @@ async fn resolve_cycle(
         scope,
         time_scope,
         plan,
+    }))
+}
+
+/// A flow root's Cycle Plan resolved against one window's first day: the `root_plan_start`..
+/// `root_plan_end` range of `root_plan_kind` subscopes, or `None` when the flow names none. The one
+/// implementation both `start` and a Habit's iterations use, so a started root and a virtual
+/// iteration root cannot disagree about where the plan lands.
+async fn root_cycle_plan(
+    scopes: &mut ScopeOperator<'_>,
+    flow: &Flow,
+    window_start: NaiveDate,
+) -> Result<Option<TimeScope>, FlowError> {
+    let (Some(kind), Some(plan_start), Some(plan_end)) = (
+        flow.root_plan_kind.as_deref(),
+        flow.root_plan_start,
+        flow.root_plan_end,
+    ) else {
+        return Ok(None);
+    };
+    let start = offset_scope(scopes, window_start, plan_start, kind).await?;
+    let end = offset_scope(scopes, window_start, plan_end, kind).await?;
+    Ok(Some(TimeScope {
+        start_id: start.id,
+        end_id: end.id,
+        duration: None,
     }))
 }
 
@@ -1103,7 +1157,7 @@ impl<'session> FlowOperator<'session> {
     /// every pair that survives**.
     ///
     /// A pair's id is part of every occurrence's identity — its status, its own title, block
-    /// reason, Plan and tombstone are all keyed on it — so replacing the pairs wholesale, as this
+    /// reason, Plan and archival are all keyed on it — so replacing the pairs wholesale, as this
     /// used to, orphaned every one of them on any save of the item, a title-only one included.
     /// The pairs are diffed instead ([`occurrence::diff_cycles`]): a pair whose Cycle Scope is
     /// still asked for keeps its row, updated in place only if its Cycle Plan or position moved;
@@ -1457,7 +1511,7 @@ impl<'session> FlowOperator<'session> {
             // override, which un-completing the iteration has no business taking away.
             sqlx::query(
                 "UPDATE habit_instance_modifications SET status = NULL, resolved_at = NULL
-                 WHERE flow_id = ? AND iteration_scope_id = ? AND status = 'done' AND tombstone_kind IS NULL",
+                 WHERE flow_id = ? AND iteration_scope_id = ? AND status = 'done'",
             )
             .bind(flow_id.0)
             .bind(iteration_scope_id)
@@ -1465,13 +1519,13 @@ impl<'session> FlowOperator<'session> {
             .await?;
             return self.prune_empty_modifications(flow_id).await;
         }
-        // An occurrence deleted from this iteration is not one of its instances any more, so
-        // closing the iteration does not write it back.
-        let deleted = self
-            .deleted_in_iteration(flow_id, iteration_scope_id)
+        // An occurrence archived by hand is set aside, not finished, so closing the iteration
+        // does not mark it done.
+        let archived = self
+            .archived_in_iteration(flow_id, iteration_scope_id)
             .await?;
         for (item_type, item_id, cycle_id) in self.iteration_instance_keys(flow_id).await? {
-            if deleted.contains(&(item_type.clone(), item_id, cycle_id)) {
+            if archived.contains(&(item_type.clone(), item_id, cycle_id)) {
                 continue;
             }
             sqlx::query(
@@ -1521,7 +1575,7 @@ impl<'session> FlowOperator<'session> {
         Ok(keys)
     }
 
-    /// Lists every instance with a divergent (non-tombstoned) status Modification for this flow, and
+    /// Lists every instance with a divergent status Modification for this flow, and
     /// the iteration scope it applies to — the per-instance state the mindmap renders (instances with
     /// no row sit at their base status).
     pub async fn list_item_statuses(
@@ -1531,7 +1585,7 @@ impl<'session> FlowOperator<'session> {
         Ok(sqlx::query_as::<_, HabitItemStatus>(
             "SELECT item_type, item_id, iteration_scope_id, cycle_id, status
              FROM habit_instance_modifications
-             WHERE flow_id = ? AND status IS NOT NULL AND tombstone_kind IS NULL",
+             WHERE flow_id = ? AND status IS NOT NULL",
         )
         .bind(flow_id.0)
         .fetch_all(&mut *self.connection)
@@ -1667,7 +1721,7 @@ impl<'session> FlowOperator<'session> {
     }
 
     /// Deletes this Habit's Modification rows that no longer diverge in any way — no status, no
-    /// edited field, no tombstone, no Plan override — so storage stays proportional to the
+    /// edited field, no archival mark, no Plan override — so storage stays proportional to the
     /// occurrences that actually differ now that one row can carry several divergences.
     async fn prune_empty_modifications(&mut self, flow_id: FlowId) -> Result<(), FlowError> {
         sqlx::query(
@@ -1696,7 +1750,7 @@ impl<'session> FlowOperator<'session> {
             "SELECT COUNT(*) FROM (
                  SELECT iteration_scope_id FROM habit_instance_modifications
                  WHERE flow_id = ?
-                   AND ((status = 'done' AND tombstone_kind IS NULL) OR plan_overridden = 1
+                   AND (status = 'done' OR plan_overridden = 1
                         OR title IS NOT NULL OR blocked_reason IS NOT NULL
                         OR tombstone_kind IS NOT NULL)
                  UNION
@@ -2333,50 +2387,96 @@ impl<'session> FlowOperator<'session> {
         Ok(())
     }
 
-    /// Maps each slot index to the day its iteration was completed — present only when **every**
-    /// instance (the flow root plus every occurrence of every flow item) has a `done` Modification
-    /// (not tombstoned) for that iteration scope. An item-less flow still has one instance: its
-    /// root.
+    /// Maps each slot index to the day its iteration was resolved — present only when every
+    /// instance (the flow root plus every occurrence of every flow item) that is **still in play**
+    /// has a `done` Modification for that iteration scope. An item-less flow still has one
+    /// instance: its root.
+    ///
+    /// An occurrence archived by hand is set aside rather than finished, and so is what it holds
+    /// ([`occurrence::set_aside`]): it no longer has to be done for the iteration to resolve. An
+    /// iteration whose root was archived is set aside whole and resolves, so under Blocking
+    /// Consumption it stops withholding the Habit — without anything in it being recorded as done.
     async fn iteration_resolutions(
         &mut self,
         flow_id: FlowId,
         slots: &[SlotWindow],
     ) -> Result<HashMap<i64, NaiveDateTime>, FlowError> {
-        // Instances = the flow root + each flow item once per cycle pair (once when it has none).
-        let instance_count = self.iteration_instance_keys(flow_id).await?.len();
-        // An occurrence deleted from an iteration no longer has to be done for it to resolve.
-        let deleted = self.deleted_per_iteration(flow_id).await?;
-        let rows: Vec<(i64, i64, Option<i64>)> = sqlx::query_as(
-            "SELECT iteration_scope_id, COUNT(*), MAX(resolved_at)
-             FROM habit_instance_modifications
-             WHERE flow_id = ? AND status = 'done' AND tombstone_kind IS NULL
-             GROUP BY iteration_scope_id",
+        let keys = self.iteration_instance_keys(flow_id).await?;
+        let (parents, first_cycle) = self.item_hierarchy(flow_id).await?;
+        let rows: Vec<ResolutionRow> = sqlx::query_as(
+            "SELECT iteration_scope_id, item_type, item_id, cycle_id, status, tombstone_kind,
+                    resolved_at
+             FROM habit_instance_modifications WHERE flow_id = ?",
         )
         .bind(flow_id.0)
         .fetch_all(&mut *self.connection)
         .await?;
-        let by_scope: HashMap<i64, (i64, Option<i64>)> = rows
-            .into_iter()
-            .map(|(scope, done, last)| (scope, (done, last)))
-            .collect();
+        let mut by_scope: HashMap<i64, IterationFacts> = HashMap::new();
+        for (scope, item_type, item_id, cycle_id, status, archival, resolved_at) in rows {
+            let facts = by_scope.entry(scope).or_default();
+            let key = (item_type, item_id, cycle_id);
+            if archival.as_deref() == Some("archived") {
+                facts.archived.insert(key.clone());
+            }
+            if status.as_deref() == Some("done") {
+                facts.done.insert(key);
+                facts.last = facts.last.max(resolved_at);
+            }
+        }
 
         let mut resolved = HashMap::new();
         for slot in slots {
-            if let Some((done, last)) = by_scope.get(&slot.scope_id) {
-                let expected = instance_count
-                    .saturating_sub(deleted.get(&slot.scope_id).copied().unwrap_or(0));
-                if *done as usize == expected {
-                    // `resolved_at` is epoch-ms; treated as a UTC-naive instant for classification.
-                    // Sub-day-precision timezone reconciliation is deferred to the 8.4 write path.
-                    let instant = last
-                        .and_then(chrono::DateTime::from_timestamp_millis)
-                        .map(|dt| dt.naive_utc())
-                        .unwrap_or(slot.end);
-                    resolved.insert(slot.index, instant);
-                }
+            let Some(facts) = by_scope.get(&slot.scope_id) else {
+                continue;
+            };
+            let aside = occurrence::set_aside(&keys, &facts.archived, &parents, &first_cycle);
+            let all_done = keys
+                .iter()
+                .filter(|key| !aside.contains(*key))
+                .all(|key| facts.done.contains(key));
+            if all_done {
+                // `resolved_at` is epoch-ms; treated as a UTC-naive instant for classification.
+                // Sub-day-precision timezone reconciliation is deferred to the 8.4 write path.
+                let instant = facts
+                    .last
+                    .and_then(chrono::DateTime::from_timestamp_millis)
+                    .map(|dt| dt.naive_utc())
+                    .unwrap_or(slot.end);
+                resolved.insert(slot.index, instant);
             }
         }
         Ok(resolved)
+    }
+
+    /// Each flow item's in-flow parent item (for one nested under another), and the first cycle
+    /// pair of each item that has any — the pair whose occurrence its template children nest under.
+    async fn item_hierarchy(&mut self, flow_id: FlowId) -> Result<ItemHierarchy, FlowError> {
+        let mut parents: HashMap<(String, i64), (String, i64)> = HashMap::new();
+        let goals = self.list_goals(flow_id).await?;
+        let tasks = self.list_tasks(flow_id).await?;
+        let nested = goals
+            .iter()
+            .map(|goal| ("flow_goal", goal.id, &goal.parent_type, goal.parent_id))
+            .chain(
+                tasks
+                    .iter()
+                    .map(|task| ("flow_task", task.id, &task.parent_type, task.parent_id)),
+            );
+        for (item_type, item_id, parent_type, parent_id) in nested {
+            if parent_type == "flow_goal" || parent_type == "flow_task" {
+                parents.insert(
+                    (item_type.to_string(), item_id),
+                    (parent_type.clone(), parent_id),
+                );
+            }
+        }
+        let first_cycle = self
+            .cycles_by_item(flow_id)
+            .await?
+            .into_iter()
+            .filter_map(|(item, pairs)| pairs.first().map(|pair| (item, pair.id)))
+            .collect();
+        Ok((parents, first_cycle))
     }
 
     /// For each of `nodes` that was materialised from a flow, returns its originating flow title
@@ -2686,9 +2786,11 @@ pub async fn set_instance_plan(
     instance: &HabitInstanceRef,
     plan: &PlanOverride,
 ) -> Result<(), FlowError> {
-    if occurrence::item_occurrence(db, flow_id, instance).await? != FlowItemType::FlowTask {
+    if !occurrence::carries_plan(occurrence::occurrence_kind(db, flow_id, instance).await?) {
         return Err(FlowError::Invalid(
-            "only a task occurrence carries a Plan of its own — a goal has no Plan".to_string(),
+            "only an occurrence that is a task carries a Plan of its own — a goal or a \
+             commitment has none"
+                .to_string(),
         ));
     }
     let flow = db.flows().get(flow_id).await?;
@@ -3045,15 +3147,45 @@ pub async fn generate_habit_iterations(
     for iteration in iterations {
         // Every classified iteration came from a slot, so the lookup always hits; an iteration
         // that somehow had no slot would simply render no occurrences rather than fail the load.
-        let instances = match by_index.get(&iteration.index) {
+        let (instances, root) = match by_index.get(&iteration.index) {
             Some(slot) => {
-                resolve_iteration_instances(&mut db.scopes(), &shape, slot, iteration.status, now)
-                    .await?
+                let instances = resolve_iteration_instances(
+                    &mut db.scopes(),
+                    &shape,
+                    slot,
+                    iteration.status,
+                    now,
+                )
+                .await?;
+                // Only a task root is planned; a goal has no Plan and a commitment none either.
+                let cycle_plan = if flow.instance_type == InstanceType::Task.as_str() {
+                    root_cycle_plan(&mut db.scopes(), &flow, slot.start.date()).await?
+                } else {
+                    None
+                };
+                let root = shape.occurrence(
+                    slot,
+                    Drawn {
+                        item_type: ROOT_INSTANCE_TYPE,
+                        item_id: flow_id.0,
+                        cycle_id: NO_CYCLE,
+                        time_scope: None,
+                        cycle_plan,
+                        timing: instance_timing(
+                            consumption,
+                            iteration.status,
+                            (slot.start, slot.end),
+                            now,
+                        ),
+                    },
+                );
+                (instances, Some(root))
             }
-            None => Vec::new(),
+            None => (Vec::new(), None),
         };
         resolved_iterations.push(HabitIteration {
             instances,
+            root,
             ..iteration
         });
     }
@@ -3121,7 +3253,7 @@ impl HabitShape<'_> {
             plan_overridden: overlay.plan.is_override(),
             title: overlay.title,
             blocked_reason: overlay.blocked_reason,
-            deleted: overlay.deleted,
+            archived: overlay.archived,
             depends_on: occurrence::effective_dependencies(
                 self.dependencies,
                 self.dependency_divergences,
@@ -3598,22 +3730,9 @@ async fn resolve_scopes(
         };
 
     // The root's relative Cycle Plan (task instance type only), against the window start.
-    let root_plan: Option<TimeScope> = match (
-        flow.root_plan_kind.as_deref(),
-        flow.root_plan_start,
-        flow.root_plan_end,
-        window_start,
-    ) {
-        (Some(kind), Some(plan_start), Some(plan_end), Some(base)) => {
-            let start = offset_scope(scopes, base, plan_start, kind).await?;
-            let end = offset_scope(scopes, base, plan_end, kind).await?;
-            Some(TimeScope {
-                start_id: start.id,
-                end_id: end.id,
-                duration: None,
-            })
-        }
-        _ => None,
+    let root_plan = match window_start {
+        Some(base) => root_cycle_plan(scopes, flow, base).await?,
+        None => None,
     };
 
     let mut pairs: HashMap<i64, ResolvedPair> = HashMap::with_capacity(cycles.len());

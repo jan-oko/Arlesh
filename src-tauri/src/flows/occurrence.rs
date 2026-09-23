@@ -1,5 +1,5 @@
-//! Editing one virtual Habit occurrence on its own: its title, its block reason, its Plan, its
-//! dependencies in that iteration, and deleting it from that iteration alone.
+//! Editing one virtual Habit occurrence on its own — an item's occurrence or the iteration root:
+//! its title, its block reason, its Plan, its dependencies in that iteration, and archiving it.
 //!
 //! Every edit is a **divergence** from the template, written to the overlay the instance model
 //! was designed around — `habit_instance_modifications` for the per-occurrence fields,
@@ -20,7 +20,7 @@ use crate::database::session::{Db, Transactional};
 use super::error::FlowError;
 use super::model::{
     DependencyDivergence, FlowCycleInput, FlowDependency, FlowId, FlowItemCycle, FlowItemRef,
-    FlowItemType, HabitInstanceRef, PlanOverride, UpdateFlowRequest, NO_CYCLE,
+    FlowItemType, HabitInstanceRef, InstanceType, PlanOverride, UpdateFlowRequest, NO_CYCLE,
 };
 use super::{FlowOperator, InstanceKey};
 
@@ -33,13 +33,13 @@ pub struct OccurrenceOverlay {
     pub title: Option<String>,
     /// Its block reason, when it has one.
     pub blocked_reason: Option<String>,
-    /// Whether it was deleted from its iteration.
-    pub deleted: bool,
+    /// Whether it was archived by hand.
+    pub archived: bool,
     /// Its own Plan, or [`PlanOverride::Inherit`].
     pub plan: PlanOverride,
 }
 
-/// One overlay row as read: the key's four fields, then title, block reason, tombstone, and the
+/// One overlay row as read: the key's four fields, then title, block reason, archival mark, and the
 /// three plan columns.
 type OverlayRow = (
     String,
@@ -54,8 +54,9 @@ type OverlayRow = (
     Option<i64>,
 );
 
-/// The tombstone an occurrence deleted on its own carries.
-const DELETED: &str = "deleted";
+/// The overlay's archival mark for an occurrence archived by hand. `tombstone_kind` is the column
+/// the overlay was designed with for exactly this, and `archived` one of the values it allows.
+const ARCHIVED: &str = "archived";
 
 /// A text a user typed for an occurrence, as it is stored: trimmed, and `None` when it is empty
 /// or says exactly what the template already says — so typing the template's own title back
@@ -276,7 +277,7 @@ pub struct ForkedTemplate {
 }
 
 /// How many iterations hold recorded edits a cycle edit would orphan: a Modification row (a
-/// status, an own title, block reason, Plan or tombstone) or an added child keyed on one of the
+/// status, an own title, block reason, Plan or archival mark) or an added child keyed on one of the
 /// occurrence keys the edit leaves behind. Zero means the edit is safe to make as it stands.
 pub async fn orphaned_edits(
     db: &mut Db<Transactional>,
@@ -428,7 +429,7 @@ impl FlowOperator<'_> {
                     cycle,
                     title,
                     reason,
-                    tombstone,
+                    archival,
                     overridden,
                     start,
                     end,
@@ -438,7 +439,7 @@ impl FlowOperator<'_> {
                         OccurrenceOverlay {
                             title,
                             blocked_reason: reason,
-                            deleted: tombstone.as_deref() == Some(DELETED),
+                            archived: archival.as_deref() == Some(ARCHIVED),
                             plan: PlanOverride::from_columns(overridden, start, end),
                         },
                     )
@@ -513,12 +514,12 @@ impl FlowOperator<'_> {
         self.prune_empty_modifications(flow_id).await
     }
 
-    /// Deletes an occurrence from its iteration (a tombstone), or restores it.
-    async fn set_tombstone(
+    /// Archives an occurrence by hand, or unarchives it.
+    async fn set_archival(
         &mut self,
         flow_id: FlowId,
         instance: &HabitInstanceRef,
-        deleted: bool,
+        archived: bool,
     ) -> Result<(), FlowError> {
         sqlx::query(
             "INSERT INTO habit_instance_modifications
@@ -532,7 +533,7 @@ impl FlowOperator<'_> {
         .bind(instance.item_id)
         .bind(instance.iteration_scope_id)
         .bind(instance.cycle_id)
-        .bind(deleted.then_some(DELETED))
+        .bind(archived.then_some(ARCHIVED))
         .execute(&mut *self.connection)
         .await?;
         self.prune_empty_modifications(flow_id).await
@@ -607,39 +608,21 @@ impl FlowOperator<'_> {
         Ok(query.fetch_one(&mut *self.connection).await?)
     }
 
-    /// The deleted occurrences of one iteration, as `(item_type, item_id, cycle_id)`.
-    pub(super) async fn deleted_in_iteration(
+    /// The occurrences of one iteration archived by hand, as `(item_type, item_id, cycle_id)`.
+    pub(super) async fn archived_in_iteration(
         &mut self,
         flow_id: FlowId,
         iteration_scope_id: i64,
     ) -> Result<HashSet<(String, i64, i64)>, FlowError> {
         let rows: Vec<(String, i64, i64)> = sqlx::query_as(
             "SELECT item_type, item_id, cycle_id FROM habit_instance_modifications
-             WHERE flow_id = ? AND iteration_scope_id = ? AND tombstone_kind = 'deleted'",
+             WHERE flow_id = ? AND iteration_scope_id = ? AND tombstone_kind = 'archived'",
         )
         .bind(flow_id.0)
         .bind(iteration_scope_id)
         .fetch_all(&mut *self.connection)
         .await?;
         Ok(rows.into_iter().collect())
-    }
-
-    /// How many occurrences each iteration of this Habit has had deleted, by iteration scope.
-    pub(super) async fn deleted_per_iteration(
-        &mut self,
-        flow_id: FlowId,
-    ) -> Result<HashMap<i64, usize>, FlowError> {
-        let rows: Vec<(i64, i64)> = sqlx::query_as(
-            "SELECT iteration_scope_id, COUNT(*) FROM habit_instance_modifications
-             WHERE flow_id = ? AND tombstone_kind = 'deleted' GROUP BY iteration_scope_id",
-        )
-        .bind(flow_id.0)
-        .fetch_all(&mut *self.connection)
-        .await?;
-        Ok(rows
-            .into_iter()
-            .map(|(scope, count)| (scope, usize::try_from(count).unwrap_or(0)))
-            .collect())
     }
 
     /// The template's title for one flow item.
@@ -654,41 +637,58 @@ impl FlowOperator<'_> {
             .await?
             .ok_or_else(|| FlowError::Invalid(format!("no {} {item_id}", item.as_str())))
     }
-
-    /// Whether a flow item has items nested under it in the template.
-    async fn has_child_items(&mut self, item: &FlowItemRef) -> Result<bool, FlowError> {
-        let count: i64 = sqlx::query_scalar(
-            "SELECT (SELECT COUNT(*) FROM flow_goals WHERE parent_type = ?1 AND parent_id = ?2)
-                  + (SELECT COUNT(*) FROM flow_tasks WHERE parent_type = ?1 AND parent_id = ?2)",
-        )
-        .bind(&item.item_type)
-        .bind(item.item_id)
-        .fetch_one(&mut *self.connection)
-        .await?;
-        Ok(count > 0)
-    }
 }
 
-/// The flow-item table an `item_type` names. The root's `flow_root` sentinel is not one: its title
-/// is derived from the iteration, and deleting it would be deleting the iteration.
+/// The flow-item table an `item_type` names, when it names one.
 fn item_kind(item_type: &str) -> Result<FlowItemType, FlowError> {
     match item_type {
         "flow_task" => Ok(FlowItemType::FlowTask),
         "flow_goal" => Ok(FlowItemType::FlowGoal),
-        other => Err(FlowError::Invalid(format!(
-            "only a flow item's occurrence is edited on its own — not a {other}"
-        ))),
+        other => Err(FlowError::Invalid(format!("{other} is not a flow item"))),
     }
 }
 
-/// Checks that `instance` names an occurrence of one of this Habit's **items** — not the root —
-/// and returns which kind of item. The iteration root is refused: its title is derived from the
-/// iteration, and deleting it would be deleting the iteration.
-pub(super) async fn item_occurrence(
+/// What an occurrence renders as, which decides what it can be given on its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OccurrenceKind {
+    /// The iteration root, rendering as the flow's Instance Type.
+    Root(InstanceType),
+    /// One of the flow's items.
+    Item(FlowItemType),
+}
+
+impl OccurrenceKind {
+    /// Whether it renders as a Task — the one kind that carries a Plan and waits on things.
+    fn is_task(self) -> bool {
+        matches!(
+            self,
+            Self::Root(InstanceType::Task) | Self::Item(FlowItemType::FlowTask)
+        )
+    }
+}
+
+/// Checks that `instance` names one of this Habit's occurrences — the iteration root, keyed
+/// `(flow_root, flow id)` with no cycle pair, or an item drawn by one of its own pairs — and
+/// returns what it renders as.
+pub(super) async fn occurrence_kind(
     db: &mut Db<Transactional>,
     flow_id: FlowId,
     instance: &HabitInstanceRef,
-) -> Result<FlowItemType, FlowError> {
+) -> Result<OccurrenceKind, FlowError> {
+    if db.flows().get_recurrence(flow_id).await?.is_none() {
+        return Err(FlowError::Invalid("flow is not a habit".to_string()));
+    }
+    if instance.item_type == "flow_root" {
+        if instance.item_id != flow_id.0 || instance.cycle_id != NO_CYCLE {
+            return Err(FlowError::Invalid(
+                "that iteration belongs to another flow".to_string(),
+            ));
+        }
+        let flow = db.flows().get(flow_id).await?;
+        return Ok(OccurrenceKind::Root(InstanceType::from_db(
+            &flow.instance_type,
+        )));
+    }
     let kind = item_kind(&instance.item_type)?;
     if db.flows().item_flow_id(kind, instance.item_id).await? != flow_id.0 {
         return Err(FlowError::Invalid(
@@ -706,14 +706,18 @@ pub(super) async fn item_occurrence(
             ));
         }
     }
-    if db.flows().get_recurrence(flow_id).await?.is_none() {
-        return Err(FlowError::Invalid("flow is not a habit".to_string()));
-    }
-    Ok(kind)
+    Ok(OccurrenceKind::Item(kind))
 }
 
-/// Gives one occurrence its own title, or hands it back to the flow item's with `None`. A title
-/// that is empty, or the same as the template's, clears the divergence.
+/// Whether an occurrence of this kind carries a Plan of its own: one that renders as a Task.
+pub(super) fn carries_plan(kind: OccurrenceKind) -> bool {
+    kind.is_task()
+}
+
+/// Gives one occurrence its own title, or hands it back to the template's with `None`. A title
+/// that is empty, or the same as the flow item's, clears the divergence. The iteration root's
+/// template title is derived from the iteration on the board, so there only `None` or an empty
+/// title clears it, and the editor sends `None` for the derived title typed back.
 #[tracing::instrument(skip(db))]
 pub async fn set_instance_title(
     db: &mut Db<Transactional>,
@@ -721,9 +725,13 @@ pub async fn set_instance_title(
     instance: &HabitInstanceRef,
     title: Option<String>,
 ) -> Result<(), FlowError> {
-    let kind = item_occurrence(db, flow_id, instance).await?;
-    let template = db.flows().item_title(kind, instance.item_id).await?;
-    let stored = stored_text(title, Some(&template));
+    let stored = match occurrence_kind(db, flow_id, instance).await? {
+        OccurrenceKind::Item(kind) => {
+            let template = db.flows().item_title(kind, instance.item_id).await?;
+            stored_text(title, Some(&template))
+        }
+        OccurrenceKind::Root(_) => stored_text(title, None),
+    };
     db.flows()
         .set_overlay_text(flow_id, instance, OverlayText::Title, stored.as_deref())
         .await
@@ -737,7 +745,7 @@ pub async fn set_instance_block_reason(
     instance: &HabitInstanceRef,
     reason: Option<String>,
 ) -> Result<(), FlowError> {
-    item_occurrence(db, flow_id, instance).await?;
+    occurrence_kind(db, flow_id, instance).await?;
     let stored = stored_text(reason, None);
     db.flows()
         .set_overlay_text(
@@ -749,77 +757,69 @@ pub async fn set_instance_block_reason(
         .await
 }
 
-/// Deletes one occurrence from its iteration alone, or restores it.
+/// Archives one occurrence by hand, or unarchives it — the root, which is the whole iteration, or
+/// one item's occurrence.
 ///
-/// An occurrence that holds something is refused, by name, rather than taking what it holds with
-/// it: an added child hung on it, or — for the occurrence its template children nest under, the
-/// item's first — the occurrences of those child items. Delete those first. A deleted occurrence
-/// no longer counts towards its iteration's resolution, and nothing is taken from the template.
+/// Archiving takes what hangs under the occurrence with it, the way archiving any node does: the
+/// root takes every occurrence of its iteration, and an item's first occurrence — the one its
+/// template children nest under — takes those children's occurrences. Nothing is refused for
+/// holding something, and nothing is written to what it holds: they read as archived because
+/// the occurrence above them is. Nothing is taken from the template.
 #[tracing::instrument(skip(db))]
-pub async fn set_instance_deleted(
+pub async fn set_instance_archived(
     db: &mut Db<Transactional>,
     flow_id: FlowId,
     instance: &HabitInstanceRef,
-    deleted: bool,
+    archived: bool,
 ) -> Result<(), FlowError> {
-    item_occurrence(db, flow_id, instance).await?;
-    if deleted {
-        refuse_if_holding(db, flow_id, instance).await?;
-    }
-    db.flows().set_tombstone(flow_id, instance, deleted).await
+    occurrence_kind(db, flow_id, instance).await?;
+    db.flows().set_archival(flow_id, instance, archived).await
 }
 
-/// Refuses deleting an occurrence that still holds something.
-async fn refuse_if_holding(
-    db: &mut Db<Transactional>,
-    flow_id: FlowId,
-    instance: &HabitInstanceRef,
-) -> Result<(), FlowError> {
-    let holds_added_child = db
-        .flows()
-        .list_instance_children(flow_id)
-        .await?
+/// The occurrences of one iteration that no longer count towards its resolution, as
+/// `(item_type, item_id, cycle_id)` keys out of `keys`.
+///
+/// An occurrence archived by hand is set aside, and so is everything it holds: an archived root
+/// sets aside the whole iteration, and an archived item occurrence that is its item's **first**
+/// (`first_cycle`, the pair its template children nest under) sets aside every occurrence of the
+/// items nested below it, however deep (`parents`, item → its in-flow parent item).
+pub fn set_aside(
+    keys: &[(String, i64, i64)],
+    archived: &HashSet<(String, i64, i64)>,
+    parents: &HashMap<(String, i64), (String, i64)>,
+    first_cycle: &HashMap<(String, i64), i64>,
+) -> HashSet<(String, i64, i64)> {
+    if archived
         .iter()
-        .any(|child| {
-            child.item_type == instance.item_type
-                && child.item_id == instance.item_id
-                && child.iteration_scope_id == instance.iteration_scope_id
-                && child.cycle_id == instance.cycle_id
-        });
-    if holds_added_child {
-        return Err(FlowError::Invalid(
-            "this occurrence still holds something added to it — delete that first".to_string(),
-        ));
-    }
-    let item = FlowItemRef {
-        item_type: instance.item_type.clone(),
-        item_id: instance.item_id,
-    };
-    if is_first_occurrence(db, flow_id, instance).await?
-        && db.flows().has_child_items(&item).await?
+        .any(|(item_type, _, _)| item_type == "flow_root")
     {
-        return Err(FlowError::Invalid(
-            "this occurrence holds the occurrences of the steps nested under it — delete those \
-             first"
-                .to_string(),
-        ));
+        return keys.iter().cloned().collect();
     }
-    Ok(())
-}
-
-/// Whether `instance` is the occurrence its item's template children nest under: the one drawn
-/// by the item's first cycle pair, or the only one when it has none.
-async fn is_first_occurrence(
-    db: &mut Db<Transactional>,
-    flow_id: FlowId,
-    instance: &HabitInstanceRef,
-) -> Result<bool, FlowError> {
-    let cycles = db.flows().cycles_by_item(flow_id).await?;
-    let first = cycles
-        .get(&(instance.item_type.clone(), instance.item_id))
-        .and_then(|pairs| pairs.first())
-        .map_or(NO_CYCLE, |pair| pair.id);
-    Ok(first == instance.cycle_id)
+    let archives_children = |item: &(String, i64)| {
+        let first = first_cycle.get(item).copied().unwrap_or(NO_CYCLE);
+        archived.contains(&(item.0.clone(), item.1, first))
+    };
+    keys.iter()
+        .filter(|(item_type, item_id, cycle_id)| {
+            if archived.contains(&(item_type.clone(), *item_id, *cycle_id)) {
+                return true;
+            }
+            let mut ancestor = parents.get(&(item_type.clone(), *item_id));
+            let mut steps = 0;
+            while let Some(parent) = ancestor {
+                if archives_children(parent) {
+                    return true;
+                }
+                steps += 1;
+                if steps > parents.len() {
+                    break;
+                }
+                ancestor = parents.get(parent);
+            }
+            false
+        })
+        .cloned()
+        .collect()
 }
 
 /// Sets what one task occurrence waits on in its iteration: `depends_on` is the whole set it
@@ -837,9 +837,12 @@ pub async fn set_instance_dependencies(
     instance: &HabitInstanceRef,
     depends_on: Vec<FlowItemRef>,
 ) -> Result<(), FlowError> {
-    if item_occurrence(db, flow_id, instance).await? != FlowItemType::FlowTask {
+    if occurrence_kind(db, flow_id, instance).await? != OccurrenceKind::Item(FlowItemType::FlowTask)
+    {
         return Err(FlowError::Invalid(
-            "only a task waits on something — a goal occurrence has no dependencies".to_string(),
+            "only a task item's occurrence waits on something — a goal has no dependencies, and \
+             an iteration root takes no part in its template's dependency graph"
+                .to_string(),
         ));
     }
     let dependent = FlowItemRef {

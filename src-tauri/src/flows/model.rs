@@ -603,9 +603,9 @@ pub struct HabitInstance {
     /// This occurrence's block reason, or `None` when it has none. A flow item carries no block
     /// reason of its own, so there is nothing to inherit.
     pub blocked_reason: Option<String>,
-    /// Whether this occurrence was deleted from its iteration on its own (a tombstone). It is
-    /// still sent, so the one view that shows everything can show it and offer it back.
-    pub deleted: bool,
+    /// Whether this occurrence was archived by hand. It is still sent, so the one view that
+    /// shows everything can show it and offer to unarchive it.
+    pub archived: bool,
     /// The flow items this occurrence waits on in this iteration: the template's dependencies with
     /// this iteration's own additions and removals applied. Every occurrence of each blocker in
     /// the same iteration gates it, as every instance of a blocker does when a flow is started.
@@ -640,6 +640,12 @@ pub struct HabitIteration {
     ///
     /// [`generate_habit_iterations`]: crate::flows::generate_habit_iterations
     pub instances: Vec<HabitInstance>,
+    /// The iteration root as an occurrence in its own right — its own title, block reason, Plan
+    /// (against the flow's root Cycle Plan) and archival. `None` from the pure classifier, filled by
+    /// [`generate_habit_iterations`] like the instances.
+    ///
+    /// [`generate_habit_iterations`]: crate::flows::generate_habit_iterations
+    pub root: Option<HabitInstance>,
 }
 
 /// Names one virtual Habit instance, as its Modification row is keyed: which item (or the
@@ -751,7 +757,7 @@ pub struct DependencyDivergence {
     pub added: bool,
 }
 
-/// One instance's divergent **status** for a Habit iteration — a non-tombstoned Modification (e.g.
+/// One instance's divergent **status** for a Habit iteration — a Modification (e.g.
 /// `in_progress` or `done`). Lets the mindmap render each iteration instance's state; instances with
 /// no Modification sit at their base status (task `todo` / goal `active`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, sqlx::FromRow)]

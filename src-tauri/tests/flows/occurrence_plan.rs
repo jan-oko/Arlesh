@@ -390,7 +390,7 @@ async fn a_future_occurrence_can_be_planned_before_its_iteration_arrives() {
 }
 
 #[tokio::test]
-async fn only_a_task_occurrence_takes_a_plan_of_its_own() {
+async fn a_task_habits_iteration_root_is_plannable_and_a_goal_habits_is_not() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
     let run = weekly_run(&pool, &app, "week").await;
@@ -401,9 +401,23 @@ async fn only_a_task_occurrence_takes_a_plan_of_its_own() {
         cycle_id: 0,
     };
 
+    set_plan(&app, run.flow_id, root.clone(), PlanOverride::Unplanned)
+        .await
+        .expect("a task habit's iteration is a task, and a task is planned");
+
+    flow_commands::update_flow(
+        app.state(),
+        run.flow_id,
+        arlesh_lib::flows::model::UpdateFlowRequest {
+            instance_type: Some(InstanceType::Goal),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
     let refused = set_plan(&app, run.flow_id, root, PlanOverride::Unplanned)
         .await
-        .expect_err("the root is not planned per occurrence");
+        .expect_err("a goal has no Plan");
     assert_eq!(refused["kind"].as_str(), Some("invalid_request"));
 }
 

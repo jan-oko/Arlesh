@@ -69,6 +69,7 @@ fn iteration(slot: &SlotWindow, status: IterationStatus) -> HabitIteration {
         // Empty here by construction: resolving an occurrence's window is calendar work, and this
         // module deliberately has none. The repository fills it after classification.
         instances: Vec::new(),
+        root: None,
     }
 }
 
