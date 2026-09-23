@@ -139,9 +139,9 @@ pub async fn template_fields<M: SessionMode>(
 
 /// The occurrence as the virtual table serves it now, by kind.
 enum Current {
-    Task(Task),
-    Goal(Goal),
-    Commitment(Commitment),
+    Task(Box<Task>),
+    Goal(Box<Goal>),
+    Commitment(Box<Commitment>),
 }
 
 /// Derives the one occurrence `key` names, as its row.
@@ -162,15 +162,15 @@ async fn current(
     .await?;
     let id = NodeId::Derived(key.id());
     if let Some(task) = rows.tasks.into_iter().find(|task| task.id == id) {
-        return Ok(Current::Task(task));
+        return Ok(Current::Task(Box::new(task)));
     }
     if let Some(goal) = rows.goals.into_iter().find(|goal| goal.id == id) {
-        return Ok(Current::Goal(goal));
+        return Ok(Current::Goal(Box::new(goal)));
     }
     rows.commitments
         .into_iter()
         .find(|commitment| commitment.id == id)
-        .map(Current::Commitment)
+        .map(|commitment| Current::Commitment(Box::new(commitment)))
         .ok_or_else(|| FlowError::NodeNotFound(key.node_key()))
 }
 
@@ -183,9 +183,9 @@ pub async fn occurrence_row(
     let flow_id = db.flows().occurrence_flow_id(key).await?;
     let flow = db.flows().get(flow_id).await?;
     Ok(match current(db, &flow, key, now).await? {
-        Current::Task(task) => (Some(task), None, None),
-        Current::Goal(goal) => (None, Some(goal), None),
-        Current::Commitment(commitment) => (None, None, Some(commitment)),
+        Current::Task(task) => (Some(*task), None, None),
+        Current::Goal(goal) => (None, Some(*goal), None),
+        Current::Commitment(commitment) => (None, None, Some(*commitment)),
     })
 }
 

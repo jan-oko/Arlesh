@@ -188,7 +188,8 @@ pub async fn added_edges<M: crate::database::session::SessionMode>(
         .filter(|edge| edge.added)
         .filter_map(|edge| {
             let (dependent, target) = (edge.dependent()?, edge.target()?);
-            (on_board(&dependent) && on_board(&target)).then(|| TaskDependencyEdge {
+            let drawn = on_board(&dependent) && on_board(&target);
+            drawn.then_some(TaskDependencyEdge {
                 task_id: dependent,
                 dependency_type: edge.target_type,
                 dependency_id: target,
