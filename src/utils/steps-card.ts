@@ -1,4 +1,4 @@
-import type { MindmapNode } from "@/utils/tree-layout";
+import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { canAdoptChildren, canParentAnyNewChild } from "@/utils/node-meta";
 
 /**
@@ -231,4 +231,19 @@ export function infoBullets(titles: readonly string[], capacity: number): InfoBu
 /** The titles of `node`'s direct Info children, in the order they are drawn. */
 export function infoChildTitles(node: MindmapNode): string[] {
   return node.children.filter((child) => child.kind === "info").map((child) => child.title);
+}
+
+/**
+ * The kinds whose glyph is **borrowed** from another kind: a Flow's template Goal and Task are drawn
+ * with the Goal and Task glyphs, so on a card only the words tell a template from the real thing.
+ */
+const KINDS_SHARING_A_GLYPH: ReadonlySet<NodeKind> = new Set<NodeKind>(["flow_goal", "flow_task"]);
+
+/**
+ * Whether a card's glyph already says what kind of node it is, so that the kind need not be written
+ * out underneath as well. True for every kind with a glyph of its own — the Aspect included, which
+ * has one on a card though not on the Mindmap.
+ */
+export function glyphNamesKind(kind: NodeKind): boolean {
+  return !KINDS_SHARING_A_GLYPH.has(kind);
 }

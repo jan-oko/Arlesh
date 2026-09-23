@@ -308,15 +308,22 @@ describe("a card's colour", () => {
   });
 });
 
-describe("a card's glyph", () => {
-  it("leaves no empty glyph slot on an Aspect, which has no glyph", () => {
-    mockTree([n("domain-1", "aspect", { color: "#e74c3c" }), n("domain-2", "domain")]);
+describe("a card's glyph and kind line", () => {
+  it("draws a glyph on an Aspect and does not write out its kind", () => {
+    mockTree([n("domain-1", "aspect", { color: "#e74c3c" })]);
     render(<StepsView />);
 
     const aspect = document.querySelector('[data-step-card="domain-1"]');
-    const domain = document.querySelector('[data-step-card="domain-2"]');
-    expect(aspect?.querySelector("svg")).toBeNull();
-    expect(domain?.querySelector("svg")).not.toBeNull();
+    expect(aspect?.querySelector("svg polygon")).not.toBeNull();
+    expect(aspect?.textContent).not.toContain("nodeKinds:aspect");
+  });
+
+  it("writes out the kind only where the glyph is borrowed — a Flow's template Task", () => {
+    mockTree([n("task-1", "task"), n("flow_task-2", "flow_task")]);
+    render(<StepsView />);
+
+    expect(document.querySelector('[data-step-card="task-1"]')?.textContent).not.toContain("nodeKinds:task");
+    expect(document.querySelector('[data-step-card="flow_task-2"]')?.textContent).toContain("nodeKinds:flow_task");
   });
 });
 

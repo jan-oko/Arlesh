@@ -51,14 +51,32 @@ export function computeNodeAppearance(node: MindmapNode, depth: number): NodeApp
 /** The style properties that wash a card in its aspect's colour. */
 export interface AspectWashStyle {
   "--card-aspect"?: string;
+  "--card-aspect-strength"?: string;
 }
+
+/**
+ * The hues that take a wash strength of their own, keyed by the seeded aspect colour.
+ *
+ * Self (`#bdc3c7`) and Flow (`#95a5a6`) are both near-neutral greys, and at the shared strength their
+ * washes were indistinguishable. The strengths themselves are per theme, so they live in
+ * `tokens.css`; this only says which hue takes which. Keyed by colour rather than by aspect because
+ * what needs tuning is how a hue mixes, and the six aspect colours are fixed with the board.
+ */
+const WASH_STRENGTH_BY_COLOUR: ReadonlyMap<string, string> = new Map([
+  ["#bdc3c7", "var(--card-aspect-strength-self)"],
+  ["#95a5a6", "var(--card-aspect-strength-flow)"],
+]);
 
 /**
  * What a card needs to be washed in `aspectColor` — see `aspect-wash.module.css`, which the card's
  * class composes. Outside any aspect it is empty, which leaves the card its plain base surface.
  */
 export function aspectWashStyle(aspectColor: string | undefined): AspectWashStyle {
-  return aspectColor === undefined ? {} : { "--card-aspect": aspectColor };
+  if (aspectColor === undefined) return {};
+  const strength = WASH_STRENGTH_BY_COLOUR.get(aspectColor.toLowerCase());
+  return strength === undefined
+    ? { "--card-aspect": aspectColor }
+    : { "--card-aspect": aspectColor, "--card-aspect-strength": strength };
 }
 
 /**

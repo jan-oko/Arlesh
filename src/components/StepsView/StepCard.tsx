@@ -2,13 +2,13 @@ import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { isNodeBlocked } from "@/utils/tree-layout";
-import { kindHasGlyph } from "@/utils/node-meta";
 import { deriveStatusIndicators } from "@/utils/node-status-indicators";
 import { DIMMED_OPACITY, aspectWashStyle } from "@/utils/node-visuals";
 import {
-  bulletCapacity, infoBullets, infoChildTitles, stepCardFields, type StepChildCounts,
+  bulletCapacity, glyphNamesKind, infoBullets, infoChildTitles, stepCardFields, type StepChildCounts,
 } from "@/utils/steps-card";
 import { isRtlText } from "@/utils/text-direction";
+import AspectIcon from "@/components/NodeIcon/AspectIcon";
 import NodeIcon from "@/components/NodeIcon/NodeIcon";
 import TaskRowBadges from "@/components/ListView/TaskRowBadges";
 import StepCardFields from "./StepCardFields";
@@ -102,24 +102,27 @@ export default function StepCard({
       onDoubleClick={onDescend}
     >
       <span className={styles.top}>
-        {/* An Aspect has no glyph, so it gets no glyph slot either: an empty 18px box would push its
-            title in off the card's edge for nothing. */}
-        {kindHasGlyph(node.kind) && (
-          <span className={styles.glyph} aria-hidden="true">
-            <svg width={ICON_R * 2} height={ICON_R * 2} viewBox={`0 0 ${ICON_R * 2} ${ICON_R * 2}`}>
+        <span className={styles.glyph} aria-hidden="true">
+          <svg width={ICON_R * 2} height={ICON_R * 2} viewBox={`0 0 ${ICON_R * 2} ${ICON_R * 2}`}>
+            {/* Every card has a glyph, an Aspect's included — the kind line is gone wherever the
+                glyph already says the kind, so a card without one would say nothing about it. */}
+            {node.kind === "aspect" ? (
+              <AspectIcon cx={ICON_R} cy={ICON_R} r={ICON_R * 0.9} color="var(--node-text)" opacity={1} />
+            ) : (
               <NodeIcon
                 kind={node.kind} status={node.status} verdict={node.verdict}
                 isArchived={node.archived === true} isBlocked={isNodeBlocked(node)}
                 isHabit={node.flow?.isHabit === true}
                 cx={ICON_R} cy={ICON_R} r={ICON_R * 0.9} color="var(--node-text)" opacity={1}
               />
-            </svg>
-          </span>
-        )}
+            )}
+          </svg>
+        </span>
         <span className={styles.title} dir={isRtlText(node.title) ? "rtl" : "ltr"}>{node.title}</span>
       </span>
 
-      <span className={styles.kind}>{t(`nodeKinds:${node.kind}`)}</span>
+      {/* The kind in words only where the glyph does not already say it. */}
+      {!glyphNamesKind(node.kind) && <span className={styles.kind}>{t(`nodeKinds:${node.kind}`)}</span>}
       <TaskRowBadges node={node} indicators={indicators} />
       <StepCardFields node={node} fields={fields} />
 

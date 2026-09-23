@@ -32,6 +32,13 @@ html, body, #root {
      the theme already guarantees the text against. Dark needs slightly more of the hue than light
      to read as coloured at all. */
   --card-aspect-strength: 16%;
+  /* Self and Flow are the two near-neutral aspects, and at one shared strength their washes came out
+     all but identical (ΔE00 1.9 in dark, 1.0 in light). Self is the lighter hue and should read
+     lighter. Each is moved only in the direction that *raises* its own contrast, so no text or badge
+     on either falls below the floor the other aspects already set: in dark Self stays and Flow
+     darkens; in light (below) Self lightens and Flow darkens as far as the light floors allow. */
+  --card-aspect-strength-self: 16%;
+  --card-aspect-strength-flow: 8%;
 
   /* Canvas */
   --canvas-bg: #13131f;
@@ -81,6 +88,10 @@ html, body, #root {
 
   /* See the dark set: less of the hue here, because a pale tint reads as coloured sooner. */
   --card-aspect-strength: 11%;
+  /* Self and Flow: see the dark set. Flow stops at 17% — 18% would put its card's muted text under
+     the 5.03:1 the other aspects hold in light. */
+  --card-aspect-strength-self: 4%;
+  --card-aspect-strength-flow: 17%;
 
   /* Canvas */
   --canvas-bg: #f4f4fa;

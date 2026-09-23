@@ -44,6 +44,15 @@ describe("aspectWashStyle", () => {
     expect(aspectWashStyle("#e74c3c")).toEqual({ "--card-aspect": "#e74c3c" });
   });
 
+  it("gives Self and Flow a strength of their own, so the two greys stop looking the same", () => {
+    expect(aspectWashStyle("#bdc3c7")).toEqual({
+      "--card-aspect": "#bdc3c7", "--card-aspect-strength": "var(--card-aspect-strength-self)",
+    });
+    expect(aspectWashStyle("#95A5A6")).toEqual({
+      "--card-aspect": "#95A5A6", "--card-aspect-strength": "var(--card-aspect-strength-flow)",
+    });
+  });
+
   it("is empty outside any aspect, leaving the card its base surface", () => {
     expect(aspectWashStyle(undefined)).toEqual({});
   });

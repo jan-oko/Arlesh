@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import {
+  glyphNamesKind,
   bulletCapacity, canDescendInto, infoBullets, infoChildTitles, stepCardFields, stepChildCounts,
   stepRefusalKey,
 } from "./steps-card";
@@ -157,5 +158,18 @@ describe("what you can descend into", () => {
     });
     expect(canDescendInto(folded)).toBe(false);
     expect(stepRefusalKey(folded)).toBe("refusedNotStored");
+  });
+});
+
+describe("whether a card writes out its kind", () => {
+  it("does not, where the glyph already says it", () => {
+    for (const kind of ["aspect", "domain", "project", "goal", "task", "commitment", "tag", "info", "flow"] as const) {
+      expect(glyphNamesKind(kind)).toBe(true);
+    }
+  });
+
+  it("does, for a Flow's template Goal and Task, which borrow the Goal and Task glyphs", () => {
+    expect(glyphNamesKind("flow_goal")).toBe(false);
+    expect(glyphNamesKind("flow_task")).toBe(false);
   });
 });

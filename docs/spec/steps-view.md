@@ -117,6 +117,18 @@ something already on the card, in a view whose only scarcity is vertical space.
 The line is drawn at **boolean against value**. A badge says a Task *has* a Time Scope; only a field
 says it is *this week*. The badge is the duplicate; the value behind it is not.
 
+**The kind is not written out where the glyph already says it** — which is every kind but two. A
+Flow's template **Goal** and **Task** are drawn with the Goal and Task glyphs, so on them the words
+are the only thing telling a template from the real node, and they stay. Everywhere else the kind
+line was the glyph again, in capitals. **Every card has a glyph**, an Aspect's included: on the
+Mindmap an Aspect is a coloured block and draws none, but a card with no glyph and no kind line would
+say nothing about what it is, so a Steps card draws it a hexagon ring — six sides, for the six
+Aspects.
+
+**The selection ring is drawn inside the card** — the accent border, doubled to 2px by an inset
+shadow. An outline outside the card was clipped by the card area's `overflow: hidden` along the top
+and left of every card in the first row and column, which sit flush against that edge.
+
 | Kind | Fields, in reading order |
 | --- | --- |
 | Task · Goal | Time Scope, Plan, On scope exit |
@@ -161,6 +173,22 @@ text for every aspect in both themes, a pale one like Steel and the Aspect card 
 the six seeded aspects it bottoms out at 8.80:1 (Steel, dark) and 14.83:1 (Red, light). It does not
 carry the muted text, whose margin was thin to begin with — see below. The strength is per theme:
 a dark background needs more of the hue than a light one to read as coloured at all.
+
+**Self and Flow take a strength of their own.** They are the two near-neutral aspects (`#bdc3c7` and
+`#95a5a6`), and at the shared strength their washes were all but identical — ΔE00 1.9 in dark and
+1.0 in light, a lightness difference of 2.3 and 1.2 L*. Self is the lighter hue and should read
+lighter. Each is moved only in the direction that **raises** its own contrast, so neither falls below
+the floor the other aspects already set:
+
+| Theme | Self | Flow | Self − Flow, card | Self − Flow, row |
+|---|---|---|---|---|
+| Dark (shared 16%) | 16% | 8% | ΔE00 5.0, ΔL* 7.2 | ΔE00 5.0, ΔL* 6.9 |
+| Light (shared 11%) | 4% | 17% | ΔE00 3.0, ΔL* 4.7 | ΔE00 2.9, ΔL* 4.1 |
+
+Light is the tighter of the two. Self is already within a few L* of white, so most of the separation
+has to come from darkening Flow, and Flow stops at 17% because 18% would put its card's muted text
+under the 5.03:1 the other aspects hold in light. Getting further apart than this would mean changing
+the seeded colours themselves, which would change every view.
 
 A node **outside any aspect** keeps the theme's plain card background, and the board's own header
 card is not coloured at all.

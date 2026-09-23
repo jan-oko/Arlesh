@@ -3,4 +3,5 @@
   how deep its task sat, so the same aspect looked different from row to row, and on a pale aspect
   like Steel in the dark theme the text could get hard to read. Every row is now washed in its
   aspect's colour at one fixed strength, the same wash the Steps View uses, and the row's secondary
-  text is adjusted so it stays readable on each aspect in both themes.
+  text is adjusted so it stays readable on each aspect in both themes. Self and Flow, the two grey
+  aspects, are now told apart: Self reads lighter.

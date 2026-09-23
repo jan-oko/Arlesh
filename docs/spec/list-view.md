@@ -88,6 +88,8 @@ itself, with the row's muted text derived from that surface. The contrast reason
 are the Steps View's (see *What the fill says* there). On a row the base is the raised surface rather
 than the card background, so the margins are a little thinner: for the six seeded aspects the
 primary text bottoms out at 8.28:1 and the muted text at 4.53:1 (Steel, dark), 4.78:1 in light.
+Self and Flow take the per-aspect strengths described there, so the two greys differ on a row as
+they do on a card.
 
 **The colour says nothing about state.** The status control's glyph draws done, in progress and
 blocked (and is disabled while blocked); the badge row carries archived, frozen, backlogged, agentic
