@@ -15,4 +15,5 @@
 mod helpers;
 
 mod block_reasons;
+mod expectations;
 mod tasks;

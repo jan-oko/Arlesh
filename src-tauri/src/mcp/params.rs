@@ -102,7 +102,7 @@ pub enum SnapshotOperation {
         /// looking at, rather than an approximation assembled from `lifecycles`. Omit it — the
         /// default — for every node on the board.
         ///
-        /// It narrows the domain, goal, task, commitment and info sections, and the lifecycles,
+        /// It narrows the domain, goal, task, commitment, expectation and info sections, and the lifecycles,
         /// block reasons and dependencies derived from them. The flow sections are never narrowed:
         /// a Flow's subtree and a Habit's occurrences are assembled from these rows rather than
         /// being rows themselves, so there is nothing for a preset to judge.

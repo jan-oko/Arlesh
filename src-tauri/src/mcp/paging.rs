@@ -71,6 +71,8 @@ pub enum Section {
     Tasks,
     /// Commitments — rules held over a window, with their recorded verdicts.
     Commitments,
+    /// Expectations — waits tasks depend on, pending until released.
+    Expectations,
     /// Notes.
     Infos,
     /// Flows.
@@ -98,11 +100,12 @@ pub enum Section {
 }
 
 /// Every section, in the order pages walk them.
-pub const SECTIONS: [Section; 16] = [
+pub const SECTIONS: [Section; 17] = [
     Section::Domains,
     Section::Goals,
     Section::Tasks,
     Section::Commitments,
+    Section::Expectations,
     Section::Infos,
     Section::Flows,
     Section::FlowGoals,
@@ -125,6 +128,7 @@ impl Section {
             Self::Goals => "goals",
             Self::Tasks => "tasks",
             Self::Commitments => "commitments",
+            Self::Expectations => "expectations",
             Self::Infos => "infos",
             Self::Flows => "flows",
             Self::FlowGoals => "flow_goals",

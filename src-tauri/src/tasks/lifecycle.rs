@@ -23,7 +23,9 @@ use chrono::NaiveDateTime;
 
 use crate::scopes::resolve::Bounds;
 
-use super::model::{DurationSpec, OnScopeExit, TaskArchival, Verdict};
+use super::model::{
+    DurationSpec, ExpectationArchival, ExpectationStatus, OnScopeExit, TaskArchival, Verdict,
+};
 
 /// An item's window position relative to `now`. Unscoped items are always `Active`.
 ///
@@ -231,7 +233,7 @@ pub fn derive_item_state(
 /// One item's fully-derived lifecycle state, keyed by node reference for the frontend.
 #[derive(Debug, Clone, Serialize)]
 pub struct ItemLifecycle {
-    /// `"task"`, `"goal"` or `"commitment"`.
+    /// `"task"`, `"goal"`, `"commitment"` or `"expectation"` — the last describing its check-by.
     pub node_type: String,
     /// The item's id.
     pub node_id: i64,
@@ -357,3 +359,43 @@ pub fn derive_commitment_state(
 
 #[cfg(test)]
 mod commitment_tests;
+
+// ===========================================================================
+// Expectations
+// ===========================================================================
+//
+// An Expectation has no window of its own. What its lifecycle entry describes is its **check-by**,
+// which is the window its virtual "check on it" Task is scoped to: that task reads its Timing and
+// Resolution from here. The Expectation's own Archival is its stored archive, nothing derived.
+
+/// Derives the lifecycle entry an Expectation is sent under, at `now`.
+///
+/// `check_by` is the resolved check-by window, when there is one. Timing reads it as any window is
+/// read. A check-by that has passed while the Expectation is still **pending** resolves
+/// [`Resolution::Overdue`] — the check is late, and nothing about a wait archives it for being
+/// late, so it stays on screen like a Keep-on-exit Task. A released Expectation has no check left
+/// to be late for, and so no Resolution.
+pub fn derive_expectation_state(
+    check_by: Option<Bounds>,
+    status: ExpectationStatus,
+    stored: ExpectationArchival,
+    now: NaiveDateTime,
+) -> DerivedState {
+    let timing = derive_timing(check_by, now);
+    let resolution = match status {
+        ExpectationStatus::Pending => derive_resolution(timing, false, Some(OnScopeExit::Keep)),
+        ExpectationStatus::Released => None,
+    };
+    DerivedState {
+        timing,
+        resolution,
+        archival: match stored {
+            ExpectationArchival::Live => Archival::Live,
+            ExpectationArchival::Archived => Archival::Archived,
+        },
+        archival_conflict: false,
+    }
+}
+
+#[cfg(test)]
+mod expectation_tests;

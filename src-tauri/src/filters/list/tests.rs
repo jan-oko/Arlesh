@@ -200,7 +200,7 @@ fn the_commitments_band_answers_the_commitment_rules() {
     );
     assert_eq!(
         commitment_rows(&root, &BoardFilter::preset(Preset::Plan)),
-        ["commitment-1", "commitment-3"]
+        ["commitment-1"]
     );
     assert_eq!(
         commitment_rows(&root, &BoardFilter::preset(Preset::Do)),
@@ -293,4 +293,92 @@ fn an_unopened_occurrence_above_the_band_empties_it_too() {
     );
     assert!(commitment_rows(&root, &BoardFilter::preset(Preset::Plan)).is_empty());
     assert!(commitment_rows(&root, &BoardFilter::preset(Preset::Do)).is_empty());
+}
+
+fn expectation(id: &str, status: &str) -> NodeFacts {
+    let mut facts = NodeFacts::new(id, NodeKind::Expectation);
+    facts.status = Some(status.to_string());
+    facts
+}
+
+fn expectation_rows(root: &FactNode, filter: &BoardFilter) -> Vec<String> {
+    flatten(root, NodeKind::Expectation)
+        .into_iter()
+        .filter(|row| passes_expectation_row(row.as_row(), filter))
+        .map(|row| row.node.id)
+        .collect()
+}
+
+fn waits() -> FactNode {
+    let mut checked = expectation("expectation-2", "pending");
+    checked.has_check_by = true;
+    let mut private = expectation("expectation-4", "pending");
+    private.is_private = true;
+    FactNode::with_children(
+        NodeFacts::new("root", NodeKind::Aspect),
+        vec![
+            FactNode::leaf(expectation("expectation-1", "pending")),
+            FactNode::leaf(checked),
+            FactNode::leaf(expectation("expectation-3", "released")),
+            FactNode::leaf(private),
+            FactNode::leaf(task("task-1", "todo")),
+        ],
+    )
+}
+
+#[test]
+fn the_expectations_option_shows_pending_waits_and_nothing_else() {
+    let filter = BoardFilter {
+        expectations: true,
+        ..BoardFilter::preset(Preset::Start)
+    };
+    assert_eq!(
+        expectation_rows(&waits(), &filter),
+        ["expectation-1", "expectation-2"]
+    );
+    assert!(rows_of(&waits(), &filter).is_empty());
+    let private = BoardFilter {
+        private_mode: true,
+        ..filter
+    };
+    assert_eq!(
+        expectation_rows(&waits(), &private),
+        ["expectation-1", "expectation-2", "expectation-4"]
+    );
+}
+
+#[test]
+fn expectation_rows_answer_the_preset_and_unblock_empties_them() {
+    assert_eq!(
+        expectation_rows(&waits(), &BoardFilter::preset(Preset::Start)),
+        ["expectation-1"]
+    );
+    assert_eq!(
+        expectation_rows(&waits(), &BoardFilter::preset(Preset::All)),
+        ["expectation-1", "expectation-2", "expectation-3"]
+    );
+    let unblock = BoardFilter {
+        unblock: true,
+        ..BoardFilter::preset(Preset::All)
+    };
+    assert!(expectation_rows(&waits(), &unblock).is_empty());
+    let expectations = BoardFilter {
+        expectations: true,
+        ..BoardFilter::preset(Preset::All)
+    };
+    assert!(commitment_rows(&waits(), &expectations).is_empty());
+}
+
+#[test]
+fn a_waits_row_under_a_shelved_project_goes_with_it() {
+    let mut frozen = NodeFacts::new("domain-1", NodeKind::Project);
+    frozen.status = Some("frozen".to_string());
+    let root = FactNode::with_children(
+        NodeFacts::new("root", NodeKind::Aspect),
+        vec![FactNode::with_children(
+            frozen,
+            vec![FactNode::leaf(expectation("expectation-1", "pending"))],
+        )],
+    );
+    assert!(expectation_rows(&root, &BoardFilter::preset(Preset::Plan)).is_empty());
 }

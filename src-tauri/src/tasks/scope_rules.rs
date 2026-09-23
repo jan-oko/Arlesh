@@ -25,7 +25,10 @@ use crate::scopes::resolve::{self, Bounds};
 use super::ancestry;
 use super::commitments;
 use super::error::TaskError;
-use super::lifecycle::{derive_commitment_state, derive_item_state, Archival, ItemLifecycle};
+use super::expectations;
+use super::lifecycle::{
+    derive_commitment_state, derive_expectation_state, derive_item_state, Archival, ItemLifecycle,
+};
 use super::model::{CommitmentId, GoalId, GoalStatus, OnScopeExit, TaskId, TaskStatus, TimeScope};
 
 /// Maps a Goal's stored status to its baseline Archival value, for [`derive_item_state`]'s `stored`
@@ -144,6 +147,23 @@ pub async fn derive_all_scope_lifecycles<M: SessionMode>(
             verdict: Some(state.verdict),
             archival: state.archival,
             // Nothing on a Commitment is manually archived, so nothing can be overridden.
+            archival_conflict: false,
+        });
+    }
+    for expectation in db.expectations().list().await? {
+        let window = match &expectation.check_by {
+            Some(check_by) => Some(time_scope_window(db, check_by).await?),
+            None => None,
+        };
+        let state = derive_expectation_state(window, expectation.status, expectation.archival, now);
+        out.push(ItemLifecycle {
+            node_type: expectations::EXPECTATION.to_string(),
+            node_id: expectation.id,
+            timing: state.timing,
+            resolution: state.resolution,
+            verdict: None,
+            archival: state.archival,
+            // Nothing is derived over an expectation's own archive, so nothing can be overridden.
             archival_conflict: false,
         });
     }

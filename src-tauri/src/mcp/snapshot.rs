@@ -16,7 +16,7 @@ use crate::mindmap::model::MindmapLoad;
 
 #[tool_router(router = snapshot_router, vis = "pub(super)")]
 impl ArleshMcp {
-    /// Arlesh's planning graph: domains, goals, tasks, commitments, infos, flows, flow items,
+    /// Arlesh's planning graph: domains, goals, tasks, commitments, expectations, infos, flows, flow items,
     /// cycles, dependencies, block reasons, materialised instance nodes, each item's derived
     /// lifecycle, and each flow's habit iterations and statuses.
     ///
@@ -26,6 +26,11 @@ impl ArleshMcp {
     /// A commitment is a rule held over a window rather than a piece of work: it carries a
     /// `verdict` of `unresolved`/`kept`/`broken` that is recorded, never inferred. `unresolved`
     /// means the user has not said, and is not a synonym for "not done".
+    ///
+    /// An expectation is a wait rather than an action: something outside the user's own action
+    /// that tasks can depend on. Its `status` is `pending` until the wait is over and `released`
+    /// after; a task depending on a pending one is blocked. Its optional `check_by` (boundary scope
+    /// IDs, like a time scope) is when the user means to look in on it. Read-only here.
     ///
     /// A task's `delegate_to` says who holds it: `null`, `{"kind": "person", "id": N}` (resolve
     /// the Person with `arlesh_kb`), or `{"kind": "agent"}` — handed to the Agent. It is

@@ -35,6 +35,9 @@ pub enum Preset {
     Backlog,
 }
 
+/// The status an Expectation fact spells when the wait is still on.
+pub const EXPECTATION_PENDING: &str = "pending";
+
 /// A tri-state pill's override, on top of whatever the status preset would otherwise decide.
 ///
 /// `Inactive` defers entirely to the preset; `Include` force-shows; `Exclude` force-hides, gating
@@ -86,6 +89,11 @@ pub struct BoardFilter {
     /// The List View's sixth option: blocked rows only, in place of `preset`'s rules rather than
     /// on top of them. Ignored by the Mindmap, which does not offer it.
     pub unblock: bool,
+    /// The List View's **Expectations** option: pending, live Expectations only, in place of
+    /// `preset`'s rules exactly as `unblock` is. The List View's dropdown holds one value, so this
+    /// and `unblock` are never both set by the UI; were they, Unblock answers, since both empty
+    /// what the other shows. Ignored by the Mindmap.
+    pub expectations: bool,
     /// Plan/Start's per-preset "include flows" subtoggle, separate from `show_flow`.
     pub include_flows: bool,
     /// Tag filters, combined as `(∪Any) ∧ (∩All) ∧ ¬(∪Exclude)`.
@@ -109,6 +117,7 @@ impl Default for BoardFilter {
         Self {
             preset: Preset::All,
             unblock: false,
+            expectations: false,
             include_flows: true,
             tags: Vec::new(),
             show_info: true,
@@ -151,6 +160,8 @@ pub enum NodeKind {
     Task,
     /// A Commitment.
     Commitment,
+    /// An Expectation — a wait. Real, or virtual: the one a delegated Task waits on.
+    Expectation,
     /// A free-text note attached to another node.
     Info,
     /// A Flow's root.
@@ -192,7 +203,8 @@ pub struct NodeFacts {
     pub id: String,
     /// What kind of node this is.
     pub kind: NodeKind,
-    /// The node's own stored status, where its kind has one (Task, Goal, Project).
+    /// The node's own stored status, where its kind has one (Task, Goal, Project, and an
+    /// Expectation's `pending`/`released`).
     #[serde(default)]
     pub status: Option<String>,
     /// Derived window position, for the kinds that have a window.
@@ -211,6 +223,14 @@ pub struct NodeFacts {
     /// Whether the node is marked private.
     #[serde(default)]
     pub is_private: bool,
+    /// Whether a Task is delegated — held by a Person or the Agent. A delegated Task has every
+    /// effect of archival: it is hidden wherever an archived node is hidden.
+    #[serde(default)]
+    pub delegated: bool,
+    /// Whether an Expectation carries a check-by. Start shows a pending one only without it: with
+    /// one, the virtual check task beneath it is what there is to do.
+    #[serde(default)]
+    pub has_check_by: bool,
     /// Whether a Task/Goal has any block reason, explicit or implied by an unmet dependency.
     #[serde(default)]
     pub is_blocked: bool,
@@ -241,6 +261,8 @@ impl NodeFacts {
             backlogged: false,
             verdict: None,
             is_private: false,
+            delegated: false,
+            has_check_by: false,
             is_blocked: false,
             has_todo_child: false,
             is_habit_flow: false,

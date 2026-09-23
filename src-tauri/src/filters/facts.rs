@@ -19,8 +19,8 @@ use std::collections::{HashMap, HashSet};
 use crate::{
     mindmap::model::MindmapLoad,
     tasks::{
-        lifecycle::{Archival, ItemLifecycle},
-        model::TaskArchival,
+        lifecycle::{Archival, ItemLifecycle, Timing},
+        model::{ExpectationArchival, ExpectationStatus, TaskArchival, TaskStatus},
     },
 };
 
@@ -40,9 +40,23 @@ fn domain_id(id: i64) -> String {
 /// domains-table subtypes — which all share the single `domain-` namespace.
 fn content_parent_id(parent_type: &str, parent_id: i64) -> String {
     match parent_type {
-        "goal" | "task" | "commitment" | "info" => format!("{parent_type}-{parent_id}"),
+        "goal" | "task" | "commitment" | "expectation" | "info" => {
+            format!("{parent_type}-{parent_id}")
+        }
         _ => domain_id(parent_id),
     }
+}
+
+/// The fact id of an Expectation's virtual check task. Backend-only: the frontend mints a UUID for
+/// the same node from the same structural key, and the two never meet — a fact id is only a key
+/// within one fact tree.
+fn check_task_id(expectation_id: i64) -> String {
+    format!("expectation-check-{expectation_id}")
+}
+
+/// The fact id of the virtual Expectation a delegated Task waits on. Backend-only, as above.
+fn delegation_wait_id(task_id: i64) -> String {
+    format!("delegation-wait-{task_id}")
 }
 
 /// The kind a domains-table `subtype` column names. An unrecognised spelling reads as a plain
@@ -86,16 +100,23 @@ fn index_blocked(load: &MindmapLoad) -> HashSet<String> {
         .iter()
         .map(|goal| (goal.id, goal.status.as_str()))
         .collect();
+    let expectation_status: HashMap<i64, ExpectationStatus> = load
+        .expectations
+        .iter()
+        .map(|expectation| (expectation.id, expectation.status))
+        .collect();
 
     for edge in &load.task_dependencies {
-        let unmet = if edge.dependency_type == "task" {
-            task_status
+        let unmet = match edge.dependency_type.as_str() {
+            "task" => task_status
                 .get(&edge.dependency_id)
-                .is_some_and(|status| *status != "done")
-        } else {
-            goal_status
+                .is_some_and(|status| *status != "done"),
+            "expectation" => expectation_status
                 .get(&edge.dependency_id)
-                .is_some_and(|status| *status != "achieved")
+                .is_some_and(|status| *status == ExpectationStatus::Pending),
+            _ => goal_status
+                .get(&edge.dependency_id)
+                .is_some_and(|status| *status != "achieved"),
         };
         if unmet {
             blocked.insert(format!("task-{}", edge.task_id));
@@ -148,12 +169,48 @@ pub fn forest(load: &MindmapLoad) -> Vec<FactNode> {
         node.status = Some(task.status.clone());
         node.is_private = task.is_private;
         node.backlogged = task.archival == TaskArchival::Backlog;
+        node.delegated = task.delegate_to.is_some();
         node.tag_ids.clone_from(&task.tag_ids);
         node.is_blocked = blocked.contains(&node.id);
         node.has_todo_child = todo_parents.contains(&node.id);
         apply_lifecycle(&mut node, lifecycles.get(&("task", task.id)).copied());
         facts.push(node);
         parents.push(Some(content_parent_id(&task.parent_type, task.parent_id)));
+        // A delegated Task waits on its delegate finishing: a virtual, pending Expectation beneath
+        // it, for as long as the Task is not done. Nothing stores it, and it has no check-by.
+        if task.delegate_to.is_some() && TaskStatus::from_db(&task.status) != Some(TaskStatus::Done)
+        {
+            let mut wait = NodeFacts::new(delegation_wait_id(task.id), NodeKind::Expectation);
+            wait.status = Some(ExpectationStatus::Pending.as_str().to_string());
+            facts.push(wait);
+            parents.push(Some(format!("task-{}", task.id)));
+        }
+    }
+    for expectation in &load.expectations {
+        let id = format!("expectation-{}", expectation.id);
+        let mut node = NodeFacts::new(id.clone(), NodeKind::Expectation);
+        node.status = Some(expectation.status.as_str().to_string());
+        node.is_private = expectation.is_private;
+        node.archived = expectation.archival == ExpectationArchival::Archived;
+        node.has_check_by = expectation.check_by.is_some();
+        facts.push(node);
+        parents.push(Some(content_parent_id(
+            &expectation.parent_type,
+            expectation.parent_id,
+        )));
+        // While the wait is pending and has a check-by, a virtual "check on it" Task sits beneath
+        // it, scoped to the check-by — whose Timing the Expectation's lifecycle entry carries.
+        if expectation.status == ExpectationStatus::Pending && expectation.check_by.is_some() {
+            let mut check = NodeFacts::new(check_task_id(expectation.id), NodeKind::Task);
+            check.status = Some("todo".to_string());
+            check.timing = Some(
+                lifecycles
+                    .get(&("expectation", expectation.id))
+                    .map_or(Timing::Active, |lifecycle| lifecycle.timing),
+            );
+            facts.push(check);
+            parents.push(Some(id));
+        }
     }
     for commitment in &load.commitments {
         let mut node = NodeFacts::new(
@@ -201,6 +258,8 @@ pub fn narrow(load: &mut MindmapLoad, filter: &BoardFilter) {
         .retain(|task| keeps(&format!("task-{}", task.id)));
     load.commitments
         .retain(|commitment| keeps(&format!("commitment-{}", commitment.id)));
+    load.expectations
+        .retain(|expectation| keeps(&format!("expectation-{}", expectation.id)));
     load.infos
         .retain(|info| keeps(&format!("info-{}", info.id)));
 

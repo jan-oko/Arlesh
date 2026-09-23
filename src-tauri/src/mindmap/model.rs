@@ -12,7 +12,7 @@ use crate::{
     infos::model::Info,
     tasks::{
         lifecycle::ItemLifecycle,
-        model::{Commitment, Goal, Task, TaskDependencyEdge},
+        model::{Commitment, Expectation, Goal, Task, TaskDependencyEdge},
     },
 };
 
@@ -72,6 +72,10 @@ pub struct MindmapLoad {
     pub tasks: Vec<Task>,
     /// Every commitment — as `list_commitments`.
     pub commitments: Vec<Commitment>,
+    /// Every expectation — as `list_expectations`. The virtual check tasks and the virtual
+    /// expectations of delegated tasks are not here: they are derived from these rows and the task
+    /// rows, never stored.
+    pub expectations: Vec<Expectation>,
     /// Every info node — as `list_infos`.
     pub infos: Vec<Info>,
     /// Every flow — as `list_flows`.

@@ -317,3 +317,103 @@ fn every_parent_spelling_a_row_can_use_resolves_to_a_node() {
         assert!(find(&forest, id).is_some(), "{id} found its parent");
     }
 }
+
+fn expectation_row(id: i64, parent_type: &str, parent_id: i64) -> crate::tasks::model::Expectation {
+    crate::tasks::model::Expectation {
+        id,
+        title: format!("expectation {id}"),
+        parent_type: parent_type.to_string(),
+        parent_id,
+        status: crate::tasks::model::ExpectationStatus::Pending,
+        archival: crate::tasks::model::ExpectationArchival::Live,
+        check_by: None,
+        position: id,
+        is_private: false,
+    }
+}
+
+#[test]
+fn an_expectation_with_a_check_by_carries_a_virtual_check_task_timed_by_its_lifecycle() {
+    let mut load = board();
+    let mut checked = expectation_row(50, "goal", 10);
+    checked.check_by = Some(crate::tasks::model::TimeScope {
+        start_id: 1,
+        end_id: 1,
+        duration: None,
+    });
+    load.expectations.push(checked);
+    load.expectations.push(expectation_row(51, "goal", 10));
+    load.infos.push(info_row(41, "expectation", 51));
+    load.lifecycles.push(lifecycle(
+        "expectation",
+        50,
+        Timing::Pending,
+        Archival::Live,
+    ));
+
+    let forest = forest(&load);
+    let wait = find(&forest, "expectation-50").expect("the expectation is on the board");
+    assert!(wait.facts.has_check_by);
+    assert_eq!(wait.facts.status.as_deref(), Some("pending"));
+    let check = find(&forest, "expectation-check-50").expect("the check task is derived");
+    assert_eq!(check.facts.kind, NodeKind::Task);
+    assert_eq!(check.facts.timing, Some(Timing::Pending));
+    assert!(find(&forest, "expectation-check-51").is_none());
+    assert!(find(&forest, "info-41").is_some());
+}
+
+#[test]
+fn a_released_expectation_has_no_check_task_and_stops_blocking() {
+    let mut load = board();
+    let mut released = expectation_row(50, "goal", 10);
+    released.status = crate::tasks::model::ExpectationStatus::Released;
+    released.check_by = Some(crate::tasks::model::TimeScope {
+        start_id: 1,
+        end_id: 1,
+        duration: None,
+    });
+    load.expectations.push(released);
+    load.expectations.push(expectation_row(51, "goal", 10));
+    load.task_dependencies.push(TaskDependencyEdge {
+        task_id: 21,
+        dependency_type: "expectation".to_string(),
+        dependency_id: 50,
+    });
+    load.task_dependencies.push(TaskDependencyEdge {
+        task_id: 22,
+        dependency_type: "expectation".to_string(),
+        dependency_id: 51,
+    });
+    let forest = forest(&load);
+    assert!(find(&forest, "expectation-check-50").is_none());
+    assert!(find(&forest, "task-21").is_some_and(|node| !node.facts.is_blocked));
+    assert!(find(&forest, "task-22").is_some_and(|node| node.facts.is_blocked));
+}
+
+#[test]
+fn a_delegated_task_is_delegated_and_waits_on_a_virtual_expectation_until_done() {
+    let mut load = board();
+    for task in &mut load.tasks {
+        task.delegate_to = Some(crate::tasks::model::Delegate::Agent);
+    }
+    let forest = forest(&load);
+    assert!(find(&forest, "task-20").is_some_and(|node| node.facts.delegated));
+    let wait = find(&forest, "delegation-wait-20").expect("an undone delegated task waits");
+    assert_eq!(wait.facts.kind, NodeKind::Expectation);
+    assert!(
+        find(&forest, "delegation-wait-22").is_none(),
+        "task 22 is done"
+    );
+}
+
+#[test]
+fn narrowing_keeps_an_expectation_the_filter_keeps_and_drops_one_it_does_not() {
+    let mut load = board();
+    load.expectations.push(expectation_row(50, "goal", 10));
+    let mut released = expectation_row(51, "goal", 10);
+    released.status = crate::tasks::model::ExpectationStatus::Released;
+    load.expectations.push(released);
+    narrow(&mut load, &BoardFilter::preset(Preset::Plan));
+    let kept: Vec<i64> = load.expectations.iter().map(|e| e.id).collect();
+    assert_eq!(kept, [50]);
+}

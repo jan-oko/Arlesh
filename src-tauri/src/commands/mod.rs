@@ -5,6 +5,7 @@ pub mod beads;
 pub mod block_reasons;
 pub mod commitments;
 pub mod domains;
+pub mod expectations;
 pub mod flows;
 pub mod infos;
 pub mod knowledge_base;

@@ -47,6 +47,7 @@ pub async fn load(db: &mut Db<Transactional>, now: NaiveDateTime) -> Result<Mind
     let goals = db.goals().list().await?;
     let tasks = db.tasks().list().await?;
     let commitments = db.commitments().list().await?;
+    let expectations = db.expectations().list().await?;
     let infos = db.infos().list().await?;
     let flow_goals = db.flows().list_all_goals().await?;
     let flow_tasks = db.flows().list_all_tasks().await?;
@@ -70,6 +71,7 @@ pub async fn load(db: &mut Db<Transactional>, now: NaiveDateTime) -> Result<Mind
         goals,
         tasks,
         commitments,
+        expectations,
         infos,
         flows,
         flow_goals,

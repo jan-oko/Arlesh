@@ -42,6 +42,10 @@ struct Case {
     mindmap: Vec<String>,
     list: Vec<String>,
     commitments: Vec<String>,
+    /// The Expectation rows the List View keeps. Omitted on a board with no Expectations, where it
+    /// could only ever be empty.
+    #[serde(default)]
+    expectations: Vec<String>,
 }
 
 /// A corpus filter. Spelled the way the frontend spells its own filter state, and converted here,
@@ -52,6 +56,8 @@ struct CorpusFilter {
     preset: Preset,
     #[serde(default)]
     unblock: bool,
+    #[serde(default)]
+    expectations: bool,
     #[serde(default = "yes")]
     include_flows: bool,
     #[serde(default)]
@@ -84,6 +90,7 @@ impl From<&CorpusFilter> for BoardFilter {
         Self {
             preset: filter.preset,
             unblock: filter.unblock,
+            expectations: filter.expectations,
             include_flows: filter.include_flows,
             tags: filter
                 .tags
@@ -171,6 +178,18 @@ fn every_case_agrees_with_the_shared_corpus() {
             "{}: the commitments band kept different rows",
             case.name
         );
+
+        let expectations = list::flatten(&root, NodeKind::Expectation);
+        let kept_expectations = expectations
+            .iter()
+            .filter(|row| list::passes_expectation_row(row.as_row(), &filter))
+            .map(|row| row.node.id.clone());
+        assert_eq!(
+            sorted(kept_expectations),
+            sorted(case.expectations.clone()),
+            "{}: the List View kept different expectation rows",
+            case.name
+        );
     }
 }
 
@@ -197,5 +216,9 @@ fn every_preset_is_covered() {
     assert!(
         corpus.cases.iter().any(|case| case.filter.unblock),
         "no case covers Unblock"
+    );
+    assert!(
+        corpus.cases.iter().any(|case| case.filter.expectations),
+        "no case covers the Expectations option"
     );
 }
