@@ -9,6 +9,7 @@ import EditorModal from "@/components/EditorModal/EditorModal";
 import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
 import TimeScopeField from "@/components/ScopePicker/TimeScopeField";
 import CountedDurationField from "@/components/EditorModal/CountedDurationField";
+import StartingDayField from "@/components/ScopePicker/StartingDayField";
 import Switch from "@/components/Switch/Switch";
 import TagPicker from "@/components/TagPicker/TagPicker";
 import type { Domain } from "@/api/domains";
@@ -134,15 +135,14 @@ export default function ExpectationEditorModal({ node, heading, lead, onSave, on
         />
       </div>
       {checkEvery !== null && (
-        <label className={styles.label}>
+        <div className={styles.label}>
           {t("expectation:fieldCheckStarting")}
-          <input
-            className={styles.input}
-            type="date"
-            value={checkStartingDate ?? ""}
-            onChange={(e) => setCheckStartingDate(e.target.value === "" ? null : e.target.value)}
+          <StartingDayField
+            value={checkStartingDate}
+            onChange={setCheckStartingDate}
+            emptyLabel={t("expectation:checkStartingNow")}
           />
-        </label>
+        </div>
       )}
       {allTags !== undefined && domainNames !== undefined && (
         <TagPicker allTags={allTags} domainNames={domainNames} selectedIds={tagIds} onChange={setTagIds} />

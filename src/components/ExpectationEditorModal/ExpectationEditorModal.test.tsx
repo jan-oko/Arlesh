@@ -15,9 +15,10 @@ describe("ExpectationEditorModal — Check every", () => {
   it("clears a set Check every, and the save says so", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     render(<ExpectationEditorModal node={WAIT} onSave={onSave} onClose={vi.fn()} />);
-    fireEvent.click(screen.getByRole("button", { name: "scopeClear" }));
+    // The first Clear is Check every's; the second, once it is set, is Starting's.
+    fireEvent.click(screen.getAllByRole("button", { name: "scopeClear" })[0]!);
     // The Starting field goes with it: there is nothing left to start.
-    expect(screen.queryByLabelText("expectation:fieldCheckStarting")).toBeNull();
+    expect(screen.queryByText("expectation:fieldCheckStarting")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "save" }));
     await waitFor(() => expect(onSave).toHaveBeenCalled());
     expect(onSave.mock.calls[0]?.[0]).toMatchObject({ checkEvery: null });

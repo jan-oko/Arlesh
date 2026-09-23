@@ -23,5 +23,6 @@
   "templateDefaultTitle": "Waiting on {{title}}",
   "spawnedNotStored": "This wait was spawned by its task — edit the task's template instead.",
   "templateSection": "Expectation",
-  "checkTaskPrefixDefault": "Check: "
+  "checkTaskPrefixDefault": "Check: ",
+  "checkStartingNow": "From when it is saved"
 }
