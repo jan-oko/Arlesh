@@ -98,7 +98,7 @@ pub fn run() {
             app.manage(commands::windows::SessionStore::open(&app_dir));
             // The numbers the windows wear, seeded as they are rebuilt. Managed before `restore`
             // so a restored window's saved number is the one it keeps.
-            app.manage(commands::windows::Ordinals::default());
+            app.manage(commands::windows::WindowNames::default());
             commands::windows::restore(app.handle())?;
 
             // The tray goes up last, so that everything its Quit has to release cleanly — the

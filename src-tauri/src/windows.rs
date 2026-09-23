@@ -134,7 +134,7 @@ impl WindowSession {
 /// The number a new window should wear: the lowest that no open window is wearing.
 ///
 /// **Fixed for the window's life, never shifted.** A number that moved when another window closed
-/// would make "Arlesh 2" in the tray menu mean a different window from one minute to the next, and
+/// would make "Arlesh [2]" in the tray menu mean a different window from one minute to the next, and
 /// the whole point of the number is to be the name you reach for — so closing window 2 of three
 /// leaves window 3 as 3.
 ///
@@ -175,24 +175,80 @@ fn next_free(saved: &[u32], taken: &[u32]) -> u32 {
         .unwrap_or(1)
 }
 
-/// What a window is called: the app's name and the window's number.
+/// How many windows must be open before they wear their numbers.
 ///
-/// Every window is numbered, the first included — the number is how a window in the tray menu and
-/// the window on screen are matched at a glance, and a window without one would be the odd one out
-/// the moment a second opened.
-pub fn window_title(base: &str, ordinal: u32) -> String {
-    format!("{base} {ordinal}")
+/// A number is there to tell windows apart, and one window has nothing to be told apart from. So
+/// a lone window reads as Arlesh did before numbering existed, and the number is shown only while
+/// a second is open. It is still **assigned** to the lone window — the numbering rules do not
+/// change, only whether the number is on show.
+pub const NUMBERED_FROM: usize = 2;
+
+/// What a window is called, given its number, its active tab, and how many windows are open.
+///
+/// `Arlesh [2] — Bugfixes` with several open, `Arlesh — Bugfixes` alone: the number sits in
+/// brackets straight after `base`, which is the config's title — so a branch instance, whose
+/// config title is `Arlesh — <branch>`, reads `Arlesh — <branch> [2] — Bugfixes`. The number
+/// follows the whole of the app's name, never the tab, which is what changes.
+///
+/// A blank tab name adds nothing rather than trailing a separator.
+pub fn window_title(base: &str, ordinal: u32, tab: &str, open: usize) -> String {
+    let named = if open >= NUMBERED_FROM {
+        format!("{base} [{ordinal}]")
+    } else {
+        base.to_string()
+    };
+    if tab.trim().is_empty() {
+        return named;
+    }
+    format!("{named} — {tab}")
 }
 
-/// That title with the active tab appended, which is what the tray menu lists a window by.
+/// One open window, as the backend knows it: what the tray menu and the title are built from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OpenWindow {
+    /// The window's label, which is how a menu entry reaches it.
+    pub label: String,
+    /// The number it wears. See [`next_ordinal`].
+    pub ordinal: u32,
+    /// Its active tab's name, as the frontend last reported it.
+    pub tab: String,
+    /// Whether it is on screen.
+    pub visible: bool,
+}
+
+/// One per-window entry in the tray menu.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ListedWindow {
+    /// The window's label, which is how the menu entry reaches it.
+    pub label: String,
+    /// The window's title, which is what the entry reads.
+    pub title: String,
+    /// Whether it is on screen, which the entry shows as a check.
+    pub visible: bool,
+}
+
+/// The tray menu's per-window entries for the windows open now, by number.
 ///
-/// The tab is what the user actually recognises a window by; the number is what stays put while
-/// the tab changes. An empty tab name leaves the title alone rather than trailing a separator.
-pub fn titled_by_tab(base_title: &str, tab: &str) -> String {
-    if tab.trim().is_empty() {
-        return base_title.to_string();
+/// **None while only one window is open.** An entry is how you reach one window past the icon,
+/// which acts on all of them; with one window the two are the same thing, and the menu is just
+/// Show and Quit. With several, each entry reads the window's own title — the same one it is
+/// composed with here, so an entry and its window match at a glance.
+///
+/// `open` must be the **live** set, every window open now whether shown or hidden: its length is
+/// what decides whether there is a list, and whether the titles are numbered.
+pub fn menu_entries(base: &str, mut open: Vec<OpenWindow>) -> Vec<ListedWindow> {
+    let count = open.len();
+    if count < NUMBERED_FROM {
+        return Vec::new();
     }
-    format!("{base_title} — {tab}")
+    open.sort_by_key(|window| window.ordinal);
+    open.into_iter()
+        .map(|window| ListedWindow {
+            title: window_title(base, window.ordinal, &window.tab, count),
+            label: window.label,
+            visible: window.visible,
+        })
+        .collect()
 }
 
 /// Where a restored window should be put.
