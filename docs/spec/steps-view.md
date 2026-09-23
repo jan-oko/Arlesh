@@ -242,8 +242,8 @@ on the card says.
 
 The **List View's rows take the same wash**, from the same shared stylesheet
 (`src/styles/aspect-wash.module.css`), so a Task reads as the same part of the board on either
-surface (see [List View](list-view.md)). Neither fades the colour by depth; the Mindmap and the Plan
-View still do.
+surface (see [List View](list-view.md)), and so do the [Plan View](plan-view.md)'s cards. None of
+them fades the colour by depth; the Mindmap still does.
 
 ## Editing
 
