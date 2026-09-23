@@ -182,6 +182,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
         agentic: data.agentic,
         asynchronous: data.asynchronous,
         is_private: data.isPrivate,
+        ...(data.delegate !== undefined ? { delegate_to: data.delegate } : {}),
       });
       // Scheduling a set-aside task puts it back in play, and so does starting one. The editor
       // already showed the switch go off, but the save is where it becomes true, so it is named

@@ -4,9 +4,10 @@ import BlockReasonsField from "@/components/BlockReasonsField/BlockReasonsField"
 import TagPicker from "@/components/TagPicker/TagPicker";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { Domain } from "@/api/domains";
-import type { Dependency, TaskAgentic, TaskArchival } from "@/api/tasks";
+import type { Delegate, Dependency, TaskAgentic, TaskArchival } from "@/api/tasks";
 import { TASK_AGENTIC, TASK_ARCHIVAL } from "@/api/tasks";
 import { storedAgenticState } from "@/utils/agentic";
+import { isDelegatedToAgent, toggledAgentDelegate } from "@/utils/delegation";
 import type { TimeScope } from "@/api/time-scope";
 import type { OnScopeExit } from "@/api/scope-lifecycle";
 import { listTaskDependencies } from "@/api/tasks";
@@ -44,6 +45,9 @@ export interface TaskSaveData {
   /** Whether doing this task starts a wait. A plain boolean — the flag does not inherit, so
    * there is no third "unset" state for it to be in. */
   asynchronous: boolean;
+  /** The task's new delegate, present only when the form changed it — `null` takes it back. Absent
+   * says nothing about delegation at all, so a save that never touched it cannot overwrite it. */
+  delegate?: Delegate | null;
   isPrivate: boolean;
 }
 
@@ -79,6 +83,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   const [isBacklogged, setIsBacklogged] = useState(node.backlogged === true);
   const [agentic, setAgentic] = useState<TaskAgentic>(storedAgenticState(node.agentic));
   const [isAsynchronous, setIsAsynchronous] = useState(node.asynchronous === true);
+  const [delegate, setDelegate] = useState<Delegate | null>(node.delegate ?? null);
   const [isPrivate, setIsPrivate] = useState(node.isPrivate ?? false);
   const [initialDeps, setInitialDeps] = useState<Dependency[]>([]);
   const [currentDeps, setCurrentDeps] = useState<Dependency[]>([]);
@@ -136,6 +141,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
           archival: isBacklogged ? TASK_ARCHIVAL.BACKLOG : TASK_ARCHIVAL.LIVE,
           agentic,
           asynchronous: isAsynchronous,
+          ...(delegate !== (node.delegate ?? null) ? { delegate } : {}),
           isPrivate,
         });
       });
@@ -171,6 +177,12 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
     if (event.key === "Enter" && !event.shiftKey && event.target === titleRef.current) { event.preventDefault(); void handleSave(); }
     if (event.key === "Escape") onClose();
   }
+
+  // The one-click delegate button is offered on a task that reads as agentic — its own flag, or an
+  // inherited one while it is on Inherit — and on any task already delegated to the Agent, so an
+  // Agent delegate can always be taken back even after the flag that earned it is gone.
+  const readsAgentic = agentic === TASK_AGENTIC.YES || (agentic === TASK_AGENTIC.INHERIT && node.inheritedAgentic === true);
+  const delegatedToAgent = isDelegatedToAgent(delegate);
 
   const depSearchLower = depSearch.toLowerCase();
   const searchResults = depSearch.trim() === "" ? [] : availableForDep
@@ -279,12 +291,15 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
       <EditorAdvanced
         isPrivate={isPrivate}
         onPrivateChange={setIsPrivate}
-        startOpen={agentic !== TASK_AGENTIC.INHERIT}
+        startOpen={agentic !== TASK_AGENTIC.INHERIT || delegatedToAgent}
       >
         <AgenticField
           value={agentic}
           inherited={node.inheritedAgentic === true}
           onChange={setAgentic}
+          delegatedToAgent={delegatedToAgent}
+          offersDelegate={readsAgentic || delegatedToAgent}
+          onToggleDelegate={() => setDelegate(toggledAgentDelegate(delegate))}
         />
       </EditorAdvanced>
     </EditorModal>

@@ -144,3 +144,26 @@ describe("useNodeEditor — checkScopeClamp confirm", () => {
     expect(result.current.scopeClampRequest?.flowOrigins).toEqual({ "task-9": "Add Feature" });
   });
 });
+
+describe("useNodeEditor — delegation", () => {
+  it("sends the delegate the editor changed", async () => {
+    vi.mocked(scopeContainmentConflicts).mockResolvedValue([]);
+    const result = setup();
+    await act(async () => { await result.current.onTaskSave({ ...saveData, delegate: { kind: "agent" } }); });
+    expect(updateTask).toHaveBeenCalledWith(5, expect.objectContaining({ delegate_to: { kind: "agent" } }));
+  });
+
+  it("sends an explicit null to take the delegate back", async () => {
+    vi.mocked(scopeContainmentConflicts).mockResolvedValue([]);
+    const result = setup();
+    await act(async () => { await result.current.onTaskSave({ ...saveData, delegate: null }); });
+    expect(updateTask).toHaveBeenCalledWith(5, expect.objectContaining({ delegate_to: null }));
+  });
+
+  it("says nothing about delegation when the editor did not touch it", async () => {
+    vi.mocked(scopeContainmentConflicts).mockResolvedValue([]);
+    const result = setup();
+    await act(async () => { await result.current.onTaskSave(saveData); });
+    expect(vi.mocked(updateTask).mock.calls[0]?.[1]).not.toHaveProperty("delegate_to");
+  });
+});

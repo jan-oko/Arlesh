@@ -793,6 +793,7 @@ export function buildTree(
       plan: task.plan,
       backlogged: task.archival === TASK_ARCHIVAL.BACKLOG,
       agentic: task.agentic,
+      delegate: task.delegate_to,
       asynchronous: task.asynchronous,
       position: task.position,
       isPrivate: task.is_private,
