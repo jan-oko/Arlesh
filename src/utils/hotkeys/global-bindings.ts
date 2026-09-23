@@ -42,10 +42,10 @@ export interface GlobalContext {
  * early on a typing target — so a save reflex in a rename box is still just a save reflex that
  * does nothing.
  *
- * **`Ctrl+S` is held for the Steps View** (Arlesh-c1g) and is deliberately left unbound, so the
- * scheme is already decided by the time that view arrives.
+ * `Ctrl+S` was held for the Steps View (Arlesh-c1g) while that view was being built, and is now
+ * spent on it — which is the scheme working as intended: a fourth view cost one binding.
  *
- * These three are the one part of this table that is **not** always live: unlike quitting or the
+ * These four are the one part of this table that is **not** always live: unlike quitting or the
  * cheat-sheet, switching views behind an open modal would leave the modal sitting over a board it
  * no longer belongs to.
  */
@@ -73,6 +73,14 @@ export const GLOBAL_BINDINGS: readonly Binding<GlobalContext>[] = [
     labelKey: "viewPlan",
     when: (c) => !c.isInputCaptured,
     run: (c) => c.onSetView("plan"),
+  },
+  {
+    id: "global.viewSteps",
+    section: "global",
+    chord: { code: "KeyS", ctrl: true },
+    labelKey: "viewSteps",
+    when: (c) => !c.isInputCaptured,
+    run: (c) => c.onSetView("steps"),
   },
   {
     // F11 is the key every app uses for this, and it is free here. The board-alone mode is also on

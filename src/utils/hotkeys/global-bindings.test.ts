@@ -32,6 +32,7 @@ describe("GLOBAL_BINDINGS", () => {
     { code: "KeyM", view: "mindmap" },
     { code: "KeyL", view: "list" },
     { code: "KeyP", view: "plan" },
+    { code: "KeyS", view: "steps" },
   ])("when Ctrl+$code is pressed, shows the $view view", ({ code, view }) => {
     const ctx = makeContext();
     expect(runFor(code, { ctrlKey: true }, ctx)).toBe(true);
@@ -40,7 +41,9 @@ describe("GLOBAL_BINDINGS", () => {
 
   it("names each view outright, so no chord depends on which view you are on", () => {
     const setters = GLOBAL_BINDINGS.filter((b) => b.id.startsWith("global.view"));
-    expect(setters.map((b) => b.id)).toEqual(["global.viewMindmap", "global.viewList", "global.viewPlan"]);
+    expect(setters.map((b) => b.id)).toEqual([
+      "global.viewMindmap", "global.viewList", "global.viewPlan", "global.viewSteps",
+    ]);
   });
 
   // The whole reason the switcher is on Ctrl. Alt+A/P/S/D/B are the status presets, in every
@@ -53,15 +56,9 @@ describe("GLOBAL_BINDINGS", () => {
     expect(ctx.onSetView).not.toHaveBeenCalled();
   });
 
-  // Reserved for the Steps View (Arlesh-c1g), so the scheme is settled before that view lands.
-  it("leaves Ctrl+S unbound, held for the Steps View", () => {
-    const ctx = makeContext();
-    expect(runFor("KeyS", { ctrlKey: true }, ctx)).toBe(false);
-  });
-
   // Unlike quitting and the cheat-sheet, switching views behind an open modal would leave the
   // modal sitting over a board it no longer belongs to.
-  it.each(["KeyM", "KeyL", "KeyP"])("does not switch views on Ctrl+%s while a modal holds the keyboard", (code) => {
+  it.each(["KeyM", "KeyL", "KeyP", "KeyS"])("does not switch views on Ctrl+%s while a modal holds the keyboard", (code) => {
     const ctx = makeContext({ isInputCaptured: true });
     expect(runFor(code, { ctrlKey: true }, ctx)).toBe(false);
     expect(ctx.onSetView).not.toHaveBeenCalled();
@@ -232,6 +229,7 @@ describe("the chords promoted out of the view tables", () => {
       "global.viewList",
       "global.viewMindmap",
       "global.viewPlan",
+      "global.viewSteps",
     ]);
   });
 });

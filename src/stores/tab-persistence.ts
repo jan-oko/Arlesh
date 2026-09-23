@@ -5,6 +5,7 @@ import { DEFAULT_LIST_FILTER, isListPreset, withCurrentPillDimensions } from "@/
 import type { ViewState } from "@/stores/use-view-store";
 import { DEFAULT_VIEW_STATE, isView } from "@/stores/use-view-store";
 import { isPlanScopeKind } from "@/utils/plan-scope";
+import { isStepsZoom } from "@/utils/steps-grid";
 import type { TabState } from "@/stores/tab-stores";
 import { DEFAULT_TAB_STATE } from "@/stores/tab-stores";
 import { mergeFilterDefaults } from "@/stores/persist-merge";
@@ -67,7 +68,8 @@ function readStringList(value: unknown): string[] {
 /**
  * A stored view state, field by field. A `view` this build does not know — a tab left on a view
  * that has since been renamed or removed — falls back to the default rather than leaving the tab
- * rendering nothing at all; the same holds for a scope kind the Plan View cannot fill.
+ * rendering nothing at all; the same holds for a scope kind the Plan View cannot fill and for a
+ * card size the Steps View cannot draw at.
  */
 function readViewState(value: unknown): ViewState {
   const source = isRecord(value) ? value : {};
@@ -78,7 +80,9 @@ function readViewState(value: unknown): ViewState {
   const planScopeKind = typeof storedKind === "string" && isPlanScopeKind(storedKind)
     ? storedKind
     : DEFAULT_VIEW_STATE.planScopeKind;
-  return { view, mindmapOrientation, planScopeKind };
+  const storedZoom = source["stepsZoom"];
+  const stepsZoom = isStepsZoom(storedZoom) ? storedZoom : DEFAULT_VIEW_STATE.stepsZoom;
+  return { view, mindmapOrientation, planScopeKind, stepsZoom };
 }
 
 /** A stored mindmap filter, with every field this build knows about present. */

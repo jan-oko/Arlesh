@@ -86,17 +86,26 @@ describe("TopBar", () => {
     expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
   });
 
-  it("switches to List View when its tab is clicked", () => {
+  it("switches to List View when it is picked from the view dropdown", () => {
     render(<TopBar />);
-    fireEvent.click(screen.getByText("common:viewList"));
+    fireEvent.click(screen.getByRole("button", { name: "common:viewSelectorLabel" }));
+    fireEvent.click(screen.getByRole("option", { name: "common:viewList" }));
     expect(useViewStore.getState().view).toBe("list");
   });
 
-  it("marks the active view's tab", () => {
+  it("shows the active view as the dropdown's value", () => {
     useViewStore.setState({ view: "list" });
-    const { container } = render(<TopBar />);
-    const activeTab = container.querySelector("[class*='viewTabActive']");
-    expect(activeTab?.textContent).toBe("common:viewList");
+    render(<TopBar />);
+    const trigger = screen.getByRole("button", { name: "common:viewSelectorLabel" });
+    expect(trigger.textContent).toContain("common:viewList");
+  });
+
+  it("offers every view, so a fifth is a union member and not another button", () => {
+    render(<TopBar />);
+    fireEvent.click(screen.getByRole("button", { name: "common:viewSelectorLabel" }));
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "common:viewMindmap", "common:viewList", "common:viewPlan", "common:viewSteps",
+    ]);
   });
 
   describe("status preset dropdown", () => {
