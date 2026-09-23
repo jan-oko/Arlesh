@@ -27,7 +27,7 @@ vi.mock("@/components/ScopePicker/PlanField", () => ({
 const tuesday: TimeScope = { start_id: 12, end_id: 12 };
 const shop = { item_type: "flow_task" as const, item_id: 6 };
 const CANDIDATES: FlowItemOption[] = [{ ref: shop, title: "Shop" }];
-const META = { templateTitle: "Groceries", ownTitle: null, blockedReason: null, dependsOn: [], deleted: false };
+const META = { templateTitle: "Groceries", ownTitle: null, blockedReason: null, dependsOn: [], archived: false };
 
 function occurrence(extra: Partial<MindmapNode> = {}): MindmapNode {
   return {
@@ -41,13 +41,13 @@ function occurrence(extra: Partial<MindmapNode> = {}): MindmapNode {
 
 function renderModal(node: MindmapNode) {
   const onSave = vi.fn((..._args: unknown[]) => Promise.resolve());
-  const onSetDeleted = vi.fn((..._args: unknown[]) => Promise.resolve());
+  const onSetArchived = vi.fn((..._args: unknown[]) => Promise.resolve());
   render(
     <OccurrenceEditorModal
-      node={node} candidates={CANDIDATES} onSave={onSave} onSetDeleted={onSetDeleted} onClose={vi.fn()}
+      node={node} candidates={CANDIDATES} onSave={onSave} onSetArchived={onSetArchived} onClose={vi.fn()}
     />,
   );
-  return { onSave, onSetDeleted };
+  return { onSave, onSetArchived };
 }
 
 const save = () => fireEvent.click(screen.getByRole("button", { name: "save" }));
@@ -116,20 +116,20 @@ describe("OccurrenceEditorModal", () => {
   it("deletes the occurrence from its iteration", async () => {
     const live = renderModal(occurrence());
     fireEvent.click(screen.getByRole("button", { name: "occurrence.delete" }));
-    await waitFor(() => expect(live.onSetDeleted).toHaveBeenCalledWith(true));
+    await waitFor(() => expect(live.onSetArchived).toHaveBeenCalledWith(true));
   });
 
   it("restores a deleted occurrence", async () => {
-    const gone = renderModal(occurrence({ occurrence: { ...META, deleted: true } }));
+    const gone = renderModal(occurrence({ occurrence: { ...META, archived: true } }));
     fireEvent.click(screen.getByRole("button", { name: "occurrence.restore" }));
-    await waitFor(() => expect(gone.onSetDeleted).toHaveBeenCalledWith(false));
+    await waitFor(() => expect(gone.onSetArchived).toHaveBeenCalledWith(false));
   });
 
   it("shows a refusal from the backend and stays open", async () => {
     const onSave = vi.fn(() => Promise.reject(new Error("plan is not within the occurrence's window")));
     render(
       <OccurrenceEditorModal
-        node={occurrence()} candidates={CANDIDATES} onSave={onSave} onSetDeleted={vi.fn()} onClose={vi.fn()}
+        node={occurrence()} candidates={CANDIDATES} onSave={onSave} onSetArchived={vi.fn()} onClose={vi.fn()}
       />,
     );
     fireEvent.click(option("unplanned"));

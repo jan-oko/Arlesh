@@ -229,8 +229,8 @@ describe("deriveStatusIndicators — a Habit occurrence deleted on its own", () 
   it("draws the archive badge, saying the occurrence was deleted rather than archived", () => {
     const deleted = node("task", {
       status: "todo", archived: true,
-      occurrence: { templateTitle: "Shop", ownTitle: null, blockedReason: null, dependsOn: [], deleted: true },
+      occurrence: { templateTitle: "Shop", ownTitle: null, blockedReason: null, dependsOn: [], archived: true },
     });
-    expect(deriveStatusIndicators(deleted)).toEqual([{ type: "archived", conflict: false, deleted: true }]);
+    expect(deriveStatusIndicators(deleted)).toEqual([{ type: "archived", conflict: false, archived: true }]);
   });
 });

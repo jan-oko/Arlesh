@@ -36,7 +36,7 @@ export default function TaskRowBadges({ node, indicators }: Props) {
   const planLabel = useScopeRangeLabel(node.plan);
   const tagNames = useTagNames();
   const archivedTooltip = (indicator: StatusIndicator): string => {
-    if (indicator.deleted === true) return t("occurrenceDeleted");
+    if (indicator.byHand === true) return t("occurrenceArchived");
     return indicator.conflict === true ? t("archivedConflict") : t("archived");
   };
   const planTooltip = (indicator: StatusIndicator): string => {

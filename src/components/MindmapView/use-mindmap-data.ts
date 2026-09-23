@@ -271,12 +271,12 @@ function occurrenceNode(
       ownTitle: instance.title,
       blockedReason: instance.blocked_reason,
       dependsOn: instance.depends_on,
-      deleted: instance.deleted,
+      archived: instance.archived,
     },
     ...(expired ? EXPIRED_LIFECYCLE : workIterationLifecycle(instance.timing, done)),
-    // Deleted from this iteration alone: archived, so only a view that shows everything draws it
-    // — and from there its editor gives it back.
-    ...(instance.deleted ? { archived: true } : {}),
+    // Archived by hand: it reads archived like any archived node — hidden wherever archived
+    // things are, and shown under All, from where its menu or editor unarchives it.
+    ...(instance.archived ? { archived: true } : {}),
     isPrivate: item.is_private,
     position: item.position,
     tagIds: [],
@@ -284,9 +284,40 @@ function occurrenceNode(
   };
 }
 
-/** Whether an occurrence no longer holds up what waits on it: finished, or deleted. */
+/** The occurrence fields of an iteration root, from its own overlay. */
+function rootOccurrenceFields(own: HabitInstance, derivedTitle: string): Partial<MindmapNode> {
+  return {
+    plan: own.plan,
+    cyclePlan: own.cycle_plan,
+    planOverridden: own.plan_overridden,
+    blockReasons: own.blocked_reason === null ? [] : [own.blocked_reason],
+    occurrence: {
+      templateTitle: derivedTitle,
+      ownTitle: own.title,
+      blockedReason: own.blocked_reason,
+      dependsOn: [],
+      archived: own.archived,
+    },
+    ...(own.archived ? { archived: true } : {}),
+  };
+}
+
+/**
+ * Marks everything under an occurrence archived by hand as archived too — its template children's
+ * occurrences and whatever was added to it — so it goes wherever archived things go, together.
+ */
+function archiveUnderArchivedOccurrences(node: MindmapNode, underArchived = false): void {
+  const archivedHere = underArchived || node.occurrence?.archived === true;
+  if (underArchived) node.archived = true;
+  for (const child of node.children) archiveUnderArchivedOccurrences(child, archivedHere);
+}
+
+/**
+ * Whether an occurrence no longer holds up what waits on it: finished, exactly as a real blocker is.
+ * Archiving one does not release its dependents — an archived Task that was never done still
+ * blocks what depends on it — so it is the status alone that decides.
+ */
 function releasesDependents(node: MindmapNode): boolean {
-  if (node.occurrence?.deleted === true) return true;
   return node.kind === "goal" ? node.status === "achieved" : node.status === "done";
 }
 
@@ -294,7 +325,7 @@ function releasesDependents(node: MindmapNode): boolean {
  * Blocks each occurrence on this iteration's dependencies, the way a real Task is blocked by an
  * unmet one: a blocker item gates it while **any** of its occurrences in the iteration is
  * unfinished — every instance of a blocker gates every instance of the dependent, as when a flow
- * is started. A deleted occurrence holds nothing up. The reason reads the blocker's title.
+ * is started. The reason reads the blocker's title.
  */
 function markDependencyBlockers(occurrences: ReadonlyMap<string, MindmapNode[]>): void {
   for (const drawn of occurrences.values()) {
@@ -523,10 +554,14 @@ export function injectHabitInstances(
       const rootDone = rootRaw === "done";
       const isCommitment = flow.instance_type === "commitment";
       const rootVerdict = instanceVerdict(rootRaw);
+      // The root is an occurrence in its own right: its own title over the derived one, its block
+      // reason, its Plan against the flow's root Cycle Plan, and its archival.
+      const own = iteration.root;
+      const derivedTitle = `${flow.title} ${iterationAnchorLabel(flow, iteration, labels)}`;
       const iterationRoot: MindmapNode = {
         id: `habit-${flow.id}-${iteration.index}-virtual`,
         kind: iterationRootKind(flow.instance_type),
-        title: `${flow.title} ${iterationAnchorLabel(flow, iteration, labels)}`,
+        title: own?.title ?? derivedTitle,
         // A commitment iteration carries a Verdict where the other two carry a status: it is kept
         // or broken, never advanced, so there is no status for a control to cycle.
         ...(isCommitment
@@ -554,6 +589,7 @@ export function injectHabitInstances(
         ...(isCommitment
           ? commitmentIterationLifecycle(past, expired, rootVerdict)
           : workIterationLifecycle(past ? "lapsed" : "active", rootDone)),
+        ...(own != null ? rootOccurrenceFields(own, derivedTitle) : {}),
         isPrivate: flow.is_private,
         position: iteration.index,
         tagIds: [],
@@ -563,6 +599,9 @@ export function injectHabitInstances(
       // After the iteration is assembled, because an added child hangs on an occurrence and the
       // occurrences are what has just been built.
       attachAddedChildren(root, iterationRoot, childrenOfFlow);
+      // Last, so it reaches added children too: an occurrence archived by hand takes what hangs
+      // under it with it, as archiving any node does.
+      archiveUnderArchivedOccurrences(iterationRoot);
     }
   });
 }

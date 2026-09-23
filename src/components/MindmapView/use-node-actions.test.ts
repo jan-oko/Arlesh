@@ -23,7 +23,7 @@ vi.mock("@/api/flows", () => ({
   // The completion guard reads a rejection for the unfinished children it names; a resolved write
   // never reaches it, so every case here answers "not that refusal".
   unfinishedChildren: vi.fn(() => null),
-  setHabitInstanceDeleted: vi.fn().mockResolvedValue(undefined),
+  setHabitInstanceArchived: vi.fn().mockResolvedValue(undefined),
 }));
 
 // The stub renders the key and every interpolation value it was given, so a test can pin *which*
@@ -38,7 +38,7 @@ vi.mock("react-i18next", () => ({
 
 import { updateTask } from "@/api/tasks";
 import { updateGoal } from "@/api/goals";
-import { setHabitInstanceDeleted, setHabitItemStatus } from "@/api/flows";
+import { setHabitInstanceArchived, setHabitItemStatus } from "@/api/flows";
 import { fixtureRowId } from "@/test/node-fixture";
 
 function mkNode(id: string, kind: NodeKind, children: MindmapNode[] = [], extra: Partial<MindmapNode> = {}): MindmapNode {
@@ -417,7 +417,7 @@ describe("useNodeActions — onDelete", () => {
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onDelete(["habititem-flow_task-4-0-virtual"]); });
     expect(opts.onRequestDelete).not.toHaveBeenCalled();
-    await waitFor(() => expect(setHabitInstanceDeleted).toHaveBeenCalledWith(
+    await waitFor(() => expect(setHabitInstanceArchived).toHaveBeenCalledWith(
       expect.objectContaining({ itemType: "flow_task", itemId: 4 }), true,
     ));
     await waitFor(() => expect(opts.showToast).toHaveBeenCalledWith({

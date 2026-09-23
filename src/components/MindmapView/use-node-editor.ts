@@ -174,17 +174,16 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
       // A virtual Habit instance isn't backed by a real Task/Goal row — its Time Scope is derived
       // from the flow's Duration kind and the item's Cycle, not independently editable — and
       // it has no `rowId` for `onTaskSave`/`onGoalSave` to write to (`rowIdOf` would throw). An
-      // item occurrence opens its own editor instead, which writes what it diverges by; the
-      // iteration root stays read-only here.
+      // occurrence — an item's, or the iteration root — opens its own editor instead, which writes
+      // what it diverges by.
       if (node === undefined || node.kind === "aspect") return;
       if (node.habitItem !== undefined) {
-        // The iteration root has no editor of its own; saying so beats a key that does nothing.
-        if (!openOccurrenceEditor(node)) showToast({ nodeId, message: t("editIterationRefused") });
+        openOccurrenceEditor(node);
         return;
       }
       setEditorModal({ nodeId, node });
     },
-    [tree, openOccurrenceEditor, showToast, t],
+    [tree, openOccurrenceEditor],
   );
 
   const onTaskSave = useCallback(

@@ -571,7 +571,7 @@ export default function MindmapView() {
   const onOccurrenceAction = useOccurrenceMenu({
     openEditor: occurrenceEditor.open,
     setOccurrenceStatus,
-    deleteOccurrences: (nodes) => { onDelete(nodes.map((node) => node.id)); return true; },
+    archiveOccurrences: (nodes) => { onDelete(nodes.map((node) => node.id)); return true; },
     toggleCollapsed: toggleCollapsedOrGroup,
     reload,
     showToast,
@@ -690,7 +690,7 @@ export default function MindmapView() {
           node={occurrenceEditor.target.node}
           candidates={occurrenceEditor.target.candidates}
           onSave={occurrenceEditor.save}
-          onSetDeleted={occurrenceEditor.setDeleted}
+          onSetArchived={occurrenceEditor.setArchived}
           onClose={occurrenceEditor.close}
         />
       )}

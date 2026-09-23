@@ -24,8 +24,8 @@ export interface StatusIndicator {
   /** For `archived`: this effective archival came from a scope Resolution overriding a
    * manually-set Frozen status. */
   conflict?: boolean;
-  /** For `archived`: a Habit occurrence deleted from its iteration on its own. */
-  deleted?: boolean;
+  /** For `archived`: a Habit occurrence archived by hand rather than by its window passing. */
+  byHand?: boolean;
   /** For `planned`: a Habit occurrence's Plan is its own, not its Cycle Plan. */
   overridden?: boolean;
   /** For `planned`: a Habit occurrence deliberately left unplanned — drawn struck through. */
@@ -74,8 +74,8 @@ export function deriveStatusIndicators(node: MindmapNode): StatusIndicator[] {
   }
   if (node.status === "archived" || node.archived === true) {
     indicators.push(
-      node.occurrence?.deleted === true
-        ? { type: "archived", conflict: false, deleted: true }
+      node.occurrence?.archived === true
+        ? { type: "archived", conflict: false, byHand: true }
         : { type: "archived", conflict: node.archivalConflict === true },
     );
   }

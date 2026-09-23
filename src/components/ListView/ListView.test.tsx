@@ -31,7 +31,7 @@ vi.mock("@/components/MindmapView/use-node-editor", () => ({
     onTaskSave: vi.fn(),
     onCommitmentSave: vi.fn(),
     checkScopeClamp: vi.fn(),
-    occurrenceEditor: { target: null, open: vi.fn(), close: vi.fn(), save: vi.fn(), setDeleted: vi.fn() },
+    occurrenceEditor: { target: null, open: vi.fn(), close: vi.fn(), save: vi.fn(), setArchived: vi.fn() },
   }),
 }));
 vi.mock("@/components/TaskEditorModal/TaskEditorModal", () => ({ default: () => <div data-testid="editor-modal" /> }));
@@ -42,11 +42,11 @@ vi.mock("@/api/commitments", async (importOriginal) => ({
   updateCommitment: (id: number, request: unknown) => updateCommitment(id, request),
 }));
 const setHabitItemStatus = vi.fn((..._args: unknown[]) => Promise.resolve());
-const setHabitInstanceDeleted = vi.fn((..._args: unknown[]) => Promise.resolve());
+const setHabitInstanceArchived = vi.fn((..._args: unknown[]) => Promise.resolve());
 vi.mock("@/api/flows", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/flows")>()),
   setHabitItemStatus: (...args: unknown[]) => setHabitItemStatus(...args),
-  setHabitInstanceDeleted: (...args: unknown[]) => setHabitInstanceDeleted(...args),
+  setHabitInstanceArchived: (...args: unknown[]) => setHabitInstanceArchived(...args),
 }));
 vi.mock("@/hooks/use-tag-names", () => ({ useTagNames: () => new Map() }));
 vi.mock("@/hooks/use-scope-range-label", () => ({ useScopeRangeLabel: () => null }));
@@ -1394,7 +1394,7 @@ describe("ListView — deleting a row", () => {
       status: "todo",
       virtual: true,
       habitItem: { flowId: 1, itemType: "flow_task", itemId: 2, scopeId: 3, cycleId: 4 },
-      occurrence: { templateTitle: "Run", ownTitle: null, blockedReason: null, dependsOn: [], deleted: false },
+      occurrence: { templateTitle: "Run", ownTitle: null, blockedReason: null, dependsOn: [], archived: false },
     });
     const real = n("task-9", "task", { status: "todo" });
     setup([occurrence, real], [row({ node: occurrence }), row({ node: real })]);
@@ -1426,7 +1426,7 @@ describe("ListView — deleting a row", () => {
     deleteRow("habititem-flow_task-2-1-0-virtual");
     expect(screen.queryByText("warnings:deleteHeading")).not.toBeInTheDocument();
     expect(removeNode).not.toHaveBeenCalled();
-    await waitFor(() => expect(setHabitInstanceDeleted).toHaveBeenCalledWith(
+    await waitFor(() => expect(setHabitInstanceArchived).toHaveBeenCalledWith(
       { flowId: 1, itemType: "flow_task", itemId: 2, scopeId: 3, cycleId: 4 }, true,
     ));
     await waitFor(() => expect(useMindmapStore.getState().pendingToast).not.toBeNull());

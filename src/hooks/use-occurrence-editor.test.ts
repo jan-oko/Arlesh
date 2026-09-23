@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import {
-  setHabitInstanceBlockReason, setHabitInstanceDeleted, setHabitInstanceDependencies,
+  setHabitInstanceBlockReason, setHabitInstanceArchived, setHabitInstanceDependencies,
   setHabitInstancePlan, setHabitInstanceTitle,
 } from "@/api/flows";
 import { withAtomicGesture } from "@/api/gesture";
@@ -16,7 +16,7 @@ vi.mock("@/api/flows", () => ({
   setHabitInstancePlan: vi.fn(),
   setHabitInstanceTitle: vi.fn(),
   setHabitInstanceBlockReason: vi.fn(),
-  setHabitInstanceDeleted: vi.fn(),
+  setHabitInstanceArchived: vi.fn(),
   setHabitInstanceDependencies: vi.fn(),
 }));
 vi.mock("@/api/gesture", () => ({
@@ -27,7 +27,7 @@ const thursday = { start_id: 14, end_id: 14 };
 const shop = { item_type: "flow_task" as const, item_id: 6 };
 const key = { flowId: 3, itemType: "flow_task" as const, itemId: 7, scopeId: 100, cycleId: 2 };
 
-const META = { templateTitle: "Cook", ownTitle: null, blockedReason: null, dependsOn: [shop], deleted: false };
+const META = { templateTitle: "Cook", ownTitle: null, blockedReason: null, dependsOn: [shop], archived: false };
 
 function occurrence(extra: Partial<MindmapNode> = {}): MindmapNode {
   return {
@@ -52,7 +52,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   for (const write of [
     setHabitInstancePlan, setHabitInstanceTitle, setHabitInstanceBlockReason,
-    setHabitInstanceDeleted, setHabitInstanceDependencies,
+    setHabitInstanceArchived, setHabitInstanceDependencies,
   ]) {
     vi.mocked(write).mockResolvedValue(undefined);
   }
@@ -161,8 +161,8 @@ describe("useOccurrenceEditor", () => {
     const reload = vi.fn().mockResolvedValue(undefined);
     const { result } = renderHook(() => useOccurrenceEditor(tree(), reload));
     act(() => { result.current.open(occurrence()); });
-    await act(() => result.current.setDeleted(true));
-    expect(setHabitInstanceDeleted).toHaveBeenCalledWith(key, true);
+    await act(() => result.current.setArchived(true));
+    expect(setHabitInstanceArchived).toHaveBeenCalledWith(key, true);
     expect(result.current.target).toBeNull();
   });
 

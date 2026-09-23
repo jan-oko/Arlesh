@@ -26,23 +26,27 @@ interface Props {
   /** The other items of its Habit it could wait on. */
   candidates: FlowItemOption[];
   onSave: (edits: OccurrenceEdits) => Promise<void>;
-  /** Deletes the occurrence from its iteration (`true`) or restores it (`false`). */
-  onSetDeleted: (deleted: boolean) => Promise<void>;
+  /** Archives the occurrence by hand (`true`) or unarchives it (`false`). */
+  onSetArchived: (archived: boolean) => Promise<void>;
   onClose: () => void;
 }
 
 /**
- * Edits one Habit occurrence on its own: its title, its block reason and — for a task — its Plan
- * and what it waits on in this iteration; and deletes it from this iteration, or restores it.
+ * Edits one Habit occurrence on its own — an item's, or the iteration root, which for a Habit with
+ * no items is the occurrence: its title, its block reason, its Plan when it is a task, what it waits
+ * on in this iteration when it is an item's; and archives it by hand, or unarchives it.
  * Everything here diverges from the template for this occurrence alone, and putting a field back
  * to what the template says hands it back. Status stays on the node's own status control.
  */
-export default function OccurrenceEditorModal({ node, candidates, onSave, onSetDeleted, onClose }: Props) {
+export default function OccurrenceEditorModal({ node, candidates, onSave, onSetArchived, onClose }: Props) {
   useInputCapture();
   const { t } = useTranslation("editor");
   const initial = currentEdits(node);
   const isTask = node.kind === "task";
-  const deleted = node.occurrence?.deleted === true;
+  // Only an item's occurrence waits on anything: an iteration root takes no part in its
+  // template's dependency graph.
+  const isRoot = node.habitItem?.itemType === "flow_root";
+  const archived = node.occurrence?.archived === true;
   const [title, setTitle] = useState(initial.title);
   const [blockedReason, setBlockedReason] = useState(initial.blockedReason);
   const [mode, setMode] = useState<Mode>(initial.plan.kind);
@@ -153,7 +157,7 @@ export default function OccurrenceEditorModal({ node, candidates, onSave, onSetD
           )}
         </div>
       )}
-      {isTask && candidates.length > 0 && (
+      {isTask && !isRoot && candidates.length > 0 && (
         <div className={`${styles.label} ${styles.tagSection}`} role="group" aria-label={t("occurrence.waitsOn")}>
           {t("occurrence.waitsOn")}
           <div className={styles.tagList}>
@@ -174,9 +178,9 @@ export default function OccurrenceEditorModal({ node, candidates, onSave, onSetD
         type="button"
         className={styles.advancedToggle}
         disabled={isSaving}
-        onClick={() => void run(() => onSetDeleted(!deleted))}
+        onClick={() => void run(() => onSetArchived(!archived))}
       >
-        {deleted ? t("occurrence.restore") : t("occurrence.delete")}
+        {archived ? t("occurrence.unarchive") : t("occurrence.archive")}
       </button>
     </EditorModal>
   );

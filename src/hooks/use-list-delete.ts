@@ -11,8 +11,8 @@ interface Options {
   neighbourAfterDelete: (id: string, deletedIds: ReadonlySet<string>) => string | null;
   selectRow: (id: string | null) => void;
   /**
-   * What `Delete` does to a virtual Habit node instead: an item occurrence is deleted from its
-   * iteration alone, and an iteration root is refused out loud (`useOccurrenceDelete`).
+   * What `Delete` does to a virtual Habit node instead: an occurrence is archived by hand, never
+   * deleted (`useOccurrenceArchive`).
    */
   deleteVirtual: (node: MindmapNode) => void;
 }
@@ -48,8 +48,8 @@ interface ListDelete {
  * Two of those differences are real. The list has **one** selection where the canvas has an anchor
  * and a multi-selection, so a delete is always one row and its subtree. And a **virtual Habit
  * node** has no row to delete — the thing behind it, the Habit's template, is emphatically not
- * what `Delete` on one occurrence should take away — so it goes to `deleteVirtual`, which deletes
- * an item occurrence from its iteration alone and refuses an iteration root.
+ * what `Delete` on one occurrence should take away — so it goes to `deleteVirtual`, which archives
+ * the occurrence by hand instead.
  */
 export function useListDelete({
   findNode, removeNode, neighbourAfterDelete, selectRow, deleteVirtual,

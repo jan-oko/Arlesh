@@ -5,7 +5,6 @@
   "planUnplanned": "Left unplanned this time — the Cycle Plan is set aside for this occurrence",
   "overdue": "Overdue",
   "archived": "Archived",
-  "occurrenceDeleted": "Deleted from this iteration only — restore it from its editor",
   "archivedConflict": "Archived (overrode a manually-set Frozen status)",
   "frozen": "Frozen",
   "flowInstance": "Flow instance",
@@ -18,5 +17,6 @@
   "broken": "Broken",
   "unresolved": "No verdict recorded yet",
   "agentic": "Agentic — work an agent could take",
-  "asynchronous": "Asynchronous — doing this starts a wait"
+  "asynchronous": "Asynchronous — doing this starts a wait",
+  "occurrenceArchived": "Archived by hand — unarchive it from its menu or editor"
 }

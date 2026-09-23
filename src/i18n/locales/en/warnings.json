@@ -81,12 +81,9 @@
   "commitmentNeedsScopeBody": "A commitment is a rule held over a window, and nothing above this one has one — so there is no window for it to inherit. Give it one here, or cancel and leave it exactly as it is.",
   "commitmentNeedsScopeMissing": "Pick a window, or cancel.",
   "createUnderRepetition": "A Habit repetition isn't a row of its own, so nothing can be created under it — add it to the Habit's template instead.",
-  "deleteRepetitionRefused": "A Habit iteration isn't deleted on its own — delete the occurrences inside it, or change the Habit's template or its recurrence instead.",
-  "editIterationRefused": "A Habit iteration isn't edited on its own — edit the occurrences inside it, or the Habit's template.",
+  "deleteRepetitionRefused": "A folded run of a Habit's history isn't a node of its own — open it to act on its iterations.",
   "occurrenceActionFailed": "Couldn't change this occurrence: {{message}}",
-  "deleteOccurrenceMixed": "Delete Habit occurrences on their own, not together with other nodes.",
-  "occurrenceDeleted_one": "Deleted from this iteration only — All still shows it, and its editor restores it.",
-  "occurrenceDeleted_other": "Deleted {{count}} occurrences from their iterations only — All still shows them, and their editors restore them.",
+  "deleteOccurrenceMixed": "Habit occurrences are archived rather than deleted — archive them on their own, not together with other nodes.",
   "deleteAspectRefused": "An Aspect is fixed where it is and can't be deleted — delete what sits inside it instead.",
   "siblingAspectRefused": "The Aspects are fixed — there is no new one to create alongside this.",
   "insertParentAspectRefused": "An Aspect is the top of the board — nothing can be inserted above it.",
@@ -98,5 +95,7 @@
   "occurrenceUnfinishedHeading_one": "\"{{title}}\" still holds {{count}} unfinished item — mark it done anyway?",
   "occurrenceUnfinishedHeading_other": "\"{{title}}\" still holds {{count}} unfinished items — mark it done anyway?",
   "occurrenceUnfinishedItem": "{{type}}: \"{{title}}\"",
-  "occurrenceUnfinishedAction": "Mark it done anyway"
+  "occurrenceUnfinishedAction": "Mark it done anyway",
+  "occurrenceArchived_one": "Archived this occurrence — All still shows it, and its menu or editor unarchives it.",
+  "occurrenceArchived_other": "Archived {{count}} occurrences — All still shows them, and their menus or editors unarchive them."
 }

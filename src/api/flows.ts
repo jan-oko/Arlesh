@@ -253,8 +253,8 @@ export interface HabitInstance {
   title: string | null;
   /** This occurrence's block reason, or `null` when it has none. */
   blocked_reason: string | null;
-  /** Whether this occurrence was deleted from its iteration on its own. */
-  deleted: boolean;
+  /** Whether this occurrence was archived by hand. */
+  archived: boolean;
   /**
    * The flow items it waits on in this iteration — the template's dependencies with this
    * iteration's own changes applied. Every occurrence of each blocker in the iteration gates it.
@@ -287,6 +287,11 @@ export interface HabitIteration {
   status: IterationStatus;
   /** Every occurrence this iteration renders, in item order and then pair order. */
   instances: HabitInstance[];
+  /**
+   * The iteration root as an occurrence in its own right: its own title, block reason, Plan
+   * (against the flow's root Cycle Plan) and archival.
+   */
+  root: HabitInstance | null;
 }
 
 /**
@@ -410,12 +415,12 @@ export async function setHabitInstanceBlockReason(
 }
 
 /**
- * Deletes one occurrence from its iteration alone, or restores it. Refused while it still holds
- * something added to it, or the occurrences of the steps nested under it.
+ * Archives one occurrence by hand, or unarchives it — an item's occurrence, or the iteration root,
+ * which takes its whole iteration with it. What it holds reads as archived with it.
  */
-export async function setHabitInstanceDeleted(occurrence: OccurrenceKey, deleted: boolean): Promise<void> {
-  return invoke<void>("set_habit_instance_deleted", {
-    flowId: occurrence.flowId, instance: instanceOf(occurrence), deleted,
+export async function setHabitInstanceArchived(occurrence: OccurrenceKey, archived: boolean): Promise<void> {
+  return invoke<void>("set_habit_instance_archived", {
+    flowId: occurrence.flowId, instance: instanceOf(occurrence), archived,
   });
 }
 

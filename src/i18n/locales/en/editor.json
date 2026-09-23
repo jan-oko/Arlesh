@@ -89,8 +89,8 @@
     "noCyclePlan": "The Cycle Plan leaves it unplanned",
     "pickAPlan": "Pick a plan for this occurrence, or choose another option",
     "waitsOn": "Waits on, in this iteration",
-    "delete": "Delete this occurrence only",
-    "restore": "Restore this occurrence"
+    "archive": "Archive this occurrence",
+    "unarchive": "Unarchive this occurrence"
   },
   "scopeApply": "Apply",
   "scopeBoundaries": "Boundaries",

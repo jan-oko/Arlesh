@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { occurrenceMenuEntries, storedOccurrenceStatus } from "@/utils/occurrence-menu";
 import type { MindmapNode } from "@/utils/tree-layout";
 
-const META = { templateTitle: "Run", ownTitle: null, blockedReason: null, dependsOn: [], deleted: false };
+const META = { templateTitle: "Run", ownTitle: null, blockedReason: null, dependsOn: [], archived: false };
 const ITEM = { flowId: 3, itemType: "flow_task" as const, itemId: 4, scopeId: 100, cycleId: 0 };
 
 function node(extra: Partial<MindmapNode>): MindmapNode {
@@ -33,7 +33,7 @@ describe("occurrenceMenuEntries", () => {
   });
 
   it("offers a deleted occurrence only its editor and Restore", () => {
-    expect(actions(node({ occurrence: { ...META, deleted: true } }))).toEqual(["edit", "restore"]);
+    expect(actions(node({ occurrence: { ...META, archived: true } }))).toEqual(["edit", "restore"]);
   });
 
   it("offers the iteration root its status and folding, never editing or deleting", () => {

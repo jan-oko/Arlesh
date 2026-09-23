@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
-import { setHabitInstanceDeleted, setHabitInstancePlan } from "@/api/flows";
+import { setHabitInstanceArchived, setHabitInstancePlan } from "@/api/flows";
 import { useOccurrenceMenu } from "@/hooks/use-occurrence-menu";
 import type { MindmapNode } from "@/utils/tree-layout";
 
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
-vi.mock("@/api/flows", () => ({ setHabitInstanceDeleted: vi.fn(), setHabitInstancePlan: vi.fn() }));
+vi.mock("@/api/flows", () => ({ setHabitInstanceArchived: vi.fn(), setHabitInstancePlan: vi.fn() }));
 
 const key = { flowId: 3, itemType: "flow_task" as const, itemId: 4, scopeId: 100, cycleId: 0 };
 const occurrence: MindmapNode = {
@@ -17,7 +17,7 @@ function setup() {
   const options = {
     openEditor: vi.fn(() => true),
     setOccurrenceStatus: vi.fn(),
-    deleteOccurrences: vi.fn(() => true),
+    archiveOccurrences: vi.fn(() => true),
     toggleCollapsed: vi.fn(),
     reload: vi.fn().mockResolvedValue(undefined),
     showToast: vi.fn(),
@@ -29,7 +29,7 @@ function setup() {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(setHabitInstancePlan).mockResolvedValue(undefined);
-  vi.mocked(setHabitInstanceDeleted).mockResolvedValue(undefined);
+  vi.mocked(setHabitInstanceArchived).mockResolvedValue(undefined);
 });
 
 describe("useOccurrenceMenu", () => {
@@ -61,8 +61,8 @@ describe("useOccurrenceMenu", () => {
     const view = setup();
     view.run(occurrence, "delete");
     view.run(occurrence, "restore");
-    expect(view.deleteOccurrences).toHaveBeenCalledWith([occurrence]);
-    await waitFor(() => expect(setHabitInstanceDeleted).toHaveBeenCalledWith(key, false));
+    expect(view.archiveOccurrences).toHaveBeenCalledWith([occurrence]);
+    await waitFor(() => expect(setHabitInstanceArchived).toHaveBeenCalledWith(key, false));
   });
 
   it("says why when a write is refused", async () => {

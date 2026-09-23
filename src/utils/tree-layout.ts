@@ -266,7 +266,8 @@ export interface MindmapNode {
   planOverridden?: boolean;
   /** Present on a virtual Habit task occurrence: the Cycle Plan the template gives it. */
   cyclePlan?: TimeScope | null;
-  /** Present on a virtual Habit **item** occurrence: what it diverges by, for its editor. */
+  /** Present on a virtual Habit occurrence — an item's or the iteration root: what it diverges
+   * by, for its editor. */
   occurrence?: OccurrenceMeta;
   flow?: FlowData;
   flowItem?: FlowItemData;
@@ -288,7 +289,8 @@ export interface MindmapNode {
  * what they came from.
  */
 export interface OccurrenceMeta {
-  /** The flow item's title — what clearing the occurrence's own title returns to. */
+  /** The template's title — the flow item's, or the iteration's derived one for the root — what
+   * clearing the occurrence's own title returns to. */
   templateTitle: string;
   /** The occurrence's own title, or `null` when it reads the template's. */
   ownTitle: string | null;
@@ -296,8 +298,8 @@ export interface OccurrenceMeta {
   blockedReason: string | null;
   /** The flow items it waits on in this iteration. */
   dependsOn: FlowItemRef[];
-  /** Whether it was deleted from its iteration on its own. */
-  deleted: boolean;
+  /** Whether it was archived by hand. */
+  archived: boolean;
 }
 
 export interface Position {

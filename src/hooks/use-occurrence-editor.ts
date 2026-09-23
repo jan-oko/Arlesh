@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   setHabitInstanceBlockReason,
-  setHabitInstanceDeleted,
+  setHabitInstanceArchived,
   setHabitInstanceDependencies,
   setHabitInstancePlan,
   setHabitInstanceTitle,
@@ -45,14 +45,11 @@ export type OccurrenceWrite =
   | { field: "dependsOn"; value: FlowItemRef[] };
 
 /**
- * The occurrence a node is, when it is one that is edited on its own: an occurrence of one of a
- * Habit's items. The iteration root is not — its title is the iteration's, and deleting it would
- * be deleting the iteration.
+ * The occurrence a node is, when it is a Habit occurrence: an item's, or the iteration root — which
+ * for a Habit with no items is the occurrence. Both are edited on their own.
  */
 export function editableOccurrence(node: MindmapNode): OccurrenceKey | null {
-  const item = node.habitItem;
-  if (item === undefined || item.itemType === "flow_root") return null;
-  return item;
+  return node.habitItem ?? null;
 }
 
 /** Which of the three states an occurrence's Plan is in now. */
@@ -111,7 +108,10 @@ export function pendingWrites(node: MindmapNode, edits: OccurrenceEdits): Occurr
   if (node.kind === "task" && !samePlan(edits.plan, before.plan)) {
     writes.push({ field: "plan", value: edits.plan });
   }
-  if (node.kind === "task" && !sameRefs(edits.dependsOn, before.dependsOn)) {
+  // Only an item's occurrence waits on anything; an iteration root takes no part in its
+  // template's dependency graph.
+  const isItem = node.habitItem !== undefined && node.habitItem.itemType !== "flow_root";
+  if (node.kind === "task" && isItem && !sameRefs(edits.dependsOn, before.dependsOn)) {
     writes.push({ field: "dependsOn", value: edits.dependsOn });
   }
   return writes;
@@ -168,8 +168,8 @@ export interface OccurrenceEditorHandles {
   close: () => void;
   /** Writes what changed, as one undo step, and reloads. A refusal rejects, for the editor. */
   save: (edits: OccurrenceEdits) => Promise<void>;
-  /** Deletes the occurrence from its iteration, or restores it; one undo step. */
-  setDeleted: (deleted: boolean) => Promise<void>;
+  /** Archives the occurrence by hand, or unarchives it; one undo step. */
+  setArchived: (archived: boolean) => Promise<void>;
 }
 
 /**
@@ -188,7 +188,8 @@ export function useOccurrenceEditor(
     (node: MindmapNode): boolean => {
       const key = editableOccurrence(node);
       if (key === null) return false;
-      setTarget({ node, key, candidates: occurrenceCandidates(tree, key) });
+      const candidates = key.itemType === "flow_root" ? [] : occurrenceCandidates(tree, key);
+      setTarget({ node, key, candidates });
       return true;
     },
     [tree],
@@ -211,15 +212,15 @@ export function useOccurrenceEditor(
     [target, reload, t],
   );
 
-  const setDeleted = useCallback(
-    async (deleted: boolean): Promise<void> => {
+  const setArchived = useCallback(
+    async (archived: boolean): Promise<void> => {
       if (target === null) return;
-      await setHabitInstanceDeleted(target.key, deleted);
+      await setHabitInstanceArchived(target.key, archived);
       setTarget(null);
       await reload();
     },
     [target, reload],
   );
 
-  return { target, open, close, save, setDeleted };
+  return { target, open, close, save, setArchived };
 }

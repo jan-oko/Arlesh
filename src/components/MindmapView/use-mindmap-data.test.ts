@@ -698,7 +698,7 @@ describe("useMindmapData — mutations", () => {
             outcome: "loaded" as const,
             iterations: [{
               index: 0, anchor_scope_id: 100, anchor_date: "2026-01-05",
-              window_end: "2026-01-06T00:00:00", status: "active" as const, instances: [],
+              window_end: "2026-01-06T00:00:00", status: "active" as const, instances: [], root: null,
             }],
             statuses: [],
           },
@@ -1387,6 +1387,7 @@ describe("injectHabitInstances", () => {
       window_end: `2026-01-${String(day + 1).padStart(2, "0")}T00:00:00`,
       status,
       instances,
+      root: null,
     };
   }
 
@@ -1401,7 +1402,7 @@ describe("injectHabitInstances", () => {
     return {
       item_type: itemType, item_id: itemId, cycle_id: NO_CYCLE,
       time_scope: null, plan: null, cycle_plan: null, plan_overridden: false, title: null,
-      blocked_reason: null, deleted: false, depends_on: [], timing: "active", ...overrides,
+      blocked_reason: null, archived: false, depends_on: [], timing: "active", ...overrides,
     };
   }
   /** A stored status Modification for one occurrence. */
@@ -1718,7 +1719,7 @@ describe("injectHabitInstances", () => {
         iter(0, "active", [
           inst("flow_task", 4, { title: "Shop at the market" }),
           inst("flow_task", 5, { depends_on: waitsOnShop, blocked_reason: "no gas" }),
-          inst("flow_task", 6, { deleted: true }),
+          inst("flow_task", 6, { archived: true }),
         ]),
         iter(1, "active", [inst("flow_task", 4), inst("flow_task", 5, { depends_on: waitsOnShop }), inst("flow_task", 6)]),
       ]],

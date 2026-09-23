@@ -35,8 +35,8 @@ export default function OccurrenceContextMenu({ x, y, entries, onAction, onClose
       case "plan": return t("occurrence.plan");
       case "follow-cycle-plan": return t("occurrence.followCyclePlan");
       case "unplan": return t("occurrence.unplan");
-      case "delete": return t("occurrence.delete");
-      case "restore": return t("occurrence.restore");
+      case "archive": return t("occurrence.archive");
+      case "unarchive": return t("occurrence.unarchive");
       case "collapse": return t("collapse");
       case "expand": return t("expand");
       case "status:todo": return t("occurrence.status.todo");

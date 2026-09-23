@@ -136,7 +136,7 @@ describe("MindmapTree — a Habit occurrence's context menu", () => {
     id: "habititem-flow_task-4-0-0-virtual", kind: "task", title: "Run", status: "todo", position: 0,
     tagIds: [], children: [], virtual: true,
     habitItem: { flowId: 3, itemType: "flow_task", itemId: 4, scopeId: 100, cycleId: 0 },
-    occurrence: { templateTitle: "Run", ownTitle: null, blockedReason: null, dependsOn: [], deleted: false },
+    occurrence: { templateTitle: "Run", ownTitle: null, blockedReason: null, dependsOn: [], archived: false },
   };
 
   function renderOccurrence(onContextAction = vi.fn(), onDoubleClick = vi.fn()) {

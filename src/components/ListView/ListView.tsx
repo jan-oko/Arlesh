@@ -23,7 +23,7 @@ import { useKeyboardListView } from "./use-keyboard-list-view";
 import { useUndo } from "@/hooks/use-undo";
 import TaskEditorModal from "@/components/TaskEditorModal/TaskEditorModal";
 import OccurrenceEditorModal from "@/components/OccurrenceEditorModal/OccurrenceEditorModal";
-import { useOccurrenceDelete } from "@/hooks/use-occurrence-delete";
+import { useOccurrenceArchive } from "@/hooks/use-occurrence-archive";
 import { useOccurrenceMenu } from "@/hooks/use-occurrence-menu";
 import { occurrenceMenuEntries } from "@/utils/occurrence-menu";
 import OccurrenceContextMenu from "@/components/OccurrenceContextMenu/OccurrenceContextMenu";
@@ -235,14 +235,14 @@ export default function ListView() {
     setListPreset(mode);
   }
 
-  const deleteOccurrences = useOccurrenceDelete({ reload, showToast });
+  const archiveOccurrences = useOccurrenceArchive({ reload, showToast });
   // A Habit occurrence's own context menu — the one row kind in this list that has one, since it
   // is the only row whose editing, status, Plan and delete need their own route.
   const [occurrenceMenu, setOccurrenceMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null);
   const runOccurrenceAction = useOccurrenceMenu({
     openEditor: occurrenceEditor.open,
     setOccurrenceStatus,
-    deleteOccurrences,
+    archiveOccurrences,
     toggleCollapsed: () => undefined,
     reload,
     showToast,
@@ -260,7 +260,7 @@ export default function ListView() {
       neighbourAfterDelete,
       selectRow: setSelectedRowId,
       deleteVirtual: (node) => {
-        deleteOccurrences([node]);
+        archiveOccurrences([node]);
       },
     });
 
@@ -407,7 +407,7 @@ export default function ListView() {
           node={occurrenceEditor.target.node}
           candidates={occurrenceEditor.target.candidates}
           onSave={occurrenceEditor.save}
-          onSetDeleted={occurrenceEditor.setDeleted}
+          onSetArchived={occurrenceEditor.setArchived}
           onClose={occurrenceEditor.close}
         />
       )}

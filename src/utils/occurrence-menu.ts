@@ -10,15 +10,15 @@ export type OccurrenceMenuAction =
   | "plan"
   | "follow-cycle-plan"
   | "unplan"
-  | "delete"
-  | "restore"
+  | "archive"
+  | "unarchive"
   | "collapse"
   | "expand"
   | `status:${OccurrenceStatus}`;
 
 /** Every action a menu can carry, for narrowing an action string that arrived untyped. */
 const ACTIONS: readonly string[] = [
-  "edit", "plan", "follow-cycle-plan", "unplan", "delete", "restore", "collapse", "expand",
+  "edit", "plan", "follow-cycle-plan", "unplan", "archive", "unarchive", "collapse", "expand",
   "status:todo", "status:in_progress", "status:done", "status:active", "status:achieved",
 ] satisfies readonly OccurrenceMenuAction[];
 
@@ -29,7 +29,7 @@ export function isOccurrenceMenuAction(value: string): value is OccurrenceMenuAc
 /** One row of the menu, grouped so the component can draw separators between groups. */
 export interface OccurrenceMenuEntry {
   action: OccurrenceMenuAction;
-  group: "edit" | "status" | "plan" | "tree" | "delete";
+  group: "edit" | "status" | "plan" | "tree" | "archive";
 }
 
 /** The statuses a node of this kind can be set to, other than the one it has. */
@@ -47,13 +47,13 @@ function statusEntries(node: MindmapNode): OccurrenceMenuEntry[] {
 }
 
 /**
- * The context menu of a virtual Habit node: only what applies to it, and nothing drawn dead.
+ * The context menu of a Habit occurrence — an item's, or the iteration root, which for a Habit with
+ * no items *is* the occurrence: only what applies to it, and nothing drawn dead.
  *
- * - An **item occurrence** is edited, given a status, planned (a task: open the editor on its
- *   Plan, hand it back to the Cycle Plan, or leave it unplanned this time), collapsed, and deleted
- *   from its iteration. A deleted one offers its editor and Restore, and nothing else.
- * - The **iteration root** is not edited or deleted on its own; it offers its status and
- *   collapsing.
+ * It is edited, given a status (a commitment iteration keeps its verdict controls instead), planned
+ * when it renders as a task — open the editor on its Plan, hand it back to the Cycle Plan, or leave
+ * it unplanned this time — collapsed, and archived by hand. An archived one offers its editor and
+ * Unarchive, and nothing else.
  *
  * `canCollapse` is false on a surface that draws no subtree to fold (the List View).
  *
@@ -64,15 +64,13 @@ export function occurrenceMenuEntries(
   isCollapsed: boolean,
   canCollapse = true,
 ): OccurrenceMenuEntry[] | null {
-  const item = node.habitItem;
-  if (item === undefined) return null;
+  if (node.habitItem === undefined) return null;
+  if (node.occurrence?.archived === true) {
+    return [{ action: "edit", group: "edit" }, { action: "unarchive", group: "archive" }];
+  }
   const tree: OccurrenceMenuEntry[] = canCollapse && node.children.length > 0
     ? [{ action: isCollapsed ? "expand" : "collapse", group: "tree" }]
     : [];
-  if (item.itemType === "flow_root") return [...statusEntries(node), ...tree];
-  if (node.occurrence?.deleted === true) {
-    return [{ action: "edit", group: "edit" }, { action: "restore", group: "delete" }];
-  }
   const plan: OccurrenceMenuEntry[] = [];
   if (node.kind === "task") {
     plan.push({ action: "plan", group: "plan" });
@@ -84,7 +82,7 @@ export function occurrenceMenuEntries(
     ...statusEntries(node),
     ...plan,
     ...tree,
-    { action: "delete", group: "delete" },
+    { action: "archive", group: "archive" },
   ];
 }
 

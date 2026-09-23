@@ -93,6 +93,7 @@ function envelope(): MindmapLoad {
           window_end: "2099-01-01T00:00:00",
           status: "active",
           instances: [],
+          root: null,
         }],
         statuses: [],
       },
