@@ -52,3 +52,10 @@
 :global([dir="rtl"]) .input:checked::after {
   transform: translateX(-14px);
 }
+
+/* A question that does not apply to what is on screen — inert rather than absent, so the menu
+   still says the option exists and the row says why it is doing nothing. */
+.disabled {
+  cursor: default;
+  opacity: 0.5;
+}

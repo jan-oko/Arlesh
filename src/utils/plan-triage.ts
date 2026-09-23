@@ -3,6 +3,7 @@
 // for the network — scope windows arrive already resolved (see `use-scope-windows`), so the two
 // panes re-derive synchronously as the scope is walked.
 
+import type { Scope } from "@/api/scopes";
 import type { TimeScope } from "@/api/time-scope";
 import type { TaskListRow } from "@/utils/list-filter";
 import type { MindmapNode } from "@/utils/tree-layout";
@@ -85,6 +86,27 @@ function isTriageable(node: MindmapNode): boolean {
   return node.virtual !== true && node.habitItem === undefined;
 }
 
+/**
+ * The scope one rung coarser than `scope` on the canonical ladder — its **parent**.
+ *
+ * `null` for a **Season**, which is the top of the ladder, and for an Exact window, which is not on
+ * the ladder at all. A season having no parent is not an edge case to be defended against: it is
+ * what being the top means, and it is why "planned to the parent scope" is a question that cannot
+ * be asked about one.
+ *
+ * The row already carries its containment ids, so this is a lookup rather than a second derivation
+ * of what contains what.
+ */
+export function parentScopeId(scope: Scope): number | null {
+  switch (scope.kind) {
+    case "part_of_day": return scope.day_id;
+    case "day": return scope.week_id;
+    case "week": return scope.month_id;
+    case "month": return scope.season_id;
+    default: return null;
+  }
+}
+
 /** What one triage pass makes of the board, in three heaps. */
 export interface PlanPanes {
   /** Unplanned Tasks whose effective Time Scope reaches into the scope being filled. */
@@ -92,19 +114,22 @@ export interface PlanPanes {
   /** Tasks already planned into the scope being filled. */
   planned: TaskListRow[];
   /**
-   * Tasks planned **coarser** than the scope being filled: their Plan contains it without being
-   * contained by it — the month, while you are filling one of its weeks.
+   * Tasks planned to the scope's **parent**: committed at the rung above, and so not yet placed in
+   * this one. The work pinned to the month, while you are filling one of its weeks.
    *
-   * They are committed, but not to anywhere as fine as this pass is placing at, so they are exactly
-   * "what still needs placing" and they belong with the candidates. Before the two kebab menus they
-   * were in neither pane, which is what made a pass over a week open on work it had no opinion
-   * about instead of on the month's own backlog of it.
+   * Measured against the parent's window rather than "anything coarser", so a plan on the *season*
+   * is not offered while you fill a week. A pass places what the pass above it committed, one rung
+   * at a time, and reaching two rungs up would be doing the month's pass inside the week's.
+   *
+   * Empty for a Season, which has no parent. Before the two kebab menus this heap did not exist at
+   * all, which is what made a pass over a week open on work it had no opinion about instead of on
+   * the month's own backlog of it.
    */
-  coarser: TaskListRow[];
+  parentPlanned: TaskListRow[];
 }
 
 /**
- * Splits the rows into the heaps for `target`.
+ * Splits the rows into the heaps for `target`, whose parent spans `parent` (`null` for a Season).
  *
  * **Unplanned** is the work that is relevant *now*: a Task with no Plan at all whose effective Time
  * Scope overlaps the scope. An **Unscoped** task is always relevant and so is always here — the
@@ -115,20 +140,23 @@ export interface PlanPanes {
  * holds, and a week being filled has to show it or the right-hand pane would under-report the load
  * it exists to report.
  *
- * **Coarser** is the other side of that comparison — containment the other way round, and strictly,
- * so a plan that *is* this scope counts as planned rather than as coarser than itself.
+ * **Parent-planned** is the other side of that comparison, bounded: the Plan contains this scope
+ * *and* sits inside the parent's window. Containment is checked against `target` first, so a plan
+ * that **is** this scope counts as planned rather than as its own parent, and the parent bound is
+ * what keeps a plan on the season out of a week's pass.
  *
  * A Task planned somewhere else entirely is in **none** of them. It is not unscheduled, it is not
- * in this scope, and it is not above it.
+ * in this scope, and it is not at the rung above it.
  */
 export function partitionForScope(
   rows: readonly TaskListRow[],
   target: ScopeInterval,
   windows: ScopeWindows,
+  parent: ScopeInterval | null,
 ): PlanPanes {
   const unplanned: TaskListRow[] = [];
   const planned: TaskListRow[] = [];
-  const coarser: TaskListRow[] = [];
+  const parentPlanned: TaskListRow[] = [];
   for (const row of rows) {
     if (!isTriageable(row.node)) continue;
     const plan = row.node.plan;
@@ -136,7 +164,9 @@ export function partitionForScope(
       const planWindow = timeScopeWindow(plan, windows);
       if (planWindow === null) continue;
       if (intervalContains(target, planWindow)) planned.push(row);
-      else if (intervalContains(planWindow, target)) coarser.push(row);
+      else if (parent !== null && intervalContains(planWindow, target) && intervalContains(parent, planWindow)) {
+        parentPlanned.push(row);
+      }
       continue;
     }
     const relevance = effectiveTimeScope(row);
@@ -147,7 +177,7 @@ export function partitionForScope(
     const window = timeScopeWindow(relevance, windows);
     if (window !== null && intervalsOverlap(window, target)) unplanned.push(row);
   }
-  return { unplanned, planned, coarser };
+  return { unplanned, planned, parentPlanned };
 }
 
 /**

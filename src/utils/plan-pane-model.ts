@@ -11,8 +11,6 @@ import type { PlanSection } from "@/utils/plan-sections";
 
 /** One drawn thing in a pane. */
 export type PaneEntry =
-  /** The run below hangs directly off the frame — the board's root, or the subtree you entered. */
-  | { type: "root" }
   | { type: "path"; pathKey: string; segments: readonly MindmapNode[] }
   | { type: "task"; row: TaskListRow };
 
@@ -55,8 +53,8 @@ function groupByPath(rows: readonly TaskListRow[]): PaneEntry[] {
   let lastKey: string | null = null;
   for (const row of rows) {
     const key = pathKeyOf(row.ancestors);
-    if (key !== lastKey) {
-      entries.push(row.ancestors.length === 0 ? { type: "root" } : { type: "path", pathKey: key, segments: row.ancestors });
+    if (key !== lastKey && row.ancestors.length > 0) {
+      entries.push({ type: "path", pathKey: key, segments: row.ancestors });
     }
     lastKey = key;
     entries.push({ type: "task", row });

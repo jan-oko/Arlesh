@@ -172,15 +172,3 @@
   text-align: center;
 }
 
-/* The run below hangs directly off the frame — the board's root, or the subtree you entered. It is
-   not a chain, so it is not drawn as one: no segments to click into, no glyph, nothing but the
-   name, centred to read as the top of the pane rather than as the first step of a path. */
-.rootHeader {
-  padding: var(--space-1) 0;
-  color: var(--text-secondary);
-  font-family: var(--font-sans);
-  font-size: var(--text-sm);
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-align: center;
-}

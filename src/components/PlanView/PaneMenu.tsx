@@ -8,6 +8,10 @@ export interface PaneOption {
   label: string;
   checked: boolean;
   onToggle: () => void;
+  /** Set where the option asks something this scope cannot answer — see `inertReason`. */
+  disabled?: boolean;
+  /** Why it is inert, on hover. */
+  inertReason?: string;
 }
 
 interface Props {
@@ -48,7 +52,13 @@ export default function PaneMenu({ label, options }: Props) {
           <div className={styles.menu} role="group" aria-label={label}>
             {options.map((option) => (
               <div key={option.id} className={styles.row} onClick={(event) => event.stopPropagation()}>
-                <Switch checked={option.checked} onChange={option.onToggle} label={option.label} />
+                <Switch
+                  checked={option.checked}
+                  onChange={option.onToggle}
+                  label={option.label}
+                  disabled={option.disabled === true}
+                  {...(option.inertReason === undefined ? {} : { title: option.inertReason })}
+                />
               </div>
             ))}
           </div>

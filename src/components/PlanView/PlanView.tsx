@@ -20,8 +20,8 @@ import { BEADS_NODE_TYPE } from "@/api/beads";
 import type { FilterState } from "@/utils/filter-tree";
 import type { TaskListRow } from "@/utils/list-filter";
 import { DEFAULT_LIST_FILTER, filterTaskList } from "@/utils/list-filter";
-import { collectSearchableNodes, findNode } from "@/utils/mindmap-tree";
-import { partitionForScope, referencedScopeIds } from "@/utils/plan-triage";
+import { collectSearchableNodes } from "@/utils/mindmap-tree";
+import { parentScopeId, partitionForScope, referencedScopeIds } from "@/utils/plan-triage";
 import { buildPlanSections } from "@/utils/plan-sections";
 import type { PlanSection } from "@/utils/plan-sections";
 import { buildPaneModel } from "@/utils/plan-pane-model";
@@ -44,7 +44,7 @@ import type { SelectModifiers } from "./PlanTaskCard";
 import { useKeyboardPlanView } from "./use-keyboard-plan-view";
 import styles from "./PlanView.module.css";
 
-const NO_PANES: PlanPanes = { unplanned: [], planned: [], coarser: [] };
+const NO_PANES: PlanPanes = { unplanned: [], planned: [], parentPlanned: [] };
 
 /**
  * The **Plan View**: one scope at a time, as a two-pane triage.
@@ -67,7 +67,6 @@ export default function PlanView() {
   const toggleFullscreen = useFullscreenStore((s) => s.toggle);
   // Ctrl+O is a global binding; the flag it raises is read here, where the loaded tree already is.
   const enterSubtree = useMindmapStore((s) => s.enterSubtree);
-  const subtreeRootId = useMindmapStore((s) => s.subtreeRootId);
   const searchOpen = useMindmapStore((s) => s.searchOpen);
   const closeSearch = useMindmapStore((s) => s.closeSearch);
   const pendingToast = useMindmapStore((s) => s.pendingToast);
@@ -104,17 +103,23 @@ export default function PlanView() {
   );
 
   const targetScopeId = scope.scope?.id ?? null;
+  // The rung above the scope being filled. `null` for a **Season**, which is the top of the ladder
+  // — not an edge case to be defended against, but the reason "planned to the parent scope" is a
+  // question that cannot be asked about one.
+  const parentId = useMemo(() => (scope.scope === null ? null : parentScopeId(scope.scope)), [scope.scope]);
   const scopeIds = useMemo(() => {
     const ids = referencedScopeIds(visibleRows);
     if (targetScopeId !== null) ids.push(targetScopeId);
+    if (parentId !== null) ids.push(parentId);
     return ids;
-  }, [visibleRows, targetScopeId]);
+  }, [visibleRows, targetScopeId, parentId]);
   const windows = useScopeWindows(scopeIds);
   const targetWindow = targetScopeId === null ? null : windows.get(targetScopeId) ?? null;
+  const parentWindow = parentId === null ? null : windows.get(parentId) ?? null;
 
   const panes = useMemo(
-    () => (targetWindow === null ? NO_PANES : partitionForScope(visibleRows, targetWindow, windows)),
-    [visibleRows, targetWindow, windows],
+    () => (targetWindow === null ? NO_PANES : partitionForScope(visibleRows, targetWindow, windows, parentWindow)),
+    [visibleRows, targetWindow, windows, parentWindow],
   );
 
   const { planInto, planIntoSubscope, unplan } = usePlanMove({
@@ -156,23 +161,34 @@ export default function PlanView() {
   }, [subscopeSplit, targetScopeId, scopeRows, panes.planned, includePremorning]);
 
   /**
-   * The left-hand pane: **what this pass has not placed**.
+   * Whether *Show only planned to parent scope* has anything to do.
    *
-   * A pass fills *buckets* — the scope itself while the right-hand pane is flat, its subscopes once
-   * it is split — and the parent scope is the scope one rung coarser than the bucket. Work planned
-   * to the parent is inside it without being anywhere as fine as the pass is placing at, so it is
-   * exactly the work that still needs a decision, and it is on this side because this is the side
-   * with the gestures that make one.
+   * It is a **structural** test — does the scope being filled have a rung above it — and not
+   * "would hiding leave the pane empty". The two coincide for a Season and part company everywhere
+   * else. A Season is the one top-level scope, so there is no parent-planned set to show and none
+   * to hide, and the switch is drawn inert rather than quietly doing nothing. With a parent that
+   * simply holds nothing, an empty pane is the true answer — it says nothing was committed to the
+   * parent — and it is left to say it.
+   */
+  const parentApplies = parentId !== null;
+
+  /**
+   * The left-hand pane: **relevant work that is unplanned or planned to the parent scope.**
    *
-   * With the split on, that is also where the old catch-all's contents went: work pinned to the
-   * scope while you look at its parts was drawn among the work that was already placed, in a
-   * section that offered no way to move it.
+   * The switch *subtracts* rather than selects: the pane holds both halves, and turning it on hides
+   * the unplanned one, leaving the work that is committed a rung up and not yet placed here.
+   *
+   * Work the **split** could not place in a bucket joins them regardless of the switch. It is
+   * neither unplanned nor planned to the parent — it is planned to the scope you are standing in,
+   * in no part of it — and it is here because the old catch-all drew it among the work that was
+   * already placed, in a section that offered no way to move it. Hiding it would put it back
+   * nowhere.
    */
   const candidateRows = useMemo(() => {
     const unplaced = split?.unplaced ?? [];
-    const parentPlanned = [...panes.coarser, ...unplaced];
-    return parentOnly ? parentPlanned : [...parentPlanned, ...panes.unplanned];
-  }, [split, panes.coarser, panes.unplanned, parentOnly]);
+    const hideUnplanned = parentOnly && parentApplies;
+    return [...unplaced, ...panes.parentPlanned, ...(hideUnplanned ? [] : panes.unplanned)];
+  }, [split, panes.parentPlanned, panes.unplanned, parentOnly, parentApplies]);
 
   const candidatesModel = useMemo(
     () => buildPaneModel(null, candidateRows, groupByPath),
@@ -399,19 +415,21 @@ export default function PlanView() {
   });
 
   const candidateOptions = useMemo<PaneOption[]>(() => [
-    { id: "parentOnly", label: t("planView:optionParentOnly"), checked: parentOnly, onToggle: toggleParentOnly },
+    {
+      id: "parentOnly",
+      label: t("planView:optionParentOnly"),
+      checked: parentOnly,
+      onToggle: toggleParentOnly,
+      disabled: !parentApplies,
+      inertReason: t("planView:parentOnlyInert"),
+    },
     { id: "groupByPath", label: t("planView:optionGroupByPath"), checked: groupByPath, onToggle: toggleGroupByPath },
-  ], [t, parentOnly, toggleParentOnly, groupByPath, toggleGroupByPath]);
+  ], [t, parentOnly, toggleParentOnly, parentApplies, groupByPath, toggleGroupByPath]);
 
   const plannedOptions = useMemo<PaneOption[]>(() => [
     { id: "subscopeSplit", label: t("planView:optionSubscopeSplit"), checked: subscopeSplit, onToggle: toggleSubscopeSplit },
     { id: "premorning", label: t("planView:optionIncludePremorning"), checked: includePremorning, onToggle: toggleIncludePremorning },
   ], [t, subscopeSplit, toggleSubscopeSplit, includePremorning, toggleIncludePremorning]);
-
-  const rootLabel = useMemo(() => {
-    const frame = subtreeRootId === null ? tree : findNode(tree, subtreeRootId) ?? tree;
-    return frame.title;
-  }, [tree, subtreeRootId]);
 
   if (isLoading) return <div className={styles.centered}>{t("common:loading")}</div>;
   if (error !== null) return <div className={styles.centered}>{t("common:error", { message: error })}</div>;
@@ -441,14 +459,13 @@ export default function PlanView() {
             model={candidatesModel}
             focused={pane === "candidates"}
             grouped={groupByPath}
-            rootLabel={rootLabel}
             selectedIds={live.ids}
             direction={plannedModel.sectioned ? null : "in"}
             sectionInfo={sectionInfo}
             empty={(
               <p className={styles.empty}>
                 {t("planView:candidatesEmpty")}
-                {parentOnly && <span className={styles.hint}>{t("planView:candidatesEmptyParentHint")}</span>}
+                {parentOnly && parentApplies && <span className={styles.hint}>{t("planView:candidatesEmptyParentHint")}</span>}
                 {!showBacklogged && <span className={styles.hint}>{t("planView:candidatesEmptyBacklogHint")}</span>}
               </p>
             )}
@@ -468,7 +485,6 @@ export default function PlanView() {
             model={plannedModel}
             focused={pane === "planned"}
             grouped={false}
-            rootLabel={rootLabel}
             selectedIds={live.ids}
             direction="out"
             sectionInfo={sectionInfo}

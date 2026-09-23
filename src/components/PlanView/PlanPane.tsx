@@ -28,8 +28,6 @@ interface Props {
   focused: boolean;
   /** Whether runs are headed by their path, which is also what takes the path off the cards. */
   grouped: boolean;
-  /** What the frame is called — the board's root, or the subtree the tab has entered. */
-  rootLabel: string;
   selectedIds: ReadonlySet<string>;
   /** Which way a card in this pane moves, or `null` where no across-move is offered. */
   direction: "in" | "out" | null;
@@ -66,7 +64,7 @@ const WHOLE_PANE = "pane";
  * droppable) and not for the keyboard.
  */
 export default function PlanPane({
-  which, heading, options, model, focused, grouped, rootLabel, selectedIds,
+  which, heading, options, model, focused, grouped, selectedIds,
   direction, empty, sectionInfo, onFocus, onSelect, onMove, onOpenEditor, onEnterSubtree,
   onFilterByAntecedent, onDragStart, onDrop,
 }: Props) {
@@ -121,9 +119,6 @@ export default function PlanPane({
             <p className={styles.sectionEmpty}>{t("subscopeEmpty")}</p>
           )}
           {block.entries.map((entry, index) => {
-            if (entry.type === "root") {
-              return <div key={`root-${block.key}-${String(index)}`} className={styles.rootHeader}>{rootLabel}</div>;
-            }
             if (entry.type === "path") {
               return (
                 <PathHeaderRow

@@ -47,5 +47,6 @@
     "5": "Friday",
     "6": "Saturday"
   },
-  "noParentPlan": "This scope is split into its parts — plan into one of them: press its key, or drop the card on it."
+  "noParentPlan": "This scope is split into its parts — plan into one of them: press its key, or drop the card on it.",
+  "parentOnlyInert": "A Season is the top of the ladder, so it has no parent scope to have been planned to."
 }

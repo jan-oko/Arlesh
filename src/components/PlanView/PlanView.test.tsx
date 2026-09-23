@@ -219,6 +219,7 @@ describe("moving a task across", () => {
     await act(async () => {
       fireEvent.click(screen.getByLabelText("planInto"));
     });
+    await settle();
     expect(updateTask).toHaveBeenCalledWith(1, { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
     expect(reload).toHaveBeenCalled();
   });
@@ -230,6 +231,7 @@ describe("moving a task across", () => {
     await act(async () => {
       fireEvent.click(screen.getByLabelText("unplan"));
     });
+    await settle();
     expect(updateTask).toHaveBeenCalledWith(2, { plan: null });
   });
 
@@ -240,6 +242,7 @@ describe("moving a task across", () => {
     await act(async () => {
       fireEvent.click(screen.getByLabelText("planInto"));
     });
+    await settle();
     expect(updateTask).not.toHaveBeenCalled();
     expect(screen.getByText("refusedTimeScope")).toBeInTheDocument();
   });
@@ -252,6 +255,7 @@ describe("moving a task across", () => {
     await act(async () => {
       fireEvent.click(screen.getByLabelText("planInto"));
     });
+    await settle();
     expect(updateTask).not.toHaveBeenCalled();
     expect(screen.getByText("refusedParentPlan")).toBeInTheDocument();
   });
@@ -290,6 +294,7 @@ describe("the keyboard", () => {
     await act(async () => {
       fireEvent.keyDown(window, { code: "Enter" });
     });
+    await settle();
 
     expect(updateTask).toHaveBeenCalledWith(1, { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
     const cards = document.querySelectorAll('[data-plan-pane="candidates"] [data-plan-card-id]');
@@ -307,6 +312,7 @@ describe("the keyboard", () => {
     await act(async () => {
       fireEvent.keyDown(window, { code: "Enter" });
     });
+    await settle();
 
     expect(updateTask).not.toHaveBeenCalled();
     const first = document.querySelector('[data-plan-card-id="task-1"]');
@@ -335,6 +341,7 @@ describe("the keyboard", () => {
     await act(async () => {
       fireEvent.keyDown(window, { code: "Enter" });
     });
+    await settle();
     expect(updateTask).toHaveBeenCalledWith(2, { plan: null });
   });
 });
