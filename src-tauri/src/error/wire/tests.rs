@@ -96,8 +96,8 @@ fn task_scope_containment_maps_to_containment_violated() {
 #[test]
 fn task_nested_scope_error_maps_by_walking_into_it() {
     assert_eq!(
-        kind_of(TaskError::Scope(ScopeError::NotFound(1))),
-        WireErrorKind::NotFound
+        kind_of(TaskError::Scope(ScopeError::UnsupportedKind("exact"))),
+        WireErrorKind::InvalidRequest
     );
 }
 
@@ -112,15 +112,21 @@ fn task_database_maps_to_database() {
 // --- ScopeError ---
 
 #[test]
-fn scope_not_found_maps_to_not_found() {
-    assert_eq!(kind_of(ScopeError::NotFound(1)), WireErrorKind::NotFound);
+fn scope_malformed_key_maps_to_invalid_request() {
+    assert_eq!(
+        kind_of(ScopeError::MalformedKey(
+            "week:2026-09-23".to_string(),
+            "not canonical".to_string()
+        )),
+        WireErrorKind::InvalidRequest
+    );
 }
 
 #[test]
-fn scope_malformed_maps_to_internal() {
+fn scope_empty_exact_maps_to_invalid_request() {
     assert_eq!(
-        kind_of(ScopeError::Malformed(1, "bad datetime".to_string())),
-        WireErrorKind::Internal
+        kind_of(ScopeError::EmptyExact("a".to_string(), "a".to_string())),
+        WireErrorKind::InvalidRequest
     );
 }
 
@@ -192,8 +198,8 @@ fn flow_database_maps_to_database() {
 #[test]
 fn flow_nested_scope_error_maps_by_walking_into_it() {
     assert_eq!(
-        kind_of(FlowError::Scope(ScopeError::NotFound(1))),
-        WireErrorKind::NotFound
+        kind_of(FlowError::Scope(ScopeError::UnsupportedKind("exact"))),
+        WireErrorKind::InvalidRequest
     );
 }
 

@@ -1,4 +1,4 @@
-//! Scope resolution tools.
+//! Scope tools.
 
 use chrono::Local;
 use rmcp::{
@@ -9,17 +9,20 @@ use rmcp::{
 
 use super::{params::ScopesOperation, result, ArleshMcp};
 use crate::scopes::{
-    model::ScopeId,
+    error::ScopeError,
+    key::ScopeKey,
     resolve::{resolve, ResolvedScope},
 };
 
 #[tool_router(router = scopes_router, vis = "pub(super)")]
 impl ArleshMcp {
-    /// Turns the scope IDs carried by tasks and goals into concrete dates.
+    /// What a scope id does not spell out. A scope id is its value key — `week:2026-09-20` is the
+    /// week whose Sunday is the 20th — so the dates are already in the snapshot.
     ///
-    /// `get` returns the stored scope row; `resolve` adds its half-open `[start, end)` datetime
-    /// window and whether it is currently active. `resolve_many` resolves a batch positionally —
-    /// use it after a snapshot rather than resolving one ID at a time.
+    /// `get` returns the scope with its label and inclusive end date; `resolve` its half-open
+    /// `[start, end)` datetime window (a day runs 02:00 → 02:00) and whether it is active now.
+    /// `resolve_many` resolves a batch positionally against one reference instant. None of them
+    /// reads the database.
     #[tool(
         name = "arlesh_scopes",
         annotations(title = "Arlesh scopes", read_only_hint = true)
@@ -28,37 +31,21 @@ impl ArleshMcp {
         &self,
         Parameters(operation): Parameters<ScopesOperation>,
     ) -> Result<CallToolResult, ErrorData> {
-        let mut db = match self.factory.connect().await {
-            Ok(db) => db,
-            Err(error) => return result::failed(error),
-        };
-
+        // One clock read for the whole call, so two scopes either side of a boundary cannot
+        // disagree about which of them is active.
+        let now = Local::now().naive_local();
         match operation {
-            ScopesOperation::Get { id } => result::respond(db.scopes().get(ScopeId(id)).await),
+            ScopesOperation::Get { id } => {
+                result::respond(id.parse::<ScopeKey>().map(|key| key.scope()))
+            }
             ScopesOperation::Resolve { id } => {
-                let now = Local::now().naive_local();
-                match db.scopes().get(ScopeId(id)).await {
-                    Ok(scope) => result::respond(resolve(&scope, now)),
-                    Err(error) => result::failed(error),
-                }
+                result::respond(id.parse::<ScopeKey>().map(|key| resolve(&key, now)))
             }
-            ScopesOperation::ResolveMany { ids } => {
-                // One clock read for the whole batch, so two scopes either side of a boundary
-                // cannot disagree about which of them is active.
-                let now = Local::now().naive_local();
-                let mut resolved: Vec<ResolvedScope> = Vec::with_capacity(ids.len());
-                for id in ids {
-                    let scope = match db.scopes().get(ScopeId(id)).await {
-                        Ok(scope) => scope,
-                        Err(error) => return result::failed(error),
-                    };
-                    match resolve(&scope, now) {
-                        Ok(value) => resolved.push(value),
-                        Err(error) => return result::failed(error),
-                    }
-                }
-                result::ok(resolved)
-            }
+            ScopesOperation::ResolveMany { ids } => result::respond(
+                ids.iter()
+                    .map(|id| id.parse::<ScopeKey>().map(|key| resolve(&key, now)))
+                    .collect::<Result<Vec<ResolvedScope>, ScopeError>>(),
+            ),
         }
     }
 }

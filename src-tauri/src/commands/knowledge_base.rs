@@ -74,17 +74,24 @@ pub async fn delete_person(factory: State<'_, SessionFactory>, id: i64) -> Resul
 
 /// Creates a new event.
 ///
-/// A single `INSERT`, so it runs on a pooled session.
+/// An Exact scope is registered first, then the event written, in one transaction.
 #[tauri::command]
 pub async fn create_event(
     factory: State<'_, SessionFactory>,
     request: CreateEventRequest,
 ) -> Result<Event, WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.events()
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    db.scopes()
+        .register_all(&request.scope_id)
+        .await
+        .map_err(WireError::from_error)?;
+    let event = db
+        .events()
         .create(request)
         .await
-        .map_err(WireError::from_error)
+        .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)?;
+    Ok(event)
 }
 
 /// Lists all events.

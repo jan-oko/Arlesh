@@ -21,7 +21,9 @@ impl ArleshMcp {
     /// lifecycle, and each flow's habit iterations and statuses.
     ///
     /// Start here. Tasks, goals and commitments carry `time_scope` and `plan` as boundary scope
-    /// IDs rather than dates — resolve them with `arlesh_scopes.resolve_many`.
+    /// ids, and a scope id is its value key — `week:2026-09-20` is the week whose Sunday is the
+    /// 20th, `day:2026-09-23`, `part_of_day:2026-09-23:morning` — so the dates are right there.
+    /// `arlesh_scopes` adds labels, end dates and datetime windows if you need them.
     ///
     /// A commitment is a rule held over a window rather than a piece of work: it carries a
     /// `verdict` of `unresolved`/`kept`/`broken` that is recorded, never inferred. `unresolved`
@@ -51,15 +53,10 @@ impl ArleshMcp {
     /// hides those. Pass the **same** filter on every page of a walk: pages are derived
     /// independently, so changing it partway is no different from the board changing underfoot.
     ///
-    /// Not read-only: deriving habit iterations materialises the scope rows their windows land on.
-    /// It creates no tasks, goals or flows.
+    /// Read-only: it writes nothing.
     #[tool(
         name = "arlesh_snapshot",
-        annotations(
-            title = "Arlesh snapshot",
-            read_only_hint = false,
-            destructive_hint = false
-        )
+        annotations(title = "Arlesh snapshot", read_only_hint = true)
     )]
     pub async fn snapshot(
         &self,
@@ -81,13 +78,12 @@ impl ArleshMcp {
             Err(error) => return result::refused(error.to_string()),
         };
 
-        // Transactional and committed, matching `commands::mindmap::load_mindmap`: without the
-        // commit sqlx discards the derived scopes on drop and still returns a correct-looking
-        // payload, whose habit iterations then name scope ids that no longer exist.
+        // Transactional, matching `commands::mindmap::load_mindmap`, so that one page reads one
+        // consistent board. It writes nothing; the commit only closes the transaction.
         //
         // Every page re-derives. Keeping a payload server-side between pages would buy a
         // consistent read at the cost of state to expire and grow; for one local user, seconds
-        // apart, re-deriving is the better trade, and materialising a scope twice is a no-op.
+        // apart, re-deriving is the better trade.
         let mut db = match self.factory.begin().await {
             Ok(db) => db,
             Err(error) => return result::failed(error),

@@ -101,7 +101,7 @@ impl SessionMode for Transactional {
 /// Three cases, and every database operation in this crate is exactly one of them:
 ///
 /// 1. **One resource** — a method on that resource's operator, taking `&mut self`. Most of the
-///    crate. `GoalOperator::list`, `ScopeOperator::get`.
+///    crate. `GoalOperator::list`, `ScopeOperator::register`.
 /// 2. **Several resources** — a free function taking `&mut Db<M>`, reaching each resource by
 ///    calling `db.scopes()`, `db.goals()`, `db.tasks()` inline, one at a time. It takes the
 ///    session precisely because it needs more than one resource from it. `tasks`'
@@ -137,9 +137,9 @@ impl SessionMode for Transactional {
 /// The rule has exactly one exemption, and it is about **consequence, not shape**: a
 /// check-then-write may stay an operator method when a **schema constraint independently enforces
 /// the invariant the check is testing**, because then a lost race is a constraint error rather
-/// than corruption. `ScopeOperator::get_or_create` and its two siblings probe for a scope before
-/// inserting one, and `scopes_canonical_uniq`, `scopes_part_uniq` and `scopes_exact_uniq` stand
-/// behind them; each doc names its index, so the exemption is visible rather than assumed.
+/// than corruption. (`ScopeOperator` used to be the example, probing for a scope row before
+/// inserting one; scopes are derived now, and its one remaining write is a single idempotent
+/// statement.)
 /// `tasks::add_task_dependency` is the counter-example that fixes the boundary: nothing in the
 /// schema expresses acyclicity, so two callers can each see no cycle and jointly create one, and
 /// it is a free function over `Db<Transactional>`.
@@ -209,7 +209,7 @@ impl<M: SessionMode> Db<M> {
         PersonOperator::new(self.connection())
     }
 
-    /// Seasons, months, weeks and days.
+    /// Exact-scope registration; every other scope is derived without the database.
     pub fn scopes(&mut self) -> ScopeOperator<'_> {
         ScopeOperator::new(self.connection())
     }

@@ -14,15 +14,19 @@
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::{flows::model::TargetRef, tasks::model};
+use crate::{
+    flows::model::TargetRef,
+    scopes::{error::ScopeError, key::ScopeKey},
+    tasks::model,
+};
 
 /// A relevance or scheduling window, as an MCP caller supplies it.
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct TimeScope {
-    /// Start boundary scope id.
-    pub start_id: i64,
+    /// Start boundary scope id: a value key such as `week:2026-09-20` or `day:2026-09-23`.
+    pub start_id: String,
     /// End boundary scope id. Equal to `start_id` for a single scope.
-    pub end_id: i64,
+    pub end_id: String,
     /// Duration parameters, when the window was expressed in duration form.
     #[serde(default)]
     pub duration: Option<DurationSpec>,
@@ -55,13 +59,15 @@ impl From<DurationSpec> for model::DurationSpec {
     }
 }
 
-impl From<TimeScope> for model::TimeScope {
-    fn from(scope: TimeScope) -> Self {
-        Self {
-            start_id: scope.start_id,
-            end_id: scope.end_id,
+impl TryFrom<TimeScope> for model::TimeScope {
+    type Error = ScopeError;
+
+    fn try_from(scope: TimeScope) -> Result<Self, Self::Error> {
+        Ok(Self {
+            start_id: scope.start_id.parse::<ScopeKey>()?,
+            end_id: scope.end_id.parse::<ScopeKey>()?,
             duration: scope.duration.map(Into::into),
-        }
+        })
     }
 }
 
@@ -111,28 +117,29 @@ pub enum SnapshotOperation {
     },
 }
 
-/// Turning the snapshot's scope ids into dates.
+/// What a scope's value key does not spell out: its label, its end, its datetime window.
+///
+/// A scope id is its value key — `season:2026-09-01`, `month:2026-09-01`, `week:2026-09-20`,
+/// `day:2026-09-23`, `part_of_day:2026-09-23:morning` or
+/// `exact:2026-09-23T14:00:00/2026-09-23T15:30:00` — so its start date is already in the id.
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(tag = "operation", rename_all = "snake_case")]
 #[schemars(extend("type" = "object"))]
 pub enum ScopesOperation {
-    /// One scope row by id.
+    /// One scope, with its label and inclusive end date.
     Get {
-        /// Scope id.
-        id: i64,
+        /// Scope id (value key).
+        id: String,
     },
-    /// One scope resolved to concrete datetime boundaries.
+    /// One scope resolved to its half-open datetime window and whether it is active.
     Resolve {
-        /// Scope id.
-        id: i64,
+        /// Scope id (value key).
+        id: String,
     },
-    /// Several scopes resolved in one call, in the order given.
-    ///
-    /// Tasks and goals carry `time_scope` and `plan` as boundary scope *ids*, so reading a
-    /// snapshot without this means one round trip per distinct id.
+    /// Several scopes resolved in one call, in the order given, against one reference instant.
     ResolveMany {
-        /// Scope ids, resolved positionally.
-        ids: Vec<i64>,
+        /// Scope ids (value keys), resolved positionally.
+        ids: Vec<String>,
     },
 }
 

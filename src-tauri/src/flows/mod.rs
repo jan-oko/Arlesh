@@ -10,8 +10,8 @@
 //! [`Db`]'s `# Where an operation lives`.
 //!
 //! The scope helpers — `offset_scope`, `resolve_pair`, `resolve_window`, `resolve_flow_window`,
-//! `habit_slots` — take a single [`ScopeOperator`], not the session: they need exactly one
-//! resource and ADR-0004 keeps that precision.
+//! `habit_slots` — are pure: a scope is derived from its value key (ADR 0009), so resolving a
+//! window reads and writes nothing.
 
 pub mod error;
 pub mod habits;
@@ -25,9 +25,9 @@ use chrono::{Datelike, Duration, Months, NaiveDate, NaiveDateTime, NaiveTime};
 
 use crate::database::session::{Db, SessionMode, Transactional};
 use crate::infos::model::CreateInfoRequest;
-use crate::scopes::model::{PartOfDay, Scope, ScopeId, ScopeKind};
-use crate::scopes::resolve::{day_boundary, interval_contains, scope_bounds};
-use crate::scopes::ScopeOperator;
+use crate::scopes::key::ScopeKey;
+use crate::scopes::model::{PartOfDay, ScopeKind};
+use crate::scopes::resolve::{day_boundary, interval_contains};
 use crate::tasks::lifecycle::verdict_deadline;
 use crate::tasks::model::{
     CommitmentId, CreateCommitmentRequest, CreateGoalRequest, CreateTaskRequest, Dependency,
@@ -35,7 +35,7 @@ use crate::tasks::model::{
 };
 use crate::tasks::{
     add_task_dependency, create_commitment, create_goal, create_task, delete_goal, delete_task,
-    nearest_scoped_ancestor_window, time_scope_window,
+    nearest_scoped_ancestor_window,
 };
 use error::FlowError;
 use habits::{
@@ -167,12 +167,6 @@ fn periods_between(from: NaiveDate, to: NaiveDate, kind: &str) -> Option<i64> {
     }
 }
 
-/// Parses the start-date string of a scope row into a `NaiveDate`.
-fn scope_start_date(scope: &Scope) -> Result<NaiveDate, FlowError> {
-    NaiveDate::parse_from_str(&scope.start_date, "%Y-%m-%d")
-        .map_err(|e| FlowError::Invalid(e.to_string()))
-}
-
 /// Reduces a stored Recurrence to the pure `Consumption` behavior its Consumption tree encodes.
 fn parse_consumption(recurrence: &FlowRecurrence) -> Result<Consumption, FlowError> {
     match recurrence.consumption_kind.as_str() {
@@ -235,24 +229,19 @@ fn now_position() -> i64 {
         .as_millis() as i64
 }
 
-/// Resolves the `index`-th (1-based) `kind` subscope beginning at `base`, by offset.
-async fn offset_scope(
-    scopes: &mut ScopeOperator<'_>,
-    base: NaiveDate,
-    index: i64,
-    kind: &str,
-) -> Result<Scope, FlowError> {
+/// The `index`-th (1-based) `kind` subscope beginning at `base`, by offset.
+fn offset_scope(base: NaiveDate, index: i64, kind: &str) -> Result<ScopeKey, FlowError> {
     let off = index - 1;
     let bad_date = || FlowError::Invalid("cycle resolves outside the calendar".to_string());
     match kind {
         "season" | "month" | "week" | "day" => {
             let date = advance(base, off, kind).ok_or_else(bad_date)?;
-            Ok(scopes.get_or_create(flow_scope_kind(kind)?, date).await?)
+            Ok(ScopeKey::containing(flow_scope_kind(kind)?, date)?)
         }
         "part_of_day" => {
             let date = advance(base, off / 6, "day").ok_or_else(bad_date)?;
             let part = PartOfDay::CYCLE[usize::try_from(off % 6).unwrap_or(0)];
-            Ok(scopes.get_or_create_part(date, part).await?)
+            Ok(ScopeKey::part(date, part))
         }
         other => Err(FlowError::Invalid(format!(
             "unsupported cycle kind {other}"
@@ -262,9 +251,9 @@ async fn offset_scope(
 
 /// A cycle pair resolved against a window start.
 struct ResolvedCycle {
-    /// The scope row the Cycle Scope landed on — kept for its `[start, end)` datetime bounds,
-    /// which are what a virtual occurrence's Timing is read from.
-    scope: Scope,
+    /// The scope the Cycle Scope landed on — kept for its `[start, end)` datetime bounds, which
+    /// are what a virtual occurrence's Timing is read from.
+    scope: ScopeKey,
     /// That same scope as a single-scope Time Scope, ready to stamp on a node.
     time_scope: TimeScope,
     /// The Cycle Plan within it, when the pair carries one.
@@ -278,8 +267,7 @@ struct ResolvedCycle {
 /// The single implementation of the Cycle Scope offset. [`start`] takes it through
 /// [`resolve_pair`] and [`generate_habit_iterations`] takes it directly, so the window a Habit
 /// *renders* and the window a started flow *writes* cannot drift apart.
-async fn resolve_cycle(
-    scopes: &mut ScopeOperator<'_>,
+fn resolve_cycle(
     pair: Option<&FlowItemCycle>,
     window_start: Option<NaiveDate>,
 ) -> Result<Option<ResolvedCycle>, FlowError> {
@@ -289,42 +277,31 @@ async fn resolve_cycle(
     let (Some(kind), Some(index)) = (pair.scope_kind.as_deref(), pair.scope_index) else {
         return Ok(None);
     };
-    let scope = offset_scope(scopes, base, index, kind).await?;
-    let cycle_start = NaiveDate::parse_from_str(&scope.start_date, "%Y-%m-%d")
-        .map_err(|e| FlowError::Invalid(e.to_string()))?;
-    let time_scope = TimeScope {
-        start_id: scope.id,
-        end_id: scope.id,
-        duration: None,
-    };
+    let scope = offset_scope(base, index, kind)?;
+    let cycle_start = scope.start_date();
 
     let plan = match (pair.plan_kind.as_deref(), pair.plan_start, pair.plan_end) {
-        (Some(pk), Some(ps), Some(pe)) => {
-            let start = offset_scope(scopes, cycle_start, ps, pk).await?;
-            let end = offset_scope(scopes, cycle_start, pe, pk).await?;
-            Some(TimeScope {
-                start_id: start.id,
-                end_id: end.id,
-                duration: None,
-            })
-        }
+        (Some(pk), Some(ps), Some(pe)) => Some(TimeScope {
+            start_id: offset_scope(cycle_start, ps, pk)?,
+            end_id: offset_scope(cycle_start, pe, pk)?,
+            duration: None,
+        }),
         _ => None,
     };
     Ok(Some(ResolvedCycle {
         scope,
-        time_scope,
+        time_scope: TimeScope::single(scope),
         plan,
     }))
 }
 
 /// Resolves a cycle pair into a concrete (Time Scope, Plan) against the window start.
 /// A null-scope pair (or an unscoped flow) yields `(None, None)` — the item inherits the root.
-async fn resolve_pair(
-    scopes: &mut ScopeOperator<'_>,
+fn resolve_pair(
     pair: Option<&FlowItemCycle>,
     window_start: Option<NaiveDate>,
 ) -> Result<(Option<TimeScope>, Option<TimeScope>), FlowError> {
-    Ok(match resolve_cycle(scopes, pair, window_start).await? {
+    Ok(match resolve_cycle(pair, window_start)? {
         Some(resolved) => (Some(resolved.time_scope), resolved.plan),
         None => (None, None),
     })
@@ -332,24 +309,20 @@ async fn resolve_pair(
 
 /// Resolves the concrete flow window `[anchor, anchor + (n-1) periods]` of `kind`, returning
 /// the Time Scope and its start date. The anchor is snapped to the start of its canonical scope.
-async fn resolve_window(
-    scopes: &mut ScopeOperator<'_>,
+fn resolve_window(
     n: i64,
     kind: &str,
     anchor: NaiveDate,
 ) -> Result<(TimeScope, NaiveDate), FlowError> {
-    let start_scope = scopes.get_or_create(flow_scope_kind(kind)?, anchor).await?;
-    let start_date = NaiveDate::parse_from_str(&start_scope.start_date, "%Y-%m-%d")
-        .map_err(|e| FlowError::Invalid(e.to_string()))?;
+    let start_scope = ScopeKey::containing(flow_scope_kind(kind)?, anchor)?;
+    let start_date = start_scope.start_date();
     let end_date = advance(start_date, n - 1, kind)
         .ok_or_else(|| FlowError::Invalid("window exceeds the calendar".to_string()))?;
-    let end_scope = scopes
-        .get_or_create(flow_scope_kind(kind)?, end_date)
-        .await?;
+    let end_scope = ScopeKey::containing(flow_scope_kind(kind)?, end_date)?;
     Ok((
         TimeScope {
-            start_id: start_scope.id,
-            end_id: end_scope.id,
+            start_id: start_scope,
+            end_id: end_scope,
             duration: Some(DurationSpec {
                 n,
                 kind: kind.to_string(),
@@ -362,8 +335,7 @@ async fn resolve_window(
 /// Resolves a flow's Flow Window against a concrete `anchor` date into a Time Scope: a coarse
 /// **Span** yields a `[start, end]` boundary of canonical scopes; a sub-day **Phase** yields a
 /// single part/exact scope built on the anchor day. Returns the window and its first day.
-async fn resolve_flow_window(
-    scopes: &mut ScopeOperator<'_>,
+fn resolve_flow_window(
     flow: &Flow,
     anchor: NaiveDate,
 ) -> Result<(TimeScope, NaiveDate), FlowError> {
@@ -373,31 +345,15 @@ async fn resolve_flow_window(
         .ok_or_else(|| FlowError::Invalid("flow has no window".to_string()))?;
     let n = flow.flow_duration_n.unwrap_or(1);
     match window_spec(flow, kind, n)? {
-        WindowSpec::Span { .. } => resolve_window(scopes, n, kind, anchor).await,
-        WindowSpec::Part(band) => {
-            let scope = scopes.get_or_create_part(anchor, band).await?;
-            Ok((
-                TimeScope {
-                    start_id: scope.id,
-                    end_id: scope.id,
-                    duration: None,
-                },
-                anchor,
-            ))
-        }
-        WindowSpec::Exact { start, end } => {
-            let scope = scopes
-                .get_or_create_exact(anchor.and_time(start), anchor.and_time(end))
-                .await?;
-            Ok((
-                TimeScope {
-                    start_id: scope.id,
-                    end_id: scope.id,
-                    duration: None,
-                },
-                anchor,
-            ))
-        }
+        WindowSpec::Span { .. } => resolve_window(n, kind, anchor),
+        WindowSpec::Part(band) => Ok((TimeScope::single(ScopeKey::part(anchor, band)), anchor)),
+        WindowSpec::Exact { start, end } => Ok((
+            TimeScope::single(ScopeKey::exact(
+                anchor.and_time(start),
+                anchor.and_time(end),
+            )?),
+            anchor,
+        )),
     }
 }
 
@@ -406,8 +362,7 @@ async fn resolve_flow_window(
 /// contiguously; a **Phase** window is the fixed band / clock-range on its anchor day. Each next
 /// anchor advances by the Gap — for a Phase window that Gap is the whole-day stride between
 /// occurrence days (defaulting to daily), keeping the time-of-day fixed.
-async fn habit_slots(
-    scopes: &mut ScopeOperator<'_>,
+fn habit_slots(
     start_date: NaiveDate,
     spec: WindowSpec,
     gap: Option<&(i64, String)>,
@@ -419,30 +374,28 @@ async fn habit_slots(
     let mut anchor = start_date;
     let mut index = 0i64;
     loop {
-        // Materialize the window at this anchor and find where the next anchor tiles (Span only).
+        // Derive the window at this anchor and find where the next anchor tiles (Span only).
         let (scope_id, start, end, span_next) = match &spec {
             WindowSpec::Span { n, kind, kind_str } => {
-                let scope = scopes.get_or_create(*kind, anchor).await?;
-                let window_start = scope_start_date(&scope)?;
+                let scope = ScopeKey::containing(*kind, anchor)?;
+                let window_start = scope.start_date();
                 let next_contiguous = advance(window_start, *n, kind_str).ok_or_else(overflow)?;
                 (
-                    scope.id,
+                    scope,
                     day_boundary(window_start),
                     day_boundary(next_contiguous),
                     Some(next_contiguous),
                 )
             }
             WindowSpec::Part(band) => {
-                let scope = scopes.get_or_create_part(anchor, *band).await?;
-                let (start, end) = scope_bounds(&scope)?;
-                (scope.id, start, end, None)
+                let scope = ScopeKey::part(anchor, *band);
+                let (start, end) = scope.bounds();
+                (scope, start, end, None)
             }
             WindowSpec::Exact { start: ts, end: te } => {
-                let scope = scopes
-                    .get_or_create_exact(anchor.and_time(*ts), anchor.and_time(*te))
-                    .await?;
-                let (start, end) = scope_bounds(&scope)?;
-                (scope.id, start, end, None)
+                let scope = ScopeKey::exact(anchor.and_time(*ts), anchor.and_time(*te))?;
+                let (start, end) = scope.bounds();
+                (scope, start, end, None)
             }
         };
 
@@ -1353,7 +1306,7 @@ impl<'session> FlowOperator<'session> {
     async fn set_recurrence_end(
         &mut self,
         flow_id: FlowId,
-        end_scope_id: i64,
+        end_scope_id: ScopeKey,
     ) -> Result<(), FlowError> {
         sqlx::query("UPDATE flow_recurrences SET end_scope_id = ? WHERE flow_id = ?")
             .bind(end_scope_id)
@@ -1384,7 +1337,7 @@ impl<'session> FlowOperator<'session> {
     async fn set_iteration_done(
         &mut self,
         flow_id: FlowId,
-        iteration_scope_id: i64,
+        iteration_scope_id: ScopeKey,
         done: bool,
         resolved_at_ms: i64,
     ) -> Result<(), FlowError> {
@@ -1611,8 +1564,7 @@ impl<'session> FlowOperator<'session> {
     /// The window comes back resolved, as the Time Scope `(iteration_scope_id,
     /// window_end_scope_id)` the attachment settled at attach time, together with the kind the
     /// occurrence renders as. That is everything the ancestry climb needs to treat the occurrence
-    /// as the node's parent without resolving a Flow Window — which would mint scope rows, and so
-    /// could not happen on a read.
+    /// as the node's parent without resolving a Flow Window on every step of every climb.
     ///
     /// Fails as a bare [`sqlx::Error`] rather than a [`FlowError`], because its caller is the
     /// ancestry climb in `tasks` — a `FlowError` there would need `TaskError` to wrap the very
@@ -1623,7 +1575,7 @@ impl<'session> FlowOperator<'session> {
         child_type: &str,
         child_id: i64,
     ) -> Result<Option<ChildAttachment>, sqlx::Error> {
-        let row: Option<(i64, String, i64, i64)> = sqlx::query_as(
+        let row: Option<(i64, String, ScopeKey, ScopeKey)> = sqlx::query_as(
             "SELECT c.flow_id, f.instance_type, c.iteration_scope_id, c.window_end_scope_id
              FROM habit_instance_children c JOIN flows f ON f.id = c.flow_id
              WHERE c.child_type = ? AND c.child_id = ?",
@@ -1654,7 +1606,7 @@ impl<'session> FlowOperator<'session> {
         &mut self,
         flow_id: FlowId,
         instance: &HabitInstanceRef,
-        window_end_scope_id: i64,
+        window_end_scope_id: ScopeKey,
         child_type: &str,
         child_id: i64,
     ) -> Result<(), FlowError> {
@@ -2180,7 +2132,7 @@ impl<'session> FlowOperator<'session> {
     ) -> Result<HashMap<i64, NaiveDateTime>, FlowError> {
         // Instances = the flow root + each flow item once per cycle pair (once when it has none).
         let instance_count = self.iteration_instance_keys(flow_id).await?.len();
-        let rows: Vec<(i64, i64, Option<i64>)> = sqlx::query_as(
+        let rows: Vec<(ScopeKey, i64, Option<i64>)> = sqlx::query_as(
             "SELECT iteration_scope_id, COUNT(*), MAX(resolved_at)
              FROM habit_instance_modifications
              WHERE flow_id = ? AND status = 'done' AND tombstone_kind IS NULL
@@ -2189,7 +2141,7 @@ impl<'session> FlowOperator<'session> {
         .bind(flow_id.0)
         .fetch_all(&mut *self.connection)
         .await?;
-        let by_scope: HashMap<i64, (i64, Option<i64>)> = rows
+        let by_scope: HashMap<ScopeKey, (i64, Option<i64>)> = rows
             .into_iter()
             .map(|(scope, done, last)| (scope, (done, last)))
             .collect();
@@ -2334,6 +2286,13 @@ pub async fn set_flow_recurrence(
     flow_id: FlowId,
     request: SetRecurrenceRequest,
 ) -> Result<FlowRecurrence, FlowError> {
+    db.scopes()
+        .register_all(
+            [&request.start_scope_id]
+                .into_iter()
+                .chain(&request.end_scope_id),
+        )
+        .await?;
     db.flows().set_recurrence(flow_id, request).await
 }
 
@@ -2351,10 +2310,11 @@ pub async fn set_flow_recurrence(
 pub async fn set_iteration_done(
     db: &mut Db<Transactional>,
     flow_id: FlowId,
-    iteration_scope_id: i64,
+    iteration_scope_id: ScopeKey,
     done: bool,
     resolved_at_ms: i64,
 ) -> Result<(), FlowError> {
+    db.scopes().register(&iteration_scope_id).await?;
     db.flows()
         .set_iteration_done(flow_id, iteration_scope_id, done, resolved_at_ms)
         .await
@@ -2367,25 +2327,18 @@ pub async fn set_iteration_done(
 /// arithmetic [`resolve_iteration_instances`] uses, so the window an added child is held to and
 /// the window its occurrence renders with are one answer and not two. A pair naming no Cycle Scope
 /// falls back to the iteration's, exactly as an occurrence with no pair does.
-///
-/// **This writes**: resolving a window mints the scope rows it lands on.
 async fn occurrence_window(
     db: &mut Db<Transactional>,
     flow: &Flow,
     instance: &HabitInstanceRef,
 ) -> Result<TimeScope, FlowError> {
-    let anchor = db
-        .scopes()
-        .get(ScopeId(instance.iteration_scope_id))
-        .await?;
-    let anchor_date = scope_bounds(&anchor)?.0.date();
-    let (iteration, window_start) =
-        resolve_flow_window(&mut db.scopes(), flow, anchor_date).await?;
+    let anchor_date = instance.iteration_scope_id.start_date();
+    let (iteration, window_start) = resolve_flow_window(flow, anchor_date)?;
     if instance.cycle_id == NO_CYCLE {
         return Ok(iteration);
     }
     let pair = db.flows().cycle(instance.cycle_id).await?;
-    let resolved = resolve_cycle(&mut db.scopes(), pair.as_ref(), Some(window_start)).await?;
+    let resolved = resolve_cycle(pair.as_ref(), Some(window_start))?;
     Ok(resolved.map_or(iteration, |resolved| resolved.time_scope))
 }
 
@@ -2488,6 +2441,9 @@ pub async fn create_instance_child(
         }
     };
 
+    db.scopes()
+        .register_all([&instance.iteration_scope_id, &window.end_id])
+        .await?;
     db.flows()
         .attach_instance_child(flow_id, instance, window.end_id, child_type, child_id)
         .await?;
@@ -2521,7 +2477,7 @@ pub async fn unfinished_instance_children(
 pub async fn unfinished_iteration_children(
     db: &mut Db<Transactional>,
     flow_id: FlowId,
-    iteration_scope_id: i64,
+    iteration_scope_id: ScopeKey,
 ) -> Result<Vec<UnfinishedChild>, FlowError> {
     unfinished_children(db, flow_id, |child| {
         child.iteration_scope_id == iteration_scope_id
@@ -2610,14 +2566,14 @@ pub async fn archive_and_fork(
     } else {
         now.date()
     };
-    if let Some(end_id) = recurrence.end_scope_id {
-        let end = db.scopes().get(ScopeId(end_id)).await?;
-        if scope_start_date(&end)? <= today {
+    if let Some(end) = recurrence.end_scope_id {
+        if end.start_date() <= today {
             return Ok(clone);
         }
     }
-    let day = db.scopes().get_or_create(ScopeKind::Day, today).await?;
-    db.flows().set_recurrence_end(flow_id, day.id).await?;
+    db.flows()
+        .set_recurrence_end(flow_id, ScopeKey::day(today))
+        .await?;
     Ok(clone)
 }
 
@@ -2760,12 +2716,11 @@ async fn destination_flow_id(
 /// iterations, each classified per the Consumption behavior (`flows::habits`). Future iterations
 /// are omitted (an ellipsis stands in for them). Errors if the flow is not a Habit.
 ///
-/// Reads flows and scopes, so it takes the session. It is transactional despite reading like a
-/// query: materialising each iteration window **creates** the canonical scopes it lands on, which
-/// is many writes derived from reads taken along the way.
+/// A read: every iteration window is derived from its value key, so nothing is written (ADR 0009),
+/// and any session will do.
 #[tracing::instrument(skip(db))]
-pub async fn generate_habit_iterations(
-    db: &mut Db<Transactional>,
+pub async fn generate_habit_iterations<M: SessionMode>(
+    db: &mut Db<M>,
     flow_id: FlowId,
     now: NaiveDateTime,
 ) -> Result<Vec<HabitIteration>, FlowError> {
@@ -2784,26 +2739,11 @@ pub async fn generate_habit_iterations(
     let spec = window_spec(&flow, &flow_kind, flow_n)?;
     let consumption = parse_consumption(&recurrence)?;
 
-    let start_scope = db.scopes().get(ScopeId(recurrence.start_scope_id)).await?;
-    let start_date = scope_start_date(&start_scope)?;
-    let end_date = match recurrence.end_scope_id {
-        Some(id) => {
-            let end_scope = db.scopes().get(ScopeId(id)).await?;
-            Some(scope_start_date(&end_scope)?)
-        }
-        None => None,
-    };
+    let start_date = recurrence.start_scope_id.start_date();
+    let end_date = recurrence.end_scope_id.map(|end| end.start_date());
     let gap = recurrence.gap_n.zip(recurrence.gap_kind);
 
-    let slots = habit_slots(
-        &mut db.scopes(),
-        start_date,
-        spec,
-        gap.as_ref(),
-        end_date,
-        now,
-    )
-    .await?;
+    let slots = habit_slots(start_date, spec, gap.as_ref(), end_date, now)?;
     let resolved = db.flows().iteration_resolutions(flow_id, &slots).await?;
     let iterations = classify_iterations(&slots, consumption, &resolved, now);
     let iterations = expire_unanswered(iterations, &verdict_deadlines(&flow, &slots), now);
@@ -2822,10 +2762,7 @@ pub async fn generate_habit_iterations(
         // Every classified iteration came from a slot, so the lookup always hits; an iteration
         // that somehow had no slot would simply render no occurrences rather than fail the load.
         let instances = match by_index.get(&iteration.index) {
-            Some(slot) => {
-                resolve_iteration_instances(&mut db.scopes(), &shape, slot, iteration.status, now)
-                    .await?
-            }
+            Some(slot) => resolve_iteration_instances(&shape, slot, iteration.status, now)?,
             None => Vec::new(),
         };
         resolved_iterations.push(HabitIteration {
@@ -2861,11 +2798,7 @@ struct HabitShape<'template> {
 /// not-yet-open, so this evening's item does not sit among the morning's work while still being
 /// reachable when you ask to see it all.
 /// Dropping it here instead put it beyond every preset at once, All included.
-///
-/// **This writes.** Resolving a Cycle Scope mints the scope row it names, exactly as `start`'s
-/// gather does, which is why [`generate_habit_iterations`] is transactional.
-async fn resolve_iteration_instances(
-    scopes: &mut ScopeOperator<'_>,
+fn resolve_iteration_instances(
     shape: &HabitShape<'_>,
     slot: &SlotWindow,
     status: IterationStatus,
@@ -2896,9 +2829,9 @@ async fn resolve_iteration_instances(
             // A pair whose Cycle Scope is null is a pair that names no window; it falls back to
             // the iteration's, like an item with no pair at all.
             let (time_scope, plan, start, end) =
-                match resolve_cycle(scopes, Some(pair), Some(window_start)).await? {
+                match resolve_cycle(Some(pair), Some(window_start))? {
                     Some(resolved) => {
-                        let (start, end) = scope_bounds(&resolved.scope)?;
+                        let (start, end) = resolved.scope.bounds();
                         (Some(resolved.time_scope), resolved.plan, start, end)
                     }
                     None => (None, None, slot.start, slot.end),
@@ -2949,11 +2882,11 @@ fn verdict_deadlines(flow: &Flow, slots: &[SlotWindow]) -> HashMap<i64, NaiveDat
 /// known), a coarse necessary check keeps only targets at least as long as the flow's shortest
 /// possible window. The backend [`start`] still hard-rejects anything that slips through.
 ///
-/// Reads scopes, tasks and goals, so it takes the session. Transactional for the reason
-/// [`generate_habit_iterations`] is: resolving a concrete window creates the scopes it names.
+/// Reads tasks and goals, so it takes the session; resolving the window itself is pure. A read,
+/// so any session will do.
 #[tracing::instrument(skip(db))]
-pub async fn valid_targets(
-    db: &mut Db<Transactional>,
+pub async fn valid_targets<M: SessionMode>(
+    db: &mut Db<M>,
     duration: Option<(i64, String)>,
     anchor: Option<NaiveDate>,
     candidates: Vec<TargetRef>,
@@ -2966,8 +2899,8 @@ pub async fn valid_targets(
     // passes and the exact check is deferred to `start`.
     let concrete = match anchor {
         Some(date) if !matches!(kind.as_str(), "part" | "exact") => {
-            let (window, _) = resolve_window(&mut db.scopes(), n, &kind, date).await?;
-            Some(time_scope_window(db, &window).await?)
+            let (window, _) = resolve_window(n, &kind, date)?;
+            Some(window.window())
         }
         _ => None,
     };
@@ -3043,23 +2976,23 @@ pub async fn convert_to_flow(
     let mut window_start: Option<NaiveDate> = None;
     if map_scopes {
         if let Some(ts) = &root_ts {
-            let start = db.scopes().get(ScopeId(ts.start_id)).await?;
+            let start = ts.start_id.scope();
             if let Some(dur) = &ts.duration {
                 win_n = Some(dur.n);
                 win_kind = Some(dur.kind.clone());
-                window_start = Some(scope_start_date(&start)?);
+                window_start = Some(ts.start_id.start_date());
             } else {
                 match start.kind.as_str() {
                     "day" | "week" | "month" | "season" => {
                         win_n = Some(1);
                         win_kind = Some(start.kind.clone());
-                        window_start = Some(scope_start_date(&start)?);
+                        window_start = Some(ts.start_id.start_date());
                     }
                     "part_of_day" => {
                         win_n = Some(1);
                         win_kind = Some("part".to_string());
                         win_part = start.part.clone();
-                        window_start = Some(scope_start_date(&start)?);
+                        window_start = Some(ts.start_id.start_date());
                     }
                     "exact" => {
                         if let Some(sdt) = &start.start_datetime {
@@ -3168,9 +3101,9 @@ pub async fn convert_to_flow(
         // Map the descendant's Time Scope to a relative Cycle Scope (canonical kinds only).
         if map_scopes {
             if let (Some(ws), Some(ts)) = (window_start, &node_ts) {
-                let ds = db.scopes().get(ScopeId(ts.start_id)).await?;
+                let ds = ts.start_id.scope();
                 if matches!(ds.kind.as_str(), "day" | "week" | "month" | "season") {
-                    if let Some(offset) = periods_between(ws, scope_start_date(&ds)?, &ds.kind) {
+                    if let Some(offset) = periods_between(ws, ts.start_id.start_date(), &ds.kind) {
                         db.flows()
                             .set_cycles(
                                 flow_id,
@@ -3286,16 +3219,12 @@ async fn load_template<M: SessionMode>(
 
 /// Resolves every scope a flow materialisation needs into a lookup table, in two rounds per pair:
 /// the Cycle Scope from the window start, then the Cycle Plan from *that scope's* own start date.
-/// Both rounds already live inside [`resolve_pair`]; this walks the pairs.
-///
-/// **This writes.** `offset_scope` mints scope rows through `get_or_create`, so the gather must run
-/// inside the caller's transaction — it cannot be hoisted out with the template reads. It takes a
-/// single [`ScopeOperator`] rather than the session because scopes are the only resource it needs.
+/// Both rounds already live inside [`resolve_pair`]; this walks the pairs. Pure: every scope is
+/// derived from its key, and the writes that store them register any Exact window they name.
 ///
 /// `cycles` is the *reachable* pair list, not every pair the flow owns: an orphaned item is never
-/// walked, so resolving its pairs would mint scope rows the single-pass version never minted.
-async fn resolve_scopes(
-    scopes: &mut ScopeOperator<'_>,
+/// walked, so its pairs are never resolved.
+fn resolve_scopes(
     flow: &Flow,
     anchor: NaiveDate,
     cycles: &[FlowItemCycle],
@@ -3303,7 +3232,7 @@ async fn resolve_scopes(
     // The flow window, only when the flow is scoped (Span or Phase).
     let (window, window_start): (Option<TimeScope>, Option<NaiveDate>) =
         if flow.flow_duration_kind.is_some() {
-            let (time_scope, start) = resolve_flow_window(scopes, flow, anchor).await?;
+            let (time_scope, start) = resolve_flow_window(flow, anchor)?;
             (Some(time_scope), Some(start))
         } else {
             (None, None)
@@ -3316,21 +3245,17 @@ async fn resolve_scopes(
         flow.root_plan_end,
         window_start,
     ) {
-        (Some(kind), Some(plan_start), Some(plan_end), Some(base)) => {
-            let start = offset_scope(scopes, base, plan_start, kind).await?;
-            let end = offset_scope(scopes, base, plan_end, kind).await?;
-            Some(TimeScope {
-                start_id: start.id,
-                end_id: end.id,
-                duration: None,
-            })
-        }
+        (Some(kind), Some(plan_start), Some(plan_end), Some(base)) => Some(TimeScope {
+            start_id: offset_scope(base, plan_start, kind)?,
+            end_id: offset_scope(base, plan_end, kind)?,
+            duration: None,
+        }),
         _ => None,
     };
 
     let mut pairs: HashMap<i64, ResolvedPair> = HashMap::with_capacity(cycles.len());
     for cycle in cycles {
-        let (time_scope, plan) = resolve_pair(scopes, Some(cycle), window_start).await?;
+        let (time_scope, plan) = resolve_pair(Some(cycle), window_start)?;
         pairs.insert(cycle.id, ResolvedPair { time_scope, plan });
     }
 
@@ -3486,8 +3411,8 @@ async fn write_plan(
 /// Starts a flow: materialises its template into a real, independent Goal/Task subtree under
 /// the target, resolving every cycle pair and remapping intra-flow dependencies by fan-in.
 ///
-/// Three steps, in order: **resolve** every scope the flow needs ([`resolve_scopes`], which mints
-/// them), **render** the subtree as a plan of placeholder nodes and edges ([`render`], pure), then
+/// Three steps, in order: **resolve** every scope the flow needs ([`resolve_scopes`], pure),
+/// **render** the subtree as a plan of placeholder nodes and edges ([`render`], pure), then
 /// **write** it ([`write_plan`], which decides nothing). Everything that decides the *shape* of a
 /// materialisation is therefore testable without a database.
 ///
@@ -3504,7 +3429,7 @@ pub async fn start(
     let flow = db.flows().get(flow_id).await?;
     let template = load_template(db, flow_id).await?;
     let cycles = template.planned_cycles(flow_id.0);
-    let scopes = resolve_scopes(&mut db.scopes(), &flow, request.anchor_date, &cycles).await?;
+    let scopes = resolve_scopes(&flow, request.anchor_date, &cycles)?;
     let plan = render(&flow, &request.title, &template, &scopes);
     write_plan(db, flow_id, &request, &plan).await
 }

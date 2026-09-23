@@ -20,6 +20,7 @@ use crate::{
             UpdateFlowItemRequest, UpdateFlowRequest,
         },
     },
+    scopes::key::ScopeKey,
 };
 
 /// Creates a new flow.
@@ -213,14 +214,11 @@ pub async fn scope_valid_flow_targets(
         (Some(n), Some(kind)) => Some((n, kind)),
         _ => None,
     };
-    // Transactional despite reading like a query: resolving a concrete window creates the
-    // canonical scopes it names.
-    let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let valid = flows::valid_targets(&mut db, duration, anchor_date, candidates)
+    // A read: resolving a concrete window derives its scopes and writes nothing.
+    let mut db = factory.connect().await.map_err(WireError::from_error)?;
+    flows::valid_targets(&mut db, duration, anchor_date, candidates)
         .await
-        .map_err(WireError::from_error)?;
-    db.commit().await.map_err(WireError::from_error)?;
-    Ok(valid)
+        .map_err(WireError::from_error)
 }
 
 /// Sets (creates or replaces) a flow's Recurrence, making it a Habit.
@@ -271,14 +269,11 @@ pub async fn generate_habit_iterations(
     flow_id: i64,
     now: chrono::NaiveDateTime,
 ) -> Result<Vec<HabitIteration>, WireError> {
-    // Transactional despite reading like a query: materialising each iteration window creates the
-    // scopes it lands on.
-    let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let iterations = flows::generate_habit_iterations(&mut db, FlowId(flow_id), now)
+    // A read: every iteration window is derived from its value key and nothing is written.
+    let mut db = factory.connect().await.map_err(WireError::from_error)?;
+    flows::generate_habit_iterations(&mut db, FlowId(flow_id), now)
         .await
-        .map_err(WireError::from_error)?;
-    db.commit().await.map_err(WireError::from_error)?;
-    Ok(iterations)
+        .map_err(WireError::from_error)
 }
 
 /// For each of `nodes` that was materialised from a flow, returns its originating flow title.
@@ -460,6 +455,10 @@ pub async fn set_habit_item_status(
             return Err(unfinished_refusal(&open));
         }
     }
+    db.scopes()
+        .register(&instance.iteration_scope_id)
+        .await
+        .map_err(WireError::from_error)?;
     db.flows()
         .set_item_status(
             FlowId(flow_id),
@@ -544,7 +543,7 @@ pub async fn list_habit_instance_children(
 pub async fn set_habit_iteration_done(
     factory: State<'_, SessionFactory>,
     flow_id: i64,
-    iteration_scope_id: i64,
+    iteration_scope_id: ScopeKey,
     done: bool,
     resolved_at_ms: i64,
     confirmed: Option<bool>,

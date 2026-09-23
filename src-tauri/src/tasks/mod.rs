@@ -25,6 +25,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::database::session::{Db, SessionMode, Transactional};
 use crate::infos::model::InfoId;
+use crate::scopes::key::ScopeKey;
 use ancestry::{AncestryLink, NodeKind, NodeRef};
 pub use commitments::{
     create_commitment, delete_commitment, update_commitment, CommitmentOperator,
@@ -42,7 +43,7 @@ use model::{
 };
 pub use scope_rules::{
     conflicts_for_new_time_scope, derive_all_scope_lifecycles, nearest_scoped_ancestor_window,
-    reparent_conflicts, time_scope_window, ReparentConflicts, ViolatingDescendant,
+    reparent_conflicts, ReparentConflicts, ViolatingDescendant,
 };
 
 // Internal row types that map directly to database columns via sqlx::FromRow.
@@ -51,7 +52,12 @@ pub use scope_rules::{
 /// Decomposes a Time Scope into its four flat column values for persistence.
 fn time_scope_columns(
     time_scope: &Option<TimeScope>,
-) -> (Option<i64>, Option<i64>, Option<i64>, Option<String>) {
+) -> (
+    Option<ScopeKey>,
+    Option<ScopeKey>,
+    Option<i64>,
+    Option<String>,
+) {
     match time_scope {
         Some(ts) => {
             let (n, kind) = match &ts.duration {
@@ -62,6 +68,19 @@ fn time_scope_columns(
         }
         None => (None, None, None, None),
     }
+}
+
+/// Registers the Exact windows among `windows` in `exact_scopes`, so the write that follows can
+/// store their keys. Canonical keys need nothing. Every write of a Time Scope or Plan goes through
+/// here first; a read never does (ADR 0009).
+async fn register_windows<M: SessionMode>(
+    db: &mut Db<M>,
+    windows: [&Option<TimeScope>; 2],
+) -> Result<(), TaskError> {
+    for window in windows.into_iter().flatten() {
+        db.scopes().register_all(window.keys()).await?;
+    }
+    Ok(())
 }
 
 /// The `on_scope_exit` column value for a write: absent (NULL) when the item is unscoped, otherwise
@@ -193,8 +212,8 @@ async fn delete_node_subtree(
 /// Reassembles a Time Scope value object from its flat row columns. A scope exists only when
 /// both boundary ids are present; the duration parameters are optional metadata on top.
 fn time_scope_from_row(
-    start_id: Option<i64>,
-    end_id: Option<i64>,
+    start_id: Option<ScopeKey>,
+    end_id: Option<ScopeKey>,
     duration_n: Option<i64>,
     duration_kind: Option<String>,
 ) -> Option<TimeScope> {
@@ -221,13 +240,13 @@ struct TaskRow {
     delegate_id: Option<i64>,
     agentic: Option<bool>,
     asynchronous: bool,
-    time_scope_start_id: Option<i64>,
-    time_scope_end_id: Option<i64>,
+    time_scope_start_id: Option<ScopeKey>,
+    time_scope_end_id: Option<ScopeKey>,
     time_scope_duration_n: Option<i64>,
     time_scope_duration_kind: Option<String>,
     on_scope_exit: Option<String>,
-    plan_start_id: Option<i64>,
-    plan_end_id: Option<i64>,
+    plan_start_id: Option<ScopeKey>,
+    plan_end_id: Option<ScopeKey>,
     archival: String,
     position: i64,
     is_private: bool,
@@ -273,8 +292,8 @@ struct GoalRow {
     parent_type: String,
     parent_id: i64,
     status: String,
-    time_scope_start_id: Option<i64>,
-    time_scope_end_id: Option<i64>,
+    time_scope_start_id: Option<ScopeKey>,
+    time_scope_end_id: Option<ScopeKey>,
     time_scope_duration_n: Option<i64>,
     time_scope_duration_kind: Option<String>,
     on_scope_exit: Option<String>,
@@ -314,13 +333,13 @@ impl From<GoalRow> for Goal {
 struct TaskAncestryRow {
     parent_type: String,
     parent_id: i64,
-    time_scope_start_id: Option<i64>,
-    time_scope_end_id: Option<i64>,
+    time_scope_start_id: Option<ScopeKey>,
+    time_scope_end_id: Option<ScopeKey>,
     time_scope_duration_n: Option<i64>,
     time_scope_duration_kind: Option<String>,
     on_scope_exit: Option<String>,
-    plan_start_id: Option<i64>,
-    plan_end_id: Option<i64>,
+    plan_start_id: Option<ScopeKey>,
+    plan_end_id: Option<ScopeKey>,
 }
 
 /// The narrow goal row one step of an ancestry climb reads. Goals have no Plan column, so the
@@ -329,8 +348,8 @@ struct TaskAncestryRow {
 struct GoalAncestryRow {
     parent_type: String,
     parent_id: i64,
-    time_scope_start_id: Option<i64>,
-    time_scope_end_id: Option<i64>,
+    time_scope_start_id: Option<ScopeKey>,
+    time_scope_end_id: Option<ScopeKey>,
     time_scope_duration_n: Option<i64>,
     time_scope_duration_kind: Option<String>,
     on_scope_exit: Option<String>,
@@ -1391,6 +1410,7 @@ pub async fn create_goal(
         &request.time_scope,
     )
     .await?;
+    register_windows(db, [&request.time_scope, &None]).await?;
     db.goals().insert(request).await
 }
 
@@ -1432,6 +1452,7 @@ pub async fn update_goal(
         &write.time_scope,
     )
     .await?;
+    register_windows(db, [&write.time_scope, &None]).await?;
     db.goals().update(id, write).await
 }
 
@@ -1477,6 +1498,7 @@ pub async fn create_task(
         &request.plan,
     )
     .await?;
+    register_windows(db, [&request.time_scope, &request.plan]).await?;
     db.tasks().insert(request).await
 }
 
@@ -1528,6 +1550,7 @@ pub async fn update_task(
         &write.plan,
     )
     .await?;
+    register_windows(db, [&write.time_scope, &write.plan]).await?;
     // Nothing else is written for the wait an Asynchronous task spawns: it is derived from the task
     // being done and having a template, so completing and reopening — and undoing either — are
     // just this row's own status change.
@@ -1542,9 +1565,6 @@ pub async fn update_task(
 /// acyclicity**: two concurrent calls can each find no cycle and jointly create one, and the
 /// database would accept both. The transaction is what closes that window — SQLite refuses the
 /// second writer instead of letting both land — so it belongs in the signature.
-///
-/// (Contrast [`crate::scopes::ScopeOperator::get_or_create`], whose probe-then-insert stays an
-/// operator method because a unique index independently enforces what it checks.)
 ///
 /// ```no_run
 /// # use arlesh_lib::database::session::SessionFactory;

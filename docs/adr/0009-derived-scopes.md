@@ -99,7 +99,7 @@ Measured: deriving a Day window is 126 ns; selecting its row is 192 µs.
   round trip; `arlesh_scopes` stays for the bounds and the active flag, and `get` no longer touches
   the database.
 - **A wide migration.** Seventeen columns across nine tables were rewritten from integer ids to keys
-  (`0046`–`0048`), every journaled table among them had its undo triggers regenerated, and the
+  (`0046`–`0047`), every journaled table among them had its undo triggers regenerated, and the
   undo journal was emptied, since its images name the old ids and it is session-scoped anyway.
 - **Value keys are the foundation of `Arlesh-pnn`.** A derived node's UUID-v5 hashes its
   iteration's start date, which the iteration's key carries, rather than a row id — so it is stable

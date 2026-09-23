@@ -4,8 +4,8 @@
 use chrono::{Duration, NaiveDate, NaiveDateTime, NaiveTime};
 use serde::Serialize;
 
-use super::error::ScopeError;
-use super::model::{PartOfDay, Scope, ScopeKind};
+use super::key::ScopeKey;
+use super::model::PartOfDay;
 
 /// A resolved half-open datetime interval `[start, end)`.
 pub type Bounds = (NaiveDateTime, NaiveDateTime);
@@ -69,51 +69,6 @@ pub fn interval_contains(outer: Bounds, inner: Bounds) -> bool {
     outer.0 <= inner.0 && inner.1 <= outer.1
 }
 
-/// Parses an Exact-scope datetime string in [`EXACT_DATETIME_FORMAT`].
-pub fn parse_exact_datetime(id: i64, value: Option<&str>) -> Result<NaiveDateTime, ScopeError> {
-    let raw = value.ok_or_else(|| ScopeError::Malformed(id, "missing exact datetime".into()))?;
-    NaiveDateTime::parse_from_str(raw, EXACT_DATETIME_FORMAT)
-        .map_err(|e| ScopeError::Malformed(id, format!("bad datetime {raw:?}: {e}")))
-}
-
-fn parse_date(id: i64, value: &str) -> Result<NaiveDate, ScopeError> {
-    value
-        .parse::<NaiveDate>()
-        .map_err(|e| ScopeError::Malformed(id, format!("bad date {value:?}: {e}")))
-}
-
-/// Resolves any scope row to its half-open `[start, end)` datetime interval, dispatching on kind.
-pub fn scope_bounds(scope: &Scope) -> Result<Bounds, ScopeError> {
-    let kind = ScopeKind::parse_db(&scope.kind)
-        .ok_or_else(|| ScopeError::Malformed(scope.id, format!("unknown kind {:?}", scope.kind)))?;
-    match kind {
-        ScopeKind::Season | ScopeKind::Month | ScopeKind::Week | ScopeKind::Day => {
-            let start = parse_date(scope.id, &scope.start_date)?;
-            let end = parse_date(scope.id, &scope.end_date)?;
-            Ok(canonical_bounds(start, end))
-        }
-        ScopeKind::PartOfDay => {
-            let start = parse_date(scope.id, &scope.start_date)?;
-            let part = scope
-                .part
-                .as_deref()
-                .and_then(PartOfDay::parse_db)
-                .ok_or_else(|| ScopeError::Malformed(scope.id, "missing/invalid part".into()))?;
-            Ok(part_of_day_bounds(start, part))
-        }
-        ScopeKind::Exact => {
-            let start = parse_exact_datetime(scope.id, scope.start_datetime.as_deref())?;
-            let end = parse_exact_datetime(scope.id, scope.end_datetime.as_deref())?;
-            Ok((start, end))
-        }
-    }
-}
-
-/// Returns true when `scope` contains `now` in its resolved interval.
-pub fn scope_is_active(scope: &Scope, now: NaiveDateTime) -> Result<bool, ScopeError> {
-    Ok(is_active_at(scope_bounds(scope)?, now))
-}
-
 /// A scope resolved to its half-open `[start, end)` datetime window, with whether it is currently
 /// active (contains `now`). Datetimes are ISO 8601, second precision.
 ///
@@ -129,14 +84,14 @@ pub struct ResolvedScope {
     pub active: bool,
 }
 
-/// Resolves a scope row against a given `now`. Pure: no database access, no clock read.
-pub fn resolve(scope: &Scope, now: NaiveDateTime) -> Result<ResolvedScope, ScopeError> {
-    let bounds = scope_bounds(scope)?;
-    Ok(ResolvedScope {
+/// Resolves a scope against a given `now`. Pure: no database access, no clock read.
+pub fn resolve(key: &ScopeKey, now: NaiveDateTime) -> ResolvedScope {
+    let bounds = key.bounds();
+    ResolvedScope {
         start: bounds.0.format(EXACT_DATETIME_FORMAT).to_string(),
         end: bounds.1.format(EXACT_DATETIME_FORMAT).to_string(),
         active: is_active_at(bounds, now),
-    })
+    }
 }
 
 #[cfg(test)]

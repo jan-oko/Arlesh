@@ -35,7 +35,10 @@ impl ArleshMcp {
                 result::respond(crate::tasks::get_task_with_blockers(&mut db, TaskId(id)).await)
             }
             TasksOperation::ContainmentConflicts { node, time_scope } => {
-                let window: TimeScope = time_scope.into();
+                let window = match TimeScope::try_from(time_scope) {
+                    Ok(window) => window,
+                    Err(error) => return result::failed(error),
+                };
                 result::respond(
                     crate::tasks::conflicts_for_new_time_scope(
                         &mut db,
