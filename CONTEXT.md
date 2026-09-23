@@ -16,7 +16,7 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 **Goal** — A desired state. Parented under a Project, Domain, or another Goal. Can have sub-goals.
 
-**Task** — An action item. Parented under a Project, Domain, Goal, Commitment, or another Task.
+**Task** — An action item. Parented under a Project, Domain, Goal, Commitment, or another Task. Can depend on Tasks, Goals and Expectations. A delegated Task has every effect of archival.
 
 **Info** — A free-standing note: a one-line body plus an optional long-form **Details** text, stored in `infos`. Parented under an Aspect, Project, Domain, Tag, Goal, Task or another Info (a Tag holds nothing else). Carries no status, scope or tags; on the Mindmap an Info rides along with a kept node but never keeps one. One of the `RetypeKind`s, so any other kind can be retyped to it and back.
 
@@ -47,6 +47,8 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 **Modification** — A persisted divergence of a virtual Habit instance from what the template would render, keyed by (flow item, iteration scope). Carries an overridden status, title or blocked reason; a **tombstone** (deleted by the user, lapsed when its iteration passed unfinished, or missed); and per-iteration dependency edges added or suppressed. An instance with no Modification renders purely from the template.
 
 **Commitment** — Something that must be *kept* rather than *done*: an obligation or abstention holding over a window ("asleep by 23:00", "no social media today"). A content node kind alongside Goal and Task, parented anywhere a Task can be, and able to parent Tasks and other Commitments. Unlike a Task it is never completed by acting; it carries a **Verdict** instead of a status, and it is never scheduled, delegated, blocked or depended upon. Recurs by being a Habit's **Instance Type**.
+
+**Expectation** — A wait: something outside your own action that you are waiting on to be released, and may want to monitor (a training run finishing, someone replying). A content node kind parented anywhere a Task can be, holding only Info notes. **Pending** until **Released**, and separately archivable. Tasks can depend on one, and a pending one blocks them; it depends on nothing. Carries an optional **check-by**; while one is set, a virtual *check task* hangs beneath it; it has no Time Scope and no Plan. A delegated Task carries a virtual Expectation of its own, released when the Task is done. Not an action item: it is released, never done.
 
 **Verdict** — A Commitment's resolution: `unresolved` · `kept` · `broken`. Always recorded explicitly — neither outcome is ever inferred, from the passage of the window or from the state of the Commitment's children. `unresolved` is the initial value and means only "you have not said".
 

@@ -43,6 +43,12 @@ A Commitment arrives with its `verdict` (`unresolved` / `kept` / `broken`) and i
 lifecycle. The verdict is recorded, never inferred, and `unresolved` means the user has not said
 rather than "not done" — an agent that reads it as an unfinished task has misread the board.
 
+An Expectation — a wait tasks can depend on — arrives in its own `expectations` section, read-only,
+with its `status` (`pending` / `released`), its `archival` and its optional `check_by` (boundary
+scope ids, like a time scope). Its lifecycle entry (`node_type: "expectation"`) times the check-by.
+The two derived nodes the views draw — a wait's check task and a delegated task's wait — are not
+in the payload: they are read off these rows and the task rows. Querying waits is `Arlesh-rz0`'s.
+
 Tasks, Goals and Commitments carry `time_scope` and `plan` as boundary **scope ids**, not dates, so reading a
 snapshot means resolving those ids — `arlesh_scopes.resolve_many` does a batch in one call against
 a single reference instant.

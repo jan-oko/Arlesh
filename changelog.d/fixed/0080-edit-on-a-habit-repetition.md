@@ -1,0 +1,1 @@
+- **`E` on a Habit repetition says why there is no editor.** Pressing it on a commitment Habit's iteration in the List View used to do nothing at all; it now explains that a repetition is edited through its Habit's template.

@@ -12,6 +12,8 @@ Combined logic: `(union of Any-filters) AND (intersection of All-filters) AND NO
 
 Filterable fields: status (the presets, and Task/Goal/Project status), tag, antecedent (any ancestor — parent domain/task, Project, Aspect, Goal), dependency, verdict, scope state (including planned/unplanned), blocked, agentic, asynchronous.
 
+The presets judge each kind by its own rule: a Task and a Goal by their status and effective Archival, a Commitment by its Verdict, and an **Expectation** by its status and archive (see [*Expectations*](resources.md)). A **delegated Task** is judged as archived — it has every effect of archival — and a dependency on a pending Expectation makes a Task **blocked**. The List View's **Expectations** option, like Unblock, is a flag beside the preset (`BoardFilter::expectations`) rather than a preset of its own, and the Mindmap ignores it.
+
 **Not built yet:** delegate-to, delegated/undelegated, Person/Event/Thread/Scope links, and filtering by a specific planned scope. They stay specced; nothing filters on them today.
 
 When the two delegation fields are built, they treat both kinds of Delegate — a Person or the Agent (see [*Tasks*](resources.md)) — alike: delegate-to offers the Agent as a value beside every Person, and a Task delegated to the Agent is **delegated**. Neither reads the Agentic flag, which is its own field.
