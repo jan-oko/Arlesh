@@ -3,6 +3,7 @@
 
 pub mod beads;
 pub mod block_reasons;
+pub mod board;
 pub mod commitments;
 pub mod domains;
 pub mod expectations;
@@ -15,3 +16,4 @@ pub mod scopes;
 pub mod tasks;
 pub mod tray;
 pub mod undo;
+pub mod windows;

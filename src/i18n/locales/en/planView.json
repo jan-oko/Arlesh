@@ -3,6 +3,7 @@
   "plannedHeading": "In this scope",
   "candidatesEmpty": "Nothing unplanned is relevant to this scope.",
   "candidatesEmptyBacklogHint": "Backlogged work is hidden — turn on Backlogged to reconsider it.",
+  "candidatesEmptyParentHint": "Only work planned to the parent scope is shown — untick it in the menu to see unplanned work too.",
   "plannedEmpty": "Nothing is planned into this scope yet.",
   "scopeKind": "Scope kind",
   "kind": {
@@ -12,6 +13,12 @@
     "day": "Day",
     "part_of_day": "Part of day"
   },
+  "scopeKindKey": "Press {{key}} with nothing selected",
+  "scopeKindKeys": "Kind of scope to fill — or press {{keys}} with nothing selected",
+  "upScope": "Up to the parent scope",
+  "upScopeTo": "Up to parent scope, the {{kind}} (\\)",
+  "upScopeResolving": "The scope is still loading, so its parent is not known yet.",
+  "upScopeAtTop": "A Season is the top of the ladder: there is no scope above it.",
   "previousScope": "Previous scope",
   "nextScope": "Next scope",
   "jumpToScope": "Jump to a scope",
@@ -23,10 +30,29 @@
   "unplan": "Take out of this scope",
   "refusedTimeScope": "“{{title}}” cannot be planned into {{scope}}: its own Time Scope does not cover it. Widen the task's window in its editor first.",
   "refusedParentPlan": "“{{title}}” cannot be planned into {{scope}}: its parent task's Plan does not cover it.",
+  "refusedSome": "{{count}} of {{total}} could not be planned into {{scope}}: a Time Scope or a parent's Plan does not cover it.",
   "unbacklogged": "“{{title}}” is planned into {{scope}}, and is no longer in the Backlog.",
+  "unbackloggedMany": "{{count}} planned into {{scope}} are no longer in the Backlog.",
+  "plannedOutside": "{{scope}} reaches outside the scope you are filling, so what you planned there has left this pane.",
   "moveFailed": "“{{title}}” could not be moved: {{message}}",
   "noPath": "Directly under the root",
-  "unbucketedHeading": "Planned to this scope itself",
   "subscopePartial": "partial · {{start}} – {{end}}",
-  "subscopeEmpty": "Nothing planned here"
+  "subscopeEmpty": "Nothing planned here",
+  "paneOptions": "{{pane}} options",
+  "optionParentOnly": "Show only planned to parent scope",
+  "optionGroupByPath": "Group by path",
+  "optionSubscopeSplit": "Split by subscope",
+  "optionIncludePremorning": "Include premorning",
+  "subscopeKeyHint": "Plan the selection into {{scope}} — press {{keys}}, or drop it here",
+  "weekday": {
+    "0": "Sunday",
+    "1": "Monday",
+    "2": "Tuesday",
+    "3": "Wednesday",
+    "4": "Thursday",
+    "5": "Friday",
+    "6": "Saturday"
+  },
+  "noParentPlan": "This scope is split into its parts — plan into one of them: press its key, or drop the card on it.",
+  "parentOnlyInert": "A Season is the top of the ladder, so it has no parent scope to have been planned to."
 }

@@ -1,0 +1,3 @@
+- **Select several rows in the Plan View and plan them in one go.** `Shift+↑`/`Shift+↓` and `Shift+click` extend a run from wherever the cursor was, and `Ctrl+click` adds or removes one row. `Enter`, a number, a letter or a drag then acts on the whole selection, and the lot is a single `Ctrl+Z`.
+
+  A batch that plans five of six is not taken back because the sixth was refused: those five happened and you can see them. Whatever did not land is counted in the toast instead — which bound refused it, what came out of the Backlog on the way in, and a straddling bucket that carried its rows outside the scope you are filling.

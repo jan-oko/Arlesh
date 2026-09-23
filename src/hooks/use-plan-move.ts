@@ -1,10 +1,13 @@
 import { useCallback } from "react";
-import { updateTask } from "@/api/tasks";
-import { getErrorMessage } from "@/api/errors";
 import { useTranslation } from "react-i18next";
+import { updateTask } from "@/api/tasks";
+import { getOrCreateForRef, resolveScope } from "@/api/scopes";
+import { getErrorMessage } from "@/api/errors";
+import { withGesture } from "@/api/gesture";
 import type { PendingToast } from "@/stores/use-mindmap-store";
 import type { TaskListRow } from "@/utils/list-filter";
 import type { ScopeInterval } from "@/utils/scope-interval";
+import type { ScopeRef } from "@/utils/scope-ref";
 import type { ScopeWindows } from "@/utils/plan-triage";
 import { planRefusal } from "@/utils/plan-triage";
 
@@ -22,89 +25,201 @@ interface PlanMoveOptions {
 }
 
 /**
- * Planning a task into the scope, and taking it back out again. Each resolves to whether the move
- * actually happened, so the caller can advance its cursor on a move and leave it alone on a
- * refusal — a selection that walked on from a task that did not move would be the view quietly
- * disagreeing with the toast beside it.
+ * Planning tasks into the scope — or into one of its subscopes — and taking them back out.
+ *
+ * Each call resolves to the node ids that **actually moved**, so the caller can advance its cursor
+ * over what left the pane and leave it alone on a refusal: a selection that walked on from work
+ * that did not move would be the view quietly disagreeing with the toast beside it.
  */
 export interface PlanMoveHandles {
-  planInto: (row: TaskListRow) => Promise<boolean>;
-  unplan: (row: TaskListRow) => Promise<boolean>;
+  /** Plans every row into the scope being filled. */
+  planInto: (rows: readonly TaskListRow[]) => Promise<string[]>;
+  /**
+   * Plans every row into one **subscope** — a week of the month, a day of the week, a band of the
+   * day. The cell is materialized on the way in, so a bucket nobody has ever planned into is a
+   * scope row that does not exist until the moment it is used.
+   */
+  planIntoSubscope: (rows: readonly TaskListRow[], ref: ScopeRef, label: string, partial: boolean) => Promise<string[]>;
+  /** Clears every row's Plan. */
+  unplan: (rows: readonly TaskListRow[]) => Promise<string[]>;
+}
+
+/** The two things this hook ever writes, as the names one `Ctrl+Z` will reverse. */
+type PlanGestureKey = "undo:gestures.plan" | "undo:gestures.unplan";
+
+/** What one batch did, so the view can say it in one sentence. */
+interface BatchOutcome {
+  moved: string[];
+  /** Rows the containment rules turned away, with which bound turned each one away. */
+  refused: Array<{ row: TaskListRow; bound: "ownTimeScope" | "parentPlan" }>;
+  /** Rows the backend refused, which is a different thing from a rule this view could name. */
+  failed: Array<{ row: TaskListRow; message: string }>;
+  /** Rows that came out of the Backlog on the way in. */
+  unbacklogged: TaskListRow[];
 }
 
 /**
- * The Plan View's one write: a task's Plan, set to the scope being filled or cleared.
+ * The Plan View's one write: a task's Plan, set to a scope being filled or cleared.
  *
- * **A containment failure refuses the move** rather than widening anything on the user's behalf.
+ * **A whole selection is one Gesture**, so planning five rows is one `Ctrl+Z`. It is a plain
+ * {@link withGesture} rather than an atomic one deliberately: a batch that plans five of six has
+ * done five things the user can see on the board, and taking them back because the sixth was
+ * refused would undo work nobody asked to undo. An editor's Save is the opposite case and gets the
+ * atomic one.
+ *
+ * **A containment failure refuses that row** rather than widening anything on the user's behalf.
  * `Plan ⊆ TimeScope` and `child.Plan ⊆ parent.Plan` both hold as written, and a task whose own
  * window is too narrow for the scope is a task whose window needs an editing decision — which is
  * the editor's job, not a triage gesture's. The refusal is raised here, before the write, so the
  * toast can name *which* bound stopped it; the backend checks the same two rules on the way in, so
  * a refusal this view somehow lets through is still refused, just less precisely.
  *
- * Planning a **backlogged** task takes it out of the Backlog — the model forbids a task being both
- * — and that is said out loud in a toast rather than left to be noticed from a badge that quietly
- * stopped being drawn.
+ * **Nothing is dropped in silence.** Every row that does not end up where it was sent is counted in
+ * a toast — the refusals, the backend's own failures, a Backlog a plan took a task out of, and a
+ * straddling subscope that carried its rows outside the scope you are filling and so off the pane.
  */
 export function usePlanMove({
   targetScopeId, targetWindow, targetLabel, windows, reload, showToast,
 }: PlanMoveOptions): PlanMoveHandles {
-  const { t } = useTranslation("planView");
+  const { t } = useTranslation(["planView", "undo"]);
 
+  /**
+   * One toast for one batch, picking the thing the user most needs to hear.
+   *
+   * There is one toast slot, and four things a batch can have to say. They are ranked by how much
+   * they change what you should do next: a backend failure is a bug or a lock, a refusal is work
+   * that needs an editing decision, work that left the pane is work you would otherwise go looking
+   * for, and a de-backlogged task is a fact about something that *did* happen.
+   */
   const report = useCallback(
-    (row: TaskListRow, error: unknown) => {
-      showToast({
-        nodeId: row.node.id,
-        message: t("moveFailed", { title: row.node.title, message: getErrorMessage(error) }),
-      });
+    (outcome: BatchOutcome, label: string, leftPane: boolean): void => {
+      const first = outcome.failed[0];
+      if (first !== undefined) {
+        showToast({
+          nodeId: first.row.node.id,
+          message: t("planView:moveFailed", { title: first.row.node.title, message: first.message }),
+        });
+        return;
+      }
+      const refused = outcome.refused;
+      const only = refused.length === 1 ? refused[0] : undefined;
+      if (only !== undefined) {
+        const key = only.bound === "ownTimeScope" ? "planView:refusedTimeScope" : "planView:refusedParentPlan";
+        showToast({ nodeId: only.row.node.id, message: t(key, { title: only.row.node.title, scope: label }) });
+        return;
+      }
+      const head = refused[0];
+      if (head !== undefined) {
+        showToast({
+          nodeId: head.row.node.id,
+          message: t("planView:refusedSome", {
+            count: refused.length, total: refused.length + outcome.moved.length, scope: label,
+          }),
+        });
+        return;
+      }
+      const movedFirst = outcome.moved[0];
+      if (leftPane && movedFirst !== undefined) {
+        showToast({ nodeId: movedFirst, message: t("planView:plannedOutside", { scope: label }) });
+        return;
+      }
+      const one = outcome.unbacklogged.length === 1 ? outcome.unbacklogged[0] : undefined;
+      if (one !== undefined) {
+        showToast({ nodeId: one.node.id, message: t("planView:unbacklogged", { title: one.node.title, scope: label }) });
+        return;
+      }
+      const many = outcome.unbacklogged[0];
+      if (many !== undefined) {
+        showToast({
+          nodeId: many.node.id,
+          message: t("planView:unbackloggedMany", { count: outcome.unbacklogged.length, scope: label }),
+        });
+      }
     },
     [showToast, t],
   );
 
-  const planInto = useCallback(
-    async (row: TaskListRow): Promise<boolean> => {
-      const id = row.node.rowId;
-      if (id === undefined || targetScopeId === null || targetWindow === null) return false;
-      const refusal = planRefusal(row, targetWindow, windows);
-      if (refusal !== null) {
-        const key = refusal === "ownTimeScope" ? "refusedTimeScope" : "refusedParentPlan";
-        showToast({ nodeId: row.node.id, message: t(key, { title: row.node.title, scope: targetLabel }) });
-        return false;
-      }
-      const wasBacklogged = row.node.backlogged === true;
-      try {
-        await updateTask(id, { plan: { start_id: targetScopeId, end_id: targetScopeId } });
-      } catch (error: unknown) {
-        report(row, error);
-        return false;
-      }
-      if (wasBacklogged) {
-        showToast({
-          nodeId: row.node.id,
-          message: t("unbacklogged", { title: row.node.title, scope: targetLabel }),
-        });
-      }
-      await reload();
-      return true;
+  /** Writes one plan value across a batch, inside a single Gesture. */
+  const write = useCallback(
+    async (rows: readonly TaskListRow[], plan: { start_id: number; end_id: number } | null, gesture: PlanGestureKey): Promise<BatchOutcome> => {
+      const outcome: BatchOutcome = { moved: [], refused: [], failed: [], unbacklogged: [] };
+      if (rows.length === 0) return outcome;
+      await withGesture(t(gesture, { count: rows.length }), async () => {
+        for (const row of rows) {
+          const id = row.node.rowId;
+          if (id === undefined) continue;
+          try {
+            await updateTask(id, { plan });
+          } catch (error: unknown) {
+            outcome.failed.push({ row, message: getErrorMessage(error) });
+            continue;
+          }
+          outcome.moved.push(row.node.id);
+          if (plan !== null && row.node.backlogged === true) outcome.unbacklogged.push(row);
+        }
+      });
+      if (outcome.moved.length > 0) await reload();
+      return outcome;
     },
-    [targetScopeId, targetWindow, targetLabel, windows, reload, showToast, t, report],
+    [reload, t],
+  );
+
+  /** Splits a batch on the two containment rules, then writes the half that passed. */
+  const planIntoWindow = useCallback(
+    async (rows: readonly TaskListRow[], scopeId: number, window: ScopeInterval, label: string, leftPane: boolean): Promise<string[]> => {
+      const allowed: TaskListRow[] = [];
+      const refused: BatchOutcome["refused"] = [];
+      for (const row of rows) {
+        const bound = planRefusal(row, window, windows);
+        if (bound === null) allowed.push(row); else refused.push({ row, bound });
+      }
+      const outcome = await write(allowed, { start_id: scopeId, end_id: scopeId }, "undo:gestures.plan");
+      outcome.refused.push(...refused);
+      report(outcome, label, leftPane);
+      return outcome.moved;
+    },
+    [windows, write, report],
+  );
+
+  const planInto = useCallback(
+    async (rows: readonly TaskListRow[]): Promise<string[]> => {
+      if (targetScopeId === null || targetWindow === null) return [];
+      return planIntoWindow(rows, targetScopeId, targetWindow, targetLabel, false);
+    },
+    [targetScopeId, targetWindow, targetLabel, planIntoWindow],
+  );
+
+  const planIntoSubscope = useCallback(
+    async (rows: readonly TaskListRow[], ref: ScopeRef, label: string, partial: boolean): Promise<string[]> => {
+      if (rows.length === 0) return [];
+      let cell: { id: number; window: ScopeInterval };
+      try {
+        const scope = await getOrCreateForRef(ref);
+        const resolved = await resolveScope(scope.id);
+        cell = { id: scope.id, window: { start: resolved.start, end: resolved.end } };
+      } catch (error: unknown) {
+        const head = rows[0];
+        if (head !== undefined) {
+          showToast({ nodeId: head.node.id, message: t("planView:moveFailed", { title: head.node.title, message: getErrorMessage(error) }) });
+        }
+        return [];
+      }
+      // A straddling bucket reaches outside the scope being filled, so what lands in it is no
+      // longer *in* this scope and leaves the pane. That is the triage's own rule, and the toast is
+      // what keeps it from looking like the move failed.
+      return planIntoWindow(rows, cell.id, cell.window, label, partial);
+    },
+    [planIntoWindow, showToast, t],
   );
 
   const unplan = useCallback(
-    async (row: TaskListRow): Promise<boolean> => {
-      const id = row.node.rowId;
-      if (id === undefined) return false;
-      try {
-        await updateTask(id, { plan: null });
-      } catch (error: unknown) {
-        report(row, error);
-        return false;
-      }
-      await reload();
-      return true;
+    async (rows: readonly TaskListRow[]): Promise<string[]> => {
+      const outcome = await write(rows, null, "undo:gestures.unplan");
+      report(outcome, targetLabel, false);
+      return outcome.moved;
     },
-    [reload, report],
+    [write, report, targetLabel],
   );
 
-  return { planInto, unplan };
+  return { planInto, planIntoSubscope, unplan };
 }

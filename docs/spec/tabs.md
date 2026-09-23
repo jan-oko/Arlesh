@@ -27,7 +27,8 @@ whole tree is labelled **All** rather than left nameless. The strip offers a **+
 tab, **middle-click** to close, and **drag** to reorder.
 
 **Naming a tab.** A tab can be given a name of its own — right-click it for a small menu of
-**Rename tab** and **Close tab** (the second doing exactly what the × does, last tab included).
+**Rename tab** and **Close tab** (the second doing exactly what the × does, last tab included),
+along with the entries that move the tab to another window, described under *Tearing a tab off*.
 Rename turns the label into a text field in place: **Enter** commits, **Escape** cancels and leaves
 the name as it was, clicking away commits what was typed, and the field opens focused and selected.
 The strip truncates as it always did, so a long name reads in the tab's tooltip.
@@ -52,15 +53,37 @@ binding is (`src/utils/hotkeys/`), so the cheat-sheet lists them with the rest:
 
 - `Ctrl+T` — open a tab **at the current subtree root**, so opening one to look at something nearby
   costs no navigation. Everything else about it is fresh: a new tab does not inherit filters.
+- `Ctrl+N` — open a new **window**, beside `Ctrl+T`'s new tab. That pairing is what every desktop
+  app uses, so it needs no explaining. The window starts the same way the tab does — one tab at the
+  current subtree root, with fresh filters — because a second window is usually opened to put
+  *nearby* work on another monitor, and starting it at the true root would cost the navigation back
+  every time. A window **torn off** carries its tab's whole state instead: there the tab already
+  exists and is being moved rather than made.
+- `Ctrl+Alt+N` — take the current tab into a new window: the same thing, but with what you are
+  holding. It **refuses out loud** when the tab is the window's only one, rather than doing nothing
+  — the menu can hide an entry that does not apply, a chord cannot, and an inert key is what the
+  refusal policy exists to stop.
 - `Ctrl+W` — close the tab. Closing the **last** tab closes the window, so there is never an empty
-  one left over. The app takes `Ctrl+W` itself (capture-phase, `preventDefault`); Arlesh declares no
-  native menu accelerator that would claim it first.
+  one left over — through the same close request as the window's own close button, so it means
+  exactly what that button means: another window still open, this one simply closes; the **last**
+  window hides to the tray with *Close to tray* on, and quits with it off or with no tray (see
+  [Windows & Tray](window-tray.md)). The ×, a middle-click and the menu's **Close tab** do the same.
+  Closing a window from the frontend needs `core:window:allow-close`, which Tauri's `core:default`
+  does not grant; without it every one of these did nothing at all. The app takes `Ctrl+W` and `Ctrl+N` itself (capture-phase, `preventDefault`);
+  Arlesh declares no native menu accelerator that would claim either first.
 - `Ctrl+Tab` / `Ctrl+Shift+Tab` — cycle forward and back, wrapping at both ends
 - `Ctrl+1`–`Ctrl+9` — jump to a tab by position
 
 These are **global** bindings: unlike the view-level ones they stay live while a modal or the
-cheat-sheet is open, because switching tabs is never ambiguous about what it would act on. They are
-still suppressed inside a text input, like every other binding.
+cheat-sheet is open, because opening or switching a tab is never ambiguous about what it would act
+on. They are still suppressed inside a text input, like every other binding.
+
+`Ctrl+Alt+N` is the **one exception**, and the difference is real rather than cautious. A tear-off
+carries the tab's *persisted* state across, and an open modal or inline editor is state inside the
+tab that is not persisted — so tearing off from under one would silently drop whatever is being
+typed into it. `Ctrl+W` loses it too, but a close is a gesture that says "throw this away"; a move
+that quietly drops the contents is a different thing. So it alone takes the same
+`isInputCaptured` guard the view chords carry.
 
 **The board alone.** `F11` hides the tab strip and the top bar, leaving the view filling the window;
 `F11` again brings them back. Bare `F` does the same, but **only when nothing is selected** — with a
@@ -145,5 +168,112 @@ that opens it, where forgetting a collapse merely shows something again. A resto
 leaving a tab rooted at nothing. A session saved before tabs existed comes back as a single tab
 carrying its view, orientation and filters.
 
-Tearing a tab off into its own window — and anything else multi-window — is a separate piece of
-work and is not described here.
+**A strip per window.** Every window is a tab strip, so the stored strip is **one key per window**,
+named after that window's label: `arlesh-window:<label>`. Every window shares one browser store —
+they are webviews on one origin — so a single key would have the second window overwriting the
+first's tabs. A key each rather than one key holding them all, because a key each is the only shape
+in which a window writes down *only its own*: read-modify-write on a shared key is a lost update
+the moment two windows are edited at once, and two windows being used at once is the whole point.
+
+The **list of windows** is deliberately not stored beside the strips; it belongs to the backend, for
+the reason given under [Windows & Tray](window-tray.md). A window whose label the backend no longer
+knows leaves its strip behind, and those are swept at startup by the first window — which is safe
+because every window of a session is reopened before any of them runs a line of frontend code, so a
+stored label with no window at that moment is a window that really went.
+
+A strip written down before there were windows — under the old single key — is read once, as **the
+first window's**, and then left alone. It is the strip the only window a pre-windows session ever
+had was showing, and it opens in the window that would have had it. A torn-off window with no
+stored strip of its own starts fresh rather than borrowing somebody else's.
+
+**Dragging a tab out, and dragging it back.** A drag that ends **on the strip** is a reorder.
+Dropped **anywhere on another Arlesh window**, the tab moves into that window. Dropped where **no
+Arlesh window** takes it — the desktop, another app — it becomes a window of its own. Out and back
+are one gesture, in both directions.
+
+**The desktop carries the drag, and the drag carries the tab.** A drag session belongs to the
+windowing system, not to one webview — on Wayland it is the compositor's data device, on X11 it is
+XDND — so a tab dragged out of one window is delivered to another window's webview like any other
+drag. The tab travels under a drag type of Arlesh's own, `application/x-arlesh-tab`, carrying its id
+and the label of the window it is leaving. The window it is dropped on reads that and **asks the
+source window for the tab**; the source hands it over with the same move the menu entry makes. The
+receiver asks rather than taking, because only the window that holds a tab has its state.
+
+Rejected: resolving the target by **geometry** — asking the backend which window's rectangle holds
+the cursor at the moment of release. That was the first build, and it cannot work on Wayland, which
+gives an app neither the global cursor position nor where its own windows are: tao answers
+`(0, 0)` for both, so every drop landed "in" whichever window was focused last, which is the one
+the drag began in, and did nothing. It also needed a z-order stand-in for overlapping windows. The
+drag knows the answer already; there was never a reason to reconstruct it.
+
+Three things the drag relies on, each a platform fact rather than a choice:
+
+- **The drag must carry data.** WebKitGTK only fires `drop` once it has received a drag's data
+  ([WebKit bug 265857](https://bugs.webkit.org/show_bug.cgi?id=265857)), so a drag that set none —
+  as the first build's did — never drops at all, not even as a reorder within one strip.
+- **The type is Arlesh's own, never `text/plain`.** A plain-text drag released over a terminal or
+  an editor would be accepted there, pasting the payload, and a drag something accepted is not a
+  tear-off.
+- **Tauri's native file-drop handler is off** (`dragDropEnabled: false` on the window template).
+  On Windows it swallows HTML drops outright; on Linux it only acts on dropped file lists and would
+  not interfere, but the setting is one for every window. Nothing in Arlesh listens for dropped
+  files.
+
+**How the source tells a tear-off from a drop.** Every Arlesh window accepts a dragged tab
+**anywhere** on it, not only on its strip — that is the gesture people make, nobody aims for a strip
+a few pixels tall. The source then decides from what the app itself saw: a drop on **its own
+window** is seen there directly and does nothing off the strip (a window cannot hand a tab to
+itself); a drop on **another window** reaches it as that window's **claim**. A drag that ends with
+neither, within 700 ms of its end, was released over no Arlesh window, and that is the tear-off. A
+claim slower than that finds the tab already in a window of its own and does nothing, so the worst
+case is a tab in a new window, never two copies of it. Pressing Escape mid-drag reads as a release
+over nothing and tears the tab off; the page is not told a drag was cancelled.
+
+Rejected: reading the drag's **`dropEffect`** at `dragend`, which is the browser's answer to "did
+anything take it". On Wayland it cannot be trusted. GTK 3 reports the last action a destination
+agreed to and never resets it when the compositor cancels the drag (`data_source_cancelled` in
+`gdkselection-wayland.c`), and Hyprland sends the source nothing when the pointer leaves a surface
+(`CWLDataDeviceProtocol::updateDrag`). A tab drag always starts over its own window, which accepts
+it, so a drag released over the desktop still ends reporting `"move"` and a tear-off keyed on
+`"none"` never happened — which is what the first manual test showed.
+
+**Moving is let-go-then-send.** The source window removes the tab **before** handing it over and
+takes it back only if the hand-over fails, so a tab is never in two windows at once; the first
+build sent first and removed once the send resolved, and a drop on another window left the tab in
+both. A window never adopts a tab it already holds, so a hand-over delivered twice is still one tab.
+
+A dragged tab lands **at the end** of the receiving window's strip, wherever it was dropped on it.
+Where a new window appears is the window manager's decision: a tiling compositor places it like any
+other window.
+
+The tab menu offers **Move tab to new window** as well, for anyone who would rather not drag, and
+`Ctrl+Alt+N` does the same from the keyboard. The menu entry is **absent** when the tab is the
+window's only one; the chord **refuses out loud** instead. That is not an inconsistency: a menu can
+leave out an entry that does not apply and the user simply never sees it, where a key that did
+nothing would read as broken.
+
+**The menu offers the same two moves**, for anyone who would rather not drag: **Move tab to new
+window**, and **Move tab to "…"** once per other open window. Each window is named by its active
+tab, because that is the one thing about another window the user can see from here.
+
+**The window's last tab**, in all three ways a tab can leave:
+
+- **Closed** (`Ctrl+W`, ×, middle-click, **Close tab**) — the window closes, as its close button
+  would close it; the last window of all hides to the tray or quits by the same rule.
+- **Moved into another window** (dragged there, or **Move tab to "…"**) — the tab arrives there and
+  the source window **closes**: its only content is now somewhere else, and an empty window is not
+  a state the app has.
+- **Torn off to a new window** (dragged out, or `Ctrl+Alt+N`) — **refused out loud**, and the menu
+  leaves the entry out. It would put the only tab in a new window and leave the old one empty: the
+  whole gesture amounts to moving the window, which is not what was asked for.
+
+Same tab, different answers, because it ends up in different places. Whether the torn-off case
+should instead close the old window, as the move does, is an open decision.
+
+The tab travels as the same thing it is stored as, so a tab that moves and a tab that comes back
+after a restart are one tab arriving by two routes. Tearing off writes it to the new window's key
+*before* asking for the window, so the window finds its tab on boot and nothing travels through an
+event that could arrive before the window listening for it does; a window that fails to open gives
+the tab straight back. Moving to an existing window removes it first and sends it second, taking
+it back if the send fails, so a tab is never in two windows and a hand-over that fails leaves it
+where it was.

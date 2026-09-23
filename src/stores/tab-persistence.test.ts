@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { readPersistedTabs, parseTabState, TABS_STORAGE_KEY } from "./tab-persistence";
+import {
+  forgetPersistedTabs, parsePersistedTab, parseTabState, persistedWindowLabels, readPersistedTabs,
+  TABS_STORAGE_KEY, windowTabsKey, writePersistedTabs,
+} from "./tab-persistence";
+import { BOOTSTRAP_WINDOW_LABEL } from "@/api/window-label";
 import { reloadTabs, useTabsStore } from "./use-tabs-store";
 import { DEFAULT_TAB_STATE } from "./tab-stores";
 import { DEFAULT_FILTER } from "@/utils/filter-tree";
@@ -76,36 +80,36 @@ describe("reading one tab's stored state", () => {
 describe("reading the stored strip", () => {
   it("returns nothing when there is nothing stored", () => {
     localStorage.clear(); // the reload in `beforeEach` has already written the strip back down
-    expect(readPersistedTabs()).toBeNull();
+    expect(readPersistedTabs(BOOTSTRAP_WINDOW_LABEL)).toBeNull();
   });
 
   it("returns nothing for a blob that is not a strip at all", () => {
-    localStorage.setItem(TABS_STORAGE_KEY, "{ broken");
-    expect(readPersistedTabs()).toBeNull();
-    localStorage.setItem(TABS_STORAGE_KEY, JSON.stringify({ tabs: "some" }));
-    expect(readPersistedTabs()).toBeNull();
-    localStorage.setItem(TABS_STORAGE_KEY, JSON.stringify({ tabs: [] }));
-    expect(readPersistedTabs()).toBeNull();
+    localStorage.setItem(windowTabsKey(BOOTSTRAP_WINDOW_LABEL), "{ broken");
+    expect(readPersistedTabs(BOOTSTRAP_WINDOW_LABEL)).toBeNull();
+    localStorage.setItem(windowTabsKey(BOOTSTRAP_WINDOW_LABEL), JSON.stringify({ tabs: "some" }));
+    expect(readPersistedTabs(BOOTSTRAP_WINDOW_LABEL)).toBeNull();
+    localStorage.setItem(windowTabsKey(BOOTSTRAP_WINDOW_LABEL), JSON.stringify({ tabs: [] }));
+    expect(readPersistedTabs(BOOTSTRAP_WINDOW_LABEL)).toBeNull();
   });
 
   it("skips a tab with no id and keeps the rest", () => {
-    localStorage.setItem(TABS_STORAGE_KEY, JSON.stringify({
+    localStorage.setItem(windowTabsKey(BOOTSTRAP_WINDOW_LABEL), JSON.stringify({
       activeTabId: "b",
       tabs: [{ title: "nameless" }, { id: "b", title: "CODE", state: DEFAULT_TAB_STATE }],
     }));
 
-    const stored = readPersistedTabs();
+    const stored = readPersistedTabs(BOOTSTRAP_WINDOW_LABEL);
     expect(stored?.tabs.map((tab) => tab.id)).toEqual(["b"]);
     expect(stored?.activeTabId).toBe("b");
   });
 
   it("falls back to the first tab when the stored active one is gone", () => {
-    localStorage.setItem(TABS_STORAGE_KEY, JSON.stringify({
+    localStorage.setItem(windowTabsKey(BOOTSTRAP_WINDOW_LABEL), JSON.stringify({
       activeTabId: "deleted",
       tabs: [{ id: "a", title: null, state: DEFAULT_TAB_STATE }],
     }));
 
-    expect(readPersistedTabs()?.activeTabId).toBe("a");
+    expect(readPersistedTabs(BOOTSTRAP_WINDOW_LABEL)?.activeTabId).toBe("a");
   });
 });
 
@@ -226,19 +230,19 @@ describe("a tab's name in storage", () => {
   it("reads a strip written before tabs could be named as tabs with no names", () => {
     // Exactly the shape the key held before `customTitle` existed. Left unhandled it rehydrates as
     // `undefined`, which is neither a name nor the absence of one.
-    localStorage.setItem(TABS_STORAGE_KEY, JSON.stringify({
+    localStorage.setItem(windowTabsKey(BOOTSTRAP_WINDOW_LABEL), JSON.stringify({
       activeTabId: "tab-1",
       tabs: [{ id: "tab-1", title: "CODE", state: { subtreeRootId: "project-1" } }],
     }));
 
-    const stored = readPersistedTabs();
+    const stored = readPersistedTabs(BOOTSTRAP_WINDOW_LABEL);
 
     expect(stored?.tabs[0]?.customTitle).toBeNull();
     expect(stored?.tabs[0]?.title).toBe("CODE");
   });
 
   it("gives a tab restored from that older strip its derived label", () => {
-    localStorage.setItem(TABS_STORAGE_KEY, JSON.stringify({
+    localStorage.setItem(windowTabsKey(BOOTSTRAP_WINDOW_LABEL), JSON.stringify({
       activeTabId: "tab-1",
       tabs: [{ id: "tab-1", title: "CODE", state: { subtreeRootId: "project-1" } }],
     }));
@@ -269,7 +273,7 @@ describe("an opened habit history", () => {
   });
 
   it("survives a reload of the whole strip", () => {
-    localStorage.setItem(TABS_STORAGE_KEY, JSON.stringify({
+    localStorage.setItem(windowTabsKey(BOOTSTRAP_WINDOW_LABEL), JSON.stringify({
       activeTabId: "tab-1",
       tabs: [{ id: "tab-1", title: null, customTitle: null, state: { expandedHabitGroupIds: ["habitrun-7-virtual"] } }],
     }));
@@ -286,6 +290,116 @@ describe("an opened habit history", () => {
 
     tab?.stores.mindmap.getState().toggleGroupExpanded("habitrun-7-virtual");
 
-    expect(readPersistedTabs()?.tabs[0]?.state.expandedHabitGroupIds).toEqual(["habitrun-7-virtual"]);
+    expect(readPersistedTabs(BOOTSTRAP_WINDOW_LABEL)?.tabs[0]?.state.expandedHabitGroupIds).toEqual(["habitrun-7-virtual"]);
+  });
+});
+
+describe("one stored strip per window", () => {
+  /** A strip with a single tab carrying `title`, in the shape storage holds. */
+  function strip(title: string) {
+    return {
+      activeTabId: "tab-1",
+      tabs: [{ id: "tab-1", title, customTitle: null, state: DEFAULT_TAB_STATE }],
+    };
+  }
+
+  it("keeps two windows' tabs apart in the one shared store", () => {
+    writePersistedTabs("main", strip("Mine"));
+    writePersistedTabs("board-a", strip("Theirs"));
+
+    expect(readPersistedTabs("main")?.tabs[0]?.title).toBe("Mine");
+    expect(readPersistedTabs("board-a")?.tabs[0]?.title).toBe("Theirs");
+  });
+
+  it("writes each window under a key named after it", () => {
+    forgetPersistedTabs(BOOTSTRAP_WINDOW_LABEL);
+    writePersistedTabs("board-a", strip("Theirs"));
+
+    expect(localStorage.getItem(windowTabsKey("board-a"))).not.toBeNull();
+    expect(localStorage.getItem(windowTabsKey("main"))).toBeNull();
+  });
+
+  it("gives the bootstrap window the strip stored before windows existed", () => {
+    forgetPersistedTabs(BOOTSTRAP_WINDOW_LABEL);
+    localStorage.setItem(TABS_STORAGE_KEY, JSON.stringify(strip("From before")));
+
+    expect(readPersistedTabs(BOOTSTRAP_WINDOW_LABEL)?.tabs[0]?.title).toBe("From before");
+  });
+
+  it("does not hand that strip to a torn-off window", () => {
+    forgetPersistedTabs(BOOTSTRAP_WINDOW_LABEL);
+    localStorage.setItem(TABS_STORAGE_KEY, JSON.stringify(strip("From before")));
+
+    expect(readPersistedTabs("board-a")).toBeNull();
+  });
+
+  it("prefers the bootstrap window's own strip over the pre-windows one", () => {
+    forgetPersistedTabs(BOOTSTRAP_WINDOW_LABEL);
+    localStorage.setItem(TABS_STORAGE_KEY, JSON.stringify(strip("From before")));
+    writePersistedTabs(BOOTSTRAP_WINDOW_LABEL, strip("From now"));
+
+    expect(readPersistedTabs(BOOTSTRAP_WINDOW_LABEL)?.tabs[0]?.title).toBe("From now");
+  });
+
+  it("forgets a closed window's strip and leaves the others alone", () => {
+    writePersistedTabs("main", strip("Mine"));
+    writePersistedTabs("board-a", strip("Theirs"));
+
+    forgetPersistedTabs("board-a");
+
+    expect(readPersistedTabs("board-a")).toBeNull();
+    expect(readPersistedTabs("main")?.tabs[0]?.title).toBe("Mine");
+  });
+
+  it("lists the windows that have a strip, and nothing else in the store", () => {
+    writePersistedTabs("main", strip("Mine"));
+    writePersistedTabs("board-a", strip("Theirs"));
+    localStorage.setItem("arlesh-theme", "dark");
+
+    expect(persistedWindowLabels().sort()).toEqual(["board-a", "main"]);
+  });
+});
+
+describe("a tab handed over by another window", () => {
+  it("reads back as the tab that was sent", () => {
+    const sent = { id: "tab-9", title: "Bugfixes", customTitle: "Left", state: DEFAULT_TAB_STATE };
+
+    const received = parsePersistedTab(JSON.parse(JSON.stringify(sent)));
+
+    expect(received?.id).toBe("tab-9");
+    expect(received?.title).toBe("Bugfixes");
+    expect(received?.customTitle).toBe("Left");
+  });
+
+  it("is refused when it carries no id, rather than opening a tab nothing can explain", () => {
+    expect(parsePersistedTab({ title: "Bugfixes" })).toBeNull();
+    expect(parsePersistedTab("a tab, honest")).toBeNull();
+    expect(parsePersistedTab(null)).toBeNull();
+  });
+
+  it("opens after the active tab and takes the focus", () => {
+    reloadTabs();
+    const before = useTabsStore.getState().tabs[0]?.id;
+
+    useTabsStore.getState().adoptTab({
+      id: "tab-9", title: "Arrived", customTitle: null, state: DEFAULT_TAB_STATE,
+    });
+
+    const { tabs, activeTabId } = useTabsStore.getState();
+    expect(tabs.map((tab) => tab.id)).toEqual([before, "tab-9"]);
+    expect(activeTabId).toBe("tab-9");
+  });
+
+  it("does not add a tab it already holds, so a hand-over delivered twice makes one tab", () => {
+    reloadTabs();
+    const existing = useTabsStore.getState().tabs[0];
+
+    useTabsStore.getState().adoptTab({
+      id: existing?.id ?? "", title: "Back again", customTitle: null, state: DEFAULT_TAB_STATE,
+    });
+
+    const { tabs, activeTabId } = useTabsStore.getState();
+    expect(tabs).toHaveLength(1);
+    expect(activeTabId).toBe(existing?.id);
   });
 });

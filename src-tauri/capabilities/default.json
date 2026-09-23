@@ -1,10 +1,11 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window",
-  "windows": ["main"],
+  "description": "Capability for every Arlesh window. Every window is the same tab strip, built from one config template under a label minted at runtime (`main`, `board-<uuid>`), so the grant is by wildcard: a window listed by name would leave every torn-off window without the event bus, and a torn-off window that cannot listen never receives a tab or a board change. `core:window:allow-close` is what lets closing a window's last tab close the window; `core:default` grants only the window getters.",
+  "windows": ["*"],
   "permissions": [
     "core:default",
+    "core:window:allow-close",
     "opener:default"
   ]
 }

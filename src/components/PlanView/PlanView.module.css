@@ -39,6 +39,16 @@
   background: var(--surface);
 }
 
+/* The pane's name and its kebab, on one line: the options belong to the half they act on, and
+   putting them anywhere else means naming which half they mean. */
+.paneBar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
 .paneHeading {
   margin: 0;
   color: var(--text-secondary);
@@ -56,6 +66,17 @@
   flex-direction: column;
   overflow-y: auto;
   gap: var(--space-2);
+}
+
+/* Nothing in the scrolling column may shrink: once the pane overflows, the column scrolls, it does
+   not squeeze. Left at the default `flex-shrink: 1`, a flex column that is too short takes the
+   deficit out of its items — and an item with `overflow: hidden`, like the path header, has no
+   content-sized floor (its automatic minimum height is 0), so it is the one that gave: shrunk below
+   its own line and cut through its letters. Cards survived only because nothing clips them. Fixing
+   it here rather than in the header, because it is this column's rule and every child it will ever
+   hold needs it. */
+.cards > * {
+  flex-shrink: 0;
 }
 
 .empty {
@@ -129,3 +150,42 @@
   font-size: var(--text-sm);
   opacity: 0.7;
 }
+
+/* A bucket of the split: a box for the *pointer* (it has to accept a drop) and never for the
+   keyboard, which walks the cards inside it as part of the pane's one flat run. */
+.section {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--node-radius);
+  gap: var(--space-2);
+}
+
+/* Where a drop would land. Dashed rather than solid so it never reads as the focus outline the
+   pane already carries. */
+.sectionOver,
+.paneOver {
+  outline: 2px dashed var(--node-border-selected);
+  outline-offset: 2px;
+}
+
+/* How the keyboard reaches a bucket, drawn where the bucket is named — a shortcut nobody can see
+   is a shortcut nobody uses. */
+.sectionKeys {
+  display: flex;
+  margin-left: auto;
+  gap: var(--space-1);
+}
+
+.key {
+  min-width: 1.1em;
+  padding: 0 4px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 3px;
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs, var(--text-sm));
+  line-height: 1.4;
+  text-align: center;
+}
+

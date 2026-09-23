@@ -1,0 +1,7 @@
+- **The Plan View's two halves each have their own menu, and a pass opens on what still needs placing.** The two switches that lived in the settings gear have moved out of it, into a kebab beside the heading of the pane each one acts on, with two new ones beside them. A control three rows up from the thing it changes has to name which half it means, and a settings popover is somewhere you go once rather than somewhere you reach for mid-pass.
+
+  **Candidates** holds *Show only planned to parent scope* and *Group by path*, both on. **Planned** holds *Split by subscope* and *Include premorning*, both off.
+
+  The left-hand pane holds the relevant work that is either unplanned or planned to the **parent scope** — the scope one rung up from the one you are filling: the month, while you fill a week; the week, while you fill a day. *Show only planned to parent scope* hides the unplanned half, so a pass opens on the work committed a rung up and not yet placed here — the list that shrinks as you work. Untick it to see the unplanned pool as well. A week at a month's edge has both months above it, and work planned to either counts. A Season is the top of the ladder and has no parent, so for a Season the switch is greyed out and the pane shows the unplanned work.
+
+  *Group by path* is now the candidates pane's alone, and is on by default: that pane is read for where work lives, and the pane opposite it is read for when work is planned. A card no longer repeats the path the header above it just gave — the two used to sit on one line narrow enough to clip it.

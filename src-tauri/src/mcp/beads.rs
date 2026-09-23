@@ -133,6 +133,12 @@ impl ArleshMcp {
             return result::failed(error);
         }
 
+        // After the commit, and to every window: an agent's write is not made in one. The
+        // journal recorded it under the `mcp` source, so it never enters the user's Undo Stack —
+        // but a window showing that node is now wrong, which is a different question from whether
+        // Ctrl+Z should touch it.
+        (self.announce)(None);
+
         result::ok(link)
     }
 }

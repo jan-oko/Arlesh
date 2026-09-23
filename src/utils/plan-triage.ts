@@ -85,53 +85,78 @@ function isTriageable(node: MindmapNode): boolean {
   return node.virtual !== true && node.habitItem === undefined;
 }
 
-/** The two panes of one triage pass. */
+/** What one triage pass makes of the board, in three heaps. */
 export interface PlanPanes {
   /** Unplanned Tasks whose effective Time Scope reaches into the scope being filled. */
-  candidates: TaskListRow[];
+  unplanned: TaskListRow[];
   /** Tasks already planned into the scope being filled. */
   planned: TaskListRow[];
+  /**
+   * Tasks planned to the scope's **parent**: committed at the rung above, and so not yet placed in
+   * this one. The work pinned to the month, while you are filling one of its weeks.
+   *
+   * *To* the parent, not "anywhere coarser", so a plan on the *season* is not offered while you
+   * fill a week. A pass places what the pass above it committed, one rung at a time, and reaching
+   * two rungs up would be doing the month's pass inside the week's.
+   *
+   * Empty for a Season, which has no parent (see `parentRefs`). Before the two kebab menus this heap did not exist at
+   * all, which is what made a pass over a week open on work it had no opinion about instead of on
+   * the month's own backlog of it.
+   */
+  parentPlanned: TaskListRow[];
 }
 
 /**
- * Splits the rows into the two panes for `target`.
+ * Splits the rows into the heaps for `target`, whose parent scopes are `parentIds` — none for a
+ * Season, two for a week at a month's edge, one everywhere else.
  *
- * **Candidates** are the unplanned work that is relevant *now*: a Task with no Plan at all whose
- * effective Time Scope overlaps the scope. An **Unscoped** task is always relevant and so is always
- * a candidate — the model says an unscoped item is always active, and a planning pass is exactly
- * where unscoped work should be offered.
+ * **Unplanned** is the work that is relevant *now*: a Task with no Plan at all whose effective Time
+ * Scope overlaps the scope. An **Unscoped** task is always relevant and so is always here — the
+ * model says an unscoped item is always active, and a planning pass is exactly where unscoped work
+ * should be offered.
  *
  * **Planned** is containment, not equality: a Task pinned to Tuesday is part of what this week
  * holds, and a week being filled has to show it or the right-hand pane would under-report the load
  * it exists to report.
  *
- * A Task planned somewhere else entirely is in **neither** pane. It is not unscheduled, so it is
- * not a candidate, and it is not in this scope, so it is not what the scope holds.
+ * **Parent-planned** is a Plan that **is** a parent scope — one boundary, and that boundary a parent.
+ * Compared by id rather than by window: a week at a month's edge is not contained by either of its
+ * months, so "contains the scope" would find nothing there, and the question was never about
+ * containment in the first place.
+ *
+ * A Task planned somewhere else entirely is in **none** of them. It is not unscheduled, it is not
+ * in this scope, and it is not at the rung above it.
  */
 export function partitionForScope(
   rows: readonly TaskListRow[],
   target: ScopeInterval,
   windows: ScopeWindows,
+  parentIds: ReadonlySet<number>,
 ): PlanPanes {
-  const candidates: TaskListRow[] = [];
+  const unplanned: TaskListRow[] = [];
   const planned: TaskListRow[] = [];
+  const parentPlanned: TaskListRow[] = [];
   for (const row of rows) {
     if (!isTriageable(row.node)) continue;
     const plan = row.node.plan;
     if (plan != null) {
+      if (plan.start_id === plan.end_id && parentIds.has(plan.start_id)) {
+        parentPlanned.push(row);
+        continue;
+      }
       const planWindow = timeScopeWindow(plan, windows);
       if (planWindow !== null && intervalContains(target, planWindow)) planned.push(row);
       continue;
     }
     const relevance = effectiveTimeScope(row);
     if (relevance === null) {
-      candidates.push(row);
+      unplanned.push(row);
       continue;
     }
     const window = timeScopeWindow(relevance, windows);
-    if (window !== null && intervalsOverlap(window, target)) candidates.push(row);
+    if (window !== null && intervalsOverlap(window, target)) unplanned.push(row);
   }
-  return { candidates, planned };
+  return { unplanned, planned, parentPlanned };
 }
 
 /**

@@ -59,6 +59,7 @@ const KEY_LABELS: Record<string, string> = {
   ArrowRight: "→",
   Escape: "Esc",
   Slash: "/",
+  Backslash: "\\",
   Equal: "=",
   Minus: "-",
   NumpadAdd: "Numpad +",
