@@ -124,6 +124,7 @@ function mockRows(rows: TaskListRow[]): void {
     occurrencePrompt: null,
     confirmOccurrence: vi.fn(),
     cancelOccurrence: vi.fn(),
+    setOccurrenceStatus: vi.fn(),
     renameNode: vi.fn(),
     createTask: vi.fn(),
     deleteTask: vi.fn(),

@@ -371,6 +371,10 @@ export default function ListView() {
                 onSelect={setSelectedRowId}
                 onCycleStatus={onCycleStatus}
                 onOpenEditor={onDoubleClick}
+                onOccurrenceMenu={(nodeId, x, y) => {
+                  setSelectedRowId(nodeId);
+                  setOccurrenceMenu({ nodeId, x, y });
+                }}
                 onCommitTitle={commitTitle}
                 onCancelTitleEdit={cancelTitleEdit}
                 onAddTagFilter={addTagFilter}

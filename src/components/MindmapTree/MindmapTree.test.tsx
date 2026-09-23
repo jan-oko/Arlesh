@@ -1,7 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
-import { render } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import MindmapTree from "./MindmapTree";
 import type { MindmapNode, Orientation } from "@/utils/tree-layout";
+
+// An occurrence draws its status badges, whose tooltips look up tag names; nothing here needs an
+// answer, only that the lookup does not reach for a Tauri runtime the test does not have.
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue([]) }));
 
 function node(id: string, children: MindmapNode[] = []): MindmapNode {
   return { id, kind: "domain", title: id, position: 0, tagIds: [], children };
@@ -124,5 +128,59 @@ describe("a folded run of Habit iterations", () => {
 
     expect(container.querySelector("[data-node-id='habitrun-7-virtual'] title")?.textContent)
       .toBe("01/09/26–14/09/26");
+  });
+});
+
+describe("MindmapTree — a Habit occurrence's context menu", () => {
+  const occurrence: MindmapNode = {
+    id: "habititem-flow_task-4-0-0-virtual", kind: "task", title: "Run", status: "todo", position: 0,
+    tagIds: [], children: [], virtual: true,
+    habitItem: { flowId: 3, itemType: "flow_task", itemId: 4, scopeId: 100, cycleId: 0 },
+    occurrence: { templateTitle: "Run", ownTitle: null, blockedReason: null, dependsOn: [], deleted: false },
+  };
+
+  function renderOccurrence(onContextAction = vi.fn(), onDoubleClick = vi.fn()) {
+    const { container } = render(
+      <svg>
+        <MindmapTree
+          root={node("root", [occurrence])}
+          orientation="horizontal"
+          collapsedNodeIds={new Set()}
+          selectedNodeIds={new Set()}
+          focusExemptIds={new Set()}
+          editingNodeId={null}
+          dragTargetId={null}
+          dragSourceId={null}
+          hasClipboard={false}
+          onSelect={vi.fn()}
+          onDoubleClick={onDoubleClick}
+          onCommitEdit={vi.fn()}
+          onCancelEdit={vi.fn()}
+          onContextAction={onContextAction}
+          onDragStart={vi.fn()}
+          onStatusClick={vi.fn()}
+        />
+      </svg>,
+    );
+    const target = container.querySelector(`[data-node-id='${occurrence.id}']`);
+    if (target === null) throw new Error("occurrence not drawn");
+    return target;
+  }
+
+  it("opens a menu of what applies to the occurrence, and sends the pick", () => {
+    const onContextAction = vi.fn();
+    fireEvent.contextMenu(renderOccurrence(onContextAction));
+    const labels = screen.getAllByRole("menuitem").map((item) => item.textContent);
+    expect(labels).toContain("occurrence.edit");
+    expect(labels).toContain("occurrence.delete");
+    expect(labels).not.toContain("cut");
+    fireEvent.click(screen.getByRole("menuitem", { name: "occurrence.edit" }));
+    expect(onContextAction).toHaveBeenCalledWith(occurrence.id, "edit");
+  });
+
+  it("routes a double-click on the occurrence to the editor", () => {
+    const onDoubleClick = vi.fn();
+    fireEvent.doubleClick(renderOccurrence(vi.fn(), onDoubleClick));
+    expect(onDoubleClick).toHaveBeenCalledWith(occurrence.id);
   });
 });

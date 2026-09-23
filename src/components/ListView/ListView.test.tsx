@@ -1389,6 +1389,32 @@ describe("ListView — deleting a row", () => {
 
   // Derived at load time: there is no row behind it, and the Habit's template is not what Delete on
   // one occurrence should take away.
+  it("gives a Habit occurrence row a context menu of what applies to it, and a real task none", () => {
+    const occurrence = n("habititem-flow_task-2-1-0-virtual", "task", {
+      status: "todo",
+      virtual: true,
+      habitItem: { flowId: 1, itemType: "flow_task", itemId: 2, scopeId: 3, cycleId: 4 },
+      occurrence: { templateTitle: "Run", ownTitle: null, blockedReason: null, dependsOn: [], deleted: false },
+    });
+    const real = n("task-9", "task", { status: "todo" });
+    setup([occurrence, real], [row({ node: occurrence }), row({ node: real })]);
+    render(<ListViewInApp />);
+
+    fireEvent.contextMenu(screen.getByText("task-9"));
+    expect(screen.queryByRole("menu")).toBeNull();
+
+    fireEvent.contextMenu(screen.getByText("habititem-flow_task-2-1-0-virtual"));
+    const labels = screen.getAllByRole("menuitem").map((item) => item.textContent);
+    expect(labels).toEqual([
+      "occurrence.edit",
+      "occurrence.status.in_progress",
+      "occurrence.status.done",
+      "occurrence.plan",
+      "occurrence.unplan",
+      "occurrence.delete",
+    ]);
+  });
+
   it("deletes a Habit occurrence from its iteration alone, without the row delete's confirmation", async () => {
     const occurrence = n("habititem-flow_task-2-1-0-virtual", "task", {
       status: "todo",
