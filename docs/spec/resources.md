@@ -10,20 +10,20 @@ There are four domain subtypes:
 
 **Aspects** — six built-in, color-coded top-level domains. Not user-managed. Fixed roots of the domain tree.
 
-| Name   | Color      | Focus                                                                 |
-|--------|------------|-----------------------------------------------------------------------|
-| Red    | Red        | Physical needs: health, physical pursuits                             |
-| Purple | Purple     | Psychological needs: social activities                                |
-| Green  | Green      | Fulfillment needs: hobbies, knowledge, creative/technical construction|
-| Blue   | Blue       | Moral duty: activities for others, social activism                    |
-| Gray   | Gray       | Flow-state needs: finance, cleaning, bureaucracy                      |
-| Steel  | Light gray | Self-determination: introspection, goal-making, task management       |
+| Name        | Color      | Focus                                                                 |
+|-------------|------------|-----------------------------------------------------------------------|
+| Body        | Red        | Physical needs: health, physical pursuits                             |
+| Connections | Purple     | Psychological needs: social activities                                |
+| Growth      | Green      | Fulfillment needs: hobbies, knowledge, creative/technical construction|
+| Duty        | Blue       | Moral duty: activities for others, social activism                    |
+| Flow        | Gray       | Flow-state needs: finance, cleaning, bureaucracy                      |
+| Self        | Light gray | Self-determination: introspection, goal-making, task management       |
 
 **Projects** — large domains (hobby, habit, workplace, etc.). Parent must be an Aspect or another Project. May be linked to a knowledge-base directory. Status: **Active / Achieved / Frozen / Archived**. May carry a **beads id** (see *Beads id* below).
 
 **Domains** — general-purpose organizational containers. Can parent Goals, Tasks, Tags, or other Domains.
 
-**Tags** — flat leaf nodes used as resource markers. Each Tag has a title and a `domain_id` parent. Tags cannot parent other Tags, and hold no structural children — with one exception: a Tag may hold **Info notes**, which is what a label carries when it needs explaining (`Shift+I`, or dropping a note onto it). `Tab` on a Tag is still refused, because the child it would create is a Domain. Tags appear in filtering as a first-class primitive.
+**Tags** — flat leaf nodes used as resource markers. Each Tag has a title and a parent (`parent_id`, a row in `domains`). Tags cannot parent other Tags, and hold no structural children — with one exception: a Tag may hold **Info notes**, which is what a label carries when it needs explaining (`Shift+I`, or dropping a note onto it). `Tab` on a Tag is still refused, because the child it would create is a Domain. Tags appear in filtering as a first-class primitive.
 
 ## Knowledge Base
 
@@ -37,13 +37,13 @@ The knowledge base is externally managed (Obsidian). Arlesh manages specific not
 |-------------|-------------------------------------------------|
 | Season      | Three-month period (Autumn: Sep–Nov, Winter: Dec–Feb, Spring: Mar–May, Summer: Jun–Aug) |
 | Month       | Calendar month                                  |
-| Week        | Sunday–Saturday, custom 1–52 numbering (not ISO 8601) |
+| Week        | Sunday–Saturday, custom numbering from the week holding 1 January (week 1) — so a year runs to week 53, or 54 when a leap year starts on a Saturday (not ISO 8601) |
 | Day         | Single date; corresponds to an Obsidian note at `{yyyy}/{mm MMMM}/{yyyy-mm-dd}.md` |
 | Part of Day | Sub-day band: Morning (06–12), Noon (12–15), Afternoon (15–18), Evening (18–22), Night (22–02), Premorning (02–06). Start inclusive, end exclusive. |
 
 Beyond the canonical hierarchy, an **Exact** scope is defined by two arbitrary datetimes at minute precision (e.g. for a one-off deadline).
 
-Canonical scope containment is hierarchical: Part of Day ⊂ Day ⊂ Week ⊂ Month ⊂ Season. **Night (22:00–02:00) crosses midnight and is parented to the Day it starts on** — and is wholly inside it, because Day, Week, Month and Season all run 02:00 → 02:00 (see [*The day boundary*](time-scopes.md)). Every scope resolves to concrete datetime boundaries (a cached backend function does the resolution); Parts of Day and Exact scopes carry a time-of-day component.
+Canonical scope containment is hierarchical, on two ladders: Part of Day ⊂ Day ⊂ Week, and Day ⊂ Month ⊂ Season. A Week is not inside a Month — a Sunday–Saturday week can straddle two months, and two seasons — so a Day row records its Week, Month and Season, a Month its Season, and a Week none. **Night (22:00–02:00) crosses midnight and is parented to the Day it starts on** — and is wholly inside it, because Day, Week, Month and Season all run 02:00 → 02:00 (see [*The day boundary*](time-scopes.md)). Every scope resolves to concrete datetime boundaries (a cached backend function does the resolution); Parts of Day and Exact scopes carry a time-of-day component.
 
 A scope is **active** when it contains the current datetime.
 
@@ -63,7 +63,7 @@ Goals are never List View *rows*; they appear instead as a segment of a row's **
 
 ## Tasks
 
-Tasks represent action items. Fields: title, parent (Project / Goal / Domain / Task), tags (list), KB resource links, status, blockers, dependencies, delegation, agentic, beads id.
+Tasks represent action items. Fields: title, parent (Project / Goal / Domain / Task / Commitment), tags (list), KB resource links, status, blockers, dependencies, delegation, agentic, beads id.
 
 **Status:** To Do / In Progress / Done
 
@@ -117,10 +117,10 @@ The rule is enforced at write time, but it is **not** enforced by hiding the opt
 
 A Task, Goal, Commitment or Project may carry an optional **beads id** — the identifier of the issue tracking it in `bd` (beads), e.g. `Arlesh-5fs`. It is a mirror of an id `bd` owns, not a value this app authors, and so is **write-restricted**:
 
-- The **MCP server is the only source**. Each resource operator exposes a single setter (`set_beads_id`); `UpdateTaskRequest` / `UpdateGoalRequest` / `UpdateDomainRequest` have no field for it, and no gesture can **author or edit** a beads id from the UI. Two named exceptions write the column from the UI side, and neither can produce a value `bd` did not issue.
+- The **MCP server is the only source**. Each resource operator exposes a single setter (`set_beads_id`); `UpdateTaskRequest` / `UpdateGoalRequest` / `UpdateCommitmentRequest` / `UpdateDomainRequest` have no field for it, and no gesture can **author or edit** a beads id from the UI. Two named exceptions write the column from the UI side, and neither can produce a value `bd` did not issue.
 - **Exception one: duplication.** Copy+Paste's `duplicate_*` commands *propagate* the id a node already carries onto its copy — only ever a value `bd` issued and the source already had. A source with no link produces a copy with no link. The accepted consequence is that two nodes can show the same issue id, and `bd` holds no record of the second.
 - **Exception two: clearing.** Authoring and editing need a value the UI has no way to obtain; **dropping** a link needs none, and a link to a closed, wrong or duplicated issue otherwise has to go back through MCP to remove. One dedicated command, `clear_beads_id(node_type, node_id)`, writes null and nothing else — mirroring the MCP tool's shape rather than adding a field to any update request, and called by the editor's **Save** rather than by the × itself. Only `task`, `goal`, `commitment` and `project` are accepted, and a Domain that is not a Project is refused as it is on the way in. Nothing is told to `bd`: the issue is untouched, and this only removes Arlesh's mirror of the link.
-- Every read that returns a Task, Goal or Domain carries it.
+- Every read that returns a Task, Goal, Commitment or Domain carries it.
 - The UI shows it **read-only but for its ×, only where it is set** — as the **Issue** row in the Task, Goal, Commitment and Project editors, directly under the title. A node with no beads id shows no row at all: no label, no placeholder.
 - The **×** takes no confirmation dialog, but it does not write either: it **stages** the clear, which **Save** performs and Cancel, Escape or closing the editor discard along with every other unsaved field. An earlier draft had it write straight through, on the reasoning that one nullable column is not worth a confirmation and `Ctrl+Z` puts the link back anyway. That was revised in use: the argument was about *confirmation*, and it silently answered a second question — whether this one field escapes the form the other fields are held in. It should not. Cancel means nothing was written, and a field that ignores it is worse than a field that asks.
 - The clear is sent **before** the update it is saved with, so a refused clear leaves the node exactly as it was rather than half-saved, and the refusal appears on the editor's own error line with the editor still open. A clear that lands and an update that is then refused is the reverse case: the link is gone, the edits are not, the error says so, and `Ctrl+Z` reverses the clear. The clear is a Gesture of its own, so a save that also clears is two `Ctrl+Z`s — as a save that also retags or re-links is already several.

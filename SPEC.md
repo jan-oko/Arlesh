@@ -57,11 +57,11 @@ the area they belong to.
 
 ## Implementation Phases
 
-1. **Data layer** — schema, migrations, Tauri commands, integration tests. No UI.
-2. **Mindmap view** — SVG-based balanced tree editor (horizontal or vertical) with full keyboard interaction.
+1. **Data layer** — schema, migrations, Tauri commands, integration tests. No UI. Complete.
+2. **Mindmap view** — SVG-based balanced tree editor (horizontal or vertical) with full keyboard interaction. Complete.
 3. **List view** — filterable task list sharing the Mindmap's filters plus its own preset (All/Plan/Start/Do/Backlog/Unblock) and pill-filter dimensions, with a Commitments section above the task rows. Complete.
-4. **KB resources backend** — People, Events, Threads, Scopes as local DB entities. Obsidian integration stubbed behind an adapter interface.
-5. **Obsidian integration** — replace stub adapter with real Obsidian local-rest-api client. Note discovery, bidirectional sync.
-6. **Time Scopes** — Parts of Day and Exact scopes; datetime-boundary resolution (cached) and `active`; Time Scope (relevance) vs Plan split with interval-containment invariants and write-time enforcement; the Scope Picker component. Schema → commands → picker UI. See ADR 0001.
-7. **Flows** — Flow node kind and dedicated creation; Instance Type, Target Node, flow scope; flow items with Cycle Scope/Plan; start modal; materialization as real independent copies with per-instance dependency remapping. See ADR 0002.
-8. **Habits** — Recurrence (Repetition + configurable Consumption); virtual instances with overlay table keyed by `(flow item, iteration scope)`; ellipsis display + pinning; archiving and scope-edit reconciliation. See ADR 0002.
+4. **KB resources backend** — People, Events, Threads, Scopes as local DB entities. Obsidian integration stubbed behind an adapter interface. Partly built: the four are tables, with commands to create and list People, Events and Threads (and to get, update and delete a Person); there is no adapter interface, no UI for People, Events or Threads, and no command that links a Task or Goal to one (the `*_knowledge_base_links` tables exist, unwritten).
+5. **Obsidian integration** — replace stub adapter with real Obsidian local-rest-api client. Note discovery, bidirectional sync. Not started.
+6. **Time Scopes** — Parts of Day and Exact scopes; datetime-boundary resolution (cached) and `active`; Time Scope (relevance) vs Plan split with interval-containment invariants and write-time enforcement; the Scope Picker component. Schema → commands → picker UI. See ADR 0001. Complete.
+7. **Flows** — Flow node kind and dedicated creation; Instance Type, Target Node, flow scope; flow items with Cycle Scope/Plan; start modal; materialization as real independent copies with per-instance dependency remapping. See ADR 0002. Complete, except exact-time cycles on a Phase-windowed flow (deferred; see [Flows](docs/spec/flows.md)).
+8. **Habits** — Recurrence (Repetition + configurable Consumption); virtual instances with overlay table keyed by `(instance, iteration scope, cycle pair)`; ellipsis display + pinning; archiving and scope-edit reconciliation. See ADR 0002. Partly built: Recurrence, virtual instances, the overlay (which today stores a status and when it was resolved) and scope-edit reconciliation are built; the ellipsis node for future instances, display pinning, and archiving a Habit are not.

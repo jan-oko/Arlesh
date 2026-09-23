@@ -6,7 +6,7 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 ## Entities
 
-**Aspect** — One of six built-in, color-coded top-level life-area containers (Red, Purple, Green, Blue, Gray, Steel). Fixed roots of the domain tree; not user-managed.
+**Aspect** — One of six built-in, color-coded top-level life-area containers (Body, Connections, Growth, Duty, Flow, Self). Fixed roots of the domain tree; not user-managed.
 
 **Project** — A large organizational domain (hobby, habit, workplace, etc.) parented under an Aspect or another Project. May link to an Obsidian knowledge-base directory.
 
@@ -16,7 +16,9 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 **Goal** — A desired state. Parented under a Project, Domain, or another Goal. Can have sub-goals.
 
-**Task** — An action item. Parented under a Project, Domain, Goal, or another Task.
+**Task** — An action item. Parented under a Project, Domain, Goal, Commitment, or another Task.
+
+**Info** — A free-standing note: a one-line body plus an optional long-form **Details** text, stored in `infos`. Parented under an Aspect, Project, Domain, Tag, Goal, Task or another Info (a Tag holds nothing else). Carries no status, scope or tags; on the Mindmap an Info rides along with a kept node but never keeps one. One of the `RetypeKind`s, so any other kind can be retyped to it and back.
 
 **Flow** — A template for a Goal/Task subtree, materialized on demand. A new node kind. Has a title, an **Instance Type** (goal or task), an optional **Target Node**, and a **Flow Window**. May be parented under an Aspect, Domain, Project, or Goal.
 
@@ -38,11 +40,11 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 **Recurrence** — A Habit's pattern, composed of **Repetition** (a Start anchor, an optional Gap of N of a scope kind ≥ the habit scope, and an optional end) and **Consumption** (see below).
 
-**Consumption** — A Habit's per-habit configuration for how unfinished instances are treated as iterations pass; the recurring form of a scoped item's **On-exit behavior**. A configurable tree: (1) **Destructive vs Accumulating** — do unfinished instances **lapse** (Archive-on-exit) when their iteration passes, or do they survive (Keep)? (2) if Accumulating, **Overlapping vs Blocking** — are new iterations generated while unresolved instances exist, or withheld? (3) if Blocking, **Catch-up policy** when the open iteration is completed — generate *all pending* missed iterations in order, only the *next* iteration (advance by one), or jump to the *latest* (current) iteration while recording the skipped intermediate iterations as missed tombstones (for streak/history).
+**Consumption** — A Habit's per-habit configuration for how unfinished instances are treated as iterations pass; the recurring form of a scoped item's **On-exit behavior**. A configurable tree: (1) **Destructive vs Accumulating** — do unfinished instances **lapse** (Archive-on-exit) when their iteration passes, or do they survive (Keep)? (2) if Accumulating, **Overlapping vs Blocking** — are new iterations generated while unresolved instances exist, or withheld? (3) if Blocking, **Catch-up policy** when the open iteration is completed — generate *all pending* missed iterations in order, only the *next* iteration (advance by one), or jump to the *latest* (current) iteration, the skipped intermediate iterations deriving as **Missed** (for streak/history; derived on read, not stored).
 
 **Iteration** — One concrete occurrence window of a Habit, anchored from the Repetition Start plus accumulated flow-scope-and-gap steps. For a **Span** window each iteration occupies one flow window and the Gap is the idle span between one window's end and the next's start, snapped to the canonical scope. For a **Phase** window each iteration is the fixed band/time on its anchor day and the Gap is the whole-day stride between occurrence days (the time-of-day stays fixed) — e.g. "Evening every 2 days". Identified by its anchor scope.
 
-**Modification** — A persisted divergence of a virtual Habit instance from what the template would render, keyed by (flow item, iteration scope). Carries an overridden status, title, blocked reason or **Plan**; a **tombstone** (deleted by the user, lapsed when its iteration passed unfinished, or missed when catch-up skipped it); and per-iteration dependency edges added or suppressed. An instance with no Modification renders purely from the template.
+**Modification** — A persisted divergence of a virtual Habit instance from what the template would render, keyed by (flow item, iteration scope). Carries an overridden status, title, blocked reason or **Plan**; a **tombstone** (deleted by the user, lapsed when its iteration passed unfinished, or missed); and per-iteration dependency edges added or suppressed. An instance with no Modification renders purely from the template.
 
 **Commitment** — Something that must be *kept* rather than *done*: an obligation or abstention holding over a window ("asleep by 23:00", "no social media today"). A content node kind alongside Goal and Task, parented anywhere a Task can be, and able to parent Tasks and other Commitments. Unlike a Task it is never completed by acting; it carries a **Verdict** instead of a status, and it is never scheduled, delegated, blocked or depended upon. Recurs by being a Habit's **Instance Type**.
 
@@ -78,7 +80,7 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 **Undo Stack / Redo Stack** — The gestures Ctrl+Z will reverse and Ctrl+Shift+Z will reapply. One pair for the whole app, not one per tab or window. Session-scoped: closing Arlesh empties both.
 
-**Tab** — One place in the board you are looking at, held open alongside others. A Tab **owns** everything about a view of the board: its **subtree root**, which View it shows (Mindmap or List), its branch orientation, its Mindmap filter set and its List View filter set, its selection, its collapsed nodes and its pan/zoom. Switching Tabs swaps all of it at once, and nothing a Tab owns is visible to, or changed by, another Tab. What is **app-wide** and shared across every Tab: the theme, the **Clipboard**, the Undo/Redo stacks, the path-glyph display preference, and the board itself. A Tab's root, view, orientation and both filter sets are restored on reopening; its selection, collapsed nodes and pan/zoom are not — those are working state.
+**Tab** — One place in the board you are looking at, held open alongside others. A Tab **owns** everything about a view of the board: its **subtree root**, which View it shows (Mindmap, List or Plan), its branch orientation, the scope kind its Plan View pass fills, its Mindmap filter set and its List View filter set, its selection, its collapsed nodes, the Habit histories it has opened and its pan/zoom. Switching Tabs swaps all of it at once, and nothing a Tab owns is visible to, or changed by, another Tab. What is **app-wide** and shared across every Tab: the theme, the **Clipboard**, the Undo/Redo stacks, the display preferences in the settings popover, and the board itself. A Tab's name, root, view, orientation, Plan scope kind, both filter sets and opened Habit histories are restored on reopening; its selection, collapsed nodes and pan/zoom are not — those are working state.
 
 **Tab label** — What a Tab is called in the strip: the title of the subtree it is rooted at, or a fixed label for a Tab showing the whole tree. Stored with the Tab rather than looked up, since an inactive Tab has no view mounted to resolve a title; refreshed whenever that Tab is visited.
 
@@ -90,11 +92,11 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 **Commitment verdict:** `unresolved` (Unresolved) · `kept` (Kept) · `broken` (Broken)
 
-**Task status:** `todo` (To Do / פתוח) · `in_progress` (In Progress / בתהליך) · `done` (Done / בוצע)
+**Task status:** `todo` (To Do) · `in_progress` (In Progress) · `done` (Done)
 
-**Goal status:** `active` (Active / פעיל) · `achieved` (Achieved / הושלם) · `frozen` (Frozen / מוקפא) · `archived` (Archived / בוידעם)
+**Goal status:** `active` (Active) · `achieved` (Achieved) · `frozen` (Frozen) · `archived` (Archived)
 
-**Project status:** `active` (Active / פעיל) · `paused` (Paused / מושהה) · `completed` (Completed / הושלם) · `archived` (Archived / בוידעם)
+**Project status:** `active` (Active) · `achieved` (Achieved) · `frozen` (Frozen) · `archived` (Archived)
 
 ---
 
@@ -116,11 +118,11 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 **Active** — A Scope is active when it contains the current datetime. A Task/Goal is active when its Time Scope is active; Unscoped items are always active.
 
-**On-exit behavior** — Set when a Task/Goal is given an *explicit* Time Scope (and inherited with the window otherwise): what happens once the item's window passes unfinished — **Archive** (the item **Lapses**, dropping from the active view) or **Keep** (the item stays, flagged **Overdue**). The single-occurrence form of a Habit's Consumption root (Archive = Destructive, Keep = Accumulating).
+**On-exit behavior** — Set when a Task/Goal is given an *explicit* Time Scope (and inherited with the window otherwise): what happens once the item's window passes unfinished — **Archive** (its Resolution reads **Missed** and it is effectively Archived, dropping from the active view) or **Keep** (the item stays, its Resolution **Overdue**). The single-occurrence form of a Habit's Consumption root (Archive = Destructive, Keep = Accumulating).
 
 **Overdue** — A derived state: a *Keep*-on-exit Task/Goal whose Time Scope has fully passed while still unfinished. Computed on read from (scope end, now, status); never stored.
 
-**Lapsed** — A derived state: an *Archive*-on-exit Task/Goal — or a Destructive Habit iteration — whose window has fully passed while still unfinished. Computed on read; never stored. Distinct from the deliberate goal **Archived** status (user-declared "no longer relevant").
+**Lapsed** — A derived state. For a Task, Goal or Commitment it is a **Timing**: the item's window has fully passed, finished or not (an unfinished *Archive*-on-exit item's Resolution is then **Missed**, a *Keep*-on-exit one's **Overdue**). For a Habit iteration it is a status: a Destructive iteration whose window passed unfinished. Computed on read; never stored. Distinct from the deliberate goal **Archived** status (user-declared "no longer relevant").
 
 **Person** — A knowledge-base entity representing a person.
 

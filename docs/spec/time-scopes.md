@@ -4,11 +4,11 @@
 
 ## The day boundary
 
-**A Day runs 02:00 → 02:00, and the whole ladder runs with it.** Season, Month, Week and Day all start and end at 02:00 local wall-clock: a Week is Monday 02:00 to the next Monday 02:00, a Month the 1st at 02:00 to the next 1st at 02:00. Only the canonical kinds are defined this way; a Part of Day keeps its own band and an Exact scope its own two datetimes.
+**A Day runs 02:00 → 02:00, and the whole ladder runs with it.** Season, Month, Week and Day all start and end at 02:00 local wall-clock: a Week is Sunday 02:00 to the next Sunday 02:00, a Month the 1st at 02:00 to the next 1st at 02:00. Only the canonical kinds are defined this way; a Part of Day keeps its own band and an Exact scope its own two datetimes.
 
 The reason is containment: **a scope contains exactly its own parts.** Night runs 22:00–02:00 and belongs to the Day it starts on, so a Day ending at midnight did not contain its own Night — for the two hours after midnight the part-of-day model said "still yesterday" while the Day scope said "already today", and everything derived from Day bounds (habit iteration generation and archival, Timing, Resolution, Archival, every *is this in scope now* test) turned over at midnight while the parts said the day had not ended. 02:00 is not a new seam: it is where Night already ends and Premorning already begins.
 
-Moving only the Day was rejected. It removes the contradiction at the Day boundary and reproduces it at the Week boundary — Sunday's Night would run two hours into Monday's week while belonging to the old one. One rule, applied to every canonical kind, is the point.
+Moving only the Day was rejected. It removes the contradiction at the Day boundary and reproduces it at the Week boundary — Saturday's Night would run two hours into Sunday's week while belonging to the old one. One rule, applied to every canonical kind, is the point.
 
 Two consequences worth stating plainly:
 
