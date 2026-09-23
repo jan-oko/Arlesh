@@ -683,8 +683,48 @@ export async function convertFlowItem(fromType: FlowItemType, id: number, toType
   return invoke<number>("convert_flow_item", { fromType, id, toType });
 }
 
-export async function setFlowItemCycles(flowId: number, itemType: FlowItemType, itemId: number, cycles: FlowCycleInput[]): Promise<void> {
-  return invoke<void>("set_flow_item_cycles", { flowId, itemType, itemId, cycles });
+/** The Habit editor's two answers to an edit that would orphan recorded iterations. */
+export type Reconcile = "fork" | "discard";
+
+/**
+ * Where an "Archive & new" item edit landed: the fork's flow id, and old→new item ids for the rest
+ * of the save to follow.
+ */
+export interface ForkedTemplate {
+  flow_id: number;
+  goals: Array<[number, number]>;
+  tasks: Array<[number, number]>;
+}
+
+/**
+ * Saves a flow item's cycle pairs, keeping every pair that survives — so a save that leaves them
+ * alone orphans nothing. A change that would orphan recorded edits rejects with a
+ * `needs_confirmation` ({@link orphanedEditCount}) until `reconcile` answers it; a fork resolves to
+ * where the change went.
+ */
+export async function setFlowItemCycles(
+  flowId: number,
+  itemType: FlowItemType,
+  itemId: number,
+  cycles: FlowCycleInput[],
+  reconcile?: Reconcile,
+): Promise<ForkedTemplate | null> {
+  return invoke<ForkedTemplate | null>("set_flow_item_cycles", {
+    flowId, itemType, itemId, cycles, reconcile: reconcile ?? null,
+  });
+}
+
+/**
+ * Narrows a rejection to the refusal a cycle edit raises when it would orphan recorded edits, and
+ * returns how many iterations hold them. `null` for any other rejection.
+ */
+export function orphanedEditCount(error: unknown): number | null {
+  if (!isWireError(error) || error.kind !== "needs_confirmation") return null;
+  const { details } = error;
+  if (typeof details !== "object" || details === null) return null;
+  if (!("reason" in details) || details.reason !== "orphans_occurrence_edits") return null;
+  if (!("count" in details) || typeof details.count !== "number") return null;
+  return details.count;
 }
 
 export async function addFlowDependency(flowId: number, dependentType: FlowItemType, dependentId: number, dependsOnType: FlowItemType, dependsOnId: number): Promise<void> {

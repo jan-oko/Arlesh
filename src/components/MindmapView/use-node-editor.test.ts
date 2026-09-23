@@ -5,7 +5,7 @@ import type { MindmapNode } from "@/utils/tree-layout";
 import type { TaskSaveData } from "@/components/TaskEditorModal/TaskEditorModal";
 import { updateTask, scopeContainmentConflicts } from "@/api/tasks";
 import { updateGoal } from "@/api/goals";
-import { flowOrigins } from "@/api/flows";
+import { flowOrigins, setFlowItemCycles, updateFlowTask, addFlowDependency } from "@/api/flows";
 
 vi.mock("@/api/domains", () => ({
   listDomains: vi.fn().mockResolvedValue([]),
@@ -27,9 +27,12 @@ vi.mock("@/api/goals", () => ({
 }));
 vi.mock("@/api/flows", () => ({
   updateFlow: vi.fn(), updateFlowGoal: vi.fn(), updateFlowTask: vi.fn(),
-  setFlowItemCycles: vi.fn(), addFlowDependency: vi.fn(), removeFlowDependency: vi.fn(),
+  setFlowItemCycles: vi.fn().mockResolvedValue(null), addFlowDependency: vi.fn(), removeFlowDependency: vi.fn(),
   flowOrigins: vi.fn().mockResolvedValue([]),
   setHabitInstancePlan: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("@/api/gesture", () => ({
+  withGesture: vi.fn((_name: string, run: () => Promise<unknown>) => run()),
 }));
 vi.mock("@/api/block-reasons", () => ({
   setBlockReasons: vi.fn().mockResolvedValue(undefined),
@@ -162,5 +165,32 @@ describe("useNodeEditor — checkScopeClamp confirm", () => {
     await waitFor(() => expect(result.current.scopeClampRequest).not.toBeNull());
 
     expect(result.current.scopeClampRequest?.flowOrigins).toEqual({ "task-9": "Add Feature" });
+  });
+});
+
+describe("useNodeEditor — saving a flow item", () => {
+  const flowTask: MindmapNode = {
+    id: "flowtask-7", kind: "flow_task", title: "Stretch", tagIds: [], position: 0, children: [],
+    flowItem: {
+      itemType: "flow_task", flowId: 3, flowInstanceType: "task", flowScopeN: 1, flowScopeKind: "day",
+      cycles: [], dependsOn: [],
+    },
+  };
+
+  it("lands the rest of the save on the fork an Archive & new answer created", async () => {
+    vi.mocked(setFlowItemCycles).mockResolvedValueOnce({ flow_id: 9, goals: [], tasks: [[7, 70], [6, 60]] });
+    const reload = vi.fn().mockResolvedValue(undefined);
+    const tree: MindmapNode = { ...root, children: [flowTask] };
+    const { result } = renderHook(() => useNodeEditor({ tree, allTasksAndGoals: [], reload }));
+    act(() => result.current.setEditorModal({ nodeId: "flowtask-7", node: flowTask }));
+
+    await act(() => result.current.onFlowItemSave({
+      title: "Stretch well", cycles: [], isPrivate: false, reconcile: "fork",
+      addedDeps: [{ type: "flow_task", id: 6 }], removedDeps: [],
+    }));
+
+    expect(setFlowItemCycles).toHaveBeenCalledWith(3, "flow_task", 7, [], "fork");
+    expect(updateFlowTask).toHaveBeenCalledWith(70, { title: "Stretch well", isPrivate: false });
+    expect(addFlowDependency).toHaveBeenCalledWith(9, "flow_task", 70, "flow_task", 60);
   });
 });

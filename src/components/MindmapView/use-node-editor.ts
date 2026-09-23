@@ -19,6 +19,8 @@ import {
   setFlowRecurrence, deleteFlowRecurrence, forkFlow, clearHabitModifications,
 } from "@/api/flows";
 import { getOrCreateScope } from "@/api/scopes";
+import type { FlowItemType, ForkedTemplate } from "@/api/flows";
+import { withGesture } from "@/api/gesture";
 import type { Domain } from "@/api/domains";
 import { listDomains, updateDomain } from "@/api/domains";
 import {
@@ -39,6 +41,13 @@ import { DOMAIN_SUBTYPE } from "@/api/domains";
 import { TASK_STATUS } from "@/utils/status-mapping";
 import { useOccurrenceEditor } from "@/hooks/use-occurrence-editor";
 import type { OccurrenceEditorHandles } from "@/hooks/use-occurrence-editor";
+
+/** A flow item's id on the fork an "Archive & new" save landed on — or its own, with no fork. */
+function forkedItemId(forked: ForkedTemplate | null, type: FlowItemType, id: number): number {
+  if (forked === null) return id;
+  const pairs = type === "flow_goal" ? forked.goals : forked.tasks;
+  return pairs.find(([old]) => old === id)?.[1] ?? id;
+}
 
 export interface EditorModalState {
   nodeId: string;
@@ -102,6 +111,7 @@ interface Result {
 
 export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Result {
   const { t } = useTranslation("warnings");
+  const { t: tUndo } = useTranslation("undo");
   const showToast = useMindmapStore((s) => s.showToast);
   const [editorModal, setEditorModal] = useState<EditorModalState | null>(null);
   const [allTags, setAllTags] = useState<Domain[]>([]);
@@ -333,31 +343,40 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
       const flowItem = node.flowItem;
       if (flowItem === undefined) return;
       const dbId = parseInt(node.id.split("-").pop() ?? "0", 10);
-      const patch = { title: data.title, isPrivate: data.isPrivate };
-      if (flowItem.itemType === "flow_goal") {
-        await updateFlowGoal(dbId, patch);
-      } else {
-        await updateFlowTask(dbId, patch);
-      }
-      await setFlowItemCycles(
-        flowItem.flowId,
-        flowItem.itemType,
-        dbId,
-        data.cycles.map((c) => ({
-          scope_kind: c.scopeKind, scope_index: c.scopeIndex,
-          plan_kind: c.planKind, plan_start: c.planStart, plan_end: c.planEnd,
-        })),
-      );
-      for (const dep of data.addedDeps) {
-        await addFlowDependency(flowItem.flowId, flowItem.itemType, dbId, dep.type, dep.id);
-      }
-      for (const dep of data.removedDeps) {
-        await removeFlowDependency(flowItem.itemType, dbId, dep.type, dep.id);
-      }
+      // One gesture for the whole save. The pairs go first: they are what may refuse — a change
+      // that would orphan recorded edits asks the Habit editor's question — and an "Archive & new"
+      // answer moves the rest of the save onto the fork, whose item ids the backend hands back.
+      await withGesture(tUndo("gestures.editFlowItem"), async () => {
+        const forked = await setFlowItemCycles(
+          flowItem.flowId,
+          flowItem.itemType,
+          dbId,
+          data.cycles.map((c) => ({
+            scope_kind: c.scopeKind, scope_index: c.scopeIndex,
+            plan_kind: c.planKind, plan_start: c.planStart, plan_end: c.planEnd,
+          })),
+          data.reconcile,
+        );
+        const onto = (type: FlowItemType, id: number): number => forkedItemId(forked, type, id);
+        const flowId = forked?.flow_id ?? flowItem.flowId;
+        const itemId = onto(flowItem.itemType, dbId);
+        const patch = { title: data.title, isPrivate: data.isPrivate };
+        if (flowItem.itemType === "flow_goal") {
+          await updateFlowGoal(itemId, patch);
+        } else {
+          await updateFlowTask(itemId, patch);
+        }
+        for (const dep of data.addedDeps) {
+          await addFlowDependency(flowId, flowItem.itemType, itemId, dep.type, onto(dep.type, dep.id));
+        }
+        for (const dep of data.removedDeps) {
+          await removeFlowDependency(flowItem.itemType, itemId, dep.type, onto(dep.type, dep.id));
+        }
+      });
       await reload();
       setEditorModal(null);
     },
-    [editorModal, reload],
+    [editorModal, reload, tUndo],
   );
 
   const onSimpleSave = useCallback(

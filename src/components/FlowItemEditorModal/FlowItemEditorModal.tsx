@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { FlowCyclePair, FlowItemDep } from "@/utils/tree-layout";
-import type { FlowItemType } from "@/api/flows";
+import type { FlowItemType, Reconcile } from "@/api/flows";
+import { orphanedEditCount } from "@/api/flows";
 import { getErrorMessage } from "@/api/errors";
 import EditorModal from "@/components/EditorModal/EditorModal";
 import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
+import ReconcilePrompt from "@/components/ReconcilePrompt/ReconcilePrompt";
 import FlowCycleField from "./FlowCycleField";
 import { useInputCapture } from "@/hooks/use-input-capture";
 import styles from "@/components/EditorModal/EditorModal.module.css";
@@ -16,6 +18,11 @@ export interface FlowItemSaveData {
   addedDeps: FlowItemDep[];
   removedDeps: FlowItemDep[];
   isPrivate: boolean;
+  /**
+   * The answer to a cycle change that would orphan recorded edits on this Habit's occurrences:
+   * `"fork"` (Archive & new) or `"discard"` (Discard & regenerate). Absent on a first save.
+   */
+  reconcile?: Reconcile;
 }
 
 function depKey(dep: FlowItemDep): string { return `${dep.type}-${dep.id}`; }
@@ -49,6 +56,7 @@ export default function FlowItemEditorModal({ node, availableDeps, onSave, onClo
   const [depSearch, setDepSearch] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [orphanedCount, setOrphanedCount] = useState<number | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
   const initialDeps = node.flowItem?.dependsOn ?? [];
 
@@ -65,22 +73,33 @@ export default function FlowItemEditorModal({ node, availableDeps, onSave, onClo
     setDepSearch("");
   }
 
-  async function handleSave() {
+  async function save(reconcile?: Reconcile) {
     if (title.trim() === "") return;
     setIsSaving(true);
     setSaveError(null);
     try {
       const addedDeps = currentDeps.filter((d) => !initialDeps.some((id) => depEquals(id, d)));
       const removedDeps = initialDeps.filter((d) => !currentDeps.some((cd) => depEquals(cd, d)));
-      await onSave({ title: title.trim(), cycles, addedDeps, removedDeps, isPrivate });
+      await onSave({
+        title: title.trim(), cycles, addedDeps, removedDeps, isPrivate,
+        ...(reconcile !== undefined ? { reconcile } : {}),
+      });
     } catch (err) {
-      setSaveError(getErrorMessage(err));
+      // A cycle change that would orphan what was recorded on this Habit's occurrences asks the
+      // Habit editor's question, and the save — undone whole by its gesture — waits for it.
+      const orphaned = orphanedEditCount(err);
+      if (orphaned !== null) setOrphanedCount(orphaned);
+      else setSaveError(getErrorMessage(err));
       setIsSaving(false);
     }
   }
 
+  function handleSave() {
+    void save();
+  }
+
   function handleKeyDown(event: React.KeyboardEvent) {
-    if (event.key === "Enter" && !event.shiftKey && event.target === titleRef.current) { event.preventDefault(); void handleSave(); }
+    if (event.key === "Enter" && !event.shiftKey && event.target === titleRef.current) { event.preventDefault(); handleSave(); }
     if (event.key === "Escape") onClose();
   }
 
@@ -101,7 +120,14 @@ export default function FlowItemEditorModal({ node, availableDeps, onSave, onClo
   const heading = itemType === "flow_goal" ? t("editGoal") : t("editTask");
 
   return (
-    <EditorModal heading={heading} onClose={onClose} onKeyDown={handleKeyDown} isSaving={isSaving} onSave={() => void handleSave()} saveError={saveError}>
+    <EditorModal heading={heading} onClose={onClose} onKeyDown={handleKeyDown} isSaving={isSaving} onSave={handleSave} saveError={saveError}>
+      {orphanedCount !== null && (
+        <ReconcilePrompt
+          message={t("reconcilePromptCycles", { count: orphanedCount })}
+          onChoose={(choice) => { setOrphanedCount(null); void save(choice); }}
+          onCancel={() => setOrphanedCount(null)}
+        />
+      )}
       <label className={styles.label}>
         {t("fieldTitle")}
         <input ref={titleRef} className={styles.input} value={title} onChange={(e) => setTitle(e.target.value)} type="text" />

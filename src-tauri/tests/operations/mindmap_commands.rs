@@ -212,6 +212,7 @@ async fn seed(app: &tauri::App<tauri::test::MockRuntime>, pool: &sqlx::SqlitePoo
             plan_start: None,
             plan_end: None,
         }],
+        None,
     )
     .await
     .unwrap();

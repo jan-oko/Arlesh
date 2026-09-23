@@ -92,6 +92,7 @@ async fn weekly_run(
         FlowItemType::FlowTask,
         item.id,
         vec![cycle(cycle_scope, 2)],
+        None,
     )
     .await
     .unwrap();

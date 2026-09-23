@@ -241,6 +241,7 @@ async fn the_set_flow_item_cycles_command_commits_every_pair() {
                 ..Default::default()
             },
         ],
+        None,
     )
     .await
     .unwrap();
@@ -287,6 +288,7 @@ async fn the_delete_flow_item_command_commits_the_item_and_its_links() {
         FlowItemType::FlowTask,
         specify.id,
         vec![FlowCycleInput::default()],
+        None,
     )
     .await
     .unwrap();
@@ -570,6 +572,7 @@ async fn the_fork_flow_command_commits_the_whole_clone() {
             scope_index: Some(1),
             ..Default::default()
         }],
+        None,
     )
     .await
     .unwrap();
@@ -629,6 +632,7 @@ async fn the_duplicate_flow_command_commits_the_copy_and_its_recurrence() {
             scope_index: Some(1),
             ..Default::default()
         }],
+        None,
     )
     .await
     .unwrap();
@@ -712,6 +716,7 @@ async fn the_duplicate_flow_item_command_commits_the_copied_item_and_its_pairs()
             scope_index: Some(3),
             ..Default::default()
         }],
+        None,
     )
     .await
     .unwrap();

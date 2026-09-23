@@ -1099,12 +1099,19 @@ impl<'session> FlowOperator<'session> {
         Ok(new_id)
     }
 
-    /// Replaces a flow item's (Cycle Scope, Cycle Plan) pairs with `cycles`.
+    /// Makes a flow item's (Cycle Scope, Cycle Plan) pairs read `cycles`, **keeping the id of
+    /// every pair that survives**.
     ///
-    /// A `DELETE` followed by one `INSERT` per pair, and so **not atomic on its own**: interrupted
-    /// part-way it leaves the item with some of its old pairs gone and some of its new ones
-    /// missing. It opens no transaction — per ADR-0004 only the outermost caller decides the
-    /// boundary. Nothing is read first, which is why this stays on the operator.
+    /// A pair's id is part of every occurrence's identity — its status, its own title, block
+    /// reason, Plan and tombstone are all keyed on it — so replacing the pairs wholesale, as this
+    /// used to, orphaned every one of them on any save of the item, a title-only one included.
+    /// The pairs are diffed instead ([`occurrence::diff_cycles`]): a pair whose Cycle Scope is
+    /// still asked for keeps its row, updated in place only if its Cycle Plan or position moved;
+    /// only pairs that really went are deleted and only new ones inserted. An unchanged set
+    /// writes nothing at all.
+    ///
+    /// It reads the stored pairs first and writes from them, and opens no transaction — per
+    /// ADR-0004 the outermost caller decides the boundary, and every caller runs inside one.
     ///
     /// ```no_run
     /// # use arlesh_lib::database::session::SessionFactory;
@@ -1123,12 +1130,45 @@ impl<'session> FlowOperator<'session> {
         item_id: i64,
         cycles: &[FlowCycleInput],
     ) -> Result<(), FlowError> {
-        sqlx::query("DELETE FROM flow_item_cycles WHERE item_type = ? AND item_id = ?")
-            .bind(item_type.as_str())
-            .bind(item_id)
+        let existing = self.item_cycles(item_type, item_id).await?;
+        let diff = occurrence::diff_cycles(&existing, cycles);
+        for id in &diff.removed {
+            sqlx::query("DELETE FROM flow_item_cycles WHERE id = ?")
+                .bind(id)
+                .execute(&mut *self.connection)
+                .await?;
+        }
+        for kept in &diff.kept {
+            let (Some(stored), Some(wanted)) = (
+                existing.iter().find(|pair| pair.id == kept.id),
+                cycles.get(kept.position),
+            ) else {
+                continue;
+            };
+            let position = i64::try_from(kept.position).unwrap_or(i64::MAX);
+            let unchanged = stored.plan_kind == wanted.plan_kind
+                && stored.plan_start == wanted.plan_start
+                && stored.plan_end == wanted.plan_end
+                && stored.position == position;
+            if unchanged {
+                continue;
+            }
+            sqlx::query(
+                "UPDATE flow_item_cycles SET plan_kind = ?, plan_start = ?, plan_end = ?, position = ?
+                 WHERE id = ?",
+            )
+            .bind(&wanted.plan_kind)
+            .bind(wanted.plan_start)
+            .bind(wanted.plan_end)
+            .bind(position)
+            .bind(kept.id)
             .execute(&mut *self.connection)
             .await?;
-        for (position, cycle) in cycles.iter().enumerate() {
+        }
+        for position in &diff.added {
+            let Some(cycle) = cycles.get(*position) else {
+                continue;
+            };
             sqlx::query(
                 "INSERT INTO flow_item_cycles
                     (flow_id, item_type, item_id, scope_kind, scope_index,
@@ -1143,11 +1183,27 @@ impl<'session> FlowOperator<'session> {
             .bind(&cycle.plan_kind)
             .bind(cycle.plan_start)
             .bind(cycle.plan_end)
-            .bind(position as i64)
+            .bind(i64::try_from(*position).unwrap_or(i64::MAX))
             .execute(&mut *self.connection)
             .await?;
         }
         Ok(())
+    }
+
+    /// One item's cycle pairs, in position order.
+    pub async fn item_cycles(
+        &mut self,
+        item_type: FlowItemType,
+        item_id: i64,
+    ) -> Result<Vec<FlowItemCycle>, FlowError> {
+        Ok(sqlx::query_as::<_, FlowItemCycle>(
+            "SELECT * FROM flow_item_cycles WHERE item_type = ? AND item_id = ?
+             ORDER BY position, id",
+        )
+        .bind(item_type.as_str())
+        .bind(item_id)
+        .fetch_all(&mut *self.connection)
+        .await?)
     }
 
     /// Lists every flow's cycle pairs (for the mindmap load).

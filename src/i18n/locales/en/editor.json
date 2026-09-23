@@ -67,6 +67,7 @@
   "catchupNext": "Next",
   "catchupLatest": "Latest",
   "reconcilePrompt": "This habit has {{count}} completed iterations. Changing its schedule would orphan them.",
+  "reconcilePromptCycles": "{{count}} iterations of this habit hold edits on the occurrences these cycle pairs drew. Changing the pairs would orphan them.",
   "reconcileFork": "Archive & new",
   "reconcileDiscard": "Discard & regenerate",
   "reconcileCancel": "Cancel",

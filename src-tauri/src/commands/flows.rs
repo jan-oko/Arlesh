@@ -10,6 +10,7 @@ use tauri::State;
 use crate::{
     database::session::SessionFactory,
     error::WireError,
+    flows::occurrence::{ForkedTemplate, Reconcile},
     flows::{
         self,
         model::{
@@ -337,7 +338,14 @@ pub async fn delete_flow_item(
     db.commit().await.map_err(WireError::from_error)
 }
 
-/// Replaces a flow item's (Cycle Scope, Cycle Plan) pairs.
+/// Saves a flow item's (Cycle Scope, Cycle Plan) pairs, keeping the id of every pair that
+/// survives — so a save that leaves the pairs alone, a title-only one included, orphans nothing.
+///
+/// A change that **would** orphan recorded edits — a status, an own title, block reason, Plan or
+/// tombstone, or an added child, on an occurrence a removed pair drew — is refused with
+/// [`NeedsConfirmation`](crate::error::WireErrorKind::NeedsConfirmation) until `reconcile` answers
+/// it the way the Habit editor's prompt does: `fork` (Archive & new) or `discard` (Discard &
+/// regenerate). A fork returns the new flow and its old→new item ids, for the rest of the save.
 #[tauri::command]
 pub async fn set_flow_item_cycles(
     factory: State<'_, SessionFactory>,
@@ -345,13 +353,37 @@ pub async fn set_flow_item_cycles(
     item_type: FlowItemType,
     item_id: i64,
     cycles: Vec<FlowCycleInput>,
-) -> Result<(), WireError> {
+    reconcile: Option<Reconcile>,
+) -> Result<Option<ForkedTemplate>, WireError> {
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    db.flows()
-        .set_cycles(flow_id, item_type, item_id, &cycles)
-        .await
-        .map_err(WireError::from_error)?;
-    db.commit().await.map_err(WireError::from_error)
+    if reconcile.is_none() {
+        let orphaned = flows::occurrence::orphaned_edits(&mut db, item_type, item_id, &cycles)
+            .await
+            .map_err(WireError::from_error)?;
+        if orphaned > 0 {
+            return Err(WireError::needs_confirmation(
+                format!(
+                    "changing these cycles would orphan edits recorded in {orphaned} iteration(s)"
+                ),
+                serde_json::json!({
+                    "reason": "orphans_occurrence_edits",
+                    "count": orphaned,
+                }),
+            ));
+        }
+    }
+    let forked = flows::occurrence::set_item_cycles(
+        &mut db,
+        FlowId(flow_id),
+        item_type,
+        item_id,
+        &cycles,
+        reconcile,
+    )
+    .await
+    .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)?;
+    Ok(forked)
 }
 
 /// Lists every flow's cycle pairs.

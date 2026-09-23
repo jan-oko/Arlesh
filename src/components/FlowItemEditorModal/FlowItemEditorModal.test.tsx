@@ -52,6 +52,35 @@ describe("FlowItemEditorModal", () => {
     );
   });
 
+  it("asks the Habit editor's question when a cycle change would orphan recorded edits", async () => {
+    const orphaning = {
+      kind: "needs_confirmation",
+      message: "changing these cycles would orphan edits recorded in 2 iteration(s)",
+      details: { reason: "orphans_occurrence_edits", count: 2 },
+    };
+    const onSave = vi.fn().mockRejectedValueOnce(orphaning).mockResolvedValue(undefined);
+    render(<FlowItemEditorModal {...defaultProps} onSave={onSave} />);
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(screen.getByText("reconcilePromptCycles")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "reconcileFork" }));
+    await waitFor(() =>
+      expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({ reconcile: "fork" })),
+    );
+  });
+
+  it("saves nothing more when the question is cancelled", async () => {
+    const onSave = vi.fn().mockRejectedValueOnce({
+      kind: "needs_confirmation", message: "x", details: { reason: "orphans_occurrence_edits", count: 1 },
+    });
+    render(<FlowItemEditorModal {...defaultProps} onSave={onSave} />);
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(screen.getByText("reconcilePromptCycles")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "reconcileCancel" }));
+    expect(screen.queryByText("reconcilePromptCycles")).toBeNull();
+    expect(onSave).toHaveBeenCalledTimes(1);
+  });
+
   it("adds an intra-flow dependency from the search", async () => {
     render(<FlowItemEditorModal {...defaultProps} />);
     fireEvent.change(screen.getByPlaceholderText("placeholderDepSearch"), { target: { value: "spec" } });
