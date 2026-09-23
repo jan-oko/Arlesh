@@ -1,4 +1,5 @@
 import type { MindmapNode } from "@/utils/tree-layout";
+import type { RowId } from "@/api/node-id";
 import { isNodeBlocked, entityNodeId } from "@/utils/tree-layout";
 import type { TaskDependencyEdge } from "@/api/tasks";
 import type { CommitmentListRow, ExpectationListRow, TaskListRow } from "@/utils/list-filter";
@@ -14,7 +15,7 @@ function nearestOfKind(ancestors: readonly MindmapNode[], kind: MindmapNode["kin
   return undefined;
 }
 
-function buildRow(node: MindmapNode, ancestors: readonly MindmapNode[], depsByTask: ReadonlyMap<number, string[]>): TaskListRow {
+function buildRow(node: MindmapNode, ancestors: readonly MindmapNode[], depsByTask: ReadonlyMap<RowId, string[]>): TaskListRow {
   const goal = nearestOfKind(ancestors, "goal");
   const project = nearestOfKind(ancestors, "project");
   return {
@@ -24,7 +25,7 @@ function buildRow(node: MindmapNode, ancestors: readonly MindmapNode[], depsByTa
     goalStatus: goal?.status ?? null,
     projectRef: project?.id ?? null,
     projectStatus: project?.status ?? null,
-    // A virtual Habit occurrence draws no row, so no dependency edge can name it.
+    // A node that draws no row (a wait's check task) is named by no dependency edge.
     dependencyRefs: (node.rowId === undefined ? undefined : depsByTask.get(node.rowId)) ?? [],
     isBlocked: isNodeBlocked(node),
     hasBlockedAncestor: ancestors.some(isNodeBlocked),
@@ -46,7 +47,7 @@ function buildRow(node: MindmapNode, ancestors: readonly MindmapNode[], depsByTa
  * true root for the whole board, or a subtree root to list just what is inside it.
  */
 export function flattenTaskRows(root: MindmapNode, taskDeps: readonly TaskDependencyEdge[]): TaskListRow[] {
-  const depsByTask = new Map<number, string[]>();
+  const depsByTask = new Map<RowId, string[]>();
   for (const dep of taskDeps) {
     const ref = entityNodeId(dep.dependency_type, dep.dependency_id);
     const list = depsByTask.get(dep.task_id);

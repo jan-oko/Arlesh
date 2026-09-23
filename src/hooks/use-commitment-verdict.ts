@@ -5,7 +5,6 @@ import { rowIdOf } from "@/utils/node-identity";
 import type { Verdict } from "@/api/verdict";
 import { VERDICT } from "@/api/verdict";
 import { NEXT_VERDICT, updateCommitment, verdictAfterPressing } from "@/api/commitments";
-import { setHabitItemStatus } from "@/api/flows";
 import { getErrorMessage } from "@/api/errors";
 
 interface Options {
@@ -43,22 +42,10 @@ export function useCommitmentVerdict({ findNode, reload, showToast }: Options): 
       const node = findNode(nodeId);
       if (node === undefined || node.kind !== "commitment") return;
       const next = nextVerdict(node.verdict ?? VERDICT.UNRESOLVED);
-      // A commitment Habit's iteration is virtual: it has no row of its own, so its verdict is a
-      // per-iteration Modification, in the same slot an ordinary instance keeps its status in.
-      // Clearing one back to Unresolved removes the Modification, exactly as un-completing a task
-      // instance does — there is then nothing recorded, which is what "you have not said" is.
-      const write =
-        node.habitItem === undefined
-          ? updateCommitment(rowIdOf(node), { verdict: next }).then(() => undefined)
-          : setHabitItemStatus(
-              node.habitItem.flowId,
-              node.habitItem.itemType,
-              node.habitItem.itemId,
-              node.habitItem.scopeId,
-              node.habitItem.cycleId,
-              next === VERDICT.UNRESOLVED ? null : next,
-              Date.now(),
-            );
+      // A commitment Habit's iteration is an ordinary Commitment row (ADR 0008), so its verdict
+      // is written like any other's; clearing it back to Unresolved leaves nothing recorded on
+      // the occurrence, which is what "you have not said" is.
+      const write = updateCommitment(rowIdOf(node), { verdict: next });
       void write.then(
         () => reload(),
         (error: unknown) => {

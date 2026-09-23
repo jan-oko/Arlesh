@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { storedId } from "@/api/node-id";
 import { useTranslation } from "react-i18next";
 import { rowIdOf } from "@/utils/node-identity";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
@@ -179,7 +180,7 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
   const titleRef = useRef<HTMLInputElement>(null);
 
   // Recurrence (Habit) is edit-only — it needs a persisted flow to key on.
-  const flowId = node.rowId;
+  const flowId = node.rowId === undefined ? undefined : storedId(node.rowId);
   const isEdit = flowId !== undefined;
   const [recurrence, setRecurrence] = useState<RecurrenceUi>(() => defaultRecurrence(todayIso()));
   // For edit-habit reconciliation: how many completed iterations exist, the schedule snapshot to
@@ -228,7 +229,7 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
   }, [flowId]);
 
   function selectTarget(candidate: MindmapNode) {
-    const id = rowIdOf(candidate);
+    const id = storedId(rowIdOf(candidate));
     setTarget({ kind: candidate.kind, id, title: candidate.title });
     setTargetSearch("");
   }

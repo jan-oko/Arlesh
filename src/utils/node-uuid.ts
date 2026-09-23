@@ -1,3 +1,4 @@
+import type { RowId } from "@/api/node-id";
 import { uuidV5 } from "@/utils/uuid-v5";
 import type { WaitRef } from "@/utils/tree-layout";
 
@@ -29,18 +30,18 @@ export function checkTaskNodeId(expectationId: number): string {
 }
 
 /** The node id of the virtual Expectation a delegated Task waits on. It draws no row of its own. */
-export function delegationWaitNodeId(taskId: number): string {
+export function delegationWaitNodeId(taskId: RowId): string {
   return mint(`delegation-wait/${taskId}`);
 }
 
 /** The node id of the virtual wait an Asynchronous Task's completion spawned. It draws no row. */
-export function spawnedWaitNodeId(taskId: number): string {
+export function spawnedWaitNodeId(taskId: RowId): string {
   return mint(`spawned-wait/${taskId}`);
 }
 
 /** The key a spawned wait's open check's lifecycle is filed under, as {@link checkTaskNodeId}. Also
  * the check's node id in the one case its due instant is unknown. */
-export function spawnedCheckNodeId(taskId: number): string {
+export function spawnedCheckNodeId(taskId: RowId): string {
   return mint(`spawned-check/${taskId}`);
 }
 

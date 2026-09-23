@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { isOccurrence } from "@/utils/node-identity";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { StatusIndicator } from "@/utils/node-status-indicators";
 import { useScopeRangeLabel } from "@/hooks/use-scope-range-label";
@@ -76,8 +77,8 @@ export default function StatusIconRow({ node, indicators, top }: Props) {
       case "info":
         return { tooltip: node.infoDetails ?? "", icon: <EllipsisIcon cx={cx} cy={rowY} r={ICON_R} color={MUTED} /> };
       case "flowInstance": {
-        // A virtual Habit iteration reads as the cyclical habit glyph; a Start-flow instance as the wave.
-        const isHabit = node.habitItem !== undefined;
+        // A Habit occurrence reads as the cyclical habit glyph; a Start-flow instance as the wave.
+        const isHabit = isOccurrence(node);
         return {
           tooltip: isHabit ? t("habitInstance") : t("flowInstance"),
           icon: isHabit

@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { storedId } from "@/api/node-id";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { rowIdOf } from "@/utils/node-identity";
@@ -75,8 +76,8 @@ export function useExpectationActions({ findNode, reload, showToast }: Options):
       }
       const status = node.status === EXPECTATION_STATUS.RELEASED ? EXPECTATION_STATUS.PENDING : EXPECTATION_STATUS.RELEASED;
       const write = node.spawnedBy !== undefined
-        ? updateSpawnedWait(node.spawnedBy.taskId, { status })
-        : updateExpectation(rowIdOf(node), { status }).then(() => undefined);
+        ? updateSpawnedWait(storedId(node.spawnedBy.taskId), { status })
+        : updateExpectation(storedId(rowIdOf(node)), { status }).then(() => undefined);
       void write.then(() => reload(), fail(nodeId));
     },
     [findNode, reload, showToast, fail, t],

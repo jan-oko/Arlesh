@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { isOccurrence } from "@/utils/node-identity";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { findNode } from "@/utils/mindmap-tree";
@@ -21,7 +22,7 @@ export function useOpenAsyncTemplate(
     (nodeId: string) => {
       const node = findNode(tree, nodeId);
       if (node === undefined) return;
-      if (node.kind !== "task" || node.rowId === undefined || node.habitItem !== undefined) {
+      if (node.kind !== "task" || node.rowId === undefined || isOccurrence(node)) {
         showToast({ nodeId, message: t("bindNotATask") });
         return;
       }

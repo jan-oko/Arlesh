@@ -14,6 +14,7 @@ import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import type { CommitmentListRow, ExpectationListRow, TaskListRow } from "@/utils/list-filter";
 import { flattenCommitmentRows, flattenExpectationRows, flattenTaskRows } from "@/utils/list-data";
 import { useExpectationActions } from "@/hooks/use-expectation-actions";
+import { getErrorMessage } from "@/api/errors";
 import { useOccurrenceCompletion } from "@/hooks/use-occurrence-completion";
 import type { OccurrencePrompt } from "@/hooks/use-occurrence-completion";
 
@@ -62,8 +63,8 @@ export function useListData(): ListData {
   const { tree, isLoading, error, reload, renameNode, createNode, removeNode } = useMindmapData();
   const subtreeRootId = useMindmapStore((s) => s.subtreeRootId);
   const showToast = useMindmapStore((s) => s.showToast);
-  const { prompt: occurrencePrompt, setOccurrenceStatus, confirm: confirmOccurrence,
-    cancel: cancelOccurrence } = useOccurrenceCompletion(reload);
+  const { prompt: occurrencePrompt, guard, confirm: confirmOccurrence,
+    cancel: cancelOccurrence } = useOccurrenceCompletion();
   const [taskDeps, setTaskDeps] = useState<TaskDependencyEdge[]>([]);
 
   useEffect(() => {
@@ -98,24 +99,23 @@ export function useListData(): ListData {
         completeCheck(nodeId);
         return;
       }
-      if (node.habitItem !== undefined) {
-        const cycled = nextTaskStatus(node.status ?? TASK_STATUS.TODO);
-        const next = cycled === TASK_STATUS.TODO ? null : cycled;
-        // Through the completion guard, exactly as the Mindmap's status click is: the same
-        // occurrence closed from either view asks the same question.
-        setOccurrenceStatus(node, next);
-        return;
-      }
-      void updateTask(rowIdOf(node), { status: nextTaskStatus(node.status ?? TASK_STATUS.TODO) }).then(async (updated) => {
+      // Through the completion guard, exactly as the Mindmap's status click is: the same
+      // occurrence closed from either view asks the same question.
+      const dbId = rowIdOf(node);
+      const next = nextTaskStatus(node.status ?? TASK_STATUS.TODO);
+      guard(node, async (confirmed) => {
+        const updated = await updateTask(dbId, { status: next }, confirmed);
         // Starting a set-aside task takes it out of the backlog, in the same write and so in the
         // same undo step. The row that comes back says whether it did; it is never assumed.
         if (cameOutOfBacklog(node, updated)) {
           showToast({ nodeId, message: t("warnings:backlogClearedByStart") });
         }
         await reload();
+      }, (err: unknown) => {
+        showToast({ nodeId, message: t("warnings:statusChangeFailed", { message: getErrorMessage(err) }) });
       });
     },
-    [tree, reload, setOccurrenceStatus, showToast, t, completeCheck],
+    [tree, reload, guard, showToast, t, completeCheck],
   );
 
   const createTask = useCallback(

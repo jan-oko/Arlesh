@@ -76,14 +76,12 @@ export function referencedScopeIds(rows: readonly TaskListRow[]): ScopeKey[] {
 }
 
 /**
- * A Task the first cut of the Plan View will not triage.
- *
- * Virtual rows — a Habit's occurrences and its iteration roots — have no DB row to carry a Plan,
- * so offering to plan one would be a gesture with nowhere to write. Planning a recurrence is its
- * own question and is deliberately out of scope here.
+ * A Task the Plan View will not triage: one that draws no row (a wait's check task), which has
+ * nowhere to write a Plan. A Habit occurrence is a row like any other (ADR 0008) and is planned
+ * like one — within its own iteration, which the backend holds it to.
  */
 function isTriageable(node: MindmapNode): boolean {
-  return node.virtual !== true && node.habitItem === undefined;
+  return node.virtual !== true;
 }
 
 /** What one triage pass makes of the board, in three heaps. */

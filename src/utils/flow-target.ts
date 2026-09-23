@@ -1,4 +1,5 @@
 import type { MindmapNode } from "@/utils/tree-layout";
+import { isDerivedId } from "@/api/node-id";
 import type { TargetSelection } from "@/components/FlowEditorModal/FlowEditorModal";
 
 /**
@@ -10,8 +11,9 @@ import type { TargetSelection } from "@/components/FlowEditorModal/FlowEditorMod
  * it, and the Mindmap is no longer the only one.
  */
 export function targetSelectionFor(node: MindmapNode | null | undefined): TargetSelection | null {
-  // A node that draws no row — the tree root, a virtual Habit node — is nothing a flow can target.
-  if (node === null || node === undefined || node.rowId === undefined) return null;
+  // A node that draws no row — the tree root, a folded run — or a Habit occurrence is nothing a
+  // flow can target: a target is a stored row the flow's instances hang under.
+  if (node === null || node === undefined || node.rowId === undefined || isDerivedId(node.rowId)) return null;
   return { kind: node.kind, id: node.rowId, title: node.title };
 }
 

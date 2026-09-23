@@ -1,4 +1,5 @@
 import type { MindmapNode, NodeKind } from "./tree-layout";
+import { isOccurrence } from "@/utils/node-identity";
 import { ALL_NODE_KINDS } from "./tree-layout";
 import type { InstanceType } from "@/api/flows";
 
@@ -342,7 +343,7 @@ type ParentCapacity = "row" | "occurrence" | "drawing";
 function parentCapacity(node: MindmapNode): ParentCapacity {
   // A folded run of passed iterations — a tally and a span, standing in for many nodes at once.
   if (node.habitGroup !== undefined) return "drawing";
-  if (node.habitItem !== undefined) return "occurrence";
+  if (isOccurrence(node)) return "occurrence";
   // The synthetic root and any other virtual node: nothing a parent link could point at.
   if (node.rowId === undefined) return "drawing";
   return "row";
@@ -442,6 +443,5 @@ export function canParentNewTask(node: MindmapNode): boolean {
  * modal, and left the keyboard captured with nothing on screen to release it.
  */
 export function hasNodeEditor(node: MindmapNode): boolean {
-  if (node.kind === "aspect" || node.kind === "habit_group") return false;
-  return node.habitItem === undefined;
+  return node.kind !== "aspect" && node.kind !== "habit_group";
 }

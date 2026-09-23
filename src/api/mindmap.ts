@@ -7,21 +7,17 @@ import type { Expectation, ExpectationCheck, SpawnedWaitView } from "@/api/expec
 import type { Info } from "@/api/infos";
 import type { BlockReason } from "@/api/block-reasons";
 import type {
-  Flow, FlowGoal, FlowTask, FlowItemCycle, FlowDependency,
-  HabitInstanceChild, HabitIteration, HabitItemStatus, TargetRef,
+  Flow, FlowGoal, FlowTask, FlowItemCycle, FlowDependency, TargetRef,
 } from "@/api/flows";
 import type { ItemLifecycle } from "@/api/scope-lifecycle";
 
 /**
- * One flow's Habit payload, or the failure that stood in for it. Discriminated on `outcome`,
- * so narrowing needs no type assertion.
- *
- * A flow that is not a Habit is `loaded` with an empty `iterations` — "no recurrence configured"
- * is an answer, not a failure, and treating it as one would raise a notice about every ordinary
- * flow on every load.
+ * Whether one flow's Habit occurrences were derived, or the failure that stood in for them.
+ * Discriminated on `outcome`. The occurrences themselves are ordinary rows in `tasks`, `goals`
+ * and `commitments`; a flow that is not a Habit simply loads with none.
  */
 export type FlowHabitResult =
-  | { outcome: "loaded"; iterations: HabitIteration[]; statuses: HabitItemStatus[] }
+  | { outcome: "loaded" }
   | { outcome: "failed"; message: string };
 
 /**
@@ -59,13 +55,8 @@ export interface MindmapLoad {
   task_dependencies: TaskDependencyEdge[];
   flow_instance_nodes: TargetRef[];
   lifecycles: ItemLifecycle[];
-  /** One entry per flow, in `flows` order — the dependent wave, resolved backend-side. */
+  /** One entry per flow, in `flows` order: whether its Habit occurrences were derived. */
   habits: FlowHabitEntry[];
-  /**
-   * Which virtual Habit occurrence each added child hangs on. The children themselves arrive in
-   * `tasks`/`goals`/`commitments`/`infos` like any other node; this is the attachment alone.
-   */
-  habit_instance_children: HabitInstanceChild[];
 }
 
 /**
@@ -83,12 +74,3 @@ export async function loadMindmap(now: string): Promise<MindmapLoad> {
   return invoke<MindmapLoad>("load_mindmap", { now });
 }
 
-/** `entry.iterations` when it loaded, an empty list when it did not — positional, in flow order. */
-export function habitIterations(habits: readonly FlowHabitEntry[]): HabitIteration[][] {
-  return habits.map((entry) => (entry.result.outcome === "loaded" ? entry.result.iterations : []));
-}
-
-/** `entry.statuses` when it loaded, an empty list when it did not — positional, in flow order. */
-export function habitStatuses(habits: readonly FlowHabitEntry[]): HabitItemStatus[][] {
-  return habits.map((entry) => (entry.result.outcome === "loaded" ? entry.result.statuses : []));
-}

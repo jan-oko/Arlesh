@@ -1,7 +1,8 @@
 import { hierarchy, tree } from "d3-hierarchy";
-import type { ScopeKey } from "@/api/scopes";
 import type { TimeScope } from "@/api/time-scope";
-import type { InstanceType, FlowItemType, HabitInstanceType } from "@/api/flows";
+import type { InstanceType, FlowItemType } from "@/api/flows";
+import type { Origin, RowId } from "@/api/node-id";
+import { storedId } from "@/api/node-id";
 import type { OnScopeExit, Timing, Resolution } from "@/api/scope-lifecycle";
 import type { Verdict } from "@/api/verdict";
 import type { Delegate } from "@/api/tasks";
@@ -49,9 +50,9 @@ const DOMAIN_TABLE_KINDS: ReadonlySet<string> = new Set(["aspect", "project", "d
  * namespace; goal/task keep their own. Never build `` `${type}-${id}` `` directly — a `project`
  * target would resolve to `project-<id>`, which no tree node uses, and silently miss.
  */
-export function entityNodeId(type: string, id: number): string {
+export function entityNodeId(type: string, id: RowId): string {
   // A kind added after the composed spellings were frozen mints its id instead.
-  if (type === "expectation") return expectationNodeId(id);
+  if (type === "expectation") return expectationNodeId(storedId(id));
   return DOMAIN_TABLE_KINDS.has(type) ? `domain-${id}` : `${type}-${id}`;
 }
 
@@ -131,8 +132,7 @@ export interface FlowItemData {
  * What one virtual Habit iteration contributes to a collapsed run: where its window sits, whether
  * that window has passed, and how it ended.
  *
- * Kept apart from `habitItem` (which names the Modification row a status click writes) because this
- * is purely what the renderer folds by — nothing here is ever written back.
+ * Purely what the renderer folds by, read off the root's `origin` — nothing here is written back.
  */
 export interface HabitIterationMeta {
   /** The Habit this iteration belongs to; iterations fold only with their own flow's. */
@@ -186,9 +186,17 @@ export interface MindmapNode {
    * row through `rowId` (via `rowIdOf`). A node kind added from now on mints a UUID here rather
    * than a composed string; see docs/spec/mindmap-view.md, "Node identity". */
   id: string;
-  /** The database row this node draws, in its kind's table. Absent exactly when the node draws no
-   * row: a `virtual` node, or the synthetic tree root. */
-  rowId?: number;
+  /** The row this node draws, in its kind's table: a stored row's integer id, or a derived row's
+   * UUID (a Habit occurrence, ADR 0008). Absent exactly when the node draws no row: a `virtual`
+   * node, or the synthetic tree root. */
+  rowId?: RowId;
+  /** Where the row came from — made by hand, or a Habit's occurrence. The few rules that differ
+   * for an occurrence (it stays in its iteration, keeps its kind, archives rather than deletes)
+   * key off this. Absent on a node that draws no row. */
+  origin?: Origin;
+  /** The row's own title, when the node draws it differently: an iteration root reads
+   * `{title} {start scope}`, and an editor edits this, never the label. */
+  rowTitle?: string;
   kind: NodeKind;
   title: string;
   status?: string;
@@ -244,7 +252,7 @@ export interface MindmapNode {
    * the end of its window it stays answerable, as a count of any scope kind. Absent means it
    * inherits the nearest ancestor Commitment's. */
   verdictWindow?: DurationSpec | null;
-  /** A derived, read-only node (e.g. a virtual Habit iteration) with no backing DB row. */
+  /** A derived, read-only node with no backing row (a wait's check task, a spawned wait). */
   virtual?: boolean;
   /** An Expectation's **Check every** (Expectations only): how often to look in on the wait. While
    * it is pending, a virtual check task hangs beneath it, due one interval after the last check.
@@ -259,7 +267,7 @@ export interface MindmapNode {
   checkDueAt?: string;
   /** Present on the virtual wait an **Asynchronous** Task spawned while it is done: the Task. Its
    * title and tags are the Task's template; its state is the overlay keyed by the Task. */
-  spawnedBy?: { taskId: number };
+  spawnedBy?: { taskId: RowId };
   /** A Task's optional **Expectation template** (Tasks only), kept only while `asynchronous`: while
    * the Task is done, a virtual wait is drawn from it. */
   asyncTemplate?: AsyncTemplate | null;
@@ -267,31 +275,15 @@ export interface MindmapNode {
   expectationDependencyIds?: number[];
   /** Present on the virtual Expectation a **delegated** Task waits on: the Task it belongs to. It
    * has no row, and it is released only by the Task being done — never by hand. */
-  delegationWait?: { taskId: number };
-  /**
-   * Present on any virtual Habit instance — a per-iteration flow-item instance, or the iteration
-   * **root** itself (`itemType: "flow_root"`, `itemId` = the flow id). Carries the
-   * (flow, instance, iteration scope, cycle pair) its status click toggles. `cycleId` is what
-   * separates one occurrence of an item from another in the same iteration — an item with a
-   * morning and an evening cycle pair draws two nodes on the same day — and is `NO_CYCLE` for an
-   * item with no pairs, and for the root.
-   */
-  habitItem?: {
-    flowId: number;
-    itemType: HabitInstanceType;
-    itemId: number;
-    scopeId: ScopeKey;
-    cycleId: number;
-  };
-  /** Present on a virtual Habit **iteration root** — what the Mindmap's collapse of passed
-   * iterations reads off it. Absent on the occurrences beneath it, which never fold on their own. */
+  delegationWait?: { taskId: RowId };
+  /** Present on a Habit **iteration root** — what the Mindmap's collapse of passed iterations
+   * reads off it. Absent on the occurrences beneath it, which never fold on their own. */
   habitIteration?: HabitIterationMeta;
   /** Present on a `habit_group` node, and on no other kind: what it stands for. */
   habitGroup?: HabitGroup;
   plan?: TimeScope | null;
   /** Where this Task's **own** Plan stands at "now" (real Tasks with a Plan only); set by the view
-   * from the derived lifecycle, never persisted. Absent on a virtual Habit occurrence, whose Cycle
-   * Plan the Start preset does not read. */
+   * from the derived lifecycle, never persisted. */
   planTiming?: Timing;
   flow?: FlowData;
   flowItem?: FlowItemData;

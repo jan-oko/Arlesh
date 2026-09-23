@@ -15,10 +15,10 @@ export interface MindmapFlagsContext extends MindmapSelectionContext {
   onToggleAsynchronous: (id: string) => void;
 }
 
-/** A real Task, not a virtual Habit instance — these flags are columns on a task row. */
+/** A Task row — stored or a Habit occurrence — since these flags are columns on a task row. */
 function isFlaggableTask(c: MindmapSelectionContext): boolean {
   const node = selectedNode(c);
-  return node !== undefined && node.kind === "task" && node.habitItem === undefined;
+  return node !== undefined && node.kind === "task" && node.rowId !== undefined;
 }
 
 export const MINDMAP_FLAGS_BINDINGS: readonly Binding<MindmapFlagsContext>[] = [

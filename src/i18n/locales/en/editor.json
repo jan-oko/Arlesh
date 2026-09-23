@@ -76,6 +76,7 @@
   "convertMapScopes": "Map scopes",
   "fieldPlan": "Plan",
   "scopeClear": "Clear",
+  "scopeLockedOccurrence": "— this occurrence's iteration; it stays with it",
   "scopeApply": "Apply",
   "scopeBoundaries": "Boundaries",
   "scopeDuration": "Duration",

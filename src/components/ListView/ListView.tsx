@@ -190,7 +190,7 @@ export default function ListView() {
   const selectedCommitmentId = selectedCommitment !== undefined ? selectedCommitment.node.id : null;
   const selectedExpectation = filteredExpectations.find((row) => row.node.id === activeSelectedId);
   const selectedExpectationId = selectedExpectation !== undefined ? selectedExpectation.node.id : null;
-  const isSelectedBlocked = selectedRow !== undefined && selectedRow.isBlocked && selectedRow.node.habitItem === undefined;
+  const isSelectedBlocked = selectedRow !== undefined && selectedRow.isBlocked;
 
   function handleNavigate(direction: 1 | -1) {
     if (navigableIds.length === 0) return;

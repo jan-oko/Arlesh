@@ -1,4 +1,5 @@
 import type { MindmapNode } from "@/utils/tree-layout";
+import { isOccurrence } from "@/utils/node-identity";
 import { isAgentic } from "@/utils/agentic";
 
 /** The status badges that can appear in a node's indicator row, in display order. */
@@ -35,9 +36,9 @@ function hasInfoDetails(node: MindmapNode): boolean {
   return node.kind === "info" && node.infoDetails != null && node.infoDetails !== "";
 }
 
-/** A node that came from a flow: a real Start-flow instance, or a virtual Habit instance. */
+/** A node that came from a flow: a Start-flow instance, or a Habit occurrence. */
 function isFlowInstance(node: MindmapNode): boolean {
-  return node.fromFlow === true || node.habitItem !== undefined;
+  return node.fromFlow === true || isOccurrence(node);
 }
 
 /**

@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { isOccurrence } from "@/utils/node-identity";
 import { isDerivedWait } from "@/utils/derived-wait";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
@@ -144,7 +145,7 @@ export function useNodeActions({
    */
   const typedChildRefusal = useCallback(
     (parent: MindmapNode, childKind: TypedChildKind): string => {
-      if (parent.habitItem !== undefined) {
+      if (isOccurrence(parent)) {
         return t("warnings:createUnderOccurrenceRefused", { child: t(`nodeKinds:${childKind}`) });
       }
       if (parent.virtual === true) return t("warnings:createUnderRepetition");

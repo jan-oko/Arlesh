@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { isDerivedId, storedId } from "@/api/node-id";
 import { dayStartInstant } from "@/utils/scope-calendar";
 import { useTranslation } from "react-i18next";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
@@ -172,16 +173,10 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
   const onDoubleClick = useCallback(
     (nodeId: string) => {
       const node = findNode(tree, nodeId);
-      // A virtual Habit instance isn't backed by a real Task/Goal row — its Time Scope is derived
-      // from the flow's Duration kind and the item's Cycle, not independently editable — and
-      // it has no `rowId` for `onTaskSave`/`onGoalSave` to write to (`rowIdOf` would throw). It stays read-only here; only `onStatusClick` may mutate it.
+      // A Habit occurrence opens the same editor as any row of its kind (ADR 0008); what it saves
+      // lands on that occurrence alone. Its window is its iteration's, which the editor shows
+      // but does not offer to change.
       if (node === undefined || node.kind === "aspect") return;
-      // Refused out loud, not by an inert key: `E` on a commitment Habit's iteration in the List
-      // View looked like a dead key (Arlesh-bzn), because this guard returned without a word.
-      if (node.habitItem !== undefined) {
-        showToast({ nodeId, message: t("editRepetitionRefused") });
-        return;
-      }
       if (isUneditableCheck(node)) {
         showToast({ nodeId, message: t("editCheckTaskRefused") });
         return;
@@ -201,7 +196,8 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
       if (editorModal === null) return;
       const { nodeId, node } = editorModal;
       const dbId = rowIdOf(node);
-      if (data.timeScope !== null) {
+      // An occurrence's window is its iteration's and does not change, so nothing is re-clamped.
+      if (data.timeScope !== null && !isDerivedId(dbId)) {
         const conflicts = await scopeContainmentConflicts("task", dbId, data.timeScope);
         await clampDescendants(conflicts, data.timeScope);
       }
@@ -245,7 +241,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
       if (editorModal === null) return;
       const { node } = editorModal;
       const dbId = rowIdOf(node);
-      if (data.timeScope !== null) {
+      if (data.timeScope !== null && !isDerivedId(dbId)) {
         const conflicts = await scopeContainmentConflicts("goal", dbId, data.timeScope);
         await clampDescendants(conflicts, data.timeScope);
       }
@@ -270,7 +266,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
   const onExpectationSave = useCallback(
     async (data: ExpectationSaveData) => {
       if (editorModal === null) return;
-      const dbId = rowIdOf(editorModal.node);
+      const dbId = storedId(rowIdOf(editorModal.node));
       await updateExpectation(dbId, {
         title: data.title,
         status: data.status,
@@ -316,7 +312,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
   const onFlowSave = useCallback(
     async (data: FlowSaveData) => {
       if (editorModal === null) return;
-      const dbId = rowIdOf(editorModal.node);
+      const dbId = storedId(rowIdOf(editorModal.node));
       const flowFields = {
         title: data.title,
         instance_type: data.instanceType,
@@ -380,7 +376,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
       const { node } = editorModal;
       const flowItem = node.flowItem;
       if (flowItem === undefined) return;
-      const dbId = rowIdOf(node);
+      const dbId = storedId(rowIdOf(node));
       const patch = { title: data.title, isPrivate: data.isPrivate };
       if (flowItem.itemType === "flow_goal") {
         await updateFlowGoal(dbId, patch);
@@ -411,7 +407,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
   const onSimpleSave = useCallback(
     async (title: string, isPrivate: boolean) => {
       if (editorModal === null) return;
-      const dbId = rowIdOf(editorModal.node);
+      const dbId = storedId(rowIdOf(editorModal.node));
       // Domain/tag editors: persist title and privacy together, then refresh.
       await updateDomain(dbId, { title, is_private: isPrivate });
       await reload();
@@ -423,7 +419,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
   const onProjectSave = useCallback(
     async (data: ProjectSaveData) => {
       if (editorModal === null) return;
-      const dbId = rowIdOf(editorModal.node);
+      const dbId = storedId(rowIdOf(editorModal.node));
       await updateDomain(dbId, {
         title: data.title,
         is_private: data.isPrivate,
@@ -439,7 +435,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
   const onInfoSave = useCallback(
     async (data: InfoSaveData) => {
       if (editorModal === null) return;
-      const dbId = rowIdOf(editorModal.node);
+      const dbId = storedId(rowIdOf(editorModal.node));
       await updateInfo(dbId, { body: data.body, details: data.details, is_private: data.isPrivate });
       await reload();
       setEditorModal(null);
@@ -455,7 +451,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
   const onClearBeadsId = useCallback(
     async (nodeType: BeadsNodeType) => {
       if (editorModal === null) return;
-      const dbId = rowIdOf(editorModal.node);
+      const dbId = storedId(rowIdOf(editorModal.node));
       await clearBeadsId(nodeType, dbId);
       await reload();
     },

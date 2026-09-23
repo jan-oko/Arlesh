@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { storedId } from "@/api/node-id";
 import { useTranslation } from "react-i18next";
 import { useMindmapData } from "@/components/MindmapView/use-mindmap-data";
 import { collectSearchableNodes, flattenNodesById } from "@/utils/mindmap-tree";
@@ -62,7 +63,7 @@ export function useFilterDisplay(): FilterDisplay {
   const tagOptions = useMemo<TagOption[]>(
     () => [...nodeById.values()]
       .filter((n) => n.kind === "tag" && n.title.trim() !== "")
-      .map((n) => ({ id: rowIdOf(n), label: n.title, color: n.color ?? null })),
+      .map((n) => ({ id: storedId(rowIdOf(n)), label: n.title, color: n.color ?? null })),
     [nodeById],
   );
   const tagOptionById = useMemo(() => new Map(tagOptions.map((opt) => [opt.id, opt])), [tagOptions]);

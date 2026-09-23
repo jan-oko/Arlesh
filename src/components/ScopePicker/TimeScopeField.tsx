@@ -27,13 +27,16 @@ interface Props {
   onChange: (timeScope: TimeScope | null) => void;
   /** The form an empty field opens in. A stored value always opens in the form it was set in. */
   defaultForm?: ScopeForm;
+  /** Why the window cannot be changed here, when it cannot — a Habit occurrence's window is its
+   * iteration's. The field then shows the window and says why, and offers no edit. */
+  lockedReason?: string;
 }
 
 /**
  * Edits a Task/Goal Time Scope: a **Boundaries** range (via the calendar picker) or a **Duration**
  * (anchor + N of a kind), snapshotted to a fixed window while persisting the duration parameters.
  */
-export default function TimeScopeField({ value, onChange, defaultForm = "boundaries" }: Props) {
+export default function TimeScopeField({ value, onChange, defaultForm = "boundaries", lockedReason }: Props) {
   const { t } = useTranslation("editor");
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<ScopeForm>(
@@ -109,10 +112,13 @@ export default function TimeScopeField({ value, onChange, defaultForm = "boundar
     <div className={styles.field}>
       <div className={styles.summaryRow}>
         <span className={styles.summary}>{summary}</span>
-        <button type="button" className={styles.button} onClick={() => setOpen((current) => !current)}>
-          {open ? "close" : "edit scope"}
-        </button>
-        {value !== null && (
+        {lockedReason !== undefined && <span className={styles.summary}>{lockedReason}</span>}
+        {lockedReason === undefined && (
+          <button type="button" className={styles.button} onClick={() => setOpen((current) => !current)}>
+            {open ? "close" : "edit scope"}
+          </button>
+        )}
+        {lockedReason === undefined && value !== null && (
           <button type="button" className={styles.button} onClick={() => onChange(null)}>
             {t("scopeClear")}
           </button>

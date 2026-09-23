@@ -1,6 +1,7 @@
 import { invoke } from "./gesture";
 import type { DurationSpec, TimeScope } from "@/api/time-scope";
 import type { ExpectationArchival, ExpectationStatus } from "@/api/expectation-status";
+import type { RowId } from "@/api/node-id";
 
 /**
  * A **wait**: something outside your own action you are waiting on to be released. Tasks can
@@ -12,7 +13,7 @@ export interface Expectation {
   id: number;
   title: string;
   parent_type: string;
-  parent_id: number;
+  parent_id: RowId;
   status: ExpectationStatus;
   archival: ExpectationArchival;
   check_every?: DurationSpec;
@@ -29,7 +30,7 @@ export interface Expectation {
 export interface CreateExpectationRequest {
   title: string;
   parent_type: string;
-  parent_id: number;
+  parent_id: RowId;
   check_every?: DurationSpec;
   check_starting?: string;
   time_scope?: TimeScope;
@@ -45,7 +46,7 @@ export interface UpdateExpectationRequest {
   // Absent = leave unchanged, null = clear, value = set.
   time_scope?: TimeScope | null;
   parent_type?: string;
-  parent_id?: number;
+  parent_id?: RowId;
   position?: number;
   is_private?: boolean;
 }

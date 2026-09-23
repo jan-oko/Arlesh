@@ -65,15 +65,14 @@ export default function MindmapNode({ node, parentKind, position, isSelected, is
       : resolution === "overdue"
         ? "var(--overdue)"
         : "var(--node-border)";
-  // A Commitment — real or a virtual Habit iteration — has no status to cycle here: its verdict is
+  // A Commitment — stored or a Habit iteration — has no status to cycle here: its verdict is
   // recorded through the two controls in List View, never through one cycling click.
   // A wait's control releases it (a delegated Task's wait is released by the Task, and refuses out
   // loud); a wait's check task's control completes the check.
   const canClickStatus =
     onStatusClick !== undefined &&
     node.kind !== "commitment" &&
-    (node.habitItem !== undefined ||
-      node.expectationCheck !== undefined ||
+    (node.expectationCheck !== undefined ||
       node.kind === "expectation" ||
       ((node.kind === "task" || node.kind === "goal") && !isBlocked && node.virtual !== true));
   // The status-icon row is hidden while editing, when the node grows to fit the textarea.

@@ -33,9 +33,8 @@ interface StatusCycle {
 /**
  * **One definition of "advance this node's status"**, for every surface that offers the gesture.
  *
- * A real Goal toggles active ↔ achieved; a real Task cycles todo → in progress → done; a virtual
- * Habit instance advances just itself, writing a Modification, with `null` clearing back to the
- * base status. A **Commitment** is excluded: it is kept or broken, never advanced, and its verdict
+ * A Goal toggles active ↔ achieved; a Task cycles todo → in progress → done — a Habit occurrence
+ * exactly as a stored row, since it is one (ADR 0008). A **Commitment** is excluded: it is kept or broken, never advanced, and its verdict
  * has its own writer.
  *
  * Two rules travel with the gesture rather than with the caller, which is the whole point of it
@@ -51,8 +50,8 @@ interface StatusCycle {
  */
 export function useStatusCycle({ findNode, reload, showToast }: Options): StatusCycle {
   const { t } = useTranslation(["warnings"]);
-  const { prompt: occurrencePrompt, setOccurrenceStatus, confirm: confirmOccurrence,
-    cancel: cancelOccurrence } = useOccurrenceCompletion(reload);
+  const { prompt: occurrencePrompt, guard, confirm: confirmOccurrence,
+    cancel: cancelOccurrence } = useOccurrenceCompletion();
   const { completeCheck, toggleRelease } = useExpectationActions({ findNode, reload, showToast });
 
   const cycleStatus = useCallback(
@@ -63,51 +62,37 @@ export function useStatusCycle({ findNode, reload, showToast }: Options): Status
       // check, which records when and stores nothing else.
       if (node.expectationCheck !== undefined) { completeCheck(nodeId); return; }
       if (node.kind === "expectation") { toggleRelease(nodeId); return; }
-      // A virtual Habit instance (an item, or the iteration root `flow_root`) advances just itself:
-      // a goal toggles achieved; a task cycles todo → in_progress → done. `null` clears the
-      // Modification (back to the base status). A goal's "achieved" is stored canonically as `done`.
-      //
-      // A commitment iteration is excluded: it is kept or broken, never advanced.
-      if (node.habitItem !== undefined && node.kind !== "commitment") {
-        let next: string | null;
-        if (node.kind === "goal") {
-          next = node.status === GOAL_STATUS.ACHIEVED ? null : TASK_STATUS.DONE;
-        } else {
-          const cycled = nextTaskStatus(node.status ?? TASK_STATUS.TODO);
-          next = cycled === TASK_STATUS.TODO ? null : cycled;
-        }
-        setOccurrenceStatus(node, next);
-        return;
-      }
-      // A real goal toggles active ↔ achieved on click (like a habit goal instance) — no modal.
+      // A Habit occurrence is an ordinary row (ADR 0008): its glyph advances it exactly as it
+      // advances a stored one, through the completion guard that asks before an occurrence closes
+      // over unfinished work.
+      const failed = (message: string) => (err: unknown): void => {
+        console.error(`${LOG_PREFIX} ${message}:`, err);
+        showToast({ nodeId, message: t("warnings:statusChangeFailed", { message: getErrorMessage(err) }) });
+      };
+      // A goal toggles active ↔ achieved on click — no modal.
       if (node.kind === "goal") {
         const dbId = rowIdOf(node);
         const next = node.status === GOAL_STATUS.ACHIEVED ? GOAL_STATUS.ACTIVE : GOAL_STATUS.ACHIEVED;
-        void updateGoal(dbId, { status: next })
-          .then(() => reload())
-          .catch((err: unknown) => {
-            console.error(`${LOG_PREFIX} goal status toggle failed:`, err);
-            showToast({ nodeId, message: t("warnings:statusChangeFailed", { message: getErrorMessage(err) }) });
-          });
+        guard(node, async (confirmed) => {
+          await updateGoal(dbId, { status: next }, confirmed);
+          await reload();
+        }, failed("goal status toggle failed"));
         return;
       }
       if (node.kind !== "task") return;
       const dbId = rowIdOf(node);
-      void updateTask(dbId, { status: nextTaskStatus(node.status ?? TASK_STATUS.TODO) })
-        .then(async (updated) => {
-          // Starting a set-aside task takes it out of the backlog, in the same write and so in the
-          // same undo step. The row that comes back says whether it did; it is never assumed.
-          if (cameOutOfBacklog(node, updated)) {
-            showToast({ nodeId, message: t("warnings:backlogClearedByStart") });
-          }
-          await reload();
-        })
-        .catch((err: unknown) => {
-          console.error(`${LOG_PREFIX} status cycle failed:`, err);
-          showToast({ nodeId, message: t("warnings:statusChangeFailed", { message: getErrorMessage(err) }) });
-        });
+      const next = nextTaskStatus(node.status ?? TASK_STATUS.TODO);
+      guard(node, async (confirmed) => {
+        const updated = await updateTask(dbId, { status: next }, confirmed);
+        // Starting a set-aside task takes it out of the backlog, in the same write and so in the
+        // same undo step. The row that comes back says whether it did; it is never assumed.
+        if (cameOutOfBacklog(node, updated)) {
+          showToast({ nodeId, message: t("warnings:backlogClearedByStart") });
+        }
+        await reload();
+      }, failed("status cycle failed"));
     },
-    [findNode, reload, setOccurrenceStatus, showToast, t, completeCheck, toggleRelease],
+    [findNode, reload, guard, showToast, t, completeCheck, toggleRelease],
   );
 
   return { cycleStatus, occurrencePrompt, confirmOccurrence, cancelOccurrence };
