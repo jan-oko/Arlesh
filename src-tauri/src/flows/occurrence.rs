@@ -158,7 +158,7 @@ pub fn is_circular(edges: &[(FlowItemRef, FlowItemRef)]) -> bool {
     let mut finished: HashSet<&FlowItemRef> = HashSet::new();
     for start in next.keys() {
         let mut on_path: HashSet<&FlowItemRef> = HashSet::new();
-        if reaches_itself(*start, &next, &mut on_path, &mut finished) {
+        if reaches_itself(start, &next, &mut on_path, &mut finished) {
             return true;
         }
     }
@@ -183,7 +183,7 @@ fn reaches_itself<'edge>(
         .get(node)
         .into_iter()
         .flatten()
-        .any(|blocker| reaches_itself(*blocker, next, on_path, finished));
+        .any(|blocker| reaches_itself(blocker, next, on_path, finished));
     on_path.remove(node);
     circular
 }
