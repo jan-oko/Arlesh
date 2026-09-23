@@ -128,9 +128,9 @@ by its name and by where it sits — the six of them are what the root is made o
 shadow. An outline outside the card was clipped by the card area's `overflow: hidden` along the top
 and left of every card in the first row and column, which sit flush against that edge.
 
-An **Expectation card** draws the wait's glyph — a still ring, solid across the top and dashed
-across the bottom while pending, a solid disc once released, struck through when archived — so its
-status is never written out; its fields are its **Time Scope** and its **Check every**. `Enter`
+An **Expectation card** draws the wait's glyph — a still ring, solid down one half and dashed down
+the other, with a check inside once released — so its status is never written out; an archived one
+is dimmed and badged like any archived card; its fields are its **Time Scope** and its **Check every**. `Enter`
 descends into it like any card, onto its notes and, while a check is due, its virtual check task.
 `E` on that check task, on a delegated Task's virtual wait or on an asynchronous Task's spawned
 wait opens the editor of what it is drawn from (see [*Expectations*](resources.md)).
@@ -355,7 +355,7 @@ Three movements, three gestures. An arrow key never leaves the page.
   or takes the release back, and on its check task it completes the check
 - `D` / `L` — complete the check on the selected wait (or its check task) / release it, the keys the
   other views bind; a card that is not a wait is turned away out loud
-- `Shift+W` — on a Task card, create or edit its Expectation template, as on the Mindmap
+- `Shift+W` — on a Task card, open its editor at the Expectation section with Asynchronous on, as on the Mindmap
 - `E` — open the selected card's editor
 - `Tab`, `Shift+Enter`, `Ctrl+Enter`, `Shift+D`/`P`/`G`/`T`/`C`/`E`/`I`/`F` — create, as above
   (`Shift+E` an **Expectation**); the

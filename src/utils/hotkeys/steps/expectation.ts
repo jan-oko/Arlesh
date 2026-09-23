@@ -8,7 +8,7 @@ export interface StepsExpectationContext extends StepsSelectionContext {
   onCompleteCheck: (id: string) => void;
   /** Releases the selected wait, or takes the release back. */
   onToggleRelease: (id: string) => void;
-  /** Marks the selected Task Asynchronous and binds it to a new wait it depends on. */
+  /** Opens the selected Task's editor at its Expectation section, with Asynchronous on. */
   onBindWait: (id: string) => void;
 }
 

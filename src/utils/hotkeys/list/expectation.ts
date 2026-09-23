@@ -11,7 +11,7 @@ export interface ListExpectationContext extends ListSelectionContext {
   onCompleteCheck: (id: string) => void;
   /** Selects the List View's **Expectations** option, leaving the shared status preset untouched. */
   onSetExpectationsPreset: () => void;
-  /** Marks the selected Task Asynchronous and binds it to a new wait it depends on. */
+  /** Opens the selected Task's editor at its Expectation section, with Asynchronous on. */
   onBindWait: (id: string) => void;
   /** Opens the new-Expectation editor for a wait under the selected row. */
   onCreateExpectation: (id: string) => void;

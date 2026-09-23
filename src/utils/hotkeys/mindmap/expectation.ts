@@ -9,7 +9,7 @@ export interface MindmapExpectationContext extends MindmapSelectionContext {
   onCompleteCheck: (id: string) => void;
   /** Releases the selected Expectation, or takes a release back. */
   onToggleRelease: (id: string) => void;
-  /** Marks the selected Task Asynchronous and binds it to a new wait it depends on. */
+  /** Opens the selected Task's editor at its Expectation section, with Asynchronous on. */
   onBindWait: (id: string) => void;
 }
 
@@ -21,9 +21,10 @@ function selectedWaitOrCheck(c: MindmapSelectionContext): boolean {
 
 export const MINDMAP_EXPECTATION_BINDINGS: readonly Binding<MindmapExpectationContext>[] = [
   {
-    // Shift+W — the "wait" letter bare W flips on a Task, plus Shift: set it Asynchronous *and*
-    // name the wait it starts, which the Task then depends on. One Gesture. Fires on any selection
-    // so a card that is not a Task is refused by name rather than by a dead key.
+    // Shift+W — the "wait" letter bare W flips on a Task, plus Shift: open the Task's editor at
+    // its Expectation section with Asynchronous on, to say what the wait will be. Nothing is
+    // written until Save. Fires on any selection so a node that is not a Task is refused by name
+    // rather than by a dead key.
     id: "mindmap.bindWait", section: "mindmap", chord: { code: "KeyW", shift: true },
     labelKey: "bindWait", allowRepeat: false,
     when: (c) => c.selectedNodeId !== null,

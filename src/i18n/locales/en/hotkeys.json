@@ -99,5 +99,5 @@
   "stepsZoomOut": "Smaller cards (more to a page)",
   "stepsCreateChild": "Create a child of the selected card (on a card: step into it)",
   "stepsCreateSibling": "Create a card beside the selected one, on this Step",
-  "bindWait": "Edit what the selected task will wait on once done (its Expectation template)"
+  "bindWait": "Open the selected task's editor at its Expectation section, with Asynchronous on"
 }
