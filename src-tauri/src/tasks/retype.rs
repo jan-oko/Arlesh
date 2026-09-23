@@ -16,9 +16,9 @@
 use serde::{Deserialize, Serialize};
 
 use super::model::{
-    CommitmentId, CreateCommitmentRequest, CreateGoalRequest, CreateTaskRequest, DurationSpec,
-    GoalId, GoalStatus, OnScopeExit, TaskAgentic, TaskArchival, TaskId, TaskStatus, TimeScope,
-    UpdateCommitmentRequest, UpdateGoalRequest, UpdateTaskRequest, Verdict,
+    CommitmentId, CreateCommitmentRequest, CreateGoalRequest, CreateTaskRequest, Delegate,
+    DurationSpec, GoalId, GoalStatus, OnScopeExit, TaskAgentic, TaskArchival, TaskId, TaskStatus,
+    TimeScope, UpdateCommitmentRequest, UpdateGoalRequest, UpdateTaskRequest, Verdict,
 };
 use crate::database::session::{Db, SessionMode, Transactional};
 use crate::domains::error::DomainError;
@@ -256,8 +256,8 @@ pub struct SourceNode {
     /// takes a backlogged node out of the backlog. That is a stored state disappearing, and is
     /// reported like any other.
     pub archival: Option<TaskArchival>,
-    /// Person this task is delegated to (tasks only).
-    pub delegate_to: Option<i64>,
+    /// Who this task is delegated to — a Person or the Agent (tasks only).
+    pub delegate_to: Option<Delegate>,
     /// The Agentic state (tasks only); `None` for every kind whose table has no such column.
     ///
     /// Only `tasks` can be Agentic — an agent performs actions, where a Goal is a desired state
@@ -322,7 +322,7 @@ pub struct Carried {
     /// new node **Live** — the state a Task is in when nobody has set it aside.
     pub archival: Option<TaskArchival>,
     /// Delegate, when the target is a task.
-    pub delegate_to: Option<i64>,
+    pub delegate_to: Option<Delegate>,
     /// The Agentic state, when the target is a task and the source carried an explicit one.
     /// `None` leaves the new node inheriting — the state a Task is in when nobody has said.
     pub agentic: Option<TaskAgentic>,
@@ -556,7 +556,7 @@ fn carry_fields(
         target == RetypeKind::Task,
         source.delegate_to,
         "delegate_to",
-        |value: &i64| value.to_string(),
+        |delegate: &Delegate| delegate.describe(),
         lost_fields,
     );
 

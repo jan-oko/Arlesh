@@ -127,7 +127,9 @@ async fn person_linked_to_task_via_delegation() {
         &mut db,
         task.id.into(),
         arlesh_lib::tasks::model::UpdateTaskRequest {
-            delegate_to: Some(Some(person.id)),
+            delegate_to: Some(Some(arlesh_lib::tasks::model::Delegate::Person {
+                id: person.id,
+            })),
             ..Default::default()
         },
     )
@@ -135,7 +137,10 @@ async fn person_linked_to_task_via_delegation() {
     .unwrap();
 
     let fetched = db.tasks().get(task.id.into()).await.unwrap();
-    assert_eq!(fetched.delegate_to, Some(person.id));
+    assert_eq!(
+        fetched.delegate_to,
+        Some(arlesh_lib::tasks::model::Delegate::Person { id: person.id })
+    );
 
     // `Some(None)` is what an explicit `null` on the wire now decodes to, and it has to reach the
     // column: undelegating a task must remove the link rather than leave the old person on it.

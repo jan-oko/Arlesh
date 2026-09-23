@@ -160,3 +160,82 @@ fn every_migration_claims_its_own_number() {
         collisions.join("\n  ")
     );
 }
+
+/// Migration `0037` rebuilds `tasks` to turn `delegate_to` into a `(delegate_kind, delegate_id)`
+/// pair, on a board that already has delegates, tags, dependency edges and knowledge-base links.
+///
+/// The rebuild is the dangerous part: `DROP TABLE tasks` cascades into the three tables that
+/// reference it, so this checks that every delegate became a Person delegate and that nothing
+/// hanging off a task was lost on the way.
+#[tokio::test]
+async fn migration_0037_keeps_every_delegate_as_a_person_and_every_link() {
+    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+        .max_connections(1)
+        .after_connect(|conn, _| {
+            Box::pin(async move {
+                sqlx::query("PRAGMA foreign_keys = ON")
+                    .execute(conn)
+                    .await?;
+                Ok(())
+            })
+        })
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+
+    let everything = sqlx::migrate!("./migrations");
+    let mut before = sqlx::migrate!("./migrations");
+    before.migrations = std::borrow::Cow::Owned(
+        everything
+            .migrations
+            .iter()
+            .filter(|migration| migration.version < 37)
+            .cloned()
+            .collect(),
+    );
+    before.run(&pool).await.unwrap();
+
+    sqlx::query(
+        "INSERT INTO people (id, name) VALUES (1, 'Ada');
+         INSERT INTO domains (id, title, subtype) VALUES (100, 'Tag', 'tag');
+         INSERT INTO tasks (id, title, parent_type, parent_id, delegate_to)
+             VALUES (1, 'delegated', 'domain', 1, 1), (2, 'not delegated', 'domain', 1, NULL);
+         INSERT INTO task_dependencies (task_id, dependency_type, dependency_id) VALUES (2, 'task', 1);
+         INSERT INTO tags_on_tasks (task_id, tag_id) VALUES (1, 100);
+         INSERT INTO task_knowledge_base_links (task_id, entity_type, entity_id) VALUES (1, 'person', 1);",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    everything.run(&pool).await.unwrap();
+
+    let delegates: Vec<(i64, Option<String>, Option<i64>)> =
+        sqlx::query_as("SELECT id, delegate_kind, delegate_id FROM tasks ORDER BY id")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        delegates,
+        vec![(1, Some("person".to_string()), Some(1)), (2, None, None)]
+    );
+
+    for table in [
+        "task_dependencies",
+        "tags_on_tasks",
+        "task_knowledge_base_links",
+    ] {
+        let count: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {table}"))
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(count, 1, "{table} lost its row in the rebuild");
+    }
+
+    let violations: Vec<(String, Option<i64>, String, i64)> =
+        sqlx::query_as("PRAGMA foreign_key_check")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert!(violations.is_empty(), "{violations:?}");
+}
