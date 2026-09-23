@@ -16,7 +16,7 @@ fn stored() -> Expectation {
         id: 1,
         title: "Training run finishes".to_string(),
         parent_type: "project".to_string(),
-        parent_id: 7,
+        parent_id: 7.into(),
         status: ExpectationStatus::Pending,
         archival: ExpectationArchival::Live,
         check_every: Some(every(3, "day")),
@@ -35,7 +35,8 @@ fn an_empty_request_writes_the_stored_row_back_unchanged() {
         stored(),
         UpdateExpectationRequest::default(),
         at("2026-07-05T10:00:00"),
-    );
+    )
+    .unwrap();
     assert!(write.reparent.is_none());
     assert_eq!(write.title, "Training run finishes");
     assert_eq!(write.status, ExpectationStatus::Pending);
@@ -55,7 +56,8 @@ fn releasing_changes_the_status_and_nothing_else() {
             ..Default::default()
         },
         at("2026-07-05T10:00:00"),
-    );
+    )
+    .unwrap();
     assert_eq!(write.status, ExpectationStatus::Released);
     assert_eq!(write.check_every, stored().check_every);
     assert_eq!(write.check_starting, stored().check_starting);
@@ -71,7 +73,8 @@ fn an_explicit_clear_stops_the_checks() {
             ..Default::default()
         },
         at("2026-07-05T10:00:00"),
-    );
+    )
+    .unwrap();
     assert!(write.check_every.is_none());
     assert_eq!(write.status, ExpectationStatus::Pending);
 }
@@ -85,7 +88,8 @@ fn a_move_needs_both_halves_of_the_parent_link() {
             ..Default::default()
         },
         at("2026-07-05T10:00:00"),
-    );
+    )
+    .unwrap();
     assert!(half.reparent.is_none());
     let whole = ExpectationWrite::merge(
         stored(),
@@ -99,7 +103,8 @@ fn a_move_needs_both_halves_of_the_parent_link() {
             ..Default::default()
         },
         at("2026-07-05T10:00:00"),
-    );
+    )
+    .unwrap();
     assert_eq!(whole.reparent, Some(("task".to_string(), 3)));
     assert_eq!(whole.title, "Reply");
     assert_eq!(whole.archival, ExpectationArchival::Archived);
@@ -162,7 +167,8 @@ fn a_time_scope_can_be_set_and_cleared_like_a_tasks() {
             ..Default::default()
         },
         at("2026-07-05T10:00:00"),
-    );
+    )
+    .unwrap();
     assert_eq!(set.time_scope, Some(window.clone()));
     let scoped = Expectation {
         time_scope: Some(window),
@@ -175,7 +181,8 @@ fn a_time_scope_can_be_set_and_cleared_like_a_tasks() {
             ..Default::default()
         },
         at("2026-07-05T10:00:00"),
-    );
+    )
+    .unwrap();
     assert!(cleared.time_scope.is_none());
     assert_eq!(cleared.parent_type, "project");
     assert_eq!(cleared.parent_id, 7);
@@ -196,7 +203,8 @@ fn a_check_every_newly_given_starts_now_unless_it_names_a_starting() {
             ..Default::default()
         },
         now,
-    );
+    )
+    .unwrap();
     assert_eq!(starts_now.check_starting, Some(now));
     let named = ExpectationWrite::merge(
         unchecked,
@@ -206,7 +214,8 @@ fn a_check_every_newly_given_starts_now_unless_it_names_a_starting() {
             ..Default::default()
         },
         now,
-    );
+    )
+    .unwrap();
     assert_eq!(named.check_starting, Some(at("2026-08-01T00:00:00")));
     // An existing chain keeps its Starting when only its interval changes.
     let changed = ExpectationWrite::merge(
@@ -216,7 +225,8 @@ fn a_check_every_newly_given_starts_now_unless_it_names_a_starting() {
             ..Default::default()
         },
         now,
-    );
+    )
+    .unwrap();
     assert_eq!(changed.check_starting, stored().check_starting);
 }
 

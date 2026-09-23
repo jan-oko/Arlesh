@@ -521,6 +521,16 @@ fn item_id_maps(copied: &[(FlowItemType, i64, i64)]) -> (HashMap<i64, i64>, Hash
     (goals, tasks)
 }
 
+/// One `derived_children` row, as the ancestry climb reads it.
+#[derive(sqlx::FromRow)]
+struct AttachmentRow {
+    flow_id: Option<i64>,
+    parent_kind: String,
+    parent_key: String,
+    window_start_scope_id: Option<i64>,
+    window_end_scope_id: Option<i64>,
+}
+
 /// Reads and writes flow templates — and their items, cycles, recurrences and instances —
 /// on a session's connection.
 ///
@@ -1775,7 +1785,7 @@ impl<'session> FlowOperator<'session> {
         child_type: &str,
         child_id: i64,
     ) -> Result<Option<ChildAttachment>, sqlx::Error> {
-        let row: Option<(Option<i64>, String, String, Option<i64>, Option<i64>)> = sqlx::query_as(
+        let row: Option<AttachmentRow> = sqlx::query_as(
             "SELECT flow_id, parent_kind, parent_key, window_start_scope_id, window_end_scope_id
              FROM derived_children WHERE child_type = ? AND child_id = ?",
         )
@@ -1783,18 +1793,18 @@ impl<'session> FlowOperator<'session> {
         .bind(child_id)
         .fetch_optional(&mut *self.connection)
         .await?;
-        Ok(row.map(
-            |(flow_id, parent_kind, parent_key, start_id, end_id)| ChildAttachment {
-                flow_id: flow_id.unwrap_or_default(),
-                instance_type: parent_kind,
-                parent_key,
-                window: start_id.zip(end_id).map(|(start_id, end_id)| TimeScope {
+        Ok(row.map(|row| ChildAttachment {
+            flow_id: row.flow_id.unwrap_or_default(),
+            instance_type: row.parent_kind,
+            parent_key: row.parent_key,
+            window: row.window_start_scope_id.zip(row.window_end_scope_id).map(
+                |(start_id, end_id)| TimeScope {
                     start_id,
                     end_id,
                     duration: None,
-                }),
-            },
-        ))
+                },
+            ),
+        }))
     }
 
     /// Attaches an already-created row to one occurrence. `window` is the occurrence's, resolved

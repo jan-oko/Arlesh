@@ -2,10 +2,10 @@ use super::*;
 
 fn stored() -> Commitment {
     Commitment {
-        id: 1,
+        id: 1.into(),
         title: "Asleep by 23:00".to_string(),
         parent_type: "project".to_string(),
-        parent_id: 7,
+        parent_id: 7.into(),
         verdict: Verdict::Unresolved,
         time_scope: Some(TimeScope {
             start_id: 10,
@@ -22,12 +22,13 @@ fn stored() -> Commitment {
         // Tracked in `bd`. `CommitmentWrite` has no counterpart field, so the merge cannot
         // carry it either way — which is the write-path constraint, stated in the type.
         beads_id: Some("Arlesh-cyo".to_string()),
+        origin: Default::default(),
     }
 }
 
 #[test]
 fn an_empty_request_writes_the_stored_row_back_unchanged() {
-    let write = CommitmentWrite::merge(stored(), UpdateCommitmentRequest::default());
+    let write = CommitmentWrite::merge(stored(), UpdateCommitmentRequest::default()).unwrap();
     assert!(write.reparent.is_none());
     assert_eq!(write.parent_type, "project");
     assert_eq!(write.parent_id, 7);
@@ -46,7 +47,8 @@ fn recording_a_verdict_changes_nothing_else() {
                 verdict: Some(verdict),
                 ..Default::default()
             },
-        );
+        )
+        .unwrap();
         assert_eq!(write.verdict, verdict);
         assert_eq!(write.time_scope, stored().time_scope);
         assert_eq!(write.verdict_window, stored().verdict_window);
@@ -67,7 +69,8 @@ fn a_verdict_can_be_taken_back_to_unresolved() {
             verdict: Some(Verdict::Unresolved),
             ..Default::default()
         },
-    );
+    )
+    .unwrap();
     assert_eq!(write.verdict, Verdict::Unresolved);
 }
 
@@ -79,7 +82,8 @@ fn clearing_the_time_scope_clears_it_rather_than_keeping_the_stored_one() {
             time_scope: Some(None),
             ..Default::default()
         },
-    );
+    )
+    .unwrap();
     assert_eq!(write.time_scope, None);
 }
 
@@ -93,7 +97,8 @@ fn clearing_the_verdict_window_returns_it_to_inheriting() {
             verdict_window: Some(None),
             ..Default::default()
         },
-    );
+    )
+    .unwrap();
     assert_eq!(write.verdict_window, None);
 }
 
@@ -109,7 +114,8 @@ fn setting_a_verdict_window_replaces_the_stored_one() {
             verdict_window: Some(Some(week.clone())),
             ..Default::default()
         },
-    );
+    )
+    .unwrap();
     assert_eq!(write.verdict_window, Some(week));
 }
 
@@ -121,7 +127,8 @@ fn a_reparent_needs_both_halves_and_becomes_the_validated_parent() {
             parent_type: Some("commitment".into()),
             ..Default::default()
         },
-    );
+    )
+    .unwrap();
     assert!(
         half.reparent.is_none(),
         "a parent type without an id is not a move"
@@ -135,7 +142,8 @@ fn a_reparent_needs_both_halves_and_becomes_the_validated_parent() {
             parent_id: Some(42),
             ..Default::default()
         },
-    );
+    )
+    .unwrap();
     assert_eq!(full.reparent, Some(("commitment".to_string(), 42)));
     assert_eq!(full.parent_type, "commitment");
     assert_eq!(full.parent_id, 42);

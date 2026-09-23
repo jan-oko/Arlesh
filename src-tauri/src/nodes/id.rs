@@ -111,6 +111,12 @@ impl PartialEq<i64> for NodeId {
     }
 }
 
+impl PartialEq<NodeId> for i64 {
+    fn eq(&self, other: &NodeId) -> bool {
+        other == self
+    }
+}
+
 impl fmt::Display for NodeId {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

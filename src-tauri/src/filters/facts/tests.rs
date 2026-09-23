@@ -30,10 +30,10 @@ fn domain_row(id: i64, subtype: &str, parent: Option<i64>, status: Option<&str>)
 
 fn goal_row(id: i64, parent_type: &str, parent_id: i64, status: &str) -> Goal {
     Goal {
-        id,
+        id: id.into(),
         title: format!("goal {id}"),
         parent_type: parent_type.to_string(),
-        parent_id,
+        parent_id: parent_id.into(),
         status: status.to_string(),
         time_scope: None,
         on_scope_exit: None,
@@ -41,15 +41,16 @@ fn goal_row(id: i64, parent_type: &str, parent_id: i64, status: &str) -> Goal {
         position: id,
         is_private: false,
         beads_id: None,
+        origin: Default::default(),
     }
 }
 
 fn task_row(id: i64, parent_type: &str, parent_id: i64, status: &str) -> Task {
     Task {
-        id,
+        id: id.into(),
         title: format!("task {id}"),
         parent_type: parent_type.to_string(),
-        parent_id,
+        parent_id: parent_id.into(),
         status: status.to_string(),
         delegate_to: None,
         agentic: None,
@@ -63,15 +64,16 @@ fn task_row(id: i64, parent_type: &str, parent_id: i64, status: &str) -> Task {
         position: id,
         is_private: false,
         beads_id: None,
+        origin: Default::default(),
     }
 }
 
 fn commitment_row(id: i64, parent_type: &str, parent_id: i64, verdict: Verdict) -> Commitment {
     Commitment {
-        id,
+        id: id.into(),
         title: format!("commitment {id}"),
         parent_type: parent_type.to_string(),
-        parent_id,
+        parent_id: parent_id.into(),
         verdict,
         time_scope: None,
         verdict_window: None,
@@ -79,6 +81,7 @@ fn commitment_row(id: i64, parent_type: &str, parent_id: i64, verdict: Verdict) 
         position: id,
         is_private: false,
         beads_id: None,
+        origin: Default::default(),
     }
 }
 
@@ -88,7 +91,7 @@ fn info_row(id: i64, parent_type: &str, parent_id: i64) -> Info {
         body: format!("info {id}"),
         details: None,
         parent_type: parent_type.to_string(),
-        parent_id,
+        parent_id: parent_id.into(),
         position: id,
         is_private: false,
     }
@@ -97,7 +100,7 @@ fn info_row(id: i64, parent_type: &str, parent_id: i64) -> Info {
 fn lifecycle(node_type: &str, node_id: i64, timing: Timing, archival: Archival) -> ItemLifecycle {
     ItemLifecycle {
         node_type: node_type.to_string(),
-        node_id,
+        node_id: node_id.into(),
         timing,
         resolution: None,
         verdict: None,
@@ -273,7 +276,10 @@ fn narrowing_to_do_keeps_the_containers_that_carry_an_in_progress_task() {
     let mut load = board();
     narrow(&mut load, &BoardFilter::preset(Preset::Do));
     assert_eq!(
-        load.tasks.iter().map(|task| task.id).collect::<Vec<_>>(),
+        load.tasks
+            .iter()
+            .map(|task| task.id.clone())
+            .collect::<Vec<_>>(),
         [20]
     );
     assert_eq!(
@@ -305,7 +311,7 @@ fn a_backlogged_task_leaves_plan_and_comes_back_under_the_backlog_preset() {
         backlogged
             .tasks
             .iter()
-            .map(|task| task.id)
+            .map(|task| task.id.clone())
             .collect::<Vec<_>>(),
         [20, 21]
     );
@@ -340,7 +346,7 @@ fn expectation_row(id: i64, parent_type: &str, parent_id: i64) -> crate::tasks::
         id,
         title: format!("expectation {id}"),
         parent_type: parent_type.to_string(),
-        parent_id,
+        parent_id: parent_id.into(),
         status: crate::tasks::model::ExpectationStatus::Pending,
         archival: crate::tasks::model::ExpectationArchival::Live,
         check_every: None,
