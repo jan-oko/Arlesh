@@ -19,6 +19,8 @@ import {
   setFlowRecurrence, deleteFlowRecurrence, forkFlow, clearHabitModifications,
 } from "@/api/flows";
 import { getOrCreateScope } from "@/api/scopes";
+import { withAtomicGesture } from "@/api/gesture";
+import { localNowIso } from "@/utils/local-now";
 import type { Domain } from "@/api/domains";
 import { listDomains, updateDomain } from "@/api/domains";
 import {
@@ -98,6 +100,7 @@ interface Result {
 
 export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Result {
   const { t } = useTranslation("warnings");
+  const { t: tUndo } = useTranslation("undo");
   const showToast = useMindmapStore((s) => s.showToast);
   const [editorModal, setEditorModal] = useState<EditorModalState | null>(null);
   const [allTags, setAllTags] = useState<Domain[]>([]);
@@ -300,10 +303,15 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
         });
       };
       if (data.reconcile === "fork") {
-        // Archive & new: apply the edit to a deep clone; the original habit + history stay untouched.
-        const clone = await forkFlow(dbId);
-        await updateFlow(clone.id, flowFields);
-        await persistRecurrence(clone.id);
+        // Archive & new: the backend clones the template and archives the original (it stops
+        // recurring, its history stays); the edit then lands on the clone. One Gesture, and an
+        // atomic one: a single Ctrl+Z takes the whole thing back, and a refusal part-way leaves
+        // neither a stray clone nor an archived original behind.
+        await withAtomicGesture(tUndo("gestures.archiveAndNew"), async () => {
+          const clone = await forkFlow(dbId, localNowIso());
+          await updateFlow(clone.id, flowFields);
+          await persistRecurrence(clone.id);
+        });
       } else {
         if (data.reconcile === "discard") await clearHabitModifications(dbId);
         await updateFlow(dbId, flowFields);
@@ -312,7 +320,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
       await reload();
       setEditorModal(null);
     },
-    [editorModal, reload],
+    [editorModal, reload, tUndo],
   );
 
   const onFlowItemSave = useCallback(
