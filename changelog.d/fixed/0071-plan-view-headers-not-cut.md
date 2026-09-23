@@ -1,0 +1,1 @@
+- **Path headers in the Plan View are no longer cut through.** Once a pane held more than fit, the headers naming where each run of tasks lives were squeezed shorter than their own line, clipping the text. The pane now scrolls instead, and the headers keep their full height.

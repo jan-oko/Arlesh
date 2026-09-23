@@ -12,6 +12,7 @@ import { clearScopeWindowCache } from "@/hooks/use-scope-windows";
 import { clearScopeRowCache } from "@/hooks/use-scope-rows";
 import { useDisplayStore } from "@/stores/use-display-store";
 import { useViewStore } from "@/stores/use-view-store";
+import { fixtureRowId } from "@/test/node-fixture";
 
 // The usual key-for-string stub, with one exception: a bucket's keyboard mnemonic is the initial
 // of its **rendered** name, so a stub that answered "planView:weekday.3" for Wednesday would give
@@ -129,7 +130,7 @@ vi.mock("@/api/tasks", async (importOriginal) => ({
 }));
 
 function n(id: string, kind: NodeKind, extra: Partial<MindmapNode> = {}): MindmapNode {
-  return { id, kind, title: id, position: 0, tagIds: [], children: [], ...extra };
+  return { id, ...fixtureRowId(id), kind, title: id, position: 0, tagIds: [], children: [], ...extra };
 }
 
 function row(node: MindmapNode, ancestors: MindmapNode[] = []): TaskListRow {

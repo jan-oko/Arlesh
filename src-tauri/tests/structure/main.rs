@@ -15,6 +15,7 @@
 #[path = "../helpers/mod.rs"]
 mod helpers;
 
+mod documented_vocabularies;
 mod domains;
 mod infos;
 mod knowledge_base;

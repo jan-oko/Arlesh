@@ -44,12 +44,6 @@ export interface PlanMoveHandles {
   unplan: (rows: readonly TaskListRow[]) => Promise<string[]>;
 }
 
-/** The database id behind a task node id (`task-42` → `42`), or `null` for a node with no row. */
-function taskRowId(nodeId: string): number | null {
-  const id = parseInt(nodeId.split("-").pop() ?? "", 10);
-  return Number.isNaN(id) ? null : id;
-}
-
 /** The two things this hook ever writes, as the names one `Ctrl+Z` will reverse. */
 type PlanGestureKey = "undo:gestures.plan" | "undo:gestures.unplan";
 
@@ -152,8 +146,8 @@ export function usePlanMove({
       if (rows.length === 0) return outcome;
       await withGesture(t(gesture, { count: rows.length }), async () => {
         for (const row of rows) {
-          const id = taskRowId(row.node.id);
-          if (id === null) continue;
+          const id = row.node.rowId;
+          if (id === undefined) continue;
           try {
             await updateTask(id, { plan });
           } catch (error: unknown) {

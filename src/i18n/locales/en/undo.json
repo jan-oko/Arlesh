@@ -30,6 +30,7 @@
     "plan_one": "plan 1 task",
     "plan_other": "plan {{count}} tasks",
     "unplan_one": "take 1 task out of a scope",
-    "unplan_other": "take {{count}} tasks out of a scope"
+    "unplan_other": "take {{count}} tasks out of a scope",
+    "archiveAndNew": "archive a habit and start a new one"
   }
 }
