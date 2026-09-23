@@ -414,9 +414,10 @@ pub fn open_windows<R: Runtime>(app: &AppHandle<R>) -> Vec<ListedWindow> {
             let window = app.get_webview_window(&label)?;
             // Unreadable reads as hidden: the entry then offers to show it, which is harmless.
             let visible = window.is_visible().unwrap_or(false);
+            let ordinal = ordinal_of(app, &label);
             Some(OpenWindow {
                 label,
-                ordinal: ordinal_of(app, &label),
+                ordinal,
                 visible,
             })
         })
