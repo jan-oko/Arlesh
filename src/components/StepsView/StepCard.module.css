@@ -1,4 +1,5 @@
 .card {
+  composes: wash from "@/styles/aspect-wash.module.css";
   position: relative;
   display: flex;
   overflow: hidden;
@@ -11,41 +12,9 @@
   font-family: var(--font-sans);
   gap: var(--space-1);
 
-  /* **The card is its aspect.** Not the aspect colour itself, though — a low-chroma *surface* mixed
-     from it, which is the whole difference between this and the rule it replaces. That one painted
-     the colour on at a depth-varying opacity, so an Aspect's own card came out at full strength
-     with body text over it and was unreadable in both themes.
-
-     Mixing a fixed, small share of the hue into the theme's own card background instead makes
-     contrast a property of the rule rather than of which node you happened to be looking at: the
-     result is never further from `--node-bg` than `--card-aspect-strength`, and the theme already
-     guarantees `--node-text` against `--node-bg` with a wide margin. That margin is what carries the
-     primary text: for the six seeded aspects it bottoms out at 8.80:1 (Steel, dark) and 14.83:1
-     (Red, light), including the Aspect card itself. It does **not** carry the muted text, whose
-     margin was thin to begin with — that is what `--card-text-muted` below is for.
-
-     The plain `background` below is the fallback for an engine without `color-mix`: it keeps a
-     readable card and merely loses the colour. `--card-aspect` defaults to the background so a node
-     outside any aspect mixes the background into itself, which is a no-op rather than a hole. */
-  --card-surface: color-mix(
-    in srgb,
-    var(--card-aspect, var(--node-bg)) var(--card-aspect-strength),
-    var(--node-bg)
-  );
-
-  /* The card's own muted text, and the reason it is not `--text-secondary`.
-     That token is picked against `--node-bg`, where it measures 4.71:1 in dark — barely over AA's
-     4.5:1, with no headroom for a tinted card underneath it. Every aspect pushed it under: Steel in
-     dark came out at 3.30:1. Since the card body is mostly muted text (the kind line, the field
-     labels, the notes, the count), that was most of the card failing.
-     Deriving it from the card instead fixes it at the source: 65% of the way from this card's own
-     surface toward the primary text holds every aspect over AA in both themes — dark bottoms out at
-     4.74:1 on Steel, light at 5.03:1 on Purple — and it is better than the global token managed on
-     an untinted card besides (6.07:1 dark, 5.32:1 light). */
-  --card-text-muted: color-mix(in srgb, var(--node-text) 65%, var(--card-surface));
-
-  background: var(--node-bg);
-  background: var(--card-surface);
+  /* The card is washed in its aspect's colour; `aspect-wash.module.css` says how, and why that keeps
+     every aspect legible. A child card's base is the theme's card background. */
+  --card-base: var(--node-bg);
 }
 
 .child {
@@ -61,15 +30,13 @@
   width: 100%;
 }
 
-/* The board's own card: its name, centred, and nothing else. It belongs to no aspect, so it takes
-   the raised surface rather than a mix — declared as `--card-surface` too, so anything on it that
-   derives from the card derives from the right one. */
+/* The board's own card: its name, centred, and nothing else. It belongs to no aspect, so it is given
+   none and the wash leaves it its base — the raised surface. */
 .board {
-  --card-surface: var(--surface-raised);
+  --card-base: var(--surface-raised);
   align-items: center;
   justify-content: center;
   min-height: 48px;
-  background: var(--surface-raised);
 }
 
 .boardTitle {

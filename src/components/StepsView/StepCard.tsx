@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { isNodeBlocked } from "@/utils/tree-layout";
 import { deriveStatusIndicators } from "@/utils/node-status-indicators";
-import { DIMMED_OPACITY } from "@/utils/node-visuals";
+import { DIMMED_OPACITY, aspectWashStyle } from "@/utils/node-visuals";
 import {
   bulletCapacity, infoBullets, infoChildTitles, stepCardFields, type StepChildCounts,
 } from "@/utils/steps-card";
@@ -84,7 +84,7 @@ export default function StepCard({
   const fields = stepCardFields(node);
   const bullets = infoBullets(infoChildTitles(node), bulletCapacity(cardHeight, fields.length));
   const cardStyle: CSSProperties & Record<`--${string}`, string | number> = {
-    ...(aspectColor === undefined ? {} : { "--card-aspect": aspectColor }),
+    ...aspectWashStyle(aspectColor),
     opacity: node.archived === true ? DIMMED_OPACITY : 1,
   };
 

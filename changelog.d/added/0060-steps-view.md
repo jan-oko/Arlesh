@@ -17,8 +17,8 @@
   a status, and a leaf opens on an empty Step that offers to create the first child rather than
   being a dead end.
 
-  Every card is coloured by the aspect it lives under, so a Step reads at a glance as one place on
-  the board. It is a light wash of the aspect's hue rather than the colour itself, so text stays
+  Every card is coloured by the aspect it lives under, as a List View row is, so a Step reads at a
+  glance as one place on the board. It is a light wash of the aspect's hue rather than the colour itself, so text stays
   legible on every aspect in both themes, the pale ones and an Aspect's own card included. What
   state a card is in is left to its icon and its badges.
 

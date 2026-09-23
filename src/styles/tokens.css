@@ -26,23 +26,12 @@ html, body, #root {
   --node-text: #e0e0f0;
   --node-text-muted: #888899;
 
-  /* How much of a node's aspect colour is mixed into a Steps card's background. Small on purpose:
+  /* How much of a node's aspect colour is mixed into a card's background — a Steps card or a List
+     View row, through `aspect-wash.module.css`. Small on purpose:
      the card has body text on it, and what keeps that legible is staying close to the background
      the theme already guarantees the text against. Dark needs slightly more of the hue than light
      to read as coloured at all. */
   --card-aspect-strength: 16%;
-
-  /* Status tints — a card's fill says what state the work is in.
-     They are **opaque surfaces**, not a colour at some opacity: contrast against --node-text is
-     then a property of the token rather than an accident of how deep a node happened to sit, which
-     is what made an Aspect card unreadable when the fill was its own full-strength colour. Low
-     chroma on purpose, so a card reads as a surface with a hue rather than as a colour block. */
-  --tint-open: #1e1e2e;
-  --tint-progress: #232a44;
-  --tint-done: #1d2b26;
-  --tint-blocked: #331f22;
-  --tint-frozen: #222a3a;
-  --tint-archived: #1a1a24;
 
   /* Canvas */
   --canvas-bg: #13131f;
@@ -92,15 +81,6 @@ html, body, #root {
 
   /* See the dark set: less of the hue here, because a pale tint reads as coloured sooner. */
   --card-aspect-strength: 11%;
-
-  /* Status tints — see the dark set above. The same hues at the same low chroma, so one state
-     reads as that state in either theme. */
-  --tint-open: #ffffff;
-  --tint-progress: #eceffd;
-  --tint-done: #e8f4ec;
-  --tint-blocked: #fbeaea;
-  --tint-frozen: #edf1f8;
-  --tint-archived: #f1f1f5;
 
   /* Canvas */
   --canvas-bg: #f4f4fa;

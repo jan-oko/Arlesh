@@ -3,7 +3,7 @@ import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import type { TaskListRow } from "@/utils/list-filter";
 import { deriveStatusIndicators } from "@/utils/node-status-indicators";
-import { statusTintValue } from "@/utils/node-visuals";
+import { aspectWashStyle } from "@/utils/node-visuals";
 import { isRtlText } from "@/utils/text-direction";
 import { useTagNames } from "@/hooks/use-tag-names";
 import { useInputCapture } from "@/hooks/use-input-capture";
@@ -37,7 +37,7 @@ interface Props {
  * double-clicking the node on the Mindmap.
  *
  * `visibleDepth` is how many of the task's ancestors are themselves rows above it, and the whole card
- * steps in once per level — the status control, badges and tint move as one object rather than the
+ * steps in once per level — the status control, badges and colour move as one object rather than the
  * title drifting away from them. Ancestors the filter hides are named in the path header instead, so
  * a row never indents under something that is not on screen. */
 export default function TaskRow({
@@ -53,12 +53,10 @@ export default function TaskRow({
   // Mirrors the Mindmap node's own gating: a Habit instance always advances; a real task only while unblocked.
   const canClickStatus = node.habitItem !== undefined || !row.isBlocked;
 
-  // Same aspect-color derivation the Mindmap node uses, so a card's tint matches its node's fill there.
-  // The fill says what state the work is in, not how deep it sits — one rule, shared with the
-  // Steps View, so a Task reads the same on either surface.
+  // Washed in its aspect's colour, flat — the same wash a Steps card takes, so a Task reads as the
+  // same part of the board on either surface. `node.color` is the aspect's, propagated on load.
   const cardStyle: CSSProperties & Record<`--${string}`, string | number> = {
-    "--card-tint": statusTintValue(node),
-    "--card-tint-opacity": 1,
+    ...aspectWashStyle(node.color),
     "--row-depth": visibleDepth,
   };
   // The indent follows the title's own direction, the same way a Mindmap node's layout does: a Hebrew

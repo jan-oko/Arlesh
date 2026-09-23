@@ -176,9 +176,11 @@ derived colour, and the colouring is then safe for every aspect rather than for 
 
 The **badge icons** are the one thing on the card not derived from it: the badge row is shared with
 the List View and draws in `--node-text-muted` and `--danger`. As graphics they answer to WCAG's 3:1
-for non-text rather than 4.5:1, and they clear it on every seeded aspect in both themes — but with
-the least room of anything on the card: the danger mark on Steel in dark measures 3.01:1, the muted
-marks there 3.30:1.
+for non-text rather than 4.5:1. On a Steps card they clear it on every seeded aspect in both themes,
+with the least room of anything on the card: the danger mark on Steel in dark measures 3.01:1, the
+muted marks there 3.30:1. **On a List View row the danger mark does not clear it**: on the raised
+row surface, Steel in dark gives 2.83:1 (Gray 3.06:1, the muted marks 3.10:1). That is an open
+contrast gap, recorded rather than fixed here; the badge colours are shared by every surface.
 
 **The fill says nothing about state**, deliberately. That is only safe because the glyph and the
 badge row already do: the Task and Goal icons draw their status and their blocked-ness, the
@@ -187,10 +189,10 @@ and asynchronous. It is the same reasoning that took those out of the card's fie
 covered twice over, the fill is free to spend itself on *where* the node lives, which nothing else
 on the card says.
 
-The **List View is not coloured this way.** Its rows are tinted by status (see
-[List View](list-view.md)), because a flat list of Tasks drawn from everywhere is answering a
-different question: there, where a row came from is what the path header says in words, and what it
-*is* has nothing else to carry it.
+The **List View's rows take the same wash**, from the same shared stylesheet
+(`src/styles/aspect-wash.module.css`), so a Task reads as the same part of the board on either
+surface (see [List View](list-view.md)). Neither fades the colour by depth; the Mindmap and the Plan
+View still do.
 
 ## Editing
 
