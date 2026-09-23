@@ -24,7 +24,7 @@ import { filterTreeWithFocus } from "@/utils/filter-tree";
 import { focusExemptPath } from "@/utils/focus-exemption";
 import { collectSearchableNodes, collectTasksAndGoals, findNode } from "@/utils/mindmap-tree";
 import { aspectColorOf } from "@/utils/node-visuals";
-import { canDescendInto, stepChildCounts, stepRefusalKey } from "@/utils/steps-card";
+import { canDescendInto, creatableKinds, stepChildCounts, stepRefusalKey } from "@/utils/steps-card";
 import { hasNodeEditor } from "@/utils/node-meta";
 import type { TypedChildKind } from "@/utils/node-meta";
 import { neighbourAfterDelete } from "@/utils/neighbour-after-delete";
@@ -43,6 +43,7 @@ import NodeEditorModals from "@/components/NodeEditorModals/NodeEditorModals";
 import NodeSearchModal from "@/components/NodeSearchModal/NodeSearchModal";
 import UnfinishedChildrenModal from "@/components/UnfinishedChildrenModal/UnfinishedChildrenModal";
 import StepCard from "./StepCard";
+import StepCreateMenu from "./StepCreateMenu";
 import { useKeyboardStepsView } from "./use-keyboard-steps-view";
 import { useStepGrid } from "./use-step-grid";
 import styles from "./StepsView.module.css";
@@ -240,6 +241,12 @@ export default function StepsView() {
     actions.onCreateTypedChild(id, kind);
   }
 
+  /** A kind created on the Step itself — a typed chord with nothing selected, or the "+" menu. */
+  function onCreateTypedChildOnStep(kind: TypedChildKind): void {
+    if (stepNodeId === null) { refuseAtBoardRoot(); return; }
+    onCreateTypedChildHere(stepNodeId, kind);
+  }
+
   // A sibling of the Step, or a parent inserted above it, would land outside the Step you are
   // looking at — so on the header card both are refused, and said. On a card they land here.
   function onCreateSiblingHere(id: string): void {
@@ -366,6 +373,7 @@ export default function StepsView() {
     onOpenEditor,
     onCreateChild: onCreateChildHere,
     onCreateTypedChild: onCreateTypedChildHere,
+    onCreateTypedChildOnStep,
     onCreateSibling: onCreateSiblingHere,
     onInsertParent: onInsertParentHere,
     onDelete: onDeleteHere,
@@ -402,22 +410,30 @@ export default function StepsView() {
           whatever you walked to and the filter never takes that away — but its children are what
           the Info bullets are drawn from, and those must honour the filter exactly as the child
           cards below it do. */}
-      <StepCard
-        node={rawStepNode === null ? null : filteredRoot}
-        aspectColor={stepAspectColor}
-        cardHeight={card.height}
-        isHeader
-        isSelected={cursor?.cell === "header"}
-        counts={headerCounts}
-        onSelect={() => setSelection({ cell: "header" })}
-        // You are already standing here, so there is nothing below this card to descend into; the
-        // gesture belongs to the cards under it.
-        onDescend={refuseAtBoardRoot}
-        onOpenEditor={() => (rawStepNode === null ? refuseAtBoardRoot() : onOpenEditor(rawStepNode.id))}
-        isEditingTitle={rawStepNode !== null && editingNodeId === rawStepNode.id}
-        onCommitTitle={(title) => { if (rawStepNode !== null) actions.onCommitEdit(rawStepNode.id, title); }}
-        onCancelTitleEdit={() => setEditingNodeId(null)}
-      />
+      {/* The header card, and beside it the Step's "+": outside the card, because a card clips
+          what overflows it and the menu has to drop below. No "+" on the board, where nothing can
+          be created — the Aspects are fixed. */}
+      <div className={styles.headerRow}>
+        <StepCard
+          node={rawStepNode === null ? null : filteredRoot}
+          aspectColor={stepAspectColor}
+          cardHeight={card.height}
+          isHeader
+          isSelected={cursor?.cell === "header"}
+          counts={headerCounts}
+          onSelect={() => setSelection({ cell: "header" })}
+          // You are already standing here, so there is nothing below this card to descend into; the
+          // gesture belongs to the cards under it.
+          onDescend={refuseAtBoardRoot}
+          onOpenEditor={() => (rawStepNode === null ? refuseAtBoardRoot() : onOpenEditor(rawStepNode.id))}
+          isEditingTitle={rawStepNode !== null && editingNodeId === rawStepNode.id}
+          onCommitTitle={(title) => { if (rawStepNode !== null) actions.onCommitEdit(rawStepNode.id, title); }}
+          onCancelTitleEdit={() => setEditingNodeId(null)}
+        />
+        {rawStepNode !== null && (
+          <StepCreateMenu kinds={creatableKinds(rawStepNode)} onCreate={onCreateTypedChildOnStep} />
+        )}
+      </div>
 
       {children.length === 0 ? (
         <div className={styles.empty} ref={childAreaRef}>

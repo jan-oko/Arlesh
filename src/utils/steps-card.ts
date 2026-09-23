@@ -1,5 +1,6 @@
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
-import { canAdoptChildren, canParentAnyNewChild } from "@/utils/node-meta";
+import { TYPED_CHILD_KINDS, canAdoptChildren, canParentAnyNewChild, canParentNewChild } from "@/utils/node-meta";
+import type { TypedChildKind } from "@/utils/node-meta";
 
 /**
  * What a **Steps card** says, and whether you can descend into it.
@@ -255,4 +256,13 @@ const KINDS_SHARING_A_GLYPH: ReadonlySet<NodeKind> = new Set<NodeKind>(["flow_go
  */
 export function cardWritesKind(kind: NodeKind): boolean {
   return KINDS_SHARING_A_GLYPH.has(kind);
+}
+
+/**
+ * The kinds the Step's "+" offers: every kind a `Shift`+initial chord can create that `node` can
+ * actually hold, asked of the node as the chords' own refusal asks it — so the menu never offers
+ * something the create would then refuse.
+ */
+export function creatableKinds(node: MindmapNode): readonly TypedChildKind[] {
+  return TYPED_CHILD_KINDS.filter((kind) => canParentNewChild(node, kind));
 }

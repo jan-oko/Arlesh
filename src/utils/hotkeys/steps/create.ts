@@ -14,10 +14,19 @@ export interface StepsCreateContext extends StepsSelectionContext {
   onCreateTypedChild: (id: string, kind: TypedChildKind) => void;
   onCreateSibling: (id: string) => void;
   onInsertParent: (id: string) => void;
+  /**
+   * A typed chord with **nothing selected**: that kind, created on the current Step — as a child of
+   * the node the Step stands on, exactly as with its header card selected. At the true root, where
+   * the Step is the board, the view refuses it out loud.
+   */
+  onCreateTypedChildOnStep: (kind: TypedChildKind) => void;
 }
 
-/** The Mindmap's Shift+initial chords, one per named kind, with the Mindmap's labels. */
-const TYPED_CHILD_CHORDS: ReadonlyArray<{ code: string; kind: TypedChildKind; labelKey: HotkeyLabelKey }> = [
+/**
+ * The Mindmap's Shift+initial chords, one per named kind, with the Mindmap's labels. Exported so the
+ * Step's "+" menu can show each kind's chord beside it — one table, so the two cannot disagree.
+ */
+export const STEPS_TYPED_CHILD_CHORDS: ReadonlyArray<{ code: string; kind: TypedChildKind; labelKey: HotkeyLabelKey }> = [
   { code: "KeyD", kind: "domain", labelKey: "createDomainChild" },
   { code: "KeyP", kind: "project", labelKey: "createProjectChild" },
   { code: "KeyG", kind: "goal", labelKey: "createGoalChild" },
@@ -29,15 +38,19 @@ const TYPED_CHILD_CHORDS: ReadonlyArray<{ code: string; kind: TypedChildKind; la
 
 // `allowRepeat: false` throughout: creation is a round-trip to the database, and a held key would
 // post a node per repeat faster than the first one reaches the screen.
-const typedChildBindings: readonly Binding<StepsCreateContext>[] = TYPED_CHILD_CHORDS.map(
+const typedChildBindings: readonly Binding<StepsCreateContext>[] = STEPS_TYPED_CHILD_CHORDS.map(
   ({ code, kind, labelKey }) => ({
     id: `stepsView.createTypedChild.${kind}`,
     section: "stepsView" as const,
     chord: { code, shift: true },
     labelKey,
     allowRepeat: false,
-    when: hasSelection,
-    run: (c: StepsCreateContext) => withNode(c, (id) => c.onCreateTypedChild(id, kind)),
+    // Live with nothing selected too, unlike the other creation chords: naming a kind is enough to
+    // say where it goes — onto the Step you are looking at.
+    run: (c: StepsCreateContext) => {
+      if (c.target.kind === "none") { c.onCreateTypedChildOnStep(kind); return; }
+      withNode(c, (id) => c.onCreateTypedChild(id, kind));
+    },
   }),
 );
 

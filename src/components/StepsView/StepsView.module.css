@@ -14,6 +14,19 @@
   gap: var(--space-3);
 }
 
+/* The header card and the Step's "+" beside it. The card takes the width; the "+" stretches to its
+   height, so the two read as one row. */
+.headerRow {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+
+.headerRow > [data-step-card] {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
 /* The children's area. It is measured, and the measurement is what decides the page size — a Step
    paginates rather than scrolling, so nothing here ever overflows.
 

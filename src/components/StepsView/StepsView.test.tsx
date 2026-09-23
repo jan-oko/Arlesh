@@ -604,3 +604,112 @@ describe("undoing from a Step", () => {
     expect(undo).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("Shift+initial with nothing selected", () => {
+  it("creates that kind on the current Step, selected and open for naming", async () => {
+    const goal = n("goal-1", "goal", { children: [n("task-1", "task")] });
+    mockTree([goal]);
+    useMindmapStore.setState({ subtreeRootId: "goal-1" });
+    const { rerender } = render(<StepsView />);
+
+    expect(selectedCardId()).toBeNull();
+    pressWith("KeyT", { shift: true });
+    await settle();
+
+    expect(createNode).toHaveBeenCalledWith("goal-1", "goal", "task", "");
+    expect(useMindmapStore.getState().subtreeRootId).toBe("goal-1");
+    mockTree([{ ...goal, children: [...goal.children, n("task-98", "task")] }]);
+    rerender(<StepsView />);
+    expect(selectedCardId()).toBe("task-98");
+    expect(screen.getByLabelText("stepsView:titleLabel")).toBeTruthy();
+  });
+
+  it("refuses out loud at the board, where nothing can be created", () => {
+    mockTree([n("domain-1", "aspect")]);
+    render(<StepsView />);
+
+    pressWith("KeyD", { shift: true });
+
+    expect(createNode).not.toHaveBeenCalled();
+    expect(useMindmapStore.getState().pendingToast?.message).toBe("stepsView:refusedBoardRoot");
+  });
+
+  it("refuses a kind the Step cannot hold, in the Mindmap's words", () => {
+    mockTree([n("goal-1", "goal")]);
+    useMindmapStore.setState({ subtreeRootId: "goal-1" });
+    render(<StepsView />);
+
+    pressWith("KeyP", { shift: true });
+
+    expect(createNode).not.toHaveBeenCalled();
+    expect(useMindmapStore.getState().pendingToast?.message).toBe("warnings:typedChildRefused");
+  });
+
+  it("does nothing while a text field has focus — the letter is typed, not a command", () => {
+    mockTree([n("goal-1", "goal")]);
+    useMindmapStore.setState({ subtreeRootId: "goal-1" });
+    render(<><StepsView /><input aria-label="elsewhere" /></>);
+
+    const field = screen.getByLabelText("elsewhere");
+    field.focus();
+    act(() => { fireEvent.keyDown(field, { code: "KeyT", shiftKey: true }); });
+
+    expect(createNode).not.toHaveBeenCalled();
+  });
+});
+
+describe("the Step's +", () => {
+  it("is not offered on the board, where nothing can be created", () => {
+    mockTree([n("domain-1", "aspect")]);
+    render(<StepsView />);
+    expect(screen.queryByLabelText("stepsView:addToStep")).toBeNull();
+  });
+
+  it("offers only the kinds the Step can hold, each with its chord", () => {
+    mockTree([n("goal-1", "goal")]);
+    useMindmapStore.setState({ subtreeRootId: "goal-1" });
+    render(<StepsView />);
+
+    fireEvent.click(screen.getByRole("button", { name: "stepsView:addToStep" }));
+
+    const items = screen.getAllByRole("menuitem").map((item) => item.textContent);
+    expect(items).toContain("nodeKinds:taskShift+T");
+    expect(items.some((item) => item?.startsWith("nodeKinds:project") === true)).toBe(false);
+  });
+
+  it("creates the chosen kind on the Step, as its chord would", async () => {
+    mockTree([n("goal-1", "goal")]);
+    useMindmapStore.setState({ subtreeRootId: "goal-1" });
+    render(<StepsView />);
+
+    fireEvent.click(screen.getByRole("button", { name: "stepsView:addToStep" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /nodeKinds:task/ }));
+    await settle();
+
+    expect(createNode).toHaveBeenCalledWith("goal-1", "goal", "task", "");
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("is driven from the keyboard: arrows move, Enter picks, Escape closes", async () => {
+    mockTree([n("goal-1", "goal")]);
+    useMindmapStore.setState({ subtreeRootId: "goal-1" });
+    render(<StepsView />);
+    const trigger = screen.getByRole("button", { name: "stepsView:addToStep" });
+
+    fireEvent.click(trigger);
+    act(() => { fireEvent.keyDown(window, { key: "Escape" }); });
+    expect(screen.queryByRole("menu")).toBeNull();
+
+    fireEvent.click(trigger);
+    const first = screen.getAllByRole("menuitem")[0]?.textContent ?? "";
+    const second = screen.getAllByRole("menuitem")[1]?.textContent ?? "";
+    expect(first).not.toBe(second);
+    act(() => { fireEvent.keyDown(window, { key: "ArrowDown" }); });
+    act(() => { fireEvent.keyDown(window, { key: "Enter" }); });
+    await settle();
+
+    // The second kind offered to a Goal, whatever it is, was created under the Step.
+    expect(createNode.mock.calls[0]?.[0]).toBe("goal-1");
+    expect(`nodeKinds:${createNode.mock.calls[0]?.[2] ?? ""}`).toBe(second.replace(/Shift\+.$/, ""));
+  });
+});

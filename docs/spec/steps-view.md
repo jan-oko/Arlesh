@@ -265,6 +265,7 @@ Mindmap through `useCreateEditors`, because those two kinds are configured befor
 | A card | A card beside it, on this Step | A card on this Step, with the selected card moved inside it | A child of the card — so the view **steps into that card** to show it |
 | The header card | Refused: it would land outside this Step | Refused: likewise | A card on this Step |
 | The board's own card | Refused, as every gesture is there | Refused | Refused |
+| Nothing | Nothing | Nothing | `Shift`+initial: that kind on this Step, as with the header card selected (refused on the board). `Tab`: nothing |
 
 Stepping in on a child is the Mindmap reading taken literally — `Tab` makes a child of what is
 selected — with the one move that puts the result on screen. It happens only once the create has
@@ -283,8 +284,20 @@ nothing on the Step selected, it is the page you turned to. That is what puts a 
 so usually on the last page — on screen, and what goes back a page when a delete empties the one you
 were on.
 
-With **nothing selected** every one of these chords does nothing, as on the Mindmap: there is no
-card for them to be aimed at.
+With **nothing selected**, the `Shift`+initial chords still act: naming a kind is enough to say
+where it goes, which is onto the Step you are looking at — the same result as selecting the header
+card first. The chords that name no kind (`Tab`, `Shift+Enter`, `Ctrl+Enter`, `Delete`) do nothing
+then, as on the Mindmap, since there is no card for them to be aimed at. Like every view binding,
+none of them fires while a text field has focus or a menu is open.
+
+**The Step's "+"** sits beside the header card and opens a short menu of the kinds this Step's node
+can hold — asked of the node, as the chords' refusal is, so it never offers something the create
+would refuse — each with its `Shift`+initial chord beside it. Choosing one is the chord, with
+nothing selected. A menu rather than one fixed kind because a Step can be a Domain, a Goal or a Tag,
+and they hold different things; the List View's `+` makes a Task only because a list row is only
+ever one. It is a button, so `Tab` reaches it, and the menu is driven by the arrows, `Enter` and
+`Escape`. It is **not drawn on the board**, where nothing can be created. It sits outside the header
+card rather than inside it because a card clips what overflows it, and the menu drops below.
 
 ## Filtering
 
@@ -323,7 +336,8 @@ Three movements, three gestures. An arrow key never leaves the page.
 - `Space` — cycle the selected card's status. Not `Enter`, which descends here; `Space` is bound
   nowhere else and reads as a toggle rather than a move
 - `E` — open the selected card's editor
-- `Tab`, `Shift+Enter`, `Ctrl+Enter`, `Shift+D`/`P`/`G`/`T`/`C`/`I`/`F` — create, as above
+- `Tab`, `Shift+Enter`, `Ctrl+Enter`, `Shift+D`/`P`/`G`/`T`/`C`/`I`/`F` — create, as above; the
+  `Shift`+initial chords also with nothing selected, onto this Step
 - `Delete` — delete the selected card, after confirming
 - `B` / `A` / `W` — backlog, agentic, asynchronous, the same bare letters the other views bind
 - `Escape` — deselect; `F` with nothing selected — the board alone

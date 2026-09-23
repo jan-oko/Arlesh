@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import {
-  cardDrawsGlyph, cardWritesKind,
+  cardDrawsGlyph, cardWritesKind, creatableKinds,
   bulletCapacity, canDescendInto, infoBullets, infoChildTitles, stepCardFields, stepChildCounts,
   stepRefusalKey,
 } from "./steps-card";
@@ -175,5 +175,17 @@ describe("a card's glyph and kind line", () => {
     for (const kind of ["aspect", "domain", "project", "goal", "task", "commitment", "tag", "info", "flow"] as const) {
       expect(cardWritesKind(kind)).toBe(false);
     }
+  });
+});
+
+describe("what a Step's + offers", () => {
+  it("offers only the kinds the Step's node can hold", () => {
+    const offered = creatableKinds(node("goal"));
+    expect(offered).toContain("task");
+    expect(offered).not.toContain("project");
+  });
+
+  it("offers a Tag only a note", () => {
+    expect(creatableKinds(node("tag"))).toEqual(["info"]);
   });
 });

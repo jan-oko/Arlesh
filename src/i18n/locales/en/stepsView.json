@@ -7,6 +7,7 @@
   "emptyStep": "Nothing is inside “{{title}}” yet.",
   "emptyStepFiltered": "Nothing inside “{{title}}” matches the current filter.",
   "createFirstChild": "Create the first child",
+  "addToStep": "Add to this Step",
   "openEditor": "Open the editor",
   "createFailed": "“{{title}}” could not be given a child: {{message}}",
   "refusedHoldsNothing": "“{{title}}” holds nothing — it is a label, not a container, so there is no Step inside it.",

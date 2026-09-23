@@ -24,7 +24,9 @@
 
   Cards are created and deleted with the Mindmap's keys and rules: `Shift+Enter` puts a new card
   beside the selected one, `Ctrl+Enter` a new parent around it, and `Tab` (or `Shift` and a kind's
-  initial) makes a child of the selected card and steps into it to show it. A new card is selected
+  initial) makes a child of the selected card and steps into it to show it. With nothing selected,
+  `Shift` and a kind's initial puts that kind on the Step you are looking at, and so does the "+"
+  beside the Step's header card, which lists the kinds the Step can hold. A new card is selected
   with its title open for naming. `Delete` asks first, then lands on the next card. The Step you
   are standing on cannot be deleted or given a sibling from inside it, and says so. `Ctrl+Z` takes
   back either in one press.
