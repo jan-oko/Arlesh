@@ -200,7 +200,7 @@ async fn seed(app: &tauri::App<tauri::test::MockRuntime>) -> i64 {
         CreateTaskRequest {
             title: "Write".into(),
             parent_type: "goal".into(),
-            parent_id: goal.id.sid(),
+            parent_id: goal.id.clone(),
             ..Default::default()
         },
     )
@@ -993,7 +993,7 @@ async fn seed_many_tasks(app: &tauri::App<tauri::test::MockRuntime>, count: usiz
                 // Padded so the budget is reached without needing thousands of rows.
                 title: format!("Task {n} {}", "x".repeat(300)),
                 parent_type: "goal".into(),
-                parent_id: goal_id,
+                parent_id: goal_id.into(),
                 ..Default::default()
             },
         )

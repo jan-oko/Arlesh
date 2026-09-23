@@ -3098,7 +3098,7 @@ async fn convert_to_flow_builds_a_template_maps_scopes_deps_and_deletes_the_subt
             CreateTaskRequest {
                 title: "Step".into(),
                 parent_type: "goal".into(),
-                parent_id: root.id.sid(),
+                parent_id: root.id.clone(),
                 time_scope: Some(TimeScope {
                     start_id: day.id,
                     end_id: day.id,
@@ -3122,7 +3122,7 @@ async fn convert_to_flow_builds_a_template_maps_scopes_deps_and_deletes_the_subt
             CreateTaskRequest {
                 title: "Prep".into(),
                 parent_type: "goal".into(),
-                parent_id: root.id.sid(),
+                parent_id: root.id.clone(),
                 ..Default::default()
             },
         )
@@ -3137,8 +3137,10 @@ async fn convert_to_flow_builds_a_template_maps_scopes_deps_and_deletes_the_subt
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = add_task_dependency(
             &mut db,
-            step.id.sid().into(),
-            Dependency::Task { id: prep.id.sid() },
+            step.id.clone(),
+            Dependency::Task {
+                id: prep.id.clone(),
+            },
         )
         .await;
         if __r.is_ok() {
@@ -3271,7 +3273,7 @@ async fn convert_to_flow_rejects_a_task_under_a_task() {
             CreateTaskRequest {
                 title: "Child".into(),
                 parent_type: "task".into(),
-                parent_id: parent.id.sid(),
+                parent_id: parent.id.clone(),
                 ..Default::default()
             },
         )
@@ -3323,7 +3325,7 @@ async fn convert_a_task_subtree_without_deps_or_scope_mapping() {
             CreateTaskRequest {
                 title: "Sub".into(),
                 parent_type: "task".into(),
-                parent_id: root.id.sid(),
+                parent_id: root.id.clone(),
                 ..Default::default()
             },
         )

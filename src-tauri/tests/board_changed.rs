@@ -77,7 +77,7 @@ async fn create_task(app: &App<MockRuntime>, project_id: i64, title: &str) -> i6
         CreateTaskRequest {
             title: title.into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             status: None,
             time_scope: None,
             on_scope_exit: None,

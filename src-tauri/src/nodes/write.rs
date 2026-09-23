@@ -515,6 +515,40 @@ async fn effective_edges(
     Ok(crate::mindmap::load(db, now).await?.task_dependencies)
 }
 
+/// Every dependency edge on the board now, stored and derived alike — a template's edges drawn
+/// between the occurrences of one iteration, less the ones an occurrence removed, plus the ones
+/// added by hand.
+pub async fn all_dependencies(
+    db: &mut Db<Transactional>,
+    now: NaiveDateTime,
+) -> Result<Vec<TaskDependencyEdge>, AppError> {
+    effective_edges(db, now).await
+}
+
+/// What one Task depends on now, stored or derived.
+pub async fn dependencies_of(
+    db: &mut Db<Transactional>,
+    task_id: &NodeId,
+    now: NaiveDateTime,
+) -> Result<Vec<Dependency>, AppError> {
+    Ok(effective_edges(db, now)
+        .await?
+        .into_iter()
+        .filter(|edge| &edge.task_id == task_id)
+        .filter_map(|edge| dependency_of(edge.dependency_type.as_str(), edge.dependency_id))
+        .collect())
+}
+
+/// The request shape of one edge's target.
+fn dependency_of(target_type: &str, id: NodeId) -> Option<Dependency> {
+    match (target_type, id) {
+        ("task", id) => Some(Dependency::Task { id }),
+        ("goal", id) => Some(Dependency::Goal { id }),
+        ("expectation", NodeId::Stored(id)) => Some(Dependency::Expectation { id }),
+        _ => None,
+    }
+}
+
 /// Whether `dependent` would reach itself through `target` once the edge is added.
 fn closes_a_cycle(edges: &[TaskDependencyEdge], dependent: &NodeId, target: &NodeId) -> bool {
     let mut stack = vec![target.clone()];

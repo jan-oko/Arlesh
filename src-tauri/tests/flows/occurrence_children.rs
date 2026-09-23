@@ -523,7 +523,7 @@ async fn an_added_child_holds_children_of_its_own_in_the_ordinary_way() {
         arlesh_lib::tasks::model::CreateTaskRequest {
             title: "check the fridge first".into(),
             parent_type: "task".into(),
-            parent_id: child.node_id,
+            parent_id: child.node_id.into(),
             status: None,
             time_scope: None,
             on_scope_exit: None,

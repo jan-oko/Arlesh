@@ -226,7 +226,7 @@ async fn retyping_a_goal_to_a_domain_carries_only_identity_fields_and_drops_the_
         CreateGoalRequest {
             title: "Learn Rust".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             status: Some(GoalStatus::Frozen),
             time_scope: Some(TimeScope {
                 start_id: scope_id,
@@ -261,7 +261,7 @@ async fn retyping_a_goal_to_a_domain_carries_only_identity_fields_and_drops_the_
         CreateTaskRequest {
             title: "Waits on it".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             ..Default::default()
         },
     )
@@ -270,7 +270,9 @@ async fn retyping_a_goal_to_a_domain_carries_only_identity_fields_and_drops_the_
     add_task_dependency(
         &mut db,
         TaskId(dependent.id.sid()),
-        Dependency::Goal { id: goal.id.sid() },
+        Dependency::Goal {
+            id: goal.id.clone(),
+        },
     )
     .await
     .unwrap();
@@ -378,7 +380,7 @@ async fn retyping_a_task_to_a_project_drops_its_task_only_fields_and_ends_both_d
         CreateTaskRequest {
             title: "Other task".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             ..Default::default()
         },
     )
@@ -389,7 +391,7 @@ async fn retyping_a_task_to_a_project_drops_its_task_only_fields_and_ends_both_d
         CreateTaskRequest {
             title: "Draft the spec".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             status: Some(TaskStatus::Done),
             time_scope: Some(TimeScope {
                 start_id: scope_id,
@@ -431,7 +433,9 @@ async fn retyping_a_task_to_a_project_drops_its_task_only_fields_and_ends_both_d
     add_task_dependency(
         &mut db,
         TaskId(task.id.sid()),
-        Dependency::Task { id: other.id.sid() },
+        Dependency::Task {
+            id: other.id.clone(),
+        },
     )
     .await
     .unwrap();
@@ -441,7 +445,7 @@ async fn retyping_a_task_to_a_project_drops_its_task_only_fields_and_ends_both_d
         CreateTaskRequest {
             title: "Waits on the spec".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             ..Default::default()
         },
     )
@@ -450,7 +454,9 @@ async fn retyping_a_task_to_a_project_drops_its_task_only_fields_and_ends_both_d
     add_task_dependency(
         &mut db,
         TaskId(dependent.id.sid()),
-        Dependency::Task { id: task.id.sid() },
+        Dependency::Task {
+            id: task.id.clone(),
+        },
     )
     .await
     .unwrap();
@@ -649,7 +655,7 @@ async fn retyping_a_task_to_a_goal_carries_its_tags_and_reasons_and_repoints_wha
         CreateTaskRequest {
             title: "Draft the spec".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             status: Some(TaskStatus::InProgress),
             plan: Some(TimeScope {
                 start_id: scope_id,
@@ -686,7 +692,7 @@ async fn retyping_a_task_to_a_goal_carries_its_tags_and_reasons_and_repoints_wha
         CreateTaskRequest {
             title: "Waits on the spec".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             ..Default::default()
         },
     )
@@ -695,7 +701,9 @@ async fn retyping_a_task_to_a_goal_carries_its_tags_and_reasons_and_repoints_wha
     add_task_dependency(
         &mut db,
         TaskId(dependent.id.sid()),
-        Dependency::Task { id: task.id.sid() },
+        Dependency::Task {
+            id: task.id.clone(),
+        },
     )
     .await
     .unwrap();
@@ -790,7 +798,7 @@ async fn the_retype_node_command_deletes_stranded_children_and_their_own_descend
         CreateGoalRequest {
             title: "Learn Rust".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             ..Default::default()
         },
     )
@@ -803,7 +811,7 @@ async fn the_retype_node_command_deletes_stranded_children_and_their_own_descend
         CreateGoalRequest {
             title: "Finish the tutorial".into(),
             parent_type: "goal".into(),
-            parent_id: goal.id.sid(),
+            parent_id: goal.id.clone(),
             ..Default::default()
         },
     )
@@ -814,7 +822,7 @@ async fn the_retype_node_command_deletes_stranded_children_and_their_own_descend
         CreateTaskRequest {
             title: "Read chapter four".into(),
             parent_type: "goal".into(),
-            parent_id: sub_goal.id.sid(),
+            parent_id: sub_goal.id.clone(),
             ..Default::default()
         },
     )
@@ -826,7 +834,7 @@ async fn the_retype_node_command_deletes_stranded_children_and_their_own_descend
             body: "ownership is the hard bit".into(),
             details: None,
             parent_type: "goal".into(),
-            parent_id: sub_goal.id.sid(),
+            parent_id: sub_goal.id.clone(),
             position: 0,
         })
         .await
@@ -838,7 +846,7 @@ async fn the_retype_node_command_deletes_stranded_children_and_their_own_descend
         CreateTaskRequest {
             title: "Set up the toolchain".into(),
             parent_type: "goal".into(),
-            parent_id: goal.id.sid(),
+            parent_id: goal.id.clone(),
             ..Default::default()
         },
     )
@@ -915,7 +923,7 @@ async fn the_retype_node_command_reparents_every_kind_of_stranded_child_and_leav
         CreateGoalRequest {
             title: "Learn Rust".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             ..Default::default()
         },
     )
@@ -927,7 +935,7 @@ async fn the_retype_node_command_reparents_every_kind_of_stranded_child_and_leav
         CreateGoalRequest {
             title: "Finish the tutorial".into(),
             parent_type: "goal".into(),
-            parent_id: goal.id.sid(),
+            parent_id: goal.id.clone(),
             ..Default::default()
         },
     )
@@ -939,7 +947,7 @@ async fn the_retype_node_command_reparents_every_kind_of_stranded_child_and_leav
             body: "still under the sub-goal after it moves".into(),
             details: None,
             parent_type: "goal".into(),
-            parent_id: sub_goal.id.sid(),
+            parent_id: sub_goal.id.clone(),
             position: 0,
         })
         .await
@@ -960,7 +968,7 @@ async fn the_retype_node_command_reparents_every_kind_of_stranded_child_and_leav
         CreateTaskRequest {
             title: "Set up the toolchain".into(),
             parent_type: "goal".into(),
-            parent_id: goal.id.sid(),
+            parent_id: goal.id.clone(),
             ..Default::default()
         },
     )
@@ -1137,7 +1145,7 @@ async fn retyping_a_tracked_task_to_a_goal_keeps_its_issue_link() {
         CreateTaskRequest {
             title: "Draft the spec".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             ..Default::default()
         },
     )
@@ -1187,7 +1195,7 @@ async fn retyping_a_tracked_task_to_a_project_keeps_its_issue_link() {
         CreateTaskRequest {
             title: "Becomes a project".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             ..Default::default()
         },
     )
@@ -1229,7 +1237,7 @@ async fn retyping_a_tracked_task_to_a_note_reports_the_link_as_lost_and_clears_i
         CreateTaskRequest {
             title: "Becomes a note".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             ..Default::default()
         },
     )
@@ -1307,7 +1315,7 @@ async fn a_scoped_task_becomes_a_commitment_carrying_its_window_tags_and_issue_l
             CreateTaskRequest {
                 title: "Asleep by 23:00".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 time_scope: Some(tonight.clone()),
                 ..Default::default()
             },
@@ -1384,7 +1392,7 @@ async fn a_planned_task_cannot_become_a_commitment_until_the_caller_has_been_tol
             CreateTaskRequest {
                 title: "Asleep by 23:00".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 time_scope: Some(tonight.clone()),
                 plan: Some(tonight),
                 ..Default::default()
@@ -1438,7 +1446,7 @@ async fn an_unscoped_task_with_no_scoped_ancestor_cannot_become_a_commitment() {
             CreateTaskRequest {
                 title: "Asleep by 23:00".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 ..Default::default()
             },
         )
@@ -1495,7 +1503,7 @@ async fn an_unscoped_task_becomes_a_commitment_when_the_caller_supplies_the_wind
             CreateTaskRequest {
                 title: "No social media today".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 ..Default::default()
             },
         )
@@ -1554,7 +1562,7 @@ async fn a_task_under_a_scoped_goal_becomes_a_commitment_without_being_asked_for
             CreateGoalRequest {
                 title: "Sleep properly".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 time_scope: Some(this_month),
                 ..Default::default()
             },
@@ -1566,7 +1574,7 @@ async fn a_task_under_a_scoped_goal_becomes_a_commitment_without_being_asked_for
             CreateTaskRequest {
                 title: "Asleep by 23:00".into(),
                 parent_type: "goal".into(),
-                parent_id: goal.id.sid(),
+                parent_id: goal.id.clone(),
                 ..Default::default()
             },
         )
@@ -1615,7 +1623,7 @@ async fn a_judged_commitment_becoming_a_task_reports_the_verdict_it_would_lose()
             CreateCommitmentRequest {
                 title: "Asleep by 23:00".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 verdict: Some(Verdict::Broken),
                 time_scope: Some(tonight),
                 verdict_window: Some(DurationSpec {
@@ -1685,7 +1693,7 @@ async fn a_commitments_task_children_move_with_it_and_its_goal_siblings_never_ar
             CreateCommitmentRequest {
                 title: "Asleep by 23:00".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 time_scope: Some(tonight),
                 ..Default::default()
             },
@@ -1697,7 +1705,7 @@ async fn a_commitments_task_children_move_with_it_and_its_goal_siblings_never_ar
             CreateTaskRequest {
                 title: "Phone on charger".into(),
                 parent_type: "commitment".into(),
-                parent_id: commitment.id.sid(),
+                parent_id: commitment.id.clone(),
                 ..Default::default()
             },
         )
@@ -1746,7 +1754,7 @@ async fn a_commitment_becoming_a_tag_deletes_the_children_a_label_cannot_hold() 
             CreateCommitmentRequest {
                 title: "Evening rules".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 time_scope: Some(tonight.clone()),
                 ..Default::default()
             },
@@ -1758,7 +1766,7 @@ async fn a_commitment_becoming_a_tag_deletes_the_children_a_label_cannot_hold() 
             CreateCommitmentRequest {
                 title: "Asleep by 23:00".into(),
                 parent_type: "commitment".into(),
-                parent_id: commitment.id.sid(),
+                parent_id: commitment.id.clone(),
                 time_scope: Some(tonight),
                 ..Default::default()
             },
@@ -1805,7 +1813,7 @@ async fn a_stranded_child_commitment_moves_up_to_its_grandparent_when_the_caller
             CreateCommitmentRequest {
                 title: "Evening rules".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 time_scope: Some(tonight.clone()),
                 ..Default::default()
             },
@@ -1817,7 +1825,7 @@ async fn a_stranded_child_commitment_moves_up_to_its_grandparent_when_the_caller
             CreateCommitmentRequest {
                 title: "Asleep by 23:00".into(),
                 parent_type: "commitment".into(),
-                parent_id: commitment.id.sid(),
+                parent_id: commitment.id.clone(),
                 time_scope: Some(tonight),
                 ..Default::default()
             },
@@ -1868,7 +1876,7 @@ async fn a_goal_holds_a_commitment_child_through_a_retype() {
             CreateCommitmentRequest {
                 title: "Evening rules".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 time_scope: Some(tonight.clone()),
                 ..Default::default()
             },
@@ -1880,7 +1888,7 @@ async fn a_goal_holds_a_commitment_child_through_a_retype() {
             CreateCommitmentRequest {
                 title: "Asleep by 23:00".into(),
                 parent_type: "commitment".into(),
-                parent_id: commitment.id.sid(),
+                parent_id: commitment.id.clone(),
                 time_scope: Some(tonight),
                 ..Default::default()
             },
@@ -1932,7 +1940,7 @@ async fn a_task_under_a_commitment_climbs_past_it_when_it_becomes_a_goal() {
             CreateCommitmentRequest {
                 title: "Asleep by 23:00".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 time_scope: Some(tonight),
                 ..Default::default()
             },
@@ -1944,7 +1952,7 @@ async fn a_task_under_a_commitment_climbs_past_it_when_it_becomes_a_goal() {
             CreateTaskRequest {
                 title: "Phone on charger".into(),
                 parent_type: "commitment".into(),
-                parent_id: commitment.id.sid(),
+                parent_id: commitment.id.clone(),
                 ..Default::default()
             },
         )
@@ -2007,7 +2015,7 @@ async fn retyping_a_backlogged_task_to_a_goal_names_the_backlog_as_lost_and_then
         CreateTaskRequest {
             title: "Set aside for now".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             archival: Some(TaskArchival::Backlog),
             ..Default::default()
         },
@@ -2063,7 +2071,7 @@ async fn retyping_a_task_nobody_set_aside_says_nothing_about_the_backlog() {
         CreateTaskRequest {
             title: "In play".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             ..Default::default()
         },
     )
@@ -2104,7 +2112,7 @@ async fn retyping_a_backlogged_task_to_a_commitment_names_the_backlog_as_lost() 
             CreateTaskRequest {
                 title: "No social media today".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 time_scope: Some(tonight),
                 archival: Some(TaskArchival::Backlog),
                 ..Default::default()

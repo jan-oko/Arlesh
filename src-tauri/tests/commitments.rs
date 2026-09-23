@@ -110,7 +110,7 @@ async fn a_commitment_with_a_window_of_its_own_is_created() {
         CreateCommitmentRequest {
             title: "Asleep by 23:00".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             time_scope: Some(tonight.clone()),
             ..Default::default()
         },
@@ -139,7 +139,7 @@ async fn a_commitment_with_no_scoped_ancestor_at_all_is_refused() {
         CreateCommitmentRequest {
             title: "No social media".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             ..Default::default()
         },
     )
@@ -164,7 +164,7 @@ async fn a_commitment_under_a_scoped_parent_needs_no_window_of_its_own() {
         CreateCommitmentRequest {
             title: "Tonight".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             time_scope: Some(tonight),
             ..Default::default()
         },
@@ -177,7 +177,7 @@ async fn a_commitment_under_a_scoped_parent_needs_no_window_of_its_own() {
         CreateCommitmentRequest {
             title: "Asleep by 23:00".into(),
             parent_type: "commitment".into(),
-            parent_id: parent.id.sid(),
+            parent_id: parent.id.clone(),
             ..Default::default()
         },
     )
@@ -198,7 +198,7 @@ async fn clearing_the_last_window_above_a_commitment_is_refused() {
         CreateCommitmentRequest {
             title: "Asleep by 23:00".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             time_scope: Some(tonight),
             ..Default::default()
         },
@@ -245,7 +245,7 @@ async fn a_child_commitments_window_must_fit_inside_its_parents() {
         CreateCommitmentRequest {
             title: "No social media this month".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             time_scope: Some(july_month),
             ..Default::default()
         },
@@ -258,7 +258,7 @@ async fn a_child_commitments_window_must_fit_inside_its_parents() {
         CreateCommitmentRequest {
             title: "No social media today".into(),
             parent_type: "commitment".into(),
-            parent_id: month.id.sid(),
+            parent_id: month.id.clone(),
             time_scope: Some(inside),
             ..Default::default()
         },
@@ -271,7 +271,7 @@ async fn a_child_commitments_window_must_fit_inside_its_parents() {
         CreateCommitmentRequest {
             title: "No social media in August".into(),
             parent_type: "commitment".into(),
-            parent_id: month.id.sid(),
+            parent_id: month.id.clone(),
             time_scope: Some(outside),
             ..Default::default()
         },
@@ -296,7 +296,7 @@ async fn a_commitment_holds_task_children_that_inherit_its_window() {
         CreateCommitmentRequest {
             title: "Asleep by 23:00".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             time_scope: Some(tonight),
             ..Default::default()
         },
@@ -311,7 +311,7 @@ async fn a_commitment_holds_task_children_that_inherit_its_window() {
             CreateTaskRequest {
                 title: "Phone on charger".into(),
                 parent_type: "commitment".into(),
-                parent_id: commitment.id.sid(),
+                parent_id: commitment.id.clone(),
                 ..Default::default()
             },
         )
@@ -351,7 +351,7 @@ async fn a_recorded_verdict_survives_a_round_trip_and_can_be_taken_back() {
         CreateCommitmentRequest {
             title: "Asleep by 23:00".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             time_scope: Some(tonight),
             ..Default::default()
         },
@@ -385,7 +385,7 @@ async fn an_unjudged_commitment_archives_only_once_its_verdict_window_has_run_ou
         CreateCommitmentRequest {
             title: "Asleep by 23:00".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             time_scope: Some(tonight),
             verdict_window: Some(DurationSpec {
                 n: 2,
@@ -440,7 +440,7 @@ async fn a_child_commitment_inherits_the_verdict_window_of_the_nearest_ancestor_
         CreateCommitmentRequest {
             title: "No social media this month".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             time_scope: Some(july_month),
             verdict_window: Some(DurationSpec {
                 n: 1,
@@ -457,7 +457,7 @@ async fn a_child_commitment_inherits_the_verdict_window_of_the_nearest_ancestor_
         CreateCommitmentRequest {
             title: "No social media today".into(),
             parent_type: "commitment".into(),
-            parent_id: parent.id.sid(),
+            parent_id: parent.id.clone(),
             time_scope: Some(a_day),
             ..Default::default()
         },
@@ -505,7 +505,7 @@ async fn finishing_every_child_task_does_not_mark_a_commitment_kept() {
         CreateCommitmentRequest {
             title: "Asleep by 23:00".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             time_scope: Some(tonight),
             ..Default::default()
         },
@@ -520,7 +520,7 @@ async fn finishing_every_child_task_does_not_mark_a_commitment_kept() {
             CreateTaskRequest {
                 title: "Phone on charger".into(),
                 parent_type: "commitment".into(),
-                parent_id: commitment.id.sid(),
+                parent_id: commitment.id.clone(),
                 status: Some(arlesh_lib::tasks::model::TaskStatus::Done),
                 ..Default::default()
             },
@@ -556,7 +556,7 @@ async fn deleting_a_commitment_takes_its_whole_subtree_with_it() {
         CreateCommitmentRequest {
             title: "No social media this month".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             time_scope: Some(july_month),
             ..Default::default()
         },
@@ -569,7 +569,7 @@ async fn deleting_a_commitment_takes_its_whole_subtree_with_it() {
         CreateCommitmentRequest {
             title: "No social media today".into(),
             parent_type: "commitment".into(),
-            parent_id: parent.id.sid(),
+            parent_id: parent.id.clone(),
             ..Default::default()
         },
     )
@@ -583,7 +583,7 @@ async fn deleting_a_commitment_takes_its_whole_subtree_with_it() {
             CreateTaskRequest {
                 title: "Log out everywhere".into(),
                 parent_type: "commitment".into(),
-                parent_id: parent.id.sid(),
+                parent_id: parent.id.clone(),
                 ..Default::default()
             },
         )
@@ -648,7 +648,7 @@ async fn a_commitment_carries_tags_and_an_issue_link() {
         CreateCommitmentRequest {
             title: "Asleep by 23:00".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             time_scope: Some(tonight),
             ..Default::default()
         },
@@ -712,7 +712,7 @@ async fn a_commitment_can_be_marked_private_and_reparented_under_another_commitm
         CreateCommitmentRequest {
             title: "No social media this month".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             time_scope: Some(july_month),
             ..Default::default()
         },
@@ -725,7 +725,7 @@ async fn a_commitment_can_be_marked_private_and_reparented_under_another_commitm
         CreateCommitmentRequest {
             title: "No social media today".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             time_scope: Some(a_day),
             ..Default::default()
         },
@@ -738,7 +738,7 @@ async fn a_commitment_can_be_marked_private_and_reparented_under_another_commitm
         day.id.sid(),
         UpdateCommitmentRequest {
             parent_type: Some("commitment".into()),
-            parent_id: Some(month.id.sid()),
+            parent_id: Some(month.id.clone()),
             position: Some(5),
             ..Default::default()
         },
@@ -791,7 +791,7 @@ async fn a_commitment_under_a_scoped_task_inherits_that_window_and_no_verdict_wi
             CreateTaskRequest {
                 title: "Evening routine".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 time_scope: Some(tonight),
                 ..Default::default()
             },
@@ -807,7 +807,7 @@ async fn a_commitment_under_a_scoped_task_inherits_that_window_and_no_verdict_wi
         CreateCommitmentRequest {
             title: "Asleep by 23:00".into(),
             parent_type: "task".into(),
-            parent_id: task.id.sid(),
+            parent_id: task.id.clone(),
             ..Default::default()
         },
     )
@@ -859,7 +859,7 @@ async fn the_editors_clear_payload_empties_a_commitments_own_window() {
         CreateCommitmentRequest {
             title: "No social media this month".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             time_scope: Some(july_month),
             ..Default::default()
         },
@@ -872,7 +872,7 @@ async fn the_editors_clear_payload_empties_a_commitments_own_window() {
         CreateCommitmentRequest {
             title: "Asleep by 23:00".into(),
             parent_type: "commitment".into(),
-            parent_id: month.id.sid(),
+            parent_id: month.id.clone(),
             time_scope: Some(a_day),
             ..Default::default()
         },
@@ -917,7 +917,7 @@ async fn the_editors_clear_payload_empties_a_commitments_verdict_window() {
         CreateCommitmentRequest {
             title: "Asleep by 23:00".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             time_scope: Some(tonight),
             verdict_window: Some(DurationSpec {
                 n: 2,
@@ -1018,7 +1018,7 @@ async fn an_info_can_hang_under_a_commitment() {
         CreateCommitmentRequest {
             title: "Asleep by 23:00".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             time_scope: Some(tonight),
             ..Default::default()
         },
@@ -1035,7 +1035,7 @@ async fn an_info_can_hang_under_a_commitment() {
             body: "Phone stays in the kitchen".into(),
             details: None,
             parent_type: "commitment".into(),
-            parent_id: commitment.id.sid(),
+            parent_id: commitment.id.clone(),
             position: 0,
         })
         .await

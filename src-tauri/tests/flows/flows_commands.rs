@@ -665,7 +665,7 @@ async fn the_convert_to_flow_command_commits_the_template_and_the_deletion() {
         CreateTaskRequest {
             title: "Step".into(),
             parent_type: "goal".into(),
-            parent_id: root.id.sid(),
+            parent_id: root.id.clone(),
             ..Default::default()
         },
     )
@@ -752,7 +752,7 @@ async fn seed_convert_subtree(pool: &sqlx::SqlitePool) -> ConvertSubtree {
         CreateTaskRequest {
             title: "Step".into(),
             parent_type: "goal".into(),
-            parent_id: root.id.sid(),
+            parent_id: root.id.clone(),
             time_scope: Some(TimeScope {
                 start_id: day.id,
                 end_id: day.id,
@@ -768,7 +768,7 @@ async fn seed_convert_subtree(pool: &sqlx::SqlitePool) -> ConvertSubtree {
         CreateTaskRequest {
             title: "Sub-step".into(),
             parent_type: "task".into(),
-            parent_id: child.id.sid(),
+            parent_id: child.id.clone(),
             ..Default::default()
         },
     )
@@ -780,7 +780,7 @@ async fn seed_convert_subtree(pool: &sqlx::SqlitePool) -> ConvertSubtree {
         &mut db,
         TaskId(child.id.sid()),
         Dependency::Task {
-            id: grandchild.id.sid(),
+            id: grandchild.id.clone(),
         },
     )
     .await
@@ -802,7 +802,7 @@ async fn seed_convert_subtree(pool: &sqlx::SqlitePool) -> ConvertSubtree {
             body: "outer note".into(),
             details: None,
             parent_type: "goal".into(),
-            parent_id: root.id.sid(),
+            parent_id: root.id.clone(),
             position: 0,
         })
         .await
@@ -813,7 +813,7 @@ async fn seed_convert_subtree(pool: &sqlx::SqlitePool) -> ConvertSubtree {
             body: "nested note".into(),
             details: None,
             parent_type: "info".into(),
-            parent_id: outer.id,
+            parent_id: outer.id.into(),
             position: 0,
         })
         .await
@@ -902,7 +902,7 @@ async fn a_convert_to_flow_aborted_after_the_delete_restores_the_subtree_and_lea
         CreateTaskRequest {
             title: "Child".into(),
             parent_type: "task".into(),
-            parent_id: blocker_parent.id.sid(),
+            parent_id: blocker_parent.id.clone(),
             ..Default::default()
         },
     )

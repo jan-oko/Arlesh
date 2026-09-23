@@ -125,7 +125,7 @@ fn task_request(project_id: i64, title: &str) -> CreateTaskRequest {
     CreateTaskRequest {
         title: title.into(),
         parent_type: "project".into(),
-        parent_id: project_id,
+        parent_id: project_id.into(),
         status: None,
         time_scope: None,
         on_scope_exit: None,
@@ -368,13 +368,13 @@ async fn deleting_a_task_journals_every_row_the_cascade_removed_under_one_gestur
         app.state(),
         CreateTaskRequest {
             parent_type: "task".into(),
-            parent_id: parent.id.sid(),
+            parent_id: parent.id.clone(),
             ..task_request(project_id, "child")
         },
     )
     .await
     .expect("create child");
-    task_commands::add_tag_to_task(app.state(), child.id.sid(), tag_id)
+    task_commands::add_tag_to_task(app.state(), child.id.clone(), tag_id)
         .await
         .expect("tag the child");
     clear_journal(&pool).await;

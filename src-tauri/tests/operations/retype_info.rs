@@ -96,7 +96,7 @@ async fn make_info(
             body: body.into(),
             details: details.map(String::from),
             parent_type: parent_type.into(),
-            parent_id,
+            parent_id: parent_id.into(),
             position,
         })
         .await

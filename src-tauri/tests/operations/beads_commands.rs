@@ -99,7 +99,7 @@ async fn linked_nodes(pool: &sqlx::SqlitePool) -> (i64, i64, i64, i64) {
         CreateTaskRequest {
             title: "Wire the × up".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             ..Default::default()
         },
     )
@@ -110,7 +110,7 @@ async fn linked_nodes(pool: &sqlx::SqlitePool) -> (i64, i64, i64, i64) {
         CreateGoalRequest {
             title: "Issue links are droppable".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             ..Default::default()
         },
     )
@@ -121,7 +121,7 @@ async fn linked_nodes(pool: &sqlx::SqlitePool) -> (i64, i64, i64, i64) {
         CreateCommitmentRequest {
             title: "Asleep by 23:00".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             time_scope: Some(tonight),
             ..Default::default()
         },
@@ -223,7 +223,7 @@ async fn clearing_a_node_that_carries_no_link_is_not_an_error() {
             CreateTaskRequest {
                 title: "Never linked".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 ..Default::default()
             },
         )

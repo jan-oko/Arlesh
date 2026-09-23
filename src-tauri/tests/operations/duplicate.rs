@@ -123,7 +123,7 @@ async fn duplicating_a_project_clones_its_whole_subtree_and_leaves_the_original_
         CreateGoalRequest {
             title: "Reach orbit".into(),
             parent_type: "project".into(),
-            parent_id: engines,
+            parent_id: engines.into(),
             ..Default::default()
         },
     )
@@ -134,7 +134,7 @@ async fn duplicating_a_project_clones_its_whole_subtree_and_leaves_the_original_
         CreateTaskRequest {
             title: "Cast the bell".into(),
             parent_type: "goal".into(),
-            parent_id: goal.id.sid(),
+            parent_id: goal.id.clone(),
             ..Default::default()
         },
     )
@@ -145,7 +145,7 @@ async fn duplicating_a_project_clones_its_whole_subtree_and_leaves_the_original_
             body: "Nozzle notes".into(),
             details: Some("Bell ratio 40:1".into()),
             parent_type: "task".into(),
-            parent_id: task.id.sid(),
+            parent_id: task.id.clone(),
             position: 0,
         })
         .await
@@ -241,7 +241,7 @@ async fn an_independent_copy_does_not_change_when_the_original_is_edited() {
         CreateTaskRequest {
             title: "Cast the bell".into(),
             parent_type: "project".into(),
-            parent_id: project,
+            parent_id: project.into(),
             ..Default::default()
         },
     )
@@ -309,7 +309,7 @@ async fn a_duplicated_task_carries_every_field_the_original_held() {
         CreateTaskRequest {
             title: "Cast the bell".into(),
             parent_type: "project".into(),
-            parent_id: project,
+            parent_id: project.into(),
             status: Some(TaskStatus::InProgress),
             time_scope: Some(at(week)),
             on_scope_exit: Some(OnScopeExit::Archive),
@@ -420,7 +420,7 @@ async fn a_duplicated_task_is_set_aside_if_the_original_was() {
         CreateTaskRequest {
             title: "Re-cast the bell".into(),
             parent_type: "project".into(),
-            parent_id: project,
+            parent_id: project.into(),
             status: Some(TaskStatus::InProgress),
             time_scope: None,
             on_scope_exit: None,
@@ -481,7 +481,7 @@ async fn a_duplicated_goal_carries_status_scope_tags_reasons_and_its_issue_link(
         CreateGoalRequest {
             title: "Reach orbit".into(),
             parent_type: "project".into(),
-            parent_id: project,
+            parent_id: project.into(),
             status: Some(GoalStatus::Frozen),
             time_scope: Some(at(week)),
             on_scope_exit: Some(OnScopeExit::Archive),
@@ -595,7 +595,7 @@ async fn a_duplicated_info_carries_its_details_and_privacy() {
             body: "Nozzle notes".into(),
             details: Some("Bell ratio 40:1".into()),
             parent_type: "project".into(),
-            parent_id: project,
+            parent_id: project.into(),
             position: 0,
         })
         .await
@@ -615,7 +615,7 @@ async fn a_duplicated_info_carries_its_details_and_privacy() {
             body: "Sub-note".into(),
             details: None,
             parent_type: "info".into(),
-            parent_id: info.id,
+            parent_id: info.id.into(),
             position: 0,
         })
         .await
@@ -657,7 +657,7 @@ async fn a_copied_task_waits_on_the_same_things_the_original_waits_on() {
         CreateGoalRequest {
             title: "Funding".into(),
             parent_type: "project".into(),
-            parent_id: project,
+            parent_id: project.into(),
             ..Default::default()
         },
     )
@@ -668,7 +668,7 @@ async fn a_copied_task_waits_on_the_same_things_the_original_waits_on() {
         CreateTaskRequest {
             title: "Assemble".into(),
             parent_type: "project".into(),
-            parent_id: project,
+            parent_id: project.into(),
             ..Default::default()
         },
     )
@@ -680,7 +680,7 @@ async fn a_copied_task_waits_on_the_same_things_the_original_waits_on() {
         CreateTaskRequest {
             title: "Cast the bell".into(),
             parent_type: "task".into(),
-            parent_id: parent_task.id.sid(),
+            parent_id: parent_task.id.clone(),
             ..Default::default()
         },
     )
@@ -691,7 +691,7 @@ async fn a_copied_task_waits_on_the_same_things_the_original_waits_on() {
         CreateTaskRequest {
             title: "Mill the throat".into(),
             parent_type: "task".into(),
-            parent_id: parent_task.id.sid(),
+            parent_id: parent_task.id.clone(),
             ..Default::default()
         },
     )
@@ -701,7 +701,7 @@ async fn a_copied_task_waits_on_the_same_things_the_original_waits_on() {
         &mut db,
         TaskId(inner_a.id.sid()),
         Dependency::Task {
-            id: inner_b.id.sid(),
+            id: inner_b.id.clone(),
         },
     )
     .await
@@ -710,7 +710,7 @@ async fn a_copied_task_waits_on_the_same_things_the_original_waits_on() {
         &mut db,
         TaskId(inner_a.id.sid()),
         Dependency::Goal {
-            id: outside_goal.id.sid(),
+            id: outside_goal.id.clone(),
         },
     )
     .await
@@ -809,7 +809,7 @@ async fn a_duplicate_that_fails_part_way_leaves_the_tree_untouched() {
         CreateGoalRequest {
             title: "Reach orbit".into(),
             parent_type: "project".into(),
-            parent_id: project,
+            parent_id: project.into(),
             ..Default::default()
         },
     )
@@ -820,7 +820,7 @@ async fn a_duplicate_that_fails_part_way_leaves_the_tree_untouched() {
         CreateTaskRequest {
             title: "Cast the bell".into(),
             parent_type: "goal".into(),
-            parent_id: goal.id.sid(),
+            parent_id: goal.id.clone(),
             time_scope: Some(at(july)),
             ..Default::default()
         },

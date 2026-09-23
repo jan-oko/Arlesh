@@ -68,7 +68,7 @@ async fn task(pool: &sqlx::SqlitePool, parent_type: &str, parent_id: i64) -> i64
         CreateTaskRequest {
             title: "Send the draft".into(),
             parent_type: parent_type.into(),
-            parent_id,
+            parent_id: parent_id.into(),
             ..Default::default()
         },
     )
@@ -90,7 +90,7 @@ async fn expectation(
         CreateExpectationRequest {
             title: "Reviewer replies".into(),
             parent_type: parent_type.into(),
-            parent_id,
+            parent_id: parent_id.into(),
             check_starting: check_every.as_ref().map(|_| at("2026-07-03T09:00:00")),
             check_every,
             time_scope: None,
@@ -334,7 +334,7 @@ async fn deleting_an_expectation_takes_its_notes_and_the_edges_aimed_at_it() {
             body: "asked on Monday".into(),
             details: None,
             parent_type: "expectation".into(),
-            parent_id: wait.id,
+            parent_id: wait.id.into(),
             position: 0,
         })
         .await
@@ -453,7 +453,7 @@ async fn a_note_under_an_expectation_retyped_to_a_task_climbs_past_it() {
             body: "ping them Friday".into(),
             details: None,
             parent_type: "expectation".into(),
-            parent_id: wait.id,
+            parent_id: wait.id.into(),
             position: 0,
         })
         .await
@@ -490,7 +490,7 @@ async fn moving_an_expectation_rewrites_its_parent_link() {
         wait.id,
         UpdateExpectationRequest {
             parent_type: Some("task".into()),
-            parent_id: Some(parent),
+            parent_id: Some(parent.into()),
             title: Some("Build finishes".into()),
             is_private: Some(true),
             position: Some(3),
@@ -568,7 +568,7 @@ async fn a_wait_whose_window_escapes_its_parents_is_refused() {
         CreateTaskRequest {
             title: "Scoped".into(),
             parent_type: "project".into(),
-            parent_id: project,
+            parent_id: project.into(),
             time_scope: Some(july),
             ..Default::default()
         },
@@ -580,7 +580,7 @@ async fn a_wait_whose_window_escapes_its_parents_is_refused() {
         CreateExpectationRequest {
             title: "Too late".into(),
             parent_type: "task".into(),
-            parent_id: parent.id.sid(),
+            parent_id: parent.id.clone(),
             check_every: None,
             check_starting: None,
             time_scope: Some(august),
@@ -601,7 +601,7 @@ async fn no_check_task_exists_before_starting_and_none_can_be_completed() {
         CreateExpectationRequest {
             title: "Reviewer replies".into(),
             parent_type: "project".into(),
-            parent_id: project,
+            parent_id: project.into(),
             check_every: Some(every(2, "day")),
             check_starting: Some(at("2026-07-20T02:00:00")),
             time_scope: None,

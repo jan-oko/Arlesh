@@ -69,14 +69,14 @@ async fn task_with_window(
         CreateTaskRequest {
             title: "Scoped".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             time_scope: Some(window),
             ..Default::default()
         },
     )
     .await?;
     db.commit().await.unwrap();
-    Ok(task.id)
+    Ok(task.id.sid())
 }
 
 #[tokio::test]
@@ -150,7 +150,7 @@ async fn an_update_that_plans_into_an_exact_window_registers_it() {
         CreateTaskRequest {
             title: "Plan me".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             ..Default::default()
         },
     )
@@ -158,7 +158,7 @@ async fn an_update_that_plans_into_an_exact_window_registers_it() {
     .unwrap();
     update_task(
         &mut db,
-        arlesh_lib::tasks::model::TaskId(task.id),
+        arlesh_lib::tasks::model::TaskId(task.id.sid()),
         UpdateTaskRequest {
             plan: Some(Some(TimeScope::single(exact_key()))),
             ..Default::default()

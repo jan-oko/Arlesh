@@ -179,7 +179,7 @@ fn task_request(parent_type: &str, parent_id: i64, title: &str) -> CreateTaskReq
     CreateTaskRequest {
         title: title.into(),
         parent_type: parent_type.into(),
-        parent_id,
+        parent_id: parent_id.into(),
         status: None,
         time_scope: None,
         on_scope_exit: None,
@@ -195,7 +195,7 @@ fn goal_request(parent_type: &str, parent_id: i64, title: &str) -> CreateGoalReq
     CreateGoalRequest {
         title: title.into(),
         parent_type: parent_type.into(),
-        parent_id,
+        parent_id: parent_id.into(),
         status: None,
         time_scope: None,
         on_scope_exit: None,
@@ -277,20 +277,20 @@ async fn undoing_a_deleted_goal_brings_its_subtree_back_whole() {
     let task = task_commands::create_task(app.state(), task_request("goal", goal.id.sid(), "task"))
         .await
         .expect("create task");
-    task_commands::add_tag_to_goal(app.state(), goal.id.sid(), tag_id)
+    task_commands::add_tag_to_goal(app.state(), goal.id.clone(), tag_id)
         .await
         .expect("tag the goal");
-    task_commands::add_tag_to_goal(app.state(), child.id.sid(), tag_id)
+    task_commands::add_tag_to_goal(app.state(), child.id.clone(), tag_id)
         .await
         .expect("tag the child");
-    task_commands::add_tag_to_task(app.state(), task.id.sid(), tag_id)
+    task_commands::add_tag_to_task(app.state(), task.id.clone(), tag_id)
         .await
         .expect("tag the task");
     task_commands::add_task_dependency(
         app.state(),
-        task.id.sid(),
+        task.id.clone(),
         Dependency::Task {
-            id: outside.id.sid(),
+            id: outside.id.clone(),
         },
     )
     .await
@@ -298,7 +298,7 @@ async fn undoing_a_deleted_goal_brings_its_subtree_back_whole() {
     block_reason_commands::set_block_reasons(
         app.state(),
         "goal".into(),
-        goal.id.sid(),
+        goal.id.clone(),
         vec!["waiting".into(), "unfunded".into()],
     )
     .await
@@ -306,7 +306,7 @@ async fn undoing_a_deleted_goal_brings_its_subtree_back_whole() {
     block_reason_commands::set_block_reasons(
         app.state(),
         "task".into(),
-        task.id.sid(),
+        task.id.clone(),
         vec!["stuck".into()],
     )
     .await
@@ -411,7 +411,7 @@ async fn an_aborted_gesture_leaves_the_board_exactly_as_it_was() {
     block_reason_commands::set_block_reasons(
         app.state(),
         "task".into(),
-        task.id.sid(),
+        task.id.clone(),
         vec!["waiting on someone".into()],
     )
     .await
@@ -1114,13 +1114,13 @@ async fn an_undo_that_cannot_be_applied_changes_nothing_and_leaves_the_gesture_o
         task_commands::create_task(app.state(), task_request("project", project_id, "tagged"))
             .await
             .expect("create task");
-    task_commands::add_tag_to_task(app.state(), task.id.sid(), tag_id)
+    task_commands::add_tag_to_task(app.state(), task.id.clone(), tag_id)
         .await
         .expect("tag the task");
 
     // The user removes the tag, inside a gesture...
     open_gesture(&app).await;
-    task_commands::remove_tag_from_task(app.state(), task.id.sid(), tag_id)
+    task_commands::remove_tag_from_task(app.state(), task.id.clone(), tag_id)
         .await
         .expect("remove the tag");
     let doomed = close_gesture(&app).await.expect("the gesture is undoable");
@@ -1234,7 +1234,7 @@ async fn undoing_a_completed_check_reopens_it_and_redo_completes_it_again() {
         arlesh_lib::tasks::model::CreateExpectationRequest {
             title: "reviewer replies".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             check_every: Some(arlesh_lib::tasks::model::DurationSpec {
                 n: 1,
                 kind: "day".into(),

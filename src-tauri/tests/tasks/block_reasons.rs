@@ -46,7 +46,7 @@ async fn list_all_returns_reasons_for_every_owner() {
         CreateTaskRequest {
             title: "T".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             status: None,
             ..Default::default()
         },
@@ -58,7 +58,7 @@ async fn list_all_returns_reasons_for_every_owner() {
         CreateGoalRequest {
             title: "G".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             status: None,
             ..Default::default()
         },
@@ -96,7 +96,7 @@ async fn deleting_a_task_removes_its_block_reasons() {
         CreateTaskRequest {
             title: "T".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             status: None,
             ..Default::default()
         },
@@ -108,7 +108,7 @@ async fn deleting_a_task_removes_its_block_reasons() {
         .await
         .unwrap();
 
-    delete_task(&mut db, task.id.sid().into()).await.unwrap();
+    delete_task(&mut db, task.id.clone()).await.unwrap();
 
     assert!(db
         .block_reasons()
@@ -128,7 +128,7 @@ async fn make_task(pool: &sqlx::SqlitePool, project_id: i64) -> i64 {
         CreateTaskRequest {
             title: "T".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             status: None,
             ..Default::default()
         },
@@ -298,7 +298,7 @@ async fn the_set_block_reasons_command_commits_what_it_writes() {
     set_block_reasons(
         app.state(),
         "task".into(),
-        task_id,
+        task_id.into(),
         vec!["first".into(), "second".into()],
     )
     .await
@@ -319,12 +319,22 @@ async fn the_set_block_reasons_command_replaces_rather_than_appends() {
     let task_id = make_task(&pool, project_id).await;
     let app = helpers::command_host(&pool);
 
-    set_block_reasons(app.state(), "task".into(), task_id, vec!["original".into()])
-        .await
-        .unwrap();
-    set_block_reasons(app.state(), "task".into(), task_id, vec!["replaced".into()])
-        .await
-        .unwrap();
+    set_block_reasons(
+        app.state(),
+        "task".into(),
+        task_id.into(),
+        vec!["original".into()],
+    )
+    .await
+    .unwrap();
+    set_block_reasons(
+        app.state(),
+        "task".into(),
+        task_id.into(),
+        vec!["replaced".into()],
+    )
+    .await
+    .unwrap();
 
     assert_eq!(
         reasons_on_disk(&pool, task_id).await,

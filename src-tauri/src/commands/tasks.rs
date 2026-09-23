@@ -210,29 +210,34 @@ pub async fn remove_task_dependency(
     db.commit().await.map_err(WireError::from_error)
 }
 
-/// Lists all dependencies for a task.
+/// Lists what one task depends on — a stored one, or a Habit occurrence, whose edges are its
+/// template's with its own differences applied.
 #[tauri::command]
 pub async fn list_task_dependencies(
     factory: State<'_, SessionFactory>,
-    task_id: i64,
+    task_id: NodeId,
 ) -> Result<Vec<Dependency>, WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.tasks()
-        .list_dependencies(TaskId(task_id))
-        .await
-        .map_err(WireError::from_error)
+    // A transaction only because the derivation reads through one; it writes nothing.
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    let dependencies =
+        write::dependencies_of(&mut db, &task_id, chrono::Local::now().naive_local())
+            .await
+            .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)?;
+    Ok(dependencies)
 }
 
-/// Lists every task-dependency edge (for the mindmap bulk load).
+/// Lists every task-dependency edge on the board, stored and derived.
 #[tauri::command]
 pub async fn list_all_task_dependencies(
     factory: State<'_, SessionFactory>,
 ) -> Result<Vec<TaskDependencyEdge>, WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.tasks()
-        .list_all_dependencies()
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    let edges = write::all_dependencies(&mut db, chrono::Local::now().naive_local())
         .await
-        .map_err(WireError::from_error)
+        .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)?;
+    Ok(edges)
 }
 
 /// Creates a new goal.

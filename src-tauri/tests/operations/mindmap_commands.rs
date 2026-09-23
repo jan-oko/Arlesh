@@ -109,7 +109,7 @@ async fn seed(app: &tauri::App<tauri::test::MockRuntime>, pool: &sqlx::SqlitePoo
         CreateTaskRequest {
             title: "Write".into(),
             parent_type: "goal".into(),
-            parent_id: goal.id.sid(),
+            parent_id: goal.id.clone(),
             ..Default::default()
         },
     )
@@ -120,7 +120,7 @@ async fn seed(app: &tauri::App<tauri::test::MockRuntime>, pool: &sqlx::SqlitePoo
         CreateTaskRequest {
             title: "Review".into(),
             parent_type: "goal".into(),
-            parent_id: goal.id.sid(),
+            parent_id: goal.id.clone(),
             ..Default::default()
         },
     )
@@ -128,15 +128,17 @@ async fn seed(app: &tauri::App<tauri::test::MockRuntime>, pool: &sqlx::SqlitePoo
     .unwrap();
     task_commands::add_task_dependency(
         app.state(),
-        second.id.sid(),
-        Dependency::Task { id: first.id.sid() },
+        second.id.clone(),
+        Dependency::Task {
+            id: first.id.clone(),
+        },
     )
     .await
     .unwrap();
     block_reason_commands::set_block_reasons(
         app.state(),
         "task".into(),
-        first.id.sid(),
+        first.id.clone(),
         vec!["waiting on review".into()],
     )
     .await
@@ -147,7 +149,7 @@ async fn seed(app: &tauri::App<tauri::test::MockRuntime>, pool: &sqlx::SqlitePoo
             body: "a note".into(),
             details: None,
             parent_type: "task".into(),
-            parent_id: first.id.sid(),
+            parent_id: first.id.clone(),
             position: 0,
         },
     )
@@ -339,7 +341,7 @@ async fn loading_a_habit_that_needs_new_windows_writes_nothing() {
         "the habit should have loaded: {:?}",
         entry.result
     );
-    let iterations: Vec<i64> = load
+    let iterations: Vec<arlesh_lib::scopes::key::ScopeKey> = load
         .tasks
         .iter()
         .filter_map(|task| task.origin.habit())
@@ -354,7 +356,7 @@ async fn loading_a_habit_that_needs_new_windows_writes_nothing() {
     assert_eq!(
         iterations
             .iter()
-            .map(|iteration| iteration.anchor_scope_id.to_string())
+            .map(|iteration| iteration.to_string())
             .collect::<Vec<_>>(),
         ["week:2026-01-04", "week:2026-01-18", "week:2026-02-01"],
         "each iteration is keyed by the week it starts in"
