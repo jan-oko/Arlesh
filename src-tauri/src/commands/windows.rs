@@ -32,66 +32,37 @@ use crate::{
     windows::{self, ListedWindow, OpenWindow, Placement, WindowRecord, WindowRect, WindowSession},
 };
 
-/// What each open window is called, by label: the number it wears and its active tab's name.
+/// The number each open window wears, by label.
 ///
 /// Managed state, seeded from the restored session and extended as windows are opened. It is the
 /// live answer; [`WindowRecord::ordinal`] is how the number survives a restart. A map rather than
-/// a field on the window because Tauri's window carries no room for one, and deriving either back
-/// out of the title would make the title the source of truth for what composes it.
-///
-/// The tab is held here, not only sent once to the window, because a window's title depends on
-/// how many **other** windows are open: opening or closing one retitles every window, and only
-/// the frontend knows a tab's name — so the last name it reported is kept to compose with.
+/// a field on the window because Tauri's window carries no room for one, and deriving it back out
+/// of the title would make the title the source of truth for what composes it.
 #[derive(Debug, Default)]
-pub struct WindowNames(Mutex<HashMap<String, WindowName>>);
+pub struct Ordinals(Mutex<HashMap<String, u32>>);
 
-/// One window's entry in [`WindowNames`].
-#[derive(Debug, Clone)]
-struct WindowName {
-    ordinal: u32,
-    tab: String,
-}
-
-/// A window nothing has been recorded for yet wears 1 and has no tab — a runtime with one window,
-/// or a tab reported before its window's number was.
-impl Default for WindowName {
-    fn default() -> Self {
-        Self {
-            ordinal: 1,
-            tab: String::new(),
-        }
-    }
-}
-
-impl WindowNames {
+impl Ordinals {
     /// Records `label`'s number, for a window that has just been built.
-    fn set_ordinal(&self, label: &str, ordinal: u32) {
+    fn set(&self, label: &str, ordinal: u32) {
         if let Ok(mut map) = self.0.lock() {
-            map.entry(label.to_string()).or_default().ordinal = ordinal;
+            map.insert(label.to_string(), ordinal);
         }
     }
 
-    /// Records the name of `label`'s active tab.
-    fn set_tab(&self, label: &str, tab: &str) {
-        if let Ok(mut map) = self.0.lock() {
-            map.entry(label.to_string()).or_default().tab = tab.to_string();
-        }
-    }
-
-    /// `label`'s number and tab, or [`WindowName::default`] for a window nothing recorded.
-    fn get(&self, label: &str) -> WindowName {
+    /// `label`'s number, or 1 for a window nothing recorded: a runtime with one window.
+    fn get(&self, label: &str) -> u32 {
         self.0
             .lock()
             .ok()
-            .and_then(|map| map.get(label).cloned())
-            .unwrap_or_default()
+            .and_then(|map| map.get(label).copied())
+            .unwrap_or(1)
     }
 
     /// Every number an open window is wearing, which a new window's must not repeat.
     fn in_use(&self) -> Vec<u32> {
         self.0
             .lock()
-            .map(|map| map.values().map(|name| name.ordinal).collect())
+            .map(|map| map.values().copied().collect())
             .unwrap_or_default()
     }
 
@@ -103,17 +74,12 @@ impl WindowNames {
     }
 }
 
-/// `label`'s number and tab from `app`'s registry, or the default for a runtime that has none — a
-/// test host, and one window.
-fn name_of<R: Runtime>(app: &AppHandle<R>, label: &str) -> WindowName {
-    app.try_state::<WindowNames>()
-        .map(|names| names.get(label))
-        .unwrap_or_default()
-}
-
-/// `label`'s number. See [`name_of`].
+/// `label`'s number from `app`'s registry, or 1 for a runtime that has none: a test host, and one
+/// window.
 fn ordinal_of<R: Runtime>(app: &AppHandle<R>, label: &str) -> u32 {
-    name_of(app, label).ordinal
+    app.try_state::<Ordinals>()
+        .map(|ordinals| ordinals.get(label))
+        .unwrap_or(1)
 }
 
 /// How far a torn-off window is offset from the window it was torn out of, in physical pixels.
@@ -298,8 +264,8 @@ fn build<R: Runtime>(
         Err(error) => tracing::warn!(error = %error, "could not load the window icon"),
     }
     window.show()?;
-    if let Some(names) = app.try_state::<WindowNames>() {
-        names.set_ordinal(label, ordinal);
+    if let Some(ordinals) = app.try_state::<Ordinals>() {
+        ordinals.set(label, ordinal);
     }
     Ok(window)
 }
@@ -378,8 +344,8 @@ pub async fn open_board_window<R: Runtime>(
     // The lowest number no open window wears — see `windows::next_ordinal`. The live registry is
     // asked rather than the saved session, which may be a gesture behind.
     let in_use = app
-        .try_state::<WindowNames>()
-        .map(|names| names.in_use())
+        .try_state::<Ordinals>()
+        .map(|ordinals| ordinals.in_use())
         .unwrap_or_default();
     let ordinal = windows::next_ordinal(&in_use);
     build(&app, &label, placed, ordinal).map_err(|error| WireError::internal(error.to_string()))?;
@@ -387,30 +353,6 @@ pub async fn open_board_window<R: Runtime>(
     // A second window numbers every title, the first's included, and a window the tray's menu
     // does not list is a window the menu cannot reach. `retitle_all` does both.
     retitle_all(&app);
-    Ok(())
-}
-
-/// Puts the active tab's name in the window's title, after the window's own number.
-///
-/// Called by the frontend whenever the active tab changes or is renamed, because only the frontend
-/// knows what a tab is called. The **number** stays the backend's: it is fixed for the window's
-/// life and the frontend has no business deciding it — nor whether it shows, which depends on the
-/// other windows — so what crosses the boundary is the tab name alone and the two are composed
-/// here.
-#[tauri::command]
-pub async fn set_window_title<R: Runtime>(
-    app: AppHandle<R>,
-    window: WebviewWindow<R>,
-    tab: String,
-) -> Result<(), WireError> {
-    if let Some(names) = app.try_state::<WindowNames>() {
-        names.set_tab(window.label(), &tab);
-    }
-    let open = app.webview_windows().len();
-    apply_title(&window, &title_of(&app, window.label(), open))
-        .map_err(|error| WireError::internal(error.to_string()))?;
-    // The menu lists a window by its title, so a title that changed leaves the menu out of date.
-    crate::commands::tray::refresh_menu(&app);
     Ok(())
 }
 
@@ -425,8 +367,7 @@ fn apply_title<R: Runtime>(window: &WebviewWindow<R>, title: &str) -> tauri::Res
 
 /// `label`'s title with `open` windows open. See [`windows::window_title`].
 fn title_of<R: Runtime>(app: &AppHandle<R>, label: &str, open: usize) -> String {
-    let name = name_of(app, label);
-    windows::window_title(&base_title(app), name.ordinal, &name.tab, open)
+    windows::window_title(&base_title(app), ordinal_of(app, label), open)
 }
 
 /// Retitles every open window and rebuilds the tray menu, for a moment the number of windows may
@@ -459,7 +400,7 @@ pub fn base_title<R: Runtime>(app: &AppHandle<R>) -> String {
 
 /// The tray menu's per-window entries for the windows open now — none while only one is.
 ///
-/// Composed from the live window set and [`WindowNames`], through the same
+/// Composed from the live window set and [`Ordinals`], through the same
 /// [`windows::window_title`] every title is set with, so an entry cannot disagree with its
 /// window. See [`windows::menu_entries`] for the rule.
 pub fn open_windows<R: Runtime>(app: &AppHandle<R>) -> Vec<ListedWindow> {
@@ -471,13 +412,11 @@ pub fn open_windows<R: Runtime>(app: &AppHandle<R>) -> Vec<ListedWindow> {
         .into_iter()
         .filter_map(|label| {
             let window = app.get_webview_window(&label)?;
-            let name = name_of(app, &label);
             // Unreadable reads as hidden: the entry then offers to show it, which is harmless.
             let visible = window.is_visible().unwrap_or(false);
             Some(OpenWindow {
                 label,
-                ordinal: name.ordinal,
-                tab: name.tab,
+                ordinal: ordinal_of(app, &label),
                 visible,
             })
         })
