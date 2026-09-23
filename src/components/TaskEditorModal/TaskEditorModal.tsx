@@ -4,6 +4,8 @@ import { rowIdOf } from "@/utils/node-identity";
 import BlockReasonsField from "@/components/BlockReasonsField/BlockReasonsField";
 import TagPicker from "@/components/TagPicker/TagPicker";
 import type { MindmapNode } from "@/utils/tree-layout";
+import { entityNodeId } from "@/utils/tree-layout";
+import { EXPECTATION_STATUS } from "@/api/expectations";
 import type { Domain } from "@/api/domains";
 import type { Delegate, Dependency, TaskAgentic, TaskArchival } from "@/api/tasks";
 import { TASK_AGENTIC, TASK_ARCHIVAL } from "@/api/tasks";
@@ -55,6 +57,12 @@ export interface TaskSaveData {
 const TASK_STATUSES = Object.values(TASK_STATUS);
 
 function depKey(dep: Dependency): string { return `${dep.type}-${dep.id}`; }
+/** The edge type a dependency on `candidate` is stored under. */
+function dependencyKindOf(candidate: MindmapNode): Dependency["type"] {
+  if (candidate.kind === "goal") return "goal";
+  if (candidate.kind === "expectation") return "expectation";
+  return "task";
+}
 function depEquals(a: Dependency, b: Dependency): boolean { return a.type === b.type && a.id === b.id; }
 
 interface Props {
@@ -107,7 +115,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   }
 
   function addDep(candidate: MindmapNode) {
-    const kind = candidate.kind === "goal" ? "goal" : "task";
+    const kind = dependencyKindOf(candidate);
     const id = rowIdOf(candidate);
     const dep: Dependency = { type: kind, id };
     if (currentDeps.some((d) => depEquals(d, dep))) return;
@@ -187,26 +195,28 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
 
   const depSearchLower = depSearch.toLowerCase();
   const searchResults = depSearch.trim() === "" ? [] : availableForDep
-    .filter((n) => n.kind === "task" || n.kind === "goal")
+    .filter((n) => n.kind === "task" || n.kind === "goal" || n.kind === "expectation")
     .filter((n) => n.title.toLowerCase().includes(depSearchLower))
     .filter((n) => {
       const id = rowIdOf(n);
-      const type = n.kind === "goal" ? "goal" : "task";
+      const type = dependencyKindOf(n);
       return !currentDeps.some((d) => d.type === type && d.id === id);
     })
     .slice(0, 8);
 
   function depTitle(dep: Dependency): string {
-    return availableForDep.find((n) => n.id === `${dep.type}-${dep.id}`)?.title ?? `${dep.type} #${dep.id}`;
+    return availableForDep.find((n) => n.id === entityNodeId(dep.type, dep.id))?.title ?? `${dep.type} #${dep.id}`;
   }
 
   // Virtual blockers derived from the *current* (editable) dependencies — an unmet dependency (a
   // non-Done task / non-Achieved goal) blocks. Recomputed live, so removing a dependency drops its row.
   const virtualBlockers = currentDeps.flatMap((dep) => {
-    const target = availableForDep.find((n) => n.id === `${dep.type}-${dep.id}`);
+    const target = availableForDep.find((n) => n.id === entityNodeId(dep.type, dep.id));
     const unmet = target === undefined
       ? true
-      : dep.type === "task" ? target.status !== "done" : target.status !== "achieved";
+      : dep.type === "task" ? target.status !== "done"
+        : dep.type === "expectation" ? target.status === EXPECTATION_STATUS.PENDING
+          : target.status !== "achieved";
     return unmet ? [`Blocked by ${dep.type} ${dep.id} (${depTitle(dep)})`] : [];
   });
 

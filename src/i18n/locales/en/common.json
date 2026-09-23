@@ -28,5 +28,8 @@
   "tabName": "Tab name",
   "tabActions": "Tab actions",
   "planPathGrouping": "Group by path",
-  "planSubscopeSplit": "Split planned by subscope"
+  "planSubscopeSplit": "Split planned by subscope",
+  "listBands": "Commitments and Expectations in bands",
+  "asynchronousOpensExpectation": "Marking a Task asynchronous asks for its Expectation",
+  "offerExpectationOnAsyncDone": "Finishing an asynchronous Task offers an Expectation"
 }

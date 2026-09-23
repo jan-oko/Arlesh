@@ -8,7 +8,7 @@ import { useDisplayStore } from "@/stores/use-display-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { useCloseToTrayStore } from "@/stores/use-close-to-tray-store";
 import { useHotkeysStore } from "@/stores/use-hotkeys-store";
-import { LIST_PRESET_VALUES, isListPreset } from "@/utils/list-filter";
+import { LIST_PRESET_VALUES, isListOnlyPreset, isListPreset } from "@/utils/list-filter";
 import type { ListPreset } from "@/utils/list-filter";
 import FilterPopover from "@/components/FilterPopover/FilterPopover";
 import FilterChips from "@/components/FilterChips/FilterChips";
@@ -20,7 +20,7 @@ import styles from "./TopBar.module.css";
 
 const GEAR_ICON = "⚙";
 /** Unblock only makes sense — and only appears as an option — while List View is active. */
-const MINDMAP_PRESETS: readonly ListPreset[] = LIST_PRESET_VALUES.filter((p) => p !== "unblock");
+const MINDMAP_PRESETS: readonly ListPreset[] = LIST_PRESET_VALUES.filter((p) => !isListOnlyPreset(p));
 
 /** A small funnel (filter) glyph for the Filter button. */
 function FunnelIcon() {
@@ -44,6 +44,12 @@ export default function TopBar() {
   const mindmapOrientation = useViewStore((s) => s.mindmapOrientation);
   const toggleMindmapOrientation = useViewStore((s) => s.toggleMindmapOrientation);
   const asynchronousFirst = useDisplayStore((s) => s.asynchronousFirst);
+  const listBands = useDisplayStore((s) => s.listBands);
+  const toggleListBands = useDisplayStore((s) => s.toggleListBands);
+  const asynchronousOpensExpectation = useDisplayStore((s) => s.asynchronousOpensExpectation);
+  const toggleAsynchronousOpensExpectation = useDisplayStore((s) => s.toggleAsynchronousOpensExpectation);
+  const offerExpectationOnAsyncDone = useDisplayStore((s) => s.offerExpectationOnAsyncDone);
+  const toggleOfferExpectationOnAsyncDone = useDisplayStore((s) => s.toggleOfferExpectationOnAsyncDone);
   const planPathGrouping = useDisplayStore((s) => s.planPathGrouping);
   const togglePlanPathGrouping = useDisplayStore((s) => s.togglePlanPathGrouping);
   const planSubscopeSplit = useDisplayStore((s) => s.planSubscopeSplit);
@@ -66,13 +72,13 @@ export default function TopBar() {
     plan: t("common:viewPlan"),
   };
 
-  const activePreset: ListPreset = view === "list" && listPreset === "unblock" ? "unblock" : statusMode;
+  const activePreset: ListPreset = view === "list" && isListOnlyPreset(listPreset) ? listPreset : statusMode;
   const presetOptions = view === "list" ? LIST_PRESET_VALUES : MINDMAP_PRESETS;
 
   function selectPreset(value: string) {
     if (!isListPreset(value)) return;
-    if (value === "unblock") {
-      setListPreset("unblock");
+    if (value === "unblock" || value === "expectations") {
+      setListPreset(value);
       return;
     }
     setStatusMode(value);
@@ -121,6 +127,29 @@ export default function TopBar() {
                       />
                     </div>
                   )}
+                  {/* Where Commitments and Expectations sit in the list — bands above the rows, or
+                      rows among them. A List View matter, so gated to it. */}
+                  {view === "list" && (
+                    <div className={styles.settingRow}>
+                      <Switch checked={listBands} onChange={toggleListBands} label={t("common:listBands")} />
+                    </div>
+                  )}
+                  {/* What marking and finishing Asynchronous work does is the same in every view,
+                      so these two sit ungated, beside the theme. */}
+                  <div className={styles.settingRow}>
+                    <Switch
+                      checked={asynchronousOpensExpectation}
+                      onChange={toggleAsynchronousOpensExpectation}
+                      label={t("common:asynchronousOpensExpectation")}
+                    />
+                  </div>
+                  <div className={styles.settingRow}>
+                    <Switch
+                      checked={offerExpectationOnAsyncDone}
+                      onChange={toggleOfferExpectationOnAsyncDone}
+                      label={t("common:offerExpectationOnAsyncDone")}
+                    />
+                  </div>
                   {/* Two switches, not one: where the work lives and when it is planned are
                       different questions, and a planning pass wants them in different
                       combinations. Gated to the Plan View like every switch above them. */}

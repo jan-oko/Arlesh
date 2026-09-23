@@ -1,6 +1,7 @@
 import type { MindmapNode } from "@/utils/tree-layout";
 import { isNodeBlocked } from "@/utils/tree-layout";
 import { VERDICT } from "@/api/verdict";
+import { EXPECTATION_STATUS } from "@/api/expectations";
 
 /** Status preset a filter is in. `all` disables status filtering; `backlog` inverts it, showing
  * only what has been deliberately set aside. */
@@ -91,11 +92,18 @@ function flowHardHidden(node: MindmapNode, f: FilterState): boolean {
   return false;
 }
 
-/** An Archived-status node, or one whose effective Archival was derived as archived (a scope
+/** A Task held by someone else — a Person or the Agent. It has every effect of archival. */
+export function isDelegated(node: MindmapNode): boolean {
+  return node.kind === "task" && node.delegate !== undefined && node.delegate !== null;
+}
+
+/** An Archived-status node, one whose effective Archival was derived as archived (a scope
  * Resolution of Completed or Missed forces this, regardless of done-ness — SPEC treats both as
- * "archived-looking", same status-row icon, and the archivedMode filter governs both together). */
-function isArchived(node: MindmapNode): boolean {
-  return node.status === "archived" || node.archived === true;
+ * "archived-looking", same status-row icon, and the archivedMode filter governs both together), or
+ * a delegated Task: someone else holds it, so it is off your board wherever an archived node is.
+ * What it waits on stays visible — its virtual Expectation answers the Expectation rules. */
+export function isArchived(node: MindmapNode): boolean {
+  return node.status === "archived" || node.archived === true || isDelegated(node);
 }
 
 /** A Task the user deliberately set aside. Read off the node's own stored flag, not the derived
@@ -231,6 +239,9 @@ function passesStatus(
   if (node.kind === "commitment") {
     return withArchivedOverride(node, f, passesCommitmentPreset(node, f));
   }
+  if (node.kind === "expectation") {
+    return withArchivedOverride(node, f, passesExpectationPreset(node, f));
+  }
   switch (f.statusMode) {
     case "all":
       // archivedMode `exclude` hides an archived/lapsed item under All too, but that's handled by
@@ -242,7 +253,7 @@ function passesStatus(
       // is itself achieved/frozen/archived (RESOLVED_GOAL), but any scoped item a forced Resolution
       // archived regardless of its stored status (e.g. a still-"active" goal, or any task, which has
       // no stored status of its own to catch this).
-      if (node.kind === "task") return withArchivedOverride(node, f, node.status !== "done" && node.archived !== true);
+      if (node.kind === "task") return withArchivedOverride(node, f, node.status !== "done" && !isArchived(node));
       if (node.kind === "goal") {
         return withArchivedOverride(node, f, !RESOLVED_GOAL.has(node.status ?? "") && node.archived !== true);
       }
@@ -251,7 +262,8 @@ function passesStatus(
       if (node.kind !== "task" && node.kind !== "goal") return true;
       // Start = things you can begin now: drop anything whose window has passed. (Blocked
       // task/goals are dropped earlier, as a hard-hidden subtree — see typeHardHidden.)
-      if (node.timing === "lapsed") return withArchivedOverride(node, f, false);
+      // A delegated Task drops out with the lapsed ones: nothing someone else holds is yours to start.
+      if (node.timing === "lapsed" || isDelegated(node)) return withArchivedOverride(node, f, false);
       if (node.kind === "goal") return withArchivedOverride(node, f, !RESOLVED_GOAL.has(node.status ?? ""));
       if (node.status === "done") return false;
       // An in-progress task with nothing left to start (no direct todo child) drops out.
@@ -276,13 +288,10 @@ function passesStatus(
  *
  * Its own rule, not a translation of a Task's, because the two kinds resolve the opposite way
  * round. Three presets — Plan, Start and Do — show what is **unresolved**: what you have yet to
- * judge is what is still live. All shows everything, including past verdicts, because looking
- * back over what you kept and broke is the point of keeping the record.
- *
- * Plan carries the one carve-out in the model that mirrors no Task rule: it **also** shows a
- * `broken` commitment whose window is still open. A commitment you have already broken today is
- * a live problem until midnight, where a kept one is settled — so Kept drops out of Plan and
- * Broken does not, as long as there is still time for it to matter.
+ * judge is what is still live, and a recorded verdict, Kept or Broken alike, is answered the way a
+ * done Task is. All shows everything, including past verdicts, because looking back over what you
+ * kept and broke is the point of keeping the record. (Plan once kept a Broken commitment on screen
+ * while its window was open; the user ruled that out on 2026-09-23.)
  *
  * Backlog shows none: a Commitment has no Backlog state to be in.
  */
@@ -292,11 +301,36 @@ export function passesCommitmentPreset(node: MindmapNode, f: FilterState): boole
     case "all":
       return true;
     case "plan":
-      if (verdict === VERDICT.UNRESOLVED) return true;
-      return verdict === VERDICT.BROKEN && node.timing !== "lapsed";
     case "start":
     case "do":
       return verdict === VERDICT.UNRESOLVED;
+    case "backlog":
+      return false;
+  }
+}
+
+/** Whether an Expectation is still waited on and not put away: pending, and not archived. */
+export function isLiveExpectation(node: MindmapNode): boolean {
+  return node.status === EXPECTATION_STATUS.PENDING && node.archived !== true;
+}
+
+/**
+ * Whether an Expectation shows under the given preset.
+ *
+ * A wait is not work, so it answers its own rule. **All** shows every one. A pending, live one
+ * shows under **Plan**, and under **Start** only when it has no check-by — with one, the virtual
+ * check task beneath it is the thing to start, and that task answers the ordinary Task rules. **Do**
+ * and **Backlog** show none. A released or archived one shows under All only.
+ */
+export function passesExpectationPreset(node: MindmapNode, f: FilterState): boolean {
+  switch (f.statusMode) {
+    case "all":
+      return true;
+    case "plan":
+      return isLiveExpectation(node);
+    case "start":
+      return isLiveExpectation(node) && (node.checkBy ?? null) === null;
+    case "do":
     case "backlog":
       return false;
   }

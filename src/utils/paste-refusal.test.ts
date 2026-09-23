@@ -401,7 +401,7 @@ describe("the destination refusal, rendered", () => {
   // Task and Goal refusals above still end without one: a label holds notes and nothing else.
   it("names a Tag among the parents an Info may have", () => {
     expect(render("info", "flow", 1)).toBe(
-      "1 Info can't sit under Flow — only under Aspect, Domain, Project, Goal, Task, Commitment, Info, Tag.",
+      "1 Info can't sit under Flow — only under Aspect, Domain, Project, Goal, Task, Commitment, Expectation, Info, Tag.",
     );
   });
 

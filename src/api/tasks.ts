@@ -188,7 +188,8 @@ export async function scopeContainmentConflicts(
 
 export type Dependency =
   | { type: "task"; id: number }
-  | { type: "goal"; id: number };
+  | { type: "goal"; id: number }
+  | { type: "expectation"; id: number };
 
 export interface TaskWithBlockers {
   task: Task;
@@ -206,7 +207,7 @@ export async function listTaskDependencies(taskId: number): Promise<Dependency[]
 /** A single dependency edge: `task_id` depends on `(dependency_type, dependency_id)`. */
 export interface TaskDependencyEdge {
   task_id: number;
-  dependency_type: string; // "task" | "goal"
+  dependency_type: string; // "task" | "goal" | "expectation"
   dependency_id: number;
 }
 

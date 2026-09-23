@@ -572,7 +572,7 @@ describe("filterCommitmentList", () => {
     expect(kept(rows, sf({ statusMode: "all" }))).toEqual([
       "commitment-1", "commitment-2", "commitment-3", "commitment-4",
     ]);
-    expect(kept(rows, sf({ statusMode: "plan" }))).toEqual(["commitment-1", "commitment-3"]);
+    expect(kept(rows, sf({ statusMode: "plan" }))).toEqual(["commitment-1"]);
     expect(kept(rows, sf({ statusMode: "start" }))).toEqual(["commitment-1"]);
     expect(kept(rows, sf({ statusMode: "do" }))).toEqual(["commitment-1"]);
   });

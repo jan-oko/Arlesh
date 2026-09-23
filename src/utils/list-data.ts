@@ -1,7 +1,7 @@
 import type { MindmapNode } from "@/utils/tree-layout";
 import { isNodeBlocked, entityNodeId } from "@/utils/tree-layout";
 import type { TaskDependencyEdge } from "@/api/tasks";
-import type { CommitmentListRow, TaskListRow } from "@/utils/list-filter";
+import type { CommitmentListRow, ExpectationListRow, TaskListRow } from "@/utils/list-filter";
 import { deriveScopeStateTokens } from "@/utils/list-filter";
 import { isAgentic } from "@/utils/agentic";
 
@@ -90,6 +90,24 @@ export function flattenCommitmentRows(root: MindmapNode): CommitmentListRow[] {
       });
     }
     const nextAncestors = node.id === "root" ? ancestors : [...ancestors, node];
+    for (const child of node.children) visit(child, nextAncestors);
+  }
+  visit(root, []);
+  return rows;
+}
+
+/**
+ * Flattens the mindmap tree to one row per Expectation node — stored waits and the virtual ones
+ * delegated Tasks carry alike. The walk mirrors {@link flattenCommitmentRows}.
+ */
+export function flattenExpectationRows(root: MindmapNode): ExpectationListRow[] {
+  const rows: ExpectationListRow[] = [];
+  function visit(node: MindmapNode, ancestors: readonly MindmapNode[]): void {
+    const isFrame = node === root;
+    if (node.kind === "expectation" && !isFrame) {
+      rows.push({ node, ancestors: [...ancestors], hasPrivateAncestor: ancestors.some((a) => a.isPrivate === true) });
+    }
+    const nextAncestors = isFrame ? ancestors : [...ancestors, node];
     for (const child of node.children) visit(child, nextAncestors);
   }
   visit(root, []);

@@ -130,15 +130,25 @@ export function gatherSubtreeItems(
   }
 }
 
+/**
+ * Every node a Task can depend on — Tasks, Goals and stored Expectations — for the dependency
+ * picker and the editors that read it. A wait's virtual check task and a delegated Task's virtual
+ * wait have no row for an edge to name, so neither is collected.
+ */
 export function collectTasksAndGoals(node: MindmapNode, acc: MindmapNode[]): void {
-  if (node.kind === "task" || node.kind === "goal") acc.push(node);
+  const derivedWait = node.expectationCheck !== undefined || node.delegationWait !== undefined;
+  if ((node.kind === "task" || node.kind === "goal" || node.kind === "expectation") && !derivedWait) acc.push(node);
   for (const child of node.children) collectTasksAndGoals(child, acc);
 }
 
 export function collectSubtreePostOrder(node: MindmapNode): Array<{ id: string; kind: NodeKind }> {
   const result: Array<{ id: string; kind: NodeKind }> = [];
   function visit(n: MindmapNode): void {
-    for (const child of n.children) visit(child);
+    // A wait's check task and a delegated Task's wait are drawn from their owner's row, not stored:
+    // there is nothing to delete, and they go when the owner does.
+    for (const child of n.children) {
+      if (child.expectationCheck === undefined && child.delegationWait === undefined) visit(child);
+    }
     result.push({ id: n.id, kind: n.kind });
   }
   visit(node);

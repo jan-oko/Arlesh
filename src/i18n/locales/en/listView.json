@@ -5,7 +5,8 @@
     "start": "Start",
     "do": "Do",
     "unblock": "Unblock",
-    "backlog": "Backlog"
+    "backlog": "Backlog",
+    "expectations": "Expectations"
   },
   "statusPresetLabel": "Status preset",
   "hierarchyClusterLabel": "Hierarchy",
@@ -59,5 +60,9 @@
     "asynchronous": "Asynchronous",
     "not_asynchronous": "Not asynchronous"
   },
-  "createTaskHere": "Add a task here"
+  "createTaskHere": "Add a task here",
+  "expectationsHeading": "Expectations",
+  "releaseToggle": "Release, or take back a release",
+  "completeCheck": "Complete the check",
+  "cycleVerdict": "Cycle the verdict"
 }

@@ -390,7 +390,7 @@ describe("validParentKinds", () => {
 
   it("lets an Info sit under everything, a Tag included", () => {
     expect(validParentKinds("info")).toEqual([
-      "aspect", "domain", "project", "goal", "task", "commitment", "info", "tag",
+      "aspect", "domain", "project", "goal", "task", "commitment", "expectation", "info", "tag",
     ]);
   });
 

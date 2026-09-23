@@ -42,6 +42,7 @@ import HabitFailureBanner from "@/components/HabitFailureBanner/HabitFailureBann
 import TaskEditorModal from "@/components/TaskEditorModal/TaskEditorModal";
 import GoalEditorModal from "@/components/GoalEditorModal/GoalEditorModal";
 import CommitmentEditorModal, { type CommitmentSaveData } from "@/components/CommitmentEditorModal/CommitmentEditorModal";
+import ExpectationEditorModal from "@/components/ExpectationEditorModal/ExpectationEditorModal";
 import CommitmentScopePrompt from "@/components/CommitmentScopePrompt/CommitmentScopePrompt";
 import TitleEditorModal from "@/components/TitleEditorModal/TitleEditorModal";
 import ProjectEditorModal from "@/components/ProjectEditorModal/ProjectEditorModal";
@@ -57,6 +58,7 @@ import UnfinishedChildrenModal from "@/components/UnfinishedChildrenModal/Unfini
 import BacklogConfirmModal from "@/components/BacklogConfirmModal/BacklogConfirmModal";
 import { useTaskBacklog } from "@/hooks/use-task-backlog";
 import { useCommitmentVerdict } from "@/hooks/use-commitment-verdict";
+import { useExpectationActions } from "@/hooks/use-expectation-actions";
 import { useTaskAgentic } from "@/hooks/use-task-agentic";
 import { useTaskAsynchronous } from "@/hooks/use-task-asynchronous";
 import DeleteConfirmModal from "@/components/DeleteConfirmModal/DeleteConfirmModal";
@@ -197,7 +199,7 @@ export default function MindmapView() {
 
   const {
     editorModal, setEditorModal, allTags, domainNames, availableForDep, onDoubleClick,
-    onTaskSave, onGoalSave, onCommitmentSave, onSimpleSave, onProjectSave, onInfoSave,
+    onTaskSave, onGoalSave, onCommitmentSave, onExpectationSave, onSimpleSave, onProjectSave, onInfoSave,
     onClearBeadsId, onFlowSave, onFlowItemSave,
     checkScopeClamp, confirmScopeClamp, scopeClampRequest, resolveScopeClamp,
   } = useNodeEditor({ tree, allTasksAndGoals, reload });
@@ -454,6 +456,9 @@ export default function MindmapView() {
   const { markBroken, cycleVerdict } = useCommitmentVerdict({
     findNode: findNodeById, reload, showToast,
   });
+  const { completeCheck, toggleRelease } = useExpectationActions({
+    findNode: findNodeById, reload, showToast,
+  });
 
   const handleConfirmDelete = useCallback(() => {
     if (deleteTargets === null) return;
@@ -504,6 +509,18 @@ export default function MindmapView() {
     tree, clipboard, moveNode, duplicateNode, onRequestDelete: setDeleteTargets, reload, renameNode,
     createNode, createChild, selectNode, setClipboard, setEditingNodeId, showToast, onNewFlow, onNewCommitment,
   });
+
+  // A wait's status control releases it, and its check task's completes the check. Everything else
+  // is the ordinary status click.
+  const onStatusOrWaitClick = useCallback(
+    (nodeId: string) => {
+      const node = findNodeById(nodeId);
+      if (node?.expectationCheck !== undefined) { completeCheck(nodeId); return; }
+      if (node?.kind === "expectation") { toggleRelease(nodeId); return; }
+      onStatusClick(nodeId);
+    },
+    [findNodeById, completeCheck, toggleRelease, onStatusClick],
+  );
 
   // `displayRoot`, not `tree`: arrow movement walks whatever the canvas drew, which includes the
   // folded Habit-history nodes — they have no counterpart in the loaded tree at all.
@@ -608,9 +625,11 @@ export default function MindmapView() {
     onDelete,
     onToggleCollapsed: toggleCollapsedOrGroup,
     onToggleSubtreeCollapsed: toggleSubtreeCollapsed,
-    onCycleStatus: onStatusClick,
+    onCycleStatus: onStatusOrWaitClick,
     onCycleVerdict: cycleVerdict,
     onMarkBroken: markBroken,
+    onCompleteCheck: completeCheck,
+    onToggleRelease: toggleRelease,
     onDeselect: () => { selectNode(null); },
     onCut: (ids) => setClipboard({ operation: CLIPBOARD_OP.CUT, nodeIds: ids }),
     onCopy: (ids) => setClipboard({ operation: CLIPBOARD_OP.COPY, nodeIds: ids }),
@@ -668,7 +687,7 @@ export default function MindmapView() {
         onContextAction={onContextAction}
         onDragStart={onDragStart}
         onCanvasClick={() => selectNode(null)}
-        onStatusClick={onStatusClick}
+        onStatusClick={onStatusOrWaitClick}
       />
 
 
@@ -682,6 +701,9 @@ export default function MindmapView() {
       )}
       {editorModal !== null && editorModal.node.kind === "commitment" && (
         <CommitmentEditorModal node={editorModal.node} allTags={allTags} domainNames={domainNames} onSave={onCommitmentSave} onClearBeadsId={() => onClearBeadsId(BEADS_NODE_TYPE.COMMITMENT)} onClose={() => setEditorModal(null)} />
+      )}
+      {editorModal !== null && editorModal.node.kind === "expectation" && (
+        <ExpectationEditorModal node={editorModal.node} onSave={onExpectationSave} onClose={() => setEditorModal(null)} />
       )}
       {editorModal !== null && editorModal.node.kind === "domain" && (
         <TitleEditorModal heading={t("editor:editDomain")} title={editorModal.node.title} isPrivate={editorModal.node.isPrivate ?? false} onSave={onSimpleSave} onClose={() => setEditorModal(null)} />

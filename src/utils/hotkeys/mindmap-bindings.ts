@@ -10,6 +10,7 @@ import { MINDMAP_DELETE_BINDINGS, type MindmapDeleteContext } from "./mindmap/de
 import { MINDMAP_DESELECT_BINDINGS, type MindmapDeselectContext } from "./mindmap/deselect";
 import { MINDMAP_EDITOR_BINDINGS, type MindmapEditorContext } from "./mindmap/editor";
 import { MINDMAP_ENTER_BINDINGS, type MindmapEnterContext } from "./mindmap/enter";
+import { MINDMAP_EXPECTATION_BINDINGS, type MindmapExpectationContext } from "./mindmap/expectation";
 import { MINDMAP_FLAGS_BINDINGS, type MindmapFlagsContext } from "./mindmap/flags";
 import { MINDMAP_FULLSCREEN_BINDINGS, type MindmapFullscreenContext } from "./mindmap/fullscreen";
 import { MINDMAP_HISTORY_BINDINGS, type MindmapHistoryContext } from "./mindmap/history";
@@ -44,6 +45,7 @@ export interface MindmapContext extends
   MindmapDeselectContext,
   MindmapEditorContext,
   MindmapEnterContext,
+  MindmapExpectationContext,
   MindmapFlagsContext,
   MindmapFullscreenContext,
   MindmapHistoryContext,
@@ -76,6 +78,7 @@ export const MINDMAP_BINDINGS: readonly Binding<MindmapContext>[] = [
   ...MINDMAP_CREATE_BINDINGS,
   ...MINDMAP_ENTER_BINDINGS,
   ...MINDMAP_COMMITMENT_BINDINGS,
+  ...MINDMAP_EXPECTATION_BINDINGS,
   ...MINDMAP_DELETE_BINDINGS,
   ...MINDMAP_COLLAPSE_BINDINGS,
   ...MINDMAP_ZOOM_BINDINGS,

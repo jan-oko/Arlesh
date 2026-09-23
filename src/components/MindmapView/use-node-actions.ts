@@ -71,6 +71,11 @@ interface Result {
   onPaste: (targetId: string) => void;
 }
 
+/** A wait's check task, or a delegated Task's wait: drawn from their owner, never stored. */
+function isDerivedWait(node: MindmapNode): boolean {
+  return node.expectationCheck !== undefined || node.delegationWait !== undefined;
+}
+
 export function useNodeActions({
   tree, clipboard, moveNode, duplicateNode, onRequestDelete, reload, renameNode,
   createNode, createChild, selectNode, setClipboard, setEditingNodeId, showToast, onNewFlow, onNewCommitment,
@@ -287,7 +292,10 @@ export function useNodeActions({
         // One toast, both sentences: the store holds a single pending notice, so a selection that
         // trips both rules has to say both at once or say one of them into nothing.
         const messages: string[] = [];
-        if (refused.some((node) => node.virtual === true)) messages.push(t("warnings:deleteRepetitionRefused"));
+        if (refused.some((node) => node.virtual === true && !isDerivedWait(node))) {
+          messages.push(t("warnings:deleteRepetitionRefused"));
+        }
+        if (refused.some(isDerivedWait)) messages.push(t("warnings:deleteDerivedWaitRefused"));
         if (refused.some((node) => node.kind === "aspect")) messages.push(t("warnings:deleteAspectRefused"));
         showToast({ nodeId: first.id, message: messages.join(" ") });
         return;

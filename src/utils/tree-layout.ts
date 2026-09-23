@@ -6,9 +6,10 @@ import type { Verdict } from "@/api/verdict";
 import type { Delegate } from "@/api/tasks";
 import type { DurationSpec } from "@/api/time-scope";
 import type { CanonicalKind } from "@/utils/scope-ref";
+import { expectationNodeId } from "@/utils/node-uuid";
 
 export type NodeKind =
-  | "aspect" | "project" | "domain" | "goal" | "task" | "commitment" | "tag" | "info"
+  | "aspect" | "project" | "domain" | "goal" | "task" | "commitment" | "expectation" | "tag" | "info"
   | "flow" | "flow_goal" | "flow_task"
   /** A display-only stand-in for a run of passed Habit iterations — see {@link HabitGroup}. */
   | "habit_group";
@@ -19,7 +20,7 @@ export type NodeKind =
  * orders them by it, so the same set always reads the same way.
  */
 export const ALL_NODE_KINDS: readonly NodeKind[] = [
-  "aspect", "project", "domain", "goal", "task", "commitment", "tag", "info",
+  "aspect", "project", "domain", "goal", "task", "commitment", "expectation", "tag", "info",
   "flow", "flow_goal", "flow_task", "habit_group",
 ];
 
@@ -44,6 +45,8 @@ const DOMAIN_TABLE_KINDS: ReadonlySet<string> = new Set(["aspect", "project", "d
  * target would resolve to `project-<id>`, which no tree node uses, and silently miss.
  */
 export function entityNodeId(type: string, id: number): string {
+  // A kind added after the composed spellings were frozen mints its id instead.
+  if (type === "expectation") return expectationNodeId(id);
   return DOMAIN_TABLE_KINDS.has(type) ? `domain-${id}` : `${type}-${id}`;
 }
 
@@ -238,6 +241,16 @@ export interface MindmapNode {
   verdictWindow?: DurationSpec | null;
   /** A derived, read-only node (e.g. a virtual Habit iteration) with no backing DB row. */
   virtual?: boolean;
+  /** An Expectation's **check-by** (Expectations only): when to look in on the wait. While it is
+   * set and the wait is pending, a virtual check task hangs beneath it. `status` carries the
+   * Expectation's `pending`/`released`, and `archived` its stored archive. */
+  checkBy?: TimeScope | null;
+  /** Present on an Expectation's virtual **check task** — a `task`-kind node with no row. Completing
+   * it clears the check-by of the Expectation named here and stores nothing else. */
+  expectationCheck?: { expectationId: number };
+  /** Present on the virtual Expectation a **delegated** Task waits on: the Task it belongs to. It
+   * has no row, and it is released only by the Task being done — never by hand. */
+  delegationWait?: { taskId: number };
   /**
    * Present on any virtual Habit instance — a per-iteration flow-item instance, or the iteration
    * **root** itself (`itemType: "flow_root"`, `itemId` = the flow id). Carries the

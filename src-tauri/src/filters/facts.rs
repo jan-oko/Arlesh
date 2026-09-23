@@ -198,9 +198,12 @@ pub fn forest(load: &MindmapLoad) -> Vec<FactNode> {
             &expectation.parent_type,
             expectation.parent_id,
         )));
-        // While the wait is pending and has a check-by, a virtual "check on it" Task sits beneath
+        // While the wait is pending, live and has a check-by, a virtual "check on it" Task sits beneath
         // it, scoped to the check-by — whose Timing the Expectation's lifecycle entry carries.
-        if expectation.status == ExpectationStatus::Pending && expectation.check_by.is_some() {
+        if expectation.status == ExpectationStatus::Pending
+            && expectation.archival == ExpectationArchival::Live
+            && expectation.check_by.is_some()
+        {
             let mut check = NodeFacts::new(check_task_id(expectation.id), NodeKind::Task);
             check.status = Some("todo".to_string());
             check.timing = Some(

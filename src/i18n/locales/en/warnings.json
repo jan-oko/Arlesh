@@ -93,5 +93,10 @@
   "occurrenceUnfinishedHeading_one": "\"{{title}}\" still holds {{count}} unfinished item — mark it done anyway?",
   "occurrenceUnfinishedHeading_other": "\"{{title}}\" still holds {{count}} unfinished items — mark it done anyway?",
   "occurrenceUnfinishedItem": "{{type}}: \"{{title}}\"",
-  "occurrenceUnfinishedAction": "Mark it done anyway"
+  "occurrenceUnfinishedAction": "Mark it done anyway",
+  "deleteDerivedWaitRefused": "A check task or a delegated task's wait isn't a row of its own, so there is nothing to delete — clear the check-by, or undelegate the task, instead.",
+  "pasteSkippedDerivedWait_one": "{{count}} check task or delegated wait isn't a row of its own, so there is nothing to paste.",
+  "pasteSkippedDerivedWait_other": "{{count}} check tasks or delegated waits aren't rows of their own, so there is nothing to paste.",
+  "pasteSkippedExpectation_one": "{{count}} Expectation can't be copied — use cut to move it.",
+  "pasteSkippedExpectation_other": "{{count}} Expectations can't be copied — use cut to move them."
 }

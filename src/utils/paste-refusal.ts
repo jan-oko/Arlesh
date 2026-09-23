@@ -22,6 +22,10 @@ export const PASTE_REFUSAL = {
   HERE: "here",
   /** A COPY of a Commitment: what a copy of a recorded Verdict means has never been decided. */
   COMMITMENT: "commitment",
+  /** A COPY of an Expectation: a wait has no duplicate command. */
+  EXPECTATION: "expectation",
+  /** A wait's check task or a delegated Task's wait: drawn from its owner, with no row behind it. */
+  DERIVED_WAIT: "derivedWait",
   /** A COPY of a flow item into another Flow: its Cycle Scope offsets into its own Flow's window. */
   OTHER_FLOW: "otherFlow",
   /**
@@ -85,6 +89,8 @@ export const PASTE_REFUSAL_KEY = {
   aspect: "pasteSkippedAspect",
   here: "pasteSkippedHere",
   commitment: "pasteSkippedCommitment",
+  expectation: "pasteSkippedExpectation",
+  derivedWait: "pasteSkippedDerivedWait",
   otherFlow: "pasteSkippedOtherFlow",
   flowUnder: "pasteSkippedFlowUnder",
 } as const satisfies Record<PasteRefusalReason, string>;
@@ -114,7 +120,9 @@ const REFUSAL_ORDER: readonly PasteRefusalReason[] = [
   PASTE_REFUSAL.HERE,
   PASTE_REFUSAL.ASPECT,
   PASTE_REFUSAL.REPETITION,
+  PASTE_REFUSAL.DERIVED_WAIT,
   PASTE_REFUSAL.COMMITMENT,
+  PASTE_REFUSAL.EXPECTATION,
   PASTE_REFUSAL.OTHER_FLOW,
   PASTE_REFUSAL.FLOW_UNDER,
   PASTE_REFUSAL.GONE,
@@ -135,6 +143,9 @@ export function pasteRefusal(
 ): PasteRefusal | null {
   const node = findNode(tree, nodeId);
   if (node === undefined) return { reason: PASTE_REFUSAL.GONE };
+  if (node.expectationCheck !== undefined || node.delegationWait !== undefined) {
+    return { reason: PASTE_REFUSAL.DERIVED_WAIT };
+  }
   if (node.virtual === true) return { reason: PASTE_REFUSAL.REPETITION };
   if (node.kind === "aspect") return { reason: PASTE_REFUSAL.ASPECT };
   // Asked of the target **node**, not of its kind: a folded run of Habit history and a virtual
@@ -148,6 +159,7 @@ export function pasteRefusal(
   // Everything below is about duplication, so a CUT of the same node is fine and says nothing.
   if (!isCopy) return null;
   if (node.kind === "commitment") return { reason: PASTE_REFUSAL.COMMITMENT };
+  if (node.kind === "expectation") return { reason: PASTE_REFUSAL.EXPECTATION };
   if (
     (node.kind === "flow_goal" || node.kind === "flow_task") &&
     owningFlowId(tree, nodeId) !== owningFlowId(tree, target.id)

@@ -24,6 +24,7 @@ second locale — not because a translation is pending.
 | `statusIcons`  | Status-badge tooltips                          |
 | `listView`     | List View presets, columns, empty states       |
 | `planView`     | Plan View headings, scope stepper, refusals     |
+| `expectation`  | Expectation editor, gestures, refusals and prompts |
 | `hotkeys`      | Keyboard cheat-sheet action labels             |
 
 ---

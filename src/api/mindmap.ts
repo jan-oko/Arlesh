@@ -3,6 +3,7 @@ import type { Domain } from "@/api/domains";
 import type { Goal } from "@/api/goals";
 import type { Task, TaskDependencyEdge } from "@/api/tasks";
 import type { Commitment } from "@/api/commitments";
+import type { Expectation } from "@/api/expectations";
 import type { Info } from "@/api/infos";
 import type { BlockReason } from "@/api/block-reasons";
 import type {
@@ -42,6 +43,8 @@ export interface MindmapLoad {
   goals: Goal[];
   tasks: Task[];
   commitments: Commitment[];
+  /** Every stored expectation. Check tasks and delegated tasks' waits are derived, not sent. */
+  expectations: Expectation[];
   infos: Info[];
   flows: Flow[];
   flow_goals: FlowGoal[];

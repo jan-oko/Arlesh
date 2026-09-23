@@ -5,6 +5,8 @@ import type { MindmapNode } from "@/utils/tree-layout";
 import type { TaskSaveData } from "@/components/TaskEditorModal/TaskEditorModal";
 import type { GoalSaveData } from "@/components/GoalEditorModal/GoalEditorModal";
 import type { CommitmentSaveData } from "@/components/CommitmentEditorModal/CommitmentEditorModal";
+import type { ExpectationSaveData } from "@/components/ExpectationEditorModal/ExpectationEditorModal";
+import { updateExpectation, EXPECTATION_ARCHIVAL } from "@/api/expectations";
 import type { ProjectSaveData } from "@/components/ProjectEditorModal/ProjectEditorModal";
 import type { InfoSaveData } from "@/components/InfoEditorModal/InfoEditorModal";
 import { updateInfo } from "@/api/infos";
@@ -37,6 +39,7 @@ import { addTagToGoal, removeTagFromGoal, updateGoal } from "@/api/goals";
 import { addTagToCommitment, removeTagFromCommitment, updateCommitment } from "@/api/commitments";
 import type { TimeScope } from "@/api/time-scope";
 import { findNode } from "@/utils/mindmap-tree";
+import { expectationNodeId } from "@/utils/node-uuid";
 import { rowIdOf } from "@/utils/node-identity";
 import { DOMAIN_SUBTYPE } from "@/api/domains";
 import { TASK_STATUS } from "@/utils/status-mapping";
@@ -84,6 +87,7 @@ interface Result {
   onTaskSave: (data: TaskSaveData) => Promise<void>;
   onGoalSave: (data: GoalSaveData) => Promise<void>;
   onCommitmentSave: (data: CommitmentSaveData) => Promise<void>;
+  onExpectationSave: (data: ExpectationSaveData) => Promise<void>;
   onSimpleSave: (title: string, isPrivate: boolean) => Promise<void>;
   onProjectSave: (data: ProjectSaveData) => Promise<void>;
   onInfoSave: (data: InfoSaveData) => Promise<void>;
@@ -161,7 +165,16 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
       // from the flow's Duration kind and the item's Cycle, not independently editable — and
       // it has no `rowId` for `onTaskSave`/`onGoalSave` to write to (`rowIdOf` would throw). It stays read-only here; only `onStatusClick` may mutate it.
       if (node === undefined || node.kind === "aspect" || node.habitItem !== undefined) return;
-      setEditorModal({ nodeId, node });
+      // A derived wait has no row of its own to edit, so the editor that owns what it draws opens
+      // instead: a check task's check-by is its Expectation's, and a delegated Task's wait is the
+      // Task's own — rather than a key that does nothing.
+      const owner = node.expectationCheck !== undefined
+        ? findNode(tree, expectationNodeId(node.expectationCheck.expectationId))
+        : node.delegationWait !== undefined
+          ? findNode(tree, `task-${node.delegationWait.taskId}`)
+          : node;
+      if (owner === undefined) return;
+      setEditorModal({ nodeId: owner.id, node: owner });
     },
     [tree],
   );
@@ -232,6 +245,22 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
       for (const tagId of tagsRemoved) await removeTagFromGoal(dbId, tagId);
       await reload();
       setEditorModal(null);
+    },
+    [editorModal, reload],
+  );
+
+  const onExpectationSave = useCallback(
+    async (data: ExpectationSaveData) => {
+      if (editorModal === null) return;
+      await updateExpectation(rowIdOf(editorModal.node), {
+        title: data.title,
+        status: data.status,
+        check_by: data.checkBy,
+        archival: data.archived ? EXPECTATION_ARCHIVAL.ARCHIVED : EXPECTATION_ARCHIVAL.LIVE,
+        is_private: data.isPrivate,
+      });
+      setEditorModal(null);
+      await reload();
     },
     [editorModal, reload],
   );
@@ -413,7 +442,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
 
   return {
     editorModal, setEditorModal, allTags, domainNames, availableForDep, onDoubleClick,
-    onTaskSave, onGoalSave, onCommitmentSave, onSimpleSave, onProjectSave, onInfoSave,
+    onTaskSave, onGoalSave, onCommitmentSave, onExpectationSave, onSimpleSave, onProjectSave, onInfoSave,
     onClearBeadsId,
     onFlowSave, onFlowItemSave,
     checkScopeClamp, confirmScopeClamp, scopeClampRequest, resolveScopeClamp,

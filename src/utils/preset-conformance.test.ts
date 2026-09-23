@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest";
 import corpusJson from "@conformance/preset-filters.json";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { isNodeKind } from "@/utils/tree-layout";
-import type { FilterState, ArchivedMode, TagFilter, TagFilterMode } from "@/utils/filter-tree";
+import type { FilterState, ArchivedMode, StatusMode, TagFilter, TagFilterMode } from "@/utils/filter-tree";
 import { DEFAULT_FILTER, filterTree } from "@/utils/filter-tree";
 import type { ListFilterState, ListPreset } from "@/utils/list-filter";
 import {
-  DEFAULT_LIST_FILTER, filterCommitmentList, filterTaskList, isListPreset,
+  DEFAULT_LIST_FILTER, filterCommitmentList, filterExpectationList, filterTaskList, isListPreset,
 } from "@/utils/list-filter";
-import { flattenCommitmentRows, flattenTaskRows } from "@/utils/list-data";
+import { flattenCommitmentRows, flattenExpectationRows, flattenTaskRows } from "@/utils/list-data";
 import type { Timing } from "@/api/scope-lifecycle";
 import type { Verdict } from "@/api/verdict";
 import { VERDICT_VALUES } from "@/api/verdict";
@@ -40,6 +40,8 @@ interface CorpusNode {
   isBlocked?: boolean;
   isHabitFlow?: boolean;
   isHabitOccurrence?: boolean;
+  delegated?: boolean;
+  hasCheckBy?: boolean;
   tagIds?: number[];
   children?: CorpusNode[];
 }
@@ -48,6 +50,7 @@ interface CorpusNode {
 interface CorpusFilter {
   preset: ListPreset;
   unblock?: boolean;
+  expectations?: boolean;
   includeFlows?: boolean;
   tags?: TagFilter[];
   showInfo?: boolean;
@@ -66,6 +69,8 @@ interface CorpusCase {
   mindmap: string[];
   list: string[];
   commitments: string[];
+  /** The Expectation rows the List View keeps — empty on a board with none. */
+  expectations: string[];
 }
 
 interface Corpus {
@@ -121,6 +126,8 @@ function parseNode(value: unknown, what: string): CorpusNode {
     ...flag(raw.isBlocked, "isBlocked", what),
     ...flag(raw.isHabitFlow, "isHabitFlow", what),
     ...flag(raw.isHabitOccurrence, "isHabitOccurrence", what),
+    ...flag(raw.delegated, "delegated", what),
+    ...flag(raw.hasCheckBy, "hasCheckBy", what),
   };
 }
 
@@ -181,6 +188,7 @@ function parseFilter(value: unknown, what: string): CorpusFilter {
     preset,
     tags,
     ...flag(raw.unblock, "unblock", what),
+    ...flag(raw.expectations, "expectations", what),
     ...flag(raw.includeFlows, "includeFlows", what),
     ...flag(raw.showInfo, "showInfo", what),
     ...flag(raw.showFlow, "showFlow", what),
@@ -209,6 +217,7 @@ function parseCorpus(): Corpus {
         mindmap: ids(value.mindmap, `cases[${name}].mindmap`),
         list: ids(value.list, `cases[${name}].list`),
         commitments: ids(value.commitments, `cases[${name}].commitments`),
+        expectations: value.expectations === undefined ? [] : ids(value.expectations, `cases[${name}].expectations`),
       };
     }),
     boards: Object.fromEntries(
@@ -245,6 +254,8 @@ function toMindmapNode(node: CorpusNode): MindmapNode {
     ...(node.isBlocked === true ? { blockReasons: ["blocked"] } : {}),
     ...(node.isHabitFlow === true ? { flow: HABIT_FLOW } : {}),
     ...(node.isHabitOccurrence === true ? { habitItem: OCCURRENCE } : {}),
+    ...(node.delegated === true ? { delegate: { kind: "agent" as const } } : {}),
+    ...(node.hasCheckBy === true ? { checkBy: { start_id: 1, end_id: 1 } } : {}),
   };
 }
 
@@ -254,7 +265,7 @@ function toSharedFilter(filter: CorpusFilter): FilterState {
     ...DEFAULT_FILTER,
     // Unblock is the List View's own option and never writes through to the shared preset — which
     // is exactly why the corpus carries the two separately.
-    statusMode: filter.preset === "unblock" ? DEFAULT_FILTER.statusMode : filter.preset,
+    statusMode: asStatusMode(filter.preset),
     tagFilters: filter.tags ?? [],
     ...(filter.includeFlows !== undefined ? { modeIncludeFlows: filter.includeFlows } : {}),
     ...(filter.showInfo !== undefined ? { showInfo: filter.showInfo } : {}),
@@ -265,8 +276,18 @@ function toSharedFilter(filter: CorpusFilter): FilterState {
   };
 }
 
+/** The shared preset a corpus preset names. The List-View-only options never write through to it. */
+function asStatusMode(preset: ListPreset): StatusMode {
+  return STATUS_MODES.find((mode) => mode === preset) ?? DEFAULT_FILTER.statusMode;
+}
+
+const STATUS_MODES: readonly StatusMode[] = ["all", "plan", "start", "do", "backlog"];
+
 function toListFilter(filter: CorpusFilter): ListFilterState {
-  return { ...DEFAULT_LIST_FILTER, preset: filter.unblock === true ? "unblock" : filter.preset };
+  const preset: ListPreset = filter.unblock === true ? "unblock"
+    : filter.expectations === true ? "expectations"
+      : filter.preset;
+  return { ...DEFAULT_LIST_FILTER, preset };
 }
 
 function keptIds(node: MindmapNode): string[] {
@@ -304,6 +325,11 @@ describe("preset conformance corpus", () => {
       it("keeps the stated commitment rows in the List View", () => {
         const rows = filterCommitmentList(flattenCommitmentRows(root), shared, listFilter);
         expect(rows.map((row) => row.node.id).sort()).toEqual([...testCase.commitments].sort());
+      });
+
+      it("keeps the stated expectation rows in the List View", () => {
+        const rows = filterExpectationList(flattenExpectationRows(root), shared, listFilter);
+        expect(rows.map((row) => row.node.id).sort()).toEqual([...testCase.expectations].sort());
       });
     });
   }

@@ -61,7 +61,8 @@ export function useListDelete({
       const node = findNode(id);
       if (node === undefined) return;
       if (node.virtual === true) {
-        showToast({ nodeId: id, message: t("deleteRepetitionRefused") });
+        const derivedWait = node.expectationCheck !== undefined || node.delegationWait !== undefined;
+        showToast({ nodeId: id, message: t(derivedWait ? "deleteDerivedWaitRefused" : "deleteRepetitionRefused") });
         return;
       }
       setError(null);

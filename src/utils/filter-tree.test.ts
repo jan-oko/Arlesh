@@ -622,11 +622,13 @@ describe("filterTree — commitments", () => {
     }
   });
 
-  it("Plan keeps a broken commitment while its window is still open", () => {
-    // The carve-out that mirrors no Task rule: a commitment you have already broken today is a
-    // live problem until midnight, where a kept one is settled.
-    expect(shows({ verdict: "broken", timing: "active" }, "plan")).toBe(true);
-    expect(shows({ verdict: "broken", timing: "pending" }, "plan")).toBe(true);
+  it("Plan, Start and Do drop a broken commitment even while its window is still open", () => {
+    // A Broken verdict is an answer, like Kept, and Plan hides what is answered the way it hides a
+    // done Task (ruled 2026-09-23; the old open-window carve-out is gone).
+    for (const mode of ["plan", "start", "do"] as const) {
+      expect(shows({ verdict: "broken", timing: "active" }, mode)).toBe(false);
+      expect(shows({ verdict: "broken", timing: "pending" }, mode)).toBe(false);
+    }
   });
 
   it("Plan drops a broken commitment once its window has closed", () => {

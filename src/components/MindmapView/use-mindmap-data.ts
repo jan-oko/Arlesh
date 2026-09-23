@@ -5,6 +5,9 @@ import { createTask, updateTask, deleteTask, duplicateTask, TASK_ARCHIVAL } from
 import { createCommitment, updateCommitment, deleteCommitment, addTagToCommitment } from "@/api/commitments";
 import type { CommitmentSaveData } from "@/components/CommitmentEditorModal/CommitmentEditorModal";
 import type { Commitment } from "@/api/commitments";
+import { createExpectation, updateExpectation, deleteExpectation, EXPECTATION_STATUS, EXPECTATION_ARCHIVAL } from "@/api/expectations";
+import type { Expectation } from "@/api/expectations";
+import { checkTaskNodeId, delegationWaitNodeId, expectationNodeId } from "@/utils/node-uuid";
 import type { Verdict } from "@/api/verdict";
 import { VERDICT } from "@/api/verdict";
 import type { TaskAgentic, TaskDependencyEdge } from "@/api/tasks";
@@ -64,8 +67,15 @@ function applyLifecycles(node: MindmapNode, byId: Map<string, ItemLifecycle>): v
   for (const child of node.children) applyLifecycles(child, byId);
 }
 
+/**
+ * Each lifecycle keyed by the node id it stamps. An Expectation's entry describes its **check-by**,
+ * so it stamps two nodes: the Expectation, and the virtual check task scoped to that check-by.
+ */
 function lifecycleMap(lifecycles: ItemLifecycle[]): Map<string, ItemLifecycle> {
-  return new Map(lifecycles.map((l) => [`${l.node_type}-${l.node_id}`, l]));
+  return new Map(lifecycles.flatMap((l): Array<[string, ItemLifecycle]> =>
+    l.node_type === "expectation"
+      ? [[expectationNodeId(l.node_id), l], [checkTaskNodeId(l.node_id), { ...l, archival: "live", archival_conflict: false }]]
+      : [[`${l.node_type}-${l.node_id}`, l]]));
 }
 
 /**
@@ -600,6 +610,7 @@ function kindToInfoParentType(kind: NodeKind): string {
     case "domain": return "domain";
     case "tag": return "tag";
     case "commitment": return "commitment";
+    case "expectation": return "expectation";
     case "flow": throw new Error("Flow nodes cannot parent info nodes");
     case "flow_goal": case "flow_task": throw new Error("Flow items cannot parent info nodes");
     case "habit_group": throw new Error("A folded Habit history cannot parent info nodes");
@@ -614,7 +625,7 @@ function kindToInfoParentType(kind: NodeKind): string {
 function kindToFlowParentType(kind: NodeKind): string {
   switch (kind) {
     case "aspect": case "domain": case "project": case "goal": return kind;
-    case "task": case "commitment": case "tag": case "info":
+    case "task": case "commitment": case "expectation": case "tag": case "info":
     case "flow": case "flow_goal": case "flow_task": case "habit_group":
       throw new Error(`Flows cannot hang from a node of kind "${kind}"`);
   }
@@ -631,7 +642,7 @@ function kindToFlowItemParentType(kind: NodeKind): string {
     // `habit_group` is among them because a folded run of passed iterations is drawn, not stored
     // — it is nobody's parent.
     case "aspect": case "domain": case "project": case "goal":
-    case "task": case "commitment": case "tag": case "info": case "habit_group":
+    case "task": case "commitment": case "expectation": case "tag": case "info": case "habit_group":
       throw new Error(`Flow items cannot hang from a node of kind "${kind}"`);
   }
 }
@@ -677,6 +688,7 @@ function infoParentKey(info: Info): string {
   if (info.parent_type === "goal") return `goal-${info.parent_id}`;
   if (info.parent_type === "task") return `task-${info.parent_id}`;
   if (info.parent_type === "commitment") return `commitment-${info.parent_id}`;
+  if (info.parent_type === "expectation") return expectationNodeId(info.parent_id);
   if (info.parent_type === "info") return `info-${info.parent_id}`;
   return `domain-${info.parent_id}`;
 }
@@ -724,6 +736,9 @@ export function buildTree(
   blockReasons: BlockReason[] = [],
   taskDeps: TaskDependencyEdge[] = [],
   flowInstanceRefs: TargetRef[] = [],
+  expectations: Expectation[] = [],
+  /** The title a delegated Task's virtual Expectation is drawn with, from the Task's own. */
+  delegationWaitTitle: (taskTitle: string) => string = (taskTitle) => taskTitle,
 ): MindmapNode {
   const nodeMap = new Map<string, MindmapNode>();
 
@@ -812,14 +827,80 @@ export function buildTree(
     });
   }
 
-  // Virtual block reasons: a task is also blocked by any dependency on a non-done task / non-achieved
-  // goal. Derived here from the bulk dependency edges so the canvas shows it without per-task calls.
+  for (const expectation of expectations) {
+    const id = expectationNodeId(expectation.id);
+    const node: MindmapNode = {
+      id,
+      rowId: expectation.id,
+      kind: "expectation",
+      title: expectation.title,
+      status: expectation.status,
+      archived: expectation.archival === EXPECTATION_ARCHIVAL.ARCHIVED,
+      checkBy: expectation.check_by,
+      position: expectation.position,
+      isPrivate: expectation.is_private,
+      tagIds: [],
+      children: [],
+    };
+    // While the wait is pending, live and has a check-by, a virtual "check on it" Task hangs
+    // beneath it, scoped to the check-by. Nothing stores it; completing it clears the check-by.
+    if (
+      expectation.check_by !== null && expectation.status === EXPECTATION_STATUS.PENDING &&
+      expectation.archival === EXPECTATION_ARCHIVAL.LIVE
+    ) {
+      node.children.push({
+        id: checkTaskNodeId(expectation.id),
+        kind: "task",
+        title: expectation.title,
+        status: TASK_STATUS.TODO,
+        timeScope: expectation.check_by,
+        onScopeExit: "keep",
+        virtual: true,
+        expectationCheck: { expectationId: expectation.id },
+        position: Number.MIN_SAFE_INTEGER,
+        isPrivate: expectation.is_private,
+        tagIds: [],
+        children: [],
+      });
+    }
+    nodeMap.set(id, node);
+  }
+
+  // A delegated Task waits on its delegate finishing: a virtual, pending Expectation beneath it
+  // for as long as it is not done. It has no row and no check-by, and only the Task being done
+  // releases it — which is simply the moment it stops being drawn.
+  for (const task of tasks) {
+    if (task.delegate_to === null || task.status === TASK_STATUS.DONE) continue;
+    nodeMap.get(`task-${task.id}`)?.children.push({
+      id: delegationWaitNodeId(task.id),
+      kind: "expectation",
+      title: delegationWaitTitle(task.title),
+      status: EXPECTATION_STATUS.PENDING,
+      checkBy: null,
+      virtual: true,
+      delegationWait: { taskId: task.id },
+      position: Number.MIN_SAFE_INTEGER,
+      isPrivate: task.is_private,
+      tagIds: [],
+      children: [],
+    });
+  }
+
+  // Virtual block reasons: a task is also blocked by any dependency on a non-done task, a
+  // non-achieved goal or a pending expectation. Derived here from the bulk dependency edges so the
+  // canvas shows it without per-task calls.
   const taskById = new Map(tasks.map((t) => [t.id, t]));
   const goalById = new Map(goals.map((g) => [g.id, g]));
+  const expectationById = new Map(expectations.map((e) => [e.id, e]));
   for (const dep of taskDeps) {
     const node = nodeMap.get(`task-${dep.task_id}`);
     if (node === undefined) continue;
-    if (dep.dependency_type === "task") {
+    if (dep.dependency_type === "expectation") {
+      const target = expectationById.get(dep.dependency_id);
+      if (target !== undefined && target.status === EXPECTATION_STATUS.PENDING) {
+        node.virtualBlockers?.push(`Blocked by expectation ${dep.dependency_id} (${target.title})`);
+      }
+    } else if (dep.dependency_type === "task") {
       const target = taskById.get(dep.dependency_id);
       if (target !== undefined && target.status !== "done") {
         node.virtualBlockers?.push(`Blocked by task ${dep.dependency_id} (${target.title})`);
@@ -984,6 +1065,13 @@ export function buildTree(
     if (parentNode !== undefined) {
       parentNode.children.push(node);
     }
+  }
+
+  // Wire expectations to their parents — the same four spellings a task's parent link can take.
+  for (const expectation of expectations) {
+    const node = nodeMap.get(expectationNodeId(expectation.id));
+    if (node === undefined) continue;
+    nodeMap.get(contentParentKey(expectation.parent_type, expectation.parent_id))?.children.push(node);
   }
 
   // Wire info nodes to their parents
@@ -1158,8 +1246,15 @@ async function createCommitmentUnderNode(
 }
 
 export function useMindmapData(): MindmapData {
-  const { t } = useTranslation("undo");
+  const { t } = useTranslation(["undo", "expectation"]);
   const [tree, setTree] = useState<MindmapNode>(VIRTUAL_ROOT);
+  // Read through a ref, set in an effect, so `load` does not change identity with `t` — which
+  // would re-run the mount effect and reload for nothing. Declared before that effect, so the
+  // first load already has it.
+  const delegationWaitTitle = useRef((title: string) => title);
+  useEffect(() => {
+    delegationWaitTitle.current = (title: string) => t("expectation:delegationWaitTitle", { title });
+  }, [t]);
   // The tree as of the latest load, read synchronously by the mutations to resolve a node id to
   // its row. A ref rather than the `tree` closure: a caller that creates a node and acts on it in
   // the same gesture holds a callback from before the reload that drew it.
@@ -1188,6 +1283,7 @@ export function useMindmapData(): MindmapData {
           data.domains, data.goals, data.tasks, data.infos, data.commitments, data.flows,
           data.flow_goals, data.flow_tasks, data.flow_cycles, data.flow_dependencies,
           data.block_reasons, data.task_dependencies, data.flow_instance_nodes,
+          data.expectations, (title) => delegationWaitTitle.current(title),
         );
         applyLifecycles(built, lifecycleMap(data.lifecycles));
         // Inject each Habit's iterations as virtual, read-only child nodes under their targets.
@@ -1310,6 +1406,19 @@ export function useMindmapData(): MindmapData {
         return newNode;
       }
 
+      if (childKind === "expectation") {
+        const expectation = await createExpectation({
+          title, parent_type: kindToParentType(parentKind), parent_id: dbParentId,
+        });
+        const newNode: MindmapNode = {
+          id: expectationNodeId(expectation.id), rowId: expectation.id, kind: "expectation",
+          title: expectation.title, status: expectation.status, checkBy: expectation.check_by,
+          position: expectation.position, tagIds: [], children: [],
+        };
+        await load(false);
+        return newNode;
+      }
+
       if (childKind === "info") {
         const siblings = findNodeInTree(tree, parentId)?.children ?? [];
         const maxPos = siblings.reduce((m, c) => Math.max(m, c.position), -1);
@@ -1379,6 +1488,8 @@ export function useMindmapData(): MindmapData {
         await updateTask(dbId, { title });
       } else if (kind === "commitment") {
         await updateCommitment(dbId, { title });
+      } else if (kind === "expectation") {
+        await updateExpectation(dbId, { title });
       } else if (kind === "info") {
         await updateInfo(dbId, { body: title });
       } else if (kind === "flow_goal") {
@@ -1477,6 +1588,7 @@ export function useMindmapData(): MindmapData {
         if (kind === "goal") await updateGoal(nId, { position: pos });
         else if (kind === "task") await updateTask(nId, { position: pos });
         else if (kind === "commitment") await updateCommitment(nId, { position: pos });
+        else if (kind === "expectation") await updateExpectation(nId, { position: pos });
         else if (kind === "info") await updateInfo(nId, { position: pos });
         else if (kind === "flow_goal") await updateFlowGoal(nId, { position: pos });
         else if (kind === "flow_task") await updateFlowTask(nId, { position: pos });
@@ -1509,6 +1621,9 @@ export function useMindmapData(): MindmapData {
           break;
         case "commitment":
           await updateCommitment(dbId, { parent_type: kindToParentType(newParentKind), parent_id: dbParentId, position });
+          break;
+        case "expectation":
+          await updateExpectation(dbId, { parent_type: kindToParentType(newParentKind), parent_id: dbParentId, position });
           break;
         case "info":
           await updateInfo(dbId, { parent_type: kindToInfoParentType(newParentKind), parent_id: dbParentId, position });
@@ -1583,6 +1698,9 @@ export function useMindmapData(): MindmapData {
           // decide what a copy of a recorded Verdict means. Refused by name rather than routed
           // into whichever table the fall-through happened to pick.
           throw new Error("commitment nodes cannot be duplicated");
+        case "expectation":
+          // No duplicate command either: `onPaste` refuses a copied wait by name before this.
+          throw new Error("expectation nodes cannot be duplicated");
         case "info":
           await duplicateInfo(dbId, kindToInfoParentType(targetKind), dbTargetId, position);
           break;
@@ -1628,6 +1746,7 @@ export function useMindmapData(): MindmapData {
           if (kind === "goal") await deleteGoal(dbId);
           else if (kind === "task") await deleteTask(dbId);
           else if (kind === "commitment") await deleteCommitment(dbId);
+          else if (kind === "expectation") await deleteExpectation(dbId);
           else if (kind === "info") await deleteInfo(dbId);
           else if (kind === "flow") await deleteFlow(dbId);
           else if (kind === "flow_goal") await deleteFlowItem("flow_goal", dbId);

@@ -1032,7 +1032,7 @@
     },
     {
       "name": "the archived pill on exclude hides archived expectations and delegated subtrees under all",
-      "spec": "mindmap-view.md — Exclude hard-hides the whole subtree of anything archived; a delegated Task has every effect of archival.",
+      "spec": "mindmap-view.md — Exclude hard-hides the whole subtree of anything archived; a delegated Task has every effect of archival. In the flat list the pill hides the archived row itself, as it does for task rows: an excluded ancestor does not gate a row there, so the delegated Task's wait stays in the list while the Mindmap drops it with its Task.",
       "filter": {
         "preset": "all",
         "archived": "exclude"
@@ -1059,6 +1059,7 @@
       "expectations": [
         "expectation-check-ahead",
         "expectation-checked",
+        "expectation-delegation",
         "expectation-pending",
         "expectation-released"
       ]

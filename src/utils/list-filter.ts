@@ -2,7 +2,8 @@ import type { MindmapNode } from "@/utils/tree-layout";
 import type { FilterState, TagFilterMode } from "@/utils/filter-tree";
 import {
   typeHardHidden, passesTags, withArchivedOverride, isShelvedProject, isHiddenBacklog,
-  isUnopenedOccurrence, passesCommitmentPreset,
+  isUnopenedOccurrence, passesCommitmentPreset, passesExpectationPreset, isArchived, isDelegated,
+  isLiveExpectation,
 } from "@/utils/filter-tree";
 import { TASK_STATUS, GOAL_STATUS, PROJECT_STATUS } from "@/utils/status-mapping";
 import type { Verdict } from "@/api/verdict";
@@ -51,8 +52,17 @@ export const PILL_DIMENSIONS: PillDimension[] = [
 ];
 
 /** List View's own preset selector: All/Plan/Start/Do write through to the shared status preset;
- * Unblock is List-View-only and does not touch it (see SPEC List View section). */
-export const LIST_PRESET_VALUES = ["all", "plan", "start", "do", "backlog", "unblock"] as const;
+ * Unblock and Expectations are List-View-only and do not touch it (see SPEC List View section). */
+export const LIST_PRESET_VALUES = ["all", "plan", "start", "do", "backlog", "unblock", "expectations"] as const;
+
+/** The List-View-only options: each replaces the shared preset's rules for the list, leaving the
+ * shared preset where it was for the Mindmap. */
+export const LIST_ONLY_PRESETS: readonly ListPreset[] = ["unblock", "expectations"];
+
+/** Whether `preset` is one of the List-View-only options. */
+export function isListOnlyPreset(preset: ListPreset): boolean {
+  return LIST_ONLY_PRESETS.includes(preset);
+}
 export type ListPreset = (typeof LIST_PRESET_VALUES)[number];
 
 export function isListPreset(value: string): value is ListPreset {
@@ -203,6 +213,17 @@ export interface CommitmentListRow {
   scopeTokens: string[];
 }
 
+/** One flattened Expectation row — a wait, stored or a delegated Task's virtual one. As thin as a
+ * {@link CommitmentListRow}, for the same reason: a wait has no status to cycle, no Plan, no tags
+ * and no dependencies of its own. */
+export interface ExpectationListRow {
+  node: MindmapNode;
+  /** Every ancestor, root Aspect first and immediate parent last. */
+  ancestors: MindmapNode[];
+  /** Whether any ancestor is marked private — the subtree hides as a unit outside Private Mode. */
+  hasPrivateAncestor: boolean;
+}
+
 /**
  * The values an **Antecedent** pill is matched against: every node on the row's ancestor chain, at
  * any depth and of any kind (Aspect, Domain, Project, Goal, Task).
@@ -277,10 +298,10 @@ function passesListPreset(row: TaskListRow, f: FilterState): boolean {
     case "all":
       return true;
     case "plan":
-      return withArchivedOverride(row.node, f, row.node.status !== "done" && row.node.archived !== true);
+      return withArchivedOverride(row.node, f, row.node.status !== "done" && !isArchived(row.node));
     case "start": {
       if (row.isBlocked || row.hasBlockedAncestor) return false;
-      if (row.node.timing === "lapsed") return withArchivedOverride(row.node, f, false);
+      if (row.node.timing === "lapsed" || isDelegated(row.node)) return withArchivedOverride(row.node, f, false);
       if (row.node.status === "done") return false;
       if (row.node.status === "in_progress" && !row.node.children.some((c) => c.kind === "task" && c.status === "todo")) {
         return false;
@@ -314,6 +335,8 @@ function unblockSharedFilter(shared: FilterState): FilterState {
 /** Whether one row survives the shared filter (status preset, tags, Info/Flow/Private) and the
  * List-View-exclusive filters. Unblock overrides the status preset to "blocked tasks only". */
 function rowPassesFilters(row: TaskListRow, shared: FilterState, listFilter: ListFilterState): boolean {
+  // The Expectations option shows waits and nothing else.
+  if (listFilter.preset === "expectations") return false;
   const effectiveShared = listFilter.preset === "unblock" ? unblockSharedFilter(shared) : shared;
   if (typeHardHidden(row.node, effectiveShared)) return false;
   if (!shared.privateMode && row.hasPrivateAncestor) return false;
@@ -365,7 +388,9 @@ export function filterCommitmentList(
   shared: FilterState,
   listFilter: ListFilterState,
 ): CommitmentListRow[] {
-  if (listFilter.preset === "unblock" || listFilter.preset === "backlog") return [];
+  if (listFilter.preset === "unblock" || listFilter.preset === "backlog" || listFilter.preset === "expectations") {
+    return [];
+  }
   return rows.filter((row) => {
     if (typeHardHidden(row.node, shared)) return false;
     if (!shared.privateMode && row.hasPrivateAncestor) return false;
@@ -380,6 +405,37 @@ export function filterCommitmentList(
       return false;
     }
     return true;
+  });
+}
+
+/**
+ * Filters the flattened Expectation rows — the waits, in their band or among the rows.
+ *
+ * **Unblock** shows none: a wait is never blocked. The List View's own **Expectations** option
+ * replaces the preset's rules, as Unblock does, and keeps every pending, live wait — the hard-hide
+ * rules still apply, read under the neutralised filter. Otherwise the preset answers through
+ * {@link passesExpectationPreset}, with the same subtree gates the task rows answer, so a branch the
+ * list has dropped takes its waits with it. Only the Antecedent pill applies: a wait has no status,
+ * scope, verdict or tags to be filtered on.
+ */
+export function filterExpectationList(
+  rows: readonly ExpectationListRow[],
+  shared: FilterState,
+  listFilter: ListFilterState,
+): ExpectationListRow[] {
+  if (listFilter.preset === "unblock") return [];
+  const onlyWaits = listFilter.preset === "expectations";
+  const effective = onlyWaits ? unblockSharedFilter(shared) : shared;
+  return rows.filter((row) => {
+    if (typeHardHidden(row.node, effective)) return false;
+    if (!shared.privateMode && row.hasPrivateAncestor) return false;
+    if (onlyWaits) {
+      if (!isLiveExpectation(row.node)) return false;
+    } else {
+      if (hasGatingAncestor(row.ancestors, shared)) return false;
+      if (!withArchivedOverride(row.node, shared, passesExpectationPreset(row.node, shared))) return false;
+    }
+    return matchesPillGroup(listFilter.pills.antecedent, ancestorRefs(row.ancestors));
   });
 }
 

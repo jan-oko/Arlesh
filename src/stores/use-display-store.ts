@@ -41,6 +41,28 @@ interface DisplayStore {
    */
   planSubscopeSplit: boolean;
   togglePlanSubscopeSplit: () => void;
+  /**
+   * Whether the List View draws Commitments and Expectations in **bands** above the task rows
+   * (on, the default — the shape the Commitments band already had) or as **ordinary rows** among
+   * them, at their place in the tree. One switch for both kinds: they are the two non-task kinds
+   * the list shows, and a list mixing the two shapes would read as two different lists. Either way
+   * a row looks and works the same; only where it sits changes.
+   */
+  listBands: boolean;
+  toggleListBands: () => void;
+  /**
+   * Whether marking a Task **Asynchronous** opens the new-Expectation editor for the wait it
+   * starts, which the Task then depends on. **Off by default**: the flag says only that doing the
+   * Task starts a wait, and naming the wait is a step not everyone wants every time.
+   */
+  asynchronousOpensExpectation: boolean;
+  toggleAsynchronousOpensExpectation: () => void;
+  /**
+   * Whether completing an Asynchronous Task that has no Expectation yet offers to create one.
+   * **Off by default**, for the same reason.
+   */
+  offerExpectationOnAsyncDone: boolean;
+  toggleOfferExpectationOnAsyncDone: () => void;
 }
 
 /** Keeps a stored or typed threshold inside the range the setting offers. */
@@ -76,6 +98,14 @@ export const useDisplayStore = create<DisplayStore>()(
       togglePlanPathGrouping: () => set((s) => ({ planPathGrouping: !s.planPathGrouping })),
       planSubscopeSplit: false,
       togglePlanSubscopeSplit: () => set((s) => ({ planSubscopeSplit: !s.planSubscopeSplit })),
+      listBands: true,
+      toggleListBands: () => set((s) => ({ listBands: !s.listBands })),
+      asynchronousOpensExpectation: false,
+      toggleAsynchronousOpensExpectation: () =>
+        set((s) => ({ asynchronousOpensExpectation: !s.asynchronousOpensExpectation })),
+      offerExpectationOnAsyncDone: false,
+      toggleOfferExpectationOnAsyncDone: () =>
+        set((s) => ({ offerExpectationOnAsyncDone: !s.offerExpectationOnAsyncDone })),
     }),
     { name: "arlesh-display" },
   ),
