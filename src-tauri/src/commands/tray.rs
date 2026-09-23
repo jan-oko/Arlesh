@@ -36,26 +36,33 @@
 
 #[cfg(not(target_os = "linux"))]
 use tauri::{
-    menu::{Menu, MenuEvent, MenuItem},
+    menu::{CheckMenuItem, Menu, MenuEvent, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
-use tauri::{AppHandle, Manager, State, WindowEvent};
+use tauri::{AppHandle, Manager, Runtime, State, Window, WindowEvent};
 
 use crate::{
+    commands::windows,
     icon,
     tray::{activate_action, ActivateAction, CloseAction, ClosePreference},
 };
 
-/// The label of the window the tray shows, hides and quits.
-const MAIN_WINDOW: &str = "main";
-
 /// The tray icon's own id, which is a different namespace from the window's label.
+///
+/// Internal to Tauri's tray. It is **not** the StatusNotifierItem `Id` on Linux, because bars show
+/// that one: DankMaterialShell heads the item's menu with it, so an id there has to read as the
+/// app's name — see `SystemTray`'s `id`.
+#[cfg(not(target_os = "linux"))]
 const TRAY_ID: &str = "arlesh-tray";
 
-/// What the tray says when nothing better is available.
-const FALLBACK_TOOLTIP: &str = "Arlesh";
+/// The id a per-window entry carries, with the window's label after this prefix.
+///
+/// Only Tauri's menu needs it; Linux's carries a callback per item. It is declared here anyway
+/// because it is part of the menu's shape, which both trays share.
+#[cfg(not(target_os = "linux"))]
+const WINDOW_ITEM_PREFIX: &str = "window:";
 
-/// What the two menu items read on the bar. Both trays build the same menu from these.
+/// What the two fixed menu items read on the bar. Both trays build the same menu from these.
 const SHOW_LABEL: &str = "Show";
 /// See [`SHOW_LABEL`].
 const QUIT_LABEL: &str = "Quit";
@@ -68,7 +75,7 @@ const SHOW_ITEM: &str = "show";
 #[cfg(not(target_os = "linux"))]
 const QUIT_ITEM: &str = "quit";
 
-/// Builds the tray icon and, if it went up, takes over the main window's close button.
+/// Builds the tray icon and, if it went up, lets the close button start meaning "hide".
 ///
 /// Called once from the setup hook. It also manages the [`ClosePreference`], so that the decision
 /// and the surfaces that consult it are installed together — a tray whose Quit could not reach the
@@ -76,37 +83,129 @@ const QUIT_ITEM: &str = "quit";
 ///
 /// Infallible on purpose, the same bargain [`crate::mcp::serve`] makes with an occupied port: a
 /// desktop with no tray host is an ordinary condition, and it must not take the window down with
-/// it. What it costs is the feature, not the app — with no tray to restore the window from, the
-/// close handler is never attached and closing goes on meaning quit, which is where Arlesh started.
+/// it. What it costs is the feature, not the app — a preference that never hears the tray went up
+/// reads as off, so closing goes on meaning quit, which is where Arlesh started.
 pub fn install(app: &AppHandle) {
-    app.manage(ClosePreference::default());
+    let preference = ClosePreference::default();
 
     if let Err(error) = build_tray(app) {
         tracing::error!(error = %error, "no tray icon; the close button keeps quitting");
+        app.manage(preference);
         return;
     }
 
-    let handle = app.clone();
-    if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
-        window.on_window_event(move |event| {
-            if let WindowEvent::CloseRequested { api, .. } = event {
-                if resolve_close(&handle) == CloseAction::HideToTray {
-                    api.prevent_close();
-                    hide_window(&handle);
-                }
-            }
-        });
-    }
-
-    tracing::info!("tray icon ready; closing the window hides it by default");
+    preference.mark_tray_available();
+    app.manage(preference);
+    tracing::info!("tray icon ready; closing the last window hides it by default");
 }
 
-/// Puts the icon and its two-item menu in the tray, through Tauri's own tray.
+/// Every window's close button, and the moment a closed window stops existing.
+///
+/// Registered once, on the builder, rather than per window: a torn-off window is a window like any
+/// other and must behave like one, and a handler attached at creation time would have to be
+/// remembered by every future path that creates one.
+///
+/// Two events, two jobs. **CloseRequested** is where the close-to-tray decision is made, and where
+/// a session that is about to lose its last window is written down while that window is still
+/// there to be read. **Destroyed** is where a window that really went is taken out of the session
+/// — but not during a quit, when every window is destroyed in turn and the session was already
+/// saved intact.
+pub fn on_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
+    let app = window.app_handle();
+    match event {
+        WindowEvent::CloseRequested { api, .. } => {
+            let is_last = app.webview_windows().len() <= 1;
+            if resolve_close(app, is_last) == CloseAction::HideToTray {
+                api.prevent_close();
+                hide_windows(app);
+                windows::snapshot(app);
+                return;
+            }
+            if is_last {
+                // The last window's geometry is only readable while it still exists, and the
+                // destruction that follows reports no windows at all.
+                windows::snapshot(app);
+            }
+        }
+        // Not during a quit: every window is destroyed in turn, and the session was written
+        // down intact before the first of them went.
+        WindowEvent::Destroyed if !quit_requested(app) => {
+            // Its number is free for the next window to open. See `windows::next_ordinal`.
+            if let Some(ordinals) = app.try_state::<windows::Ordinals>() {
+                ordinals.forget(window.label());
+            }
+            windows::snapshot(app);
+            // One fewer window to list, and the entries are the only way to reach one.
+            refresh_menu(app);
+        }
+        _ => {}
+    }
+}
+
+/// Whether a deliberate quit is under way, and so whether a destruction means anything.
+fn quit_requested<R: Runtime>(app: &AppHandle<R>) -> bool {
+    app.try_state::<ClosePreference>()
+        .map(|preference| preference.quit_requested())
+        .unwrap_or(false)
+}
+
+/// The tray menu: Show, one entry per open window, and Quit.
+///
+/// A window's entry is a check item, checked while the window is on screen, and a click on it
+/// hides or shows that window alone.
+///
+/// Rebuilt rather than mutated, because a menu is a list and the list changes; see
+/// [`refresh_menu`] for when.
+#[cfg(not(target_os = "linux"))]
+fn window_menu<R: Runtime>(
+    app: &AppHandle<R>,
+    show: &MenuItem<R>,
+    quit: &MenuItem<R>,
+) -> anyhow::Result<Menu<R>> {
+    let menu = Menu::new(app)?;
+    menu.append(show)?;
+    for listed in windows::open_windows(app) {
+        let id = format!("{WINDOW_ITEM_PREFIX}{}", listed.label);
+        menu.append(&CheckMenuItem::with_id(
+            app,
+            id,
+            listed.title,
+            true,
+            listed.visible,
+            None::<&str>,
+        )?)?;
+    }
+    menu.append(quit)?;
+    Ok(menu)
+}
+
+/// Rebuilds the tray menu so it lists the windows that are open **now**.
+///
+/// A menu built once at startup would list that moment's windows forever, and the entries are the
+/// only way to reach one window rather than all of them. It is called wherever the set of windows
+/// can have changed, which is the same set of moments the window session is written down at.
+#[cfg(not(target_os = "linux"))]
+pub fn refresh_menu<R: Runtime>(app: &AppHandle<R>) {
+    let Some(tray) = app.tray_by_id(TRAY_ID) else {
+        return;
+    };
+    let rebuild = || -> anyhow::Result<()> {
+        let show = MenuItem::with_id(app, SHOW_ITEM, SHOW_LABEL, true, None::<&str>)?;
+        let quit = MenuItem::with_id(app, QUIT_ITEM, QUIT_LABEL, true, None::<&str>)?;
+        tray.set_menu(Some(window_menu(app, &show, &quit)?))?;
+        Ok(())
+    };
+    if let Err(error) = rebuild() {
+        tracing::warn!(error = %error, "could not rebuild the tray menu");
+    }
+}
+
+/// Puts the icon and its menu in the tray, through Tauri's own tray.
 #[cfg(not(target_os = "linux"))]
 fn build_tray(app: &AppHandle) -> anyhow::Result<()> {
     let show = MenuItem::with_id(app, SHOW_ITEM, SHOW_LABEL, true, None::<&str>)?;
     let quit = MenuItem::with_id(app, QUIT_ITEM, QUIT_LABEL, true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show, &quit])?;
+    let menu = window_menu(app, &show, &quit)?;
 
     TrayIconBuilder::with_id(TRAY_ID)
         // The white silhouette, not the colour logo: see `crate::icon`.
@@ -114,9 +213,7 @@ fn build_tray(app: &AppHandle) -> anyhow::Result<()> {
         // What the silhouette already is, said out loud. macOS is the only platform that acts on
         // it — it tints a template image to suit a light or dark menu bar.
         .icon_as_template(true)
-        // The window's title, not a constant: `scripts/branch-instance.sh` titles each branch's
-        // window after its branch, and with several instances up their tray icons are otherwise
-        // indistinguishable.
+        // The app's name from the config, which a branch instance suffixes with its branch.
         .tooltip(tray_tooltip(app))
         .menu(&menu)
         // The menu belongs to the right button; the left one toggles the window.
@@ -157,6 +254,13 @@ struct SystemTray {
     title: String,
     /// The mark, in the ARGB32 the protocol asks for.
     icon: ksni::Icon,
+    /// The open windows, as label and title, for the entries between Show and Quit.
+    ///
+    /// Held rather than read inside [`ksni::Tray::menu`], which the bar calls on the D-Bus task
+    /// and while the service lock is held. Asking Tauri for a window's title from in there means
+    /// a round trip to the main thread taken under a lock that the refresh is already holding —
+    /// so the list is computed by [`refresh_menu`], outside it, and handed in.
+    windows: Vec<windows::ListedWindow>,
 }
 
 #[cfg(target_os = "linux")]
@@ -169,6 +273,7 @@ impl SystemTray {
         Ok(Self {
             app: app.clone(),
             title: tray_tooltip(app),
+            windows: windows::open_windows(app),
             icon: ksni::Icon {
                 width: side,
                 height: side,
@@ -180,8 +285,10 @@ impl SystemTray {
 
 #[cfg(target_os = "linux")]
 impl ksni::Tray for SystemTray {
+    /// The item's `Id`, which a bar may show as the item's name — DankMaterialShell heads the
+    /// menu with it. So it is the app's name, the same as the title.
     fn id(&self) -> String {
-        TRAY_ID.to_string()
+        self.title.clone()
     }
 
     fn title(&self) -> String {
@@ -201,25 +308,76 @@ impl ksni::Tray for SystemTray {
 
     /// A plain left click. The whole reason this item exists rather than Tauri's.
     fn activate(&mut self, _x: i32, _y: i32) {
-        on_main_thread(&self.app, toggle_window);
+        on_main_thread(&self.app, toggle_windows);
     }
 
+    /// Show, then one entry per open window, then Quit.
+    ///
+    /// Reads only what the struct already holds. The list is refreshed by [`refresh_menu`], which
+    /// gathers it outside the service lock and hands it in — see [`SystemTray::windows`].
+    ///
+    /// A window's entry is checked while that window is on screen, and hides or shows it alone,
+    /// where the click on the icon and Show both act on all of them. That is the division: the
+    /// icon is the app, the menu reaches into it.
     fn menu(&self) -> Vec<ksni::MenuItem<Self>> {
-        vec![
-            ksni::menu::StandardItem {
-                label: SHOW_LABEL.to_string(),
-                activate: Box::new(|tray: &mut Self| on_main_thread(&tray.app, show_window)),
-                ..Default::default()
-            }
-            .into(),
+        let mut items: Vec<ksni::MenuItem<Self>> = vec![ksni::menu::StandardItem {
+            label: SHOW_LABEL.to_string(),
+            activate: Box::new(|tray: &mut Self| on_main_thread(&tray.app, show_windows)),
+            ..Default::default()
+        }
+        .into()];
+
+        for listed in self.windows.clone() {
+            let label = listed.label;
+            items.push(
+                ksni::menu::CheckmarkItem {
+                    label: menu_label(&listed.title),
+                    checked: listed.visible,
+                    activate: Box::new(move |tray: &mut Self| {
+                        let label = label.clone();
+                        on_main_thread(&tray.app, move |app| toggle_window(app, &label));
+                    }),
+                    ..Default::default()
+                }
+                .into(),
+            );
+        }
+
+        items.push(
             ksni::menu::StandardItem {
                 label: QUIT_LABEL.to_string(),
                 activate: Box::new(|tray: &mut Self| on_main_thread(&tray.app, quit)),
                 ..Default::default()
             }
             .into(),
-        ]
+        );
+        items
     }
+}
+
+/// Asks the bar to re-read the item, which is what makes it re-read the menu.
+///
+/// The window list lives in [`ksni::Tray::menu`] and is read fresh every time the bar asks for it,
+/// so nothing here has to compose the entries — this only says "ask again".
+#[cfg(target_os = "linux")]
+pub fn refresh_menu<R: Runtime>(app: &AppHandle<R>) {
+    let Some(handle) = app.try_state::<ksni::Handle<SystemTray>>() else {
+        return;
+    };
+    let handle = handle.inner().clone();
+    // Gathered here, before the lock: the titles come from Tauri, which answers them on the main
+    // thread, and asking for them from inside the update would be a round trip taken under the
+    // service lock that update itself holds.
+    let open = windows::open_windows(app);
+    // `update` is async — it takes that lock and then waits for the bar to acknowledge — so it is
+    // spawned rather than awaited. Every caller is a window event or a command that has no
+    // business blocking on a desktop bar answering, and nothing downstream depends on the menu
+    // having been redrawn by the time this returns.
+    tauri::async_runtime::spawn(async move {
+        handle
+            .update(|tray: &mut SystemTray| tray.windows = open)
+            .await;
+    });
 }
 
 /// Runs `action` on the thread that owns the windows.
@@ -235,42 +393,34 @@ fn on_main_thread(app: &AppHandle, action: impl FnOnce(&AppHandle) + Send + 'sta
     }
 }
 
-/// What the tray icon says on hover: the main window's title, else [`FALLBACK_TOOLTIP`].
+/// A title as a D-Bus menu label, which reads a lone underscore as an access-key marker.
+///
+/// A tab named `snake_case` would otherwise show as `snakecase`; doubling is the escape.
+#[cfg(target_os = "linux")]
+fn menu_label(title: &str) -> String {
+    title.replace('_', "__")
+}
+
+/// What the tray icon is called, on hover and wherever a bar names it: the app's name.
+///
+/// The app's name as the config gives it, not any window's title — a window's title carries its
+/// number and its active tab, and the tray holds the app rather than a window. A branch instance
+/// keeps the suffix `scripts/branch-instance.sh` puts in its config title, which is what tells
+/// several instances' icons apart.
 fn tray_tooltip(app: &AppHandle) -> String {
-    app.get_webview_window(MAIN_WINDOW)
-        .and_then(|window| window.title().ok())
-        .filter(|title| !title.is_empty())
-        .unwrap_or_else(|| FALLBACK_TOOLTIP.to_string())
-}
-
-/// The window's icon: Tauri's bundled one where a bundle exists, else the embedded PNG.
-fn app_icon(app: &AppHandle) -> anyhow::Result<tauri::image::Image<'static>> {
-    match app.default_window_icon().cloned() {
-        // `to_owned` is what lifts a borrowed bundle icon out of the app it came from.
-        Some(icon) => Ok(icon.to_owned()),
-        None => icon::embedded(),
-    }
-}
-
-/// Applies [`app_icon`] to the main window, which a `cargo run` build would otherwise leave bare.
-pub fn set_window_icon(app: &AppHandle) -> anyhow::Result<()> {
-    let Some(window) = app.get_webview_window(MAIN_WINDOW) else {
-        return Ok(());
-    };
-    window.set_icon(app_icon(app)?)?;
-    Ok(())
+    windows::base_title(app)
 }
 
 /// What this close request means, according to the managed [`ClosePreference`].
 ///
 /// A missing preference means the setup hook did not install one, and the honest answer is then
 /// the old behaviour: let the window close rather than trap the user in an app with no tray.
-fn resolve_close(app: &AppHandle) -> CloseAction {
+fn resolve_close<R: Runtime>(app: &AppHandle<R>, is_last_window: bool) -> CloseAction {
     match app.try_state::<ClosePreference>() {
-        Some(preference) => preference.action(),
+        Some(preference) => preference.action(is_last_window),
         None => {
             tracing::warn!("no close preference is managed; closing the window quits");
-            CloseAction::Quit
+            CloseAction::Close
         }
     }
 }
@@ -278,8 +428,11 @@ fn resolve_close(app: &AppHandle) -> CloseAction {
 #[cfg(not(target_os = "linux"))]
 fn on_menu_event(app: &AppHandle, event: MenuEvent) {
     match event.id().as_ref() {
-        SHOW_ITEM => show_window(app),
+        SHOW_ITEM => show_windows(app),
         QUIT_ITEM => quit(app),
+        id if id.starts_with(WINDOW_ITEM_PREFIX) => {
+            toggle_window(app, &id[WINDOW_ITEM_PREFIX.len()..]);
+        }
         // Every other menu in the app comes through here too, so an unrecognised id is ordinary.
         _ => {}
     }
@@ -294,59 +447,95 @@ fn on_tray_icon_event(app: &AppHandle, event: TrayIconEvent) {
         ..
     } = event
     {
-        toggle_window(app);
+        toggle_windows(app);
     }
 }
 
-/// Shows the main window and puts the keyboard back in it.
-pub fn show_window(app: &AppHandle) {
-    let Some(window) = app.get_webview_window(MAIN_WINDOW) else {
+/// Shows every window and puts the keyboard into the last one to come back.
+///
+/// Every window, because the tray holds the app rather than a window: a two-monitor arrangement
+/// put away with one click has to come back with one click, and there is no window among them that
+/// is more "the app" than the others.
+pub fn show_windows(app: &AppHandle) {
+    for window in app.webview_windows().values() {
+        if let Err(error) = window.show() {
+            tracing::warn!(error = %error, "could not show a window");
+            continue;
+        }
+        if let Err(error) = window.set_focus() {
+            tracing::warn!(error = %error, "could not focus a window");
+        }
+    }
+    // Every entry's check has just changed.
+    refresh_menu(app);
+}
+
+/// Hides one window, or shows it and puts the keyboard in it, for a click on its own tray entry.
+///
+/// The one place anything in the tray acts on a single window. The icon holds the app, so a click
+/// on it toggles them all; the menu is how you reach past that to the window you want.
+fn toggle_window<R: Runtime>(app: &AppHandle<R>, label: &str) {
+    let Some(window) = app.get_webview_window(label) else {
         return;
     };
-    if let Err(error) = window.show() {
-        tracing::warn!(error = %error, "could not show the window");
-        return;
-    }
-    if let Err(error) = window.set_focus() {
-        tracing::warn!(error = %error, "could not focus the window");
-    }
-}
-
-/// Hides the main window, leaving the process — and the MCP endpoint — running.
-fn hide_window(app: &AppHandle) {
-    let Some(window) = app.get_webview_window(MAIN_WINDOW) else {
-        return;
+    // Unreadable reads as hidden, so the click shows it — the failure that leaves nothing lost.
+    let result = if window.is_visible().unwrap_or(false) {
+        window.hide()
+    } else {
+        window.show().and_then(|()| window.set_focus())
     };
-    if let Err(error) = window.hide() {
-        tracing::warn!(error = %error, "could not hide the window to the tray");
+    if let Err(error) = result {
+        tracing::warn!(error = %error, label = %label, "could not toggle the window");
     }
+    // The entry's check has just changed.
+    refresh_menu(app);
 }
 
-/// Hides the window when it is showing and shows it when it is not.
+/// Hides every window, leaving the process — and the MCP endpoint — running.
+fn hide_windows<R: Runtime>(app: &AppHandle<R>) {
+    for window in app.webview_windows().values() {
+        if let Err(error) = window.hide() {
+            tracing::warn!(error = %error, "could not hide a window to the tray");
+        }
+    }
+    // Every entry's check has just changed.
+    refresh_menu(app);
+}
+
+/// Puts the windows away when any of them is showing, and brings them back when none is.
 ///
 /// What the decision is, and why an unreadable visibility shows rather than hides, is
-/// [`activate_action`].
-fn toggle_window(app: &AppHandle) {
-    let Some(window) = app.get_webview_window(MAIN_WINDOW) else {
-        return;
-    };
-    let visible = window.is_visible().map_err(|error| {
-        tracing::warn!(error = %error, "could not read window visibility; showing it");
-    });
+/// [`activate_action`]. It is asked once for the app rather than once per window, so that one
+/// click never hides one window and shows another.
+fn toggle_windows(app: &AppHandle) {
+    let mut any_visible = None;
+    for window in app.webview_windows().values() {
+        match window.is_visible() {
+            Ok(visible) => any_visible = Some(any_visible.unwrap_or(false) || visible),
+            Err(error) => {
+                tracing::warn!(error = %error, "could not read a window's visibility");
+            }
+        }
+    }
 
-    match activate_action(visible.ok()) {
-        ActivateAction::Hide => hide_window(app),
-        ActivateAction::Show => show_window(app),
+    match activate_action(any_visible) {
+        ActivateAction::Hide => hide_windows(app),
+        ActivateAction::Show => show_windows(app),
     }
 }
 
 /// Ends the process, the way closing the window used to.
 ///
-/// The preference is marked first so that any close arriving as part of this shutdown is let
-/// through instead of being turned back into a hide. `exit` unwinds Tauri's own shutdown — the
-/// managed [`SessionFactory`](crate::database::session::SessionFactory) and the async runtime the
-/// MCP listener lives on are dropped with the app — where `process::exit` would abandon both.
+/// The session is written down **before** the quit is marked, while every window is still open and
+/// still has a position to read. After that the windows are destroyed one at a time, and those
+/// destructions are deliberately ignored — see [`on_window_event`] — so that a quit records the
+/// arrangement the user quit with rather than the empty desktop it ends on.
+///
+/// `exit` unwinds Tauri's own shutdown — the managed
+/// [`SessionFactory`](crate::database::session::SessionFactory) and the async runtime the MCP
+/// listener lives on are dropped with the app — where `process::exit` would abandon both.
 pub fn quit(app: &AppHandle) {
+    windows::snapshot(app);
     if let Some(preference) = app.try_state::<ClosePreference>() {
         preference.request_quit();
     }

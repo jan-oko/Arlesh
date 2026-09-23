@@ -61,7 +61,26 @@ pub fn command_host(pool: &SqlitePool) -> tauri::App<tauri::test::MockRuntime> {
     // onto them, so a host without them would fail to resolve state for a command that half the
     // journal tests already call.
     app.manage(UndoStacks::new());
+    // And every host has a window, because a command that announces a board change takes the
+    // window that issued it — that is how the other windows are told and this one is not.
+    // `mock_app` builds none of its own.
+    tauri::WebviewWindowBuilder::new(&app, TEST_WINDOW, tauri::WebviewUrl::default())
+        .build()
+        .expect("the mock runtime could not build a window");
     app
+}
+
+/// The label of the window [`command_host`] builds.
+pub const TEST_WINDOW: &str = "main";
+
+/// The window a command that takes one is called with.
+pub fn window(
+    app: &tauri::App<tauri::test::MockRuntime>,
+) -> tauri::WebviewWindow<tauri::test::MockRuntime> {
+    use tauri::Manager;
+
+    app.get_webview_window(TEST_WINDOW)
+        .expect("command_host builds a window")
 }
 
 /// A [`SessionFactory`] over `pool`, for tests that drive a session themselves rather than through

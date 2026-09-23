@@ -3,6 +3,7 @@
 //! Arlesh — task management and knowledge-base desktop app.
 
 pub mod block_reasons;
+pub mod board;
 pub mod commands;
 pub mod database;
 pub mod domains;
@@ -19,6 +20,7 @@ pub mod scopes;
 pub mod tasks;
 pub mod tray;
 pub mod undo;
+pub mod windows;
 pub mod wire;
 
 use tauri::Manager;
@@ -33,6 +35,10 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        // One handler for every window, rather than one attached per window at creation: a torn-off
+        // window is a window like any other, and a handler wired up at creation time is one a future
+        // path that creates a window could forget.
+        .on_window_event(commands::tray::on_window_event)
         .setup(|app| {
             let app_dir = app
                 .path()
@@ -68,9 +74,14 @@ pub fn run() {
             tauri::async_runtime::block_on(undo::reset_journal(&factory))?;
 
             // The MCP endpoint shares the factory rather than the pool, so an agent's reads go
-            // through the same session layer the commands do. `serve` swallows a bind failure:
-            // an occupied port must not take the window down with it.
-            tauri::async_runtime::spawn(mcp::serve(factory.clone()));
+            // through the same session layer the commands do. It also gets a way to say the board
+            // changed, so an agent setting a `beads_id` refreshes the windows that are open rather
+            // than leaving them showing the old value. `serve` swallows a bind failure: an occupied
+            // port must not take the windows down with it.
+            tauri::async_runtime::spawn(mcp::serve(
+                factory.clone(),
+                commands::board::announcer(app.handle()),
+            ));
 
             app.manage(factory);
 
@@ -79,11 +90,20 @@ pub fn run() {
             // history, and nothing has to clear them.
             app.manage(undo::stacks::UndoStacks::new());
 
-            commands::tray::set_window_icon(app.handle())?;
+            // The window session is read before any window exists and reopened before the event
+            // loop runs, so that by the time one window's frontend executes a line of JavaScript
+            // every window of the session is already there. `tauri.conf.json` marks its window
+            // `"create": false` for exactly this: every window, including the first, is built here
+            // from that config under the label its tabs are stored beside.
+            app.manage(commands::windows::SessionStore::open(&app_dir));
+            // The numbers the windows wear, seeded as they are rebuilt. Managed before `restore`
+            // so a restored window's saved number is the one it keeps.
+            app.manage(commands::windows::Ordinals::default());
+            commands::windows::restore(app.handle())?;
 
             // The tray goes up last, so that everything its Quit has to release cleanly — the
             // factory, the journal, the MCP listener — is already in place before the user can
-            // ask for it. Closing the window hides it to this tray by default, which is what
+            // ask for it. Closing the last window hides it to this tray by default, which is what
             // keeps the MCP endpoint answering while no window is open.
             commands::tray::install(app.handle());
 
@@ -197,6 +217,10 @@ pub fn run() {
             commands::flows::remove_flow_dependency,
             commands::flows::list_all_flow_dependencies,
             commands::mindmap::load_mindmap,
+            commands::windows::open_board_window,
+            commands::windows::board_windows,
+            commands::windows::focus_board_window,
+            commands::windows::set_window_title,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
