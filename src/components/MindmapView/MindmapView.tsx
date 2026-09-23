@@ -52,7 +52,6 @@ import UnfinishedChildrenModal from "@/components/UnfinishedChildrenModal/Unfini
 import BacklogConfirmModal from "@/components/BacklogConfirmModal/BacklogConfirmModal";
 import { useTaskBacklog } from "@/hooks/use-task-backlog";
 import { useCommitmentVerdict } from "@/hooks/use-commitment-verdict";
-import { useExpectationActions } from "@/hooks/use-expectation-actions";
 import { useOpenAsyncTemplate } from "@/hooks/use-open-async-template";
 import { useTaskAgentic } from "@/hooks/use-task-agentic";
 import { useTaskAsynchronous } from "@/hooks/use-task-asynchronous";
@@ -333,9 +332,6 @@ export default function MindmapView() {
     findNode: findNodeById, reload, showToast,
   });
   const openAsyncTemplate = useOpenAsyncTemplate(tree, setEditorModal);
-  const { completeCheck, toggleRelease } = useExpectationActions({
-    findNode: findNodeById, reload, showToast,
-  });
 
   const handleConfirmDelete = useCallback(() => {
     if (deleteTargets === null) return;
@@ -495,8 +491,6 @@ export default function MindmapView() {
     onCycleStatus: onStatusClick,
     onCycleVerdict: cycleVerdict,
     onMarkBroken: markBroken,
-    onCompleteCheck: completeCheck,
-    onToggleRelease: toggleRelease,
     onBindWait: openAsyncTemplate,
     onDeselect: () => { selectNode(null); },
     onCut: (ids) => setClipboard({ operation: CLIPBOARD_OP.CUT, nodeIds: ids }),

@@ -128,7 +128,6 @@ function listData(overrides: Partial<ReturnType<typeof useListData>> = {}) {
     expectationRows: [],
     listRoot: n("root", "domain"),
     toggleRelease: vi.fn(),
-    completeCheck: vi.fn(),
     allTasksAndGoals: [],
     isLoading: false,
     error: null,
@@ -1458,24 +1457,26 @@ describe("ListView — expectations", () => {
     expect(screen.getByRole("region", { name: "listView:expectationsHeading" })).toBeInTheDocument();
   });
 
-  it("releases the selected wait on Enter, on L and on its status control", () => {
+  it("releases the selected wait on Enter and on its status control, and leaves L free", () => {
     const toggleRelease = vi.fn();
     mockUseListData.mockReturnValue(listData({ expectationRows: [waitRow()], rows: [], toggleRelease }));
     render(<ListViewInApp />);
     fireEvent.click(screen.getByRole("button", { name: "releaseToggle" }));
     fireEvent.keyDown(window, { key: "Enter", code: "Enter" });
     fireEvent.keyDown(window, { key: "l", code: "KeyL" });
-    expect(toggleRelease.mock.calls).toEqual([["wait-1"], ["wait-1"], ["wait-1"]]);
+    expect(toggleRelease.mock.calls).toEqual([["wait-1"], ["wait-1"]]);
   });
 
-  it("completes the check on D from a check task's row, and not from an ordinary task's", () => {
-    const completeCheck = vi.fn();
+  it("completes a check task's check on Enter, and leaves D free", () => {
+    const onCycleStatus = vi.fn();
     const check = row({ node: n("check-1", "task", { status: "todo", virtual: true, expectationCheck: { kind: "stored", expectationId: 1 } }) });
-    mockUseListData.mockReturnValue(listData({ rows: [check], completeCheck }));
+    mockUseListData.mockReturnValue(listData({ rows: [check], onCycleStatus }));
     render(<ListViewInApp />);
     fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
     fireEvent.keyDown(window, { key: "d", code: "KeyD" });
-    expect(completeCheck).toHaveBeenCalledWith("check-1");
+    expect(onCycleStatus).not.toHaveBeenCalled();
+    fireEvent.keyDown(window, { key: "Enter", code: "Enter" });
+    expect(onCycleStatus).toHaveBeenCalledWith("check-1");
   });
 
   it("selects the Expectations option on Alt+E without touching the shared preset", () => {

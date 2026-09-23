@@ -10,7 +10,7 @@ import { createExpectation, updateExpectation, deleteExpectation } from "@/api/e
 import { EXPECTATION_STATUS, EXPECTATION_ARCHIVAL } from "@/api/expectation-status";
 import type { Expectation, ExpectationCheck, SpawnedWaitView } from "@/api/expectations";
 import {
-  checkTaskNodeId, delegationWaitNodeId, doneCheckNodeId, expectationNodeId, spawnedCheckNodeId,
+  checkNodeId, checkTaskNodeId, delegationWaitNodeId, expectationNodeId, spawnedCheckNodeId,
   spawnedWaitNodeId,
 } from "@/utils/node-uuid";
 import type { Verdict } from "@/api/verdict";
@@ -56,10 +56,21 @@ import type { DurationSpec, TimeScope } from "@/api/time-scope";
 import { localNowIso } from "@/utils/local-now";
 
 
+/**
+ * The key a node's lifecycle is filed under. A wait's **open** check is keyed by its wait, since the
+ * backend times "the wait's next check" rather than one check by its instant; every other node by
+ * its own id. A done check has no lifecycle.
+ */
+function lifecycleKey(node: MindmapNode): string {
+  const wait = node.expectationCheck;
+  if (wait === undefined || node.status === TASK_STATUS.DONE) return node.id;
+  return wait.kind === "stored" ? checkTaskNodeId(wait.expectationId) : spawnedCheckNodeId(wait.taskId);
+}
+
 /** Stamps each Task/Goal/Commitment node with its derived lifecycle (Timing, then Resolution or
  * Verdict, then effective Archival). */
-function applyLifecycles(node: MindmapNode, byId: Map<string, ItemLifecycle>): void {
-  const entry = byId.get(node.id);
+export function applyLifecycles(node: MindmapNode, byId: Map<string, ItemLifecycle>): void {
+  const entry = byId.get(lifecycleKey(node));
   if (entry !== undefined) {
     node.timing = entry.timing;
     if (entry.plan_timing !== undefined) node.planTiming = entry.plan_timing;
@@ -79,7 +90,7 @@ function applyLifecycles(node: MindmapNode, byId: Map<string, ItemLifecycle>): v
  * Time Scope, and `expectation_check` its next check, which is what its virtual check task reads.
  * A spawned wait sends `spawned_wait` and `spawned_check`, keyed by the Task that spawned it.
  */
-function lifecycleMap(lifecycles: ItemLifecycle[]): Map<string, ItemLifecycle> {
+export function lifecycleMap(lifecycles: ItemLifecycle[]): Map<string, ItemLifecycle> {
   return new Map(lifecycles.map((l): [string, ItemLifecycle] => {
     if (l.node_type === "expectation") return [expectationNodeId(l.node_id), l];
     if (l.node_type === "expectation_check") return [checkTaskNodeId(l.node_id), l];
@@ -736,6 +747,10 @@ function toCyclePair(cycle: FlowItemCycle): FlowCyclePair {
 /**
  * A wait's virtual "check on it" task, due on `due`. It has no row. A completed one (`dueAt`
  * given) stays as a done task, carrying the instant it fell due so it can be reopened.
+ *
+ * Its `id` names the check by the instant it fell due ({@link checkNodeId}), open or done alike, so
+ * completing it keeps the node: the selection stays on it and the focus exemption holds it on screen
+ * under the presets that hide done work.
  */
 function checkTaskNode(
   id: string, title: string, due: TimeScope, wait: WaitRef, isPrivate: boolean, doneDueAt?: string,
@@ -869,7 +884,7 @@ export function buildTree(
 
   const taskById = new Map(tasks.map((t) => [t.id, t]));
   const checkDue = new Map(expectationChecks.flatMap((check) =>
-    check.resolved_at === undefined ? [[check.expectation_id, check.due] as const] : []));
+    check.resolved_at === undefined ? [[check.expectation_id, check] as const] : []));
   for (const expectation of expectations) {
     const id = expectationNodeId(expectation.id);
     const node: MindmapNode = {
@@ -895,13 +910,13 @@ export function buildTree(
     for (const done of expectationChecks) {
       if (done.expectation_id !== expectation.id || done.resolved_at === undefined) continue;
       node.children.push(checkTaskNode(
-        doneCheckNodeId(ref, done.due_at), checkTitle(expectation.title), done.due, ref,
+        checkNodeId(ref, done.due_at), checkTitle(expectation.title), done.due, ref,
         expectation.is_private, done.due_at,
       ));
     }
     if (due !== undefined) {
       node.children.push(checkTaskNode(
-        checkTaskNodeId(expectation.id), checkTitle(expectation.title), due, ref, expectation.is_private,
+        checkNodeId(ref, due.due_at), checkTitle(expectation.title), due.due, ref, expectation.is_private,
       ));
     }
     nodeMap.set(id, node);
@@ -933,14 +948,16 @@ export function buildTree(
     const spawnedRef: WaitRef = { kind: "spawned", taskId: spawned.task_id };
     for (const done of spawned.done_checks) {
       wait.children.push(checkTaskNode(
-        doneCheckNodeId(spawnedRef, done.due_at), checkTitle(template.title), done.due, spawnedRef,
+        checkNodeId(spawnedRef, done.due_at), checkTitle(template.title), done.due, spawnedRef,
         wait.isPrivate ?? false, done.due_at,
       ));
     }
     if (spawned.next_check !== undefined) {
       wait.children.push(checkTaskNode(
-        spawnedCheckNodeId(spawned.task_id), checkTitle(template.title), spawned.next_check,
-        { kind: "spawned", taskId: spawned.task_id }, wait.isPrivate ?? false,
+        spawned.next_check_at !== undefined
+          ? checkNodeId(spawnedRef, spawned.next_check_at)
+          : spawnedCheckNodeId(spawned.task_id),
+        checkTitle(template.title), spawned.next_check, spawnedRef, wait.isPrivate ?? false,
       ));
     }
     nodeMap.get(`task-${spawned.task_id}`)?.children.push(wait);

@@ -3,12 +3,8 @@ import type { ListSelectionContext } from "./selection";
 
 /** What the Expectation bindings act on. */
 export interface ListExpectationContext extends ListSelectionContext {
-  /** Whether the selected Task row is a wait's virtual check task. */
-  isSelectedCheckTask: boolean;
   /** Releases the selected Expectation, or takes a release back. */
   onToggleRelease: (id: string) => void;
-  /** Completes the check on the selected wait, or on the check task's wait. */
-  onCompleteCheck: (id: string) => void;
   /** Selects the List View's **Expectations** option, leaving the shared status preset untouched. */
   onSetExpectationsPreset: () => void;
   /** Opens the selected Task's editor at its Expectation section, with Asynchronous on. */
@@ -40,23 +36,6 @@ export const LIST_EXPECTATION_BINDINGS: readonly Binding<ListExpectationContext>
     labelKey: "toggleRelease",
     when: (c) => c.selectedExpectationId !== null,
     run: (c) => { if (c.selectedExpectationId !== null) c.onToggleRelease(c.selectedExpectationId); },
-  },
-  {
-    // The Mindmap's key for it, on the same reasoning: L for "reLease", free in both views.
-    id: "listView.toggleRelease", section: "listView", chord: { code: "KeyL" },
-    labelKey: "toggleRelease",
-    when: (c) => c.selectedExpectationId !== null,
-    run: (c) => { if (c.selectedExpectationId !== null) c.onToggleRelease(c.selectedExpectationId); },
-  },
-  {
-    // D for "done checking", as on the Mindmap. On a wait, or on its check task's row.
-    id: "listView.completeCheck", section: "listView", chord: { code: "KeyD" },
-    labelKey: "completeCheck",
-    when: (c) => c.selectedExpectationId !== null || (c.selectedTaskId !== null && c.isSelectedCheckTask),
-    run: (c) => {
-      const id = c.selectedExpectationId ?? c.selectedTaskId;
-      if (id !== null) c.onCompleteCheck(id);
-    },
   },
   {
     // Alt+E, the List View's second option that is not a status preset — Unblock's neighbour, and

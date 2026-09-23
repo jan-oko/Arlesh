@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { buildTree } from "./use-mindmap-data";
+import { applyLifecycles, buildTree, lifecycleMap } from "./use-mindmap-data";
+import { DEFAULT_FILTER, filterTree, filterTreeWithFocus } from "@/utils/filter-tree";
+import { focusExemptPath } from "@/utils/focus-exemption";
+import type { ItemLifecycle } from "@/api/scope-lifecycle";
 import type { Domain } from "@/api/domains";
 import type { Task, TaskDependencyEdge } from "@/api/tasks";
 import type { Expectation, ExpectationCheck, SpawnedWaitView } from "@/api/expectations";
@@ -7,7 +10,7 @@ import type { Info } from "@/api/infos";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { findNode } from "@/utils/mindmap-tree";
 import {
-  checkTaskNodeId, delegationWaitNodeId, expectationNodeId, spawnedCheckNodeId, spawnedWaitNodeId,
+  checkNodeId, delegationWaitNodeId, expectationNodeId, spawnedCheckNodeId, spawnedWaitNodeId,
 } from "@/utils/node-uuid";
 
 const ASPECT: Domain = {
@@ -68,12 +71,12 @@ describe("buildTree — expectations", () => {
       wait({ id: 7 }),
     ], [], [], [{ expectation_id: 3, due: DUE, due_at: "2026-07-10T02:00:00" }]);
     expect(findNode(root, expectationNodeId(3))).toMatchObject({ checkEvery: EVERY });
-    const check = findNode(root, checkTaskNodeId(3));
+    const check = findNode(root, checkNodeId({ kind: "stored", expectationId: 3 }, "2026-07-10T02:00:00"));
     expect(check).toMatchObject({
       kind: "task", status: "todo", virtual: true, expectationCheck: { kind: "stored", expectationId: 3 }, timeScope: DUE,
     });
     expect(check?.rowId).toBeUndefined();
-    for (const id of [4, 6, 7]) expect(findNode(root, checkTaskNodeId(id))).toBeUndefined();
+    for (const id of [4, 6, 7]) expect(findNode(root, expectationNodeId(id))?.children).toEqual([]);
   });
 
   it("blocks a task depending on a pending wait, and lets it go once the wait is released", () => {
@@ -142,7 +145,7 @@ describe("buildTree — expectations", () => {
       [ASPECT], [], [], [], [], [], [], [], [], [], [], [], [], [wait({ id: 3, check_every: EVERY })],
       (title) => title, [{ expectation_id: 3, due: DUE, due_at: "2026-07-10T02:00:00" }], [], (title) => `Check: ${title}`,
     );
-    expect(findNode(root, checkTaskNodeId(3))?.title).toBe("Check: Reviewer replies");
+    expect(findNode(root, expectationNodeId(3))?.children[0]?.title).toBe("Check: Reviewer replies");
   });
 
   it("keeps every completed check as a done task beside the one due", () => {
@@ -154,8 +157,66 @@ describe("buildTree — expectations", () => {
     const children = findNode(root, expectationNodeId(3))?.children ?? [];
     expect(children.map((child) => child.status)).toEqual(["done", "done", "todo"]);
     expect(children[0]).toMatchObject({ checkDueAt: "2026-07-01T02:00:00", expectationCheck: { kind: "stored", expectationId: 3 } });
-    expect(children[2]?.id).toBe(checkTaskNodeId(3));
+    expect(children[2]?.id).toBe(checkNodeId({ kind: "stored", expectationId: 3 }, "2026-07-08T09:00:00"));
     expect(new Set(children.map((child) => child.id)).size).toBe(3);
+  });
+
+  // The bug: completing a check changed its node id (open check → done check), so the selection
+  // lost it and the focus exemption could not hold it — under Plan/Start/Do it vanished.
+  describe("completing a check keeps its node", () => {
+    const OPEN = { expectation_id: 3, due: DUE, due_at: "2026-07-10T02:00:00" };
+    const DONE = { ...OPEN, resolved_at: "2026-07-10T09:00:00" };
+    const NEXT = { expectation_id: 3, due: DUE, due_at: "2026-07-13T09:00:00" };
+    const before = (): MindmapNode => build([], [wait({ id: 3, check_every: EVERY })], [], [], [OPEN]);
+    const after = (): MindmapNode => build([], [wait({ id: 3, check_every: EVERY })], [], [], [DONE, NEXT]);
+    const openCheck = (root: MindmapNode): MindmapNode | undefined =>
+      findNode(root, expectationNodeId(3))?.children.find((child) => child.status === "todo");
+
+    it("gives the open check and the same check once done one id", () => {
+      const id = openCheck(before())?.id;
+      expect(id).toBeDefined();
+      expect(findNode(after(), id ?? "")).toMatchObject({ status: "done", checkDueAt: OPEN.due_at });
+      expect(openCheck(after())?.id).not.toBe(id);
+    });
+
+    it("gives a spawned wait's open check and the same check once done one id", () => {
+      const done = task({ status: "done", asynchronous: true, async_template: TEMPLATE });
+      const open = build([done], [], [], [], [], [spawn({ next_check: DUE, next_check_at: "2026-09-22T10:00:00" })]);
+      const closed = build([done], [], [], [], [], [spawn({
+        done_checks: [{ due: DUE, due_at: "2026-09-22T10:00:00", resolved_at: "2026-09-22T11:00:00" }],
+      })]);
+      const id = findNode(open, spawnedWaitNodeId(5))?.children[0]?.id;
+      expect(findNode(closed, id ?? "")).toMatchObject({ status: "done" });
+    });
+
+    it("under All the completed check is shown done", () => {
+      const shown = findNode(filterTree(after(), DEFAULT_FILTER), expectationNodeId(3));
+      expect(shown?.children.map((child) => child.status)).toEqual(["done", "todo"]);
+    });
+
+    it("complete a selected check under Start; it stays visible dimmed", () => {
+      const start = { ...DEFAULT_FILTER, statusMode: "start" as const };
+      const selected = openCheck(before())?.id ?? "";
+      expect(findNode(filterTree(before(), start), selected)).toBeDefined();
+      // The selection survives the reload, so the exemption holds the now-done check on screen.
+      const tree = after();
+      const { root, exemptedIds } = filterTreeWithFocus(tree, start, focusExemptPath(tree, selected));
+      expect(findNode(root, selected)).toMatchObject({ status: "done" });
+      expect(exemptedIds.has(selected)).toBe(true);
+      // Without the exemption, Start hides a done check as it hides any done task.
+      expect(findNode(filterTree(tree, start), selected)).toBeUndefined();
+    });
+
+    it("stamps the open check with its wait's check lifecycle, and the done one with none", () => {
+      const tree = after();
+      const lifecycle: ItemLifecycle = {
+        node_type: "expectation_check", node_id: 3, timing: "active", archival: "live", archival_conflict: false,
+      };
+      applyLifecycles(tree, lifecycleMap([lifecycle]));
+      const [doneCheck, next] = findNode(tree, expectationNodeId(3))?.children ?? [];
+      expect(next?.timing).toBe("active");
+      expect(doneCheck?.timing).toBeUndefined();
+    });
   });
 
   it("keeps a spawned wait's completed checks as done tasks too", () => {

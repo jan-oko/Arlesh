@@ -29,8 +29,6 @@ interface ListData {
   listRoot: MindmapNode;
   /** Releases a wait, or takes a release back. */
   toggleRelease: (nodeId: string) => void;
-  /** Completes a wait's check: records it, and the next falls due one interval later. */
-  completeCheck: (nodeId: string) => void;
   /** Every Task/Goal node, for the shared task/goal editor plumbing (dependency picker, etc.). */
   allTasksAndGoals: MindmapNode[];
   isLoading: boolean;
@@ -132,7 +130,7 @@ export function useListData(): ListData {
   );
 
   return {
-    tree, rows, commitmentRows, expectationRows, listRoot, toggleRelease, completeCheck,
+    tree, rows, commitmentRows, expectationRows, listRoot, toggleRelease,
     allTasksAndGoals, isLoading, error, reload, onCycleStatus,
     renameNode, createTask, deleteTask, removeNode,
     occurrencePrompt, confirmOccurrence, cancelOccurrence,

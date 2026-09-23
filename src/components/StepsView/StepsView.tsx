@@ -4,7 +4,6 @@ import { useTranslation } from "react-i18next";
 import { useMindmapData } from "@/components/MindmapView/use-mindmap-data";
 import { useNodeEditor } from "@/components/MindmapView/use-node-editor";
 import { useNodeActions } from "@/components/MindmapView/use-node-actions";
-import { useExpectationActions } from "@/hooks/use-expectation-actions";
 import { useCreateEditors } from "@/hooks/use-create-editors";
 import { useListDelete } from "@/hooks/use-list-delete";
 import { useFocusExemption } from "@/hooks/use-focus-exemption";
@@ -189,9 +188,6 @@ export default function StepsView() {
     findNode: (id) => findNode(tree, id), reload, showToast,
   });
   const openAsyncTemplate = useOpenAsyncTemplate(tree, setEditorModal);
-  const { completeCheck, toggleRelease } = useExpectationActions({
-    findNode: (id) => findNode(tree, id), reload, showToast,
-  });
   const { onUndo, onRedo } = useUndo({ reload, showToast });
 
   /**
@@ -388,8 +384,6 @@ export default function StepsView() {
     onToggleBacklog: toggleBacklog,
     onToggleAgentic: toggleAgentic,
     onToggleAsynchronous: toggleAsynchronous,
-    onCompleteCheck: completeCheck,
-    onToggleRelease: toggleRelease,
     onBindWait: openAsyncTemplate,
     onOpenEditor,
     onCreateChild: onCreateChildHere,

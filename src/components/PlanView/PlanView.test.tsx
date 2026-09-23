@@ -153,7 +153,6 @@ function mockRows(rows: TaskListRow[]): void {
     expectationRows: [],
     listRoot: n("root", "domain"),
     toggleRelease: vi.fn(),
-    completeCheck: vi.fn(),
     allTasksAndGoals: [],
     isLoading: false,
     error: null,

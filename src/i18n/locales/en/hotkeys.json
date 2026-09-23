@@ -72,7 +72,6 @@
   "toggleAsynchronous": "Mark Asynchronous / Not asynchronous",
   "cycleVerdict": "Cycle the selected commitment's verdict (Unresolved → Kept → Broken)",
   "markBroken": "Mark the selected commitment broken (again to clear it)",
-  "completeCheck": "Complete the check on the selected expectation; the next falls due one interval later",
   "toggleRelease": "Release the selected expectation (again to take it back)",
   "createChildRow": "Create a child of the selected row",
   "createSiblingRow": "Create a sibling of the selected row",

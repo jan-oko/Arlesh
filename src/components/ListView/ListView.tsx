@@ -50,7 +50,7 @@ import { useDisplayStore } from "@/stores/use-display-store";
 
 export default function ListView() {
   const { t } = useTranslation(["common", "listView", "editor", "expectation"]);
-  const { tree, rows, commitmentRows, expectationRows, listRoot: flattenRoot, toggleRelease, completeCheck,
+  const { tree, rows, commitmentRows, expectationRows, listRoot: flattenRoot, toggleRelease,
     allTasksAndGoals, isLoading, error, reload, onCycleStatus, renameNode,
     createTask, deleteTask, removeNode,
     occurrencePrompt, confirmOccurrence, cancelOccurrence } = useListData();
@@ -275,9 +275,7 @@ export default function ListView() {
     selectedCommitmentId,
     selectedExpectationId,
     selectedRowId: activeSelectedId,
-    isSelectedCheckTask: selectedRow?.node.expectationCheck !== undefined,
     onToggleRelease: toggleRelease,
-    onCompleteCheck: completeCheck,
     onSetExpectationsPreset: () => setListPreset("expectations"),
     onBindWait: openAsyncTemplate,
     onCreateExpectation: (id) => {

@@ -22,7 +22,8 @@ export function expectationNodeId(expectationId: number): string {
   return mint(`expectation/${expectationId}`);
 }
 
-/** The node id of an Expectation's virtual "check on it" task. It draws no row of its own. */
+/** The key an Expectation's **open** check's lifecycle is filed under: the backend times "the wait's
+ * next check", not one check by its instant. The check's node id is {@link checkNodeId}. */
 export function checkTaskNodeId(expectationId: number): string {
   return mint(`expectation-check/${expectationId}`);
 }
@@ -37,16 +38,18 @@ export function spawnedWaitNodeId(taskId: number): string {
   return mint(`spawned-wait/${taskId}`);
 }
 
-/** The node id of a spawned wait's virtual check task. It draws no row. */
+/** The key a spawned wait's open check's lifecycle is filed under, as {@link checkTaskNodeId}. Also
+ * the check's node id in the one case its due instant is unknown. */
 export function spawnedCheckNodeId(taskId: number): string {
   return mint(`spawned-check/${taskId}`);
 }
 
 /**
- * The node id of a **completed** check, which stays beneath its wait as a done task: the open
- * check's name, plus the instant it fell due — a wait has one open check but many done ones.
+ * The node id of a wait's check task, open or completed: the wait, plus the instant the check fell
+ * due. A wait has one open check but many done ones, and completing a check keeps its id, so the
+ * selection and the focus exemption hold it through the reload.
  */
-export function doneCheckNodeId(wait: WaitRef, dueAt: string): string {
+export function checkNodeId(wait: WaitRef, dueAt: string): string {
   return wait.kind === "stored"
     ? mint(`expectation-check/${wait.expectationId}/${dueAt}`)
     : mint(`spawned-check/${wait.taskId}/${dueAt}`);

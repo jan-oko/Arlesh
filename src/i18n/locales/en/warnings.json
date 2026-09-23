@@ -101,5 +101,5 @@
   "pasteSkippedExpectation_other": "{{count}} Expectations can't be copied — use cut to move them.",
   "editRepetitionRefused": "A Habit repetition has no editor of its own — open the Habit's template to change it.",
   "editOwnerMissing": "This is drawn from something that isn't on the board any more, so there's nothing to edit.",
-  "editCheckTaskRefused": "A check task has no editor yet: it is drawn from its wait, not stored, and can't be edited on its own until checks become rows of their own (Arlesh-pnn). Complete it with D or Enter, or open the wait to change its Check every."
+  "editCheckTaskRefused": "A check task has no editor yet: it is drawn from its wait, not stored, and can't be edited on its own until checks become rows of their own (Arlesh-pnn). Complete it from its status (Enter, Space in Steps, or its status control), or open the wait to change its Check every."
 }

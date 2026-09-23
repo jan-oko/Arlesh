@@ -352,9 +352,9 @@ Three movements, three gestures. An arrow key never leaves the page.
 - `PageUp` / `PageDown` — the previous / next page of this Step
 - `Space` — cycle the selected card's status. Not `Enter`, which descends here; `Space` is bound
   nowhere else and reads as a toggle rather than a move. On an **Expectation** it releases the wait
-  or takes the release back, and on its check task it completes the check
-- `D` / `L` — complete the check on the selected wait (or its check task) / release it, the keys the
-  other views bind; a card that is not a wait is turned away out loud
+  or takes the release back, and on its check task it completes the check (or reopens a done one).
+  Neither has a key of its own: `D` and `L` were removed by the user on 2026-09-24 as proxies for
+  this one
 - `Shift+W` — on a Task card, open its editor at the Expectation section with Asynchronous on, as on the Mindmap
 - `E` — open the selected card's editor
 - `Tab`, `Shift+Enter`, `Ctrl+Enter`, `Shift+D`/`P`/`G`/`T`/`C`/`E`/`I`/`F` — create, as above
