@@ -232,9 +232,10 @@ async fn migration_0037_keeps_every_delegate_as_a_person_and_every_link() {
         assert_eq!(count, 1, "{table} lost its row in the rebuild");
     }
 
-    let violations: Vec<(String, Option<i64>, String, i64)> = sqlx::query_as("PRAGMA foreign_key_check")
-        .fetch_all(&pool)
-        .await
-        .unwrap();
+    let violations: Vec<(String, Option<i64>, String, i64)> =
+        sqlx::query_as("PRAGMA foreign_key_check")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
     assert!(violations.is_empty(), "{violations:?}");
 }
