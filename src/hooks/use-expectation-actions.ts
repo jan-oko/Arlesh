@@ -30,8 +30,9 @@ interface Result {
  * The two Expectation gestures, shared by every view — for a stored wait and for the one an
  * Asynchronous Task's completion spawned alike.
  *
- * Every refusal is said out loud: a delegated Task's wait is released by the Task being done and by
- * nothing else, and a node that is not a wait is not one.
+ * Every caller hands in a wait for `toggleRelease` and a check task for `completeCheck`. The one
+ * refusal is said out loud: a delegated Task's wait is released by the Task being done and by
+ * nothing else.
  */
 export function useExpectationActions({ findNode, reload, showToast }: Options): Result {
   const { t } = useTranslation("expectation");
@@ -70,10 +71,6 @@ export function useExpectationActions({ findNode, reload, showToast }: Options):
       if (node === undefined) return;
       if (node.delegationWait !== undefined) {
         showToast({ nodeId, message: t("delegationWaitReleasedByTask") });
-        return;
-      }
-      if (node.kind !== "expectation") {
-        showToast({ nodeId, message: t("notAWait") });
         return;
       }
       const status = node.status === EXPECTATION_STATUS.RELEASED ? EXPECTATION_STATUS.PENDING : EXPECTATION_STATUS.RELEASED;
