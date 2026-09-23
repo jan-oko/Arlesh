@@ -2,10 +2,14 @@ use chrono::NaiveDate;
 
 use super::*;
 
-fn scope(start_id: i64, end_id: i64) -> Option<TimeScope> {
+fn day(date: u32) -> crate::scopes::key::ScopeKey {
+    crate::scopes::key::ScopeKey::day(NaiveDate::from_ymd_opt(2026, 9, date).unwrap())
+}
+
+fn scope(start: u32, end: u32) -> Option<TimeScope> {
     Some(TimeScope {
-        start_id,
-        end_id,
+        start_id: day(start),
+        end_id: day(end),
         duration: None,
     })
 }

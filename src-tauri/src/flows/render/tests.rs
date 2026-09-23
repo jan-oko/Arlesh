@@ -26,6 +26,7 @@ fn flow() -> Flow {
         is_habit: false,
         position: 0,
         is_private: false,
+        template: Default::default(),
     }
 }
 

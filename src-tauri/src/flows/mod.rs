@@ -484,8 +484,8 @@ struct AttachmentRow {
     flow_id: Option<i64>,
     parent_kind: String,
     parent_key: String,
-    window_start_scope_id: Option<i64>,
-    window_end_scope_id: Option<i64>,
+    window_start_scope_id: Option<ScopeKey>,
+    window_end_scope_id: Option<ScopeKey>,
 }
 
 /// Reads and writes flow templates — and their items, cycles, recurrences and instances —
@@ -3629,7 +3629,7 @@ async fn write_plan(
                     CreateGoalRequest {
                         title: node.title.clone(),
                         parent_type: create_parent.0,
-                        parent_id: create_parent.1,
+                        parent_id: create_parent.1.into(),
                         status: None,
                         time_scope: node.time_scope.clone(),
                         on_scope_exit: None,
@@ -3644,7 +3644,7 @@ async fn write_plan(
                     CreateTaskRequest {
                         title: node.title.clone(),
                         parent_type: create_parent.0,
-                        parent_id: create_parent.1,
+                        parent_id: create_parent.1.into(),
                         status: None,
                         time_scope: node.time_scope.clone(),
                         plan: node.plan.clone(),
@@ -3677,7 +3677,7 @@ async fn write_plan(
                     CreateCommitmentRequest {
                         title: node.title.clone(),
                         parent_type: create_parent.0,
-                        parent_id: create_parent.1,
+                        parent_id: create_parent.1.into(),
                         verdict: None,
                         time_scope: node.time_scope.clone(),
                         verdict_window: None,

@@ -1234,7 +1234,7 @@ async fn create_node(
                 CreateGoalRequest {
                     title: carried.title.clone(),
                     parent_type: goal_task_parent_type(&parent.kind).to_string(),
-                    parent_id: parent_row_id(parent)?,
+                    parent_id: parent_row_id(parent)?.into(),
                     status: carried.status.as_deref().and_then(GoalStatus::from_db),
                     time_scope: carried.time_scope.clone(),
                     on_scope_exit: carried.on_scope_exit,
@@ -1263,7 +1263,7 @@ async fn create_node(
                 CreateTaskRequest {
                     title: carried.title.clone(),
                     parent_type: goal_task_parent_type(&parent.kind).to_string(),
-                    parent_id: parent_row_id(parent)?,
+                    parent_id: parent_row_id(parent)?.into(),
                     status: carried.status.as_deref().and_then(TaskStatus::from_db),
                     time_scope: carried.time_scope.clone(),
                     on_scope_exit: carried.on_scope_exit,
@@ -1312,7 +1312,7 @@ async fn create_node(
                 CreateCommitmentRequest {
                     title: carried.title.clone(),
                     parent_type: goal_task_parent_type(&parent.kind).to_string(),
-                    parent_id: parent_row_id(parent)?,
+                    parent_id: parent_row_id(parent)?.into(),
                     verdict: carried.verdict,
                     time_scope: carried.time_scope.clone(),
                     verdict_window: carried.verdict_window.clone(),
@@ -1343,7 +1343,7 @@ async fn create_node(
                     body: carried.title.clone(),
                     details: carried.description.clone(),
                     parent_type: parent.kind.clone(),
-                    parent_id: parent_row_id(parent)?,
+                    parent_id: parent_row_id(parent)?.into(),
                     position: carried.position,
                 })
                 .await?;
@@ -1503,7 +1503,7 @@ async fn reparent(
                 GoalId(child.id),
                 UpdateGoalRequest {
                     parent_type: Some(goal_task_parent_type(&destination.kind).to_string()),
-                    parent_id: Some(parent_row_id(destination)?),
+                    parent_id: Some(parent_row_id(destination)?.into()),
                     ..Default::default()
                 },
             )
@@ -1515,7 +1515,7 @@ async fn reparent(
                 TaskId(child.id),
                 UpdateTaskRequest {
                     parent_type: Some(goal_task_parent_type(&destination.kind).to_string()),
-                    parent_id: Some(parent_row_id(destination)?),
+                    parent_id: Some(parent_row_id(destination)?.into()),
                     ..Default::default()
                 },
             )
@@ -1527,7 +1527,7 @@ async fn reparent(
                 CommitmentId(child.id),
                 UpdateCommitmentRequest {
                     parent_type: Some(goal_task_parent_type(&destination.kind).to_string()),
-                    parent_id: Some(parent_row_id(destination)?),
+                    parent_id: Some(parent_row_id(destination)?.into()),
                     ..Default::default()
                 },
             )
@@ -1539,7 +1539,7 @@ async fn reparent(
                 ExpectationId(child.id),
                 UpdateExpectationRequest {
                     parent_type: Some(goal_task_parent_type(&destination.kind).to_string()),
-                    parent_id: Some(parent_row_id(destination)?),
+                    parent_id: Some(parent_row_id(destination)?.into()),
                     ..Default::default()
                 },
             )
@@ -1551,7 +1551,7 @@ async fn reparent(
                     InfoId(child.id),
                     UpdateInfoRequest {
                         parent_type: Some(destination.kind.clone()),
-                        parent_id: Some(parent_row_id(destination)?),
+                        parent_id: Some(parent_row_id(destination)?.into()),
                         ..Default::default()
                     },
                 )

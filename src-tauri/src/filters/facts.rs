@@ -138,13 +138,15 @@ fn index_blocked(load: &MindmapLoad) -> HashSet<String> {
     for edge in &load.task_dependencies {
         let unmet = match edge.dependency_type.as_str() {
             "task" => task_status
-                .get(&NodeId::Stored(edge.dependency_id))
-                .is_some_and(|status| *status != "done"),
-            "expectation" => expectation_status
                 .get(&edge.dependency_id)
+                .is_some_and(|status| *status != "done"),
+            "expectation" => edge
+                .dependency_id
+                .stored()
+                .and_then(|id| expectation_status.get(&id))
                 .is_some_and(|status| *status == ExpectationStatus::Pending),
             _ => goal_status
-                .get(&NodeId::Stored(edge.dependency_id))
+                .get(&edge.dependency_id)
                 .is_some_and(|status| *status != "achieved"),
         };
         if unmet {

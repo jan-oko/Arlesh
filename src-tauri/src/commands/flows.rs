@@ -19,7 +19,6 @@ use crate::{
             UpdateFlowItemRequest, UpdateFlowRequest,
         },
     },
-    scopes::key::ScopeKey,
 };
 
 /// Creates a new flow.
