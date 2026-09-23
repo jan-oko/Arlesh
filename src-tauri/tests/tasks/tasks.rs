@@ -5443,3 +5443,67 @@ fn an_explicit_null_on_scope_exit_in_a_goal_update_payload_clears_it() {
     let set: UpdateGoalRequest = serde_json::from_str(r#"{"on_scope_exit":"keep"}"#).unwrap();
     assert_eq!(set.on_scope_exit, Some(Some(OnScopeExit::Keep)));
 }
+
+#[tokio::test]
+async fn a_task_plan_is_placed_against_now_on_the_two_oclock_day_boundary() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let week = {
+        let mut db = helpers::session_factory(&pool).connect().await.unwrap();
+        db.scopes()
+            .get_or_create(
+                ScopeKind::Week,
+                NaiveDate::from_ymd_opt(2026, 7, 1).unwrap(),
+            )
+            .await
+            .unwrap()
+            .id
+    };
+    let friday = day_scope(&pool, 2026, 7, 3).await;
+    let planned = new_task(
+        &pool,
+        CreateTaskRequest {
+            title: "Planned for Friday".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            time_scope: Some(single(week)),
+            plan: Some(single(friday)),
+            ..Default::default()
+        },
+    )
+    .await;
+    let unplanned = new_task(
+        &pool,
+        CreateTaskRequest {
+            title: "Unplanned".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            ..Default::default()
+        },
+    )
+    .await;
+
+    let at = |d: u32, h: u32, m: u32| {
+        NaiveDate::from_ymd_opt(2026, 7, d)
+            .unwrap()
+            .and_hms_opt(h, m, 0)
+            .unwrap()
+    };
+    for (now, expected) in [
+        (at(1, 12, 0), Timing::Pending),
+        // Friday's Day begins at 02:00, not midnight.
+        (at(3, 1, 30), Timing::Pending),
+        (at(3, 12, 0), Timing::Active),
+        // …and runs until 02:00 on Saturday.
+        (at(4, 1, 30), Timing::Active),
+        (at(4, 3, 0), Timing::Lapsed),
+    ] {
+        let states = lifecycles(&pool, now).await;
+        assert_eq!(
+            task_state(&states, planned.id).plan_timing,
+            Some(expected),
+            "at {now}"
+        );
+        assert_eq!(task_state(&states, unplanned.id).plan_timing, None);
+    }
+}

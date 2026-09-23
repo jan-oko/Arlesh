@@ -102,6 +102,7 @@ fn lifecycle(node_type: &str, node_id: i64, timing: Timing, archival: Archival) 
         verdict: None,
         archival,
         archival_conflict: false,
+        plan_timing: None,
     }
 }
 

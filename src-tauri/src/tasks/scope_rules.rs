@@ -25,7 +25,9 @@ use crate::scopes::resolve::{self, Bounds};
 use super::ancestry;
 use super::commitments;
 use super::error::TaskError;
-use super::lifecycle::{derive_commitment_state, derive_item_state, Archival, ItemLifecycle};
+use super::lifecycle::{
+    derive_commitment_state, derive_item_state, derive_timing, Archival, ItemLifecycle,
+};
 use super::model::{CommitmentId, GoalId, GoalStatus, OnScopeExit, TaskId, TaskStatus, TimeScope};
 
 /// Maps a Goal's stored status to its baseline Archival value, for [`derive_item_state`]'s `stored`
@@ -94,6 +96,10 @@ pub async fn derive_all_scope_lifecycles<M: SessionMode>(
         let resolved = TaskStatus::from_db(&task.status) == Some(TaskStatus::Done);
         let stored = Some(Archival::from(task.archival));
         let state = derive_item_state(window, on_exit, resolved, stored, now);
+        let plan_timing = match &task.plan {
+            Some(plan) => Some(derive_timing(Some(time_scope_window(db, plan).await?), now)),
+            None => None,
+        };
         out.push(ItemLifecycle {
             node_type: "task".to_string(),
             node_id: task.id,
@@ -102,6 +108,7 @@ pub async fn derive_all_scope_lifecycles<M: SessionMode>(
             verdict: None,
             archival: state.archival,
             archival_conflict: state.archival_conflict,
+            plan_timing,
         });
     }
     for goal in db.goals().list().await? {
@@ -124,6 +131,7 @@ pub async fn derive_all_scope_lifecycles<M: SessionMode>(
             verdict: None,
             archival: state.archival,
             archival_conflict: state.archival_conflict,
+            plan_timing: None,
         });
     }
     for commitment in db.commitments().list().await? {
@@ -145,6 +153,8 @@ pub async fn derive_all_scope_lifecycles<M: SessionMode>(
             archival: state.archival,
             // Nothing on a Commitment is manually archived, so nothing can be overridden.
             archival_conflict: false,
+            // Never scheduled: the window *is* the commitment.
+            plan_timing: None,
         });
     }
     Ok(out)

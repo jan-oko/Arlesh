@@ -406,3 +406,73 @@ fn kinds_know_which_group_they_belong_to() {
     assert!(!NodeKind::HabitGroup.is_flow());
     assert_eq!(NodeFacts::new("x", NodeKind::Task).status_str(), "");
 }
+
+fn planned(timing: Option<Timing>) -> NodeFacts {
+    let mut node = task("todo");
+    node.plan_timing = timing;
+    node
+}
+
+#[test]
+fn start_hides_a_task_whose_own_plan_has_not_begun() {
+    let start = BoardFilter::preset(Preset::Start);
+    assert!(is_planned_ahead(
+        &planned(Some(Timing::Pending)),
+        &start,
+        None
+    ));
+    assert!(!is_planned_ahead(
+        &planned(Some(Timing::Active)),
+        &start,
+        None
+    ));
+    // A plan that ended unfulfilled leaves the Task on screen as missed work.
+    assert!(!is_planned_ahead(
+        &planned(Some(Timing::Lapsed)),
+        &start,
+        None
+    ));
+    assert!(!is_planned_ahead(&planned(None), &start, None));
+}
+
+#[test]
+fn an_unplanned_task_is_read_by_the_plan_it_inherits_and_its_own_plan_wins() {
+    let start = BoardFilter::preset(Preset::Start);
+    assert!(is_planned_ahead(
+        &planned(None),
+        &start,
+        Some(Timing::Pending)
+    ));
+    assert!(!is_planned_ahead(
+        &planned(None),
+        &start,
+        Some(Timing::Active)
+    ));
+    assert!(!is_planned_ahead(
+        &planned(Some(Timing::Active)),
+        &start,
+        Some(Timing::Pending)
+    ));
+}
+
+#[test]
+fn only_start_reads_a_plan_and_only_on_a_task() {
+    let future = planned(Some(Timing::Pending));
+    for preset in [Preset::All, Preset::Plan, Preset::Do, Preset::Backlog] {
+        assert!(
+            !is_planned_ahead(&future, &BoardFilter::preset(preset), None),
+            "{preset:?}"
+        );
+    }
+    let start = BoardFilter::preset(Preset::Start);
+    assert!(!is_planned_ahead(
+        &goal("active"),
+        &start,
+        Some(Timing::Pending)
+    ));
+    assert!(!is_planned_ahead(
+        &commitment(Verdict::Unresolved, Timing::Active),
+        &start,
+        Some(Timing::Pending)
+    ));
+}

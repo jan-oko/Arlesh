@@ -7,6 +7,8 @@
 
 use std::borrow::Cow;
 
+use crate::tasks::lifecycle::Timing;
+
 use super::{
     model::{BoardFilter, NodeFacts, NodeKind, Preset},
     rules,
@@ -31,6 +33,15 @@ impl<'a> Row<'a> {
     /// even when the row itself is not flagged.
     fn has_private_ancestor(&self) -> bool {
         self.ancestors.iter().any(|a| a.is_private)
+    }
+
+    /// The nearest ancestor's own Plan position — what an unplanned row inherits under Start
+    /// (see [`rules::is_planned_ahead`]). Only a Task carries one.
+    fn inherited_plan(&self) -> Option<Timing> {
+        self.ancestors
+            .iter()
+            .rev()
+            .find_map(|ancestor| ancestor.plan_timing)
     }
 
     /// Whether any ancestor gates the whole subtree beneath it under this filter.
@@ -93,7 +104,8 @@ fn unblock_filter(filter: &BoardFilter) -> BoardFilter {
 /// makes. What a list has to add is the three subtree gates it cannot get from pruning: a shelved
 /// Project, a backlogged Task or an unopened Habit occurrence above the row, and, under Start, a
 /// blocked ancestor. A row's ancestors also carry the Backlog preset's "and everything beneath
-/// it", which the tree walk would otherwise have accumulated on the way down.
+/// it", and Start's inherited Plan, which the tree walk would otherwise have accumulated on the
+/// way down.
 fn passes_row_preset(row: Row<'_>, filter: &BoardFilter) -> bool {
     if row.has_gating_ancestor(filter) {
         return false;
@@ -101,6 +113,9 @@ fn passes_row_preset(row: Row<'_>, filter: &BoardFilter) -> bool {
     if filter.preset == Preset::Start
         && (rules::is_blocked(row.node) || row.ancestors.iter().any(rules::is_blocked))
     {
+        return false;
+    }
+    if rules::is_planned_ahead(row.node, filter, row.inherited_plan()) {
         return false;
     }
     let under_backlog = row.ancestors.iter().any(|ancestor| ancestor.backlogged);
