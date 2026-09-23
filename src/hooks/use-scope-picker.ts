@@ -6,6 +6,7 @@ import {
   adjustRangeEndpoint,
   nextRangeSelection,
   nextSingleSelection,
+  seededRange,
   type RangeSelection,
   type ScopeRef,
 } from "@/utils/scope-ref";
@@ -38,6 +39,11 @@ export interface UseScopePicker {
   adjustEndpoint: (which: "start" | "end", ref: ScopeRef) => void;
   /** Clears the selection. */
   reset: () => void;
+  /**
+   * Replaces the selection with the cells a stored value occupies, so that opening the picker on
+   * an existing scope pre-selects it and Apply re-applies it. An empty list seeds nothing.
+   */
+  seed: (refs: ScopeRef[]) => void;
   /** Materializes the current selection to a Time Scope, or null if incomplete. */
   resolve: () => Promise<TimeScope | null>;
 }
@@ -70,6 +76,17 @@ export function useScopePicker(mode: ScopePickerMode): UseScopePicker {
     setRange({ start: null, end: null });
   }, []);
 
+  const seed = useCallback(
+    (refs: ScopeRef[]) => {
+      if (mode === "single") {
+        setSingle(refs[0] ?? null);
+        return;
+      }
+      setRange(seededRange(refs));
+    },
+    [mode],
+  );
+
   const resolve = useCallback(async (): Promise<TimeScope | null> => {
     if (mode === "single") {
       if (single === null) return null;
@@ -85,5 +102,5 @@ export function useScopePicker(mode: ScopePickerMode): UseScopePicker {
     return { start_id: startId, end_id: endId };
   }, [mode, single, range]);
 
-  return { mode, single, range, handleClick, adjustEndpoint, reset, resolve };
+  return { mode, single, range, handleClick, adjustEndpoint, reset, seed, resolve };
 }

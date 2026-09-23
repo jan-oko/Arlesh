@@ -74,6 +74,22 @@ The picker opens on **the narrowest view that can display the scope it was given
 
 The opening view is derived from the scope every time the picker opens; nothing about the last view is remembered.
 
+### Seeded selection
+
+The picker opens with the scope it was handed **selected**, not merely shown: the cell the opening rule lands on is the cell Apply would commit. A picker opened on a scoped item and applied untouched therefore re-applies the scope that was already there.
+
+- **A single scope** seeds both endpoints of the range on that one cell. **A range** seeds its two endpoints, earliest first. Either way a seeded range is **closed** — both endpoints set — so, by the third-click rule, the first click after opening starts a new range rather than extending the seeded one. There is no gesture that extends a stored range; you re-draw it.
+- **Selected and current are different marks.** Selected cells fill solid; the cell holding the present is outlined. The opening view is not a mark of its own — it is only where the calendar sits, and the cell it lands on is drawn selected because it *is* the selection.
+- **The span between seeded endpoints is tinted**, exactly as for a range the user just clicked. Endpoints of different kinds seed both cells but no span, because no view draws both; the picker opens on the coarser view and Apply still re-applies the window.
+- **A value with a row that names no calendar cell seeds nothing.** Seeding the one drawable endpoint of a two-endpoint window would silently narrow it, so an undrawable window is left unanswered instead.
+- **Re-opening re-seeds.** Cells clicked and then abandoned by closing the picker do not survive; each opening starts from the stored value again.
+
+### Apply and Clear
+
+**Apply** commits the selection and closes. An empty selection means *unanswered*, not *no scope* — Apply with nothing selected changes nothing. Once the selection is seeded that case is only reachable for an item that has no scope at all, or a stored scope that names no cell; it is a second guard on the same rule rather than a gesture with a meaning of its own. Apply never clears.
+
+**Clear** is the only way to remove a Time Scope or a Plan. It sits in the field's summary row beside the edit button, shown only when there is a value to remove, and asks for no confirmation — the same call as the beads-id row in the editors: nothing is written until the editor is saved, and a saved clear is undone with Ctrl+Z.
+
 ### Current period
 
 The cell holding the present is outlined. In every view but parts of day that is the cell whose dates contain **the current Day** — which, by the 02:00 boundary above, is the previous calendar date between 00:00 and 01:59. A part of day is a function of the instant, the displayed date **and** the part: exactly one part is current, and only on the date that part belongs to. Because Night runs 22:00–02:00 and belongs to the day it starts on, between 00:00 and 01:59 the current part is the **previous** calendar date's Night — on the date the clock reads, no part is outlined at all.

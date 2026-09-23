@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { getScope, resolveScope } from "@/api/scopes";
@@ -6,7 +6,8 @@ import type { Scope } from "@/api/scopes";
 import type { TimeScope } from "@/api/time-scope";
 import { useScopePicker } from "@/hooks/use-scope-picker";
 import { useScopeLabels } from "@/hooks/use-scope-labels";
-import { dayScopeDate, lastDayOfWindow, openingForScopes } from "@/utils/scope-calendar";
+import { dayScopeDate, lastDayOfWindow, openingForRefs } from "@/utils/scope-calendar";
+import { refsForScopes } from "@/utils/scope-ref";
 import { formatScopeRange } from "@/utils/scope-format";
 import ScopePicker, { type ScopeConstraint } from "./ScopePicker";
 import styles from "./ScopeField.module.css";
@@ -77,16 +78,28 @@ export default function PlanField({ value, timeScope, onChange }: Props) {
   }
 
   async function apply() {
-    onChange(await picker.resolve());
+    const plan = await picker.resolve();
+    // An empty selection means the question went unanswered, not that there is no plan: Apply
+    // only ever commits a selection, and Clear is the only way to remove one.
+    if (plan !== null) onChange(plan);
     setOpen(false);
   }
 
   const planKey = value === null ? null : `${value.start_id}:${value.end_id}`;
   const endpoints = fetched !== null && fetched.key === planKey ? fetched.scopes : null;
   const rangeLabel = endpoints === null ? null : formatScopeRange(endpoints[0], endpoints[1], labels);
+  // The cells the stored plan occupies drive both where the picker opens and what it has
+  // selected, so the period on screen is the period Apply would re-apply.
+  const valueRefs = useMemo(() => (endpoints === null ? [] : refsForScopes(endpoints)), [endpoints]);
   // Open on the plan already chosen; with none (or one that names no cell), open on Day.
-  const opening = endpoints === null ? null : openingForScopes(endpoints);
+  const opening = openingForRefs(valueRefs);
   const summary = value === null ? labels.unplanned : (rangeLabel ?? "…");
+
+  const seed = picker.seed;
+  useEffect(() => {
+    if (!open) return;
+    seed(valueRefs);
+  }, [open, valueRefs, seed]);
 
   return (
     <div className={styles.field}>

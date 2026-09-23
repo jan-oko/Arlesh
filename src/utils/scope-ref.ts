@@ -39,6 +39,20 @@ export function refForScope(scope: Scope): ScopeRef | null {
   return { kind: scope.kind, date: scope.start_date };
 }
 
+/**
+ * The calendar cells a persisted window's endpoint scopes occupy, dropping any row that names no
+ * cell. A window whose rows all name cells yields one ref per row; one with a broken row yields
+ * fewer, which is how callers tell "this window cannot be drawn" from "this window is empty".
+ */
+export function refsForScopes(scopes: Scope[]): ScopeRef[] {
+  const refs: ScopeRef[] = [];
+  for (const scope of scopes) {
+    const ref = refForScope(scope);
+    if (ref !== null) refs.push(ref);
+  }
+  return refs;
+}
+
 /** Whether two refs identify the same cell. */
 export function sameScopeRef(a: ScopeRef, b: ScopeRef): boolean {
   if (a.kind !== b.kind) return false;
@@ -92,6 +106,20 @@ export function nextRangeSelection(
     return { start: clicked, end: null };
   }
   const [start, end] = orderRefs(current.start, clicked);
+  return { start, end };
+}
+
+/**
+ * The range selection a persisted window seeds when the picker opens on it. Always **closed** —
+ * both endpoints set, ordered earliest-first, a single-scope window seeding the same cell as both
+ * ends — so the first click after opening starts a new range rather than extending the seeded one.
+ * Fewer than two refs (a window with a row that names no calendar cell) seeds nothing: an empty
+ * selection, which the caller reads as "unanswered" rather than "no scope".
+ */
+export function seededRange(refs: ScopeRef[]): RangeSelection {
+  const [first, second] = refs;
+  if (first === undefined || second === undefined) return { start: null, end: null };
+  const [start, end] = orderRefs(first, second);
   return { start, end };
 }
 
