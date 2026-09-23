@@ -165,6 +165,8 @@ does not draw those still toggles the window.
 `Arlesh [2] — Bugfixes`: the number in brackets, which stays put, and the active tab, which is what
 you actually recognise the window by. The window manager shows that title in its bars and window
 lists, and the tray entry is the same title, so an entry and its window are matched at a glance.
+On Wayland the title bar drawn inside the window reads it too. That bar is tao's own GTK header
+bar, which does not follow the window title by itself, so every retitle also writes into it.
 In a branch instance the number follows the whole of the config title, branch included, and comes
 before the tab: `Arlesh — <branch> [2] — Bugfixes`.
 

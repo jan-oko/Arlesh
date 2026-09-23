@@ -26,6 +26,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use crate::{
+    commands::header_bar,
     error::WireError,
     icon,
     windows::{self, ListedWindow, OpenWindow, Placement, WindowRecord, WindowRect, WindowSession},
@@ -406,11 +407,19 @@ pub async fn set_window_title<R: Runtime>(
         names.set_tab(window.label(), &tab);
     }
     let open = app.webview_windows().len();
-    window
-        .set_title(&title_of(&app, window.label(), open))
+    apply_title(&window, &title_of(&app, window.label(), open))
         .map_err(|error| WireError::internal(error.to_string()))?;
     // The menu lists a window by its title, so a title that changed leaves the menu out of date.
     crate::commands::tray::refresh_menu(&app);
+    Ok(())
+}
+
+/// Titles `window`: the window title the window manager and the tray read, and the header bar
+/// drawn inside the window, which on Wayland does not follow the first. See
+/// [`crate::commands::header_bar`]. Every retitle goes through here, so the two cannot drift apart.
+fn apply_title<R: Runtime>(window: &WebviewWindow<R>, title: &str) -> tauri::Result<()> {
+    window.set_title(title)?;
+    header_bar::show_title(window, title);
     Ok(())
 }
 
@@ -431,7 +440,7 @@ pub fn retitle_all<R: Runtime>(app: &AppHandle<R>) {
     let live = app.webview_windows();
     let open = live.len();
     for (label, window) in live {
-        if let Err(error) = window.set_title(&title_of(app, &label, open)) {
+        if let Err(error) = apply_title(&window, &title_of(app, &label, open)) {
             tracing::warn!(error = %error, label = %label, "could not retitle a window");
         }
     }
