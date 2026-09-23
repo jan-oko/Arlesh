@@ -91,6 +91,35 @@ export function cursorAtNow(kind: ViewKind, todayIso: string, hour: number): Pla
 }
 
 /**
+ * Where a pass lands when the **kind** being filled changes — from the selector or its letter key.
+ *
+ * - **Coarser:** the scope of the new kind holding the current scope's **first day**. That is the
+ *   one containing it everywhere but a week at a month's edge, which is in two months; the first
+ *   day picks one, the same rule Up uses, so `M` and Up never disagree about a week's month.
+ * - **Finer:** the one holding **now**, if now is inside the current scope — the pass you most
+ *   likely want is today's — and otherwise the **first** one inside it, its first day (and, for a
+ *   part of day, the day's first band).
+ * - **The same kind:** nowhere; the cursor is returned as it is.
+ *
+ * While the current scope has not materialized there are no dates to reason from, and the kind
+ * alone changes, anchored where the cursor already was — which is what the selector always did.
+ */
+export function cursorForKind(
+  current: PlanScopeCursor,
+  scope: Pick<Scope, "start_date" | "end_date"> | null,
+  next: ViewKind,
+  nowCursor: PlanScopeCursor,
+): PlanScopeCursor {
+  if (next === current.kind) return current;
+  if (scope === null) return { ...current, kind: next };
+  const finer = PLAN_SCOPE_KINDS.indexOf(next) > PLAN_SCOPE_KINDS.indexOf(current.kind);
+  if (!finer) return { kind: next, date: scope.start_date, part: current.part };
+  const nowInside = nowCursor.date >= scope.start_date && nowCursor.date <= scope.end_date;
+  if (nowInside) return { ...nowCursor, kind: next };
+  return { kind: next, date: scope.start_date, part: FIRST_PART };
+}
+
+/**
  * Why Up cannot go anywhere: the scope is at the **top** of the ladder (a Season — or an Exact
  * window, which is not on the ladder at all), or it is still **resolving** and its parent is not
  * known yet.

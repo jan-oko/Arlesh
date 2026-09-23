@@ -515,6 +515,64 @@ describe("going up to the parent scope", () => {
   });
 });
 
+describe("switching the kind by its letter", () => {
+  it.each([
+    ["KeyS", "season"], ["KeyM", "month"], ["KeyW", "week"], ["KeyD", "day"], ["KeyP", "part_of_day"],
+  ] as const)("%s fills the %s with nothing selected", async (code, kind) => {
+    // Start from a month so W is a change too.
+    useViewStore.setState({ planScopeKind: kind === "week" ? "month" : "week" });
+    mockRows([]);
+    await renderPlanView();
+
+    await act(async () => { fireEvent.keyDown(window, { code }); });
+    await settle();
+    expect(useViewStore.getState().planScopeKind).toBe(kind);
+  });
+
+  // Coarser lands on the scope holding the current one's first day — the week's month.
+  it("lands M on the month holding the week's first day", async () => {
+    mockRows([]);
+    await renderPlanView();
+    await act(async () => { fireEvent.keyDown(window, { code: "KeyM" }); });
+    await settle();
+    expect(getOrCreateScope).toHaveBeenCalledWith("month", "2026-09-20");
+  });
+
+  // With a row selected the letter is the subscope mnemonic's: M plans into Monday.
+  it("leaves M to the subscope mnemonic while a row is selected", async () => {
+    useDisplayStore.setState({ planSubscopeSplit: true });
+    mockRows([row(n("task-5", "task", { plan: { start_id: WEEK_ID, end_id: WEEK_ID } }))]);
+    await renderPlanView();
+
+    fireEvent.keyDown(window, { code: "ArrowDown" });
+    await act(async () => { fireEvent.keyDown(window, { code: "KeyM" }); });
+    await settle();
+    expect(useViewStore.getState().planScopeKind).toBe("week");
+    expect(getOrCreateScope).toHaveBeenCalledWith("day", "2026-09-21");
+  });
+
+  it("does nothing while a text field has the keyboard", async () => {
+    mockRows([]);
+    await renderPlanView();
+    const field = document.createElement("input");
+    document.body.appendChild(field);
+    field.focus();
+
+    await act(async () => { fireEvent.keyDown(field, { code: "KeyM" }); });
+    expect(useViewStore.getState().planScopeKind).toBe("week");
+    field.remove();
+  });
+
+  it("does nothing while the kind dropdown is open", async () => {
+    mockRows([]);
+    await renderPlanView();
+    await act(async () => { fireEvent.click(screen.getByLabelText("scopeKind")); });
+
+    await act(async () => { fireEvent.keyDown(window, { code: "KeyM" }); });
+    expect(useViewStore.getState().planScopeKind).toBe("week");
+  });
+});
+
 describe("splitting the planned pane by subscope", () => {
   it("draws one section per day of the week being filled, empty ones included", async () => {
     useDisplayStore.setState({ planSubscopeSplit: true });

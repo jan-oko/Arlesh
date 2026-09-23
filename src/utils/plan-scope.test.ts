@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { cursorAtNow, cursorFromRef, cursorRef, isPlanScopeKind, parentRefs, partOfHour, stepCursor } from "./plan-scope";
+import { cursorAtNow, cursorForKind, cursorFromRef, cursorRef, isPlanScopeKind, parentRefs, partOfHour, stepCursor } from "./plan-scope";
 import type { PlanScopeCursor } from "./plan-scope";
 
 const WEEK: PlanScopeCursor = { kind: "week", date: "2026-09-20", part: "morning" };
@@ -120,5 +120,46 @@ describe("parentRefs", () => {
 
   it("is nothing for a Season, the top of the ladder", () => {
     expect(parentRefs({ kind: "season", start_date: "2026-09-01", end_date: "2026-11-30" })).toEqual([]);
+  });
+});
+
+describe("cursorForKind", () => {
+  const WEEK_CURSOR: PlanScopeCursor = { kind: "week", date: "2026-09-20", part: "evening" };
+  const WEEK_ROW = { start_date: "2026-09-20", end_date: "2026-09-26" };
+  const EDGE_WEEK = { start_date: "2026-09-27", end_date: "2026-10-03" };
+  const NOW_IN_WEEK: PlanScopeCursor = { kind: "day", date: "2026-09-22", part: "morning" };
+  const NOW_ELSEWHERE: PlanScopeCursor = { kind: "day", date: "2026-11-02", part: "morning" };
+
+  it("goes coarser to the scope holding the current one's first day", () => {
+    expect(cursorForKind(WEEK_CURSOR, WEEK_ROW, "month", NOW_ELSEWHERE))
+      .toEqual({ kind: "month", date: "2026-09-20", part: "evening" });
+  });
+
+  it("takes a week at a month's edge to the month of its first day, as Up does", () => {
+    expect(cursorForKind({ ...WEEK_CURSOR, date: "2026-10-01" }, EDGE_WEEK, "month", NOW_ELSEWHERE).date)
+      .toBe("2026-09-27");
+  });
+
+  it("goes finer to the one holding now, when now is inside", () => {
+    expect(cursorForKind(WEEK_CURSOR, WEEK_ROW, "day", NOW_IN_WEEK))
+      .toEqual({ kind: "day", date: "2026-09-22", part: "morning" });
+  });
+
+  it("goes finer to the first one inside, when now is not", () => {
+    expect(cursorForKind(WEEK_CURSOR, WEEK_ROW, "day", NOW_ELSEWHERE))
+      .toEqual({ kind: "day", date: "2026-09-20", part: "premorning" });
+  });
+
+  it("goes to a part of the day as the day's first band when now is not inside", () => {
+    expect(cursorForKind(WEEK_CURSOR, WEEK_ROW, "part_of_day", NOW_ELSEWHERE))
+      .toEqual({ kind: "part_of_day", date: "2026-09-20", part: "premorning" });
+  });
+
+  it("stays put for the kind already being filled", () => {
+    expect(cursorForKind(WEEK_CURSOR, WEEK_ROW, "week", NOW_IN_WEEK)).toBe(WEEK_CURSOR);
+  });
+
+  it("changes only the kind while the scope has not materialized", () => {
+    expect(cursorForKind(WEEK_CURSOR, null, "month", NOW_ELSEWHERE)).toEqual({ ...WEEK_CURSOR, kind: "month" });
   });
 });

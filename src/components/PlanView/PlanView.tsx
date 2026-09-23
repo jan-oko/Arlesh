@@ -419,6 +419,7 @@ export default function PlanView() {
     onPlanIntoSubscope,
     onStepScope: scope.step,
     onUpScope: upScope,
+    onSetScopeKind: scope.setKind,
     onToggleBacklogCandidates: () => setShowBacklogged((on) => !on),
     onSetStatusMode: setStatusMode,
     onOpenEditor: onDoubleClick,

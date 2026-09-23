@@ -5,6 +5,7 @@ import { PLAN_DESELECT_BINDINGS, type PlanDeselectContext } from "./plan/deselec
 import { PLAN_EDITOR_BINDINGS, type PlanEditorContext } from "./plan/editor";
 import { PLAN_FULLSCREEN_BINDINGS, type PlanFullscreenContext } from "./plan/fullscreen";
 import { PLAN_HISTORY_BINDINGS, type PlanHistoryContext } from "./plan/history";
+import { PLAN_KIND_BINDINGS, type PlanKindContext } from "./plan/kind";
 import { PLAN_MOVE_BINDINGS, type PlanMoveContext } from "./plan/move";
 import { PLAN_NAVIGATE_BINDINGS, type PlanNavigateContext } from "./plan/navigate";
 import { PLAN_SCOPE_BINDINGS, type PlanScopeContext } from "./plan/scope";
@@ -26,6 +27,7 @@ export interface PlanContext extends
   PlanEditorContext,
   PlanFullscreenContext,
   PlanHistoryContext,
+  PlanKindContext,
   PlanMoveContext,
   PlanNavigateContext,
   PlanScopeContext,
@@ -40,7 +42,9 @@ export interface PlanContext extends
  * `global-bindings.ts` and are deliberately absent here. A chord left in both tables would fire
  * twice, since the two are separate capture-phase listeners.
  *
- * Order is only significant between entries sharing a chord, and nothing here shares one.
+ * Order is only significant between entries sharing a chord. Five do: the kind letters S, M, W, D
+ * and P are also subscope mnemonics, and the two guards are complementary (a selection, against
+ * none), so either order would dispatch the same — the subscope one is listed first anyway.
  * `chord-sharing.test.ts` fails on any chord that becomes shared without being declared, so a
  * second module quietly shadowing one of these is a red test rather than a key that silently stops
  * working.
@@ -52,6 +56,7 @@ export const PLAN_BINDINGS: readonly Binding<PlanContext>[] = [
   ...PLAN_SCOPE_BINDINGS,
   ...PLAN_MOVE_BINDINGS,
   ...PLAN_SUBSCOPE_BINDINGS,
+  ...PLAN_KIND_BINDINGS,
   ...PLAN_BACKLOG_BINDINGS,
   ...PLAN_EDITOR_BINDINGS,
   ...PLAN_DESELECT_BINDINGS,

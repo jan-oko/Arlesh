@@ -13,6 +13,8 @@
     "day": "Day",
     "part_of_day": "Part of day"
   },
+  "scopeKindKey": "Press {{key}} with nothing selected",
+  "scopeKindKeys": "Kind of scope to fill — or press {{keys}} with nothing selected",
   "upScope": "Up to the parent scope",
   "upScopeTo": "Up to parent scope, the {{kind}} (\\)",
   "upScopeResolving": "The scope is still loading, so its parent is not known yet.",

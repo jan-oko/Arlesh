@@ -8,7 +8,7 @@ import { formatScope } from "@/utils/scope-format";
 import type { ViewKind } from "@/utils/scope-calendar";
 import type { ScopeRef } from "@/utils/scope-ref";
 import type { PlanScopeCursor } from "@/utils/plan-scope";
-import { cursorAtNow, cursorFromRef, cursorRef, parentRefs, stepCursor } from "@/utils/plan-scope";
+import { cursorAtNow, cursorForKind, cursorFromRef, cursorRef, parentRefs, stepCursor } from "@/utils/plan-scope";
 import type { UpRefusal } from "@/utils/plan-scope";
 
 /** The scope a Plan pass is filling, and the ways to move to another one. */
@@ -21,7 +21,7 @@ export interface PlanScopeHandles {
   label: string;
   /** Why the scope could not be materialized, if it could not. */
   error: string | null;
-  /** Fills a different kind of scope, staying at the same point in the calendar. */
+  /** Fills a different kind of scope: the one holding this one, or the one holding now inside it. */
   setKind: (kind: ViewKind) => void;
   /** Walks one whole scope later (`1`) or earlier (`-1`). */
   step: (direction: 1 | -1) => void;
@@ -95,12 +95,17 @@ export function usePlanScope(now: Date = new Date()): PlanScopeHandles {
   const scope = current?.scope ?? null;
   const error = current?.error ?? null;
 
+  // Lands on the scope of the new kind that holds this one, or the one holding now inside it — see
+  // `cursorForKind`. The selector and the letter keys both come through here, so they cannot land
+  // in two different places.
+  const nowIso = todayIso(now);
+  const nowHour = now.getHours();
   const setKind = useCallback(
     (next: ViewKind) => {
       setPlanScopeKind(next);
-      setCursor((current) => ({ ...current, kind: next }));
+      setCursor((current) => cursorForKind(current, scope, next, cursorAtNow(next, nowIso, nowHour)));
     },
-    [setPlanScopeKind],
+    [setPlanScopeKind, scope, nowIso, nowHour],
   );
 
   const anchorDate = scope?.start_date;

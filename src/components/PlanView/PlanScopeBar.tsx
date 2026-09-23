@@ -9,9 +9,16 @@ import type { ScopeRef } from "@/utils/scope-ref";
 import type { PlanScopeCursor } from "@/utils/plan-scope";
 import { PLAN_SCOPE_KINDS, cursorRef, isPlanScopeKind, upRefusalKey } from "@/utils/plan-scope";
 import type { UpRefusal } from "@/utils/plan-scope";
+import { useInputCapture } from "@/hooks/use-input-capture";
+import { SCOPE_KIND_KEYS } from "@/utils/hotkeys/plan/kind";
 import styles from "./PlanScopeBar.module.css";
 
 const UP = "↑";
+
+/** The letter that fills `kind`, as the cheat sheet and the tooltips print it. */
+function keyFor(kind: ViewKind): string {
+  return SCOPE_KIND_KEYS.find((entry) => entry.kind === kind)?.letter ?? "";
+}
 const PREVIOUS = "‹";
 const NEXT = "›";
 
@@ -46,6 +53,9 @@ export default function PlanScopeBar({
 }: Props) {
   const { t } = useTranslation("planView");
   const [pickerOpen, setPickerOpen] = useState(false);
+  // The jump picker is a popover over the pass: while it is open, a letter must not change the
+  // kind it is locked to underneath it.
+  useInputCapture(pickerOpen);
 
   function selectKind(value: string): void {
     if (isPlanScopeKind(value)) onSetKind(value);
@@ -70,9 +80,14 @@ export default function PlanScopeBar({
     <header className={styles.bar}>
       <Select
         value={cursor.kind}
-        options={PLAN_SCOPE_KINDS.map((value) => ({ value, label: t(`kind.${value}`) }))}
+        options={PLAN_SCOPE_KINDS.map((value) => ({
+          value,
+          label: t(`kind.${value}`),
+          title: t("scopeKindKey", { key: keyFor(value) }),
+        }))}
         onChange={selectKind}
         ariaLabel={t("scopeKind")}
+        title={t("scopeKindKeys", { keys: SCOPE_KIND_KEYS.map((entry) => entry.letter).join(" / ") })}
       />
 
       <div className={styles.stepper}>

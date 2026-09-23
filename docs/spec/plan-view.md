@@ -245,6 +245,29 @@ headers are entries in that stream rather than wrappers around it, and none of t
 `Down` steps from the last card of one bucket to the first card of the next. Crossing panes still
 keeps your place by index, against the drawn order on both sides.
 
+**Changing the kind lands somewhere definite**, whether from the selector or its letter:
+
+- **Coarser** — the scope of the new kind holding the current one's **first day**. That is the one
+  containing it everywhere except a week at a month's edge, and there it is the same month Up
+  picks, so `M` and Up never disagree about a week's month.
+- **Finer** — the one holding **now**, if now is inside the current scope, since today's is the pass
+  you most likely want; otherwise the **first** one inside it — its first day, and for a part of the
+  day, the day's first band (Premorning).
+- **The same kind** — nowhere.
+
+**A letter picks the kind:** `S` season, `M` month, `W` week, `D` day, `P` part of day. Exact has
+none, because it is never filled. All five letters are also subscope mnemonics (see
+[Planning into a subscope](#planning-into-a-subscope)), which act on the selection. So a kind
+letter acts **only with nothing selected**, and with rows selected the letter is theirs. The two are
+complementary: in any state, a letter has one meaning. The kind letter refuses a selection even
+when no bucket answers to the letter, for example with the split off. Otherwise "M switches to
+months" would depend on whether the right-hand pane happened to be split. The keys are printed on
+the selector's hover and each option's.
+
+No key fires while a text field, a modal, the kind dropdown or the jump picker has the keyboard. An
+open dropdown claims the keyboard like a modal does. It already answers the arrows, Enter and
+Escape itself, and a letter acting behind it would change what it is choosing between.
+
 **Up** — a button beside the step back — fills the scope's **parent** instead: a part of day's
 Day, a Day's Week, a Week's Month, a Month's Season (see [The parent scope](#the-parent-scope)).
 The kind selector changes with it, exactly as choosing the kind would, since the kind is what it
@@ -324,6 +347,8 @@ move looking like a failure.
 - `1`–`7`, and an unambiguous initial — plan the selection into that subscope
 - `[` / `]` — fill the previous / next scope
 - `\` — fill the parent scope; on a Season, says why there is none
+- `S` / `M` / `W` / `D` / `P`, with nothing selected — fill seasons / months / weeks / days / parts
+  of the day
 - `Shift+B` — show or hide backlogged candidates. Shifted deliberately: bare `B` backlogs the
   selected Task in the List View, and a key that sets one task aside must not reveal a whole
   category of them elsewhere
