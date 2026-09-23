@@ -163,6 +163,15 @@ a dark background needs more of the hue than a light one to read as coloured at 
 A node **outside any aspect** keeps the theme's plain card background, and the board's own header
 card is not coloured at all.
 
+**The card's muted text is derived from the card, not from the page.** Most of a card's body is
+muted — the kind line, the field labels, the notes, the count — and the app's `--text-secondary` is
+picked against the plain background, where in dark it measures 4.71:1: over WCAG AA's 4.5:1, but
+with no headroom for a tint underneath. Every aspect pushed it under, Steel in dark reaching 3.30:1.
+Blending the muted colour 65% of the way from *this card's* surface toward the primary text instead
+holds every aspect over AA in both themes — dark bottoms out at 4.74:1, light at 5.03:1 — and beats
+the global token on an untinted card besides. That is what "keeping note of contrast" costs: one
+derived colour, and the colouring is then safe for every aspect rather than for most of them.
+
 **The fill says nothing about state**, deliberately. That is only safe because the glyph and the
 badge row already do: the Task and Goal icons draw their status and their blocked-ness, the
 Commitment shield draws its Verdict, and the badge row carries archived, frozen, backlogged, agentic

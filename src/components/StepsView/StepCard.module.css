@@ -22,15 +22,28 @@
      guarantees `--node-text` against `--node-bg`. So every aspect works in both themes by
      construction, including a pale one like Steel and including the Aspect card itself.
 
-     The plain `background` above it is the fallback for an engine without `color-mix`: it keeps a
+     The plain `background` below is the fallback for an engine without `color-mix`: it keeps a
      readable card and merely loses the colour. `--card-aspect` defaults to the background so a node
      outside any aspect mixes the background into itself, which is a no-op rather than a hole. */
-  background: var(--node-bg);
-  background: color-mix(
+  --card-surface: color-mix(
     in srgb,
     var(--card-aspect, var(--node-bg)) var(--card-aspect-strength),
     var(--node-bg)
   );
+
+  /* The card's own muted text, and the reason it is not `--text-secondary`.
+     That token is picked against `--node-bg`, where it measures 4.71:1 in dark — barely over AA's
+     4.5:1, with no headroom for a tinted card underneath it. Every aspect pushed it under: Steel in
+     dark came out at 3.30:1. Since the card body is mostly muted text (the kind line, the field
+     labels, the notes, the count), that was most of the card failing.
+     Deriving it from the card instead fixes it at the source: 65% of the way from this card's own
+     surface toward the primary text holds every aspect over AA in both themes — dark bottoms out at
+     4.74:1 on Steel, light at 5.03:1 on Purple — and it is better than the global token managed on
+     an untinted card besides (6.07:1 dark, 5.32:1 light). */
+  --card-text-muted: color-mix(in srgb, var(--node-text) 65%, var(--card-surface));
+
+  background: var(--node-bg);
+  background: var(--card-surface);
 }
 
 .child {
@@ -46,8 +59,11 @@
   width: 100%;
 }
 
-/* The board's own card: its name, centred, and nothing else. */
+/* The board's own card: its name, centred, and nothing else. It belongs to no aspect, so it takes
+   the raised surface rather than a mix — declared as `--card-surface` too, so anything on it that
+   derives from the card derives from the right one. */
 .board {
+  --card-surface: var(--surface-raised);
   align-items: center;
   justify-content: center;
   min-height: 48px;
@@ -89,7 +105,7 @@
 }
 
 .kind {
-  color: var(--text-secondary);
+  color: var(--card-text-muted);
   font-size: var(--text-sm);
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -113,7 +129,7 @@
 
 .fieldLabel {
   flex: 0 0 auto;
-  color: var(--text-secondary);
+  color: var(--card-text-muted);
   font-size: var(--text-sm);
 }
 
@@ -144,7 +160,7 @@
 
 .note {
   overflow: hidden;
-  color: var(--text-secondary);
+  color: var(--card-text-muted);
   font-size: var(--text-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -167,7 +183,7 @@
 }
 
 .count {
-  color: var(--text-secondary);
+  color: var(--card-text-muted);
   font-size: var(--text-sm);
   font-variant-numeric: tabular-nums;
 }
@@ -177,7 +193,7 @@
   border: 1px solid transparent;
   border-radius: var(--node-radius);
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--card-text-muted);
   cursor: pointer;
   font-size: var(--text-sm);
   line-height: 1.4;
