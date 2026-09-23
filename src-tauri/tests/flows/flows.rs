@@ -3,7 +3,7 @@ use crate::helpers;
 use arlesh_lib::flows::{
     convert_flow_item, convert_to_flow, delete_flow, duplicate_flow, duplicate_flow_item,
     error::FlowError,
-    fork_flow, generate_habit_iterations,
+    archive_and_fork, fork_flow, generate_habit_iterations,
     model::{
         BlockingMode, CatchupPolicy, ConsumptionKind, CreateFlowItemRequest, CreateFlowRequest,
         Flow, FlowCycleInput, FlowId, FlowItemType, HabitInstanceRef, InstanceTiming, InstanceType,
@@ -5601,4 +5601,66 @@ async fn a_flow_item_can_be_pasted_onto_another_item_inside_the_same_flow() {
         original.parent_type, "flow",
         "the original stays where it was"
     );
+}
+
+/// "Archive & new" archives the original Habit in the same transaction as the fork: the original
+/// stops recurring after the Day the fork was made on, keeping the iterations that had begun, while
+/// the clone carries on as a new flow.
+#[tokio::test]
+async fn archive_and_fork_stops_the_original_recurring() {
+    let pool = helpers::test_pool().await;
+    let flow = helpers::session_factory(&pool)
+        .connect()
+        .await
+        .unwrap()
+        .flows()
+        .create(CreateFlowRequest {
+            title: "Exercise".into(),
+            instance_type: Some(InstanceType::Task),
+            parent_type: "aspect".into(),
+            parent_id: 1,
+            flow_duration_n: Some(1),
+            flow_duration_kind: Some("week".into()),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let start = week_scope_id(&pool, chrono::NaiveDate::from_ymd_opt(2026, 1, 5).unwrap()).await;
+    {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        set_flow_recurrence(&mut db, FlowId(flow.id), destructive_recurrence(start))
+            .await
+            .unwrap();
+        db.commit().await.unwrap();
+    }
+
+    // Forked on Thursday of the third week (2026-01-18..24).
+    let fork_day = chrono::NaiveDate::from_ymd_opt(2026, 1, 22)
+        .unwrap()
+        .and_hms_opt(10, 0, 0)
+        .unwrap();
+    let clone = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let clone = archive_and_fork(&mut db, FlowId(flow.id), fork_day)
+            .await
+            .unwrap();
+        db.commit().await.unwrap();
+        clone
+    };
+    assert_ne!(clone.id, flow.id);
+
+    // A month later the original has generated nothing past the week it was archived in.
+    let later = chrono::NaiveDate::from_ymd_opt(2026, 2, 20)
+        .unwrap()
+        .and_time(chrono::NaiveTime::MIN);
+    let iterations = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let iterations = generate_habit_iterations(&mut db, FlowId(flow.id), later)
+            .await
+            .unwrap();
+        db.commit().await.unwrap();
+        iterations
+    };
+    let anchors: Vec<_> = iterations.iter().map(|it| it.anchor_date.as_str()).collect();
+    assert_eq!(anchors, vec!["2026-01-04", "2026-01-11", "2026-01-18"]);
 }

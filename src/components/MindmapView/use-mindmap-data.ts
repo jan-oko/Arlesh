@@ -43,13 +43,8 @@ import type { ScopeLabelFns } from "@/hooks/use-scope-labels";
 import { useScopeLabels } from "@/hooks/use-scope-labels";
 import type { CanonicalKind } from "@/utils/scope-ref";
 import type { DurationSpec, TimeScope } from "@/api/time-scope";
+import { localNowIso } from "@/utils/local-now";
 
-/** Local wall-clock now as a `YYYY-MM-DDTHH:MM:SS` string for the scope-lifecycle derivation. */
-function localNowIso(): string {
-  const now = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-}
 
 /** Stamps each Task/Goal/Commitment node with its derived lifecycle (Timing, then Resolution or
  * Verdict, then effective Archival). */

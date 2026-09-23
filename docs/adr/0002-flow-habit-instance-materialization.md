@@ -35,6 +35,6 @@ Marked here so the consequences above are not read as current where they no long
 - Of the divergences listed, only **status** (with when it was resolved) is written today. The
   table has columns for a title, a block reason and a tombstone, and `habit_instance_dependencies`
   exists for per-iteration dependency edges, but nothing writes them. The ellipsis node and
-  display-pinning are not built.
+  display-pinning are not built; they were taken out of the spec and are tracked as `Arlesh-9md`.
 - Real children can be attached to one virtual instance (`habit_instance_children`, migration
   `0034`) without materializing it, which keeps the materialize-on-first-touch rejection above.
