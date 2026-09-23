@@ -1,0 +1,114 @@
+.container {
+  display: flex;
+  /* The view fills whatever the shell has left, rather than subtracting the top bar's height from
+     the window's. `ActiveTab` renders the bar and the view as siblings in the shell's flex column,
+     so the leftover space is already the right answer — and subtracting a bar that F11 has stopped
+     drawing is where the white strip along the bottom came from. A zero basis rather than `auto`
+     so the height never depends on the content inside it. */
+  min-height: 0;
+  flex: 1 1 0;
+  flex-direction: column;
+  box-sizing: border-box;
+  padding: var(--space-4);
+  background: var(--canvas-bg);
+  gap: var(--space-3);
+}
+
+/* The header card and the Step's "+" beside it. The card takes the width; the "+" stretches to its
+   height, so the two read as one row. */
+.headerRow {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+
+.headerRow > [data-step-card] {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+/* The children's area. It is measured, and the measurement is what decides the page size — a Step
+   paginates rather than scrolling, so nothing here ever overflows.
+
+   `flex: 1 1 0` rather than `1 1 auto` is load-bearing, not tidying: with a content-derived basis
+   the area's height would depend on the cards in it, and the cards in it depend on the measured
+   height, so the grid would chase its own tail on the first frame. A zero basis makes the height
+   purely what the Step has left to give. `overflow: hidden` is the backstop for the one frame
+   before the observer reports, and for a rounding error that would otherwise show a scrollbar in
+   the view whose whole point is not having one. */
+.children {
+  display: grid;
+  overflow: hidden;
+  min-height: 0;
+  flex: 1 1 0;
+  align-content: start;
+  justify-content: start;
+  gap: var(--step-card-gap);
+  grid-template-columns: repeat(var(--step-columns), var(--step-card-width));
+}
+
+.empty {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 0;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  gap: var(--space-3);
+}
+
+.createBtn {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--node-border);
+  border-radius: var(--node-radius);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+}
+
+.createBtn:hover {
+  border-color: var(--node-border-selected);
+}
+
+/* The landing between pages. Deliberately unlike the cards and unlike the breadcrumb: turning a
+   page is neither descending nor climbing, and it must not look like either. */
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  gap: var(--space-3);
+}
+
+.pagerBtn {
+  padding: 0 var(--space-2);
+  border: 1px solid var(--node-border);
+  border-radius: var(--node-radius);
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: var(--text-base);
+  line-height: 1.6;
+}
+
+.pagerBtn:disabled {
+  color: var(--text-secondary);
+  cursor: default;
+  opacity: 0.4;
+}
+
+.centered {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+}

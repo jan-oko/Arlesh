@@ -7,6 +7,7 @@ import { TAB_BINDINGS } from "@/utils/hotkeys/tab-bindings";
 import { MINDMAP_BINDINGS } from "@/utils/hotkeys/mindmap-bindings";
 import { LIST_BINDINGS } from "@/utils/hotkeys/list-bindings";
 import { PLAN_BINDINGS } from "@/utils/hotkeys/plan-bindings";
+import { STEPS_BINDINGS } from "@/utils/hotkeys/steps-bindings";
 import { useInputCapture } from "@/hooks/use-input-capture";
 import styles from "./HotkeysModal.module.css";
 
@@ -20,11 +21,13 @@ const SECTIONS: ReadonlyArray<{ section: Section; titleKey: HotkeyLabelKey }> = 
   { section: "mindmap", titleKey: "sectionMindmap" },
   { section: "listView", titleKey: "sectionListView" },
   { section: "planView", titleKey: "sectionPlanView" },
+  { section: "stepsView", titleKey: "sectionStepsView" },
 ];
 
 /** Every binding in the app, display-side only — the same tables the handlers dispatch from. */
 const ALL_BINDINGS: readonly BindingMeta[] = [
   ...GLOBAL_BINDINGS, ...TAB_BINDINGS, ...MINDMAP_BINDINGS, ...LIST_BINDINGS, ...PLAN_BINDINGS,
+  ...STEPS_BINDINGS,
 ];
 
 interface Row {

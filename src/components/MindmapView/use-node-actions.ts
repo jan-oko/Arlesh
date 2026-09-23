@@ -2,21 +2,16 @@ import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { findNode, findParent, collectAllNodeIds } from "@/utils/mindmap-tree";
-import { rowIdOf } from "@/utils/node-identity";
 import { canAdoptChildren, canParentAnyNewChild, canParentNewChild, validParentKinds } from "@/utils/node-meta";
 import { pasteRefusal, countPasteRefusals, pasteRefusalKey, flowsLeftBehind, PASTE_REFUSAL } from "@/utils/paste-refusal";
 import type { PasteRefusal, PasteRefusalCount } from "@/utils/paste-refusal";
 import type { TypedChildKind } from "@/utils/node-meta";
-import { updateTask } from "@/api/tasks";
 import type { TaskAgentic } from "@/api/tasks";
 import { storedAgenticState } from "@/utils/agentic";
-import { updateGoal } from "@/api/goals";
-import { TASK_STATUS, GOAL_STATUS } from "@/utils/status-mapping";
-import { cameOutOfBacklog, nextTaskStatus } from "@/utils/task-status-cycle";
 import { CLIPBOARD_OP } from "@/stores/use-clipboard-store";
 import { withGesture } from "@/api/gesture";
 import { getErrorMessage } from "@/api/errors";
-import { useOccurrenceCompletion } from "@/hooks/use-occurrence-completion";
+import { useStatusCycle } from "@/hooks/use-status-cycle";
 import type { OccurrencePrompt } from "@/hooks/use-occurrence-completion";
 
 const LOG_PREFIX = "[arlesh]";
@@ -76,65 +71,13 @@ export function useNodeActions({
   createNode, createChild, selectNode, setClipboard, setEditingNodeId, showToast, onNewFlow, onNewCommitment,
 }: Options): Result {
   const { t } = useTranslation(["warnings", "nodeKinds", "undo"]);
-  const { prompt: occurrencePrompt, setOccurrenceStatus, confirm: confirmOccurrence,
-    cancel: cancelOccurrence } = useOccurrenceCompletion(reload);
+  // Advancing a status is one definition, shared with every other surface that draws the gesture
+  // — the occurrence completion guard and the Backlog clearing travel with it.
+  const { cycleStatus, occurrencePrompt, confirmOccurrence, cancelOccurrence } = useStatusCycle({
+    findNode: (id) => findNode(tree, id), reload, showToast,
+  });
 
-  const onStatusClick = useCallback(
-    (nodeId: string) => {
-      const node = findNode(tree, nodeId);
-      if (node === undefined) return;
-      // A virtual Habit instance (an item, or the iteration root `flow_root`) advances just itself: a
-      // goal toggles achieved; a task cycles todo → in_progress → done. `null` clears the Modification
-      // (back to the base status). A goal's "achieved" is stored canonically as `done`.
-      //
-      // A commitment iteration is excluded: it is kept or broken, never advanced. Like a real
-      // Commitment it has no status control to click on the canvas — the tick and the cross are
-      // List View's — but the canvas is not silent about it either: Enter cycles its verdict and X
-      // records Broken, both through `useCommitmentVerdict`, which writes an iteration's verdict as
-      // its Modification exactly as this branch writes an ordinary instance's status.
-      if (node.habitItem !== undefined && node.kind !== "commitment") {
-        let next: string | null;
-        if (node.kind === "goal") {
-          next = node.status === GOAL_STATUS.ACHIEVED ? null : TASK_STATUS.DONE;
-        } else {
-          const cycled = nextTaskStatus(node.status ?? TASK_STATUS.TODO);
-          next = cycled === TASK_STATUS.TODO ? null : cycled;
-        }
-        // Through the completion guard: marking an occurrence done while it still holds
-        // unfinished added children asks first, and names them.
-        setOccurrenceStatus(node, next);
-        return;
-      }
-      // A real goal toggles active ↔ achieved on click (like a habit goal instance) — no modal needed.
-      if (node.kind === "goal") {
-        const dbId = rowIdOf(node);
-        const next = node.status === GOAL_STATUS.ACHIEVED ? GOAL_STATUS.ACTIVE : GOAL_STATUS.ACHIEVED;
-        void updateGoal(dbId, { status: next })
-          .then(() => reload())
-          .catch((err: unknown) => {
-            console.error(`${LOG_PREFIX} goal status toggle failed:`, err);
-            showToast({ nodeId, message: t("warnings:statusChangeFailed", { message: getErrorMessage(err) }) });
-          });
-        return;
-      }
-      if (node.kind !== "task") return;
-      const dbId = rowIdOf(node);
-      void updateTask(dbId, { status: nextTaskStatus(node.status ?? TASK_STATUS.TODO) })
-        .then(async (updated) => {
-          // Starting a set-aside task takes it out of the backlog, in the same write and so in the
-          // same undo step. The row that comes back says whether it did; it is never assumed.
-          if (cameOutOfBacklog(node, updated)) {
-            showToast({ nodeId, message: t("warnings:backlogClearedByStart") });
-          }
-          await reload();
-        })
-        .catch((err: unknown) => {
-          console.error(`${LOG_PREFIX} status cycle failed:`, err);
-          showToast({ nodeId, message: t("warnings:statusChangeFailed", { message: getErrorMessage(err) }) });
-        });
-    },
-    [tree, reload, setOccurrenceStatus, showToast, t],
-  );
+  const onStatusClick = cycleStatus;
 
   const onCommitEdit = useCallback(
     (nodeId: string, title: string) => {

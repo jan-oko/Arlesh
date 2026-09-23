@@ -78,7 +78,7 @@ describe("seeding a tab", () => {
   it("starts it where the restored state says, rather than at the defaults", () => {
     const stores = createTabStores({
       subtreeRootId: "project-7",
-      view: { view: "list", mindmapOrientation: "vertical", planScopeKind: "day" },
+      view: { view: "list", mindmapOrientation: "vertical", planScopeKind: "day", stepsZoom: 4 },
       filter: { ...DEFAULT_FILTER, statusMode: "start" },
       listFilter: { ...DEFAULT_LIST_FILTER, preset: "unblock" },
       expandedHabitGroupIds: ["habitrun-4-virtual"],

@@ -2,6 +2,7 @@ import TopBar from "@/components/TopBar/TopBar";
 import MindmapView from "@/components/MindmapView/MindmapView";
 import ListView from "@/components/ListView/ListView";
 import PlanView from "@/components/PlanView/PlanView";
+import StepsView from "@/components/StepsView/StepsView";
 import { useViewStore } from "@/stores/use-view-store";
 import { useFullscreenStore } from "@/stores/use-fullscreen-store";
 import { useGlobalHotkeys } from "@/hooks/use-global-hotkeys";
@@ -28,6 +29,7 @@ export default function ActiveTab() {
       {view === "mindmap" && <MindmapView />}
       {view === "list" && <ListView />}
       {view === "plan" && <PlanView />}
+      {view === "steps" && <StepsView />}
     </>
   );
 }
