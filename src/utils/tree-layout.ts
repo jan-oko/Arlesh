@@ -1,6 +1,6 @@
 import { hierarchy, tree } from "d3-hierarchy";
 import type { TimeScope } from "@/api/time-scope";
-import type { InstanceType, FlowItemType, HabitInstanceType } from "@/api/flows";
+import type { InstanceType, FlowItemType, FlowItemRef, HabitInstanceType } from "@/api/flows";
 import type { OnScopeExit, Timing, Resolution } from "@/api/scope-lifecycle";
 import type { Verdict } from "@/api/verdict";
 import type { DurationSpec } from "@/api/time-scope";
@@ -256,6 +256,8 @@ export interface MindmapNode {
   planOverridden?: boolean;
   /** Present on a virtual Habit task occurrence: the Cycle Plan the template gives it. */
   cyclePlan?: TimeScope | null;
+  /** Present on a virtual Habit **item** occurrence: what it diverges by, for its editor. */
+  occurrence?: OccurrenceMeta;
   flow?: FlowData;
   flowItem?: FlowItemData;
   /** Whether this node is marked private — hidden (with its subtree) outside Private Mode. */
@@ -268,6 +270,24 @@ export interface MindmapNode {
   position: number;
   tagIds: number[];
   children: MindmapNode[];
+}
+
+/**
+ * What one Habit item occurrence diverges from its template by — everything its editor shows. The
+ * node's own fields already carry the effects (its title, block reasons, plan, archival); this is
+ * what they came from.
+ */
+export interface OccurrenceMeta {
+  /** The flow item's title — what clearing the occurrence's own title returns to. */
+  templateTitle: string;
+  /** The occurrence's own title, or `null` when it reads the template's. */
+  ownTitle: string | null;
+  /** The occurrence's block reason, or `null`. */
+  blockedReason: string | null;
+  /** The flow items it waits on in this iteration. */
+  dependsOn: FlowItemRef[];
+  /** Whether it was deleted from its iteration on its own. */
+  deleted: boolean;
 }
 
 export interface Position {

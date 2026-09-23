@@ -17,6 +17,7 @@ import { withGesture } from "@/api/gesture";
 import { getErrorMessage } from "@/api/errors";
 import { useOccurrenceCompletion } from "@/hooks/use-occurrence-completion";
 import type { OccurrencePrompt } from "@/hooks/use-occurrence-completion";
+import { useOccurrenceDelete } from "@/hooks/use-occurrence-delete";
 
 const LOG_PREFIX = "[arlesh]";
 
@@ -77,6 +78,7 @@ export function useNodeActions({
   const { t } = useTranslation(["warnings", "nodeKinds", "undo"]);
   const { prompt: occurrencePrompt, setOccurrenceStatus, confirm: confirmOccurrence,
     cancel: cancelOccurrence } = useOccurrenceCompletion(reload);
+  const deleteOccurrences = useOccurrenceDelete({ reload, showToast });
 
   const onStatusClick = useCallback(
     (nodeId: string) => {
@@ -280,13 +282,23 @@ export function useNodeActions({
       // and there is no gesture anywhere that removes one. `Delete` on an Aspect alone used to be
       // an inert key — indistinguishable from a dead one — and in a mixed selection it took
       // everything else and said nothing about what it had dropped.
+      // A selection of virtual Habit nodes alone goes its own way: item occurrences are deleted
+      // from their iterations, and an iteration root refuses it. Mixed with real nodes, it falls
+      // through to the refusal below, whole.
+      if (deleteOccurrences(nodes)) return;
+
       const refused = nodes.filter((node) => node.virtual === true || node.kind === "aspect");
       const first = refused[0];
       if (first !== undefined) {
         // One toast, both sentences: the store holds a single pending notice, so a selection that
         // trips both rules has to say both at once or say one of them into nothing.
         const messages: string[] = [];
-        if (refused.some((node) => node.virtual === true)) messages.push(t("warnings:deleteRepetitionRefused"));
+        const virtual = refused.filter((node) => node.virtual === true);
+        if (virtual.some((node) => node.habitItem?.itemType === "flow_root" || node.habitItem === undefined)) {
+          messages.push(t("warnings:deleteRepetitionRefused"));
+        } else if (virtual.length > 0) {
+          messages.push(t("warnings:deleteOccurrenceMixed"));
+        }
         if (refused.some((node) => node.kind === "aspect")) messages.push(t("warnings:deleteAspectRefused"));
         showToast({ nodeId: first.id, message: messages.join(" ") });
         return;
@@ -294,7 +306,7 @@ export function useNodeActions({
 
       if (nodes.length > 0) onRequestDelete(nodes.map((node) => node.id));
     },
-    [tree, onRequestDelete, showToast, t],
+    [tree, onRequestDelete, showToast, t, deleteOccurrences],
   );
 
   /**

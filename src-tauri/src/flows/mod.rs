@@ -16,6 +16,7 @@
 pub mod error;
 pub mod habits;
 pub mod model;
+pub mod occurrence;
 mod render;
 
 use std::collections::{HashMap, VecDeque};
@@ -43,13 +44,15 @@ use habits::{
     classify_iterations, expire_unanswered, instance_timing, Catchup, Consumption, SlotWindow,
 };
 use model::{
-    BlockingMode, ChildAttachment, ConsumptionKind, CreateFlowItemRequest, CreateFlowRequest, Flow,
-    FlowCycleInput, FlowDependency, FlowGoal, FlowId, FlowItemCycle, FlowItemType, FlowOrigin,
-    FlowRecurrence, FlowTask, HabitInstance, HabitInstanceChild, HabitInstanceRef, HabitItemStatus,
-    HabitIteration, InstanceType, IterationStatus, MaterializedFlow, PlanOverride,
-    SetRecurrenceRequest, StartFlowRequest, TargetRef, UnfinishedChild, UpdateFlowItemRequest,
-    UpdateFlowRequest, NO_CYCLE,
+    BlockingMode, ChildAttachment, ConsumptionKind, CreateFlowItemRequest, CreateFlowRequest,
+    DependencyDivergence, Flow, FlowCycleInput, FlowDependency, FlowGoal, FlowId, FlowItemCycle,
+    FlowItemRef, FlowItemType, FlowOrigin, FlowRecurrence, FlowTask, HabitInstance,
+    HabitInstanceChild, HabitInstanceRef, HabitItemStatus, HabitIteration, InstanceTiming,
+    InstanceType, IterationStatus, MaterializedFlow, PlanOverride, SetRecurrenceRequest,
+    StartFlowRequest, TargetRef, UnfinishedChild, UpdateFlowItemRequest, UpdateFlowRequest,
+    NO_CYCLE,
 };
+use occurrence::OccurrenceOverlay;
 use render::{
     render, FlowTemplate, NodeRef, PlannedSource, RenderedPlan, ResolvedPair, ScopeTable,
     TemplateItem,
@@ -63,10 +66,6 @@ const ROOT_INSTANCE_TYPE: &str = "flow_root";
 /// One occurrence's identity as its Modification row is keyed:
 /// `(item_type, item_id, iteration_scope_id, cycle_id)`.
 pub type InstanceKey = (String, i64, i64, i64);
-
-/// One overridden occurrence as it is read off the overlay: its [`InstanceKey`] fields, then the
-/// override window's `plan_start_id` and `plan_end_id`.
-type PlanOverrideRow = (String, i64, i64, i64, Option<i64>, Option<i64>);
 
 /// Advances `date` by `k` (possibly zero) periods of `kind`; `None` on calendar overflow.
 fn advance(date: NaiveDate, k: i64, kind: &str) -> Option<NaiveDate> {
@@ -1395,13 +1394,21 @@ impl<'session> FlowOperator<'session> {
             .await?;
             return self.prune_empty_modifications(flow_id).await;
         }
+        // An occurrence deleted from this iteration is not one of its instances any more, so
+        // closing the iteration does not write it back.
+        let deleted = self
+            .deleted_in_iteration(flow_id, iteration_scope_id)
+            .await?;
         for (item_type, item_id, cycle_id) in self.iteration_instance_keys(flow_id).await? {
+            if deleted.contains(&(item_type.clone(), item_id, cycle_id)) {
+                continue;
+            }
             sqlx::query(
                 "INSERT INTO habit_instance_modifications
                     (flow_id, item_type, item_id, iteration_scope_id, cycle_id, status, resolved_at)
                  VALUES (?, ?, ?, ?, ?, 'done', ?)
                  ON CONFLICT(item_type, item_id, iteration_scope_id, cycle_id)
-                 DO UPDATE SET status = 'done', resolved_at = excluded.resolved_at, tombstone_kind = NULL",
+                 DO UPDATE SET status = 'done', resolved_at = excluded.resolved_at",
             )
             .bind(flow_id.0)
             .bind(&item_type)
@@ -1495,7 +1502,7 @@ impl<'session> FlowOperator<'session> {
                         (flow_id, item_type, item_id, iteration_scope_id, cycle_id, status, resolved_at)
                      VALUES (?, ?, ?, ?, ?, ?, ?)
                      ON CONFLICT(item_type, item_id, iteration_scope_id, cycle_id)
-                     DO UPDATE SET status = excluded.status, resolved_at = excluded.resolved_at, tombstone_kind = NULL",
+                     DO UPDATE SET status = excluded.status, resolved_at = excluded.resolved_at",
                 )
                 .bind(flow_id.0)
                 .bind(item_type)
@@ -1513,7 +1520,7 @@ impl<'session> FlowOperator<'session> {
                 sqlx::query(
                     "UPDATE habit_instance_modifications SET status = NULL, resolved_at = NULL
                      WHERE flow_id = ? AND item_type = ? AND item_id = ? AND iteration_scope_id = ?
-                       AND cycle_id = ? AND tombstone_kind IS NULL",
+                       AND cycle_id = ?",
                 )
                 .bind(flow_id.0)
                 .bind(item_type)
@@ -1526,35 +1533,6 @@ impl<'session> FlowOperator<'session> {
             }
         }
         Ok(())
-    }
-
-    /// Every occurrence of this Habit whose Plan is its own, keyed as its Modification row is:
-    /// `(item_type, item_id, iteration_scope_id, cycle_id)`.
-    ///
-    /// Only rows that override; an occurrence missing from the map follows its Cycle Plan.
-    pub async fn plan_overrides(
-        &mut self,
-        flow_id: FlowId,
-    ) -> Result<HashMap<InstanceKey, PlanOverride>, FlowError> {
-        let rows: Vec<PlanOverrideRow> = sqlx::query_as(
-            "SELECT item_type, item_id, iteration_scope_id, cycle_id, plan_start_id, plan_end_id
-             FROM habit_instance_modifications
-             WHERE flow_id = ? AND plan_overridden = 1",
-        )
-        .bind(flow_id.0)
-        .fetch_all(&mut *self.connection)
-        .await?;
-        Ok(rows
-            .into_iter()
-            .map(
-                |(item_type, item_id, scope_id, cycle_id, start_id, end_id)| {
-                    (
-                        (item_type, item_id, scope_id, cycle_id),
-                        PlanOverride::from_columns(true, start_id, end_id),
-                    )
-                },
-            )
-            .collect())
     }
 
     /// Writes one occurrence's Plan override, or clears it with [`PlanOverride::Inherit`].
@@ -1636,8 +1614,9 @@ impl<'session> FlowOperator<'session> {
     /// prompt fires on.
     ///
     /// An iteration diverges when it has been completed, when one of its occurrences has been
-    /// given a Plan of its own, **or** when something has been hung on one of its occurrences.
-    /// All three are work the user did against that iteration specifically, and
+    /// edited on its own — its title, block reason or Plan, or deleted — when its dependencies
+    /// differ from the template's, **or** when something has been hung on one of its occurrences.
+    /// All of them are work the user did against that iteration specifically, and
     /// delete-and-regenerate destroys them, so each has to raise the prompt that says so. Counted
     /// over the union of the two tables' iteration scopes rather than summed, so an iteration that
     /// is completed *and* carries an added child counts once.
@@ -1645,12 +1624,17 @@ impl<'session> FlowOperator<'session> {
         let count: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM (
                  SELECT iteration_scope_id FROM habit_instance_modifications
-                 WHERE flow_id = ? AND (status = 'done' OR plan_overridden = 1)
-                   AND tombstone_kind IS NULL
+                 WHERE flow_id = ?
+                   AND ((status = 'done' AND tombstone_kind IS NULL) OR plan_overridden = 1
+                        OR title IS NOT NULL OR blocked_reason IS NOT NULL
+                        OR tombstone_kind IS NOT NULL)
+                 UNION
+                 SELECT iteration_scope_id FROM habit_instance_dependencies WHERE flow_id = ?
                  UNION
                  SELECT iteration_scope_id FROM habit_instance_children WHERE flow_id = ?
              )",
         )
+        .bind(flow_id.0)
         .bind(flow_id.0)
         .bind(flow_id.0)
         .fetch_one(&mut *self.connection)
@@ -1668,6 +1652,10 @@ impl<'session> FlowOperator<'session> {
     pub async fn clear_habit_modifications(&mut self, flow_id: FlowId) -> Result<(), FlowError> {
         self.delete_instance_children(flow_id).await?;
         sqlx::query("DELETE FROM habit_instance_modifications WHERE flow_id = ?")
+            .bind(flow_id.0)
+            .execute(&mut *self.connection)
+            .await?;
+        sqlx::query("DELETE FROM habit_instance_dependencies WHERE flow_id = ?")
             .bind(flow_id.0)
             .execute(&mut *self.connection)
             .await?;
@@ -2285,6 +2273,8 @@ impl<'session> FlowOperator<'session> {
     ) -> Result<HashMap<i64, NaiveDateTime>, FlowError> {
         // Instances = the flow root + each flow item once per cycle pair (once when it has none).
         let instance_count = self.iteration_instance_keys(flow_id).await?.len();
+        // An occurrence deleted from an iteration no longer has to be done for it to resolve.
+        let deleted = self.deleted_per_iteration(flow_id).await?;
         let rows: Vec<(i64, i64, Option<i64>)> = sqlx::query_as(
             "SELECT iteration_scope_id, COUNT(*), MAX(resolved_at)
              FROM habit_instance_modifications
@@ -2302,7 +2292,9 @@ impl<'session> FlowOperator<'session> {
         let mut resolved = HashMap::new();
         for slot in slots {
             if let Some((done, last)) = by_scope.get(&slot.scope_id) {
-                if *done as usize == instance_count {
+                let expected = instance_count
+                    .saturating_sub(deleted.get(&slot.scope_id).copied().unwrap_or(0));
+                if *done as usize == expected {
                     // `resolved_at` is epoch-ms; treated as a UTC-naive instant for classification.
                     // Sub-day-precision timezone reconciliation is deferred to the 8.4 write path.
                     let instant = last
@@ -2623,37 +2615,12 @@ pub async fn set_instance_plan(
     instance: &HabitInstanceRef,
     plan: &PlanOverride,
 ) -> Result<(), FlowError> {
-    if instance.item_type != FlowItemType::FlowTask.as_str() {
-        return Err(FlowError::Invalid(format!(
-            "only a task occurrence carries a Plan of its own — not a {}",
-            instance.item_type
-        )));
-    }
-    if db
-        .flows()
-        .item_flow_id(FlowItemType::FlowTask, instance.item_id)
-        .await?
-        != flow_id.0
-    {
+    if occurrence::item_occurrence(db, flow_id, instance).await? != FlowItemType::FlowTask {
         return Err(FlowError::Invalid(
-            "that occurrence belongs to another flow".to_string(),
+            "only a task occurrence carries a Plan of its own — a goal has no Plan".to_string(),
         ));
     }
-    if instance.cycle_id != NO_CYCLE {
-        let pair = db.flows().cycle(instance.cycle_id).await?;
-        let drawn_by_item = pair.is_some_and(|pair| {
-            pair.item_type == instance.item_type && pair.item_id == instance.item_id
-        });
-        if !drawn_by_item {
-            return Err(FlowError::Invalid(
-                "that cycle pair does not draw this occurrence".to_string(),
-            ));
-        }
-    }
     let flow = db.flows().get(flow_id).await?;
-    if db.flows().get_recurrence(flow_id).await?.is_none() {
-        return Err(FlowError::Invalid("flow is not a habit".to_string()));
-    }
     if let PlanOverride::Planned { plan: window } = plan {
         let occurrence = occurrence_window(db, &flow, instance).await?;
         let outer = time_scope_window(db, &occurrence).await?;
@@ -2944,11 +2911,15 @@ pub async fn generate_habit_iterations(
     // Each iteration's occurrences: the same items, resolved against that iteration's own window.
     let items = db.flows().instance_items(flow_id).await?;
     let cycles = db.flows().cycles_by_item(flow_id).await?;
-    let plan_overrides = db.flows().plan_overrides(flow_id).await?;
+    let overlays = db.flows().occurrence_overlays(flow_id).await?;
+    let dependencies = db.flows().flow_dependencies(flow_id).await?;
+    let dependency_divergences = db.flows().dependency_divergences(flow_id).await?;
     let shape = HabitShape {
         items: &items,
         cycles: &cycles,
-        plan_overrides: &plan_overrides,
+        overlays: &overlays,
+        dependencies: &dependencies,
+        dependency_divergences: &dependency_divergences,
         consumption,
     };
     let by_index: HashMap<i64, &SlotWindow> = slots.iter().map(|slot| (slot.index, slot)).collect();
@@ -2979,28 +2950,67 @@ struct HabitShape<'template> {
     /// Each item's cycle pairs in position order, keyed `(item_type, item_id)`. An item missing
     /// from the map declares none.
     cycles: &'template HashMap<(String, i64), Vec<FlowItemCycle>>,
-    /// The occurrences whose Plan is their own, keyed as their Modification row is. An occurrence
-    /// missing from the map follows its Cycle Plan.
-    plan_overrides: &'template HashMap<InstanceKey, PlanOverride>,
+    /// What each touched occurrence diverges by, keyed as its Modification row is. An occurrence
+    /// missing from the map reads the template in everything but its status.
+    overlays: &'template HashMap<InstanceKey, OccurrenceOverlay>,
+    /// The template's dependency edges.
+    dependencies: &'template [FlowDependency],
+    /// Each iteration's additions to and removals from those edges.
+    dependency_divergences: &'template [DependencyDivergence],
     /// The Habit's Consumption, which decides when an occurrence's passed window makes it past.
     consumption: Consumption,
 }
 
+/// Where one occurrence sits: which item and pair drew it, its window, its Cycle Plan and its
+/// Timing — what the template and the calendar say, before the overlay has had its say.
+struct Drawn<'item> {
+    /// The flow item's table.
+    item_type: &'item str,
+    /// The flow item's id.
+    item_id: i64,
+    /// The pair that drew it, or [`NO_CYCLE`].
+    cycle_id: i64,
+    /// Its resolved Cycle Scope, if its pair names one.
+    time_scope: Option<TimeScope>,
+    /// Its resolved Cycle Plan, if its pair carries one.
+    cycle_plan: Option<TimeScope>,
+    /// Where it stands at the reference instant.
+    timing: InstanceTiming,
+}
+
 impl HabitShape<'_> {
-    /// One occurrence's effective Plan and whether it is its own: the override stored against
-    /// `(item, this iteration, pair)` when there is one, else the Cycle Plan.
-    fn plan_of(
-        &self,
-        item_type: &str,
-        item_id: i64,
-        slot: &SlotWindow,
-        cycle_id: i64,
-        cycle_plan: Option<TimeScope>,
-    ) -> (Option<TimeScope>, bool) {
-        let key = (item_type.to_string(), item_id, slot.scope_id, cycle_id);
-        match self.plan_overrides.get(&key) {
-            Some(own) => (own.effective_plan(cycle_plan), own.is_override()),
-            None => (cycle_plan, false),
+    /// One occurrence as it renders: what the template drew, with this occurrence's own overlay
+    /// and this iteration's dependencies applied.
+    fn occurrence(&self, slot: &SlotWindow, drawn: Drawn<'_>) -> HabitInstance {
+        let key = (
+            drawn.item_type.to_string(),
+            drawn.item_id,
+            slot.scope_id,
+            drawn.cycle_id,
+        );
+        let overlay = self.overlays.get(&key).cloned().unwrap_or_default();
+        let item = FlowItemRef {
+            item_type: drawn.item_type.to_string(),
+            item_id: drawn.item_id,
+        };
+        HabitInstance {
+            item_type: item.item_type.clone(),
+            item_id: drawn.item_id,
+            cycle_id: drawn.cycle_id,
+            time_scope: drawn.time_scope,
+            plan: overlay.plan.effective_plan(drawn.cycle_plan.clone()),
+            cycle_plan: drawn.cycle_plan,
+            plan_overridden: overlay.plan.is_override(),
+            title: overlay.title,
+            blocked_reason: overlay.blocked_reason,
+            deleted: overlay.deleted,
+            depends_on: occurrence::effective_dependencies(
+                self.dependencies,
+                self.dependency_divergences,
+                slot.scope_id,
+                &item,
+            ),
+            timing: drawn.timing,
         }
     }
 }
@@ -3039,17 +3049,17 @@ async fn resolve_iteration_instances(
         // An item with no pairs is one occurrence with no window of its own: it is relevant for
         // exactly as long as the iteration around it is, which is what it has always been.
         if pairs.is_empty() {
-            let (plan, plan_overridden) = shape.plan_of(item_type, *item_id, slot, NO_CYCLE, None);
-            instances.push(HabitInstance {
-                item_type: item_type.clone(),
-                item_id: *item_id,
-                cycle_id: NO_CYCLE,
-                time_scope: None,
-                plan,
-                cycle_plan: None,
-                plan_overridden,
-                timing: instance_timing(shape.consumption, status, (slot.start, slot.end), now),
-            });
+            instances.push(shape.occurrence(
+                slot,
+                Drawn {
+                    item_type,
+                    item_id: *item_id,
+                    cycle_id: NO_CYCLE,
+                    time_scope: None,
+                    cycle_plan: None,
+                    timing: instance_timing(shape.consumption, status, (slot.start, slot.end), now),
+                },
+            ));
             continue;
         }
         for pair in pairs {
@@ -3063,18 +3073,17 @@ async fn resolve_iteration_instances(
                     }
                     None => (None, None, slot.start, slot.end),
                 };
-            let (plan, plan_overridden) =
-                shape.plan_of(item_type, *item_id, slot, pair.id, cycle_plan.clone());
-            instances.push(HabitInstance {
-                item_type: item_type.clone(),
-                item_id: *item_id,
-                cycle_id: pair.id,
-                time_scope,
-                plan,
-                cycle_plan,
-                plan_overridden,
-                timing: instance_timing(shape.consumption, status, (start, end), now),
-            });
+            instances.push(shape.occurrence(
+                slot,
+                Drawn {
+                    item_type,
+                    item_id: *item_id,
+                    cycle_id: pair.id,
+                    time_scope,
+                    cycle_plan,
+                    timing: instance_timing(shape.consumption, status, (start, end), now),
+                },
+            ));
         }
     }
     Ok(instances)

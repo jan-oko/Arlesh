@@ -14,8 +14,8 @@ use crate::{
         self,
         model::{
             CreateFlowItemRequest, CreateFlowRequest, Flow, FlowCycleInput, FlowDependency,
-            FlowGoal, FlowId, FlowItemCycle, FlowItemType, FlowOrigin, FlowRecurrence, FlowTask,
-            HabitInstanceChild, HabitInstanceRef, HabitItemStatus, HabitIteration,
+            FlowGoal, FlowId, FlowItemCycle, FlowItemRef, FlowItemType, FlowOrigin, FlowRecurrence,
+            FlowTask, HabitInstanceChild, HabitInstanceRef, HabitItemStatus, HabitIteration,
             MaterializedFlow, PlanOverride, SetRecurrenceRequest, StartFlowRequest, TargetRef,
             UnfinishedChild, UpdateFlowItemRequest, UpdateFlowRequest,
         },
@@ -535,6 +535,70 @@ pub async fn set_habit_instance_plan(
 ) -> Result<(), WireError> {
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
     flows::set_instance_plan(&mut db, FlowId(flow_id), &instance, &plan)
+        .await
+        .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)
+}
+
+/// Gives one habit occurrence its own title; `null`, an empty title or the flow item's own title
+/// hands it back to the template's. Nothing about the template, or any other occurrence, changes.
+#[tauri::command]
+pub async fn set_habit_instance_title(
+    factory: State<'_, SessionFactory>,
+    flow_id: i64,
+    instance: HabitInstanceRef,
+    title: Option<String>,
+) -> Result<(), WireError> {
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    flows::occurrence::set_instance_title(&mut db, FlowId(flow_id), &instance, title)
+        .await
+        .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)
+}
+
+/// Gives one habit occurrence a block reason, or clears it with `null` (or an empty one).
+#[tauri::command]
+pub async fn set_habit_instance_block_reason(
+    factory: State<'_, SessionFactory>,
+    flow_id: i64,
+    instance: HabitInstanceRef,
+    reason: Option<String>,
+) -> Result<(), WireError> {
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    flows::occurrence::set_instance_block_reason(&mut db, FlowId(flow_id), &instance, reason)
+        .await
+        .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)
+}
+
+/// Deletes one habit occurrence from its iteration alone (`deleted` true), or restores it.
+/// Refused while it still holds something — an added child, or its child items' occurrences.
+#[tauri::command]
+pub async fn set_habit_instance_deleted(
+    factory: State<'_, SessionFactory>,
+    flow_id: i64,
+    instance: HabitInstanceRef,
+    deleted: bool,
+) -> Result<(), WireError> {
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    flows::occurrence::set_instance_deleted(&mut db, FlowId(flow_id), &instance, deleted)
+        .await
+        .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)
+}
+
+/// Sets everything one task occurrence waits on in its iteration. `depends_on` is the whole set;
+/// the template's own set clears every divergence. Applies to every occurrence of the item in that
+/// iteration, and a set that makes the iteration circular is refused.
+#[tauri::command]
+pub async fn set_habit_instance_dependencies(
+    factory: State<'_, SessionFactory>,
+    flow_id: i64,
+    instance: HabitInstanceRef,
+    depends_on: Vec<FlowItemRef>,
+) -> Result<(), WireError> {
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    flows::occurrence::set_instance_dependencies(&mut db, FlowId(flow_id), &instance, depends_on)
         .await
         .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)

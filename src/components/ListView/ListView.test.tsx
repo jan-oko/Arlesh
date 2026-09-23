@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, act } from "@testing-library/react";
+import { render, screen, fireEvent, act, waitFor } from "@testing-library/react";
 import ListView from "./ListView";
 import { useGlobalHotkeys } from "@/hooks/use-global-hotkeys";
 import { useFilterStore } from "@/stores/use-filter-store";
@@ -30,7 +30,7 @@ vi.mock("@/components/MindmapView/use-node-editor", () => ({
     onTaskSave: vi.fn(),
     onCommitmentSave: vi.fn(),
     checkScopeClamp: vi.fn(),
-    occurrencePlan: { target: null, open: vi.fn(), close: vi.fn(), save: vi.fn() },
+    occurrenceEditor: { target: null, open: vi.fn(), close: vi.fn(), save: vi.fn(), setDeleted: vi.fn() },
   }),
 }));
 vi.mock("@/components/TaskEditorModal/TaskEditorModal", () => ({ default: () => <div data-testid="editor-modal" /> }));
@@ -41,9 +41,11 @@ vi.mock("@/api/commitments", async (importOriginal) => ({
   updateCommitment: (id: number, request: unknown) => updateCommitment(id, request),
 }));
 const setHabitItemStatus = vi.fn((..._args: unknown[]) => Promise.resolve());
+const setHabitInstanceDeleted = vi.fn((..._args: unknown[]) => Promise.resolve());
 vi.mock("@/api/flows", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/flows")>()),
   setHabitItemStatus: (...args: unknown[]) => setHabitItemStatus(...args),
+  setHabitInstanceDeleted: (...args: unknown[]) => setHabitInstanceDeleted(...args),
 }));
 vi.mock("@/hooks/use-tag-names", () => ({ useTagNames: () => new Map() }));
 vi.mock("@/hooks/use-scope-range-label", () => ({ useScopeRangeLabel: () => null }));
@@ -1371,7 +1373,7 @@ describe("ListView — deleting a row", () => {
 
   // Derived at load time: there is no row behind it, and the Habit's template is not what Delete on
   // one occurrence should take away.
-  it("refuses a Habit repetition out loud rather than doing nothing", () => {
+  it("deletes a Habit occurrence from its iteration alone, without the row delete's confirmation", async () => {
     const occurrence = n("habititem-flow_task-2-1-0-virtual", "task", {
       status: "todo",
       virtual: true,
@@ -1382,7 +1384,10 @@ describe("ListView — deleting a row", () => {
     deleteRow("habititem-flow_task-2-1-0-virtual");
     expect(screen.queryByText("warnings:deleteHeading")).not.toBeInTheDocument();
     expect(removeNode).not.toHaveBeenCalled();
-    expect(useMindmapStore.getState().pendingToast).not.toBeNull();
+    await waitFor(() => expect(setHabitInstanceDeleted).toHaveBeenCalledWith(
+      { flowId: 1, itemType: "flow_task", itemId: 2, scopeId: 3, cycleId: 4 }, true,
+    ));
+    await waitFor(() => expect(useMindmapStore.getState().pendingToast).not.toBeNull());
   });
 
   describe("where the selection lands", () => {

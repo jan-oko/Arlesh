@@ -249,6 +249,17 @@ export interface HabitInstance {
   cycle_plan: TimeScope | null;
   /** Whether the Plan is this occurrence's own rather than the Cycle Plan's. */
   plan_overridden: boolean;
+  /** This occurrence's own title, or `null` when it reads the flow item's. */
+  title: string | null;
+  /** This occurrence's block reason, or `null` when it has none. */
+  blocked_reason: string | null;
+  /** Whether this occurrence was deleted from its iteration on its own. */
+  deleted: boolean;
+  /**
+   * The flow items it waits on in this iteration — the template's dependencies with this
+   * iteration's own changes applied. Every occurrence of each blocker in the iteration gates it.
+   */
+  depends_on: FlowItemRef[];
   /**
    * Where the occurrence sits relative to its own window: "pending" before it opens, "lapsed" once
    * it has gone under the Habit's Consumption, "active" in between. One tri-state rather than two
@@ -341,21 +352,84 @@ export type PlanOverride =
   | { kind: "planned"; plan: TimeScope };
 
 /**
+ * One occurrence of a Habit's item, as the per-occurrence edits name it: the same fields a virtual
+ * node's `habitItem` carries.
+ */
+export interface OccurrenceKey {
+  flowId: number;
+  itemType: HabitInstanceType;
+  itemId: number;
+  scopeId: number;
+  cycleId: number;
+}
+
+/** One flow item, by table and id — what an occurrence's per-iteration dependencies name. */
+export interface FlowItemRef {
+  item_type: FlowItemType;
+  item_id: number;
+}
+
+function instanceOf(occurrence: OccurrenceKey) {
+  return {
+    item_type: occurrence.itemType,
+    item_id: occurrence.itemId,
+    iteration_scope_id: occurrence.scopeId,
+    cycle_id: occurrence.cycleId,
+  };
+}
+
+/**
  * Plans one task occurrence of a Habit on its own, overriding its Cycle Plan for that iteration
  * alone — or hands it back to the Cycle Plan with `{ kind: "inherit" }`. Nothing about the
  * template changes. Refused unless a window sits inside the occurrence's own.
  */
-export async function setHabitInstancePlan(
-  flowId: number,
-  itemId: number,
-  iterationScopeId: number,
-  cycleId: number,
-  plan: PlanOverride,
+export async function setHabitInstancePlan(occurrence: OccurrenceKey, plan: PlanOverride): Promise<void> {
+  return invoke<void>("set_habit_instance_plan", {
+    flowId: occurrence.flowId, instance: instanceOf(occurrence), plan,
+  });
+}
+
+/**
+ * Gives one occurrence its own title. `null`, an empty title or the flow item's own title hands it
+ * back to the template's.
+ */
+export async function setHabitInstanceTitle(occurrence: OccurrenceKey, title: string | null): Promise<void> {
+  return invoke<void>("set_habit_instance_title", {
+    flowId: occurrence.flowId, instance: instanceOf(occurrence), title,
+  });
+}
+
+/** Gives one occurrence a block reason, or clears it with `null`. */
+export async function setHabitInstanceBlockReason(
+  occurrence: OccurrenceKey,
+  reason: string | null,
 ): Promise<void> {
-  const instance = {
-    item_type: "flow_task", item_id: itemId, iteration_scope_id: iterationScopeId, cycle_id: cycleId,
-  };
-  return invoke<void>("set_habit_instance_plan", { flowId, instance, plan });
+  return invoke<void>("set_habit_instance_block_reason", {
+    flowId: occurrence.flowId, instance: instanceOf(occurrence), reason,
+  });
+}
+
+/**
+ * Deletes one occurrence from its iteration alone, or restores it. Refused while it still holds
+ * something added to it, or the occurrences of the steps nested under it.
+ */
+export async function setHabitInstanceDeleted(occurrence: OccurrenceKey, deleted: boolean): Promise<void> {
+  return invoke<void>("set_habit_instance_deleted", {
+    flowId: occurrence.flowId, instance: instanceOf(occurrence), deleted,
+  });
+}
+
+/**
+ * Sets everything one task occurrence waits on in its iteration — the whole set. The template's own
+ * set clears the divergence. It applies to every occurrence of the item in that iteration.
+ */
+export async function setHabitInstanceDependencies(
+  occurrence: OccurrenceKey,
+  dependsOn: FlowItemRef[],
+): Promise<void> {
+  return invoke<void>("set_habit_instance_dependencies", {
+    flowId: occurrence.flowId, instance: instanceOf(occurrence), dependsOn,
+  });
 }
 
 /** The kinds an occurrence can hold — everything a Task can parent. */

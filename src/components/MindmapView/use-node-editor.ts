@@ -37,8 +37,8 @@ import type { TimeScope } from "@/api/time-scope";
 import { findNode } from "@/utils/mindmap-tree";
 import { DOMAIN_SUBTYPE } from "@/api/domains";
 import { TASK_STATUS } from "@/utils/status-mapping";
-import { useOccurrencePlan } from "@/hooks/use-occurrence-plan";
-import type { OccurrencePlanHandles } from "@/hooks/use-occurrence-plan";
+import { useOccurrenceEditor } from "@/hooks/use-occurrence-editor";
+import type { OccurrenceEditorHandles } from "@/hooks/use-occurrence-editor";
 
 export interface EditorModalState {
   nodeId: string;
@@ -96,8 +96,8 @@ interface Result {
   confirmScopeClamp: (conflicts: ViolatingDescendant[]) => Promise<boolean>;
   scopeClampRequest: ScopeClampRequest | null;
   resolveScopeClamp: (proceed: boolean) => void;
-  /** The Plan editor of a Habit task occurrence, which a double-click opens instead. */
-  occurrencePlan: OccurrencePlanHandles;
+  /** The editor of one Habit item occurrence, which a double-click on one opens instead. */
+  occurrenceEditor: OccurrenceEditorHandles;
 }
 
 export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Result {
@@ -107,8 +107,8 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
   const [allTags, setAllTags] = useState<Domain[]>([]);
   const [domainNames, setDomainNames] = useState<Map<number, string>>(new Map());
   const [scopeClampRequest, setScopeClampRequest] = useState<ScopeClampRequest | null>(null);
-  const occurrencePlan = useOccurrencePlan(reload);
-  const openOccurrencePlan = occurrencePlan.open;
+  const occurrenceEditor = useOccurrenceEditor(tree, reload);
+  const openOccurrenceEditor = occurrenceEditor.open;
 
   // One load gives both the tags and the parent-domain titles used to section the tag picker.
   useEffect(() => {
@@ -162,16 +162,16 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
       // A virtual Habit instance isn't backed by a real Task/Goal row — its Time Scope is derived
       // from the flow's Duration kind and the item's Cycle, not independently editable — and
       // `onTaskSave`/`onGoalSave` would compute a `dbId` from its non-numeric `-virtual` id tail
-      // (NaN) and fail to save. A task occurrence opens its own Plan editor instead: its Plan is
-      // the one thing it can be given on its own. Anything else virtual stays read-only here.
+      // (NaN) and fail to save. An item occurrence opens its own editor instead, which writes
+      // what it diverges by; the iteration root stays read-only here.
       if (node === undefined || node.kind === "aspect") return;
       if (node.habitItem !== undefined) {
-        openOccurrencePlan(node);
+        openOccurrenceEditor(node);
         return;
       }
       setEditorModal({ nodeId, node });
     },
-    [tree, openOccurrencePlan],
+    [tree, openOccurrenceEditor],
   );
 
   const onTaskSave = useCallback(
@@ -417,7 +417,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Resu
   );
 
   return {
-    occurrencePlan,
+    occurrenceEditor,
     editorModal, setEditorModal, allTags, domainNames, availableForDep, onDoubleClick,
     onTaskSave, onGoalSave, onCommitmentSave, onSimpleSave, onProjectSave, onInfoSave,
     onClearBeadsId,

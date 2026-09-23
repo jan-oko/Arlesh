@@ -19,17 +19,17 @@ function setup(nodes: MindmapNode[], neighbour: string | null = "task-2") {
   const removeNode = vi.fn((_nodes: DeletedNode[]) => Promise.resolve());
   const neighbourAfterDelete = vi.fn((_id: string, _deletedIds: ReadonlySet<string>) => neighbour);
   const selectRow = vi.fn();
-  const showToast = vi.fn();
+  const deleteVirtual = vi.fn((_node: MindmapNode) => undefined);
   const rendered = renderHook(() =>
     useListDelete({
       findNode: (id) => byId.get(id),
       removeNode,
       neighbourAfterDelete,
       selectRow,
-      showToast,
+      deleteVirtual,
     }),
   );
-  return { ...rendered, removeNode, neighbourAfterDelete, selectRow, showToast };
+  return { ...rendered, removeNode, neighbourAfterDelete, selectRow, deleteVirtual };
 }
 
 const leaf = () => node("task-1", "task");
@@ -109,11 +109,11 @@ describe("useListDelete", () => {
 
   // Derived at load time, so there is no row to delete — and the thing behind it is the Habit's
   // template, which is emphatically not what Delete on one occurrence should take away.
-  it("refuses a Habit repetition out loud instead of doing nothing", () => {
+  it("hands a Habit occurrence to the occurrence delete, never to the row delete", () => {
     const view = setup([node("habititem-flow_task-2-1-0-virtual", "task", { virtual: true })]);
     act(() => { view.result.current.requestDelete("habititem-flow_task-2-1-0-virtual"); });
     expect(view.result.current.pendingDelete).toBeNull();
-    expect(view.showToast).toHaveBeenCalledTimes(1);
+    expect(view.deleteVirtual).toHaveBeenCalledTimes(1);
     expect(view.removeNode).not.toHaveBeenCalled();
   });
 
@@ -127,7 +127,7 @@ describe("useListDelete", () => {
         removeNode,
         neighbourAfterDelete: () => null,
         selectRow,
-        showToast: vi.fn(),
+        deleteVirtual: vi.fn(),
       }),
     );
     act(() => { result.current.requestDelete("task-1"); });
@@ -146,7 +146,7 @@ describe("useListDelete", () => {
         removeNode,
         neighbourAfterDelete: () => null,
         selectRow: vi.fn(),
-        showToast: vi.fn(),
+        deleteVirtual: vi.fn(),
       }),
     );
     act(() => { result.current.requestDelete("task-1"); });
@@ -161,6 +161,6 @@ describe("useListDelete", () => {
     const view = setup([leaf()]);
     act(() => { view.result.current.requestDelete("task-gone"); });
     expect(view.result.current.pendingDelete).toBeNull();
-    expect(view.showToast).not.toHaveBeenCalled();
+    expect(view.deleteVirtual).not.toHaveBeenCalled();
   });
 });

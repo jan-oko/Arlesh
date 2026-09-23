@@ -1,5 +1,4 @@
 import { useCallback, useState } from "react";
-import { useTranslation } from "react-i18next";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { collectSubtreePostOrder } from "@/utils/mindmap-tree";
 import { getErrorMessage } from "@/api/errors";
@@ -11,7 +10,11 @@ interface Options {
   /** The row the selection should land on once `deletedIds` are gone, as the list currently reads. */
   neighbourAfterDelete: (id: string, deletedIds: ReadonlySet<string>) => string | null;
   selectRow: (id: string | null) => void;
-  showToast: (toast: { nodeId: string; message: string }) => void;
+  /**
+   * What `Delete` does to a virtual Habit node instead: an item occurrence is deleted from its
+   * iteration alone, and an iteration root is refused out loud (`useOccurrenceDelete`).
+   */
+  deleteVirtual: (node: MindmapNode) => void;
 }
 
 /** What the confirmation is being asked about: the row itself, and how much goes with it. */
@@ -44,14 +47,13 @@ interface ListDelete {
  *
  * Two of those differences are real. The list has **one** selection where the canvas has an anchor
  * and a multi-selection, so a delete is always one row and its subtree. And a **virtual Habit
- * repetition** is refused out loud: it is derived at load time, so there is no row to delete — and
- * the thing behind it, the Habit's template, is emphatically not what `Delete` on one occurrence
- * should take away.
+ * node** has no row to delete — the thing behind it, the Habit's template, is emphatically not
+ * what `Delete` on one occurrence should take away — so it goes to `deleteVirtual`, which deletes
+ * an item occurrence from its iteration alone and refuses an iteration root.
  */
 export function useListDelete({
-  findNode, removeNode, neighbourAfterDelete, selectRow, showToast,
+  findNode, removeNode, neighbourAfterDelete, selectRow, deleteVirtual,
 }: Options): ListDelete {
-  const { t } = useTranslation("warnings");
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,13 +63,13 @@ export function useListDelete({
       const node = findNode(id);
       if (node === undefined) return;
       if (node.virtual === true) {
-        showToast({ nodeId: id, message: t("deleteRepetitionRefused") });
+        deleteVirtual(node);
         return;
       }
       setError(null);
       setPendingId(id);
     },
-    [findNode, showToast, t],
+    [findNode, deleteVirtual],
   );
 
   const cancelDelete = useCallback(() => {

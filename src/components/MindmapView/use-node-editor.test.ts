@@ -76,26 +76,26 @@ describe("useNodeEditor — double-click", () => {
   // Opening the full editor on it would save against a `dbId` parsed from its non-numeric
   // `-virtual` id tail (NaN), silently failing — so the full editor never opens on one. A task
   // occurrence opens its own Plan editor instead.
-  it("opens the occurrence Plan editor, not the Task editor, on a habit task occurrence", () => {
+  it("opens the occurrence editor, not the Task editor, on a habit task occurrence", () => {
     const reload = vi.fn().mockResolvedValue(undefined);
     const { result } = renderHook(() =>
       useNodeEditor({ tree: root, allTasksAndGoals: [taskNode], reload }),
     );
     act(() => result.current.onDoubleClick("habititem-flow_task-4-3-virtual"));
     expect(result.current.editorModal).toBeNull();
-    expect(result.current.occurrencePlan.target).toMatchObject({
+    expect(result.current.occurrenceEditor.target?.key).toMatchObject({
       flowId: 4, itemId: 4, scopeId: 26, cycleId: 0,
     });
   });
 
-  it("opens nothing on a habit iteration root, which is not planned per occurrence", () => {
+  it("opens nothing on a habit iteration root, which is not edited per occurrence", () => {
     const reload = vi.fn().mockResolvedValue(undefined);
     const { result } = renderHook(() =>
       useNodeEditor({ tree: root, allTasksAndGoals: [taskNode], reload }),
     );
     act(() => result.current.onDoubleClick("habit-4-0-virtual"));
     expect(result.current.editorModal).toBeNull();
-    expect(result.current.occurrencePlan.target).toBeNull();
+    expect(result.current.occurrenceEditor.target).toBeNull();
   });
 });
 

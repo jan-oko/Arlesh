@@ -22,7 +22,8 @@ import { BEADS_NODE_TYPE } from "@/api/beads";
 import { useKeyboardListView } from "./use-keyboard-list-view";
 import { useUndo } from "@/hooks/use-undo";
 import TaskEditorModal from "@/components/TaskEditorModal/TaskEditorModal";
-import OccurrencePlanModal from "@/components/OccurrencePlanModal/OccurrencePlanModal";
+import OccurrenceEditorModal from "@/components/OccurrenceEditorModal/OccurrenceEditorModal";
+import { useOccurrenceDelete } from "@/hooks/use-occurrence-delete";
 import CommitmentEditorModal from "@/components/CommitmentEditorModal/CommitmentEditorModal";
 import NodeSearchModal from "@/components/NodeSearchModal/NodeSearchModal";
 import TaskRow from "./TaskRow";
@@ -71,7 +72,7 @@ export default function ListView() {
 
   const {
     editorModal, setEditorModal, allTags, domainNames, availableForDep, onDoubleClick,
-    onTaskSave, onCommitmentSave, onClearBeadsId, checkScopeClamp, occurrencePlan,
+    onTaskSave, onCommitmentSave, onClearBeadsId, checkScopeClamp, occurrenceEditor,
   } = useNodeEditor({ tree, allTasksAndGoals, reload });
 
   // One selection across both sections: a row is a Task or a Commitment, and which it is decides
@@ -231,6 +232,8 @@ export default function ListView() {
     setListPreset(mode);
   }
 
+  const deleteOccurrences = useOccurrenceDelete({ reload, showToast });
+
   // Deleting on the Mindmap's terms: its chord, its confirmation, its subtree cascade and its
   // writer — so one undo step covers a delete made from either view.
   const { pendingDelete, isDeleting, error: deleteError, requestDelete, confirmDelete, cancelDelete } =
@@ -239,7 +242,9 @@ export default function ListView() {
       removeNode,
       neighbourAfterDelete,
       selectRow: setSelectedRowId,
-      showToast,
+      deleteVirtual: (node) => {
+        deleteOccurrences([node]);
+      },
     });
 
   const { onUndo, onRedo } = useUndo({ reload, showToast });
@@ -366,11 +371,13 @@ export default function ListView() {
         />
       )}
 
-      {occurrencePlan.target !== null && (
-        <OccurrencePlanModal
-          node={occurrencePlan.target.node}
-          onSave={occurrencePlan.save}
-          onClose={occurrencePlan.close}
+      {occurrenceEditor.target !== null && (
+        <OccurrenceEditorModal
+          node={occurrenceEditor.target.node}
+          candidates={occurrenceEditor.target.candidates}
+          onSave={occurrenceEditor.save}
+          onSetDeleted={occurrenceEditor.setDeleted}
+          onClose={occurrenceEditor.close}
         />
       )}
 

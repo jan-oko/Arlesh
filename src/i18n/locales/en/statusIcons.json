@@ -5,6 +5,7 @@
   "planUnplanned": "Left unplanned this time — the Cycle Plan is set aside for this occurrence",
   "overdue": "Overdue",
   "archived": "Archived",
+  "occurrenceDeleted": "Deleted from this iteration only — restore it from its editor",
   "archivedConflict": "Archived (overrode a manually-set Frozen status)",
   "frozen": "Frozen",
   "flowInstance": "Flow instance",

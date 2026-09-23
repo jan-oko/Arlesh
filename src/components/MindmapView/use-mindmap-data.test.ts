@@ -1363,8 +1363,8 @@ describe("injectHabitInstances", () => {
   ): HabitInstance {
     return {
       item_type: itemType, item_id: itemId, cycle_id: NO_CYCLE,
-      time_scope: null, plan: null, cycle_plan: null, plan_overridden: false, timing: "active",
-      ...overrides,
+      time_scope: null, plan: null, cycle_plan: null, plan_overridden: false, title: null,
+      blocked_reason: null, deleted: false, depends_on: [], timing: "active", ...overrides,
     };
   }
   /** A stored status Modification for one occurrence. */
@@ -1657,6 +1657,48 @@ describe("injectHabitInstances", () => {
     expect(moved?.planOverridden).toBe(true);
     expect(usual?.plan).toEqual(tuesday);
     expect(usual?.planOverridden).toBe(false);
+  });
+
+  it("draws an occurrence's own title, block reason and deletion, and blocks it on an open dependency", () => {
+    const root = buildTree(
+      [
+        { id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false },
+        { id: 96, title: "LOOK", description: null, subtype: "project", parent_id: 1, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false },
+      ],
+      [], [], [],
+    );
+    const shop: FlowTask = { id: 4, flow_id: 3, title: "Shop", parent_type: "flow", parent_id: 3, position: 0, is_private: false };
+    const cook: FlowTask = { id: 5, flow_id: 3, title: "Cook", parent_type: "flow", parent_id: 3, position: 1, is_private: false };
+    const wash: FlowTask = { id: 6, flow_id: 3, title: "Wash up", parent_type: "flow", parent_id: 3, position: 2, is_private: false };
+    const waitsOnShop = [{ item_type: "flow_task" as const, item_id: 4 }];
+    injectHabitInstances(
+      root,
+      [mkFlow({ target_type: "project", target_id: 96 })],
+      [[
+        iter(0, "active", [
+          inst("flow_task", 4, { title: "Shop at the market" }),
+          inst("flow_task", 5, { depends_on: waitsOnShop, blocked_reason: "no gas" }),
+          inst("flow_task", 6, { deleted: true }),
+        ]),
+        iter(1, "active", [inst("flow_task", 4), inst("flow_task", 5, { depends_on: waitsOnShop }), inst("flow_task", 6)]),
+      ]],
+      LABELS, NOW,
+      [],
+      [shop, cook, wash],
+      [[mod("flow_task", 4, 101, "done")]], // tomorrow's shopping is already done
+    );
+
+    const [today, tomorrow] = root.children[0]?.children[0]?.children ?? [];
+    const [shopToday, cookToday, washToday] = today?.children ?? [];
+    expect(shopToday?.title).toBe("Shop at the market");
+    expect(shopToday?.occurrence?.templateTitle).toBe("Shop");
+    expect(cookToday?.blockReasons).toEqual(["no gas"]);
+    expect(cookToday?.virtualBlockers).toEqual(["Blocked by Shop at the market"]);
+    expect(washToday?.archived).toBe(true);
+    expect(washToday?.occurrence?.deleted).toBe(true);
+    // Tomorrow's Shop is done, so tomorrow's Cook is not held up — and nothing was edited there.
+    expect(tomorrow?.children[1]?.virtualBlockers).toEqual([]);
+    expect(tomorrow?.children[0]?.title).toBe("Shop");
   });
 
   it("archives a past-window iteration's items regardless of done-ness (the original bug report)", () => {

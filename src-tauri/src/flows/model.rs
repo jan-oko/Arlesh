@@ -598,6 +598,18 @@ pub struct HabitInstance {
     /// Whether this occurrence's Plan is its own rather than the Cycle Plan's, so a touched
     /// occurrence can be told from an inherited one even when both read "unplanned".
     pub plan_overridden: bool,
+    /// This occurrence's own title, or `None` when it reads the flow item's.
+    pub title: Option<String>,
+    /// This occurrence's block reason, or `None` when it has none. A flow item carries no block
+    /// reason of its own, so there is nothing to inherit.
+    pub blocked_reason: Option<String>,
+    /// Whether this occurrence was deleted from its iteration on its own (a tombstone). It is
+    /// still sent, so the one view that shows everything can show it and offer it back.
+    pub deleted: bool,
+    /// The flow items this occurrence waits on in this iteration: the template's dependencies with
+    /// this iteration's own additions and removals applied. Every occurrence of each blocker in
+    /// the same iteration gates it, as every instance of a blocker does when a flow is started.
+    pub depends_on: Vec<FlowItemRef>,
     /// Where the occurrence sits relative to its own window at the reference instant.
     pub timing: InstanceTiming,
 }
@@ -655,10 +667,11 @@ pub struct HabitInstanceRef {
 /// different answers, and folding them together would put back a plan the user removed.
 /// Serialised `{"kind": "inherit"}`, `{"kind": "unplanned"}` or
 /// `{"kind": "planned", "plan": {...}}`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum PlanOverride {
     /// Follow the Cycle Plan — no divergence. Setting this clears an override.
+    #[default]
     Inherit,
     /// Deliberately unplanned for this occurrence, whatever the Cycle Plan says.
     Unplanned,
@@ -706,6 +719,36 @@ impl PlanOverride {
     pub fn is_override(&self) -> bool {
         !matches!(self, Self::Inherit)
     }
+}
+
+/// One flow item, by table and id — what an occurrence's per-iteration dependencies name.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct FlowItemRef {
+    /// `flow_goal` or `flow_task`.
+    pub item_type: String,
+    /// The flow item's id.
+    pub item_id: i64,
+}
+
+/// One iteration's divergence from the template's dependency graph: an edge **added** for that
+/// iteration alone, or a template edge **removed** from it (`added` false).
+///
+/// Keyed by item, not by occurrence — `habit_instance_dependencies` has no cycle pair column — so
+/// it applies to every occurrence of the dependent in that iteration, as a template edge does.
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
+pub struct DependencyDivergence {
+    /// The iteration it applies to.
+    pub iteration_scope_id: i64,
+    /// The waiting item's type.
+    pub dependent_type: String,
+    /// The waiting item's id.
+    pub dependent_id: i64,
+    /// The blocking item's type.
+    pub depends_on_type: String,
+    /// The blocking item's id.
+    pub depends_on_id: i64,
+    /// `true` for an edge this iteration adds, `false` for a template edge it removes.
+    pub added: bool,
 }
 
 /// One instance's divergent **status** for a Habit iteration — a non-tombstoned Modification (e.g.

@@ -35,7 +35,7 @@ vi.mock("./use-node-editor", () => ({
     confirmScopeClamp: vi.fn(),
     scopeClampRequest: null,
     resolveScopeClamp: vi.fn(),
-    occurrencePlan: { target: null, open: vi.fn(), close: vi.fn(), save: vi.fn() },
+    occurrenceEditor: { target: null, open: vi.fn(), close: vi.fn(), save: vi.fn(), setDeleted: vi.fn() },
   }),
 }));
 vi.mock("react-i18next", () => ({

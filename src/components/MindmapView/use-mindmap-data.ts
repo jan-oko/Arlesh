@@ -255,7 +255,7 @@ function occurrenceNode(
   return {
     id: `habititem-${itemType}-${item.id}-${instance.cycle_id}-${iteration.index}-virtual`,
     kind: itemType === "flow_goal" ? "goal" : "task",
-    title: item.title,
+    title: instance.title ?? item.title,
     status: instanceStatus(itemType === "flow_goal", raw),
     virtual: true,
     habitItem: {
@@ -266,12 +266,50 @@ function occurrenceNode(
     plan: instance.plan,
     cyclePlan: instance.cycle_plan,
     planOverridden: instance.plan_overridden,
+    // One reason at most: the overlay holds a single block reason per occurrence. The virtual
+    // blockers from this iteration's dependencies are filled in once every occurrence exists.
+    blockReasons: instance.blocked_reason === null ? [] : [instance.blocked_reason],
+    virtualBlockers: [],
+    occurrence: {
+      templateTitle: item.title,
+      ownTitle: instance.title,
+      blockedReason: instance.blocked_reason,
+      dependsOn: instance.depends_on,
+      deleted: instance.deleted,
+    },
     ...(expired ? EXPIRED_LIFECYCLE : workIterationLifecycle(instance.timing, done)),
+    // Deleted from this iteration alone: archived, so only a view that shows everything draws it
+    // — and from there its editor gives it back.
+    ...(instance.deleted ? { archived: true } : {}),
     isPrivate: item.is_private,
     position: item.position,
     tagIds: [],
     children: [],
   };
+}
+
+/** Whether an occurrence no longer holds up what waits on it: finished, or deleted. */
+function releasesDependents(node: MindmapNode): boolean {
+  if (node.occurrence?.deleted === true) return true;
+  return node.kind === "goal" ? node.status === "achieved" : node.status === "done";
+}
+
+/**
+ * Blocks each occurrence on this iteration's dependencies, the way a real Task is blocked by an
+ * unmet one: a blocker item gates it while **any** of its occurrences in the iteration is
+ * unfinished — every instance of a blocker gates every instance of the dependent, as when a flow
+ * is started. A deleted occurrence holds nothing up. The reason reads the blocker's title.
+ */
+function markDependencyBlockers(occurrences: ReadonlyMap<string, MindmapNode[]>): void {
+  for (const drawn of occurrences.values()) {
+    for (const node of drawn) {
+      for (const dependency of node.occurrence?.dependsOn ?? []) {
+        const blockers = occurrences.get(itemKey(dependency.item_type, dependency.item_id)) ?? [];
+        const open = blockers.find((blocker) => !releasesDependents(blocker));
+        if (open !== undefined) node.virtualBlockers?.push(`Blocked by ${open.title}`);
+      }
+    }
+  }
 }
 
 /**
@@ -310,6 +348,8 @@ function buildIterationItems(
     if (drawn === undefined) occurrences.set(key, [node]);
     else drawn.push(node);
   }
+
+  markDependencyBlockers(occurrences);
 
   const { roots, childrenOf } = templateHierarchy(items);
   const attached: MindmapNode[] = [];

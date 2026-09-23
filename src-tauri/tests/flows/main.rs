@@ -19,4 +19,5 @@ mod flow_fan_in;
 mod flows;
 mod flows_commands;
 mod occurrence_children;
+mod occurrence_edit;
 mod occurrence_plan;

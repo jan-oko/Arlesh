@@ -26,6 +26,9 @@
     "editTask": "edit a task",
     "editGoal": "edit a goal",
     "editCommitment": "edit a commitment",
-    "editProject": "edit a project"
+    "editProject": "edit a project",
+    "editOccurrence": "edit a habit occurrence",
+    "deleteOccurrence_one": "delete 1 habit occurrence",
+    "deleteOccurrence_other": "delete {{count}} habit occurrences"
   }
 }

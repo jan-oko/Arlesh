@@ -41,6 +41,10 @@ export default function StatusIconRow({ node, indicators, top }: Props) {
   const scopeLabel = useScopeRangeLabel(node.timeScope);
   const planLabel = useScopeRangeLabel(node.plan);
   const tagNames = useTagNames();
+  const archivedTooltip = (indicator: StatusIndicator): string => {
+    if (indicator.deleted === true) return t("occurrenceDeleted");
+    return indicator.conflict === true ? t("archivedConflict") : t("archived");
+  };
   const planTooltip = (indicator: StatusIndicator): string => {
     if (indicator.unplanned === true) return t("planUnplanned");
     const value = planLabel ?? t("loading");
@@ -64,7 +68,7 @@ export default function StatusIconRow({ node, indicators, top }: Props) {
         return { tooltip: t("overdue"), icon: <ExclamationIcon cx={cx} cy={rowY} r={ICON_R} color={DANGER} /> };
       case "archived":
         return {
-          tooltip: indicator.conflict === true ? t("archivedConflict") : t("archived"),
+          tooltip: archivedTooltip(indicator),
           icon: <ArchiveIcon cx={cx} cy={rowY} r={ICON_R} color={indicator.conflict === true ? DANGER : MUTED} />,
         };
       case "planned":

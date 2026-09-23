@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderHook, act } from "@testing-library/react";
+import { renderHook, act, waitFor } from "@testing-library/react";
 import { useNodeActions } from "./use-node-actions";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { CLIPBOARD_OP } from "@/stores/use-clipboard-store";
@@ -23,6 +23,7 @@ vi.mock("@/api/flows", () => ({
   // The completion guard reads a rejection for the unfinished children it names; a resolved write
   // never reaches it, so every case here answers "not that refusal".
   unfinishedChildren: vi.fn(() => null),
+  setHabitInstanceDeleted: vi.fn().mockResolvedValue(undefined),
 }));
 
 // The stub renders the key and every interpolation value it was given, so a test can pin *which*
@@ -37,7 +38,7 @@ vi.mock("react-i18next", () => ({
 
 import { updateTask } from "@/api/tasks";
 import { updateGoal } from "@/api/goals";
-import { setHabitItemStatus } from "@/api/flows";
+import { setHabitInstanceDeleted, setHabitItemStatus } from "@/api/flows";
 
 function mkNode(id: string, kind: NodeKind, children: MindmapNode[] = [], extra: Partial<MindmapNode> = {}): MindmapNode {
   return { id, kind, title: id, position: 0, tagIds: [], children, ...extra };
@@ -410,12 +411,18 @@ describe("useNodeActions — onDelete", () => {
     });
   });
 
-  it("refuses a per-item virtual Habit instance too, not just the iteration root", () => {
+  it("deletes a per-item Habit occurrence from its iteration alone, never raising the row delete", async () => {
     const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onDelete(["habititem-flow_task-4-0-virtual"]); });
     expect(opts.onRequestDelete).not.toHaveBeenCalled();
-    expect(opts.showToast).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(setHabitInstanceDeleted).toHaveBeenCalledWith(
+      expect.objectContaining({ itemType: "flow_task", itemId: 4 }), true,
+    ));
+    await waitFor(() => expect(opts.showToast).toHaveBeenCalledWith({
+      nodeId: "habititem-flow_task-4-0-virtual",
+      message: expect.stringContaining("occurrenceDeleted"),
+    }));
   });
 
   it("refuses the whole selection when a repetition is in it, deleting none of the real nodes", () => {
