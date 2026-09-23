@@ -50,7 +50,7 @@ async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
 }
 
 /// A single-scope Time Scope of `kind` covering `date`.
-async fn window(pool: &sqlx::SqlitePool, kind: ScopeKind, date: NaiveDate) -> TimeScope {
+async fn window(_pool: &sqlx::SqlitePool, kind: ScopeKind, date: NaiveDate) -> TimeScope {
     let scope = arlesh_lib::scopes::model::Scope::containing(kind, date).unwrap();
     TimeScope {
         start_id: scope.id,

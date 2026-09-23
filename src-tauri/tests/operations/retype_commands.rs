@@ -1265,7 +1265,7 @@ async fn retyping_a_tracked_task_to_a_note_reports_the_link_as_lost_and_clears_i
 // ===========================================================================
 
 /// A single-day Time Scope, so a retype to a Commitment has an effective window to satisfy.
-async fn one_day(pool: &sqlx::SqlitePool, day: u32) -> TimeScope {
+async fn one_day(_pool: &sqlx::SqlitePool, day: u32) -> TimeScope {
     let scope = arlesh_lib::scopes::model::Scope::containing(
         ScopeKind::Day,
         NaiveDate::from_ymd_opt(2026, 7, day).unwrap(),

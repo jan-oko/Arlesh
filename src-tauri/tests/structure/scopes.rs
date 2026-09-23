@@ -260,11 +260,18 @@ fn every_key_in_the_shared_corpus_is_spelled_the_same_here() {
     for case in corpus.cases {
         let key = match (case.kind, case.date, case.part, case.start, case.end) {
             (ScopeKind::PartOfDay, Some(date), Some(part), _, _) => ScopeKey::part(date, part),
-            (ScopeKind::Exact, _, _, Some(start), Some(end)) => ScopeKey::exact(start, end).unwrap(),
+            (ScopeKind::Exact, _, _, Some(start), Some(end)) => {
+                ScopeKey::exact(start, end).unwrap()
+            }
             (kind, Some(date), None, None, None) => ScopeKey::containing(kind, date).unwrap(),
             _ => panic!("malformed corpus case {}", case.key),
         };
         assert_eq!(key.to_string(), case.key);
-        assert_eq!(case.key.parse::<ScopeKey>().unwrap(), key, "{} round-trips", case.key);
+        assert_eq!(
+            case.key.parse::<ScopeKey>().unwrap(),
+            key,
+            "{} round-trips",
+            case.key
+        );
     }
 }
