@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import type { MindmapNode, WaitRef } from "@/utils/tree-layout";
+import type { MindmapNode } from "@/utils/tree-layout";
 import { rowIdOf } from "@/utils/node-identity";
 import {
   completeExpectationCheck, completeSpawnedWaitCheck, reopenExpectationCheck, reopenSpawnedWaitCheck,
@@ -17,8 +17,7 @@ interface Options {
 
 interface Result {
   /**
-   * Completes the current check on a wait — the selected wait's, or the one a selected virtual
-   * check task belongs to. It records when; the check stays as a done task, the next falls due one
+   * Completes the check a virtual check task stands for. It records when; the check stays as a done task, the next falls due one
    * interval later, and the wait stays pending. On a **done** check task it reopens that check —
    * the latest only; the backend refuses any other, out loud.
    */
@@ -27,21 +26,12 @@ interface Result {
   toggleRelease: (nodeId: string) => void;
 }
 
-/** The wait a node stands for: itself, or the one its check task checks on. */
-function waitOf(node: MindmapNode): WaitRef | null {
-  if (node.expectationCheck !== undefined) return node.expectationCheck;
-  if (node.spawnedBy !== undefined) return { kind: "spawned", taskId: node.spawnedBy.taskId };
-  if (node.kind === "expectation" && node.rowId !== undefined) return { kind: "stored", expectationId: node.rowId };
-  return null;
-}
-
 /**
  * The two Expectation gestures, shared by every view — for a stored wait and for the one an
  * Asynchronous Task's completion spawned alike.
  *
  * Every refusal is said out loud: a delegated Task's wait is released by the Task being done and by
- * nothing else, a wait with no Check every has no check to complete, and a node that is not a wait
- * is not one.
+ * nothing else, and a node that is not a wait is not one.
  */
 export function useExpectationActions({ findNode, reload, showToast }: Options): Result {
   const { t } = useTranslation("expectation");
@@ -56,21 +46,11 @@ export function useExpectationActions({ findNode, reload, showToast }: Options):
   const completeCheck = useCallback(
     (nodeId: string) => {
       const node = findNode(nodeId);
-      if (node === undefined) return;
-      if (node.delegationWait !== undefined) {
-        showToast({ nodeId, message: t("delegationWaitHasNoCheck") });
-        return;
-      }
-      const wait = waitOf(node);
-      if (wait === null) {
-        showToast({ nodeId, message: t("notAWait") });
-        return;
-      }
-      if (node.kind === "expectation" && (node.checkEvery ?? null) === null) {
-        showToast({ nodeId, message: t("noCheckEvery") });
-        return;
-      }
-      // A completed check task toggles back: `D`, `Enter` and its status control reopen it.
+      // Only a check task's status gesture routes here (see `useStatusCycle` and the List View's
+      // `onCycleStatus`), so a node without a wait to check never arrives.
+      const wait = node?.expectationCheck;
+      if (node === undefined || wait === undefined) return;
+      // A completed check task toggles back: `Enter` (`Space` in Steps) and its status control reopen it.
       const reopening = node.checkDueAt;
       const write = reopening !== undefined
         ? (wait.kind === "stored"
@@ -81,7 +61,7 @@ export function useExpectationActions({ findNode, reload, showToast }: Options):
           : completeSpawnedWaitCheck(wait.taskId);
       void write.then(() => reload(), fail(nodeId));
     },
-    [findNode, reload, showToast, fail, t],
+    [findNode, reload, fail],
   );
 
   const toggleRelease = useCallback(

@@ -48,9 +48,7 @@ describe("useExpectationActions", () => {
     expect(showToast).toHaveBeenCalledWith({ nodeId: "x", message: "delegationWaitReleasedByTask" });
   });
 
-  it("completes the check from the wait or from its check task", () => {
-    setup(node({ rowId: 3, checkEvery: { n: 1, kind: "day" } })).actions.completeCheck("x");
-    expect(completeExpectationCheck).toHaveBeenLastCalledWith(3);
+  it("completes the check from its check task", () => {
     setup(node({ kind: "task", virtual: true, expectationCheck: { kind: "stored", expectationId: 4 } })).actions.completeCheck("x");
     expect(completeExpectationCheck).toHaveBeenLastCalledWith(4);
   });
@@ -69,20 +67,8 @@ describe("useExpectationActions", () => {
     const spawned: Partial<MindmapNode> = { virtual: true, spawnedBy: { taskId: 7 }, checkEvery: { n: 2, kind: "day" } };
     setup(node({ ...spawned, status: "pending" })).actions.toggleRelease("x");
     expect(updateSpawnedWait).toHaveBeenLastCalledWith(7, { status: "released" });
-    setup(node(spawned)).actions.completeCheck("x");
-    expect(completeSpawnedWaitCheck).toHaveBeenLastCalledWith(7);
     setup(node({ kind: "task", virtual: true, expectationCheck: { kind: "spawned", taskId: 7 } })).actions.completeCheck("x");
-    expect(completeSpawnedWaitCheck).toHaveBeenCalledTimes(2);
+    expect(completeSpawnedWaitCheck).toHaveBeenLastCalledWith(7);
     expect(updateExpectation).not.toHaveBeenCalled();
-  });
-
-  it("says so when there is no check to complete", () => {
-    const bare = setup(node({ rowId: 3, checkEvery: null }));
-    bare.actions.completeCheck("x");
-    expect(bare.showToast).toHaveBeenCalledWith({ nodeId: "x", message: "noCheckEvery" });
-    const delegated = setup(node({ virtual: true, delegationWait: { taskId: 5 } }));
-    delegated.actions.completeCheck("x");
-    expect(delegated.showToast).toHaveBeenCalledWith({ nodeId: "x", message: "delegationWaitHasNoCheck" });
-    expect(completeExpectationCheck).not.toHaveBeenCalled();
   });
 });
